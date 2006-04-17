@@ -1,0 +1,33 @@
+<html>
+<head><title pony:content="self.title">Sample title</title></head>
+<body>
+	<h1 pony:content="self.title">Sample title</h1>
+	<p><pony:replace expr="self.text">Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Suspendisse lacus diam, tempus sed, porttitor eu, tempus sit amet, dui. Etiam tellus lectus, ultrices id, volutpat et, dignissim at, augue. Nullam congue luctus est. Proin semper. In sed orci. Suspendisse sed libero ac diam ultricies aliquet. Suspendisse potenti. Fusce vel velit. Ut eget sapien vitae est pellentesque iaculis. Nullam volutpat erat non tellus.
+	</pony:replace>
+	<pony:for expr="record in self.records">
+		<h2 pony:content="record.title">Record title</h2>
+		<pony:for expr="paragraph in record.paragraphs">
+			<p pony:content="convert2html(paragraph)">Quisque placerat lacus ac justo. Cras eget nisl. Aenean a orci. Maecenas eget dui quis sapien convallis interdum. Phasellus quis nibh. In sollicitudin. In elementum, enim sed aliquet commodo, urna massa faucibus dui, a tincidunt ipsum dui eu metus. Phasellus cursus, odio at elementum congue, libero odio scelerisque orci, eget porttitor est velit id ante. Ut turpis dui, viverra id, ornare ac, viverra quis, risus. Praesent sit amet lorem id leo tincidunt posuere. Quisque dignissim augue in ante. Suspendisse quis augue. Aliquam luctus augue et diam ornare dignissim. Sed nulla. Vestibulum congue eros eget est. Aenean et sapien ut dolor consectetuer iaculis.
+			</p>
+		</pony:for>
+		<pony:if expr="record.comments">
+			<h3>comments:</h3>
+			<table>
+			<pony:for expr="comment in comments">
+				<tr><td width="10%">
+				<pony:replace expr="comment.date">Aug-10-2005
+				</pony:replace><br>
+				<pony:replace expr="comment.author">John Smith
+				</pony:replace>
+				</td><td pony:content="convert2html(comment.text)">
+					Maecenas pellentesque. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Morbi sed enim. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia Curae; Vivamus tincidunt malesuada quam. Vivamus at ligula vitae mauris tincidunt pellentesque. Mauris laoreet. Cras facilisis nisl a sem. Praesent sit amet felis sed enim pellentesque tempor. Nullam commodo sapien non nibh. Suspendisse potenti. In hac habitasse platea dictumst. Duis faucibus tempor arcu. Suspendisse fermentum ultricies augue. Nam lacinia nulla et sem placerat commodo. Cras at metus.
+				</td></tr>
+			<pony:sepator>
+				<tr><td colspan=2></td></tr>
+			</pony:separator>
+			</pony:for>
+			</table>
+		</pony:if>
+	</pony:for>
+<body>
+</html>
