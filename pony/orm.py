@@ -63,9 +63,10 @@ class DatabaseInfo(object):
         if getattr(_local, 'database', None) is not self:
             raise DatabaseError, 'The connection is not opened'
         return _local.connection
+    connection = property(_get_connection)
 
-    def __getattr__(self, name):
-        return getattr(self._get_connection(), name)
+##    def __getattr__(self, name):
+##        return getattr(self._get_connection(), name)
 
 ################################################################################
 
