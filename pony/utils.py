@@ -2,6 +2,29 @@
 
 from os import urandom
 
+def error_method(*args, **kwargs):
+    raise TypeError
+
+class FrozenDict(dict):
+    "Dictionary subclass with __hash__ method. Cannot be modified."
+
+    def __init__(self, x):
+        dict.__init__(self, x)
+        self._hash = hash(tuple(sorted(self.iteritems())))
+
+    __setitem__ = __delitem__ = clear = update = setdefault = pop = popitem \
+        = error_method
+
+    def __hash__(self):
+        return self._hash
+
+def import_module(name):
+    "import_module('a.b.c') -> <module a.b.c>"
+    mod = __import__(name)
+    components = name.split('.')
+    for comp in components[1:]: mod = getattr(mod, comp)
+    return mod
+
 def new_guid():
     'new_guid() -> new guid'
     return buffer(urandom(16))
@@ -27,3 +50,4 @@ def str2guid(s):
     a, b, c, d, e = map(unhexlify, (s[:8],s[9:13],s[14:18],s[19:23],s[24:]))
     reverse = slice(-1, None, -1)
     return buffer(''.join((a[reverse], b[reverse], c[reverse], d, e)))
+
