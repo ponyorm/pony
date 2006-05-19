@@ -73,14 +73,15 @@ class DatabaseInfo(object):
 next_id = itertools.count().next
 
 class Attribute(object):
-    __slots__ = '_id', '_initialized', 'name', 'full_name', 'py_type', 'options'
+    __slots__ = ('_id', '_initialized', 'py_type', 'name', 'owner', 'column',
+                 'options', 'reverse')
     def __init__(self, py_type, **options):
         self._id = next_id()
         self._initialized = False
         self.py_type = py_type
+        self.name = self.owner = self.column = None
         self.options = options
-        self.name = None
-        self.owner = None
+        self.reverse = options.pop('reverse', None)
     def _init_(self):
         assert not self._initialized
         if isinstance(self.py_type, type) \
@@ -89,7 +90,7 @@ class Attribute(object):
         self._initialized = True
     def _init_reverse(self):
         t = self.py_type
-        reverse = self.options.get('reverse')
+        reverse = self.reverse
         if isinstance(reverse, str):
             reverse = getattr(t, reverse, None)
             if reverse is None: raise AttributeError(
@@ -97,8 +98,7 @@ class Attribute(object):
         if reverse is None:
             candidates = [ attr for attr in t._attrs_
                                 if attr.py_type is self.owner
-                                and attr.options.get('reverse') \
-                                    in (self, self.name, None)  ]
+                                and attr.reverse in (self, self.name, None)  ]
             for attr in candidates:
                 if attr.options.get('reverse') in (self, self.name):
                     if reverse is not None: raise AttributeError(
@@ -116,11 +116,11 @@ class Attribute(object):
            or reverse.options.get('reverse') not in (self, self.name, None):
             raise AttributeError('Inconsistent attributes %s and %s'
                                  % (self, reverse))
-        self.options['reverse'] = reverse
-        assert reverse.options.get('reverse') in (self, self.name, None)
-        reverse.options['reverse'] = self
+        self.reverse = reverse
+        assert reverse.reverse in (self, self.name, None)
+        reverse.reverse = self
     def __str__(self):
-        if self.owner is None: return '?.%s' % (self.__name__ or '?')
+        if self.owner is None: return '?.%s' % (self.name or '?')
         return '%s.%s' % (self.owner.__name__, self.name or '?')
     def __repr__(self):
         return '<%s : %s>' % (self, self.__class__.__name__)
@@ -131,8 +131,12 @@ class Attribute(object):
     def __delete__(self, obj):
         pass
 
-class Optional(Attribute): pass
-class Required(Attribute): pass
+class Optional(Attribute):
+    __slots__ = ()
+    
+class Required(Attribute):
+    __slots__ = ()
+    
 class Unique(Required):
     __slots__ = 'attrs',
     def __init__(self, *type_or_attrs):
@@ -148,11 +152,17 @@ class Unique(Required):
         cls_dict = sys._getframe(1).f_locals
         cls_dict.setdefault('_keys_', []).append(self)
        
-class PrimaryKey(Unique): pass
+class PrimaryKey(Unique):
+    __slots__ = ()
         
-class Collection(Attribute): pass
-class Set(Collection): pass
-class List(Collection): pass
+class Collection(Attribute):
+    __slots__ = ()
+    
+class Set(Collection):
+    __slots__ = ()
+    
+class List(Collection):
+    __slots__ = ()
 
 ################################################################################
 
@@ -171,8 +181,6 @@ class PersistentMeta(type):
             pony_info = outer_dict['_pony_info_'] = _PonyInfo()
         cls._cls_init_(cls_name, pony_info)
 
-################################################################################
-
 class Persistent(object):
     __metaclass__ = PersistentMeta
     @classmethod
@@ -189,7 +197,7 @@ class Persistent(object):
         other_attrs = info.uninitialized_attrs.get(cls_name, [])
         for attr in other_attrs:
             attr.py_type = cls
-            if 'reversed' in attr.options:
+            if attr.reverse is not None:
                 other_attrs.remove(attr)
                 attr._init_()
         for attr in my_attrs:
@@ -201,7 +209,7 @@ class Persistent(object):
                     u.setdefault(other_name, []).append(attr)
                     continue
                 else: attr.py_type = other_cls
-            if 'reverse' in attr.options: attr._init_()
+            if attr.reverse is not None: attr._init_()
 
         for attr in other_attrs: attr._init_()
         for attr in my_attrs:
