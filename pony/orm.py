@@ -224,6 +224,38 @@ class Persistent(object):
                 key.py_type = None
                 key._init_()
 
+################################################################################
+
+class Table(object):
+    __slots__ = 'name', 'columns'
+    def __init__(self, name):
+        self.name = name
+        self.columns = []
+
+class Column(object):
+    __slots__ = 'name'
+    def __init__(self, name):
+        self.name = name
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
