@@ -166,7 +166,7 @@ class List(Collection):
 
 ################################################################################
 
-class _PonyInfo(object):
+class PonyInfo(object):
     __slots__ = 'persistent_classes', 'uninitialized_attrs'
     def __init__(self):
         self.persistent_classes = {}  # map(class_name -> class)
@@ -176,16 +176,16 @@ class PersistentMeta(type):
     def __init__(cls, cls_name, bases, cls_dict):
         super(PersistentMeta, cls).__init__(cls_name, bases, dict)
         outer_dict = sys._getframe(1).f_locals
-        pony_info = outer_dict.get('_pony_info_')
-        if pony_info is None:
-            pony_info = outer_dict['_pony_info_'] = _PonyInfo()
-        cls._cls_init_(cls_name, pony_info)
+        info = outer_dict.get('_pony_')
+        if info is None:
+            info = outer_dict['_pony_'] = PonyInfo()
+        cls._cls_init_(info)
 
 class Persistent(object):
     __metaclass__ = PersistentMeta
     @classmethod
-    def _cls_init_(cls, cls_name, info):
-        info.persistent_classes[cls_name] = cls
+    def _cls_init_(cls, info):
+        info.persistent_classes[cls.__name__] = cls
         my_attrs = cls._attrs_ = []
         for attr_name, x in cls.__dict__.items():
             if isinstance(x, Attribute):
@@ -194,7 +194,7 @@ class Persistent(object):
                 x.owner = cls
         my_attrs.sort(key = operator.attrgetter('_id'))
 
-        other_attrs = info.uninitialized_attrs.get(cls_name, [])
+        other_attrs = info.uninitialized_attrs.get(cls.__name__, [])
         for attr in other_attrs:
             attr.py_type = cls
             if attr.reverse is not None:
