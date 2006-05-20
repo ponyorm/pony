@@ -167,9 +167,9 @@ class List(Collection):
 ################################################################################
 
 class PonyInfo(object):
-    __slots__ = 'persistent_classes', 'uninitialized_attrs'
+    __slots__ = 'classes', 'uninitialized_attrs'
     def __init__(self):
-        self.persistent_classes = {}  # map(class_name -> class)
+        self.classes = {}  # map(class_name -> class)
         self.uninitialized_attrs = {} # map(referenced_class_name -> attr_list)
 
 class PersistentMeta(type):
@@ -185,7 +185,10 @@ class Persistent(object):
     __metaclass__ = PersistentMeta
     @classmethod
     def _cls_init_(cls, info):
-        info.persistent_classes[cls.__name__] = cls
+        info.classes[cls.__name__] = cls
+        cls._init_attrs_()
+    @classmethod
+    def _init_attrs_(cls):
         my_attrs = cls._attrs_ = []
         for attr_name, x in cls.__dict__.items():
             if isinstance(x, Attribute):
@@ -203,7 +206,7 @@ class Persistent(object):
         for attr in my_attrs:
             if isinstance(attr.py_type, str):
                 other_name = attr.py_type
-                other_cls = info.persistent_classes.get(other_name)
+                other_cls = info.classes.get(other_name)
                 if other_cls is None:
                     u = info.uninitialized_attrs
                     u.setdefault(other_name, []).append(attr)
