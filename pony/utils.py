@@ -1,6 +1,6 @@
 # -*- coding: cp1251 -*-
 
-from os import urandom
+import os, re
 
 def error_method(*args, **kwargs):
     raise TypeError
@@ -18,6 +18,13 @@ class FrozenDict(dict):
     def __hash__(self):
         return self._hash
 
+ident_re = re.compile(r'[A-Za-z_]\w*')
+
+# is_ident = ident_re.match
+def is_ident(string):
+    'is_ident(string) -> bool'
+    return bool(ident_re.match(string))
+
 def import_module(name):
     "import_module('a.b.c') -> <module a.b.c>"
     mod = __import__(name)
@@ -26,8 +33,8 @@ def import_module(name):
     return mod
 
 def new_guid():
-    'new_guid() -> new guid'
-    return buffer(urandom(16))
+    'new_guid() -> new_binary_guid'
+    return buffer(os.urandom(16))
 
 def guid2str(guid):
     """guid_binary2str(binary_guid) -> string_guid
