@@ -186,9 +186,9 @@ class Persistent(object):
     @classmethod
     def _cls_init_(cls, info):
         info.classes[cls.__name__] = cls
-        cls._init_attrs_()
+        cls._init_attrs_(info)
     @classmethod
-    def _init_attrs_(cls):
+    def _init_attrs_(cls, info):
         my_attrs = cls._attrs_ = []
         for attr_name, x in cls.__dict__.items():
             if isinstance(x, Attribute):
