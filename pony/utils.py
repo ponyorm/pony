@@ -6,6 +6,7 @@ from os import urandom
 from re import compile
 
 class NameMapMixin(object):
+    __slots__ = '__list', '__dict'
     def __init__(self):
         self.__list = [] # list of (name, value) pairs or None values
         self.__dict = {} # mapping: name -> index in list
