@@ -3,6 +3,7 @@
 import itertools, operator, sys, threading
 
 import utils
+from utils import FrozenDict, NameMapMixin
 
 __all__ = ('database',
            'PrimaryKey', 'Unique', 'Required', 'Optional',
@@ -29,7 +30,7 @@ class DatabaseInfo(object):
         finally: self._lock.release()
 
     def __init__(self, provider, *args, **kwargs):
-        kwargs = utils.FrozenDict(kwargs)
+        kwargs = FrozenDict(kwargs)
         self._hash = hash(provider) ^ hash(args) ^ hash(kwargs)
         self._provider_name = provider
         self._args = args
@@ -67,8 +68,49 @@ class DatabaseInfo(object):
         return _local.connection
     connection = property(_get_connection)
 
-##    def __getattr__(self, name):
-##        return getattr(self._get_connection(), name)
+################################################################################
+
+class Table(NameMapMixin):
+    __slots__ = 'name', 'primary_key', 'keys'
+    def __init__(self, tab_name):
+        NameMapMixin.__init__(self)
+        self.name = tab_name
+        self.primary_key = None
+        self.keys = []
+    def __setitem__(self, col_name, column):
+        assert isinstance(column, Column)
+        NameMapMixin.__setitem__(self, col_name, column)
+        column._init_(col_name, self)
+    def set_primary_key(self, *columns):
+        columns = list(columns)
+        for i, c in enumerate(columns):
+            if isinstance(c, basestring): columns[i] = self[c]
+            else: assert c.name in self
+        self.primary_key = columns or None
+    def __repr__(self):
+        return '<%s(%s) at 0x%08X>' % (
+            self.__class__.__name__, self.name, id(self))
+
+class Column(object):
+    __slots__ = ('table', 'name', 'type', 'size', 'prec',
+                 'unique', 'not_null', 'foreign_key')
+    def __init__(self, type, size=None, prec=None,
+                 not_null=None, unique=None, foreign_key=None):
+        self.name = None
+        self.type = type
+        self.size = size
+        self.prec = prec
+        self.unique = bool(unique)
+        self.not_null = bool(unique or not_null)
+        self.foreign_key = foreign_key
+    def _init_(self, col_name, table):
+        self.name = col_name
+        self.table = table
+    def __repr__(self):
+        return '%s(%s)' % (self.__class__.__name__, str(self))
+    def __str__(self):
+        if self.table is None: return '?.%s' % self.name or '?'
+        return '%s.%s' % (self.table.name, self.name or '?')
 
 ################################################################################
 
@@ -229,54 +271,6 @@ class Persistent(object):
                 key.py_type = None
                 key._init_()
 
-################################################################################
-
-from utils import NameMapMixin
-
-class Table(NameMapMixin):
-    __slots__ = 'name', 'primary_key', 'keys'
-    def __init__(self, tab_name):
-        NameMapMixin.__init__(self)
-        self.name = tab_name
-        self.primary_key = None
-        self.keys = []
-##    def __contains__(self, x):
-##        if isinstance(x, basestring): return NameMapMixin.__contains__(self, x)
-##        return x is self[x.name]
-    def __setitem__(self, col_name, column):
-        assert isinstance(column, Column)
-        NameMapMixin.__setitem__(self, col_name, column)
-        column._init_(col_name, self)
-    def set_primary_key(self, *columns):
-        columns = list(columns)
-        for i, c in enumerate(columns):
-            if isinstance(c, basestring): columns[i] = self[c]
-            else: assert c.name in self
-        self.primary_key = columns or None
-    def __repr__(self):
-        return '<%s(%s) at 0x%08X>' % (
-            self.__class__.__name__, self.name, id(self))
-
-class Column(object):
-    __slots__ = ('table', 'name', 'type', 'size', 'prec',
-                 'unique', 'not_null', 'foreign_key')
-    def __init__(self, type, size=None, prec=None,
-                 not_null=None, unique=None, foreign_key=None):
-        self.name = None
-        self.type = type
-        self.size = size
-        self.prec = prec
-        self.unique = bool(unique)
-        self.not_null = bool(unique or not_null)
-        self.foreign_key = foreign_key
-    def _init_(self, col_name, table):
-        self.name = col_name
-        self.table = table
-    def __repr__(self):
-        return '%s(%s)' % (self.__class__.__name__, str(self))
-    def __str__(self):
-        if self.table is None: return '?.%s' % self.name or '?'
-        return '%s.%s' % (self.table.name, self.name or '?')
 
 
 
