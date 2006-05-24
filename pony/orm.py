@@ -72,9 +72,9 @@ class DatabaseInfo(object):
 
 class Table(NameMapMixin):
     __slots__ = 'name', 'primary_key', 'keys'
-    def __init__(self, tab_name):
+    def __init__(self, table_name):
         NameMapMixin.__init__(self)
-        self.name = tab_name
+        self.name = table_name
         self.primary_key = None
         self.keys = []
     def __setitem__(self, col_name, column):
@@ -128,9 +128,8 @@ class Attribute(object):
         self.reverse = options.pop('reverse', None)
     def _init_(self):
         assert not self._initialized
-        if isinstance(self.py_type, type) \
-           and issubclass(self.py_type, Persistent):
-            self._init_reverse()
+        if isinstance(self.py_type, type) and \
+           issubclass(self.py_type, Persistent): self._init_reverse()
         self._initialized = True
     def _init_reverse(self):
         t = self.py_type
@@ -213,7 +212,8 @@ class List(Collection):
 class PonyInfo(object):
     __slots__ = 'classes', 'uninitialized_attrs'
     def __init__(self):
-        self.classes = {}  # map(class_name -> class)
+        self.tables = {}              # map(table_name -> table) 
+        self.classes = {}             # map(class_name -> class)
         self.uninitialized_attrs = {} # map(referenced_class_name -> attr_list)
 
 class PersistentMeta(type):
