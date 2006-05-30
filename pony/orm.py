@@ -117,20 +117,20 @@ class Column(object):
 next_id = itertools.count().next
 
 class Attribute(object):
-    __slots__ = ('_id', '_initialized', 'py_type', 'name', 'owner', 'column',
+    __slots__ = ('_id', '_init_phase', 'py_type', 'name', 'owner', 'column',
                  'options', 'reverse')
     def __init__(self, py_type, **options):
         self._id = next_id()
-        self._initialized = False
+        self._init_phase = 0
         self.py_type = py_type
         self.name = self.owner = self.column = None
         self.options = options
         self.reverse = options.pop('reverse', None)
     def _init_1_(self):
-        assert not self._initialized
+        assert self._init_phase == 0
         if isinstance(self.py_type, type) and \
            issubclass(self.py_type, Persistent): self._init_reverse()
-        self._initialized = True
+        self._init_phase = 1
     def _init_reverse(self):
         t = self.py_type
         reverse = self.reverse
@@ -274,8 +274,7 @@ class Persistent(object):
                 other_name = attr.py_type
                 other_cls = info.classes.get(other_name)
                 if other_cls is None:
-                    rattrs = info.reverse_attrs
-                    rattrs.setdefault(other_name, []).append(attr)
+                    info.reverse_attrs.setdefault(other_name, []).append(attr)
                     continue
                 else: attr.py_type = other_cls
             if attr.reverse is not None: attr._init_1_()
@@ -286,7 +285,7 @@ class Persistent(object):
 
         if not hasattr(cls, '_keys_'): cls._keys_ = []
         for key in cls._keys_:
-            if not key._initialized:
+            if key._init_phase == 0:
                 key.name = None
                 key.owner = cls
                 key.py_type = None
