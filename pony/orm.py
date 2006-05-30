@@ -126,7 +126,7 @@ class Attribute(object):
         self.name = self.owner = self.column = None
         self.options = options
         self.reverse = options.pop('reverse', None)
-    def _init_(self):
+    def _init_1_(self):
         assert not self._initialized
         if isinstance(self.py_type, type) and \
            issubclass(self.py_type, Persistent): self._init_reverse()
@@ -210,11 +210,11 @@ class List(Collection):
 ################################################################################
 
 class PonyInfo(object):
-    __slots__ = 'tables', 'classes', 'uninitialized_attrs'
+    __slots__ = 'tables', 'classes', 'reverse_attrs'
     def __init__(self):
         self.tables = {}              # map(table_name -> table) 
         self.classes = {}             # map(class_name -> class)
-        self.uninitialized_attrs = {} # map(referenced_class_name -> attr_list)
+        self.reverse_attrs = {} # map(referenced_class_name -> attr_list)
 
 class PersistentMeta(type):
     def __init__(cls, cls_name, bases, cls_dict):
@@ -223,12 +223,12 @@ class PersistentMeta(type):
         info = outer_dict.get('_pony_')
         if info is None:
             info = outer_dict['_pony_'] = PonyInfo()
-        cls._cls_init_(info)
+        cls._cls_init_1_(info)
 
 class Persistent(object):
     __metaclass__ = PersistentMeta
     @classmethod
-    def _cls_init_(cls, info):
+    def _cls_init_1_(cls, info):
         info.classes[cls.__name__] = cls
         cls._table_defs_ = []
         cls._init_tables_(info)
@@ -263,27 +263,26 @@ class Persistent(object):
                 x.owner = cls
         my_attrs.sort(key = operator.attrgetter('_id'))
 
-        other_attrs = info.uninitialized_attrs.get(cls.__name__, [])
-        for attr in other_attrs:
+        reverse_attrs = info.reverse_attrs.get(cls.__name__, [])
+        for attr in reverse_attrs:
             attr.py_type = cls
             if attr.reverse is not None:
-                other_attrs.remove(attr)
-                attr._init_()
+                reverse_attrs.remove(attr)
+                attr._init_1_()
         for attr in my_attrs:
             if isinstance(attr.py_type, str):
                 other_name = attr.py_type
                 other_cls = info.classes.get(other_name)
                 if other_cls is None:
-                    u = info.uninitialized_attrs
-                    u.setdefault(other_name, []).append(attr)
+                    rattrs = info.reverse_attrs
+                    rattrs.setdefault(other_name, []).append(attr)
                     continue
                 else: attr.py_type = other_cls
-            if attr.reverse is not None: attr._init_()
+            if attr.reverse is not None: attr._init_1_()
 
-        for attr in other_attrs: attr._init_()
+        for attr in reverse_attrs: attr._init_1_()
         for attr in my_attrs:
-            if not isinstance(attr.py_type, str):
-                attr._init_()
+            if not isinstance(attr.py_type, str): attr._init_1_()
 
         if not hasattr(cls, '_keys_'): cls._keys_ = []
         for key in cls._keys_:
@@ -291,7 +290,7 @@ class Persistent(object):
                 key.name = None
                 key.owner = cls
                 key.py_type = None
-                key._init_()
+                key._init_1_()
 
 
 
