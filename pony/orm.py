@@ -210,7 +210,7 @@ class List(Collection):
 ################################################################################
 
 class PonyInfo(object):
-    __slots__ = 'classes', 'uninitialized_attrs'
+    __slots__ = 'tables', 'classes', 'uninitialized_attrs'
     def __init__(self):
         self.tables = {}              # map(table_name -> table) 
         self.classes = {}             # map(class_name -> class)
@@ -230,7 +230,29 @@ class Persistent(object):
     @classmethod
     def _cls_init_(cls, info):
         info.classes[cls.__name__] = cls
+        cls._table_defs_ = []
+        cls._init_tables_(info)
         cls._init_attrs_(info)
+    @classmethod
+    def _init_tables_(cls, info):
+        if hasattr(cls, '_table_'):
+            if hasattr(cls, '_tables_'): raise TypeError(
+                "You can not include both '_table_' and '_tables_' attributes "
+                "in persistent class definition")
+            table_names = [ cls._table_ ]
+        elif hasattr(cls, '_tables_'):
+            if isinstance(cls._tables_, basestring): raise TypeError(
+                "'_tables_' must be sequence of table names")
+            table_names = cls._tables_
+        else: table_names = [ cls.__name__ ]
+        for table_name in table_names:
+            if not isinstance(table_name, basestring):
+                raise TypeError('Table name must be string')
+            if table_name in info.tables:
+                raise TypeError('Table name %s already in use' % table_name)
+            table = Table(table_name)
+            cls._table_defs_.append(table)
+            info.tables[table_name] = table
     @classmethod
     def _init_attrs_(cls, info):
         my_attrs = cls._attrs_ = []
