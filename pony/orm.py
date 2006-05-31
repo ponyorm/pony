@@ -118,7 +118,8 @@ next_id = itertools.count().next
 
 class Attribute(object):
     __slots__ = ('_id_', '_init_phase_', 'py_type', 'name', 'owner', 'column',
-                 'options', 'reverse', 'column', 'table')
+                 'options', 'reverse', 'column', 'table',
+                 '_columns_')
     def __init__(self, py_type, **options):
         self._id_ = next_id()
         self._init_phase_ = 0
@@ -128,6 +129,7 @@ class Attribute(object):
         self.reverse = options.pop('reverse', None)
         self.column = options.pop('column', None)
         self.table = options.pop('table', None)
+        self._columns_ = []
     def _init_1_(self):
         assert self._init_phase_ == 0
         if isinstance(self.py_type, type) and \
@@ -138,7 +140,25 @@ class Attribute(object):
         else: self.owner._cls_init_2_()
     def _init_2_(self):
         assert self._init_phase_ == 1
+        tables = self.owner._table_defs_
+        if len(tables) > 1:
+            table_name = self.table
+            if table_name is None: raise TypeError(
+                'Table name not specified for column %s' % self)
+            tables = [ t for t in tables if t.name == table_name ]
+            if not tables: raise TypeError(
+                'Unknown table name: %s' % table_name)
+            assert len(tables) == 1
+        table = tables[0]
+        self._add_column_(table)
         self._init_phase_ = 2
+    def _add_column_(self, table):
+        col_name = self.column or self.name
+        if col_name in table: raise TypeError(
+            'Column name %s.%s already in use' % (table.name, col_name))
+        column = Column(self.py_type, not_null=isinstance(self, Required))
+        table[col_name] = column
+        self._columns_.append(column)
     def _init_reverse_(self):
         t = self.py_type
         reverse = self.reverse
@@ -197,6 +217,7 @@ class Key(object):
     def __repr__(self):
         items = ', '.join(attr.name for attr in self.attrs)
         return '<%s(%s)>' % (self.__class__.__name__, items)
+    
 
 class Unique(Required):
     def __new__(cls, *args, **options):
@@ -219,9 +240,16 @@ class PrimaryKey(Unique):
         if 'table' in options: raise TypeError(
             "'table' option cannot be specified for PrimaryKey attribute")
         Unique.__init__(self, *args, **options)
+    def _init_2_(self):
+        assert self._init_phase_ == 1
+        for table in self.owner._table_defs_: self._add_column_(table)
+        self._init_phase_ = 2
 
 class Collection(Attribute):
     __slots__ = ()
+    def _init_2_(self):
+        assert self._init_phase_ == 1
+        self._init_phase_ = 2
     
 class Set(Collection):
     __slots__ = ()
