@@ -187,21 +187,32 @@ class Optional(Attribute):
     
 class Required(Attribute):
     __slots__ = ()
-    
+
+class Key(object):
+    __slots__ = 'owner', 'attrs', 'is_primary'
+    def __init__(self, is_primary, attrs):
+        self.owner = None
+        self.is_primary = is_primary
+        self.attrs = attrs
+    def __repr__(self):
+        items = ', '.join(attr.name for attr in self.attrs)
+        return '<%s(%s)>' % (self.__class__.__name__, items)
+
 class Unique(Required):
-    __slots__ = 'attrs',
-    def __init__(self, *args, **options):
-        if len(args) == 0:
-            assert TypeError('Invalid count of positional arguments')
-        elif len(args) == 1:
-            Attribute.__init__(self, args[0], **options)
-            self.attrs = None
+    def __new__(cls, *args, **options):
+        if not args: raise TypeError('Invalid count of positional arguments')
+        attrs = [ a for a in args if isinstance(a, Attribute) ]
+        non_attrs = [ a for a in args if not isinstance(a, Attribute) ]
+        if attrs and non_attrs: raise TypeError('Invalid arguments')
+        if attrs:
+            result = key = Key(issubclass(cls, PrimaryKey), args, **options)
         else:
-            Attribute.__init__(self, None, **options)
-            self.attrs = args
+            result = Required.__new__(cls, *args, **options)
+            key = Key(issubclass(cls, PrimaryKey), (result,), **options)
         cls_dict = sys._getframe(1).f_locals
-        cls_dict.setdefault('_keys_', []).append(self)
-       
+        cls_dict.setdefault('_keys_', []).append(key)
+        return result
+
 class PrimaryKey(Unique):
     __slots__ = ()
     def __init__(self, *args, **options):
@@ -298,12 +309,7 @@ class Persistent(object):
             if not isinstance(attr.py_type, str): attr._init_1_()
 
         if not hasattr(cls, '_keys_'): cls._keys_ = []
-        for key in cls._keys_:
-            if key._init_phase_ == 0:
-                key.name = None
-                key.owner = cls
-                key.py_type = None
-                key._init_1_()
+        for key in cls._keys_: key.owner = cls
 
 
 
