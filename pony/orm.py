@@ -212,12 +212,12 @@ class Key(object):
     __slots__ = 'owner', 'attrs', 'is_primary'
     def __init__(self, is_primary, attrs):
         self.owner = None
-        self.is_primary = is_primary
+        self.is_primary = bool(is_primary)
         self.attrs = attrs
     def __repr__(self):
         items = ', '.join(attr.name for attr in self.attrs)
-        return '<%s(%s)>' % (self.__class__.__name__, items)
-    
+        return '<%s(%s), %s>' % (
+            self.__class__.__name__, items, self.is_primary)
 
 class Unique(Required):
     def __new__(cls, *args, **options):
@@ -273,7 +273,7 @@ class PersistentMeta(type):
         info = outer_dict.get('_pony_')
         if info is None:
             info = outer_dict['_pony_'] = PonyInfo()
-        cls._cls_init_1_(info)
+        if cls_name != 'Persistent': cls._cls_init_1_(info)
 
 class Persistent(object):
     __metaclass__ = PersistentMeta
@@ -308,13 +308,32 @@ class Persistent(object):
             info.tables[table_name] = table
     @classmethod
     def _init_attrs_(cls, info):
-        my_attrs = cls._attrs_ = []
+        attrs = cls._attrs_ = []
         for attr_name, x in cls.__dict__.items():
             if isinstance(x, Attribute):
-                my_attrs.append(x)
+                attrs.append(x)
                 x.name = attr_name
                 x.owner = cls
-        my_attrs.sort(key = operator.attrgetter('_id_'))
+        attrs.sort(key = operator.attrgetter('_id_'))
+
+        if not hasattr(cls, '_keys_'): cls._keys_ = []
+        for key in cls._keys_: key.owner = cls
+        pk_list = [ key for key in cls._keys_ if key.is_primary ]
+        if not pk_list:
+            if hasattr(cls, 'id'): raise TypeError("Name 'id' alredy in use")
+            _keys_ = []
+            id = PrimaryKey(int) # this line modifies '_keys_' variable
+            id.name = 'id'
+            id.owner = cls
+            cls.id = id
+            cls._attrs_.insert(0, id)
+            cls._keys_[0:0] = _keys_
+        elif len(pk_list) > 1: raise TypeError(
+            'Only one primary key may be defined in each data model class')
+        else:
+            pk = pk_list[0]
+            cls._keys_.remove(pk)
+            cls._keys_.insert(0, pk)
 
         reverse_attrs = info.reverse_attrs.get(cls.__name__, [])
         for attr in reverse_attrs:
@@ -322,7 +341,7 @@ class Persistent(object):
             if attr.reverse is not None:
                 reverse_attrs.remove(attr)
                 attr._init_1_()
-        for attr in my_attrs:
+        for attr in attrs:
             if isinstance(attr.py_type, str):
                 other_name = attr.py_type
                 other_cls = info.classes.get(other_name)
@@ -333,11 +352,9 @@ class Persistent(object):
             if attr.reverse is not None: attr._init_1_()
 
         for attr in reverse_attrs: attr._init_1_()
-        for attr in my_attrs:
+        for attr in attrs:
             if not isinstance(attr.py_type, str): attr._init_1_()
 
-        if not hasattr(cls, '_keys_'): cls._keys_ = []
-        for key in cls._keys_: key.owner = cls
 
 
 

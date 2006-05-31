@@ -16,7 +16,6 @@ class Subject(Persistent):
     marks = Set('Mark')
 
 class Student(Persistent):
-    number = PrimaryKey(int)
     first_name = Required(unicode)
     mid_name = Optional(unicode)
     last_name = Required(unicode)
