@@ -117,21 +117,29 @@ class Column(object):
 next_id = itertools.count().next
 
 class Attribute(object):
-    __slots__ = ('_id', '_init_phase', 'py_type', 'name', 'owner', 'column',
-                 'options', 'reverse')
+    __slots__ = ('_id_', '_init_phase_', 'py_type', 'name', 'owner', 'column',
+                 'options', 'reverse', 'column', 'table')
     def __init__(self, py_type, **options):
-        self._id = next_id()
-        self._init_phase = 0
+        self._id_ = next_id()
+        self._init_phase_ = 0
         self.py_type = py_type
         self.name = self.owner = self.column = None
         self.options = options
         self.reverse = options.pop('reverse', None)
+        self.column = options.pop('column', None)
+        self.table = options.pop('table', None)
     def _init_1_(self):
-        assert self._init_phase == 0
+        assert self._init_phase_ == 0
         if isinstance(self.py_type, type) and \
-           issubclass(self.py_type, Persistent): self._init_reverse()
-        self._init_phase = 1
-    def _init_reverse(self):
+           issubclass(self.py_type, Persistent): self._init_reverse_()
+        self._init_phase_ = 1
+        for attr in self.owner._attrs_:
+            if attr._init_phase_ == 0: break
+        else: self.owner._cls_init_2_()
+    def _init_2_(self):
+        assert self._init_phase_ == 1
+        self._init_phase_ = 2
+    def _init_reverse_(self):
         t = self.py_type
         reverse = self.reverse
         if isinstance(reverse, str):
@@ -182,22 +190,25 @@ class Required(Attribute):
     
 class Unique(Required):
     __slots__ = 'attrs',
-    def __init__(self, *type_or_attrs):
-        if len(type_or_attrs) == 0:
+    def __init__(self, *args, **options):
+        if len(args) == 0:
             assert TypeError('Invalid count of positional arguments')
-        elif len(type_or_attrs) == 1:
-            py_type = type_or_attrs
-            Attribute.__init__(self, py_type)
+        elif len(args) == 1:
+            Attribute.__init__(self, args[0], **options)
             self.attrs = None
         else:
-            Attribute.__init__(self, None)
-            self.attrs = type_or_attrs
+            Attribute.__init__(self, None, **options)
+            self.attrs = args
         cls_dict = sys._getframe(1).f_locals
         cls_dict.setdefault('_keys_', []).append(self)
        
 class PrimaryKey(Unique):
     __slots__ = ()
-        
+    def __init__(self, *args, **options):
+        if 'table' in options: raise TypeError(
+            "'table' option cannot be specified for PrimaryKey attribute")
+        Unique.__init__(self, *args, **options)
+
 class Collection(Attribute):
     __slots__ = ()
     
@@ -234,6 +245,9 @@ class Persistent(object):
         cls._init_tables_(info)
         cls._init_attrs_(info)
     @classmethod
+    def _cls_init_2_(cls):
+        for attr in cls._attrs_: attr._init_2_()
+    @classmethod
     def _init_tables_(cls, info):
         if hasattr(cls, '_table_'):
             if hasattr(cls, '_tables_'): raise TypeError(
@@ -261,7 +275,7 @@ class Persistent(object):
                 my_attrs.append(x)
                 x.name = attr_name
                 x.owner = cls
-        my_attrs.sort(key = operator.attrgetter('_id'))
+        my_attrs.sort(key = operator.attrgetter('_id_'))
 
         reverse_attrs = info.reverse_attrs.get(cls.__name__, [])
         for attr in reverse_attrs:
@@ -285,7 +299,7 @@ class Persistent(object):
 
         if not hasattr(cls, '_keys_'): cls._keys_ = []
         for key in cls._keys_:
-            if key._init_phase == 0:
+            if key._init_phase_ == 0:
                 key.name = None
                 key.owner = cls
                 key.py_type = None
