@@ -87,13 +87,16 @@ class Table(NameMapMixin):
         NameMapMixin.__setitem__(self, col_name, column)
         column._init_(col_name, self)
         fk = column.foreign_key
-        if fk: self.set_foreign_key((column,), fk.table, (fk,))
+        if fk: self.set_foreign_key((column,), (fk,))
     def set_primary_key(self, *columns):
         self.primary_key = self._normalize_columns(columns)
-    def set_foreign_key(self, columns, table2, table2_columns):
+    def set_key(self, *columns):
+        if columns not in self.keys: self.keys.append(columns)
+    def set_foreign_key(self, columns, table2_columns):
         columns = self._normalize_columns(columns)
+        table2 = table2_columns[0].table
         table2_columns = table2._normalize_columns(table2_columns)
-        self.foreign_keys[columns] = (table2, table2_columns)
+        self.foreign_keys[columns] = table2_columns
     def _normalize_columns(self, columns):
         columns = list(columns)
         for i, c in enumerate(columns):
@@ -156,17 +159,22 @@ class Attribute(object):
         else: self.owner._cls_init_2_()
     def _init_2_(self):
         assert self._init_phase_ == 1
+        table_name = self.table
+        is_part_of_pk = self in self.owner._keys_[0].attrs
+        if is_part_of_pk and table_name is not None: raise TypeError(
+                "'table' option cannot be specified for primary key attributes")
         tables = self.owner._table_defs_
-        if len(tables) > 1:
-            table_name = self.table
+        if is_part_of_pk: pass  # add columns to all tables
+        elif len(tables) > 1:
             if table_name is None: raise TypeError(
                 'Table name not specified for column %s' % self)
             tables = [ t for t in tables if t.name == table_name ]
             if not tables: raise TypeError(
                 'Unknown table name: %s' % table_name)
             assert len(tables) == 1
-        table = tables[0]
-        self._add_columns_(table)
+        elif table_name is not None and table_name != tables[0].name:
+            raise TypeError("Inconsistent table name for attribute %s" % self)
+        for table in tables: self._add_columns_(table)
         self._init_phase_ = 2
     def _add_columns_(self, table):
         not_null = isinstance(self, Required)
@@ -180,9 +188,10 @@ class Attribute(object):
                 if len(pk) == 1: col_name = self.name
                 else: col_name = prefix + source_column.name
                 column = source_column.make_reference()
+                column.not_null = not_null
                 columns.append(column)
                 self._add_column_(table, col_name, column)
-            table.set_foreign_key(columns, source_table, pk)
+            table.set_foreign_key(columns, pk)
         else:
             col_name = self.column or self.name
             column = Column(self.py_type, not_null=not_null)
@@ -272,20 +281,50 @@ class Unique(Required):
 
 class PrimaryKey(Unique):
     __slots__ = ()
-    def __init__(self, *args, **options):
-        if 'table' in options: raise TypeError(
-            "'table' option cannot be specified for PrimaryKey attribute")
-        Unique.__init__(self, *args, **options)
-    def _init_2_(self):
-        assert self._init_phase_ == 1
-        for table in self.owner._table_defs_: self._add_columns_(table)
-        self._init_phase_ = 2
 
 class Collection(Attribute):
-    __slots__ = ()
+    __slots__ = 'table_def',
     def _init_2_(self):
         assert self._init_phase_ == 1
+        reverse = self.reverse
+        assert reverse
+        if not isinstance(reverse, Collection):
+            if self.table is not None: raise TypeError(
+                "Table name cannot be specified for one-to-many relationship")
+        elif reverse._init_phase_ > 1:
+            self._add_many_to_many_table_()
         self._init_phase_ = 2
+    def _add_many_to_many_table_(self):
+        reverse = self.reverse
+        pair = [ self, reverse ]
+        pair.sort(key=lambda x: x.owner.__name__)
+        if self.table is not None and reverse.table is not None \
+           and self.table != reverse.table: raise TypeError(
+               'Inconsistent table names for attributes %s and %s: %s and %s'
+               % (self, reverse, self.table, reverse.table))
+        table_name = self.table or reverse.table \
+                     or '_'.join(x.owner.__name__ for x in pair)
+        tables = self.owner._info_.tables
+        if table_name in tables: raise TypeError(
+            'Table name %s already in use' % table_name)
+        table = Table(table_name)
+        tables[table_name] = self.table_def = reverse.table_def = table
+        for x in pair: x._add_columns_(table)
+        table.set_primary_key(*list(table))
+    def _add_columns_(self, table):
+        source_table = self.owner._table_defs_[0]
+        pk = source_table.primary_key
+        assert pk
+        prefix = self.column or self.owner.__name__.lower() + '_'
+        columns = []
+        for source_column in pk:
+            if len(pk) == 1: col_name = self.owner.__name__.lower()
+            else: col_name = prefix + source_column.name
+            column = source_column.make_reference()
+            column.not_null = True
+            columns.append(column)
+            self._add_column_(table, col_name, column)
+        table.set_foreign_key(columns, pk)
     
 class Set(Collection):
     __slots__ = ()
@@ -319,12 +358,13 @@ class Persistent(object):
         # to non-existant classes. In this case, attribute initialization
         # is deferred until those classes creation
         info.classes[cls.__name__] = cls
+        cls._info_ = info
         cls._table_defs_ = []
         cls._waiting_classes_ = []
         cls._wait_counter_ = 0
         cls._init_phase_ = 1
-        cls._init_tables_(info)
-        cls._init_attrs_(info)
+        cls._init_tables_()
+        cls._init_attrs_()
     @classmethod
     def _cls_init_2_(cls):
         # All related classes created successfully, and reverse attribute
@@ -341,19 +381,25 @@ class Persistent(object):
     @classmethod
     def _cls_init_3_(cls):
         assert cls._init_phase_ == 2
-        for attr in cls._attrs_: attr._init_2_()
+        for attr in cls._attrs_:
+            if not isinstance(attr, Collection): attr._init_2_()
         for t in cls._table_defs_:
             pk = []
             for attr in cls._keys_[0].attrs:
                 pk.extend(attr._columns_.get(t, ()))
             t.set_primary_key(*pk)
+        first = cls._table_defs_[0]
+        for other in cls._table_defs_[1:]:
+            other.set_foreign_key(other.primary_key, first.primary_key)
+        for attr in cls._attrs_:
+            if isinstance(attr, Collection): attr._init_2_()
         cls._init_phase_ = 3
         for c in cls._waiting_classes_:
             assert c._wait_counter_ > 0
             c._wait_counter_ -= 1
             if not c._wait_counter_: c._cls_init_3_()
     @classmethod
-    def _init_tables_(cls, info):
+    def _init_tables_(cls):
         if hasattr(cls, '_table_'):
             if hasattr(cls, '_tables_'): raise TypeError(
                 "You can not include both '_table_' and '_tables_' attributes "
@@ -364,6 +410,7 @@ class Persistent(object):
                 "'_tables_' must be sequence of table names")
             table_names = cls._tables_
         else: table_names = [ cls.__name__ ]
+        info = cls._info_
         for table_name in table_names:
             if not isinstance(table_name, basestring):
                 raise TypeError('Table name must be string')
@@ -373,7 +420,7 @@ class Persistent(object):
             cls._table_defs_.append(table)
             info.tables[table_name] = table
     @classmethod
-    def _init_attrs_(cls, info):
+    def _init_attrs_(cls):
         attrs = cls._attrs_ = []
         for attr_name, x in cls.__dict__.items():
             if isinstance(x, Attribute):
@@ -388,7 +435,7 @@ class Persistent(object):
         if not pk_list:
             if hasattr(cls, 'id'): raise TypeError("Name 'id' alredy in use")
             _keys_ = []
-            id = PrimaryKey(int) # this line modifies '_keys_' variable
+            id = PrimaryKey(int) # this line modifies '_keys_' local variable
             id.name = 'id'
             id.owner = cls
             cls.id = id
@@ -401,6 +448,7 @@ class Persistent(object):
             cls._keys_.remove(pk)
             cls._keys_.insert(0, pk)
 
+        info = cls._info_
         reverse_attrs = info.reverse_attrs.get(cls.__name__, [])
         for attr in reverse_attrs:
             attr.py_type = cls
