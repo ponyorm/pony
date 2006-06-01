@@ -1,6 +1,10 @@
 # -*- coding: cp1251 -*-
 
-import itertools, operator, sys, threading
+import threading
+
+from sys import _getframe
+from itertools import count
+from operator import attrgetter
 
 import utils
 from utils import FrozenDict, NameMapMixin
@@ -71,22 +75,31 @@ class DatabaseInfo(object):
 ################################################################################
 
 class Table(NameMapMixin):
-    __slots__ = 'name', 'primary_key', 'keys'
+    __slots__ = 'name', 'primary_key', 'keys', 'foreign_keys'
     def __init__(self, table_name):
         NameMapMixin.__init__(self)
         self.name = table_name
         self.primary_key = None
         self.keys = []
+        self.foreign_keys = {} # map(columns -> (table, columns))
     def __setitem__(self, col_name, column):
         assert isinstance(column, Column)
         NameMapMixin.__setitem__(self, col_name, column)
         column._init_(col_name, self)
+        fk = column.foreign_key
+        if fk: self.set_foreign_key((column,), fk.table, (fk,))
     def set_primary_key(self, *columns):
+        self.primary_key = self._normalize_columns(columns)
+    def set_foreign_key(self, columns, table2, table2_columns):
+        columns = self._normalize_columns(columns)
+        table2_columns = table2._normalize_columns(table2_columns)
+        self.foreign_keys[columns] = (table2, table2_columns)
+    def _normalize_columns(self, columns):
         columns = list(columns)
         for i, c in enumerate(columns):
             if isinstance(c, basestring): columns[i] = self[c]
             else: assert c.name in self
-        self.primary_key = columns or None
+        return tuple(columns)
     def __repr__(self):
         return '<%s(%s) at 0x%08X>' % (
             self.__class__.__name__, self.name, id(self))
@@ -106,6 +119,9 @@ class Column(object):
     def _init_(self, col_name, table):
         self.name = col_name
         self.table = table
+    def make_reference(self):
+        return Column(self.type, self.size, self.prec,
+                      self.not_null, self.unique)
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, str(self))
     def __str__(self):
@@ -114,7 +130,7 @@ class Column(object):
 
 ################################################################################
 
-next_id = itertools.count().next
+next_id = count().next
 
 class Attribute(object):
     __slots__ = ('_id_', '_init_phase_', 'py_type', 'name', 'owner', 'column',
@@ -129,7 +145,7 @@ class Attribute(object):
         self.reverse = options.pop('reverse', None)
         self.column = options.pop('column', None)
         self.table = options.pop('table', None)
-        self._columns_ = []
+        self._columns_ = {} # map(table -> column_list)
     def _init_1_(self):
         assert self._init_phase_ == 0
         if isinstance(self.py_type, type) and \
@@ -150,15 +166,32 @@ class Attribute(object):
                 'Unknown table name: %s' % table_name)
             assert len(tables) == 1
         table = tables[0]
-        self._add_column_(table)
+        self._add_columns_(table)
         self._init_phase_ = 2
-    def _add_column_(self, table):
-        col_name = self.column or self.name
+    def _add_columns_(self, table):
+        not_null = isinstance(self, Required)
+        if issubclass(self.py_type, Persistent):
+            source_table = self.py_type._table_defs_[0]
+            pk = source_table.primary_key
+            assert pk
+            prefix = self.column or self.name + '_'
+            columns = []
+            for source_column in pk:
+                if len(pk) == 1: col_name = self.name
+                else: col_name = prefix + source_column.name
+                column = source_column.make_reference()
+                columns.append(column)
+                self._add_column_(table, col_name, column)
+            table.set_foreign_key(columns, source_table, pk)
+        else:
+            col_name = self.column or self.name
+            column = Column(self.py_type, not_null=not_null)
+            self._add_column_(table, col_name, column)
+    def _add_column_(self, table, col_name, column):
         if col_name in table: raise TypeError(
             'Column name %s.%s already in use' % (table.name, col_name))
-        column = Column(self.py_type, not_null=isinstance(self, Required))
         table[col_name] = column
-        self._columns_.append(column)
+        self._columns_.setdefault(table, []).append(column)
     def _init_reverse_(self):
         t = self.py_type
         reverse = self.reverse
@@ -214,6 +247,9 @@ class Key(object):
         self.owner = None
         self.is_primary = bool(is_primary)
         self.attrs = attrs
+        for attr in attrs:
+            if isinstance(attr, Collection): raise TypeError(
+                'Collection attribute cannot be part of unique key')
     def __repr__(self):
         items = ', '.join(attr.name for attr in self.attrs)
         return '<%s(%s), %s>' % (
@@ -230,7 +266,7 @@ class Unique(Required):
         else:
             result = Required.__new__(cls, *args, **options)
             key = Key(issubclass(cls, PrimaryKey), (result,), **options)
-        cls_dict = sys._getframe(1).f_locals
+        cls_dict = _getframe(1).f_locals
         cls_dict.setdefault('_keys_', []).append(key)
         return result
 
@@ -242,7 +278,7 @@ class PrimaryKey(Unique):
         Unique.__init__(self, *args, **options)
     def _init_2_(self):
         assert self._init_phase_ == 1
-        for table in self.owner._table_defs_: self._add_column_(table)
+        for table in self.owner._table_defs_: self._add_columns_(table)
         self._init_phase_ = 2
 
 class Collection(Attribute):
@@ -262,14 +298,14 @@ class List(Collection):
 class PonyInfo(object):
     __slots__ = 'tables', 'classes', 'reverse_attrs'
     def __init__(self):
-        self.tables = {}              # map(table_name -> table) 
-        self.classes = {}             # map(class_name -> class)
+        self.tables = {}        # map(table_name -> table) 
+        self.classes = {}       # map(class_name -> class)
         self.reverse_attrs = {} # map(referenced_class_name -> attr_list)
 
 class PersistentMeta(type):
     def __init__(cls, cls_name, bases, cls_dict):
         super(PersistentMeta, cls).__init__(cls_name, bases, dict)
-        outer_dict = sys._getframe(1).f_locals
+        outer_dict = _getframe(1).f_locals
         info = outer_dict.get('_pony_')
         if info is None:
             info = outer_dict['_pony_'] = PonyInfo()
@@ -279,13 +315,43 @@ class Persistent(object):
     __metaclass__ = PersistentMeta
     @classmethod
     def _cls_init_1_(cls, info):
+        # Class just created, and some reference attributes can point
+        # to non-existant classes. In this case, attribute initialization
+        # is deferred until those classes creation
         info.classes[cls.__name__] = cls
         cls._table_defs_ = []
+        cls._waiting_classes_ = []
+        cls._wait_counter_ = 0
+        cls._init_phase_ = 1
         cls._init_tables_(info)
         cls._init_attrs_(info)
     @classmethod
     def _cls_init_2_(cls):
+        # All related classes created successfully, and reverse attribute
+        # has been finded successfully for each reference attribute,
+        # but primary keys are not properly initialized yet
+        assert cls._init_phase_ == 1
+        cls._init_phase_ = 2
+        classes = [ t for t in map(attrgetter('py_type'), cls._keys_[0].attrs)
+                      if issubclass(t, Persistent) and t._init_phase_ < 3 ]
+        if classes:
+            for c in classes: c._waiting_classes_.append(cls)
+            cls._wait_counter_ = len(classes)
+        else: cls._cls_init_3_()
+    @classmethod
+    def _cls_init_3_(cls):
+        assert cls._init_phase_ == 2
         for attr in cls._attrs_: attr._init_2_()
+        for t in cls._table_defs_:
+            pk = []
+            for attr in cls._keys_[0].attrs:
+                pk.extend(attr._columns_.get(t, ()))
+            t.set_primary_key(*pk)
+        cls._init_phase_ = 3
+        for c in cls._waiting_classes_:
+            assert c._wait_counter_ > 0
+            c._wait_counter_ -= 1
+            if not c._wait_counter_: c._cls_init_3_()
     @classmethod
     def _init_tables_(cls, info):
         if hasattr(cls, '_table_'):
@@ -314,7 +380,7 @@ class Persistent(object):
                 attrs.append(x)
                 x.name = attr_name
                 x.owner = cls
-        attrs.sort(key = operator.attrgetter('_id_'))
+        attrs.sort(key = attrgetter('_id_'))
 
         if not hasattr(cls, '_keys_'): cls._keys_ = []
         for key in cls._keys_: key.owner = cls
