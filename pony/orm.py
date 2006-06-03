@@ -174,9 +174,9 @@ class Attribute(object):
             assert len(tables) == 1
         elif table_name is not None and table_name != tables[0].name:
             raise TypeError("Inconsistent table name for attribute %s" % self)
-        for table in tables: self._add_columns_(table)
+        for i, table in enumerate(tables): self._add_columns_(table, i==0)
         self._init_phase_ = 2
-    def _add_columns_(self, table):
+    def _add_columns_(self, table, set_fk):
         not_null = isinstance(self, Required)
         if issubclass(self.py_type, Persistent):
             source_table = self.py_type._table_defs_[0]
@@ -191,7 +191,7 @@ class Attribute(object):
                 column.not_null = not_null
                 columns.append(column)
                 self._add_column_(table, col_name, column)
-            table.set_foreign_key(columns, pk)
+            if set_fk: table.set_foreign_key(columns, pk)
         else:
             col_name = self.column or self.name
             column = Column(self.py_type, not_null=not_null)
@@ -208,10 +208,13 @@ class Attribute(object):
             reverse = getattr(t, reverse, None)
             if reverse is None: raise AttributeError(
                 'Reverse attribute for %s not found' % self)
+        if reverse is self: raise TypeError(
+            'Attribute %s cannot be reverse attribute for itself' % self)
         if reverse is None:
             candidates = [ attr for attr in t._attrs_
                                 if attr.py_type is self.owner
-                                and attr.reverse in (self, self.name, None)  ]
+                                and attr.reverse in (self, self.name, None)
+                                and attr is not self ]
             for attr in candidates:
                 if attr.options.get('reverse') in (self, self.name):
                     if reverse is not None: raise AttributeError(
@@ -382,7 +385,8 @@ class Persistent(object):
     def _cls_init_3_(cls):
         assert cls._init_phase_ == 2
         for attr in cls._attrs_:
-            if not isinstance(attr, Collection): attr._init_2_()
+            if not isinstance(attr, Collection) and attr.py_type is not cls:
+                attr._init_2_()
         for t in cls._table_defs_:
             pk = []
             for attr in cls._keys_[0].attrs:
@@ -392,7 +396,13 @@ class Persistent(object):
         for other in cls._table_defs_[1:]:
             other.set_foreign_key(other.primary_key, first.primary_key)
         for attr in cls._attrs_:
-            if isinstance(attr, Collection): attr._init_2_()
+            if attr._init_phase_ < 2 and not isinstance(attr, Collection):
+                assert attr.py_type is cls
+                attr._init_2_()            
+        for attr in cls._attrs_:
+            if attr._init_phase_ < 2:
+                assert isinstance(attr, Collection)
+                attr._init_2_()
         cls._init_phase_ = 3
         for c in cls._waiting_classes_:
             assert c._wait_counter_ > 0
@@ -427,7 +437,7 @@ class Persistent(object):
                 attrs.append(x)
                 x.name = attr_name
                 x.owner = cls
-        attrs.sort(key = attrgetter('_id_'))
+        attrs.sort(key=attrgetter('_id_'))
 
         if not hasattr(cls, '_keys_'): cls._keys_ = []
         for key in cls._keys_: key.owner = cls
@@ -440,7 +450,7 @@ class Persistent(object):
             id.owner = cls
             cls.id = id
             cls._attrs_.insert(0, id)
-            cls._keys_[0:0] = _keys_
+            cls._keys_.insert(0, _keys_[0])
         elif len(pk_list) > 1: raise TypeError(
             'Only one primary key may be defined in each data model class')
         else:
@@ -462,12 +472,15 @@ class Persistent(object):
                 if other_cls is None:
                     info.reverse_attrs.setdefault(other_name, []).append(attr)
                     continue
+                elif other_cls is cls and isinstance(attr, Required):
+                    raise TypeError('Self-reference may be only optional')
                 else: attr.py_type = other_cls
             if attr.reverse is not None: attr._init_1_()
 
         for attr in reverse_attrs: attr._init_1_()
         for attr in attrs:
-            if not isinstance(attr.py_type, str): attr._init_1_()
+            if not isinstance(attr.py_type, str) and attr._init_phase_ == 0:
+                attr._init_1_()
 
 
 
