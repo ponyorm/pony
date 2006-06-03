@@ -388,10 +388,11 @@ class Persistent(object):
             if not isinstance(attr, Collection) and attr.py_type is not cls:
                 attr._init_2_()
         for t in cls._table_defs_:
-            pk = []
-            for attr in cls._keys_[0].attrs:
-                pk.extend(attr._columns_.get(t, ()))
-            t.set_primary_key(*pk)
+            for i, key in enumerate(cls._keys_):
+                columns = []
+                for attr in key.attrs: columns.extend(attr._columns_.get(t, ()))
+                if i == 0: t.set_primary_key(*columns)
+                else: t.set_key(*columns)
         first = cls._table_defs_[0]
         for other in cls._table_defs_[1:]:
             other.set_foreign_key(other.primary_key, first.primary_key)
