@@ -351,7 +351,7 @@ class PersistentMeta(type):
         info = outer_dict.get('_pony_')
         if info is None:
             info = outer_dict['_pony_'] = PonyInfo()
-        if cls_name != 'Persistent': cls._cls_init_1_(info)
+        if 'Persistent' in globals(): cls._cls_init_1_(info)
 
 class Persistent(object):
     __metaclass__ = PersistentMeta
