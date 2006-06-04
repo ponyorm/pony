@@ -307,7 +307,7 @@ class Collection(Attribute):
                % (self, reverse, self.table, reverse.table))
         table_name = self.table or reverse.table \
                      or '_'.join(x.owner.__name__ for x in pair)
-        tables = self.owner._info_.tables
+        tables = self.owner._local_info_.tables
         if table_name in tables: raise TypeError(
             'Table name %s already in use' % table_name)
         table = Table(table_name)
@@ -337,7 +337,7 @@ class List(Collection):
 
 ################################################################################
 
-class PonyInfo(object):
+class LocalInfo(object):
     __slots__ = 'tables', 'classes', 'reverse_attrs'
     def __init__(self):
         self.tables = {}        # map(table_name -> table) 
@@ -348,20 +348,22 @@ class PersistentMeta(type):
     def __init__(cls, cls_name, bases, cls_dict):
         super(PersistentMeta, cls).__init__(cls_name, bases, dict)
         outer_dict = _getframe(1).f_locals
-        info = outer_dict.get('_pony_')
-        if info is None:
-            info = outer_dict['_pony_'] = PonyInfo()
-        if 'Persistent' in globals(): cls._cls_init_1_(info)
+        local_info = outer_dict.get('_pony_')
+        if local_info is None:
+            local_info = outer_dict['_pony_'] = LocalInfo()
+        if 'Persistent' in globals(): cls._cls_init_1_(local_info)
+
+
 
 class Persistent(object):
     __metaclass__ = PersistentMeta
     @classmethod
-    def _cls_init_1_(cls, info):
+    def _cls_init_1_(cls, local_info):
         # Class just created, and some reference attributes can point
         # to non-existant classes. In this case, attribute initialization
         # is deferred until those classes creation
-        info.classes[cls.__name__] = cls
-        cls._info_ = info
+        local_info.classes[cls.__name__] = cls
+        cls._local_info_ = local_info
         cls._table_defs_ = []
         cls._waiting_classes_ = []
         cls._wait_counter_ = 0
@@ -421,15 +423,15 @@ class Persistent(object):
                 "'_tables_' must be sequence of table names")
             table_names = cls._tables_
         else: table_names = [ cls.__name__ ]
-        info = cls._info_
+        local_info = cls._local_info_
         for table_name in table_names:
             if not isinstance(table_name, basestring):
                 raise TypeError('Table name must be string')
-            if table_name in info.tables:
+            if table_name in local_info.tables:
                 raise TypeError('Table name %s already in use' % table_name)
             table = Table(table_name)
             cls._table_defs_.append(table)
-            info.tables[table_name] = table
+            local_info.tables[table_name] = table
     @classmethod
     def _init_attrs_(cls):
         attrs = cls._attrs_ = []
@@ -459,8 +461,8 @@ class Persistent(object):
             cls._keys_.remove(pk)
             cls._keys_.insert(0, pk)
 
-        info = cls._info_
-        reverse_attrs = info.reverse_attrs.get(cls.__name__, [])
+        local_info = cls._local_info_
+        reverse_attrs = local_info.reverse_attrs.get(cls.__name__, [])
         for attr in reverse_attrs:
             attr.py_type = cls
             if attr.reverse is not None:
@@ -469,9 +471,10 @@ class Persistent(object):
         for attr in attrs:
             if isinstance(attr.py_type, str):
                 other_name = attr.py_type
-                other_cls = info.classes.get(other_name)
+                other_cls = local_info.classes.get(other_name)
                 if other_cls is None:
-                    info.reverse_attrs.setdefault(other_name, []).append(attr)
+                    local_info.reverse_attrs.setdefault(
+                        other_name, []).append(attr)
                     continue
                 elif other_cls is cls and isinstance(attr, Required):
                     raise TypeError('Self-reference may be only optional')
