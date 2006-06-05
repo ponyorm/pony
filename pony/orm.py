@@ -363,8 +363,8 @@ class LocalData(object):
         self.reverse_attrs = {} # map(referenced_class_name -> attr_list)
 
 class ClassData(object):
-    __slots__ = ('cls', 'local', 'init_phase', 'tables', 'attrs', 'keys',
-                 'waiting_classes', 'wait_counter', )
+    __slots__ = ('cls', 'local', 'bases', 'root', 'tables', 'attrs', 'keys',
+                 'init_phase', 'waiting_classes', 'wait_counter', )
     def __init__(self, cls, local):
         self.cls = cls
         self.local = local
@@ -372,6 +372,19 @@ class ClassData(object):
         self.wait_counter = 0
         self.init_phase = 0
         self.tables = []
+        self.init_bases_and_root()
+    def init_bases_and_root(self):
+        cls = self.cls
+        self.bases = [ c._class_data_ for c in cls.__bases__
+                                      if issubclass(c, Persistent)
+                                         and c is not Persistent ]
+        if self.bases:
+            roots = set(c.root for c in self.bases)
+            if len(roots) > 1: raise TypeError(
+                'With multiple inheritance of Persistent classes, '
+                'inheritance graph must be diamond-like')
+            self.root = iter(roots).next()
+        else: self.root = self
     def init_1(self):
         # Class just created, and some reference attributes can point
         # to non-existant classes. In this case, attribute initialization
