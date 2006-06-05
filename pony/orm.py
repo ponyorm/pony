@@ -393,47 +393,6 @@ class ClassData(object):
         self.init_phase = 1
         self.init_tables()
         self.init_attrs()
-    def init_2(self):
-        # All related classes created successfully, and reverse attribute
-        # has been finded successfully for each reference attribute,
-        # but primary keys are not properly initialized yet
-        assert self.init_phase == 1
-        self.init_phase = 2
-        classes = [ t for t in map(attrgetter('py_type'), self.keys[0].attrs)
-                      if issubclass(t, Persistent)
-                         and t._class_data_.init_phase < 3 ]
-        if classes:
-            for c in classes: c._class_data_.waiting_classes.append(self)
-            self.wait_counter = len(classes)
-        else: self.init_3()
-    def init_3(self):
-        assert self.init_phase == 2
-        cls = self.cls
-        for attr in self.attrs:
-            if not isinstance(attr, Collection) and attr.py_type is not cls:
-                attr._init_2_()
-        for t in self.tables:
-            for i, key in enumerate(self.keys):
-                columns = []
-                for attr in key.attrs: columns.extend(attr._columns_.get(t, ()))
-                if i == 0: t.set_primary_key(*columns)
-                else: t.set_key(*columns)
-        first = self.tables[0]
-        for other in self.tables[1:]:
-            other.set_foreign_key(other.primary_key, first.primary_key)
-        for attr in self.attrs:
-            if attr._init_phase_ < 2 and not isinstance(attr, Collection):
-                assert attr.py_type is cls
-                attr._init_2_()            
-        for attr in self.attrs:
-            if attr._init_phase_ < 2:
-                assert isinstance(attr, Collection)
-                attr._init_2_()
-        self.init_phase = 3
-        for c in self.waiting_classes:
-            assert c.wait_counter > 0
-            c.wait_counter -= 1
-            if not c.wait_counter: c.init_3()
     def init_tables(self):
         cls = self.cls
         if hasattr(cls, '_table_'):
@@ -508,6 +467,47 @@ class ClassData(object):
         for attr in attrs:
             if not isinstance(attr.py_type, str) and attr._init_phase_ == 0:
                 attr._init_1_()
+    def init_2(self):
+        # All related classes created successfully, and reverse attribute
+        # has been finded successfully for each reference attribute,
+        # but primary keys are not properly initialized yet
+        assert self.init_phase == 1
+        self.init_phase = 2
+        classes = [ t for t in map(attrgetter('py_type'), self.keys[0].attrs)
+                      if issubclass(t, Persistent)
+                         and t._class_data_.init_phase < 3 ]
+        if classes:
+            for c in classes: c._class_data_.waiting_classes.append(self)
+            self.wait_counter = len(classes)
+        else: self.init_3()
+    def init_3(self):
+        assert self.init_phase == 2
+        cls = self.cls
+        for attr in self.attrs:
+            if not isinstance(attr, Collection) and attr.py_type is not cls:
+                attr._init_2_()
+        for t in self.tables:
+            for i, key in enumerate(self.keys):
+                columns = []
+                for attr in key.attrs: columns.extend(attr._columns_.get(t, ()))
+                if i == 0: t.set_primary_key(*columns)
+                else: t.set_key(*columns)
+        first = self.tables[0]
+        for other in self.tables[1:]:
+            other.set_foreign_key(other.primary_key, first.primary_key)
+        for attr in self.attrs:
+            if attr._init_phase_ < 2 and not isinstance(attr, Collection):
+                assert attr.py_type is cls
+                attr._init_2_()            
+        for attr in self.attrs:
+            if attr._init_phase_ < 2:
+                assert isinstance(attr, Collection)
+                attr._init_2_()
+        self.init_phase = 3
+        for c in self.waiting_classes:
+            assert c.wait_counter > 0
+            c.wait_counter -= 1
+            if not c.wait_counter: c.init_3()
 
 
 
