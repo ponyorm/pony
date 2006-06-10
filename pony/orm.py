@@ -416,13 +416,26 @@ class ClassData(object):
             local.tables[table_name] = table
     def init_attrs(self):
         cls = self.cls
+        base_attrs = {}
+        for b in self.bases:
+            for attr in b.attrs:
+                attr_name = attr.name
+                if base_attrs.setdefault(attr_name, attr) is not attr:
+                    raise AttributeError(
+                        'Ambiguous attribute name %s' % attr_name)
         attrs = self.attrs = []
         for attr_name, x in cls.__dict__.items():
             if isinstance(x, Attribute):
-                attrs.append(x)
+                if x.owner is not None: raise AttributeError(
+                    'Duplicate use of attribute %s' % x)
                 x.name = attr_name
                 x.owner = self
+                if attr_name in base_attrs: raise AttributeError(
+                    'Attribute %s hide base attribute %s'
+                    % (x, base_attrs[attr_name]))
+                attrs.append(x)
         attrs.sort(key=attrgetter('_id_'))
+        
         self.keys = getattr(cls, '_keys_', [])
         if hasattr(cls, '_keys_'): del cls._keys_
         for key in self.keys: key.owner = self
