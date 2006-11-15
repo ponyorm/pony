@@ -1,5 +1,3 @@
-# -*- coding: cp1251 -*-
-
 from itertools import imap, ifilter
 from operator import itemgetter
 from os import urandom

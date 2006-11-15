@@ -1,10 +1,7 @@
-# -*- coding: cp1251 -*-
-
 import sys, threading
 
 def quote_name(name):
     return '"%s"' % name.replace('"', '""')
-
 
 class AstError(Exception): pass
 

@@ -1,4 +1,3 @@
-
 from pony.sqlsymbols import *
 
 ##param1 = 4142

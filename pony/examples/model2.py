@@ -1,5 +1,3 @@
-# -*- coding: cp1251 -*-
-
 import datetime
 
 from pony.main import *

@@ -1,4 +1,3 @@
-
 symbols = [ 'SELECT', # 'INSERT', 'UPDATE', 'DELETE',
             'FROM', 'LEFT_JOIN', 'WHERE', # 'GROUP_BY', 'HAVING',
             'UNION', 'INTERSECT', 'EXCEPT',

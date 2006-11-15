@@ -1,5 +1,3 @@
-# -*- coding: cp1251 -*-
-
 from pony.main import *
 
 class Group(Persistent):
