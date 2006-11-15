@@ -1,11 +1,12 @@
 from pony.sqlsymbols import *
 
-##param1 = 4142
-##param2 = 20
-##query1 = select(
-##    s for s in Group(number=param1).students
-##      if s.age > param2
-##    )
+# param1 = 4142
+# param2 = 20
+#
+# query1 = select(
+#     s for s in Group(number=param1).students
+#       if s.age > param2
+#     )
 
 select1a = [ SELECT,
     [ ALL, [COLUMN, 'T2', 'id'],
@@ -37,11 +38,11 @@ select1b = [ SELECT,
     ],
 ]
 
-##query2 = select(
-##    (s.first_name, s.age) for g in Group
-##                          for s in g.students
-##                          if g.spec = 2201
-##).order_by(-2)[:10]
+# query2 = select(
+#     (s.first_name, s.age) for g in Group
+#                           for s in g.students
+#                           if g.spec = 2201
+# ).order_by(-2)[:10]
 
 select2 = [ SELECT,
     [ ALL, [COLUMN, 'T1', 'number'],
@@ -59,10 +60,10 @@ select2 = [ SELECT,
     [ LIMIT, [VALUE, 10] ]
 ]
 
-##fnumber = 4
-##query3 = select(
-##    g for g in Groups(faculty=fnumber) if not g.students
-##)
+# fnumber = 4
+# query3 = select(
+#     g for g in Groups(faculty=fnumber) if not g.students
+# )
 
 select3 = [ SELECT,
     [ ALL, [COLUMN, 'T1', 'number'],
