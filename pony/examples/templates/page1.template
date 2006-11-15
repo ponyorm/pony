@@ -11,7 +11,7 @@
 		&if(record.comments) {
 			<h3>comments:</h3>
 			<table>
-			&for(comment in comments) {
+			&for(comment in record.comments) {
 				<tr><td width="10%">
 				&(comment.date)<br>
 				&(comment.author)
