@@ -6,22 +6,22 @@ from pony.main import *
 
 re_group_number = re.compile(r'^\d{4}[A-Za-z]$')
 
-class Group(Persistent):
+class Group(Entity):
     number   = PrimaryKey(str, check=lambda x: re_group_number.match(x))
     subjects = Set('Subject', max=10)
-    students = List('Student', max=20)
+    students = Set('Student', max=20)
 
     def __init__(self, number, **keyargs):
-        Persistent.__init__(self, number=number, **keyargs)
+        Entity.__init__(self, number=number, **keyargs)
 
 
-class Student(Persistent):
+class Student(Entity):
     number      = PrimaryKey(int)
     group       = Required(Group)
     marks       = Set('Mark')
-    first_name  = Required(string, check=lambda x: x == x.strip())
-    middle_name = Optional(string, check=lambda x: x == x.strip())
-    last_name   = Required(string, check=lambda x: x == x.strip())
+    first_name  = Required(str, check=lambda x: x == x.strip())
+    middle_name = Optional(str, check=lambda x: x == x.strip())
+    last_name   = Required(str, check=lambda x: x == x.strip())
     birth_date  = Required(date,   check=lambda x:
                                    x < date.today() - timedelta(365*16))
     hobbies  = Set(unicode)
@@ -33,15 +33,15 @@ class Student(Persistent):
         return ' '.join(list)
     full_name = property(_get_full_name)
         
-class Subject(Persistent):
+class Subject(Entity):
     name   = PrimaryKey(unicode)
     groups = Set(Group)
     marks  = Set('Mark')
 
     def __init__(self, name, **keyargs):
-        Persistent.__init__(self, name=name, **keyargs)
+        Entity.__init__(self, name=name, **keyargs)
 
-class Mark(Persistent):
+class Mark(Entity):
     subject = Required(Subject)
     student = Required(Student)
     date    = Required(date)

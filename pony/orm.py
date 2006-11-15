@@ -57,8 +57,23 @@ class DataSource(object):
             provider = utils.import_module('pony.dbproviders.' + provider)
         return provider.connect(*self.args, **self.kwargs)
 
+next_id = count().next
+
 class Attribute(object):
-    pass
+    def __init__(self, py_type, **options):
+        self._id_ = next_id()
+        self.py_type = py_type
+        self.name = None
+        self.owner = None
+        self.options = options
+        self.reverse = options.pop('reverse', None)
+        self.column = options.pop('column', None)
+        self.table = options.pop('table', None)
+    def __str__(self):
+        owner_name = self.owner is None and '?' or self.owner.cls.__name__
+        return '%s.%s' % (owner_name, self.name or '?')
+    def __repr__(self):
+        return '<%s: %s>' % (self, self.__class__.__name__)
 
 class Optional(Attribute):
     pass
@@ -66,16 +81,33 @@ class Optional(Attribute):
 class Required(Attribute):
     pass
 
-class Unique(Attribute):
+class Key(Attribute):
+    def __new__(cls, *args, **options):
+        if not args: raise TypeError('Invalid count of positional arguments')
+        attrs = [ a for a in args if isinstance(a, Attribute) ]
+        non_attrs = [ a for a in args if not isinstance(a, Attribute) ]
+        if attrs and non_attrs: raise TypeError('Invalid arguments')
+        if attrs: result = key = tuple(attrs)
+        else:
+            result = Attribute.__new__(cls, *args, **options)
+            key = (result,)
+##        cls_dict = sys._getframe(1).f_locals
+##        if (issubclass(cls, PrimaryKey)
+##            and cls_dict.setdefault('_primary_key_', key) != key):
+##            raise TypeError('Only one primary key can be defined in each class')
+##        cls_dict.setdefault('_keys_', set()).add(key)
+        return result
+
+class Unique(Key):
     pass
 
-class OptionalUnique(Attribute):
+class OptionalUnique(Key):
     pass
 
-class PrimaryKey(Attribute):
+class PrimaryKey(Key):
     pass
 
-class Collection(object):
+class Collection(Attribute):
     pass
 
 class Set(Collection):
