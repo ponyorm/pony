@@ -1,0 +1,55 @@
+
+&#  comment
+&// comment
+&/* comment */
+
+&if(expr){ text }
+&elif(expr) { text }
+&else { text }
+
+&for(var in expr) {
+    text
+    &row{text1}{text2}{text3}
+    &row(i:j){text}       
+    &row(odd){text}       &//  &row(1:2){text}
+    &row(even){text}      &//  &row(2:2){text}
+    &row(first){text}     &//  &row(1){text}
+    &row(not first){text} &//  &row(not 1){text}
+    &row(last){text}      &//  &row(-1){text}
+    &row(not last){text}  &//  &row(not -1)text
+} &separator {
+    text
+} &else {
+    text
+}
+
+&{text}   &// localization
+
+&list(expr){text}
+
+&link(expr, attr=value, ...){text}
+
+------------------------------------------------
+
+&myfunc(1, 2, a=3, b=4){ text1 }{ text2 }&c={ text3 }&d={ text4 }
+
+
+&layout(title="hello, world!", navsize=160, navleft=True)
+&header={
+    <h1>This is page header!</h1>
+}&footer={
+    <small>All right reserved</small>
+}&navbar={
+    <ul>
+        <li>item1
+        <li>item2
+    </ul>
+}&content={
+
+    &unit{ text }
+
+    &columns("1/4", "1/4", "1/2")
+    { text }{ text }{ text }
+
+
+}
