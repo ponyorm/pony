@@ -61,7 +61,7 @@ class Group(Entity):
 
 class Student(Person):
     _table_ = 'Students'
-    number = PrimaryKey(int)
+    number = Unique(int)
     group = Required(Group)
     marks = Set('Mark')
 

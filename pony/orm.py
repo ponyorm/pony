@@ -67,6 +67,9 @@ class Attribute(object):
         self.owner = None
         self.options = options
         self.reverse = options.pop('reverse', None)
+        if self.reverse is not None and not isinstance(self.reverse,basestring):
+            raise TypeError("Type of 'reverse' argument must be string "
+                            "(name of reverse attribute)")
         self.column = options.pop('column', None)
         self.table = options.pop('table', None)
     def __str__(self):
@@ -81,31 +84,31 @@ class Optional(Attribute):
 class Required(Attribute):
     pass
 
-class Key(Attribute):
+class Unique(Required):
     def __new__(cls, *args, **options):
         if not args: raise TypeError('Invalid count of positional arguments')
         attrs = [ a for a in args if isinstance(a, Attribute) ]
         non_attrs = [ a for a in args if not isinstance(a, Attribute) ]
         if attrs and non_attrs: raise TypeError('Invalid arguments')
-        if attrs: result = key = tuple(attrs)
+        is_primary_key = issubclass(cls, PrimaryKey)
+        cls_dict = sys._getframe(1).f_locals
+        keys = cls_dict.setdefault('_pony_keys_', set())
+        if attrs:
+            key = EntityKey(attrs, is_primary_key)
+            keys.add(key)
+            return key
         else:
-            result = Attribute.__new__(cls, *args, **options)
-            key = (result,)
-##        cls_dict = sys._getframe(1).f_locals
-##        if (issubclass(cls, PrimaryKey)
-##            and cls_dict.setdefault('_primary_key_', key) != key):
-##            raise TypeError('Only one primary key can be defined in each class')
-##        cls_dict.setdefault('_keys_', set()).add(key)
-        return result
+            result = Required.__new__(cls, *args, **options)
+            keys.add(EntityKey([result], is_primary_key))
+            return result
 
-class Unique(Key):
+class PrimaryKey(Unique):
     pass
 
-class OptionalUnique(Key):
-    pass
-
-class PrimaryKey(Key):
-    pass
+class EntityKey(object):
+    def __init__(self, attrs, is_primary_key):
+        self.attrs = tuple(attrs)
+        self.is_primary_key = is_primary_key
 
 class Collection(Attribute):
     pass
@@ -122,5 +125,101 @@ class Set(Collection):
 ##class Relation(Collection):
 ##    pass
 
-class Entity:
+class EntityMeta(type):
+    def __init__(cls, name, bases, dict):
+        super(EntityMeta, cls).__init__(name, bases, dict)
+        if 'Entity' not in globals(): return
+        outer_dict = sys._getframe(1).f_locals
+        diagramm = outer_dict.setdefault('_pony_diagramm_', Diagramm())
+        cls._class_init_(diagramm)
+    def __setattr__(cls, name, value):
+        cls._cls_setattr_(name, value)
+
+class Entity(object):
+    __metaclass__ = EntityMeta
+    @classmethod
+    def _class_init_(cls, diagramm):
+        bases = [ c for c in cls.__bases__
+                    if issubclass(c, Entity) and c is not Entity ]
+        # cls._bases_ = bases
+        type.__setattr__(cls, '_bases_', bases)
+        if bases:
+            roots = set(c._root_ for c in bases)
+            if len(roots) > 1: raise TypeError(
+                'With multiple inheritance of entities, '
+                'inheritance graph must be diamond-like')
+            # cls._root_ = roots.pop()
+            type.__setattr__(cls, '_root_', roots.pop())
+        else:
+            # cls._root_ = cls
+            type.__setattr__(cls, '_root_', cls)
+
+        base_attrs = {}
+        for c in cls._bases_:
+            for a in c._attrs_:
+                if base_attrs.setdefault(a.name, a) is not a:
+                    raise TypeError('Ambiguous attribute name %s' % a.name)
+
+        # cls._attrs_ = []
+        type.__setattr__(cls, '_attrs_', [])
+        for name, a in cls.__dict__.items():
+            if name in base_attrs: raise TypeError(
+                'Name %s hide base attribute %s' % (a, base_attrs[name]))
+            if not isinstance(a, Attribute): continue
+            if a.owner is not None:
+                raise TypeError('Duplicate use of attribute %s' % value)
+            a.name = name
+            a.owner = cls
+            cls._attrs_.append(a)
+        cls._attrs_.sort(key=attrgetter('_id_'))
+
+        # cls._keys_ = cls.__dict__.pop('_pony_keys_', set())
+        try: keys = cls._pony_keys_
+        except AttributeError: keys = set()
+        else: del cls._pony_keys_
+        type.__setattr__(cls, '_keys_', keys)
+        primary_keys = set(key for key in cls._keys_ if key.is_primary_key)
+        for base in cls._bases_: cls._keys_.update(base._keys_)
+        if cls._bases_:
+            if primary_keys: raise TypeError(
+                'Primary key cannot be redefined in derived classes')
+            assert hasattr(cls, '_primary_key_')
+        elif len(primary_keys) > 1: raise TypeError(
+            'Only one primary key can be defined in each entity class')
+        elif not primary_keys:
+            if hasattr(cls, 'id'): raise TypeError("Name 'id' alredy in use")
+            _pony_keys_ = set()
+            attr = PrimaryKey(int) # Side effect: modifies _pony_keys_ variable
+            attr.name = 'id'
+            attr.owner = cls
+            # cls.id = attr
+            type.__setattr__(cls, 'id', attr)
+            # cls._primary_key_ = _pony_keys_.pop()
+            type.__setattr__(cls, '_primary_key_', _pony_keys_.pop())
+            cls._keys_.add(cls._primary_key_)
+        else:
+            assert len(primary_keys) == 1
+            # cls._primary_key_ = primary_keys.pop()
+            type.__setattr__(cls, '_primary_key_', primary_keys.pop())
+        
+        diagramm.add_entity(cls)
+    @classmethod
+    def _cls_setattr_(cls, name, value):
+        pass
+
+class Diagramm(object):
+    def __init__(self):
+        self.entities = {} # entity_name -> entity
+        self.lock = threading.RLock()
+    def add_entity(self, entity):
+        self.lock.acquire()
+        try:
+            pass
+        finally:
+            self.lock.release()
+
+class Schema(object):
+    pass
+
+class Transaction(object):
     pass

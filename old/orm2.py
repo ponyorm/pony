@@ -586,12 +586,12 @@ class Persistent(object):
         cls._bases_ = [ c for c in cls.__bases__
                           if issubclass(c, Persistent) and c is not Persistent ]
         if cls._bases_:
-            roots = set(c._root_ for c in self._bases_)
+            roots = set(c._root_ for c in cls._bases_)
             if len(roots) > 1: raise TypeError(
                 'With multiple inheritance of persistent classes, '
                 'inheritance graph must be diamond-like')
             cls._root_ = roots.pop()
-        else: cls._root_ = self
+        else: cls._root_ = cls
 
         cls._attrs_ = []
         base_attrs = {}
