@@ -26,9 +26,10 @@ class DataSource(object):
     def __new__(cls, provider, *args, **kwargs):
         self = object.__new__(cls, provider, *args, **kwargs)
         self._init_(provider, *args, **kwargs)
-        cls._lock.acquire()  # because __hash__ and __eq__ are not atomic
-        try: return cls._cache.setdefault(self, self)
-        finally: cls._lock.release()
+        key = (provider, args, tuple(sorted(kwargs.items())))
+        return cls._cache.setdefault(key, self)
+        # is it thread safe? I think - yes, if args & kwargs only contains
+        #   types with C-written __eq__ and __hash__
     def _init_(self, provider, *args, **kwargs):
         self.provider = provider
         self.args = args
@@ -36,15 +37,6 @@ class DataSource(object):
         kwargs_hash = hash(tuple(sorted(self.iteritems())))
         self.hash = hash(provider) ^ hash(args) ^ kwargs_hash
         self.mapping = Mapping(kwargs.get('mapping', None))
-    def __eq__(self, other):
-        if other.__class__ is not DataSource: return NotImplemented
-        return (self.hash == other.hash and self.provider == other.provider
-                and self.args == other.args and self.kwargs == other.kwargs
-                and self.mapping == other.mapping)
-    def __ne__(self, other):
-        return not self.__eq__(other)
-    def __hash__(self):
-        return self.hash
     def begin(self):
         if _local.transaction is not None: raise TransactionError(
             'Transaction already started in thread %d' % thread.get_ident())
