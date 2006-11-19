@@ -11,6 +11,10 @@ except ImportError:
             try: from elementtree import ElementTree as ET
             except: pass
 
+class DiagramError(Exception): pass
+class MappingError(Exception): pass
+class TransactionError(Exception): pass
+
 def _error_method(self, *args, **keyargs):
     raise TypeError
 
@@ -40,7 +44,7 @@ class DataSource(object):
     def begin(self):
         if _local.transaction is not None: raise TransactionError(
             'Transaction already started in thread %d' % thread.get_ident())
-        transaction = Transaction(self.get_connection(), self.mapping)
+        transaction = Transaction(self)
         _local.transaction = transaction
         return transaction
     def get_connection(self):
@@ -59,9 +63,12 @@ class Attribute(object):
         self.owner = None
         self.options = options
         self.reverse = options.pop('reverse', None)
-        if self.reverse is not None and not isinstance(self.reverse,basestring):
-            raise TypeError("Type of 'reverse' argument must be string "
-                            "(name of reverse attribute)")
+        if self.reverse is None: pass
+        elif not isinstance(self.reverse,basestring): raise TypeError(
+            "Value of 'reverse' option must be name of reverse attribute)")
+        elif not (self.py_type, basestring):
+            raise DiagramError('Reverse option cannot be set for this type %r'
+                            % self.py_type)
         self.column = options.pop('column', None)
         self.table = options.pop('table', None)
     def __str__(self):
@@ -108,58 +115,61 @@ class Collection(Attribute):
 class Set(Collection):
     pass
 
-##class List(Collection):
-##    pass
-##
-##class Dict(Collection):
-##    pass
-##
-##class Relation(Collection):
-##    pass
+##class List(Collection): pass
+##class Dict(Collection): pass
+##class Relation(Collection): pass
 
 class EntityMeta(type):
     def __init__(cls, name, bases, dict):
         super(EntityMeta, cls).__init__(name, bases, dict)
         if 'Entity' not in globals(): return
         outer_dict = sys._getframe(1).f_locals
-        diagramm = outer_dict.setdefault('_pony_diagramm_', Diagramm())
-        cls._class_init_(diagramm)
+        diagram = (dict.pop('_diagram_', None)
+                   or outer_dict.get('_diagram_', None)
+                   or outer_dict.setdefault('_diagram_', Diagram()))
+        cls._cls_init_(diagram)
     def __setattr__(cls, name, value):
         cls._cls_setattr_(name, value)
 
 class Entity(object):
     __metaclass__ = EntityMeta
     @classmethod
-    def _class_init_(cls, diagramm):
+    def _cls_init_(cls, diagram):
         bases = [ c for c in cls.__bases__
                     if issubclass(c, Entity) and c is not Entity ]
         # cls._bases_ = bases
         type.__setattr__(cls, '_bases_', bases)
         if bases:
             roots = set(c._root_ for c in bases)
-            if len(roots) > 1: raise TypeError(
+            if len(roots) > 1: raise DiagramError(
                 'With multiple inheritance of entities, '
                 'inheritance graph must be diamond-like')
             # cls._root_ = roots.pop()
             type.__setattr__(cls, '_root_', roots.pop())
+            for c in bases:
+                if c._diagram_ is not diagram: raise DiagramError(
+                    'When use inheritance, base and derived entities '
+                    'must belong to same diagram')
         else:
             # cls._root_ = cls
+            # cls._diagram_ = diagram
             type.__setattr__(cls, '_root_', cls)
+            type.__setattr__(cls, '_diagram_', diagram)
 
         base_attrs = {}
         for c in cls._bases_:
             for a in c._attrs_:
                 if base_attrs.setdefault(a.name, a) is not a:
-                    raise TypeError('Ambiguous attribute name %s' % a.name)
+                    raise DiagramError('Ambiguous attribute name %s' % a.name)
 
         # cls._attrs_ = []
         type.__setattr__(cls, '_attrs_', [])
         for name, a in cls.__dict__.items():
-            if name in base_attrs: raise TypeError(
+            if name in base_attrs: raise DiagramError(
                 'Name %s hide base attribute %s' % (a, base_attrs[name]))
             if not isinstance(a, Attribute): continue
             if a.owner is not None:
-                raise TypeError('Duplicate use of attribute %s' % value)
+                raise DiagramError('Duplicate use of attribute %s' % value)
             a.name = name
             a.owner = cls
             cls._attrs_.append(a)
@@ -173,13 +183,13 @@ class Entity(object):
         primary_keys = set(key for key in cls._keys_ if key.is_primary_key)
         for base in cls._bases_: cls._keys_.update(base._keys_)
         if cls._bases_:
-            if primary_keys: raise TypeError(
+            if primary_keys: raise DiagramError(
                 'Primary key cannot be redefined in derived classes')
             assert hasattr(cls, '_primary_key_')
-        elif len(primary_keys) > 1: raise TypeError(
+        elif len(primary_keys) > 1: raise DiagramError(
             'Only one primary key can be defined in each entity class')
         elif not primary_keys:
-            if hasattr(cls, 'id'): raise TypeError("Name 'id' alredy in use")
+            if hasattr(cls, 'id'): raise DiagramError("Name 'id' alredy in use")
             _pony_keys_ = set()
             attr = PrimaryKey(int) # Side effect: modifies _pony_keys_ variable
             attr.name = 'id'
@@ -194,24 +204,57 @@ class Entity(object):
             # cls._primary_key_ = primary_keys.pop()
             type.__setattr__(cls, '_primary_key_', primary_keys.pop())
         
-        diagramm.add_entity(cls)
+        diagram.add_entity(cls)
     @classmethod
     def _cls_setattr_(cls, name, value):
-        pass
+        raise NotImplementedError
+    @classmethod
+    def _cls_get_info(cls):
+        transaction = _local.transaction
+        if transaction is None: raise TransactionError(
+            'There are no active transaction in this thread: %d'
+            % thread.get_ident())
+        data_source = transaction.data_source
+        diagram = cls._diagram_
+        
+class EntityInfo(object):
+    pass
 
-class Diagramm(object):
+class Diagram(object):
     def __init__(self):
-        self.entities = {} # entity_name -> entity
         self.lock = threading.RLock()
+        self.initialized = False
+        self.entities = {} # entity_name -> entity
+        self.schemata = {} # data_source -> schema
+        self.default_mapping = Mapping()
+        self.transactions = set()
+    def _clear(self): # Must be protected by lock!
+        if self.transactions: raise DiagramError(
+            'Cannot change entity diagram '
+            'because it is used by active transaction')
+        self.initialized = False
+        self.schemata.clear()
     def add_entity(self, entity):
         self.lock.acquire()
         try:
-            pass
+            assert entity._diagram_ == self
+            self._clear()
+            # entity._schema_ = self
+            type.__setattr__(entity, '_diagram_', self)
+            self.entities[entity.__name__] = entity
         finally:
             self.lock.release()
+    def init(self):
+        pass
 
 class Schema(object):
-    pass
+    def __init__(self):
+        pass
+
+def get_transaction():
+    return _local.transaction
 
 class Transaction(object):
-    pass
+    def __init__(self, data_source):
+        self.data_source = data_source
+        self.connection = data_source.get_connection()
