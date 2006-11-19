@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<tables>
+  <table name="Persons" entity="Person Student Professor">
+    <column name="id" attr="Person.id" />
+    <column name="class" kind="discriminator" />
+    <column name="fname" attr="Person.first_name" />
+    <column name="lname" attr="Person.last_name" />
+    <column name="title" attr="Professor.title" />
+    <column name="gr_num" attr="Student.group.number" />
+  </table>
+  <table name="Groups" entity="Group">
+    <column name="gr_num" attr="Group.number" />
+    <column name="faculty" attr="Group.faculty" />
+  </table>
+</tables>

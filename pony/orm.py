@@ -1,6 +1,8 @@
-import sys, operator, thread, threading
+import sys, os.path, operator, thread, threading
 from operator import attrgetter
 from itertools import count, izip
+
+from pony import utils
 
 try: import lxml.etree as ET
 except ImportError:
@@ -246,6 +248,108 @@ class Diagram(object):
             self.lock.release()
     def init(self):
         pass
+
+class Mapping(object):
+    def __init__(self, filename=None, xml=None):
+        if filename and xml: raise MappingError(
+            "You must not supply both 'filename' and 'xml' attributes")
+        self.filename = filename
+        if self.filename:
+            if not os.path.exists(filename):
+                raise MappingError('File not found: %s' % filename)
+            self.xml = ET.parse(filename)
+        elif isinstance(xml, basestring): self.xml = ET.fromstring(xml)
+        else:
+            assert hasattr(xml, 'findall')
+            self.xml = xml
+        self.tables = {}   # table_name -> TableMapping
+        self.entities = {} # entity_name -> EntityMapping
+        self._load()
+    def _load(self):
+        for table_element in self.xml.findall('table'):
+            table = TableMapping(self, table_element.get('name'))
+            enames = table_element.get('entity', '').split()
+            assert len(enames) == len(set(enames))
+            for ename in enames:
+                entity = self.entities.get(ename) or EntityMapping(self, ename)
+                table.add_entity(entity)
+            for col_element in table_element.findall('column'):
+                column = table.add_column(col_element.get('name'),
+                                          col_element.get('kind'))
+                attr = col_element.get('attr')
+                if not attr: continue
+                ename, fname = attr.split('.', 1)
+                entity = table.edict.get(ename)
+                if not entity: raise MappingError(
+                    'Error in table definition %r: '
+                    'Entity name %r uses in attribute %s.%s, '
+                    "but it is absent in table's 'entity' attribute"
+                    % (tname, ename, fname))
+                entity.add_field(fname, column)
+
+class TableMapping(object):
+    def __init__(self, mapping, name):
+        if not name:
+            raise MappingError("Table element without 'name' attribute")
+        if name in mapping.tables:
+            raise MappingError('Duplicate table definition: %s' %name)
+        mapping.tables[name] = self
+        self.mapping = mapping
+        self.name = name
+        self.columns = []
+        self.cdict = {}
+        self.entities = []
+        self.edict = {}
+    def add_column(self, name, kind):
+        column = ColMapping(self, name, kind)
+        self.columns.append(column)
+        self.cdict[name] = column
+        return column
+    def add_entity(self, entity):
+        self.entities.append(entity)
+        self.edict[entity.name] = entity
+        entity.tables.append(self)
+
+class ColMapping(object):
+    def __init__(self, table, name, kind):
+        if not name: raise MappingError('Error in table definition %r: '
+            "Column element without 'name' attribute" % tname)
+        if name in table.cdict:
+            raise MappingError('Error in table definition %r: '
+                'Duplicate column definition: %s' % (tname, cname))
+        if kind and kind not in ('discriminator'):
+            raise MappingError('Error in table definition %r: '
+                            'invalid column kind: %s' % (table.name, kind))
+        self.mapping = table.mapping
+        self.table = table
+        self.name = name
+        self.kind = kind
+
+class EntityMapping(object):
+    def __init__(self, mapping, name):
+        if not utils.is_ident(name): raise MappingError(
+            'Entity name must be correct Python identifier. Got: %s' % ename)
+        mapping.entities[name] = self
+        self.mapping = mapping
+        self.name = name
+        self.tables = []
+        self.fields = []
+        self.fdict = {}
+    def add_field(self, name, column):
+        field = self.fdict.get(name)
+        if not field:
+            field = self.fdict[name] = FieldMapping(self, name)
+            self.fields.append(field)
+        assert column not in field.columns
+        field.columns.append(column)
+        column.field = field
+
+class FieldMapping(object):
+    def __init__(self, entity, name):
+        self.mapping = entity.mapping
+        self.entity = entity
+        self.name = name
+        self.columns = []
 
 class Schema(object):
     def __init__(self):
