@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <tables>
-  <table name="Persons" entity="Person Student Professor">
+  <table name="Persons" entity="Person">
     <column name="id" attr="Person.id" />
     <column name="class" kind="discriminator" />
     <column name="fname" attr="Person.first_name" />
