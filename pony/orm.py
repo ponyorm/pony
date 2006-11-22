@@ -20,35 +20,30 @@ class TransactionError(Exception): pass
 def _error_method(self, *args, **keyargs):
     raise TypeError
 
-class _Local(threading.local):
+class Local(threading.local):
     def __init__(self):
         self.transaction = None
 
-_local = threading.local()
+local = Local()
 
 class DataSource(object):
     _lock = threading.Lock() # threadsafe access to cache of datasources
     _cache = {}
     def __new__(cls, provider, *args, **kwargs):
-        self = object.__new__(cls, provider, *args, **kwargs)
+        self = object.__new__(cls)
         self._init_(provider, *args, **kwargs)
-        key = (provider, args, tuple(sorted(kwargs.items())))
-        return cls._cache.setdefault(key, self)
-        # is it thread safe? I think - yes, if args & kwargs only contains
-        #   types with C-written __eq__ and __hash__
+        key = (self.provider, self.mapping, self.args,
+               tuple(sorted(self.kwargs.items())))
+        return cls._cache.setdefault(key, self) # is it thread safe?
+               # I think - yes, if args & kwargs only contains
+               # types with C-written __eq__ and __hash__
     def _init_(self, provider, *args, **kwargs):
         self.provider = provider
         self.args = args
         self.kwargs = kwargs
-        kwargs_hash = hash(tuple(sorted(self.iteritems())))
-        self.hash = hash(provider) ^ hash(args) ^ kwargs_hash
-        self.mapping = Mapping(kwargs.get('mapping', None))
+        self.mapping = kwargs.pop('mapping', None)
     def begin(self):
-        if _local.transaction is not None: raise TransactionError(
-            'Transaction already started in thread %d' % thread.get_ident())
-        transaction = Transaction(self)
-        _local.transaction = transaction
-        return transaction
+        return Transaction(self)
     def get_connection(self):
         provider = self.provider
         if isinstance(provider, basestring):
@@ -212,92 +207,114 @@ class Entity(object):
         raise NotImplementedError
     @classmethod
     def _cls_get_info(cls):
-        transaction = _local.transaction
-        if transaction is None: raise TransactionError(
-            'There are no active transaction in this thread: %d'
-            % thread.get_ident())
-        data_source = transaction.data_source
-        diagram = cls._diagram_
+        return diagram.get_entity_info(self)
         
 class Diagram(object):
     def __init__(self):
         self.lock = threading.RLock()
-        self.initialized = False
         self.entities = {} # entity_name -> entity
-        self.schemata = {} # data_source -> schema
+        self.schemata = {} # mapping -> schema
         self.default_mapping = Mapping()
         self.transactions = set()
-    def _clear(self): # Must be protected by lock!
-        if self.transactions: raise DiagramError(
-            'Cannot change entity diagram '
-            'because it is used by active transaction')
-        self.initialized = False
-        self.schemata.clear()
+    def clear(self):
+        self.lock.acquire()
+        try:
+            if self.transactions:
+                raise DiagramError('Cannot change entity diagram '
+                                   'because it is used by active transaction')
+            self.schemata.clear()
+        finally:
+            self.lock.release()
     def add_entity(self, entity):
         self.lock.acquire()
         try:
             assert entity._diagram_ == self
             self._clear()
-            # entity._schema_ = self
+            # entity._diagram_ = self
             type.__setattr__(entity, '_diagram_', self)
             self.entities[entity.__name__] = entity
         finally:
             self.lock.release()
-    def init(self):
-        pass
+    def get_schema(self):
+        transaction = local.transaction
+        if transaction is None: raise TransactionError(
+            'There are no active transaction in this thread: %d'
+            % thread.get_ident())
+        mapping = transaction.data_source.mapping
+        self.lock.acquire()
+        try:
+            return (self.schemata.get(mapping)
+                    or self.schemata.setdefault(mapping, Schema(self, mapping)))
+        finally:
+            self.lock.release()
 
 class Schema(object):
-    def __init__(self):
-        pass
+    def __init__(self, diagram, mapping):
+        self.mapping = mapping
+        self.entities = {}  # entity -> entity_info
+        self.tables = {}    # table_name -> table_info
 
 class EntityInfo(object):
     pass
 
+class FieldInfo(object):
+    pass
+
+class TableInfo(object):
+    pass
+
 def get_transaction():
-    return _local.transaction
+    return local.transaction
 
 class Transaction(object):
     def __init__(self, data_source):
+        if local.transaction is not None: raise TransactionError(
+            'Transaction already started in thread %d' % thread.get_ident())
         self.data_source = data_source
-        self.connection = data_source.get_connection()
+        self.diagrams = set()
+        self.cache = {} # TableInfo -> TableCache
+        local.transaction = self
+    def _close(self):
+        assert local.transaction is self
+        while self.diagrams:
+            diagram = self.diagrams.pop()
+            # diagram.lock.acquire()
+            # try:
+            diagram.transactions.remove(self)
+            # finally: diagram.lock.release()
+        local.transaction = None
 
 class Mapping(object):
-    def __init__(self, filename=None, xml=None):
-        if filename and xml: raise MappingError(
-            "You must not supply both 'filename' and 'xml' attributes")
+    _cache = {}
+    def __new__(cls, filename):
+        mapping = cls._cache.get(filename)
+        if mapping is not None: return mapping
+        mapping = object.__new__(cls)
+        mapping._init_(filename)
+        return cls._cache.setdefault(filename, mapping)
+    def _init_(self, filename):
         self.filename = filename
-        if self.filename:
-            if not os.path.exists(filename):
-                raise MappingError('File not found: %s' % filename)
-            self.xml = ET.parse(filename)
-        elif isinstance(xml, basestring): self.xml = ET.fromstring(xml)
-        else:
-            assert hasattr(xml, 'findall')
-            self.xml = xml
         self.tables = {}   # table_name -> TableMapping
         self.entities = {} # entity_name -> EntityMapping
-        self._load()
-    def _load(self):
-        for table_element in self.xml.findall('table'):
-            table = TableMapping(self, table_element.get('name'))
-            enames = table_element.get('entity', '').split()
-            assert len(enames) == len(set(enames))
-            for ename in enames:
+        if not os.path.exists(filename):
+            raise MappingError('File not found: %s' % filename)
+        document = ET.parse(filename)
+        for t in document.findall('table'):
+            table = TableMapping(self, t.get('name'))
+            ename = t.get('entity')
+            relations = t.get('relations')
+            if ename and relations: raise MappingError(
+                'For table %r specified both entity name and relations. '
+                'It is not allowed' % table.name)
+            elif ename:
                 entity = self.entities.get(ename) or EntityMapping(self, ename)
-                table.add_entity(entity)
-            for col_element in table_element.findall('column'):
-                column = table.add_column(col_element.get('name'),
-                                          col_element.get('kind'))
-                attr = col_element.get('attr')
-                if not attr: continue
-                ename, fname = attr.split('.', 1)
-                entity = table.edict.get(ename)
-                if not entity: raise MappingError(
-                    'Error in table definition %r: '
-                    'Entity name %r uses in attribute %s.%s, '
-                    "but it is absent in table's 'entity' attribute"
-                    % (tname, ename, fname))
-                entity.add_field(fname, column)
+                table.entity = entity
+                entity.tables.append(table)
+            else:
+                table.relations = relations.split()
+                # for r in table.relations...
+            for c in t.findall('column'):
+                table.add_column(c.get('name'), c.get('kind'), c.get('attr'))
 
 class TableMapping(object):
     def __init__(self, mapping, name):
@@ -310,10 +327,10 @@ class TableMapping(object):
         self.name = name
         self.columns = []
         self.cdict = {}
-        self.entities = []
-        self.edict = {}
-    def add_column(self, name, kind):
-        column = ColMapping(self, name, kind)
+        self.entity = None
+        self.relations = []
+    def add_column(self, name, kind, attr):
+        column = ColMapping(self, name, kind, attr)
         self.columns.append(column)
         self.cdict[name] = column
         return column
@@ -323,7 +340,7 @@ class TableMapping(object):
         entity.tables.append(self)
 
 class ColMapping(object):
-    def __init__(self, table, name, kind):
+    def __init__(self, table, name, kind, attr):
         if not name: raise MappingError('Error in table definition %r: '
             "Column element without 'name' attribute" % tname)
         if name in table.cdict:
@@ -332,10 +349,14 @@ class ColMapping(object):
         if kind and kind not in ('discriminator'):
             raise MappingError('Error in table definition %r: '
                             'invalid column kind: %s' % (table.name, kind))
-        self.mapping = table.mapping
+        self.mapping = mapping = table.mapping
         self.table = table
         self.name = name
         self.kind = kind
+        if attr:
+            ename, fname = attr.split('.', 1)
+            entity = mapping.entities.get(ename) or EntityMapping(mapping,ename)
+            entity.add_field(fname, self)
 
 class EntityMapping(object):
     def __init__(self, mapping, name):

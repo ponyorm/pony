@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<tables>
+  <table name="Topics" entity="Topic">
+    <column name="id" attr="Topic.id" />
+    <column name="Name" attr="Topic.name" />
+  </table>
+  <table name="Books" entity="Book">
+    <column name="Title" attr="Book.title" />
+    <column name="ISBN" attr="Book.ISBN" />
+  </table>
+  <table name="Categorization" relations="Topic.books Book.topics">
+    <column name="Book" attr="Topic.books.ISBN" />
+    <column name="Topic" attr="Book.topics.id" />
+  </table>
+  <table name="Copies" entity="Copy">
+    <column name="ISBN" attr="Copy.book.ISBN" />
+    <column name="PersonNumber" attr="Copy.person.number" />
+  </table>
+  <table name="People" entity="Person">
+    <column name="Number" attr="Person.number" />
+    <column name="FirstName" attr="Person.first_name" />
+    <column name="LastName" attr="Person.last_name" />
+  </table>
+</tables>
