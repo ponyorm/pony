@@ -219,9 +219,6 @@ class Entity(object):
         data_source = transaction.data_source
         diagram = cls._diagram_
         
-class EntityInfo(object):
-    pass
-
 class Diagram(object):
     def __init__(self):
         self.lock = threading.RLock()
@@ -248,6 +245,21 @@ class Diagram(object):
             self.lock.release()
     def init(self):
         pass
+
+class Schema(object):
+    def __init__(self):
+        pass
+
+class EntityInfo(object):
+    pass
+
+def get_transaction():
+    return _local.transaction
+
+class Transaction(object):
+    def __init__(self, data_source):
+        self.data_source = data_source
+        self.connection = data_source.get_connection()
 
 class Mapping(object):
     def __init__(self, filename=None, xml=None):
@@ -350,15 +362,3 @@ class FieldMapping(object):
         self.entity = entity
         self.name = name
         self.columns = []
-
-class Schema(object):
-    def __init__(self):
-        pass
-
-def get_transaction():
-    return _local.transaction
-
-class Transaction(object):
-    def __init__(self, data_source):
-        self.data_source = data_source
-        self.connection = data_source.get_connection()
