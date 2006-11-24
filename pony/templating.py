@@ -1,5 +1,8 @@
 import sys, threading, inspect
 
+try: real_stdout
+except: real_stdout = sys.stdout
+
 class Html(unicode):
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, unicode.__repr__(self))
@@ -62,24 +65,6 @@ class UnicodeWrapper(unicode):
 
 ################################################################################
 
-def push_writer(writer):
-    local.writers.append(writer)
-
-def pop_writer():
-    return local.writers.pop()
-
-def grab_stdout(f):
-    def new_function(*args, **keyargs):
-        data = []
-        push_writer(data.append)
-        try: result = f(*args, **keyargs)
-        finally: assert pop_writer() == data.append
-        if result is not None: return (result,)
-        return data
-    new_function.__name__ = f.__name__
-    new_function.__doc__ = f.__doc__
-    return new_function
-
 class Local(threading.local):
     def __init__(self):
         self.writers = []
@@ -89,12 +74,24 @@ local = Local()
 class ThreadedStdout(object):
     @staticmethod
     def write(s):
-        try: w = local.writers[-1]
-        except IndexError: w = sys.__stdout__.write
-        w(s)
+        try: f = local.writers[-1]
+        except IndexError: f = real_stdout.write
+        f(s)
 
-if not isinstance(sys.stdout, ThreadedStdout):
-    sys.stdout = ThreadedStdout()
+threaded_stdout = ThreadedStdout()
+
+def grab_stdout(f):
+    def new_function(*args, **keyargs):
+        data = []
+        local.writers.append(data.append)
+        sys.stdout = threaded_stdout
+        try: result = f(*args, **keyargs)
+        finally: assert local.writers.pop() == data.append
+        if result is not None: return (result,)
+        return data
+    new_function.__name__ = f.__name__
+    new_function.__doc__ = f.__doc__
+    return new_function
 
 def string2html(f, source_encoding):
     co = f.func_code
