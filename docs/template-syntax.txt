@@ -1,29 +1,29 @@
 
-&#  comment
-&// comment
+&&
+&//  comment
 &/* comment */
 
-&if(expr){ text }
+&if(expr) { text }
 &elif(expr) { text }
 &else { text }
 
 &for(var in expr) {
     text
     &row{text1}{text2}{text3}
-    &row(i:j){text}       
-    &row(odd){text}       &//  &row(1:2){text}
-    &row(even){text}      &//  &row(2:2){text}
-    &row(first){text}     &//  &row(1){text}
-    &row(not first){text} &//  &row(not 1){text}
-    &row(last){text}      &//  &row(-1){text}
-    &row(not last){text}  &//  &row(not -1)text
+    &row(i,j){text}
+    &row("odd"){text}   &//  &row(1,2){text}
+    &row("even"){text}  &//  &row(2,2){text}
+    &row("first"){text}
+    &row("not first"){text}
+    &row("last"){text}
+    &row("not last"){text}
 } &separator {
     text
 } &else {
     text
 }
 
-&{text}   &// localization
+&{text}  &// localization
 
 &list(expr){text}
 
@@ -47,9 +47,6 @@
 }&content={
 
     &unit{ text }
-
-    &columns("1/4", "1/4", "1/2")
-    { text }{ text }{ text }
-
+    &columns("1/4", "1/4", "1/2") { text }{ text }{ text }
 
 }

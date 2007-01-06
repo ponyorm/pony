@@ -1,4 +1,4 @@
-import sys, threading, inspect
+import sys, threading, inspect, re
 
 try: real_stdout
 except: real_stdout = sys.stdout
@@ -130,24 +130,154 @@ def html(*args, **keyargs):
         return create_html_decorator(source_encoding)
     else: assert False
 
-if __name__ == '__main__':
-    @html
-    def header(name):
-        print '<html>'
-        print '<head><title>Greeting to %s</title></head>' % name
-        print '<body>'
-    @html
-    def footer(): return '</body></html>'
-    @html
-    def f1(name, i):
-        print header(name)
-        print '<h1>Hello, %s!</h1>' % name
-        print '<ul>'
-        for i in range(1, i+1):
-            print '<li> Item %d' % i
-        print '</ul>'
-        print footer()
-    x = f1('<John>', 5)
-    print '-' * 40
-    print x
-    raw_input()
+################################################################################
+
+def err(text, end, length=30):
+    start = end - length
+    if start > 0: return text[start:end]
+    return text[:end]
+
+class ParseError(Exception):
+    def __init__(self, message, text, pos):
+        Exception.__init__(self, '%s: %s' % (message, err(text, pos)))
+        self.message = message
+        self.text = text
+        self.pos = pos
+
+def strjoin(list):
+    result = []
+    temp = []
+    for x in list:
+        if isinstance(x, basestring): temp.append(x)
+        elif temp:
+            result.append(''.join(temp).replace('\\\\', '\\'))
+            temp = []
+            result.append(x)
+        else: result.append(x)
+    if temp: result.append(''.join(temp))
+    return result
+
+main_re = re.compile(r"""
+
+        ([{])                            # open brace (group 1)
+    |   ([}])                            # close brace (group 2)
+    |   &(?:
+            (&)                          # double ampersand (group 3)
+        |   (                            # comments (group 4)
+                //.*?(?:\n|\Z)           #     &// comment
+            |   /\*.*?(?:\*/|\Z)         #     &/* comment */
+            )
+        |   ( [A-Za-z_]\w*\s*            # statement multi-part name (group 5)
+              (?:\.\s*[A-Za-z_]\w*\s*)*
+            )?
+            [({]                         # start of statement content
+        )
+
+    """, re.VERBOSE)
+
+def parse_markup(text, pos=0, nested=False):
+    result = []
+    brace_counter = 0
+    while True:
+        match = main_re.search(text, pos)
+        if not match:
+            if nested or brace_counter:
+                raise ParseError('Unexpected end of text', text, len(text))
+            result.append(text[pos:])
+            end = len(text)
+            return strjoin(result), end
+        start, end = match.span()
+        i = match.lastindex
+        if start != pos: result.append(text[pos:start])
+        if i == 1:  # {
+            brace_counter += 1
+            result.append('{')
+        elif i == 2:  # }
+            if not brace_counter:
+                if nested: return strjoin(result), end
+                raise ParseError("Unexpected symbol '}'", text, end)
+            brace_counter -= 1
+            result.append('}')
+        elif i == 3: # &&
+            result.append('&')
+        elif i == 4: # &/* comment */ or &// comment
+            pass
+        else: # &command(
+            assert i in (5, None)
+            command, end = parse_command(text, end-1, match.group(5))
+            result.append(command)
+        pos = end
+
+command_re = re.compile(r"""
+
+    \s*                         # optional whitespace
+    (?:                         
+        (;)                     # end of command (group 1)
+    |   ([{])                   # start of markup block (group 2)
+    |   (                       # keyword argument (group 3)
+            &
+            ([A-Za-z_]\w*)      # keyword name (group 4)
+            \s*=\s*[{]
+        )
+    )?
+
+""", re.VERBOSE)
+    
+def parse_command(text, pos, name):
+    exprlist = None
+    if text[pos] == '(':
+        exprlist, pos = parse_exprlist(text, pos+1)
+    markup_args, markup_keyargs = [], []
+    while True:
+        match = command_re.match(text, pos)
+        assert match
+        end = match.end()
+        i = match.lastindex
+        if i is None:
+            return (name, exprlist, markup_args, markup_keyargs), pos
+        elif i == 1:
+            return (name, exprlist, markup_args, markup_keyargs), end
+        elif i == 2:
+            arg, end = parse_markup(text, end, True)
+            markup_args.append(arg)
+        elif i == 3:
+            keyname = match.group(4)
+            assert keyname is not None
+            keyarg, end = parse_markup(text, end, True)
+            markup_keyargs.append((keyname, keyarg))
+        else: assert False
+        pos = end
+   
+exprlist_re = re.compile(r"""
+
+        ([(])                     # open parenthesis (group 1)
+    |   ([)])                     # close parenthesis (group 2)
+    |   (                         # comments (group 3):
+            \#.*?(?:\n|\Z)        # - Python-style comment inside expressions
+        |   &//.*?(?:\n|\Z)       # - &// comment
+        |   &/\*.*?(?:\*/|\Z)     # - &/* comment */
+        )
+    |   '(?:[^'\\]|\\.)*?'        # 'string'
+    |   "(?:[^"\\]|\\.)*?"        # "string"
+    |   '''(?:[^\\]|\\.)*?'''     # '''triple-quoted string'''
+    |   \"""(?:[^\\]|\\.)*?\"""   # \"""triple-quoted string\"""
+
+    """, re.VERBOSE)
+
+def parse_exprlist(text, pos):
+    result = []
+    counter = 1
+    while True:
+        match = exprlist_re.search(text, pos)
+        if not match:
+            raise ParseError('Unexpected end of text', text, len(text))
+        start, end = match.span()
+        i = match.lastindex
+        if i != 3: result.append(text[pos:end])
+        if i == 1: counter += 1  # (
+        elif i == 2:             # )
+            counter -= 1
+            if counter == 0: return ''.join(result)[:-1], end
+        else: assert i == 3 or i is None
+        pos = end
+    
