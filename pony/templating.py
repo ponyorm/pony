@@ -525,9 +525,6 @@ class I18nElement(SyntaxElement):
     def eval(self, globals, locals):
         return ''
 
-def collector(*args, **keyargs):
-    return list(args), keyargs
-
 class FunctionElement(SyntaxElement):
     def __init__(self, text, item):
         self.text = text
@@ -537,11 +534,10 @@ class FunctionElement(SyntaxElement):
         self.markup_keyargs = [ (key, Markup(text, item))
                                 for (key, item) in markup_keyargs ]
         self.func_code = compile(self.expr, '<?>', 'eval')
-        self.params_code = compile('__pony_internal_func__(%s)' %self.params,
-                                   '<?>', 'eval')
+        s = '(lambda *args, **keyargs: (list(args), keyargs))(%s)' % self.params
+        self.params_code = compile(s, '<?>', 'eval')
     def eval(self, globals, locals):
         func = eval(self.func_code, globals, locals)
-        globals['__pony_internal_func__'] = collector
         args, keyargs = eval(self.params_code, globals, locals)
         if getattr(func, 'lazy', False):
             args.extend([BoundMarkup(m, globals, locals)
