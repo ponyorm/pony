@@ -327,8 +327,7 @@ class Markup(SyntaxElement):
         self.start, self.end = tree[:2]
         self.content = []
         for item in tree[2:]:
-            if isinstance(item, basestring):
-                self.content.append(item)
+            if isinstance(item, basestring): self.content.append(item)
             elif isinstance(item, tuple):
                 prev = self.content and self.content[-1] or None
                 if self.content: prev = self.content[-1]
@@ -358,6 +357,12 @@ class Markup(SyntaxElement):
                     prev.append_separator(item)
                 else: self.content.append(FunctionElement(text, item))
             else: assert False
+    def eval(self, globals, locals):
+        result = []
+        for element in self.content:
+            if isinstance(element, basestring): result.append(element)
+            else: result.append(element.eval(globals, locals))
+        return ''.join(result)
 
 class IfElement(SyntaxElement):
     def __init__(self, text, item):
@@ -375,7 +380,12 @@ class IfElement(SyntaxElement):
         self._check_statement(item)
         end, expr, markup_args = item[1], item[3], item[4]
         self.end = end
-        self.chain.append((expr, Markup(self.text, markup_args[0])))
+        expr_code = expr is not None and compile(expr, '<?>', 'eval') or None
+        self.chain.append((expr, expr_code, Markup(self.text, markup_args[0])))
+    def eval(self, globals, locals):
+        for expr, expr_code, markup in self.chain:
+            if expr is None or eval(expr_code, globals, locals):
+                return markup.eval(globals, locals)
 
 var_list_re_1 = re.compile(r"""
 
@@ -441,6 +451,9 @@ class ForElement(SyntaxElement):
         self.markup = Markup(self.text, item[4][0])
         self.var_names = parse_var_list(self.expr, 0, len(self.expr))
         self.separator = self.else_ = None
+        var_list = ', '.join(self.var_names)
+        list_expr = '[ (%s,) for %s ]' % (var_list, self.expr)
+        self.code = compile(list_expr, '<?>', 'eval')
     def append_separator(self, item):
         if self.separator or self.else_: self._raise_unexpected_statement(item)
         self._check_statement(item)
@@ -451,6 +464,26 @@ class ForElement(SyntaxElement):
         self._check_statement(item)
         self.end = item[1]
         self.else_ = Markup(self.text, item[4][0])
+    def eval(self, globals, locals):
+        NOT_EXISTS = object()
+        old_values = []
+        for name in self.var_names:
+            old_values.append(locals.get(name, NOT_EXISTS))
+        result = []
+        list = eval(self.code, globals, locals)
+        if not list:
+            if self.else_: return self.else_.eval(globals, locals)
+            return ''
+        for i, item in enumerate(list):
+            for name, value in zip(self.var_names, item):
+                if i and self.separator:
+                    result.append(self.separator.eval(globals, locals))
+                locals[name] = value
+                result.append(self.markup.eval(globals, locals))
+        for name, old_value in zip(self.var_names, old_values):
+            if old_value is NOT_EXISTS: del locals[name]
+            else: locals[name] = old_value
+        return ''.join(result)
 
 class ExprElement(SyntaxElement):
     def __init__(self, text, item):
@@ -462,6 +495,12 @@ class ExprElement(SyntaxElement):
         if markup_keyargs:
             raise ParseError('Unexpected keyword argument',
                              text, markup_keyrgs[0][1][0])
+        self.expr_code = compile(self.expr, '<?>', 'eval')
+    def eval(self, globals, locals):
+        return str(eval(self.expr_code, globals, locals))
+
+
+space_re = re.compile(r'\s+')
 
 class I18nElement(SyntaxElement):
     def __init__(self, text, item):
@@ -474,12 +513,52 @@ class I18nElement(SyntaxElement):
         if markup_keyargs:
             raise ParseError('Unexpected keyword argument',
                              text, markup_keyrgs[0][1][0])
+        list = []
+        i = 0
+        for item in self.markup.content:
+            if isinstance(item, basestring):
+                list.append(item.replace('$', '$$'))
+            else:
+                i += 1
+                list.append('$%d' % i)
+        self.base_string = space_re.sub(' ', ''.join(list).strip())
+    def eval(self, globals, locals):
+        return ''
+
+def collector(*args, **keyargs):
+    return list(args), keyargs
 
 class FunctionElement(SyntaxElement):
     def __init__(self, text, item):
         self.text = text
-        (self.start, self.end, self.cmd_name, self.expr,
-                                   markup_args, markup_keyargs) = item
+        (self.start, self.end, self.expr, self.params,
+                            markup_args, markup_keyargs) = item
         self.markup_args = [ Markup(text, item) for item in markup_args ]
         self.markup_keyargs = [ (key, Markup(text, item))
-                                for (name, item) in markup_keyargs ]
+                                for (key, item) in markup_keyargs ]
+        self.func_code = compile(self.expr, '<?>', 'eval')
+        self.params_code = compile('__pony_internal_func__(%s)' %self.params,
+                                   '<?>', 'eval')
+    def eval(self, globals, locals):
+        func = eval(self.func_code, globals, locals)
+        globals['__pony_internal_func__'] = collector
+        args, keyargs = eval(self.params_code, globals, locals)
+        if getattr(func, 'lazy', False):
+            args.extend([BoundMarkup(m, globals, locals)
+                         for m in self.markup_args])
+            for key, markup in self.markup_keyargs:
+                keyargs[key] = BoundMarkup(markup, globals, locals)
+        else:
+            for arg in self.markup_args:
+                args.append(arg.eval(globals, locals))
+            for key, arg in self.markup_keyargs:
+                keyargs[key] = arg.eval(globals, locals)
+        return str(func(*args, **keyargs))
+        
+class BoundMarkup(object):
+    def __init__(self, markup, globals, locals):
+        self.markup = markup
+        self.globals = globals
+        self.locals = locals
+    def __call__(self):
+        return self.markup.eval(globals, locals)
