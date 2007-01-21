@@ -1,5 +1,7 @@
 import sys, threading, inspect, re
 
+from utils import decorator
+
 try: real_stdout
 except: real_stdout = sys.stdout
 
@@ -31,7 +33,7 @@ class Html(unicode):
         return self.__class__(unicode.join(self, (unicode(quote(item))
                                                   for item in items)))
 
-join = Html('').join
+htmljoin = Html('').join
 
 def quote(x):
     if isinstance(x, (int, long, float, Html)): return x
@@ -95,7 +97,9 @@ def grab_stdout(f):
     def new_function(*args, **keyargs):
         data = []
         local.writers.append(data.append)
-        sys.stdout = threaded_stdout
+        # The next line required for PythonWin interactive window
+        # (PythonWin resets stdout all the time)
+        sys.stdout = threaded_stdout 
         try: result = f(*args, **keyargs)
         finally: assert local.writers.pop() == data.append
         if result is not None: return (result,)
@@ -104,7 +108,7 @@ def grab_stdout(f):
     new_function.__doc__ = f.__doc__
     return new_function
 
-def string2html(f, source_encoding):
+def string_consts_to_html(f, source_encoding='ascii'):
     co = f.func_code
     consts = list(co.co_consts)
     for i, c in enumerate(consts):
@@ -120,26 +124,19 @@ def string2html(f, source_encoding):
                                      f.func_defaults, f.func_closure)
     return new_function
 
-def create_html_decorator(source_encoding='ascii'):
-    def html_decorator(f):
-        inner = string2html(f, source_encoding)
-        f2 = grab_stdout(inner)
-        def new_function(*args, **keyargs):
-            return join(f2(*args, **keyargs))
-        new_function.inner = inner
-        new_function.__name__ = f.__name__
-        new_function.__doc__ = f.__doc__
-        return new_function
-    return html_decorator
+@decorator
+def printtext(old_func):
+    func = grab_stdout(old_func)
+    def new_func(*args, **keyargs):
+        return u''.join(func(*args, **keyargs))
+    return new_func
 
-def html(*args, **keyargs):
-    if len(args) == 1 and inspect.isfunction(args[0]):
-        return create_html_decorator()(args[0])
-    elif not args:
-        source_encoding = keyargs.pop('source_encoding', 'ascii')
-        assert not keyargs
-        return create_html_decorator(source_encoding)
-    else: assert False
+@decorator
+def printhtml(old_func):
+    func = grab_stdout(string_consts_to_html(old_func))
+    def new_func(*args, **keyargs):
+        return htmljoin(func(*args, **keyargs))
+    return new_func
 
 ################################################################################
 
@@ -155,7 +152,7 @@ class ParseError(Exception):
         self.text = text
         self.pos = pos
 
-def strjoin(list):
+def joinstrings(list):
     result = []
     temp = []
     for x in list:
@@ -200,7 +197,7 @@ def parse_markup(text, pos=0, nested=False):
             result.append(text[pos:])
             end = len(text)
             result[1] = end-1
-            return strjoin(result), end
+            return joinstrings(result), end
         start, end = match.span()
         i = match.lastindex
         if start != pos: result.append(text[pos:start])
@@ -211,7 +208,7 @@ def parse_markup(text, pos=0, nested=False):
             if not brace_counter:
                 if nested:
                     result[1] = end-1
-                    return strjoin(result), end
+                    return joinstrings(result), end
                 raise ParseError("Unexpected symbol '}'", text, end)
             brace_counter -= 1
             result.append('}')

@@ -1,7 +1,45 @@
 from itertools import imap, ifilter
 from operator import itemgetter
+from inspect import isfunction
 from os import urandom
 from re import compile
+
+def copy_func_attrs(new_func, old_func):
+    new_func.__name__ = old_func.__name__
+    new_func.__doc__ = old_func.__doc__
+    new_func.__module__ = old_func.__module__
+    new_func.__dict__.update(old_func.__dict__)
+
+def simple_decorator(old_dec):
+    def new_dec(old_func):
+        def new_func(*args, **keyargs):
+            return old_dec(old_func, *args, **keyargs)
+        copy_func_attrs(new_func, old_func)
+        return new_func
+    copy_func_attrs(new_dec, old_dec)
+    return new_dec
+
+def decorator(old_dec):
+    def new_dec(old_func):
+        new_func = old_dec(old_func)
+        copy_func_attrs(new_func, old_func)
+        return new_func
+    copy_func_attrs(new_dec, old_dec)
+    return new_dec
+
+def decorator_with_params(old_dec):
+    def new_dec(*args, **keyargs):
+        if len(args) == 1 and isfunction(args[0]) and not keyargs:
+            old_func = args[0]
+            new_func = old_dec()(old_func)
+            copy_func_attrs(new_func, old_func)
+            return new_func
+        else:
+            even_more_new_dec = old_dec(*args, **keyargs)
+            copy_func_attrs(even_more_new_dec, old_dec)
+            return even_more_new_dec
+    copy_func_attrs(new_dec, old_dec)
+    return new_dec
 
 def error_method(*args, **kwargs):
     raise TypeError
