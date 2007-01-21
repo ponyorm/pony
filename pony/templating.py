@@ -6,19 +6,30 @@ except: real_stdout = sys.stdout
 class Html(unicode):
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, unicode.__repr__(self))
-    def __add__(self, x):  return Html(unicode.__add__(self, quote(x)))
-    def __radd__(self, x): return Html(unicode.__add__(quote(x), self))
-    def __mul__(self, x):  return Html(unicode.__mul__(self, x))
-    def __rmul__(self, x): return Html(unicode.__mul__(self, x))
+##  # Part of correct markup may not be correct markup itself
+##  # Also commented because of possible performance issues
+##  def __getitem__(self, key):
+##      return self.__class__(unicode.__getitem__(self, key))
+##  def __getslice__(self, i, j):
+##      return self.__class__(unicode.__getslice__(self, i, j))
+    def __add__(self, x):
+        return self.__class__(unicode.__add__(self, quote(x)))
+    def __radd__(self, x):
+        return self.__class__(unicode.__add__(quote(x), self))
+    def __mul__(self, x):
+        return self.__class__(unicode.__mul__(self, x))
+    def __rmul__(self, x):
+        return self.__class__(unicode.__mul__(self, x))
     def __mod__(self, x):
         if isinstance(x, tuple):
             x = tuple(_wrap(item) for item in x)
         else: x = _wrap(x)
-        return Html(unicode.__mod__(self, x))
+        return self.__class__(unicode.__mod__(self, x))
     def __rmod__(self, x):
         return quote(x) % self
     def join(self, items):
-        return Html(unicode.join(self,(unicode(quote(item)) for item in items)))
+        return self.__class__(unicode.join(self, (unicode(quote(item))
+                                                  for item in items)))
 
 join = Html('').join
 
@@ -324,10 +335,12 @@ class Markup(SyntaxElement):
     def __init__(self, text, tree):
         assert isinstance(tree, list)
         self.text = text
+        self.empty = text.__class__()
         self.start, self.end = tree[:2]
         self.content = []
         for item in tree[2:]:
-            if isinstance(item, basestring): self.content.append(item)
+            if isinstance(item, basestring):
+                self.content.append(text.__class__(item))
             elif isinstance(item, tuple):
                 prev = self.content and self.content[-1] or None
                 if self.content: prev = self.content[-1]
@@ -357,12 +370,12 @@ class Markup(SyntaxElement):
                     prev.append_separator(item)
                 else: self.content.append(FunctionElement(text, item))
             else: assert False
-    def eval(self, globals, locals):
+    def eval(self, globals, locals=None):
         result = []
         for element in self.content:
             if isinstance(element, basestring): result.append(element)
             else: result.append(element.eval(globals, locals))
-        return ''.join(result)
+        return self.empty.join(result)
 
 class IfElement(SyntaxElement):
     def __init__(self, text, item):
@@ -382,7 +395,7 @@ class IfElement(SyntaxElement):
         self.end = end
         expr_code = expr is not None and compile(expr, '<?>', 'eval') or None
         self.chain.append((expr, expr_code, Markup(self.text, markup_args[0])))
-    def eval(self, globals, locals):
+    def eval(self, globals, locals=None):
         for expr, expr_code, markup in self.chain:
             if expr is None or eval(expr_code, globals, locals):
                 return markup.eval(globals, locals)
@@ -445,6 +458,7 @@ def parse_var_list(text, pos, end, nested=False):
 class ForElement(SyntaxElement):
     def __init__(self, text, item):
         self.text = text
+        self.empty = text.__class__()
         self.start, self.end = item[:2]
         self._check_statement(item)
         self.expr = item[3]
@@ -464,7 +478,7 @@ class ForElement(SyntaxElement):
         self._check_statement(item)
         self.end = item[1]
         self.else_ = Markup(self.text, item[4][0])
-    def eval(self, globals, locals):
+    def eval(self, globals, locals=None):
         NOT_EXISTS = object()
         old_values = []
         for name in self.var_names:
@@ -483,7 +497,7 @@ class ForElement(SyntaxElement):
         for name, old_value in zip(self.var_names, old_values):
             if old_value is NOT_EXISTS: del locals[name]
             else: locals[name] = old_value
-        return ''.join(result)
+        return self.empty.join(result)
 
 class ExprElement(SyntaxElement):
     def __init__(self, text, item):
@@ -496,9 +510,10 @@ class ExprElement(SyntaxElement):
             raise ParseError('Unexpected keyword argument',
                              text, markup_keyrgs[0][1][0])
         self.expr_code = compile(self.expr, '<?>', 'eval')
-    def eval(self, globals, locals):
-        return str(eval(self.expr_code, globals, locals))
-
+    def eval(self, globals, locals=None):
+        result = eval(self.expr_code, globals, locals)
+        if isinstance(result, basestring): return result
+        return unicode(result)
 
 space_re = re.compile(r'\s+')
 
@@ -522,7 +537,7 @@ class I18nElement(SyntaxElement):
                 i += 1
                 list.append('$%d' % i)
         self.base_string = space_re.sub(' ', ''.join(list).strip())
-    def eval(self, globals, locals):
+    def eval(self, globals, locals=None):
         return ''
 
 class FunctionElement(SyntaxElement):
@@ -536,7 +551,7 @@ class FunctionElement(SyntaxElement):
         self.func_code = compile(self.expr, '<?>', 'eval')
         s = '(lambda *args, **keyargs: (list(args), keyargs))(%s)' % self.params
         self.params_code = compile(s, '<?>', 'eval')
-    def eval(self, globals, locals):
+    def eval(self, globals, locals=None):
         func = eval(self.func_code, globals, locals)
         args, keyargs = eval(self.params_code, globals, locals)
         if getattr(func, 'lazy', False):
@@ -549,12 +564,22 @@ class FunctionElement(SyntaxElement):
                 args.append(arg.eval(globals, locals))
             for key, arg in self.markup_keyargs:
                 keyargs[key] = arg.eval(globals, locals)
-        return str(func(*args, **keyargs))
+        result = func(*args, **keyargs)
+        if isinstance(result, basestring): return result
+        return unicode(result)
         
 class BoundMarkup(object):
-    def __init__(self, markup, globals, locals):
+    def __init__(self, markup, globals, locals=None):
         self.markup = markup
         self.globals = globals
         self.locals = locals
     def __call__(self):
         return self.markup.eval(globals, locals)
+
+def compile_text_template(source):
+    tree = parse_markup(source)[0]
+    return Markup(source, tree)
+
+def compile_html_template(source):
+    tree = parse_markup(source)[0]
+    return Markup(Html(source), tree)
