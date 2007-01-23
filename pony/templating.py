@@ -1,6 +1,6 @@
-import sys, threading, inspect, re
+import sys, os.path, threading, inspect, re, weakref
 
-from utils import decorator
+from utils import is_ident, decorator
 
 try: real_stdout
 except: real_stdout = sys.stdout
@@ -173,7 +173,7 @@ main_re = re.compile(r"""
         ([{])                            # open brace (group 1)
     |   ([}])                            # close brace (group 2)
     |   &(?:
-            (&)                          # double ampersand (group 3)
+            (&)                          # double & (group 3)
         |   (                            # comments (group 4)
                 //.*?(?:\n|\Z)           #     &// comment
             |   /\*.*?(?:\*/|\Z)         #     &/* comment */
@@ -580,3 +580,84 @@ def compile_text_template(source):
 def compile_html_template(source):
     tree = parse_markup(source)[0]
     return Markup(Html(source), tree)
+
+codename_cache = {}
+
+def get_class_name(frame):
+    try:
+        code = frame.f_code
+        if code.co_argcount:
+            first_name = code.co_varnames[0]
+            first_argument = frame.f_locals[first_name]
+            if isinstance(first_argument, type): # probably classmethod
+                cls = first_argument
+            else:
+                cls = first_argument.__class__
+            classes = inspect.getmro(cls)
+            for cls in classes:
+                for member in cls.__dict__.values():
+                    if inspect.isfunction(member):
+                        if member.func_code is code: return cls.__name__
+                    elif member.__class__ is classmethod:
+                        if member.__get__(1, int).im_func.func_code is code:
+                            return cls.__name__
+    finally:
+        frame = None
+
+template_name_cache = {} # weakref.WeakKeyDictionary()
+
+def get_template_name(frame):
+    try:
+        code = frame.f_code
+        result = template_name_cache.get(code)
+        if result: return result
+        file_name = code.co_filename
+        if file_name is None: return None
+
+        code_name = code.co_name
+        if not code_name or not is_ident(code_name): return None
+
+        cls_name = get_class_name(frame)
+        if cls_name is None:
+            root, ext = os.path.splitext(file_name)
+            result = '%s.%s' % (root, code_name)
+        else:            
+            head, tail = os.path.split(file_name)
+            tail = '%s.%s' % (cls_name, code_name)
+            result = os.path.join(head, tail)
+        template_name_cache[code] = result
+        return result
+    finally:
+        frame = None
+
+template_cache = {}
+
+def _template(str_cls,
+              text=None, filename=None, globals=None, locals=None,
+              source_encoding='ascii'):
+    if text and filename:
+        raise TypeError("template() function cannot accept both "
+                        "'text' and 'filename' parameters at the same time")
+    if not text:
+        if not filename:
+            filename = get_template_name(sys._getframe(2)) + '.template'
+        f = file(filename)
+        text = f.read()
+        f.close()
+    markup = template_cache.get(text)
+    if not markup:
+        tree = parse_markup(text)[0]
+        markup = Markup(str_cls(text, source_encoding), tree)
+        template_cache[text] = markup
+    if globals is None and locals is None:
+        globals = sys._getframe(2).f_globals
+        locals = sys._getframe(2).f_locals
+    return markup.eval(globals, locals)
+
+def template(text=None, filename=None, globals=None, locals=None,
+              source_encoding='ascii'):
+    return _template(unicode, text, filename, globals, locals, source_encoding)
+
+def html(text=None, filename=None, globals=None, locals=None,
+             source_encoding='ascii'):
+    return _template(Html, text, filename, globals, locals, source_encoding)
