@@ -4,9 +4,8 @@ def layout(title, content):
     return html("""
     <html>
     <head><title>$title</title></head>
-    <body>
-    $content
-    </body></html>
+    <body>$content</body>
+    </html>
     """)
 
 class A(object):

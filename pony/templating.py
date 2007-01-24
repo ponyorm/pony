@@ -515,6 +515,7 @@ class ExprElement(SyntaxElement):
         self.expr_code = compile(self.expr, '<?>', 'eval')
     def eval(self, globals, locals=None):
         result = eval(self.expr_code, globals, locals)
+        if inspect.isroutine(result): result = result()
         if isinstance(result, basestring): return result
         return unicode(result)
 
@@ -568,6 +569,7 @@ class FunctionElement(SyntaxElement):
             for key, arg in self.markup_keyargs:
                 keyargs[key] = arg.eval(globals, locals)
         result = func(*args, **keyargs)
+        if inspect.isroutine(result): result = result()
         if isinstance(result, basestring): return result
         return unicode(result)
         
