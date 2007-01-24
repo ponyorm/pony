@@ -1,52 +1,52 @@
 
-&&
-&//  comment
-&/* comment */
+$$
+$//  comment
+$/* comment */
 
-&if(expr) { text }
-&elif(expr) { text }
-&else { text }
+$if(expr) { text }
+$elif(expr) { text }
+$else { text }
 
-&for(var in expr) {
+$for(var in expr) {
     text
-    &row{text1}{text2}{text3}
-    &row(i,j){text}
-    &row("odd"){text}   &//  &row(1,2){text}
-    &row("even"){text}  &//  &row(2,2){text}
-    &row("first"){text}
-    &row("not first"){text}
-    &row("last"){text}
-    &row("not last"){text}
-} &separator {
+    $row{text1}{text2}{text3}
+    $row(i,j){text}
+    $row("odd"){text}   $//  $row(1,2){text}
+    $row("even"){text}  $//  $row(2,2){text}
+    $row("first"){text}
+    $row("not first"){text}
+    $row("last"){text}
+    $row("not last"){text}
+} $separator {
     text
-} &else {
+} $else {
     text
 }
 
-&{text}  &// localization
+${text}  $// localization
 
-&list(expr){text}
+$list(expr){text}
 
-&link(expr, attr=value, ...){text}
+$link(expr, attr=value, ...){text}
 
 ------------------------------------------------
 
-&myfunc(1, 2, a=3, b=4){ text1 }{ text2 }&c={ text3 }&d={ text4 }
+$myfunc(1, 2, a=3, b=4){ text1 }{ text2 }$c={ text3 }$d={ text4 }
 
 
-&layout(title="hello, world!", navsize=160, navleft=True)
-&header={
+$layout(title="hello, world!", navsize=160, navleft=True)
+$header={
     <h1>This is page header!</h1>
-}&footer={
+}$footer={
     <small>All right reserved</small>
-}&navbar={
+}$navbar={
     <ul>
         <li>item1
         <li>item2
     </ul>
-}&content={
+}$content={
 
-    &unit{ text }
-    &columns("1/4", "1/4", "1/2") { text }{ text }{ text }
+    $unit{ text }
+    $columns("1/4", "1/4", "1/2") { text }{ text }{ text }
 
 }

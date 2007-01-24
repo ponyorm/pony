@@ -1,28 +1,28 @@
 <html>
-<head><title>&(self.title)</title></head>
+<head><title>$self.title</title></head>
 <body>
-	<h1>&(self.title)</h1>
-	<p>&(self.text)
-	&for(record in self.records) {
-		<h2>&(record.title)</h2>
-		&for(paragraph in record.paragraphs) {
-			<p>&(convert2html(paragraph))
+	<h1>$self.title</h1>
+	<p>$self.text
+	$for(record in self.records) {
+		<h2>$record.title</h2>
+		$for(paragraph in record.paragraphs) {
+			<p>$convert2html(paragraph)
 		}
-		&if(record.comments) {
+		$if(record.comments) {
 			<h3>comments:</h3>
 			<table>
-			&for(comment in record.comments) {
+			$for(comment in record.comments) {
 				<tr><td width="10%">
-				&(comment.date)<br>
-				&(comment.author)
+				$comment.date<br>
+				$comment.author
 				</td><td>
-				&(convert2html(comment.text))
+				$convert2html(comment.text)
 				</td></tr>
-			} &separator {
+			} $separator {
 				<tr><td colspan=2></td></tr>
 			}
 			</table>
-		} &// if
-	} &// for
+		} $// if
+	} $// for
 <body>
 </html>

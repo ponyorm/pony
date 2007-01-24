@@ -1,4 +1,4 @@
-import sys, os.path, threading, inspect, re, weakref
+import sys, os.path, threading, inspect, re, weakref, textwrap
 
 from utils import is_ident, decorator
 
@@ -172,16 +172,18 @@ main_re = re.compile(r"""
 
         ([{])                            # open brace (group 1)
     |   ([}])                            # close brace (group 2)
-    |   &(?:
-            (&)                          # double & (group 3)
+    |   [$](?:
+            ([$])                        # double $ (group 3)
         |   (                            # comments (group 4)
-                //.*?(?:\n|\Z)           #     &// comment
-            |   /\*.*?(?:\*/|\Z)         #     &/* comment */
+                //.*?(?:\n|\Z)           #     $// comment
+            |   /\*.*?(?:\*/|\Z)         #     $/* comment */
             )
-        |   ( [A-Za-z_]\w*\s*            # statement multi-part name (group 5)
-              (?:\.\s*[A-Za-z_]\w*\s*)*
-            )?
-            [({]                         # start of statement content
+        |   ([(])                        # start of $(expression) (group 5)
+        |   ([{])                        # start of ${markup} (group 6)
+        |   ( [A-Za-z_]\w*               # multi-part name (group 7)
+              (?:\s*\.\s*[A-Za-z_]\w*)*
+            )
+            (\s*[({])?                   # start of statement content (group 8)
         )
 
     """, re.VERBOSE)
@@ -212,14 +214,18 @@ def parse_markup(text, pos=0, nested=False):
                 raise ParseError("Unexpected symbol '}'", text, end)
             brace_counter -= 1
             result.append('}')
-        elif i == 3: # &&
-            result.append('&')
-        elif i == 4: # &/* comment */ or &// comment
+        elif i == 3: # $$
+            result.append('$')
+        elif i == 4: # $/* comment */ or $// comment
             pass
-        else: # &command(
-            assert i in (5, None)
-            cmd_name = match.group(5)
-            command, end = parse_command(text,match.start(),end-1,cmd_name)
+        elif i in (5, 6): # $(expression) or ${i18n markup}
+            command, end = parse_command(text, start, end-1, None)
+            result.append(command)
+        elif i == 7: # $expression.path
+            result.append((start, end, None, match.group(7), None, None))
+        elif i == 8: # $function.call(...)
+            cmd_name = match.group(7)
+            command, end = parse_command(text, match.start(), end-1, cmd_name)
             result.append(command)
         pos = end
 
@@ -230,7 +236,7 @@ command_re = re.compile(r"""
         (;)                     # end of command (group 1)
     |   ([{])                   # start of markup block (group 2)
     |   (                       # keyword argument (group 3)
-            &
+            [$]
             ([A-Za-z_]\w*)      # keyword name (group 4)
             \s*=\s*[{]
         )
@@ -272,8 +278,8 @@ exprlist_re = re.compile(r"""
     |   ([)])                     # close parenthesis (group 2)
     |   (                         # comments (group 3):
             \#.*?(?:\n|\Z)        # - Python-style comment inside expressions
-        |   &//.*?(?:\n|\Z)       # - &// comment
-        |   &/\*.*?(?:\*/|\Z)     # - &/* comment */
+        |   [$]//.*?(?:\n|\Z)     # - $// comment
+        |   [$]/\*.*?(?:\*/|\Z)   # - $/* comment */
         )
     |   '(?:[^'\\]|\\.)*?'        # 'string'
     |   "(?:[^"\\]|\\.)*?"        # "string"
@@ -634,7 +640,7 @@ template_cache = {}
 
 def _template(str_cls,
               text=None, filename=None, globals=None, locals=None,
-              source_encoding='ascii'):
+              source_encoding='ascii', keep_indent=False):
     if text and filename:
         raise TypeError("template() function cannot accept both "
                         "'text' and 'filename' parameters at the same time")
@@ -644,6 +650,8 @@ def _template(str_cls,
         f = file(filename)
         text = f.read()
         f.close()
+    elif not keep_indent:
+        text = textwrap.dedent(text)
     markup = template_cache.get(text)
     if not markup:
         tree = parse_markup(text)[0]
@@ -655,9 +663,9 @@ def _template(str_cls,
     return markup.eval(globals, locals)
 
 def template(text=None, filename=None, globals=None, locals=None,
-              source_encoding='ascii'):
+              source_encoding='ascii', keep_indent=False):
     return _template(unicode, text, filename, globals, locals, source_encoding)
 
 def html(text=None, filename=None, globals=None, locals=None,
-             source_encoding='ascii'):
+             source_encoding='ascii', keep_indent=False):
     return _template(Html, text, filename, globals, locals, source_encoding)

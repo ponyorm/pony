@@ -1,25 +1,25 @@
 root {
   <html>
     <head>
-      <title>University &text{university/@name}</title>
+      <title>University $text{university/@name}</title>
       <link rel="stylesheet" type="text/css" href="university.css" />
     </head>
     <body>
       <h1>List of students:</h1>
-      &transform{university/groups/group}
+      $transform{university/groups/group}
     </body>
   </html>
 }
 
 group {
   <div>
-    <h2>Group &text{@number}</h2>
+    <h2>Group $text{@number}</h2>
     <p>
-        Count of students: &text{count(students)},<br>
-        among them &text{count(student[@type="contract"])} of contract />
+        Count of students: $text{count(students)},<br>
+        among them $text{count(student[@type="contract"])} of contract />
     </p>
-    <ol>&transform{student}</ol>
+    <ol>$transform{student}</ol>
   </div>
 }
 
-student { <li class="@type">&text{.}</li> }
+student { <li class="@type">$text{.}</li> }
