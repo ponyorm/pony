@@ -9,6 +9,8 @@ def copy_func_attrs(new_func, old_func):
     new_func.__doc__ = old_func.__doc__
     new_func.__module__ = old_func.__module__
     new_func.__dict__.update(old_func.__dict__)
+    if not hasattr(old_func, 'original_func'):
+        new_func.original_func = old_func
 
 def simple_decorator(old_dec):
     def new_dec(old_func):
