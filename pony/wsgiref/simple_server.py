@@ -12,7 +12,7 @@ module.  See also the BaseHTTPServer module docs for other API information.
 
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
 import urllib, sys
-from wsgiref.handlers import SimpleHandler
+from pony.wsgiref.handlers import SimpleHandler
 
 __version__ = "0.1"
 __all__ = ['WSGIServer', 'WSGIRequestHandler', 'demo_app', 'make_server']
