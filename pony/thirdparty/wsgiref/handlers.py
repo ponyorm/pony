@@ -1,8 +1,8 @@
 """Base classes for server/gateway implementations"""
 
 from types import StringType
-from pony.wsgiref.util import FileWrapper, guess_scheme, is_hop_by_hop
-from pony.wsgiref.headers import Headers
+from pony.thirdparty.wsgiref.util import FileWrapper, guess_scheme, is_hop_by_hop
+from pony.thirdparty.wsgiref.headers import Headers
 
 import sys, os, time
 
