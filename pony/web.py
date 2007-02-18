@@ -1,5 +1,5 @@
-import re, os.path
-import inspect
+import re, os.path, inspect, traceback
+import sys
 
 from pony.utils import decorator_with_params
 
@@ -16,12 +16,11 @@ re_param = re.compile("""
 @decorator_with_params
 def http(path=None, ext=None):
     def new_decorator(old_func):
-        real_func = getattr(old_func, 'original_func', old_func)
         if path is None:
             real_path = old_func.__name__
         else:
             real_path = path
-        register_http_handler(real_func, real_path, ext)
+        register_http_handler(old_func, real_path, ext)
         return old_func
     return new_decorator
 
@@ -49,7 +48,8 @@ class HttpInfo(object):
         func.__dict__.setdefault('http', []).insert(0, self)
     @staticmethod
     def getargspec(func):
-        names, argsname, keyargsname, defaults = inspect.getargspec(func)
+        original_func = getattr(func, 'original_func', func)
+        names,argsname,keyargsname,defaults = inspect.getargspec(original_func)
         if argsname: raise TypeError(
             'HTTP handler function cannot have *%s argument' % argsname)
         if defaults is None: new_defaults = []
@@ -213,3 +213,53 @@ def get_http_handlers(urlpath):
                 args = [ args[i] for i in range(len(args)) ]
                 result.append((info, args, keyargs))
     return result
+
+def wsgi_test(environ, start_response):
+    from StringIO import StringIO
+    stdout = StringIO()
+    print >>stdout, "Hello world!"
+    print >>stdout
+    h = environ.items(); h.sort()
+    for k,v in h:
+        print >>stdout, k,'=',`v`
+    start_response("200 OK", [ ('Content-Type', 'text/plain') ])
+    return [ stdout.getvalue() ]
+
+def wsgi_app(environ, start_response):
+    urlpath = environ['PATH_INFO']
+    handlers = get_http_handlers(urlpath)
+    if not handlers:
+        start_response("200 OK", [ ('Content-Type', 'text/plain') ])
+        return [ "Requested page not found!" ]
+    info, args, keyargs = handlers[0]
+    try:
+        result = info.func(*args, **keyargs)
+        if isinstance(result, unicode): result = result.encode('utf8')
+    except:
+        start_response("200 OK", [ ('Content-Type', 'text/plain') ])
+        return [ traceback.format_exc() ]
+    start_response("200 OK", [ ('Content-Type','text/html') ])
+    return [ result ]
+
+def parse_address(address):
+    if isinstance(address, basestring):
+        if ':' in address:
+            host, port = address.split(':')
+            return host, int(port)
+        else:
+            return address, 80
+    assert len(address) == 2
+    return tuple(address)
+
+def start_http_server(address):
+    host, port = parse_address(address)
+    from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
+    wsgi_apps = [("", wsgi_app), ("/test/", wsgi_test)]
+    server = CherryPyWSGIServer((host, port), wsgi_apps, server_name=host)
+    try:
+        server.start()
+    except KeyboardInterrupt:
+        server.stop()
+
+run_http_server = start_http_server
+    

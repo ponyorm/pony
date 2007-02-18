@@ -93,6 +93,7 @@ class ThreadedStdout(object):
 
 threaded_stdout = ThreadedStdout()
 
+@decorator
 def grab_stdout(f):
     def new_function(*args, **keyargs):
         data = []
@@ -104,8 +105,6 @@ def grab_stdout(f):
         finally: assert local.writers.pop() == data.append
         if result is not None: return (result,)
         return data
-    new_function.__name__ = f.__name__
-    new_function.__doc__ = f.__doc__
     return new_function
 
 def string_consts_to_html(f, source_encoding='ascii'):
