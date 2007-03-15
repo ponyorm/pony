@@ -6,10 +6,11 @@ from pony.utils import decorator_with_params
 re_param = re.compile("""
         [$]
         (?: (\d+)              # param number (group 1)
-        |   ([A-Za-z_]\w*)  # param identifier (group 2)
+        |   ([A-Za-z_]\w*)     # param identifier (group 2)
+        |   (\*)               # param list (group 3)
         )$
-    |   (                      # path component (group 3)
-            (?:[$][$] | [^$])+
+    |   (                      # path component (group 4)
+            (?:[$][$] | [^$])*
         )$                     # end of string
     """, re.VERBOSE)
 
@@ -50,8 +51,6 @@ class HttpInfo(object):
     def getargspec(func):
         original_func = getattr(func, 'original_func', func)
         names,argsname,keyargsname,defaults = inspect.getargspec(original_func)
-        if argsname: raise TypeError(
-            'HTTP handler function cannot have *%s argument' % argsname)
         if defaults is None: new_defaults = []
         else: new_defaults = list(defaults)
         for i, value in enumerate(new_defaults):
@@ -74,57 +73,61 @@ class HttpInfo(object):
     @staticmethod
     def parse_path(path):
         result = []
-        args, keyargs = set(), set()
         components = path.split('/')
         if not components[0]: components = components[1:]
         for component in components:
             match = re_param.match(component)
-            if not match: raise ValueError(
-                'Invalid path component: '
-                + (not component and '<empty string>' or component))
+            if not match:
+                raise ValueError('Invalid path component: %r' % component)
             i = match.lastindex
             if i == 1:
-                param = int(match.group(1)) - 1
-                if param < 0 or param in args:
-                    raise ValueError('Invalid path parameters: %s' % path)
-                args.add(param)
+                param = int(match.group(i)) - 1
                 result.append((True, param))
             elif i == 2:
-                param = match.group(2)
-                if param in keyargs:
-                    raise ValueError('Invalid path parameters: %s' % path)
-                keyargs.add(param)
+                param = match.group(i)
                 result.append((True, param))
             elif i == 3:
-                result.append((False, match.group(3).replace('$$', '$')))
+                result.append((True, '*'))
+            elif i == 4:
+                result.append((False, match.group(i).replace('$$', '$')))
             else: assert False
-        if args and max(args) > len(args):
-            raise ValueError('Invalid path parameters: %s' % path)
         return result
     @staticmethod
     def adjust_path(parsed_path, func):
         names, argsname, keyargsname, defaults = func.argspec
+        names = list(names)
+        args, keyargs = set(), set()
         param_names = set()
         for i, (is_param, x) in enumerate(parsed_path):
             if not is_param: continue
             if isinstance(x, int):
-                try: param_name = names[x]
-                except IndexError:
-                    if argsname is None:
-                        raise TypeError('Invalid path parameter index: %s' % x)
-                    parsed_path[i] = (True, x - len(names))
-                else:
-                    parsed_path[i] = (True, param_name)
-                    param_names.add(param_name)
+                if x < 0 or x >= len(names) and argsname is None:
+                    raise TypeError('Invalid parameter index: %d' % (x+1))
+                if x in args:
+                    raise TypeError('Parameter index %d already in use' % (x+1))
+                args.add(x)
             elif isinstance(x, basestring):
-                if x not in names and keyargsname is None:
-                    raise TypeError('Invalid parameter name: %s' % x)
-                param_names.add(x)
+                if x == '*':
+                    pass
+                else:
+                    try: j = names.index(x)
+                    except ValueError:
+                        if keyargsname is None or x in keyargs:
+                            raise TypeError('Invalid parameter name: %s' % x)
+                        keyargs.add(x)
+                    else:
+                        if j in args: raise TypeError(
+                            'Parameter name %s already in use' % x)
+                        args.add(j)
+                        parsed_path[i] = (True, j)
             else: assert False
-        param_names.update(func.default_dict)
-        for arg in names:
-            if arg not in param_names: raise TypeError(
-                'There are no specified value for argument %s' % arg)
+        for i, name in enumerate(names[:len(names)-len(defaults)]):
+            if i not in args:
+                raise TypeError('Undefined path parameter: %s' % name)
+        if args:
+            for i in range(len(names), max(args)):
+                if i not in args:
+                    raise TypeError('Undefined path parameter: %d' % (i+1))
     def register(self, parsed_path):
         dict, list = self.registry
         for is_param, x in parsed_path:
@@ -152,10 +155,9 @@ def build_path(parsed_path, func, args, keyargs):
         keyparams = func.dummy_func(*args, **keyargs).copy()
     except TypeError, e:
         raise TypeError(e.args[0].replace('<lambda>', func.__name__))
-    indexparams = keyparams.get(func.argspec[1], ())
-    keyparams.update(keyparams.get(func.argspec[2], {}))
-    if func.argspec[1] is not None: del keyparams[func.argspec[1]]
-    if func.argspec[2] is not None: del keyparams[func.argspec[2]]
+    indexparams = map(keyparams.pop, func.argspec[0])
+    indexparams.extend(keyparams.pop(func.argspec[1], ()))
+    keyparams.update(keyparams.pop(func.argspec[2], {}))
     result = []
     used = set()
     for is_param, x in parsed_path:
@@ -210,36 +212,54 @@ def get_http_handlers(urlpath):
                     assert is_param
                     if isinstance(key, int): args[key] = value
                     else: keyargs[key] = value
-                args = [ args[i] for i in range(len(args)) ]
-                result.append((info, args, keyargs))
+                argspec = info.func.argspec
+                names, defaults = argspec[0], argspec[3]
+                arglist = [ None ] * len(names)
+                arglist[-len(defaults):] = defaults
+                for i, value in sorted(args.items()):
+                    try: arglist[i] = value
+                    except IndexError:
+                        assert i == len(arglist)
+                        arglist.append(value)
+                result.append((info, arglist, keyargs))
     return result
+
+class HttpException(Exception): pass
+class Http404(HttpException):
+    status = '404 Not Found'
+    headers = [ ('Content-Type', 'text/plain') ]
+
+def invoke(urlpath):
+    handlers = get_http_handlers(urlpath)
+    if not handlers: raise Http404, 'Page not found'
+    info, args, keyargs = handlers[0]
+    return info.func(*args, **keyargs)
 
 def wsgi_test(environ, start_response):
     from StringIO import StringIO
     stdout = StringIO()
-    print >>stdout, "Hello world!"
+    print >>stdout, 'Hello world!'
     print >>stdout
     h = environ.items(); h.sort()
     for k,v in h:
         print >>stdout, k,'=',`v`
-    start_response("200 OK", [ ('Content-Type', 'text/plain') ])
+    start_response('200 OK', [ ('Content-Type', 'text/plain') ])
     return [ stdout.getvalue() ]
 
 def wsgi_app(environ, start_response):
     urlpath = environ['PATH_INFO']
-    handlers = get_http_handlers(urlpath)
-    if not handlers:
-        start_response("200 OK", [ ('Content-Type', 'text/plain') ])
-        return [ "Requested page not found!" ]
-    info, args, keyargs = handlers[0]
     try:
-        result = info.func(*args, **keyargs)
-        if isinstance(result, unicode): result = result.encode('utf8')
+        result = invoke(urlpath)
+    except HttpException, e:
+        start_response(e.status, e.headers)
+        return [ e.args[0] ]
     except:
-        start_response("200 OK", [ ('Content-Type', 'text/plain') ])
+        start_response('200 OK', [ ('Content-Type', 'text/plain') ])
         return [ traceback.format_exc() ]
-    start_response("200 OK", [ ('Content-Type','text/html') ])
-    return [ result ]
+    else:
+        if isinstance(result, unicode): result = result.encode('utf8')
+        start_response('200 OK', [ ('Content-Type', 'text/plain') ])
+        return [ result ]
 
 def parse_address(address):
     if isinstance(address, basestring):
@@ -254,7 +274,7 @@ def parse_address(address):
 def start_http_server(address):
     host, port = parse_address(address)
     from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
-    wsgi_apps = [("", wsgi_app), ("/test/", wsgi_test)]
+    wsgi_apps = [('', wsgi_app), ('/test/', wsgi_test)]
     server = CherryPyWSGIServer((host, port), wsgi_apps, server_name=host)
     try:
         server.start()
