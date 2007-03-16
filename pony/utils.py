@@ -37,7 +37,10 @@ def decorator_with_params(old_dec):
             copy_func_attrs(new_func, old_func)
             return new_func
         else:
-            even_more_new_dec = old_dec(*args, **keyargs)
+            def even_more_new_dec(old_func):
+                new_func = old_dec(*args, **keyargs)(old_func)
+                copy_func_attrs(new_func, old_func)
+                return new_func
             copy_func_attrs(even_more_new_dec, old_dec)
             return even_more_new_dec
     copy_func_attrs(new_dec, old_dec)

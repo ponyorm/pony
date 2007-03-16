@@ -1,6 +1,6 @@
 import sys, os.path, threading, inspect, re, weakref, textwrap
 
-from utils import is_ident, decorator
+from utils import is_ident, decorator, decorator_with_params
 
 try: real_stdout
 except: real_stdout = sys.stdout
@@ -130,12 +130,14 @@ def printtext(old_func):
         return u''.join(func(*args, **keyargs))
     return new_func
 
-@decorator
-def printhtml(old_func):
-    func = grab_stdout(string_consts_to_html(old_func))
-    def new_func(*args, **keyargs):
-        return htmljoin(func(*args, **keyargs))
-    return new_func
+@decorator_with_params
+def printhtml(source_encoding='ascii'):
+    def new_decorator(old_func):
+        func = grab_stdout(string_consts_to_html(old_func, source_encoding))
+        def new_func(*args, **keyargs):
+            return htmljoin(func(*args, **keyargs))
+        return new_func
+    return new_decorator
 
 ################################################################################
 
