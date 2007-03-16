@@ -1,4 +1,4 @@
-import re, threading, os.path, inspect, sys, cStringIO, cgitb
+import re, threading, os.path, inspect, cgi, urllib, sys, cStringIO, cgitb
 
 from pony.utils import decorator_with_params
 from pony.templating import Html
@@ -75,8 +75,8 @@ class HttpInfo(object):
         params = query.split('&')
         result = []
         for param in params:
-            if '=' not in param: name, value = param, ''
-            else: name, value = param.split('=', 1)
+            if '=' in param: name, value = param.split('=', 1)
+            else: name, value = param, ''
             is_param, x = self.parse_component(value)
             result.append((name, is_param, x))
         return result
@@ -185,13 +185,13 @@ def build_url(info, func, args, keyargs):
 
     query = []
     for name, is_param, x in info.parsed_query:
-        if not is_param: query.append('%s=%s' % (name, x))
+        if not is_param: query.append((name, x))
         else:
             is_default, value = build_param(x)
             if not is_default:
                 if value is None: raise PathError('Value for parameter %s is None' % x)
-                query.append('%s=%s' % (name, value))
-    query = u'&'.join(query)
+                query.append((name, value))
+    query = urllib.urlencode(query)
 
     errmsg = 'Not all parameters were used during path construction'
     if len(used_keyparams) != len(keyparams):
@@ -203,8 +203,8 @@ def build_url(info, func, args, keyargs):
                     raise PathError(errmsg)
 
     ext = (info.ext + [''])[0]
-    if not query: return '/%s%s' % (path, ext)
-    else: return '/%s%s?%s' % (path, ext, query)
+    if not query: return u'/%s%s' % (path, ext)
+    else: return u'/%s%s?%s' % (path, ext, query)
 
 link_template = Html('<a href="%s">%s</a>')
 
@@ -222,37 +222,58 @@ def link(*args, **keyargs):
     href = url(func, *args, **keyargs)
     return link_template % (href, description)
 
+def parse_query(query):
+    params = cgi.parse_qs(query)
+    for name, value in params.items():
+        params[name] = value[0]
+    return params
+
 def get_http_handlers(url):
-    url, ext = os.path.splitext(url)
-    components = url.split('/')
+    if '?' in url:
+        path, query = url.split('?', 1)
+        params = parse_query(query)
+    else: path, params = url, {}
+    path, ext = os.path.splitext(path)
+    components = path.split('/')
     if not components[0]: components = components[1:]
     result = []
-    triples = [ HttpInfo.registry + ({},) ]
+    pairs = [ HttpInfo.registry ]
     for i, component in enumerate(components):
-        new_triples = []
-        for dict, list, params in triples:
+        new_pairs = []
+        for dict, list in pairs:
             pair = dict.get(component)
-            if pair:
-                new_params = params.copy()
-                new_triples.append(pair + (new_params,))
+            if pair: new_pairs.append(pair)
             pair = dict.get(None)
-            if pair:
-                new_params = params.copy()
-                new_params[i] = component
-                new_triples.append(pair + (new_params,))
-        triples = new_triples
+            if pair: new_pairs.append(pair)
+        pairs = new_pairs
     result = []
-    for dict, list, params in triples:
+    not_found = object()
+    for dict, list in pairs:
         for info in list:
-            if ext in info.ext:
-                args, keyargs = {}, {}
-                for i, value in params.items():
-                    is_param, key = info.parsed_path[i]
-                    assert is_param
-                    if isinstance(key, int): args[key] = value
-                    else: keyargs[key] = value
-                argspec = info.func.argspec
-                names, defaults = argspec[0], argspec[3]
+            if ext not in info.ext: continue
+            args, keyargs = {}, {}
+            for i, (is_param, x) in enumerate(info.parsed_path):
+                if not is_param: continue
+                value = components[i]
+                if isinstance(x, int): args[x] = value
+                elif isinstance(x, basestring): keyargs[x] = value
+                else: assert False
+            names, _, _, defaults = info.func.argspec
+            offset = len(names) - len(defaults)
+            for name, is_param, x in info.parsed_query:
+                value = params.get(name, not_found)
+                if not is_param:
+                    if value != x: break
+                elif isinstance(x, int):
+                    if value is not_found:
+                        if offset <= x < len(names): continue
+                        else: break
+                    else: args[x] = value
+                elif isinstance(x, basestring):
+                    if value is not_found: break
+                    keyargs[x] = value
+                else: assert False
+            else:
                 arglist = [ None ] * len(names)
                 arglist[-len(defaults):] = defaults
                 for i, value in sorted(args.items()):
@@ -307,6 +328,8 @@ def format_exc():
 def wsgi_app(environ, start_response):
     local.request = HttpRequest(environ)
     url = environ['PATH_INFO']
+    query = environ['QUERY_STRING']
+    if query: url = '%s?%s' % (url, query)
     try:
         result = invoke(url)
     except HttpException, e:
