@@ -46,8 +46,7 @@ class HttpInfo(object):
         self.args = set()
         self.keyargs = set()
         self.parsed_path = self.parse_path(path)
-        if query is not None: self.parsed_query = self.parse_query(query)
-        else: self.parsed_query = []
+        self.parsed_query = self.parse_query(query)
         self.check()
         self.register()
         func.__dict__.setdefault('http', []).insert(0, self)
@@ -72,6 +71,7 @@ class HttpInfo(object):
         if not components[0]: components = components[1:]
         return map(self.parse_component, components)
     def parse_query(self, query):
+        if query is None: return []
         params = query.split('&')
         result = []
         for param in params:
@@ -160,32 +160,40 @@ def build_url(info, func, args, keyargs):
     path = []
     used_indexparams = set()
     used_keyparams = set()
+    offset = len(names) - len(defaults)
 
     def build_param(x):
+        if isinstance(x, int):
+            value = indexparams[x]
+            used_indexparams.add(x)
+            is_default = offset <= x < len(names) and defaults[x - offset] == value
+            return is_default, value
         if isinstance(x, basestring):
             try: value = keyparams[x]
             except KeyError: assert False, 'Parameter not found: %s' % x
             used_keyparams.add(x)
-        elif isinstance(x, int):
-            value = indexparams[x]
-            used_indexparams.add(x)
-        else: assert False
-        if value is None: raise PathError('Value for parameter %s is None' % x)
-        return value
+            return False, value
+        assert False
 
     for is_param, x in info.parsed_path:
-        if is_param: x = build_param(x)
-        path.append(x)
+        if not is_param: path.append(x)
+        else:
+            is_default, value = build_param(x)
+            if value is None: raise PathError('Value for parameter %s is None' % x)
+            path.append(value)
     path = u'/'.join(path)
 
     query = []
     for name, is_param, x in info.parsed_query:
-        if is_param: x = build_param(x)
-        query.append('%s=%s' % (name, x))
+        if not is_param: query.append('%s=%s' % (name, x))
+        else:
+            is_default, value = build_param(x)
+            if not is_default:
+                if value is None: raise PathError('Value for parameter %s is None' % x)
+                query.append('%s=%s' % (name, value))
     query = u'&'.join(query)
 
-    offset = len(names) - len(defaults)
-    errmsg = 'Not all parameters were used in path construction'
+    errmsg = 'Not all parameters were used during path construction'
     if len(used_keyparams) != len(keyparams):
         raise PathError(errmsg)
     if len(used_indexparams) != len(indexparams):
