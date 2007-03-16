@@ -1,126 +1,119 @@
-import re, os.path, inspect, traceback
-import sys
+import re, threading, os.path, inspect, sys, cStringIO, cgitb
 
 from pony.utils import decorator_with_params
+from pony.templating import Html
 
-re_param = re.compile("""
+re_component = re.compile("""
         [$]
         (?: (\d+)              # param number (group 1)
         |   ([A-Za-z_]\w*)     # param identifier (group 2)
-        |   (\*)               # param list (group 3)
         )$
-    |   (                      # path component (group 4)
+    |   (                      # path component (group 3)
             (?:[$][$] | [^$])*
         )$                     # end of string
     """, re.VERBOSE)
 
 @decorator_with_params
-def http(path=None, ext=None):
+def http(url=None, ext=None, **params):
+    params = dict([ (name.replace('_', '-').title(), value)
+                    for name, value in params.items() ])
     def new_decorator(old_func):
-        if path is None:
-            real_path = old_func.__name__
-        else:
-            real_path = path
-        register_http_handler(old_func, real_path, ext)
+        real_url = url is None and old_func.__name__ or url
+        register_http_handler(old_func, real_url, ext, params)
         return old_func
     return new_decorator
 
-def register_http_handler(func, path, ext):
-    return HttpInfo(func, path, ext)
+def register_http_handler(func, url, ext, params):
+    return HttpInfo(func, url, ext, params)
 
 class HttpInfo(object):
     registry = ({}, [])
-    def __init__(self, func, urlpath, ext=None):
+    def __init__(self, func, url, ext, params):
         self.func = func
-        self.urlpath = urlpath
+        self.url = url
         self.ext = []
-        path, urlext = os.path.splitext(urlpath)
-        if urlext: self.ext.append(urlext)
+        self.params = params
+        if '?' in url: path, query = url.split('?', 1)
+        else: path, query = url, None
+        path, _ext = os.path.splitext(path)
+        if _ext: self.ext.append(_ext)
         if isinstance(ext, basestring): self.ext.append(ext)
         elif ext is not None: self.ext.extend(ext)
         if not self.ext: self.ext.append('')
         if not hasattr(func, 'argspec'):
             func.argspec = self.getargspec(func)
             func.dummy_func = self.create_dummy_func(func)
-            func.default_dict = self.get_default_dict(func)
+        self.args = set()
+        self.keyargs = set()
         self.parsed_path = self.parse_path(path)
-        self.adjust_path(self.parsed_path, func)
-        self.register(self.parsed_path)
+        if query is not None: self.parsed_query = self.parse_query(query)
+        else: self.parsed_query = []
+        self.check()
+        self.register()
         func.__dict__.setdefault('http', []).insert(0, self)
     @staticmethod
     def getargspec(func):
         original_func = getattr(func, 'original_func', func)
         names,argsname,keyargsname,defaults = inspect.getargspec(original_func)
+        names = list(names)
         if defaults is None: new_defaults = []
         else: new_defaults = list(defaults)
         for i, value in enumerate(new_defaults):
-            if value is not None: new_defaults[i] = unicode(value)
+            if value is not None and not isinstance(value, unicode):
+                new_defaults[i] = unicode(value)
         return names, argsname, keyargsname, new_defaults
     @staticmethod
     def create_dummy_func(func):
         spec = inspect.formatargspec(*func.argspec)[1:-1]
         source = "lambda %s: __locals__()" % spec
         return eval(source, dict(__locals__=locals))
-    @staticmethod
-    def get_default_dict(func):
-        names, argsname, keyargsname, defaults = func.argspec
-        defaults = list(defaults)
-        for i, value in enumerate(defaults):
-            if value is not None and not isinstance(value, basestring):
-                defaults[i] = unicode(value)
-        names_with_defaults = list(names[-len(defaults):])
-        return dict(zip(names_with_defaults, defaults))
-    @staticmethod
-    def parse_path(path):
-        result = []
+    def parse_path(self, path):
         components = path.split('/')
         if not components[0]: components = components[1:]
-        for component in components:
-            match = re_param.match(component)
-            if not match:
-                raise ValueError('Invalid path component: %r' % component)
-            i = match.lastindex
-            if i == 1:
-                param = int(match.group(i)) - 1
-                result.append((True, param))
-            elif i == 2:
-                param = match.group(i)
-                result.append((True, param))
-            elif i == 3:
-                result.append((True, '*'))
-            elif i == 4:
-                result.append((False, match.group(i).replace('$$', '$')))
-            else: assert False
+        return map(self.parse_component, components)
+    def parse_query(self, query):
+        params = query.split('&')
+        result = []
+        for param in params:
+            if '=' not in param: name, value = param, ''
+            else: name, value = param.split('=', 1)
+            is_param, x = self.parse_component(value)
+            result.append((name, is_param, x))
         return result
-    @staticmethod
-    def adjust_path(parsed_path, func):
-        names, argsname, keyargsname, defaults = func.argspec
-        names = list(names)
-        args, keyargs = set(), set()
-        param_names = set()
-        for i, (is_param, x) in enumerate(parsed_path):
-            if not is_param: continue
-            if isinstance(x, int):
-                if x < 0 or x >= len(names) and argsname is None:
-                    raise TypeError('Invalid parameter index: %d' % (x+1))
-                if x in args:
-                    raise TypeError('Parameter index %d already in use' % (x+1))
-                args.add(x)
-            elif isinstance(x, basestring):
-                if x == '*':
-                    pass
-                else:
-                    try: j = names.index(x)
-                    except ValueError:
-                        if keyargsname is None or x in keyargs:
-                            raise TypeError('Invalid parameter name: %s' % x)
-                        keyargs.add(x)
-                    else:
-                        if j in args: raise TypeError(
-                            'Parameter name %s already in use' % x)
-                        args.add(j)
-                        parsed_path[i] = (True, j)
-            else: assert False
+    def parse_component(self, component):
+        match = re_component.match(component)
+        if not match: raise ValueError('Invalid url component: %r' % component)
+        i = match.lastindex
+        if i == 1: return True, self.adjust(int(match.group(i)) - 1)
+        elif i == 2: return True, self.adjust(match.group(i))
+        elif i == 3: return False, match.group(i).replace('$$', '$')
+        else: assert False
+    def adjust(self, x):
+        names, argsname, keyargsname, defaults = self.func.argspec
+        args, keyargs = self.args, self.keyargs
+        if isinstance(x, int):
+            if x < 0 or x >= len(names) and argsname is None:
+                raise TypeError('Invalid parameter index: %d' % (x+1))
+            if x in args:
+                raise TypeError('Parameter index %d already in use' % (x+1))
+            args.add(x)
+            return x
+        elif isinstance(x, basestring):
+            try: i = names.index(x)
+            except ValueError:
+                if keyargsname is None or x in keyargs:
+                    raise TypeError('Invalid parameter name: %s' % x)
+                keyargs.add(x)
+                return x
+            else:
+                if i in args: raise TypeError(
+                    'Parameter name %s already in use' % x)
+                args.add(i)
+                return i
+        assert False
+    def check(self):
+        names, argsname, keyargsname, defaults = self.func.argspec
+        args, keyargs = self.args, self.keyargs
         for i, name in enumerate(names[:len(names)-len(defaults)]):
             if i not in args:
                 raise TypeError('Undefined path parameter: %s' % name)
@@ -128,9 +121,9 @@ class HttpInfo(object):
             for i in range(len(names), max(args)):
                 if i not in args:
                     raise TypeError('Undefined path parameter: %d' % (i+1))
-    def register(self, parsed_path):
+    def register(self):
         dict, list = self.registry
-        for is_param, x in parsed_path:
+        for is_param, x in self.parsed_path:
             if is_param: dict, list = dict.setdefault(None, ({}, []))
             else: dict, list = dict.setdefault(x, ({}, []))
         list.append(self)
@@ -143,49 +136,87 @@ def url(func, *args, **keyargs):
         raise ValueError('Cannot create url for this object :%s' % func)
     for info in http_list:
         try:
-            path = build_path(info.parsed_path, func, args, keyargs)
+            url = build_url(info, func, args, keyargs)
         except PathError: pass
         else: break
     else:
         raise PathError('Suitable url path for %s() not found' % func.__name__)
-    return '/%s%s' % (path, (info.ext + [''])[0])
+    return url
 
-def build_path(parsed_path, func, args, keyargs):
-    try:
-        keyparams = func.dummy_func(*args, **keyargs).copy()
+def build_url(info, func, args, keyargs):
+    try: keyparams = func.dummy_func(*args, **keyargs).copy()
     except TypeError, e:
         raise TypeError(e.args[0].replace('<lambda>', func.__name__))
-    indexparams = map(keyparams.pop, func.argspec[0])
-    indexparams.extend(keyparams.pop(func.argspec[1], ()))
-    keyparams.update(keyparams.pop(func.argspec[2], {}))
-    result = []
-    used = set()
-    for is_param, x in parsed_path:
-        if not is_param:
-            result.append(x)
-            continue
-        elif isinstance(x, basestring):
+    names, argsname, keyargsname, defaults = func.argspec
+    indexparams = map(keyparams.pop, names)
+    indexparams.extend(keyparams.pop(argsname, ()))
+    for i, value in enumerate(indexparams):
+        if value is not None and not isinstance(value, unicode):
+            indexparams[i] = unicode(value)
+    keyparams.update(keyparams.pop(keyargsname, {}))
+    for key, value in keyparams.items():
+        if value is not None and not isinstance(value, unicode):
+            keyparams[key] = unicode(value)
+    path = []
+    used_indexparams = set()
+    used_keyparams = set()
+
+    def build_param(x):
+        if isinstance(x, basestring):
             try: value = keyparams[x]
             except KeyError: assert False, 'Parameter not found: %s' % x
-            used.add(x)
+            used_keyparams.add(x)
         elif isinstance(x, int):
             value = indexparams[x]
-            used.add(x)
+            used_indexparams.add(x)
         else: assert False
         if value is None: raise PathError('Value for parameter %s is None' % x)
-        if not isinstance(value, unicode): value = unicode(value)
-        result.append(value)
-    not_none_params = set(key for (key, value) in keyparams.iteritems()
-                              if value is not None)
-    not_none_indexes = set(i for i, value in enumerate(indexparams)
-                             if value is not None)
-    if used.issuperset(not_none_params) and used.issuperset(not_none_indexes):
-        return u'/'.join(result)
-    raise PathError('Not all parameters were used in path construction')
+        return value
 
-def get_http_handlers(urlpath):
-    path, ext = os.path.splitext(urlpath)
-    components = path.split('/')
+    for is_param, x in info.parsed_path:
+        if is_param: x = build_param(x)
+        path.append(x)
+    path = u'/'.join(path)
+
+    query = []
+    for name, is_param, x in info.parsed_query:
+        if is_param: x = build_param(x)
+        query.append('%s=%s' % (name, x))
+    query = u'&'.join(query)
+
+    offset = len(names) - len(defaults)
+    errmsg = 'Not all parameters were used in path construction'
+    if len(used_keyparams) != len(keyparams):
+        raise PathError(errmsg)
+    if len(used_indexparams) != len(indexparams):
+        for i, value in enumerate(indexparams):
+            if (i not in used_indexparams
+                and value != defaults[i-offset]):
+                    raise PathError(errmsg)
+
+    ext = (info.ext + [''])[0]
+    if not query: return '/%s%s' % (path, ext)
+    else: return '/%s%s?%s' % (path, ext, query)
+
+link_template = Html('<a href="%s">%s</a>')
+
+def link(*args, **keyargs):
+    description = None
+    if isinstance(args[0], basestring):
+        description = args[0]
+        func = args[1]
+        args = args[2:]
+    else:
+        func = args[0]
+        args = args[1:]
+        if func.__doc__ is None: description = func.__name__
+        else: description = Html(func.__doc__.split('\n', 1)[0])
+    href = url(func, *args, **keyargs)
+    return link_template % (href, description)
+
+def get_http_handlers(url):
+    url, ext = os.path.splitext(url)
+    components = url.split('/')
     if not components[0]: components = components[1:]
     result = []
     triples = [ HttpInfo.registry + ({},) ]
@@ -227,16 +258,72 @@ def get_http_handlers(urlpath):
 class HttpException(Exception): pass
 class Http404(HttpException):
     status = '404 Not Found'
-    headers = [ ('Content-Type', 'text/plain') ]
+    headers = {'Content-Type': 'text/plain'}
 
-def invoke(urlpath):
-    handlers = get_http_handlers(urlpath)
-    if not handlers: raise Http404, 'Page not found'
+class HttpRequest(object):
+    def __init__(self, environ):
+        self.environ = environ
+
+class HttpResponse(object):
+    def __init__(self):
+        self.headers = {}
+
+class Local(threading.local):
+    def __init__(self):
+        self.request = HttpRequest({})
+        self.response = HttpResponse()
+
+local = Local()        
+
+def invoke(url):
+    response = local.response = HttpResponse()
+    handlers = get_http_handlers(url)
+    if not handlers:
+        raise Http404, 'Page not found'
     info, args, keyargs = handlers[0]
-    return info.func(*args, **keyargs)
+    result = info.func(*args, **keyargs)
+    response.headers.update(info.params)
+    return result
+
+def format_exc():
+    exc_type, exc_value, traceback = sys.exc_info()
+    traceback = traceback.tb_next.tb_next
+    try:
+        io = cStringIO.StringIO()
+        hook = cgitb.Hook(file=io)
+        hook.handle((exc_type, exc_value, traceback))
+        return io.getvalue()
+    finally:
+        del traceback
+    
+def wsgi_app(environ, start_response):
+    local.request = HttpRequest(environ)
+    url = environ['PATH_INFO']
+    try:
+        result = invoke(url)
+    except HttpException, e:
+        start_response(e.status, e.headers.items())
+        return [ e.args[0] ]
+    except:
+        # start_response('200 OK', [ ('Content-Type', 'text/plain') ])
+        # return [ traceback.format_exc() ]
+        start_response('200 OK', [ ('Content-Type', 'text/html') ])
+        return [ format_exc() ]
+    else:
+        response = local.response
+        charset = response.headers.pop('Charset', 'UTF-8')
+        type = response.headers.pop('Type', 'text/plain')
+        if isinstance(result, Html): type = 'text/html'
+        if isinstance(result, unicode): result = result.encode(charset)
+        response.headers['Content-Type'] = '%s; charset=%s' % (type, charset)
+        # print '---'
+        # for name, value in response.headers.items():
+        #     print '%s: %s' % (name, value)
+        start_response('200 OK', response.headers.items())
+        return [ result ]
 
 def wsgi_test(environ, start_response):
-    from StringIO import StringIO
+    from cStringIO import StringIO
     stdout = StringIO()
     print >>stdout, 'Hello world!'
     print >>stdout
@@ -245,21 +332,6 @@ def wsgi_test(environ, start_response):
         print >>stdout, k,'=',`v`
     start_response('200 OK', [ ('Content-Type', 'text/plain') ])
     return [ stdout.getvalue() ]
-
-def wsgi_app(environ, start_response):
-    urlpath = environ['PATH_INFO']
-    try:
-        result = invoke(urlpath)
-    except HttpException, e:
-        start_response(e.status, e.headers)
-        return [ e.args[0] ]
-    except:
-        start_response('200 OK', [ ('Content-Type', 'text/plain') ])
-        return [ traceback.format_exc() ]
-    else:
-        if isinstance(result, unicode): result = result.encode('utf8')
-        start_response('200 OK', [ ('Content-Type', 'text/plain') ])
-        return [ result ]
 
 def parse_address(address):
     if isinstance(address, basestring):
