@@ -26,6 +26,7 @@ def http(url=None, ext=None, **params):
 def register_http_handler(func, url, ext, params):
     return HttpInfo(func, url, ext, params)
 
+http_registry_lock = threading.Lock()
 http_registry = ({}, [])
 
 class HttpInfo(object):
@@ -57,7 +58,6 @@ class HttpInfo(object):
         self.parsed_query = self.parse_query(query)
         self.check()
         self.register()
-        func.__dict__.setdefault('http', []).insert(0, self)
     @staticmethod
     def getargspec(func):
         original_func = getattr(func, 'original_func', func)
@@ -131,12 +131,17 @@ class HttpInfo(object):
                 if i not in args:
                     raise TypeError('Undefined path parameter: %d' % (i+1))
     def register(self):
-        dict, list = http_registry
-        for is_param, x in self.parsed_path:
-            if is_param: dict, list = dict.setdefault(None, ({}, []))
-            else: dict, list = dict.setdefault(x, ({}, []))
-        list.append(self)
-
+        http_registry_lock.acquire()
+        try:
+            dict, list = http_registry
+            for is_param, x in self.parsed_path:
+                if is_param: dict, list = dict.setdefault(None, ({}, []))
+                else: dict, list = dict.setdefault(x, ({}, []))
+            self.list = list
+            self.func.__dict__.setdefault('http', []).insert(0, self)
+            list.append(self)
+        finally: http_registry_lock.release()
+            
 class PathError(Exception): pass
 
 def url(func, *args, **keyargs):
@@ -247,6 +252,8 @@ def get_http_handlers(url):
     components = map(urllib.unquote, path.split('/'))
     if not components[0]: components = components[1:]
 
+    # http_registry_lock.release()
+    # try:
     variants = [ http_registry ]
     for i, component in enumerate(components):
         new_variants = []
@@ -256,6 +263,7 @@ def get_http_handlers(url):
             variant = d.get(None)
             if variant: new_variants.append(variant)
         variants = new_variants
+    # finally: http_registry_lock.release()
 
     result = []
     not_found = object()
@@ -295,6 +303,50 @@ def get_http_handlers(url):
                 result.append((info, arglist, keyargs))
     return result
 
+def invoke(url):
+    response = local.response = HttpResponse()
+    handlers = get_http_handlers(url)
+    if not handlers:
+        raise Http404, 'Page not found'
+    info, args, keyargs = handlers[0]
+    for i, value in enumerate(args):
+        if value is not None: args[i] = value.decode('utf8')
+    for key, value in keyargs.items():
+        if value is not None: keyargs[key] = value.decode('utf8')
+    result = info.func(*args, **keyargs)
+    response.headers.update(info.params)
+    return result
+http.invoke = invoke
+
+def http_remove(x):
+    http_registry_lock.acquire()
+    try:
+        if isinstance(x, basestring):
+            for info, _, _ in get_http_handlers(x):
+                info.list.remove(info)
+                info.func.http.remove(info)
+        elif hasattr(x, 'http'):
+            for info in x.http:
+                info.list.remove(info)
+                x.http[:] = []
+        else: raise ValueError('This object is not bound to url: %r' % x)
+    finally: http_registry_lock.release()
+
+http.remove = http_remove
+
+def _http_clear(dict, list):
+    for info in list: info.func.http.remove(info)
+    list[:] = []
+    for dict2, list2 in dict.itervalues(): _http_clear(dict2, list2)
+    dict.clear()
+
+def http_clear():
+    http_registry_lock.acquire()
+    try: _http_clear(*http_registry)
+    finally: http_registry_lock.release()
+
+http.clear = http_clear
+
 class HttpException(Exception): pass
 class Http404(HttpException):
     status = '404 Not Found'
@@ -314,20 +366,6 @@ class Local(threading.local):
         self.response = HttpResponse()
 
 local = Local()        
-
-def invoke(url):
-    response = local.response = HttpResponse()
-    handlers = get_http_handlers(url)
-    if not handlers:
-        raise Http404, 'Page not found'
-    info, args, keyargs = handlers[0]
-    for i, value in enumerate(args):
-        if value is not None: args[i] = value.decode('utf8')
-    for key, value in keyargs.items():
-        if value is not None: keyargs[key] = value.decode('utf8')
-    result = info.func(*args, **keyargs)
-    response.headers.update(info.params)
-    return result
 
 def format_exc():
     exc_type, exc_value, traceback = sys.exc_info()
