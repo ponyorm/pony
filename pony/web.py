@@ -29,6 +29,13 @@ def register_http_handler(func, url, ext, params):
 class HttpInfo(object):
     registry = ({}, [])
     def __init__(self, func, url, ext, params):
+        if isinstance(url, unicode): url = url.encode('utf8')
+        elif isinstance(url, str):
+            try: url.decode('ascii')
+            except UnicodeDecodeError: raise ValueError(
+                'Url string contains non-ascii symbols. '
+                'Such urls must be in unicode.')
+        else: raise ValueError('Url parameter must be str or unicode')
         self.func = func
         self.url = url
         self.ext = []
@@ -57,9 +64,12 @@ class HttpInfo(object):
         names = list(names)
         if defaults is None: new_defaults = []
         else: new_defaults = list(defaults)
-        for i, value in enumerate(new_defaults):
-            if value is not None and not isinstance(value, unicode):
-                new_defaults[i] = unicode(value)
+        try:
+            for i, value in enumerate(new_defaults):
+                if value is not None: new_defaults[i] = unicode(value).encode('utf8')
+        except UnicodeDecodeError:
+            raise ValueError('Default value contains non-ascii symbols. '
+                             'Such default values must be in unicode.')
         return names, argsname, keyargsname, new_defaults
     @staticmethod
     def create_dummy_func(func):
@@ -69,14 +79,12 @@ class HttpInfo(object):
     def parse_path(self, path):
         components = path.split('/')
         if not components[0]: components = components[1:]
-        return map(self.parse_component, components)
+        return map(self.parse_component, map(urllib.unquote, components))
     def parse_query(self, query):
         if query is None: return []
-        params = query.split('&')
+        params = cgi.parse_qsl(query, strict_parsing=True, keep_blank_values=True)
         result = []
-        for param in params:
-            if '=' in param: name, value = param.split('=', 1)
-            else: name, value = param, ''
+        for name, value in params:
             is_param, x = self.parse_component(value)
             result.append((name, is_param, x))
         return result
@@ -150,13 +158,15 @@ def build_url(info, func, args, keyargs):
     names, argsname, keyargsname, defaults = func.argspec
     indexparams = map(keyparams.pop, names)
     indexparams.extend(keyparams.pop(argsname, ()))
-    for i, value in enumerate(indexparams):
-        if value is not None and not isinstance(value, unicode):
-            indexparams[i] = unicode(value)
     keyparams.update(keyparams.pop(keyargsname, {}))
-    for key, value in keyparams.items():
-        if value is not None and not isinstance(value, unicode):
-            keyparams[key] = unicode(value)
+    try:
+        for i, value in enumerate(indexparams):
+            if value is not None: indexparams[i] = unicode(value).encode('utf8')
+        for key, value in keyparams.items():
+            if value is not None: keyparams[key] = unicode(value).encode('utf8')
+    except UnicodeDecodeError:
+        raise ValueError('Url parameter value contains non-ascii symbols. '
+                         'Such values must be in unicode.')
     path = []
     used_indexparams = set()
     used_keyparams = set()
@@ -168,20 +178,20 @@ def build_url(info, func, args, keyargs):
             used_indexparams.add(x)
             is_default = offset <= x < len(names) and defaults[x - offset] == value
             return is_default, value
-        if isinstance(x, basestring):
+        elif isinstance(x, basestring):
             try: value = keyparams[x]
             except KeyError: assert False, 'Parameter not found: %s' % x
             used_keyparams.add(x)
             return False, value
-        assert False
+        else: assert False
 
     for is_param, x in info.parsed_path:
-        if not is_param: path.append(x)
+        if not is_param: component = x
         else:
-            is_default, value = build_param(x)
-            if value is None: raise PathError('Value for parameter %s is None' % x)
-            path.append(value)
-    path = u'/'.join(path)
+            is_default, component = build_param(x)
+            if component is None: raise PathError('Value for parameter %s is None' % x)
+        path.append(urllib.quote(component, safe=':@&=+$,'))
+    path = '/'.join(path)
 
     query = []
     for name, is_param, x in info.parsed_query:
@@ -191,7 +201,9 @@ def build_url(info, func, args, keyargs):
             if not is_default:
                 if value is None: raise PathError('Value for parameter %s is None' % x)
                 query.append((name, value))
-    query = urllib.urlencode(query)
+    quote_plus = urllib.quote_plus
+    query = "&".join(("%s=%s" % (quote_plus(name), quote_plus(value)))
+                     for name, value in query)
 
     errmsg = 'Not all parameters were used during path construction'
     if len(used_keyparams) != len(keyparams):
@@ -203,10 +215,10 @@ def build_url(info, func, args, keyargs):
                     raise PathError(errmsg)
 
     ext = (info.ext + [''])[0]
-    if not query: return u'/%s%s' % (path, ext)
-    else: return u'/%s%s?%s' % (path, ext, query)
+    if not query: return '/%s%s' % (path, ext)
+    else: return '/%s%s?%s' % (path, ext, query)
 
-link_template = Html('<a href="%s">%s</a>')
+link_template = Html(u'<a href="%s">%s</a>')
 
 def link(*args, **keyargs):
     description = None
@@ -222,33 +234,30 @@ def link(*args, **keyargs):
     href = url(func, *args, **keyargs)
     return link_template % (href, description)
 
-def parse_query(query):
-    params = cgi.parse_qs(query)
-    for name, value in params.items():
-        params[name] = value[0]
-    return params
-
 def get_http_handlers(url):
+    if not isinstance(url, str):
+        if isinstance(url, unicode): url = url.encode('utf8')
+        else: raise ValueError('Url must be string')
     if '?' in url:
         path, query = url.split('?', 1)
-        params = parse_query(query)
+        params = dict(reversed(cgi.parse_qsl(query)))
     else: path, params = url, {}
     path, ext = os.path.splitext(path)
-    components = path.split('/')
+    components = map(urllib.unquote, path.split('/'))
     if not components[0]: components = components[1:]
     result = []
     pairs = [ HttpInfo.registry ]
     for i, component in enumerate(components):
         new_pairs = []
-        for dict, list in pairs:
-            pair = dict.get(component)
+        for d, list in pairs:
+            pair = d.get(component)
             if pair: new_pairs.append(pair)
-            pair = dict.get(None)
+            pair = d.get(None)
             if pair: new_pairs.append(pair)
         pairs = new_pairs
     result = []
     not_found = object()
-    for dict, list in pairs:
+    for _, list in pairs:
         for info in list:
             if ext not in info.ext: continue
             args, keyargs = {}, {}
@@ -310,6 +319,10 @@ def invoke(url):
     if not handlers:
         raise Http404, 'Page not found'
     info, args, keyargs = handlers[0]
+    for i, value in enumerate(args):
+        if value is not None: args[i] = value.decode('utf8')
+    for key, value in keyargs.items():
+        if value is not None: keyargs[key] = value.decode('utf8')
     result = info.func(*args, **keyargs)
     response.headers.update(info.params)
     return result

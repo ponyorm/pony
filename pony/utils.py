@@ -3,6 +3,21 @@ from operator import itemgetter
 from inspect import isfunction
 from os import urandom
 from re import compile
+from codecs import BOM_UTF8, BOM_LE, BOM_BE
+from locale import getpreferredencoding
+
+def read_text_file(fname, encoding=None):
+    f = file(fname)
+    text = f.read()
+    f.close;
+    for bom, enc in [ (BOM_UTF8, 'utf8'),
+                      (BOM_LE, 'utf-16le'),
+                      (BOM_BE, 'utf-16be')]:
+        if text[:len(bom)] == bom:
+            return text[len(bom):].decode(enc)
+    try: return text.decode('utf8')
+    except UnicodeDecodeError:
+        return text.decode(encoding or getpreferredencoding())
 
 def copy_func_attrs(new_func, old_func):
     new_func.__name__ = old_func.__name__

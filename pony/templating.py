@@ -1,6 +1,7 @@
 import sys, os.path, threading, inspect, re, weakref, textwrap
 
-from utils import is_ident, decorator, decorator_with_params
+from utils import (read_text_file, is_ident,
+                   decorator, decorator_with_params)
 
 try: real_stdout
 except: real_stdout = sys.stdout
@@ -584,14 +585,6 @@ class BoundMarkup(object):
     def __call__(self):
         return self.markup.eval(globals, locals)
 
-def compile_text_template(source):
-    tree = parse_markup(source)[0]
-    return Markup(source, tree)
-
-def compile_html_template(source):
-    tree = parse_markup(source)[0]
-    return Markup(Html(source), tree)
-
 codename_cache = {}
 
 def get_class_name(frame):
@@ -641,6 +634,14 @@ def get_template_name(frame):
     finally:
         frame = None
 
+def compile_text_template(source):
+    tree = parse_markup(source)[0]
+    return Markup(source, tree)
+
+def compile_html_template(source):
+    tree = parse_markup(source)[0]
+    return Markup(Html(source), tree)
+
 template_cache = {}
 
 def _template(str_cls,
@@ -652,15 +653,14 @@ def _template(str_cls,
     if not text:
         if not filename:
             filename = get_template_name(sys._getframe(2)) + '.template'
-        f = file(filename)
-        text = f.read()
-        f.close()
-    elif not keep_indent:
-        text = textwrap.dedent(text)
+        text = read_text_file(filename)
+    else:
+        if not isinstance(text, unicode): text = unicode(text, source_encoding)
+        if not keep_indent: text = textwrap.dedent(text)
     markup = template_cache.get(text)
     if not markup:
         tree = parse_markup(text)[0]
-        markup = Markup(str_cls(text, source_encoding), tree)
+        markup = Markup(str_cls(text), tree)
         template_cache[text] = markup
     if globals is None and locals is None:
         globals = sys._getframe(2).f_globals
