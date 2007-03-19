@@ -39,14 +39,16 @@ def quote(x):
     if isinstance(x, (int, long, float, Html)): return x
     if not isinstance(x, basestring): x = unicode(x)
     return Html(x.replace('&', '&amp;').replace('<', '&lt;')
-                  .replace('>', '&gt;').replace('"', '&quot;'))
+                  .replace('>', '&gt;').replace('"', '&quot;')
+                  .replace("'", '&#39;'))
 
 def _wrap(x):
     if isinstance(x, basestring):
         if isinstance(x, Html): result = UnicodeWrapper(x)
         else:
             quoted = (x.replace('&', '&amp;').replace('<', '&lt;')
-                       .replace('>', '&gt;').replace('"', '&quot;'))
+                       .replace('>', '&gt;').replace('"', '&quot;')
+                       .replace("'", '&#39;'))
             if isinstance(x, str): result = StrWrapper(quoted)
             else: result = UnicodeWrapper(quoted)
         result.original_value = x
