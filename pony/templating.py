@@ -485,10 +485,10 @@ class ForElement(SyntaxElement):
         self.end = item[1]
         self.else_ = Markup(self.text, item[4][0])
     def eval(self, globals, locals=None):
-        NOT_EXISTS = object()
+        not_found = object()
         old_values = []
         for name in self.var_names:
-            old_values.append(locals.get(name, NOT_EXISTS))
+            old_values.append(locals.get(name, not_found))
         result = []
         list = eval(self.code, globals, locals)
         if not list:
@@ -501,7 +501,7 @@ class ForElement(SyntaxElement):
                 locals[name] = value
                 result.append(self.markup.eval(globals, locals))
         for name, old_value in zip(self.var_names, old_values):
-            if old_value is NOT_EXISTS: del locals[name]
+            if old_value is not_found: del locals[name]
             else: locals[name] = old_value
         return self.empty.join(result)
 
