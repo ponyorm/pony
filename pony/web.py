@@ -26,8 +26,9 @@ def http(url=None, ext=None, **params):
 def register_http_handler(func, url, ext, params):
     return HttpInfo(func, url, ext, params)
 
+http_registry = ({}, [])
+
 class HttpInfo(object):
-    registry = ({}, [])
     def __init__(self, func, url, ext, params):
         if isinstance(url, unicode): url = url.encode('utf8')
         elif isinstance(url, str):
@@ -130,7 +131,7 @@ class HttpInfo(object):
                 if i not in args:
                     raise TypeError('Undefined path parameter: %d' % (i+1))
     def register(self):
-        dict, list = self.registry
+        dict, list = http_registry
         for is_param, x in self.parsed_path:
             if is_param: dict, list = dict.setdefault(None, ({}, []))
             else: dict, list = dict.setdefault(x, ({}, []))
@@ -245,19 +246,20 @@ def get_http_handlers(url):
     path, ext = os.path.splitext(path)
     components = map(urllib.unquote, path.split('/'))
     if not components[0]: components = components[1:]
-    result = []
-    pairs = [ HttpInfo.registry ]
+
+    variants = [ http_registry ]
     for i, component in enumerate(components):
-        new_pairs = []
-        for d, list in pairs:
-            pair = d.get(component)
-            if pair: new_pairs.append(pair)
-            pair = d.get(None)
-            if pair: new_pairs.append(pair)
-        pairs = new_pairs
+        new_variants = []
+        for d, list in variants:
+            variant = d.get(component)
+            if variant: new_variants.append(variant)
+            variant = d.get(None)
+            if variant: new_variants.append(variant)
+        variants = new_variants
+
     result = []
     not_found = object()
-    for _, list in pairs:
+    for _, list in variants:
         for info in list:
             if ext not in info.ext: continue
             args, keyargs = {}, {}
