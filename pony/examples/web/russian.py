@@ -39,7 +39,7 @@ def form_page(name=None):
 @http
 def cp1251():
     u"Шаблон сохранен в кодировке cp1251"
-    return html()
+    return html(encoding='cp1251')
 
 @http
 def utf8():
