@@ -646,14 +646,14 @@ template_cache = {}
 
 def _template(str_cls,
               text=None, filename=None, globals=None, locals=None,
-              source_encoding='ascii', keep_indent=False):
+              encoding=None, keep_indent=False):
     if text and filename:
         raise TypeError("template() function cannot accept both "
                         "'text' and 'filename' parameters at the same time")
     if not text:
         if not filename:
             filename = get_template_name(sys._getframe(2)) + '.template'
-        text = read_text_file(filename)
+        text = read_text_file(filename, encoding=encoding)
     else:
         if not isinstance(text, unicode): text = unicode(text, source_encoding)
         if not keep_indent: text = textwrap.dedent(text)
@@ -668,9 +668,9 @@ def _template(str_cls,
     return markup.eval(globals, locals)
 
 def template(text=None, filename=None, globals=None, locals=None,
-              source_encoding='ascii', keep_indent=False):
-    return _template(unicode, text, filename, globals, locals, source_encoding)
+              encoding=None, keep_indent=False):
+    return _template(unicode, text, filename, globals, locals, encoding)
 
 def html(text=None, filename=None, globals=None, locals=None,
-             source_encoding='ascii', keep_indent=False):
-    return _template(Html, text, filename, globals, locals, source_encoding)
+             encoding=None, keep_indent=False):
+    return _template(Html, text, filename, globals, locals, encoding)
