@@ -1,5 +1,7 @@
 import re, threading, os.path, inspect, cgi, urllib, sys, cStringIO, cgitb
 
+from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
+
 from pony.utils import decorator_with_params
 from pony.templating import Html
 
@@ -417,6 +419,8 @@ def wsgi_test(environ, start_response):
     start_response('200 OK', [ ('Content-Type', 'text/plain') ])
     return [ stdout.getvalue() ]
 
+wsgi_apps = [('', wsgi_app), ('/test/', wsgi_test)]
+
 def parse_address(address):
     if isinstance(address, basestring):
         if ':' in address:
@@ -427,15 +431,55 @@ def parse_address(address):
     assert len(address) == 2
     return tuple(address)
 
-def start_http_server(address):
+server_threads = {}
+
+class ServerStartException(Exception): pass
+class ServerStopException(Exception): pass
+
+class ServerThread(threading.Thread):
+    def __init__(self, host, port, wsgi_app, verbose=True):
+        server = server_threads.setdefault((host, port), self)
+        if server != self: raise ServerStartException(
+            'HTTP server already started: %s:%s' % (host, port))
+        threading.Thread.__init__(self)
+        self.host = host
+        self.port = port
+        self.verbose = verbose
+        self.server = CherryPyWSGIServer(
+            (host, port), wsgi_apps, server_name=host)
+        self.setDaemon(True)
+    def run(self):
+        if self.verbose:
+            print 'Starting HTTP server at %s:%s' \
+                  % (self.host, self.port)
+        self.server.start()
+        if self.verbose:
+            print 'HTTP server at %s:%s stopped successfully' \
+                  % (self.host, self.port)
+        server_threads.pop((self.host, self.port), None)
+
+def start_http_server(address, main_thread=False):
     host, port = parse_address(address)
-    from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
-    wsgi_apps = [('', wsgi_app), ('/test/', wsgi_test)]
-    server = CherryPyWSGIServer((host, port), wsgi_apps, server_name=host)
-    try:
-        server.start()
-    except KeyboardInterrupt:
-        server.stop()
+    if main_thread:
+        server = CherryPyWSGIServer(
+            (host, port), wsgi_apps, server_name=host)
+        try: server.start()
+        except KeyboardInterrupt: server.stop()
+    else:
+        server_thread = ServerThread(host, port, wsgi_app)
+        server_thread.start()
+
+def stop_http_server(address=None):
+    if address is None:
+        for server_thread in server_threads.values():
+            server_thread.server.stop()
+    else:
+        host, port = parse_address(address)
+        server_thread = server_threads.get((host, port))
+        if server_thread is None: raise ServerStopException(
+            'Cannot stop HTTP server at %s:%s '
+            'because it is not started:' % (host, port))
+        server_thread.server.stop()
 
 run_http_server = start_http_server
     

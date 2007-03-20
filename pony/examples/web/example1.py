@@ -117,4 +117,4 @@ def index():
     print '</ul>'
 
 if __name__ == '__main__':
-    start_http_server('localhost:80')
+    start_http_server('localhost:8080', main_thread=True)
