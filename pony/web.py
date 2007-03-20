@@ -26,38 +26,45 @@ def http(url=None, ext=None, **params):
     return new_decorator
 
 def register_http_handler(func, url, ext, params):
-    return HttpInfo(func, url, ext, params)
+    path, query, ext_list = split_url(url, ext, check=True)
+    return HttpInfo(func, path, query, ext_list, params)
 
 http_registry_lock = threading.Lock()
 http_registry = ({}, [])
 
-class HttpInfo(object):
-    def __init__(self, func, url, ext, params):
-        if isinstance(url, unicode): url = url.encode('utf8')
-        elif isinstance(url, str):
+def split_url(url, ext=None, check=False):
+    if isinstance(url, unicode): url = url.encode('utf8')
+    elif isinstance(url, str):
+        if check:
             try: url.decode('ascii')
             except UnicodeDecodeError: raise ValueError(
                 'Url string contains non-ascii symbols. '
                 'Such urls must be in unicode.')
-        else: raise ValueError('Url parameter must be str or unicode')
+    else: raise ValueError('Url parameter must be str or unicode')
+    if '?' in url: path, query = url.split('?', 1)
+    else: path, query = url, None
+    path, _ext = os.path.splitext(path)
+    ext_list = []
+    if isinstance(ext, basestring): ext_list.append(ext)
+    elif ext is not None: ext_list.extend(ext)
+    if _ext and _ext not in ext_list: ext_list.insert(0, _ext)
+    if not ext_list: ext_list.append('')
+    return path, query, ext_list
+
+class HttpInfo(object):
+    def __init__(self, func, path, query, ext_list, params):
         self.func = func
-        self.url = url
-        self.ext = []
+        self.path = path
+        self.query = query
+        self.ext_list = ext_list
         self.params = params
-        if '?' in url: path, query = url.split('?', 1)
-        else: path, query = url, None
-        path, _ext = os.path.splitext(path)
-        if _ext: self.ext.append(_ext)
-        if isinstance(ext, basestring): self.ext.append(ext)
-        elif ext is not None: self.ext.extend(ext)
-        if not self.ext: self.ext.append('')
         if not hasattr(func, 'argspec'):
             func.argspec = self.getargspec(func)
             func.dummy_func = self.create_dummy_func(func)
         self.args = set()
         self.keyargs = set()
-        self.parsed_path = self.parse_path(path)
-        self.parsed_query = self.parse_query(query)
+        self.parsed_path = self.parse_path()
+        self.parsed_query = self.parse_query()
         self.check()
         self.register()
     @staticmethod
@@ -79,13 +86,13 @@ class HttpInfo(object):
         spec = inspect.formatargspec(*func.argspec)[1:-1]
         source = "lambda %s: __locals__()" % spec
         return eval(source, dict(__locals__=locals))
-    def parse_path(self, path):
-        components = path.split('/')
+    def parse_path(self):
+        components = self.path.split('/')
         if not components[0]: components = components[1:]
         return map(self.parse_component, map(urllib.unquote, components))
-    def parse_query(self, query):
-        if query is None: return []
-        params = cgi.parse_qsl(query, strict_parsing=True, keep_blank_values=True)
+    def parse_query(self):
+        if self.query is None: return []
+        params = cgi.parse_qsl(self.query, strict_parsing=True, keep_blank_values=True)
         result = []
         for name, value in params:
             is_param, x = self.parse_component(value)
@@ -135,6 +142,10 @@ class HttpInfo(object):
     def register(self):
         http_registry_lock.acquire()
         try:
+            for info, _, _ in get_http_handlers(
+                              self.path, self.query, self.ext_list):
+                _http_remove(info, self.ext_list)
+
             dict, list = http_registry
             for is_param, x in self.parsed_path:
                 if is_param: dict, list = dict.setdefault(None, ({}, []))
@@ -222,7 +233,7 @@ def build_url(info, func, args, keyargs):
                 and value != defaults[i-offset]):
                     raise PathError(errmsg)
 
-    ext = (info.ext + [''])[0]
+    ext = info.ext_list[0]
     if not query: return '/%s%s' % (path, ext)
     else: return '/%s%s?%s' % (path, ext, query)
 
@@ -242,17 +253,11 @@ def link(*args, **keyargs):
     href = url(func, *args, **keyargs)
     return link_template % (href, description)
 
-def get_http_handlers(url):
-    if not isinstance(url, str):
-        if isinstance(url, unicode): url = url.encode('utf8')
-        else: raise ValueError('Url must be string')
-    if '?' in url:
-        path, query = url.split('?', 1)
-        params = dict(reversed(cgi.parse_qsl(query)))
-    else: path, params = url, {}
-    path, ext = os.path.splitext(path)
+def get_http_handlers(path, query, ext_list):
     components = map(urllib.unquote, path.split('/'))
     if not components[0]: components = components[1:]
+    if query is None: params = {}
+    else: params = dict(reversed(cgi.parse_qsl(query)))
 
     # http_registry_lock.release()
     # try:
@@ -271,7 +276,9 @@ def get_http_handlers(url):
     not_found = object()
     for _, list in variants:
         for info in list:
-            if ext not in info.ext: continue
+            for ext in ext_list:
+                if ext in info.ext_list: break
+            else: continue
             args, keyargs = {}, {}
             for i, (is_param, x) in enumerate(info.parsed_path):
                 if not is_param: continue
@@ -306,8 +313,9 @@ def get_http_handlers(url):
     return result
 
 def invoke(url):
-    response = local.response = HttpResponse()
-    handlers = get_http_handlers(url)
+    path, query, ext_list = split_url(url)
+    local.response = HttpResponse()
+    handlers = get_http_handlers(path, query, ext_list)
     if not handlers:
         raise Http404, 'Page not found'
     info, args, keyargs = handlers[0]
@@ -316,23 +324,34 @@ def invoke(url):
     for key, value in keyargs.items():
         if value is not None: keyargs[key] = value.decode('utf8')
     result = info.func(*args, **keyargs)
-    response.headers.update(info.params)
+    local.response.headers.update(info.params)
     return result
 http.invoke = invoke
 
-def http_remove(x):
-    http_registry_lock.acquire()
-    try:
-        if isinstance(x, basestring):
-            for info, _, _ in get_http_handlers(x):
-                info.list.remove(info)
-                info.func.http.remove(info)
-        elif hasattr(x, 'http'):
-            for info in x.http:
-                info.list.remove(info)
-                x.http[:] = []
-        else: raise ValueError('This object is not bound to url: %r' % x)
-    finally: http_registry_lock.release()
+def _http_remove(info, ext_list):
+    for ext in ext_list:
+        try: info.ext_list.remove(ext)
+        except ValueError: pass
+    if not info.ext_list:
+        info.list.remove(info)
+        info.func.http.remove(info)
+            
+def http_remove(x, ext=None):
+    if isinstance(x, basestring):
+        path, query, ext_list = split_url(x, ext, check=True)
+        http_registry_lock.acquire()
+        try:
+            for info, _, _ in get_http_handlers(path, query, ext_list):
+                _http_remove(info, ext_list)
+        finally: http_registry_lock.release()
+    elif hasattr(x, 'http'):
+        if ext is None: ext_list = []
+        elif isinstance(x, basestring): ext_list = [ ext ]
+        else: ext_list = list(ext)
+        http_registry_lock.acquire()
+        try: _http_remove(x, ext_list)
+        finally: http_registry_lock.release()
+    else: raise ValueError('This object is not bound to url: %r' % x)
 
 http.remove = http_remove
 
@@ -371,7 +390,8 @@ local = Local()
 
 def format_exc():
     exc_type, exc_value, traceback = sys.exc_info()
-    traceback = traceback.tb_next.tb_next
+    if traceback.tb_next: traceback = traceback.tb_next
+    if traceback.tb_next: traceback = traceback.tb_next
     try:
         io = cStringIO.StringIO()
         hook = cgitb.Hook(file=io)
@@ -401,6 +421,10 @@ def wsgi_app(environ, start_response):
         type = response.headers.pop('Type', 'text/plain')
         if isinstance(result, Html): type = 'text/html'
         if isinstance(result, unicode): result = result.encode(charset)
+        elif not isinstance(result, str):
+            try: result = str(result)
+            except UnicodeEncodeError:
+                result = unicode(result, charset, 'replace')
         response.headers['Content-Type'] = '%s; charset=%s' % (type, charset)
         # print '---'
         # for name, value in response.headers.items():
