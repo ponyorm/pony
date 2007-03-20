@@ -655,7 +655,8 @@ def _template(str_cls,
             filename = get_template_name(sys._getframe(2)) + '.template'
         text = read_text_file(filename, encoding=encoding)
     else:
-        if not isinstance(text, unicode): text = unicode(text, source_encoding)
+        if not isinstance(text, unicode):
+            text = unicode(text, encoding or 'ascii')
         if not keep_indent: text = textwrap.dedent(text)
     markup = template_cache.get(text)
     if not markup:
