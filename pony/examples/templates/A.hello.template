@@ -1,4 +1,0 @@
-$layout("Greeting to " + self.name)
-{
-  <h1>Hello, $self.name.upper!</h1>
-}

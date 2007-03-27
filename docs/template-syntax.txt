@@ -3,6 +3,12 @@ $$
 $//  comment
 $/* comment */
 
+$name
+$a.b.c
+
+$myfunc(a, b, x=1, y=2){ markup1 }{ markup2 }
+$myfunc(a, b, x=1, y=2){ markup1 }{ markup2 };  $// ';' is optional
+
 $if(expr) { text }
 $elif(expr) { text }
 $else { text }
