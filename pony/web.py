@@ -4,6 +4,7 @@ from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
 
 from pony.utils import decorator_with_params
 from pony.templating import Html
+from pony.logging import log, log_exc
 
 re_component = re.compile("""
         [$]
@@ -399,21 +400,50 @@ def format_exc():
         return io.getvalue()
     finally:
         del traceback
-    
+
+def reconstruct_url(environ):
+    url = environ['wsgi.url_scheme']+'://'
+    if environ.get('HTTP_HOST'): url += environ['HTTP_HOST']
+    else:
+        url += environ['SERVER_NAME']
+        if environ['wsgi.url_scheme'] == 'https':
+            if environ['SERVER_PORT'] != '443':
+                url += ':' + environ['SERVER_PORT']
+        elif environ['SERVER_PORT'] != '80':
+            url += ':' + environ['SERVER_PORT']
+
+    url += urllib.quote(environ.get('SCRIPT_NAME',''))
+    url += urllib.quote(environ.get('PATH_INFO',''))
+    if environ.get('QUERY_STRING'):
+        url += '?' + environ['QUERY_STRING']
+    return url
+
+def log_request(environ):
+    headers=dict((key, value) for key, value in environ.items()
+                              if isinstance(key, basestring)
+                              and isinstance(value, basestring))
+    log(type='HTTP:%s' % environ.get('REQUEST_METHOD', '?'),
+        text=reconstruct_url(environ),
+        headers=headers)
+
 def wsgi_app(environ, start_response):
+    def log_response(status, headers):
+        log(type='HTTP:response', text=status, headers=headers)
+        start_response(status, headers)
+
     local.request = HttpRequest(environ)
     url = environ['PATH_INFO']
     query = environ['QUERY_STRING']
     if query: url = '%s?%s' % (url, query)
     try:
+        log_request(environ)
         result = invoke(url)
     except HttpException, e:
-        start_response(e.status, e.headers.items())
+        log_response(e.status, e.headers.items())
         return [ e.args[0] ]
     except:
-        # start_response('200 OK', [ ('Content-Type', 'text/plain') ])
-        # return [ traceback.format_exc() ]
-        start_response('200 OK', [ ('Content-Type', 'text/html') ])
+        log_exc()
+        log_response('200 OK', [ ('Content-Type', 'text/html') ])
         return [ format_exc() ]
     else:
         response = local.response
@@ -426,10 +456,7 @@ def wsgi_app(environ, start_response):
             except UnicodeEncodeError:
                 result = unicode(result, charset, 'replace')
         response.headers['Content-Type'] = '%s; charset=%s' % (type, charset)
-        # print '---'
-        # for name, value in response.headers.items():
-        #     print '%s: %s' % (name, value)
-        start_response('200 OK', response.headers.items())
+        log_response('200 OK', response.headers.items())
         return [ result ]
 
 def wsgi_test(environ, start_response):
@@ -461,25 +488,22 @@ class ServerStartException(Exception): pass
 class ServerStopException(Exception): pass
 
 class ServerThread(threading.Thread):
-    def __init__(self, host, port, wsgi_app, verbose=True):
+    def __init__(self, host, port, wsgi_app):
         server = server_threads.setdefault((host, port), self)
         if server != self: raise ServerStartException(
             'HTTP server already started: %s:%s' % (host, port))
         threading.Thread.__init__(self)
         self.host = host
         self.port = port
-        self.verbose = verbose
         self.server = CherryPyWSGIServer(
             (host, port), wsgi_apps, server_name=host)
         self.setDaemon(False)
     def run(self):
-        if self.verbose:
-            print 'Starting HTTP server at %s:%s' \
-                  % (self.host, self.port)
+        log('HTTP:start', 'Starting HTTP server at %s:%s'
+                           % (self.host, self.port))
         self.server.start()
-        if self.verbose:
-            print 'HTTP server at %s:%s stopped successfully' \
-                  % (self.host, self.port)
+        log('HTTP:start', 'HTTP server at %s:%s stopped successfully'
+                           % (self.host, self.port))
         server_threads.pop((self.host, self.port), None)
 
 def start_http_server(address):
