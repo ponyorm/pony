@@ -471,7 +471,7 @@ class ServerThread(threading.Thread):
         self.verbose = verbose
         self.server = CherryPyWSGIServer(
             (host, port), wsgi_apps, server_name=host)
-        self.setDaemon(True)
+        self.setDaemon(False)
     def run(self):
         if self.verbose:
             print 'Starting HTTP server at %s:%s' \
@@ -482,16 +482,10 @@ class ServerThread(threading.Thread):
                   % (self.host, self.port)
         server_threads.pop((self.host, self.port), None)
 
-def start_http_server(address, main_thread=False):
+def start_http_server(address):
     host, port = parse_address(address)
-    if main_thread:
-        server = CherryPyWSGIServer(
-            (host, port), wsgi_apps, server_name=host)
-        try: server.start()
-        except KeyboardInterrupt: server.stop()
-    else:
-        server_thread = ServerThread(host, port, wsgi_app)
-        server_thread.start()
+    server_thread = ServerThread(host, port, wsgi_app)
+    server_thread.start()
 
 def stop_http_server(address=None):
     if address is None:
