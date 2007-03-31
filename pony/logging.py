@@ -1,7 +1,7 @@
-import re, os, sys, cPickle, traceback, time, datetime
-import thread, threading, Queue
+import re, os, sys, cPickle, traceback, thread, threading, Queue
 from itertools import count
 from pony.thirdparty import sqlite
+from utils import current_timestamp
 
 process_id = os.getpid()
 
@@ -27,7 +27,7 @@ def log(*args, **record):
     if len(args) > 0: record['type'] = args[0]
     if len(args) > 1: record['text'] = args[1]
     if len(args) > 2: assert False
-    record['timestamp'] = datetime.datetime.now().isoformat(' ')
+    record['timestamp'] = current_timestamp()
     record['process_id'] = process_id
     record['thread_id'] = local.thread_id
     record['trans_id'] = local.trans_id
@@ -117,21 +117,63 @@ class LoggerThread(threading.Thread):
             for row in self.connnection.execute(sql, params):
                 record = cPickle.loads(str(row[-1]))
                 for i, name in enumerate(sql_columns): record[name] = row[i]
-                timestamp = record['timestamp']
-                time_tuple = time.strptime(timestamp[:19], '%Y-%m-%d %H:%M:%S')
-                time_tuple = time_tuple[:6] + (int(timestamp[20:]),)
-                record['datetime'] = datetime.datetime(*time_tuple)
+                decompress_record(record)
                 result.append(record)
         finally:
             lock.release()
     def save_records(self, records):
         rows = []
         for record in records:
+            compress_record(record)
             row = [ record.pop(name, None) for name in sql_columns ]
             row.append(buffer(cPickle.dumps(record, 2)))
             rows.append(row)
         self.connnection.executemany(sql_insert, rows)
         self.connnection.commit()
+
+hdr_list = '''
+ACTUAL_SERVER_PROTOCOL
+AUTH_TYPE
+HTTP_ACCEPT
+HTTP_ACCEPT_CHARSET
+HTTP_ACCEPT_ENCODING
+HTTP_ACCEPT_LANGUAGE
+HTTP_CONNECTION
+HTTP_COOKIE
+HTTP_HOST
+HTTP_KEEP_ALIVE
+HTTP_USER_AGENT
+PATH_INFO
+QUERY_STRING
+REMOTE_ADDR
+REMOTE_PORT
+REQUEST_METHOD
+SCRIPT_NAME
+SERVER_NAME
+SERVER_PORT
+SERVER_PROTOCOL
+SERVER_SOFTWARE
+wsgi.url_scheme
+'''.split()
+
+hdr_dict1 = dict((header, i) for i, header in enumerate(hdr_list))
+hdr_dict2 = dict(enumerate(hdr_list))
+
+def compress_record(record):
+    type = record['type']
+    if type.startswith('HTTP:') and type[5].isupper():
+        get = hdr_dict1.get
+        headers = dict((get(header, header), value)
+                       for (header, value) in record['headers'].items())
+        record['headers'] = headers
+
+def decompress_record(record):
+    type = record['type']
+    if type.startswith('HTTP:') and type[5].isupper():
+        get = hdr_dict2.get
+        headers = dict((get(header, header), value)
+                       for (header, value) in record['headers'].items())
+        record['headers'] = headers
 
 logger_thread = LoggerThread()
 logger_thread.start()

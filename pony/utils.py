@@ -1,10 +1,24 @@
+import re, time, datetime
+
 from itertools import imap, ifilter
 from operator import itemgetter
 from inspect import isfunction
+from time import strptime
+from datetime import datetime
 from os import urandom
-from re import compile
 from codecs import BOM_UTF8, BOM_LE, BOM_BE
 from locale import getpreferredencoding
+
+def current_timestamp():
+    return datetime.now().isoformat(' ')
+
+def datetime2timestamp(d):
+    return d.isoformat(' ')
+
+def timestamp2datetime(t):
+    time_tuple = strptime(t[:19], '%Y-%m-%d %H:%M:%S')
+    microseconds = int((t[20:26] + '000000')[:6])
+    return datetime(*(time_tuple[:6] + (microseconds,)))
 
 def read_text_file(fname, encoding=None):
     f = file(fname)
@@ -64,7 +78,7 @@ def decorator_with_params(old_dec):
 def error_method(*args, **kwargs):
     raise TypeError
 
-ident_re = compile(r'[A-Za-z_]\w*')
+ident_re = re.compile(r'[A-Za-z_]\w*')
 
 # is_ident = ident_re.match
 def is_ident(string):
