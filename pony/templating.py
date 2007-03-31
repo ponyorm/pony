@@ -644,15 +644,16 @@ def compile_html_template(source):
 
 template_cache = {}
 
-def _template(str_cls,
-              text=None, filename=None, globals=None, locals=None,
+def _template(str_cls, default_ext,
+              text=None, filename=None,
+              globals=None, locals=None,
               encoding=None, keep_indent=False):
     if text and filename:
-        raise TypeError("template() function cannot accept both "
+        raise TypeError("template function cannot accept both "
                         "'text' and 'filename' parameters at the same time")
     if not text:
         if not filename:
-            filename = get_template_name(sys._getframe(2)) + '.template'
+            filename = get_template_name(sys._getframe(2)) + default_ext
         text = read_text_file(filename, encoding=encoding)
     else:
         if not isinstance(text, unicode):
@@ -668,10 +669,8 @@ def _template(str_cls,
         locals = sys._getframe(2).f_locals
     return markup.eval(globals, locals)
 
-def template(text=None, filename=None, globals=None, locals=None,
-              encoding=None, keep_indent=False):
-    return _template(unicode, text, filename, globals, locals, encoding)
+def template(*args, **keyargs):
+    return _template(unicode, '.txt', *args, **keyargs)
 
-def html(text=None, filename=None, globals=None, locals=None,
-             encoding=None, keep_indent=False):
-    return _template(Html, text, filename, globals, locals, encoding)
+def html(*args, **keyargs):
+    return _template(Html, '.html', *args, **keyargs)
