@@ -34,6 +34,7 @@ def read_text_file(fname, encoding=None):
         return text.decode(encoding or getpreferredencoding())
 
 def copy_func_attrs(new_func, old_func):
+    if new_func is old_func: return
     new_func.__name__ = old_func.__name__
     new_func.__doc__ = old_func.__doc__
     new_func.__module__ = old_func.__module__

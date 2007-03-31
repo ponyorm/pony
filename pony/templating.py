@@ -144,6 +144,11 @@ def printhtml(source_encoding='ascii'):
 
 ################################################################################
 
+@decorator
+def lazy(old_func):
+    old_func.lazy = True
+    return old_func
+
 def err(text, end, length=30):
     start = end - length
     if start > 0: return text[start:end]
@@ -324,7 +329,7 @@ class SyntaxElement(object):
             if not expr: raise ParseError(
                 "'%s' statement must contain expression" % cmd_name,
                 self.text, end_of_expr)
-        elif cmd_name in ('else', 'separator'):
+        elif cmd_name in ('else', 'sep', 'separator'):
             if expr is not None: raise ParseError(
                 "'%s' statement must not contains expression" % cmd_name,
                 self.text, end_of_expr)
@@ -352,7 +357,7 @@ class Markup(SyntaxElement):
                 prev = self.content and self.content[-1] or None
                 if self.content: prev = self.content[-1]
                 cmd_name = item[2]
-                if cmd_name in ('elif', 'else', 'separator'):
+                if cmd_name in ('elif', 'else', 'sep', 'separator'):
                     if isinstance(prev, basestring) and prev.isspace():
                         self.content.pop()
                         prev = self.content and self.content[-1] or None
@@ -371,7 +376,7 @@ class Markup(SyntaxElement):
                     prev.append_else(item)
                 elif cmd_name == 'for':
                     self.content.append(ForElement(text, item))
-                elif cmd_name == 'separator':
+                elif cmd_name in ('sep', 'separator'):
                     if not isinstance(prev, ForElement):
                         self._raise_unexpected_statement(item)
                     prev.append_separator(item)
@@ -486,9 +491,11 @@ class ForElement(SyntaxElement):
         self.end = item[1]
         self.else_ = Markup(self.text, item[4][0])
     def eval(self, globals, locals=None):
+        if locals is None: locals = {}
         not_found = object()
         old_values = []
-        for name in self.var_names:
+        var_names = self.var_names + [ 'for' ]
+        for name in var_names:
             old_values.append(locals.get(name, not_found))
         result = []
         list = eval(self.code, globals, locals)
@@ -496,11 +503,11 @@ class ForElement(SyntaxElement):
             if self.else_: return self.else_.eval(globals, locals)
             return ''
         for i, item in enumerate(list):
-            for name, value in zip(self.var_names, item):
-                if i and self.separator:
-                    result.append(self.separator.eval(globals, locals))
-                locals[name] = value
-                result.append(self.markup.eval(globals, locals))
+            if i and self.separator:
+                result.append(self.separator.eval(globals, locals))
+            for name, value in zip(self.var_names, item): locals[name] = value
+            locals['for'] = i, len(list)
+            result.append(self.markup.eval(globals, locals))
         for name, old_value in zip(self.var_names, old_values):
             if old_value is not_found: del locals[name]
             else: locals[name] = old_value
@@ -553,6 +560,7 @@ class FunctionElement(SyntaxElement):
         self.text = text
         (self.start, self.end, self.expr, self.params,
                             markup_args, markup_keyargs) = item
+        self.params = self.params or ''
         self.markup_args = [ Markup(text, item) for item in markup_args ]
         self.markup_keyargs = [ (key, Markup(text, item))
                                 for (key, item) in markup_keyargs ]
@@ -583,8 +591,55 @@ class BoundMarkup(object):
         self.globals = globals
         self.locals = locals
     def __call__(self):
-        return self.markup.eval(globals, locals)
+        return self.markup.eval(self.globals, self.locals)
 
+def _row_check(args):
+    for arg in args:
+        if not isinstance(arg, BoundMarkup):
+            raise TypeError('Incorrect type of argument: %s' % str(type(arg)))
+    locals = args[-1].locals
+    if locals is None or 'for' not in locals: raise TypeError(
+        '$row() function may only be called inside a $for loop')
+    return locals['for']
+
+@lazy
+def row(*args):
+    if len(args) < 2: raise TypeError(
+        '$row() function takes at least 2 arguments (%d given)' % len(args))
+    if isinstance(args[0], BoundMarkup):
+        current, total = _row_check(args[1:])
+        return args[current % len(args)]()
+    elif isinstance(args[0], basestring):
+        if len(args) != 2: raise TypeError('When first argument is string, '
+             '$row() function takes exactly 2 arguments (%d given)' % len(args))
+        current, total = _row_check(args[1:])
+        s, markup = args
+        if s == 'odd': flag = not (current % 2) # rows treated as 1-based!
+        elif s == 'even': flag = (current % 2) # rows treated as 1-based!
+        elif s == 'first': flag = not current
+        elif s == 'not first': flag = current
+        elif s == 'last': flag = (current == total - 1)
+        elif s == 'not last': flag = (current != total - 1)
+        return flag and markup() or ''
+    elif not isinstance(args[0], (int, long)):
+        raise TypeError('First argument of $row() function must be int, '
+                        'string or markup. Got: %s' % str(type(args[0])))
+    elif isinstance(args[1], (int, long)):
+        if len(args) == 2: raise TypeError('Markup expected')
+        if len(args) > 3:
+            raise TypeError('$row() function got too many arguments')
+        current, total = _row_check(args[2:])
+        i, j, markup = args
+        return (current % j == i - 1) and markup() or ''
+    else:
+        if len(args) > 2:
+            raise TypeError('$row() function got too many arguments')
+        current, total = _row_check(args[1:])
+        i, markup = args
+        if i > 0: return (current == i - 1) and markup() or ''
+        elif i < 0: return (i == current - total) and markup() or ''
+        else: raise TypeError('$row first argument cannot be 0')
+    
 codename_cache = {}
 
 def get_class_name(frame):
