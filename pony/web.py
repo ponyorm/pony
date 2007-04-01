@@ -77,7 +77,8 @@ class HttpInfo(object):
         else: new_defaults = list(defaults)
         try:
             for i, value in enumerate(new_defaults):
-                if value is not None: new_defaults[i] = unicode(value).encode('utf8')
+                if value is not None:
+                    new_defaults[i] = unicode(value).encode('utf8')
         except UnicodeDecodeError:
             raise ValueError('Default value contains non-ascii symbols. '
                              'Such default values must be in unicode.')
@@ -93,7 +94,8 @@ class HttpInfo(object):
         return map(self.parse_component, map(urllib.unquote, components))
     def parse_query(self):
         if self.query is None: return []
-        params = cgi.parse_qsl(self.query, strict_parsing=True, keep_blank_values=True)
+        params = cgi.parse_qsl(self.query, strict_parsing=True,
+                                           keep_blank_values=True)
         result = []
         for name, value in params:
             is_param, x = self.parse_component(value)
@@ -196,7 +198,8 @@ def build_url(info, func, args, keyargs):
         if isinstance(x, int):
             value = indexparams[x]
             used_indexparams.add(x)
-            is_default = offset <= x < len(names) and defaults[x - offset] == value
+            is_default = (offset <= x < len(names)
+                          and defaults[x - offset] == value)
             return is_default, value
         elif isinstance(x, basestring):
             try: value = keyparams[x]
@@ -209,7 +212,8 @@ def build_url(info, func, args, keyargs):
         if not is_param: component = x
         else:
             is_default, component = build_param(x)
-            if component is None: raise PathError('Value for parameter %s is None' % x)
+            if component is None:
+                raise PathError('Value for parameter %s is None' % x)
         path.append(urllib.quote(component, safe=':@&=+$,'))
     path = '/'.join(path)
 
@@ -219,7 +223,8 @@ def build_url(info, func, args, keyargs):
         else:
             is_default, value = build_param(x)
             if not is_default:
-                if value is None: raise PathError('Value for parameter %s is None' % x)
+                if value is None:
+                    raise PathError('Value for parameter %s is None' % x)
                 query.append((name, value))
     quote_plus = urllib.quote_plus
     query = "&".join(("%s=%s" % (quote_plus(name), quote_plus(value)))

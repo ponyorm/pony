@@ -29,7 +29,8 @@ def page4():
     print '<head><title>Page 3</title></head>'
     print '<body>'
     print '<h1>Hello again!</h1>'
-    print '<p>Demonstration of <code><strong>@printhtml</strong></code> decorator'
+    print '<p>Demonstration of'
+    print '<code><strong>@printhtml</strong></code> decorator'
     print '<p>click <a href="/">here</a> for return'
     print '</body>'
     print '</html>'
@@ -73,7 +74,8 @@ def page6(year, month=None, lang='en'):
     print '<li>Year: <strong>%s</strong>' % year
     print '<li>Month: <strong>%s</strong>' % (month or 'Not given')
     print '<p><a href="%s">Go to year 2003</a></p>' % url(page6, '2003')
-    print '<p><a href="%s">Go to French 2005-11</a></p>' % url(page6, 2005, 11, 'fr')
+    print ('<p><a href="%s">Go to French 2005-11</a></p>'
+           % url(page6, 2005, 11, 'fr'))
     print '<p>%s</p>' % link('Go to English 2004-10', page6, 2004, 10)
     print footer()
 

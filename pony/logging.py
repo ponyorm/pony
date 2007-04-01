@@ -77,7 +77,7 @@ create table if not exists log (
     thread_id    integer  not null,
     trans_id     integer,             -- reserved for future use; must be NULL
     user         text,                -- current user login
-    text         text,                -- may be url, sql query, debug message, etc.
+    text         text,                -- url, sql query, debug message, etc.
     pickle_data  binary               -- all other data in pickled form
     );
 create index if not exists index_log_timestamp on log (timestamp, type);

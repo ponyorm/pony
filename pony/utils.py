@@ -26,7 +26,7 @@ def read_text_file(fname, encoding=None):
     f.close;
     for bom, enc in [ (BOM_UTF8, 'utf8'),
                       (BOM_LE, 'utf-16le'),
-                      (BOM_BE, 'utf-16be')]:
+                      (BOM_BE, 'utf-16be') ]:
         if text[:len(bom)] == bom:
             return text[len(bom):].decode(enc)
     try: return text.decode('utf8')
