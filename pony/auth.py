@@ -1,4 +1,4 @@
-import re, os, time, sha, base64, threading, Queue
+import re, os, sys, time, sha, base64, threading, Queue
 
 from pony.thirdparty import sqlite
 
