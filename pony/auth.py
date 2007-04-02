@@ -27,11 +27,11 @@ def get_user(session_data, ip=None, max_last=20, max_first=24*60):
         shaobject.update(mlast_str)
         shaobject.update(secret)
         if hashcode != shaobject.digest():
-            if not ip: return None
+            if not ip: return False, None, None
             shaobject.update(ip)
-            if hashcode != shaobject.digest(): return None
+            if hashcode != shaobject.digest(): return False, None, None
         else: ip = None
-        if mlast == mcurrent: return session_data
+        if mlast == mcurrent: return True, login, session_data
         return True, login, _make_session(login, mfirst, mcurrent, ip)
     except:
         return False, None, None
