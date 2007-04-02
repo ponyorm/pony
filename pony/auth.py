@@ -12,29 +12,30 @@ def set_user(login, ip=None):
    
 def get_user(session_data, ip=None, max_last=20, max_first=24*60):
     mcurrent = long(time.time()) // 60
+    login = None
     try:
         data = base64.b64decode(session_data)
         login, mfirst_str, mlast_str, hashcode = data.split('\x00', 3)
         mfirst = int(mfirst_str, 16)
         mlast = int(mlast_str, 16)
-        if mfirst < mcurrent - max_first: return False, None, None
-        if mlast < mcurrent - max_last: return False, None, None
-        if mlast > mcurrent + 2: return False, None, None
+        if (mfirst < mcurrent - max_first or
+            mlast < mcurrent - max_last or
+            mlast > mcurrent + 2): return False, login, None
         secret = get_secret(mlast)
-        if secret is None: return False, None, None
+        if secret is None: return False, login, None
         shaobject = sha.new(login)
         shaobject.update(mfirst_str)
         shaobject.update(mlast_str)
         shaobject.update(secret)
         if hashcode != shaobject.digest():
-            if not ip: return False, None, None
+            if not ip: return False, login, None
             shaobject.update(ip)
-            if hashcode != shaobject.digest(): return False, None, None
+            if hashcode != shaobject.digest(): return False, login, None
         else: ip = None
         if mlast == mcurrent: return True, login, session_data
         return True, login, _make_session(login, mfirst, mcurrent, ip)
     except:
-        return False, None, None
+        return False, login, None
     
 def _make_session(login, mfirst, mcurrent, ip=None):
     secret = get_secret(mcurrent)
