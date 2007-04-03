@@ -1,52 +1,51 @@
-import re, os, sys, time, sha, base64, threading, Queue
+import re, os, sys, time, base64, threading, Queue
+
+try: from hashlib import sha256 as hashfunc
+except ImportError:
+    from sha import new as hashfunc
 
 from pony.thirdparty import sqlite
 
-ip_re = re.compile('\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}')
-
-def set_user(login, ip=None):
+def create_session_id(login, user_agent='', ip=''):
     if '\x00' in login: raise ValueError('Login must not contains null bytes')
-    if ip and not ip_re.match(ip): raise ValueError('Ivalid IP value: %s' % ip)
     minute = long(time.time()) // 60
-    return _make_session(login, minute, minute, ip)
+    return _make_session(login, minute, minute, user_agent, ip)
    
-def get_user(session_data, ip=None, max_last=20, max_first=24*60):
+def check_session_id(session_data, user_agent='', ip='',
+                     max_last=3, max_first=24*60):
     mcurrent = long(time.time()) // 60
     login = None
     try:
         data = base64.b64decode(session_data)
-        login, mfirst_str, mlast_str, hashcode = data.split('\x00', 3)
+        login, mfirst_str, mlast_str, hash = data.split('\x00', 3)
         mfirst = int(mfirst_str, 16)
         mlast = int(mlast_str, 16)
         if (mfirst < mcurrent - max_first or
             mlast < mcurrent - max_last or
             mlast > mcurrent + 2): return False, login, None
-        secret = get_secret(mlast)
-        if secret is None: return False, login, None
-        shaobject = sha.new(login)
-        shaobject.update(mfirst_str)
-        shaobject.update(mlast_str)
-        shaobject.update(secret)
-        if hashcode != shaobject.digest():
+        hashobject = get_hashobject(mlast)
+        hashobject.update(login)
+        hashobject.update(mfirst_str)
+        hashobject.update(user_agent)
+        if hash != hashobject.digest():
             if not ip: return False, login, None
-            shaobject.update(ip)
-            if hashcode != shaobject.digest(): return False, login, None
-        else: ip = None
+            hashobject.update(ip)
+            if hash != hashobject.digest(): return False, login, None
+        else: ip = ''
         if mlast == mcurrent: return True, login, session_data
         return True, login, _make_session(login, mfirst, mcurrent, ip)
     except:
         return False, login, None
     
-def _make_session(login, mfirst, mcurrent, ip=None):
-    secret = get_secret(mcurrent)
+def _make_session(login, mfirst, mcurrent, user_agent='', ip=''):
     mfirst_str = '%x' % mfirst
     mcurrent_str = '%x' % mcurrent
-    shaobject = sha.new(login)
-    shaobject.update(mfirst_str)
-    shaobject.update(mcurrent_str)
-    shaobject.update(secret)
-    if ip: shaobject.update(ip)
-    data = '\x00'.join([ login, mfirst_str, mcurrent_str, shaobject.digest() ])
+    hashobject = get_hashobject(mcurrent)
+    hashobject.update(login)
+    hashobject.update(mfirst_str)
+    hashobject.update(user_agent)
+    hashobject.update(ip)
+    data = '\x00'.join([ login, mfirst_str, mcurrent_str, hashobject.digest() ])
     return base64.b64encode(data)
 
 secret_cache = {}
@@ -59,13 +58,13 @@ class Local(threading.local):
 
 local = Local()
 
-def get_secret(minute):
-    secret = secret_cache.get(minute)
-    if secret is None:
+def get_hashobject(minute):
+    hashobject = secret_cache.get(minute)
+    if hashobject is None:
         queue.put((minute, local.lock))
         local.lock.acquire()
-        secret = secret_cache[minute]
-    return secret
+        hashobject = secret_cache[minute]
+    return hashobject.copy()
 
 def get_sessiondb_name():
     main = sys.modules['__main__']
@@ -90,7 +89,7 @@ class AuthThread(threading.Thread):
         con = self.connnection = sqlite.connect(get_sessiondb_name())
         con.executescript(sql_create)
         for minute, secret in con.execute('select * from time_secrets'):
-            secret_cache[minute] = str(secret)
+            secret_cache[minute] = hashfunc(str(secret))
         self.connnection.commit()
         while True:
             x = queue.get()
@@ -113,7 +112,7 @@ class AuthThread(threading.Thread):
             con.execute('insert into time_secrets values(?, ?)',
                         [ minute, buffer(secret) ])
             con.commit()
-            secret_cache[minute] = secret
+            secret_cache[minute] = hashfunc(secret)
             lock.release()
 
 auth_thread = AuthThread()
