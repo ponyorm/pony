@@ -17,14 +17,15 @@ def check_session_id(session_data, user_agent='', ip='',
     login = None
     try:
         data = base64.b64decode(session_data)
-        login, mfirst_str, mlast_str, hash = data.split('\x00', 3)
+        login_str, mfirst_str, mlast_str, hash = data.split('\x00', 3)
+        login = unicode(login_str, 'utf8')
         mfirst = int(mfirst_str, 16)
         mlast = int(mlast_str, 16)
         if (mfirst < mcurrent - max_first or
             mlast < mcurrent - max_last or
             mlast > mcurrent + 2): return False, login, None
         hashobject = get_hashobject(mlast)
-        hashobject.update(login)
+        hashobject.update(login_str)
         hashobject.update(mfirst_str)
         hashobject.update(user_agent)
         if hash != hashobject.digest():
@@ -38,6 +39,8 @@ def check_session_id(session_data, user_agent='', ip='',
         return False, login, None
     
 def _make_session(login, mfirst, mcurrent, user_agent='', ip=''):
+    if isinstance(login, unicode): login = login.encode('utf8')
+    else: login = str(login)
     mfirst_str = '%x' % mfirst
     mcurrent_str = '%x' % mcurrent
     hashobject = get_hashobject(mcurrent)

@@ -1,7 +1,9 @@
-import re, threading, os.path, inspect, cgi, urllib, sys, cStringIO, cgitb
+import re, threading, os.path, inspect, sys, cStringIO
+import cgi, cgitb, urllib, Cookie
 
 from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
 
+from pony.auth import create_session_id, check_session_id
 from pony.utils import decorator_with_params
 from pony.templating import Html
 from pony.logging import log, log_exc
@@ -391,8 +393,18 @@ class Local(threading.local):
     def __init__(self):
         self.request = HttpRequest({})
         self.response = HttpResponse()
+        self.user = None
+        self.session_id = ''
 
 local = Local()        
+
+def get_user():
+    return local.user
+
+def set_user(user):
+    if user != local.user:
+        local.user = user
+        local.session_id = user and create_session_id(user) or ''
 
 def format_exc():
     exc_type, exc_value, traceback = sys.exc_info()
@@ -431,12 +443,38 @@ def log_request(environ):
         text=reconstruct_url(environ),
         headers=headers)
 
-def wsgi_app(environ, start_response):
-    def log_response(status, headers):
+def determine_user(environ):
+    cookie_data = environ.get('HTTP_COOKIE')
+    if cookie_data:
+        c = Cookie.SimpleCookie()
+        c.load(cookie_data)
+        session_id = c.get('sid')
+        if session_id and session_id.value:
+            is_valid, user, new_sid = check_session_id(session_id.value)
+            if is_valid:
+                local.user = user
+                local.session_id = new_sid
+                return
+    local.user = None
+    local.session_id = ''
+
+def create_cookies():
+    c = Cookie.SimpleCookie()
+    c['sid'] = local.session_id
+    morsel = c['sid']
+    morsel['max-age'] = 24*60*60
+    morsel['expires'] = 24*60*60
+    return [ ('Set-Cookie', morsel.OutputString()) ]
+
+def wsgi_app(environ, wsgi_start_response):
+    def start_response(status, headers):
+        headers = headers.items()
+        headers.extend(create_cookies())
         log(type='HTTP:response', text=status, headers=headers)
-        start_response(status, headers)
+        wsgi_start_response(status, headers)
 
     local.request = HttpRequest(environ)
+    determine_user(environ)
     url = environ['PATH_INFO']
     query = environ['QUERY_STRING']
     if query: url = '%s?%s' % (url, query)
@@ -444,11 +482,11 @@ def wsgi_app(environ, start_response):
         log_request(environ)
         result = invoke(url)
     except HttpException, e:
-        log_response(e.status, e.headers.items())
+        start_response(e.status, e.headers)
         return [ e.args[0] ]
     except:
         log_exc()
-        log_response('200 OK', [ ('Content-Type', 'text/html') ])
+        start_response('200 OK', {'Content-Type': 'text/html'})
         return [ format_exc() ]
     else:
         response = local.response
@@ -461,14 +499,12 @@ def wsgi_app(environ, start_response):
             except UnicodeEncodeError:
                 result = unicode(result, charset, 'replace')
         response.headers['Content-Type'] = '%s; charset=%s' % (type, charset)
-        log_response('200 OK', response.headers.items())
+        start_response('200 OK', response.headers)
         return [ result ]
 
 def wsgi_test(environ, start_response):
     from cStringIO import StringIO
     stdout = StringIO()
-    print >>stdout, 'Hello world!'
-    print >>stdout
     h = environ.items(); h.sort()
     for k,v in h:
         print >>stdout, k,'=',`v`

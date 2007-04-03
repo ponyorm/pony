@@ -1,0 +1,11 @@
+<h1>Session demo</h1>
+$if (user)
+{
+  <h2>Hello, $user!</h2>
+  <p>$link("Log out", logout)
+}
+$else
+{
+  <h2>You currently logged out</h2>
+  <p>$link("Log in", login)
+}
