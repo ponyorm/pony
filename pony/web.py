@@ -529,7 +529,7 @@ class ServerStartException(Exception): pass
 class ServerStopException(Exception): pass
 
 class ServerThread(threading.Thread):
-    def __init__(self, host, port, wsgi_app):
+    def __init__(self, host, port, wsgi_app, verbose):
         server = server_threads.setdefault((host, port), self)
         if server != self: raise ServerStartException(
             'HTTP server already started: %s:%s' % (host, port))
@@ -538,18 +538,22 @@ class ServerThread(threading.Thread):
         self.port = port
         self.server = CherryPyWSGIServer(
             (host, port), wsgi_apps, server_name=host)
+        self.verbose = verbose
         self.setDaemon(False)
     def run(self):
-        log('HTTP:start', 'Starting HTTP server at %s:%s'
-                           % (self.host, self.port))
+        msg = 'Starting HTTP server at %s:%s' % (self.host, self.port)
+        log('HTTP:start', msg)
+        if self.verbose: print msg
         self.server.start()
-        log('HTTP:start', 'HTTP server at %s:%s stopped successfully'
-                           % (self.host, self.port))
+        msg = 'HTTP server at %s:%s stopped successfully' \
+              % (self.host, self.port)
+        log('HTTP:start', msg)
+        if self.verbose: print msg
         server_threads.pop((self.host, self.port), None)
 
-def start_http_server(address):
+def start_http_server(address='localhost:8080', verbose=True):
     host, port = parse_address(address)
-    server_thread = ServerThread(host, port, wsgi_app)
+    server_thread = ServerThread(host, port, wsgi_app, verbose=verbose)
     server_thread.start()
 
 def stop_http_server(address=None):
@@ -563,6 +567,4 @@ def stop_http_server(address=None):
             'Cannot stop HTTP server at %s:%s '
             'because it is not started:' % (host, port))
         server_thread.server.stop()
-
-run_http_server = start_http_server
     
