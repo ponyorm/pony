@@ -3,7 +3,7 @@ import cgi, cgitb, urllib, Cookie
 
 from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
 
-from pony.auth import create_session_id, check_session_id
+from pony import auth
 from pony.utils import decorator_with_params
 from pony.templating import Html
 from pony.logging import log, log_exc
@@ -393,18 +393,8 @@ class Local(threading.local):
     def __init__(self):
         self.request = HttpRequest({})
         self.response = HttpResponse()
-        self.user = None
-        self.session_id = ''
 
 local = Local()        
-
-def get_user():
-    return local.user
-
-def set_user(user):
-    if user != local.user:
-        local.user = user
-        local.session_id = user and create_session_id(user) or ''
 
 def format_exc():
     exc_type, exc_value, traceback = sys.exc_info()
@@ -444,24 +434,21 @@ def log_request(environ):
         headers=headers)
 
 def determine_user(environ):
-    cookie_data = environ.get('HTTP_COOKIE')
-    if cookie_data:
+    data = None
+    if 'HTTP_COOKIE' in environ:
         c = Cookie.SimpleCookie()
-        c.load(cookie_data)
-        session_id = c.get('sid')
-        if session_id and session_id.value:
-            is_valid, user, new_sid = check_session_id(session_id.value)
-            if is_valid:
-                local.user = user
-                local.session_id = new_sid
-                return
-    local.user = None
-    local.session_id = ''
+        c.load(environ['HTTP_COOKIE'])
+        morsel = c.get('pony')
+        if morsel: data = morsel.value
+    auth.load(data, environ['REMOTE_ADDR'])
 
-def create_cookies():
+def create_cookies(ip):
+    data = auth.save(ip)
+    if data is None: return []
     c = Cookie.SimpleCookie()
-    c['sid'] = local.session_id
-    morsel = c['sid']
+    c['pony'] = data
+    morsel = c['pony']
+    morsel['path'] = '/'
     morsel['max-age'] = 24*60*60
     morsel['expires'] = 24*60*60
     return [ ('Set-Cookie', morsel.OutputString()) ]
@@ -469,7 +456,7 @@ def create_cookies():
 def wsgi_app(environ, wsgi_start_response):
     def start_response(status, headers):
         headers = headers.items()
-        headers.extend(create_cookies())
+        headers.extend(create_cookies(environ['REMOTE_ADDR']))
         log(type='HTTP:response', text=status, headers=headers)
         wsgi_start_response(status, headers)
 

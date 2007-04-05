@@ -1,4 +1,4 @@
-import re, os, sys, time, base64, threading, Queue
+import re, os, sys, time, base64, threading, Queue, cPickle, Cookie
 
 try: from hashlib import sha256 as hashfunc
 except ImportError:
@@ -6,60 +6,87 @@ except ImportError:
 
 from pony.thirdparty import sqlite
 
-def create_session_id(login, user_agent='', ip=''):
-    if '\x00' in login: raise ValueError('Login must not contains null bytes')
-    minute = long(time.time()) // 60
-    return _make_session(login, minute, minute, user_agent, ip)
-   
-def check_session_id(session_data, user_agent='', ip='',
-                     max_last=3, max_first=24*60):
-    mcurrent = long(time.time()) // 60
-    login = None
-    try:
-        data = base64.b64decode(session_data)
-        login_str, mfirst_str, mlast_str, hash = data.split('\x00', 3)
-        login = unicode(login_str, 'utf8')
-        mfirst = int(mfirst_str, 16)
-        mlast = int(mlast_str, 16)
-        if (mfirst < mcurrent - max_first or
-            mlast < mcurrent - max_last or
-            mlast > mcurrent + 2): return False, login, None
-        hashobject = get_hashobject(mlast)
-        hashobject.update(login_str)
-        hashobject.update(mfirst_str)
-        hashobject.update(user_agent)
-        if hash != hashobject.digest():
-            if not ip: return False, login, None
-            hashobject.update(ip)
-            if hash != hashobject.digest(): return False, login, None
-        else: ip = ''
-        if mlast == mcurrent: return True, login, session_data
-        return True, login, _make_session(login, mfirst, mcurrent, ip)
-    except:
-        return False, login, None
-    
-def _make_session(login, mfirst, mcurrent, user_agent='', ip=''):
-    if isinstance(login, unicode): login = login.encode('utf8')
-    else: login = str(login)
-    mfirst_str = '%x' % mfirst
-    mcurrent_str = '%x' % mcurrent
-    hashobject = get_hashobject(mcurrent)
-    hashobject.update(login)
-    hashobject.update(mfirst_str)
-    hashobject.update(user_agent)
-    hashobject.update(ip)
-    data = '\x00'.join([ login, mfirst_str, mcurrent_str, hashobject.digest() ])
-    return base64.b64encode(data)
+################################################################################
 
-secret_cache = {}
-queue = Queue.Queue()
+def get_user():
+    return local.user
+
+def set_user(user, remember_ip=False):
+    local.set_user(user, remember_ip)
+
+def get_session():
+    return local.session
+
+def load(data, ip=''):
+    local.load(data, ip)
+
+def save(ip=''):
+    return local.save(ip)
+
+################################################################################
+
+max_ctime_diff = 24*60
+max_mtime_diff = 20
+max_mtime_future_diff = 20
 
 class Local(threading.local):
     def __init__(self):
         self.lock = threading.Lock()
         self.lock.acquire()
+        self.old_data = None
+        self.set_user(None)
+    def set_user(self, user, remember_ip=False):
+        self.user = user
+        self.ctime = int(time.time() // 60)
+        self.remember_ip = False
+        self.session = {}
+    def load(self, data, ip=''):
+        self.old_data = data
+        now = int(time.time() // 60)
+        if data in (None, 'None'): self.set_user(None); return
+        try:
+            ctime_str, mtime_str, pickle_str, hash_str = data.split(':')
+            self.ctime = int(ctime_str, 16)
+            mtime = int(mtime_str, 16)
+            if (self.ctime < now - max_ctime_diff
+                  or mtime < now - max_mtime_diff
+                  or mtime > now + max_mtime_future_diff
+                ): self.set_user(None); return
+            pickle_data = base64.b64decode(pickle_str)
+            hash = base64.b64decode(hash_str)
+
+            hashobject = get_hashobject(mtime)
+            hashobject.update(ctime_str)
+            hashobject.update(pickle_data)
+            if hash != hashobject.digest():
+                hashobject.update(ip)
+                if hash != hashobject.digest(): self.set_user(None); return
+                self.remember_ip = True
+            else: self.remember_ip = False
+            self.user, self.session = cPickle.loads(pickle_data)
+        except: self.set_user(None)
+    def save(self, ip=''):
+        ctime = self.ctime
+        mtime = int(time.time() // 60)
+        ctime_str = '%x' % ctime
+        mtime_str = '%x' % mtime
+        if self.user is None: data = 'None'
+        else:
+            pickle_data = cPickle.dumps((self.user, self.session), 2)
+            hashobject = get_hashobject(mtime)
+            hashobject.update(ctime_str)
+            hashobject.update(pickle_data)
+            if self.remember_ip: hash_object.update(ip)
+
+            pickle_str = base64.b64encode(pickle_data)
+            hash_str = base64.b64encode(hashobject.digest())
+            data = ':'.join([ctime_str, mtime_str, pickle_str, hash_str])
+        if data == self.old_data: return None
+        return data
 
 local = Local()
+secret_cache = {}
+queue = Queue.Queue()
 
 def get_hashobject(minute):
     hashobject = secret_cache.get(minute)
@@ -75,10 +102,10 @@ def get_sessiondb_name():
     except AttributeError:  # interactive mode
         return ':memory:'   # in-memory database
     head, tail = os.path.split(script_name)
-    if tail == '__init__.py': return head + '-sessions.sqlite'
+    if tail == '__init__.py': return head + '-secrets.sqlite'
     else:
         root, ext = os.path.splitext(script_name)
-        return root + '-sessions.sqlite'    
+        return root + '-secrets.sqlite'    
 
 sql_create = """
 create table if not exists time_secrets (
