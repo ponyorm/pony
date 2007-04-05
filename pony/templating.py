@@ -405,7 +405,8 @@ class IfElement(SyntaxElement):
         self._check_statement(item)
         end, expr, markup_args = item[1], item[3], item[4]
         self.end = end
-        expr_code = expr is not None and compile(expr, '<?>', 'eval') or None
+        if expr is None: expr_code = None
+        else: expr_code = compile(expr.lstrip(), '<?>', 'eval')
         self.chain.append((expr, expr_code, Markup(self.text, markup_args[0])))
     def eval(self, globals, locals=None):
         for expr, expr_code, markup in self.chain:
