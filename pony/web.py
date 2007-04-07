@@ -442,8 +442,10 @@ def determine_user(environ):
         if morsel: data = morsel.value
     auth.load(data, environ['REMOTE_ADDR'])
 
-def create_cookies(ip):
-    data = auth.save(ip)
+http_only_incompatible_browsers = [ 'WebTV', 'MSIE 5.0; Mac' ]
+
+def create_cookies(environ):
+    data = auth.save(environ['REMOTE_ADDR'])
     if data is None: return []
     c = Cookie.SimpleCookie()
     c['pony'] = data
@@ -452,13 +454,16 @@ def create_cookies(ip):
     morsel['max-age'] = 24*60*60
     morsel['expires'] = 24*60*60
     cookie_data = morsel.OutputString()
-    if auth.use_http_only: cookie_data += ' HttpOnly'
+    user_agent = environ.get('HTTP_USER_AGENT', '')
+    for browser in http_only_incompatible_browsers:
+        if browser in user_agent: break
+    else: cookie_data += ' HttpOnly'
     return [ ('Set-Cookie', cookie_data) ]
 
 def wsgi_app(environ, wsgi_start_response):
     def start_response(status, headers):
         headers = headers.items()
-        headers.extend(create_cookies(environ['REMOTE_ADDR']))
+        headers.extend(create_cookies(environ))
         log(type='HTTP:response', text=status, headers=headers)
         wsgi_start_response(status, headers)
 

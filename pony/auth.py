@@ -25,8 +25,6 @@ def save(ip=''):
 
 ################################################################################
 
-use_http_only = True
-
 max_ctime_diff = 24*60
 max_mtime_diff = 20
 max_mtime_future_diff = 20
