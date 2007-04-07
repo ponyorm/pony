@@ -11,8 +11,8 @@ from pony.thirdparty import sqlite
 def get_user():
     return local.user
 
-def set_user(user, remember_ip=False):
-    local.set_user(user, remember_ip)
+def set_user(user, remember_ip=False, cookie_attrs={}):
+    local.set_user(user, remember_ip, cookie_attrs)
 
 def get_session():
     return local.session
@@ -35,11 +35,13 @@ class Local(threading.local):
         self.lock.acquire()
         self.old_data = None
         self.set_user(None)
-    def set_user(self, user, remember_ip=False):
+    def set_user(self, user, remember_ip=False, cookie_attrs={}):
         self.user = user
         self.ctime = int(time.time() // 60)
         self.remember_ip = False
         self.session = {}
+        self.cookie_attrs = dict((name.lower(), value)
+                                 for name, value in cookie_attrs.items())
     def load(self, data, ip=''):
         self.old_data = data
         now = int(time.time() // 60)
@@ -81,8 +83,8 @@ class Local(threading.local):
             pickle_str = base64.b64encode(pickle_data)
             hash_str = base64.b64encode(hashobject.digest())
             data = ':'.join([ctime_str, mtime_str, pickle_str, hash_str])
-        if data == self.old_data: return None
-        return data
+        if data == self.old_data: return None, {}
+        return data, self.cookie_attrs.copy()
 
 local = Local()
 secret_cache = {}
