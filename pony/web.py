@@ -451,7 +451,7 @@ def create_cookies(ip):
     morsel['path'] = '/'
     morsel['max-age'] = 24*60*60
     morsel['expires'] = 24*60*60
-    return [ ('Set-Cookie', morsel.OutputString()) ]
+    return [ ('Set-Cookie', morsel.OutputString() + ' HttpOnly') ]
 
 def wsgi_app(environ, wsgi_start_response):
     def start_response(status, headers):
