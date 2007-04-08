@@ -387,6 +387,9 @@ class HttpRequest(object):
         self.cookies = Cookie.SimpleCookie()
         if 'HTTP_COOKIE' in environ:
             self.cookies.load(environ['HTTP_COOKIE'])
+        input_stream = environ.get('wsgi.input') or cStringIO.StringIO()
+        self.fields = cgi.FieldStorage(
+            fp=input_stream, environ=environ, keep_blank_values=True)
 
 class HttpResponse(object):
     def __init__(self):
@@ -510,8 +513,7 @@ def wsgi_app(environ, wsgi_start_response):
         return [ result ]
 
 def wsgi_test(environ, start_response):
-    from cStringIO import StringIO
-    stdout = StringIO()
+    stdout = cStringIO.StringIO()
     h = environ.items(); h.sort()
     for k,v in h:
         print >>stdout, k,'=',`v`
