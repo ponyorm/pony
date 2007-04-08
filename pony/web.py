@@ -440,30 +440,28 @@ def determine_user(environ):
         c.load(environ['HTTP_COOKIE'])
         morsel = c.get('pony')
         if morsel: data = morsel.value
-    auth.load(data, environ['REMOTE_ADDR'])
+    auth.load(data, environ)
 
 http_only_incompatible_browsers = [ 'WebTV', 'MSIE 5.0; Mac' ]
 
+ONE_MONTH = 60*60*24*31
+
 def create_cookies(environ):
-    data, cookie_attrs = auth.save(environ['REMOTE_ADDR'])
+    data, domain, path = auth.save(environ)
     if data is None: return []
     c = Cookie.SimpleCookie()
     c['pony'] = data
     morsel = c['pony']
-    morsel['path'] = '/'
-    morsel['max-age'] = 24*60*60
-    morsel['expires'] = 24*60*60
-    secure = cookie_attrs.pop('secure', False)
-    http_only = cookie_attrs.pop('httponly', True)
-    if secure: morsel['secure'] = True
-    for name, value in cookie_attrs.items():
-        morsel[name] = value
+    morsel['path'] = path or '/'
+    if domain: morsel['domain'] = domain
+    morsel['max-age'] = ONE_MONTH
+    morsel['expires'] = ONE_MONTH
+    # if secure: morsel['secure'] = True
     cookie_data = morsel.OutputString()
-    if http_only:
-        user_agent = environ.get('HTTP_USER_AGENT', '')
-        for browser in http_only_incompatible_browsers:
-            if browser in user_agent: break
-        else: cookie_data += ' HttpOnly'
+    user_agent = environ.get('HTTP_USER_AGENT', '')
+    for browser in http_only_incompatible_browsers:
+        if browser in user_agent: break
+    else: cookie_data += ' HttpOnly'
     return [ ('Set-Cookie', cookie_data) ]
 
 def wsgi_app(environ, wsgi_start_response):

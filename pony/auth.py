@@ -11,17 +11,17 @@ from pony.thirdparty import sqlite
 def get_user():
     return local.user
 
-def set_user(user, remember_ip=False, cookie_attrs={}):
-    local.set_user(user, remember_ip, cookie_attrs)
+def set_user(user, remember_ip=False, path='/', domain=None):
+    local.set_user(user, remember_ip, path, domain)
 
 def get_session():
     return local.session
 
-def load(data, ip=''):
-    local.load(data, ip)
+def load(data, environ):
+    local.load(data, environ)
 
-def save(ip=''):
-    return local.save(ip)
+def save(environ):
+    return local.save(environ)
 
 ################################################################################
 
@@ -35,56 +35,63 @@ class Local(threading.local):
         self.lock.acquire()
         self.old_data = None
         self.set_user(None)
-    def set_user(self, user, remember_ip=False, cookie_attrs={}):
+    def set_user(self, user, remember_ip=False, path='/', domain=None):
         self.user = user
         self.ctime = int(time.time() // 60)
         self.remember_ip = False
         self.session = {}
-        self.cookie_attrs = dict((name.lower(), value)
-                                 for name, value in cookie_attrs.items())
-    def load(self, data, ip=''):
+        self.path = path
+        self.domain = domain
+    def load(self, data, environ):
+        ip = environ.get('REMOTE_ADDR', '')
+        user_agent = environ.get('HTTP_USER_AGENT', '')
         self.old_data = data
         now = int(time.time() // 60)
         if data in (None, 'None'): self.set_user(None); return
-        try:
-            ctime_str, mtime_str, pickle_str, hash_str = data.split(':')
-            self.ctime = int(ctime_str, 16)
-            mtime = int(mtime_str, 16)
-            if (self.ctime < now - max_ctime_diff
-                  or mtime < now - max_mtime_diff
-                  or mtime > now + max_mtime_future_diff
-                ): self.set_user(None); return
-            pickle_data = base64.b64decode(pickle_str)
-            hash = base64.b64decode(hash_str)
-
-            hashobject = get_hashobject(mtime)
-            hashobject.update(ctime_str)
-            hashobject.update(pickle_data)
-            if hash != hashobject.digest():
-                hashobject.update(ip)
-                if hash != hashobject.digest(): self.set_user(None); return
-                self.remember_ip = True
-            else: self.remember_ip = False
-            self.user, self.session = cPickle.loads(pickle_data)
-        except: self.set_user(None)
-    def save(self, ip=''):
+        # try:
+        ctime_str, mtime_str, pickle_str, hash_str = data.split(':')
+        self.ctime = int(ctime_str, 16)
+        mtime = int(mtime_str, 16)
+        if (self.ctime < now - max_ctime_diff
+              or mtime < now - max_mtime_diff
+              or mtime > now + max_mtime_future_diff
+            ): self.set_user(None); return
+        pickle_data = base64.b64decode(pickle_str)
+        hash = base64.b64decode(hash_str)
+        hashobject = get_hashobject(mtime)
+        hashobject.update(ctime_str)
+        hashobject.update(pickle_data)
+        if hash != hashobject.digest():
+            hashobject.update(ip)
+            if hash != hashobject.digest(): self.set_user(None); return
+            self.remember_ip = True
+        else: self.remember_ip = False
+        info = cPickle.loads(pickle_data)
+        print info
+        self.user, self.session, self.domain, self.path, prev_ua = info
+        if user_agent[-20:] != prev_ua: self.set_user(None)
+        # except: self.set_user(None)
+    def save(self, environ):
+        ip = environ.get('REMOTE_ADDR', '')
+        user_agent = environ.get('HTTP_USER_AGENT', '')
         ctime = self.ctime
         mtime = int(time.time() // 60)
         ctime_str = '%x' % ctime
         mtime_str = '%x' % mtime
         if self.user is None: data = 'None'
         else:
-            pickle_data = cPickle.dumps((self.user, self.session), 2)
+            user_agent = user_agent[-20:]
+            info = self.user, self.session, self.domain, self.path, user_agent
+            pickle_data = cPickle.dumps(info, 2)
             hashobject = get_hashobject(mtime)
             hashobject.update(ctime_str)
             hashobject.update(pickle_data)
             if self.remember_ip: hash_object.update(ip)
-
             pickle_str = base64.b64encode(pickle_data)
             hash_str = base64.b64encode(hashobject.digest())
             data = ':'.join([ctime_str, mtime_str, pickle_str, hash_str])
-        if data == self.old_data: return None, {}
-        return data, self.cookie_attrs.copy()
+        if data == self.old_data: return None, None, None
+        return data, self.domain, self.path
 
 local = Local()
 secret_cache = {}
