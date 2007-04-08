@@ -67,7 +67,6 @@ class Local(threading.local):
             self.remember_ip = True
         else: self.remember_ip = False
         info = cPickle.loads(pickle_data)
-        print info
         self.user, self.session, self.domain, self.path, prev_ua = info
         if user_agent[-20:] != prev_ua: self.set_user(None)
         # except: self.set_user(None)

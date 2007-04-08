@@ -384,10 +384,14 @@ class Http404(HttpException):
 class HttpRequest(object):
     def __init__(self, environ):
         self.environ = environ
+        self.cookies = Cookie.SimpleCookie()
+        if 'HTTP_COOKIE' in environ:
+            self.cookies.load(environ['HTTP_COOKIE'])
 
 class HttpResponse(object):
     def __init__(self):
         self.headers = {}
+        self.cookies = Cookie.SimpleCookie()
 
 class Local(threading.local):
     def __init__(self):
@@ -395,6 +399,12 @@ class Local(threading.local):
         self.response = HttpResponse()
 
 local = Local()        
+
+def get_request():
+    return local.request
+
+def get_response():
+    return local.response
 
 def format_exc():
     exc_type, exc_value, traceback = sys.exc_info()
@@ -434,12 +444,8 @@ def log_request(environ):
         headers=headers)
 
 def determine_user(environ):
-    data = None
-    if 'HTTP_COOKIE' in environ:
-        c = Cookie.SimpleCookie()
-        c.load(environ['HTTP_COOKIE'])
-        morsel = c.get('pony')
-        if morsel: data = morsel.value
+    morsel = local.request.cookies.get('pony')
+    data = morsel and morsel.value or None
     auth.load(data, environ)
 
 http_only_incompatible_browsers = [ 'WebTV', 'MSIE 5.0; Mac' ]
@@ -462,7 +468,10 @@ def create_cookies(environ):
     for browser in http_only_incompatible_browsers:
         if browser in user_agent: break
     else: cookie_data += ' HttpOnly'
-    return [ ('Set-Cookie', cookie_data) ]
+    result = [ ('Set-Cookie', cookie_data) ]
+    for morsel in local.response.cookies.values():
+        result.append(('Set-Cookie', morsel.OutputString()))
+    return result
 
 def wsgi_app(environ, wsgi_start_response):
     def start_response(status, headers):
