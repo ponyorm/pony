@@ -395,6 +395,7 @@ class HttpResponse(object):
     def __init__(self):
         self.headers = {}
         self.cookies = Cookie.SimpleCookie()
+        self._http_only_cookies = set()
 
 class Local(threading.local):
     def __init__(self):
@@ -408,6 +409,34 @@ def get_request():
 
 def get_response():
     return local.response
+
+def get_param(name, default=None):
+    return local.request.fields.getfirst(name, default)
+
+def get_cookie(name, default=None):
+    morsel = local.request.cookies.get(name)
+    if morsel is None: return default
+    return morsel.value
+
+def set_cookie(name, value, expires=None, max_age=None, path=None, domain=None,
+               secure=False, http_only=False, comment=None, version=None):
+    response = local.response
+    cookies = response.cookies
+    if value is None:
+        cookies.pop(name, None)
+        response._http_only_cookies.discard(name)
+    else:
+        cookies[name] = value
+        morsel = cookies[name]
+        if expires is not None: morsel['expires'] = expires
+        if max_age is not None: morsel['max-age'] = max_age
+        if path is not None: morsel['path'] = path
+        if domain is not None: morsel['domain'] = domain
+        if comment is not None: morsel['comment'] = comment
+        if version is not None: morsel['version'] = version
+        if secure: morsel['secure'] = True
+        if http_only: response._http_only_cookies.add(name)
+        else: response._http_only_cookies.discard(name)
 
 def format_exc():
     exc_type, exc_value, traceback = sys.exc_info()
@@ -457,23 +486,22 @@ ONE_MONTH = 60*60*24*31
 
 def create_cookies(environ):
     data, domain, path = auth.save(environ)
-    if data is None: return []
-    c = Cookie.SimpleCookie()
-    c['pony'] = data
-    morsel = c['pony']
-    morsel['path'] = path or '/'
-    if domain: morsel['domain'] = domain
-    morsel['max-age'] = ONE_MONTH
-    morsel['expires'] = ONE_MONTH
-    # if secure: morsel['secure'] = True
-    cookie_data = morsel.OutputString()
+    if data is not None:
+        set_cookie('pony', data, ONE_MONTH, ONE_MONTH, path or '/', domain,
+                   http_only=True)
     user_agent = environ.get('HTTP_USER_AGENT', '')
+    support_http_only = True
     for browser in http_only_incompatible_browsers:
-        if browser in user_agent: break
-    else: cookie_data += ' HttpOnly'
-    result = [ ('Set-Cookie', cookie_data) ]
-    for morsel in local.response.cookies.values():
-        result.append(('Set-Cookie', morsel.OutputString()))
+        if browser in user_agent:
+            support_http_only = False
+            break
+    response = local.response
+    result = []
+    for name, morsel in response.cookies.items():
+        cookie = morsel.OutputString()
+        if support_http_only and name in response._http_only_cookies:
+            cookie += ' HttpOnly'
+        result.append(('Set-Cookie', cookie))
     return result
 
 def wsgi_app(environ, wsgi_start_response):
