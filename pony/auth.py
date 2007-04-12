@@ -1,8 +1,4 @@
-import re, os, sys, time, base64, threading, Queue, cPickle, Cookie
-
-try: from hashlib import sha256 as hashfunc
-except ImportError:
-    from sha import new as hashfunc
+import re, os, sys, time, threading, Queue, cPickle, base64, hmac, sha
 
 from pony.thirdparty import sqlite
 
@@ -127,7 +123,7 @@ class AuthThread(threading.Thread):
         con = self.connnection = sqlite.connect(get_sessiondb_name())
         con.executescript(sql_create)
         for minute, secret in con.execute('select * from time_secrets'):
-            secret_cache[minute] = hashfunc(str(secret))
+            secret_cache[minute] = hmac.new(str(secret), digestmod=sha)
         self.connnection.commit()
         while True:
             x = queue.get()
@@ -150,7 +146,7 @@ class AuthThread(threading.Thread):
             con.execute('insert into time_secrets values(?, ?)',
                         [ minute, buffer(secret) ])
             con.commit()
-            secret_cache[minute] = hashfunc(secret)
+            secret_cache[minute] = hmac.new(secret, digestmod=sha)
             lock.release()
 
 auth_thread = AuthThread()
