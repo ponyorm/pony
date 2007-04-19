@@ -19,11 +19,40 @@ def load(data, environ):
 def save(environ):
     return local.save(environ)
 
+def get_ticket():
+    now = int(time.time())
+    now_str = '%x' % now
+    rnd = os.urandom(8)
+    hashobject = get_hashobject(now // 60)
+    hashobject.update(rnd)
+    hashobject.update(cPickle.dumps(local.user, 2))
+    hash = hashobject.digest()
+    rnd_str = base64.b64encode(rnd)
+    hash_str = base64.b64encode(hash)
+    return '%s:%s:%s' % (now_str, rnd_str, hash_str)
+
+def verify_ticket(ticket):
+    now = int(time.time() // 60)
+    try:
+        time_str, rnd_str, hash_str = ticket.split(':')
+        minute = int(time_str, 16) // 60
+        if minute < now - max_mtime_diff or minute > now + 1: return False
+        rnd = base64.b64decode(rnd_str)
+        hash = base64.b64decode(hash_str)
+        hashobject = get_hashobject(minute)
+        hashobject.update(rnd)
+        hashobject.update(cPickle.dumps(local.user, 2))
+        if hash != hashobject.digest(): return False
+        result = []
+        queue.put((minute, buffer(rnd), local.lock, result))
+        local.lock.acquire()
+        return result[0]
+    except: return False
+
 ################################################################################
 
 max_ctime_diff = 24*60
 max_mtime_diff = 20
-max_mtime_future_diff = 20
 
 class Local(threading.local):
     def __init__(self):
@@ -44,28 +73,28 @@ class Local(threading.local):
         self.old_data = data
         now = int(time.time() // 60)
         if data in (None, 'None'): self.set_user(None); return
-        # try:
-        ctime_str, mtime_str, pickle_str, hash_str = data.split(':')
-        self.ctime = int(ctime_str, 16)
-        mtime = int(mtime_str, 16)
-        if (self.ctime < now - max_ctime_diff
-              or mtime < now - max_mtime_diff
-              or mtime > now + max_mtime_future_diff
-            ): self.set_user(None); return
-        pickle_data = base64.b64decode(pickle_str)
-        hash = base64.b64decode(hash_str)
-        hashobject = get_hashobject(mtime)
-        hashobject.update(ctime_str)
-        hashobject.update(pickle_data)
-        if hash != hashobject.digest():
-            hashobject.update(ip)
-            if hash != hashobject.digest(): self.set_user(None); return
-            self.remember_ip = True
-        else: self.remember_ip = False
-        info = cPickle.loads(pickle_data)
-        self.user, self.session, self.domain, self.path, prev_ua = info
-        if user_agent[-20:] != prev_ua: self.set_user(None)
-        # except: self.set_user(None)
+        try:
+            ctime_str, mtime_str, pickle_str, hash_str = data.split(':')
+            self.ctime = int(ctime_str, 16)
+            mtime = int(mtime_str, 16)
+            if (self.ctime < now - max_ctime_diff
+                  or mtime < now - max_mtime_diff
+                  or mtime > now + 1
+                ): self.set_user(None); return
+            pickle_data = base64.b64decode(pickle_str)
+            hash = base64.b64decode(hash_str)
+            hashobject = get_hashobject(mtime)
+            hashobject.update(ctime_str)
+            hashobject.update(pickle_data)
+            hashobject.update(user_agent)
+            if hash != hashobject.digest():
+                hashobject.update(ip)
+                if hash != hashobject.digest(): self.set_user(None); return
+                self.remember_ip = True
+            else: self.remember_ip = False
+            info = cPickle.loads(pickle_data)
+            self.user, self.session, self.domain, self.path = info
+        except: self.set_user(None)
     def save(self, environ):
         ip = environ.get('REMOTE_ADDR', '')
         user_agent = environ.get('HTTP_USER_AGENT', '')
@@ -75,12 +104,12 @@ class Local(threading.local):
         mtime_str = '%x' % mtime
         if self.user is None: data = 'None'
         else:
-            user_agent = user_agent[-20:]
-            info = self.user, self.session, self.domain, self.path, user_agent
+            info = self.user, self.session, self.domain, self.path
             pickle_data = cPickle.dumps(info, 2)
             hashobject = get_hashobject(mtime)
             hashobject.update(ctime_str)
             hashobject.update(pickle_data)
+            hashobject.update(user_agent)
             if self.remember_ip: hash_object.update(ip)
             pickle_str = base64.b64encode(pickle_data)
             hash_str = base64.b64encode(hashobject.digest())
@@ -116,6 +145,11 @@ create table if not exists time_secrets (
     minute integer primary key,
     secret binary not null    
     );
+create table if not exists used_tickets (
+    minute integer not null,
+    rnd    binary  not null,
+    primary key (minute, rnd)
+    );
 """
 
 class AuthThread(threading.Thread):
@@ -128,26 +162,44 @@ class AuthThread(threading.Thread):
         while True:
             x = queue.get()
             if x is None: break
-            minute, lock = x
-            if minute in secret_cache:
-                lock.release()
-                continue
-            sql_select = 'select secret from time_secrets where minute = ?'
-            row = con.execute(sql_select, [minute]).fetchone()
-            if row is not None:
-                con.commit()
-                secret_cache[minute] = str(row[0])
-                lock.release()
-                continue
-            current_minute = long(time.time()) // 60
-            con.execute('delete from time_secrets where minute < ?',
-                        [ current_minute - 24*60 ])
-            secret = os.urandom(32)
-            con.execute('insert into time_secrets values(?, ?)',
-                        [ minute, buffer(secret) ])
-            con.commit()
-            secret_cache[minute] = hmac.new(secret, digestmod=sha)
+            if len(x) == 2: self.prepare_secret(*x)
+            elif len(x) == 4: self.prepare_ticket(*x)
+            else: assert False
+        con.close()
+    def prepare_secret(self, minute, lock):
+        if minute in secret_cache:
             lock.release()
+            return
+        con = self.connnection
+        row = con.execute('select secret from time_secrets where minute = ?',
+                          [minute]).fetchone()
+        if row is not None:
+            con.commit()
+            secret_cache[minute] = str(row[0])
+            lock.release()
+            return
+        now = int(time.time() // 60)
+        secret = os.urandom(32)
+        con.execute('delete from used_tickets where minute < ?',
+                    [ now - max_ctime_diff ])
+        con.execute('delete from time_secrets where minute < ?',
+                    [ now - max_ctime_diff ])
+        con.execute('insert into time_secrets values(?, ?)',
+                    [ minute, buffer(secret) ])
+        con.commit()
+        secret_cache[minute] = hmac.new(secret, digestmod=sha)
+        lock.release()
+    def prepare_ticket(self, minute, rnd, lock, result):
+        con = self.connnection
+        row = con.execute('select rowid from used_tickets '
+                          'where minute = ? and rnd = ?',
+                          [minute, rnd]).fetchone()
+        if row is None:
+            con.execute('insert into used_tickets values(?, ?)',
+                        [minute, rnd])
+        con.commit()
+        result.append(row is None)
+        lock.release()
 
 auth_thread = AuthThread()
 auth_thread.start()

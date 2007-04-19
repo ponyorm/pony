@@ -1,4 +1,4 @@
-import re, threading, os.path, inspect, sys, cStringIO
+import re, threading, os.path, inspect, sys, cStringIO, itertools
 import cgi, cgitb, urllib, Cookie
 
 from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
@@ -267,7 +267,7 @@ def get_http_handlers(path, query, ext_list):
     if query is None: params = {}
     else: params = dict(reversed(cgi.parse_qsl(query)))
 
-    # http_registry_lock.release()
+    # http_registry_lock.acquire()
     # try:
     variants = [ http_registry ]
     for i, component in enumerate(components):
@@ -384,12 +384,16 @@ class Http404(HttpException):
 class HttpRequest(object):
     def __init__(self, environ):
         self.environ = environ
+        self.method = environ.get('REQUEST_METHOD', 'GET')
         self.cookies = Cookie.SimpleCookie()
         if 'HTTP_COOKIE' in environ:
             self.cookies.load(environ['HTTP_COOKIE'])
         input_stream = environ.get('wsgi.input') or cStringIO.StringIO()
         self.fields = cgi.FieldStorage(
             fp=input_stream, environ=environ, keep_blank_values=True)
+        self.submitted_form = self.fields.getfirst('_f')
+        self.ticket_is_valid = auth.verify_ticket(self.fields.getfirst('_t'))
+        self.id_counter = itertools.imap('id_%d'.__mod__, itertools.count())
 
 class HttpResponse(object):
     def __init__(self):
@@ -471,7 +475,7 @@ def log_request(environ):
     headers=dict((key, value) for key, value in environ.items()
                               if isinstance(key, basestring)
                               and isinstance(value, basestring))
-    log(type='HTTP:%s' % environ.get('REQUEST_METHOD', '?'),
+    log(type='HTTP:%s' % environ.get('REQUEST_METHOD', 'GET'),
         text=reconstruct_url(environ),
         headers=headers)
 
@@ -511,8 +515,8 @@ def wsgi_app(environ, wsgi_start_response):
         log(type='HTTP:response', text=status, headers=headers)
         wsgi_start_response(status, headers)
 
-    local.request = HttpRequest(environ)
     determine_user(environ)
+    local.request = HttpRequest(environ)
     url = environ['PATH_INFO']
     query = environ['QUERY_STRING']
     if query: url = '%s?%s' % (url, query)
@@ -548,7 +552,7 @@ def wsgi_test(environ, start_response):
     start_response('200 OK', [ ('Content-Type', 'text/plain') ])
     return [ stdout.getvalue() ]
 
-wsgi_apps = [('', wsgi_app), ('/test/', wsgi_test)]
+wsgi_apps = [('', wsgi_app), ('/pony/', wsgi_test)]
 
 def parse_address(address):
     if isinstance(address, basestring):
