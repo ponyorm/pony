@@ -75,7 +75,8 @@ class Form(object):
             if not f.is_valid: return False
         for f in self.fields:
             if not f.is_valid: return False
-        if self._secure and not self._request.ticket_is_valid: return None
+        if self._secure:
+            return self._request.ticket_is_valid  # may be True, False or None
         return True
     @property
     def error_text(self):

@@ -198,7 +198,7 @@ class AuthThread(threading.Thread):
             con.execute('insert into used_tickets values(?, ?)',
                         [minute, rnd])
         con.commit()
-        result.append(row is None)
+        result.append(row is None and True or None)
         lock.release()
 
 auth_thread = AuthThread()
