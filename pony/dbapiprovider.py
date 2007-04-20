@@ -1,5 +1,7 @@
 import sys, threading
 
+from pony.sqlsymbols import *
+
 def quote_name(name):
     return '"%s"' % name.replace('"', '""')
 
