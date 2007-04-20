@@ -1,6 +1,8 @@
 import re, threading, os.path, inspect, sys, cStringIO, itertools
 import cgi, cgitb, urllib, Cookie
 
+from operator import itemgetter
+
 from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
 
 from pony import auth
@@ -147,17 +149,21 @@ class HttpInfo(object):
     def register(self):
         http_registry_lock.acquire()
         try:
+            d1 = dict((name, is_param) for name, is_param, x
+                                       in self.parsed_query)
             for info, _, _ in get_http_handlers(
                               self.path, self.query, self.ext_list):
-                _http_remove(info, self.ext_list)
+                d2 = dict((name, is_param) for name, is_param, x
+                                           in info.parsed_query)
+                if d1 == d2: _http_remove(info, self.ext_list)
 
-            dict, list = http_registry
+            d, list = http_registry
             for is_param, x in self.parsed_path:
-                if is_param: dict, list = dict.setdefault(None, ({}, []))
-                else: dict, list = dict.setdefault(x, ({}, []))
+                if is_param: d, list = d.setdefault(None, ({}, []))
+                else: d, list = d.setdefault(x, ({}, []))
             self.list = list
             self.func.__dict__.setdefault('http', []).insert(0, self)
-            list.append(self)
+            list.insert(0, self)
         finally: http_registry_lock.release()
             
 class PathError(Exception): pass
@@ -275,8 +281,9 @@ def get_http_handlers(path, query, ext_list):
         for d, list in variants:
             variant = d.get(component)
             if variant: new_variants.append(variant)
-            variant = d.get(None)
-            if variant: new_variants.append(variant)
+            if component:
+                variant = d.get(None)
+                if variant: new_variants.append(variant)
         variants = new_variants
     # finally: http_registry_lock.release()
 
@@ -296,7 +303,9 @@ def get_http_handlers(path, query, ext_list):
                 else: assert False
             names, _, _, defaults = info.func.argspec
             offset = len(names) - len(defaults)
+            non_used_params = set(params)
             for name, is_param, x in info.parsed_query:
+                non_used_params.discard(name)
                 value = params.get(name, not_found)
                 if not is_param:
                     if value != x: break
@@ -317,15 +326,27 @@ def get_http_handlers(path, query, ext_list):
                     except IndexError:
                         assert i == len(arglist)
                         arglist.append(value)
-                result.append((info, arglist, keyargs))
+                result.append((info, arglist, keyargs, len(non_used_params)))
+    if result:
+        min_count_of_non_used_params = min(map(itemgetter(3), result))
+        result = [ (info, arglist, keyargs)
+                   for info,arglist,keyargs,count_of_non_used_params in result
+                   if count_of_non_used_params == min_count_of_non_used_params ]
     return result
 
 def invoke(url):
     path, query, ext_list = split_url(url)
     local.response = HttpResponse()
     handlers = get_http_handlers(path, query, ext_list)
-    if not handlers:
-        raise Http404, 'Page not found'
+    if not handlers:        
+        if path.endswith('/'): new_path = path[:-1]
+        else: new_path = path + '/'
+        if get_http_handlers(new_path, query, ext_list):
+            url = new_path + ext_list[0]
+            if query: url = '?'.join((url, query))
+            if not url.startswith('/'): url = '/' + url
+            raise HttpRedirect(url)
+        raise Http404('Page not found')
     info, args, keyargs = handlers[0]
     for i, value in enumerate(args):
         if value is not None: args[i] = value.decode('utf8')
@@ -376,10 +397,26 @@ def http_clear():
 
 http.clear = http_clear
 
-class HttpException(Exception): pass
+################################################################################
+
+class HttpException(Exception):
+    content = ''
+
 class Http404(HttpException):
     status = '404 Not Found'
     headers = {'Content-Type': 'text/plain'}
+    def __init__(self, content='Page not found'):
+        Exception.__init__(self, 'Page not found')
+        self.content = content
+
+class HttpRedirect(HttpException):
+    def __init__(self, location, status='302 Found'):
+        Exception.__init__(self, location)
+        self.location = location
+        self.status = status
+        self.headers = {'Location': location}
+
+################################################################################
 
 class HttpRequest(object):
     def __init__(self, environ):
@@ -525,7 +562,7 @@ def wsgi_app(environ, wsgi_start_response):
         result = invoke(url)
     except HttpException, e:
         start_response(e.status, e.headers)
-        return [ e.args[0] ]
+        return [ e.content ]
     except:
         log_exc()
         start_response('200 OK', {'Content-Type': 'text/html'})
