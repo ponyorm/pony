@@ -21,18 +21,18 @@ re_component = re.compile("""
     """, re.VERBOSE)
 
 @decorator_with_params
-def http(url=None, ext=None, **params):
+def http(url=None, ext=None, redirect=False, **params):
     params = dict([ (name.replace('_', '-').title(), value)
                     for name, value in params.items() ])
     def new_decorator(old_func):
         real_url = url is None and old_func.__name__ or url
-        register_http_handler(old_func, real_url, ext, params)
+        register_http_handler(old_func, real_url, ext, redirect, params)
         return old_func
     return new_decorator
 
-def register_http_handler(func, url, ext, params):
+def register_http_handler(func, url, ext, redirect, params):
     path, query, ext_list = split_url(url, ext, check=True)
-    return HttpInfo(func, path, query, ext_list, params)
+    return HttpInfo(func, path, query, ext_list, redirect, params)
 
 http_registry_lock = threading.Lock()
 http_registry = ({}, [])
@@ -57,11 +57,12 @@ def split_url(url, ext=None, check=False):
     return path, query, ext_list
 
 class HttpInfo(object):
-    def __init__(self, func, path, query, ext_list, params):
+    def __init__(self, func, path, query, ext_list, redirect, params):
         self.func = func
         self.path = path
         self.query = query
         self.ext_list = ext_list
+        self.redirect = redirect
         self.params = params
         if not hasattr(func, 'argspec'):
             func.argspec = self.getargspec(func)
@@ -172,7 +173,11 @@ def url(func, *args, **keyargs):
     http_list = getattr(func, 'http')
     if http_list is None:
         raise ValueError('Cannot create url for this object :%s' % func)
+    first, second = [], []
     for info in http_list:
+        if not info.redirect: first.append(info)
+        else: second.append(info)
+    for info in first + second:
         try:
             url = build_url(info, func, args, keyargs)
         except PathError: pass
@@ -180,6 +185,7 @@ def url(func, *args, **keyargs):
     else:
         raise PathError('Suitable url path for %s() not found' % func.__name__)
     return url
+make_url = url
 
 def build_url(info, func, args, keyargs):
     try: keyparams = func.dummy_func(*args, **keyargs).copy()
@@ -352,6 +358,15 @@ def invoke(url):
         if value is not None: args[i] = value.decode('utf8')
     for key, value in keyargs.items():
         if value is not None: keyargs[key] = value.decode('utf8')
+    if info.redirect:
+        for alternative in info.func.http:
+            if not alternative.redirect:
+                new_url = make_url(info.func, *args, **keyargs)
+                status = '301 Moved Permanently'
+                if isinstance(info.redirect, basestring): status = info.redirect
+                elif isinstance(info.redirect, (int, long)) \
+                     and 300 <= info.redirect < 400: status = str(info.redirect)
+                raise HttpRedirect(new_url, status)
     result = info.func(*args, **keyargs)
     local.response.headers.update(info.params)
     return result
@@ -410,10 +425,16 @@ class Http404(HttpException):
         self.content = content
 
 class HttpRedirect(HttpException):
+    status_dict = {'301' : '301 Moved Permanently',
+                   '302' : '302 Found',
+                   '303' : '303 See Other',
+                   '305' : '305 Use Proxy',
+                   '307' : '307 Temporary Redirect'}
     def __init__(self, location, status='302 Found'):
         Exception.__init__(self, location)
         self.location = location
-        self.status = status
+        status = str(status)
+        self.status = self.status_dict.get(status, status)
         self.headers = {'Location': location}
 
 ################################################################################
