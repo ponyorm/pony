@@ -6,15 +6,13 @@ from pony.auth import get_ticket
 from pony.templating import Html, htmljoin
 from pony.web import get_request
 
-def update_attrs(attrs1, attrs2):
-    for name, value in attrs2.items():
-        name = name.lower().strip('_').replace('_', '-')
-        attrs1[name] = value
-
 def htmltag(_name_, _attrs_=None, **_attrs2_):
     attrs = {}
-    if _attrs_: update_attrs(attrs, _attrs_)
-    if _attrs2_: update_attrs(attrs, _attrs2_)
+    for d in _attrs_, _attrs2_:
+        if not d: continue
+        for name, value in d.items():
+            name = name.lower().strip('_').replace('_', '-')
+            attrs[name] = value
     cls2 = attrs.pop('additional-class', None)
     if cls2 is not None:
         cls = attrs.get('class')
