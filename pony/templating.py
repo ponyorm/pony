@@ -594,26 +594,27 @@ class BoundMarkup(object):
     def __call__(self):
         return self.markup.eval(self.globals, self.locals)
 
-def _row_check(args):
+def _cycle_check(args):
     for arg in args:
         if not isinstance(arg, BoundMarkup):
             raise TypeError('Incorrect type of argument: %s' % str(type(arg)))
     locals = args[-1].locals
     if locals is None or 'for' not in locals: raise TypeError(
-        '$row() function may only be called inside a $for loop')
+        '$cycle() function may only be called inside a $for loop')
     return locals['for']
 
 @lazy
-def row(*args):
+def cycle(*args):
     if len(args) < 2: raise TypeError(
-        '$row() function takes at least 2 arguments (%d given)' % len(args))
+        '$cycle() function takes at least 2 arguments (%d given)' % len(args))
     if isinstance(args[0], BoundMarkup):
-        current, total = _row_check(args[1:])
+        current, total = _cycle_check(args[1:])
         return args[current % len(args)]()
     elif isinstance(args[0], basestring):
-        if len(args) != 2: raise TypeError('When first argument is string, '
-             '$row() function takes exactly 2 arguments (%d given)' % len(args))
-        current, total = _row_check(args[1:])
+        if len(args) != 2: raise TypeError(
+            'When first argument is string, $cycle() function '
+            'takes exactly 2 arguments (%d given)' % len(args))
+        current, total = _cycle_check(args[1:])
         s, markup = args
         if s == 'odd': flag = not (current % 2) # rows treated as 1-based!
         elif s == 'even': flag = (current % 2) # rows treated as 1-based!
@@ -623,23 +624,23 @@ def row(*args):
         elif s == 'not last': flag = (current != total - 1)
         return flag and markup() or ''
     elif not isinstance(args[0], (int, long)):
-        raise TypeError('First argument of $row() function must be int, '
+        raise TypeError('First argument of $cycle() function must be int, '
                         'string or markup. Got: %s' % str(type(args[0])))
     elif isinstance(args[1], (int, long)):
         if len(args) == 2: raise TypeError('Markup expected')
         if len(args) > 3:
-            raise TypeError('$row() function got too many arguments')
-        current, total = _row_check(args[2:])
+            raise TypeError('$cycle() function got too many arguments')
+        current, total = _cycle_check(args[2:])
         i, j, markup = args
         return (current % j == i - 1) and markup() or ''
     else:
         if len(args) > 2:
-            raise TypeError('$row() function got too many arguments')
-        current, total = _row_check(args[1:])
+            raise TypeError('$cycle() function got too many arguments')
+        current, total = _cycle_check(args[1:])
         i, markup = args
         if i > 0: return (current == i - 1) and markup() or ''
         elif i < 0: return (i == current - total) and markup() or ''
-        else: raise TypeError('$row first argument cannot be 0')
+        else: raise TypeError('$cycle first argument cannot be 0')
     
 codename_cache = {}
 

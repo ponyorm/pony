@@ -15,14 +15,14 @@ $else { text }
 
 $for(var in expr) {
     text
-    $row{text1}{text2}{text3}
-    $row(i,j){text}
-    $row("odd"){text}   $//  $row(1,2){text}
-    $row("even"){text}  $//  $row(2,2){text}
-    $row("first"){text}
-    $row("not first"){text}
-    $row("last"){text}
-    $row("not last"){text}
+    $cycle{text1}{text2}{text3}
+    $cycle(i,j){text}
+    $cycle("odd"){text}   $//  $cycle(1,2){text}
+    $cycle("even"){text}  $//  $cycle(2,2){text}
+    $cycle("first"){text}
+    $cycle("not first"){text}
+    $cycle("last"){text}
+    $cycle("not last"){text}
 } $separator {
     text
 } $else {
