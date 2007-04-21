@@ -3,28 +3,8 @@ import re, threading
 from operator import attrgetter
 
 from pony.auth import get_ticket
-from pony.templating import Html, htmljoin
+from pony.templating import Html, htmljoin, htmltag
 from pony.web import get_request
-
-def htmltag(_name_, _attrs_=None, **_attrs2_):
-    attrs = {}
-    for d in _attrs_, _attrs2_:
-        if not d: continue
-        for name, value in d.items():
-            name = name.lower().strip('_').replace('_', '-')
-            attrs[name] = value
-    cls2 = attrs.pop('additional-class', None)
-    if cls2 is not None:
-        cls = attrs.get('class')
-        if cls: attrs['class'] = cls + ' ' + cls2
-        else: attrs['class'] = cls2
-    attrlist = []
-    make_attr = Html('%s="%s"').__mod__
-    for name, value in attrs.items():
-        if value is True: attrlist.append(name)
-        elif value is not False and value is not None:
-            attrlist.append(make_attr((name, value)))
-    return Html("<%s %s>") % (_name_, Html(' ').join(attrlist))
 
 class Form(object):
     def __init__(self, method='POST', secure=None, **attrs):
