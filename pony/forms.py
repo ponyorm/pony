@@ -11,18 +11,15 @@ def update_attrs(attrs1, attrs2):
         name = name.lower().strip('_').replace('_', '-')
         attrs1[name] = value
 
-def add_class(attrs, cls):
-    result = {}
-    update_attrs(result, attrs)
-    c = result.get('class')
-    if c is None: result['class'] = cls
-    else: result['class'] = c + ' ' + cls
-    return result
-
 def htmltag(_name_, _attrs_=None, **_attrs2_):
     attrs = {}
     if _attrs_: update_attrs(attrs, _attrs_)
     if _attrs2_: update_attrs(attrs, _attrs2_)
+    cls2 = attrs.pop('additional-class', None)
+    if cls2 is not None:
+        cls = attrs.get('class')
+        if cls: attrs['class'] = cls + ' ' + cls2
+        else: attrs['class'] = cls2
     attrlist = []
     make_attr = Html('%s="%s"').__mod__
     for name, value in attrs.items():
@@ -383,7 +380,7 @@ class Select(SelectWidget):
 class RadioGroup(SelectWidget):
     @property
     def tag(self):
-        result = [ htmltag('div', add_class(self.attrs, 'radiobuttons')) ]
+        result = [ htmltag('div', self.attrs, additional_class='radiobuttons') ]
         selected_key = self._get_value()
         for key, value, description in self.options:
             result.append(Html('<div class="radiobutton">'))
@@ -436,8 +433,7 @@ class MultiSelect(SelectWidget):
 class CheckboxGroup(MultiSelect):
     @property
     def tag(self):
-        attrs = add_class(self.attrs, 'checkboxes')
-        result = [ htmltag('div', attrs) ]
+        result = [ htmltag('div', self.attrs, additional_class='checkboxes') ]
         selection = self._get_selection()
         for key, value, description in self.options:
             result.append(Html('<div class="checkbox">'))
