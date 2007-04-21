@@ -55,6 +55,7 @@ def search_log(max_count=100, start_from=None, criteria=None, params=()):
     result = []
     queue.put((sql, params, result, local.lock))
     local.lock.acquire()
+    if result and isinstance(result[0], Exception): raise result[0]
     return result
 
 def get_logfile_name():
@@ -114,7 +115,12 @@ class LoggerThread(threading.Thread):
                     records.append(x)
     def execute_query(self, sql, params, result, lock):
         try:
-            for row in self.connnection.execute(sql, params):
+            try:
+                cursor = self.connnection.execute(sql, params)
+            except Exception, e:
+                result.append(e)
+                return
+            for row in cursor:
                 record = cPickle.loads(str(row[-1]))
                 for i, name in enumerate(sql_columns): record[name] = row[i]
                 decompress_record(record)
