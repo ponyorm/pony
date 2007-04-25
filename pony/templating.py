@@ -158,8 +158,7 @@ def printhtml(source_encoding='ascii'):
     def new_decorator(old_func):
         func = grab_stdout(old_func)
         def new_func(*args, **keyargs):
-            result = ''.join(func(*args, **keyargs))
-            return Html(result)
+            return Html(u''.join(func(*args, **keyargs)))
         return new_func
     return new_decorator
 
