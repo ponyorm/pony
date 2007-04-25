@@ -367,8 +367,31 @@ def invoke(url):
                 elif isinstance(info.redirect, (int, long)) \
                      and 300 <= info.redirect < 400: status = str(info.redirect)
                 raise HttpRedirect(new_url, status)
-    result = info.func(*args, **keyargs)
     local.response.headers.update(info.params)
+    result = info.func(*args, **keyargs)
+    headers = dict([ (name.replace('_', '-').title(), value)
+                     for name, value in local.response.headers.items() ])
+    local.response.headers = headers
+    type = headers.pop('Type', 'text/plain')
+    charset = headers.pop('Charset', 'UTF-8')
+    content_type = headers.get('Content-Type')
+    if content_type:
+        content_type_params = cgi.parse_header(content_type)[1]
+        charset = content_type_params.get('charset', 'iso-8859-1')
+    else:
+        headers['Content-Type'] = '%s; charset=%s' % (type, charset)
+    if isinstance(result, Html):
+        headers['Content-Type'] = 'text/html; charset=%s' % charset
+
+    if isinstance(result, unicode): result = result.encode(charset)
+    elif not isinstance(result, str):
+        try: result = str(result)
+        except UnicodeEncodeError:
+            result = unicode(result, charset, 'replace')
+    headers.setdefault('Expires', '0')
+    max_age = headers.pop('Max-Age', '2')
+    cache_control = headers.get('Cache-Control')
+    if not cache_control: headers['Cache-Control'] = 'max-age=%s' % max_age
     return result
 http.invoke = invoke
 
@@ -568,7 +591,7 @@ def create_cookies(environ):
 
 def wsgi_app(environ, wsgi_start_response):
     def start_response(status, headers):
-        headers = headers.items()
+        headers = [ (name, str(value)) for name, value in headers.items() ]
         headers.extend(create_cookies(environ))
         log(type='HTTP:response', text=status, headers=headers)
         wsgi_start_response(status, headers)
@@ -586,19 +609,11 @@ def wsgi_app(environ, wsgi_start_response):
         return [ e.content ]
     except:
         log_exc()
-        start_response('200 OK', {'Content-Type': 'text/html'})
+        start_response('500 Internal Server Error',
+                       {'Content-Type': 'text/html'})
         return [ format_exc() ]
     else:
         response = local.response
-        charset = response.headers.pop('Charset', 'UTF-8')
-        type = response.headers.pop('Type', 'text/plain')
-        if isinstance(result, Html): type = 'text/html'
-        if isinstance(result, unicode): result = result.encode(charset)
-        elif not isinstance(result, str):
-            try: result = str(result)
-            except UnicodeEncodeError:
-                result = unicode(result, charset, 'replace')
-        response.headers['Content-Type'] = '%s; charset=%s' % (type, charset)
         start_response('200 OK', response.headers)
         return [ result ]
 
