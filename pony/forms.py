@@ -114,8 +114,8 @@ class Form(object):
         if not result: result.append(htmltag('input', type='submit'))
         result.append(Html('\n</form>'))
         return htmljoin(result)
-    # def __str__(self):
-    #     return unicode(self).encode('ascii', 'xmlcharrefreplace')
+    def __str__(self):
+        return unicode(self).encode('ascii', 'xmlcharrefreplace')
     def __unicode__(self):
         return Html('\n').join([ self.header(),
                                  Html('<table>'),
@@ -155,8 +155,8 @@ class HtmlField(object):
         return htmltag('input', self.attrs,
                        name=self.name, value=value, type=self.HTML_TYPE)
     tag = html = property(__unicode__)
-    # def __str__(self):
-    #     return unicode(self).encode('ascii', 'xmlcharrefreplace')
+    def __str__(self):
+        return unicode(self).encode('ascii', 'xmlcharrefreplace')
 
 class Hidden(HtmlField):
     HTML_TYPE = 'hidden'
@@ -217,7 +217,7 @@ class BaseWidget(HtmlField):
         self._label = label or ''
     label = property(attrgetter('_label'), _set_label)
     def __unicode__(self):
-        return htmljoin([ self._label, self.tag, self._error ])
+        return htmljoin([ self._label, self.tag, self.error ])
     html = property(__unicode__)
 
 class File(BaseWidget):

@@ -130,21 +130,21 @@ def grab_stdout(f):
         return data
     return new_function
 
-def string_consts_to_html(f, source_encoding='ascii'):
-    co = f.func_code
-    consts = list(co.co_consts)
-    for i, c in enumerate(consts):
-        if not isinstance(c, basestring): continue
-        if isinstance(c, str): c = c.decode(source_encoding)
-        consts[i] = Html(c)
-    new_code = type(co)(co.co_argcount, co.co_nlocals, co.co_stacksize,
-                        co.co_flags, co.co_code, tuple(consts), co.co_names,
-                        co.co_varnames, co.co_filename, co.co_name,
-                        co.co_firstlineno, co.co_lnotab, co.co_freevars,
-                        co.co_cellvars)
-    new_function = type(f)(new_code, f.func_globals, f.func_name,
-                                     f.func_defaults, f.func_closure)
-    return new_function
+##def string_consts_to_html(f, source_encoding='ascii'):
+##    co = f.func_code
+##    consts = list(co.co_consts)
+##    for i, c in enumerate(consts):
+##        if not isinstance(c, basestring): continue
+##        if isinstance(c, str): c = c.decode(source_encoding)
+##        consts[i] = Html(c)
+##    new_code = type(co)(co.co_argcount, co.co_nlocals, co.co_stacksize,
+##                        co.co_flags, co.co_code, tuple(consts), co.co_names,
+##                        co.co_varnames, co.co_filename, co.co_name,
+##                        co.co_firstlineno, co.co_lnotab, co.co_freevars,
+##                        co.co_cellvars)
+##    new_function = type(f)(new_code, f.func_globals, f.func_name,
+##                                     f.func_defaults, f.func_closure)
+##    return new_function
 
 @decorator
 def printtext(old_func):
@@ -156,9 +156,10 @@ def printtext(old_func):
 @decorator_with_params
 def printhtml(source_encoding='ascii'):
     def new_decorator(old_func):
-        func = grab_stdout(string_consts_to_html(old_func, source_encoding))
+        func = grab_stdout(old_func)
         def new_func(*args, **keyargs):
-            return htmljoin(func(*args, **keyargs))
+            result = ''.join(func(*args, **keyargs))
+            return Html(result)
         return new_func
     return new_decorator
 
