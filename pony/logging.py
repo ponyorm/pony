@@ -1,6 +1,7 @@
 import re, os, sys, cPickle, traceback, thread, threading, Queue
 from itertools import count
 from pony.thirdparty import sqlite
+#from sqlite3 import *
 from utils import current_timestamp
 
 process_id = os.getpid()
@@ -92,6 +93,9 @@ question_marks = ', '.join(['?'] * (len(sql_columns) + 1))
 sql_insert = 'insert into log values (%s)' % question_marks
 
 class LoggerThread(threading.Thread):
+    def __init__(self):
+	threading.Thread.__init__(self)
+	self.setDaemon(True)
     def run(self):
         self.connnection = sqlite.connect(get_logfile_name())
         self.connnection.executescript(sql_create)
