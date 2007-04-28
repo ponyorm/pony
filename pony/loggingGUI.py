@@ -351,7 +351,9 @@ class WidgetRunner(threading.Thread):
         root.mainloop()
         vw.stop_data_supply()
 
-wr=WidgetRunner()
-wr.start()
+def show_gui():
+    wr=WidgetRunner()
+    wr.start()
 
+show_gui()
   
