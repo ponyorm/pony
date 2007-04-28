@@ -11,8 +11,9 @@ class ViewerWidget(Frame):
         Frame.__init__(self, root)
         self.data_queue=Queue.Queue()
         self.w = w = 1000
-        self.h = h = 600
-        root.title('Pony')
+        self.h = h = 600        
+        self.root=root
+        self.root.title('Pony')
         self.records=[]       
         self.headers={} 
         self.tab_buttons=[]
@@ -25,7 +26,8 @@ class ViewerWidget(Frame):
         hs = root.winfo_screenheight ()
         root.geometry("%dx%d%+d%+d" % (w, h, (ws/2) - (w/2), (hs/2) - (h/2)))
         self.main_col_list = []
-        self.last_selected = 0
+        self.last_selected = -1
+        
         self.up=Frame (self, height=h//2)
         self.up.pack (side=TOP, fill=X)
         self.create_main(self.up)
@@ -33,8 +35,23 @@ class ViewerWidget(Frame):
         self.down=Frame(self, height=h//2, relief=GROOVE, borderwidth=2)
         self.down.pack(side=TOP, expand=YES, fill=BOTH)        
         self.create_tabs( self.down)
+        self.makemenu()
         self.pack(expand=YES, fill=BOTH)
-    
+        self.ds=DataSupplier(self)
+        self.feed_data()
+        self.ds.start()
+
+    def makemenu(self):
+        top=Menu(self.root)
+        self.root.config(menu=top)
+        options=Menu(top, tearoff=0)
+        self.showLastRecord=IntVar(value=1)
+        options.add('checkbutton', label='Show Last Record', variable=self.showLastRecord, \
+                    command=lambda: self.show_last_record())
+        self.showSinceStart=IntVar(value=1)
+        options.add('checkbutton', label='Show Since Last Start Only', variable=self.showSinceStart, \
+                    command=lambda: self.show_since_start())
+        top.add_cascade(label='Options', menu=options)
 
     def create_main(self, parent):
         def _scroll(*args):
@@ -49,17 +66,22 @@ class ViewerWidget(Frame):
             self.last_selected=row
             self.show_record(row)
             return 'break'
-        main_columns=[('timestamp', 20), ('type', 135)] 
+        main_columns=[('timestamp', 20), ('type', 20)] 
         for name, w in main_columns:          
-            cellframe = Frame(parent)
-            cellframe.pack(side=LEFT, expand=Y, fill=BOTH)
-            la = Label(cellframe, text=name, relief=RIDGE)
-            la.pack(fill=X)
+            cellframe = Frame(parent)            
+            la = Label(cellframe, text=name, relief=RIDGE)            
             lb = Listbox(cellframe, borderwidth=0, width=w, height=18, exportselection=FALSE)         
             lb.bind('<Button-1>', lambda e: _select(e))
             lb.bind('<B1-Motion>', lambda e: _select(e))          
-            lb.bind('<Leave>', lambda e: 'break')          
-            lb.pack(side=LEFT, expand=Y, fill=BOTH)
+            lb.bind('<Leave>', lambda e: 'break')
+            if name=='timestamp':
+                cellframe.pack(side=LEFT, expand=N, fill=Y)
+                la.pack(fill=X)
+                lb.pack(side=LEFT, expand=Y, fill=Y)                
+            else:
+                cellframe.pack(side=LEFT, expand=Y, fill=BOTH)
+                la.pack(fill=X)
+                lb.pack(side=LEFT, expand=Y, fill=BOTH)                
             self.main_col_list.append(lb)
         sb=Scrollbar(parent, orient=VERTICAL, command=_scroll) 
         self.main_col_list[0].config(yscrollcommand=sb.set)
@@ -163,21 +185,35 @@ class ViewerWidget(Frame):
         self.records.append (rec)
         self.main_col_list[0].insert(END, rec.timestamp[:-7])
         self.main_col_list[1].insert(END, rec.text)
-        showLastRecord=True
-	if (showLastRecord):
-            self.main_col_list[0].see(END)
-            self.main_col_list [1].see(END)
+        self.show_last_record()
 
-    def show_record(self, rec_no):
-        rec=self.records[rec_no]
-        # clear
+    def clear_tabs(self):
         self.summary_field.delete(1.0, END)
         self.response_info.config(text='')
         for lb in ( self.req_lb1 , self.req_lb2, self.res_lb1, self.res_lb2):
             lb.delete(0, END)
+
+    def show_record(self, rec_no):
+        rec=self.records[rec_no]
+        self.clear_tabs()      
         rec.draw(self)
 
-    def feed_data(self):
+    def show_last_record(self):        
+        if (self.showLastRecord.get()==1):
+            self.main_col_list[0].see(END)
+            self.main_col_list [1].see(END)
+
+    def show_since_start(self):
+        self.clear_tabs()
+        self.main_col_list[0].delete(0, END)
+        self.main_col_list [1].delete(0, END)
+        self.ds.stop()
+        self.ds=DataSupplier(self, loadLastOnly=self.showSinceStart.get())
+        #self.ds.loadLastOnly=self.showSinceStart.get()
+        self.ds.start()
+            
+
+    def feed_data(self):        
         while(True):
             try:
                 rec=self.data_queue.get (block=False)
@@ -186,6 +222,9 @@ class ViewerWidget(Frame):
                 break                
             else:                
                 self.add_record(rec)
+
+    def stop_data_supply(self):
+        self.ds.stop()
 
 
 class Record(object):
@@ -253,8 +292,9 @@ class RequestRecord(Record):
                 #break
 
 class DataSupplier(threading.Thread):
-    def __init__(self, vw):        
+    def __init__(self, vw, loadLastOnly=1):        
         threading.Thread.__init__(self)
+        self.loadLastOnly=loadLastOnly
         self.setDaemon(True)
         self.keepRunning=True
         self.vw=vw        
@@ -290,9 +330,8 @@ class DataSupplier(threading.Thread):
                 _start_from=rec['id']
         
    
-    def run(self):
-        loadLastOnly=True
-        if (loadLastOnly):
+    def run(self):        
+        if (self.loadLastOnly==1):
             self.last_record_id=self.get_last_start_id ()
         else:
             self.last_record_id=1
@@ -301,15 +340,18 @@ class DataSupplier(threading.Thread):
         while (self.keepRunning):
             self.load_data(self.last_record_id )
             time.sleep(DB_UPDATE_INTERVAL)
-     
 
-root=Tk()
-vw=ViewerWidget(root)
-vw.feed_data()
-ds=DataSupplier(vw)
-ds.start()
-root.mainloop()
-ds.stop()
 
+
+class WidgetRunner(threading.Thread):
+    def run(self):
+        root=Tk()
+        vw=ViewerWidget(root)
+        vw.feed_data()        
+        root.mainloop()
+        vw.stop_data_supply()
+
+wr=WidgetRunner()
+wr.start()
 
   
