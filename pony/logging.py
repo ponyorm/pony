@@ -64,11 +64,8 @@ def get_logfile_name():
     try: script_name = main.__file__
     except AttributeError:  # interactive mode
         return ':memory:'   # in-memory database
-    head, tail = os.path.split(script_name)
-    if tail == '__init__.py': return head + '-log.sqlite'
-    else:
-        root, ext = os.path.splitext(script_name)
-        return root + '-log.sqlite'
+    root, ext = os.path.splitext(script_name)
+    return root + '-log.sqlite'
 
 sql_create = """
 create table if not exists log (

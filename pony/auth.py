@@ -134,11 +134,8 @@ def get_sessiondb_name():
     try: script_name = main.__file__
     except AttributeError:  # interactive mode
         return ':memory:'   # in-memory database
-    head, tail = os.path.split(script_name)
-    if tail == '__init__.py': return head + '-secrets.sqlite'
-    else:
-        root, ext = os.path.splitext(script_name)
-        return root + '-secrets.sqlite'    
+    root, ext = os.path.splitext(script_name)
+    return root + '-secrets.sqlite'    
 
 sql_create = """
 create table if not exists time_secrets (
