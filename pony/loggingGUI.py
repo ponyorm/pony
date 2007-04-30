@@ -1,5 +1,6 @@
 from Tkinter import *
 from pony.logging import search_log
+from pony import utils
 from datetime import timedelta
 import threading, time, Queue
 
@@ -45,10 +46,12 @@ class ViewerWidget(Frame):
         top=Menu(self.root)
         self.root.config(menu=top)
         options=Menu(top, tearoff=0)
-        self.showLastRecord=IntVar(value=1)
+        self.showLastRecord=IntVar()
+        self.showLastRecord.set(1)
         options.add('checkbutton', label='Show Last Record', variable=self.showLastRecord, \
                     command=lambda: self.show_last_record())
-        self.showSinceStart=IntVar(value=1)
+        self.showSinceStart=IntVar()
+        self.showSinceStart.set(1)
         options.add('checkbutton', label='Show Since Last Start Only', variable=self.showSinceStart, \
                     command=lambda: self.show_since_start())
         top.add_cascade(label='Options', menu=options)
@@ -171,8 +174,8 @@ class ViewerWidget(Frame):
         self.tab_body_field=Frame (parent)
         self.tab_body_field.pack (side=TOP, expand=Y, fill=BOTH)
 
-        self.current_tab=self.create_summary_tab()
-        self.create_request_tab()
+        # self.current_tab=self.create_summary_tab()
+        self.current_tab = self.create_request_tab()
         self.create_response_tab()
         self.current_tab.pack(expand=Y, fill=BOTH) #show the first tab          
 
@@ -188,7 +191,7 @@ class ViewerWidget(Frame):
         self.show_last_record()
 
     def clear_tabs(self):
-        self.summary_field.delete(1.0, END)
+        # self.summary_field.delete(1.0, END)
         self.response_info.config(text='')
         for lb in ( self.req_lb1 , self.req_lb2, self.res_lb1, self.res_lb2):
             lb.delete(0, END)
@@ -243,7 +246,7 @@ class StartRecord(Record):
             else: button.forget()              
         txt='TIMESTAMP: \t' + self.timestamp \
              + '\nTEXT: \t\t' + self.text
-        widget.summary_field.insert(END, txt)
+        # widget.summary_field.insert(END, txt)
 
 
 class RequestRecord(Record): 
@@ -262,8 +265,8 @@ class RequestRecord(Record):
                 #button.select() 
                 #button.invoke()
             else: button.pack(side=LEFT)
-        #show summary
-        widget.summary_field.insert(END, "some summary text")
+        # show summary
+        # widget.summary_field.insert(END, "some summary text")
         # show request
         for k, v in self.headers.items():
             widget.req_lb1.insert(END, k)
@@ -273,14 +276,10 @@ class RequestRecord(Record):
         rows=search_log(criteria=crit, start_from=self.id, max_count=-1)
         # show data
         for rec in rows:
-            if rec['type']=='HTTP:response': 
-                t1=self.timestamp
-                td1=timedelta(days=int(t1[8:10]), hours=int(t1[11:13]), minutes=int(t1[14:16]), \
-                              seconds=int(t1[17:19]), microseconds=int(t1[20:])) 
-                t2=rec['timestamp']
-                td2=timedelta(days=int(t2[8:10]), hours=int(t2[11:13]), minutes=int(t2[14:16]), \
-                              seconds=int(t2[17:19]), microseconds=int(t2[20:])) 
-                delta=td2-td1
+            if rec['type']=='HTTP:response':
+                dt1 = utils.timestamp2datetime(self.timestamp)
+                dt2 = utils.timestamp2datetime(rec['timestamp'])
+                delta = dt2 - dt1
                 delta=delta.seconds + 0.000001*delta.microseconds
                 
                 txt='TEXT: \t' + rec['text'] + \
@@ -306,7 +305,7 @@ class DataSupplier(threading.Thread):
         for rec in rows:            
             self.last_record_id=rec['id']
             rec_type=rec['type']
-            if rec_type=='HTTP:GET':            
+            if rec_type in ('HTTP:GET', 'HTTP:POST'):
                 record=RequestRecord(rec['id'], rec['process_id'], rec['thread_id'], rec['timestamp'], \
                                   rec_type+" "+rec['text'], rec['headers']) 
             elif rec_type=='HTTP:start':
@@ -354,6 +353,4 @@ class WidgetRunner(threading.Thread):
 def show_gui():
     wr=WidgetRunner()
     wr.start()
-
-show_gui()
   
