@@ -10,10 +10,14 @@ from codecs import BOM_UTF8, BOM_LE, BOM_BE
 from locale import getpreferredencoding
 
 def current_timestamp():
-    return datetime.now().isoformat(' ')
+    result = datetime.now().isoformat(' ')
+    if len(result) == 19: return result + '.000000'
+    return result
 
 def datetime2timestamp(d):
-    return d.isoformat(' ')
+    result = d.isoformat(' ')
+    if len(result) == 19: return result + '.000000'
+    return result
 
 def timestamp2datetime(t):
     time_tuple = strptime(t[:19], '%Y-%m-%d %H:%M:%S')
