@@ -12,40 +12,87 @@ class Html(unicode):
 ##  # Part of correct markup may not be correct markup itself
 ##  # Also commented because of possible performance issues
 ##  def __getitem__(self, key):
-##      return self.__class__(unicode.__getitem__(self, key))
+##      return Html(unicode.__getitem__(self, key))
 ##  def __getslice__(self, i, j):
-##      return self.__class__(unicode.__getslice__(self, i, j))
+##      return Html(unicode.__getslice__(self, i, j))
     def __add__(self, x):
-        return self.__class__(unicode.__add__(self, quote(x)))
+        return Html(unicode.__add__(self, quote(x)))
     def __radd__(self, x):
-        return self.__class__(unicode.__add__(quote(x), self))
+        return Html(unicode.__add__(quote(x), self))
     def __mul__(self, x):
-        return self.__class__(unicode.__mul__(self, x))
+        return Html(unicode.__mul__(self, x))
     def __rmul__(self, x):
-        return self.__class__(unicode.__mul__(self, x))
+        return Html(unicode.__mul__(self, x))
     def __mod__(self, x):
         if isinstance(x, tuple):
             x = tuple(_wrap(item) for item in x)
         else: x = _wrap(x)
-        return self.__class__(unicode.__mod__(self, x))
+        return Html(unicode.__mod__(self, x))
     def __rmod__(self, x):
         return quote(x) % self
     def join(self, items):
-        return self.__class__(unicode.join(self, (unicode(quote(item))
-                                                  for item in items)))
+        return Html(unicode.join(self, (unicode(quote(item))
+                                        for item in items)))
 
 htmljoin = Html('').join
 
+class StrHtml(str):
+    def __repr__(self):
+        return '%s(%s)' % (self.__class__.__name__, str.__repr__(self))
+##  # Part of correct markup may not be correct markup itself
+##  # Also commented because of possible performance issues
+##  def __getitem__(self, key):
+##      return StrHtml(str.__getitem__(self, key))
+##  def __getslice__(self, i, j):
+##      return StrHtml(str.__getslice__(self, i, j))
+    def __add__(self, x):
+        result = str.__add__(self, quote(x))
+        if isinstance(result, unicode): return StrHtml(result)
+        return Html(result)
+    def __radd__(self, x):
+        result = str.__add__(quote(x), self)
+        if isinstance(result, str): return StrHtml(result)
+        return Html(result)
+    def __mul__(self, x):
+        result = str.__mul__(self, x)
+        if isinstance(result, str): return StrHtml(result)
+        return Html(result)
+    def __rmul__(self, x):
+        result = str.__mul__(self, x)
+        if isinstance(result, str): return StrHtml(result)
+        return Html(result)
+    def __mod__(self, x):
+        if not isinstance(x, tuple): x = _wrap(x)
+        else: x = tuple(_wrap(item) for item in x)
+        result = str.__mod__(self, x)
+        if isinstance(result, str): return StrHtml(result)
+        return Html(result)
+    def __rmod__(self, x):
+        return quote(x) % self
+    def join(self, items):
+        result = str.join(self, [ quote(item) for item in items ])
+        if isinstance(result, str): return StrHtml(result)
+        return Html(result)
+
 def quote(x):
-    if isinstance(x, (int, long, float, Html)): return x
-    if not isinstance(x, basestring): x = unicode(x)
-    return Html(x.replace('&', '&amp;').replace('<', '&lt;')
-                  .replace('>', '&gt;').replace('"', '&quot;')
-                  .replace("'", '&#39;'))
+    if isinstance(x, (int, long, float, StrHtml, Html)): return x
+    if not isinstance(x, basestring):
+        if hasattr(x, '__unicode__'):
+            x = unicode(x)
+            cls = Html
+        else:
+            x = str(x)
+            cls = StrHtml
+    elif isinstance(x, unicode): cls = Html
+    else: cls = StrHtml
+    return cls(x.replace('&', '&amp;').replace('<', '&lt;')
+                .replace('>', '&gt;').replace('"', '&quot;')
+                .replace("'", '&#39;'))
 
 def _wrap(x):
     if isinstance(x, basestring):
-        if isinstance(x, Html): result = UnicodeWrapper(x)
+        if isinstance(x, StrHtml): result = StrWrapper(x)
+        elif isinstance(x, Html): result = UnicodeWrapper(x)
         else:
             quoted = (x.replace('&', '&amp;').replace('<', '&lt;')
                        .replace('>', '&gt;').replace('"', '&quot;')
@@ -54,17 +101,17 @@ def _wrap(x):
             else: result = UnicodeWrapper(quoted)
         result.original_value = x
         return result
-    if isinstance(x, (int, long, float, Html)): return x
+    if isinstance(x, (int, long, float)): return x
     return Wrapper(x)
 
 class Wrapper(object):
     __slots__ = [ 'value' ]
     def __init__(self, value):
         self.value = value
-    def __unicode__(self):
-        if isinstance(self.value, Html): return self.value
+    def __str__(self):
         return quote(self.value)
-    __str__ = __unicode__
+    def __unicode__(self):
+        return quote(self.value)
     def __repr__(self):
         return quote(`self.value`)
     def __getitem__(self, key):
@@ -130,21 +177,27 @@ def grab_stdout(f):
         return data
     return new_function
 
-##def string_consts_to_html(f, source_encoding='ascii'):
-##    co = f.func_code
-##    consts = list(co.co_consts)
-##    for i, c in enumerate(consts):
-##        if not isinstance(c, basestring): continue
-##        if isinstance(c, str): c = c.decode(source_encoding)
-##        consts[i] = Html(c)
-##    new_code = type(co)(co.co_argcount, co.co_nlocals, co.co_stacksize,
-##                        co.co_flags, co.co_code, tuple(consts), co.co_names,
-##                        co.co_varnames, co.co_filename, co.co_name,
-##                        co.co_firstlineno, co.co_lnotab, co.co_freevars,
-##                        co.co_cellvars)
-##    new_function = type(f)(new_code, f.func_globals, f.func_name,
-##                                     f.func_defaults, f.func_closure)
-##    return new_function
+def string_consts_to_html(f):
+    co = f.func_code
+    consts = list(co.co_consts)
+    for i, x in enumerate(consts):
+        if isinstance(x, str): consts[i] = StrHtml(x)
+        elif isinstance(x, unicode): consts[i] = Html(x)
+    new_code = type(co)(co.co_argcount, co.co_nlocals, co.co_stacksize,
+                        co.co_flags, co.co_code, tuple(consts), co.co_names,
+                        co.co_varnames, co.co_filename, co.co_name,
+                        co.co_firstlineno, co.co_lnotab, co.co_freevars,
+                        co.co_cellvars)
+    if f.func_defaults:
+        defaults = list(f.func_defaults)
+        for i, x in enumerate(defaults):
+            if isinstance(x, str): defaults[i] = StrHtml(x)
+            elif isinstance(x, unicode): defaults[i] = Html(x)
+        defaults = tuple(defaults)
+    else: defaults = None
+    new_function = type(f)(new_code, f.func_globals, f.func_name,
+                                     defaults, f.func_closure)
+    return new_function
 
 @decorator
 def printtext(old_func):
@@ -156,9 +209,10 @@ def printtext(old_func):
 @decorator_with_params
 def printhtml(source_encoding='ascii'):
     def new_decorator(old_func):
-        func = grab_stdout(old_func)
+        func = grab_stdout(string_consts_to_html(old_func))
         def new_func(*args, **keyargs):
-            return Html(u''.join(func(*args, **keyargs)))
+            result = func(*args, **keyargs)
+            return Html(u''.join(result))
         return new_func
     return new_decorator
 
