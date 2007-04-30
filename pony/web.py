@@ -307,10 +307,10 @@ def get_static_file(path, ext):
     fname = os.path.join(static_dir, *path) + ext
     if not os.path.isfile(fname): return None
     headers = local.response.headers
-    headers['Content-Type'] = mimetype
+    headers['Content-Type'] = guess_type(ext)
     headers['Expires'] = '0'
     headers['Cache-Control'] = 'max-age=10'
-    return file(fname, 'rb'), guess_type(ext)
+    return file(fname, 'rb')
 
 def get_http_handlers(path, ext, qdict):
     # http_registry_lock.acquire()
