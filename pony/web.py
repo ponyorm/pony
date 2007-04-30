@@ -1,5 +1,5 @@
 import re, threading, os.path, inspect, sys, cStringIO, itertools
-import cgi, cgitb, urllib, Cookie
+import cgi, cgitb, urllib, Cookie, mimetypes
 
 from operator import itemgetter
 
@@ -21,56 +21,65 @@ re_component = re.compile("""
     """, re.VERBOSE)
 
 @decorator_with_params
-def http(url=None, ext=None, redirect=False, **params):
+def http(url=None, redirect=False, **params):
     params = dict([ (name.replace('_', '-').title(), value)
                     for name, value in params.items() ])
     def new_decorator(old_func):
         real_url = url is None and old_func.__name__ or url
-        register_http_handler(old_func, real_url, ext, redirect, params)
+        register_http_handler(old_func, real_url, redirect, params)
         return old_func
     return new_decorator
 
-def register_http_handler(func, url, ext, redirect, params):
-    path, query, ext_list = split_url(url, ext, check=True)
-    return HttpInfo(func, path, query, ext_list, redirect, params)
+def register_http_handler(func, url, redirect, params):
+    return HttpInfo(func, url, redirect, params)
 
 http_registry_lock = threading.Lock()
 http_registry = ({}, [])
 
-def split_url(url, ext=None, check=False):
+def split_url(url, strict_parsing=False):
     if isinstance(url, unicode): url = url.encode('utf8')
     elif isinstance(url, str):
-        if check:
+        if strict_parsing:
             try: url.decode('ascii')
             except UnicodeDecodeError: raise ValueError(
                 'Url string contains non-ascii symbols. '
                 'Such urls must be in unicode.')
     else: raise ValueError('Url parameter must be str or unicode')
-    if '?' in url: path, query = url.split('?', 1)
-    else: path, query = url, None
-    path, _ext = os.path.splitext(path)
-    ext_list = []
-    if isinstance(ext, basestring): ext_list.append(ext)
-    elif ext is not None: ext_list.extend(ext)
-    if _ext and _ext not in ext_list: ext_list.insert(0, _ext)
-    if not ext_list: ext_list.append('')
-    return path, query, ext_list
+    if '?' in url:
+        p, q = url.split('?', 1)
+        qlist = []
+        qnames = set()
+        for name, value in cgi.parse_qsl(q, strict_parsing=strict_parsing,
+                                            keep_blank_values=True):
+            if name not in qnames:
+                qlist.append((name, value))
+                qnames.add(name)
+            elif strict_parsing:
+                raise ValueError('Duplicate url parameter: %s' % name)
+    else: p, qlist = url, []
+    p, ext = os.path.splitext(p)
+    components = p.split('/')
+    if not components[0]: components = components[1:]
+    path = map(urllib.unquote, components)
+    return path, ext, qlist
 
 class HttpInfo(object):
-    def __init__(self, func, path, query, ext_list, redirect, params):
+    def __init__(self, func, url, redirect, params):
         self.func = func
-        self.path = path
-        self.query = query
-        self.ext_list = ext_list
-        self.redirect = redirect
-        self.params = params
         if not hasattr(func, 'argspec'):
             func.argspec = self.getargspec(func)
             func.dummy_func = self.create_dummy_func(func)
+        self.url = url
+        self.path, self.ext, self.qlist = split_url(url, strict_parsing=True)
+        self.redirect = redirect
+        self.params = params
         self.args = set()
         self.keyargs = set()
-        self.parsed_path = self.parse_path()
-        self.parsed_query = self.parse_query()
+        self.parsed_path = map(self.parse_component, self.path)
+        self.parsed_query = []
+        for name, value in self.qlist:
+            is_param, x = self.parse_component(value)
+            self.parsed_query.append((name, is_param, x))
         self.check()
         self.register()
     @staticmethod
@@ -93,19 +102,6 @@ class HttpInfo(object):
         spec = inspect.formatargspec(*func.argspec)[1:-1]
         source = "lambda %s: __locals__()" % spec
         return eval(source, dict(__locals__=locals))
-    def parse_path(self):
-        components = self.path.split('/')
-        if not components[0]: components = components[1:]
-        return map(self.parse_component, map(urllib.unquote, components))
-    def parse_query(self):
-        if self.query is None: return []
-        params = cgi.parse_qsl(self.query, strict_parsing=True,
-                                           keep_blank_values=True)
-        result = []
-        for name, value in params:
-            is_param, x = self.parse_component(value)
-            result.append((name, is_param, x))
-        return result
     def parse_component(self, component):
         match = re_component.match(component)
         if not match: raise ValueError('Invalid url component: %r' % component)
@@ -148,16 +144,19 @@ class HttpInfo(object):
                 if i not in args:
                     raise TypeError('Undefined path parameter: %d' % (i+1))
     def register(self):
+        d1 = {}
+        for i, (is_param, x) in enumerate(self.parsed_path): d1[i] = is_param
+        for name, is_param, x in self.parsed_query: d1[name] = is_param
+        qdict = dict(self.qlist)
         http_registry_lock.acquire()
         try:
-            d1 = dict((name, is_param) for name, is_param, x
-                                       in self.parsed_query)
-            for info, _, _ in get_http_handlers(
-                              self.path, self.query, self.ext_list):
-                d2 = dict((name, is_param) for name, is_param, x
-                                           in info.parsed_query)
-                if d1 == d2: _http_remove(info, self.ext_list)
-
+            for info,_,_ in get_http_handlers(self.path, self.ext, qdict):
+                d2 = {}
+                for i, (is_param, x) in enumerate(info.parsed_path):
+                    d2[i] = is_param
+                for name, is_param, x in info.parsed_query:
+                    d2[name] = is_param
+                if d1 == d2: _http_remove(info)
             d, list = http_registry
             for is_param, x in self.parsed_path:
                 if is_param: d, list = d.setdefault(None, ({}, []))
@@ -229,20 +228,20 @@ def build_url(info, func, args, keyargs):
             if component is None:
                 raise PathError('Value for parameter %s is None' % x)
         path.append(urllib.quote(component, safe=':@&=+$,'))
-    path = '/'.join(path)
+    p = '/'.join(path)
 
-    query = []
+    qlist = []
     for name, is_param, x in info.parsed_query:
-        if not is_param: query.append((name, x))
+        if not is_param: qlist.append((name, x))
         else:
             is_default, value = build_param(x)
             if not is_default:
                 if value is None:
                     raise PathError('Value for parameter %s is None' % x)
-                query.append((name, value))
+                qlist.append((name, value))
     quote_plus = urllib.quote_plus
-    query = "&".join(("%s=%s" % (quote_plus(name), quote_plus(value)))
-                     for name, value in query)
+    q = "&".join(("%s=%s" % (quote_plus(name), quote_plus(value)))
+                 for name, value in qlist)
 
     errmsg = 'Not all parameters were used during path construction'
     if len(used_keyparams) != len(keyparams):
@@ -253,9 +252,8 @@ def build_url(info, func, args, keyargs):
                 and value != defaults[i-offset]):
                     raise PathError(errmsg)
 
-    ext = info.ext_list[0]
-    if not query: return '/%s%s' % (path, ext)
-    else: return '/%s%s?%s' % (path, ext, query)
+    if not q: return '/%s%s' % (p, info.ext)
+    else: return '/%s%s?%s' % (p, info.ext, q)
 
 link_template = Html(u'<a href="%s">%s</a>')
 
@@ -273,16 +271,52 @@ def link(*args, **keyargs):
     href = url(func, *args, **keyargs)
     return link_template % (href, description)
 
-def get_http_handlers(path, query, ext_list):
-    components = map(urllib.unquote, path.split('/'))
-    if not components[0]: components = components[1:]
-    if query is None: params = {}
-    else: params = dict(reversed(cgi.parse_qsl(query)))
+if not mimetypes.inited: # Copied from SimpleHTTPServer
+    mimetypes.init() # try to read system mime.types
+extensions_map = mimetypes.types_map.copy()
+extensions_map.update({
+    '': 'application/octet-stream', # Default
+    '.py': 'text/plain',
+    '.c': 'text/plain',
+    '.h': 'text/plain',
+    })
 
+def guess_type(ext):
+    result = extensions_map.get(ext)
+    if result is not None: return result
+    result = extensions_map.get(ext.lower())
+    if result is not None: return result
+    return 'application/octet-stream'
+
+def get_static_dir_name():
+    main = sys.modules['__main__']
+    try: script_name = main.__file__
+    except AttributeError:  # interactive mode
+        return None
+    head, tail = os.path.split(script_name)
+    return os.path.join(head, 'static')
+
+static_dir = get_static_dir_name()
+
+path_re = re.compile(r"^[-_.!~*'()A-Za-z0-9]+$")
+
+def get_static_file(path, ext):
+    for component in path:
+        if not path_re.match(component): return None
+    if ext and not path_re.match(ext): return None
+    fname = os.path.join(static_dir, *path) + ext
+    if not os.path.isfile(fname): return None
+    headers = local.response.headers
+    headers['Content-Type'] = mimetype
+    headers['Expires'] = '0'
+    headers['Cache-Control'] = 'max-age=10'
+    return file(fname, 'rb'), guess_type(ext)
+
+def get_http_handlers(path, ext, qdict):
     # http_registry_lock.acquire()
     # try:
     variants = [ http_registry ]
-    for i, component in enumerate(components):
+    for i, component in enumerate(path):
         new_variants = []
         for d, list in variants:
             variant = d.get(component)
@@ -297,24 +331,26 @@ def get_http_handlers(path, query, ext_list):
     not_found = object()
     for _, list in variants:
         for info in list:
-            for ext in ext_list:
-                if ext in info.ext_list: break
-            else: continue
+            if ext != info.ext: continue
             args, keyargs = {}, {}
+            const_count = 0
             for i, (is_param, x) in enumerate(info.parsed_path):
-                if not is_param: continue
-                value = components[i]
+                if not is_param:
+                    const_count += 1
+                    continue
+                value = path[i]
                 if isinstance(x, int): args[x] = value
                 elif isinstance(x, basestring): keyargs[x] = value
                 else: assert False
             names, _, _, defaults = info.func.argspec
             offset = len(names) - len(defaults)
-            non_used_params = set(params)
+            non_used_query_params = set(qdict)
             for name, is_param, x in info.parsed_query:
-                non_used_params.discard(name)
-                value = params.get(name, not_found)
+                non_used_query_params.discard(name)
+                value = qdict.get(name, not_found)
                 if not is_param:
                     if value != x: break
+                    const_count += 1
                 elif isinstance(x, int):
                     if value is not_found:
                         if offset <= x < len(names): continue
@@ -332,24 +368,33 @@ def get_http_handlers(path, query, ext_list):
                     except IndexError:
                         assert i == len(arglist)
                         arglist.append(value)
-                result.append((info, arglist, keyargs, len(non_used_params)))
+                result.append((info, arglist, keyargs, const_count,
+                               len(non_used_query_params)))
     if result:
-        min_count_of_non_used_params = min(map(itemgetter(3), result))
-        result = [ (info, arglist, keyargs)
-                   for info,arglist,keyargs,count_of_non_used_params in result
-                   if count_of_non_used_params == min_count_of_non_used_params ]
+        x = max(map(itemgetter(3), result))
+        result = [ tup for tup in result if tup[3] == x ]
+        x = min(map(itemgetter(4), result))
+        result = [ tup[:3] for tup in result if tup[4] == x ]
     return result
 
 def invoke(url):
-    path, query, ext_list = split_url(url)
+    path, ext, qlist = split_url(url)
+    qdict = dict(qlist)
     local.response = HttpResponse()
-    handlers = get_http_handlers(path, query, ext_list)
-    if not handlers:        
-        if path.endswith('/'): new_path = path[:-1]
-        else: new_path = path + '/'
-        if get_http_handlers(new_path, query, ext_list):
-            url = new_path + ext_list[0]
-            if query: url = '?'.join((url, query))
+    handlers = get_http_handlers(path, ext, qdict)
+    if not handlers:
+        file = get_static_file(path, ext)
+        if file is not None: return file
+        if '?' in url:
+            p, q = url.split('?', 1)
+            if p.endswith('/'): p = p[:-1]
+            else: p += '/'
+            url = '?'.join((p, q))
+        elif url.endswith('/'): url = url[:-1]
+        else: url += '/'
+        path, ext, qlist = split_url(url)
+        qdict = dict(qlist)
+        if get_http_handlers(path, ext, qdict):
             if not url.startswith('/'): url = '/' + url
             raise HttpRedirect(url)
         raise Http404('Page not found')
@@ -369,6 +414,7 @@ def invoke(url):
                 raise HttpRedirect(new_url, status)
     local.response.headers.update(info.params)
     result = info.func(*args, **keyargs)
+
     headers = dict([ (name.replace('_', '-').title(), value)
                      for name, value in local.response.headers.items() ])
     local.response.headers = headers
@@ -378,8 +424,7 @@ def invoke(url):
     if content_type:
         content_type_params = cgi.parse_header(content_type)[1]
         charset = content_type_params.get('charset', 'iso-8859-1')
-    else:
-        headers['Content-Type'] = '%s; charset=%s' % (type, charset)
+    else: headers['Content-Type'] = '%s; charset=%s' % (type, charset)
     if isinstance(result, Html):
         headers['Content-Type'] = 'text/html; charset=%s' % charset
 
@@ -392,31 +437,26 @@ def invoke(url):
     max_age = headers.pop('Max-Age', '2')
     cache_control = headers.get('Cache-Control')
     if not cache_control: headers['Cache-Control'] = 'max-age=%s' % max_age
+    headers.setdefault('Vary', 'Cookie')
     return result
 http.invoke = invoke
 
-def _http_remove(info, ext_list):
-    for ext in ext_list:
-        try: info.ext_list.remove(ext)
-        except ValueError: pass
-    if not info.ext_list:
-        info.list.remove(info)
-        info.func.http.remove(info)
+def _http_remove(info):
+    info.list.remove(info)
+    info.func.http.remove(info)
             
-def http_remove(x, ext=None):
+def http_remove(x):
     if isinstance(x, basestring):
-        path, query, ext_list = split_url(x, ext, check=True)
+        path, ext, qlist = split_url(x, strict_parsing=True)
+        qdict = dict(qlist)
         http_registry_lock.acquire()
         try:
-            for info, _, _ in get_http_handlers(path, query, ext_list):
-                _http_remove(info, ext_list)
+            for info, _, _ in get_http_handlers(path, ext, qdict):
+                _http_remove(info)
         finally: http_registry_lock.release()
     elif hasattr(x, 'http'):
-        if ext is None: ext_list = []
-        elif isinstance(x, basestring): ext_list = [ ext ]
-        else: ext_list = list(ext)
         http_registry_lock.acquire()
-        try: _http_remove(x, ext_list)
+        try: _http_remove(x)
         finally: http_registry_lock.release()
     else: raise ValueError('This object is not bound to url: %r' % x)
 
@@ -469,6 +509,9 @@ class HttpRequest(object):
         self.cookies = Cookie.SimpleCookie()
         if 'HTTP_COOKIE' in environ:
             self.cookies.load(environ['HTTP_COOKIE'])
+        morsel = self.cookies.get('pony')
+        session_data = morsel and morsel.value or None
+        auth.load(session_data, environ)
         input_stream = environ.get('wsgi.input') or cStringIO.StringIO()
         self.fields = cgi.FieldStorage(
             fp=input_stream, environ=environ, keep_blank_values=True)
@@ -560,11 +603,6 @@ def log_request(environ):
         text=reconstruct_url(environ),
         headers=headers)
 
-def determine_user(environ):
-    morsel = local.request.cookies.get('pony')
-    data = morsel and morsel.value or None
-    auth.load(data, environ)
-
 http_only_incompatible_browsers = [ 'WebTV', 'MSIE 5.0; Mac' ]
 
 ONE_MONTH = 60*60*24*31
@@ -589,6 +627,8 @@ def create_cookies(environ):
         result.append(('Set-Cookie', cookie))
     return result
 
+BLOCK_SIZE = 65536
+
 def wsgi_app(environ, wsgi_start_response):
     def start_response(status, headers):
         headers = [ (name, str(value)) for name, value in headers.items() ]
@@ -596,7 +636,6 @@ def wsgi_app(environ, wsgi_start_response):
         log(type='HTTP:response', text=status, headers=headers)
         wsgi_start_response(status, headers)
 
-    determine_user(environ)
     local.request = HttpRequest(environ)
     url = environ['PATH_INFO']
     query = environ['QUERY_STRING']
@@ -615,6 +654,9 @@ def wsgi_app(environ, wsgi_start_response):
     else:
         response = local.response
         start_response('200 OK', response.headers)
+        if hasattr(result, 'read'): # result is file
+            # return [ result.read() ]
+            return iter(lambda: result.read(BLOCK_SIZE), '')
         return [ result ]
 
 def wsgi_test(environ, start_response):
