@@ -6,6 +6,7 @@ from operator import itemgetter
 from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
 
 from pony import auth
+from pony import autoreload
 from pony.utils import decorator_with_params
 from pony.templating import Html
 from pony.logging import log, log_exc
@@ -475,6 +476,8 @@ def http_clear():
 
 http.clear = http_clear
 
+autoreload.clear_funcs.append(http_clear)
+
 ################################################################################
 
 class HttpException(Exception):
@@ -681,13 +684,16 @@ def parse_address(address):
 
 server_threads = {}
 
-class ServerStartException(Exception): pass
-class ServerStopException(Exception): pass
+class ServerException(Exception): pass
+class   ServerStartException(ServerException): pass
+class     ServerAlreadyStarted(ServerStartException): pass
+class   ServerStopException(ServerException): pass
+class     ServerNotStarted(ServerStopException): pass
 
 class ServerThread(threading.Thread):
     def __init__(self, host, port, wsgi_app, verbose):
         server = server_threads.setdefault((host, port), self)
-        if server != self: raise ServerStartException(
+        if server != self: raise ServerAlreadyStarted(
             'HTTP server already started: %s:%s' % (host, port))
         threading.Thread.__init__(self)
         self.host = host
@@ -709,8 +715,11 @@ class ServerThread(threading.Thread):
 
 def start_http_server(address='localhost:8080', verbose=True):
     host, port = parse_address(address)
-    server_thread = ServerThread(host, port, wsgi_app, verbose=verbose)
-    server_thread.start()
+    try:
+        server_thread = ServerThread(host, port, wsgi_app, verbose=verbose)
+    except ServerAlreadyStarted:
+        if not autoreload.reloading: raise
+    else: server_thread.start()
 
 def stop_http_server(address=None):
     if address is None:
@@ -719,7 +728,7 @@ def stop_http_server(address=None):
     else:
         host, port = parse_address(address)
         server_thread = server_threads.get((host, port))
-        if server_thread is None: raise ServerStopException(
+        if server_thread is None: raise ServerNotStarted(
             'Cannot stop HTTP server at %s:%s '
             'because it is not started:' % (host, port))
         server_thread.server.stop()

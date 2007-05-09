@@ -1,5 +1,7 @@
 from pony.main import *
 
+use_autoreload()
+
 @http('/')
 def index():
     a = get_param('a')

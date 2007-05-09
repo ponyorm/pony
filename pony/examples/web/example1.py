@@ -2,6 +2,8 @@
 
 from pony.main import *
 
+use_autoreload()
+
 @http
 def page1():
     return 'Hello, world!'
@@ -118,5 +120,4 @@ def index():
     print '<li>%s</li>' % link(page7)
     print '</ul>'
 
-if __name__ == '__main__':
-    start_http_server('localhost:8080')
+start_http_server()

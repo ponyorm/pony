@@ -2,6 +2,8 @@
 
 from pony.main import *
 
+use_autoreload()
+
 @http("/")
 def main():
     return html(u'''
