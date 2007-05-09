@@ -2,6 +2,8 @@ import itertools, linecache, sys, time, os, imp, traceback
 
 from os.path import abspath, basename, dirname, exists, splitext
 
+from pony.logging import log, log_exc
+
 mainfile = getattr(sys.modules['__main__'], '__file__', '')
 maindir = abspath(dirname(mainfile)) + os.sep
 counter = itertools.count()
@@ -16,17 +18,28 @@ def load_main():
     finally:
         if file: file.close()
 
-def reload(modules):
-    print '--- RELOADING ---'
+def reload(modules, changed_module, filename):
     global reloading
     reloading = True
+    success = True
+    print 'RELOADING: %s' % filename
+    log('RELOAD:begin', text='Changed: %s' % changed_module.__name__,
+        modules=dict((m.__name__, m.__file__) for m in modules))
     try:
-        for clear_func in clear_funcs: clear_func()
-        mtimes.clear()
-        linecache.checkcache()
-        for m in modules: sys.modules.pop(m.__name__, None)
-        load_main()
+        try:
+            for clear_func in clear_funcs: clear_func()
+            mtimes.clear()
+            linecache.checkcache()
+            for m in modules: sys.modules.pop(m.__name__, None)
+            load_main()
+        except Exception:
+            success = False
+            log_exc()
+            traceback.print_exc()
+            raise
     finally:
+        log('RELOAD:end', success=success,
+            text=success and 'Reloaded successfully' or 'Reloaded with errors')
         reloading = False
 
 def use_autoreload():
@@ -46,10 +59,8 @@ def use_autoreload():
             mtime = stat.st_mtime
             if sys.platform == "win32": mtime -= stat.st_ctime
             if mtimes.setdefault(filename, mtime) != mtime:
-                try: reload(modules)
-                except Exception:
-                    traceback.print_exc()
-                    error = True
+                try: reload(modules, m, filename)
+                except Exception: error = True
                 else: error = False
                 break
         time.sleep(1)
