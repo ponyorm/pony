@@ -70,6 +70,7 @@ class HttpInfo(object):
         if not hasattr(func, 'argspec'):
             func.argspec = self.getargspec(func)
             func.dummy_func = self.create_dummy_func(func)
+        if url == '': url = '/'
         self.url = url
         self.path, self.ext, self.qlist = split_url(url, strict_parsing=True)
         self.redirect = redirect
@@ -302,6 +303,7 @@ static_dir = get_static_dir_name()
 path_re = re.compile(r"^[-_.!~*'()A-Za-z0-9]+$")
 
 def get_static_file(path, ext):
+    if static_dir is None: return None
     for component in path:
         if not path_re.match(component): return None
     if ext and not path_re.match(ext): return None
@@ -379,6 +381,7 @@ def get_http_handlers(path, ext, qdict):
     return result
 
 def invoke(url):
+    if url == '': url = '/'
     path, ext, qlist = split_url(url)
     qdict = dict(qlist)
     local.response = HttpResponse()
