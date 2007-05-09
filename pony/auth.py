@@ -151,11 +151,11 @@ create table if not exists used_tickets (
 
 class AuthThread(threading.Thread):
     def run(self):
-        con = self.connnection = sqlite.connect(get_sessiondb_name())
+        con = self.connection = sqlite.connect(get_sessiondb_name())
         con.executescript(sql_create)
         for minute, secret in con.execute('select * from time_secrets'):
             secret_cache[minute] = hmac.new(str(secret), digestmod=sha)
-        self.connnection.commit()
+        self.connection.commit()
         while True:
             x = queue.get()
             if x is None: break
@@ -167,7 +167,7 @@ class AuthThread(threading.Thread):
         if minute in secret_cache:
             lock.release()
             return
-        con = self.connnection
+        con = self.connection
         row = con.execute('select secret from time_secrets where minute = ?',
                           [minute]).fetchone()
         if row is not None:
@@ -187,7 +187,7 @@ class AuthThread(threading.Thread):
         secret_cache[minute] = hmac.new(secret, digestmod=sha)
         lock.release()
     def prepare_ticket(self, minute, rnd, lock, result):
-        con = self.connnection
+        con = self.connection
         row = con.execute('select rowid from used_tickets '
                           'where minute = ? and rnd = ?',
                           [minute, rnd]).fetchone()
