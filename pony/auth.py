@@ -130,6 +130,8 @@ def get_hashobject(minute):
     return hashobject.copy()
 
 def get_sessiondb_name():
+    # This function returns relative path! It is workaround for bug in SQLite
+    # (Problems with unicode symbols in directory name)
     main = sys.modules['__main__']
     try: script_name = main.__file__
     except AttributeError:  # interactive mode

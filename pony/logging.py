@@ -60,6 +60,8 @@ def search_log(max_count=100, start_from=None, criteria=None, params=()):
     return result
 
 def get_logfile_name():
+    # This function returns relative path! It is workaround for bug in SQLite
+    # (Problems with unicode symbols in directory name)
     main = sys.modules['__main__']
     try: script_name = main.__file__
     except AttributeError:  # interactive mode
