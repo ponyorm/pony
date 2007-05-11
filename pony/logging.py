@@ -64,6 +64,7 @@ def get_logfile_name():
     try: script_name = main.__file__
     except AttributeError:  # interactive mode
         return ':memory:'   # in-memory database
+    script_name = os.path.basename(script_name)
     root, ext = os.path.splitext(script_name)
     return root + '-log.sqlite'
 
