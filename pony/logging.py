@@ -95,9 +95,9 @@ class LoggerThread(threading.Thread):
         threading.Thread.__init__(self)
         self.setDaemon(True)
     def run(self):
-        self.connnection = sqlite.connect(get_logfile_name())
-        self.connnection.executescript(sql_create)
-        self.connnection.commit()
+        self.connection = sqlite.connect(get_logfile_name())
+        self.connection.executescript(sql_create)
+        self.connection.commit()
         while True:
             x = queue.get()
             if x is None: break
@@ -118,7 +118,7 @@ class LoggerThread(threading.Thread):
     def execute_query(self, sql, params, result, lock):
         try:
             try:
-                cursor = self.connnection.execute(sql, params)
+                cursor = self.connection.execute(sql, params)
             except Exception, e:
                 result.append(e)
                 return
@@ -136,8 +136,8 @@ class LoggerThread(threading.Thread):
             row = [ record.pop(name, None) for name in sql_columns ]
             row.append(buffer(cPickle.dumps(record, 2)))
             rows.append(row)
-        self.connnection.executemany(sql_insert, rows)
-        self.connnection.commit()
+        self.connection.executemany(sql_insert, rows)
+        self.connection.commit()
 
 hdr_list = '''
 ACTUAL_SERVER_PROTOCOL
