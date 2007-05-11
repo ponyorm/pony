@@ -4,8 +4,10 @@ from os.path import abspath, basename, dirname, exists, splitext
 
 from pony.logging import log, log_exc
 
+USE_AUTORELOAD = True
+
 mainfile = getattr(sys.modules['__main__'], '__file__', '')
-maindir = abspath(dirname(mainfile)) + os.sep
+maindir = dirname(abspath(mainfile)) + os.sep
 counter = itertools.count()
 mtimes = {}
 clear_funcs = []
@@ -19,10 +21,8 @@ def load_main():
         if file: file.close()
 
 def shortened_module_name(filename):
-    try: main = sys.modules['__main__'].__file__
-    except AttributeError: return filename
-    dir = os.path.dirname(main) + os.sep
-    if filename.startswith(dir): return filename[len(dir):]
+    if not mainfile: return filename
+    if filename.startswith(maindir): return filename[len(maindir):]
     return filename
 
 def reload(modules, changed_module, filename):
@@ -42,7 +42,6 @@ def reload(modules, changed_module, filename):
         except Exception:
             success = False
             log_exc()
-            traceback.print_exc()
             raise
     finally:
         log('RELOAD:end', success=success,
@@ -55,8 +54,9 @@ def use_autoreload():
     error = False
     while True:
         if not error:
-            modules = [ m for m in sys.modules.values()
-                        if getattr(m, '__file__', '').startswith(maindir) ]
+            modules = [ m for name, m in sys.modules.items()
+                        if getattr(m, 'USE_AUTORELOAD', False)
+                           and not name.startswith('pony.') ]
         for m in modules:
             filename = abspath(m.__file__)
             if filename.endswith(".pyc") or filename.endswith(".pyo"):
@@ -67,7 +67,9 @@ def use_autoreload():
             if sys.platform == "win32": mtime -= stat.st_ctime
             if mtimes.setdefault(filename, mtime) != mtime:
                 try: reload(modules, m, filename)
-                except Exception: error = True
+                except Exception:
+                    error = True
+                    traceback.print_exc()
                 else: error = False
                 break
         time.sleep(1)

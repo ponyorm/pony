@@ -1,7 +1,7 @@
 import pony
 
 from pony.templating import Html, printtext, printhtml, cycle, template, html
-from pony.autoreload import use_autoreload
+from pony.autoreload import use_autoreload, USE_AUTORELOAD
 from pony.auth import get_user, set_user, get_session
 from pony.web import (http, url, link, start_http_server, stop_http_server,
                       get_request, get_response, get_param,
