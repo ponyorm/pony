@@ -18,11 +18,18 @@ def load_main():
     finally:
         if file: file.close()
 
+def shortened_module_name(filename):
+    try: main = sys.modules['__main__'].__file__
+    except AttributeError: return filename
+    dir = os.path.dirname(main) + os.sep
+    if filename.startswith(dir): return filename[len(dir):]
+    return filename
+
 def reload(modules, changed_module, filename):
     global reloading
     reloading = True
     success = True
-    print 'RELOADING: %s' % filename
+    print 'RELOADING: %s' % shortened_module_name(filename)
     log('RELOAD:begin', text='Changed: %s' % changed_module.__name__,
         modules=dict((m.__name__, m.__file__) for m in modules))
     try:
