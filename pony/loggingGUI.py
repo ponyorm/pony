@@ -23,19 +23,19 @@ class ViewerWidget(Frame):
         self.current_tab_n = IntVar(0)
         self.tab_count = 0
 
-        ws = root.winfo_screenwidth ()
-        hs = root.winfo_screenheight ()
+        ws = root.winfo_screenwidth()
+        hs = root.winfo_screenheight()
         root.geometry("%dx%d%+d%+d" % (w, h, (ws/2) - (w/2), (hs/2) - (h/2)))
         self.main_col_list = []
         self.last_selected = -1
         
-        self.up=Frame (self, height=h//2)
-        self.up.pack (side=TOP, fill=X)
+        self.up=Frame(self, height=h//2)
+        self.up.pack(side=TOP, fill=X)
         self.create_main(self.up)
           
         self.down=Frame(self, height=h//2, relief=GROOVE, borderwidth=2)
         self.down.pack(side=TOP, expand=YES, fill=BOTH)        
-        self.create_tabs( self.down)
+        self.create_tabs(self.down)
         self.makemenu()
         self.pack(expand=YES, fill=BOTH)
         self.ds=DataSupplier(self)
@@ -48,19 +48,19 @@ class ViewerWidget(Frame):
         options=Menu(top, tearoff=0)
         self.showLastRecord=IntVar()
         self.showLastRecord.set(1)
-        options.add('checkbutton', label='Show Last Record', variable=self.showLastRecord, \
-                    command=lambda: self.show_last_record())
+        options.add('checkbutton', label='Show Last Record', variable=self.showLastRecord,
+                    command=self.show_last_record)
         self.showSinceStart=IntVar()
         self.showSinceStart.set(1)
-        options.add('checkbutton', label='Show Since Last Start Only', variable=self.showSinceStart, \
-                    command=lambda: self.show_since_start())
+        options.add('checkbutton', label='Show Since Last Start Only', variable=self.showSinceStart,
+                    command=self.show_since_start)
         top.add_cascade(label='Options', menu=options)
 
     def create_main(self, parent):
         def _scroll(*args):
             for col in self.main_col_list:
-                apply( col.yview, args)
-        def _select(e):
+                col.yview(*args)
+        def select_row(e):
             row = self.main_col_list [0].nearest(e.y)
             if row==self.last_selected: return 'break'
             for col in self.main_col_list:
@@ -74,8 +74,8 @@ class ViewerWidget(Frame):
             cellframe = Frame(parent)            
             la = Label(cellframe, text=name, relief=RIDGE)            
             lb = Listbox(cellframe, borderwidth=0, width=w, height=18, exportselection=FALSE)         
-            lb.bind('<Button-1>', lambda e: _select(e))
-            lb.bind('<B1-Motion>', lambda e: _select(e))          
+            lb.bind('<Button-1>', select_row)
+            lb.bind('<B1-Motion>', select_row)          
             lb.bind('<Leave>', lambda e: 'break')
             if name=='timestamp':
                 cellframe.pack(side=LEFT, expand=N, fill=Y)
@@ -90,11 +90,10 @@ class ViewerWidget(Frame):
         self.main_col_list[0].config(yscrollcommand=sb.set)
         sb.pack(side=RIGHT, fill=Y)
 
-
     def _create_tab_blank(self, tab_name, tab_number):
         tab_field=Frame(self.tab_body_field)       
-        tab_button = Radiobutton(self.tab_buttons_field, text=tab_name, width=20, indicatoron=0, \
-                                 variable=self.current_tab_n , value=tab_number, \
+        tab_button = Radiobutton(self.tab_buttons_field, text=tab_name, width=20, indicatoron=0,
+                                 variable=self.current_tab_n , value=tab_number,
                                  command=lambda tab_field=tab_field: self.display_tab(tab_field))
         tab_button.pack(side=LEFT)
         self.tab_buttons.append(tab_button)
@@ -110,10 +109,10 @@ class ViewerWidget(Frame):
 
     def create_request_tab(self):
         def scroll_hdrs(*args):
-            apply(self.req_lb1.yview, args)
-            apply(self.req_lb2.yview, args)
+            self.req_lb1.yview(*args)
+            self.req_lb2.yview(*args)
 
-        def select(e):
+        def select_row(e):
             row = self.req_lb1.nearest(e.y)
             for lb in (self.req_lb1, self.req_lb2):
                 lb.select_clear(0,END)
@@ -128,8 +127,8 @@ class ViewerWidget(Frame):
         self.req_lb2=Listbox(headers_frame, borderwidth=0, width=90, exportselection=FALSE)
         self.req_lb2.pack(side=LEFT, expand=Y, fill=BOTH)
         for lb in (self.req_lb1, self.req_lb2):
-            lb.bind('<Button-1>', lambda e: select(e))
-            lb.bind('<B1-Motion>', lambda e: select(e))          
+            lb.bind('<Button-1>', select_row)
+            lb.bind('<B1-Motion>', select_row)          
             lb.bind('<Leave>', lambda e: 'break')      
         sb=Scrollbar(headers_frame, orient=VERTICAL, command=scroll_hdrs)
         self.req_lb1.config(yscrollcommand=sb.set)
@@ -138,18 +137,18 @@ class ViewerWidget(Frame):
 
     def create_response_tab(self): 
         def scroll_hdrs(*args):
-            apply(self.res_lb1.yview, args)
-            apply(self.res_lb2.yview, args)
+            self.res_lb1.yview(*args)
+            self.res_lb2.yview(*args)
 
-        def select(e):
+        def select_row(e):
             row = self.res_lb1.nearest(e.y)
-            for lb in ( self.res_lb1, self.res_lb2):
+            for lb in (self.res_lb1, self.res_lb2):
                 lb.select_clear(0,END)
                 lb.select_set(row)
             return 'break'
        
         response_tab=self._create_tab_blank("response", 2) 
-        self.response_info=Label(response_tab, text='', justify=LEFT, \
+        self.response_info=Label(response_tab, text='', justify=LEFT,
                            font='Helvetica 8 bold', wraplength= self.w-20)
         self.response_info.pack(side=TOP, anchor=W) 
         headers_frame=Frame(response_tab)
@@ -159,8 +158,8 @@ class ViewerWidget(Frame):
         self.res_lb2=Listbox(headers_frame, borderwidth=0, width=90, exportselection=FALSE)
         self.res_lb2.pack(side=LEFT, expand=Y, fill=BOTH)
         for lb in (self.res_lb1, self.res_lb2):
-            lb.bind('<Button-1>', lambda e: select(e))
-            lb.bind('<B1-Motion>', lambda e: select(e))          
+            lb.bind('<Button-1>', select_row)
+            lb.bind('<B1-Motion>', select_row)          
             lb.bind('<Leave>', lambda e: 'break')      
         sb=Scrollbar(headers_frame, orient=VERTICAL, command=scroll_hdrs)
         self.req_lb1.config(yscrollcommand=sb.set)
@@ -171,8 +170,8 @@ class ViewerWidget(Frame):
         self.tab_buttons_field=Frame(parent, relief=GROOVE, borderwidth=1)
         self.tab_buttons_field.pack(side=TOP, expand=N, fill=X)
        
-        self.tab_body_field=Frame (parent)
-        self.tab_body_field.pack (side=TOP, expand=Y, fill=BOTH)
+        self.tab_body_field=Frame(parent)
+        self.tab_body_field.pack(side=TOP, expand=Y, fill=BOTH)
 
         # self.current_tab=self.create_summary_tab()
         self.current_tab = self.create_request_tab()
@@ -185,15 +184,15 @@ class ViewerWidget(Frame):
         self.current_tab=tab
 
     def add_record(self, rec):       
-        self.records.append (rec)
-        self.main_col_list[0].insert(END, rec.timestamp[:-7])
-        self.main_col_list[1].insert(END, rec.text)
+        self.records.append(rec)
+        self.main_col_list[0].insert(END, rec.data['timestamp'][:-7])
+        self.main_col_list[1].insert(END, rec.data['text'])
         self.show_last_record()
 
     def clear_tabs(self):
         # self.summary_field.delete(1.0, END)
         self.response_info.config(text='')
-        for lb in ( self.req_lb1 , self.req_lb2, self.res_lb1, self.res_lb2):
+        for lb in (self.req_lb1 , self.req_lb2, self.res_lb1, self.res_lb2):
             lb.delete(0, END)
 
     def show_record(self, rec_no):
@@ -202,7 +201,7 @@ class ViewerWidget(Frame):
         rec.draw(self)
 
     def show_last_record(self):        
-        if (self.showLastRecord.get()==1):
+        if self.showLastRecord.get()==1:
             self.main_col_list[0].see(END)
             self.main_col_list [1].see(END)
 
@@ -219,9 +218,9 @@ class ViewerWidget(Frame):
     def feed_data(self):        
         while(True):
             try:
-                rec=self.data_queue.get (block=False)
+                rec=self.data_queue.get(block=False)
             except Queue.Empty:
-                self.after(UI_UPDATE_INTERVAL, lambda: self.feed_data())
+                self.after(UI_UPDATE_INTERVAL, self.feed_data)
                 break                
             else:                
                 self.add_record(rec)
@@ -231,59 +230,43 @@ class ViewerWidget(Frame):
 
 
 class Record(object):
-    def draw(self, widget):
-        pass
+    def __init__(self, data):
+        self.data = data
 
 class StartRecord(Record):
-    def __init__(self, timestamp, text):
-        self.timestamp=timestamp
-        self.text=text
     def draw(self, widget):
         for i, button in enumerate(widget.tab_buttons ):
             if i==0:
                 button.select()
                 button.invoke()
             else: button.forget()              
-        txt='TIMESTAMP: \t' + self.timestamp \
-             + '\nTEXT: \t\t' + self.text
+        # data = self.data
+        # txt='TIMESTAMP: \t%s\nTEXT: \t\t%s' % (data['timestamp'], data['text'])
         # widget.summary_field.insert(END, txt)
 
-
 class RequestRecord(Record): 
-    def __init__(self, id, process_id, thread_id, timestamp, text, headers):
-        self.id=id
-        self.process_id=process_id
-        self.thread_id=thread_id
-        self.timestamp=timestamp
-        self.text=text
-        self.headers=headers    
-
     def draw(self, widget):
+        data = self.data
         for i, button in enumerate(widget.tab_buttons):
             if i==0:
                 pass
                 #button.select() 
                 #button.invoke()
             else: button.pack(side=LEFT)
-        # show summary
         # widget.summary_field.insert(END, "some summary text")
-        # show request
-        for k, v in self.headers.items():
+        for k, v in data['headers'].items():
             widget.req_lb1.insert(END, k)
             widget.req_lb2.insert(END, v)
-        # get additional data
-        crit='process_id=%i and thread_id=%i' % (self.process_id, self.thread_id)
-        rows=search_log(criteria=crit, start_from=self.id, max_count=-1)
-        # show data
+        crit='process_id=%i and thread_id=%i' % (data['process_id'], data['thread_id'])
+        rows=search_log(criteria=crit, start_from=data['id'], max_count=-1)
         for rec in rows:
             if rec['type']=='HTTP:response':
-                dt1 = utils.timestamp2datetime(self.timestamp)
+                dt1 = utils.timestamp2datetime(data['timestamp'])
                 dt2 = utils.timestamp2datetime(rec['timestamp'])
                 delta = dt2 - dt1
                 delta=delta.seconds + 0.000001*delta.microseconds
                 
-                txt='TEXT: \t' + rec['text'] + \
-                     '\nDELAY: \t' + str(delta) 
+                txt='TEXT: \t%s %s\nDELAY: \t%s' % (rec['type'], rec['text'], delta)
                 widget.response_info.config(text=txt)
                 for k, v in rec['headers']:
                     widget.res_lb1.insert(END, k)
@@ -305,13 +288,9 @@ class DataSupplier(threading.Thread):
         for rec in rows:            
             self.last_record_id=rec['id']
             rec_type=rec['type']
-            if rec_type in ('HTTP:GET', 'HTTP:POST'):
-                record=RequestRecord(rec['id'], rec['process_id'], rec['thread_id'], rec['timestamp'], \
-                                  rec_type+" "+rec['text'], rec['headers']) 
-            elif rec_type=='HTTP:start':
-                record=StartRecord(rec['timestamp'], rec['text']) 
-            else:
-                continue
+            if rec_type in ('HTTP:GET', 'HTTP:POST'): record=RequestRecord(rec) 
+            elif rec_type=='HTTP:start': record=StartRecord(rec) 
+            else: continue
             self.vw.data_queue.put(record)
         return len(rows)==self._max_count
 
@@ -327,20 +306,17 @@ class DataSupplier(threading.Thread):
                 if rec['type']=='HTTP:start': 
                     return int(rec['id'])-1
                 _start_from=rec['id']
-        
    
     def run(self):        
-        if (self.loadLastOnly==1):
-            self.last_record_id=self.get_last_start_id ()
+        if self.loadLastOnly==1:
+            self.last_record_id=self.get_last_start_id()
         else:
             self.last_record_id=1
         while self.load_data(self.last_record_id):
             pass # load all data
-        while (self.keepRunning):
+        while self.keepRunning:
             self.load_data(self.last_record_id )
             time.sleep(DB_UPDATE_INTERVAL)
-
-
 
 class WidgetRunner(threading.Thread):
     def run(self):
@@ -353,4 +329,3 @@ class WidgetRunner(threading.Thread):
 def show_gui():
     wr=WidgetRunner()
     wr.start()
-  
