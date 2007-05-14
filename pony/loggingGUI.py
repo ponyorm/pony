@@ -2,17 +2,72 @@ from Tkinter import *
 from pony.logging import search_log
 from pony import utils
 from datetime import timedelta
+from operator import attrgetter
 import threading, time, Queue
 
 UI_UPDATE_INTERVAL=250   # in ms
 DB_UPDATE_INTERVAL=1     # in sec
 
+class Grid(object):
+    def __init__(self, parent, column_list, **params):
+        self.parent = parent
+        self.frame = Frame(parent, **params)
+        self.listboxes = []
+        for name, width in column_list:
+            col_frame = Frame(self.frame)
+            label = Label(col_frame, text=name, relief=RIDGE)
+            listbox = Listbox(col_frame, width=width, height=18,
+                              borderwidth=0, exportselection=FALSE)
+            listbox.bind('<Button-1>', self.select)
+            listbox.bind('<B1-Motion>', self.select)
+            listbox.bind('<Leave>', lambda e: 'break')
+            if name == 'timestamp':
+                col_frame.pack(side=LEFT, expand=N, fill=Y)
+                label.pack(fill=X)
+                listbox.pack(side=LEFT, expand=Y, fill=Y)
+            else:
+                col_frame.pack(side=LEFT, expand=Y, fill=BOTH)
+                label.pack(fill=X)
+                listbox.pack(side=LEFT, expand=Y, fill=BOTH)
+            self.listboxes.append(listbox)
+        self.scrollbar = Scrollbar(self.frame, orient=VERTICAL,
+                                   command=self.scroll)
+        self.listboxes[0].config(yscrollcommand=self.scrollbar.set)
+        self.scrollbar.pack(side=RIGHT, fill=Y)
+        self.selected = -1
+        self._show_last_record = False
+    def scroll(self, *args):
+        for listbox in self.listboxes: listbox.yview(*args)
+    def select(self, e):
+        row_num = self.listboxes[0].nearest(e.y)
+        if row_num == self.selected: return 'break'
+        for listbox in self.listboxes:
+            listbox.select_clear(self.selected)
+            listbox.select_set(row_num)
+        self.selected = row_num
+        self.on_select(row_num)
+        return 'break'
+    def on_select(self, row_num):
+        pass
+    def add_row(self, *args):
+        assert len(args) == len(self.listboxes)
+        for listbox, text in zip(self.listboxes, args):
+            listbox.insert(END, text)
+        if self._show_last_record:
+            for listbox in self.listboxes: listbox.see(END)
+    def _set_show_last_record(self, value):
+        self._show_last_record = value
+        if value:
+            for listbox in self.listboxes: listbox.see(END)
+    show_last_record = property(attrgetter('_show_last_record'),
+                                _set_show_last_record)
+
 class ViewerWidget(Frame):
     def __init__(self, root): 
         Frame.__init__(self, root)
         self.data_queue=Queue.Queue()
-        self.w = w = 1000
-        self.h = h = 600        
+        self.width = w = 1000
+        self.height = h = 600        
         self.root=root
         self.root.title('Pony')
         self.records=[]       
@@ -23,17 +78,16 @@ class ViewerWidget(Frame):
         self.current_tab_n = IntVar(0)
         self.tab_count = 0
 
-        ws = root.winfo_screenwidth()
-        hs = root.winfo_screenheight()
-        root.geometry("%dx%d%+d%+d" % (w, h, (ws/2) - (w/2), (hs/2) - (h/2)))
-        self.main_col_list = []
-        self.last_selected = -1
-        
-        self.up=Frame(self, height=h//2)
-        self.up.pack(side=TOP, fill=X)
-        self.create_main(self.up)
+        screen_w = root.winfo_screenwidth()
+        screen_h = root.winfo_screenheight()
+        root.geometry("%dx%d%+d%+d" % (w, h, (screen_w-w)/2, (screen_h-h)/2))
+
+        self.grid = Grid(self, [('timestamp', 20), ('type', 20)], height=h/2)
+        self.grid.frame.pack(side=TOP, fill=X)
+        self.grid.show_last_record = True
+        self.grid.on_select = self.show_record
           
-        self.down=Frame(self, height=h//2, relief=GROOVE, borderwidth=2)
+        self.down=Frame(self, height=h/2, relief=GROOVE, borderwidth=2)
         self.down.pack(side=TOP, expand=YES, fill=BOTH)        
         self.create_tabs(self.down)
         self.makemenu()
@@ -56,39 +110,17 @@ class ViewerWidget(Frame):
                     command=self.show_since_start)
         top.add_cascade(label='Options', menu=options)
 
-    def create_main(self, parent):
-        def _scroll(*args):
-            for col in self.main_col_list:
-                col.yview(*args)
-        def select_row(e):
-            row = self.main_col_list [0].nearest(e.y)
-            if row==self.last_selected: return 'break'
-            for col in self.main_col_list:
-                col.select_clear(self.last_selected)
-                col.select_set(row)
-            self.last_selected=row
-            self.show_record(row)
-            return 'break'
-        main_columns=[('timestamp', 20), ('type', 20)] 
-        for name, w in main_columns:          
-            cellframe = Frame(parent)            
-            la = Label(cellframe, text=name, relief=RIDGE)            
-            lb = Listbox(cellframe, borderwidth=0, width=w, height=18, exportselection=FALSE)         
-            lb.bind('<Button-1>', select_row)
-            lb.bind('<B1-Motion>', select_row)          
-            lb.bind('<Leave>', lambda e: 'break')
-            if name=='timestamp':
-                cellframe.pack(side=LEFT, expand=N, fill=Y)
-                la.pack(fill=X)
-                lb.pack(side=LEFT, expand=Y, fill=Y)                
-            else:
-                cellframe.pack(side=LEFT, expand=Y, fill=BOTH)
-                la.pack(fill=X)
-                lb.pack(side=LEFT, expand=Y, fill=BOTH)                
-            self.main_col_list.append(lb)
-        sb=Scrollbar(parent, orient=VERTICAL, command=_scroll) 
-        self.main_col_list[0].config(yscrollcommand=sb.set)
-        sb.pack(side=RIGHT, fill=Y)
+    def show_last_record(self):
+        self.grid.show_last_record = self.showLastRecord.get()
+
+    def show_since_start(self):
+        self.clear_tabs()
+        self.main_col_list[0].delete(0, END)
+        self.main_col_list[1].delete(0, END)
+        self.ds.stop()
+        self.ds=DataSupplier(self, loadLastOnly=self.showSinceStart.get())
+        #self.ds.loadLastOnly=self.showSinceStart.get()
+        self.ds.start()
 
     def _create_tab_blank(self, tab_name, tab_number):
         tab_field=Frame(self.tab_body_field)       
@@ -149,7 +181,7 @@ class ViewerWidget(Frame):
        
         response_tab=self._create_tab_blank("response", 2) 
         self.response_info=Label(response_tab, text='', justify=LEFT,
-                           font='Helvetica 8 bold', wraplength= self.w-20)
+                           font='Helvetica 8 bold', wraplength= self.width-20)
         self.response_info.pack(side=TOP, anchor=W) 
         headers_frame=Frame(response_tab)
         headers_frame.pack(expand=Y, fill=BOTH)
@@ -185,9 +217,7 @@ class ViewerWidget(Frame):
 
     def add_record(self, rec):       
         self.records.append(rec)
-        self.main_col_list[0].insert(END, rec.data['timestamp'][:-7])
-        self.main_col_list[1].insert(END, rec.data['text'])
-        self.show_last_record()
+        self.grid.add_row(rec.data['timestamp'][:-7], rec.data['text'])
 
     def clear_tabs(self):
         # self.summary_field.delete(1.0, END)
@@ -200,23 +230,8 @@ class ViewerWidget(Frame):
         self.clear_tabs()      
         rec.draw(self)
 
-    def show_last_record(self):        
-        if self.showLastRecord.get()==1:
-            self.main_col_list[0].see(END)
-            self.main_col_list [1].see(END)
-
-    def show_since_start(self):
-        self.clear_tabs()
-        self.main_col_list[0].delete(0, END)
-        self.main_col_list [1].delete(0, END)
-        self.ds.stop()
-        self.ds=DataSupplier(self, loadLastOnly=self.showSinceStart.get())
-        #self.ds.loadLastOnly=self.showSinceStart.get()
-        self.ds.start()
-            
-
     def feed_data(self):        
-        while(True):
+        while True:
             try:
                 rec=self.data_queue.get(block=False)
             except Queue.Empty:
@@ -236,7 +251,7 @@ class Record(object):
 class StartRecord(Record):
     def draw(self, widget):
         for i, button in enumerate(widget.tab_buttons ):
-            if i==0:
+            if i == 0:
                 button.select()
                 button.invoke()
             else: button.forget()              
@@ -248,7 +263,7 @@ class RequestRecord(Record):
     def draw(self, widget):
         data = self.data
         for i, button in enumerate(widget.tab_buttons):
-            if i==0:
+            if i == 0:
                 pass
                 #button.select() 
                 #button.invoke()
@@ -260,7 +275,7 @@ class RequestRecord(Record):
         crit='process_id=%i and thread_id=%i' % (data['process_id'], data['thread_id'])
         rows=search_log(criteria=crit, start_from=data['id'], max_count=-1)
         for rec in rows:
-            if rec['type']=='HTTP:response':
+            if rec['type'] == 'HTTP:response':
                 dt1 = utils.timestamp2datetime(data['timestamp'])
                 dt2 = utils.timestamp2datetime(rec['timestamp'])
                 delta = dt2 - dt1
@@ -289,26 +304,26 @@ class DataSupplier(threading.Thread):
             self.last_record_id=rec['id']
             rec_type=rec['type']
             if rec_type in ('HTTP:GET', 'HTTP:POST'): record=RequestRecord(rec) 
-            elif rec_type=='HTTP:start': record=StartRecord(rec) 
+            elif rec_type == 'HTTP:start': record=StartRecord(rec) 
             else: continue
             self.vw.data_queue.put(record)
-        return len(rows)==self._max_count
+        return len(rows) == self._max_count
 
     def stop(self):
         self.keepRunning=False
 
     def get_last_start_id(self): 
         _start_from=None
-        while(True):
+        while True:
             rows=search_log(max_count=10, start_from=_start_from)
-            if len(rows)==0: return 0
+            if len(rows) == 0: return 0
             for rec in rows:
-                if rec['type']=='HTTP:start': 
+                if rec['type'] == 'HTTP:start': 
                     return int(rec['id'])-1
                 _start_from=rec['id']
    
     def run(self):        
-        if self.loadLastOnly==1:
+        if self.loadLastOnly == 1:
             self.last_record_id=self.get_last_start_id()
         else:
             self.last_record_id=1
