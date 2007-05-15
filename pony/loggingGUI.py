@@ -5,8 +5,8 @@ from datetime import timedelta
 from operator import attrgetter
 import threading, time, Queue
 
-UI_UPDATE_INTERVAL=250   # in ms
-DB_UPDATE_INTERVAL=1     # in sec
+UI_UPDATE_INTERVAL = 1000   # in ms
+MAX_RECORD_DISPLAY_COUNT = 1000
 
 class Grid(object):
     def __init__(self, parent, column_list, **params):
@@ -55,13 +55,14 @@ class Grid(object):
             listbox.insert(END, text)
         if self._show_last_record:
             for listbox in self.listboxes: listbox.see(END)
+    def show(self, record_num):
+        for listbox in self.listboxes: listbox.see(record_num)
     def clear(self):
         for listbox in self.listboxes: listbox.delete(0, END)
         self.selected = -1
     def _set_show_last_record(self, value):
         self._show_last_record = value
-        if value:
-            for listbox in self.listboxes: listbox.see(END)
+        if value: self.show(END)
     show_last_record = property(attrgetter('_show_last_record'),
                                 _set_show_last_record)
 
@@ -102,7 +103,6 @@ class ViewerWidget(Frame):
         self.root=root
         self.root.title('Pony')
         self.records=[]       
-        self.headers={} 
         self.tab_buttons=[]
 
         screen_w = root.winfo_screenwidth()
@@ -118,52 +118,76 @@ class ViewerWidget(Frame):
         self.tabs = TabSet(self, height=h/2, relief=GROOVE, borderwidth=2)
         self.tabs.frame.pack(side=TOP, expand=YES, fill=BOTH)
 
-        self.request_tab = self.tabs.add("request")
-        self.request_headers = Grid(self.request_tab,
+        request_tab = self.tabs.add("request")
+        self.request_headers = Grid(request_tab,
                                     [("HTTP request header", 20, False),
                                      ("value", 20, False)])
         self.request_headers.frame.pack(side=TOP, expand=YES, fill=BOTH)
 
-        self.response_tab = self.tabs.add("response")
-        self.response_info = Label(self.response_tab, text='', justify=LEFT,
+        response_tab = self.tabs.add("response")
+        self.response_info = Label(response_tab, text='', justify=LEFT,
                                    font='Helvetica 8 bold',
                                    wraplength=self.width-20)
         self.response_info.pack(side=TOP, anchor=W)
-        self.response_headers = Grid(self.response_tab,
+        self.response_headers = Grid(response_tab,
                                      [("HTTP response header", 20, False),
                                       ("value", 20, False)])
         self.response_headers.frame.pack(side=TOP, expand=YES, fill=BOTH)
-        
+       
         self.makemenu()
         self.pack(expand=YES, fill=BOTH)
-        self.ds=DataSupplier(self)
-        self.feed_data()
-        self.ds.start()
+
+    def load(self, since_last_start=True):
+        start_id = 0
+        if since_last_start:
+            start = search_log(1, None, "type='HTTP:start'")
+            if start: start_id = start[0]['id']
+        data = search_log(MAX_RECORD_DISPLAY_COUNT, None,
+            "type like 'HTTP:%' and type <> 'HTTP:response' and id >= ?",
+            [ start_id ])
+        data.reverse()
+        self.add_records(data)
+
+    def feed_data(self):
+        try:
+            last_id = self.records[-1].data['id']
+            data = search_log(-1000, last_id,
+                              "type like 'HTTP:%' and type <> 'HTTP:response'")
+            self.add_records(data)
+        finally:
+            self.after(UI_UPDATE_INTERVAL, self.feed_data)
+
+    def add_records(self, records):
+        for r in records:
+            rtype = r['type']
+            if rtype == 'HTTP:start': record = HttpStartRecord(r)
+            elif rtype == 'HTTP:stop': record = HttpStopRecord(r)
+            else:record = HttpRequestRecord(r)
+            self.records.append(record)
+            self.grid.add(r['timestamp'][:-7], r['text'])
 
     def makemenu(self):
         top=Menu(self.root)
         self.root.config(menu=top)
         options=Menu(top, tearoff=0)
-        self.showLastRecord=IntVar()
-        self.showLastRecord.set(1)
-        options.add('checkbutton', label='Show Last Record', variable=self.showLastRecord,
-                    command=self.show_last_record)
-        self.showSinceStart=IntVar()
-        self.showSinceStart.set(1)
-        options.add('checkbutton', label='Show Since Last Start Only', variable=self.showSinceStart,
-                    command=self.show_since_start)
+        var = self.show_last_record_var = IntVar()
+        var.set(1)
+        options.add('checkbutton', label='Show Last Record',
+                    variable=var, command=self.show_last_record)
+        var = self.show_since_start_var = IntVar()
+        var.set(1)
+        options.add('checkbutton', label='Show Since Last Start Only',
+                    variable=var, command=self.show_since_start)
         top.add_cascade(label='Options', menu=options)
 
     def show_last_record(self):
-        self.grid.show_last_record = self.showLastRecord.get()
+        self.grid.show_last_record = self.show_last_record_var.get()
 
     def show_since_start(self):
         self.grid.clear()
         self.clear_tabs()
-        self.ds.stop()
-        self.ds=DataSupplier(self, loadLastOnly=self.showSinceStart.get())
-        #self.ds.loadLastOnly=self.showSinceStart.get()
-        self.ds.start()
+        x = self.show_since_start_var.get()
+        self.load(x)
 
 ##    def create_summary_tab(self):
 ##        summary_tab=self._create_tab_blank("summary", 0) 
@@ -172,10 +196,6 @@ class ViewerWidget(Frame):
 ##        self.summary_field=Text(summary_tab)
 ##        self.summary_field.pack(expand=Y, fill=BOTH)
 ##        return summary_tab 
-
-    def add_record(self, rec):       
-        self.records.append(rec)
-        self.grid.add(rec.data['timestamp'][:-7], rec.data['text'])
 
     def clear_tabs(self):
         # self.summary_field.delete(1.0, END)
@@ -188,117 +208,45 @@ class ViewerWidget(Frame):
         self.clear_tabs()      
         rec.draw(self)
 
-    def feed_data(self):        
-        while True:
-            try:
-                rec=self.data_queue.get(block=False)
-            except Queue.Empty:
-                self.after(UI_UPDATE_INTERVAL, self.feed_data)
-                break                
-            else:                
-                self.add_record(rec)
-
-    def stop_data_supply(self):
-        self.ds.stop()
-
-
 class Record(object):
     def __init__(self, data):
         self.data = data
     def draw(self, widget):
         pass
 
-class StartRecord(Record):
-    pass
-##    def draw(self, widget):
-##        for i, button in enumerate(widget.tabs.buttons ):
-##            if i == 0:
-##                button.select()
-##                button.invoke()
-##            else: button.forget()              
-##        # data = self.data
-##        # txt='TIMESTAMP: \t%s\nTEXT: \t\t%s' % (data['timestamp'], data['text'])
-##        # widget.summary_field.insert(END, txt)
+class HttpStartRecord(Record): pass
+class HttpStopRecord(Record): pass
 
-class RequestRecord(Record): 
+class HttpRequestRecord(Record): 
     def draw(self, widget):
         data = self.data
-##        for i, button in enumerate(widget.tabs.buttons):
-##            if i == 0:
-##                pass
-##                #button.select() 
-##                #button.invoke()
-##            else: button.pack(side=LEFT)
         # widget.summary_field.insert(END, "some summary text")
-        for k, v in data['headers'].items():
-            widget.request_headers.add(k, v)
-        crit='process_id=%i and thread_id=%i' % (data['process_id'], data['thread_id'])
-        rows=search_log(criteria=crit, start_from=data['id'], max_count=-1)
-        for rec in rows:
-            if rec['type'] == 'HTTP:response':
-                dt1 = utils.timestamp2datetime(data['timestamp'])
-                dt2 = utils.timestamp2datetime(rec['timestamp'])
-                delta = dt2 - dt1
-                delta=delta.seconds + 0.000001*delta.microseconds
-                
-                txt='TEXT: \t%s %s\nDELAY: \t%s' % (rec['type'], rec['text'], delta)
-                widget.response_info.config(text=txt)
-                for k, v in rec['headers']:
-                    widget.response_headers.add(k, v)
-                #break
-
-class DataSupplier(threading.Thread):
-    def __init__(self, vw, loadLastOnly=1):        
-        threading.Thread.__init__(self)
-        self.loadLastOnly=loadLastOnly
-        self.setDaemon(True)
-        self.keepRunning=True
-        self.vw=vw        
-        self.last_record_id=-1
-        self._max_count=100
-        
-    def load_data(self, _start_from):
-        rows=search_log(start_from=_start_from, max_count=-self._max_count)
-        for rec in rows:            
-            self.last_record_id=rec['id']
-            rec_type=rec['type']
-            if rec_type in ('HTTP:GET', 'HTTP:POST'): record=RequestRecord(rec) 
-            elif rec_type == 'HTTP:start': record=StartRecord(rec) 
-            else: continue
-            self.vw.data_queue.put(record)
-        return len(rows) == self._max_count
-
-    def stop(self):
-        self.keepRunning=False
-
-    def get_last_start_id(self): 
-        _start_from=None
-        while True:
-            rows=search_log(max_count=10, start_from=_start_from)
-            if len(rows) == 0: return 0
-            for rec in rows:
-                if rec['type'] == 'HTTP:start': 
-                    return int(rec['id'])-1
-                _start_from=rec['id']
-   
-    def run(self):        
-        if self.loadLastOnly == 1:
-            self.last_record_id=self.get_last_start_id()
-        else:
-            self.last_record_id=1
-        while self.load_data(self.last_record_id):
-            pass # load all data
-        while self.keepRunning:
-            self.load_data(self.last_record_id )
-            time.sleep(DB_UPDATE_INTERVAL)
+        for k, v in data['headers'].items(): widget.request_headers.add(k, v)
+        record_id = self.data['id']
+        process_id = self.data['process_id']
+        thread_id = self.data['thread_id']
+        records = search_log(-1, record_id,
+            "type like 'HTTP:%' and process_id = ? and thread_id = ?",
+            [ process_id, thread_id ])
+        if records and records[0]['type'] == 'HTTP:response':
+            resp = records[0]
+            dt1 = utils.timestamp2datetime(data['timestamp'])
+            dt2 = utils.timestamp2datetime(resp['timestamp'])
+            delta = dt2 - dt1
+            delta=delta.seconds + 0.000001 * delta.microseconds
+            text = 'TEXT: \t%s\nDELAY: \t%s' % (resp['text'], delta)
+            widget.response_info.config(text=text)
+            for k, v in resp['headers']:
+                widget.response_headers.add(k, v)
 
 class WidgetRunner(threading.Thread):
     def run(self):
+        time.sleep(1)
         root=Tk()
         vw=ViewerWidget(root)
-        vw.feed_data()        
+        vw.load()
+        vw.feed_data()
         root.mainloop()
-        vw.stop_data_supply()
 
 def show_gui():
     wr=WidgetRunner()
