@@ -95,14 +95,14 @@ class TabSet(object):
         self.current_tab=tab
 
 class ViewerWidget(Frame):
-    def __init__(self, root): 
+    def __init__(self, root):
         Frame.__init__(self, root)
         self.data_queue=Queue.Queue()
         self.width = w = 1000
-        self.height = h = 600        
+        self.height = h = 600
         self.root=root
         self.root.title('Pony')
-        self.records=[]       
+        self.records=[]
         self.tab_buttons=[]
 
         screen_w = root.winfo_screenwidth()
@@ -205,7 +205,7 @@ class ViewerWidget(Frame):
 
     def show_record(self, rec_no):
         rec=self.records[rec_no]
-        self.clear_tabs()      
+        self.clear_tabs()
         rec.draw(self)
 
 class Record(object):
@@ -217,7 +217,7 @@ class Record(object):
 class HttpStartRecord(Record): pass
 class HttpStopRecord(Record): pass
 
-class HttpRequestRecord(Record): 
+class HttpRequestRecord(Record):
     def draw(self, widget):
         data = self.data
         # widget.summary_field.insert(END, "some summary text")
