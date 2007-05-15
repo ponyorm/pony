@@ -3,7 +3,7 @@ from pony.logging import search_log
 from pony import utils
 from datetime import timedelta
 from operator import attrgetter
-import threading, time, Queue
+import threading, time
 
 UI_UPDATE_INTERVAL = 1000   # in ms
 MAX_RECORD_DISPLAY_COUNT = 1000
@@ -53,10 +53,7 @@ class Grid(object):
         assert len(args) == len(self.listboxes)
         for listbox, text in zip(self.listboxes, args):
             listbox.insert(END, text)
-        if self._show_last_record:
-            for listbox in self.listboxes: listbox.see(END)
-    def show(self, record_num):
-        for listbox in self.listboxes: listbox.see(record_num)
+        if self._show_last_record: self.show(END)
     def clear(self):
         for listbox in self.listboxes: listbox.delete(0, END)
         self.selected = -1
@@ -65,6 +62,8 @@ class Grid(object):
         if value: self.show(END)
     show_last_record = property(attrgetter('_show_last_record'),
                                 _set_show_last_record)
+    def show(self, record_num):
+        for listbox in self.listboxes: listbox.see(record_num)
 
 class TabSet(object):
     def __init__(self, parent, **params):
@@ -97,7 +96,6 @@ class TabSet(object):
 class ViewerWidget(Frame):
     def __init__(self, root):
         Frame.__init__(self, root)
-        self.data_queue=Queue.Queue()
         self.width = w = 1000
         self.height = h = 600
         self.root=root
@@ -115,6 +113,11 @@ class ViewerWidget(Frame):
         self.grid.show_last_record = True
         self.grid.on_select = self.show_record
 
+        self.response_info = Label(self, text='', justify=LEFT,
+                                   font='Helvetica 8 bold',
+                                   wraplength=self.width-20)
+        self.response_info.pack(side=TOP, anchor=W)
+
         self.tabs = TabSet(self, height=h/2, relief=GROOVE, borderwidth=2)
         self.tabs.frame.pack(side=TOP, expand=YES, fill=BOTH)
 
@@ -125,10 +128,6 @@ class ViewerWidget(Frame):
         self.request_headers.frame.pack(side=TOP, expand=YES, fill=BOTH)
 
         response_tab = self.tabs.add("response")
-        self.response_info = Label(response_tab, text='', justify=LEFT,
-                                   font='Helvetica 8 bold',
-                                   wraplength=self.width-20)
-        self.response_info.pack(side=TOP, anchor=W)
         self.response_headers = Grid(response_tab,
                                      [("HTTP response header", 20, False),
                                       ("value", 20, False)])
@@ -184,8 +183,9 @@ class ViewerWidget(Frame):
         self.grid.show_last_record = self.show_last_record_var.get()
 
     def show_since_start(self):
-        self.grid.clear()
         self.clear_tabs()
+        self.grid.clear()
+        self.records = []
         x = self.show_since_start_var.get()
         self.load(x)
 
@@ -212,7 +212,12 @@ class Record(object):
     def __init__(self, data):
         self.data = data
     def draw(self, widget):
-        pass
+        record_id = self.data['id']
+        process_id = self.data['process_id']
+        thread_id = self.data['thread_id']
+        text = ('PROCESS: %d; THREAD: %d; RECORD: %d'
+                % (process_id, thread_id, record_id))
+        widget.response_info.config(text=text)
 
 class HttpStartRecord(Record): pass
 class HttpStopRecord(Record): pass
@@ -221,7 +226,8 @@ class HttpRequestRecord(Record):
     def draw(self, widget):
         data = self.data
         # widget.summary_field.insert(END, "some summary text")
-        for k, v in data['headers'].items(): widget.request_headers.add(k, v)
+        for k, v in sorted(data['headers'].items()):
+            widget.request_headers.add(k, v)
         record_id = self.data['id']
         process_id = self.data['process_id']
         thread_id = self.data['thread_id']
@@ -234,10 +240,13 @@ class HttpRequestRecord(Record):
             dt2 = utils.timestamp2datetime(resp['timestamp'])
             delta = dt2 - dt1
             delta=delta.seconds + 0.000001 * delta.microseconds
-            text = 'TEXT: \t%s\nDELAY: \t%s' % (resp['text'], delta)
+            text = ('STATUS: %s; DELAY: %s; '
+                    'PROCESS: %d; THREAD: %d; RECORD: %d'
+                    % (resp['text'], delta, process_id, thread_id, record_id))
             widget.response_info.config(text=text)
-            for k, v in resp['headers']:
+            for k, v in sorted(resp['headers']):
                 widget.response_headers.add(k, v)
+        else: Record.draw(self)
 
 class WidgetRunner(threading.Thread):
     def run(self):
