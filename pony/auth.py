@@ -98,9 +98,8 @@ class Local(threading.local):
     def save(self, environ):
         ip = environ.get('REMOTE_ADDR', '')
         user_agent = environ.get('HTTP_USER_AGENT', '')
-        ctime = self.ctime
         mtime = int(time.time() // 60)
-        ctime_str = '%x' % ctime
+        ctime_str = '%x' % self.ctime
         mtime_str = '%x' % mtime
         if self.user is None: data = 'None'
         else:
