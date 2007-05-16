@@ -217,7 +217,9 @@ class Record(object):
     def draw(self, widget):
         process_id = self.data['process_id']
         thread_id = self.data['thread_id']
-        text = ('PROCESS: %d; THREAD: %d' % (process_id, thread_id))
+        record_id = self.data['id']
+        text = ('PROCESS_ID: %d; THREAD_ID: %d; RECORD_ID: %d'
+                % (process_id, thread_id, record_id))
         widget.response_info.config(text=text)
 
 class HttpStartRecord(Record): pass
@@ -235,9 +237,9 @@ class HttpRequestRecord(Record):
         session_text = pprint.pformat(data['session'])
         widget.session_field.insert(END, session_text)
             
-        record_id = self.data['id']
         process_id = self.data['process_id']
         thread_id = self.data['thread_id']
+        record_id = self.data['id']
         records = search_log(-1, record_id,
             "type like 'HTTP:%' and process_id = ? and thread_id = ?",
             [ process_id, thread_id ])
@@ -247,7 +249,9 @@ class HttpRequestRecord(Record):
             dt2 = utils.timestamp2datetime(resp['timestamp'])
             delta = dt2 - dt1
             delta=delta.seconds + 0.000001 * delta.microseconds
-            text = "STATUS: %s; DELAY: %s" % (resp['text'], delta)
+            text = ("STATUS: %s; DELAY: %s; "
+                    "PROCESS_ID: %d; THREAD_ID: %d; RECORD_ID: %d" %
+                   (resp['text'], delta, process_id, thread_id, record_id))
             if data["user"] is not None: text += "; USER: %s" % data["user"]
             exceptions = search_log(-10, record_id,
                                     "type = 'exception' and id < ? "
