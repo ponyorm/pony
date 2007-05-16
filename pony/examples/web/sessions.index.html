@@ -2,6 +2,9 @@
 $if (user)
 {
   <h2>Hello, $user!</h2>
+  <p>session['x'] = $(session['x'])
+  <p>session['y'] = $(session['y'])
+  <p>$link("Try refresh this page, you'll see 'x' is changed", index)
   <p>$link("Log out", logout)
 }
 $else
