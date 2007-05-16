@@ -528,15 +528,17 @@ def reconstruct_url(environ):
 class HttpRequest(object):
     def __init__(self, environ):
         self.environ = environ
-        try: self.full_url = reconstruct_url(environ)
-        except: self.full_url = None
-        self.method = environ.get('REQUEST_METHOD', 'GET')
         self.cookies = Cookie.SimpleCookie()
-        if 'HTTP_COOKIE' in environ:
-            self.cookies.load(environ['HTTP_COOKIE'])
-        morsel = self.cookies.get('pony')
-        session_data = morsel and morsel.value or None
-        auth.load(session_data, environ)
+        self.method = environ.get('REQUEST_METHOD', 'GET')
+        if environ:
+            self.full_url = reconstruct_url(environ)
+            if 'HTTP_COOKIE' in environ:
+                self.cookies.load(environ['HTTP_COOKIE'])
+            morsel = self.cookies.get('pony')
+            session_data = morsel and morsel.value or None
+            auth.load(session_data, environ)
+        else:
+            self.full_url = None
         input_stream = environ.get('wsgi.input') or cStringIO.StringIO()
         self.fields = cgi.FieldStorage(
             fp=input_stream, environ=environ, keep_blank_values=True)
