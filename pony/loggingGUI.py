@@ -132,7 +132,11 @@ class ViewerWidget(Frame):
                                      [("HTTP response header", 20, False),
                                       ("value", 20, False)])
         self.response_headers.frame.pack(side=TOP, expand=YES, fill=BOTH)
-       
+
+        exceptions_tab = self.tabs.add("exceptions")
+        self.exceptions_field = Text(exceptions_tab)
+        self.exceptions_field.pack(expand=Y, fill=BOTH)
+
         self.makemenu()
         self.pack(expand=YES, fill=BOTH)
 
@@ -163,7 +167,7 @@ class ViewerWidget(Frame):
             elif rtype == 'HTTP:stop': record = HttpStopRecord(r)
             else:record = HttpRequestRecord(r)
             self.records.append(record)
-            self.grid.add(r['timestamp'][:-7], r['text'])
+            self.grid.add(r['timestamp'][:-7], record.get_text())
 
     def makemenu(self):
         top=Menu(self.root)
@@ -189,19 +193,11 @@ class ViewerWidget(Frame):
         x = self.show_since_start_var.get()
         self.load(x)
 
-##    def create_summary_tab(self):
-##        summary_tab=self._create_tab_blank("summary", 0) 
-##        summary_frame=Frame(summary_tab)
-##        summary_frame.pack(expand=Y, fill=BOTH)
-##        self.summary_field=Text(summary_tab)
-##        self.summary_field.pack(expand=Y, fill=BOTH)
-##        return summary_tab 
-
     def clear_tabs(self):
-        # self.summary_field.delete(1.0, END)
         self.response_info.config(text='')
         self.request_headers.clear()
         self.response_headers.clear()
+        self.exceptions_field.delete(1.0, END)
 
     def show_record(self, rec_no):
         rec=self.records[rec_no]
@@ -211,6 +207,8 @@ class ViewerWidget(Frame):
 class Record(object):
     def __init__(self, data):
         self.data = data
+    def get_text(self):
+        return self.data['text']
     def draw(self, widget):
         record_id = self.data['id']
         process_id = self.data['process_id']
@@ -223,9 +221,11 @@ class HttpStartRecord(Record): pass
 class HttpStopRecord(Record): pass
 
 class HttpRequestRecord(Record):
+    def get_text(self):
+        return '%s %s' % (self.data['headers'].get('REQUEST_METHOD', 'GET'),
+                          self.data['text'])
     def draw(self, widget):
         data = self.data
-        # widget.summary_field.insert(END, "some summary text")
         for k, v in sorted(data['headers'].items()):
             widget.request_headers.add(k, v)
         record_id = self.data['id']
@@ -246,6 +246,15 @@ class HttpRequestRecord(Record):
             widget.response_info.config(text=text)
             for k, v in sorted(resp['headers']):
                 widget.response_headers.add(k, v)
+
+            exceptions = search_log(-10, record_id,
+                                    "type = 'exception' and id < ? "
+                                    "and process_id = ? and thread_id = ?",
+                                    [ resp['id'], process_id, thread_id ])
+            exc_text = []
+            for exc in exceptions:
+                exc_text.append(exc['traceback'])
+            widget.exceptions_field.insert(END, '\n'.join(exc_text))
         else: Record.draw(self)
 
 class WidgetRunner(threading.Thread):
