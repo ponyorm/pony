@@ -486,6 +486,7 @@ class IfElement(SyntaxElement):
         for expr, expr_code, markup in self.chain:
             if expr is None or eval(expr_code, globals, locals):
                 return markup.eval(globals, locals)
+        return ''
 
 var_list_re_1 = re.compile(r"""
 
