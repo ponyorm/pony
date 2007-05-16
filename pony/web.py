@@ -508,9 +508,28 @@ class HttpRedirect(HttpException):
 
 ################################################################################
 
+def reconstruct_url(environ):
+    url = environ['wsgi.url_scheme']+'://'
+    if environ.get('HTTP_HOST'): url += environ['HTTP_HOST']
+    else:
+        url += environ['SERVER_NAME']
+        if environ['wsgi.url_scheme'] == 'https':
+            if environ['SERVER_PORT'] != '443':
+                url += ':' + environ['SERVER_PORT']
+        elif environ['SERVER_PORT'] != '80':
+            url += ':' + environ['SERVER_PORT']
+
+    url += urllib.quote(environ.get('SCRIPT_NAME',''))
+    url += urllib.quote(environ.get('PATH_INFO',''))
+    if environ.get('QUERY_STRING'):
+        url += '?' + environ['QUERY_STRING']
+    return url
+
 class HttpRequest(object):
     def __init__(self, environ):
         self.environ = environ
+        try: self.full_url = reconstruct_url(environ)
+        except: self.full_url = None
         self.method = environ.get('REQUEST_METHOD', 'GET')
         self.cookies = Cookie.SimpleCookie()
         if 'HTTP_COOKIE' in environ:
@@ -584,30 +603,13 @@ def format_exc():
     finally:
         del traceback
 
-def reconstruct_url(environ):
-    url = environ['wsgi.url_scheme']+'://'
-    if environ.get('HTTP_HOST'): url += environ['HTTP_HOST']
-    else:
-        url += environ['SERVER_NAME']
-        if environ['wsgi.url_scheme'] == 'https':
-            if environ['SERVER_PORT'] != '443':
-                url += ':' + environ['SERVER_PORT']
-        elif environ['SERVER_PORT'] != '80':
-            url += ':' + environ['SERVER_PORT']
-
-    url += urllib.quote(environ.get('SCRIPT_NAME',''))
-    url += urllib.quote(environ.get('PATH_INFO',''))
-    if environ.get('QUERY_STRING'):
-        url += '?' + environ['QUERY_STRING']
-    return url
-
-def log_request(environ):
+def log_request(request):
+    environ = request.environ
     headers=dict((key, value) for key, value in environ.items()
                               if isinstance(key, basestring)
                               and isinstance(value, basestring))
-    log(type='HTTP:%s' % environ.get('REQUEST_METHOD', 'GET'),
-        text=reconstruct_url(environ),
-        headers=headers)
+    request_type = 'HTTP:%s' % environ.get('REQUEST_METHOD', 'GET')
+    log(type=request_type, text=request.full_url, headers=headers)
 
 http_only_incompatible_browsers = [ 'WebTV', 'MSIE 5.0; Mac' ]
 
@@ -642,12 +644,12 @@ def wsgi_app(environ, wsgi_start_response):
         log(type='HTTP:response', text=status, headers=headers)
         wsgi_start_response(status, headers)
 
-    local.request = HttpRequest(environ)
+    local.request = request = HttpRequest(environ)
     url = environ['PATH_INFO']
     query = environ['QUERY_STRING']
     if query: url = '%s?%s' % (url, query)
     try:
-        log_request(environ)
+        log_request(request)
         result = invoke(url)
     except HttpException, e:
         start_response(e.status, e.headers)
