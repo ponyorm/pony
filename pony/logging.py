@@ -17,8 +17,6 @@ queue = Queue.Queue()
 class Local(threading.local):
     def __init__(self):
         self.thread_id = thread.get_ident()
-        self.trans_id = None
-        self.user = None
         self.lock = threading.Lock()
         self.lock.acquire()
 
@@ -31,8 +29,8 @@ def log(*args, **record):
     record['timestamp'] = current_timestamp()
     record['process_id'] = process_id
     record['thread_id'] = local.thread_id
-    record['trans_id'] = local.trans_id
-    record['user'] = local.user
+    record.setdefault('trans_id', None)
+    record.setdefault('user', None)
     record.setdefault('type', 'unknown')
     queue.put(record)
 

@@ -3,7 +3,7 @@ from pony.logging import search_log
 from pony import utils
 from datetime import timedelta
 from operator import attrgetter
-import threading, time
+import pprint, threading, time
 
 UI_UPDATE_INTERVAL = 1000   # in ms
 MAX_RECORD_DISPLAY_COUNT = 1000
@@ -121,21 +121,25 @@ class ViewerWidget(Frame):
         self.tabs = TabSet(self, height=h/2, relief=GROOVE, borderwidth=2)
         self.tabs.frame.pack(side=TOP, expand=YES, fill=BOTH)
 
-        request_tab = self.tabs.add("request")
+        request_tab = self.tabs.add("Request")
         self.request_headers = Grid(request_tab,
                                     [("HTTP request header", 20, False),
                                      ("value", 20, False)])
         self.request_headers.frame.pack(side=TOP, expand=YES, fill=BOTH)
 
-        response_tab = self.tabs.add("response")
+        response_tab = self.tabs.add("Response")
         self.response_headers = Grid(response_tab,
                                      [("HTTP response header", 20, False),
                                       ("value", 20, False)])
         self.response_headers.frame.pack(side=TOP, expand=YES, fill=BOTH)
 
-        exceptions_tab = self.tabs.add("exceptions")
+        exceptions_tab = self.tabs.add("Exceptions")
         self.exceptions_field = Text(exceptions_tab)
         self.exceptions_field.pack(expand=Y, fill=BOTH)
+
+        session_tab = self.tabs.add("Session")
+        self.session_field = Text(session_tab)
+        self.session_field.pack(expand=Y, fill=BOTH)
 
         self.makemenu()
         self.pack(expand=YES, fill=BOTH)
@@ -198,6 +202,7 @@ class ViewerWidget(Frame):
         self.request_headers.clear()
         self.response_headers.clear()
         self.exceptions_field.delete(1.0, END)
+        self.session_field.delete(1.0, END)
 
     def show_record(self, rec_no):
         rec=self.records[rec_no]
@@ -210,11 +215,9 @@ class Record(object):
     def get_text(self):
         return self.data['text']
     def draw(self, widget):
-        record_id = self.data['id']
         process_id = self.data['process_id']
         thread_id = self.data['thread_id']
-        text = ('PROCESS: %d; THREAD: %d; RECORD: %d'
-                % (process_id, thread_id, record_id))
+        text = ('PROCESS: %d; THREAD: %d' % (process_id, thread_id))
         widget.response_info.config(text=text)
 
 class HttpStartRecord(Record): pass
@@ -228,6 +231,10 @@ class HttpRequestRecord(Record):
         data = self.data
         for k, v in sorted(data['headers'].items()):
             widget.request_headers.add(k, v)
+
+        session_text = pprint.pformat(data['session'])
+        widget.session_field.insert(END, session_text)
+            
         record_id = self.data['id']
         process_id = self.data['process_id']
         thread_id = self.data['thread_id']
@@ -240,17 +247,16 @@ class HttpRequestRecord(Record):
             dt2 = utils.timestamp2datetime(resp['timestamp'])
             delta = dt2 - dt1
             delta=delta.seconds + 0.000001 * delta.microseconds
-            text = ('STATUS: %s; DELAY: %s; '
-                    'PROCESS: %d; THREAD: %d; RECORD: %d'
-                    % (resp['text'], delta, process_id, thread_id, record_id))
-            widget.response_info.config(text=text)
-            for k, v in sorted(resp['headers']):
-                widget.response_headers.add(k, v)
-
+            text = "STATUS: %s; DELAY: %s" % (resp['text'], delta)
+            if data["user"] is not None: text += "; USER: %s" % data["user"]
             exceptions = search_log(-10, record_id,
                                     "type = 'exception' and id < ? "
                                     "and process_id = ? and thread_id = ?",
                                     [ resp['id'], process_id, thread_id ])
+            if exceptions: text += "; EXCEPTION: " + exceptions[0]['text']
+            widget.response_info.config(text=text)
+            for k, v in sorted(resp['headers']):
+                widget.response_headers.add(k, v)
             exc_text = []
             for exc in exceptions:
                 exc_text.append(exc['traceback'])

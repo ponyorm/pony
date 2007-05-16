@@ -609,7 +609,11 @@ def log_request(request):
                               if isinstance(key, basestring)
                               and isinstance(value, basestring))
     request_type = 'HTTP:%s' % environ.get('REQUEST_METHOD', 'GET')
-    log(type=request_type, text=request.full_url, headers=headers)
+    user = auth.local.user
+    if user is not None and not isinstance(user, (int, long, basestring)):
+        user = unicode(user)
+    log(type=request_type, text=request.full_url, headers=headers,
+        user=user, session=auth.local.session)
 
 http_only_incompatible_browsers = [ 'WebTV', 'MSIE 5.0; Mac' ]
 
@@ -645,11 +649,11 @@ def wsgi_app(environ, wsgi_start_response):
         wsgi_start_response(status, headers)
 
     local.request = request = HttpRequest(environ)
+    log_request(request)
     url = environ['PATH_INFO']
     query = environ['QUERY_STRING']
     if query: url = '%s?%s' % (url, query)
     try:
-        log_request(request)
         result = invoke(url)
     except HttpException, e:
         start_response(e.status, e.headers)
