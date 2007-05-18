@@ -95,7 +95,7 @@ sql_insert = 'insert into log values (%s)' % question_marks
 
 class LoggerThread(threading.Thread):
     def __init__(self):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, name="LoggerThread")
         self.setDaemon(True)
     def run(self):
         self.connection = sqlite.connect(get_logfile_name())

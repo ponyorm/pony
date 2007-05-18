@@ -152,6 +152,9 @@ create table if not exists used_tickets (
 """
 
 class AuthThread(threading.Thread):
+    def __init__(self):
+        threading.Thread.__init__(self, name="AuthThread")
+        self.setDaemon(True)
     def run(self):
         con = self.connection = sqlite.connect(get_sessiondb_name())
         con.executescript(sql_create)
