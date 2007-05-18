@@ -30,8 +30,11 @@ def log(*args, **record):
     record['process_id'] = process_id
     record['thread_id'] = local.thread_id
     record.setdefault('trans_id', None)
-    record.setdefault('user', None)
     record.setdefault('type', 'unknown')
+    for field in 'user', 'text':
+        value = record.setdefault(field, None)
+        if isinstance(value, str):
+            record[field] = value.decode('utf-8', 'replace')
     queue.put(record)
 
 def log_exc():
