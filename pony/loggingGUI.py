@@ -93,7 +93,7 @@ class TabSet(object):
         tab.pack(expand=Y, fill=BOTH)
         self.current_tab=tab
 
-class ViewerWidget(Frame):
+class TkMainWindow(Frame):
     def __init__(self, root):
         Frame.__init__(self, root)
         self.width = w = 1000
@@ -155,14 +155,14 @@ class ViewerWidget(Frame):
         data.reverse()
         self.add_records(data)
 
-    def feed_data(self):
+    def check_data(self):
         try:
             last_id = self.records[-1].data['id']
             data = search_log(-1000, last_id,
                               "type like 'HTTP:%' and type <> 'HTTP:response'")
             self.add_records(data)
         finally:
-            self.after(UI_UPDATE_INTERVAL, self.feed_data)
+            self.after(UI_UPDATE_INTERVAL, self.check_data)
 
     def add_records(self, records):
         for r in records:
@@ -267,15 +267,33 @@ class HttpRequestRecord(Record):
             widget.exceptions_field.insert(END, '\n'.join(exc_text))
         else: Record.draw(self)
 
-class WidgetRunner(threading.Thread):
+tk_thread = None
+tk_lock = threading.Lock()
+
+class TkThread(threading.Thread):
+    def __init__(self):
+        threading.Thread.__init__(self)
+        self.root = Tk()
+        self.window = TkMainWindow(self.root)
     def run(self):
-        time.sleep(1)
-        root=Tk()
-        vw=ViewerWidget(root)
-        vw.load()
-        vw.feed_data()
-        root.mainloop()
+        global tk_thread
+        time.sleep(.5)
+        tk_lock.acquire()
+        try:
+            if tk_thread: return
+            tk_thread = self
+        finally: tk_lock.release()
+        try:
+            self.window.load()
+            self.window.check_data()
+            self.root.mainloop()
+        finally:
+            tk_lock.acquire()
+            try:
+                assert tk_thread is self
+                tk_thread = None
+            finally: tk_lock.release()
 
 def show_gui():
-    wr=WidgetRunner()
-    wr.start()
+    if tk_thread: return
+    TkThread().start()
