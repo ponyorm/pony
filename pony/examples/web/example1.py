@@ -119,6 +119,7 @@ def index():
     print '<li>%s</li>' % link(page6, 2007, 10)
     print '<li>%s</li>' % link(page7)
     print '</ul>'
+    print footer()
 
 start_http_server()
 show_gui()
