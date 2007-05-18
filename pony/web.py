@@ -403,10 +403,12 @@ def invoke(url):
             raise HttpRedirect(url)
         raise Http404('Page not found')
     info, args, keyargs = handlers[0]
-    for i, value in enumerate(args):
-        if value is not None: args[i] = value.decode('utf8')
-    for key, value in keyargs.items():
-        if value is not None: keyargs[key] = value.decode('utf8')
+    try:
+        for i, value in enumerate(args):
+            if value is not None: args[i] = value.decode('utf8')
+        for key, value in keyargs.items():
+            if value is not None: keyargs[key] = value.decode('utf8')
+    except UnicodeDecodeError: raise Http400BadRequest
     if info.redirect:
         for alternative in info.func.http:
             if not alternative.redirect:
@@ -485,6 +487,13 @@ autoreload.clear_funcs.append(http_clear)
 
 class HttpException(Exception):
     content = ''
+
+class Http400BadRequest(HttpException):
+    status = '400 Bad Request'
+    headers = {'Content-Type': 'text/plain'}
+    def __init__(self, content='Bad Request'):
+        Exception.__init__(self, 'Bad Request')
+        self.content = content
 
 class Http404(HttpException):
     status = '404 Not Found'
