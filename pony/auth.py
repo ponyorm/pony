@@ -157,6 +157,7 @@ class AuthThread(threading.Thread):
         self.setDaemon(True)
     def run(self):
         con = self.connection = sqlite.connect(get_sessiondb_name())
+        con.execute("PRAGMA synchronous = OFF;")
         con.executescript(sql_create)
         for minute, secret in con.execute('select * from time_secrets'):
             secret_cache[minute] = hmac.new(str(secret), digestmod=sha)

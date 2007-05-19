@@ -99,6 +99,7 @@ class LoggerThread(threading.Thread):
         self.setDaemon(True)
     def run(self):
         con = self.connection = sqlite.connect(get_logfile_name())
+        con.execute("PRAGMA synchronous = OFF;")
         con.executescript(sql_create)
         con.commit()
         while True:
