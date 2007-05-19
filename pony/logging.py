@@ -1,4 +1,4 @@
-import re, os, sys, cPickle, traceback, thread, threading, Queue
+import re, os, sys, cPickle, traceback, thread, threading, Queue, time, random
 from itertools import count
 from pony.thirdparty import sqlite
 #from sqlite3 import *
@@ -132,6 +132,7 @@ class LoggerThread(threading.Thread):
                 result.append(record)
         finally:
             lock.release()
+            self.connection.rollback()
     def save_records(self, records):
         rows = []
         for record in records:
@@ -139,8 +140,14 @@ class LoggerThread(threading.Thread):
             row = [ record.pop(name, None) for name in sql_columns ]
             row.append(buffer(cPickle.dumps(record, 2)))
             rows.append(row)
-        self.connection.executemany(sql_insert, rows)
-        self.connection.commit()
+        while True:
+            try:
+                self.connection.executemany(sql_insert, rows)
+                self.connection.commit()
+            except sqlite.OperationalError:
+                self.connection.rollback()
+                time.sleep(random.random())
+            else: break
 
 hdr_list = '''
 ACTUAL_SERVER_PROTOCOL

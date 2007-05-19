@@ -1,4 +1,4 @@
-import re, os, sys, time, threading, Queue, cPickle, base64, hmac, sha
+import re, os, sys, time, random, threading, Queue, cPickle, base64, hmac, sha
 
 from pony.thirdparty import sqlite
 
@@ -164,9 +164,15 @@ class AuthThread(threading.Thread):
         while True:
             x = queue.get()
             if x is None: break
-            if len(x) == 2: self.prepare_secret(*x)
-            elif len(x) == 4: self.prepare_ticket(*x)
-            else: assert False
+            while True:
+                try:
+                    if len(x) == 2: self.prepare_secret(*x)
+                    elif len(x) == 4: self.prepare_ticket(*x)
+                    else: assert False
+                except sqlite.OperationalError:
+                    con.rollback()
+                    time.sleep(random.random())
+                else: break
         con.close()
     def prepare_secret(self, minute, lock):
         if minute in secret_cache:
@@ -176,16 +182,15 @@ class AuthThread(threading.Thread):
         row = con.execute('select secret from time_secrets where minute = ?',
                           [minute]).fetchone()
         if row is not None:
-            con.commit()
+            con.rollback()
             secret_cache[minute] = str(row[0])
             lock.release()
             return
         now = int(time.time() // 60)
+        old = now - max_ctime_diff
         secret = os.urandom(32)
-        con.execute('delete from used_tickets where minute < ?',
-                    [ now - max_ctime_diff ])
-        con.execute('delete from time_secrets where minute < ?',
-                    [ now - max_ctime_diff ])
+        con.execute('delete from used_tickets where minute < ?', [ old ])
+        con.execute('delete from time_secrets where minute < ?', [ old ])
         con.execute('insert into time_secrets values(?, ?)',
                     [ minute, buffer(secret) ])
         con.commit()
