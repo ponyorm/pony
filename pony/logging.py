@@ -98,9 +98,9 @@ class LoggerThread(threading.Thread):
         threading.Thread.__init__(self, name="LoggerThread")
         self.setDaemon(True)
     def run(self):
-        self.connection = sqlite.connect(get_logfile_name())
-        self.connection.executescript(sql_create)
-        self.connection.commit()
+        con = self.connection = sqlite.connect(get_logfile_name())
+        con.executescript(sql_create)
+        con.commit()
         while True:
             x = queue.get()
             if x is None: break
@@ -140,12 +140,13 @@ class LoggerThread(threading.Thread):
             row = [ record.pop(name, None) for name in sql_columns ]
             row.append(buffer(cPickle.dumps(record, 2)))
             rows.append(row)
+        con = self.connection
         while True:
             try:
-                self.connection.executemany(sql_insert, rows)
-                self.connection.commit()
+                con.executemany(sql_insert, rows)
+                con.commit()
             except sqlite.OperationalError:
-                self.connection.rollback()
+                con.rollback()
                 time.sleep(random.random())
             else: break
 
