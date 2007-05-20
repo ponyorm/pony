@@ -173,21 +173,6 @@ def url(func, *args, **keyargs):
     http_list = getattr(func, 'http')
     if http_list is None:
         raise ValueError('Cannot create url for this object :%s' % func)
-    first, second = [], []
-    for info in http_list:
-        if not info.redirect: first.append(info)
-        else: second.append(info)
-    for info in first + second:
-        try:
-            url = build_url(info, func, args, keyargs)
-        except PathError: pass
-        else: break
-    else:
-        raise PathError('Suitable url path for %s() not found' % func.__name__)
-    return url
-make_url = url
-
-def build_url(info, func, args, keyargs):
     try: keyparams = func.dummy_func(*args, **keyargs).copy()
     except TypeError, e:
         raise TypeError(e.args[0].replace('<lambda>', func.__name__))
@@ -203,11 +188,26 @@ def build_url(info, func, args, keyargs):
     except UnicodeDecodeError:
         raise ValueError('Url parameter value contains non-ascii symbols. '
                          'Such values must be in unicode.')
+    first, second = [], []
+    for info in http_list:
+        if not info.redirect: first.append(info)
+        else: second.append(info)
+    for info in first + second:
+        try:
+            url = build_url(info, keyparams, indexparams)
+        except PathError: pass
+        else: break
+    else:
+        raise PathError('Suitable url path for %s() not found' % func.__name__)
+    return url
+make_url = url
+
+def build_url(info, keyparams, indexparams):
+    names, argsname, keyargsname, defaults = info.func.argspec
     path = []
     used_indexparams = set()
     used_keyparams = set()
     offset = len(names) - len(defaults)
-
     def build_param(x):
         if isinstance(x, int):
             value = indexparams[x]
