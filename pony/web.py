@@ -8,7 +8,7 @@ from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
 from pony import auth
 from pony import autoreload
 from pony.utils import decorator_with_params
-from pony.templating import Html
+from pony.templating import Html, real_stdout
 from pony.logging import log, log_exc
 
 re_component = re.compile("""
@@ -169,6 +169,8 @@ class HttpInfo(object):
             
 class PathError(Exception): pass
 
+url_cache = {}
+
 def url(func, *args, **keyargs):
     http_list = getattr(func, 'http')
     if http_list is None:
@@ -188,6 +190,9 @@ def url(func, *args, **keyargs):
     except UnicodeDecodeError:
         raise ValueError('Url parameter value contains non-ascii symbols. '
                          'Such values must be in unicode.')
+    key = func, tuple(indexparams), tuple(sorted(keyparams.items()))
+    try: return url_cache[key]
+    except KeyError: pass
     first, second = [], []
     for info in http_list:
         if not info.redirect: first.append(info)
@@ -199,6 +204,8 @@ def url(func, *args, **keyargs):
         else: break
     else:
         raise PathError('Suitable url path for %s() not found' % func.__name__)
+    if len(url_cache) > 1000: url_cache.clear()
+    url_cache[key] = url
     return url
 make_url = url
 
