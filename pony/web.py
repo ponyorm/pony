@@ -70,7 +70,6 @@ class HttpInfo(object):
         if not hasattr(func, 'argspec'):
             func.argspec = self.getargspec(func)
             func.dummy_func = self.create_dummy_func(func)
-        if url == '': url = '/'
         self.url = url
         self.path, self.ext, self.qlist = split_url(url, strict_parsing=True)
         self.redirect = redirect
@@ -244,6 +243,7 @@ def build_url(info, func, args, keyargs):
     quote_plus = urllib.quote_plus
     q = "&".join(("%s=%s" % (quote_plus(name), quote_plus(value)))
                  for name, value in qlist)
+    if q: q = '?' + q
 
     errmsg = 'Not all parameters were used during path construction'
     if len(used_keyparams) != len(keyparams):
@@ -254,8 +254,10 @@ def build_url(info, func, args, keyargs):
                 and value != defaults[i-offset]):
                     raise PathError(errmsg)
 
-    if not q: return '/%s%s' % (p, info.ext)
-    else: return '/%s%s?%s' % (p, info.ext, q)
+    url = ''.join((p, info.ext, q))
+    script_name = local.request.environ.get('SCRIPT_NAME', '')
+    if not url: return script_name + info.url or '/'
+    return '/'.join((script_name, url))
 
 link_template = Html(u'<a href="%s">%s</a>')
 
@@ -381,27 +383,28 @@ def get_http_handlers(path, ext, qdict):
     return result
 
 def invoke(url):
-    if url == '': url = '/'
     path, ext, qlist = split_url(url)
     qdict = dict(qlist)
     local.response = HttpResponse()
     handlers = get_http_handlers(path, ext, qdict)
     if not handlers:
-        file = get_static_file(path, ext)
-        if file is not None: return file
-        if '?' in url:
-            p, q = url.split('?', 1)
-            if p.endswith('/'): p = p[:-1]
-            else: p += '/'
-            url = '?'.join((p, q))
-        elif url.endswith('/'): url = url[:-1]
-        else: url += '/'
-        path, ext, qlist = split_url(url)
-        qdict = dict(qlist)
-        if get_http_handlers(path, ext, qdict):
-            if not url.startswith('/'): url = '/' + url
-            raise HttpRedirect(url)
-        raise Http404('Page not found')
+        i = url.find('?')
+        if i == -1: p, q = url, ''
+        else: p, q = url[:i], url[i:]
+        if p.endswith('/'): url2 = p[:-1] + q
+        else: url2 = p + '/' + q
+        path2, ext2, qlist = split_url(url2)
+        handlers = get_http_handlers(path2, ext2, qdict)
+        if handlers:
+            script_name = local.request.environ.get('SCRIPT_NAME', '')
+            if not url2: url2 = script_name or '/'
+            else: url2 = script_name + url2
+            if url2 != script_name + url: raise HttpRedirect(url2)
+            # after this do page rendering, see below
+        else:
+            file = get_static_file(path, ext)
+            if file is not None: return file
+            raise Http404('Page not found')
     info, args, keyargs = handlers[0]
     try:
         for i, value in enumerate(args):
@@ -690,7 +693,7 @@ def wsgi_test(environ, start_response):
     start_response('200 OK', [ ('Content-Type', 'text/plain') ])
     return [ stdout.getvalue() ]
 
-wsgi_apps = [('', wsgi_app), ('/pony/', wsgi_test)]
+wsgi_apps = [('', wsgi_app), ('/pony', wsgi_test)]
 
 def parse_address(address):
     if isinstance(address, basestring):
