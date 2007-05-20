@@ -774,7 +774,34 @@ def compile_html_template(source):
     tree = parse_markup(source)[0]
     return Markup(Html(source), tree)
 
-template_cache = {}
+template_string_cache = {}
+
+def markup_from_string(str_cls, s,
+                         encoding=None, keep_indent=False, caching=True):
+    if caching:
+        try: return template_string_cache[s]
+        except KeyError: pass
+    if isinstance(s, unicode): text = s
+    else: text = unicode(s, encoding or 'ascii')
+    if not keep_indent: text = textwrap.dedent(text)
+    tree = parse_markup(text)[0]
+    markup = Markup(str_cls(text), tree)
+    if caching: template_string_cache[s] = markup
+    return markup
+
+template_file_cache = {}
+
+def markup_from_file(str_cls, filename, encoding=None, keep_indent=False):
+    stat = os.stat(filename)
+    mtime = stat.st_mtime
+    if sys.platform == "win32": mtime -= stat.st_ctime
+    old_mtime, markup = template_file_cache.get(filename, (None, None))
+    if markup and mtime == old_mtime: return markup
+    print 'READING FILE' 
+    text = read_text_file(filename, encoding)
+    markup = markup_from_string(str_cls, text, encoding, keep_indent, False)
+    template_file_cache[filename] = mtime, markup
+    return markup
 
 def _template(str_cls, default_ext,
               text=None, filename=None,
@@ -786,16 +813,8 @@ def _template(str_cls, default_ext,
     if not text:
         if not filename:
             filename = get_template_name(sys._getframe(2)) + default_ext
-        text = read_text_file(filename, encoding=encoding)
-    else:
-        if not isinstance(text, unicode):
-            text = unicode(text, encoding or 'ascii')
-        if not keep_indent: text = textwrap.dedent(text)
-    markup = template_cache.get(text)
-    if not markup:
-        tree = parse_markup(text)[0]
-        markup = Markup(str_cls(text), tree)
-        template_cache[text] = markup
+        markup = markup_from_file(str_cls, filename, encoding, keep_indent)
+    else: markup = markup_from_string(str_cls, text, encoding, keep_indent)
     if globals is None and locals is None:
         globals = sys._getframe(2).f_globals
         locals = sys._getframe(2).f_locals
