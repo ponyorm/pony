@@ -11,28 +11,18 @@ from pony.utils import decorator_with_params
 from pony.templating import Html, real_stdout
 from pony.logging import log, log_exc
 
-re_component = re.compile("""
-        [$]
-        (?: (\d+)              # param number (group 1)
-        |   ([A-Za-z_]\w*)     # param identifier (group 2)
-        )$
-    |   (                      # path component (group 3)
-            (?:[$][$] | [^$])*
-        )$                     # end of string
-    """, re.VERBOSE)
-
 @decorator_with_params
-def http(url=None, redirect=False, **params):
-    params = dict([ (name.replace('_', '-').title(), value)
-                    for name, value in params.items() ])
+def http(url=None, redirect=False, **http_headers):
+    http_headers = dict([ (name.replace('_', '-').title(), value)
+                          for name, value in http_headers.items() ])
     def new_decorator(old_func):
         real_url = url is None and old_func.__name__ or url
-        register_http_handler(old_func, real_url, redirect, params)
+        register_http_handler(old_func, real_url, redirect, http_headers)
         return old_func
     return new_decorator
 
-def register_http_handler(func, url, redirect, params):
-    return HttpInfo(func, url, redirect, params)
+def register_http_handler(func, url, redirect, http_headers):
+    return HttpInfo(func, url, redirect, http_headers)
 
 http_registry_lock = threading.Lock()
 http_registry = ({}, [])
@@ -65,7 +55,7 @@ def split_url(url, strict_parsing=False):
     return path, ext, qlist
 
 class HttpInfo(object):
-    def __init__(self, func, url, redirect, params):
+    def __init__(self, func, url, redirect, http_headers):
         self.func = func
         if not hasattr(func, 'argspec'):
             func.argspec = self.getargspec(func)
@@ -73,7 +63,7 @@ class HttpInfo(object):
         self.url = url
         self.path, self.ext, self.qlist = split_url(url, strict_parsing=True)
         self.redirect = redirect
-        self.params = params
+        self.http_headers = http_headers
         self.args = set()
         self.keyargs = set()
         self.parsed_path = map(self.parse_component, self.path)
@@ -103,8 +93,17 @@ class HttpInfo(object):
         spec = inspect.formatargspec(*func.argspec)[1:-1]
         source = "lambda %s: __locals__()" % spec
         return eval(source, dict(__locals__=locals))
+    re_component = re.compile("""
+            [$]
+            (?: (\d+)              # param number (group 1)
+            |   ([A-Za-z_]\w*)     # param identifier (group 2)
+            )$
+        |   (                      # path component (group 3)
+                (?:[$][$] | [^$])*
+            )$                     # end of string
+        """, re.VERBOSE)
     def parse_component(self, component):
-        match = re_component.match(component)
+        match = self.re_component.match(component)
         if not match: raise ValueError('Invalid url component: %r' % component)
         i = match.lastindex
         if i == 1: return True, self.adjust(int(match.group(i)) - 1)
@@ -428,7 +427,7 @@ def invoke(url):
                 elif isinstance(info.redirect, (int, long)) \
                      and 300 <= info.redirect < 400: status = str(info.redirect)
                 raise HttpRedirect(new_url, status)
-    local.response.headers.update(info.params)
+    local.response.headers.update(info.http_headers)
     result = info.func(*args, **keyargs)
 
     headers = dict([ (name.replace('_', '-').title(), value)
