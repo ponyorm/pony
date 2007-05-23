@@ -797,7 +797,6 @@ def markup_from_file(str_cls, filename, encoding=None, keep_indent=False):
     if sys.platform == "win32": mtime -= stat.st_ctime
     old_mtime, markup = template_file_cache.get(filename, (None, None))
     if markup and mtime == old_mtime: return markup
-    print 'READING FILE' 
     text = read_text_file(filename, encoding)
     markup = markup_from_string(str_cls, text, encoding, keep_indent, False)
     template_file_cache[filename] = mtime, markup
