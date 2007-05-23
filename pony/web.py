@@ -25,7 +25,7 @@ def register_http_handler(func, url, redirect, http_headers):
     return HttpInfo(func, url, redirect, http_headers)
 
 http_registry_lock = threading.Lock()
-http_registry = ({}, [])
+http_registry = ({}, [], [])
 
 def split_url(url, strict_parsing=False):
     if isinstance(url, unicode): url = url.encode('utf8')
@@ -66,9 +66,18 @@ class HttpInfo(object):
         self.http_headers = http_headers
         self.args = set()
         self.keyargs = set()
-        self.parsed_path = map(self.parse_component, self.path)
+        self.parsed_path = []
+        self.star = False
+        for component in self.path:
+            if self.star:
+                raise TypeError("'*' must be last element in url path")
+            elif component != '*':
+                self.parsed_path.append(self.parse_component(component))
+            else: self.star = True
         self.parsed_query = []
         for name, value in self.qlist:
+            if value == '*':
+                raise TypeError("'*' does not allowed in query part of url")
             is_param, x = self.parse_component(value)
             self.parsed_query.append((name, is_param, x))
         self.check()
@@ -135,6 +144,9 @@ class HttpInfo(object):
         assert False
     def check(self):
         names, argsname, keyargsname, defaults = self.func.argspec
+        if self.star and not argsname:
+            raise TypeError("Function %s does not accept "
+                            "arbitrary argument list" % self.func.__name__)
         args, keyargs = self.args, self.keyargs
         for i, name in enumerate(names[:len(names)-len(defaults)]):
             if i not in args:
@@ -144,23 +156,26 @@ class HttpInfo(object):
                 if i not in args:
                     raise TypeError('Undefined path parameter: %d' % (i+1))
     def register(self):
-        d1 = {}
-        for i, (is_param, x) in enumerate(self.parsed_path): d1[i] = is_param
-        for name, is_param, x in self.parsed_query: d1[name] = is_param
+        def get_url_map(info):
+            result = {}
+            for i, (is_param, x) in enumerate(info.parsed_path):
+                result[i] = is_param
+            for name, is_param, x in info.parsed_query:
+                result[name] = is_param
+            if info.star: result['*'] = len(info.parsed_path)
+            return result
+        url_map = get_url_map(self)
         qdict = dict(self.qlist)
         http_registry_lock.acquire()
         try:
-            for info,_,_ in get_http_handlers(self.path, self.ext, qdict):
-                d2 = {}
-                for i, (is_param, x) in enumerate(info.parsed_path):
-                    d2[i] = is_param
-                for name, is_param, x in info.parsed_query:
-                    d2[name] = is_param
-                if d1 == d2: _http_remove(info)
-            d, list = http_registry
+            for info, _, _ in get_http_handlers(self.path, self.ext, qdict):
+                if url_map == get_url_map(info): _http_remove(info)
+            d, list1, list2 = http_registry
             for is_param, x in self.parsed_path:
-                if is_param: d, list = d.setdefault(None, ({}, []))
-                else: d, list = d.setdefault(x, ({}, []))
+                if is_param: d, list1, list2 = d.setdefault(None, ({}, [], []))
+                else: d, list1, list2 = d.setdefault(x, ({}, [], []))
+            if not self.star: list = list1
+            else: list = list2
             self.list = list
             self.func.__dict__.setdefault('http', []).insert(0, self)
             list.insert(0, self)
@@ -235,6 +250,10 @@ def build_url(info, keyparams, indexparams):
             if component is None:
                 raise PathError('Value for parameter %s is None' % x)
         path.append(urllib.quote(component, safe=':@&=+$,'))
+    if info.star:
+        for i in range(len(info.args), len(indexparams)):
+            path.append(urllib.quote(indexparams[i], safe=':@&=+$,'))
+            used_indexparams.add(i)
     p = '/'.join(path)
 
     qlist = []
@@ -327,60 +346,66 @@ def get_http_handlers(path, ext, qdict):
     # http_registry_lock.acquire()
     # try:
     variants = [ http_registry ]
+    infos = []
     for i, component in enumerate(path):
         new_variants = []
-        for d, list in variants:
+        for d, list1, list2 in variants:
             variant = d.get(component)
             if variant: new_variants.append(variant)
-            if component:
-                variant = d.get(None)
-                if variant: new_variants.append(variant)
+            # if component:
+            variant = d.get(None)
+            if variant: new_variants.append(variant)
+            infos.extend(list2)
         variants = new_variants
+    for _, list, _ in variants: infos.extend(list)
     # finally: http_registry_lock.release()
 
     result = []
     not_found = object()
-    for _, list in variants:
-        for info in list:
-            if ext != info.ext: continue
-            args, keyargs = {}, {}
-            const_count = 0
-            for i, (is_param, x) in enumerate(info.parsed_path):
-                if not is_param:
-                    const_count += 1
-                    continue
-                value = path[i]
-                if isinstance(x, int): args[x] = value
-                elif isinstance(x, basestring): keyargs[x] = value
-                else: assert False
-            names, _, _, defaults = info.func.argspec
-            offset = len(names) - len(defaults)
-            non_used_query_params = set(qdict)
-            for name, is_param, x in info.parsed_query:
-                non_used_query_params.discard(name)
-                value = qdict.get(name, not_found)
-                if not is_param:
-                    if value != x: break
-                    const_count += 1
-                elif isinstance(x, int):
-                    if value is not_found:
-                        if offset <= x < len(names): continue
-                        else: break
-                    else: args[x] = value
-                elif isinstance(x, basestring):
-                    if value is not_found: break
-                    keyargs[x] = value
-                else: assert False
-            else:
-                arglist = [ None ] * len(names)
-                arglist[-len(defaults):] = defaults
-                for i, value in sorted(args.items()):
-                    try: arglist[i] = value
-                    except IndexError:
-                        assert i == len(arglist)
-                        arglist.append(value)
-                result.append((info, arglist, keyargs, const_count,
-                               len(non_used_query_params)))
+    for info in infos:
+        if ext != info.ext: continue
+        args, keyargs = {}, {}
+        const_count = 0
+        for i, (is_param, x) in enumerate(info.parsed_path):
+            if not is_param:
+                const_count += 1
+                continue
+            value = path[i]
+            if isinstance(x, int): args[x] = value
+            elif isinstance(x, basestring): keyargs[x] = value
+            else: assert False
+        
+        names, _, _, defaults = info.func.argspec
+        offset = len(names) - len(defaults)
+        non_used_query_params = set(qdict)
+        for name, is_param, x in info.parsed_query:
+            non_used_query_params.discard(name)
+            value = qdict.get(name, not_found)
+            if not is_param:
+                if value != x: break
+                const_count += 1
+            elif isinstance(x, int):
+                if value is not_found:
+                    if offset <= x < len(names): continue
+                    else: break
+                else: args[x] = value
+            elif isinstance(x, basestring):
+                if value is not_found: break
+                keyargs[x] = value
+            else: assert False
+        else:
+            arglist = [ None ] * len(names)
+            arglist[-len(defaults):] = defaults
+            for i, value in sorted(args.items()):
+                try: arglist[i] = value
+                except IndexError:
+                    assert i == len(arglist)
+                    arglist.append(value)
+            if len(info.parsed_path) != len(path):
+                assert info.star
+                arglist.extend(path[len(info.parsed_path):])
+            result.append((info, arglist, keyargs, const_count,
+                           len(non_used_query_params)))
     if result:
         x = max(map(itemgetter(3), result))
         result = [ tup for tup in result if tup[3] == x ]
@@ -477,10 +502,13 @@ def http_remove(x):
 
 http.remove = http_remove
 
-def _http_clear(dict, list):
-    for info in list: info.func.http.remove(info)
-    list[:] = []
-    for dict2, list2 in dict.itervalues(): _http_clear(dict2, list2)
+def _http_clear(dict, list1, list2):
+    for info in list1: info.func.http.remove(info)
+    list1[:] = []
+    for info in list2: info.func.http.remove(info)
+    list2[:] = []
+    for inner_dict, list1, list2 in dict.itervalues():
+        _http_clear(inner_dict, list1, list2)
     dict.clear()
 
 def http_clear():
