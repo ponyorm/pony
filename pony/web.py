@@ -12,20 +12,22 @@ from pony.templating import Html, real_stdout
 from pony.logging import log, log_exc
 
 @decorator_with_params
-def http(url=None, redirect=False, **http_headers):
+def http(url=None, redirect=False, system=False, **http_headers):
     http_headers = dict([ (name.replace('_', '-').title(), value)
                           for name, value in http_headers.items() ])
     def new_decorator(old_func):
         real_url = url is None and old_func.__name__ or url
-        register_http_handler(old_func, real_url, redirect, http_headers)
+        register_http_handler(old_func, real_url, redirect, system,
+                              http_headers)
         return old_func
     return new_decorator
 
-def register_http_handler(func, url, redirect, http_headers):
-    return HttpInfo(func, url, redirect, http_headers)
+def register_http_handler(*args, **keyargs):
+    return HttpInfo(*args, **keyargs)
 
-http_registry_lock = threading.Lock()
+http_registry_lock = threading.RLock()
 http_registry = ({}, [], [])
+http_system_handlers = []
 
 def split_url(url, strict_parsing=False):
     if isinstance(url, unicode): url = url.encode('utf8')
@@ -55,7 +57,7 @@ def split_url(url, strict_parsing=False):
     return path, ext, qlist
 
 class HttpInfo(object):
-    def __init__(self, func, url, redirect, http_headers):
+    def __init__(self, func, url, redirect, system, http_headers):
         self.func = func
         if not hasattr(func, 'argspec'):
             func.argspec = self.getargspec(func)
@@ -63,6 +65,7 @@ class HttpInfo(object):
         self.url = url
         self.path, self.ext, self.qlist = split_url(url, strict_parsing=True)
         self.redirect = redirect
+        self.system = system
         self.http_headers = http_headers
         self.args = set()
         self.keyargs = set()
@@ -81,6 +84,7 @@ class HttpInfo(object):
             is_param, x = self.parse_component(value)
             self.parsed_query.append((name, is_param, x))
         self.check()
+        if system: http_system_handlers.append(self)
         self.register()
     @staticmethod
     def getargspec(func):
@@ -513,7 +517,9 @@ def _http_clear(dict, list1, list2):
 
 def http_clear():
     http_registry_lock.acquire()
-    try: _http_clear(*http_registry)
+    try:
+        _http_clear(*http_registry)
+        for handler in http_system_handlers: handler.register()
     finally: http_registry_lock.release()
 
 http.clear = http_clear
@@ -719,16 +725,6 @@ def wsgi_app(environ, wsgi_start_response):
             return iter(lambda: result.read(BLOCK_SIZE), '')
         return [ result ]
 
-def wsgi_test(environ, start_response):
-    stdout = cStringIO.StringIO()
-    h = environ.items(); h.sort()
-    for k,v in h:
-        print >>stdout, k,'=',`v`
-    start_response('200 OK', [ ('Content-Type', 'text/plain') ])
-    return [ stdout.getvalue() ]
-
-wsgi_apps = [('', wsgi_app), ('/pony', wsgi_test)]
-
 def parse_address(address):
     if isinstance(address, basestring):
         if ':' in address:
@@ -756,7 +752,7 @@ class ServerThread(threading.Thread):
         self.host = host
         self.port = port
         self.server = CherryPyWSGIServer(
-            (host, port), wsgi_apps, server_name=host)
+            (host, port), [('', wsgi_app)], server_name=host)
         self.verbose = verbose
         self.setDaemon(False)
     def run(self):
