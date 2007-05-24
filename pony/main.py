@@ -10,7 +10,8 @@ from pony.web import (http, url, link, start_http_server, stop_http_server,
 from pony.forms import (Form, Hidden, Submit, Reset,
                         File, Password, Text, TextArea, Checkbox, 
                         Select, RadioGroup, MultiSelect, CheckboxGroup)
-from pony.gui.tk import show_gui
+from pony.gui.tkgui import show_gui
+import pony.gui.webgui
 
 from pony.orm import Entity
 from pony.orm import Optional, Required, Unique, PrimaryKey
