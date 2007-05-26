@@ -6,8 +6,11 @@ from inspect import isfunction
 from time import strptime
 from datetime import datetime
 from os import urandom
+from os.path import dirname
 from codecs import BOM_UTF8, BOM_LE, BOM_BE
 from locale import getpreferredencoding
+
+PONY_DIR = dirname(__file__)
 
 def current_timestamp():
     result = datetime.now().isoformat(' ')
