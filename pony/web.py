@@ -7,6 +7,7 @@ from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
 
 from pony import auth
 from pony import autoreload
+from pony import xslt
 from pony.utils import decorator_with_params
 from pony.templating import Html, real_stdout
 from pony.logging import log, log_exc
@@ -462,21 +463,32 @@ def invoke(url):
     headers = dict([ (name.replace('_', '-').title(), value)
                      for name, value in local.response.headers.items() ])
     local.response.headers = headers
-    type = headers.pop('Type', 'text/plain')
+
+    media_type = headers.pop('Type', 'text/plain')
     charset = headers.pop('Charset', 'UTF-8')
     content_type = headers.get('Content-Type')
     if content_type:
-        content_type_params = cgi.parse_header(content_type)[1]
-        charset = content_type_params.get('charset', 'iso-8859-1')
-    else: headers['Content-Type'] = '%s; charset=%s' % (type, charset)
-    if isinstance(result, Html):
-        headers['Content-Type'] = 'text/html; charset=%s' % charset
+        media_type, type_params = cgi.parse_header(content_type)
+        charset = type_params.get('charset', 'iso-8859-1')
+    else:
+        if isinstance(result, Html): media_type = 'text/html'
+        content_type = '%s; charset=%s' % (media_type, charset)
+        headers['Content-Type'] = content_type
 
-    if isinstance(result, unicode): result = result.encode(charset)
-    elif not isinstance(result, str):
-        try: result = str(result)
-        except UnicodeEncodeError:
-            result = unicode(result, charset, 'replace')
+    if media_type == 'text/html' and xslt.is_supported:
+        xml = xslt.html2xml(result, charset)
+        xml = xslt.transform(xml)
+        result = xslt.xml2html(xml, charset)
+    else:
+        if hasattr(result, '__unicode__'): result = unicode(result)
+        if isinstance(result, unicode):
+            if media_type == 'text/html' or 'xml' in media_type :
+                  result = result.encode(charset, 'xmlcharrefreplace')
+            else: result = result.encode(charset, 'replace')
+        elif not isinstance(result, str):
+            try: result = etree.tostring(result, charset)
+            except: result = str(result)
+
     headers.setdefault('Expires', '0')
     max_age = headers.pop('Max-Age', '2')
     cache_control = headers.get('Cache-Control')

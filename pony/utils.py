@@ -10,8 +10,6 @@ from os.path import dirname
 from codecs import BOM_UTF8, BOM_LE, BOM_BE
 from locale import getpreferredencoding
 
-PONY_DIR = dirname(__file__)
-
 def current_timestamp():
     result = datetime.now().isoformat(' ')
     if len(result) == 19: return result + '.000000'
