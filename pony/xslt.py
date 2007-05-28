@@ -1,3 +1,5 @@
+import os.path
+
 from pony.thirdparty import etree
 
 is_supported = hasattr(etree, 'XSLT')
@@ -10,8 +12,13 @@ def html2xml(x, encoding='ascii'):
     if isinstance(x, str): x = unicode(x, encoding)
     return etree.HTML(x)
 
+xslt_filename = os.path.join(os.path.dirname(__file__), 'transform.xslt')
+
+if is_supported:
+    xslt = etree.XSLT(etree.parse(xslt_filename))
+
 def transform(xml):
-    return xml
+    return xslt(xml)
 
 xml2html_template = """
 <xsl:stylesheet version = '1.0'
@@ -35,7 +42,7 @@ doctypes['loose'] = doctypes['transitional']
 
 xml2html_cache = {}
 
-def xml2html(xml, encoding='UTF-8', doctype='transitional', indent=False):
+def xml2html(xml, encoding='UTF-8', doctype='transitional', indent=True):
     encoding = encoding.upper().replace('_', '-')
     xslt = xml2html_cache.get((encoding, doctype, indent))
     if xslt is None:
@@ -48,5 +55,6 @@ def xml2html(xml, encoding='UTF-8', doctype='transitional', indent=False):
         xslt = etree.XSLT(etree.XML(text))
         xml2html_cache[(encoding, doctype, indent)] = xslt
     result = xslt(xml)
-    result = str(result)
-    return result
+    return (str(result).replace('<!--start of IE hack-->', '<!--[if IE]>')
+                       .replace('\n<!--end of IE hack-->', '<![endif]-->\n')
+                       .replace('<!--end of IE hack-->', '<![endif]-->\n'))

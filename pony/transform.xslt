@@ -1,0 +1,82 @@
+﻿<?xml version="1.0"?>
+<xsl:stylesheet version = '1.0' xmlns:xsl='http://www.w3.org/1999/XSL/Transform'>
+
+  <xsl:template match="/ | @* | node()">
+    <xsl:copy>
+      <xsl:apply-templates select="@* | node()" />
+    </xsl:copy>
+  </xsl:template>
+
+  <!--xsl:template match="address|blockquote|center|dir|div|dl|fieldset|form|h1|h2|h3|h4|h5|h6|hr|isindex|menu|noframes|noscript|ol|p|pre|table|ul">
+    <xsl:copy>
+      <xsl:if test="not(@class)">
+        <xsl:attribute name="class">none</xsl:attribute>
+      </xsl:if>
+      <xsl:apply-templates select="@* | node()" />
+    </xsl:copy>
+  </xsl:template-->
+
+  <xsl:template match="/html/head[not(link[@rel='stylesheet' and @type='text/css'])]">
+    <head>
+      <xsl:call-template name="std-stylesheets" />
+      <xsl:apply-templates select="@* | node()" />
+    </head>
+  </xsl:template>
+
+  <xsl:template name="std-stylesheets">
+    <xsl:variable name="PONY_CSS_DIR">/pony/static/css</xsl:variable>
+    <link rel="stylesheet" type="text/css" href="{$PONY_CSS_DIR}/reset-fonts-grids.css" />
+    <link rel="stylesheet" type="text/css" href="{$PONY_CSS_DIR}/pony-base.css" />
+    <xsl:comment>start of IE hack</xsl:comment>
+      <link rel="stylesheet" type="text/css" href="{$PONY_CSS_DIR}/pony-ie.css"/>
+    <xsl:comment>end of IE hack</xsl:comment>
+  </xsl:template>
+
+  <xsl:template match="/html/body[header|footer|sidebar]">
+    <body>
+      <div id="doc2" class="yui-t2">
+        <xsl:call-template name="header" />
+        <div id="bd">
+          <xsl:choose>
+            <xsl:when test="sidebar[@first]">
+              <xsl:call-template name="sidebar" />
+              <xsl:call-template name="main" />
+            </xsl:when>
+            <xsl:otherwise>
+              <xsl:call-template name="main" />
+              <xsl:call-template name="sidebar" />
+            </xsl:otherwise>
+          </xsl:choose>
+        </div>
+        <xsl:call-template name="footer" />
+      </div>
+    </body>
+  </xsl:template>
+
+  <xsl:template name="header">
+    <div id="hd" class="pony-header">
+      <xsl:apply-templates select="/html/body/header/child::node()" />
+    </div>
+  </xsl:template>
+
+  <xsl:template name="footer">
+    <div id="ft" class="pony-footer">
+      <xsl:apply-templates select="/html/body/footer/child::node()" />
+    </div>
+  </xsl:template>
+
+  <xsl:template name="sidebar">
+    <div class="yui-b pony-sidebar">
+      <xsl:apply-templates select="/html/body/sidebar/child::node()" />
+    </div>
+  </xsl:template>
+
+  <xsl:template name="main">
+    <div id="yui-main">
+      <div class="yui-b pony-content">
+        <xsl:apply-templates select="/html/body/*[not(self::header or self::footer or self::sidebar)]" />
+      </div>
+    </div>
+  </xsl:template>
+
+</xsl:stylesheet>
