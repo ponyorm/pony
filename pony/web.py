@@ -337,14 +337,29 @@ path_re = re.compile(r"^[-_.!~*'()A-Za-z0-9]+$")
 def get_static_file(path, ext):
     if static_dir is None: return None
     for component in path:
-        if not path_re.match(component): return None
-    if ext and not path_re.match(ext): return None
+        if not path_re.match(component): raise Http404
+    if ext and not path_re.match(ext): raise Http404
     fname = os.path.join(static_dir, *path) + ext
-    if not os.path.isfile(fname): return None
+    if not os.path.isfile(fname): raise Http404
     headers = local.response.headers
     headers['Content-Type'] = guess_type(ext)
     headers['Expires'] = '0'
     headers['Cache-Control'] = 'max-age=10'
+    return file(fname, 'rb')
+
+pony_static_dir = os.path.join(os.path.dirname(__file__), 'static')
+
+def get_pony_static_file(path, ext):
+    for component in path:
+        if not path_re.match(component): raise Http404
+    if ext and not path_re.match(ext): raise Http404
+    fname = os.path.join(pony_static_dir, *path) + ext
+    if not os.path.isfile(fname): raise Http404
+    headers = local.response.headers
+    headers['Content-Type'] = guess_type(ext)
+    max_age = 30 * 60
+    headers['Expires'] = Cookie._getdate(max_age)
+    headers['Cache-Control'] = 'max-age=%d' % max_age
     return file(fname, 'rb')
 
 def get_http_handlers(path, ext, qdict):
@@ -420,6 +435,10 @@ def get_http_handlers(path, ext, qdict):
 
 def invoke(url):
     path, ext, qlist = split_url(url)
+    if path[:1] == ['static'] and len(path) > 1:
+        return get_static_file(path[1:], ext)
+    if path[:2] == ['pony', 'static'] and len(path) > 2:
+        return get_pony_static_file(path[2:], ext)
     qdict = dict(qlist)
     local.response = HttpResponse()
     handlers = get_http_handlers(path, ext, qdict)
@@ -431,16 +450,11 @@ def invoke(url):
         else: url2 = p + '/' + q
         path2, ext2, qlist = split_url(url2)
         handlers = get_http_handlers(path2, ext2, qdict)
-        if handlers:
-            script_name = local.request.environ.get('SCRIPT_NAME', '')
-            if not url2: url2 = script_name or '/'
-            else: url2 = script_name + url2
-            if url2 != script_name + url: raise HttpRedirect(url2)
-            # after this do page rendering, see below
-        else:
-            file = get_static_file(path, ext)
-            if file is not None: return file
-            raise Http404('Page not found')
+        if not handlers: return get_static_file(path, ext)
+        script_name = local.request.environ.get('SCRIPT_NAME', '')
+        if not url2: url2 = script_name or '/'
+        else: url2 = script_name + url2
+        if url2 != script_name + url: raise HttpRedirect(url2)
     info, args, keyargs = handlers[0]
     try:
         for i, value in enumerate(args):
