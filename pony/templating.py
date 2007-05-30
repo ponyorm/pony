@@ -806,11 +806,11 @@ def _template(str_cls, default_ext,
               text=None, filename=None,
               globals=None, locals=None,
               encoding=None, keep_indent=False):
-    if text and filename:
+    if text is not None and filename is not None:
         raise TypeError("template function cannot accept both "
                         "'text' and 'filename' parameters at the same time")
-    if not text:
-        if not filename:
+    if text is None:
+        if filename is None:
             filename = get_template_name(sys._getframe(2)) + default_ext
         markup = markup_from_file(str_cls, filename, encoding, keep_indent)
     else: markup = markup_from_string(str_cls, text, encoding, keep_indent)
