@@ -23,7 +23,7 @@
         <xsl:apply-templates select="@*" />
         <xsl:choose>
           <xsl:when test="not(/html/head/link[@rel='stylesheet' and @type='text/css']) and not(/html/head/style)">
-            <link rel="stylesheet" type="text/css" href="{$pony_css_dir}/reset-fonts-grids.css" />
+            <link rel="stylesheet" type="text/css" href="{$pony_css_dir}/grids-min.css" />
             <link rel="stylesheet" type="text/css" href="{$pony_css_dir}/pony-default.css" />
           </xsl:when>
           <xsl:when test="/html/*[header|footer|sidebar]">

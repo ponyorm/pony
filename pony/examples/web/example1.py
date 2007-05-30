@@ -39,18 +39,14 @@ def page4():
 
 @printhtml
 def header(title='Demonstration of Pony features'):
-    print '<html>'
-    print '<head>'
     print '<title>%s</title>' % title
-    print '</head>'
-    print '<body>'
-    print '<h1>%s</h1>' % title
+    print '<header><h1>%s</h1></header>' % title
 
 @printhtml
 def footer():
-    print '<p>click <a href="/">here</a> for return to main page'
-    print '</body>'
-    print '</html>'
+    print '<footer>'
+    print '<p>click <a href="/">here</a> to return to main page'
+    print '</footer>'
 
 @http('mypage.html')
 @printhtml
@@ -110,6 +106,8 @@ def page7(name=None):
 @printhtml
 def index():
     print header('Simple Pony examples')
+    print footer()
+    print '<sidebar>This is the sidebar</sidebar>'
     print '<ul>'
     print '<li><a href="%s">HelloWorld example</a></li>' % url(page1)
     print '<li>%s</li>' % link('Simplest HTML page', page2)
@@ -119,7 +117,6 @@ def index():
     print '<li>%s</li>' % link(page6, 2007, 10)
     print '<li>%s</li>' % link(page7)
     print '</ul>'
-    print footer()
 
 start_http_server()
 show_gui()
