@@ -1,0 +1,401 @@
+/*
+Copyright (c) 2007, Yahoo! Inc. All rights reserved.
+Code licensed under the BSD License:
+http://developer.yahoo.net/yui/license.txt
+version: 2.2.2
+*/
+/* Menu styles */
+
+div.yuimenu {
+
+    background-color:#f6f7ee;
+    border:solid 1px #c4c4be;
+    padding:1px;
+    
+}
+
+/* Submenus are positioned absolute and hidden by default */
+
+div.yuimenu div.yuimenu,
+div.yuimenubar div.yuimenu {
+
+    position:absolute;
+    visibility:hidden;
+
+}
+
+/* MenuBar Styles */
+
+div.yuimenubar {
+
+    background-color:#f6f7ee;
+    
+}
+
+/*
+    Applying a width triggers "haslayout" in IE so that the module's
+    body clears its floated elements
+*/
+div.yuimenubar div.bd {
+
+    width:100%;
+
+}
+
+/*
+    Clear the module body for other browsers
+*/
+div.yuimenubar div.bd:after {
+
+    content:'.';
+    display:block;
+    clear:both;
+    visibility:hidden;
+    height:0;
+
+}
+
+/* Matches the group title (H6) inside a Menu or MenuBar instance */
+
+div.yuimenu h6,
+div.yuimenubar h6 { 
+
+    font-size:100%;
+    font-weight:normal;    
+    margin:0;
+    border:solid 1px #c4c4be;
+    color:#b9b9b9;    
+
+}
+
+div.yuimenubar h6 {
+
+    float:left;
+    display:inline; /* Prevent margin doubling in IE */
+    padding:4px 12px;
+    border-width:0 1px 0 0;
+    
+}
+
+div.yuimenu h6 {
+
+    float:none;
+    display:block;
+    border-width:1px 0 0 0;
+    padding:5px 10px 0 10px;
+
+}
+
+/* Matches the UL inside a Menu or MenuBar instance */
+
+div.yuimenubar ul {
+
+    list-style-type:none;
+    margin:0;
+    padding:0;
+
+}
+
+div.yuimenu ul {
+
+    list-style-type:none;
+    border:solid 1px #c4c4be;
+    border-width:1px 0 0 0;
+    margin:0;
+    padding:10px 0;
+
+}
+
+div.yuimenu ul.first-of-type, 
+div.yuimenu ul.hastitle,
+div.yuimenu h6.first-of-type {
+
+    border-width:0;
+
+}
+
+/*
+    Styles for the menu's header and footer elements that are used as controls 
+    to scroll the menu's body element when the menu's height exceeds the 
+    value of the "maxheight" configuration property.
+*/
+
+div.yuimenu div.topscrollbar,
+div.yuimenu div.bottomscrollbar {
+
+    height:16px;
+    background-image:url(map.gif);
+    background-repeat:no-repeat;
+
+}
+
+
+div.yuimenu div.topscrollbar {
+
+    background-image:url(map.gif);
+    background-position:center -72px;
+
+}
+
+
+div.yuimenu div.topscrollbar_disabled {
+
+    background-image:url(map.gif);
+    background-position:center -88px;
+
+}
+
+
+div.yuimenu div.bottomscrollbar {
+
+    background-image:url(map.gif);
+    background-position:center -104px;
+
+}
+
+
+div.yuimenu div.bottomscrollbar_disabled {
+
+    background-image:url(map.gif);
+    background-position:center -120px;
+
+}
+
+
+/* MenuItem and MenuBarItem styles */
+
+div.yuimenu li,
+div.yuimenubar li {
+
+    font-size:85%;
+    cursor:pointer;
+    cursor:hand;
+    white-space:nowrap;
+    text-align:left;
+
+}
+
+div.yuimenu li.yuimenuitem {
+
+    padding:2px 24px;
+    
+}
+
+div.yuimenu li li,
+div.yuimenubar li li {
+
+    font-size:100%;
+
+}
+
+
+/* Matches the help text for a menu item */
+
+div.yuimenu li.hashelptext em.helptext {
+
+    font-style:normal;
+    margin:0 0 0 40px;
+
+}
+
+div.yuimenu li a,
+div.yuimenubar li a {
+    
+    /*
+        "zoom:1" triggers "haslayout" in IE to ensure that the mouseover and 
+        mouseout events bubble to the parent LI in IE.
+    */
+    zoom:1;
+    color:#000;
+    text-decoration:none;
+    
+}
+
+div.yuimenu li.hassubmenu,
+div.yuimenu li.hashelptext {
+
+    text-align:right;
+
+}
+
+div.yuimenu li.hassubmenu a.hassubmenu,
+div.yuimenu li.hashelptext a.hashelptext {
+
+    /*
+        Need to apply float immediately for IE or help text will jump to the 
+        next line 
+    */
+
+    *float:left;
+    *display:inline; /* Prevent margin doubling in IE */
+    text-align:left;
+
+}
+
+div.yuimenu.visible li.hassubmenu a.hassubmenu, 
+div.yuimenu.visible li.hashelptext a.hashelptext {
+
+    /*
+        Apply the float only when the menu is visible to prevent the help
+        text from wrapping to the next line in Opera.
+    */
+
+    float:left;
+
+}
+
+
+/* Matches selected menu items */
+
+div.yuimenu li.selected,
+div.yuimenubar li.selected {
+
+    background-color:#8c8ad0;
+
+}
+
+div.yuimenu li.selected a.selected,
+div.yuimenubar li.selected a.selected {
+
+    text-decoration:underline;
+
+}
+
+div.yuimenu li.selected a.selected,
+div.yuimenu li.selected em.selected, 
+div.yuimenubar li.selected a.selected {
+
+    color:#fff;
+
+}
+
+
+/* Matches disabled menu items */
+
+div.yuimenu li.disabled, 
+div.yuimenubar li.disabled {
+
+    cursor:default;
+
+}
+
+div.yuimenu li.disabled a.disabled,
+div.yuimenu li.disabled em.disabled,
+div.yuimenubar li.disabled a.disabled {
+
+    color:#b9b9b9;
+    cursor:default;
+    
+}
+
+div.yuimenubar li.yuimenubaritem {
+
+    float:left;
+    display:inline; /* Prevent margin doubling in IE */
+    border-width:0 0 0 1px;
+    border-style:solid;
+    border-color:#c4c4be;
+    padding:4px 24px;
+    margin:0;
+
+}
+
+div.yuimenubar li.yuimenubaritem.first-of-type {
+
+    border-width:0;
+
+}
+
+
+/* Styles for the the submenu indicator for menu items */
+
+div.yuimenu li.hassubmenu em.submenuindicator, 
+div.yuimenubar li.hassubmenu em.submenuindicator {
+
+    display:-moz-inline-box; /* Mozilla */
+    display:inline-block; /* IE, Opera and Safari */
+    vertical-align:middle;
+    height:8px;
+    width:8px;
+    text-indent:9px;
+    font:0/0 arial;
+    overflow:hidden;
+    background-image:url(map.gif);
+    background-repeat:no-repeat;
+
+}
+
+div.yuimenubar li.hassubmenu em.submenuindicator {
+
+    background-position:0 -24px;
+    margin:0 0 0 10px;
+
+}
+
+div.yuimenubar li.hassubmenu em.submenuindicator.selected {
+
+    background-position:0 -32px;
+
+}
+
+div.yuimenubar li.hassubmenu em.submenuindicator.disabled {
+
+    background-position:0 -40px;
+
+}
+
+div.yuimenu li.hassubmenu em.submenuindicator {
+
+    background-position:0 0;
+    margin:0 -16px 0 10px;
+
+}
+
+div.yuimenu li.hassubmenu em.submenuindicator.selected {
+
+    background-position:0 -8px;
+
+}
+
+div.yuimenu li.hassubmenu em.submenuindicator.disabled {
+
+    background-position:0 -16px;
+
+}
+
+
+/* Styles for a menu item's "checked" state */
+
+div.yuimenu li.checked {
+
+    position:relative;
+
+}
+
+div.yuimenu li.checked em.checkedindicator {
+
+    height:8px;
+    width:8px;
+    text-indent:9px;
+    overflow:hidden;
+    background-image:url(map.gif);
+    background-position:0 -48px;
+    background-repeat:no-repeat;
+    position:absolute;
+    left:6px;
+    _left:-16px; /* Underscore hack b/c this is for IE 6 only */
+    top:.5em;
+
+}
+
+div.yuimenu li.checked em.checkedindicator.selected {
+
+    background-position:0 -56px;
+
+}
+
+div.yuimenu li.checked em.checkedindicator.disabled {
+
+    background-position:0 -64px;
+
+}

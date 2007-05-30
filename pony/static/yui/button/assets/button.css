@@ -1,0 +1,220 @@
+/*
+Copyright (c) 2007, Yahoo! Inc. All rights reserved.
+Code licensed under the BSD License:
+http://developer.yahoo.net/yui/license.txt
+version: 2.2.2
+*/
+.yuibutton  {
+
+    display:-moz-inline-stack; /* Gecko */
+    display:inline-block; /* IE, Opera and Safari */
+
+    border-width:1px 0;
+    border-style:solid;
+    border-color:#999;
+
+    background:#ecece3 url(background.png) left center;
+    margin:auto .25em;
+    
+}
+
+.yuibutton.ie6 {
+
+    /* Give the transparent background image to IE 6 */
+    background-image:none;
+    filter:progid:DXImageTransform.Microsoft.AlphaImageLoader(src='../../build/button/assets/background.png', sizingMethod = 'scale');
+
+}
+
+.yuibutton .first-child {
+
+    display:block; /* Gecko, Opera and Safari */
+    *display:inline-block; /* IE */
+
+    border-width:0 1px;
+    border-style:solid;
+    border-color:#999;
+    
+    margin:0 -1px;
+    *position:relative;
+    *left:-1px;
+
+}
+
+.yuibutton button,
+.yuibutton a {
+
+    display:block; /* Opera and Safari */
+    display:-moz-inline-block; /* Gecko */
+    *display:inline-block; /* IE */
+    padding:.25em .5em;
+    border:1px solid #ccc;
+
+}
+
+.yuibutton button {
+
+    overflow:visible; /* Remove superfluous padding for IE */
+    font-size:100%; /* Makes form controls resizable in IE */
+    background-color:transparent;
+    cursor:pointer;
+    cursor:hand;
+
+}
+
+.yuibutton a {
+
+    text-decoration:none;
+    color:#000;           
+
+}
+
+.yuibutton.splitbutton button,
+.yuibutton.menubutton button {
+
+    padding-right:20px;
+    background-position:right center;
+    background-repeat:no-repeat;
+    
+}
+
+.yuibutton.menubutton button {
+
+    background-image:url(menuarrow.gif);
+
+}
+
+.yuibutton.splitbutton button {
+
+    background-image:url(splitarrow.gif);
+
+}
+
+
+/* Focus state */
+
+.yuibutton.focus {
+
+    border-color:#5e5c95;
+
+}
+
+.yuibutton.focus .first-child {
+
+    border-color:#5e5c95;
+
+}
+
+.yuibutton.focus button, 
+.yuibutton.focus a {
+
+    border-color:#cec1fc;
+
+}
+
+
+/* Hover state */
+
+.yuibutton.hover {
+
+    border-color:#406fac;
+    background-color:#98d5fc;
+
+}
+
+.yuibutton.hover .first-child {
+
+    border-color:#406fac;
+
+}
+
+.yuibutton.hover button, 
+.yuibutton.hover a {
+
+    border-color:#7099ce;
+
+}
+
+
+/* Active state */
+
+.yuibutton.active {
+    
+    border-color:#7a8180;
+    background-color:#333;
+    
+}
+
+.yuibutton.active .first-child {
+
+    border-color:#7a8180;
+
+}
+
+.yuibutton.active button, 
+.yuibutton.active a {
+
+    border-color:#98a09f;
+
+}
+
+.yuibutton.splitbutton.activeoption button {
+
+    background-color:transparent;
+    background-image:url(splitarrow_active.gif);
+    
+}
+
+
+
+/* Checked state */
+
+.yuibutton.radio.checked,
+.yuibutton.checkbox.checked {
+    
+    border-color:#7a8180;
+    background-color:#333;
+    
+}
+
+.yuibutton.radio.checked .first-child,
+.yuibutton.checkbox.checked .first-child {
+
+    border-color:#7a8180;
+
+}
+
+.yuibutton.radio.checked button,
+.yuibutton.checkbox.checked button { 
+
+    border-color:#98a09f;
+
+}
+
+
+
+/* Disabled state */
+
+.yuibutton.disabled {
+    
+    border-color:#cbcdc5;
+    background:#ecece3;
+
+    filter:none;
+    
+}
+
+.yuibutton.disabled .first-child {
+
+    border-color:#cbcdc5;
+
+}
+
+.yuibutton.disabled button, 
+.yuibutton.disabled a {
+
+    border-color:transparent;
+    color:#b9b9b9;
+    cursor:default;
+
+}

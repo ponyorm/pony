@@ -1,0 +1,197 @@
+/*
+Copyright (c) 2007, Yahoo! Inc. All rights reserved.
+Code licensed under the BSD License:
+http://developer.yahoo.net/yui/license.txt
+version: 2.2.2
+*/
+.yui-calcontainer {
+	position:relative;
+	padding:5px;
+	background-color:#F7F9FB;
+	border:1px solid #7B9EBD;
+	float:left;
+	overflow:hidden;
+}
+
+.yui-calcontainer iframe {
+	position:absolute;
+	border:none;
+	margin:0;padding:0;
+	left:-1px;
+	top:-1px;
+	z-index:0;
+	width:50em;
+	height:50em;
+}
+
+.yui-calcontainer.multi {
+	padding:0;
+}
+
+.yui-calcontainer.multi .groupcal {
+	padding:5px;
+	background-color:transparent;
+	z-index:1;
+	float:left;
+	position:relative;
+	border:none;
+}
+
+.yui-calcontainer .title {
+	font:100% sans-serif;
+	color:#000;
+	font-weight:bold;
+	margin-bottom:5px;
+	height:25px;
+	position:absolute;
+	top:3px;left:5px;
+	z-index:1;
+}
+
+.yui-calcontainer .close-icon {
+	position:absolute;
+	right:3px;
+	top:3px;
+	border:none;
+	z-index:1;
+}
+
+.yui-calcontainer .calclose {
+	background: url("calx.gif") no-repeat;
+	width:17px;
+	height:13px;
+	cursor:pointer;	
+}
+
+/* Calendar element styles */
+
+.yui-calendar {
+	font:100% sans-serif;
+	text-align:center;
+	border-spacing:0;
+	border-collapse:separate;
+	position:relative;
+}
+
+.yui-calcontainer.withtitle {
+	padding-top:1.5em;
+}
+
+.yui-calendar .calnavleft {
+	position:absolute;
+	cursor:pointer;
+	top:2px;
+	bottom:0;
+	width:9px;
+	height:12px;   
+	left:2px;
+	z-index:1;
+	background: url("callt.gif") no-repeat;
+}
+
+.yui-calendar .calnavright {
+	position:absolute;
+	cursor:pointer;
+	top:2px;
+	bottom:0;
+	width:9px;
+	height:12px;
+	right:2px;
+	z-index:1;
+	background: url("calrt.gif") no-repeat;
+}
+
+.yui-calendar td.calcell {
+	padding:.1em .2em;
+	border:1px solid #E0E0E0;
+	text-align:center;
+}
+
+.yui-calendar td.calcell a {
+	color:#003DB8;
+	text-decoration:none;
+}
+
+.yui-calendar td.calcell.today {
+	border:1px solid #000;
+}
+
+.yui-calendar td.calcell.oom {
+	cursor:default;
+	color:#999;
+	background-color:#EEE;
+	border:1px solid #E0E0E0;
+}
+
+.yui-calendar td.calcell.selected {
+	color:#003DB8;
+	background-color:#FFF19F;
+	border:1px solid #FF9900;
+}
+
+.yui-calendar td.calcell.calcellhover {
+	cursor:pointer;
+	color:#FFF;
+	background-color:#FF9900;
+	border:1px solid #FF9900;
+}
+
+.yui-calendar td.calcell.calcellhover a {
+	color:#FFF;
+}
+
+.yui-calendar td.calcell.restricted {
+	text-decoration:line-through;
+}
+
+.yui-calendar td.calcell.previous {
+	color:#CCC;
+}
+
+.yui-calendar td.calcell.highlight1 { background-color:#CCFF99; }
+.yui-calendar td.calcell.highlight2 { background-color:#99CCFF; }
+.yui-calendar td.calcell.highlight3 { background-color:#FFCCCC; }
+.yui-calendar td.calcell.highlight4 { background-color:#CCFF99; }
+
+.yui-calendar .calhead {
+	border:1px solid #E0E0E0;
+	vertical-align:middle;
+	background-color:#FFF;
+}
+
+.yui-calendar .calheader {
+	position:relative;
+	width:100%;
+	text-align:center;
+}
+
+.yui-calendar .calheader img {
+	border:none;
+}
+
+.yui-calendar .calweekdaycell {
+	color:#666;
+	font-weight:normal;
+	text-align:center;
+	width:1.5em;
+}
+
+.yui-calendar .calfoot {
+	background-color:#EEE;
+}
+
+.yui-calendar .calrowhead, .yui-calendar .calrowfoot {
+	color:#666;
+	font-size:9px;
+	font-style:italic;
+	font-weight:normal;
+	width:15px;
+}
+
+.yui-calendar .calrowhead {
+	border-right-width:2px;
+}
+
+/* Specific changes for calendar running under fonts/reset */
+.yui-calendar .calbody a:hover {background:inherit;}
+p#clear {clear:left; padding-top:10px;}

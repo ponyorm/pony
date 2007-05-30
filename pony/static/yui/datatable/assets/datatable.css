@@ -1,0 +1,52 @@
+/*
+Copyright (c) 2007, Yahoo! Inc. All rights reserved.
+Code licensed under the BSD License:
+http://developer.yahoo.net/yui/license.txt
+version: 2.2.2
+*/
+/*foundational css*/
+td {
+    overflow:hidden;
+}
+
+.yui-dt-headcontainer {
+    position:relative;
+    
+}
+
+.yui-dt-headtext {
+    position:relative;
+    border-right:10px;
+}
+
+.yui-dt-headresizer {
+    position:absolute;
+    margin-right:-6px;
+    right:0;
+    bottom:0;
+    width:6px;
+    height:100%;
+    cursor:w-resize;
+    cursor:col-resize;
+}
+
+.yui-dt-firstlink,.yui-dt-prevlink,.yui-dt-nextlink,.yui-dt-lastlink,.yui-dt-pagelink {
+    cursor:hand;
+    cursor:pointer;
+    text-decoration:underline;
+}
+
+/* foundational scrolling css */
+.yui-dt-scrollable  {
+    *overflow-y:auto; /* for ie */
+}
+.yui-dt-scrollable  thead {
+    display:block; /* for safari and opera */
+}
+.yui-dt-scrollable thead tr {
+    position:relative;  /* for ie */
+}
+.yui-dt-scrollbody {
+    display:block; /* for safari and opera */
+    overflow:auto; /* for gecko */
+}
