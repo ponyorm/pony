@@ -16,58 +16,69 @@
     </xsl:copy>
   </xsl:template-->
 
-  <xsl:template match="/html/head[not(link[@rel='stylesheet' and @type='text/css'])]">
-    <head>
-      <xsl:call-template name="std-stylesheets" />
-      <xsl:apply-templates select="@* | node()" />
-    </head>
+  <xsl:template match="/">
+    <xsl:variable name="pony_css_dir">/pony/static/css</xsl:variable>
+    <html>
+      <head>
+        <xsl:apply-templates select="@*" />
+        <xsl:choose>
+          <xsl:when test="not(/html/head/link[@rel='stylesheet' and @type='text/css']) and not(/html/head/style)">
+            <link rel="stylesheet" type="text/css" href="{$pony_css_dir}/reset-fonts-grids.css" />
+            <link rel="stylesheet" type="text/css" href="{$pony_css_dir}/pony-default.css" />
+          </xsl:when>
+          <xsl:when test="/html/*[header|footer|sidebar]">
+            <link rel="stylesheet" type="text/css" href="{$pony_css_dir}/grids-min.css" />
+          </xsl:when>
+        </xsl:choose>
+        <xsl:apply-templates select="/html/head/node()[not(self::header or self::footer or self::sidebar)]" />
+      </head>
+      <body>
+        <xsl:choose>
+          <xsl:when test="/html/*[header|footer|sidebar]">
+            <xsl:call-template name="layout" />
+          </xsl:when>
+          <xsl:otherwise>
+            <xsl:apply-templates select="/html/body/node()[not(self::header or self::footer or self::sidebar)]" />
+          </xsl:otherwise>
+        </xsl:choose>
+      </body>
+    </html>
   </xsl:template>
 
-  <xsl:template name="std-stylesheets">
-    <xsl:variable name="PONY_CSS_DIR">/pony/static/css</xsl:variable>
-    <link rel="stylesheet" type="text/css" href="{$PONY_CSS_DIR}/reset-fonts-grids.css" />
-    <link rel="stylesheet" type="text/css" href="{$PONY_CSS_DIR}/pony-base.css" />
-    <xsl:comment>start of IE hack</xsl:comment>
-      <link rel="stylesheet" type="text/css" href="{$PONY_CSS_DIR}/pony-ie.css"/>
-    <xsl:comment>end of IE hack</xsl:comment>
-  </xsl:template>
-
-  <xsl:template match="/html/body[header|footer|sidebar]">
-    <body>
-      <div id="doc2" class="yui-t2">
-        <xsl:call-template name="header" />
-        <div id="bd">
-          <xsl:choose>
-            <xsl:when test="sidebar[@first]">
-              <xsl:call-template name="sidebar" />
-              <xsl:call-template name="main" />
-            </xsl:when>
-            <xsl:otherwise>
-              <xsl:call-template name="main" />
-              <xsl:call-template name="sidebar" />
-            </xsl:otherwise>
-          </xsl:choose>
-        </div>
-        <xsl:call-template name="footer" />
+  <xsl:template name="layout">
+    <div id="doc2" class="yui-t2">
+      <xsl:call-template name="header" />
+      <div id="bd">
+        <xsl:choose>
+          <xsl:when test="/html/*/sidebar[@first]">
+            <xsl:call-template name="sidebar" />
+            <xsl:call-template name="main" />
+          </xsl:when>
+          <xsl:otherwise>
+            <xsl:call-template name="main" />
+            <xsl:call-template name="sidebar" />
+          </xsl:otherwise>
+        </xsl:choose>
       </div>
-    </body>
+      <xsl:call-template name="footer" />
+    </div>
   </xsl:template>
 
   <xsl:template name="header">
     <div id="hd" class="pony-header">
-      <xsl:apply-templates select="/html/body/header/child::node()" />
+      <xsl:apply-templates select="/html/*/header/node()" />
     </div>
   </xsl:template>
 
   <xsl:template name="footer">
     <div id="ft" class="pony-footer">
-      <xsl:apply-templates select="/html/body/footer/child::node()" />
+      <xsl:apply-templates select="/html/*/footer/node()" />
     </div>
   </xsl:template>
 
   <xsl:template name="sidebar">
     <div class="yui-b pony-sidebar">
-      <xsl:apply-templates select="/html/body/sidebar/child::node()" />
+      <xsl:apply-templates select="/html/*/sidebar/node()" />
     </div>
   </xsl:template>
 
