@@ -109,10 +109,11 @@ class Form(object):
             if e: result.extend((Html('&nbsp;'), e))
             result.append(Html('</td></tr>'))
         return htmljoin(result)
-    def footer(self):
-        result = [ f.html for f in self.submit_fields ]
-        if not result: result.append(htmltag('input', type='submit'))
-        result.append(Html('\n</form>'))
+    def buttons(self):
+        result = [ Html('\n<div class="buttons">') ]
+        buttons = [ f.html for f in self.submit_fields ]
+        result.extend(buttons or [ htmltag('input', type='submit') ])
+        result.append(Html('\n</div>'))
         return htmljoin(result)
     def __str__(self):
         return unicode(self).encode('ascii', 'xmlcharrefreplace')
@@ -120,8 +121,9 @@ class Form(object):
         return Html('\n').join([ self.header(),
                                  Html('<table>'),
                                  self.table(),
-                                 Html('</table>'),
-                                 self.footer() ])
+                                 Html('<tr><td colspan="2">'),
+                                 self.buttons(),
+                                 Html('</td></tr></table></form>')])
     html = property(__unicode__)
 
 class HtmlField(object):
@@ -210,7 +212,7 @@ class BaseWidget(HtmlField):
     def _set_label(self, label):
         if label:
             if not self.required: required = ''
-            else: required = Html('<sup class="required">*</sup>')
+            else: required = Html('<sup class="required">&nbsp;*</sup>')
             label = (Html('<label for="%s">%s%s'
                           '<span class="colon">:</span></label>')
                      % (self.attrs['id'], label, required))
