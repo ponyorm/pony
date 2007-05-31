@@ -1,0 +1,37 @@
+a:hover { color: red; }
+h1, h2, h3
+{
+	font-family: tahoma;
+	font-weight: bold;
+	color: #000066;
+	margin: 1em 0 0.6em 0;
+}
+h1 { font-size: 152%; }
+h2 { font-size: 136%; }
+h3 { font-size: 122%; }
+p, ul, ol, blockquote
+{
+	margin: 0.5em 0;
+    font: normal 114%/150% "Times New Roman", Times, TimesNR, serif;
+}
+ol
+{
+	list-style-position: outside;
+	list-style-type: decimal;
+}
+ul
+{
+	list-style-position: outside;
+	list-style-type: disc;
+}
+li { margin: 0.5em 0.5em 0.5em 1.5em; }
+th { font-weight: bold; }
+
+/* forms: */
+
+form th, form.td { padding: 0.5em; }
+form th { text-align: right; }
+form .required, form .error { color: red; }
+form .checkbox, form .radiobutton { margin: 0.3em 0; }
+form .value { padding-left: 0.5em; *padding-left: 0.2em; }
+form .buttons { margin: 1em 0; text-align: center; }
