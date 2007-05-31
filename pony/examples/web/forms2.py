@@ -3,20 +3,15 @@ from pony.main import *
 use_autoreload()
 
 @http('/')
+@printhtml
 def index():
     f = Form()
     f.first_name = Text(required=True)
     f.last_name = Text()
     if f.is_submitted and not f.error:
-        return html('<h1>Hello, $f.first_name.value!</h1>')
+        print '<h1>Hello, %s!</h1>' % f.first_name.value
     else:
-        return html('''
-            <style>
-                .required { color: red }
-                .error { color: red }
-            </style>
-            <h1>Please fill the form:</h1>
-            $f.html
-            ''')
+        print '<h1>Please fill the form:</h1>'
+        print f
 
 start_http_server()

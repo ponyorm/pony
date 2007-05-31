@@ -58,11 +58,6 @@ def index():
         else: msg = 'Password did not match!'
         f.password.error_text = f.password2.error_text = msg
 
-    return html('''
-        <style>
-            .required, .error { color: red; }
-        </style>
-        $f.html
-    ''')
+    return f.html
 
 start_http_server()
