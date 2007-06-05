@@ -53,7 +53,7 @@ class Code:
         return self.freevars[n]
 
 class Decompiler:
-    def __init__(self):
+    def __init__(self, nesting = None):
         self.stack = []
         self.labels = {}
         self.last_label = 0
@@ -62,6 +62,11 @@ class Decompiler:
         self.assign = None
         self.ifs = None
         self.final_expr = None
+        self.it = None
+        if nesting is None:
+            self.nesting = 0
+        else:
+            self.nesting = nesting + 1
         
     def decompile(self, code):
         try:
@@ -120,17 +125,15 @@ class Decompiler:
 
     def FOR_ITER(self, code):
         oparg = code.get_arg()
-        code.set_stop(oparg)
-        d = Decompiler()
-        d.decompile(code)
-        code.set_stop(None)
-        iter = self.stack[-1]
-        self.final_expr =  "%s for %s in %s" %(d.expr_inner, d.assign, iter)        
-        if d.ifs:
-            self.final_expr = "%s if %s" % (self.final_expr, d.ifs)
-        if debug:
-            print "final expr=", self.final_expr
-            print "labels=", d.labels
+        code.set_stop(oparg + 1)   # include POP_BLOCK
+        self.it = self.stack.pop()
+        print "iter=", self.it
+        #d = Decompiler()
+        #d.decompile(code)
+        #code.set_stop(None)
+
+    def GET_ITER(self, code):
+        pass
 
     def JUMP_ABSOLUTE(self, code):
         oparg = code.get_arg()
@@ -184,10 +187,29 @@ class Decompiler:
 
     def SETUP_LOOP(self, code):
         oparg = code.get_arg()        
-        code.set_stop(oparg)
-        d = Decompiler()
+        code.set_stop(oparg + 1) # include POP_BLOCK
+        d = Decompiler(self.nesting)
         d.decompile(code)
-        self.final_expr = d.final_expr
+        if debug:
+            print "expr_inner =", d.expr_inner
+            print "    assign =", d.assign
+            print "      iter =", d.it
+            print "       ifs =", d.ifs
+        self.expr_inner = d.expr_inner
+        expr =  "for %s in %s" %(d.assign, d.it)        
+        if d.ifs:
+            expr = "%s if %s" % (expr, d.ifs)        
+        if self.nesting == 0:
+            expr = "%s %s" % (self.expr_inner, expr)
+        self.final_expr = expr
+        if d.final_expr is not None:
+            self.final_expr = "%s %s" % (self.final_expr, d.final_expr)
+        if debug:
+            print "nesting=", self.nesting
+            print "for expr =", self.final_expr
+            print "labels =", self.labels
+            print "self.expr=", self.final_expr
+            print "d.final_expr=", d.final_expr        
         code.set_stop(None)
 
     def STORE_FAST(self, code):
@@ -199,6 +221,11 @@ class Decompiler:
     def POP_BLOCK(self, code):
         if debug:
             print ""
+        if len(self.stack) > 0:
+            ifexpr, op = self.stack.pop()
+            self.ifs = ifexpr
+            if debug:
+                print "if expr = ", ifexpr
 
     def POP_TOP(self, code):
         if debug:
@@ -216,11 +243,6 @@ class Decompiler:
             if debug: 
                 print "check_current_ip(%s)" % self.last_label
             self.check_current_ip(self.last_label)
-        if len(self.stack) > 0:
-            expr, op = self.stack.pop()
-            self.ifs = expr
-            if debug:
-                print "--->", expr
 
 def decompile_tostring(g):
 	code = Code(g.gi_frame.f_code)
@@ -230,12 +252,14 @@ def decompile_tostring(g):
 
 def ttest():
     #g = (s for s in Student)
+    g = (a for b in Student if c > d)
+    g = (a for b in Student if c > d for e in Student if f < g)
     #g = (s for s in Student if s.age > 20 and (s.group.number == 4142 or 'FFF' in s.marks.subject.name))
     #g = ( (s,d,w) for t in Student if ((4 != x.a) or (a * 3 > 20) or (a * 2 < 5) and (a * 8 == 20)))
     #g = ( (s,d,w) for t in Student   if ( 4 != x.a  or  a * 3 > 20 ) and ( a * 2 < 5  or  a * 8 == 20 ))
     #g = ( (s,d,w) for t in Student if (((4 != x.a) or (a * 3 > 20)) and (a * 2 < 5) ))
     #g = ( (s,d,w) for t in Student if ((4 != x.a) or (a * 3 > 20) and (a * 2 < 5) ))
-    g = ( (s,d,w) for t in Student if ((4 != x.amount or amount * 3 > 20 or amount * 2 < 5) and (amount * 8 == 20)))
+    #g = ( (s,d,w) for t in Student if ((4 != x.amount or amount * 3 > 20 or amount * 2 < 5) and (amount * 8 == 20)))
     #g = ( (s,t,w) for t in Student if ((4 != x.a.b or a * 3 > 20 or a * 2 < 5 and v == 6) and a * 8 == 20 or (f > 4) ))
     #g = (s for t in Student if a == 5)
     #g = (s for s in Student if a == 5 for f in Student if t > 4 )

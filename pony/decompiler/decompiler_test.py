@@ -11,6 +11,12 @@ class TestDecompiler:
 	result = decompile_tostring(g)
 	assert result == expected
 
+    def test_1a(self):
+        g =        (a for b in Student if c > d)
+	expected = "a for b in .0 if c > d"
+	result = decompile_tostring(g)
+	assert result == expected
+               
     def test_2(self):
         g =   ((s, d, w) for t in Student   if ((4 != x.amount or amount * 3 > 20 or amount * 2 < 5) and amount * 8 == 20))
 	expected = "(s, d, w) for t in .0 if ((((4 != x.amount) or ((amount * 3 > 20) or (amount * 2 < 5)))) and (amount * 8 == 20))"
@@ -44,6 +50,14 @@ class TestDecompiler:
     def test_7(self):
         g =   ((s, t, w) for t in Student if ((4 != x.a.b or a * 3 > 20 or a * 2 < 5 and v == 6) and a * 8 == 20 or (f > 4) ))
 	expected = "(s, t, w) for t in .0 if ((((((4 != x.a.b) or ((a * 3 > 20) or ((a * 2 < 5) and (v == 6))))) and (a * 8 == 20))) or (f > 4))"
+	result = decompile_tostring(g)
+	assert result == expected
+
+# nested loops
+
+    def test_6(self):
+        g = (a for b in Student if c > d for e in Student if f < g)
+	expected = "a for b in .0 if c > d for e in Student if f < g"
 	result = decompile_tostring(g)
 	assert result == expected
 
