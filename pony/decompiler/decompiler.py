@@ -103,10 +103,9 @@ class Decompiler:
 
     def BUILD_TUPLE(self, code):
         oparg = code.get_arg()
-        t = []
-        for j in range(oparg):
-            t.append(self.stack.pop())
-        self.stack.append(t)
+        t = [str(self.stack.pop()) for i in range(oparg)]
+        t.reverse()
+        self.stack.append("(%s)" % ", ".join(t))
 
     def COMPARE_OP(self, code):
         oparg = code.get_arg()
@@ -163,7 +162,9 @@ class Decompiler:
 
     def LOAD_CONST(self, code):
         oparg = code.get_arg()
-        const = code.get_const(oparg)
+        const = str(code.get_const(oparg))
+        if not const.isdigit():
+            const = "'%s'" % const
         self.stack.append(const)
 
     def LOAD_DEREF(self, code):
