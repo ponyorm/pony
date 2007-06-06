@@ -17,6 +17,7 @@ class Code:
         self.cp = 0
         self.stop = len(self.code)
         self.indent=0
+        self.currentop = None
     def set_stop(self, n):        
         if n:
             if debug:
@@ -29,12 +30,14 @@ class Code:
     def get_nextop(self):
         if self.i < self.stop:
             oc = ord(self.code[self.i])
-            on = opname[oc]
+            self.currentop = opname[oc]
             self.cp = self.i
             self.i = self.i + 1
-            return on
+            return self.currentop
         else:
             raise StopIteration
+    def get_currentop(self):
+        return self.currentop
     def get_arg(self):
         oparg = ord(self.code[self.i]) + ord(self.code[self.i+1]) * 256
         self.i = self.i + 2
@@ -74,6 +77,7 @@ class Decompiler:
                 on = code.get_nextop()
                 if debug:
                     print code.get_current_ip(), on,
+                on = on.replace('+', '_')
                 func = getattr(self, on)                
                 func(code)
                 self.check_current_ip(code.get_current_ip())
@@ -100,17 +104,127 @@ class Decompiler:
                 tos = "(%s)" % tos
                 self.stack[-1]=(tos, oper)  
 
+    def BINARY_POWER(self, code):
+        oper2 = self.stack.pop()
+        oper1 = self.stack.pop()
+        expr = '%s ** %s' % (oper1, oper2)
+        self.stack.append(expr)
+
     def BINARY_MULTIPLY(self, code):
         oper2 = self.stack.pop()
         oper1 = self.stack.pop()
         expr = '%s * %s' % (oper1, oper2)
         self.stack.append(expr)
 
+    def BINARY_DIVIDE(self, code):
+        oper2 = self.stack.pop()
+        oper1 = self.stack.pop()
+        expr = '%s / %s' % (oper1, oper2)
+        self.stack.append(expr)
+
+    def BINARY_FLOOR_DIVIDE(self, code):
+        oper2 = self.stack.pop()
+        oper1 = self.stack.pop()
+        expr = '%s // %s' % (oper1, oper2)
+        self.stack.append(expr)
+
+    def BINARY_ADD(self, code):
+        oper2 = self.stack.pop()
+        oper1 = self.stack.pop()
+        expr = '%s + %s' % (oper1, oper2)
+        self.stack.append(expr)
+
+    def BINARY_SUBSTRACT(self, code):
+        oper2 = self.stack.pop()
+        oper1 = self.stack.pop()
+        expr = '%s - %s' % (oper1, oper2)
+        self.stack.append(expr)
+
+    def BINARY_SUBSCR(self, code):
+        oper2 = self.stack.pop()
+        oper1 = self.stack.pop()
+        expr = '%s[%s]' % (oper1, oper2)
+        self.stack.append(expr)
+
+    def BINARY_LSHIFT(self, code):
+        oper2 = self.stack.pop()
+        oper1 = self.stack.pop()
+        expr = '%s << %s' % (oper1, oper2)
+        self.stack.append(expr)
+
+    def BINARY_RSHIFT(self, code):
+        oper2 = self.stack.pop()
+        oper1 = self.stack.pop()
+        expr = '%s >> %s' % (oper1, oper2)
+        self.stack.append(expr)
+
+    def BINARY_AND(self, code):
+        oper2 = self.stack.pop()
+        oper1 = self.stack.pop()
+        expr = '%s & %s' % (oper1, oper2)
+        self.stack.append(expr)
+
+    def BINARY_XOR(self, code):
+        oper2 = self.stack.pop()
+        oper1 = self.stack.pop()
+        expr = '%s ^ %s' % (oper1, oper2)
+        self.stack.append(expr)
+
+    def BINARY_OR(self, code):
+        oper2 = self.stack.pop()
+        oper1 = self.stack.pop()
+        expr = '%s | %s' % (oper1, oper2)
+        self.stack.append(expr)
+
+    BINARY_TRUE_DIVIDE = BINARY_DIVIDE
+
+    def BINARY_MODULO(self, code):
+        oper2 = self.stack.pop()
+        oper1 = self.stack.pop()
+        expr = '%s % %s' % (oper1, oper2)
+        self.stack.append(expr)
+
+    def BUILD_LIST(self, code):
+        oparg = code.get_arg()
+        t = [str(self.stack.pop()) for i in range(oparg)]
+        t.reverse()
+        self.stack.append("[%s]" % ", ".join(t))
+
     def BUILD_TUPLE(self, code):
         oparg = code.get_arg()
         t = [str(self.stack.pop()) for i in range(oparg)]
         t.reverse()
         self.stack.append("(%s)" % ", ".join(t))
+
+    def CALL_FUNCTION(self, code):
+        currentop = code.get_currentop()
+        oparg = code.get_arg()
+        kwarg, posarg = divmod(oparg, 256)
+        args = []
+        if debug:
+            print "posarg=%s kwarg=%s" % (posarg, kwarg)
+        if currentop in ('CALL_FUNCTION_KW','CALL_FUNCTION_VAR_KW'):
+            args.insert(0, "**%s" % self.stack.pop())
+        if currentop in ('CALL_FUNCTION_VAR','CALL_FUNCTION_VAR_KW'):
+            args.insert(0, "*%s" % self.stack.pop())
+        for i in range(kwarg):
+            value = self.stack.pop()
+            name = self.stack.pop()
+            name = name[1:-1]
+            args.insert(0, '%s=%s' % (name, value))
+        for i in range(posarg):
+            args.insert(0, "%s" % self.stack.pop())
+        funcname = self.stack.pop()
+        args = ", ".join(args)
+        funccall = "%s(%s)" % (funcname, args)
+        self.stack.append(funccall)
+        if debug:
+            print "FUNCTION CALL = %s" % funccall
+
+    CALL_FUNCTION_VAR = CALL_FUNCTION
+    CALL_FUNCTION_KW = CALL_FUNCTION
+    CALL_FUNCTION_VAR_KW = CALL_FUNCTION
+
 
     def COMPARE_OP(self, code):
         oparg = code.get_arg()
@@ -128,9 +242,6 @@ class Decompiler:
         code.set_stop(oparg + 1)   # include POP_BLOCK
         self.it = self.stack.pop()
         print "iter=", self.it
-        #d = Decompiler()
-        #d.decompile(code)
-        #code.set_stop(None)
 
     def GET_ITER(self, code):
         pass
@@ -138,6 +249,7 @@ class Decompiler:
     def JUMP_ABSOLUTE(self, code):
         oparg = code.get_arg()
 
+    JUMP_FORWARD = JUMP_ABSOLUTE
     def JUMP_IF_FALSE(self, code):
         oparg = code.get_arg()
         cmp = self.stack[-1]
@@ -168,6 +280,8 @@ class Decompiler:
         const = str(code.get_const(oparg))
         if not const.isdigit():
             const = "'%s'" % const
+        if const == "'None'":
+            const = "None"
         self.stack.append(const)
 
     def LOAD_DEREF(self, code):
@@ -184,6 +298,28 @@ class Decompiler:
         oparg = code.get_arg()
         name = code.get_name(oparg)
         self.stack.append(name)
+
+    LOAD_NAME = LOAD_GLOBAL
+
+    def NOP(self, code):
+        pass
+    
+    def POP_BLOCK(self, code):
+        if debug:
+            print ""
+        if len(self.stack) > 0:
+            ifexpr, op = self.stack.pop()
+            self.ifs = ifexpr
+            if debug:
+                print "if expr = ", ifexpr
+
+    def POP_TOP(self, code):
+        if debug:
+            print ""
+
+    def RETURN_VALUE(self, code):
+        if debug:
+            print ""
 
     def SETUP_LOOP(self, code):
         oparg = code.get_arg()        
@@ -212,28 +348,50 @@ class Decompiler:
             print "d.final_expr=", d.final_expr        
         code.set_stop(None)
 
+    def SLICE_0(self, code):
+        tos = self.stack.pop()
+        tos = "%s[:]" % tos
+        self.stack.append(tos)
+
+    def SLICE_1(self, code):
+        tos = self.stack.pop()
+        tos1 = self.stack.pop()
+        tos = "%s[%s:]" % (tos1, tos)
+        self.stack.append(tos)
+
+    def SLICE_2(self, code):
+        tos = self.stack.pop()
+        tos1 = self.stack.pop()
+        tos = "%s[:%s]" % (tos1, tos)
+        self.stack.append(tos)
+
+    def SLICE_3(self, code):
+        tos = self.stack.pop()
+        tos1 = self.stack.pop()
+        tos2 = self.stack.pop()
+        tos = "%s[%s:%s]" % (tos2, tos1, tos)
+        self.stack.append(tos)
+
     def STORE_FAST(self, code):
         oparg = code.get_arg()
         varname = code.get_varname(oparg)
         self.assign = varname # for 'varname'
         node = AssName(varname, 'OP_ASSIGN')
+
+    def UNARY_POSITIVE(self, code):
+        self.stack.append("+%s" % self.stack.pop())
+
+    def UNARY_NEGATIVE(self, code):
+        self.stack.append("-%s" % self.stack.pop())
+
+    def UNARY_NOT(self, code):
+        self.stack.append("not %s" % self.stack.pop())
         
-    def POP_BLOCK(self, code):
-        if debug:
-            print ""
-        if len(self.stack) > 0:
-            ifexpr, op = self.stack.pop()
-            self.ifs = ifexpr
-            if debug:
-                print "if expr = ", ifexpr
+    def UNARY_CONVERT(self, code):
+        self.stack.append("`%s`" % self.stack.pop())
 
-    def POP_TOP(self, code):
-        if debug:
-            print ""
-
-    def RETURN_VALUE(self, code):
-        if debug:
-            print ""
+    def UNARY_INVERT(self, code):
+        self.stack.append("~%s" % self.stack.pop())
 
     def YIELD_VALUE(self, code):
         self.expr_inner = self.stack.pop()        
@@ -252,8 +410,8 @@ def decompile_tostring(g):
 
 def ttest():
     #g = (s for s in Student)
-    g = (a for b in Student if c > d)
-    g = (a for b in Student if c > d for e in Student if f < g)
+    #g = (a for b in Student if c > d)
+    #g = (a for b in Student if c > d for e in Student if f < g)
     #g = (s for s in Student if s.age > 20 and (s.group.number == 4142 or 'FFF' in s.marks.subject.name))
     #g = ( (s,d,w) for t in Student if ((4 != x.a) or (a * 3 > 20) or (a * 2 < 5) and (a * 8 == 20)))
     #g = ( (s,d,w) for t in Student   if ( 4 != x.a  or  a * 3 > 20 ) and ( a * 2 < 5  or  a * 8 == 20 ))
@@ -263,6 +421,20 @@ def ttest():
     #g = ( (s,t,w) for t in Student if ((4 != x.a.b or a * 3 > 20 or a * 2 < 5 and v == 6) and a * 8 == 20 or (f > 4) ))
     #g = (s for t in Student if a == 5)
     #g = (s for s in Student if a == 5 for f in Student if t > 4 )
+    g = (func(a, a.attr, keyarg=123) for a in Student if a.method(x, *y, **z) is not None)
+    g = (func(a, a.attr, b, b.c.d, keyarg1=123, keyarg2=456) for a in Student if a.method(x, x1, *y, **z) is not None)
+    g = ([a, b, c] for a in [] if a > b)
+    g = (a[:] for i in [])
+    g = (a[b:] for i in [])
+    g = (a[:b] for i in [])
+    g = (a[b:c] for i in [])
+    
+    g = (a|b for i in [])
+    #here add all binary ops
+
+    g = (~a for i in [])
+    #here add all unary ops
+    
     code = Code(g.gi_frame.f_code)
     d = Decompiler()
     d.decompile(code)
