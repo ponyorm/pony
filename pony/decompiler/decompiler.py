@@ -62,7 +62,7 @@ class Decompiler:
         self.last_label = 0
         self.text = []
         self.expr_inner = None
-        self.assign = None
+        self.assign = []
         self.ifs = None
         self.final_expr = None
         self.it = None
@@ -190,6 +190,17 @@ class Decompiler:
         t.reverse()
         self.stack.append("[%s]" % ", ".join(t))
 
+    def BUILD_MAP(self, code):
+        zero = code.get_arg()
+        self.stack.append({})
+
+    def BUILD_SLICE(self, code):
+        count = code.get_arg()
+        slice = [str(self.stack.pop()) for i in range(count)]
+        slice.reverse()
+        self.stack.append(":".join(slice))
+        if debug: print ""
+
     def BUILD_TUPLE(self, code):
         oparg = code.get_arg()
         t = [str(self.stack.pop()) for i in range(oparg)]
@@ -236,6 +247,11 @@ class Decompiler:
         self.stack.append(expr)
         if debug:
             print "--PUSH EXPR=", expr
+
+    def DUP_TOP(self, code):
+        self.stack.append(self.stack[-1])
+        if debug:
+            print ""
 
     def FOR_ITER(self, code):
         oparg = code.get_arg()
@@ -301,6 +317,13 @@ class Decompiler:
 
     LOAD_NAME = LOAD_GLOBAL
 
+    def MAKE_FUNCTION(self, code):
+        oparg = code.get_arg()
+        func = self.stack.pop()
+        # call function later
+        self.stack.append("FUNCTION CALL")
+        if debug: print ""
+
     def NOP(self, code):
         pass
     
@@ -321,6 +344,14 @@ class Decompiler:
         if debug:
             print ""
 
+    def ROT_TWO(self, code):
+        tos = self.stack.pop()
+        tos1 = self.stack.pop()
+        self.stack.append(tos)
+        self.stack.append(tos1)
+        if debug:
+            print ""
+
     def SETUP_LOOP(self, code):
         oparg = code.get_arg()        
         code.set_stop(oparg + 1) # include POP_BLOCK
@@ -332,7 +363,8 @@ class Decompiler:
             print "      iter =", d.it
             print "       ifs =", d.ifs
         self.expr_inner = d.expr_inner
-        expr =  "for %s in %s" %(d.assign, d.it)        
+        assign = ", ".join(d.assign)
+        expr =  "for %s in %s" %(assign, d.it)        
         if d.ifs:
             expr = "%s if %s" % (expr, d.ifs)        
         if self.nesting == 0:
@@ -374,9 +406,16 @@ class Decompiler:
 
     def STORE_FAST(self, code):
         oparg = code.get_arg()
-        varname = code.get_varname(oparg)
-        self.assign = varname # for 'varname'
-        node = AssName(varname, 'OP_ASSIGN')
+        varname = code.get_varname(oparg)        
+        self.assign.append(varname) # for 'varname'
+        #node = AssName(varname, 'OP_ASSIGN')
+
+    def STORE_SUBSCR(self, code):
+        tos = self.stack.pop()
+        tos1 = self.stack.pop()
+        tos2= self.stack.pop()
+        tos1[str(tos)] = str(tos2)
+        if debug: print ""
 
     def UNARY_POSITIVE(self, code):
         self.stack.append("+%s" % self.stack.pop())
@@ -392,6 +431,11 @@ class Decompiler:
 
     def UNARY_INVERT(self, code):
         self.stack.append("~%s" % self.stack.pop())
+
+    def UNPACK_SEQUENCE(self, code):
+        count = code.get_arg()
+        # for now do nothing with that, may be we need to push to stack 'count' values
+        # for having them stored by STORE_FAST later
 
     def YIELD_VALUE(self, code):
         self.expr_inner = self.stack.pop()        
@@ -432,8 +476,20 @@ def ttest():
     g = (a|b for i in [])
     #here add all binary ops
 
-    g = (~a for i in [])
+    g = (~a for i, j in [])
     #here add all unary ops
+
+    g = ({'a' : x, 'b' : y} for a, b in [])
+    # think what to do with " and '
+
+    g = ({'a' : x, 'b' : y} for a, b in [])
+
+    g = (a[2:4,6:8] for a in [])    
+    g = (a[2:4:6,6:8] for a, y in [])
+    # a[(2:4:6, 6:8)] for a, y in .0 - what to do with ()
+
+    g = (a(lambda x,y: x > 0) for a in [])    
+    g = (a(b, lambda x,y: x > 0) for a in [])    
     
     code = Code(g.gi_frame.f_code)
     d = Decompiler()
