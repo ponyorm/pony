@@ -491,6 +491,7 @@ def invoke(url):
 
     if media_type == 'text/html' and xslt.is_supported:
         xml = xslt.html2xml(result, charset)
+        xslt.normalize(xml)
         xml = xslt.transform(xml)
         result = xslt.xml2html(xml, charset)
     else:
