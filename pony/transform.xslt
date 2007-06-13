@@ -60,7 +60,9 @@
   </xsl:template>
   
   <xsl:template name="layout">
-    <div id="doc2" class="yui-t2">
+    <div>
+      <xsl:call-template name="doc-id" />
+      <xsl:call-template name="doc-class" />
       <xsl:call-template name="header" />
       <div id="bd">
         <xsl:choose>
@@ -78,6 +80,35 @@
     </div>
   </xsl:template>
 
+  <xsl:template name="doc-id">
+    <xsl:attribute name="id">doc2</xsl:attribute>
+  </xsl:template>
+  
+  <xsl:template name="doc-class">
+    <xsl:variable name="width" select="($sidebar/@width)[1]" />
+    <xsl:attribute name="class">
+      <xsl:choose>
+        <xsl:when test="not($sidebar)">yui-t7</xsl:when>
+        <xsl:when test="$sidebar[@right or @align='right']">
+          <xsl:choose>
+            <xsl:when test="not($width) or $width='180' or $width='180px'">yui-t4</xsl:when>
+            <xsl:when test="$width='240' or $width='240px'">yui-t5</xsl:when>
+            <xsl:when test="$width='300' or $width='300px'">yui-t6</xsl:when>
+            <xsl:otherwise>yui-t6</xsl:otherwise>
+          </xsl:choose>
+        </xsl:when>
+        <xsl:otherwise>
+          <xsl:choose>
+            <xsl:when test="not($width) or $width='160' or $width='160px'">yui-t1</xsl:when>
+            <xsl:when test="$width='180' or $width='180px'">yui-t2</xsl:when>
+            <xsl:when test="$width='300' or $width='300px'">yui-t3</xsl:when>
+            <xsl:otherwise>yui-t3</xsl:otherwise>
+          </xsl:choose>
+        </xsl:otherwise>
+      </xsl:choose>
+    </xsl:attribute>
+  </xsl:template>
+  
   <xsl:template name="header">
     <div id="hd" class="pony-header">
       <xsl:apply-templates select="$header/node()" />
