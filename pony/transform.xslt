@@ -14,7 +14,8 @@
   <xsl:variable name="footer" select="/html/body/footer" />
   <xsl:variable name="sidebar" select="/html/body/sidebar" />
   <xsl:variable name="content" select="/html/body/content" />
-  <xsl:variable name="has_layout" select="$header or $footer or $sidebar or $content" />
+  <xsl:variable name="layout" select="/html/body/layout" />
+  <xsl:variable name="has_layout" select="$header or $footer or $sidebar or $content or $layout" />
 
   <xsl:template match="/">
     <html>
@@ -81,7 +82,14 @@
   </xsl:template>
 
   <xsl:template name="doc-id">
-    <xsl:attribute name="id">doc2</xsl:attribute>
+    <xsl:attribute name="id">
+      <xsl:variable name="width" select="($layout/@width)[1]"/>
+      <xsl:choose>
+        <xsl:when test="$width='750' or $width='750px' or $width='800x600'">doc</xsl:when>
+        <xsl:when test="$width='950' or $width='950px' or $width='1024x768'">doc2</xsl:when>
+        <xsl:otherwise>doc3</xsl:otherwise>
+      </xsl:choose>
+    </xsl:attribute>
   </xsl:template>
   
   <xsl:template name="doc-class">

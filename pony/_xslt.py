@@ -17,7 +17,7 @@ block_level_tags = set('''
     address blockquote center dir div dl fieldset form h1 h2 h3 h4 h5 h6 hr
     isindex menu noframes noscript ol p pre table ul'''.split())
 
-layout_tags = set('header footer sidebar content column'.split())
+layout_tags = set('header footer sidebar content column layout'.split())
 layout_tags_xpath = etree.XPath('|'.join(layout_tags))
 
 def normalization_is_needed(html):
@@ -51,7 +51,10 @@ def unnest(elements):
     for x in elements:
         result.append(x)
         tag, tail = x.tag, x.tail
-        if tag == 'p' or tag in layout_tags:
+        if tag == 'layout':
+            result.extend(unnest(x))
+            x[:] = []
+        elif tag == 'p' or tag in layout_tags:
             for i, y in enumerate(x):
                 ytag = y.tag
                 if y.tag in layout_tags:
