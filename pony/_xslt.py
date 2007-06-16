@@ -13,142 +13,147 @@ def html2xml(x, encoding='ascii'):
     if isinstance(x, str): x = unicode(x, encoding)
     return etree.HTML(x)
 
-##block_level_tags = set('''
-##    address blockquote center dir div dl fieldset form h1 h2 h3 h4 h5 h6 hr
-##    isindex menu noframes noscript ol p pre table ul'''.split())
+block_level_tags = set('''
+    address blockquote center dir div dl fieldset form h1 h2 h3 h4 h5 h6 hr
+    isindex menu noframes noscript ol p pre table ul'''.split())
 
 layout_tags = set('header footer sidebar content column'.split())
 layout_tags_xpath = etree.XPath('|'.join(layout_tags))
 
-def normalize(xml):
-    head = xml.find('head')
-    body = xml.find('body')
-    if head is not None and layout_tags_xpath(head): pass
-    elif body is None: return
-    elif layout_tags_xpath(body): pass
+def normalization_is_needed(html):
+    head = html.find('head')
+    body = html.find('body')
+    if head is not None and layout_tags_xpath(head): return True
+    elif body is None: return False
+    elif layout_tags_xpath(body): return True
     else:
         for p in body.findall('p'):
-            if layout_tags_xpath(p): break
-        else: return
-    if body is None:
-        body = xml.makeelement('body')
-        xml.append('body')
-    head_list = make_head_list(head)
-    body_list = make_body_list(body)
-    content = column = None
-    for x in head_list + body_list:
-        if isinstance(x, basestring):
-            assert not column
-            if content is None or explicit_columns:
-                content = SubElement(body, 'content')
-                explicit_columns = False
-            column = SubElement(content, 'column')
-            column.text = x
-        else:
-            tag = x.tag
-            if tag == 'column':
-                if content is None or not explicit_columns:
-                    content = SubElement(body, 'content')
-                    explicit_columns = True
-                column = None
-                content.append(x)
-            elif tag in layout_tags:
-                if tag == 'content': normalize_content(x)
-                content = column = None
-                body.append(x)
-            else:
-                if column is None or explicit_columns:
-                    if content is None or explicit_columns:
-                        content = SubElement(body, 'content')
-                        explicit_columns = False
-                    column = SubElement(content, 'column')
-                column.append(x)
+            if layout_tags_xpath(p): return True
+    return False
 
-def make_head_list(head):
-    if head is None: return []
-    result = []
-    elements = layout_tags_xpath(head)
-    for x in elements: head.remove(x)
-    head_list = []
-    for tag, group in groupby(elements, attrgetter('tag')):
-        if tag == 'column': 
-            content = head.makeelement('content')
-            content.extend(group)
-            head_list.append(content)
-        else: head_list.extend(group)
-    return head_list
+def normalize(html):
+    if not normalization_is_needed(html): return
+    head = html.find('head')
+    body = html.find('body')
+    body_list = []
+    if head is not None: body_list.extend(layout_tags_xpath(head))
+    if body is None: body = SubElement(html, 'body')
+    else:
+        text = body.text
+        if text and (not text.isspace() or u'\xa0' in text):
+            body_list.append(text)
+            body.text = None
+        body_list.extend(unnest(body))
+    body[:] = normalize_elements(html, body_list)
 
-def make_body_list(body):
+def unnest(elements):
     result = []
-    append = result.append
-    text = body.text
-    if text and (not text.isspace() or u'\xa0' in text):
-        body.text = None
-        append(text)
-    for element in body:
-        tag = element.tag
-        if tag == 'p' or tag in layout_tags:
-            tail = element.tail
-            if tail and (not tail.isspace() or u'\xa0' in tail):
-                element.tail = None
-                append(element)
-                append(tail)
-            else: append(element)
-        else: append(element)
-    body[:] = []
-    return correct_p_elements(result)
-
-def correct_p_elements(body_list):
-    result = []
-    for x in body_list:
+    for x in elements:
         result.append(x)
-        if getattr(x, 'tag', None) == 'p':
+        tag, tail = x.tag, x.tail
+        if tag == 'p' or tag in layout_tags:
             for i, y in enumerate(x):
+                ytag = y.tag
                 if y.tag in layout_tags:
-                    result.extend(correct_p_element(x, i))
+                    if tag == 'content' and ytag == 'column': continue
+                    result.extend(unnest(x[i:]))
+                    x[i:] = []
                     break
+        if tail and not tail.isspace():
+            result.append(x.tail)
+            x.tail = None
     return result
 
-def correct_p_element(p, index):
-    tmp = p[index:]
+def normalize_elements(document, elements):
     result = []
-    append = result.append
-    for element in tmp:
-        tail = element.tail
-        if tail and (not tail.isspace() or u'\xa0' in tail):
-            element.tail = None
-            append(element)
-            append(tail)
-        else: append(element)
-    p[index:] = []
+    content = column = None
+    explicit_columns = False
+    for x in elements:
+        tag = getattr(x, 'tag', None)
+        if tag == 'column':
+            if content is None or not explicit_columns:
+                if content is not None: normalize_content(content)
+                content = document.makeelement('content')
+                result.append(content)
+                explicit_columns = True
+            column = None
+            content.append(x)
+        elif tag in layout_tags:
+            if content is not None: normalize_content(content)
+            if tag == 'content': normalize_content(x)
+            content = column = None
+            result.append(x)
+        else:
+            if column is None or explicit_columns:
+                if content is None or explicit_columns:
+                    if content is not None: normalize_content(content)
+                    content = document.makeelement('content')
+                    result.append(content)
+                    explicit_columns = False
+                column = SubElement(content, 'column')
+            if tag is not None: column.append(x)
+            elif not len(column): column.text = (column.text or '') + x
+            else:
+                 last_child = column[-1]
+                 last_child.tail = (last_child.tail or '') + x
+    if content is not None: normalize_content(content)
     return result
 
 def normalize_content(content):
-    columns = []
-    text = content.text
+    list = []; append = list.append
     column = None
-    if text and (not text.isspace() or u'\xa0' in text):
+    text = content.text
+    if text and not text.isspace():
         column = content.makeelement('column')
-        columns.append(column)
+        append(column)
         column.text = text
         content.text = None
     for x in content:
         if x.tag == 'column':
+            if column is not None: normalize_column(column)
+            normalize_column(x)
             column = None
-            columns.append(x)
+            append(x)
             tail = x.tail
-            if tail and (not tail.isspace() or u'\xa0' in tail):
+            if tail and not tail.isspace():
                 column = content.makeelement('column')
-                columns.append(column)
+                append(column)
                 column.text = tail
                 x.tail = None
         else:
             if column is None:
                 column = content.makeelement('column')
-                columns.append(column)
+                append(column)
             column.append(x)
-    content[:] = columns
+    if column is not None: normalize_column(column)
+    content[:] = list
 
+def normalize_column(column):
+    list = []; append = list.append
+    p = None
+    text = column.text
+    if text and not text.isspace():
+        p = column.makeelement('p')
+        append(p)
+        p.text = text
+        column.text = None
+    for x in column:
+        if x.tag in block_level_tags:
+            p = None
+            append(x)
+            tail = x.tail
+            if tail and not tail.isspace():
+                p = column.makeelement('p')
+                append(p)
+                p.text = tail
+                x.tail = None
+        else:
+            if p is None:
+                p = column.makeelement('p')
+                append(p)
+            p.append(x)
+    column[:] = list
+    
 xslt_filename = os.path.join(os.path.dirname(__file__), 'transform.xslt')
 xslt = etree.XSLT(etree.parse(xslt_filename))
 
