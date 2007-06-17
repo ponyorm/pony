@@ -82,14 +82,18 @@
   </xsl:template>
 
   <xsl:template name="doc-id">
-    <xsl:attribute name="id">
-      <xsl:variable name="width" select="($layout/@width)[1]"/>
-      <xsl:choose>
-        <xsl:when test="$width='750' or $width='750px' or $width='800x600'">doc</xsl:when>
-        <xsl:when test="$width='950' or $width='950px' or $width='1024x768'">doc2</xsl:when>
-        <xsl:otherwise>doc3</xsl:otherwise>
-      </xsl:choose>
-    </xsl:attribute>
+    <xsl:variable name="width" select="($layout/@width)[1]"/>
+    <xsl:choose>
+      <xsl:when test="$width='750' or $width='750px' or $width='800x600'">
+        <xsl:attribute name="id">doc</xsl:attribute>
+      </xsl:when>
+      <xsl:when test="$width='950' or $width='950px' or $width='1024x768'">
+        <xsl:attribute name="id">doc2</xsl:attribute>
+      </xsl:when>
+      <xsl:otherwise>
+        <xsl:attribute name="id">doc3</xsl:attribute>
+      </xsl:otherwise>
+    </xsl:choose>
   </xsl:template>
   
   <xsl:template name="doc-class">
