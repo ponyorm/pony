@@ -84,10 +84,10 @@
   <xsl:template name="doc-id">
     <xsl:variable name="width" select="($layout/@width)[1]"/>
     <xsl:choose>
-      <xsl:when test="$width='750' or $width='750px' or $width='800x600'">
+      <xsl:when test="$width=750 or $width='800x600'">
         <xsl:attribute name="id">doc</xsl:attribute>
       </xsl:when>
-      <xsl:when test="$width='950' or $width='950px' or $width='1024x768'">
+      <xsl:when test="$width=950 or $width='1024x768'">
         <xsl:attribute name="id">doc2</xsl:attribute>
       </xsl:when>
       <xsl:otherwise>
@@ -103,17 +103,17 @@
         <xsl:when test="not($sidebar)">yui-t7</xsl:when>
         <xsl:when test="$sidebar[@right or @align='right']">
           <xsl:choose>
-            <xsl:when test="not($width) or $width='180' or $width='180px'">yui-t4</xsl:when>
-            <xsl:when test="$width='240' or $width='240px'">yui-t5</xsl:when>
-            <xsl:when test="$width='300' or $width='300px'">yui-t6</xsl:when>
+            <xsl:when test="not($width) or $width=180">yui-t4</xsl:when>
+            <xsl:when test="$width=240">yui-t5</xsl:when>
+            <xsl:when test="$width=300">yui-t6</xsl:when>
             <xsl:otherwise>yui-t6</xsl:otherwise>
           </xsl:choose>
         </xsl:when>
         <xsl:otherwise>
           <xsl:choose>
-            <xsl:when test="not($width) or $width='160' or $width='160px'">yui-t1</xsl:when>
-            <xsl:when test="$width='180' or $width='180px'">yui-t2</xsl:when>
-            <xsl:when test="$width='300' or $width='300px'">yui-t3</xsl:when>
+            <xsl:when test="not($width) or $width=160">yui-t1</xsl:when>
+            <xsl:when test="$width=180">yui-t2</xsl:when>
+            <xsl:when test="$width=300">yui-t3</xsl:when>
             <xsl:otherwise>yui-t3</xsl:otherwise>
           </xsl:choose>
         </xsl:otherwise>

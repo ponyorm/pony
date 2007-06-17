@@ -84,6 +84,7 @@ def normalize_elements(document, elements):
         elif tag in layout_tags:
             if content is not None: normalize_content(content)
             if tag == 'content': normalize_content(x)
+            elif tag in ('layout', 'sidebar'): normalize_width(x)
             content = column = None
             result.append(x)
         else:
@@ -156,6 +157,13 @@ def normalize_column(column):
                 append(p)
             p.append(x)
     column[:] = list
+
+def normalize_width(element):
+    width = element.get('width')
+    if width is None or width[-2:] != 'px': return
+    try: number = int(width[:-2])
+    except ValueError: return
+    element.set('width', width[:-2])
     
 xslt_filename = os.path.join(os.path.dirname(__file__), 'transform.xslt')
 xslt = etree.XSLT(etree.parse(xslt_filename))
