@@ -44,7 +44,7 @@ def header(title='Demonstration of Pony features'):
 
 @printhtml
 def footer():
-    print '<p>click <a href="/">here</a> to return to main page'
+    print '<p>Click <a href="/">here</a> to return to main page'
 
 @http('mypage.html')
 @printhtml

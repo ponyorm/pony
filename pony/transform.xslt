@@ -93,6 +93,7 @@
       <xsl:when test="number($width) &gt; 10">
         <xsl:variable name="em-width" select="$width div 13" />
         <xsl:variable name="em-width-ie" select="$em-width * 0.9759" />
+        <xsl:attribute name="id">doc</xsl:attribute>
         <xsl:attribute name="style">
           <xsl:text>margin:auto; text-align:left; width: </xsl:text>
           <xsl:value-of select="$em-width" />
@@ -102,13 +103,6 @@
           <xsl:value-of select="$width" />
           <xsl:text>px;</xsl:text>
         </xsl:attribute>
-        <!--xsl:attribute name="style">
-          margin:auto;
-          text-align:left;
-          width: <xsl:value-of select="$em-width" />em;
-          *width: <xsl:value-of select="$em-width-ie" />em;
-          min-width: <xsl:value-of select="$width" />px
-        </xsl:attribute-->
       </xsl:when>
       <xsl:otherwise>
         <xsl:attribute name="id">doc3</xsl:attribute>

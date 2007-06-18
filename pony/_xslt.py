@@ -169,6 +169,9 @@ xslt_filename = os.path.join(os.path.dirname(__file__), 'transform.xslt')
 xslt = etree.XSLT(etree.parse(xslt_filename))
 
 def transform(xml):
+    f = file('c:\\test\\page.xml', 'w')
+    xml.getroottree().write(f)
+    f.close()
     return xslt(xml)
 
 xml2html_template = """

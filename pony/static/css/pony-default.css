@@ -1,4 +1,23 @@
-a:hover { color: red; }
+html, body {
+    height: 100%;
+}
+#doc, #doc2, #doc3, #bd {
+    height: 94%;
+}
+#hd, #ft {
+	float: left; clear:both; width: 100%;
+}
+#bd {
+    clear: both;
+}
+.pony-header, .pony-footer {
+    background-color: #EEEEEE;
+}
+
+a:hover {
+	color: red;
+	background-color: #FFFFEE;
+}
 h1, h2, h3
 {
 	font-family: tahoma;
@@ -9,10 +28,16 @@ h1, h2, h3
 h1 { font-size: 152%; }
 h2 { font-size: 136%; }
 h3 { font-size: 122%; }
-p, ul, ol, blockquote
-{
+.pony-content p, .pony-content li, .pony-content blockquote {
 	margin: 0.5em 0;
-    font: normal 114%/150% "Times New Roman", Times, TimesNR, serif;
+	font: normal 114%/150% "Times New Roman", Times, TimesNR, serif;
+}
+.pony-content blockquote {
+	margin: 0.5em 0.5em;
+}
+.pony-content p:first-letter {
+	font-weight: bold;
+	color : #DF45BF;
 }
 ol
 {
