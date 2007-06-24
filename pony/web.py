@@ -434,13 +434,13 @@ def get_http_handlers(path, ext, qdict):
     return result
 
 def invoke(url):
+    local.response = HttpResponse()
     path, ext, qlist = split_url(url)
     if path[:1] == ['static'] and len(path) > 1:
         return get_static_file(path[1:], ext)
     if path[:2] == ['pony', 'static'] and len(path) > 2:
         return get_pony_static_file(path[2:], ext)
     qdict = dict(qlist)
-    local.response = HttpResponse()
     handlers = get_http_handlers(path, ext, qdict)
     if not handlers:
         i = url.find('?')
