@@ -51,9 +51,8 @@ def normalize(html):
     for x in body:
         tag = x.tag
         if tag in layout_tags and tag != 'column':
-            if tag == 'content':
-                if content is not None: normalize_content(content)
-                content = None
+            if content is not None: normalize_content(content)
+            content = None
             elements.append(x)
             tail = x.tail
             layout_tags[tag](x)
