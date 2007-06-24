@@ -32,9 +32,6 @@ h3 { font-size: 122%; }
 .pony-content p {
 	margin: 0.5em 0;
 }
-.pony-content p:first-letter {
-	font-weight: bold;
-}
 .pony-content blockquote {
 	margin: 0.5em 0.5em;
 }

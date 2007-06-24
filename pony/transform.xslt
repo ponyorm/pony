@@ -10,11 +10,13 @@
   <xsl:template match="header|footer|sidebar" />
   
   <xsl:variable name="styles" select="/html/head/link[@rel='stylesheet' and @type='text/css'] | /html/head/style" />
+  <xsl:variable name="layout" select="/html/body/layout" />
+  <xsl:variable name="layout-width" select="($layout/@width)[1]"/>
   <xsl:variable name="header" select="/html/body/header" />
   <xsl:variable name="footer" select="/html/body/footer" />
   <xsl:variable name="sidebar" select="/html/body/sidebar" />
+  <xsl:variable name="sidebar-width" select="($sidebar/@width)[1]"/>
   <xsl:variable name="content" select="/html/body/content" />
-  <xsl:variable name="layout" select="/html/body/layout" />
   <xsl:variable name="has_layout" select="$header or $footer or $sidebar or $content or $layout" />
 
   <xsl:template match="/">
@@ -46,8 +48,25 @@
       <link rel="stylesheet" type="text/css" href="{$pony_static_dir}/yui/reset-fonts-grids/reset-fonts-grids.css" />
       <link rel="stylesheet" type="text/css" href="{$pony_static_dir}/css/pony-default.css" />
     </xsl:if>
+    <xsl:if test="$layout-width &gt;=10 and $layout-width != 750 and $layout-width != '800x600' and $layout-width != 950 and $layout-width != '1024x768'">
+      <xsl:call-template name="layout-width-style" />
+    </xsl:if>
   </xsl:template>
-  
+
+  <xsl:template name="layout-width-style">
+    <style>
+      <xsl:variable name="em-width" select="$layout-width div 13" />
+      <xsl:variable name="em-width-ie" select="$em-width * 0.9759" />
+      <xsl:text>#doc-custom { margin:auto; text-align: left; width: </xsl:text>
+      <xsl:value-of select="$em-width" />
+      <xsl:text>em; *width:</xsl:text>
+      <xsl:value-of select="$em-width-ie" />
+      <xsl:text>em; min-width: </xsl:text>
+      <xsl:value-of select="$layout-width" />
+      <xsl:text>px; }</xsl:text>
+    </style>
+  </xsl:template>
+ 
   <xsl:template name="min-layout">
     <div id="doc3" class="yui-t7">
       <div id="bd">
@@ -82,27 +101,15 @@
   </xsl:template>
 
   <xsl:template name="doc-id">
-    <xsl:variable name="width" select="($layout/@width)[1]"/>
     <xsl:choose>
-      <xsl:when test="$width=750 or $width='800x600'">
+      <xsl:when test="$layout-width=750 or $layout-width='800x600'">
         <xsl:attribute name="id">doc</xsl:attribute>
       </xsl:when>
-      <xsl:when test="$width=950 or $width='1024x768'">
+      <xsl:when test="$layout-width=950 or $layout-width='1024x768'">
         <xsl:attribute name="id">doc2</xsl:attribute>
       </xsl:when>
-      <xsl:when test="number($width) &gt; 10">
-        <xsl:variable name="em-width" select="$width div 13" />
-        <xsl:variable name="em-width-ie" select="$em-width * 0.9759" />
-        <xsl:attribute name="id">doc</xsl:attribute>
-        <xsl:attribute name="style">
-          <xsl:text>margin:auto; text-align:left; width: </xsl:text>
-          <xsl:value-of select="$em-width" />
-          <xsl:text>em; *width:</xsl:text>
-          <xsl:value-of select="$em-width-ie" />
-          <xsl:text>em; min-width: </xsl:text>
-          <xsl:value-of select="$width" />
-          <xsl:text>px;</xsl:text>
-        </xsl:attribute>
+      <xsl:when test="number($layout-width) &gt; 10">
+        <xsl:attribute name="id">doc-custom</xsl:attribute>
       </xsl:when>
       <xsl:otherwise>
         <xsl:attribute name="id">doc3</xsl:attribute>
@@ -111,24 +118,23 @@
   </xsl:template>
   
   <xsl:template name="doc-class">
-    <xsl:variable name="width" select="($sidebar/@width)[1]" />
     <xsl:attribute name="class">
       <xsl:choose>
         <xsl:when test="not($sidebar)">yui-t7</xsl:when>
-        <xsl:when test="$sidebar[@right or @align='right']">
+        <xsl:when test="/html/body/sidebar[@right or @align='right']">
           <xsl:choose>
-            <xsl:when test="not($width) or $width=180">yui-t4</xsl:when>
-            <xsl:when test="$width=240">yui-t5</xsl:when>
-            <xsl:when test="$width=300">yui-t6</xsl:when>
-            <xsl:otherwise>yui-t6</xsl:otherwise>
+            <xsl:when test="not($sidebar-width) or $sidebar-width=180">yui-t4</xsl:when>
+            <xsl:when test="$sidebar-width=240">yui-t5</xsl:when>
+            <xsl:when test="$sidebar-width=300">yui-t6</xsl:when>
+            <xsl:otherwise>yui-t4</xsl:otherwise>
           </xsl:choose>
         </xsl:when>
         <xsl:otherwise>
           <xsl:choose>
-            <xsl:when test="not($width) or $width=160">yui-t1</xsl:when>
-            <xsl:when test="$width=180">yui-t2</xsl:when>
-            <xsl:when test="$width=300">yui-t3</xsl:when>
-            <xsl:otherwise>yui-t3</xsl:otherwise>
+            <xsl:when test="not($sidebar-width) or $sidebar-width=180">yui-t2</xsl:when>
+            <xsl:when test="$sidebar-width=160">yui-t1</xsl:when>
+            <xsl:when test="$sidebar-width=300">yui-t3</xsl:when>
+            <xsl:otherwise>yui-t4</xsl:otherwise>
           </xsl:choose>
         </xsl:otherwise>
       </xsl:choose>
