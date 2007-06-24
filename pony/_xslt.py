@@ -110,6 +110,29 @@ def normalize_content(content):
             column.append(x)
     if column is not None: normalize_column(column)
     content[:] = elements
+    width_list = correct_width_list([column.get('width') for column in content])
+    for column, width in zip(content, width_list):
+        column.set('width', width or '')
+    content.set('pattern', '-'.join(width or '?' for width in width_list))
+
+yui_columns = {
+    2 : [ ('1/2', '1/2'),
+          ('1/3', '2/3'), ('2/3', '1/3'),
+          ('1/4', '3/4'), ('3/4', '1/4') ],
+    3 : [ ('1/3', '1/3', '1/3'),
+          ('1/2', '1/4', '1/4'),
+          ('1/4', '1/4', '1/2') ],
+    4 : [ ('1/4', '1/4', '1/4', '1/4') ]
+    }
+
+def correct_width_list(width_list):
+    lists = yui_columns.get(len(width_list))
+    if lists is None: return width_list
+    for list in lists:
+        for w1, w2 in zip(width_list, list):
+            if w1 and w1 != w2: break
+        else: return list
+    return width_list
 
 def normalize_column(column):
     elements = []

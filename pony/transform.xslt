@@ -168,7 +168,24 @@
         <xsl:apply-templates select="column/node()" />
       </xsl:when>
       <xsl:when test="$col_count=2">
-        <div class="yui-g">
+        <div>
+          <xsl:choose>
+            <xsl:when test="@pattern='2/3-1/3'">
+              <xsl:attribute name="class">yui-gc</xsl:attribute>
+            </xsl:when>
+            <xsl:when test="@pattern='1/3-2/3'">
+              <xsl:attribute name="class">yui-gd</xsl:attribute>
+            </xsl:when>
+            <xsl:when test="@pattern='3/4-1/4'">
+              <xsl:attribute name="class">yui-ge</xsl:attribute>
+            </xsl:when>
+            <xsl:when test="@pattern='1/4-3/4'">
+              <xsl:attribute name="class">yui-gf</xsl:attribute>
+            </xsl:when>
+            <xsl:otherwise>
+              <xsl:attribute name="class">yui-g</xsl:attribute>
+            </xsl:otherwise>
+          </xsl:choose>
           <div class="yui-u first">
             <xsl:apply-templates select="column[1]/node()" />
           </div>
@@ -211,9 +228,41 @@
         </div>
       </xsl:when>
       <xsl:otherwise>
-        <p>Wrong column count!</p>
+        <p>Wrong column count: <xsl:value-of select="$col_count"/></p>
       </xsl:otherwise>
     </xsl:choose>
   </xsl:template>
-  
+
+  <xsl:template match="content[@pattern='1/4-1/4-1/2']">
+    <div class="yui-g">
+      <div class="yui-g first">
+        <div class="yui-u first">
+          <xsl:apply-templates select="column[1]/node()" />
+        </div>
+        <div class="yui-u">
+          <xsl:apply-templates select="column[2]/node()" />
+        </div>
+      </div>
+      <div class="yui-u">
+        <xsl:apply-templates select="column[3]/node()" />
+      </div>
+    </div>
+  </xsl:template>
+
+  <xsl:template match="content[@pattern='1/2-1/4-1/4']">
+    <div class="yui-g">
+      <div class="yui-u first">
+        <xsl:apply-templates select="column[1]/node()" />
+      </div>
+      <div class="yui-g">
+        <div class="yui-u first">
+          <xsl:apply-templates select="column[2]/node()" />
+        </div>
+        <div class="yui-u">
+          <xsl:apply-templates select="column[3]/node()" />
+        </div>
+      </div>
+    </div>
+  </xsl:template>
+
 </xsl:stylesheet>

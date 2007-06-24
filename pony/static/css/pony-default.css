@@ -13,10 +13,8 @@ html, body {
 .pony-header, .pony-footer {
     background-color: #EEEEEE;
 }
-
 a:hover {
 	color: red;
-	background-color: #FFFFEE;
 }
 h1, h2, h3
 {
@@ -29,15 +27,16 @@ h1 { font-size: 152%; }
 h2 { font-size: 136%; }
 h3 { font-size: 122%; }
 .pony-content p, .pony-content li, .pony-content blockquote {
-	margin: 0.5em 0;
 	font: normal 114%/150% "Times New Roman", Times, TimesNR, serif;
 }
-.pony-content blockquote {
-	margin: 0.5em 0.5em;
+.pony-content p {
+	margin: 0.5em 0;
 }
 .pony-content p:first-letter {
 	font-weight: bold;
-	color : #DF45BF;
+}
+.pony-content blockquote {
+	margin: 0.5em 0.5em;
 }
 ol
 {
