@@ -12,7 +12,7 @@ def page1():
 def page2():
     return """
               <h1>This is HTML page</h1>
-              <p>click <a href="/">here</a> for return
+              <p>Click <a href="/">here</a> for return
            """
 
 @http
@@ -33,7 +33,7 @@ def page4():
     print '<h1>Hello again!</h1>'
     print '<p>Demonstration of'
     print '<code><strong>@printhtml</strong></code> decorator'
-    print '<p>click <a href="/">here</a> for return'
+    print '<p>Click <a href="/">here</a> for return'
     print '</body>'
     print '</html>'
 
@@ -69,6 +69,7 @@ def page6(year, month=None, lang='en'):
     print '<li>Language: <strong>%s</strong>' % lang
     print '<li>Year: <strong>%s</strong>' % year
     print '<li>Month: <strong>%s</strong>' % (month or 'Not given')
+    print '</ul>'
     print '<p><a href="%s">Go to year 2003</a></p>' % url(page6, '2003')
     print ('<p><a href="%s">Go to French 2005-11</a></p>'
            % url(page6, 2005, 11, 'fr'))
@@ -104,7 +105,6 @@ def page7(name=None):
 @printhtml
 def index():
     print header('Simple Pony examples')
-    print footer()
     print '<ul>'
     print '<li><a href="%s">HelloWorld example</a></li>' % url(page1)
     print '<li>%s</li>' % link('Simplest HTML page', page2)
