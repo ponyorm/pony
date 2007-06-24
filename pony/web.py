@@ -335,7 +335,7 @@ static_dir = get_static_dir_name()
 path_re = re.compile(r"^[-_.!~*'()A-Za-z0-9]+$")
 
 def get_static_file(path, ext):
-    if static_dir is None: return None
+    if static_dir is None: raise Http404
     for component in path:
         if not path_re.match(component): raise Http404
     if ext and not path_re.match(ext): raise Http404
