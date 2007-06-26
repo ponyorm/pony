@@ -404,6 +404,13 @@ class Decompiler:
         tos = "%s[%s:%s]" % (tos2, tos1, tos)
         self.stack.append(tos)
 
+    def STORE_ATTR(self, code):
+        oparg = code.get_arg()
+        varname = code.get_name(oparg)
+        tos = self.stack.pop()
+        tos = '%s.%s' % (tos, varname)
+        self.assign.append(tos)
+
     def STORE_FAST(self, code):
         oparg = code.get_arg()
         varname = code.get_varname(oparg)        
@@ -453,7 +460,8 @@ def decompile_tostring(g):
 	return d.final_expr	
 
 def ttest():
-    #g = (s for s in Student)
+    g = (s for s in Student)
+    g = (a.b.c for d.e.f in Student)
     #g = (a for b in Student if c > d)
     #g = (a for b in Student if c > d for e in Student if f < g)
     #g = (s for s in Student if s.age > 20 and (s.group.number == 4142 or 'FFF' in s.marks.subject.name))
@@ -465,31 +473,33 @@ def ttest():
     #g = ( (s,t,w) for t in Student if ((4 != x.a.b or a * 3 > 20 or a * 2 < 5 and v == 6) and a * 8 == 20 or (f > 4) ))
     #g = (s for t in Student if a == 5)
     #g = (s for s in Student if a == 5 for f in Student if t > 4 )
-    g = (func(a, a.attr, keyarg=123) for a in Student if a.method(x, *y, **z) is not None)
-    g = (func(a, a.attr, b, b.c.d, keyarg1=123, keyarg2=456) for a in Student if a.method(x, x1, *y, **z) is not None)
-    g = ([a, b, c] for a in [] if a > b)
-    g = (a[:] for i in [])
-    g = (a[b:] for i in [])
-    g = (a[:b] for i in [])
-    g = (a[b:c] for i in [])
+
+    #g = (func(a, a.attr, keyarg=123) for a in Student if a.method(x, *y, **z) is not None)
+    #g = (func(a, a.attr, b, b.c.d, keyarg1=123, keyarg2=456) for a in Student if a.method(x, x1, *y, **z) is not None)
+    #g = ([a, b, c] for a in [] if a > b)
+    #g = (a[:] for i in [])
+    #g = (a[b:] for i in [])
+    #g = (a[:b] for i in [])
+    #g = (a[b:c] for i in [])
     
-    g = (a|b for i in [])
+    #g = (a|b for i in [])
     #here add all binary ops
 
-    g = (~a for i, j in [])
+    #g = (~a for i, j in [])
     #here add all unary ops
 
-    g = ({'a' : x, 'b' : y} for a, b in [])
+    #g = ({'a' : x, 'b' : y} for a, b in [])
     # think what to do with " and '
 
-    g = ({'a' : x, 'b' : y} for a, b in [])
+    #g = ({'a' : x, 'b' : y} for a, b in [])
 
-    g = (a[2:4,6:8] for a in [])    
-    g = (a[2:4:6,6:8] for a, y in [])
+    #g = (a[2:4,6:8] for a in [])    
+    #g = (a[2:4:6,6:8] for a, y in [])
     # a[(2:4:6, 6:8)] for a, y in .0 - what to do with ()
 
-    g = (a(lambda x,y: x > 0) for a in [])    
-    g = (a(b, lambda x,y: x > 0) for a in [])    
+    #g = (a(lambda x,y: x > 0) for a in [])    
+    #g = (a(b, lambda x,y: x > 0) for a in [])
+    #g = (a(b, lambda x,y: x > 0) for a,b,x,y in [])
     
     code = Code(g.gi_frame.f_code)
     d = Decompiler()
