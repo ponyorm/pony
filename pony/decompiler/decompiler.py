@@ -58,14 +58,20 @@ class Code:
 class Decompiler:
     def __init__(self, nesting = None):
         self.stack = []
+        self.ast_stack = []
         self.labels = {}
         self.last_label = 0
         self.text = []
         self.expr_inner = None
+        self.ast_expr_inner = None
         self.assign = []
+        self.ast_assign = []
         self.ifs = None
+        self.ast_ifs = []
         self.final_expr = None
+        self.ast_final_expr = None
         self.it = None
+        self.ast_it = None
         if nesting is None:
             self.nesting = 0
         else:
@@ -257,7 +263,9 @@ class Decompiler:
         oparg = code.get_arg()
         code.set_stop(oparg + 1)   # include POP_BLOCK
         self.it = self.stack.pop()
+        self.ast_it = self.ast_stack.pop()
         print "iter=", self.it
+        print "ast_iter=", self.ast_it
 
     def GET_ITER(self, code):
         pass
@@ -309,11 +317,13 @@ class Decompiler:
         oparg = code.get_arg()
         varname = code.get_varname(oparg)
         self.stack.append(varname)
+        self.ast_stack.append(Name(varname))
         
     def LOAD_GLOBAL(self, code):
         oparg = code.get_arg()
         name = code.get_name(oparg)
         self.stack.append(name)
+        self.ast_stack.append(Name(name))
 
     LOAD_NAME = LOAD_GLOBAL
 
@@ -362,22 +372,37 @@ class Decompiler:
             print "    assign =", d.assign
             print "      iter =", d.it
             print "       ifs =", d.ifs
+            print "ast_expr_inner =", d.ast_expr_inner
+            print "    ast_assign =", d.ast_assign
+            print "      ast_iter =", d.ast_it
+            print "       ast_ifs =", d.ast_ifs
+            
         self.expr_inner = d.expr_inner
+        self.ast_expr_inner = d.ast_expr_inner
         assign = ", ".join(d.assign)
+        # TODO
+        if len(d.ast_assign) == 1:
+            ast_assign = d.ast_assign[0]
+        else:
+            ast_assign = AssTuple(d.ast_assign)
         expr =  "for %s in %s" %(assign, d.it)        
         if d.ifs:
-            expr = "%s if %s" % (expr, d.ifs)        
+            expr = "%s if %s" % (expr, d.ifs)
+        ast_for = GenExprFor(ast_assign, d.ast_it, d.ast_ifs)
         if self.nesting == 0:
             expr = "%s %s" % (self.expr_inner, expr)
-        self.final_expr = expr
+            self.ast_final_expr = GenExprInner(self.ast_expr_inner, ast_for)
+        self.final_expr = expr        
         if d.final_expr is not None:
             self.final_expr = "%s %s" % (self.final_expr, d.final_expr)
+        
         if debug:
             print "nesting=", self.nesting
             print "for expr =", self.final_expr
             print "labels =", self.labels
             print "self.expr=", self.final_expr
-            print "d.final_expr=", d.final_expr        
+            print "d.final_expr=", d.final_expr
+            print "self.ast_expr=", self.ast_final_expr
         code.set_stop(None)
 
     def SLICE_0(self, code):
@@ -416,6 +441,7 @@ class Decompiler:
         varname = code.get_varname(oparg)        
         self.assign.append(varname) # for 'varname'
         #node = AssName(varname, 'OP_ASSIGN')
+        self.ast_assign.append(AssName(varname, 'OP_ASSIGN'))
 
     def STORE_SUBSCR(self, code):
         tos = self.stack.pop()
@@ -445,7 +471,8 @@ class Decompiler:
         # for having them stored by STORE_FAST later
 
     def YIELD_VALUE(self, code):
-        self.expr_inner = self.stack.pop()        
+        self.expr_inner = self.stack.pop()
+        self.ast_expr_inner = self.ast_stack.pop()
         if debug:
             print ""
         if self.last_label:
@@ -457,11 +484,20 @@ def decompile_tostring(g):
 	code = Code(g.gi_frame.f_code)
 	d = Decompiler()
 	d.decompile(code)
-	return d.final_expr	
+	return d.final_expr
+
+def decompile_to_aststring(g):
+	code = Code(g.gi_frame.f_code)
+	d = Decompiler()
+	d.decompile(code)
+	return str(d.ast_final_expr)
 
 def ttest():
-    g = (s for s in Student)
-    g = (a.b.c for d.e.f in Student)
+    g = (a for b in Student)
+    g = (a for b in Student if c > d)
+    #g = (a for b, c in Student)
+    #g = (a for b in Student for c in Student)
+    #g = (a.b.c for d.e.f in Student)
     #g = (a for b in Student if c > d)
     #g = (a for b in Student if c > d for e in Student if f < g)
     #g = (s for s in Student if s.age > 20 and (s.group.number == 4142 or 'FFF' in s.marks.subject.name))
@@ -504,5 +540,6 @@ def ttest():
     code = Code(g.gi_frame.f_code)
     d = Decompiler()
     d.decompile(code)
+    print str(d.ast_final_expr)
 
 ttest()
