@@ -265,11 +265,8 @@ class Decompiler:
             print ""
 
     def FOR_ITER(self, code):
-        oparg = code.get_arg()
-        code.set_stop(oparg + 1)   # include POP_BLOCK
-        self.it = self.stack.pop()
-        self.ast_it = self.ast_stack.pop()
-        print "iter=", self.it
+        code.set_stop(code.get_arg() + 1)   # include POP_BLOCK
+        self.ast_it = self.ast_stack[-1]
         print "ast_iter=", self.ast_it
 
     def GET_ITER(self, code):
@@ -319,15 +316,11 @@ class Decompiler:
         self.stack.append(varname)
 
     def LOAD_FAST(self, code):
-        oparg = code.get_arg()
-        varname = code.get_varname(oparg)
-        self.stack.append(varname)
+        varname = code.get_varname(code.get_arg())        
         self.ast_stack.append(Name(varname))
         
     def LOAD_GLOBAL(self, code):
-        oparg = code.get_arg()
-        name = code.get_name(oparg)
-        self.stack.append(name)
+        name = code.get_name(code.get_arg())
         self.ast_stack.append(Name(name))
 
     LOAD_NAME = LOAD_GLOBAL
@@ -352,7 +345,7 @@ class Decompiler:
                 print "if expr = ", ifexpr
 
     def POP_TOP(self, code):
-        #self.stack.pop()
+        self.ast_stack.pop()
         if debug:
             print ""
 
@@ -454,11 +447,8 @@ class Decompiler:
         self.assign.append(tos)
 
     def STORE_FAST(self, code):
-        oparg = code.get_arg()
-        varname = code.get_varname(oparg)        
-        self.assign.append(varname) # for 'varname'
-        #node = AssName(varname, 'OP_ASSIGN')
-        self.ast_assign.append(AssName(varname, 'OP_ASSIGN'))
+        varname = code.get_varname(code.get_arg())        
+        self.ast_assign.append(AssName(varname, 'OP_ASSIGN')) # for 'varname'
 
     def STORE_SUBSCR(self, code):
         tos = self.stack.pop()
@@ -488,7 +478,6 @@ class Decompiler:
         # for having them stored by STORE_FAST later
 
     def YIELD_VALUE(self, code):
-        self.expr_inner = self.stack.pop()
         self.ast_expr_inner = self.ast_stack.pop()
         if debug:
             print ""
@@ -511,7 +500,7 @@ def decompile_to_aststring(g):
 
 def ttest():
     g = (a for b in Student)
-    g = (a for b in Student if f)
+    #g = (a for b in Student if f)
     #g = (a for b in Student if c > d > e > f)
     #g = (a for b in Student if c > d > d2)
     #g = (a for b, c in Student)
