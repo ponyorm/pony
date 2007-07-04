@@ -543,7 +543,8 @@ def ttest():
     #g = (~a for i, j in [])
     #here add all unary ops
 
-    #g = ({'a' : x, 'b' : y} for a, b in [])
+    g = ({'a' : x, 'b' : y} for a, b in [])
+    g = (a for b[c] in [])
     # think what to do with " and '
 
     #g = ({'a' : x, 'b' : y} for a, b in [])

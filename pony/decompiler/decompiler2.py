@@ -66,20 +66,14 @@ class Code:
 class Decompiler:
     def __init__(self, nesting = None):
         self.stack = []
-        self.ast_stack = []
         self.labels = {}
         self.last_label = 0
-        self.text = []
+        self.text = []        
         self.expr_inner = None
-        self.ast_expr_inner = None
         self.assign = []
-        self.ast_assign = []
-        self.ifs = None
-        self.ast_ifs = []
+        self.ifs = []
         self.final_expr = None
-        self.ast_final_expr = None
         self.it = None
-        self.ast_it = None
         if nesting is None:
             self.nesting = 0
         else:
@@ -102,11 +96,11 @@ class Decompiler:
     def check_current_ip(self, ip):
         label = self.labels.get(ip)        
         if label is not None:
-            print "AST_STACK=", self.ast_stack
-            if len(self.ast_stack) >= 2:                
-                while len(self.ast_stack) >= 2 and isinstance(self.ast_stack[-1], Expression) and isinstance(self.ast_stack[-2], Expression):
-                    tos = self.ast_stack.pop()
-                    tos2 = self.ast_stack.pop()
+            print "stack=", self.stack
+            if len(self.stack) >= 2:                
+                while len(self.stack) >= 2 and isinstance(self.stack[-1], Expression) and isinstance(self.stack[-2], Expression):
+                    tos = self.stack.pop()
+                    tos2 = self.stack.pop()
                     if debug:
                         print "get from stack TOS=", tos
                         print "get from stack TOS1=", tos2
@@ -115,83 +109,95 @@ class Decompiler:
                     else:
                         tos = Expression(Or([tos2.operand, tos.operand]), tos.operation)
                     #tos = "(%s) %s (%s)" % (tos2, oper2, tos)                    
-                    self.ast_stack.append(tos)
+                    self.stack.append(tos)
                     if debug:
                         print "new TOS=", tos
-                #tos, oper = self.stack[-1]
-                #tos = "(%s)" % tos
-                #self.stack[-1]=(tos, oper)  
+
+    def unfold(self, ei):
+        if isinstance(ei, dict):
+            print "Dict found"
+            if len(ei) == 0:
+                result = Dict(())
+            else:
+                result = Dict([i for i in ei.items()])
+        else:
+            result = ei
+        return result
 
     def BINARY_POWER(self, code):
         oper2 = self.stack.pop()
         oper1 = self.stack.pop()
-        expr = '%s ** %s' % (oper1, oper2)
+        expr = Power((oper1, oper2))
         self.stack.append(expr)
 
     def BINARY_MULTIPLY(self, code):
         oper2 = self.stack.pop()
         oper1 = self.stack.pop()
-        expr = '%s * %s' % (oper1, oper2)
+        expr = Mul((oper1, oper2))
         self.stack.append(expr)
 
     def BINARY_DIVIDE(self, code):
         oper2 = self.stack.pop()
         oper1 = self.stack.pop()
-        expr = '%s / %s' % (oper1, oper2)
+        expr = Div((oper1, oper2))
         self.stack.append(expr)
 
     def BINARY_FLOOR_DIVIDE(self, code):
         oper2 = self.stack.pop()
         oper1 = self.stack.pop()
-        expr = '%s // %s' % (oper1, oper2)
+        expr = FloorDiv((oper1, oper2))
         self.stack.append(expr)
 
     def BINARY_ADD(self, code):
         oper2 = self.stack.pop()
         oper1 = self.stack.pop()
-        expr = '%s + %s' % (oper1, oper2)
+        expr = Add((oper1, oper2))
         self.stack.append(expr)
 
-    def BINARY_SUBSTRACT(self, code):
+    def BINARY_SUBTRACT(self, code):
         oper2 = self.stack.pop()
         oper1 = self.stack.pop()
-        expr = '%s - %s' % (oper1, oper2)
+        expr = Sub((oper1, oper2))
         self.stack.append(expr)
 
     def BINARY_SUBSCR(self, code):
         oper2 = self.stack.pop()
         oper1 = self.stack.pop()
-        expr = '%s[%s]' % (oper1, oper2)
+        if isinstance(oper2, Tuple):
+            oper2 = list(oper2.asList())
+        else:
+            oper2 = [oper2]
+        expr = Subscript(oper1, 'OP_APPLY', oper2)
         self.stack.append(expr)
 
     def BINARY_LSHIFT(self, code):
         oper2 = self.stack.pop()
         oper1 = self.stack.pop()
-        expr = '%s << %s' % (oper1, oper2)
+        expr = LeftShift((oper1, oper2))
         self.stack.append(expr)
 
     def BINARY_RSHIFT(self, code):
         oper2 = self.stack.pop()
         oper1 = self.stack.pop()
-        expr = '%s >> %s' % (oper1, oper2)
+        expr = RightShift((oper1, oper2))
         self.stack.append(expr)
 
     def BINARY_AND(self, code):
         oper2 = self.stack.pop()
         oper1 = self.stack.pop()
-        expr = '%s & %s' % (oper1, oper2)
+        expr = Bitand([oper1, oper2])
         self.stack.append(expr)
 
     def BINARY_XOR(self, code):
         oper2 = self.stack.pop()
         oper1 = self.stack.pop()
-        expr = '%s ^ %s' % (oper1, oper2)
+        expr = Bitxor([oper1, oper2])
         self.stack.append(expr)
 
     def BINARY_OR(self, code):
         oper2 = self.stack.pop()
         oper1 = self.stack.pop()
-        expr = '%s | %s' % (oper1, oper2)
+        expr = Bitor([oper1, oper2])
         self.stack.append(expr)
 
     BINARY_TRUE_DIVIDE = BINARY_DIVIDE
@@ -199,56 +205,55 @@ class Decompiler:
     def BINARY_MODULO(self, code):
         oper2 = self.stack.pop()
         oper1 = self.stack.pop()
-        expr = '%s % %s' % (oper1, oper2)
+        expr = Mod((oper1, oper2))
         self.stack.append(expr)
 
     def BUILD_LIST(self, code):
         oparg = code.get_arg()
         if oparg == 0:
-            self.ast_stack.append(List(()))     # to be consistent to compile.parse([])
+            self.stack.append(List(()))     # to be consistent to compile.parse([])
         else:
-            t = [str(self.ast_stack.pop()) for i in range(oparg)]
+            t = [self.unfold(self.stack.pop()) for i in range(oparg)]
             t.reverse()
-            self.ast_stack.append(List(t))
+            self.stack.append(List(t))
 
     def BUILD_MAP(self, code):
-        zero = code.get_arg()
+        zero = code.get_arg()      # Pushes a new empty dictionary object onto the stack. The argument is ignored and set to zero by the compiler
         self.stack.append({})
 
     def BUILD_SLICE(self, code):
         count = code.get_arg()
-        slice = [str(self.stack.pop()) for i in range(count)]
+        slice = [self.stack.pop() for i in range(count)]
         slice.reverse()
-        self.stack.append(":".join(slice))
+        self.stack.append(Sliceobj(slice)) 
         if debug: print ""
 
     def BUILD_TUPLE(self, code):
         oparg = code.get_arg()
-        t = [str(self.stack.pop()) for i in range(oparg)]
+        t = [self.unfold(self.stack.pop()) for i in range(oparg)]
         t.reverse()
-        self.stack.append("(%s)" % ", ".join(t))
+        self.stack.append(Tuple(t))
 
     def CALL_FUNCTION(self, code):
         currentop = code.get_currentop()
         oparg = code.get_arg()
         kwarg, posarg = divmod(oparg, 256)
         args = []
+        var = varkw = None
         if debug:
             print "posarg=%s kwarg=%s" % (posarg, kwarg)
         if currentop in ('CALL_FUNCTION_KW','CALL_FUNCTION_VAR_KW'):
-            args.insert(0, "**%s" % self.stack.pop())
+            varkw = self.stack.pop()
         if currentop in ('CALL_FUNCTION_VAR','CALL_FUNCTION_VAR_KW'):
-            args.insert(0, "*%s" % self.stack.pop())
+            var = self.stack.pop()
         for i in range(kwarg):
             value = self.stack.pop()
             name = self.stack.pop()
-            name = name[1:-1]
-            args.insert(0, '%s=%s' % (name, value))
+            args.insert(0, Keyword(name.value, value))   # no Const in keyargs
         for i in range(posarg):
-            args.insert(0, "%s" % self.stack.pop())
+            args.insert(0, self.stack.pop())
         funcname = self.stack.pop()
-        args = ", ".join(args)
-        funccall = "%s(%s)" % (funcname, args)
+        funccall = CallFunc(funcname, args, var, varkw)
         self.stack.append(funccall)
         if debug:
             print "FUNCTION CALL = %s" % funccall
@@ -259,29 +264,28 @@ class Decompiler:
 
 
     def COMPARE_OP(self, code):
-        print "AST_STACK=", self.ast_stack
+        print "stack=", self.stack
         oparg = code.get_arg()
         op = cmp_op[oparg]
-        oper2 = self.ast_stack.pop()
-        oper1 = self.ast_stack.pop()
+        oper2 = self.stack.pop()
+        oper1 = self.stack.pop()
         print "oper1=", oper1, " op=", op, " oper2=", oper2        
-        #expr = "%s %s %s" % (oper1, op, oper2)
         expr = Compare(oper1, [(op, oper2)])
-        self.ast_stack.append(expr)
-        #self.ast_stack.append("FAKE COMPARE")
+        self.stack.append(expr)
+        #self.stack.append("FAKE COMPARE")
         if debug:
             print "--PUSH EXPR=", expr
 
     def DUP_TOP(self, code):
-        self.ast_stack.append(self.ast_stack[-1])
+        self.stack.append(self.stack[-1])
         if debug:
             print ""
 
     def FOR_ITER(self, code):
         code.set_stop(code.get_arg() + 1)   # include POP_BLOCK
-        self.ast_it = self.ast_stack[-1]
-        #self.ast_stack.append('FAKE(FOR_ITER)')
-        print "ast_iter=", self.ast_it
+        self.it = self.stack[-1]
+        self.stack.append('FAKE(FOR_ITER)')
+        print "iter=", self.it
 
     def GET_ITER(self, code):
         pass
@@ -293,18 +297,18 @@ class Decompiler:
     
     def JUMP_IF_FALSE(self, code):
         oparg = code.get_arg()
-        cmp = self.ast_stack[-1]
+        cmp = self.stack[-1]
         expr = Expression(cmp, 'And')
-        self.ast_stack[-1] = expr 
+        self.stack[-1] = expr 
         target = oparg + code.get_current_ip() + 3
         gr = self.labels.setdefault(target, 1)
         self.last_label = target
 
     def JUMP_IF_TRUE(self, code):
         oparg = code.get_arg()
-        cmp = self.ast_stack[-1]
+        cmp = self.stack[-1]
         expr = Expression(cmp, 'Or')
-        self.ast_stack[-1] = expr 
+        self.stack[-1] = expr 
         target = oparg + code.get_current_ip() + 3
         gr = self.labels.setdefault(target, 1)
         self.last_label = target
@@ -313,29 +317,24 @@ class Decompiler:
         oparg = code.get_arg()
         varname = code.get_name(oparg)
         tos = self.stack.pop()
-        tos = '%s.%s' % (tos, varname)
-        self.stack.append(tos)
+        self.stack.append(Getattr(tos, varname))
 
     def LOAD_CONST(self, code):
         oparg = code.get_arg()
         const = Const(code.get_const(oparg))
-        #if not const.isdigit():
-        #    const = "'%s'" % const
-        #if const == "'None'":
-        #    const = "None"
-        self.ast_stack.append(const)
+        self.stack.append(const)
 
     def LOAD_DEREF(self, code):        
         varname = code.get_deref(code.get_arg())
-        self.ast_stack.append(varname)
+        self.stack.append(varname)
 
     def LOAD_FAST(self, code):
         varname = code.get_varname(code.get_arg())        
-        self.ast_stack.append(Name(varname))
+        self.stack.append(Name(varname))
         
     def LOAD_GLOBAL(self, code):
         name = code.get_name(code.get_arg())
-        self.ast_stack.append(Name(name))
+        self.stack.append(Name(name))
 
     LOAD_NAME = LOAD_GLOBAL
 
@@ -343,7 +342,8 @@ class Decompiler:
         oparg = code.get_arg()
         func = self.stack.pop()
         # call function later
-        self.stack.append("FUNCTION CALL")
+        arglist = [self.stack.pop() for i in range(oparg)]
+        self.stack.append("FUNCTION CALL: %s (%s)" % (func, arglist))
         if debug: print ""
 
     def NOP(self, code):
@@ -352,21 +352,21 @@ class Decompiler:
     def POP_BLOCK(self, code):
         if debug:
             print ""
-        if len(self.ast_stack) > 0:
-            print "AST_STACK=", self.ast_stack
+        if len(self.stack) > 0:
+            print "stack=", self.stack
             ifexpr = []
-            while len(self.ast_stack) > 0 and isinstance(self.ast_stack[-1], Expression):                       
-                expr = self.ast_stack.pop()
+            while len(self.stack) > 0 and isinstance(self.stack[-1], Expression):                       
+                expr = self.stack.pop()
                 ifexpr.append(GenExprIf(expr.operand))
             ifexpr.reverse()
-            self.ast_ifs = ifexpr
+            self.ifs = ifexpr
             if debug:
                 print "if expr = ", ifexpr
 
     def POP_TOP(self, code):
-        print "AST_STACK=", self.ast_stack
-        #if len(self.ast_stack) > 0:
-        #    self.ast_stack.pop()
+        print "stack=", self.stack
+        #if len(self.stack) > 0:
+        #    self.stack.pop()
         if debug:
             print ""
 
@@ -375,20 +375,20 @@ class Decompiler:
             print ""
 
     def ROT_TWO(self, code):
-        tos = self.ast_stack.pop()
-        tos1 = self.ast_stack.pop()
-        self.ast_stack.append(tos)
-        self.ast_stack.append(tos1)
+        tos = self.stack.pop()
+        tos1 = self.stack.pop()
+        self.stack.append(tos)
+        self.stack.append(tos1)
         if debug:
             print ""
 
     def ROT_THREE(self, code):
-        tos = self.ast_stack.pop()
-        tos1 = self.ast_stack.pop()
-        tos2 = self.ast_stack.pop()
-        self.ast_stack.append(tos)
-        self.ast_stack.append(tos2)
-        self.ast_stack.append(tos1)
+        tos = self.stack.pop()
+        tos1 = self.stack.pop()
+        tos2 = self.stack.pop()
+        self.stack.append(tos)
+        self.stack.append(tos2)
+        self.stack.append(tos1)
         if debug:
             print ""
 
@@ -402,111 +402,93 @@ class Decompiler:
             print "    assign =", d.assign
             print "      iter =", d.it
             print "       ifs =", d.ifs
-            print "ast_expr_inner =", d.ast_expr_inner
-            print "    ast_assign =", d.ast_assign
-            print "      ast_iter =", d.ast_it
-            print "       ast_ifs =", d.ast_ifs
             
         self.expr_inner = d.expr_inner
-        self.ast_expr_inner = d.ast_expr_inner
-        assign = ", ".join(d.assign)
-        # TODO
-        if len(d.ast_assign) == 1:
-            ast_assign = d.ast_assign[0]
+        if len(d.assign) == 1:
+            assign = d.assign[0]
         else:
-            ast_assign = AssTuple(d.ast_assign)
-        expr =  "for %s in %s" %(assign, d.it)        
-        if d.ifs:
-            expr = "%s if %s" % (expr, d.ifs)
+            assign = AssTuple(d.assign)
             
-        ast_for = [GenExprFor(ast_assign, d.ast_it, d.ast_ifs)]
-        if d.ast_final_expr != None:
-            ast_for.extend(d.ast_final_expr)
-        if self.nesting == 0: # the most outer loop
-            expr = "%s %s" % (self.expr_inner, expr)
-            self.ast_final_expr = GenExprInner(self.ast_expr_inner, ast_for)
+        ast_for = [GenExprFor(assign, d.it, d.ifs)]
+        if d.final_expr != None:
+            ast_for.extend(d.final_expr)
+        if self.nesting == 0: # the most outer loop            
+            self.final_expr = GenExprInner(self.expr_inner, ast_for)
         else:
-            self.ast_final_expr = ast_for
-        self.final_expr = expr        
-        if d.final_expr is not None:
-            self.final_expr = "%s %s" % (self.final_expr, d.final_expr)
+            self.final_expr = ast_for
         
         if debug:
             print "nesting=", self.nesting
-            print "for expr =", self.final_expr
             print "labels =", self.labels
-            print "self.expr=", self.final_expr
-            print "d.final_expr=", d.final_expr
-            print "self.ast_expr=", self.ast_final_expr
+            print "self.ast_expr=", self.final_expr
         code.set_stop(None)
 
     def SLICE_0(self, code):
         tos = self.stack.pop()
-        tos = "%s[:]" % tos
-        self.stack.append(tos)
+        self.stack.append(Slice(tos, 'OP_APPLY', None, None))
 
     def SLICE_1(self, code):
         tos = self.stack.pop()
         tos1 = self.stack.pop()
-        tos = "%s[%s:]" % (tos1, tos)
-        self.stack.append(tos)
+        self.stack.append(Slice(tos1, 'OP_APPLY', tos, None))
 
     def SLICE_2(self, code):
         tos = self.stack.pop()
         tos1 = self.stack.pop()
-        tos = "%s[:%s]" % (tos1, tos)
-        self.stack.append(tos)
+        self.stack.append(Slice(tos1, 'OP_APPLY', None, tos))
 
     def SLICE_3(self, code):
         tos = self.stack.pop()
         tos1 = self.stack.pop()
         tos2 = self.stack.pop()
-        tos = "%s[%s:%s]" % (tos2, tos1, tos)
-        self.stack.append(tos)
+        self.stack.append(Slice(tos2, 'OP_APPLY', tos1, tos))
 
     def STORE_ATTR(self, code):
         oparg = code.get_arg()
         varname = code.get_name(oparg)
         tos = self.stack.pop()
-        tos = '%s.%s' % (tos, varname)
-        self.assign.append(tos)
+        self.assign.append(AssAttr(tos, varname, 'OP_ASSIGN'))
 
     def STORE_FAST(self, code):
         varname = code.get_varname(code.get_arg())        
-        self.ast_assign.append(AssName(varname, 'OP_ASSIGN')) # for 'varname'
-        self.ast_stack.pop()
+        self.assign.append(AssName(varname, 'OP_ASSIGN')) # for 'varname'
+        self.stack.pop()
 
     def STORE_SUBSCR(self, code):
         tos = self.stack.pop()
         tos1 = self.stack.pop()
-        tos2= self.stack.pop()
-        tos1[str(tos)] = str(tos2)
+        tos2 = self.stack.pop()
+        if tos2 == 'FAKE(FOR_ITER)':
+            self.assign.append(Subscript(tos1, 'OP_ASSIGN', [tos]))
+        else:
+            tos1[tos] = tos2
         if debug: print ""
 
     def UNARY_POSITIVE(self, code):
-        self.ast_stack.append(UnaryAdd(self.ast_stack.pop()))
+        self.stack.append(UnaryAdd(self.stack.pop()))
 
     def UNARY_NEGATIVE(self, code):
-        self.ast_stack.append(UnarySub(self.ast_stack.pop()))
+        self.stack.append(UnarySub(self.stack.pop()))
 
     def UNARY_NOT(self, code):
-        self.ast_stack.append(Not(self.ast_stack.pop()))
+        self.stack.append(Not(self.stack.pop()))
         
     def UNARY_CONVERT(self, code):        
-        self.ast_stack.append(Backquote(self.ast_stack.pop()))
+        self.stack.append(Backquote(self.stack.pop()))
 
     def UNARY_INVERT(self, code):
-        self.ast_stack.append(Invert(self.ast_stack.pop()))
+        self.stack.append(Invert(self.stack.pop()))
 
     def UNPACK_SEQUENCE(self, code):
         count = code.get_arg()
         for i in range(count):
-            self.ast_stack.append('UNPACK_SEQUENCE %s' % i)
-        # for now do nothing with that, may be we need to push to stack 'count' values
-        # for having them stored by STORE_FAST later
+            self.stack.append('UNPACK_SEQUENCE %s' % i)
+        # push to stack 'count' values
+        # and store them later with STORE_FAST        
 
     def YIELD_VALUE(self, code):
-        self.ast_expr_inner = self.ast_stack.pop()
+        ei = self.stack.pop()
+        self.expr_inner = self.unfold(ei)
         if debug:
             print ""
         if self.last_label:
@@ -524,7 +506,7 @@ def decompile_to_aststring(g):
 	code = Code(g.gi_frame.f_code)
 	d = Decompiler()
 	d.decompile(code)
-	return str(d.ast_final_expr)
+	return str(d.final_expr)
 
 def ttest():
     #g = (a for b in Student)
@@ -538,10 +520,30 @@ def ttest():
     #g = (a for b in Student if f == 5 and r or not t)
     #g = (a for b in Student if not -t)
     #g = (a for b in Student if t is None)
-    g = (a for b in Student if c > d > e)
-    #g = (a for b in Student if c > d > d2)
-    #g = (a for b, c in Student)
-    #g = (a for b in Student for c in Student)
+    #g = (a ** 2 for b in Student if t ** r == y)
+    #g = (a|b for c in Student if t^e > r | (y & (u & (w % z))))
+
+    #g = ([a, b, c] for a in [] if a > b)
+    #g = ([a, b, 4] for d in Student if a[4,5] > b[1,2,3])
+    #g = ((a, b, c) for a in [] if a > b)
+
+    #g = (a[2:4,6:8] for a in [])    
+    #g = (a[2:4:6,6:8] for a, y in [])
+    # a[(2:4:6, 6:8)] for a, y in .0 - what to do with ()
+
+    #g = (a[:] for i in [])
+    #g = (a[b:] for i in [])
+    #g = (a[:b] for i in [])
+    #g = (a[b:c] for i in [])
+    
+    #g = (a|b for i in [])
+    #here add all binary ops
+
+    #g = (~a for i, j in [])
+    #here add all unary ops
+
+    #g = ({'a' : x, 'b' : y} for a, b in [])    
+
     #g = (a.b.c for d.e.f in Student)
     #g = (a for b in Student if c > d)
     #g = (a for b in Student if c > d for e in Student if f < g)
@@ -555,36 +557,21 @@ def ttest():
     #g = (s for t in Student if a == 5)
     #g = (s for s in Student if a == 5 for f in Student if t > 4 )
 
+    #g = (func1(a, a.attr, keyarg=123, *e) for s in Student)
     #g = (func(a, a.attr, keyarg=123) for a in Student if a.method(x, *y, **z) is not None)
     #g = (func(a, a.attr, b, b.c.d, keyarg1=123, keyarg2=456) for a in Student if a.method(x, x1, *y, **z) is not None)
-    #g = ([a, b, c] for a in [] if a > b)
-    #g = (a[:] for i in [])
-    #g = (a[b:] for i in [])
-    #g = (a[:b] for i in [])
-    #g = (a[b:c] for i in [])
-    
-    #g = (a|b for i in [])
-    #here add all binary ops
 
-    #g = (~a for i, j in [])
-    #here add all unary ops
-
-    #g = ({'a' : x, 'b' : y} for a, b in [])
-    # think what to do with " and '
-
-    #g = ({'a' : x, 'b' : y} for a, b in [])
-
-    #g = (a[2:4,6:8] for a in [])    
-    #g = (a[2:4:6,6:8] for a, y in [])
-    # a[(2:4:6, 6:8)] for a, y in .0 - what to do with ()
-
-    #g = (a(lambda x,y: x > 0) for a in [])    
+    g = (a(lambda x,y: x > 0) for a in [])    
     #g = (a(b, lambda x,y: x > 0) for a in [])
     #g = (a(b, lambda x,y: x > 0) for a,b,x,y in [])
+
+    #g = (a for b in Student if c > d > e)
+    #g = (a for b in Student if c > d > d2)
+
     
     code = Code(g.gi_frame.f_code)
     d = Decompiler()
     d.decompile(code)
-    print str(d.ast_final_expr)
+    print str(d.final_expr)
 
 ttest()
