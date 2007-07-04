@@ -510,9 +510,9 @@ def decompile_to_aststring(g):
 	return str(d.ast_final_expr)
 
 def ttest():
-    g = (a for b in Student)
-    g = (a for b in Student if f)
-    #g = (a for b in Student if c > d > e > f)
+    #g = (a for b in Student)
+    #g = (a for b in Student if f)
+    g = (a for b in Student if c > d > e )
     #g = (a for b in Student if c > d > d2)
     #g = (a for b, c in Student)
     #g = (a for b in Student for c in Student)
