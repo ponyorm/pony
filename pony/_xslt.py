@@ -6,7 +6,7 @@ from lxml import etree
 from lxml.etree import SubElement
 
 def html2xml(x, encoding='ascii'):
-    if hasattr(x, 'wirite_c14n'): return x
+    if hasattr(x, 'write_c14n'): return x
     if not isinstance(x, basestring):
         if hasattr(x, '__unicode__'): x = unicode(x)
         else: x = str(x)
