@@ -490,10 +490,7 @@ def invoke(url):
         headers['Content-Type'] = content_type
 
     if media_type == 'text/html' and xslt.is_supported:
-        xml = xslt.html2xml(result, charset)
-        xslt.normalize(xml)
-        xml = xslt.transform(xml)
-        result = xslt.xml2html(xml, charset)
+        result = xslt.transform(result, charset)
     else:
         if hasattr(result, '__unicode__'): result = unicode(result)
         if isinstance(result, unicode):
