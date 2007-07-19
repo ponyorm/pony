@@ -228,6 +228,15 @@ def move_content(target, source_list):
             else: target.text = (target.text or '') + text
         target.extend(source[:])
 
+class LayoutError(Exception): pass
+
 def transform(html):
-    from pony.layout import yui
-    return yui.transform(html)
+    body = html.find('body')
+    layout = body.find('layout')
+    layout_type = 'yui'
+    if layout is not None: layout_type = layout.get('type', layout_type)
+    try: module = __import__('pony.layout.' + layout_type,
+                             globals(), None, 'transform')
+    except ImportError:
+        raise LayoutError('Invalid layout type: %s' % layout_type)
+    return module.transform(html)
