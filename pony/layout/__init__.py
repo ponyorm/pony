@@ -118,6 +118,8 @@ yui_columns = {
     }
 
 def correct_width_list(width_list):
+    for i, width in enumerate(width_list):
+        if width == '2/4': width_list[i] = '1/2'
     lists = yui_columns.get(len(width_list))
     if lists is None: return width_list
     for list in lists:

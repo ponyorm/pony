@@ -3,8 +3,8 @@ from pony.layout import move_content
 
 def make_column(grid, source, first=False):
     column = SubElement(grid, 'div')
-    if first: column.set('class', 'yui-u first')
-    else: column.set('class', 'yui-u')
+    if first: column.set('class', 'yui-u pony-column first')
+    else: column.set('class', 'yui-u pony-column')
     move_content(column, [ source ])
 
 yui_patterns = {
@@ -23,6 +23,8 @@ def transform(html):
     styles = head.findall('style')
     layout = body.find('layout')
     layout_width = layout is not None and layout.get('width') or None
+    if layout_width == '800x600': layout_width = '750'
+    elif layout_width == '1024x768': layout_width = '950'
     header_list = body.findall('header')
     footer_list = body.findall('footer')
     sidebar_list = body.findall('sidebar')
@@ -44,12 +46,13 @@ def transform(html):
     width = 0
     if not css_links and not styles:
         pony_static_dir = '/pony/static'
-        css1 = pony_static_dir + '/yui/reset-fonts-grids/reset-fonts-grids.css'
-        css2 = pony_static_dir + '/css/pony-default.css'
-        for css in (css1, css2):
-          SubElement(head, 'link', rel='stylesheet', type='text/css', href=css)
+        for css in [ '/yui/reset-fonts-grids/reset-fonts-grids.css',
+                     '/css/layouts/yui.css',
+                     '/css/default.css' ]:
+          SubElement(head, 'link', rel='stylesheet', type='text/css',
+                     href= pony_static_dir + css)
         if layout_width is not None \
-          and layout_width not in ('750', '800x600', '950', '1024x768'):
+        and layout_width not in ('750', '950'):
             try: width = float(layout_width)
             except ValueError: pass
             else:
@@ -62,11 +65,13 @@ def transform(html):
                         'min_width: %spx; }' % (em_width, em_width_ie, width))
     if has_layout:
         doc = html.makeelement('div')
-        if layout_width in ('750', '800x600'): doc.set('id', 'doc')
-        elif layout_width in ('950', '1024x768'): doc.set('id', 'doc2')
+        if layout_width == '750': doc.set('id', 'doc')
+        elif layout_width == '950': doc.set('id', 'doc2')
         elif not width: doc.set('id', 'doc3')
         else: doc.set('id', 'doc-custom')
-        if not sidebar_list: doc.set('class', 'yui-t7')
+        if not sidebar_list:
+            doc.set('class', 'yui-t7')
+            body.set('class', 'fluid-content')
         elif sidebar_left:
             if sidebar_width == '160': doc.set('class', 'yui-t1')
             elif sidebar_width == '300': doc.set('class', 'yui-t3')
@@ -79,19 +84,19 @@ def transform(html):
         hd.set('class', 'pony-header')
         move_content(hd, header_list)
         bd = SubElement(doc, 'div', id='bd')
-        ft = SubElement(doc, 'div', id='ft')
-        ft.set('class', 'pony-footer')
-        move_content(ft, footer_list)
-        if sidebar_first:
-            sb = SubElement(bd, 'div')
-            main = SubElement(bd, 'div', id='yui-main')
-        else:
-            main = SubElement(bd, 'div', id='yui-main')
-            sb = SubElement(bd, 'div')
-        sb.set('class', 'yui-b pony-sidebar')
-        move_content(sb, sidebar_list)
+        if sidebar_first: sb = SubElement(bd, 'div')
+        main = SubElement(bd, 'div', id='yui-main')
+        if sidebar_list and not sidebar_first: sb = SubElement(bd, 'div')
+        if sidebar_list:
+            sb.set('class', 'yui-b pony-sidebar '
+                            + (sidebar_left and 'left' or 'right'))
+            move_content(sb, sidebar_list)
         main2 = SubElement(main, 'div')
-        main2.set('class', 'yui-b pony-content')
+        if sidebar_list:
+            if sidebar_left: main2.set('class', 'yui-b pony-content right')
+            else: main2.set('class', 'yui-b pony-content left')
+        else: main2.set('class', 'yui-b pony-content')
+
         for content in content_list:
             pattern = content.get('pattern')
             column_list = content.findall('column')
@@ -136,6 +141,9 @@ def transform(html):
             else:
                 p = SubElement(grid, 'p')
                 p.text = 'Wrong column count: %d' % col_count
+        ft = SubElement(doc, 'div', id='ft')
+        ft.set('class', 'pony-footer')
+        move_content(ft, footer_list)
         body[:] = [ doc ]
         body.text = None
     elif not css_links and not styles:
