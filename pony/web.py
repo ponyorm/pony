@@ -107,23 +107,55 @@ class HttpInfo(object):
         spec = inspect.formatargspec(*func.argspec)[1:-1]
         source = "lambda %s: __locals__()" % spec
         return eval(source, dict(__locals__=locals))
-    re_component = re.compile("""
+    component_re = re.compile(r"""
             [$]
             (?: (\d+)              # param number (group 1)
             |   ([A-Za-z_]\w*)     # param identifier (group 2)
-            )$
+            )
         |   (                      # path component (group 3)
-                (?:[$][$] | [^$])*
-            )$                     # end of string
+                (?:[$][$] | [^$])+
+            )
         """, re.VERBOSE)
     def parse_component(self, component):
-        match = self.re_component.match(component)
-        if not match: raise ValueError('Invalid url component: %r' % component)
-        i = match.lastindex
-        if i == 1: return True, self.adjust(int(match.group(i)) - 1)
-        elif i == 2: return True, self.adjust(match.group(i))
-        elif i == 3: return False, match.group(i).replace('$$', '$')
-        else: assert False
+        items = list(self.split_component(component))
+        if not items: return False, ''
+        if len(items) == 1: return items[0]
+        pattern = []
+        regexp = []
+        for i, item in enumerate(items):
+            if item[0]:
+                pattern.append('/')
+                try: nextchar = items[i+1][1]
+                except IndexError: regexp.append('(.*)$')
+                else: regexp.append('([^%s]*)' % nextchar.replace('\\', '\\\\'))
+            else:
+                s = item[1]
+                pattern.append(s)
+                for char in s:
+                    regexp.append('[%s]' % char.replace('\\', '\\\\'))
+        pattern = ''.join(pattern)
+        regexp = ''.join(regexp)
+        return True, [ pattern, re.compile(regexp) ] + items
+    def split_component(self, component):
+        pos = 0
+        is_param = False
+        for match in self.component_re.finditer(component):
+            if match.start() != pos:
+                raise ValueError('Invalid url component: %r' % component)
+            i = match.lastindex
+            if 1 <= i <= 2:
+                if is_param:
+                    raise ValueError('Invalid url component: %r' % component)
+                is_param = True
+                if i == 1: yield is_param, self.adjust(int(match.group(i)) - 1)
+                elif i == 2: yield is_param, self.adjust(match.group(i))
+            elif i == 3:
+                is_param = False
+                yield is_param, match.group(i).replace('$$', '$')
+            else: assert False
+            pos = match.end()
+        if pos != len(component):
+            raise ValueError('Invalid url component: %r' % component)
     def adjust(self, x):
         names, argsname, keyargsname, defaults = self.func.argspec
         args, keyargs = self.args, self.keyargs
@@ -164,9 +196,11 @@ class HttpInfo(object):
         def get_url_map(info):
             result = {}
             for i, (is_param, x) in enumerate(info.parsed_path):
-                result[i] = is_param
+                if is_param: result[i] = isinstance(x, list) and x[0] or '/'
+                else: result[i] = ''
             for name, is_param, x in info.parsed_query:
-                result[name] = is_param
+                if is_param: result[name] = isinstance(x, list) and x[0] or '/'
+                else: result[name] = ''
             if info.star: result['*'] = len(info.parsed_path)
             return result
         url_map = get_url_map(self)
@@ -179,11 +213,10 @@ class HttpInfo(object):
             for is_param, x in self.parsed_path:
                 if is_param: d, list1, list2 = d.setdefault(None, ({}, [], []))
                 else: d, list1, list2 = d.setdefault(x, ({}, [], []))
-            if not self.star: list = list1
-            else: list = list2
-            self.list = list
+            if not self.star: self.list = list1
+            else: self.list = list2
             self.func.__dict__.setdefault('http', []).insert(0, self)
-            list.insert(0, self)
+            self.list.insert(0, self)
         finally: http_registry_lock.release()
             
 class PathError(Exception): pass
@@ -246,6 +279,18 @@ def build_url(info, keyparams, indexparams):
             except KeyError: assert False, 'Parameter not found: %s' % x
             used_keyparams.add(x)
             return False, value
+        elif isinstance(x, list):
+            result = []
+            is_default = True
+            for is_param, y in x[2:]:
+                if not is_param: result.append(y)
+                else:
+                    is_default_2, component = build_param(y)
+                    is_default = is_default and is_default_2
+                    if component is None:
+                        raise PathError('Value for parameter %s is None' % y)
+                    result.append(component)
+            return is_default, ''.join(result)
         else: assert False
 
     for is_param, x in info.parsed_path:
@@ -377,7 +422,7 @@ def get_http_handlers(path, ext, qdict):
             if variant: new_variants.append(variant)
             infos.extend(list2)
         variants = new_variants
-    for _, list, _ in variants: infos.extend(list)
+    for d, list1, list2 in variants: infos.extend(list1)
     # finally: http_registry_lock.release()
 
     result = []
@@ -385,47 +430,70 @@ def get_http_handlers(path, ext, qdict):
     for info in infos:
         if ext != info.ext: continue
         args, keyargs = {}, {}
-        const_count = 0
+        priority = 0
         for i, (is_param, x) in enumerate(info.parsed_path):
             if not is_param:
-                const_count += 1
+                priority += 1
                 continue
             value = path[i]
             if isinstance(x, int): args[x] = value
             elif isinstance(x, basestring): keyargs[x] = value
-            else: assert False
-        
-        names, _, _, defaults = info.func.argspec
-        offset = len(names) - len(defaults)
-        non_used_query_params = set(qdict)
-        for name, is_param, x in info.parsed_query:
-            non_used_query_params.discard(name)
-            value = qdict.get(name, not_found)
-            if not is_param:
-                if value != x: break
-                const_count += 1
-            elif isinstance(x, int):
-                if value is not_found:
-                    if offset <= x < len(names): continue
-                    else: break
-                else: args[x] = value
-            elif isinstance(x, basestring):
-                if value is not_found: break
-                keyargs[x] = value
+            elif isinstance(x, list):
+                match = x[1].match(value)
+                if not match: break
+                params = [ y for is_param, y in x[2:] if is_param ]
+                groups = match.groups()
+                priority += len(params)
+                assert len(params) == len(groups)
+                for param, value in zip(params, groups):
+                    if isinstance(param, int): args[param] = value
+                    elif isinstance(param, basestring): keyargs[param] = value
+                    else: assert False
             else: assert False
         else:
-            arglist = [ None ] * len(names)
-            arglist[-len(defaults):] = defaults
-            for i, value in sorted(args.items()):
-                try: arglist[i] = value
-                except IndexError:
-                    assert i == len(arglist)
-                    arglist.append(value)
-            if len(info.parsed_path) != len(path):
-                assert info.star
-                arglist.extend(path[len(info.parsed_path):])
-            result.append((info, arglist, keyargs, const_count,
-                           len(non_used_query_params)))
+            names, _, _, defaults = info.func.argspec
+            offset = len(names) - len(defaults)
+            non_used_query_params = set(qdict)
+            for name, is_param, x in info.parsed_query:
+                non_used_query_params.discard(name)
+                value = qdict.get(name, not_found)
+                if not is_param:
+                    if value != x: break
+                    priority += 1
+                elif isinstance(x, int):
+                    if value is not_found:
+                        if offset <= x < len(names): continue
+                        else: break
+                    else: args[x] = value
+                elif isinstance(x, basestring):
+                    if value is not_found: break
+                    keyargs[x] = value
+                elif isinstance(x, list):
+                    match = x[1].match(value)
+                    if not match: break
+                    params = [ y for is_param, y in x[2:] if is_param ]
+                    groups = match.groups()
+                    priority += len(params)
+                    assert len(params) == len(groups)
+                    for param, value in zip(params, groups):
+                        if isinstance(param, int): args[param] = value
+                        elif isinstance(param, basestring):
+                            keyargs[param] = value
+                        else: assert False
+                else: assert False
+            else:
+                arglist = [ None ] * len(names)
+                arglist[-len(defaults):] = defaults
+                for i, value in sorted(args.items()):
+                    try: arglist[i] = value
+                    except IndexError:
+                        assert i == len(arglist)
+                        arglist.append(value)
+                if len(info.parsed_path) != len(path):
+                    assert info.star
+                    arglist.extend(path[len(info.parsed_path):])
+                result.append((info, arglist, keyargs, priority,
+                               len(non_used_query_params)))
     if result:
         x = max(map(itemgetter(3), result))
         result = [ tup for tup in result if tup[3] == x ]
