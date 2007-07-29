@@ -208,7 +208,11 @@ class HttpInfo(object):
         http_registry_lock.acquire()
         try:
             for info, _, _ in get_http_handlers(self.path, self.ext, qdict):
-                if url_map == get_url_map(info): _http_remove(info)
+                if url_map == get_url_map(info):
+                    log(type='Warning:URL',
+                        text='Route already in use '
+                             '(old handler was removed): %s' % info.url)
+                    _http_remove(info)
             d, list1, list2 = http_registry
             for is_param, x in self.parsed_path:
                 if is_param: d, list1, list2 = d.setdefault(None, ({}, [], []))
