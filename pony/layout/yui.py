@@ -40,8 +40,8 @@ def transform(html):
             elif align == 'right': sidebar_right = True
         sidebar_width = sidebar.get('width', sidebar_width)
         sidebar_first = sidebar_first or sidebar.get('first') is not None
-    content_list = body.findall('content')
-    has_layout = (header_list or footer_list or sidebar_list or content_list
+    row_list = body.findall('row')
+    has_layout = (header_list or footer_list or sidebar_list or row_list
                   or layout is not None)
     width = 0
     if not css_links and not styles:
@@ -97,9 +97,9 @@ def transform(html):
             else: main2.set('class', 'yui-b pony-content left')
         else: main2.set('class', 'yui-b pony-content')
 
-        for content in content_list:
-            pattern = content.get('pattern')
-            column_list = content.findall('column')
+        for row in row_list:
+            pattern = row.get('pattern')
+            column_list = row.findall('column')
             col_count = len(column_list)
             if col_count == 1:
                 move_content(main2, column_list)

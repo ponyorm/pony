@@ -5,6 +5,8 @@
 from lxml import etree
 from lxml.etree import SubElement
 
+from pony.utils import import_module
+
 def normalize(html):
     # print etree.tostring(html, pretty_print=True), '\n'
     head = html.find('head')
@@ -28,37 +30,37 @@ def normalize(html):
         if tag == 'p': unnest_p(x)
         elif tag in layout_tags:
             if tag == 'layout': unnest_layout(x)
-            elif tag == 'content': unnest_content(x)
+            elif tag == 'row': unnest_row(x)
             else: unnest_element(x)
         i += 1
     # print etree.tostring(html, pretty_print=True), '\n'
     elements = []
-    content = None
+    row = None
     text = body.text
     if text and not text.isspace():
-        content = body.makeelement('content')
-        content.text = text
+        row = body.makeelement('row')
+        row.text = text
         body.text = None
-        elements.append(content)
+        elements.append(row)
     for x in body:
         tag = x.tag
         if tag in layout_tags and tag != 'column':
-            if content is not None: normalize_content(content)
-            content = None
+            if row is not None: normalize_row(row)
+            row = None
             elements.append(x)
             tail = x.tail
             layout_tags[tag](x)
             if tail and not tail.isspace():
-                content = body.makeelement('content')
-                content.text = tail
+                row = body.makeelement('row')
+                row.text = tail
                 x.tail = None
-                elements.append(content)
+                elements.append(row)
         else:
-            if content is None:
-                content = body.makeelement('content')
-                elements.append(content)
-            content.append(x)
-    if content is not None: normalize_content(content)
+            if row is None:
+                row = body.makeelement('row')
+                elements.append(row)
+            row.append(x)
+    if row is not None: normalize_row(row)
     body[:] = elements
     # print etree.tostring(html, pretty_print=True), '\n'
 
@@ -74,16 +76,16 @@ def normalize_footer(footer):
 def normalize_sidebar(sidebar):
     normalize_width(sidebar)
 
-def normalize_content(content):
+def normalize_row(row):
     elements = []
     column = None
-    text = content.text
+    text = row.text
     if text and not text.isspace():
-        column = content.makeelement('column')
+        column = row.makeelement('column')
         column.text = text
-        content.text = None
+        row.text = None
         elements.append(column)
-    for x in content:
+    for x in row:
         if x.tag == 'column':
             if column is not None: normalize_column(column)
             column = None
@@ -91,21 +93,21 @@ def normalize_content(content):
             tail = x.tail
             normalize_column(x)
             if tail and not tail.isspace():
-                column = content.makeelement('column')
+                column = row.makeelement('column')
                 column.text = tail
                 x.tail = None
                 elements.append(column)
         else:
             if column is None:
-                column = content.makeelement('column')
+                column = row.makeelement('column')
                 elements.append(column)
             column.append(x)
     if column is not None: normalize_column(column)
-    content[:] = elements
-    width_list = correct_width_list([column.get('width') for column in content])
-    for column, width in zip(content, width_list):
+    row[:] = elements
+    width_list = correct_width_list([column.get('width') for column in row])
+    for column, width in zip(row, width_list):
         column.set('width', width or '')
-    content.set('pattern', '-'.join(width or '?' for width in width_list))
+    row.set('pattern', '-'.join(width or '?' for width in width_list))
 
 yui_columns = {
     2 : [ ('1/2', '1/2'),
@@ -166,7 +168,7 @@ layout_tags = dict(
     header=normalize_header,
     footer=normalize_footer,
     sidebar=normalize_sidebar,
-    content=normalize_content,
+    row=normalize_row,
     column=normalize_column,
     )
 layout_tags_xpath = etree.XPath('|'.join(layout_tags))
@@ -201,10 +203,10 @@ def unnest_layout(layout):
         layout.text = None
         layout.tail = text
 
-def unnest_content(content):
+def unnest_row(row):
     i = 0
-    while i < len(content):
-        x = content[i]
+    while i < len(row):
+        x = row[i]
         tag = x.tag
         if tag == 'p': unnest_p(x)
         elif tag == 'column': unnest_element(x)
@@ -237,8 +239,7 @@ def transform(html):
     layout = body.find('layout')
     layout_type = 'yui'
     if layout is not None: layout_type = layout.get('type', layout_type)
-    try: module = __import__('pony.layout.' + layout_type,
-                             globals(), None, 'transform')
+    try: module = import_module('pony.layout.' + layout_type)
     except ImportError:
         raise LayoutError('Invalid layout type: %s' % layout_type)
     return module.transform(html)

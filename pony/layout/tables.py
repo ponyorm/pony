@@ -33,8 +33,8 @@ def transform(html):
             elif align == 'right': sidebar_right = True
         sidebar_width = sidebar.get('width', sidebar_width)
         sidebar_first = sidebar_first or sidebar.get('first') is not None
-    content_list = body.findall('content')
-    has_layout = (header_list or footer_list or sidebar_list or content_list
+    row_list = body.findall('row')
+    has_layout = (header_list or footer_list or sidebar_list or row_list
                   or layout is not None)
     width = 0
     if not css_links and not styles:
@@ -71,14 +71,13 @@ def transform(html):
         else:
             main = SubElement(tr, 'td', width='100%', valign='top')
             main.set('class', 'pony-content')
-        if not content_list \
-        or len(content_list) == 1 and len(content_list[0]) == 1:
-            move_content(main, content_list)
+        if not row_list or len(row_list) == 1 and len(row_list[0]) == 1:
+            move_content(main, row_list)
         else:
-            for content in content_list:
+            for row in row_list:
                 grid = SubElement(main, 'table', width='100%')
                 tr = SubElement(grid, 'tr')
-                for i, column in enumerate(content):
+                for i, column in enumerate(row):
                     td = SubElement(tr, 'td', valign='top')
                     td.set('class', 'pony-column' + (not i and ' first' or ''))
                     column_width = column.get('width')
