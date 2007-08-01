@@ -10,34 +10,6 @@ from os.path import dirname
 from codecs import BOM_UTF8, BOM_LE, BOM_BE
 from locale import getpreferredencoding
 
-def current_timestamp():
-    result = datetime.now().isoformat(' ')
-    if len(result) == 19: return result + '.000000'
-    return result
-
-def datetime2timestamp(d):
-    result = d.isoformat(' ')
-    if len(result) == 19: return result + '.000000'
-    return result
-
-def timestamp2datetime(t):
-    time_tuple = strptime(t[:19], '%Y-%m-%d %H:%M:%S')
-    microseconds = int((t[20:26] + '000000')[:6])
-    return datetime(*(time_tuple[:6] + (microseconds,)))
-
-def read_text_file(fname, encoding=None):
-    f = file(fname)
-    text = f.read()
-    f.close;
-    for bom, enc in [ (BOM_UTF8, 'utf8'),
-                      (BOM_LE, 'utf-16le'),
-                      (BOM_BE, 'utf-16be') ]:
-        if text[:len(bom)] == bom:
-            return text[len(bom):].decode(enc)
-    try: return text.decode('utf8')
-    except UnicodeDecodeError:
-        return text.decode(encoding or getpreferredencoding())
-
 def copy_func_attrs(new_func, old_func):
     if new_func is old_func: return
     new_func.__name__ = old_func.__name__
@@ -97,6 +69,34 @@ def import_module(name):
     components = name.split('.')
     for comp in components[1:]: mod = getattr(mod, comp)
     return mod
+
+def current_timestamp():
+    result = datetime.now().isoformat(' ')
+    if len(result) == 19: return result + '.000000'
+    return result
+
+def datetime2timestamp(d):
+    result = d.isoformat(' ')
+    if len(result) == 19: return result + '.000000'
+    return result
+
+def timestamp2datetime(t):
+    time_tuple = strptime(t[:19], '%Y-%m-%d %H:%M:%S')
+    microseconds = int((t[20:26] + '000000')[:6])
+    return datetime(*(time_tuple[:6] + (microseconds,)))
+
+def read_text_file(fname, encoding=None):
+    f = file(fname)
+    text = f.read()
+    f.close;
+    for bom, enc in [ (BOM_UTF8, 'utf8'),
+                      (BOM_LE, 'utf-16le'),
+                      (BOM_BE, 'utf-16be') ]:
+        if text[:len(bom)] == bom:
+            return text[len(bom):].decode(enc)
+    try: return text.decode('utf8')
+    except UnicodeDecodeError:
+        return text.decode(encoding or getpreferredencoding())
 
 def new_guid():
     'new_guid() -> new_binary_guid'
