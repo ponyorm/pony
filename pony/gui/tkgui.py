@@ -275,6 +275,7 @@ class TkThread(threading.Thread):
         threading.Thread.__init__(self)
         self.root = Tk()
         self.window = TkMainWindow(self.root)
+        self.setDaemon(True)
     def run(self):
         global tk_thread
         time.sleep(.5)

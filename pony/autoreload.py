@@ -2,16 +2,20 @@ import itertools, linecache, sys, time, os, imp, traceback
 
 from os.path import abspath, basename, dirname, exists, splitext
 
+import pony
 from pony.logging import log, log_exc
 
 USE_AUTORELOAD = True
 
 mainfile = getattr(sys.modules['__main__'], '__file__', '')
 maindir = dirname(abspath(mainfile)) + os.sep
-counter = itertools.count()
 mtimes = {}
 clear_funcs = []
 reloading = False
+
+def on_reload(func):
+    if func not in clear_funcs: clear_funcs.append(func)
+    return func
 
 def load_main():
     name = splitext(basename(mainfile))[0]
@@ -49,7 +53,7 @@ def reload(modules, changed_module, filename):
         reloading = False
 
 def use_autoreload():
-    if counter.next() or not mainfile: return
+    if not mainfile or pony.mainloop_counter.next(): return
     load_main()
     error = False
     while True:
@@ -57,19 +61,23 @@ def use_autoreload():
             modules = [ m for name, m in sys.modules.items()
                         if getattr(m, 'USE_AUTORELOAD', False)
                            and not name.startswith('pony.') ]
-        for m in modules:
-            filename = abspath(m.__file__)
-            if filename.endswith(".pyc") or filename.endswith(".pyo"):
-                filename = filename[:-1]
-            if not exists(filename): continue
-            stat = os.stat(filename)
-            mtime = stat.st_mtime
-            if sys.platform == "win32": mtime -= stat.st_ctime
-            if mtimes.setdefault(filename, mtime) != mtime:
-                try: reload(modules, m, filename)
-                except Exception:
-                    error = True
-                    traceback.print_exc()
-                else: error = False
-                break
-        time.sleep(1)
+        try:
+            for m in modules:
+                filename = abspath(m.__file__)
+                if filename.endswith(".pyc") or filename.endswith(".pyo"):
+                    filename = filename[:-1]
+                if not exists(filename): continue
+                stat = os.stat(filename)
+                mtime = stat.st_mtime
+                if sys.platform == "win32": mtime -= stat.st_ctime
+                if mtimes.setdefault(filename, mtime) != mtime:
+                    try: reload(modules, m, filename)
+                    except Exception:
+                        error = True
+                        traceback.print_exc()
+                    else: error = False
+                    break
+            time.sleep(1)
+        except:
+            log_exc()
+            sys.exit()

@@ -1,5 +1,6 @@
 import re, os, sys, time, random, threading, Queue, cPickle, base64, hmac, sha
 
+from pony import on_shutdown
 from pony.thirdparty import sqlite
 
 ################################################################################
@@ -157,24 +158,26 @@ class AuthThread(threading.Thread):
         self.setDaemon(True)
     def run(self):
         con = self.connection = sqlite.connect(get_sessiondb_name())
-        con.execute("PRAGMA synchronous = OFF;")
-        con.executescript(sql_create)
-        for minute, secret in con.execute('select * from time_secrets'):
-            secret_cache[minute] = hmac.new(str(secret), digestmod=sha)
-        self.connection.commit()
-        while True:
-            x = queue.get()
-            if x is None: break
+        try:
+            con.execute("PRAGMA synchronous = OFF;")
+            con.executescript(sql_create)
+            for minute, secret in con.execute('select * from time_secrets'):
+                secret_cache[minute] = hmac.new(str(secret), digestmod=sha)
+            self.connection.commit()
             while True:
-                try:
-                    if len(x) == 2: self.prepare_secret(*x)
-                    elif len(x) == 4: self.prepare_ticket(*x)
-                    else: assert False
-                except sqlite.OperationalError:
-                    con.rollback()
-                    time.sleep(random.random())
-                else: break
-        con.close()
+                x = queue.get()
+                if x is None: break
+                while True:
+                    try:
+                        if len(x) == 2: self.prepare_secret(*x)
+                        elif len(x) == 4: self.prepare_ticket(*x)
+                        else: assert False
+                    except sqlite.OperationalError:
+                        con.rollback()
+                        time.sleep(random.random())
+                    else: break
+        finally:
+            con.close()
     def prepare_secret(self, minute, lock):
         if minute in secret_cache:
             lock.release()
@@ -208,6 +211,11 @@ class AuthThread(threading.Thread):
         con.commit()
         result.append(row is None and True or None)
         lock.release()
+
+@on_shutdown
+def do_shutdown():
+    queue.put(None)
+    auth_thread.join()
 
 auth_thread = AuthThread()
 auth_thread.start()

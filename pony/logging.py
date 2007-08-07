@@ -1,8 +1,8 @@
-import re, os, sys, cPickle, traceback, thread, threading, Queue, time, random
+import cPickle, os, Queue, random, re, sys, traceback, thread, threading, time
 from itertools import count
+from pony import on_shutdown
 from pony.thirdparty import sqlite
-#from sqlite3 import *
-from utils import current_timestamp
+from pony.utils import current_timestamp
 
 process_id = os.getpid()
 
@@ -36,6 +36,8 @@ def log(*args, **record):
         if isinstance(value, str):
             record[field] = value.decode('utf-8', 'replace')
     queue.put(record)
+
+log(type='Log:start')
 
 def log_exc():
     log(type='exception',
@@ -99,26 +101,26 @@ class LoggerThread(threading.Thread):
         self.setDaemon(True)
     def run(self):
         con = self.connection = sqlite.connect(get_logfile_name())
-        con.execute("PRAGMA synchronous = OFF;")
-        con.executescript(sql_create)
-        con.commit()
-        while True:
-            x = queue.get()
-            if x is None: break
-            elif not isinstance(x, dict): self.execute_query(*x)
-            else:
-                records = [ x ]
-                while True:
-                    try: x = queue.get_nowait()
-                    except Queue.Empty:
-                        self.save_records(records)
-                        break
-                    if not isinstance(x, dict):
-                        self.save_records(records)
-                        if x is None: break
-                        self.execute_query(*x)
-                        break
-                    records.append(x)
+        try:
+            con.execute("PRAGMA synchronous = OFF;")
+            con.executescript(sql_create)
+            con.commit()
+            while True:
+                x = queue.get()
+                if x is None: break
+                elif not isinstance(x, dict): self.execute_query(*x)
+                else:
+                    records = [ x ]
+                    while True:
+                        try: x = queue.get_nowait()
+                        except Queue.Empty: break
+                        if not isinstance(x, dict): break
+                        records.append(x)
+                    self.save_records(records)
+                    if x is None: break
+                    elif not isinstance(x, dict): self.execute_query(*x)
+        finally:
+            con.close()
     def execute_query(self, sql, params, result, lock):
         try:
             try:
@@ -194,6 +196,12 @@ def decompress_record(record):
         headers = dict((get(header, header), value)
                        for (header, value) in record['headers'].items())
         record['headers'] = headers
+
+@on_shutdown
+def do_shutdown():
+    log(type='Log:shutdown')
+    queue.put(None)
+    logger_thread.join()
 
 logger_thread = LoggerThread()
 logger_thread.start()

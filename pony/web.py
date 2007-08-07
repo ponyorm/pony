@@ -5,9 +5,10 @@ from operator import itemgetter
 
 from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
 
-from pony import auth
-from pony import autoreload
-from pony import xslt
+from pony import on_shutdown
+from pony.autoreload import on_reload
+from pony import autoreload, auth, utils, xslt
+
 from pony.utils import decorator_with_params
 from pony.templating import Html, real_stdout
 from pony.logging import log, log_exc
@@ -611,6 +612,7 @@ def _http_clear(dict, list1, list2):
         _http_clear(inner_dict, list1, list2)
     dict.clear()
 
+@on_reload
 def http_clear():
     http_registry_lock.acquire()
     try:
@@ -619,8 +621,6 @@ def http_clear():
     finally: http_registry_lock.release()
 
 http.clear = http_clear
-
-autoreload.clear_funcs.append(http_clear)
 
 ################################################################################
 
@@ -858,7 +858,7 @@ class ServerThread(threading.Thread):
         self.server.start()
         msg = 'HTTP server at %s:%s stopped successfully' \
               % (self.host, self.port)
-        log('HTTP:start', msg)
+        log('HTTP:stop', msg)
         if self.verbose: print msg
         server_threads.pop((self.host, self.port), None)
 
@@ -874,11 +874,18 @@ def stop_http_server(address=None):
     if address is None:
         for server_thread in server_threads.values():
             server_thread.server.stop()
+            server_thread.join()
     else:
         host, port = parse_address(address)
         server_thread = server_threads.get((host, port))
-        if server_thread is None: raise ServerNotStarted(
-            'Cannot stop HTTP server at %s:%s '
-            'because it is not started:' % (host, port))
+        if server_thread is None:
+            raise ServerNotStarted('Cannot stop HTTP server at %s:%s '
+                                   'because it is not started:' % (host, port))
         server_thread.server.stop()
+        server_thread.join()
+
+@on_shutdown
+def do_shutdown():
+    try: stop_http_server()
+    except ServerNotStarted: pass
     
