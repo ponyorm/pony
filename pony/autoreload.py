@@ -57,6 +57,7 @@ def use_autoreload():
     load_main()
     error = False
     while True:
+        if pony.shutdown: sys.exit()
         if not error:
             modules = [ m for name, m in sys.modules.items()
                         if getattr(m, 'USE_AUTORELOAD', False)

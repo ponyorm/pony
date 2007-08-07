@@ -1,6 +1,8 @@
 import sys, time, threading
 from itertools import count
 
+shutdown = False
+
 shutdown_list = []
 
 def on_shutdown(func):
@@ -26,7 +28,9 @@ mainloop_counter = count()
 def mainloop():
     if mainloop_counter.next(): return
     try:
-        while True: time.sleep(1)
+        while True:
+            if shutdown: break
+            time.sleep(1)
     except:
         try: log_exc = logging.log_exc
         except NameError: pass
