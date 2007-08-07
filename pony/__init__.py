@@ -12,7 +12,9 @@ def exitfunc():
     _shutdown()
     prev_func()
 
-if hasattr(threading, '_shutdown'):
+if not hasattr(sys.modules['__main__'], 'file'):
+    pass
+elif hasattr(threading, '_shutdown'):
     prev_func = threading._shutdown
     threading._shutdown = exitfunc
 else:

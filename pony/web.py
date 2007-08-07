@@ -850,7 +850,7 @@ class ServerThread(threading.Thread):
         self.server = CherryPyWSGIServer(
             (host, port), [('', wsgi_app)], server_name=host)
         self.verbose = verbose
-        self.setDaemon(False)
+        self.setDaemon(True)
     def run(self):
         msg = 'Starting HTTP server at %s:%s' % (self.host, self.port)
         log('HTTP:start', msg)
