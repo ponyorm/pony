@@ -99,6 +99,7 @@ class TkMainWindow(Frame):
         self.width = w = 1000
         self.height = h = 600
         self.root=root
+        self.after_handler = None 
         self.root.title('Pony')
         self.records=[]
         self.tab_buttons=[]
@@ -162,7 +163,7 @@ class TkMainWindow(Frame):
                               "type like 'HTTP:%' and type <> 'HTTP:response'")
             self.add_records(data)
         finally:
-            self.after(UI_UPDATE_INTERVAL, self.check_data)
+            self.after_handler = self.after(UI_UPDATE_INTERVAL, self.check_data)
 
     def add_records(self, records):
         for r in records:
@@ -275,7 +276,12 @@ class TkThread(threading.Thread):
         threading.Thread.__init__(self)
         self.root = Tk()
         self.window = TkMainWindow(self.root)
+        self.window.bind("<Destroy>", self.quit)
         self.setDaemon(True)
+    def quit(self, event):
+        self.window.after_cancel(self.window.after_handler)
+        self.window.destroy()
+        self.root.quit()
     def run(self):
         global tk_thread
         time.sleep(.5)
