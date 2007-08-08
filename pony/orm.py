@@ -3,15 +3,7 @@ from operator import attrgetter
 from itertools import count, izip
 
 from pony import utils
-
-try: import lxml.etree as ET
-except ImportError:
-    try: from xml.etree import ElementTree as ET
-    except ImportError:
-        try: import cElementTree as ET
-        except ImportError:
-            try: from elementtree import ElementTree as ET
-            except: pass
+from pony.thirdparty import etree
 
 class DiagramError(Exception): pass
 class MappingError(Exception): pass
@@ -298,7 +290,7 @@ class Mapping(object):
         self.entities = {} # entity_name -> EntityMapping
         if not os.path.exists(filename):
             raise MappingError('File not found: %s' % filename)
-        document = ET.parse(filename)
+        document = etree.parse(filename)
         for t in document.findall('table'):
             table = TableMapping(self, t.get('name'))
             ename = t.get('entity')
