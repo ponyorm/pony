@@ -21,47 +21,44 @@ local = Local()
 class DataSource(object):
     _lock = threading.Lock() # threadsafe access to cache of datasources
     _cache = {}
-    def __new__(cls, provider, *args, **kwargs):
+    def __new__(cls, provider, *args, **keyargs):
         self = object.__new__(cls)
-        self._init_(provider, *args, **kwargs)
+        self._init_(provider, *args, **keyargs)
         key = (self.provider, self.mapping, self.args,
-               tuple(sorted(self.kwargs.items())))
+               tuple(sorted(self.keyargs.items())))
         return cls._cache.setdefault(key, self) # is it thread safe?
-               # I think - yes, if args & kwargs only contains
+               # I think - yes, if args & keyargs only contains
                # types with C-written __eq__ and __hash__
-    def _init_(self, provider, *args, **kwargs):
+    def _init_(self, provider, *args, **keyargs):
         self.provider = provider
         self.args = args
-        self.kwargs = kwargs
-        self.mapping = kwargs.pop('mapping', None)
-    def begin(self):
-        return Transaction(self)
+        self.keyargs = keyargs
+        self.mapping = keyargs.pop('mapping', None)
     def get_connection(self):
         provider = self.provider
         if isinstance(provider, basestring):
             provider = utils.import_module('pony.dbproviders.' + provider)
-        return provider.connect(*self.args, **self.kwargs)
+        return provider.connect(*self.args, **self.keyargs)
 
 next_id = count().next
 
 class Attribute(object):
-    def __init__(self, py_type, **options):
+    def __init__(self, py_type, *args, **keyargs):
         self._id_ = next_id()
         self.py_type = py_type
         self.name = None
-        self.owner = None
-        self.options = options
-        self.reverse = options.pop('reverse', None)
+        self.entity = None
+        self.args = args
+        self.options = keyargs
+        self.reverse = keyargs.pop('reverse', None)
         if self.reverse is None: pass
-        elif not isinstance(self.reverse,basestring): raise TypeError(
+        elif not isinstance(self.reverse, basestring): raise TypeError(
             "Value of 'reverse' option must be name of reverse attribute)")
         elif not (self.py_type, basestring):
             raise DiagramError('Reverse option cannot be set for this type %r'
                             % self.py_type)
-        self.column = options.pop('column', None)
-        self.table = options.pop('table', None)
     def __str__(self):
-        owner_name = self.owner is None and '?' or self.owner.cls.__name__
+        owner_name = self.entity is None and '?' or self.entity.__name__
         return '%s.%s' % (owner_name, self.name or '?')
     def __repr__(self):
         return '<%s: %s>' % (self, self.__class__.__name__)
@@ -73,24 +70,25 @@ class Required(Attribute):
     pass
 
 class Unique(Required):
-    def __new__(cls, *args, **options):
+    def __new__(cls, *args, **keyargs):
         if not args: raise TypeError('Invalid count of positional arguments')
-        attrs = [ a for a in args if isinstance(a, Attribute) ]
+        attrs = tuple(a for a in args if isinstance(a, Attribute))
         non_attrs = [ a for a in args if not isinstance(a, Attribute) ]
         if attrs and non_attrs: raise TypeError('Invalid arguments')
-        is_primary_key = issubclass(cls, PrimaryKey)
         cls_dict = sys._getframe(1).f_locals
-        keys = cls_dict.setdefault('_pony_keys_', set())
-        if attrs:
-            key = EntityKey(attrs, is_primary_key)
-            keys.add(key)
-            return key
-        else:
-            result = Required.__new__(cls, *args, **options)
-            keys.add(EntityKey([result], is_primary_key))
+        keys = cls_dict.setdefault('_keys_', set())
+        if issubclass(cls, PrimaryKey): tuple_class = _PrimaryKeyTuple
+        else: tuple_class = tuple
+        if not attrs:
+            result = Required.__new__(cls, *args, **keyargs)
+            keys.add(tuple_class((result,)))
             return result
+        else: keys.add(tuple_class(attrs))
 
 class PrimaryKey(Unique):
+    pass
+
+class _PrimaryKeyTuple(tuple):
     pass
 
 class EntityKey(object):
@@ -119,6 +117,8 @@ class EntityMeta(type):
         cls._cls_init_(diagram)
     def __setattr__(cls, name, value):
         cls._cls_setattr_(name, value)
+    def __iter__(cls):
+        return iter(())
 
 class Entity(object):
     __metaclass__ = EntityMeta
@@ -126,24 +126,20 @@ class Entity(object):
     def _cls_init_(cls, diagram):
         bases = [ c for c in cls.__bases__
                     if issubclass(c, Entity) and c is not Entity ]
-        # cls._bases_ = bases
-        type.__setattr__(cls, '_bases_', bases)
+        cls._bases_ = bases
         if bases:
             roots = set(c._root_ for c in bases)
             if len(roots) > 1: raise DiagramError(
                 'With multiple inheritance of entities, '
                 'inheritance graph must be diamond-like')
-            # cls._root_ = roots.pop()
-            type.__setattr__(cls, '_root_', roots.pop())
+            cls._root_ = roots.pop()
             for c in bases:
                 if c._diagram_ is not diagram: raise DiagramError(
                     'When use inheritance, base and derived entities '
                     'must belong to same diagram')
         else:
-            # cls._root_ = cls
-            # cls._diagram_ = diagram
-            type.__setattr__(cls, '_root_', cls)
-            type.__setattr__(cls, '_diagram_', diagram)
+            cls._root_ = cls
+            cls._diagram_ = diagram
 
         base_attrs = {}
         for c in cls._bases_:
@@ -151,52 +147,46 @@ class Entity(object):
                 if base_attrs.setdefault(a.name, a) is not a:
                     raise DiagramError('Ambiguous attribute name %s' % a.name)
 
-        # cls._attrs_ = []
-        type.__setattr__(cls, '_attrs_', [])
-        for name, a in cls.__dict__.items():
+        cls._attrs_ = []
+        for name, attr in cls.__dict__.items():
             if name in base_attrs: raise DiagramError(
-                'Name %s hide base attribute %s' % (a, base_attrs[name]))
-            if not isinstance(a, Attribute): continue
-            if a.owner is not None:
+                'Name %s hide base attribute %s' % (attr, base_attrs[name]))
+            if not isinstance(attr, Attribute): continue
+            if attr.entity is not None:
                 raise DiagramError('Duplicate use of attribute %s' % value)
-            a.name = name
-            a.owner = cls
-            cls._attrs_.append(a)
+            attr.name = name
+            attr.entity = cls
+            cls._attrs_.append(attr)
         cls._attrs_.sort(key=attrgetter('_id_'))
 
-        # cls._keys_ = cls.__dict__.pop('_pony_keys_', set())
-        try: keys = cls._pony_keys_
-        except AttributeError: keys = set()
-        else: del cls._pony_keys_
-        type.__setattr__(cls, '_keys_', keys)
-        primary_keys = set(key for key in cls._keys_ if key.is_primary_key)
-        for base in cls._bases_: cls._keys_.update(base._keys_)
+        if not hasattr(cls, '_keys_'): cls._keys_ = set()
+        primary_keys = set(key for key in cls._keys_
+                               if isinstance(key, _PrimaryKeyTuple))
         if cls._bases_:
             if primary_keys: raise DiagramError(
                 'Primary key cannot be redefined in derived classes')
             assert hasattr(cls, '_primary_key_')
+            for base in cls._bases_: cls._keys_.update(base._keys_)
         elif len(primary_keys) > 1: raise DiagramError(
             'Only one primary key can be defined in each entity class')
         elif not primary_keys:
             if hasattr(cls, 'id'): raise DiagramError("Name 'id' alredy in use")
-            _pony_keys_ = set()
-            attr = PrimaryKey(int) # Side effect: modifies _pony_keys_ variable
+            _keys_ = set()
+            attr = PrimaryKey(int) # Side effect: modifies _keys_ local variable
             attr.name = 'id'
-            attr.owner = cls
-            # cls.id = attr
-            type.__setattr__(cls, 'id', attr)
-            # cls._primary_key_ = _pony_keys_.pop()
-            type.__setattr__(cls, '_primary_key_', _pony_keys_.pop())
+            attr.entity = cls
+            type.__setattr__(cls, 'id', attr)  # cls.id = attr
+            cls._primary_key_ = _keys_.pop()
+            cls._attrs_.insert(0, cls._primary_key_[0])
             cls._keys_.add(cls._primary_key_)
-        else:
-            assert len(primary_keys) == 1
-            # cls._primary_key_ = primary_keys.pop()
-            type.__setattr__(cls, '_primary_key_', primary_keys.pop())
+        else: cls._primary_key_ = primary_keys.pop()
         
         diagram.add_entity(cls)
     @classmethod
     def _cls_setattr_(cls, name, value):
-        raise NotImplementedError
+        if name.startswith('_') and name.endswith('_'):
+            type.__setattr__(cls, name, value)
+        else: raise NotImplementedError
     @classmethod
     def _cls_get_info(cls):
         return diagram.get_entity_info(self)
@@ -206,17 +196,16 @@ class Diagram(object):
         self.lock = threading.RLock()
         self.entities = {} # entity_name -> entity
         self.schemata = {} # mapping -> schema
-        self.default_mapping = Mapping()
         self.transactions = set()
     def clear(self):
         self.lock.acquire()
-        try:
-            if self.transactions:
-                raise DiagramError('Cannot change entity diagram '
-                                   'because it is used by active transaction')
-            self.schemata.clear()
-        finally:
-            self.lock.release()
+        try: self._clear()
+        finally: self.lock.release()
+    def _clear(self):
+        if self.transactions: raise DiagramError(
+            'Cannot change entity diagram '
+            'because it is used by active transaction')
+        self.schemata.clear()
     def add_entity(self, entity):
         self.lock.acquire()
         try:
