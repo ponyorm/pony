@@ -4,7 +4,7 @@ from pony.sqlsymbols import *
 # param2 = 20
 #
 # query1 = select(
-#     s for s in Group(number=param1).students
+#     s for s in Group.find(number=param1).students
 #       if s.age > param2
 #     )
 
@@ -62,7 +62,7 @@ select2 = [ SELECT,
 
 # fnumber = 4
 # query3 = select(
-#     g for g in Groups(faculty=fnumber) if not g.students
+#     g for g in Group.find(faculty=fnumber) if not g.students
 # )
 
 select3 = [ SELECT,
