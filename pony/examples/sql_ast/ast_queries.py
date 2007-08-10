@@ -9,19 +9,16 @@ from pony.sqlsymbols import *
 #     )
 
 select1a = [ SELECT,
-    [ ALL, [COLUMN, 'T2', 'id'],
-           [COLUMN, 'T2', 'first_name'],
-           [COLUMN, 'T2', 'last_name'],
-           [COLUMN, 'T2', 'group'],
-           [COLUMN, 'T2', 'age']
+    [ ALL, [COLUMN, 'T1', 'id'],
+           [COLUMN, 'T1', 'first_name'],
+           [COLUMN, 'T1', 'last_name'],
+           [COLUMN, 'T1', 'group'],
+           [COLUMN, 'T1', 'age']
     ],
-    [ FROM, [ 'T1', TABLE, 'Groups' ],
-            [ 'T2', TABLE, 'Students',
-              [ EQ, [COLUMN, 'T1', 'number'], [COLUMN, 'T2', 'group'] ]
-            ]
+    [ FROM, [ 'T1', TABLE, 'Students' ]
     ],
     [ WHERE, [ AND, [ EQ, [COLUMN, 'T1', 'number'], [PARAM, 1] ],
-                    [ LT, [COLUMN, 'T2', 'age'], [PARAM, 2] ]
+                    [ LT, [COLUMN, 'T1', 'age'], [PARAM, 2] ]
              ]
     ],
 ]
