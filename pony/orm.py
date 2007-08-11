@@ -18,6 +18,52 @@ class Local(threading.local):
 
 local = Local()
 
+class Transaction(object):
+    def __init__(self, data_source):
+        if local.transaction is not None: raise TransactionError(
+            'Transaction already started in thread %d' % thread.get_ident())
+        self.data_source = data_source
+        self.diagrams = set()
+        self.cache = {} # Table -> TableCache
+        local.transaction = self
+    def _close(self):
+        assert local.transaction is self
+        while self.diagrams:
+            diagram = self.diagrams.pop()
+            # diagram.lock.acquire()
+            # try:
+            diagram.transactions.remove(self)
+            # finally: diagram.lock.release()
+        local.transaction = None
+    def commit(self):
+        raise NotImplementedError
+    def rollback(self):
+        raise NotImplementedError
+
+def get_transaction():
+    return local.transaction
+
+def begin():
+    if local.transaction is not None: raise TransactionError(
+        'Transaction already started in thread %d' % thread.get_ident())
+    outer_dict = sys._getframe(1).f_locals
+    data_source = outer_dict.get('_data_source_')
+    if data_source is None: raise TransactionError(
+        'Can not start transaction, because default data source is not set')
+    return Transaction(data_source)
+
+def commit():
+    tr = local.transaction
+    if tr is None: raise TransactionError(
+        'Transaction not started in thread %d' % thread.get_ident())
+    tr.commit()
+
+def rollback():
+    tr = local.transaction
+    if tr is None: raise TransactionError(
+        'Transaction not started in thread %d' % thread.get_ident())
+    tr.rollback()
+
 class DataSource(object):
     _lock = threading.Lock() # threadsafe access to cache of datasources
     _cache = {}
@@ -90,11 +136,6 @@ class PrimaryKey(Unique):
 
 class _PrimaryKeyTuple(tuple):
     pass
-
-class EntityKey(object):
-    def __init__(self, attrs, is_primary_key):
-        self.attrs = tuple(attrs)
-        self.is_primary_key = is_primary_key
 
 class Collection(Attribute):
     pass
@@ -232,38 +273,21 @@ class Diagram(object):
 class Schema(object):
     def __init__(self, diagram, mapping):
         self.mapping = mapping
-        self.entities = {}  # entity -> entity_info
-        self.tables = {}    # table_name -> table_info
+        self.entity_to_tables = {}
+        self.attr_to_columns = {}
 
-class EntityInfo(object):
-    pass
+class Table(object):
+    def __init__(self, name):
+        self.name = name
+        self.entities = []
+        self.columns = []
 
-class FieldInfo(object):
-    pass
-
-class TableInfo(object):
-    pass
-
-def get_transaction():
-    return local.transaction
-
-class Transaction(object):
-    def __init__(self, data_source):
-        if local.transaction is not None: raise TransactionError(
-            'Transaction already started in thread %d' % thread.get_ident())
-        self.data_source = data_source
-        self.diagrams = set()
-        self.cache = {} # TableInfo -> TableCache
-        local.transaction = self
-    def _close(self):
-        assert local.transaction is self
-        while self.diagrams:
-            diagram = self.diagrams.pop()
-            # diagram.lock.acquire()
-            # try:
-            diagram.transactions.remove(self)
-            # finally: diagram.lock.release()
-        local.transaction = None
+class Column(object):
+    def __init__(self, table, name):
+        self.name = name
+        self.attrs = []
+        self.table = table
+        table.columns.append(self)
 
 class Mapping(object):
     _cache = {}
