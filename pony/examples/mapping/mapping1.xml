@@ -1,15 +1,32 @@
 <?xml version="1.0"?>
 <tables>
-  <table name="Persons" entity="Person">
-    <column name="id" attr="Person.id" />
-    <column name="class" kind="discriminator" />
-    <column name="fname" attr="Person.first_name" />
-    <column name="lname" attr="Person.last_name" />
-    <column name="title" attr="Professor.title" />
-    <column name="gr_num" attr="Student.group.number" />
+  <table name="SUBJECTS" entity="Subject">
+    <column name="Name" attr="Subject.name" />
   </table>
-  <table name="Groups" entity="Group">
-    <column name="gr_num" attr="Group.number" />
-    <column name="faculty" attr="Group.faculty" />
+  <table name="GROUPS" entity="Group">
+    <column name="GrNum" attr="Group.number" domain="SMALLINT" />
+    <column name="Faculty" attr="Group.faculty" />
+    <colum name="Spec" attr="Group.speciality" />
+  </table>
+  <table name="GROUPS_SUBJECT" relation="Group.subjects Subject.groups">
+    <column name="GrNum" attr="Subject.groups.number" />
+    <column name="SubjName" attr="Group.subjects.name" />
+  </table>
+  <table name="PERSONS" entity="Person Professor Student">
+    <column name="Type" kind="discriminator">
+      <case value="P" entity="Professor" />
+      <case value="S" entity="Student" />
+    </column>
+    <column name="Id" attr="Person.id" />
+    <column name="FirstName" attr="Person.first_name" />
+    <column name="LastName" attr="Person.last_name" />
+    <column name="Title" attr="Professor.title" />
+    <column name="GrNum" attr="Student.group" />
+  </table>
+  <table name="MARKS" entity="Mark">
+    <column name="Date" attr="Mark.date" />
+    <column name="Discipline" attr="Mark.subject" />   <!-- attr="Mark.subject.name" -->
+    <column name="Student" attr="Mark.student" />      <!-- attr="Mark.student.id" -->
+    <column name="Value" attr="Mark.value" />
   </table>
 </tables>
