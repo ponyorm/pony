@@ -300,91 +300,53 @@ class Mapping(object):
     def _init_(self, filename):
         self.filename = filename
         self.tables = {}   # table_name -> TableMapping
-        self.entities = {} # entity_name -> EntityMapping
         if not os.path.exists(filename):
             raise MappingError('File not found: %s' % filename)
         document = etree.parse(filename)
-        for t in document.findall('table'):
-            table = TableMapping(self, t.get('name'))
-            ename = t.get('entity')
-            relations = t.get('relations')
-            if ename and relations: raise MappingError(
-                'For table %r specified both entity name and relations. '
-                'It is not allowed' % table.name)
-            elif ename:
-                entity = self.entities.get(ename) or EntityMapping(self, ename)
-                table.entity = entity
-                entity.tables.append(table)
-            else:
-                table.relations = relations.split()
-                # for r in table.relations...
-            for c in t.findall('column'):
-                table.add_column(c.get('name'), c.get('kind'), c.get('attr'))
+        for telement in document.findall('table'):
+            table = TableMapping(telement)
+            if self.tables.setdefault(table.name, table) is not table:
+                raise MappingError('Duplicate table definition: %s'%table.name)
 
 class TableMapping(object):
-    def __init__(self, mapping, name):
-        if not name:
+    def __init__(self, element):
+        self.name = element.get('name')
+        if not self.name:
             raise MappingError("Table element without 'name' attribute")
-        if name in mapping.tables:
-            raise MappingError('Duplicate table definition: %s' %name)
-        mapping.tables[name] = self
-        self.mapping = mapping
-        self.name = name
+        self.entities = element.get('entity', '').split()
+        self.relations = element.get('relation', '').split()
+        if self.entities and self.relations: raise MappingError(
+            'For table %r both entity name and relations are specified. '
+            'It is not allowed' % table.name)
         self.columns = []
         self.cdict = {}
-        self.entity = None
-        self.relations = []
-    def add_column(self, name, kind, attr):
-        column = ColMapping(self, name, kind, attr)
-        self.columns.append(column)
-        self.cdict[name] = column
-        return column
-    def add_entity(self, entity):
-        self.entities.append(entity)
-        self.edict[entity.name] = entity
-        entity.tables.append(self)
+        for celement in element.findall('column'):
+            col = ColumnMapping(self.name, celement)
+            if self.cdict.setdefault(col.name, col) is not col:
+                raise MappingError('Duplicate column definition: %s.%s'
+                                   % (self.name, col.name))
+            self.columns.append(col)
 
-class ColMapping(object):
-    def __init__(self, table, name, kind, attr):
-        if not name: raise MappingError('Error in table definition %r: '
-            "Column element without 'name' attribute" % tname)
-        if name in table.cdict:
-            raise MappingError('Error in table definition %r: '
-                'Duplicate column definition: %s' % (tname, cname))
-        if kind and kind not in ('discriminator'):
-            raise MappingError('Error in table definition %r: '
-                            'invalid column kind: %s' % (table.name, kind))
-        self.mapping = mapping = table.mapping
-        self.table = table
-        self.name = name
-        self.kind = kind
-        if attr:
-            ename, fname = attr.split('.', 1)
-            entity = mapping.entities.get(ename) or EntityMapping(mapping,ename)
-            entity.add_field(fname, self)
-
-class EntityMapping(object):
-    def __init__(self, mapping, name):
-        if not utils.is_ident(name): raise MappingError(
-            'Entity name must be correct Python identifier. Got: %s' % ename)
-        mapping.entities[name] = self
-        self.mapping = mapping
-        self.name = name
-        self.tables = []
-        self.fields = []
-        self.fdict = {}
-    def add_field(self, name, column):
-        field = self.fdict.get(name)
-        if not field:
-            field = self.fdict[name] = FieldMapping(self, name)
-            self.fields.append(field)
-        assert column not in field.columns
-        field.columns.append(column)
-        column.field = field
-
-class FieldMapping(object):
-    def __init__(self, entity, name):
-        self.mapping = entity.mapping
-        self.entity = entity
-        self.name = name
-        self.columns = []
+class ColumnMapping(object):
+    def __init__(self, table_name, element):
+        self.name = element.get('name')
+        if not self.name: raise MappingError(
+            'Error in table definition %r: '
+            'Column element without "name" attribute' % table_name)
+        self.domain = element.get('domain')
+        self.attrs = [ attr.split('.')
+                       for attr in element.get('attr', '').split() ]
+        self.kind = element.get('kind')
+        if self.kind not in (None, 'discriminator'): raise MappingError(
+            'Error in column definition %s.%s: invalid column kind: %s'
+            % (table_name, self.name, self.kind))
+        cases = element.findall('case')
+        if cases and self.kind != 'discriminator': raise MappingError(
+            'Non-discriminator column %s.%s contains cases.It is not allowed'
+            % (table_name, self.name))
+        self.cases = [ (case.get('value'), case.get('entity'))
+                       for case in cases ]
+        for value, entity in self.cases:
+            if not value or not entity: raise MappingError(
+                'Invalid discriminator case in column %s.%s'
+                % (table_name, self.name))
