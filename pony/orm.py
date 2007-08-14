@@ -178,37 +178,41 @@ class Entity(object):
                 if c._diagram_ is not diagram: raise DiagramError(
                     'When use inheritance, base and derived entities '
                     'must belong to same diagram')
-        else:
-            cls._root_ = cls
-            cls._diagram_ = diagram
+        else: cls._root_ = cls
 
-        base_attrs = {}
-        for c in cls._bases_:
+        base_attrs = []
+        base_attrs_dict = {}
+        for c in bases:
             for a in c._attrs_:
-                if base_attrs.setdefault(a.name, a) is not a:
+                if base_attrs_dict.setdefault(a.name, a) is not a:
                     raise DiagramError('Ambiguous attribute name %s' % a.name)
+                base_attrs.append(a)
+        cls._base_attrs_ = base_attrs
 
-        cls._attrs_ = []
+        new_attrs = []
         for name, attr in cls.__dict__.items():
-            if name in base_attrs: raise DiagramError(
-                'Name %s hide base attribute %s' % (attr, base_attrs[name]))
+            if name in base_attrs_dict: raise DiagramError(
+                'Name %s hide base attribute %s' % (name,base_attrs_dict[name]))
             if not isinstance(attr, Attribute): continue
             if attr.entity is not None:
                 raise DiagramError('Duplicate use of attribute %s' % value)
             attr.name = name
             attr.entity = cls
-            cls._attrs_.append(attr)
-        cls._attrs_.sort(key=attrgetter('_id_'))
+            new_attrs.append(attr)
+        new_attrs.sort(key=attrgetter('_id_'))
+        cls._new_attrs_ = new_attrs
 
-        if not hasattr(cls, '_keys_'): cls._keys_ = set()
-        primary_keys = set(key for key in cls._keys_
+        cls._keys_ = keys = cls.__dict__.get('_keys_', set())
+        primary_keys = set(key for key in keys
                                if isinstance(key, _PrimaryKeyTuple))
-        if cls._bases_:
+        if bases:
             if primary_keys: raise DiagramError(
                 'Primary key cannot be redefined in derived classes')
-            assert hasattr(cls, '_primary_key_')
-            for base in cls._bases_: cls._keys_.update(base._keys_)
-        elif len(primary_keys) > 1: raise DiagramError(
+            for c in bases: keys.update(c._keys_)
+            primary_keys = set(key for key in keys
+                                   if isinstance(key, _PrimaryKeyTuple))
+                                   
+        if len(primary_keys) > 1: raise DiagramError(
             'Only one primary key can be defined in each entity class')
         elif not primary_keys:
             if hasattr(cls, 'id'): raise DiagramError("Name 'id' alredy in use")
@@ -217,19 +221,27 @@ class Entity(object):
             attr.name = 'id'
             attr.entity = cls
             type.__setattr__(cls, 'id', attr)  # cls.id = attr
-            cls._primary_key_ = _keys_.pop()
-            cls._attrs_.insert(0, cls._primary_key_[0])
-            cls._keys_.add(cls._primary_key_)
+            cls._new_attrs_.insert(0, attr)
+            key = _keys_.pop()
+            cls._keys_.add(key)
+            cls._primary_key_ = key
         else: cls._primary_key_ = primary_keys.pop()
         
-        diagram.add_entity(cls)
+        cls._attrs_ = base_attrs + new_attrs
+
+        diagram.lock.acquire()
+        try:
+            diagram._clear()
+            cls._diagram_ = diagram
+            diagram.entities[cls.__name__] = cls
+            cls._cls_link_reverse_attrs_()
+        finally: diagram.lock.release()
     @classmethod
-    def _cls_setattr_(cls, name, value):
-        if name.startswith('_') and name.endswith('_'):
-            type.__setattr__(cls, name, value)
-        else: raise NotImplementedError
+    def _cls_link_reverse_attrs_(cls):
+        for attr in cls._attrs_:
+            if attr.entity is not cls: pass
     @classmethod
-    def _cls_get_info(cls):
+    def _cls_get_info_(cls):
         return diagram.get_entity_info(self)
         
 class Diagram(object):
@@ -247,16 +259,6 @@ class Diagram(object):
             'Cannot change entity diagram '
             'because it is used by active transaction')
         self.schemata.clear()
-    def add_entity(self, entity):
-        self.lock.acquire()
-        try:
-            assert entity._diagram_ == self
-            self._clear()
-            # entity._diagram_ = self
-            type.__setattr__(entity, '_diagram_', self)
-            self.entities[entity.__name__] = entity
-        finally:
-            self.lock.release()
     def get_schema(self):
         transaction = local.transaction
         if transaction is None: raise TransactionError(
