@@ -98,8 +98,9 @@ class Attribute(object):
         self.options = keyargs
         self.reverse = keyargs.pop('reverse', None)
         if self.reverse is None: pass
-        elif not isinstance(self.reverse, basestring): raise TypeError(
-            "Value of 'reverse' option must be name of reverse attribute)")
+        elif not isinstance(self.reverse, (basestring, Attribute)):
+            raise TypeError("Value of 'reverse' option must be name of "
+                            "reverse attribute). Got: %r" % self.reverse)
         elif not (self.py_type, basestring):
             raise DiagramError('Reverse option cannot be set for this type %r'
                             % self.py_type)
@@ -237,8 +238,62 @@ class Entity(object):
 
     @classmethod
     def _cls_link_reverse_attrs_(cls):
-        for attr in cls._attrs_:
-            if attr.entity is not cls: pass
+        diagram = cls._diagram_
+        for attr in cls._new_attrs_:
+            py_type = attr.py_type
+            if isinstance(py_type, basestring):
+                cls2 = diagram.entities.get(py_type)
+                if cls2 is None: continue
+                attr.py_type = cls2
+            elif issubclass(py_type, Entity):
+                cls2 = py_type
+                if cls2._diagram_ is not diagram: raise DiagramError(
+                    'Interrelated entities must belong to same diagram. '
+                    'Entities %s and %s belongs to different diagrams'
+                    % (cls.__name__, cls2.__name__))
+            else: continue
+            
+            reverse = attr.reverse
+            if isinstance(reverse, basestring):
+                attr2 = getattr(cls2, reverse, None)
+                if attr2 is None: raise DiagramError(
+                    'Reverse attribute %s.%s not found'
+                    % (cls2.__name__, reverse))
+            elif isinstance(reverse, Attribute):
+                attr2 = reverse
+                if attr2.entity is not cls2: raise DiagramError(
+                    'Incorrect reverse attribute %s used in %s' % (attr2, attr))
+            elif reverse is not None: raise DiagramError(
+                "Value of 'reverse' option must be string. Got: %r"
+                % type(reverse))
+            else:
+                candidates1 = []
+                candidates2 = []
+                for attr2 in cls2._new_attrs_:
+                    if attr2.py_type not in (cls, cls.__name__): continue
+                    reverse2 = attr2.reverse
+                    if reverse2 in (attr, attr.name): candidates1.append(attr2)
+                    elif reverse2 is None: candidates2.append(attr2)
+                msg = 'Ambiguous reverse attribute for %s'
+                if len(candidates1) > 1: raise DiagramError(msg % attr)
+                elif len(candidates1) == 1: attr2 = candidates1[0]
+                elif len(candidates2) > 1: raise DiagramError(msg % attr)
+                elif len(candidates2) == 1: attr2 = candidates2[0]
+                else: raise DiagramError(
+                    'Reverse attribute for %s not found' % attr)
+
+            type2 = attr2.py_type
+            msg = 'Inconsistent reverse attributes %s and %s'
+            if isinstance(type2, basestring):
+                if type2 != cls.__name__: raise DiagramError(msg % (attr,attr2))
+                attr2.py_type = cls
+            elif type2 != cls: raise DiagramError(msg % (attr,attr2))
+            reverse2 = attr2.reverse
+            if reverse2 not in (None, attr, attr.name):
+                raise DiagramError(msg % (attr,attr2))
+
+            attr.reverse = attr2
+            attr2.reverse = attr
             
     @classmethod
     def _cls_setattr_(cls, name, value):
