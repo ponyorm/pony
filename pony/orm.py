@@ -226,9 +226,7 @@ class Entity(object):
             cls._keys_.add(key)
             cls._primary_key_ = key
         else: cls._primary_key_ = primary_keys.pop()
-        
         cls._attrs_ = base_attrs + new_attrs
-
         diagram.lock.acquire()
         try:
             diagram._clear()
@@ -236,10 +234,17 @@ class Entity(object):
             diagram.entities[cls.__name__] = cls
             cls._cls_link_reverse_attrs_()
         finally: diagram.lock.release()
+
     @classmethod
     def _cls_link_reverse_attrs_(cls):
         for attr in cls._attrs_:
             if attr.entity is not cls: pass
+            
+    @classmethod
+    def _cls_setattr_(cls, name, value):
+        if name.startswith('_') and name.endswith('_'):
+            type.__setattr__(cls, name, value)
+        else: raise NotImplementedError
     @classmethod
     def _cls_get_info_(cls):
         return diagram.get_entity_info(self)
