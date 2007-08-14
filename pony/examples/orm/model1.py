@@ -15,10 +15,10 @@ class Person(Entity):
     first_name = Required(unicode)
     last_name = Required(unicode)
 
-class Professor(Entity):
+class Professor(Person):
     title = Required(str)
 
-class Student(Entity):
+class Student(Person):
     group = Required("Group")
     marks = Set("Mark")
 
