@@ -61,7 +61,8 @@ def use_autoreload():
         if not error:
             modules = [ m for name, m in sys.modules.items()
                         if getattr(m, 'USE_AUTORELOAD', False)
-                           and not name.startswith('pony.') ]
+                           and (name.startswith('pony.examples.')
+                                or not name.startswith('pony.')) ]
         try:
             for m in modules:
                 filename = abspath(m.__file__)
