@@ -1,6 +1,17 @@
 import sys, time, threading
 from itertools import count
 
+def detect_mode():
+    try: 
+        mod_wsgi = sys.modules['mod_wsgi']
+        return 'MOD_WSGI'
+    except KeyError:
+        try: sys.modules['__main__'].__file__
+        except AttributeError:  return 'INTERACTIVE'
+        return 'NATIVE'
+
+RUNNED_AS = detect_mode()
+
 shutdown = False
 
 shutdown_list = []
@@ -14,7 +25,8 @@ def exitfunc():
     _shutdown()
     prev_func()
 
-if not hasattr(sys.modules['__main__'], 'file'):
+
+if RUNNED_AS == 'INTERACTIVE':
     pass
 elif hasattr(threading, '_shutdown'):
     prev_func = threading._shutdown
