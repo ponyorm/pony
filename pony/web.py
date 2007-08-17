@@ -5,10 +5,9 @@ from operator import itemgetter
 
 from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
 
-from pony import on_shutdown
-from pony.autoreload import on_reload
+import pony
 from pony import autoreload, auth, utils, xslt
-
+from pony.autoreload import on_reload
 from pony.utils import decorator_with_params
 from pony.templating import Html, real_stdout
 from pony.logging import log, log_exc
@@ -863,6 +862,7 @@ class ServerThread(threading.Thread):
         server_threads.pop((self.host, self.port), None)
 
 def start_http_server(address='localhost:8080', verbose=True):
+    if pony.RUNNED_AS == 'MOD_WSGI': return
     host, port = parse_address(address)
     try:
         server_thread = ServerThread(host, port, application, verbose=verbose)
@@ -871,6 +871,7 @@ def start_http_server(address='localhost:8080', verbose=True):
     else: server_thread.start()
 
 def stop_http_server(address=None):
+    if pony.RUNNED_AS == 'MOD_WSGI': return
     if address is None:
         for server_thread in server_threads.values():
             server_thread.server.stop()
@@ -884,7 +885,7 @@ def stop_http_server(address=None):
         server_thread.server.stop()
         server_thread.join()
 
-@on_shutdown
+@pony.on_shutdown
 def do_shutdown():
     try: stop_http_server()
     except ServerNotStarted: pass

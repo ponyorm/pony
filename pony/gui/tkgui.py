@@ -1,9 +1,11 @@
-from Tkinter import *
-from pony.logging import search_log
-from pony import utils
+import pprint, threading, time
 from datetime import timedelta
 from operator import attrgetter
-import pprint, threading, time
+from Tkinter import *
+
+import pony
+from pony import utils
+from pony.logging import search_log
 
 UI_UPDATE_INTERVAL = 1000   # in ms
 MAX_RECORD_DISPLAY_COUNT = 1000
@@ -302,5 +304,6 @@ class TkThread(threading.Thread):
             finally: tk_lock.release()
 
 def show_gui():
+    if pony.RUNNED_AS == 'MOD_WSGI': return
     if tk_thread: return
     TkThread().start()
