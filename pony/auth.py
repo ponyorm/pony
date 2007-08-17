@@ -1,6 +1,6 @@
 import re, os, sys, time, random, threading, Queue, cPickle, base64, hmac, sha
 
-from pony import on_shutdown
+import pony
 from pony.thirdparty import sqlite
 
 ################################################################################
@@ -130,15 +130,12 @@ def get_hashobject(minute):
     return hashobject.copy()
 
 def get_sessiondb_name():
-    # This function returns relative path! It is workaround for bug in SQLite
+    # This function returns relative path, if possible.
+    # It is workaround for bug in SQLite
     # (Problems with unicode symbols in directory name)
-    main = sys.modules['__main__']
-    try: script_name = main.__file__
-    except AttributeError:  # interactive mode
-        return ':memory:'   # in-memory database
-    script_name = os.path.basename(script_name)
-    root, ext = os.path.splitext(script_name)
-    return root + '-secrets.sqlite'    
+    if pony.MAIN_FILE is None: return ':memory:'
+    root, ext = os.path.splitext(pony.MAIN_FILE)
+    return root + '-secrets.sqlite'
 
 sql_create = """
 create table if not exists time_secrets (
@@ -212,7 +209,7 @@ class AuthThread(threading.Thread):
         result.append(row is None and True or None)
         lock.release()
 
-@on_shutdown
+@pony.on_shutdown
 def do_shutdown():
     queue.put(None)
     auth_thread.join()

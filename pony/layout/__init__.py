@@ -1,5 +1,6 @@
 # import os.path
-# xslt_filename = os.path.join(os.path.dirname(__file__), 'transform.xslt')
+# import pony
+# xslt_filename = os.path.join(pony.MAIN_DIR, 'transform.xslt')
 # xslt = etree.XSLT(etree.parse(xslt_filename))
 
 from lxml import etree

@@ -1,6 +1,6 @@
 import cPickle, os, Queue, random, re, sys, traceback, thread, threading, time
 from itertools import count
-from pony import on_shutdown
+import pony
 from pony.thirdparty import sqlite
 from pony.utils import current_timestamp
 
@@ -63,14 +63,11 @@ def search_log(max_count=100, start_from=None, criteria=None, params=()):
     return result
 
 def get_logfile_name():
-    # This function returns relative path! It is workaround for bug in SQLite
+    # This function returns relative path, if possible.
+    # It is workaround for bug in SQLite
     # (Problems with unicode symbols in directory name)
-    main = sys.modules['__main__']
-    try: script_name = main.__file__
-    except AttributeError:  # interactive mode
-        return ':memory:'   # in-memory database
-    script_name = os.path.basename(script_name)
-    root, ext = os.path.splitext(script_name)
+    if pony.MAIN_FILE is None: return ':memory:'
+    root, ext = os.path.splitext(pony.MAIN_FILE)
     return root + '-log.sqlite'
 
 sql_create = """
@@ -197,7 +194,7 @@ def decompress_record(record):
                        for (header, value) in record['headers'].items())
         record['headers'] = headers
 
-@on_shutdown
+@pony.on_shutdown
 def do_shutdown():
     log(type='Log:shutdown')
     queue.put(None)

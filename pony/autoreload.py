@@ -7,8 +7,6 @@ from pony.logging import log, log_exc
 
 USE_AUTORELOAD = True
 
-mainfile = getattr(sys.modules['__main__'], '__file__', '')
-maindir = dirname(abspath(mainfile)) + os.sep
 mtimes = {}
 clear_funcs = []
 reloading = False
@@ -18,14 +16,15 @@ def on_reload(func):
     return func
 
 def load_main():
-    name = splitext(basename(mainfile))[0]
-    file, filename, description = imp.find_module(name, [ maindir ])
+    name, ext = splitext(basename(pony.MAIN_FILE))
+    file, filename, description = imp.find_module(name, [ pony.MAIN_DIR ])
     try: imp.load_module('__main__', file, filename, description)
     finally:
         if file: file.close()
 
 def shortened_module_name(filename):
-    if not mainfile: return filename
+    if pony.MAIN_DIR is None: return filename
+    maindir = pony.MAIN_DIR + os.sep
     if filename.startswith(maindir): return filename[len(maindir):]
     return filename
 
@@ -53,7 +52,7 @@ def reload(modules, changed_module, filename):
         reloading = False
 
 def use_autoreload():
-    if not mainfile or pony.mainloop_counter.next(): return
+    if pony.RUNNED_AS != 'NATIVE' or pony.mainloop_counter.next(): return
     load_main()
     error = False
     while True:

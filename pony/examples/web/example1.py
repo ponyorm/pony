@@ -115,5 +115,6 @@ def index():
     print '<li>%s</li>' % link(page7)
     print '</ul>'
 
-start_http_server()
-# show_gui()
+if __name__ == '__main__':
+    start_http_server()
+    show_gui()

@@ -791,7 +791,7 @@ def create_cookies(environ):
 
 BLOCK_SIZE = 65536
 
-def wsgi_app(environ, wsgi_start_response):
+def application(environ, wsgi_start_response):
     def start_response(status, headers):
         headers = [ (name, str(value)) for name, value in headers.items() ]
         headers.extend(create_cookies(environ))
@@ -840,7 +840,7 @@ class   ServerStopException(ServerException): pass
 class     ServerNotStarted(ServerStopException): pass
 
 class ServerThread(threading.Thread):
-    def __init__(self, host, port, wsgi_app, verbose):
+    def __init__(self, host, port, application, verbose):
         server = server_threads.setdefault((host, port), self)
         if server != self: raise ServerAlreadyStarted(
             'HTTP server already started: %s:%s' % (host, port))
@@ -848,24 +848,24 @@ class ServerThread(threading.Thread):
         self.host = host
         self.port = port
         self.server = CherryPyWSGIServer(
-            (host, port), [('', wsgi_app)], server_name=host)
+            (host, port), [('', application)], server_name=host)
         self.verbose = verbose
         self.setDaemon(True)
     def run(self):
         msg = 'Starting HTTP server at %s:%s' % (self.host, self.port)
         log('HTTP:start', msg)
-        if self.verbose: print msg
+        if self.verbose: print>>sys.stderr, msg
         self.server.start()
         msg = 'HTTP server at %s:%s stopped successfully' \
               % (self.host, self.port)
         log('HTTP:stop', msg)
-        if self.verbose: print msg
+        if self.verbose: print>>sys.stderr, msg
         server_threads.pop((self.host, self.port), None)
 
 def start_http_server(address='localhost:8080', verbose=True):
     host, port = parse_address(address)
     try:
-        server_thread = ServerThread(host, port, wsgi_app, verbose=verbose)
+        server_thread = ServerThread(host, port, application, verbose=verbose)
     except ServerAlreadyStarted:
         if not autoreload.reloading: raise
     else: server_thread.start()

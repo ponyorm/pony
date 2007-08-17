@@ -1,4 +1,5 @@
 import sys, time, threading
+from os.path import dirname
 from itertools import count
 
 def detect_mode():
@@ -11,6 +12,18 @@ def detect_mode():
         return 'NATIVE'
 
 RUNNED_AS = detect_mode()
+
+MAIN_FILE = None
+if RUNNED_AS == 'NATIVE':
+    MAIN_FILE = sys.modules['__main__'].__file__
+elif RUNNED_AS == 'MOD_WSGI':
+    for module_name, module in sys.modules.items():
+        if module_name.startswith('_mod_wsgi_'):
+            MAIN_FILE = module.__file__
+
+MAIN_DIR = None
+if MAIN_FILE is not None:
+    MAIN_DIR = dirname(MAIN_FILE)
 
 shutdown = False
 
