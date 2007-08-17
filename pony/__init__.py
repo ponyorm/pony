@@ -38,6 +38,8 @@ else:
 mainloop_counter = count()
 
 def mainloop():
+    if RUNNED_AS != 'NATIVE':
+        return  
     if mainloop_counter.next(): return
     try:
         while True:
