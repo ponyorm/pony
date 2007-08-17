@@ -25,9 +25,7 @@ def exitfunc():
     _shutdown()
     prev_func()
 
-
-if RUNNED_AS == 'INTERACTIVE':
-    pass
+if RUNNED_AS == 'INTERACTIVE': pass
 elif hasattr(threading, '_shutdown'):
     prev_func = threading._shutdown
     threading._shutdown = exitfunc
@@ -38,9 +36,7 @@ else:
 mainloop_counter = count()
 
 def mainloop():
-    if RUNNED_AS != 'NATIVE':
-        return  
-    if mainloop_counter.next(): return
+    if RUNNED_AS != 'NATIVE' or mainloop_counter.next(): return
     try:
         while True:
             if shutdown: break
