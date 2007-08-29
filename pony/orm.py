@@ -12,6 +12,13 @@ class SchemaError(OrmError): pass
 class MappingError(OrmError): pass
 class TransactionError(OrmError): pass
 
+ROW_HEADER_SIZE = 5
+ROW_OBJECT = 0
+ROW_STATUS = 1
+ROW_LOAD_MASK = 2
+ROW_READ_MASK = 3
+ROW_WRITE_MASK = 4
+
 class Mapping(object):
     _cache = {}
     def __new__(cls, filename):
@@ -36,43 +43,80 @@ class TableMapping(object):
         self.name = element.get('name')
         if not self.name:
             raise MappingError("Table element without 'name' attribute")
-        self.entities = element.get('entity', '').split()
-        self.relations = element.get('relation', '').split()
+        self.entities = set(element.get('entity', '').split())
+        self.relations = set(tuple(rel.split('.'))
+                             for rel in element.get('relation', '').split())
         if self.entities and self.relations: raise MappingError(
             'For table %r both entity name and relations are specified. '
-            'It is not allowed' % table.name)
+            'It is not allowed' % self.name)
+        elif not self.entities and not self.relations: raise MappingError(
+            'For table %r neither entity name nor relations are specified. '
+            'It is not allowed' % self.name)
+        for entity_name in self.entities:
+            if not utils.is_ident(entity_name): raise MappingError(
+                'Entity name must be valid identifier. Got: %r' % entity_name)
+        for relation in self.relations:
+            if len(relation) != 2: raise MappingError(
+                'Each relation must be in form of EntityName.AttributeName. '
+                'Got: %s' % '.'.join(relation))
+            for component in relation:
+                if not utils.is_ident(component): raise MappingError(
+                    'Each part of relation name must be valid identifier. '
+                    'Got: %r' % component)
         self.columns = []
         self.cdict = {}
         for celement in element.findall('column'):
-            col = ColumnMapping(self.name, celement)
+            col = ColumnMapping(self, celement)
             if self.cdict.setdefault(col.name, col) is not col:
                 raise MappingError('Duplicate column definition: %s.%s'
                                    % (self.name, col.name))
             self.columns.append(col)
+    def __repr__(self):
+        return '<TableMapping: %r>' % self.name
 
 class ColumnMapping(object):
-    def __init__(self, table_name, element):
+    def __init__(self, table_mapping, element):
+        self.table_mapping = table_mapping
         self.name = element.get('name')
         if not self.name: raise MappingError(
             'Error in table definition %r: '
-            'Column element without "name" attribute' % table_name)
+            'Column element without "name" attribute' % table_mapping.name)
         self.domain = element.get('domain')
-        self.attrs = [ attr.split('.')
-                       for attr in element.get('attr', '').split() ]
+        self.attrs = set(tuple(attr.split('.'))
+                         for attr in element.get('attr', '').split())
+        for attr in self.attrs:
+            if len(attr) < 2: raise MappingError(
+                'Invalid attribute value in column %s.%s: '
+                'must be in form of EntityName.AttributeName'
+                % (table_mapping.name, self.name))
+##        if table_mapping.entities:
+##            for attr in self.attrs:
+##                if attr[0] not in table_mapping.entities: raise MappingError(
+##                    "Invalid attribute value in column %s.%s: "
+##                    "entity %s does not contains inside 'entity' attribute "
+##                    "of table definition"
+##                    % (table_mapping.name, self.name, attr[0]))
+        if table_mapping.relations:
+            for attr in self.attrs:
+                if attr[:2] not in table_mapping.relations: raise MappingError(
+                    'Attribute %s does not correspond any relation'
+                    % '.'.join(attr))
         self.kind = element.get('kind')
         if self.kind not in (None, 'discriminator'): raise MappingError(
-            'Error in column definition %s.%s: invalid column kind: %s'
-            % (table_name, self.name, self.kind))
+            'Error in column %s.%s: invalid column kind: %s'
+            % (table_mapping.name, self.name, self.kind))
         cases = element.findall('case')
         if cases and self.kind != 'discriminator': raise MappingError(
             'Non-discriminator column %s.%s contains cases.It is not allowed'
-            % (table_name, self.name))
+            % (table_mapping.name, self.name))
         self.cases = [ (case.get('value'), case.get('entity'))
                        for case in cases ]
         for value, entity in self.cases:
             if not value or not entity: raise MappingError(
                 'Invalid discriminator case in column %s.%s'
-                % (table_name, self.name))
+                % (table_mapping.name, self.name))
+    def __repr__(self):
+        return '<ColumnMapping: %r.%r>' % (self.table_mapping.name, self.name)
 
 class DataSource(object):
     _cache = {}
@@ -90,11 +134,25 @@ class DataSource(object):
         self.provider = provider
         self.args = args
         self.keyargs = keyargs
-        self.mapping = keyargs.pop('mapping', None)
-
         self.transactions = set()        
         self.tables = {}    # table_name -> TableInfo
         self.entities = {}  # Entity -> EntityInfo
+        mapping = keyargs.pop('mapping', None)
+        if mapping is None: self.mapping = None
+        else:
+            if not isinstance(mapping, Mapping): self.mapping = Mapping(mapping)
+            self.load_schema_from_mapping()
+    def load_schema_from_mapping(self):
+        for table_name, table_mapping in self.mapping.tables.items():
+            table_name = table_mapping.name
+            table = TableInfo(self, table_name)
+            for col_mapping in table_mapping.columns:
+                table.columns.append(ColumnInfo(table, col_mapping.name))
+            col_count = len(table.columns)
+            for i, col in enumerate(table.columns):
+                col.old_offset = ROW_HEADER_SIZE + i
+                col.new_offset = col.old_offset + col_count
+            self.tables[table_name] = table
     def clear_schema(self):
         self.lock.acquire()
         try:
@@ -118,13 +176,16 @@ class TableInfo(object):
         self.name = name
         self.entities = []
         self.columns = []
+    def __repr__(self):
+        return '<TableInfo: %r>' % self.name
 
 class ColumnInfo(object):
     def __init__(self, table, name):
         self.table = table
         self.name = name
         self.attrs = []
-        table.columns.append(self)
+    def __repr__(self):
+        return '<ColumnInfo: %r.%r>' % (self.table, self.name)
 
 class Diagram(object):
     def __init__(self):
@@ -169,6 +230,9 @@ class Entity(object):
         bases = [ c for c in entity.__bases__
                     if issubclass(c, Entity) and c is not Entity ]
         entity._bases_ = bases
+        entity._self_with_all_bases_ = set((entity,))
+        for base in bases:
+            entity._self_with_all_bases_.update(base._self_with_all_bases_)
         if bases:
             roots = set(c._root_ for c in bases)
             if len(roots) > 1: raise DiagramError(
@@ -299,11 +363,11 @@ class Entity(object):
     @classmethod
     def _get_entity_info(entity):
         tr = local.transaction
-        if tr is not None: raise TransactionError(
+        if tr is None: raise TransactionError(
             'There are no active transaction in thread %s' % thread.get_ident())
         data_source = tr.data_source
-        return data_source.entities.get(entity) \
-               or EntityInfo(entity, data_source)
+        entity_info = data_source.entities.get(entity)
+        return entity_info or EntityInfo(entity, data_source)
     def __init__(self):
         pass
     @classmethod
@@ -311,7 +375,38 @@ class Entity(object):
         pass
 
 class EntityInfo(object):
-    pass
+    def __new__(cls, entity, data_source):
+        data_source.lock.acquire()
+        try:
+            entity_info = data_source.entities.get(entity)
+            if entity_info: return entity_info
+            self = object.__new__(cls)
+            data_source.entities[entity] = self
+            self._init_(entity, data_source)
+            return self
+        finally: data_source.lock.release()
+    def _init_(self, entity, data_source):
+        self.entity = entity
+        self.data_source = data_source
+        self.tables = []
+        self.attrs = {} # Attribute -> AttrInfo
+        if data_source.mapping is None: raise NotImplementedError
+        self_or_bases = set()
+        swab_names = set(e.__name__ for e in entity._self_with_all_bases_)
+        for table_name, table_mapping in data_source.mapping.tables.items():
+            for entity_name in table_mapping.entities:
+                if entity_name in swab_names:
+                    self.tables.append(data_source.tables[table_name])
+                    break
+        for attr in entity._attrs_:
+            self.attrs[attr] = AttrInfo(self, attr)
+
+class AttrInfo(object):
+    def __init__(self, entity_info, attr):
+        self.enity_info = entity_info
+        self.attr = attr
+        self.columns = []
+        # ...
     
 next_id = count().next
 

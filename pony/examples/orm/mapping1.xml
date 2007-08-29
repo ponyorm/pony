@@ -12,7 +12,7 @@
     <column name="GrNum" attr="Subject.groups.number" />
     <column name="SubjName" attr="Group.subjects.name" />
   </table>
-  <table name="PERSONS" entity="Person Professor Student">
+  <table name="PERSONS" entity="Person">
     <column name="Type" kind="discriminator">
       <case value="P" entity="Professor" />
       <case value="S" entity="Student" />
