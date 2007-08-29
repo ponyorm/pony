@@ -56,7 +56,7 @@ def decorator_with_params(old_dec):
 def error_method(*args, **kwargs):
     raise TypeError
 
-ident_re = re.compile(r'[A-Za-z_]\w*')
+ident_re = re.compile(r'^[A-Za-z_]\w*\Z')
 
 # is_ident = ident_re.match
 def is_ident(string):
