@@ -82,9 +82,9 @@ class DataSource(object):
         self._init_(provider, *args, **keyargs)
         key = (self.provider, self.mapping, self.args,
                tuple(sorted(self.keyargs.items())))
-        _cache_lock.acquire()
+        cls._cache_lock.acquire()
         try: return cls._cache.setdefault(key, self)
-        finally: _cache_lock.release()
+        finally: cls._cache_lock.release()
     def _init_(self, provider, *args, **keyargs):
         self.lock = threading.RLock() # threadsafe access to datasource schema
         self.provider = provider
@@ -109,6 +109,8 @@ class DataSource(object):
         if isinstance(provider, basestring):
             provider = utils.import_module('pony.dbproviders.' + provider)
         return provider.connect(*self.args, **self.keyargs)
+    def begin(self):
+        return begin(self)
 
 class TableInfo(object):
     def __init__(self, data_source, name):
@@ -140,39 +142,44 @@ class Diagram(object):
         finally: self.lock.release()
 
 class EntityMeta(type):
-    def __init__(cls, name, bases, dict):
-        super(EntityMeta, cls).__init__(name, bases, dict)
+    def __init__(entity, name, bases, dict):
+        super(EntityMeta, entity).__init__(name, bases, dict)
         if 'Entity' not in globals(): return
         outer_dict = sys._getframe(1).f_locals
         diagram = (dict.pop('_diagram_', None)
                    or outer_dict.get('_diagram_', None)
                    or outer_dict.setdefault('_diagram_', Diagram()))
-        cls._cls_init_(diagram)
-    def __setattr__(cls, name, value):
-        cls._cls_setattr_(name, value)
-    def __iter__(cls):
+        entity._cls_init_(diagram)
+    def __setattr__(entity, name, value):
+        entity._cls_setattr_(name, value)
+    def __iter__(entity):
         return iter(())
 
 class Entity(object):
     __metaclass__ = EntityMeta
     @classmethod
-    def _cls_init_(cls, diagram):
-        if cls.__name__ in diagram.entities:
-            raise DiagramError('Entity %s already exists' % cls.__name__)
-        bases = [ c for c in cls.__bases__
+    def _cls_setattr_(entity, name, value):
+        if name.startswith('_') and name.endswith('_'):
+            type.__setattr__(entity, name, value)
+        else: raise NotImplementedError
+    @classmethod
+    def _cls_init_(entity, diagram):
+        if entity.__name__ in diagram.entities:
+            raise DiagramError('Entity %s already exists' % entity.__name__)
+        bases = [ c for c in entity.__bases__
                     if issubclass(c, Entity) and c is not Entity ]
-        cls._bases_ = bases
+        entity._bases_ = bases
         if bases:
             roots = set(c._root_ for c in bases)
             if len(roots) > 1: raise DiagramError(
                 'With multiple inheritance of entities, '
                 'inheritance graph must be diamond-like')
-            cls._root_ = roots.pop()
+            entity._root_ = roots.pop()
             for c in bases:
                 if c._diagram_ is not diagram: raise DiagramError(
                     'When use inheritance, base and derived entities '
                     'must belong to same diagram')
-        else: cls._root_ = cls
+        else: entity._root_ = entity
 
         base_attrs = []
         base_attrs_dict = {}
@@ -181,22 +188,22 @@ class Entity(object):
                 if base_attrs_dict.setdefault(a.name, a) is not a:
                     raise DiagramError('Ambiguous attribute name %s' % a.name)
                 base_attrs.append(a)
-        cls._base_attrs_ = base_attrs
+        entity._base_attrs_ = base_attrs
 
         new_attrs = []
-        for name, attr in cls.__dict__.items():
+        for name, attr in entity.__dict__.items():
             if name in base_attrs_dict: raise DiagramError(
                 'Name %s hide base attribute %s' % (name,base_attrs_dict[name]))
             if not isinstance(attr, Attribute): continue
             if attr.entity is not None:
                 raise DiagramError('Duplicate use of attribute %s' % value)
             attr.name = name
-            attr.entity = cls
+            attr.entity = entity
             new_attrs.append(attr)
         new_attrs.sort(key=attrgetter('_id_'))
-        cls._new_attrs_ = new_attrs
+        entity._new_attrs_ = new_attrs
 
-        cls._keys_ = keys = cls.__dict__.get('_keys_', set())
+        entity._keys_ = keys = entity.__dict__.get('_keys_', set())
         primary_keys = set(key for key in keys
                                if isinstance(key, _PrimaryKeyTuple))
         if bases:
@@ -209,52 +216,53 @@ class Entity(object):
         if len(primary_keys) > 1: raise DiagramError(
             'Only one primary key can be defined in each entity class')
         elif not primary_keys:
-            if hasattr(cls, 'id'): raise DiagramError("Name 'id' alredy in use")
+            if hasattr(entity, 'id'):
+                raise DiagramError("Name 'id' alredy in use")
             _keys_ = set()
             attr = PrimaryKey(int) # Side effect: modifies _keys_ local variable
             attr.name = 'id'
-            attr.entity = cls
-            type.__setattr__(cls, 'id', attr)  # cls.id = attr
-            cls._new_attrs_.insert(0, attr)
+            attr.entity = entity
+            type.__setattr__(entity, 'id', attr)  # entity.id = attr
+            entity._new_attrs_.insert(0, attr)
             key = _keys_.pop()
-            cls._keys_.add(key)
-            cls._primary_key_ = key
-        else: cls._primary_key_ = primary_keys.pop()
-        cls._attrs_ = base_attrs + new_attrs
+            entity._keys_.add(key)
+            entity._primary_key_ = key
+        else: entity._primary_key_ = primary_keys.pop()
+        entity._attrs_ = base_attrs + new_attrs
         diagram.lock.acquire()
         try:
             diagram._clear()
-            cls._diagram_ = diagram
-            diagram.entities[cls.__name__] = cls
-            cls._cls_link_reverse_attrs_()
+            entity._diagram_ = diagram
+            diagram.entities[entity.__name__] = entity
+            entity._link_reverse_attrs_()
         finally: diagram.lock.release()
 
     @classmethod
-    def _cls_link_reverse_attrs_(cls):
-        diagram = cls._diagram_
-        for attr in cls._new_attrs_:
+    def _link_reverse_attrs_(entity):
+        diagram = entity._diagram_
+        for attr in entity._new_attrs_:
             py_type = attr.py_type
             if isinstance(py_type, basestring):
-                cls2 = diagram.entities.get(py_type)
-                if cls2 is None: continue
-                attr.py_type = cls2
+                entity2 = diagram.entities.get(py_type)
+                if entity2 is None: continue
+                attr.py_type = entity2
             elif issubclass(py_type, Entity):
-                cls2 = py_type
-                if cls2._diagram_ is not diagram: raise DiagramError(
+                entity2 = py_type
+                if entity2._diagram_ is not diagram: raise DiagramError(
                     'Interrelated entities must belong to same diagram. '
                     'Entities %s and %s belongs to different diagrams'
-                    % (cls.__name__, cls2.__name__))
+                    % (entity.__name__, entity2.__name__))
             else: continue
             
             reverse = attr.reverse
             if isinstance(reverse, basestring):
-                attr2 = getattr(cls2, reverse, None)
+                attr2 = getattr(entity2, reverse, None)
                 if attr2 is None: raise DiagramError(
                     'Reverse attribute %s.%s not found'
-                    % (cls2.__name__, reverse))
+                    % (entity2.__name__, reverse))
             elif isinstance(reverse, Attribute):
                 attr2 = reverse
-                if attr2.entity is not cls2: raise DiagramError(
+                if attr2.entity is not entity2: raise DiagramError(
                     'Incorrect reverse attribute %s used in %s' % (attr2, attr))
             elif reverse is not None: raise DiagramError(
                 "Value of 'reverse' option must be string. Got: %r"
@@ -262,8 +270,8 @@ class Entity(object):
             else:
                 candidates1 = []
                 candidates2 = []
-                for attr2 in cls2._new_attrs_:
-                    if attr2.py_type not in (cls, cls.__name__): continue
+                for attr2 in entity2._new_attrs_:
+                    if attr2.py_type not in (entity, entity.__name__): continue
                     reverse2 = attr2.reverse
                     if reverse2 in (attr, attr.name): candidates1.append(attr2)
                     elif reverse2 is None: candidates2.append(attr2)
@@ -278,25 +286,33 @@ class Entity(object):
             type2 = attr2.py_type
             msg = 'Inconsistent reverse attributes %s and %s'
             if isinstance(type2, basestring):
-                if type2 != cls.__name__: raise DiagramError(msg % (attr,attr2))
-                attr2.py_type = cls
-            elif type2 != cls: raise DiagramError(msg % (attr,attr2))
+                if type2 != entity.__name__:
+                    raise DiagramError(msg % (attr, attr2))
+                attr2.py_type = entity
+            elif type2 != entity: raise DiagramError(msg % (attr, attr2))
             reverse2 = attr2.reverse
             if reverse2 not in (None, attr, attr.name):
                 raise DiagramError(msg % (attr,attr2))
 
             attr.reverse = attr2
             attr2.reverse = attr
-            
     @classmethod
-    def _cls_setattr_(cls, name, value):
-        if name.startswith('_') and name.endswith('_'):
-            type.__setattr__(cls, name, value)
-        else: raise NotImplementedError
+    def _get_entity_info(entity):
+        tr = local.transaction
+        if tr is not None: raise TransactionError(
+            'There are no active transaction in thread %s' % thread.get_ident())
+        data_source = tr.data_source
+        return data_source.entities.get(entity) \
+               or EntityInfo(entity, data_source)
+    def __init__(self):
+        pass
     @classmethod
-    def _cls_get_info_(cls):
-        return diagram.get_entity_info(self)
+    def create(entity, *args, **keyargs):
+        pass
 
+class EntityInfo(object):
+    pass
+    
 next_id = count().next
 
 class Attribute(object):
@@ -320,6 +336,13 @@ class Attribute(object):
         return '%s.%s' % (owner_name, self.name or '?')
     def __repr__(self):
         return '<%s: %s>' % (self, self.__class__.__name__)
+    def __get__(self, obj, type):
+        if obj is None: return self
+        return Property(obj, self)
+    def __set__(self, obj, value):
+        raise NotImplementedError
+    def __delete__(self, obj):
+        raise NotImplementedError
 
 class Optional(Attribute):
     pass
@@ -358,6 +381,11 @@ class Set(Collection):
 ##class List(Collection): pass
 ##class Dict(Collection): pass
 ##class Relation(Collection): pass
+
+class Property(object):
+    def __init__(self, obj, attr):
+        self.obj = obj
+        self.attr = attr
 
 class Transaction(object):
     def __init__(self, data_source, connection=None):
@@ -398,9 +426,10 @@ local = Local()
 def get_transaction():
     return local.transaction
 
-def begin():
+def begin(data_source=None):
     if local.transaction is not None: raise TransactionError(
         'Transaction already started in thread %d' % thread.get_ident())
+    if data_source is not None: return Transaction(data_source)
     outer_dict = sys._getframe(1).f_locals
     data_source = outer_dict.get('_data_source_')
     if data_source is None: raise TransactionError(
