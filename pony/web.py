@@ -372,12 +372,8 @@ def guess_type(ext):
     return 'application/octet-stream'
 
 def get_static_dir_name():
-    main = sys.modules['__main__']
-    try: script_name = main.__file__
-    except AttributeError:  # interactive mode
-        return None
-    head, tail = os.path.split(script_name)
-    return os.path.join(head, 'static')
+    if pony.MAIN_DIR is None: return None
+    return os.path.join(pony.MAIN_DIR, 'static')
 
 static_dir = get_static_dir_name()
 
