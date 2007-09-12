@@ -1,4 +1,4 @@
-import re, time, datetime
+import re, os, os.path, sys, time, datetime
 
 from itertools import imap, ifilter
 from operator import itemgetter
@@ -6,9 +6,14 @@ from inspect import isfunction
 from time import strptime
 from datetime import datetime
 from os import urandom
-from os.path import dirname
 from codecs import BOM_UTF8, BOM_LE, BOM_BE
 from locale import getpreferredencoding
+
+class Symbol(object):
+    def __init__(self, name):
+        self.name = name
+    def __repr__(self):
+        return self.name
 
 def copy_func_attrs(new_func, old_func):
     if new_func is old_func: return
@@ -69,6 +74,17 @@ def import_module(name):
     components = name.split('.')
     for comp in components[1:]: mod = getattr(mod, comp)
     return mod
+
+def absolutize_path(filename, frame_depth=2):
+    code_filename = sys._getframe(frame_depth).f_code.co_filename
+    code_path = os.path.dirname(code_filename)
+    return os.path.join(code_path, filename)
+
+def get_mtime(filename):
+    stat = os.stat(filename)
+    mtime = stat.st_mtime
+    if sys.platform == "win32": mtime -= stat.st_ctime
+    return mtime
 
 def current_timestamp():
     result = datetime.now().isoformat(' ')

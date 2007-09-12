@@ -1,6 +1,8 @@
 from pony.orm import *
 from datetime import date
 
+_data_source_ = DataSource('sqlite', ':memory:', mapping='mapping1.xml')
+
 class Group(Entity):
     number = PrimaryKey(int)
     students = Set("Student")
