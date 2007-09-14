@@ -15,10 +15,9 @@ class ConstraintError(OrmError): pass
 class CreateError(OrmError): pass
 class UpdateError(OrmError): pass
 
+DATA_HEADER = [ None, None ]
+
 ROW_HEADER = [ None, None, 0, 0 ]
-ROW_HEADER_SIZE = 4
-ROW_OBJECT = 0
-ROW_STATUS = 1
 ROW_READ_MASK = 2
 ROW_UPDATE_MASK = 3
 
@@ -30,12 +29,15 @@ class Attribute(object):
     def __init__(self, py_type, *args, **keyargs):
         if self.__class__ is Attribute:
             raise TypeError("'Atrribute' is abstract type")
+        self.pk_offset = None
         self._id_ = next_id()
         self.py_type = py_type
         self.name = None
         self.entity = None
         self.args = args
         self.options = keyargs
+        try: self.default = keyargs.pop('default')
+        except KeyError: pass
         self.reverse = keyargs.pop('reverse', None)
         if self.reverse is None: pass
         elif not isinstance(self.reverse, (basestring, Attribute)):
@@ -54,22 +56,25 @@ class Attribute(object):
     def __get__(self, obj, type=None):
         if obj is None: return self
         try: return obj._pk_[self.pk_offset]
-        except AttributeError: pass
+        except TypeError: pass
         attr_info = obj._get_info().attrs[self]
         trans = local.transaction
-        for table, column in attr_info.columns.items():
-            cache = trans.caches[table]
-            row = cache.pk_index[obj._pk_]
-            value = row[column.new_offset]
-            if value is not UNKNOWN: return value
-        else: raise NotImplementedError
+        data = trans.objects.get(obj)
+        if data is None: raise NotImplementedError
+        value = data[self.new_offset]
+        if value is UNKNOWN: raise NotImplementedError
+        return value
     def __set__(self, obj, value):
         pk = obj._pk_
-        if hasattr(self, 'pk_offset'):
+        if self.pk_offset is not None:
             if value == pk[self.pk_offset]: return
             raise TypeError('Cannot change value of primary key')
         attr_info = obj._get_info().attrs[self]
         trans = local.transaction
+        data = trans.objects.get(obj)
+        if data is None: raise NotImplementedError
+        if data[1] != 'C': data[1] = 'U'
+        data[self.new_offset] = value
         undo = []
         rows_for_update = []
         try:
@@ -101,8 +106,8 @@ class Attribute(object):
         else:
             for row, column in rows_for_update:
                 row[column.new_offset] = value
-                if row[ROW_STATUS] != 'C':
-                    row[ROW_STATUS] = 'U'
+                if row[1] != 'C':
+                    row[1] = 'U'
                     row[ROW_UPDATE_MASK] |= column.mask
     def __delete__(self, obj):
         raise NotImplementedError
@@ -175,8 +180,6 @@ class EntityMeta(type):
         entity._cls_setattr_(name, value)
     def __iter__(entity):
         return iter(())
-
-INTERNAL_CREATION = utils.Symbol('INTERNAL_CREATION')
 
 class Entity(object):
     __metaclass__ = EntityMeta
@@ -259,9 +262,21 @@ class Entity(object):
             entity._primary_key_ = key
         else: entity._primary_key_ = primary_keys.pop()
         for i, attr in enumerate(entity._primary_key_): attr.pk_offset = i
-        entity._pk_names_ = tuple(attr.name for attr in entity._primary_key_)
+        entity._pk_names_ = tuple(attr.name for attr in entity._primary_key_) # ???
+
         entity._attrs_ = base_attrs + new_attrs
         entity._attr_dict_ = dict((attr.name, attr) for attr in entity._attrs_)
+
+        next_offset = count(len(DATA_HEADER)).next
+        for attr in entity._attrs_:
+            if attr.pk_offset is None:
+                attr.old_offset = next_offset()
+                attr.new_offset = next_offset()
+            else: attr.old_offset = attr.new_offset = next_offset()
+        data_size = entity._attrs_[-1].new_offset + 1
+        entity._data_template_ = \
+            DATA_HEADER + [ UNKNOWN ]*(data_size - len(DATA_HEADER))
+
         diagram.lock.acquire()
         try:
             diagram._clear()
@@ -361,9 +376,9 @@ class Entity(object):
                 raise CreateError('Invalid count of attrs in primary key')
             for name, value in zip(entity._pk_names_, args):
                 if keyargs.setdefault(name, value) != value:
-                    raise CreateError("Ambiguous attribute value for %r" % name)
+                    raise CreateError('Ambiguous attribute value for %r' % name)
         for name in ifilterfalse(entity._attr_dict_.__contains__, keyargs):
-            raise CreateError("Unknown attribute %r" % name)
+            raise CreateError('Unknown attribute %r' % name)
         pk = args or tuple(map(keyargs.get, entity._pk_names_))
         if None in pk: raise CreateError('Primary key is not specified')
 
@@ -376,21 +391,35 @@ class Entity(object):
                 entity._objects_[pk] = obj
         finally: entity._lock_.release()
 
+        data = entity._data_template_[:]
+        data[0] = obj
+        data[1] = 'C'
+        for attr in entity._attrs_:
+            try: value = keyargs[attr.name]
+            except KeyError:
+                if isinstance(attr, Required): raise CreateError(
+                    'Required attribute %r does not specified' % attr.name)
+                else: data[attr.new_offset] = None
+            else: data[attr.new_offset] = value
+
         info = entity._get_info()
         trans = local.transaction
+        if trans.objects.setdefault(obj, data) is not data:
+            raise CreateError(
+                '%s with such primary key already exists: %s'
+                % (entity.__name__, ', '.join(repr(item) for item in pk)))
+        
         for table, name_map in info.tables.items():
             cache = trans.caches.get(table)
             if cache is None: cache = trans.caches[table] = TableCache(table)
-            new_row = cache.empty_row[:]
+            new_row = cache.row_template[:]
             new_row[0] = obj
             new_row[1] = 'C'
             for name, value in keyargs.items():
                 column = name_map.get(name)
                 if column is not None: new_row[column.new_offset] = value
             if cache.pk_index.setdefault(pk, new_row) is not new_row:
-                raise CreateError(
-                    '%s with such primary key already exists: %s'
-                    % (entity.__name__, ', '.join(repr(item) for item in pk)))
+                raise AssertionError
             try:
                 for index in cache.indexes:
                     key = tuple(map(new_row.__getitem__, index.new_offsets))
@@ -454,8 +483,7 @@ class EntityInfo(object):
                     self.tables[table] = {}
                     break
         self.attrs = {} # Attribute -> AttrInfo
-        for attr in entity._attrs_:
-            self.attrs[attr] = AttrInfo(self, attr)
+        for attr in entity._attrs_: self.attrs[attr] = AttrInfo(self, attr)
         self.keys = set()
         for attr_info in self.attrs.values():
             for table, column in attr_info.columns.items():
@@ -562,16 +590,18 @@ class DataSource(object):
                                     % table.name)
             for table in self.tables.values():
                 if not table.entities: continue
-                next_offset = count(ROW_HEADER_SIZE).next
+                next_offset = count(len(ROW_HEADER)).next
                 mask_offset = count().next
+                for i, column in enumerate(table.primary_key):
+                    column.pk_offset = i
                 for column in table.columns:
-                    if column in table.primary_key:
-                        column.old_offset = column.new_offset = next_offset()
-                        column.mask = 0
-                    else:
+                    if column.pk_offset is None:
                         column.old_offset = next_offset()
                         column.new_offset = next_offset()
                         column.mask = 1 << mask_offset()
+                    else:
+                        column.old_offset = column.new_offset = next_offset()
+                        column.mask = 0
         finally: self.lock.release()
     def clear_schema(self):
         self.lock.acquire()
@@ -635,6 +665,7 @@ class TableInfo(object):
 class ColumnInfo(object):
     def __init__(self, table, x):
         self.table = table
+        self.pk_offset = None
         if isinstance(x, basestring): self.name = x
         else: self._init_from_xml_element(x)
     def __repr__(self):
@@ -680,8 +711,8 @@ class Transaction(object):
         self.data_source = data_source
         self.connection = connection
         self.diagrams = set()
-        self.caches = {} # TableInfo -> TableCache
-
+        self.caches = {}  # TableInfo -> TableCache
+        self.objects = {} # object -> row
         data_source.lock.acquire()
         try: data_source.transactions.add(self)
         finally: data_source.lock.release()
@@ -706,9 +737,8 @@ class Transaction(object):
 class TableCache(object):
     def __init__(self, table):
         self.table = table
-        col_count = len(table.columns)
-        self.row_size = ROW_HEADER_SIZE + col_count*2
-        self.empty_row = ROW_HEADER + [ UNKNOWN ]*(col_count * 2)
+        row_size = table.columns[-1].new_offset + 1
+        self.row_template = ROW_HEADER + [ UNKNOWN ]*(row_size-len(ROW_HEADER))
         self.pk_index = {}
         self.indexes = set()
         for key in table.secondary_keys: self.indexes.add(Index(self, key))
