@@ -21,7 +21,10 @@ ROW_HEADER = [ None, None, 0, 0 ]
 ROW_READ_MASK = 2
 ROW_UPDATE_MASK = 3
 
-UNKNOWN = utils.Symbol('UNKNOWN')
+class UnknownType(object):
+    def __repr__(self): return 'UNKNOWN'
+
+UNKNOWN = UnknownType()
 
 next_id = count().next
 

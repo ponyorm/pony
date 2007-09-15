@@ -9,12 +9,6 @@ from os import urandom
 from codecs import BOM_UTF8, BOM_LE, BOM_BE
 from locale import getpreferredencoding
 
-class Symbol(object):
-    def __init__(self, name):
-        self.name = name
-    def __repr__(self):
-        return self.name
-
 def copy_func_attrs(new_func, old_func):
     if new_func is old_func: return
     new_func.__name__ = old_func.__name__
