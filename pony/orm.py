@@ -37,7 +37,12 @@ class Attribute(object):
         self.args = args
         self.options = keyargs
         try: self.default = keyargs.pop('default')
-        except KeyError: pass
+        except KeyError: self.default = None
+        else:
+            if self.default is None and isinstance(self, Required):
+                raise TypeError(
+                    'Default value for required attribute %s cannot be None'
+                    % self)
         self.reverse = keyargs.pop('reverse', None)
         if self.reverse is None: pass
         elif not isinstance(self.reverse, (basestring, Attribute)):
@@ -69,46 +74,59 @@ class Attribute(object):
         if self.pk_offset is not None:
             if value == pk[self.pk_offset]: return
             raise TypeError('Cannot change value of primary key')
+        if value is None and isinstance(self, Required):
+            raise TypeError('Required attribute %s.%s cannot be set to None'
+                            % (obj.__class__.__name__, self.name))
         attr_info = obj._get_info().attrs[self]
         trans = local.transaction
         data = trans.objects.get(obj)
         if data is None: raise NotImplementedError
-        if data[1] != 'C': data[1] = 'U'
-        data[self.new_offset] = value
+        prev = data[self.new_offset]
+        if prev == value: return
         undo = []
-        rows_for_update = []
         try:
-            for table, column in attr_info.columns.items():
-                cache = trans.caches[table]
-                row = cache.pk_index[pk]
-                for index in cache.indexes:
-                    try: position = index.columns.index(column)
-                    except ValueError: continue
-                    index_new = index.new
-                    new_key = map(row.__getitem__, index.new_offsets)
-                    old_key = tuple(new_key)
-                    new_key[position] = value
-                    new_key = tuple(new_key)
-                    conflict_row = index_new.get(new_key)
-                    if conflict_row is None or conflict_row is row:
-                        undo.append((index_new, row, old_key, new_key))
-                        del index_new[old_key]
-                        index_new[new_key] = row
-                    elif index is cache.pk_index:
-                          raise UpdateError('Duplicate primary key value')
-                    else: raise UpdateError('Duplicate secondary key value')
-                rows_for_update.append((row, column))
+            for key in obj._keys_:
+                if key is obj._primary_key_: continue
+                if self not in key: continue
+                position = list(key).index(self)
+                new_key = [ data[attr.new_offset] for attr in key ]
+                old_key = tuple(new_key)
+                new_key[position] = value
+                if UNKNOWN in new_key: continue
+                new_key = tuple(new_key)
+                try: old_index, new_index = trans.indexes[key]
+                except KeyError:
+                    old_index, new_index = trans.indexes[key] = ({}, {})
+                obj2 = new_index.setdefault(new_key, obj)
+                if obj2 is not obj:
+                    key_str = ', '.join(repr(item) for item in new_key)
+                    raise UpdateError(
+                        'Cannot update %s.%s: '
+                        '%s with such unique index already exists: %s'
+                        % (obj.__class__.__name__, self.name,
+                           obj2.__class__.__name__, key_str))
+                if prev is not UNKNOWN:
+                      del new_index[old_key]
+                      undo.append((new_index, obj, old_key, new_key))
+                else: undo.append((new_index, obj, None, new_key))
         except UpdateError:
-            for index_new, row, old_key, new_key in undo:
-                del index_new[new_key]
-                index_new[old_key] = row
+            for new_index, obj, old_key, new_key in undo:
+                del new_index[new_key]
+                if old_key is not None: new_index[old_key] = obj
             raise
         else:
-            for row, column in rows_for_update:
-                row[column.new_offset] = value
-                if row[1] != 'C':
-                    row[1] = 'U'
-                    row[ROW_UPDATE_MASK] |= column.mask
+            if data[1] != 'C': data[1] = 'U'
+            data[self.new_offset] = value
+        for table, column in attr_info.columns.items():
+            cache = trans.caches.get(table)
+            if cache is None: cache = trans.caches[table] = TableCache(table)
+            row = cache.rows.get(pk)
+            if row is None: raise NotImplementedError # the cache remains in corrupted state
+            assert row[0] is obj
+            if row[1] != 'C':
+                row[1] = 'U'
+                row[ROW_UPDATE_MASK] |= column.mask
+            row[column.new_offset] = value
     def __delete__(self, obj):
         raise NotImplementedError
 
@@ -397,45 +415,52 @@ class Entity(object):
         for attr in entity._attrs_:
             try: value = keyargs[attr.name]
             except KeyError:
-                if isinstance(attr, Required): raise CreateError(
-                    'Required attribute %r does not specified' % attr.name)
-                else: data[attr.new_offset] = None
-            else: data[attr.new_offset] = value
+                value = attr.default
+                msg = 'Required attribute %s.%s does not specified'
+            else: msg = 'Value of required attribute %s.%s cannot be None'
+            if value is None and isinstance(attr, Required):
+                raise CreateError(msg % (entity.__name__, attr.name))
+            data[attr.new_offset] = value
 
         info = entity._get_info()
         trans = local.transaction
-        if trans.objects.setdefault(obj, data) is not data:
-            raise CreateError(
-                '%s with such primary key already exists: %s'
-                % (entity.__name__, ', '.join(repr(item) for item in pk)))
-        
-        for table, name_map in info.tables.items():
+        try:
+            for key in entity._keys_:
+                key_value = tuple(data[attr.new_offset] for attr in key)
+                try: old_index, new_index = trans.indexes[key]
+                except KeyError:
+                    old_index, new_index = trans.indexes[key] = ({}, {})
+                obj2 = new_index.setdefault(key_value, obj)
+                if obj2 is not obj:
+                    key_str = ', '.join(repr(item) for item in key_value)
+                    if key is entity._primary_key_: key_type = 'primary key'
+                    else: key_type = 'unique index'
+                    raise CreateError(
+                        '%s with such %s already exists: %s'
+                        % (obj2.__class__.__name__, key_type, key_str))
+        except CreateError, e:
+            for key in entity._keys_:
+                key_value = tuple(data[attr.new_offset] for attr in key)
+                index_pair = trans.indexes.get(key)
+                if index_pair is None: continue
+                old_index, new_index = index_pair
+                if new_index.get(key_value) is obj: del new_index[key_value]
+            raise
+        if trans.objects.setdefault(obj, data) is not data: raise AssertionError
+        for table in info.tables:
             cache = trans.caches.get(table)
             if cache is None: cache = trans.caches[table] = TableCache(table)
             new_row = cache.row_template[:]
             new_row[0] = obj
             new_row[1] = 'C'
-            for name, value in keyargs.items():
-                column = name_map.get(name)
-                if column is not None: new_row[column.new_offset] = value
-            if cache.pk_index.setdefault(pk, new_row) is not new_row:
+            for column in table.columns:
+                for attr in column.attrs:
+                    if issubclass(entity, attr.entity):
+                        new_row[column.new_offset] = data[attr.new_offset]
+                        break
+                else: new_row[column.new_offset] = None
+            if cache.rows.setdefault(pk, new_row) is not new_row:
                 raise AssertionError
-            try:
-                for index in cache.indexes:
-                    key = tuple(map(new_row.__getitem__, index.new_offsets))
-                    if UNKNOWN in key: continue
-                    if index.new.setdefault(key, new_row) is not new_row:
-                        raise CreateError(
-                            '%s with such unique index already exists: %s'
-                            % (entity.__name__, ', '.join(repr(item)
-                                                          for item in key)))
-            except CreateError:
-                del cache.pk_index[pk]
-                for index in cache.indexes:
-                    key = tuple(map(new_row.__getitem__, index.new_offsets))
-                    if UNKNOWN in key: continue
-                    if index.new[key] is new_row: del index.new[key]
-                raise
         return obj
     @classmethod
     def find(entity, *args, **keyargs):
@@ -499,7 +524,8 @@ class AttrInfo(object):
         self.enity_info = info
         self.attr = attr
         name_pair = attr.entity.__name__, attr.name
-        self.columns = info.data_source.attrs.get(name_pair, {}).copy()
+        self.columns = info.data_source.attr_map.get(name_pair, {}).copy()
+        for table, column in self.columns.items(): column.attrs.add(attr)
     def __repr__(self):
         return '<AttrInfo: %s.%s>' % (self.enity_info.entity.__name__,
                                       self.attr.name)
@@ -540,10 +566,10 @@ class DataSource(object):
         self.args = args
         self.keyargs = keyargs
         self.transactions = set()        
-        self.tables = {}      # table_name -> TableInfo
+        self.tables = {}   # table_name -> TableInfo
         self.diagrams = set()
-        self.entities = {}    # Entity -> EntityInfo
-        self.attrs = {}  # (entity_name, attr_name) -> (TableInfo -> ColumnInfo)
+        self.entities = {} # Entity -> EntityInfo
+        self.attr_map = {} # (entity_name, attr_name)->(TableInfo->ColumnInfo)
         if mapping is not None: self.load_mapping()
     def load_mapping(self):
         for table_element in self.mapping.findall('table'):
@@ -553,8 +579,8 @@ class DataSource(object):
                                    % table.name)
             if table.entities:
                 for column in table.columns:
-                    for attr in column.attrs:
-                        tables = self.attrs.setdefault(attr[:2], {})
+                    for attr_name in column.attr_names:
+                        tables = self.attr_map.setdefault(attr_name[:2], {})
                         if tables.setdefault(table, column) is not column:
                             raise NotImplementedError
     def generate_schema(self, diagram):
@@ -571,9 +597,9 @@ class DataSource(object):
                     for table in info.tables:
                         key_columns = []
                         for name_pair in name_pairs:
-                            tables = self.attrs.get(name_pair)
+                            tables = self.attr_map.get(name_pair)
                             if tables is None: raise SchemaError(
-                                'Key column %s.%s does not have '
+                                'Key column %r.%r does not have '
                                 'correspond column' % name_pair)
                             column = tables.get(table)
                             if column is None: break
@@ -666,6 +692,7 @@ class ColumnInfo(object):
     def __init__(self, table, x):
         self.table = table
         self.pk_offset = None
+        self.attrs = set()
         if isinstance(x, basestring): self.name = x
         else: self._init_from_xml_element(x)
     def __repr__(self):
@@ -677,18 +704,18 @@ class ColumnInfo(object):
             'Error in table definition %r: '
             'Column element without "name" attribute' % table.name)
         self.domain = element.get('domain')
-        self.attrs = set(tuple(attr.split('.'))
-                         for attr in element.get('attr', '').split())
-        for attr in self.attrs:
-            if len(attr) < 2: raise MappingError(
+        self.attr_names = set(tuple(attr.split('.'))
+                              for attr in element.get('attr', '').split())
+        for attr_name in self.attr_names:
+            if len(attr_name) < 2: raise MappingError(
                 'Invalid attribute value in column %r.%r: '
                 'must be in form of EntityName.AttributeName'
                 % (table.name, self.name))
         if table.relations:
-            for attr in self.attrs:
-                if attr[:2] not in table.relations: raise MappingError(
+            for attr_name in self.attr_names:
+                if attr_name[:2] not in table.relations: raise MappingError(
                     'Attribute %s does not correspond any relation'
-                    % '.'.join(attr))
+                    % '.'.join(attr_name))
         self.kind = element.get('kind')
         if self.kind not in (None, 'discriminator'): raise MappingError(
             'Error in column %r.%r: invalid column kind: %r'
@@ -713,6 +740,7 @@ class Transaction(object):
         self.diagrams = set()
         self.caches = {}  # TableInfo -> TableCache
         self.objects = {} # object -> row
+        self.indexes = {} # key_attrs -> ({old_key -> obj}, {new_key -> obj})
         data_source.lock.acquire()
         try: data_source.transactions.add(self)
         finally: data_source.lock.release()
@@ -739,18 +767,7 @@ class TableCache(object):
         self.table = table
         row_size = table.columns[-1].new_offset + 1
         self.row_template = ROW_HEADER + [ UNKNOWN ]*(row_size-len(ROW_HEADER))
-        self.pk_index = {}
-        self.indexes = set()
-        for key in table.secondary_keys: self.indexes.add(Index(self, key))
-
-class Index(object):
-    def __init__(self, cache, columns):
-        self.cache = cache
-        self.columns = list(columns)
-        self.new_offsets = tuple(column.new_offset for column in columns)
-        self.old_offsets = tuple(column.old_offset for column in columns)
-        self.old = {}
-        self.new = {}
+        self.rows = {}
 
 class Local(threading.local):
     def __init__(self):
