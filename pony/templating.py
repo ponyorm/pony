@@ -1,7 +1,7 @@
 import sys, os.path, threading, inspect, re, weakref, textwrap
 
 from utils import (read_text_file, is_ident,
-                   decorator, decorator_with_params)
+                   decorator, decorator_with_params, get_mtime)
 
 try: real_stdout
 except: real_stdout = sys.stdout
@@ -792,7 +792,7 @@ def markup_from_string(str_cls, s,
 template_file_cache = {}
 
 def markup_from_file(str_cls, filename, encoding=None, keep_indent=False):
-    mtime = utils.get_mtime(filename)
+    mtime = get_mtime(filename)
     old_mtime, markup = template_file_cache.get(filename, (None, None))
     if markup and mtime == old_mtime: return markup
     text = read_text_file(filename, encoding)
