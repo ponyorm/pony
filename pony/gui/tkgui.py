@@ -275,10 +275,7 @@ tk_lock = threading.Lock()
 
 class TkThread(threading.Thread):
     def __init__(self):
-        threading.Thread.__init__(self)
-        self.root = Tk()
-        self.window = TkMainWindow(self.root)
-        self.window.bind("<Destroy>", self.quit)
+        threading.Thread.__init__(self)        
         self.setDaemon(True)
     def quit(self, event):
         self.window.after_cancel(self.window.after_handler)
@@ -293,6 +290,9 @@ class TkThread(threading.Thread):
             tk_thread = self
         finally: tk_lock.release()
         try:
+            self.root = Tk() 
+            self.window = TkMainWindow(self.root)
+            self.window.bind("<Destroy>", self.quit)
             self.window.load()
             self.window.check_data()
             self.root.mainloop()
