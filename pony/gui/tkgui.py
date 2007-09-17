@@ -281,6 +281,9 @@ class TkThread(threading.Thread):
         self.window.after_cancel(self.window.after_handler)
         self.window.destroy()
         self.root.quit()
+        self.window.tabs.current_tab_number = None
+        self.window.show_last_record_var = None
+        self.window.show_since_start_var = None
     def run(self):
         global tk_thread
         time.sleep(.5)
