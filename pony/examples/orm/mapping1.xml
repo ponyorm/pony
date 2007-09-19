@@ -20,8 +20,10 @@
     <column name="Id" attr="Person.id" />
     <column name="FirstName" attr="Person.first_name" />
     <column name="LastName" attr="Person.last_name" />
+    <column name="Passport" attr="Person.passport" />
     <column name="Title" attr="Professor.title" />
     <column name="GrNum" attr="Student.group" />
+    <column name="NZach" attr="Student.nzach" />
   </table>
   <table name="MARKS" entity="Mark">
     <column name="Date" attr="Mark.date" />

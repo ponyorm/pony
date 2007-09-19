@@ -76,10 +76,10 @@ class Attribute(object):
         pk = obj._pk_
         if attr.pk_offset is not None:
             if value == pk[attr.pk_offset]: return
-            raise TypeError('Cannot change value of primary key')
+            raise UpdateError('Cannot change value of primary key')
         if value is None and isinstance(attr, Required):
-            raise TypeError('Required attribute %s.%s cannot be set to None'
-                            % (obj.__class__.__name__, attr.name))
+            raise UpdateError('Required attribute %s.%s cannot be set to None'
+                              % (obj.__class__.__name__, attr.name))
         attr_info = obj._get_info().attrs[attr]
         trans = local.transaction
         data = trans.objects.get(obj)
@@ -117,10 +117,9 @@ class Attribute(object):
                 del new_index[new_key]
                 if old_key is not None: new_index[old_key] = obj
             raise
-        else:
-            if data[1] != 'C': data[1] = 'U'
-            data[attr.new_offset] = value
-        for table, column in attr_info.columns.items():
+        if data[1] != 'C': data[1] = 'U'
+        data[attr.new_offset] = value
+        for table, column in attr_info.tables.items():
             cache = trans.caches.get(table)
             if cache is None: cache = trans.caches[table] = Cache(table)
             row = cache.rows.get(pk)
@@ -458,7 +457,7 @@ class Entity(object):
             new_row[1] = 'C'
             for column in table.columns:
                 for attr in column.attrs:
-                    if issubclass(entity, attr.entity):
+                    if entity is attr.entity or issubclass(entity, attr.entity):
                         new_row[column.new_offset] = data[attr.new_offset]
                         break
                 else: new_row[column.new_offset] = None
@@ -469,18 +468,70 @@ class Entity(object):
     def find(entity, *args, **keyargs):
         raise NotImplementedError
     def set(obj, **keyargs):
-        for name in ifilterfalse(obj._attr_dict_.__contains__, keyargs):
-            raise CreateError("Unknown attribute %r" % name)
-        pk = obj._pk_
         info = obj._get_info()
         trans = local.transaction
+        data = trans.objects.get(obj)
+        if data is None: raise NotImplementedError
+        old_data = data[:]
+        attrs = set()
+        for name, value in keyargs.items():
+            attr = obj._attr_dict_.get(name)
+            if attr is None: raise UpdateError("Unknown attribute: %r" % name)
+            if data[attr.new_offset] == value: continue
+            if attr.pk_offset is not None:
+                raise UpdateError('Cannot change value of primary key')
+            if value is None and isinstance(attr, Required):
+                raise UpdateError(
+                    'Required attribute %s.%s cannot be set to None'
+                    % (obj.__class__.__name__, attr.name))
+            attrs.add(attr)
+            data[attr.new_offset] = value
+        if not attrs: return
+        undo = []
         try:
-            for table in info.tables:
-                pass
+            for key in obj._keys_:
+                if key is obj._primary_key_: continue
+                new_key = tuple(data[attr.new_offset] for attr in key)
+                if UNKNOWN in new_key: continue
+                old_key = tuple(old_data[attr.new_offset] for attr in key)
+                if old_key == new_key: continue
+                try: old_index, new_index = trans.indexes[key]
+                except KeyError:
+                    old_index, new_index = trans.indexes[key] = ({}, {})
+                obj2 = new_index.setdefault(new_key, obj)
+                if obj2 is not obj:
+                    key_str = ', '.join(repr(item) for item in new_key)
+                    raise UpdateError(
+                        'Cannot update %s.%s: '
+                        '%s with such unique index already exists: %s'
+                        % (obj.__class__.__name__, attr.name,
+                           obj2.__class__.__name__, key_str))
+                if UNKNOWN not in old_key:
+                      del new_index[old_key]
+                      undo.append((new_index, obj, old_key, new_key))
+                else: undo.append((new_index, obj, None, new_key))
         except UpdateError:
+            data[:] = old_data
+            for new_index, obj, old_key, new_key in undo:
+                del new_index[new_key]
+                if old_key is not None: new_index[old_key] = obj
             raise
-        else:
-            pass
+        if data[1] != 'C': data[1] = 'U'
+        pk = obj._pk_
+        for table in info.tables:
+            cache = trans.caches.get(table)
+            if cache is None: cache = trans.caches[table] = Cache(table)
+            row = cache.rows.get(pk)
+            if row is None: raise NotImplementedError # the cache remains in corrupted state
+            assert row[0] is obj
+            for attr in attrs:
+                attr_info = info.attrs[attr]
+                column = attr_info.tables.get(table)
+                if column is None: continue
+                if row[1] != 'C':
+                    row[1] = 'U'
+                    row[ROW_UPDATE_MASK] |= column.mask
+                row[column.new_offset] = data[attr.new_offset]
         
 def old(obj):
     return OldProxy(obj)
@@ -514,7 +565,7 @@ class EntityInfo(object):
         for attr in entity._attrs_: info.attrs[attr] = AttrInfo(info, attr)
         info.keys = set()
         for attr_info in info.attrs.values():
-            for table, column in attr_info.columns.items():
+            for table, column in attr_info.tables.items():
                 info.tables[table][attr_info.attr.name] = column
         for key in entity._keys_:
             key2 = tuple(map(info.attrs.__getitem__, key))
@@ -527,8 +578,9 @@ class AttrInfo(object):
         attr_info.enity_info = info
         attr_info.attr = attr
         name_pair = attr.entity.__name__, attr.name
-        attr_info.columns = info.data_source.attr_map.get(name_pair, {}).copy()
-        for table, column in attr_info.columns.items(): column.attrs.add(attr)
+        attr_info.tables = info.data_source.attr_map.get(name_pair, {}).copy()
+        for table, column in attr_info.tables.items():
+            column.attrs.add(attr)
     def __repr__(attr_info):
         return '<AttrInfo: %s.%s>' % (attr_info.enity_info.entity.__name__,
                                       attr_info.attr.name)

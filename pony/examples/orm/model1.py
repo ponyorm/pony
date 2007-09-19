@@ -16,6 +16,7 @@ class Subject(Entity):
 class Person(Entity):
     first_name = Required(unicode)
     last_name = Required(unicode)
+    passport = Unique(str)
 
 class Professor(Person):
     title = Required(str)
@@ -23,6 +24,7 @@ class Professor(Person):
 class Student(Person):
     group = Required("Group")
     marks = Set("Mark")
+    nzach = Unique(int)
 
 class Mark(Entity):
     student = Required("Student")
