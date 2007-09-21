@@ -82,18 +82,23 @@ class Attribute(object):
                               % (obj.__class__.__name__, attr.name))
         attr_info = obj._get_info().attrs[attr]
         trans = local.transaction
+        get_offset = obj._new_offsets_.__getitem__
         data = trans.objects.get(obj)
-        if data is None: raise NotImplementedError
-        prev = data[obj._new_offsets_[attr]]
+        if data is None:
+            data = trans.objects[obj] = obj._data_template_[:]
+            data[0] = obj
+            data[1] = 'U'
+            for a, v in zip(obj._pk_attrs_, obj._pk_):
+                data[get_offset(a)] = v
+        prev = data[get_offset(attr)]
         if prev == value: return
         undo = []
         try:
             for key in obj._keys_:
-                if key is obj._primary_key_: continue
+                if key is obj._pk_attrs_: continue
                 if attr not in key: continue
                 position = list(key).index(attr)
-                new_key = map(data.__getitem__,
-                              map(obj._new_offsets_.__getitem__, key))
+                new_key = map(data.__getitem__, map(get_offset, key))
                 old_key = tuple(new_key)
                 new_key[position] = value
                 if UNKNOWN in new_key: continue
@@ -119,17 +124,23 @@ class Attribute(object):
                 if old_key is not None: new_index[old_key] = obj
             raise
         if data[1] != 'C': data[1] = 'U'
-        data[obj._new_offsets_[attr]] = value
+        data[get_offset(attr)] = value
         for table, column in attr_info.tables.items():
             cache = trans.caches.get(table)
             if cache is None: cache = trans.caches[table] = Cache(table)
             row = cache.rows.get(pk)
-            if row is None: raise NotImplementedError # the cache remains in corrupted state
-            assert row[0] is obj
+            if row is None:
+                row = cache.rows[pk] = cache.row_template[:]
+                row[0] = obj
+                row[1] = 'U'
+                for c, v in zip(table.pk_columns, obj._pk_):
+                    row[c.new_offset] = v
+            else: assert row[0] is obj
             if row[1] != 'C':
                 row[1] = 'U'
                 row[ROW_UPDATE_MASK] |= column.mask
             row[column.new_offset] = value
+            print column, column.mask, row
     def __delete__(attr, obj):
         raise NotImplementedError
 
@@ -280,10 +291,10 @@ class Entity(object):
             entity._new_attrs_.insert(0, attr)
             key = _keys_.pop()
             entity._keys_.add(key)
-            entity._primary_key_ = key
-        else: entity._primary_key_ = primary_keys.pop()
-        for i, attr in enumerate(entity._primary_key_): attr.pk_offset = i
-        entity._pk_names_ = tuple(attr.name for attr in entity._primary_key_) # ???
+            entity._pk_attrs_ = key
+        else: entity._pk_attrs_ = primary_keys.pop()
+        for i, attr in enumerate(entity._pk_attrs_): attr.pk_offset = i
+        entity._pk_names_ = tuple(attr.name for attr in entity._pk_attrs_) # ???
 
         entity._attrs_ = base_attrs + new_attrs
         entity._attr_dict_ = dict((attr.name, attr) for attr in entity._attrs_)
@@ -395,7 +406,7 @@ class Entity(object):
     @classmethod
     def create(entity, *args, **keyargs):
         if args:
-            if len(args) != len(entity._primary_key_):
+            if len(args) != len(entity._pk_attrs_):
                 raise CreateError('Invalid count of attrs in primary key')
             for name, value in zip(entity._pk_names_, args):
                 if keyargs.setdefault(name, value) != value:
@@ -414,6 +425,7 @@ class Entity(object):
                 entity._objects_[pk] = obj
         finally: entity._lock_.release()
 
+        get_offset = entity._new_offsets_.__getitem__
         data = entity._data_template_[:]
         data[0] = obj
         data[1] = 'C'
@@ -425,29 +437,27 @@ class Entity(object):
             else: msg = 'Value of required attribute %s.%s cannot be None'
             if value is None and isinstance(attr, Required):
                 raise CreateError(msg % (entity.__name__, attr.name))
-            data[entity._new_offsets_[attr]] = value
+            data[get_offset(attr)] = value
 
         info = entity._get_info()
         trans = local.transaction
         try:
             for key in entity._keys_:
-                key_value = tuple(map(data.__getitem__,
-                    map(entity._new_offsets_.__getitem__, key)))
+                key_value = tuple(map(data.__getitem__, map(get_offset, key)))
                 try: old_index, new_index = trans.indexes[key]
                 except KeyError:
                     old_index, new_index = trans.indexes[key] = ({}, {})
                 obj2 = new_index.setdefault(key_value, obj)
                 if obj2 is not obj:
                     key_str = ', '.join(repr(item) for item in key_value)
-                    if key is entity._primary_key_: key_type = 'primary key'
+                    if key is entity._pk_attrs_: key_type = 'primary key'
                     else: key_type = 'unique index'
                     raise CreateError(
                         '%s with such %s already exists: %s'
                         % (obj2.__class__.__name__, key_type, key_str))
         except CreateError, e:
             for key in entity._keys_:
-                key_value = tuple(map(data.__getitem__,
-                    map(entity._new_offsets_.__getitem__, key)))
+                key_value = tuple(map(data.__getitem__, map(get_offset, key)))
                 index_pair = trans.indexes.get(key)
                 if index_pair is None: continue
                 old_index, new_index = index_pair
@@ -463,7 +473,7 @@ class Entity(object):
             for column in table.columns:
                 for attr in column.attrs:
                     if entity is attr.entity or issubclass(entity, attr.entity):
-                        value = data[entity._new_offsets_[attr]]
+                        value = data[get_offset(attr)]
                         new_row[column.new_offset] = value
                         break
                 else: new_row[column.new_offset] = None
@@ -476,14 +486,20 @@ class Entity(object):
     def set(obj, **keyargs):
         info = obj._get_info()
         trans = local.transaction
+        get_offset = obj._new_offsets_.__getitem__
         data = trans.objects.get(obj)
-        if data is None: raise NotImplementedError
+        if data is None:
+            data = trans.objects[obj] = obj._data_template_[:]
+            data[0] = obj
+            data[1] = 'U'
+            for a, v in zip(obj._pk_attrs_, obj._pk_):
+                data[get_offset(a)] = v
         old_data = data[:]
         attrs = set()
         for name, value in keyargs.items():
             attr = obj._attr_dict_.get(name)
             if attr is None: raise UpdateError("Unknown attribute: %r" % name)
-            if data[entity._new_offsets_[attr]] == value: continue
+            if data[get_offsets(attr)] == value: continue
             if attr.pk_offset is not None:
                 raise UpdateError('Cannot change value of primary key')
             if value is None and isinstance(attr, Required):
@@ -491,17 +507,15 @@ class Entity(object):
                     'Required attribute %s.%s cannot be set to None'
                     % (obj.__class__.__name__, attr.name))
             attrs.add(attr)
-            data[entity._new_offsets_[attr]] = value
+            data[get_offsets(attr)] = value
         if not attrs: return
         undo = []
         try:
             for key in obj._keys_:
-                if key is obj._primary_key_: continue
-                new_key = tuple(map(data.__getitem__,
-                    map(entity._new_offsets_.__getitem__, key)))
+                if key is obj._pk_attrs_: continue
+                new_key = tuple(map(data.__getitem__, map(get_offsets, key)))
                 if UNKNOWN in new_key: continue
-                old_key = tuple(map(old_data.__getitem__,
-                    map(entity._new_offsets_.__getitem__, key)))
+                old_key = tuple(map(old_data.__getitem__, map(get_offsets, key)))
                 if old_key == new_key: continue
                 try: old_index, new_index = trans.indexes[key]
                 except KeyError:
@@ -530,8 +544,13 @@ class Entity(object):
             cache = trans.caches.get(table)
             if cache is None: cache = trans.caches[table] = Cache(table)
             row = cache.rows.get(pk)
-            if row is None: raise NotImplementedError # the cache remains in corrupted state
-            assert row[0] is obj
+            if row is None:
+                row = cache.row_template[:]
+                row[0] = obj
+                row[1] = 'U'
+                for c, v in zip(table.pk_columns, obj._pk_):
+                    row[c.new_offset] = v
+            else: assert row[0] is obj
             for attr in attrs:
                 attr_info = info.attrs[attr]
                 column = attr_info.tables.get(table)
@@ -539,8 +558,7 @@ class Entity(object):
                 if row[1] != 'C':
                     row[1] = 'U'
                     row[ROW_UPDATE_MASK] |= column.mask
-                value = data[entity._new_offsets_[attr]]
-                row[column.new_offset] = value
+                row[column.new_offset] = data[get_offsets(attr)]
         
 def old(obj):
     return OldProxy(obj)
@@ -579,7 +597,7 @@ class EntityInfo(object):
         for key in entity._keys_:
             key2 = tuple(map(info.attrs.__getitem__, key))
             info.keys.add(key2)
-            if key is entity._primary_key_: info.primary_key = key2
+            if key is entity._pk_attrs_: info.primary_key = key2
         assert hasattr(info, 'primary_key')
 
 class AttrInfo(object):
@@ -670,11 +688,11 @@ class DataSource(object):
                             key_columns.append(column)
                         else:
                             key_columns = tuple(key_columns)
-                            if key_attrs is not entity._primary_key_:
+                            if key_attrs is not entity._pk_attrs_:
                                 table.secondary_keys.add(key_columns)
                             elif not hasattr(table, 'primary_key'):
-                                table.primary_key = key_columns
-                            elif table.primary_key != key_columns:
+                                table.pk_columns = key_columns
+                            elif table.pk_columns != key_columns:
                                 raise SchemaError(
                                     'Multiple primary keys for table %r'
                                     % table.name)
@@ -682,7 +700,7 @@ class DataSource(object):
                 if not table.entities: continue
                 next_offset = count(len(ROW_HEADER)).next
                 mask_offset = count().next
-                for i, column in enumerate(table.primary_key):
+                for i, column in enumerate(table.pk_columns):
                     column.pk_offset = i
                 for column in table.columns:
                     if column.pk_offset is None:
