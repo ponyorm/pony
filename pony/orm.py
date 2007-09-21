@@ -69,7 +69,7 @@ class Attribute(object):
         trans = local.transaction
         data = trans.objects.get(obj)
         if data is None: raise NotImplementedError
-        value = data[attr.new_offset]
+        value = data[obj._new_offsets_[attr]]
         if value is UNKNOWN: raise NotImplementedError
         return value
     def __set__(attr, obj, value):
@@ -84,7 +84,7 @@ class Attribute(object):
         trans = local.transaction
         data = trans.objects.get(obj)
         if data is None: raise NotImplementedError
-        prev = data[attr.new_offset]
+        prev = data[obj._new_offsets_[attr]]
         if prev == value: return
         undo = []
         try:
@@ -92,7 +92,8 @@ class Attribute(object):
                 if key is obj._primary_key_: continue
                 if attr not in key: continue
                 position = list(key).index(attr)
-                new_key = [ data[key_attr.new_offset] for key_attr in key ]
+                new_key = map(data.__getitem__,
+                              map(obj._new_offsets_.__getitem__, key))
                 old_key = tuple(new_key)
                 new_key[position] = value
                 if UNKNOWN in new_key: continue
@@ -118,7 +119,7 @@ class Attribute(object):
                 if old_key is not None: new_index[old_key] = obj
             raise
         if data[1] != 'C': data[1] = 'U'
-        data[attr.new_offset] = value
+        data[obj._new_offsets_[attr]] = value
         for table, column in attr_info.tables.items():
             cache = trans.caches.get(table)
             if cache is None: cache = trans.caches[table] = Cache(table)
@@ -288,12 +289,14 @@ class Entity(object):
         entity._attr_dict_ = dict((attr.name, attr) for attr in entity._attrs_)
 
         next_offset = count(len(DATA_HEADER)).next
+        entity._old_offsets_ = old_offsets = {}
+        entity._new_offsets_ = new_offsets = {}
         for attr in entity._attrs_:
             if attr.pk_offset is None:
-                attr.old_offset = next_offset()
-                attr.new_offset = next_offset()
-            else: attr.old_offset = attr.new_offset = next_offset()
-        data_size = entity._attrs_[-1].new_offset + 1
+                old_offsets[attr] = next_offset()
+                new_offsets[attr] = next_offset()
+            else: old_offsets[attr] = new_offsets[attr] = next_offset()
+        data_size = next_offset()
         entity._data_template_ = \
             DATA_HEADER + [ UNKNOWN ]*(data_size - len(DATA_HEADER))
 
@@ -422,13 +425,14 @@ class Entity(object):
             else: msg = 'Value of required attribute %s.%s cannot be None'
             if value is None and isinstance(attr, Required):
                 raise CreateError(msg % (entity.__name__, attr.name))
-            data[attr.new_offset] = value
+            data[entity._new_offsets_[attr]] = value
 
         info = entity._get_info()
         trans = local.transaction
         try:
             for key in entity._keys_:
-                key_value = tuple(data[attr.new_offset] for attr in key)
+                key_value = tuple(map(data.__getitem__,
+                    map(entity._new_offsets_.__getitem__, key)))
                 try: old_index, new_index = trans.indexes[key]
                 except KeyError:
                     old_index, new_index = trans.indexes[key] = ({}, {})
@@ -442,7 +446,8 @@ class Entity(object):
                         % (obj2.__class__.__name__, key_type, key_str))
         except CreateError, e:
             for key in entity._keys_:
-                key_value = tuple(data[attr.new_offset] for attr in key)
+                key_value = tuple(map(data.__getitem__,
+                    map(entity._new_offsets_.__getitem__, key)))
                 index_pair = trans.indexes.get(key)
                 if index_pair is None: continue
                 old_index, new_index = index_pair
@@ -458,7 +463,8 @@ class Entity(object):
             for column in table.columns:
                 for attr in column.attrs:
                     if entity is attr.entity or issubclass(entity, attr.entity):
-                        new_row[column.new_offset] = data[attr.new_offset]
+                        value = data[entity._new_offsets_[attr]]
+                        new_row[column.new_offset] = value
                         break
                 else: new_row[column.new_offset] = None
             if cache.rows.setdefault(pk, new_row) is not new_row:
@@ -477,7 +483,7 @@ class Entity(object):
         for name, value in keyargs.items():
             attr = obj._attr_dict_.get(name)
             if attr is None: raise UpdateError("Unknown attribute: %r" % name)
-            if data[attr.new_offset] == value: continue
+            if data[entity._new_offsets_[attr]] == value: continue
             if attr.pk_offset is not None:
                 raise UpdateError('Cannot change value of primary key')
             if value is None and isinstance(attr, Required):
@@ -485,15 +491,17 @@ class Entity(object):
                     'Required attribute %s.%s cannot be set to None'
                     % (obj.__class__.__name__, attr.name))
             attrs.add(attr)
-            data[attr.new_offset] = value
+            data[entity._new_offsets_[attr]] = value
         if not attrs: return
         undo = []
         try:
             for key in obj._keys_:
                 if key is obj._primary_key_: continue
-                new_key = tuple(data[attr.new_offset] for attr in key)
+                new_key = tuple(map(data.__getitem__,
+                    map(entity._new_offsets_.__getitem__, key)))
                 if UNKNOWN in new_key: continue
-                old_key = tuple(old_data[attr.new_offset] for attr in key)
+                old_key = tuple(map(old_data.__getitem__,
+                    map(entity._new_offsets_.__getitem__, key)))
                 if old_key == new_key: continue
                 try: old_index, new_index = trans.indexes[key]
                 except KeyError:
@@ -531,7 +539,8 @@ class Entity(object):
                 if row[1] != 'C':
                     row[1] = 'U'
                     row[ROW_UPDATE_MASK] |= column.mask
-                row[column.new_offset] = data[attr.new_offset]
+                value = data[entity._new_offsets_[attr]]
+                row[column.new_offset] = value
         
 def old(obj):
     return OldProxy(obj)
