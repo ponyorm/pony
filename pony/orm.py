@@ -203,6 +203,11 @@ class Diagram(object):
         finally: diagram.lock.release()
 
 class EntityMeta(type):
+    def __new__(meta, name, bases, dict):
+        if 'Entity' in globals():
+            if '__slots__' in dict: raise TypeError('Entity classes cannot contain __slots__ variable')
+            dict['__slots__'] = ()
+        return super(EntityMeta, meta).__new__(meta, name, bases, dict)
     def __init__(entity, name, bases, dict):
         super(EntityMeta, entity).__init__(name, bases, dict)
         if 'Entity' not in globals(): return
@@ -219,6 +224,7 @@ class EntityMeta(type):
 
 class Entity(object):
     __metaclass__ = EntityMeta
+    __slots__ = '__weakref__', '_pk_'
     @classmethod
     def _cls_setattr_(entity, name, value):
         if name.startswith('_') and name.endswith('_'):
