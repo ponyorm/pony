@@ -43,17 +43,14 @@ class Attribute(object):
         except KeyError: attr.default = None
         else:
             if attr.default is None and isinstance(attr, Required):
-                raise TypeError(
-                    'Default value for required attribute %s cannot be None'
-                    % attr)
+                raise TypeError('Default value for required attribute %s cannot be None' % attr)
         attr.reverse = keyargs.pop('reverse', None)
         if attr.reverse is None: pass
         elif not isinstance(attr.reverse, (basestring, Attribute)):
             raise TypeError("Value of 'reverse' option must be name of "
                             "reverse attribute). Got: %r" % attr.reverse)
         elif not (attr.py_type, basestring):
-            raise DiagramError('Reverse option cannot be set for this type %r'
-                            % attr.py_type)
+            raise DiagramError('Reverse option cannot be set for this type %r' % attr.py_type)
     def __str__(attr):
         owner_name = attr.entity is None and '?' or attr.entity.__name__
         return '%s.%s' % (owner_name, attr.name or '?')
@@ -78,8 +75,7 @@ class Attribute(object):
             if value == pk[attr.pk_offset]: return
             raise UpdateError('Cannot change value of primary key')
         if value is None and isinstance(attr, Required):
-            raise UpdateError('Required attribute %s.%s cannot be set to None'
-                              % (obj.__class__.__name__, attr.name))
+            raise UpdateError('Required attribute %s.%s cannot be set to None' % (obj.__class__.__name__, attr.name))
         attr_info = obj._get_info().attrs[attr]
         trans = local.transaction
         get_offset = obj._new_offsets_.__getitem__
@@ -88,8 +84,7 @@ class Attribute(object):
             data = trans.objects[obj] = obj._data_template_[:]
             data[0] = obj
             data[1] = 'U'
-            for a, v in zip(obj._pk_attrs_, obj._pk_):
-                data[get_offset(a)] = v
+            for a, v in zip(obj._pk_attrs_, obj._pk_): data[get_offset(a)] = v
         prev = data[get_offset(attr)]
         if prev == value: return
         undo = []
@@ -104,16 +99,12 @@ class Attribute(object):
                 if UNKNOWN in new_key: continue
                 new_key = tuple(new_key)
                 try: old_index, new_index = trans.indexes[key]
-                except KeyError:
-                    old_index, new_index = trans.indexes[key] = ({}, {})
+                except KeyError: old_index, new_index = trans.indexes[key] = ({}, {})
                 obj2 = new_index.setdefault(new_key, obj)
                 if obj2 is not obj:
                     key_str = ', '.join(repr(item) for item in new_key)
-                    raise UpdateError(
-                        'Cannot update %s.%s: '
-                        '%s with such unique index already exists: %s'
-                        % (obj.__class__.__name__, attr.name,
-                           obj2.__class__.__name__, key_str))
+                    raise UpdateError('Cannot update %s.%s: %s with such unique index already exists: %s'
+                                      % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, key_str))
                 if prev is not UNKNOWN:
                       del new_index[old_key]
                       undo.append((new_index, obj, old_key, new_key))
@@ -133,8 +124,7 @@ class Attribute(object):
                 row = cache.rows[pk] = cache.row_template[:]
                 row[0] = obj
                 row[1] = 'U'
-                for c, v in zip(table.pk_columns, obj._pk_):
-                    row[c.new_offset] = v
+                for c, v in zip(table.pk_columns, obj._pk_): row[c.new_offset] = v
             else: assert row[0] is obj
             if row[1] != 'C':
                 row[1] = 'U'
@@ -201,8 +191,7 @@ class EntityMeta(type):
         super(EntityMeta, entity).__init__(name, bases, dict)
         if 'Entity' not in globals(): return
         outer_dict = sys._getframe(1).f_locals
-        diagram = (dict.pop('_diagram_', None)
-                   or outer_dict.get('_diagram_')
+        diagram = (dict.pop('_diagram_', None) or outer_dict.get('_diagram_')
                    or outer_dict.setdefault('_diagram_', Diagram()))
         if not hasattr(diagram, 'data_source'):
             diagram.data_source = outer_dict.get('_data_source_')
@@ -232,14 +221,12 @@ class Entity(object):
         for base in direct_bases: entity._all_bases_.update(base._all_bases_)
         if direct_bases:
             roots = set(base._root_ for base in direct_bases)
-            if len(roots) > 1: raise DiagramError(
-                'With multiple inheritance of entities, '
-                'inheritance graph must be diamond-like')
+            if len(roots) > 1:
+                raise DiagramError('With multiple inheritance of entities, inheritance graph must be diamond-like')
             entity._root_ = roots.pop()
             for base in direct_bases:
-                if base._diagram_ is not diagram: raise DiagramError(
-                    'When use inheritance, base and derived entities '
-                    'must belong to same diagram')
+                if base._diagram_ is not diagram:
+                    raise DiagramError('When use inheritance, base and derived entities must belong to same diagram')
         else: entity._root_ = entity
 
         base_attrs = []
@@ -257,8 +244,7 @@ class Entity(object):
                 'Name %s hide base attribute %s' % (name,base_attrs_dict[name]))
             if not isinstance(attr, Attribute): continue
             if name.startswith('_') and name.endswith('_'): raise DiagramError(
-                'Attribute name cannot both starts and ends with underscore. '
-                'Got: %s' % name)
+                'Attribute name cannot both starts and ends with underscore. Got: %s' % name)
             if attr.entity is not None:
                 raise DiagramError('Duplicate use of attribute %s' % value)
             attr.name = name
@@ -280,8 +266,7 @@ class Entity(object):
         if len(primary_keys) > 1: raise DiagramError(
             'Only one primary key can be defined in each entity class')
         elif not primary_keys:
-            if hasattr(entity, 'id'):
-                raise DiagramError("Name 'id' alredy in use")
+            if hasattr(entity, 'id'): raise DiagramError("Name 'id' is alredy in use")
             _keys_ = set()
             attr = PrimaryKey(int) # Side effect: modifies _keys_ local variable
             attr.name = 'id'
@@ -307,8 +292,7 @@ class Entity(object):
                 new_offsets[attr] = next_offset()
             else: old_offsets[attr] = new_offsets[attr] = next_offset()
         data_size = next_offset()
-        entity._data_template_ = \
-            DATA_HEADER + [ UNKNOWN ]*(data_size - len(DATA_HEADER))
+        entity._data_template_ = DATA_HEADER + [ UNKNOWN ]*(data_size - len(DATA_HEADER))
 
         diagram.lock.acquire()
         try:
@@ -338,16 +322,14 @@ class Entity(object):
             reverse = attr.reverse
             if isinstance(reverse, basestring):
                 attr2 = getattr(entity2, reverse, None)
-                if attr2 is None: raise DiagramError(
-                    'Reverse attribute %s.%s not found'
-                    % (entity2.__name__, reverse))
+                if attr2 is None:
+                    raise DiagramError('Reverse attribute %s.%s not found' % (entity2.__name__, reverse))
             elif isinstance(reverse, Attribute):
                 attr2 = reverse
-                if attr2.entity is not entity2: raise DiagramError(
-                    'Incorrect reverse attribute %s used in %s' % (attr2, attr))
-            elif reverse is not None: raise DiagramError(
-                "Value of 'reverse' option must be string. Got: %r"
-                % type(reverse))
+                if attr2.entity is not entity2:
+                    raise DiagramError('Incorrect reverse attribute %s used in %s' % (attr2, attr))
+            elif reverse is not None:
+                raise DiagramError("Value of 'reverse' option must be string. Got: %r" % type(reverse))
             else:
                 candidates1 = []
                 candidates2 = []
@@ -361,19 +343,16 @@ class Entity(object):
                 elif len(candidates1) == 1: attr2 = candidates1[0]
                 elif len(candidates2) > 1: raise DiagramError(msg % attr)
                 elif len(candidates2) == 1: attr2 = candidates2[0]
-                else: raise DiagramError(
-                    'Reverse attribute for %s not found' % attr)
+                else: raise DiagramError('Reverse attribute for %s not found' % attr)
 
             type2 = attr2.py_type
             msg = 'Inconsistent reverse attributes %s and %s'
             if isinstance(type2, basestring):
-                if type2 != entity.__name__:
-                    raise DiagramError(msg % (attr, attr2))
+                if type2 != entity.__name__: raise DiagramError(msg % (attr, attr2))
                 attr2.py_type = entity
             elif type2 != entity: raise DiagramError(msg % (attr, attr2))
             reverse2 = attr2.reverse
-            if reverse2 not in (None, attr, attr.name):
-                raise DiagramError(msg % (attr,attr2))
+            if reverse2 not in (None, attr, attr.name): raise DiagramError(msg % (attr,attr2))
 
             attr.reverse = attr2
             attr2.reverse = attr
@@ -386,11 +365,10 @@ class Entity(object):
                 outer_dict = sys._getframe(1).f_locals
                 data_source = outer_dict.get('_data_source_')
             if data_source is not None: trans = Transaction(data_source)
-            else: raise TransactionError(
-                'There are no active transaction in thread %s. '
-                'Cannot start transaction automatically, '
-                'because default data source does not set'
-                % thread.get_ident())
+            else: raise TransactionError('There are no active transaction in thread %s. '
+                                         'Cannot start transaction automatically, '
+                                         'because default data source does not set'
+                                         % thread.get_ident())
         else: data_source = trans.data_source
         info = data_source.entities.get(entity)
         if info is not None: return info
@@ -444,16 +422,14 @@ class Entity(object):
             for key in entity._keys_:
                 key_value = tuple(map(data.__getitem__, map(get_offset, key)))
                 try: old_index, new_index = trans.indexes[key]
-                except KeyError:
-                    old_index, new_index = trans.indexes[key] = ({}, {})
+                except KeyError: old_index, new_index = trans.indexes[key] = ({}, {})
                 obj2 = new_index.setdefault(key_value, obj)
                 if obj2 is not obj:
                     key_str = ', '.join(repr(item) for item in key_value)
                     if key is entity._pk_attrs_: key_type = 'primary key'
                     else: key_type = 'unique index'
-                    raise CreateError(
-                        '%s with such %s already exists: %s'
-                        % (obj2.__class__.__name__, key_type, key_str))
+                    raise CreateError('%s with such %s already exists: %s'
+                                      % (obj2.__class__.__name__, key_type, key_str))
         except CreateError, e:
             for key in entity._keys_:
                 key_value = tuple(map(data.__getitem__, map(get_offset, key)))
@@ -476,8 +452,7 @@ class Entity(object):
                         new_row[column.new_offset] = value
                         break
                 else: new_row[column.new_offset] = None
-            if cache.rows.setdefault(pk, new_row) is not new_row:
-                raise AssertionError
+            if cache.rows.setdefault(pk, new_row) is not new_row: raise AssertionError
         return obj
     @classmethod
     def find(entity, *args, **keyargs):
@@ -491,8 +466,7 @@ class Entity(object):
             data = trans.objects[obj] = obj._data_template_[:]
             data[0] = obj
             data[1] = 'U'
-            for a, v in zip(obj._pk_attrs_, obj._pk_):
-                data[get_offset(a)] = v
+            for a, v in zip(obj._pk_attrs_, obj._pk_): data[get_offset(a)] = v
         old_data = data[:]
         attrs = set()
         for name, value in keyargs.items():
@@ -502,9 +476,8 @@ class Entity(object):
             if attr.pk_offset is not None:
                 raise UpdateError('Cannot change value of primary key')
             if value is None and isinstance(attr, Required):
-                raise UpdateError(
-                    'Required attribute %s.%s cannot be set to None'
-                    % (obj.__class__.__name__, attr.name))
+                raise UpdateError('Required attribute %s.%s cannot be set to None'
+                                  % (obj.__class__.__name__, attr.name))
             attrs.add(attr)
             data[get_offsets(attr)] = value
         if not attrs: return
@@ -517,16 +490,12 @@ class Entity(object):
                 old_key = tuple(map(old_data.__getitem__, map(get_offsets, key)))
                 if old_key == new_key: continue
                 try: old_index, new_index = trans.indexes[key]
-                except KeyError:
-                    old_index, new_index = trans.indexes[key] = ({}, {})
+                except KeyError: old_index, new_index = trans.indexes[key] = ({}, {})
                 obj2 = new_index.setdefault(new_key, obj)
                 if obj2 is not obj:
                     key_str = ', '.join(repr(item) for item in new_key)
-                    raise UpdateError(
-                        'Cannot update %s.%s: '
-                        '%s with such unique index already exists: %s'
-                        % (obj.__class__.__name__, attr.name,
-                           obj2.__class__.__name__, key_str))
+                    raise UpdateError('Cannot update %s.%s: %s with such unique index already exists: %s'
+                                      % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, key_str))
                 if UNKNOWN not in old_key:
                       del new_index[old_key]
                       undo.append((new_index, obj, old_key, new_key))
@@ -547,8 +516,7 @@ class Entity(object):
                 row = cache.row_template[:]
                 row[0] = obj
                 row[1] = 'U'
-                for c, v in zip(table.pk_columns, obj._pk_):
-                    row[c.new_offset] = v
+                for c, v in zip(table.pk_columns, obj._pk_): row[c.new_offset] = v
             else: assert row[0] is obj
             for attr in attrs:
                 attr_info = info.attrs[attr]
@@ -565,8 +533,8 @@ def old(obj):
 class OldProxy(object):
     def __init__(old_proxy, obj):
         cls = obj.__class__
-        if not issubclass(cls, Entity): raise TypeError(
-            'Expected subclass of Entity. Got: %s' % cls.__name__)
+        if not issubclass(cls, Entity):
+            raise TypeError('Expected subclass of Entity. Got: %s' % cls.__name__)
         old_proxy._obj_ = obj
         old_proxy._cls_ = cls
     def __getattr__(old_proxy, name):
@@ -599,8 +567,7 @@ class AttrInfo(object):
         attr_info.attr = attr
         name_pair = attr.entity.__name__, attr.name
         attr_info.tables = info.data_source.attr_map.get(name_pair, {}).copy()
-        for table, column in attr_info.tables.items():
-            column.attrs.add(attr)
+        for table, column in attr_info.tables.items(): column.attrs.add(attr)
     def __repr__(attr_info):
         return '<AttrInfo: %s.%s>' % (attr_info.enity_info.entity.__name__,
                                       attr_info.attr.name)
@@ -650,8 +617,7 @@ class DataSource(object):
         for table_element in data_source.mapping.findall('table'):
             table = Table(data_source, table_element)
             if data_source.tables.setdefault(table.name, table) is not table:
-                raise MappingError('Duplicate table definition: %s'
-                                   % table.name)
+                raise MappingError('Duplicate table definition: %s' % table.name)
             if table.entities:
                 for column in table.columns:
                     for attr_name in column.attr_names:
@@ -667,34 +633,27 @@ class DataSource(object):
                 data_source.entities[entity] = info
                 for key_attrs in entity._keys_:
                     name_pairs = []
-                    for attr in key_attrs:
-                        name_pairs.append((attr.entity.__name__, attr.name))
+                    for attr in key_attrs: name_pairs.append((attr.entity.__name__, attr.name))
                     for table in info.tables:
                         key_columns = []
                         for name_pair in name_pairs:
                             tables = data_source.attr_map.get(name_pair)
-                            if tables is None: raise SchemaError(
-                                'Key column %r.%r does not have '
-                                'correspond column' % name_pair)
+                            if tables is None:
+                                raise SchemaError('Key column %r.%r does not have correspond column' % name_pair)
                             column = tables.get(table)
                             if column is None: break
                             key_columns.append(column)
                         else:
                             key_columns = tuple(key_columns)
-                            if key_attrs is not entity._pk_attrs_:
-                                table.secondary_keys.add(key_columns)
-                            elif not hasattr(table, 'primary_key'):
-                                table.pk_columns = key_columns
+                            if key_attrs is not entity._pk_attrs_: table.secondary_keys.add(key_columns)
+                            elif not hasattr(table, 'primary_key'): table.pk_columns = key_columns
                             elif table.pk_columns != key_columns:
-                                raise SchemaError(
-                                    'Multiple primary keys for table %r'
-                                    % table.name)
+                                raise SchemaError('Multiple primary keys for table %r'% table.name)
             for table in data_source.tables.values():
                 if not table.entities: continue
                 next_offset = count(len(ROW_HEADER)).next
                 mask_offset = count().next
-                for i, column in enumerate(table.pk_columns):
-                    column.pk_offset = i
+                for i, column in enumerate(table.pk_columns): column.pk_offset = i
                 for column in table.columns:
                     if column.pk_offset is None:
                         column.old_offset = next_offset()
@@ -707,9 +666,9 @@ class DataSource(object):
     def clear_schema(data_source):
         data_source.lock.acquire()
         try:
-            if data_source.transaction: raise SchemaError(
-                'Cannot clear datasource schema information '
-                'because it is used by active transaction')
+            if data_source.transaction:
+                raise SchemaError('Cannot clear datasource schema information '
+                                  'because it is used by active transaction')
             data_source.entities.clear()
             data_source.tables.clear()
         finally: data_source.lock.release()
@@ -737,30 +696,29 @@ class Table(object):
         table.entities = set(element.get('entity', '').split())
         table.relations = set(tuple(rel.split('.'))
                              for rel in element.get('relation', '').split())
-        if table.entities and table.relations: raise MappingError(
-            'For table %r both entity name and relations are specified. '
-            'It is not allowed' % table.name)
-        elif not table.entities and not table.relations: raise MappingError(
-            'For table %r neither entity name nor relations are specified. '
-            'It is not allowed' % table.name)
+        if table.entities and table.relations:
+            raise MappingError('For table %r both entity name and relations are specified. '
+                               'It is not allowed' % table.name)
+        elif not table.entities and not table.relations:
+            raise MappingError('For table %r neither entity name nor relations are specified. '
+                               'It is not allowed' % table.name)
         for entity_name in table.entities:
-            if not utils.is_ident(entity_name): raise MappingError(
-                'Entity name must be valid identifier. Got: %r' % entity_name)
+            if not utils.is_ident(entity_name):
+                raise MappingError('Entity name must be valid identifier. Got: %r' % entity_name)
         for relation in table.relations:
-            if len(relation) != 2: raise MappingError(
-                'Each relation must be in form of EntityName.AttributeName. '
-                'Got: %r' % '.'.join(relation))
+            if len(relation) != 2:
+                raise MappingError('Each relation must be in form of EntityName.AttributeName. '
+                                   'Got: %r' % '.'.join(relation))
             for component in relation:
-                if not utils.is_ident(component): raise MappingError(
-                    'Each part of relation name must be valid identifier. '
-                    'Got: %r' % component)
+                if not utils.is_ident(component):
+                    raise MappingError('Each part of relation name must be valid identifier. '
+                                       'Got: %r' % component)
         table.columns = []
         table.cdict = {}
         for col_element in element.findall('column'):
             column = Column(table, col_element)
             if table.cdict.setdefault(column.name, column) is not column:
-                raise MappingError('Duplicate column definition: %r.%r'
-                                   % (table.name, column.name))
+                raise MappingError('Duplicate column definition: %r.%r' % (table.name, column.name))
             table.columns.append(column)
 
 class Column(object):
@@ -775,36 +733,34 @@ class Column(object):
     def _init_from_xml_element(column, element):
         table = column.table
         column.name = element.get('name')
-        if not column.name: raise MappingError(
-            'Error in table definition %r: '
-            'Column element without "name" attribute' % table.name)
+        if not column.name:
+            raise MappingError('Error in table definition %r: '
+                               'Column element without "name" attribute' % table.name)
         column.domain = element.get('domain')
         column.attr_names = set(tuple(attr.split('.'))
-                              for attr in element.get('attr', '').split())
+                                for attr in element.get('attr', '').split())
         for attr_name in column.attr_names:
-            if len(attr_name) < 2: raise MappingError(
-                'Invalid attribute value in column %r.%r: '
-                'must be in form of EntityName.AttributeName'
-                % (table.name, column.name))
+            if len(attr_name) < 2:
+                raise MappingError('Invalid attribute value in column %r.%r: '
+                                   'must be in form of EntityName.AttributeName'
+                                   % (table.name, column.name))
         if table.relations:
             for attr_name in column.attr_names:
-                if attr_name[:2] not in table.relations: raise MappingError(
-                    'Attribute %s does not correspond any relation'
-                    % '.'.join(attr_name))
+                if attr_name[:2] not in table.relations:
+                    raise MappingError('Attribute %s does not correspond any relation' % '.'.join(attr_name))
         column.kind = element.get('kind')
-        if column.kind not in (None, 'discriminator'): raise MappingError(
-            'Error in column %r.%r: invalid column kind: %r'
-            % (table.name, column.name, column.kind))
+        if column.kind not in (None, 'discriminator'):
+            raise MappingError('Error in column %r.%r: invalid column kind: %r'
+                               % (table.name, column.name, column.kind))
         cases = element.findall('case')
-        if cases and column.kind != 'discriminator': raise MappingError(
-            'Non-discriminator column %r.%r contains cases. It is not allowed'
-            % (table.name, column.name))
-        column.cases = [ (case.get('value'), case.get('entity'))
-                       for case in cases ]
+        if cases and column.kind != 'discriminator':
+            raise MappingError('Non-discriminator column %r.%r contains cases. It is not allowed'
+                               % (table.name, column.name))
+        column.cases = [ (case.get('value'), case.get('entity')) for case in cases ]
         for value, entity in column.cases:
-            if not value or not entity: raise MappingError(
-                'Invalid discriminator case in column %r.%r'
-                % (table.name, column.name))
+            if not value or not entity:
+                raise MappingError('Invalid discriminator case in column %r.%r'
+                                   % (table.name, column.name))
 
 class Transaction(object):
     def __init__(trans, data_source, connection=None):
@@ -854,17 +810,16 @@ def get_transaction():
     return local.transaction
 
 def no_trans_error():
-    raise TransactionError('There are no active transaction in thread %s'
-                           % thread.get_ident())
+    raise TransactionError('There are no active transaction in thread %s' % thread.get_ident())
 
 def begin(data_source=None):
-    if local.transaction is not None: raise TransactionError(
-        'Transaction already started in thread %d' % thread.get_ident())
+    if local.transaction is not None:
+        raise TransactionError('Transaction already started in thread %d' % thread.get_ident())
     if data_source is not None: return Transaction(data_source)
     outer_dict = sys._getframe(1).f_locals
     data_source = outer_dict.get('_data_source_')
-    if data_source is None: raise TransactionError(
-        'Can not start transaction, because default data source is not set')
+    if data_source is None:
+        raise TransactionError('Can not start transaction, because default data source is not set')
     return Transaction(data_source)
 
 def commit():
