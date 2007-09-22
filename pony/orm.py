@@ -57,7 +57,13 @@ class Attribute(object):
     def __repr__(attr):
         return '<Attribute %s: %s>' % (attr, attr.__class__.__name__)
     def check(attr, value, entity=None):
-        if value is UNKNOWN: return attr.default
+        if value is UNKNOWN: value = attr.default
+        if value is None: return value
+        reverse = attr.reverse
+        if reverse and not isinstance(value, reverse.entity):
+            entity_name = (entity or attr.entity).__name__
+            raise ConstraintError('Value of attribute %s.%s must be an instance of %s'
+                                  % (entity_name, attr.name, reverse.entity.__name__))
         return value
     def get_old(attr, obj):
         raise NotImplementedError
