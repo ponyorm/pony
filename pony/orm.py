@@ -140,7 +140,6 @@ class Attribute(object):
                 row[1] = 'U'
                 row[ROW_UPDATE_MASK] |= column.mask
             row[column.new_offset] = value
-            print column, column.mask, row
     def __delete__(attr, obj):
         raise NotImplementedError
 
@@ -582,23 +581,17 @@ class EntityInfo(object):
         info.data_source = data_source
         info.tables = {}  # Table -> dict(attr_name -> Column)
         if data_source.mapping is None: raise NotImplementedError
-        swab_names = set(e.__name__ for e in entity._all_bases_)
+        entity_names = set(e.__name__ for e in entity._all_bases_)
         for table in data_source.tables.values():
             for entity_name in table.entities:
-                if entity_name in swab_names:
+                if entity_name in entity_names:
                     info.tables[table] = {}
                     break
         info.attrs = {} # Attribute -> AttrInfo
         for attr in entity._attrs_: info.attrs[attr] = AttrInfo(info, attr)
-        info.keys = set()
         for attr_info in info.attrs.values():
             for table, column in attr_info.tables.items():
                 info.tables[table][attr_info.attr.name] = column
-        for key in entity._keys_:
-            key2 = tuple(map(info.attrs.__getitem__, key))
-            info.keys.add(key2)
-            if key is entity._pk_attrs_: info.primary_key = key2
-        assert hasattr(info, 'primary_key')
 
 class AttrInfo(object):
     def __init__(attr_info, info, attr):
