@@ -49,13 +49,16 @@ class Attribute(object):
         elif not isinstance(attr.reverse, (basestring, Attribute)):
             raise TypeError("Value of 'reverse' option must be name of "
                             "reverse attribute). Got: %r" % attr.reverse)
-        elif not (attr.py_type, basestring):
+        elif not isinstance(attr.py_type, (basestring, EntityMeta)):
             raise DiagramError('Reverse option cannot be set for this type %r' % attr.py_type)
     def __str__(attr):
         owner_name = attr.entity is None and '?' or attr.entity.__name__
         return '%s.%s' % (owner_name, attr.name or '?')
     def __repr__(attr):
         return '<Attribute %s: %s>' % (attr, attr.__class__.__name__)
+    def check(attr, value, entity=None):
+        if value is UNKNOWN: return attr.default
+        return value
     def get_old(attr, obj):
         raise NotImplementedError
     def __get__(attr, obj, type=None):
@@ -74,8 +77,7 @@ class Attribute(object):
         if attr.pk_offset is not None:
             if value == pk[attr.pk_offset]: return
             raise UpdateError('Cannot change value of primary key')
-        if value is None and isinstance(attr, Required):
-            raise UpdateError('Required attribute %s.%s cannot be set to None' % (obj.__class__.__name__, attr.name))
+        value = attr.check(value, obj.__class__)
         attr_info = obj._get_info().attrs[attr]
         trans = local.transaction
         get_offset = obj._new_offsets_.__getitem__
@@ -137,7 +139,15 @@ class Optional(Attribute):
     pass
 
 class Required(Attribute):
-    pass
+    def check(attr, value, entity=None):
+        msg = None
+        if value is UNKNOWN:
+            value = attr.default
+            if value is None: msg = 'Required attribute %s.%s does not specified'
+        elif value is None: msg = 'Required attribute %s.%s cannot be set to None'
+        if msg is None: return Attribute.check(attr, value, entity)
+        entity_name = (entity or attr.entity).__name__
+        raise ConstraintError(msg % (entity_name, attr.name))
 
 class Unique(Required):
     def __new__(cls, *args, **keyargs):
@@ -407,14 +417,8 @@ class Entity(object):
         data[0] = obj
         data[1] = 'C'
         for attr in entity._attrs_:
-            try: value = keyargs[attr.name]
-            except KeyError:
-                value = attr.default
-                msg = 'Required attribute %s.%s does not specified'
-            else: msg = 'Value of required attribute %s.%s cannot be None'
-            if value is None and isinstance(attr, Required):
-                raise CreateError(msg % (entity.__name__, attr.name))
-            data[get_offset(attr)] = value
+            value = keyargs.get(attr.name, UNKNOWN)
+            data[get_offset(attr)] = attr.check(value, entity)
 
         info = entity._get_info()
         trans = local.transaction
@@ -472,12 +476,9 @@ class Entity(object):
         for name, value in keyargs.items():
             attr = obj._attr_dict_.get(name)
             if attr is None: raise UpdateError("Unknown attribute: %r" % name)
+            value = attr.check(value, obj.__class__)
             if data[get_offsets(attr)] == value: continue
-            if attr.pk_offset is not None:
-                raise UpdateError('Cannot change value of primary key')
-            if value is None and isinstance(attr, Required):
-                raise UpdateError('Required attribute %s.%s cannot be set to None'
-                                  % (obj.__class__.__name__, attr.name))
+            if attr.pk_offset is not None: raise UpdateError('Cannot change value of primary key')
             attrs.add(attr)
             data[get_offsets(attr)] = value
         if not attrs: return
