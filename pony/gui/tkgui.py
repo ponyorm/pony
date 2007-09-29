@@ -310,3 +310,7 @@ def show_gui():
     if pony.RUNNED_AS == 'MOD_WSGI': return
     if tk_thread: return
     TkThread().start()
+
+@pony.on_shutdown
+def do_shutdown():
+    tk_thread.quit(None)
