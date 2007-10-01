@@ -177,14 +177,25 @@ class _PrimaryKeyTuple(tuple):
     pass
 
 class Collection(Attribute):
-    pass
+    def __init__(attr, py_type, *args, **keyargs):
+        if attr.__class__ is Collection: raise TypeError("'Collection' is abstract type")
+        Attribute.__init__(attr, py_type, *args, **keyargs)
 
 class Set(Collection):
-    pass
+    def __get__(attr, obj, type=None):
+        if obj is None: return attr
+        return SetProperty(obj, attr)
+    def check(attr, value, entity=None):
+        pass
 
 ##class List(Collection): pass
 ##class Dict(Collection): pass
 ##class Relation(Collection): pass
+
+class SetProperty(object):
+    def __init__(self, obj, attr):
+        self._obj_ = obj
+        self._attr_ = attr
 
 class Diagram(object):
     def __init__(diagram):
