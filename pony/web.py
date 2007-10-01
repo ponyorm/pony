@@ -385,7 +385,10 @@ def get_static_file(path, ext):
         if not path_re.match(component): raise Http404
     if ext and not path_re.match(ext): raise Http404
     fname = os.path.join(static_dir, *path) + ext
-    if not os.path.isfile(fname): raise Http404
+    if not os.path.isfile(fname):
+        if path == ['favicon'] and ext == '.ico':
+            return get_pony_static_file(path, ext)
+        raise Http404
     headers = local.response.headers
     headers['Content-Type'] = guess_type(ext)
     headers['Expires'] = '0'

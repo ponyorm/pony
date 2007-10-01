@@ -14,12 +14,21 @@ yui_patterns = {
     '1/4-3/4' : 'yui-gf'
     }
 
+pony_static_dir = '/pony/static'
+
 def transform(html):
     head = html.find('head')
     body = html.find('body')
-    css_links = [ link for link in head.findall('link')
+    links = head.findall('link')
+    css_links = [ link for link in links
                        if link.get('rel') == 'stylesheet'
                        and link.get('type') == 'text/css' ]
+    favicon_links = [ link for link in links
+                           if 'icon' in link.get('rel', '').split() ]
+    if not favicon_links:
+        for rel in ('shortcut icon', 'icon'):
+            SubElement(head, 'link', rel=rel, type='image/vnd.microsoft.icon',
+                       href=pony_static_dir + '/favicon.ico')
     styles = head.findall('style')
     layout = body.find('layout')
     layout_width = layout is not None and layout.get('width') or None
@@ -45,7 +54,6 @@ def transform(html):
                   or layout is not None)
     width = 0
     if not css_links and not styles:
-        pony_static_dir = '/pony/static'
         for css in [ '/yui/reset-fonts-grids/reset-fonts-grids.css',
                      '/css/layouts/yui.css',
                      '/css/default.css' ]:
