@@ -30,8 +30,7 @@ next_id = count().next
 
 class Attribute(object):
     def __init__(attr, py_type, *args, **keyargs):
-        if attr.__class__ is Attribute:
-            raise TypeError("'Atrribute' is abstract type")
+        if attr.__class__ is Attribute: raise TypeError("'Atrribute' is abstract type")
         attr.pk_offset = None
         attr._id_ = next_id()
         attr.py_type = py_type
