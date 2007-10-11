@@ -288,73 +288,96 @@ class SetProperty(object):
     def __ne__(self, x):
         raise NotImplementedError
 
+SETDATA_LOADED = 1
+SETDATA_EXISTS = 2
+SETDATA_KNOWN = 4
+SETDATA_ADDED = 8
+SETDATA_DELETED = 16
+
 class SetData(object):
-    __slots__ = 'dict', 'fully_loaded', 'deleted_count', 'get', 'setitem', 'delitem'
-    def __init__(coldata):
-        coldata.dict = {}  # object -> status: 0=deleted; 1=loaded; 2=readed; 3=added
-        coldata.fully_loaded = False
-        coldata.deleted_count = 0
-        coldata.get = coldata.dict.get
-        coldata.setitem = coldata.dict.__setitem__
-        coldata.delitem = coldata.dict.__delitem__
+    __slots__ = 'dict', 'fully_loaded'
+    def __init__(coldata, objects=None):
+        if objects is None:
+            coldata.fully_loaded = False
+            coldata.dict = {}  # object -> status
+        else:
+            coldata.fully_loaded = True
+            coldata.dict = dict.fromkeys(izip(objects, repeat(SETDATA_ADDED)))
+        
     def __len__(coldata):
         if not coldata.fully_loaded: raise NotImplementedError
-        return len(coldata.dict) - coldata.deleted_count
+        result = 0
+        setitem = coldata.dict.__setitem__
+        DELETED = SETDATA_DELETED; ADDED = SETDATA_ADDED; KNOWN = SETDATA_KNOWN; EXISTS = SETDATA_EXISTS
+        for obj, status in coldata.dict.iteritems():
+            if status & DELETED: continue
+            if status & ADDED: result += 1
+            else:
+                if not status & KNOWN: setitem(obj, status | KNOWN)
+                if status & EXISTS: result += 1
+        return result
     def __iter__(coldata):
         if not coldata.fully_loaded: raise NotImplementedError
-        get, setitem = coldata.get, coldata.setitem
+        get = coldata.dict.get; setitem = coldata.dict.__setitem__
+        DELETED = SETDATA_DELETED; ADDED = SETDATA_ADDED; KNOWN = SETDATA_KNOWN; EXISTS = SETDATA_EXISTS
         for obj in coldata.dict.keys():
-            status = get(obj, 0)
-            if status is 0: continue
-            if status is 1: setitem(obj, 2)
-            yield obj
+            status = get(obj, DELETED)
+            if status & DELETED: continue
+            if status & ADDED: yield obj
+            else:
+                if not status & KNOWN: setitem(obj, status | KNOWN)
+                if status & EXISTS: yield obj
     def contains(coldata, obj):
-        status = coldata.get(obj)
+        status = coldata.dict.get(obj)
         if status is None:
             if not coldata.fully_loaded: raise NotImplementedError
             return False
-        elif status is 0:
-            return False
-        elif status is 1:
-            coldata.setitem(obj, 2)
-            return True
-        else: return True
-    def load(coldata, obj):
+        if status & SETDATA_DELETED: return False
+        if status & SETDATA_ADDED: return True
+        if not status & SETDATA_EXISTS: return False
+        if not status & SETDATA_KNOWN: coldata.dict[obj] = status | SETDATA_KNOWN
+        return True
+    __contains__ = contains
+    def debug(coldata):
+        for obj, status in coldata.dict.iteritems():
+            list = []
+            if status & SETDATA_LOADED: list.append('S')
+            if status & SETDATA_EXISTS: list.append('E')
+            if status & SETDATA_KNOWN: list.append('U')
+            if status & SETDATA_ADDED: list.append('A')
+            if status & SETDATA_DELETED: list.append('D')
+            print obj, ''.join(list) or None
+    def load_many(coldata, objects):
         assert not coldata.fully_loaded
-        prev_status = coldata.dict.setdefault(obj, 1)
-        if prev_status is 3: coldata.dict[obj] = 1
-    def forget(coldata, obj):
-        status = coldata.get(obj)
-        if status is 1: coldata.delitem(obj)
-    def forget_all(coldata):
-        delitem = coldata.delitem
-        for obj, status in coldata.dict.items():
-            if status is 1: delitem(obj)
-    def delete(coldata, obj):
-        status = coldata.get(obj)
-        if status is 0: return
-        if status is 3: coldata.delitem(obj)
-        else:
-            if status is None:  coldata.fully_loaded
-            coldata.deleted_count += 1
-            coldata.setitem(obj, 0)
-    def add(coldata, obj):
-        status = coldata.get(obj)
-        if status >= 2: return
-        if status is None: coldata.setitem(obj, 3)
-        elif status is 1: coldata.setitem(obj, 2)
-        else:  # status == 0
-            coldata.deleted_count -= 1
-            coldata.setitem(obj, 2)
+        mask = SETDATA_LOADED | SETDATA_EXISTS
+        setdefault = coldata.dict.setdefault
+        setitem = coldata.dict.__setitem__
+        for obj in objects:
+            status = setdefault(obj, mask)
+            if status & mask != mask: setitem(obj, status | mask)
+    def delete_many(coldata, objects):
+        get = coldata.dict.get; delitem = coldata.dict.__delitem__; setitem = coldata.dict.__setitem__
+        ADDED = SETDATA_ADDED; DELETED = SETDATA_DELETED
+        for obj in objects:
+            status = get(obj, 0)
+            if status & DELETED: continue
+            setitem(obj, (status & ~ADDED) | DELETED)
+    def add_many(coldata, objects):
+        get = coldata.dict.get; setitem = coldata.dict.__setitem__
+        ADDED = SETDATA_ADDED; DELETED = SETDATA_DELETED
+        for obj in objects:
+            status = get(obj, 0)
+            if status & ADDED: continue
+            if status & DELETED: setitem(obj, (status & ~DELETED) | ADDED)
+            else: setitem(obj, status | ADDED)
     def clear(coldata):
+        # can it be optimised if no reads was before? Something like coldata.cleared...
         if not coldata.fully_loaded: raise NotImplementedError
-        delitem, setitem = coldata.delitem, coldata.setitem
+        delitem, setitem = coldata.dict.__delitem__, coldata.dict.__setitem__
+        ADDED = SETDATA_ADDED; DELETED = SETDATA_DELETED
         for obj, status in coldata.dict.items():
-            if status is 0: continue
-            if status is 3: coldata.delitem(obj)
-            else:
-                coldata.deleted_count += 1
-                coldata.setitem(obj, 0)
+            if status & DELETED: continue
+            setitem(obj, (status & ~ADDED) | DELETED)
         
 class Diagram(object):
     def __init__(diagram):
