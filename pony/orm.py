@@ -1,6 +1,6 @@
 import sys, os.path, operator, thread, threading
-from operator import attrgetter
-from itertools import count, izip, ifilterfalse
+from operator import itemgetter, attrgetter
+from itertools import count, imap, izip, ifilter, ifilterfalse
 
 from pony import utils
 from pony.thirdparty import etree
@@ -107,7 +107,7 @@ class Attribute(object):
         prev = data[get_offset(attr)]
         if prev == value: return
 
-        undo = []
+        undo, undo_reverse = [], []
         try:
             for key in obj._keys_:
                 if key is obj._pk_attrs_: continue
@@ -116,20 +116,24 @@ class Attribute(object):
                 new_key = map(data.__getitem__, map(get_offset, key))
                 old_key = tuple(new_key)
                 new_key[position] = value
-                if None in new_key or UNKNOWN in new_key: continue
                 new_key = tuple(new_key)
+                if None in new_key or UNKNOWN in new_key: new_key = None
+                if None in old_key or UNKNOWN in old_key: old_key = None
+                if old_key is None and new_key is None: continue
                 try: old_index, new_index = trans.indexes[key]
                 except KeyError: old_index, new_index = trans.indexes[key] = ({}, {})
-                obj2 = new_index.setdefault(new_key, obj)
-                if obj2 is not obj:
-                    key_str = ', '.join(repr(item) for item in new_key)
-                    raise UpdateError('Cannot update %s.%s: %s with such unique index already exists: %s'
-                                      % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, key_str))
-                if prev is not None and prev is not UNKNOWN:
-                      del new_index[old_key]
-                      undo.append((new_index, obj, old_key, new_key))
-                else: undo.append((new_index, obj, None, new_key))
+                if new_key is not None:
+                    obj2 = new_index.setdefault(new_key, obj)
+                    if obj2 is not obj:
+                        key_str = ', '.join(repr(item) for item in new_key)
+                        raise UpdateError('Cannot update %s.%s: %s with such unique index already exists: %s'
+                                          % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, key_str))
+                if old_key is not None: del new_index[old_key]
+                undo.append((new_index, obj, old_key, new_key))
+            if attr.reverse is not None:
+                attr.reverse.set_reverse(obj, prev, value, undo_reverse)
         except UpdateError:
+            for undo_func in undo_reverse: undo_func()
             for new_index, obj, old_key, new_key in undo:
                 del new_index[new_key]
                 if old_key is not None: new_index[old_key] = obj
@@ -155,9 +159,16 @@ class Attribute(object):
             row[column.new_offset] = value
     def __delete__(attr, obj):
         raise NotImplementedError
+    def set_reverse(attr, reverse_obj, prev_reverse_value, reverse_value, undo):
+        assert reverse_value is not None and reverse_value is not UNKNOWN
+        trans = local.transaction
+        if not isinstance(reverse_value, SetData):
+            obj = reverse_value
+            offset = obj._new_offsets_[attr]
+            data = trans.objects.get(obj)
+        else: pass
 
-class Optional(Attribute):
-    pass
+class Optional(Attribute): pass
 
 class Required(Attribute):
     def check(attr, value, entity=None):
@@ -177,20 +188,19 @@ class Unique(Required):
         non_attrs = [ a for a in args if not isinstance(a, Attribute) ]
         if attrs and non_attrs: raise TypeError('Invalid arguments')
         cls_dict = sys._getframe(1).f_locals
-        keys = cls_dict.setdefault('_keys_', set())
-        if issubclass(cls, PrimaryKey): tuple_class = _PrimaryKeyTuple
-        else: tuple_class = tuple
+        keys = cls_dict.setdefault('_keys_', {})
         if not attrs:
             result = Required.__new__(cls, *args, **keyargs)
-            keys.add(tuple_class((result,)))
+            keys[(result,)] = issubclass(cls, PrimaryKey)
             return result
-        else: keys.add(tuple_class(attrs))
+        else:
+            for attr in attrs:
+                if isinstance(attr, Collection):
+                    key_type = issubclass(cls, PrimaryKey) and 'primary key' or 'unique index'
+                    raise TypeError('Collection attribute %s cannot be part of %s' % (attr, key_type))
+            keys[attrs] = issubclass(cls, PrimaryKey)
 
-class PrimaryKey(Unique):
-    pass
-
-class _PrimaryKeyTuple(tuple):
-    pass
+class PrimaryKey(Unique): pass
 
 class Collection(Attribute):
     def __init__(attr, py_type, *args, **keyargs):
@@ -205,6 +215,8 @@ class Collection(Attribute):
     def __set__(attr, obj, value):
         raise NotImplementedError
     def __delete__(attr, obj):
+        raise NotImplementedError
+    def set_reverse(attr, reverse_obj, prev_reverse_value, reverse_value, undo):
         raise NotImplementedError
 
 class Set(Collection):
@@ -224,12 +236,9 @@ class Set(Collection):
                     raise ConstraintError('Item of collection %s.%s must be instance of %s. Got: %s'
                                           % (entity_name, attr.name, reverse.entity.__name__, item))
         else: coldata.new = set((value,))
-
-        for item in coldata.new:
-            pass
-            # ...
-
         return coldata
+    def set_reverse(attr, reverse_obj, prev_reverse_value, reverse_value, undo):
+        raise NotImplementedError
 
 ##class List(Collection): pass
 ##class Dict(Collection): pass
@@ -280,12 +289,73 @@ class SetProperty(object):
         raise NotImplementedError
 
 class SetData(object):
-    __slots__ = 'old', 'new', 'fully_loaded'
+    __slots__ = 'dict', 'fully_loaded', 'deleted_count', 'get', 'setitem', 'delitem'
     def __init__(coldata):
-        coldata.old = set()
-        coldata.new = set()
+        coldata.dict = {}  # object -> status: 0=deleted; 1=loaded; 2=readed; 3=added
         coldata.fully_loaded = False
-
+        coldata.deleted_count = 0
+        coldata.get = coldata.dict.get
+        coldata.setitem = coldata.dict.__setitem__
+        coldata.delitem = coldata.dict.__delitem__
+    def __len__(coldata):
+        if not coldata.fully_loaded: raise NotImplementedError
+        return len(coldata.dict) - coldata.deleted_count
+    def __iter__(coldata):
+        if not coldata.fully_loaded: raise NotImplementedError
+        get, setitem = coldata.get, coldata.setitem
+        for obj in coldata.dict.keys():
+            status = get(obj, 0)
+            if status is 0: continue
+            if status is 1: setitem(obj, 2)
+            yield obj
+    def contains(coldata, obj):
+        status = coldata.get(obj)
+        if status is None:
+            if not coldata.fully_loaded: raise NotImplementedError
+            return False
+        elif status is 0:
+            return False
+        elif status is 1:
+            coldata.setitem(obj, 2)
+            return True
+        else: return True
+    def load(coldata, obj):
+        assert not coldata.fully_loaded
+        prev_status = coldata.dict.setdefault(obj, 1)
+        if prev_status is 3: coldata.dict[obj] = 1
+    def forget(coldata, obj):
+        status = coldata.get(obj)
+        if status is 1: coldata.delitem(obj)
+    def forget_all(coldata):
+        delitem = coldata.delitem
+        for obj, status in coldata.dict.items():
+            if status is 1: delitem(obj)
+    def delete(coldata, obj):
+        status = coldata.get(obj)
+        if status is 0: return
+        if status is 3: coldata.delitem(obj)
+        else:
+            if status is None:  coldata.fully_loaded
+            coldata.deleted_count += 1
+            coldata.setitem(obj, 0)
+    def add(coldata, obj):
+        status = coldata.get(obj)
+        if status >= 2: return
+        if status is None: coldata.setitem(obj, 3)
+        elif status is 1: coldata.setitem(obj, 2)
+        else:  # status == 0
+            coldata.deleted_count -= 1
+            coldata.setitem(obj, 2)
+    def clear(coldata):
+        if not coldata.fully_loaded: raise NotImplementedError
+        delitem, setitem = coldata.delitem, coldata.setitem
+        for obj, status in coldata.dict.items():
+            if status is 0: continue
+            if status is 3: coldata.delitem(obj)
+            else:
+                coldata.deleted_count += 1
+                coldata.setitem(obj, 0)
+        
 class Diagram(object):
     def __init__(diagram):
         diagram.lock = threading.RLock()
@@ -336,7 +406,7 @@ class Entity(object):
         entity._objects_ = {}
         entity._lock_ = threading.Lock()
         direct_bases = [ c for c in entity.__bases__
-                         if issubclass(c, Entity) and c is not Entity ]
+                           if issubclass(c, Entity) and c is not Entity ]
         entity._direct_bases_ = direct_bases
         entity._all_bases_ = set((entity,))
         for base in direct_bases: entity._all_bases_.update(base._all_bases_)
@@ -374,28 +444,26 @@ class Entity(object):
         new_attrs.sort(key=attrgetter('_id_'))
         entity._new_attrs_ = new_attrs
 
-        entity._keys_ = keys = entity.__dict__.get('_keys_', set())
-        primary_keys = set(key for key in keys
-                               if isinstance(key, _PrimaryKeyTuple))
+        entity._keys_ = keys = entity.__dict__.get('_keys_', {})
+        primary_keys = set(key for key, is_pk in keys.items() if is_pk)
         if direct_bases:
             if primary_keys: raise DiagramError(
                 'Primary key cannot be redefined in derived classes')
             for base in direct_bases: keys.update(base._keys_)
-            primary_keys = set(key for key in keys
-                                   if isinstance(key, _PrimaryKeyTuple))
+            primary_keys = set(key for key, is_pk in keys.items() if is_pk)
                                    
         if len(primary_keys) > 1: raise DiagramError(
             'Only one primary key can be defined in each entity class')
         elif not primary_keys:
             if hasattr(entity, 'id'): raise DiagramError("Name 'id' is alredy in use")
-            _keys_ = set()
-            attr = PrimaryKey(int) # Side effect: modifies _keys_ local variable
+            _keys_ = {}
+            attr = PrimaryKey(int, autoincrement=True) # Side effect: modifies _keys_ local variable
             attr.name = 'id'
             attr.entity = entity
             type.__setattr__(entity, 'id', attr)  # entity.id = attr
             entity._new_attrs_.insert(0, attr)
-            key = _keys_.pop()
-            entity._keys_.add(key)
+            key, is_pk = _keys_.popitem()
+            entity._keys_[key] = True
             entity._pk_attrs_ = key
         else: entity._pk_attrs_ = primary_keys.pop()
         for i, attr in enumerate(entity._pk_attrs_): attr.pk_offset = i
@@ -501,6 +569,9 @@ class Entity(object):
     def old(obj):
         return OldProxy(obj)
     @classmethod
+    def find(entity, *args, **keyargs):
+        raise NotImplementedError
+    @classmethod
     def create(entity, *args, **keyargs):
         if args:
             if len(args) != len(entity._pk_attrs_):
@@ -534,6 +605,7 @@ class Entity(object):
 
         info = entity._get_info()
         trans = local.transaction
+        undo_reverse = []
         try:
             for key in entity._keys_:
                 key_value = tuple(map(data.__getitem__, map(get_offset, key)))
@@ -543,18 +615,21 @@ class Entity(object):
                 obj2 = new_index.setdefault(key_value, obj)
                 if obj2 is not obj:
                     key_str = ', '.join(repr(item) for item in key_value)
-                    if key is entity._pk_attrs_: key_type = 'primary key'
-                    else: key_type = 'unique index'
-                    raise CreateError('%s with such %s already exists: %s'
-                                      % (obj2.__class__.__name__, key_type, key_str))
+                    key_type = key is entity._pk_attrs_ and 'primary key' or 'unique index'
+                    raise CreateError('%s with such %s already exists: %s' % (obj2.__class__.__name__, key_type, key_str))
+            for attr in entity._attrs_:
+                if attr.reverse is None: continue
+                value = data[get_offset(attr)]
+                if value is None: continue
+                attr.reverse.set_reverse(obj, None, value, undo_reverse)
         except CreateError, e:
+            for undo_func in undo_reverse: undo_func()
             for key in entity._keys_:
                 key_value = tuple(map(data.__getitem__, map(get_offset, key)))
-                index_pair = trans.indexes.get(key)
-                if index_pair is None: continue  # cannot use try..except here!!!
-                old_index, new_index = index_pair
+                try: old_index, new_index = trans.indexes.get(key)
+                except TypeError: continue  # trans.indexes.get(key) is None
                 if new_index.get(key_value) is obj: del new_index[key_value]
-            raise
+            raise e
         if trans.objects.setdefault(obj, data) is not data: raise AssertionError
 
         if obj._pk_ is None: return obj
@@ -574,9 +649,6 @@ class Entity(object):
                 else: new_row[column.new_offset] = None
             if cache.rows.setdefault(pk, new_row) is not new_row: raise AssertionError
         return obj
-    @classmethod
-    def find(entity, *args, **keyargs):
-        raise NotImplementedError
     def set(obj, **keyargs):
         pk = obj._pk_
         info = obj._get_info()
@@ -598,36 +670,41 @@ class Entity(object):
             if attr is None: raise UpdateError("Unknown attribute: %r" % name)
             if isinstance(attr, Collection): raise NotImplementedError
             value = attr.check(value, obj.__class__)
-            if data[get_offsets(attr)] == value: continue
+            if data[get_offset(attr)] == value: continue
             if attr.pk_offset is not None: raise UpdateError('Cannot change value of primary key')
             attrs.add(attr)
-            data[get_offsets(attr)] = value
+            data[get_offset(attr)] = value
         if not attrs: return
 
-        undo = []
+        undo, undo_reverse = [], []
         try:
             for key in obj._keys_:
                 if key is obj._pk_attrs_: continue
-                new_key = tuple(map(data.__getitem__, map(get_offsets, key)))
-                if None in new_key or UNKNOWN in new_key: continue
-                old_key = tuple(map(old_data.__getitem__, map(get_offsets, key)))
+                new_key = tuple(map(data.__getitem__, map(get_offset, key)))
+                old_key = tuple(map(old_data.__getitem__, map(get_offset, key)))
+                if None in new_key or UNKNOWN in new_key: new_key = None
+                if None in old_key or UNKNOWN in old_key: old_key = None
                 if old_key == new_key: continue
                 try: old_index, new_index = trans.indexes[key]
                 except KeyError: old_index, new_index = trans.indexes[key] = ({}, {})
-                obj2 = new_index.setdefault(new_key, obj)
-                if obj2 is not obj:
-                    key_str = ', '.join(repr(item) for item in new_key)
-                    raise UpdateError('Cannot update %s.%s: %s with such unique index already exists: %s'
-                                      % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, key_str))
-                if not (None in old_key or UNKNOWN in old_key):
-                    del new_index[old_key]
-                    undo.append((new_index, obj, old_key, new_key))
-                else: undo.append((new_index, obj, None, new_key))
+                if new_key is not None:
+                    obj2 = new_index.setdefault(new_key, obj)
+                    if obj2 is not obj:
+                        key_str = ', '.join(repr(item) for item in new_key)
+                        raise UpdateError('Cannot update %s.%s: %s with such unique index already exists: %s'
+                                          % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, key_str))
+                if old_key is not None: del new_index[old_key]
+                undo.append((new_index, obj, old_key, new_key))
+            for attr in attrs:
+                if attr.reverse is None: continue
+                offset = get_offset(attr)
+                attr.reverse.set_reverse(obj, old_data[offset], data[offset], undo_reverse)
         except UpdateError:
-            data[:] = old_data
+            for undo_func in undo_reverse: undo_func()
             for new_index, obj, old_key, new_key in undo:
-                del new_index[new_key]
+                if new_key is not None: del new_index[new_key]
                 if old_key is not None: new_index[old_key] = obj
+            data[:] = old_data
             raise
         if data[1] != 'C': data[1] = 'U'
 
@@ -650,23 +727,26 @@ class Entity(object):
                 if row[1] != 'C':
                     row[1] = 'U'
                     row[ROW_UPDATE_MASK] |= column.mask
-                row[column.new_offset] = data[get_offsets(attr)]
+                row[column.new_offset] = data[get_offset(attr)]
         
 def old(obj):
     return OldProxy(obj)
 
 class OldProxy(object):
+    __slots__ = '_obj_', '_cls_'
     def __init__(old_proxy, obj):
         cls = obj.__class__
         if not issubclass(cls, Entity):
             raise TypeError('Expected subclass of Entity. Got: %s' % cls.__name__)
-        old_proxy._obj_ = obj
-        old_proxy._cls_ = cls
+        object.__setattr__(old_proxy, '_obj_', obj)  # old_proxy._obj_ = obj
+        object.__setattr__(old_proxy, '_cls_', cls)  # old_proxy._cls_ = cls
     def __getattr__(old_proxy, name):
         attr = getattr(old_proxy._cls_, name, None)
         if attr is None or not isinstance(attr, Attribute):
             return getattr(old_proxy._obj_, name)
         return attr.get_old(old_proxy._obj_)
+    def __setattr__(old_proxy, name):
+        raise TypeError('Old property values are read-only')
 
 class EntityInfo(object):
     def __init__(info, entity, data_source):
