@@ -11,9 +11,13 @@ class DiagramError(OrmError): pass
 class SchemaError(OrmError): pass
 class MappingError(OrmError): pass
 class TransactionError(OrmError): pass
-class ConstraintError(OrmError): pass
-class CreateError(OrmError): pass
-class UpdateError(OrmError): pass
+class ConstraintError(TransactionError): pass
+class CreateError(TransactionError): pass
+class UpdateError(TransactionError): pass
+class TransferringObjectWithoutPkError(TransactionError):
+    def __init__(self, obj):
+        msg = 'Transferring %s with undefined primary key from one transaction to another is not allowed'
+        TransactionError.__init__(self, msg % obj.__class__.__name__)
 
 DATA_HEADER = [ None, None ]
 
@@ -38,11 +42,14 @@ class Attribute(object):
         attr.entity = None
         attr.args = args
         attr.options = keyargs
+        attr.autoincrement = keyargs.pop('autoincrement', False)
+
         try: attr.default = keyargs.pop('default')
         except KeyError: attr.default = None
         else:
             if attr.default is None and isinstance(attr, Required):
                 raise TypeError('Default value for required attribute %s cannot be None' % attr)
+
         attr.reverse = keyargs.pop('reverse', None)
         if attr.reverse is None: pass
         elif not isinstance(attr.reverse, (basestring, Attribute)):
@@ -61,39 +68,45 @@ class Attribute(object):
         reverse = attr.reverse
         if reverse and not isinstance(value, reverse.entity):
             entity_name = (entity or attr.entity).__name__
-            raise ConstraintError('Value of attribute %s.%s must be an instance of %s'
-                                  % (entity_name, attr.name, reverse.entity.__name__))
+            raise ConstraintError('Value of attribute %s.%s must be an instance of %s. Got: %s'
+                                  % (entity_name, attr.name, reverse.entity.__name__, value))
         return value
     def get_old(attr, obj):
         raise NotImplementedError
     def __get__(attr, obj, type=None):
         if obj is None: return attr
-        try: return obj._pk_[attr.pk_offset]
-        except TypeError: pass
+        pk = obj._pk_
+        try: return pk[attr.pk_offset]
+        except TypeError: pass  # pk is None or attr.pk_offset is None
         attr_info = obj._get_info().attrs[attr]
         trans = local.transaction
         data = trans.objects.get(obj)
-        if data is None: raise NotImplementedError
+        if data is None:
+            if pk is None: raise TransferringObjectWithoutPkError(obj)
+            raise NotImplementedError
         value = data[obj._new_offsets_[attr]]
         if value is UNKNOWN: raise NotImplementedError
         return value
     def __set__(attr, obj, value):
+        value = attr.check(value, obj.__class__)
         pk = obj._pk_
         if attr.pk_offset is not None:
-            if value == pk[attr.pk_offset]: return
+            if pk is not None and value == pk[attr.pk_offset]: return
             raise UpdateError('Cannot change value of primary key')
-        value = attr.check(value, obj.__class__)
+
         attr_info = obj._get_info().attrs[attr]
         trans = local.transaction
         get_offset = obj._new_offsets_.__getitem__
         data = trans.objects.get(obj)
         if data is None:
+            if pk is None: raise TransferringObjectWithoutPkError(obj)
             data = trans.objects[obj] = obj._data_template_[:]
             data[0] = obj
             data[1] = 'U'
-            for a, v in zip(obj._pk_attrs_, obj._pk_): data[get_offset(a)] = v
+            for a, v in zip(obj._pk_attrs_, pk): data[get_offset(a)] = v
         prev = data[get_offset(attr)]
         if prev == value: return
+
         undo = []
         try:
             for key in obj._keys_:
@@ -103,7 +116,7 @@ class Attribute(object):
                 new_key = map(data.__getitem__, map(get_offset, key))
                 old_key = tuple(new_key)
                 new_key[position] = value
-                if UNKNOWN in new_key: continue
+                if None in new_key or UNKNOWN in new_key: continue
                 new_key = tuple(new_key)
                 try: old_index, new_index = trans.indexes[key]
                 except KeyError: old_index, new_index = trans.indexes[key] = ({}, {})
@@ -112,7 +125,7 @@ class Attribute(object):
                     key_str = ', '.join(repr(item) for item in new_key)
                     raise UpdateError('Cannot update %s.%s: %s with such unique index already exists: %s'
                                       % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, key_str))
-                if prev is not UNKNOWN:
+                if prev is not None and prev is not UNKNOWN:
                       del new_index[old_key]
                       undo.append((new_index, obj, old_key, new_key))
                 else: undo.append((new_index, obj, None, new_key))
@@ -123,6 +136,9 @@ class Attribute(object):
             raise
         if data[1] != 'C': data[1] = 'U'
         data[get_offset(attr)] = value
+
+        if pk is None: return
+        
         for table, column in attr_info.tables.items():
             cache = trans.caches.get(table)
             if cache is None: cache = trans.caches[table] = Cache(table)
@@ -131,7 +147,7 @@ class Attribute(object):
                 row = cache.rows[pk] = cache.row_template[:]
                 row[0] = obj
                 row[1] = 'U'
-                for c, v in zip(table.pk_columns, obj._pk_): row[c.new_offset] = v
+                for c, v in zip(table.pk_columns, pk): row[c.new_offset] = v
             else: assert row[0] is obj
             if row[1] != 'C':
                 row[1] = 'U'
@@ -148,7 +164,7 @@ class Required(Attribute):
         msg = None
         if value is UNKNOWN:
             value = attr.default
-            if value is None: msg = 'Required attribute %s.%s does not specified'
+            if value is None and not attr.autoincrement: msg = 'Required attribute %s.%s does not specified'
         elif value is None: msg = 'Required attribute %s.%s cannot be set to None'
         if msg is None: return Attribute.check(attr, value, entity)
         entity_name = (entity or attr.entity).__name__
@@ -180,22 +196,95 @@ class Collection(Attribute):
     def __init__(attr, py_type, *args, **keyargs):
         if attr.__class__ is Collection: raise TypeError("'Collection' is abstract type")
         Attribute.__init__(attr, py_type, *args, **keyargs)
+        if attr.default is not None: raise TypeError(
+            'default value could not be set for collection attribute %s' % attr)
+        if attr.autoincrement: raise TypeError(
+            "'autoincrement' option could not be set for collection attribute %s" % attr)
+    def __get__(attr, obj, type=None):
+        raise NotImplementedError
+    def __set__(attr, obj, value):
+        raise NotImplementedError
+    def __delete__(attr, obj):
+        raise NotImplementedError
 
 class Set(Collection):
     def __get__(attr, obj, type=None):
         if obj is None: return attr
         return SetProperty(obj, attr)
     def check(attr, value, entity=None):
-        pass
+        if value is None or value is UNKNOWN: return None
+        coldata = SetData()
+        coldata.fully_loaded = True
+        reverse = attr.reverse
+        if not isinstance(value, reverse.entity):
+            coldata.new = set(value)
+            for item in coldata.new:
+                if not isinstance(item, reverse.entity):
+                    entity_name = (entity or attr.entity).__name__
+                    raise ConstraintError('Item of collection %s.%s must be instance of %s. Got: %s'
+                                          % (entity_name, attr.name, reverse.entity.__name__, item))
+        else: coldata.new = set((value,))
+
+        for item in coldata.new:
+            pass
+            # ...
+
+        return coldata
 
 ##class List(Collection): pass
 ##class Dict(Collection): pass
 ##class Relation(Collection): pass
 
 class SetProperty(object):
-    def __init__(self, obj, attr):
+    __slots__ = '_obj_', '_attr_'
+    def __init__(col, obj, attr):
         self._obj_ = obj
         self._attr_ = attr
+    def _get_stuff_(self):
+        obj = col.obj
+        info = obj._get_info()
+        trans = local.transaction
+        data = trans.objects.get(obj)
+        if data is None:
+            if pk is None: raise TransferringObjectWithoutPkError(obj)
+            raise NotImplementedError
+        offset = obj._new_offsets_[col.attr]
+        coldata = data[offset]
+        if coldata is None:
+            coldata = data[offset] = SetData()
+            coldata.fully_loaded = True
+        elif coldata is UNKNOWN:
+            coldata = data[offset] = SetData()
+        return coldata
+    def __len__(col):
+        coldata = self._get_stuff_()
+        if coldata.fully_loaded: return len(coldata.new)
+        raise NotImplementedError
+    def __contains__(self, x):
+        coldata = self._get_stuff_()
+        if coldata.fully_loaded: return x in coldata.new
+        raise NotImplementedError
+    def __add__(self, x):
+        raise NotImplementedError
+    def __iadd__(self, x):
+        coldata = self._get_stuff_()
+        coldata.new.add(x)
+        raise NotImplementedError
+    def __sub__(self, x):
+        raise NotImplementedError
+    def __isub__(self, x):
+        raise NotImplementedError
+    def __eq__(self, x):
+        raise NotImplementedError
+    def __ne__(self, x):
+        raise NotImplementedError
+
+class SetData(object):
+    __slots__ = 'old', 'new', 'fully_loaded'
+    def __init__(coldata):
+        coldata.old = set()
+        coldata.new = set()
+        coldata.fully_loaded = False
 
 class Diagram(object):
     def __init__(diagram):
@@ -310,7 +399,6 @@ class Entity(object):
             entity._pk_attrs_ = key
         else: entity._pk_attrs_ = primary_keys.pop()
         for i, attr in enumerate(entity._pk_attrs_): attr.pk_offset = i
-        entity._pk_names_ = tuple(attr.name for attr in entity._pk_attrs_) # ???
 
         entity._attrs_ = base_attrs + new_attrs
         entity._attr_dict_ = dict((attr.name, attr) for attr in entity._attrs_)
@@ -319,7 +407,7 @@ class Entity(object):
         entity._old_offsets_ = old_offsets = {}
         entity._new_offsets_ = new_offsets = {}
         for attr in entity._attrs_:
-            if attr.pk_offset is None:
+            if attr.pk_offset is None and not isinstance(attr, Collection):
                 old_offsets[attr] = next_offset()
                 new_offsets[attr] = next_offset()
             else: old_offsets[attr] = new_offsets[attr] = next_offset()
@@ -396,7 +484,7 @@ class Entity(object):
             if data_source is None:
                 outer_dict = sys._getframe(1).f_locals
                 data_source = outer_dict.get('_data_source_')
-            if data_source is not None: trans = Transaction(data_source)
+            if data_source is not None: data_source.begin()
             else: raise TransactionError('There are no active transaction in thread %s. '
                                          'Cannot start transaction automatically, '
                                          'because default data source does not set'
@@ -417,36 +505,39 @@ class Entity(object):
         if args:
             if len(args) != len(entity._pk_attrs_):
                 raise CreateError('Invalid count of attrs in primary key')
-            for name, value in zip(entity._pk_names_, args):
-                if keyargs.setdefault(name, value) != value:
-                    raise CreateError('Ambiguous attribute value for %r' % name)
+            for attr, value in zip(entity._pk_attrs_, args):
+                if keyargs.setdefault(attr.name, value) != value:
+                    raise CreateError('Ambiguous attribute value for %r' % attr.name)
         for name in ifilterfalse(entity._attr_dict_.__contains__, keyargs):
             raise CreateError('Unknown attribute %r' % name)
-        pk = args or tuple(map(keyargs.get, entity._pk_names_))
-        if None in pk: raise CreateError('Primary key is not specified')
-
-        entity._lock_.acquire()
-        try:
-            obj = entity._objects_.get(pk)
-            if obj is None:
-                obj = object.__new__(entity)
-                obj._pk_ = pk
-                entity._objects_[pk] = obj
-        finally: entity._lock_.release()
 
         get_offset = entity._new_offsets_.__getitem__
         data = entity._data_template_[:]
-        data[0] = obj
-        data[1] = 'C'
         for attr in entity._attrs_:
             value = keyargs.get(attr.name, UNKNOWN)
             data[get_offset(attr)] = attr.check(value, entity)
+        pk = args or tuple(map(data.__getitem__, map(get_offset, entity._pk_attrs_)))
+        if None in pk:
+            obj = object.__new__(entity)
+            obj._pk_ = None
+        else:
+            entity._lock_.acquire()
+            try:
+                obj = entity._objects_.get(pk)
+                if obj is None:
+                    obj = object.__new__(entity)
+                    obj._pk_ = pk
+                    entity._objects_[pk] = obj
+            finally: entity._lock_.release()
+        data[0] = obj
+        data[1] = 'C'
 
         info = entity._get_info()
         trans = local.transaction
         try:
             for key in entity._keys_:
                 key_value = tuple(map(data.__getitem__, map(get_offset, key)))
+                if None in key_value: continue
                 try: old_index, new_index = trans.indexes[key]
                 except KeyError: old_index, new_index = trans.indexes[key] = ({}, {})
                 obj2 = new_index.setdefault(key_value, obj)
@@ -460,11 +551,14 @@ class Entity(object):
             for key in entity._keys_:
                 key_value = tuple(map(data.__getitem__, map(get_offset, key)))
                 index_pair = trans.indexes.get(key)
-                if index_pair is None: continue
+                if index_pair is None: continue  # cannot use try..except here!!!
                 old_index, new_index = index_pair
                 if new_index.get(key_value) is obj: del new_index[key_value]
             raise
         if trans.objects.setdefault(obj, data) is not data: raise AssertionError
+
+        if obj._pk_ is None: return obj
+
         for table in info.tables:
             cache = trans.caches.get(table)
             if cache is None: cache = trans.caches[table] = Cache(table)
@@ -484,32 +578,38 @@ class Entity(object):
     def find(entity, *args, **keyargs):
         raise NotImplementedError
     def set(obj, **keyargs):
+        pk = obj._pk_
         info = obj._get_info()
         trans = local.transaction
         get_offset = obj._new_offsets_.__getitem__
+
         data = trans.objects.get(obj)
         if data is None:
+            if pk is None: raise TransferringObjectWithoutPkError(obj)
             data = trans.objects[obj] = obj._data_template_[:]
             data[0] = obj
             data[1] = 'U'
-            for a, v in zip(obj._pk_attrs_, obj._pk_): data[get_offset(a)] = v
+            for a, v in zip(obj._pk_attrs_, pk): data[get_offset(a)] = v
         old_data = data[:]
+
         attrs = set()
         for name, value in keyargs.items():
             attr = obj._attr_dict_.get(name)
             if attr is None: raise UpdateError("Unknown attribute: %r" % name)
+            if isinstance(attr, Collection): raise NotImplementedError
             value = attr.check(value, obj.__class__)
             if data[get_offsets(attr)] == value: continue
             if attr.pk_offset is not None: raise UpdateError('Cannot change value of primary key')
             attrs.add(attr)
             data[get_offsets(attr)] = value
         if not attrs: return
+
         undo = []
         try:
             for key in obj._keys_:
                 if key is obj._pk_attrs_: continue
                 new_key = tuple(map(data.__getitem__, map(get_offsets, key)))
-                if UNKNOWN in new_key: continue
+                if None in new_key or UNKNOWN in new_key: continue
                 old_key = tuple(map(old_data.__getitem__, map(get_offsets, key)))
                 if old_key == new_key: continue
                 try: old_index, new_index = trans.indexes[key]
@@ -519,9 +619,9 @@ class Entity(object):
                     key_str = ', '.join(repr(item) for item in new_key)
                     raise UpdateError('Cannot update %s.%s: %s with such unique index already exists: %s'
                                       % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, key_str))
-                if UNKNOWN not in old_key:
-                      del new_index[old_key]
-                      undo.append((new_index, obj, old_key, new_key))
+                if not (None in old_key or UNKNOWN in old_key):
+                    del new_index[old_key]
+                    undo.append((new_index, obj, old_key, new_key))
                 else: undo.append((new_index, obj, None, new_key))
         except UpdateError:
             data[:] = old_data
@@ -530,7 +630,9 @@ class Entity(object):
                 if old_key is not None: new_index[old_key] = obj
             raise
         if data[1] != 'C': data[1] = 'U'
-        pk = obj._pk_
+
+        if pk is None: return
+
         for table in info.tables:
             cache = trans.caches.get(table)
             if cache is None: cache = trans.caches[table] = Cache(table)
@@ -539,7 +641,7 @@ class Entity(object):
                 row = cache.row_template[:]
                 row[0] = obj
                 row[1] = 'U'
-                for c, v in zip(table.pk_columns, obj._pk_): row[c.new_offset] = v
+                for c, v in zip(table.pk_columns, pk): row[c.new_offset] = v
             else: assert row[0] is obj
             for attr in attrs:
                 attr_info = info.attrs[attr]
