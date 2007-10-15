@@ -1,6 +1,8 @@
 # -*- coding: cp1251 -*-
 
 from pony.main import *
+from pony import utils
+from pony.logging import search_log
 
 use_autoreload()
 
@@ -114,6 +116,45 @@ def index():
     print '<li>%s</li>' % link(page6, 2007, 10)
     print '<li>%s</li>' % link(page7)
     print '</ul>'
+
+@http('/feed')
+@printhtml
+def feed():
+#    print r"""
+#{"recordsReturned":1397,"totalRecords":1397,"startIndex":0,"sort":null,"dir":"asc","records":[{"ts":"2007-10-11 00:34:02","type":"Start"}, {"ts":"2007-10-11 00:34:03","type":"Start2"}]}
+#    """
+    print load()
+
+MAX_RECORD_DISPLAY_COUNT = 1000
+
+def load(since_last_start=True):
+    start_id = 0
+    if since_last_start:
+        start = search_log(1, None, "type='HTTP:start'")
+        if start: start_id = start[0]['id']
+    data = search_log(MAX_RECORD_DISPLAY_COUNT, None,
+        "type like 'HTTP:%' and type <> 'HTTP:response' and id >= ?",
+        [ start_id ])
+    data.reverse()
+    json = '{"recordsReturned":1397,"totalRecords":1397,"startIndex":0,"sort":null,"dir":"asc","records":['
+    comma = ""
+    for r in data:
+        rtype = r['type']
+        if rtype == 'HTTP:start': record = '{"ts":"%s", "type":"%s"}' % (r['timestamp'][:-7], r['text'])  
+
+        #text= self.data['text']
+        #process_id = self.data['process_id']
+        #thread_id = self.data['thread_id']
+        #record_id = self.data['id']
+
+
+        elif rtype == 'HTTP:stop': pass
+        else: record = '{"ts":"%s", "type":"%s"}' % (r['timestamp'][:-7], r['text'])
+        json = json + comma + record
+        comma = ","
+    json = json + "]}"
+    return json
+
 
 if __name__ == '__main__':
     start_http_server()
