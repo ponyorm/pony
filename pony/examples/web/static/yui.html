@@ -1,0 +1,251 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<!--CSS file (default YUI Sam Skin) -->
+<link type="text/css" rel="stylesheet" href="/javascript/yui/2.3.1/build/datatable/assets/skins/sam/datatable.css">
+
+<!-- Dependencies -->
+<script type="text/javascript" src="/javascript/yui/2.3.1/build/yahoo-dom-event/yahoo-dom-event.js"></script>
+<script type="text/javascript" src="/javascript/yui/2.3.1/build/element/element-beta-min.js"></script>
+<script type="text/javascript" src="/javascript/yui/2.3.1/build/datasource/datasource-beta-min.js"></script>
+
+<!-- Dependency -->
+<script type="text/javascript" src="/javascript/yui/2.3.1/build/yahoo/yahoo-min.js"></script>
+
+<!-- Used for Custom Events and event listener bindings -->
+<script type="text/javascript" src="/javascript/yui/2.3.1/build/event/event-min.js"></script>
+
+<!-- OPTIONAL: External JSON parser from http://www.json.org/ (enables JSON validation) -->
+<script type="text/javascript" src="/javascript/json/json.js"></script>
+
+<!-- OPTIONAL: Connection (enables XHR) -->
+<script type="text/javascript" src="/javascript/yui/2.3.1/build/connection/connection-min.js"></script>
+
+<!-- OPTIONAL: Drag Drop (enables resizeable columns) -->
+<script type="text/javascript" src="/javascript/yui/2.3.1/build/dragdrop/dragdrop-min.js"></script>
+
+<!-- Source files -->
+<script type="text/javascript" src="/javascript/yui/2.3.1/build/datatable/datatable-beta-min.js"></script>
+
+<!-- TabView -->
+<link rel="stylesheet" type="text/css" href="/javascript/yui/2.3.1/build/fonts/fonts-min.css" />
+<link rel="stylesheet" type="text/css" href="/javascript/yui/2.3.1/build/tabview/assets/skins/sam/tabview.css" />
+<script type="text/javascript" src="/javascript/yui/2.3.1/build/utilities/utilities.js"></script>
+<script type="text/javascript" src="/javascript/yui/2.3.1/build/tabview/tabview.js"></script>
+
+<!--begin custom header content for this example-->
+<style type="text/css">
+.yui-navset  {
+    background:url(assets/loading.gif) no-repeat center center;
+    height:58em; /* hold some space while loading */
+    widht:100px
+}
+
+.yui-content{height:300px; width:1000px}
+.yui-navset-top .yui-nav,.yui-navset-bottom .yui-nav{ width:1015px;}
+
+#paginated {
+    height:350px;
+}
+#pages, #requestTable {
+  height: 25px;
+  width: 1000px;
+margin:5;padding:0;font-family:arial;font-size:inherit;
+border-collapse:collapse;border:1px solid #7F7F7F;
+}
+
+#example-canvas h2 {padding: 0 0 .5em 0;}
+</style>
+
+<!--end custom header content for this example-->
+
+</head>
+<body class="yui-skin-sam">
+<h2>Web Interface</h2>
+<!-- <div id="pages">pp</div> -->
+<div id="paginated"></div>
+<div id="container"></div> <!-- container for tabs-->
+
+<script type="text/javascript">
+
+var keepRequesting = true;
+var currentRecord = 5;
+var lastId = -1;
+var tabView = new YAHOO.widget.TabView();
+var ds2 = new YAHOO.util.DataSource("http://localhost:8080/testJSON?");
+    ds2.responseType = YAHOO.util.DataSource.TYPE_JSON;
+
+    ds2.responseSchema = {
+            resultsList: "records",
+            fields: ["id", "ts","type"]
+        };
+
+//<!-- Upper table -->
+        var topTableColumnDefs = [
+            {key:"id", label:"id"},
+            {key:"ts", label:"timestamp"},
+            {key:"type", label:"type", width:"800px"}
+        ];
+        var topTableConfig = {
+                paginated:true,
+                paginator: {
+                    rowsPerPage: 10,
+                    dropdownOptions: [10, 12]
+                },
+                initialRequest: "results=504"
+        };
+
+        topTableDataSource = new YAHOO.util.DataSource("http://localhost:8080/feed1?");
+        topTableDataSource.responseType = YAHOO.util.DataSource.TYPE_JSON;
+        topTableDataSource.connXhrMode = "queueRequests"; 
+        topTableDataSource.responseSchema = {
+            resultsList: "records",
+            fields: ["id", "ts","type"]
+        };
+
+var topDataTable = new YAHOO.widget.DataTable("paginated", topTableColumnDefs,
+                topTableDataSource
+                ,topTableConfig
+                );
+
+        topDataTable.subscribe("rowClickEvent",function(ev) {
+                                                      var record = this.getRecord(ev.target);
+						      currentRecord = record.getData("id");
+                                                      this.onEventSelectRow(ev);
+                                                      
+                                                   }
+        ); 
+
+
+//function sendRec() {
+//    ds2.sendRequest("r1", null, null); 
+//    setTimeout(sendRec, 2000);
+//}
+// setTimeout(sendRec, 2000);
+
+var AjaxObject = {
+
+	handleSuccess:function(o){
+		this.processResult(o);
+	},
+
+	handleFailure:function(o){
+		// Failure handler
+	},
+
+	processResult:function(o){
+                jo = eval('(' + o.responseText + ')');
+		//alert(jo.totalRecords);
+                for (var i = 0; i <= jo.recordsReturned; i++) {
+                  topDataTable.addRow(jo.records[i]);
+                }
+                //alert(jo["records"][0]["ts"]);
+	},
+
+	startRequest:function() {
+	   YAHOO.util.Connect.asyncRequest('GET', '/getLastRecords?lastId=' + lastId, callback, null);
+	}
+
+};
+
+var callback =
+{
+	success:AjaxObject.handleSuccess,
+	failure:AjaxObject.handleFailure,
+	scope: AjaxObject
+};
+
+// Start the transaction.
+function loopRequest() {
+  AjaxObject.startRequest();
+  if (keepRequesting) {
+      setTimeout(loopRequest, 2000);
+      keepRequesting = false;
+  }
+}
+
+function l() {
+ topTableDataSource.sendRequest("r", topDataTable.onDataReturnInsertRows, topDataTable);
+ setTimeout(l, 1000);
+}
+
+//l();
+loopRequest();
+
+
+YAHOO.util.Event.addListener(window, "load", function() {
+    YAHOO.example.ClientPagination = new function() {
+        //this.myDataTable.subscribe("rowClickEvent",this.myDataTable.onEventSelectRow); 
+        //function callback(sRequest, oResponse) {
+	//alert("ok");
+        //   
+        //}; 
+        //this.ds2 = new YAHOO.util.DataSource("http://localhost:8080/testJSON?");
+        //this.ds2.responseType = YAHOO.util.DataSource.TYPE_JSON;
+        //this.ds2.responseSchema = {
+        //    resultsList: "records",
+        //    fields: ["id", "ts","type"]
+        //};
+        function sendR(ds) {
+              //alert('xx');
+              ds.sendRequest("r1", 
+                     this.myDataTable.onDataReturnInsertRows, this.myDataTable); 
+	      //this.myDataSource.sendRequest("r", 
+              //       this.myDataTable.onDataReturnInsertRows, this.myDataTable);
+              //setTimeout(sendR, 2000); 
+
+        };
+        ds2.fireChangeEvent("activeIndex", "1");
+        //sendR(this.myDataSource);
+//        setTimeout("sendR(this.myDataSource)", 2000); 
+//	      this.myDataSource.sendRequest("r", 
+//                     this.myDataTable.onDataReturnInsertRows, this.myDataTable);
+
+    };
+});
+
+
+
+(function() {
+    
+    tabView.addTab( new YAHOO.widget.Tab({
+        label: 'Reguest',
+        active: true
+    }));
+
+    tabView.addTab( new YAHOO.widget.Tab({
+        label: 'Response'
+    }));
+
+    tabView.addTab( new YAHOO.widget.Tab({
+        label: 'Exceptions'
+    }));
+
+    tabView.addTab( new YAHOO.widget.Tab({
+        label: 'Session'
+    }));
+
+    function tab0Activated(e) {
+       tabView.getTab(0).set('dataSrc', '/webintf/request?' + currentRecord);
+    }
+    function tab1Activated(e) {
+       tabView.getTab(1).set('dataSrc', '/webintf/response?' + currentRecord);
+    }
+    function tab2Activated(e) {
+       tabView.getTab(2).set('dataSrc', '/webintf/exceptions?' + currentRecord);
+    }
+    function tab3Activated(e) {
+       tabView.getTab(3).set('dataSrc', '/webintf/session?' + currentRecord);
+    }                                                    
+    tabView.getTab(0).addListener('beforeActiveChange', tab0Activated);
+    tabView.getTab(1).addListener('beforeActiveChange', tab1Activated);
+    tabView.getTab(2).addListener('beforeActiveChange', tab2Activated);
+    tabView.getTab(3).addListener('beforeActiveChange', tab3Activated);
+
+    tabView.appendTo('container');
+})();
+     
+</script>
+
+</body>
+</html>
