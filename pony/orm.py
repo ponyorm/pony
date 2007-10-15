@@ -97,17 +97,11 @@ class Attribute(object):
         attr_info = obj._get_info().attrs[attr]
         trans = local.transaction
         get_offset = obj._new_offsets_.__getitem__
-        data = trans.objects.get(obj)
-        if data is None:
-            if pk is None: raise TransferringObjectWithoutPkError(obj)
-            data = trans.objects[obj] = obj._data_template_[:]
-            data[0] = obj
-            data[1] = 'U'
-            for a, v in zip(obj._pk_attrs_, pk): data[get_offset(a)] = v
+        data = trans.objects.get(obj) or obj._get_data('U')
         prev = data[get_offset(attr)]
         if prev == value: return
 
-        undo, undo_reverse = [], []
+        undo = []
         try:
             for key in obj._keys_:
                 if key is obj._pk_attrs_: continue
@@ -130,10 +124,8 @@ class Attribute(object):
                                           % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, key_str))
                 if old_key is not None: del new_index[old_key]
                 undo.append((new_index, obj, old_key, new_key))
-            if attr.reverse is not None:
-                attr.reverse.set_reverse(obj, prev, value, undo_reverse)
+            if attr.reverse is not None: attr.reverse.set_reverse(obj, prev, value)
         except UpdateError:
-            for undo_func in undo_reverse: undo_func()
             for new_index, obj, old_key, new_key in undo:
                 del new_index[new_key]
                 if old_key is not None: new_index[old_key] = obj
@@ -159,14 +151,9 @@ class Attribute(object):
             row[column.new_offset] = value
     def __delete__(attr, obj):
         raise NotImplementedError
-    def set_reverse(attr, reverse_obj, prev_reverse_value, reverse_value, undo):
-        assert reverse_value is not None and reverse_value is not UNKNOWN
-        trans = local.transaction
-        if not isinstance(reverse_value, SetData):
-            obj = reverse_value
-            offset = obj._new_offsets_[attr]
-            data = trans.objects.get(obj)
-        else: pass
+    def set_reverse(attr, reverse_obj, prev_obj, obj):
+        assert rvalue is not UNKNOWN
+        raise NotImplementedError
 
 class Optional(Attribute): pass
 
@@ -211,13 +198,22 @@ class Collection(Attribute):
         if attr.autoincrement: raise TypeError(
             "'autoincrement' option could not be set for collection attribute %s" % attr)
     def __get__(attr, obj, type=None):
-        raise NotImplementedError
+        assert False, 'Abstract method'
     def __set__(attr, obj, value):
-        raise NotImplementedError
+        assert False, 'Abstract method'
     def __delete__(attr, obj):
-        raise NotImplementedError
-    def set_reverse(attr, reverse_obj, prev_reverse_value, reverse_value, undo):
-        raise NotImplementedError
+        assert False, 'Abstract method'
+    def set_reverse(attr, reverse_obj, prev_obj, obj):
+        assert False, 'Abstract method'
+    def _get_coldata(attr, obj):
+        trans = local.transaction
+        data = trans.objects.get(obj) or obj._get_data('U')
+        offset = obj._new_offsets_[attr]
+        coldata = data[offset]
+        if coldata is None:
+            coldata = data[offset] = SetData()
+            coldata.fully_loaded = (data[1] == 'C')
+        return coldata
 
 class Set(Collection):
     def __get__(attr, obj, type=None):
@@ -237,8 +233,15 @@ class Set(Collection):
                                           % (entity_name, attr.name, reverse.entity.__name__, item))
         else: coldata.new = set((value,))
         return coldata
-    def set_reverse(attr, reverse_obj, prev_reverse_value, reverse_value, undo):
-        raise NotImplementedError
+    def set_reverse(attr, reverse_obj, prev_obj, obj):
+        assert prev_obj is not UNKNOWN
+        assert obj is not UNKNOWN
+        if prev_obj is not None:
+            prev_coldata = attr._get_coldata(prev_obj)
+            prev_coldata.delete_many((reverse_obj,))
+        if obj is not None:
+            coldata = attr._get_coldata(obj)
+            coldata.add_many((reverse_obj,))
 
 ##class List(Collection): pass
 ##class Dict(Collection): pass
@@ -588,6 +591,17 @@ class Entity(object):
     def __init__(obj, *args, **keyargs):
         raise TypeError('You cannot create entity instances directly. '
                         'Use Entity.create(...) or Entity.find(...) instead')
+    def _get_data(obj, status):
+        trans = local.transaction
+        data = trans.objects.get(obj)
+        if data is None:
+            if pk is None: raise TransferringObjectWithoutPkError(obj)
+            data = trans.objects[obj] = obj._data_template_[:]
+            data[0] = obj
+            data[1] = status
+            get_offset = obj._new_offsets_.__getitem__
+            for a, v in zip(obj._pk_attrs_, pk): data[get_offset(a)] = v
+        return data
     @property
     def old(obj):
         return OldProxy(obj)
@@ -609,6 +623,8 @@ class Entity(object):
         data = entity._data_template_[:]
         for attr in entity._attrs_:
             value = keyargs.get(attr.name, UNKNOWN)
+            if value is not UNKNOWN and isinstance(attr, Collection):
+                raise NotImplementedError
             data[get_offset(attr)] = attr.check(value, entity)
         pk = args or tuple(map(data.__getitem__, map(get_offset, entity._pk_attrs_)))
         if None in pk:
@@ -628,7 +644,6 @@ class Entity(object):
 
         info = entity._get_info()
         trans = local.transaction
-        undo_reverse = []
         try:
             for key in entity._keys_:
                 key_value = tuple(map(data.__getitem__, map(get_offset, key)))
@@ -644,9 +659,8 @@ class Entity(object):
                 if attr.reverse is None: continue
                 value = data[get_offset(attr)]
                 if value is None: continue
-                attr.reverse.set_reverse(obj, None, value, undo_reverse)
+                attr.reverse.set_reverse(obj, None, value)
         except CreateError, e:
-            for undo_func in undo_reverse: undo_func()
             for key in entity._keys_:
                 key_value = tuple(map(data.__getitem__, map(get_offset, key)))
                 try: old_index, new_index = trans.indexes.get(key)
@@ -678,13 +692,7 @@ class Entity(object):
         trans = local.transaction
         get_offset = obj._new_offsets_.__getitem__
 
-        data = trans.objects.get(obj)
-        if data is None:
-            if pk is None: raise TransferringObjectWithoutPkError(obj)
-            data = trans.objects[obj] = obj._data_template_[:]
-            data[0] = obj
-            data[1] = 'U'
-            for a, v in zip(obj._pk_attrs_, pk): data[get_offset(a)] = v
+        data = trans.objects.get(obj) or obj._get_data('U')
         old_data = data[:]
 
         attrs = set()
@@ -699,7 +707,7 @@ class Entity(object):
             data[get_offset(attr)] = value
         if not attrs: return
 
-        undo, undo_reverse = [], []
+        undo = []
         try:
             for key in obj._keys_:
                 if key is obj._pk_attrs_: continue
@@ -721,9 +729,8 @@ class Entity(object):
             for attr in attrs:
                 if attr.reverse is None: continue
                 offset = get_offset(attr)
-                attr.reverse.set_reverse(obj, old_data[offset], data[offset], undo_reverse)
+                attr.reverse.set_reverse(obj, old_data[offset], data[offset])
         except UpdateError:
-            for undo_func in undo_reverse: undo_func()
             for new_index, obj, old_key, new_key in undo:
                 if new_key is not None: del new_index[new_key]
                 if old_key is not None: new_index[old_key] = obj
