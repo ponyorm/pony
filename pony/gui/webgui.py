@@ -6,19 +6,39 @@ from pony.logging import search_log
 
 import pprint, threading, time
 from datetime import timedelta
+from pony.templating import template
 
-use_autoreload()
-
-
-@http('/getLastRecords')
-@printhtml
-def feed():
-#    print r"""
-#{"recordsReturned":2,"records":[{"id":"123", "ts":"2007-10-11 00:34:02","type":"Start"}, {"id":"125","ts":"2007-10-11 00:34:03","type":"Start2"}]}
-#    """
-    print load()
 
 MAX_RECORD_DISPLAY_COUNT = 1000
+
+@http('/getLastRecords')
+def feed():
+    data = load()
+    records_count = len(data)
+    return template("""
+    {"recordsReturned":$records_count,"records":[
+        $for(r in data) {          
+            {"id":"$(r['id'])", "ts":"$(r['timestamp'][:-7])", "type": "$(r['text'])"} }
+        $separator{,}
+    ]}
+    """)
+
+@http('/getLastRecordsHtml', type='text/html')
+def feed2():
+    data = load()
+    records_count = len(data)
+    return template("""
+    <html><head></head><body>
+    <table border="1">
+        <tr><th>id</th><th>timestamp</th><th>type</th><th></th></tr>
+        $for(r in data) { <tr>
+            <td>$(r['id'])</td><td>$(r['timestamp'][:-7])</td><td>$(r['text'])</td>
+               <td><a href="more?record_id=$(r['id'])">+</a></td>
+        </tr>
+        }
+    </table></body></html>
+    """)
+
 
 def load(since_last_start=True):
     start_id = 0
@@ -26,69 +46,33 @@ def load(since_last_start=True):
         start = search_log(1, None, "type='HTTP:start'")
         if start: start_id = start[0]['id']
     data = search_log(MAX_RECORD_DISPLAY_COUNT, None,
-        "type like 'HTTP:%' and type <> 'HTTP:response' and id >= ?",
+        "type like 'HTTP:%' and type not in ('HTTP:response', 'HTTP:stop') and id >= ?",
         [ start_id ])
     data.reverse()
-    json = '{"recordsReturned":1397,"totalRecords":1397,"startIndex":0,"sort":null,"dir":"asc","records":['
-    comma = ""
-    for r in data:
-        rtype = r['type']
-        if rtype == 'HTTP:start': record = '{"id":"%s", "ts":"%s", "type":"%s"}' % (r['id'], r['timestamp'][:-7], r['text'])  
-
-        #text= self.data['text']
-        #process_id = self.data['process_id']
-        #thread_id = self.data['thread_id']
-        #record_id = self.data['id']
+    return data
 
 
-        elif rtype == 'HTTP:stop': pass
-        else: record = '{"id":"%s", "ts":"%s", "type":"%s"}' % (r['id'], r['timestamp'][:-7], r['text'])
-        json = json + comma + record
-        comma = ","
-    json = json + "]}"
-    return json
-
-@http('/webintf/request')
-@printhtml
-def session_feed():
-    print """
-<table id="requestTable" border="1" width="100%">
-<thead>
-<tr width="50%">
-  <td>HTTP request header</td>
-  <td>value</td>
-</tr>
-</thead>
-<tbody>
-<tr>
-  <td>ACTUAL_SERVER_PROTOCOL</td>
-  <td>HTTP/1.1</td>
-</tr>
-</tbody>
-</table>
-    """
-
-def get_record():
-    record_id = 1929
+@http('/more?record_id=$record_id', type='text/html')
+def get_record(record_id=None):
+    record_id = int(record_id)
 
     records = search_log(-1, None, "id = ?",[ record_id ])
     req = records[0]
+    rtype = req['type']
+    if rtype == 'HTTP:start' or rtype == 'HTTP:stop':
+        return "No more"
 
-    for k, v in sorted(req['headers'].items()):
-        #widget.request_headers.add(k, v)
-        print "headers= %s %s" % (k, v)
-    
+    req_headers = req['headers']    
+    process_id = req['process_id']
+    thread_id = req['thread_id']
 
     records = search_log(-1, record_id,
         "type like 'HTTP:%' and process_id = ? and thread_id = ?",
-        [ 252, 416 ])
-
+        [ process_id, thread_id ])
 
     if records and records[0]['type'] == 'HTTP:response':
         resp = records[0]
 
-        process_id = req['process_id']
-        thread_id = req['thread_id']
         record_id = req['id']
         
         dt1 = utils.timestamp2datetime(req['timestamp'])
@@ -104,25 +88,47 @@ def get_record():
                                 "and process_id = ? and thread_id = ?",
                                 [ resp['id'], process_id, thread_id ])
         if exceptions: text += "; EXCEPTION: " + exceptions[0]['text']
-        #widget.response_info.config(text=text)
-        print "resp=" + text
-        for k, v in sorted(resp['headers']):
-            #widget.response_headers.add(k, v)
-            print "headers= %s %s" % (k, v)
-        exc_text = []
+
+        resp_headers = resp['headers']
+
+        exc_text_list = []
         for exc in exceptions:
-            exc_text.append(exc['traceback'])
-        #widget.exceptions_field.insert(END, '\n'.join(exc_text))
-        print "exc=" + '\n'.join(exc_text)
+            exc_text_list.append(exc['traceback'])
+        exc_text = ('\n'.join(exc_text_list)).replace('\n', '<br/>')
         
         session_text = pprint.pformat(req['session'])
-        #widget.session_field.insert(END, session_text)
-        print "sess=" + session_text
 
-    else: Record.draw(self)
+        return template("""
+    <html><head></head><body>
+    <div>
+    $text
+    </div> 
+    <table border="1">
+        <tr><th>HTTP request header</th><th>value</th></tr>
+        $for(k, v in sorted(req_headers.items())) { <tr>
+            <td>$k</td><td>$v</td>
+        </tr>
+        }
+    </table>
+    <br />
+    <table border="1">
+        <tr><th>HTTP response header</th><th>value</th></tr>
+        $for(k, v in sorted(resp_headers)) { <tr>
+            <td>$k</td><td>$v</td>
+        </tr>
+        }
+    </table>
+    <div>
+      exceptions:<br/> $exc_text
+    </div>
+    <br />
+    <div>
+      session:<br/> $session_text
+    </div>
+    </body></html>
 
 
-if __name__ == '__main__':
-    #get_record()
-    start_http_server()
-    show_gui()
+        """)
+
+    else: return "Error happened"
+
