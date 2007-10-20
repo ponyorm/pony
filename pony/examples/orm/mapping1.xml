@@ -23,7 +23,7 @@
     <column name="Passport" attr="Person.passport" />
     <column name="Title" attr="Professor.title" />
     <column name="GrNum" attr="Student.group" />
-    <column name="NZach" attr="Student.nzach" />
+    <column name="StudNum" attr="Student.number" />
   </table>
   <table name="MARKS" entity="Mark">
     <column name="Date" attr="Mark.date" />
