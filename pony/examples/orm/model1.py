@@ -4,7 +4,7 @@ from datetime import date
 _data_source_ = DataSource('sqlite', ':memory:', mapping='mapping1.xml')
 
 class Group(Entity):
-    number = PrimaryKey(int)
+    number = PrimaryKey(int, auto=True)
     students = Set("Student")
     subjects = Set("Subject")
 
@@ -16,15 +16,16 @@ class Subject(Entity):
 class Person(Entity):
     first_name = Required(unicode)
     last_name = Required(unicode)
-    passport = Unique(str)
+    passport = Optional(str)
+    Unique(passport)
 
 class Professor(Person):
     title = Required(str)
 
 class Student(Person):
-    group = Required("Group")
+    group = Optional("Group")
     marks = Set("Mark")
-    nzach = Unique(int)
+    number = Unique(int, auto=True)
 
 class Mark(Entity):
     student = Required("Student")
