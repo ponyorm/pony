@@ -1,4 +1,4 @@
-import re, os, sys, time, random, threading, Queue, cPickle, base64, hmac, sha
+import re, os, os.path, sys, time, random, threading, Queue, cPickle, base64, hmac, sha
 
 import pony
 from pony.thirdparty import sqlite
@@ -135,6 +135,7 @@ def get_sessiondb_name():
     # (Problems with unicode symbols in directory name)
     if pony.MAIN_FILE is None: return ':memory:'
     root, ext = os.path.splitext(pony.MAIN_FILE)
+    if pony.RUNNED_AS == 'NATIVE': root = os.path.basename(root)
     return root + '-secrets.sqlite'
 
 sql_create = """

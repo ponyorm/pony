@@ -1,4 +1,4 @@
-import cPickle, os, Queue, random, re, sys, traceback, thread, threading, time
+import cPickle, os, os.path, Queue, random, re, sys, traceback, thread, threading, time
 from itertools import count
 import pony
 from pony.thirdparty import sqlite
@@ -68,6 +68,7 @@ def get_logfile_name():
     # (Problems with unicode symbols in directory name)
     if pony.MAIN_FILE is None: return ':memory:'
     root, ext = os.path.splitext(pony.MAIN_FILE)
+    if pony.RUNNED_AS == 'NATIVE': root = os.path.basename(root)
     return root + '-log.sqlite'
 
 sql_create = """
