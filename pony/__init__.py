@@ -20,6 +20,7 @@ elif RUNNED_AS == 'MOD_WSGI':
     for module_name, module in sys.modules.items():
         if module_name.startswith('_mod_wsgi_'):
             MAIN_FILE = module.__file__
+            break
 
 MAIN_DIR = None
 if MAIN_FILE is not None:
