@@ -1,0 +1,50 @@
+h2, h4 {
+ 	font-family: tahoma;
+	font-weight: bold;
+	color: #000066;
+	margin: 1em 0 0.6em 0;
+}
+
+table {
+        border-collapse: collapse;
+	font-family: Verdana, Arial, Helvetica, sans-serif;
+	font-size: 10px;
+}
+
+th, td {
+        border-style: solid;
+        border-width: 1px;
+        border-color: #CCCCCC;
+        padding-left: 5px;
+        padding-right: 5px;
+}
+
+td.details-container {
+        padding-left: 1px;
+        padding-right: 1px;
+}
+
+table.t2 {
+	width: 100%;
+}
+
+.t2-header {
+	width:30%;
+}
+
+.delimeter {
+	background-color: #EEEEEE;
+}
+
+tr.row:hover {
+	background-color: #CCCCCC;
+	cursor: pointer;
+}
+
+a:link, a:visited, a:active { 
+	text-decoration: none;
+        color:#000000;
+        outline: none;
+}
+
+
