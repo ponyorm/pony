@@ -665,6 +665,7 @@ class Entity(object):
         trans = local.transaction
         data = trans.objects.get(obj)
         if data is None:
+            pk = obj._pk_
             if pk is None: raise TransferringObjectWithoutPkError(obj)
             data = trans.objects[obj] = obj._data_template_[:]
             data[0] = obj
@@ -724,7 +725,6 @@ class Entity(object):
         undo_funcs = []
         try:
             for key in entity._keys_:
-                if key is entity._pk_attrs_: continue
                 key_value = tuple(map(data.__getitem__, map(get_new_offset, key)))
                 if None in key_value: continue
                 try: old_index, new_index = trans.indexes[key]
