@@ -18,7 +18,7 @@ class Html(unicode):
     def __add__(self, x):
         return Html(unicode.__add__(self, quote(x)))
     def __radd__(self, x):
-        return Html(unicode.__add__(quote(x), self))
+        return quote(x) + self
     def __mul__(self, x):
         return Html(unicode.__mul__(self, x))
     def __rmul__(self, x):
@@ -37,6 +37,8 @@ class Html(unicode):
 htmljoin = Html('').join
 
 class StrHtml(str):
+    def __str__(self):  # Because of bug in Python 2.4 print statement.
+        return self     # Without this StrHtml converted silently to str when printed
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, str.__repr__(self))
 ##  # Part of correct markup may not be correct markup itself
@@ -47,12 +49,10 @@ class StrHtml(str):
 ##      return StrHtml(str.__getslice__(self, i, j))
     def __add__(self, x):
         result = str.__add__(self, quote(x))
-        if isinstance(result, unicode): return StrHtml(result)
-        return Html(result)
-    def __radd__(self, x):
-        result = str.__add__(quote(x), self)
         if isinstance(result, str): return StrHtml(result)
         return Html(result)
+    def __radd__(self, x):
+        return quote(x) + self
     def __mul__(self, x):
         result = str.__mul__(self, x)
         if isinstance(result, str): return StrHtml(result)
@@ -206,15 +206,12 @@ def printtext(old_func):
         return u''.join(func(*args, **keyargs))
     return new_func
 
-@decorator_with_params
-def printhtml(source_encoding='ascii'):
-    def new_decorator(old_func):
-        func = grab_stdout(string_consts_to_html(old_func))
-        def new_func(*args, **keyargs):
-            result = func(*args, **keyargs)
-            return Html(u''.join(result))
-        return new_func
-    return new_decorator
+@decorator
+def printhtml(old_func):
+    func = grab_stdout(string_consts_to_html(old_func))
+    def new_func(*args, **keyargs):
+        return htmljoin(func(*args, **keyargs))
+    return new_func
 
 ################################################################################
 
