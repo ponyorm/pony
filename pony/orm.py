@@ -701,7 +701,7 @@ class Entity(object):
             value = keyargs.get(attr.name, UNKNOWN)
             data[get_old_offset(attr)] = None
             data[get_new_offset(attr)] = attr.check(value, entity)
-        pk = args or tuple(map(data.__getitem__, map(get_new_offset, entity._pk_attrs_)))
+        pk = tuple(map(data.__getitem__, map(get_new_offset, entity._pk_attrs_)))
         if None in pk:
             obj = object.__new__(entity)
             obj._pk_ = None
