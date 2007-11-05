@@ -2,7 +2,6 @@
 
 from pony.main import *
 from pony import utils
-from pony.logging import search_log
 
 use_autoreload()
 
