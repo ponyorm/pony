@@ -26,17 +26,17 @@ h3 { font-size: 122%; }
 .pony-content blockquote {
 	margin: 0.5em 0.5em;
 }
-ol
+li { margin: 0.5em 0.5em 0.5em 1.5em; }
+ol li
 {
 	list-style-position: outside;
 	list-style-type: decimal;
 }
-ul
+ul li
 {
 	list-style-position: outside;
 	list-style-type: disc;
 }
-li { margin: 0.5em 0.5em 0.5em 1.5em; }
 th { font-weight: bold; }
 
 /* forms: */
