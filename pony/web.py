@@ -18,13 +18,9 @@ def http(url=None, redirect=False, system=False, **http_headers):
                           for name, value in http_headers.items() ])
     def new_decorator(old_func):
         real_url = url is None and old_func.__name__ or url
-        register_http_handler(old_func, real_url, redirect, system,
-                              http_headers)
+        HttpInfo(old_func, real_url, redirect, system, http_headers)
         return old_func
     return new_decorator
-
-def register_http_handler(*args, **keyargs):
-    return HttpInfo(*args, **keyargs)
 
 http_registry_lock = threading.RLock()
 http_registry = ({}, [], [])
@@ -598,7 +594,6 @@ def http_remove(x):
         try: _http_remove(x)
         finally: http_registry_lock.release()
     else: raise ValueError('This object is not bound to url: %r' % x)
-
 http.remove = http_remove
 
 def _http_clear(dict, list1, list2):
@@ -617,7 +612,6 @@ def http_clear():
         _http_clear(*http_registry)
         for handler in http_system_handlers: handler.register()
     finally: http_registry_lock.release()
-
 http.clear = http_clear
 
 ################################################################################
@@ -707,17 +701,21 @@ local = Local()
 
 def get_request():
     return local.request
+http.get_request = get_request
 
 def get_response():
     return local.response
+http.get_response = get_response
 
 def get_param(name, default=None):
     return local.request.fields.getfirst(name, default)
+http.get_param = get_param
 
 def get_cookie(name, default=None):
     morsel = local.request.cookies.get(name)
     if morsel is None: return default
     return morsel.value
+http.get_cookie = get_cookie
 
 def set_cookie(name, value, expires=None, max_age=None, path=None, domain=None,
                secure=False, http_only=False, comment=None, version=None):
@@ -738,6 +736,7 @@ def set_cookie(name, value, expires=None, max_age=None, path=None, domain=None,
         if secure: morsel['secure'] = True
         if http_only: response._http_only_cookies.add(name)
         else: response._http_only_cookies.discard(name)
+http.set_cookie = set_cookie
 
 def format_exc():
     exc_type, exc_value, traceback = sys.exc_info()
@@ -868,6 +867,7 @@ def start_http_server(address='localhost:8080', verbose=True):
     except ServerAlreadyStarted:
         if not autoreload.reloading: raise
     else: server_thread.start()
+http.start = start_http_server
 
 def stop_http_server(address=None):
     if pony.RUNNED_AS == 'MOD_WSGI': return
@@ -883,6 +883,7 @@ def stop_http_server(address=None):
                                    'because it is not started:' % (host, port))
         server_thread.server.stop()
         server_thread.join()
+http.stop = stop_http_server
 
 @pony.on_shutdown
 def do_shutdown():
