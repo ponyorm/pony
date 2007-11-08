@@ -717,7 +717,7 @@ class Entity(object):
                 obj2 = new_index.setdefault(key_value, obj)
                 if obj2 is not obj:
                     key_str = ', '.join(repr(item) for item in key_value)
-                    raise CreateError('%s with such unique already exists: %s' % (obj2.__class__.__name__, key_str))
+                    raise CreateError('%s with such unique index already exists: %s' % (obj2.__class__.__name__, key_str))
             for attr in entity._attrs_:
                 if attr.reverse is None: continue
                 value = data[get_new_offset(attr)]
