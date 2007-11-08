@@ -67,9 +67,9 @@ class Attribute(object):
         if value is None: return value
         reverse = attr.reverse
         if reverse and not isinstance(value, reverse.entity):
-            entity_name = (entity or attr.entity).__name__
+            if entity is None: entity = attr.entity
             raise ConstraintError('Value of attribute %s.%s must be an instance of %s. Got: %s'
-                                  % (entity_name, attr.name, reverse.entity.__name__, value))
+                                  % (entity.__name__, attr.name, reverse.entity.__name__, value))
         return value
     def get_old(attr, obj):
         raise NotImplementedError
@@ -185,8 +185,8 @@ class Required(Attribute):
             if value is None and not attr.auto: msg = 'Required attribute %s.%s does not specified'
         elif value is None: msg = 'Required attribute %s.%s cannot be set to None'
         if msg is None: return Attribute.check(attr, value, entity)
-        entity_name = (entity or attr.entity).__name__
-        raise ConstraintError(msg % (entity_name, attr.name))
+        if entity is None: entity = attr.entity
+        raise ConstraintError(msg % (entity.__name__, attr.name))
 
 class Unique(Required):
     def __new__(cls, *args, **keyargs):
@@ -238,9 +238,9 @@ class Set(Collection):
                 for value in result:
                     if not isinstance(value, reverse.entity): raise TypeError
             except TypeError:
-                entity_name = (entity or attr.entity).__name__
+                if entity is None: entity = attr.entity
                 raise TypeError('Item of collection %s.%s must be instance of %s. Got: %s'
-                                % (entity_name, attr.name, reverse.entity.__name__, value))
+                                % (entity.__name__, attr.name, reverse.entity.__name__, value))
         else: result = set((value,))
         return result
     def reverse_add(attr, objects, reverse_obj, undo_funcs):
