@@ -439,21 +439,6 @@ class SetProperty(object):
 class _OldSet(set):
     __slots__ = 'loaded'
 
-class Diagram(object):
-    def __init__(diagram):
-        diagram.lock = threading.RLock()
-        diagram.entities = {} # entity_name -> Entity
-        diagram.transactions = set()
-    def clear(diagram):
-        diagram.lock.acquire()
-        try: diagram._clear()
-        finally: diagram.lock.release()
-    def _clear(diagram):
-        diagram.lock.acquire()
-        try:
-            for trans in diagram.transactions: trans.data_source.clear_schema() # ????
-        finally: diagram.lock.release()
-
 class EntityMeta(type):
     def __new__(meta, name, bases, dict):
         if 'Entity' in globals():
@@ -569,7 +554,7 @@ class Entity(object):
 
         diagram.lock.acquire()
         try:
-            diagram._clear()
+            diagram.clear()
             entity._diagram_ = diagram
             diagram.entities[entity.__name__] = entity
             entity._link_reverse_attrs_()
@@ -887,6 +872,17 @@ class AttrInfo(object):
         return '<AttrInfo: %s.%s>' % (attr_info.enity_info.entity.__name__,
                                       attr_info.attr.name)
     
+class Diagram(object):
+    def __init__(diagram):
+        diagram.lock = threading.RLock()
+        diagram.entities = {} # entity_name -> Entity
+        diagram.transactions = set()
+    def clear(diagram):
+        diagram.lock.acquire()
+        try:
+            for trans in diagram.transactions: trans.data_source.clear_schema() # ????
+        finally: diagram.lock.release()
+
 class DataSource(object):
     _cache = {}
     _cache_lock = threading.Lock() # threadsafe access to cache of datasources
