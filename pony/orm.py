@@ -190,6 +190,7 @@ class Required(Attribute):
 
 class Unique(Required):
     def __new__(cls, *args, **keyargs):
+        is_primary_key = issubclass(cls, PrimaryKey)
         if not args: raise TypeError('Invalid count of positional arguments')
         attrs = tuple(a for a in args if isinstance(a, Attribute))
         non_attrs = [ a for a in args if not isinstance(a, Attribute) ]
@@ -198,13 +199,21 @@ class Unique(Required):
         keys = cls_dict.setdefault('_keys_', {})
         if not attrs:
             result = Required.__new__(cls, *args, **keyargs)
-            keys[(result,)] = issubclass(cls, PrimaryKey)
+            keys[(result,)] = is_primary_key
             return result
         else:
+            msg = None
             for attr in attrs:
                 if isinstance(attr, Collection):
-                    key_type = issubclass(cls, PrimaryKey) and 'primary key' or 'unique index'
-                    raise TypeError('Collection attribute %s cannot be part of %s' % (attr, key_type))
+                    key_type = is_primary_key and 'primary key' or 'unique index'
+                    msg = "Collection attribute '%s' cannot be part of " + key_type
+                elif is_primary_key and isinstance(attr, Optional):
+                    msg = "Optional attribute '%s' cannot be part of primary key"
+                if msg is not None:
+                    attr_name = ''
+                    for name, value in cls_dict.items():
+                        if value is attr: attr_name = name
+                    raise TypeError(msg % attr_name)
             keys[attrs] = issubclass(cls, PrimaryKey)
 
 class PrimaryKey(Unique): pass
