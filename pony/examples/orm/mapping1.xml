@@ -1,23 +1,20 @@
-<?xml version="1.0"?>
 <tables>
   <table name="SUBJECTS" entity="Subject">
     <column name="Name" attr="Subject.name" />
   </table>
   <table name="GROUPS" entity="Group">
     <column name="GrNum" attr="Group.number" domain="SMALLINT" />
-    <column name="Faculty" attr="Group.faculty" />
-    <colum name="Spec" attr="Group.speciality" />
   </table>
   <table name="GROUPS_SUBJECT" relation="Group.subjects Subject.groups">
     <column name="GrNum" attr="Subject.groups.number" />
     <column name="SubjName" attr="Group.subjects.name" />
   </table>
   <table name="PERSONS" entity="Person">
+    <column name="Id" attr="Person.id" />
     <column name="Type" kind="discriminator">
       <case value="P" entity="Professor" />
       <case value="S" entity="Student" />
     </column>
-    <column name="Id" attr="Person.id" />
     <column name="FirstName" attr="Person.first_name" />
     <column name="LastName" attr="Person.last_name" />
     <column name="Passport" attr="Person.passport" />
@@ -28,7 +25,7 @@
   <table name="MARKS" entity="Mark">
     <column name="Date" attr="Mark.date" />
     <column name="Discipline" attr="Mark.subject" />   <!-- attr="Mark.subject.name" -->
-    <column name="Student" attr="Mark.student" />      <!-- attr="Mark.student.id" -->
+    <column name="StudentId" attr="Mark.student" />    <!-- attr="Mark.student.id" -->
     <column name="Value" attr="Mark.value" />
   </table>
 </tables>
