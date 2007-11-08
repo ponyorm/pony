@@ -265,7 +265,7 @@ class Set(Collection):
             new_offset = obj._new_offsets_[attr]
             value = data[new_offset]
             undo.append(value)
-            value.remove(reverse_obj)
+            value.remove(reverse_obj) # ???
         def undo_func():
             for value in undo:
                 value.add(reverse_obj)
@@ -273,7 +273,7 @@ class Set(Collection):
     def __get__(attr, obj, type=None):
         if obj is None: return attr
         return SetProperty(obj, attr)
-    def __set__(attr, obj, value, undo_funcs=None):
+    def __set__(attr, obj, value):
         value = attr.check(value, obj.__class__)
         info = obj._get_info()
         trans = local.transaction
@@ -287,16 +287,12 @@ class Set(Collection):
         if old is not None:
             if old is UNKNOWN or not old.loaded: raise NotImplementedError
 
-        is_reverse_call = undo_funcs is not None
-        if not is_reverse_call: undo_funcs = []
-        def undo_func():
-            data[new_offset] = prev
-        undo_funcs.append(undo_func)
+        undo_funcs = []
         data[new_offset] = value
         try: attr.update_reverse(obj, prev, value, undo_funcs)
         except:
-            if not is_reverse_call:
-                for undo_func in reversed(undo_funcs): undo_func()
+            for undo_func in reversed(undo_funcs): undo_func()
+            data[new_offset] = prev
             raise
     def __delete__(attr, obj):
         raise NotImplementedError
@@ -306,8 +302,6 @@ class Set(Collection):
             if prev is not None:
                 if value is None: remove_set = prev
                 else: remove_set = prev.difference(value)
-                # if remove_set and isinstance(reverse, Required):
-                #     raise ConstraintError('Required attribute %s cannot be set to None' % reverse) # ???
                 for reverse_obj in remove_set: reverse.__set__(reverse_obj, None, undo_funcs)
             if value is not None:
                 if prev is None: add_set = value
