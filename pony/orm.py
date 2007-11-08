@@ -1095,6 +1095,7 @@ class Transaction(object):
         local.transaction = trans
     def _close(trans):
         assert local.transaction is trans
+        data_source = trans.data_source
         data_source.lock.acquire()
         try:
             while trans.diagrams:
