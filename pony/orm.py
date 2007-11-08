@@ -695,18 +695,15 @@ class Entity(object):
             obj._pk_ = None
             obj._new_ = new_instance_counter()
         else:
+            obj = object.__new__(entity)
+            obj._pk_ = pk
+            obj._new_ = None
             entity._lock_.acquire()
-            try:
-                obj = entity._objects_.get(pk)
-                if obj is None:
-                    obj = object.__new__(entity)
-                    obj._pk_ = pk
-                    obj._new_ = None
-                    entity._objects_[pk] = obj
-                elif obj in trans.objects:
-                    key_str = ', '.join(repr(item) for item in pk)
-                    raise CreateError('%s with such primary key already exists: %s' % (obj.__class__.__name__, key_str))
+            try: obj = entity._objects_.setdefault(pk, obj)
             finally: entity._lock_.release()
+            if obj in trans.objects:
+                key_str = ', '.join(repr(item) for item in pk)
+                raise CreateError('%s with such primary key already exists: %s' % (obj.__class__.__name__, key_str))
         data[0] = obj
         data[1] = 'C'
 
