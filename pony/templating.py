@@ -79,9 +79,11 @@ def quote(x):
     if not isinstance(x, basestring):
         if hasattr(x, '__unicode__'):
             x = unicode(x)
+            if isinstance(x, Html): return x
             cls = Html
         else:
             x = str(x)
+            if isinstance(x, StrHtml): return x
             cls = StrHtml
     elif isinstance(x, unicode): cls = Html
     else: cls = StrHtml
