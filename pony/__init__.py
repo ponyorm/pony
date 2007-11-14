@@ -64,9 +64,4 @@ shutdown_counter = count()
 
 def _shutdown():
     if shutdown_counter.next(): return
-    try: log_exc = logging.log_exc
-    except NameError: log_exc = None
-    for func in reversed(shutdown_list):
-        try: func()
-        except:
-            if log_exc is not None: log_exc()
+    for func in reversed(shutdown_list): func()
