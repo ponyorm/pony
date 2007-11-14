@@ -313,4 +313,4 @@ def show_gui():
 
 @pony.on_shutdown
 def do_shutdown():
-    tk_thread.quit(None)
+    if tk_thread is not None: tk_thread.quit(None)
