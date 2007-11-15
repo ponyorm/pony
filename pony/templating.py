@@ -6,6 +6,9 @@ from utils import (read_text_file, is_ident,
 try: real_stdout
 except: real_stdout = sys.stdout
 
+try: real_stderr
+except: real_stderr = sys.stderr
+
 class Html(unicode):
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, unicode.__repr__(self))
@@ -165,6 +168,14 @@ class ThreadedStdout(object):
 
 threaded_stdout = ThreadedStdout()
 
+class PonyStderr(object):
+    @staticmethod
+    def write(s):
+        if isinstance(s, StrHtml): s = str.__str__(s)
+        real_stdout.write(s)
+
+pony_stderr = PonyStderr()
+
 @decorator
 def grab_stdout(f):
     def new_function(*args, **keyargs):
@@ -172,7 +183,8 @@ def grab_stdout(f):
         local.writers.append(data.append)
         # The next line required for PythonWin interactive window
         # (PythonWin resets stdout all the time)
-        sys.stdout = threaded_stdout 
+        sys.stdout = threaded_stdout
+        sys.stderr = pony_stderr
         try: result = f(*args, **keyargs)
         finally: assert local.writers.pop() == data.append
         if result is not None: return (result,)
