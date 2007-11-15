@@ -3,7 +3,7 @@ import re, threading
 from operator import attrgetter
 
 from pony.auth import get_ticket
-from pony.templating import Html, htmljoin, htmltag
+from pony.templating import Html, StrHtml, htmljoin, htmltag
 from pony.web import get_request
 
 class Form(object):
@@ -116,7 +116,7 @@ class Form(object):
         result.append(Html('\n</div>'))
         return htmljoin(result)
     def __str__(self):
-        return unicode(self).encode('ascii', 'xmlcharrefreplace')
+        return StrHtml(unicode(self).encode('ascii', 'xmlcharrefreplace'))
     def __unicode__(self):
         return Html('\n').join([ self.header(),
                                  Html('<table>'),
@@ -158,7 +158,7 @@ class HtmlField(object):
                        name=self.name, value=value, type=self.HTML_TYPE)
     tag = html = property(__unicode__)
     def __str__(self):
-        return unicode(self).encode('ascii', 'xmlcharrefreplace')
+        return StrHtml(unicode(self).encode('ascii', 'xmlcharrefreplace'))
 
 class Hidden(HtmlField):
     HTML_TYPE = 'hidden'
