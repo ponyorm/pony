@@ -1,22 +1,16 @@
-h2, h4 {
+h2 {
  	font-family: tahoma;
 	font-weight: bold;
 	color: #000066;
 	margin: 1em 0 0.6em 0;
 }
 
-table {
+#main {
         border-collapse: collapse;
 	font-family: Verdana, Arial, Helvetica, sans-serif;
-	font-size: 10px;	
+	font-size: 10px;
 }
 
-.bordered {
-        border-style: solid;
-        border-width: 1px;
-        border-color: #CCCCCC;
-        background-color:#FFFFFF;
-}
 
 .pad {
         padding-left: 5px;
@@ -24,72 +18,76 @@ table {
 }
 
 
-table.t2 {
+#nested {
 	width: 100%;
         background-color:#FFFFFF;
+	font-family: Verdana, Arial, Helvetica, sans-serif;
+	font-size: 10px;
+        border-collapse: collapse; 
+        border-style: solid;
+        border-width: 2px;
+        border-color:#777777;        
         cursor: default;
+}
+
+#nested td  {
+        border-style: solid;
+        border-width: 1px;
+        border-color: #CCCCCC;
+        background-color:#FFFFFF;
 }
 
 .delimeter {
 	background-color: #EEEEEE;
+        border-style: solid;
+        border-width: 1px;
+        border-color: #CCCCCC;
 }
 
 
-td.main-row:hover {
+td.row:hover {
 	background-color: #CCCCCC;
 	cursor: pointer;
 }
 
-a:link, a:visited, a:active { 
-	text-decoration: none;
-        color:#000000;
-        outline: none;
+.col1 {
+ 	float:left;
+	 cursor:pointer;
+	 display:block;
+	 width:5em;
+	 text-align:right;
+	 padding-right:1em;
+	 border-right: solid #CCCCCC 1px;
 }
 
-
-
-.col11 {
- float:left;
- width:4em;
- text-align:right;
- padding-right:5px;
- #background-color:#F7F7F7;
- border-right: solid #CCCCCC 1px;
-}
-.col12 {
- float:left;
- cursor:pointer;
- width:16em;
- display:block;
- text-align:center; 
- #background-color:#F7F7F7;
- border-right: solid #CCCCCC 1px;
-
-}
-.col13 {
- #text-decoration:none;
- float:left;
- text-align:left;
- padding-left:5px;
- display:block;
- width:50em;
- #background-color:#F7F7F7;
- border-right: solid #CCCCCC 1px;
-
+.col2 {
+	 float:left;
+	 cursor:pointer;
+	 width:16em;
+	 display:block;
+	 text-align:center; 
+	 border-right: solid #CCCCCC 1px;
 }
 
-table {
-        #border-collapse: collapse;
-        border-color:#CCCCCC;
-	font-family: Verdana, Arial, Helvetica, sans-serif;
-	font-size: 10px;
+.col3 {
+	 1float:left;
+	 cursor:pointer;
+	 text-align:left;
+	 padding-left:1em;
+	 display:block;
+	 width:80em;
 }
 
 .expanded {
-	background-color: #CCCCCC;
+	background-color: #AAAAAA;
 }
-.scrl {
-  overflow-y: scroll;
-  overflow-x: hidden;
-  height:30em;
+
+.prevnext {
+	text-align:right;
+	font-family: Verdana, Arial, Helvetica, sans-serif;
+	font-size: 12px;
+}
+
+#prev1, #next1 {
+	display:none;              
 }
