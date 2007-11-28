@@ -867,15 +867,20 @@ class EntityInfo(object):
                 assert columns2 is columns
         pk_attr_infos = set(map(info.attr_map.__getitem__, entity._pk_attrs_))
         for table, attr_map in info.table_map.items():
-            key_columns_1 = set(column for column in table.columns if column.is_part_of_pk)
-            key_columns_2 = set()
+            key_columns_1 = [ column for column in table.columns if column.is_part_of_pk ]
+            key_columns_2 = []
             for attr_info in pk_attr_infos:
                 columns = attr_map.get(attr_info)
                 if columns is None: raise MappingError(
                     'Key attribute %r does not have correspond column in table %r' % (attr_info.attr.name, table.name))
-                key_columns_2.update(columns)
+                key_columns_2.extend(columns)
+            print entity, table, key_columns_1, key_columns_2
+            if set(key_columns_1) != set(key_columns_2): raise MappingError(
+                'Key attributes of entity %r does not correspond with key columns of table %r'
+                % (entity.__name__, table.name))
             if key_columns_1 != key_columns_2: raise MappingError(
-                'Key attributes of entity %r does not correspond with key columns of table %r' % (entity.__name__, table.name))
+                'Order of key attributes of entity %r does not correspond with order of key columns of table %r'
+                % (entity.__name__, table.name))
 
 class AttrInfo(object):
     def __init__(attr_info, info, attr):

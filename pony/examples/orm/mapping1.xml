@@ -24,8 +24,8 @@
   </table>
   <table name="MARKS">
     <column name="Date" attr="Mark.date" />
-    <column name="Discipline" pk="true" attr="Mark.subject" />   <!-- attr="Mark.subject.name" -->
     <column name="StudentId" pk="true" attr="Mark.student" />    <!-- attr="Mark.student.id" -->
+    <column name="Discipline" pk="true" attr="Mark.subject" />   <!-- attr="Mark.subject.name" -->
     <column name="Value" attr="Mark.value" />
   </table>
 </tables>
