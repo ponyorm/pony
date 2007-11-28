@@ -1,16 +1,16 @@
 <tables>
-  <table name="SUBJECTS" entity="Subject">
-    <column name="Name" attr="Subject.name" />
+  <table name="SUBJECTS">
+    <column name="Name" pk="true" attr="Subject.name" />
   </table>
-  <table name="GROUPS" entity="Group">
-    <column name="GrNum" attr="Group.number" domain="SMALLINT" />
+  <table name="GROUPS">
+    <column name="GrNum" pk="true" attr="Group.number" domain="SMALLINT" />
   </table>
   <table name="GROUPS_SUBJECT" relation="Group.subjects Subject.groups">
-    <column name="GrNum" attr="Subject.groups.number" />
-    <column name="SubjName" attr="Group.subjects.name" />
+    <column name="GrNum" pk="true" attr="Subject.groups.number" />
+    <column name="SubjName" pk="true" attr="Group.subjects.name" />
   </table>
-  <table name="PERSONS" entity="Person">
-    <column name="Id" attr="Person.id" />
+  <table name="PERSONS">
+    <column name="Id" pk="true" attr="Person.id" />
     <column name="Type" kind="discriminator">
       <case value="P" entity="Professor" />
       <case value="S" entity="Student" />
@@ -22,10 +22,10 @@
     <column name="GrNum" attr="Student.group" />
     <column name="StudNum" attr="Student.number" />
   </table>
-  <table name="MARKS" entity="Mark">
+  <table name="MARKS">
     <column name="Date" attr="Mark.date" />
-    <column name="Discipline" attr="Mark.subject" />   <!-- attr="Mark.subject.name" -->
-    <column name="StudentId" attr="Mark.student" />    <!-- attr="Mark.student.id" -->
+    <column name="Discipline" pk="true" attr="Mark.subject" />   <!-- attr="Mark.subject.name" -->
+    <column name="StudentId" pk="true" attr="Mark.student" />    <!-- attr="Mark.student.id" -->
     <column name="Value" attr="Mark.value" />
   </table>
 </tables>

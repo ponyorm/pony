@@ -78,7 +78,7 @@ class Attribute(object):
         pk = obj._pk_
         try: return pk[attr.pk_offset]
         except TypeError: pass  # pk is None or attr.pk_offset is None
-        attr_info = obj._get_info().attrs[attr]
+        attr_info = obj._get_info().attr_map[attr]
         trans = local.transaction
         data = trans.objects.get(obj) or obj._get_data('R')
         value = data[obj._new_offsets_[attr]]
@@ -91,7 +91,7 @@ class Attribute(object):
             if pk is not None and value == pk[attr.pk_offset]: return
             raise UpdateError('Cannot change value of primary key')
 
-        attr_info = obj._get_info().attrs[attr]
+        attr_info = obj._get_info().attr_map[attr]
         trans = local.transaction
         data = trans.objects.get(obj) or obj._get_data('U')
         get_new_offset = obj._new_offsets_.__getitem__
@@ -147,22 +147,22 @@ class Attribute(object):
         if data[1] != 'C': data[1] = 'U'
         data[get_new_offset(attr)] = value
 
-        if pk is None: return
-        
-        for table, column in attr_info.tables.items():
-            cache = trans.caches.get(table)
-            if cache is None: cache = trans.caches[table] = Cache(table)
-            row = cache.rows.get(pk)
-            if row is None:
-                row = cache.rows[pk] = cache.row_template[:]
-                row[0] = obj
-                row[1] = 'U'
-                for c, v in zip(table.pk_columns, pk): row[c.new_offset] = v
-            else: assert row[0] is obj
-            if row[1] != 'C':
-                row[1] = 'U'
-                row[ROW_UPDATE_MASK] |= column.mask
-            row[column.new_offset] = value
+##        if pk is None: return
+##        
+##        for table, column in attr_info.tables.items():
+##            cache = trans.caches.get(table)
+##            if cache is None: cache = trans.caches[table] = Cache(table)
+##            row = cache.rows.get(pk)
+##            if row is None:
+##                row = cache.rows[pk] = cache.row_template[:]
+##                row[0] = obj
+##                row[1] = 'U'
+##                for c, v in zip(table.pk_columns, pk): row[c.new_offset] = v
+##            else: assert row[0] is obj
+##            if row[1] != 'C':
+##                row[1] = 'U'
+##                row[ROW_UPDATE_MASK] |= column.mask
+##            row[column.new_offset] = value
     def __delete__(attr, obj):
         raise NotImplementedError
     def update_reverse(attr, obj, prev, value, undo_funcs):
@@ -734,22 +734,22 @@ class Entity(object):
             raise
         if trans.objects.setdefault(obj, data) is not data: raise AssertionError
 
-        if obj._pk_ is None: return obj
-
-        for table in info.tables:
-            cache = trans.caches.get(table)
-            if cache is None: cache = trans.caches[table] = Cache(table)
-            new_row = cache.row_template[:]
-            new_row[0] = obj
-            new_row[1] = 'C'
-            for column in table.columns:
-                for attr in column.attrs:
-                    if entity is attr.entity or issubclass(entity, attr.entity):
-                        value = data[get_new_offset(attr)]
-                        new_row[column.new_offset] = value
-                        break
-                else: new_row[column.new_offset] = None
-            if cache.rows.setdefault(pk, new_row) is not new_row: raise AssertionError
+##        if obj._pk_ is None: return obj
+##
+##        for table in info.tables:
+##            cache = trans.caches.get(table)
+##            if cache is None: cache = trans.caches[table] = Cache(table)
+##            new_row = cache.row_template[:]
+##            new_row[0] = obj
+##            new_row[1] = 'C'
+##            for column in table.columns:
+##                for attr in column.attrs:
+##                    if entity is attr.entity or issubclass(entity, attr.entity):
+##                        value = data[get_new_offset(attr)]
+##                        new_row[column.new_offset] = value
+##                        break
+##                else: new_row[column.new_offset] = None
+##            if cache.rows.setdefault(pk, new_row) is not new_row: raise AssertionError
         return obj
     def set(obj, **keyargs):
         pk = obj._pk_
@@ -809,26 +809,26 @@ class Entity(object):
             raise
         if data[1] != 'C': data[1] = 'U'
 
-        if pk is None: return
-
-        for table in info.tables:
-            cache = trans.caches.get(table)
-            if cache is None: cache = trans.caches[table] = Cache(table)
-            row = cache.rows.get(pk)
-            if row is None:
-                row = cache.row_template[:]
-                row[0] = obj
-                row[1] = 'U'
-                for c, v in zip(table.pk_columns, pk): row[c.new_offset] = v
-            else: assert row[0] is obj
-            for attr in attrs:
-                attr_info = info.attrs[attr]
-                column = attr_info.tables.get(table)
-                if column is None: continue
-                if row[1] != 'C':
-                    row[1] = 'U'
-                    row[ROW_UPDATE_MASK] |= column.mask
-                row[column.new_offset] = data[get_new_offset(attr)]
+##        if pk is None: return
+##
+##        for table in info.tables:
+##            cache = trans.caches.get(table)
+##            if cache is None: cache = trans.caches[table] = Cache(table)
+##            row = cache.rows.get(pk)
+##            if row is None:
+##                row = cache.row_template[:]
+##                row[0] = obj
+##                row[1] = 'U'
+##                for c, v in zip(table.pk_columns, pk): row[c.new_offset] = v
+##            else: assert row[0] is obj
+##            for attr in attrs:
+##                attr_info = info.attrs[attr]
+##                column = attr_info.tables.get(table)
+##                if column is None: continue
+##                if row[1] != 'C':
+##                    row[1] = 'U'
+##                    row[ROW_UPDATE_MASK] |= column.mask
+##                row[column.new_offset] = data[get_new_offset(attr)]
         
 def old(obj):
     return OldProxy(obj)
@@ -851,32 +851,48 @@ class OldProxy(object):
 
 class EntityInfo(object):
     def __init__(info, entity, data_source):
+        # info.tables = {}  # Table -> dict(attr_name -> Column)
+        # info.attrs = {}   # Attribute -> AttrInfo
         info.entity = entity
         info.data_source = data_source
-        info.tables = {}  # Table -> dict(attr_name -> Column)
+        info.table_map = {} # Table -> dict(Attribute -> [ Column ])
+        info.attr_map = {}  # Attribute -> AttrInfo
         if data_source.mapping is None: raise NotImplementedError
         entity_names = set(e.__name__ for e in entity._all_bases_)
-        for table in data_source.tables.values():
-            for entity_name in table.entities:
-                if entity_name in entity_names:
-                    info.tables[table] = {}
-                    break
-        info.attrs = {} # Attribute -> AttrInfo
-        for attr in entity._attrs_: info.attrs[attr] = AttrInfo(info, attr)
-        for attr_info in info.attrs.values():
-            for table, column in attr_info.tables.items():
-                info.tables[table][attr_info.attr.name] = column
+        for attr in entity._attrs_: info.attr_map[attr] = AttrInfo(info, attr)
+        for attr, attr_info in info.attr_map.items():
+            for table, columns in attr_info.table_map.items():
+                attr_map = info.table_map.setdefault(table, {})
+                columns2 = attr_map.setdefault(attr_info, columns)
+                assert columns2 is columns
+        pk_attr_infos = set(map(info.attr_map.__getitem__, entity._pk_attrs_))
+        for table, attr_map in info.table_map.items():
+            key_columns_1 = set(column for column in table.columns if column.is_part_of_pk)
+            key_columns_2 = set()
+            for attr_info in pk_attr_infos:
+                columns = attr_map.get(attr_info)
+                if columns is None: raise MappingError(
+                    'Key attribute %r does not have correspond column in table %r' % (attr_info.attr.name, table.name))
+                key_columns_2.update(columns)
+            if key_columns_1 != key_columns_2: raise MappingError(
+                'Key attributes of entity %r does not correspond with key columns of table %r' % (entity.__name__, table.name))
 
 class AttrInfo(object):
     def __init__(attr_info, info, attr):
         attr_info.enity_info = info
         attr_info.attr = attr
-        name_pair = attr.entity.__name__, attr.name
-        attr_info.tables = info.data_source.attr_map.get(name_pair, {}).copy()
-        for table, column in attr_info.tables.items(): column.attrs.add(attr)
+        attr_info.table_map = {} # Table -> [ Column ]
+        entity_names = set(e.__name__ for e in info.entity._all_bases_)
+        for entity_name in entity_names:
+            ds_attr_map = info.data_source.entity_map.get(entity_name)
+            if ds_attr_map is None: continue
+            ds_table_map = ds_attr_map.get(attr.name)
+            if ds_table_map is None: continue
+            for table, columns in ds_table_map.items(): attr_info.table_map[table] = columns[:]
     def __repr__(attr_info):
-        return '<AttrInfo: %s.%s>' % (attr_info.enity_info.entity.__name__,
-                                      attr_info.attr.name)
+        entity_name = attr_info.enity_info.entity.__name__
+        attr_name = attr_info.attr.name
+        return '<AttrInfo: %s.%s>' % (entity_name, attr_name)
     
 class Diagram(object):
     def __init__(diagram):
@@ -925,69 +941,39 @@ class DataSource(object):
         data_source.args = args
         data_source.keyargs = keyargs
         data_source.transactions = set()        
-        data_source.tables = {}   # table_name -> Table
+        data_source.tables = {}     # table_name -> Table
+        data_source.entity_map = {} # entity_name -> dict(attr_name -> [ Column ])
+        # data_source.attr_map = {} # (entity_name, attr_name)->(Table->Column)
         data_source.diagrams = set()
-        data_source.entities = {} # Entity -> EntityInfo
-        data_source.attr_map = {} # (entity_name, attr_name)->(Table->Column)
+        data_source.entities = {}   # Entity -> EntityInfo
         if mapping is not None: data_source.load_mapping()
     def load_mapping(data_source):
         for table_element in data_source.mapping.findall('table'):
             table = Table(data_source, table_element)
             if data_source.tables.setdefault(table.name, table) is not table:
                 raise MappingError('Duplicate table definition: %s' % table.name)
-            if table.entities:
-                for column in table.columns:
-                    for attr_name in column.attr_names:
-                        tables = data_source.attr_map.setdefault(attr_name[:2], {})
-                        if tables.setdefault(table, column) is not column:
-                            raise NotImplementedError
     def generate_schema(data_source, diagram):
         data_source.lock.acquire()
         try:
             if diagram in data_source.diagrams: return
-            for entity in diagram.entities.values():
-                info = EntityInfo(entity, data_source)
-                data_source.entities[entity] = info
-                for key_attrs in entity._keys_:
-                    name_pairs = []
-                    for attr in key_attrs: name_pairs.append((attr.entity.__name__, attr.name))
-                    for table in info.tables:
-                        key_columns = []
-                        for name_pair in name_pairs:
-                            tables = data_source.attr_map.get(name_pair)
-                            if tables is None:
-                                raise SchemaError('Key column %r.%r does not have correspond column' % name_pair)
-                            column = tables.get(table)
-                            if column is None: break
-                            key_columns.append(column)
-                        else:
-                            key_columns = tuple(key_columns)
-                            if key_attrs is not entity._pk_attrs_: table.secondary_keys.add(key_columns)
-                            elif not hasattr(table, 'primary_key'): table.pk_columns = key_columns
-                            elif table.pk_columns != key_columns:
-                                raise SchemaError('Multiple primary keys for table %r'% table.name)
-            for table in data_source.tables.values():
-                if not table.entities: continue
-                next_offset = count(len(ROW_HEADER)).next
-                mask_offset = count().next
-                for i, column in enumerate(table.pk_columns): column.pk_offset = i
-                for column in table.columns:
-                    if column.pk_offset is None:
-                        column.old_offset = next_offset()
-                        column.new_offset = next_offset()
-                        column.mask = 1 << mask_offset()
-                    else:
-                        column.old_offset = column.new_offset = next_offset()
-                        column.mask = 0
+            try:
+                for entity in diagram.entities.values():
+                    data_source.entities[entity] = EntityInfo(entity, data_source)
+            except:
+                for entity in diagram.entities.values():
+                    data_source.entities.pop(entity, None)
+                raise
+            else: data_source.diagrams.add(diagram)
         finally: data_source.lock.release()
     def clear_schema(data_source):
         data_source.lock.acquire()
         try:
-            if data_source.transaction:
-                raise SchemaError('Cannot clear datasource schema information '
-                                  'because it is used by active transaction')
-            data_source.entities.clear()
+            if data_source.transactions: raise SchemaError(
+                'Cannot clear datasource schema information because it is used by active transaction')
             data_source.tables.clear()
+            data_source.diagrams.clear()
+            data_source.entities.clear()
+            data_source.entity_map.clear()
         finally: data_source.lock.release()
     def get_connection(data_source):
         provider = data_source.provider
@@ -1001,70 +987,80 @@ class Table(object):
     def __init__(table, data_source, x):
         table.data_source = data_source
         table.columns = []
-        table.secondary_keys = set()
         if isinstance(x, basestring): table.name = x
         else: table._init_from_xml_element(x)
     def __repr__(table):
         return '<Table: %r>' % table.name
     def _init_from_xml_element(table, element):
+        data_source = table.data_source
         table.name = element.get('name')
-        if not table.name:
-            raise MappingError('<table> element without "name" attribute')
-        table.entities = set(element.get('entity', '').split())
-        table.relations = set(tuple(rel.split('.'))
-                             for rel in element.get('relation', '').split())
-        if table.entities and table.relations:
-            raise MappingError('For table %r both entity name and relations are specified. '
-                               'It is not allowed' % table.name)
-        elif not table.entities and not table.relations:
-            raise MappingError('For table %r neither entity name nor relations are specified. '
-                               'It is not allowed' % table.name)
-        for entity_name in table.entities:
-            if not utils.is_ident(entity_name):
-                raise MappingError('Entity name must be valid identifier. Got: %r' % entity_name)
+        if not table.name: raise MappingError('<table> element without "name" attribute')
+        table.entities = set()
+        table.relations = set(tuple(rel.split('.')) for rel in element.get('relation', '').split())
         for relation in table.relations:
-            if len(relation) != 2:
-                raise MappingError('Each relation must be in form of EntityName.AttributeName. '
-                                   'Got: %r' % '.'.join(relation))
+            if len(relation) != 2: raise MappingError(
+                'Each relation must be in form of EntityName.AttributeName. Got: %r' % '.'.join(relation))
             for component in relation:
-                if not utils.is_ident(component):
-                    raise MappingError('Each part of relation name must be valid identifier. '
-                                       'Got: %r' % component)
+                if not utils.is_ident(component): raise MappingError(
+                    'Each part of relation name must be valid identifier. Got: %r' % component)
+        next_offset = count(len(ROW_HEADER)).next
+        mask_offset = count().next
         table.columns = []
+        table.pk_columns = []
         table.cdict = {}
         for col_element in element.findall('column'):
             column = Column(table, col_element)
             if table.cdict.setdefault(column.name, column) is not column:
                 raise MappingError('Duplicate column definition: %r.%r' % (table.name, column.name))
             table.columns.append(column)
+            if column.is_part_of_pk:
+                column.pk_offset = len(table.pk_columns)
+                table.pk_columns.append(column)
+                column.old_offset = column.new_offset = next_offset()
+            else:
+                column.old_offset = next_offset()
+                column.new_offset = next_offset()
+                column.mask = 1 << mask_offset()
+        if not table.pk_columns: raise MappingError(
+            'Primary key for column %r.%r is not specified' % (table.name, column.name))
 
 class Column(object):
     def __init__(column, table, x):
         column.table = table
         column.pk_offset = None
         column.attrs = set()
+        column.old_offset = column.new_offset = None
+        column.mask = 0
         if isinstance(x, basestring): column.name = x
         else: column._init_from_xml_element(x)
     def __repr__(column):
         return '<Column: %r.%r>' % (column.table.name, column.name)
     def _init_from_xml_element(column, element):
         table = column.table
+        data_source = table.data_source
         column.name = element.get('name')
-        if not column.name:
-            raise MappingError('Error in table definition %r: '
-                               'Column element without "name" attribute' % table.name)
+        if not column.name: raise MappingError(
+            'Error in table definition %r: Column element without "name" attribute' % table.name)
+        column.is_part_of_pk = element.get('pk', 'false').lower() != 'false'
         column.domain = element.get('domain')
-        column.attr_names = set(tuple(attr.split('.'))
-                                for attr in element.get('attr', '').split())
+        column.attr_names = set(tuple(attr.split('.')) for attr in element.get('attr', '').split())
         for attr_name in column.attr_names:
-            if len(attr_name) < 2:
-                raise MappingError('Invalid attribute value in column %r.%r: '
-                                   'must be in form of EntityName.AttributeName'
-                                   % (table.name, column.name))
+            if len(attr_name) < 2: raise MappingError(
+                'Invalid attribute value in column %r.%r: must be in form of EntityName.AttributeName' % (table.name, column.name))
+            for component in attr_name:
+                if not utils.is_ident(component): raise MappingError(
+                    'Each part of attribute path must be valid identifier. Got: %r' % component)
         if table.relations:
             for attr_name in column.attr_names:
                 if attr_name[:2] not in table.relations:
                     raise MappingError('Attribute %s does not correspond any relation' % '.'.join(attr_name))
+        else:
+            for attr_name in column.attr_names:
+                entity_name = attr_name[0]
+                attr_map = data_source.entity_map.setdefault(entity_name, {})
+                table_map = attr_map.setdefault(attr_name[1], {})
+                table_map.setdefault(table, []).append(column)
+
         column.kind = element.get('kind')
         if column.kind not in (None, 'discriminator'):
             raise MappingError('Error in column %r.%r: invalid column kind: %r'
