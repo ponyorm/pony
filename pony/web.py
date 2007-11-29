@@ -762,7 +762,8 @@ def log_request(request):
     log(type=request_type, text=request.full_url, headers=headers,
         user=user, session=auth.local.session)
 
-http_only_incompatible_browsers = [ 'WebTV', 'MSIE 5.0; Mac' ]
+http_only_incompatible_browsers = [ 'WebTV', 'MSIE 5.0; Mac',
+    'Firefox/2.0.0.0', 'Firefox/2.0.0.1', 'Firefox/2.0.0.2', 'Firefox/2.0.0.3', 'Firefox/2.0.0.4', ]
 
 ONE_MONTH = 60*60*24*31
 
