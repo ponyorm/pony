@@ -858,23 +858,24 @@ class EntityInfo(object):
         info.table_map = {} # Table -> dict(Attribute -> [ Column ])
         info.attr_map = {}  # Attribute -> AttrInfo
         if data_source.mapping is None: raise NotImplementedError
+        for attr_name in data_source.entity_map.get(entity.__name__, ()):
+            if attr_name not in entity._attr_dict_:
+                raise MappingError('Unknown attribute %s.%s' % (entity.__name__, attr_name))
         entity_names = set(e.__name__ for e in entity._all_bases_)
         for attr in entity._attrs_: info.attr_map[attr] = AttrInfo(info, attr)
         for attr, attr_info in info.attr_map.items():
             for table, columns in attr_info.table_map.items():
                 attr_map = info.table_map.setdefault(table, {})
-                columns2 = attr_map.setdefault(attr_info, columns)
+                columns2 = attr_map.setdefault(attr, columns)
                 assert columns2 is columns
-        pk_attr_infos = set(map(info.attr_map.__getitem__, entity._pk_attrs_))
         for table, attr_map in info.table_map.items():
             key_columns_1 = [ column for column in table.columns if column.is_part_of_pk ]
             key_columns_2 = []
-            for attr_info in pk_attr_infos:
-                columns = attr_map.get(attr_info)
+            for attr in entity._pk_attrs_:
+                columns = attr_map.get(attr)
                 if columns is None: raise MappingError(
-                    'Key attribute %r does not have correspond column in table %r' % (attr_info.attr.name, table.name))
+                    'Key attribute %r does not have correspond column in table %r' % (attr.name, table.name))
                 key_columns_2.extend(columns)
-            print entity, table, key_columns_1, key_columns_2
             if set(key_columns_1) != set(key_columns_2): raise MappingError(
                 'Key attributes of entity %r does not correspond with key columns of table %r'
                 % (entity.__name__, table.name))
@@ -894,6 +895,8 @@ class AttrInfo(object):
             ds_table_map = ds_attr_map.get(attr.name)
             if ds_table_map is None: continue
             for table, columns in ds_table_map.items(): attr_info.table_map[table] = columns[:]
+        if not attr_info.table_map and not isinstance(attr, Collection): raise MappingError(
+            'Attribute %s.%s does not have correspond column' % (attr.entity.__name__, attr.name))
     def __repr__(attr_info):
         entity_name = attr_info.enity_info.entity.__name__
         attr_name = attr_info.attr.name
