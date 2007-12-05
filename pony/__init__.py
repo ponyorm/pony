@@ -49,8 +49,10 @@ else:
 
 mainloop_counter = count()
 
+_do_mainloop = False
+
 def mainloop():
-    if RUNNED_AS != 'NATIVE' or mainloop_counter.next(): return
+    if not _do_mainloop or RUNNED_AS != 'NATIVE' or mainloop_counter.next(): return
     try:
         while True:
             if shutdown: break

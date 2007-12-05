@@ -857,6 +857,7 @@ class ServerThread(threading.Thread):
 
 def start_http_server(address='localhost:8080', verbose=True):
     if pony.RUNNED_AS == 'MOD_WSGI': return
+    pony._do_mainloop = True
     host, port = parse_address(address)
     try:
         server_thread = ServerThread(host, port, application, verbose=verbose)
