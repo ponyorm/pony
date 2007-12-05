@@ -19,23 +19,19 @@ class Html(unicode):
 ##  def __getslice__(self, i, j):
 ##      return Html(unicode.__getslice__(self, i, j))
     def __add__(self, x):
-        return Html(unicode.__add__(self, quote(x)))
+        return Html(unicode.__add__(self, quote(x, True)))
     def __radd__(self, x):
-        return quote(x) + self
+        return quote(x, True) + self
     def __mul__(self, x):
         return Html(unicode.__mul__(self, x))
     def __rmul__(self, x):
         return Html(unicode.__mul__(self, x))
     def __mod__(self, x):
-        if isinstance(x, tuple):
-            x = tuple(_wrap(item) for item in x)
-        else: x = _wrap(x)
+        if not isinstance(x, tuple): x = _wrap(x, True)
+        else: x = tuple(_wrap(item, True) for item in x)
         return Html(unicode.__mod__(self, x))
-    def __rmod__(self, x):
-        return quote(x) % self
     def join(self, items):
-        return Html(unicode.join(self, (unicode(quote(item))
-                                        for item in items)))
+        return Html(unicode.join(self, (quote(item, True) for item in items)))        
 
 htmljoin = Html('').join
 
@@ -51,7 +47,9 @@ class StrHtml(str):
 ##  def __getslice__(self, i, j):
 ##      return StrHtml(str.__getslice__(self, i, j))
     def __add__(self, x):
-        result = str.__add__(self, quote(x))
+        try: result = str.__add__(self, quote(x))
+        except UnicodeDecodeError:
+            return Html(unicode.__add__(unicode(self, errors='replace'), quote(x, True)))
         if isinstance(result, str): return StrHtml(result)
         return Html(result)
     def __radd__(self, x):
@@ -65,62 +63,69 @@ class StrHtml(str):
         if isinstance(result, str): return StrHtml(result)
         return Html(result)
     def __mod__(self, x):
-        if not isinstance(x, tuple): x = _wrap(x)
-        else: x = tuple(_wrap(item) for item in x)
-        result = str.__mod__(self, x)
+        if not isinstance(x, tuple): y = _wrap(x)
+        else: y = tuple(_wrap(item) for item in x)
+        try: result = str.__mod__(self, y)
+        except UnicodeDecodeError:
+            if not isinstance(x, tuple): y = _wrap(x, True)
+            else: y = tuple(_wrap(item, True) for item in x)
+            return Html(unicode.__mod__(unicode(self, errors='replace'), y))
         if isinstance(result, str): return StrHtml(result)
         return Html(result)
-    def __rmod__(self, x):
-        return quote(x) % self
     def join(self, items):
-        result = str.join(self, [ quote(item) for item in items ])
+        items = list(items)
+        try: result = str.join(self, (quote(item) for item in items))
+        except UnicodeDecodeError:
+            return Html(unicode(self, errors='replace')).join(items)
         if isinstance(result, str): return StrHtml(result)
         return Html(result)
 
-def quote(x):
-    if isinstance(x, (int, long, float, StrHtml, Html)): return x
-    if not isinstance(x, basestring):
-        if hasattr(x, '__unicode__'):
-            x = unicode(x)
-            if isinstance(x, Html): return x
-            cls = Html
-        else:
-            x = str(x)
-            if isinstance(x, StrHtml): return x
-            cls = StrHtml
-    elif isinstance(x, unicode): cls = Html
-    else: cls = StrHtml
-    return cls(x.replace('&', '&amp;').replace('<', '&lt;')
-                .replace('>', '&gt;').replace('"', '&quot;')
-                .replace("'", '&#39;'))
+def quote(x, unicode_replace=False):
+    if isinstance(x, (int, long, float, Html)): return x
 
-def _wrap(x):
-    if isinstance(x, basestring):
-        if isinstance(x, StrHtml): result = StrWrapper(x)
-        elif isinstance(x, Html): result = UnicodeWrapper(x)
-        else:
-            quoted = (x.replace('&', '&amp;').replace('<', '&lt;')
-                       .replace('>', '&gt;').replace('"', '&quot;')
-                       .replace("'", '&#39;'))
-            if isinstance(x, str): result = StrWrapper(quoted)
-            else: result = UnicodeWrapper(quoted)
-        result.original_value = x
-        return result
+    if not isinstance(x, basestring):
+        if hasattr(x, '__unicode__'): x = unicode(x)
+        else: x = str(x)
+    if isinstance(x, Html): return x
+    if isinstance(x, StrHtml):
+        if not unicode_replace: return x
+        return Html(unicode(x, errors='replace'))
+
+    x = (x.replace('&', '&amp;').replace('<', '&lt;')
+          .replace('>', '&gt;').replace('"', '&quot;')
+          .replace("'", '&#39;'))
+    if isinstance(x, unicode): return Html(x)
+    if not unicode_replace: return StrHtml(x)
+    return Html(unicode(x, errors='replace'))
+
+def _wrap(x, unicode_replace=False):
     if isinstance(x, (int, long, float)): return x
-    return Wrapper(x)
+    if not isinstance(x, basestring): return Wrapper(x, unicode_replace)
+
+    if not isinstance(x, (Html, StrHtml)):
+        x = (x.replace('&', '&amp;').replace('<', '&lt;')
+              .replace('>', '&gt;').replace('"', '&quot;')
+              .replace("'", '&#39;'))
+    if isinstance(x, str):
+        if not unicode_replace: result = StrWrapper(x)
+        else: result = UnicodeWrapper(unicode(x, errors='replace'))
+    else: result = UnicodeWrapper(x)
+    result.original_value = x
+    return result
 
 class Wrapper(object):
-    __slots__ = [ 'value' ]
-    def __init__(self, value):
+    __slots__ = [ 'value', 'unicode_replace' ]
+    def __init__(self, value, unicode_replace):
         self.value = value
+        self.unicode_replace = unicode_replace
     def __str__(self):
-        return quote(self.value)
+        return quote(self.value, self.unicode_replace)
     def __unicode__(self):
-        return quote(self.value)
+        return quote(self.value, self.unicode_replace)
     def __repr__(self):
         return quote(`self.value`)
     def __getitem__(self, key):
-        return _wrap(self.value[key])
+        return _wrap(self.value[key], self.unicode_replace)
 
 class StrWrapper(str):
     def __repr__(self):
