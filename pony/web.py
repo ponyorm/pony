@@ -140,8 +140,7 @@ class HttpInfo(object):
                 raise ValueError('Invalid url component: %r' % component)
             i = match.lastindex
             if 1 <= i <= 2:
-                if is_param:
-                    raise ValueError('Invalid url component: %r' % component)
+                if is_param: raise ValueError('Invalid url component: %r' % component)
                 is_param = True
                 if i == 1: yield is_param, self.adjust(int(match.group(i)) - 1)
                 elif i == 2: yield is_param, self.adjust(match.group(i))
@@ -170,16 +169,14 @@ class HttpInfo(object):
                 keyargs.add(x)
                 return x
             else:
-                if i in args: raise TypeError(
-                    'Parameter name %s already in use' % x)
+                if i in args: raise TypeError('Parameter name %s already in use' % x)
                 args.add(i)
                 return i
         assert False
     def check(self):
         names, argsname, keyargsname, defaults = self.func.argspec
-        if self.star and not argsname:
-            raise TypeError("Function %s does not accept "
-                            "arbitrary argument list" % self.func.__name__)
+        if self.star and not argsname: raise TypeError(
+            "Function %s does not accept arbitrary argument list" % self.func.__name__)
         args, keyargs = self.args, self.keyargs
         for i, name in enumerate(names[:len(names)-len(defaults)]):
             if i not in args:
@@ -206,8 +203,7 @@ class HttpInfo(object):
             for info, _, _ in get_http_handlers(self.path, self.ext, qdict):
                 if url_map == get_url_map(info):
                     log(type='Warning:URL',
-                        text='Route already in use '
-                             '(old handler was removed): %s' % info.url)
+                        text='Route already in use (old handler was removed): %s' % info.url)
                     _http_remove(info)
             d, list1, list2 = http_registry
             for is_param, x in self.parsed_path:
