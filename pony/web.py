@@ -331,7 +331,6 @@ def build_url(info, keyparams, indexparams):
 
     url = ''.join((p, info.ext, q))
     script_name = local.request.environ.get('SCRIPT_NAME', '')
-    if not url: return script_name + info.url or '/'
     return '/'.join((script_name, url))
 
 link_template = Html(u'<a href="%s">%s</a>')
