@@ -164,14 +164,14 @@ class Local(threading.local):
 
 local = Local()
 
-class ThreadedStdout(object):
+class PonyStdout(object):
     @staticmethod
     def write(s):
         try: f = local.writers[-1]
         except IndexError: f = real_stdout.write
         f(s)
 
-threaded_stdout = ThreadedStdout()
+pony_stdout = PonyStdout()
 
 class PonyStderr(object):
     @staticmethod
@@ -188,7 +188,7 @@ def grab_stdout(f):
         local.writers.append(data.append)
         # The next line required for PythonWin interactive window
         # (PythonWin resets stdout all the time)
-        sys.stdout = threaded_stdout
+        sys.stdout = pony_stdout
         sys.stderr = pony_stderr
         try: result = f(*args, **keyargs)
         finally: assert local.writers.pop() == data.append
