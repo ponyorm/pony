@@ -798,7 +798,7 @@ def markup_from_string(str_cls, s,
         try: return template_string_cache[s]
         except KeyError: pass
     if isinstance(s, unicode): text = s
-    else: text = unicode(s, encoding or 'ascii')
+    else: text = unicode(s, encoding or 'ascii', errors='replace')
     if not keep_indent: text = textwrap.dedent(text)
     tree = parse_markup(text)[0]
     markup = Markup(str_cls(text), tree)
