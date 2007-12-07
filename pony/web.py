@@ -1,7 +1,7 @@
 import re, threading, os.path, inspect, sys, cStringIO, itertools
 import cgi, cgitb, urllib, Cookie, mimetypes
 
-from operator import itemgetter
+from operator import itemgetter, attrgetter
 
 from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
 
@@ -12,8 +12,75 @@ from pony.utils import decorator_with_params
 from pony.templating import Html, real_stdout
 from pony.logging import log, log_exc
 
+class _Http(object):
+    def __call__(self, *args, **keyargs):
+        return _http(*args, **keyargs)
+    def invoke(self, url):
+        return invoke(url)
+    def remove(self, x):
+        return http_remove(x)
+    def clear(self):
+        return http_clear()
+
+    def start(self, address='localhost:8080', verbose=True):
+        start_http_server(address, verbose)
+    def stop(self, address=None):
+        stop_http_server(address)
+
+    def get_request(self):
+        return local.request
+    request = property(get_request)
+    def get_response(self):
+        return local.response
+    response = property(get_response)
+    
+    def get_session(self):
+        return auth.local.session
+    class _Session(object):
+        def __getattr__(self, attr):
+            return auth.local.session.get(attr)
+        def __setattr__(self, attr, value):
+            if value is None: auth.local.session.pop(attr, None)
+            else: auth.local.session[attr] = value
+    _session = _Session()
+    session = property(attrgetter('_session'))
+
+    def get_user(self):
+        return auth.get_user()
+    def set_user(self, user, remember_ip=False, path='/', domain=None):
+        auth.set_user(user, remember_ip, path, domain)
+    user = property(get_user, set_user)
+
+    def get_param(self, name):
+        return local.request.params.get(name)
+    class _Params(object):
+        def __getattr__(self, attr):
+            return local.request.params.get(attr)
+        def __setattr__(self, attr, value):
+            local.request.params[attr] = value
+    _params = _Params()
+    params = property(attrgetter('_params'))
+
+    class _Cookies(object):
+        def set(self, name, value, expires=None, max_age=None,
+                path=None, domain=None, secure=False, http_only=False, comment=None, version=None):
+            set_cookie(name, value, expires, max_age,
+                       path, domain, secure, http_only, comment, version)
+        def __getattr__(self, attr):
+            return get_cookie(attr)
+        __setattr__ = set
+    _cookies = _Cookies()
+    set_cookie = _cookies.set
+    cookies = property(attrgetter('_cookies'))
+
+http = _Http()
+
+get_request = http.get_request
+get_response = http.get_response
+get_param = http.get_param
+
 @decorator_with_params
-def http(url=None, redirect=False, system=False, **http_headers):
+def _http(url=None, redirect=False, system=False, **http_headers):
     http_headers = dict([ (name.replace('_', '-').title(), value)
                           for name, value in http_headers.items() ])
     def new_decorator(old_func):
@@ -534,6 +601,12 @@ def invoke(url):
                      and 300 <= info.redirect < 400: status = str(info.redirect)
                 raise HttpRedirect(new_url, status)
     local.response.headers.update(info.http_headers)
+
+    names, argsname, keyargsname, defaults = info.func.argspec
+    params = local.request.params
+    params.update(zip(names, args))
+    params.update(keyargs)
+
     result = info.func(*args, **keyargs)
 
     headers = dict([ (name.replace('_', '-').title(), value)
@@ -569,7 +642,6 @@ def invoke(url):
     if not cache_control: headers['Cache-Control'] = 'max-age=%s' % max_age
     headers.setdefault('Vary', 'Cookie')
     return result
-http.invoke = invoke
 
 def _http_remove(info):
     info.list.remove(info)
@@ -589,7 +661,6 @@ def http_remove(x):
         try: _http_remove(x)
         finally: http_registry_lock.release()
     else: raise ValueError('This object is not bound to url: %r' % x)
-http.remove = http_remove
 
 def _http_clear(dict, list1, list2):
     for info in list1: info.func.http.remove(info)
@@ -607,7 +678,6 @@ def http_clear():
         _http_clear(*http_registry)
         for handler in http_system_handlers: handler.register()
     finally: http_registry_lock.release()
-http.clear = http_clear
 
 ################################################################################
 
@@ -675,6 +745,7 @@ class HttpRequest(object):
         else:
             self.full_url = None
         input_stream = environ.get('wsgi.input') or cStringIO.StringIO()
+        self.params = {}
         self.fields = cgi.FieldStorage(
             fp=input_stream, environ=environ, keep_blank_values=True)
         self.submitted_form = self.fields.getfirst('_f')
@@ -694,23 +765,10 @@ class Local(threading.local):
 
 local = Local()        
 
-def get_request():
-    return local.request
-http.get_request = get_request
-
-def get_response():
-    return local.response
-http.get_response = get_response
-
-def get_param(name, default=None):
-    return local.request.fields.getfirst(name, default)
-http.get_param = get_param
-
 def get_cookie(name, default=None):
     morsel = local.request.cookies.get(name)
     if morsel is None: return default
     return morsel.value
-http.get_cookie = get_cookie
 
 def set_cookie(name, value, expires=None, max_age=None, path=None, domain=None,
                secure=False, http_only=False, comment=None, version=None):
@@ -731,7 +789,6 @@ def set_cookie(name, value, expires=None, max_age=None, path=None, domain=None,
         if secure: morsel['secure'] = True
         if http_only: response._http_only_cookies.add(name)
         else: response._http_only_cookies.discard(name)
-http.set_cookie = set_cookie
 
 def format_exc():
     exc_type, exc_value, traceback = sys.exc_info()
@@ -864,7 +921,6 @@ def start_http_server(address='localhost:8080', verbose=True):
     except ServerAlreadyStarted:
         if not autoreload.reloading: raise
     else: server_thread.start()
-http.start = start_http_server
 
 def stop_http_server(address=None):
     if pony.RUNNED_AS == 'MOD_WSGI': return
@@ -880,7 +936,6 @@ def stop_http_server(address=None):
                                    'because it is not started:' % (host, port))
         server_thread.server.stop()
         server_thread.join()
-http.stop = stop_http_server
 
 @pony.on_shutdown
 def do_shutdown():
