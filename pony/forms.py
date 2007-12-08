@@ -8,6 +8,7 @@ from pony.web import get_request
 
 class Form(object):
     def __init__(self, method='POST', secure=None, **attrs):
+        self._cleared = False
         self._request = get_request()
         self.attrs = dict((name.lower(), value)
                           for name, value in attrs.iteritems())
@@ -18,6 +19,9 @@ class Form(object):
         self._set_method(method)
         self._set_secure(secure)
         self._f = Hidden(self.attrs.get('name', ''))
+    def clear(self):
+        self._cleared = True
+        self.is_submitted = False
     def _set_method(self, method):
         method = method.upper()
         if method not in ('GET', 'POST'): raise TypeError(
@@ -38,10 +42,12 @@ class Form(object):
         self._update_status()
     secure = property(attrgetter('_secure'), _set_secure)
     def _update_status(self):
-        name = self.attrs.get('name', '')
-        self.is_submitted = False
-        if self._request.submitted_form == name \
-           and (self.method != 'POST' or self._request.method == 'POST'):
+        if self._cleared: self.is_submitted = False
+        else:
+            name = self.attrs.get('name', '')
+            self.is_submitted = False
+            if self._request.submitted_form != name: return
+            if self.method != 'POST' or self._request.method == 'POST':
                 self.is_submitted = True
     @property
     def is_valid(self):
@@ -139,6 +145,7 @@ class HtmlField(object):
         self.name = name
     @property
     def is_submitted(self):
+        if not self.form.is_submitted: return False
         return self.form._request.fields.getfirst(self.name) is not None
     @property
     def is_valid(self):
