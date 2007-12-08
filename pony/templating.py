@@ -373,13 +373,14 @@ def parse_command(text, start, pos, name):
    
 exprlist_re = re.compile(r"""
 
-        ([(])                     # open parenthesis (group 1)
-    |   ([)])                     # close parenthesis (group 2)
-    |   (                         # comments (group 3):
+        (                         # comments (group 1):
             \#.*?(?:\n|\Z)        # - Python-style comment inside expressions
         |   [$]//.*?(?:\n|\Z)     # - $// comment
         |   [$]/\*.*?(?:\*/|\Z)   # - $/* comment */
         )
+    |   ([(])                     # open parenthesis (group 2)
+    |   ([)])                     # close parenthesis (group 3)
+    |   ([$])?[A-Za-z_]\w*        # Python identifier with optional $ ($ is group 4)
     |   '(?:[^'\\]|\\.)*?'        # 'string'
     |   "(?:[^"\\]|\\.)*?"        # "string"
     |   '''(?:[^\\]|\\.)*?'''     # '''triple-quoted string'''
@@ -396,12 +397,17 @@ def parse_exprlist(text, pos):
             raise ParseError('Unexpected end of text', text, len(text))
         start, end = match.span()
         i = match.lastindex
-        if i != 3: result.append(text[pos:end])
-        if i == 1: counter += 1  # (
-        elif i == 2:             # )
+        result.append(text[pos:start])
+        if i == 1: pass  # comment
+        elif i == 2:
+            counter += 1
+            result.append('(')
+        elif i == 3:               
             counter -= 1
+            result.append(')')
             if counter == 0: return ''.join(result)[:-1], end
-        else: assert i == 3 or i is None
+        elif i == 4: result.append(text[start+1:end])
+        else: result.append(text[start:end])
         pos = end
 
 class SyntaxElement(object):
