@@ -87,6 +87,7 @@ class Form(object):
             elif isinstance(x, Submit): self.submit_fields.remove(x)
             else: self.fields.remove(x)
         object.__delattr__(self, name)
+    @property
     def header(self):
         attrs = self.attrs
         for f in self.fields:
@@ -98,6 +99,7 @@ class Form(object):
         for f in self.hidden_fields: result.extend(('\n', f.html))
         result.append(self.error)
         return htmljoin(result)
+    @property
     def table(self):
         result = []
         for f in self.fields:
@@ -109,6 +111,7 @@ class Form(object):
             if e: result.extend((Html('&nbsp;'), e))
             result.append(Html('</td></tr>'))
         return htmljoin(result)
+    @property
     def buttons(self):
         result = [ Html('\n<div class="buttons">') ]
         buttons = [ f.html for f in self.submit_fields ]
