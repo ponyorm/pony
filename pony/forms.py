@@ -1,4 +1,4 @@
-import re, threading
+import re, threading, os.path
 
 from operator import attrgetter
 
@@ -238,7 +238,7 @@ class File(BaseWidget):
             if not self.form.is_submitted: return self.initial_value
             fields = self.form._request.fields
             if not fields.has_key(self.name): return None
-            return fields[self.name].filename
+            return os.path.basename(fields[self.name].filename)
     def _set_filename(self, filename):
         self._new_value = filename
     filename = property(_get_filename, _set_filename)
