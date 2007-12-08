@@ -121,11 +121,11 @@ class Form(object):
     def __str__(self):
         return StrHtml(unicode(self).encode('ascii', 'xmlcharrefreplace'))
     def __unicode__(self):
-        return Html('\n').join([ self.header(),
+        return Html('\n').join([ self.header,
                                  Html('<table>'),
-                                 self.table(),
+                                 self.table,
                                  Html('<tr><td colspan="2">'),
-                                 self.buttons(),
+                                 self.buttons,
                                  Html('</td></tr></table></form>')])
     html = property(__unicode__)
 
