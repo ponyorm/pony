@@ -412,6 +412,22 @@ def link(*args, **keyargs):
     href = url(func, *args, **keyargs)
     return link_template % (href, description)
 
+img_template = Html(u'<img src="%s" alt="%s">')
+
+def img(*args, **keyargs):
+    description = None
+    if isinstance(args[0], basestring):
+        description = args[0]
+        func = args[1]
+        args = args[2:]
+    else:
+        func = args[0]
+        args = args[1:]
+        if func.__doc__ is None: description = func.__name__
+        else: description = Html(func.__doc__.split('\n', 1)[0])
+    href = url(func, *args, **keyargs)
+    return img_template % (href, description)
+
 if not mimetypes.inited: # Copied from SimpleHTTPServer
     mimetypes.init() # try to read system mime.types
 extensions_map = mimetypes.types_map.copy()
