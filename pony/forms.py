@@ -19,9 +19,6 @@ class Form(object):
         self._set_method(method)
         self._set_secure(secure)
         self._f = Hidden(self.attrs.get('name', ''))
-    @property
-    def name(self):
-        return self.attrs.get('name', '')
     def clear(self):
         self._cleared = True
         self.is_submitted = False
