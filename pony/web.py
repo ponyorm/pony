@@ -114,11 +114,10 @@ def split_url(url, strict_parsing=False):
             elif strict_parsing:
                 raise ValueError('Duplicate url parameter: %s' % name)
     else: p, qlist = url, []
-    p, ext = os.path.splitext(p)
     components = p.split('/')
     if not components[0]: components = components[1:]
     path = map(urllib.unquote, components)
-    return path, ext, qlist
+    return path, qlist
 
 class HttpInfo(object):
     def __init__(self, func, url, redirect, system, http_headers):
@@ -127,7 +126,7 @@ class HttpInfo(object):
             func.argspec = self.getargspec(func)
             func.dummy_func = self.create_dummy_func(func)
         self.url = url
-        self.path, self.ext, self.qlist = split_url(url, strict_parsing=True)
+        self.path, self.qlist = split_url(url, strict_parsing=True)
         self.redirect = redirect
         self.system = system
         self.http_headers = http_headers
@@ -267,7 +266,7 @@ class HttpInfo(object):
         qdict = dict(self.qlist)
         http_registry_lock.acquire()
         try:
-            for info, _, _ in get_http_handlers(self.path, self.ext, qdict):
+            for info, _, _ in get_http_handlers(self.path, qdict):
                 if url_map == get_url_map(info):
                     log(type='Warning:URL',
                         text='Route already in use (old handler was removed): %s' % info.url)
@@ -381,7 +380,6 @@ def build_url(info, keyparams, indexparams):
     quote_plus = urllib.quote_plus
     q = "&".join(("%s=%s" % (quote_plus(name), quote_plus(value)))
                  for name, value in qlist)
-    if q: q = '?' + q
 
     errmsg = 'Not all parameters were used during path construction'
     if len(used_keyparams) != len(keyparams):
@@ -392,8 +390,8 @@ def build_url(info, keyparams, indexparams):
                 and value != defaults[i-offset]):
                     raise PathError(errmsg)
 
-    url = ''.join((p, info.ext, q))
     script_name = local.request.environ.get('SCRIPT_NAME', '')
+    url = q and '?'.join((p, q)) or p
     return '/'.join((script_name, url))
 
 link_template = Html(u'<a href="%s">%s</a>')
@@ -453,16 +451,16 @@ static_dir = get_static_dir_name()
 
 path_re = re.compile(r"^[-_.!~*'()A-Za-z0-9]+$")
 
-def get_static_file(path, ext):
+def get_static_file(path):
+    if not path: raise Http404
     if static_dir is None: raise Http404
     for component in path:
         if not path_re.match(component): raise Http404
-    if ext and not path_re.match(ext): raise Http404
-    fname = os.path.join(static_dir, *path) + ext
+    fname = os.path.join(static_dir, *path)
     if not os.path.isfile(fname):
-        if path == ['favicon'] and ext == '.ico':
-            return get_pony_static_file(path, ext)
+        if path == [ 'favicon.ico' ]: return get_pony_static_file(path)
         raise Http404
+    ext = os.path.splitext(path[-1])[1]
     headers = local.response.headers
     headers['Content-Type'] = guess_type(ext)
     headers['Expires'] = '0'
@@ -471,12 +469,13 @@ def get_static_file(path, ext):
 
 pony_static_dir = os.path.join(os.path.dirname(__file__), 'static')
 
-def get_pony_static_file(path, ext):
+def get_pony_static_file(path):
+    if not path: raise Http404
     for component in path:
         if not path_re.match(component): raise Http404
-    if ext and not path_re.match(ext): raise Http404
-    fname = os.path.join(pony_static_dir, *path) + ext
+    fname = os.path.join(pony_static_dir, *path)
     if not os.path.isfile(fname): raise Http404
+    ext = os.path.splitext(path[-1])[1]
     headers = local.response.headers
     headers['Content-Type'] = guess_type(ext)
     max_age = 30 * 60
@@ -484,7 +483,7 @@ def get_pony_static_file(path, ext):
     headers['Cache-Control'] = 'max-age=%d' % max_age
     return file(fname, 'rb')
 
-def get_http_handlers(path, ext, qdict):
+def get_http_handlers(path, qdict):
     # http_registry_lock.acquire()
     # try:
     variants = [ http_registry ]
@@ -505,7 +504,6 @@ def get_http_handlers(path, ext, qdict):
     result = []
     not_found = object()
     for info in infos:
-        if ext != info.ext: continue
         args, keyargs = {}, {}
         priority = 0
         for i, (is_param, x) in enumerate(info.parsed_path):
@@ -520,7 +518,9 @@ def get_http_handlers(path, ext, qdict):
                 if not match: break
                 params = [ y for is_param, y in x[2:] if is_param ]
                 groups = match.groups()
-                priority += len(params)
+                n = len(x) - len(params)
+                if not x[-1][0]: n += 1
+                priority += n
                 assert len(params) == len(groups)
                 for param, value in zip(params, groups):
                     if isinstance(param, int): args[param] = value
@@ -550,7 +550,9 @@ def get_http_handlers(path, ext, qdict):
                     if not match: break
                     params = [ y for is_param, y in x[2:] if is_param ]
                     groups = match.groups()
-                    priority += len(params)
+                    n = len(x) - len(params) - 2
+                    if not x[-1][0]: n += 1
+                    priority += n
                     assert len(params) == len(groups)
                     for param, value in zip(params, groups):
                         if isinstance(param, int): args[param] = value
@@ -580,22 +582,22 @@ def get_http_handlers(path, ext, qdict):
 
 def invoke(url):
     local.response = HttpResponse()
-    path, ext, qlist = split_url(url)
+    path, qlist = split_url(url)
     if path[:1] == ['static'] and len(path) > 1:
-        return get_static_file(path[1:], ext)
+        return get_static_file(path[1:])
     if path[:2] == ['pony', 'static'] and len(path) > 2:
-        return get_pony_static_file(path[2:], ext)
+        return get_pony_static_file(path[2:])
     qdict = dict(qlist)
-    handlers = get_http_handlers(path, ext, qdict)
+    handlers = get_http_handlers(path, qdict)
     if not handlers:
         i = url.find('?')
         if i == -1: p, q = url, ''
         else: p, q = url[:i], url[i:]
         if p.endswith('/'): url2 = p[:-1] + q
         else: url2 = p + '/' + q
-        path2, ext2, qlist = split_url(url2)
-        handlers = get_http_handlers(path2, ext2, qdict)
-        if not handlers: return get_static_file(path, ext)
+        path2, qlist = split_url(url2)
+        handlers = get_http_handlers(path2, qdict)
+        if not handlers: return get_static_file(path)
         script_name = local.request.environ.get('SCRIPT_NAME', '')
         if not url2: url2 = script_name or '/'
         else: url2 = script_name + url2
@@ -665,16 +667,17 @@ def _http_remove(info):
             
 def http_remove(x):
     if isinstance(x, basestring):
-        path, ext, qlist = split_url(x, strict_parsing=True)
+        path, qlist = split_url(x, strict_parsing=True)
         qdict = dict(qlist)
         http_registry_lock.acquire()
         try:
-            for info, _, _ in get_http_handlers(path, ext, qdict):
+            for info, _, _ in get_http_handlers(path, qdict):
                 _http_remove(info)
         finally: http_registry_lock.release()
     elif hasattr(x, 'http'):
         http_registry_lock.acquire()
-        try: _http_remove(x)
+        try:
+            for info in list(x.http): _http_remove(info)
         finally: http_registry_lock.release()
     else: raise ValueError('This object is not bound to url: %r' % x)
 
