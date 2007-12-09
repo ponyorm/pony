@@ -113,7 +113,7 @@ class Form(object):
         result = []
         for f in self.fields:
             class_name = f.__class__.__name__.lower()
-            result.extend((Html('\n<tr class="%s field">\n<th>' % class_name),
+            result.extend((Html('\n<tr class="%s-field">\n<th>' % class_name),
                            f.label, Html('</th>\n<td>'),
                            f.tag))
             e = f.error
