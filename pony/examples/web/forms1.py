@@ -2,12 +2,10 @@ from pony.main import *
 
 use_autoreload()
 
-@http('/')
-def index():
-    a = get_param('a')
-    b = get_param('b')
+@http('/?a=$a&b=$b')
+def index(a=None, b=None):
     return html("""
-    <form method="post">
+    <form method="GET">
       <p><input type="text" name="a">
       <p><input type="text" name="b">
       <p><input type="submit" value="send">
