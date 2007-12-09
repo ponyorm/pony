@@ -10,7 +10,7 @@ class Form(object):
     def __init__(self, method='POST', secure=None, **attrs):
         self._cleared = False
         self._request = get_request()
-        self.attrs = dict((name.lower(), value)
+        self.attrs = dict((name.lower(), str(value))
                           for name, value in attrs.iteritems())
         self.fields = []
         self.hidden_fields = []
@@ -19,6 +19,9 @@ class Form(object):
         self._set_method(method)
         self._set_secure(secure)
         self._f = Hidden(self.attrs.get('name', ''))
+    @property
+    def name(self):
+        return self.attrs.get('name', '')
     def clear(self):
         self._cleared = True
         self.is_submitted = False
