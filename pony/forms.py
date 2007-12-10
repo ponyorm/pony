@@ -14,6 +14,7 @@ class Form(object):
         self._request = get_request()
         self.attrs = dict((name.lower(), str(value))
                           for name, value in attrs.iteritems())
+        if 'name' not in attrs: self.attrs['name'] = self.__class__.__name__
         self.fields = []
         self.hidden_fields = []
         self.submit_fields = []
