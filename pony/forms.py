@@ -7,7 +7,7 @@ from pony.auth import get_ticket
 from pony.templating import Html, StrHtml, htmljoin, htmltag
 from pony.web import get_request
 
-class FormCancel(Exception):
+class FormCanceled(Exception):
     pass
 
 class Form(object):
@@ -40,12 +40,14 @@ class Form(object):
         request = get_request()
         request.form_processed = None
         form = cls()
-        if not form.is_valid: return
+        if not form.is_valid:
+            request.form_processed = False
+            return
         try: form.on_submit()
-        except FormCancel: request.form_processed = False
+        except FormCanceled: request.form_processed = False
         else: request.form_processed = True
     def on_submit(self):
-        pass
+        raise FormCanceled
     def clear(self):
         self._cleared = True
         self.is_submitted = False
