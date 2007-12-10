@@ -581,6 +581,7 @@ def get_http_handlers(path, qdict):
     return result
 
 def invoke(url):
+    request = local.request
     local.response = HttpResponse()
     path, qlist = split_url(url)
     if path[:1] == ['static'] and len(path) > 1:
@@ -598,7 +599,7 @@ def invoke(url):
         path2, qlist = split_url(url2)
         handlers = get_http_handlers(path2, qdict)
         if not handlers: return get_static_file(path)
-        script_name = local.request.environ.get('SCRIPT_NAME', '')
+        script_name = request.environ.get('SCRIPT_NAME', '')
         if not url2: url2 = script_name or '/'
         else: url2 = script_name + url2
         if url2 != script_name + url: raise HttpRedirect(url2)
@@ -621,9 +622,12 @@ def invoke(url):
     local.response.headers.update(info.http_headers)
 
     names, argsname, keyargsname, defaults = info.func.argspec
-    params = local.request.params
+    params = request.params
     params.update(zip(names, args))
     params.update(keyargs)
+
+    if request.handler is not None:
+        request.handler._handle_http_request()
 
     result = info.func(*args, **keyargs)
 
@@ -768,7 +772,8 @@ class HttpRequest(object):
         self.fields = cgi.FieldStorage(
             fp=input_stream, environ=environ, keep_blank_values=True)
         self.submitted_form = self.fields.getfirst('_f')
-        self.ticket_is_valid = auth.verify_ticket(self.fields.getfirst('_t'))
+        self.ticket_is_valid, self.handler = auth.verify_ticket(self.fields.getfirst('_t'))
+        self.form_processed = False
         self.id_counter = itertools.imap('id_%d'.__mod__, itertools.count())
 
 class HttpResponse(object):

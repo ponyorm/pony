@@ -1,6 +1,7 @@
-import re, threading, os.path
+import re, threading, os.path, copy, cPickle
 
 from operator import attrgetter
+from itertools import count
 
 from pony.auth import get_ticket
 from pony.templating import Html, StrHtml, htmljoin, htmltag
@@ -9,6 +10,7 @@ from pony.web import get_request
 class Form(object):
     def __init__(self, method='POST', secure=None, **attrs):
         self._cleared = False
+        self._error_text = None
         self._request = get_request()
         self.attrs = dict((name.lower(), str(value))
                           for name, value in attrs.iteritems())
@@ -19,6 +21,22 @@ class Form(object):
         self._set_method(method)
         self._set_secure(secure)
         self._f = Hidden(self.attrs.get('name', ''))
+
+        fields = []
+        for name, x in self.__class__.__dict__.items():
+            if isinstance(x, HtmlField):
+                x.name = name
+                fields.append(x)
+        fields.sort(key=attrgetter('_id_'))
+        for field in fields: setattr(self, field.name, copy.copy(field))
+    @classmethod
+    def _handle_http_request(cls):
+        form = cls()
+        if form.is_valid:
+            result = form.on_submit()
+            if result: request.form_processed = True
+    def on_submit(self):
+        return True
     def clear(self):
         self._cleared = True
         self.is_submitted = False
@@ -42,7 +60,7 @@ class Form(object):
         self._update_status()
     secure = property(attrgetter('_secure'), _set_secure)
     def _update_status(self):
-        if self._cleared: self.is_submitted = False
+        if self._cleared or self._request.form_processed: self.is_submitted = False
         else:
             name = self.attrs.get('name', '')
             self.is_submitted = False
@@ -52,19 +70,29 @@ class Form(object):
     @property
     def is_valid(self):
         if not self.is_submitted: return False
+        try:
+            result = self.validate()
+        except Exception, e:
+            self.error_text = e.__class__.__name__
+            return False
         for f in self.hidden_fields:
             if not f.is_valid: return False
         for f in self.fields:
             if not f.is_valid: return False
-        if self._secure:
-            return self._request.ticket_is_valid  # may be True, False or None
-        return True
-    @property
-    def error_text(self):
+        if self._secure and not not self._request.ticket_is_valid:
+            return self._request.ticket_is_valid  # may be False or None
+    def validate(self):
+        pass
+    def _get_error_text(self):
+        if self._cleared or self._request.form_processed: return None
+        if self._error_text is not None: return self._error_text
         for f in self.fields:
             if f.error_text: return 'Some fields below contains errors'
         if self.is_valid is None:
-            return 'This form has already been submitted'
+            return 'The form has already been submitted'
+    def _set_error_text(self, text):
+        self._error_text = text
+    error_text = property(_get_error_text, _set_error_text)
     @property
     def error(self):
         error_text = self.error_text
@@ -78,9 +106,11 @@ class Form(object):
             prev = getattr(self, name)
             if not isinstance(prev, HtmlField):
                 raise TypeError('Invalid form field name: %s' % name)
-            if   isinstance(prev, Hidden): self.hidden_fields.remove(prev)
-            elif isinstance(prev, Submit): self.submit_fields.remove(prev)
-            else: self.fields.remove(prev)
+            try:
+                if   isinstance(prev, Hidden): self.hidden_fields.remove(prev)
+                elif isinstance(prev, Submit): self.submit_fields.remove(prev)
+                else: self.fields.remove(prev)
+            except ValueError: pass
         if   isinstance(x, Hidden): self.hidden_fields.append(x)
         elif isinstance(x, Submit): self.submit_fields.append(x)
         else: self.fields.append(x)
@@ -135,8 +165,11 @@ class Form(object):
                                  Html('</td></tr></table></form>')])
     html = property(__unicode__)
 
+next_id = count().next
+
 class HtmlField(object):
     def __init__(self, value=None):
+        self._id_ = next_id()
         self.attrs = {}
         self.form = self.name = None
         self.initial_value = value
@@ -169,6 +202,8 @@ class HtmlField(object):
     tag = html = property(__unicode__)
     def __str__(self):
         return StrHtml(unicode(self).encode('ascii', 'xmlcharrefreplace'))
+    def __repr__(self):
+        return '<%s: %s>' % (self.name, self.__class__.__name__)
 
 class Hidden(HtmlField):
     HTML_TYPE = 'hidden'
@@ -178,8 +213,11 @@ class Ticket(Hidden):
         raise TypeError('Cannot set value for tickets')
     value = property(HtmlField._get_value, _set_value)
     def __unicode__(self):
-        return htmltag('input', self.attrs,
-                       name=self.name, value=get_ticket(), type='hidden')
+        request_handler = None
+        if self.form is not None and self.form.__class__ is not Form:
+            request_handler = self.form.__class__
+        return htmltag('input', self.attrs, name=self.name,
+                       value=get_ticket(request_handler), type='hidden')
     tag = html = property(__unicode__)
 
 class Submit(HtmlField):
@@ -206,6 +244,7 @@ class BaseWidget(HtmlField):
     def is_valid(self):
         return self.is_submitted and not self._get_error_text()
     def _get_error_text(self):
+        if self.form._cleared or self.form._request.form_processed: return None
         if self._error_text: return self._error_text
         if self.is_submitted: return self._check_error()
         return None

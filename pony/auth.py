@@ -20,35 +20,42 @@ def load(data, environ):
 def save(environ):
     return local.save(environ)
 
-def get_ticket():
+def get_ticket(request_handler=None):
     now = int(time.time())
     now_str = '%x' % now
+    pickled_handler = cPickle.dumps(request_handler)
     rnd = os.urandom(8)
     hashobject = get_hashobject(now // 60)
     hashobject.update(rnd)
+    hashobject.update(pickled_handler)
     hashobject.update(cPickle.dumps(local.user, 2))
     hash = hashobject.digest()
+    handler_str = base64.b64encode(pickled_handler)
     rnd_str = base64.b64encode(rnd)
     hash_str = base64.b64encode(hash)
-    return '%s:%s:%s' % (now_str, rnd_str, hash_str)
+    return '%s:%s:%s:%s' % (now_str, handler_str, rnd_str, hash_str)
 
 def verify_ticket(ticket):
     now = int(time.time() // 60)
     try:
-        time_str, rnd_str, hash_str = ticket.split(':')
+        time_str, handler_str, rnd_str, hash_str = ticket.split(':')
         minute = int(time_str, 16) // 60
-        if minute < now - max_mtime_diff or minute > now + 1: return False
+        if minute < now - max_mtime_diff or minute > now + 1: return False, None
         rnd = base64.b64decode(rnd_str)
+        pickled_handler = base64.b64decode(handler_str)
         hash = base64.b64decode(hash_str)
         hashobject = get_hashobject(minute)
         hashobject.update(rnd)
+        hashobject.update(pickled_handler)
         hashobject.update(cPickle.dumps(local.user, 2))
-        if hash != hashobject.digest(): return False
+        if hash != hashobject.digest(): return False, None
         result = []
         queue.put((minute, buffer(rnd), local.lock, result))
         local.lock.acquire()
-        return result[0]
-    except: return False
+        if not result[0]: return result[0], None
+        request_handler = cPickle.loads(pickled_handler)
+        return True, request_handler
+    except: return False, None
 
 ################################################################################
 
