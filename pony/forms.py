@@ -29,6 +29,8 @@ class Form(object):
                 fields.append(x)
         fields.sort(key=attrgetter('_id_'))
         for field in fields: setattr(self, field.name, copy.copy(field))
+
+        self.validate()        
     @classmethod
     def _handle_http_request(cls):
         form = cls()
@@ -71,7 +73,7 @@ class Form(object):
     def is_valid(self):
         if not self.is_submitted: return False
         try:
-            result = self.validate()
+            self.validate()
         except Exception, e:
             self.error_text = e.__class__.__name__
             return False
