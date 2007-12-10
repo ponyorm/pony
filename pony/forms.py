@@ -7,6 +7,9 @@ from pony.auth import get_ticket
 from pony.templating import Html, StrHtml, htmljoin, htmltag
 from pony.web import get_request
 
+class FormCancel(Exception):
+    pass
+
 class Form(object):
     def __init__(self, method='POST', secure=None, **attrs):
         self._cleared = False
@@ -34,12 +37,15 @@ class Form(object):
         self.validate()        
     @classmethod
     def _handle_http_request(cls):
+        request = get_request()
+        request.form_processed = None
         form = cls()
-        if form.is_valid:
-            result = form.on_submit()
-            if result: request.form_processed = True
+        if not form.is_valid: return
+        try: form.on_submit()
+        except FormCancel: request.form_processed = False
+        else: request.form_processed = True
     def on_submit(self):
-        return True
+        pass
     def clear(self):
         self._cleared = True
         self.is_submitted = False
@@ -63,21 +69,17 @@ class Form(object):
         self._update_status()
     secure = property(attrgetter('_secure'), _set_secure)
     def _update_status(self):
-        if self._cleared or self._request.form_processed: self.is_submitted = False
-        else:
-            name = self.attrs.get('name', '')
-            self.is_submitted = False
-            if self._request.submitted_form != name: return
-            if self.method != 'POST' or self._request.method == 'POST':
-                self.is_submitted = True
+        self.is_submitted = False
+        request = self._request
+        if self._cleared or request.form_processed: return
+        if request.form_processed is not None \
+           and request.submitted_form != self.attrs.get('name'): return
+        if self.method == 'POST' and request.method != 'POST': return
+        self.is_submitted = True
     @property
     def is_valid(self):
         if not self.is_submitted: return False
-        try:
-            self.validate()
-        except Exception, e:
-            self.error_text = e.__class__.__name__
-            return False
+        self.validate()
         for f in self.hidden_fields:
             if not f.is_valid: return False
         for f in self.fields:
