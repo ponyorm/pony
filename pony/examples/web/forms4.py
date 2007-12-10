@@ -1,5 +1,7 @@
 from pony.main import *
 
+use_autoreload()
+
 class MyForm(Form):
     first_name = Text(required=True)
     last_name = Text()
