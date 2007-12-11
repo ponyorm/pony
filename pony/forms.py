@@ -33,8 +33,6 @@ class Form(object):
                 fields.append(x)
         fields.sort(key=attrgetter('_id_'))
         for field in fields: setattr(self, field.name, copy.copy(field))
-
-        self.validate()        
     @classmethod
     def _handle_http_request(cls):
         request = get_request()
