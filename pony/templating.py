@@ -142,12 +142,9 @@ def htmltag(_name_, _attrs_=None, **_attrs2_):
         if not d: continue
         for name, value in d.items():
             name = name.lower().strip('_').replace('_', '-')
+            if name == 'class':
+                value = (' '.join((attrs.get(name, ''), value))).strip()
             attrs[name] = value
-    cls2 = attrs.pop('additional-class', None)
-    if cls2 is not None:
-        cls = attrs.get('class')
-        if cls: attrs['class'] = cls + ' ' + cls2
-        else: attrs['class'] = cls2
     attrlist = []
     make_attr = Html('%s="%s"').__mod__
     for name, value in attrs.items():

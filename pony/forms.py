@@ -129,14 +129,18 @@ class Form(object):
             else: self.fields.remove(x)
         object.__delattr__(self, name)
     @property
-    def header(self):
+    def tag(self):
         attrs = self.attrs
         for f in self.fields:
             if isinstance(f, File):
                 attrs['enctype'] = 'multipart/form-data'
                 break
-        result = [ htmltag('form', attrs, method=self.method,
-                                          accept_charset='UTF-8') ]
+        error_class = self.error_text and 'has-error' or ''
+        return htmltag('form', attrs, method=self.method, accept_charset='UTF-8',
+                       _class=error_class)
+    @property
+    def header(self):
+        result = [ self.tag ]
         for f in self.hidden_fields: result.extend(('\n', f.html))
         result.append(self.error)
         return htmljoin(result)
@@ -144,8 +148,9 @@ class Form(object):
     def table(self):
         result = []
         for f in self.fields:
-            class_name = f.__class__.__name__.lower()
-            result.extend((Html('\n<tr class="%s-field">\n<th>' % class_name),
+            classes = f.__class__.__name__.lower() + '-field'
+            if f.error_text: classes += ' has-error'
+            result.extend((Html('\n<tr class="%s">\n<th>' % classes),
                            f.label, Html('</th>\n<td>'),
                            f.tag))
             e = f.error
@@ -414,7 +419,7 @@ class Select(SelectWidget):
 class RadioGroup(SelectWidget):
     @property
     def tag(self):
-        result = [ htmltag('div', self.attrs, additional_class='radiobuttons') ]
+        result = [ htmltag('div', self.attrs, _class='radiobuttons') ]
         selected_key = self._get_value()
         for key, value, description in self.options:
             result.append(Html('<div class="radiobutton">'))
@@ -467,7 +472,7 @@ class MultiSelect(SelectWidget):
 class CheckboxGroup(MultiSelect):
     @property
     def tag(self):
-        result = [ htmltag('div', self.attrs, additional_class='checkboxes') ]
+        result = [ htmltag('div', self.attrs, _class='checkboxes') ]
         selection = self._get_selection()
         for key, value, description in self.options:
             result.append(Html('<div class="checkbox">'))
