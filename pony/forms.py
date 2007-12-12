@@ -74,7 +74,7 @@ class Form(object):
         request = self._request
         if self._cleared or request.form_processed: return
         if request.form_processed is not None \
-           and request.submitted_form != self.attrs.get('name'): return
+           and request.submitted_form != self.attrs.get('name', ''): return
         if self.method == 'POST' and request.method != 'POST': return
         object.__setattr__(self, 'is_submitted', True)
     @property
@@ -276,15 +276,16 @@ class BaseWidget(HtmlField):
         error_text = self.error_text
         if not error_text: return ''
         return Html('<span class="error">%s</span>' % (error_text))
+    def _get_label(self):
+        if not self._label: return ''
+        if not self.required: required = ''
+        else: required = Html('<sup class="required">&nbsp;*</sup>')
+        return (Html('<label for="%s">%s%s'
+                     '<span class="colon">:</span></label>')
+                % (self.attrs['id'], self._label, required))
     def _set_label(self, label):
-        if label:
-            if not self.required: required = ''
-            else: required = Html('<sup class="required">&nbsp;*</sup>')
-            label = (Html('<label for="%s">%s%s'
-                          '<span class="colon">:</span></label>')
-                     % (self.attrs['id'], label, required))
         self._label = label or ''
-    label = property(attrgetter('_label'), _set_label)
+    label = property(_get_label, _set_label)
     def __unicode__(self):
         return htmljoin([ self._label, self.tag, self.error ])
     html = property(__unicode__)
