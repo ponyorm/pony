@@ -12,17 +12,17 @@ class FormCanceled(Exception):
 
 class Form(object):
     def __init__(self, method='POST', secure=None, **attrs):
-        self._cleared = False
-        self._validated = False
-        self._error_text = None
-        self._request = get_request()
-        self.attrs = dict((name.lower(), str(value))
-                          for name, value in attrs.iteritems())
+        object.__setattr__(self, '_cleared', False)
+        object.__setattr__(self, '_validated', False)
+        object.__setattr__(self, '_error_text', None)
+        object.__setattr__(self, '_request', get_request())
+        object.__setattr__(self, 'attrs', dict((name.lower(), str(value))
+                                        for name, value in attrs.iteritems()))
         if 'name' not in attrs: self.attrs['name'] = self.__class__.__name__
-        self.fields = []
-        self.hidden_fields = []
-        self.submit_fields = []
-        self._secure = False
+        object.__setattr__(self, 'fields', [])
+        object.__setattr__(self, 'hidden_fields', [])
+        object.__setattr__(self, 'submit_fields', [])
+        object.__setattr__(self, '_secure', False)
         self._set_method(method)
         self._set_secure(secure)
         self._f = Hidden(self.attrs.get('name', ''))
@@ -48,35 +48,35 @@ class Form(object):
     def on_submit(self):
         raise FormCanceled
     def clear(self):
-        self._cleared = True
-        self.is_submitted = False
+        object.__setattr__(self, '_cleared', True)
+        object.__setattr__(self, 'is_submitted', False)
     def _set_method(self, method):
         method = method.upper()
         if method not in ('GET', 'POST'): raise TypeError(
             'Invalid form method: %s (must be GET or POST)' % method)
         if method == 'GET' and self._secure:
             raise TypeError('GET form cannot be secure')
-        self._method = method
+        object.__setattr__(self, '_method', method)
         self._update_status()
     method = property(attrgetter('_method'), _set_method)
     def _set_secure(self, secure):
         if self._method == 'GET':
             if secure: raise TypeError('GET form cannot be secure')
-            self._secure = False
-        elif self.method == 'POST': self._secure = secure or secure is None
+            object.__setattr__(self, '_secure', False)
+        elif self.method == 'POST': object.__setattr__(self, '_secure', secure or secure is None)
         else: assert False
         if self._secure: self._t = Ticket()
         elif hasattr(self, '_t'): del self._t
         self._update_status()
     secure = property(attrgetter('_secure'), _set_secure)
     def _update_status(self):
-        self.is_submitted = False
+        object.__setattr__(self, 'is_submitted', False)
         request = self._request
         if self._cleared or request.form_processed: return
         if request.form_processed is not None \
            and request.submitted_form != self.attrs.get('name'): return
         if self.method == 'POST' and request.method != 'POST': return
-        self.is_submitted = True
+        object.__setattr__(self, 'is_submitted', True)
     @property
     def is_valid(self):
         if not self.is_submitted: return False
@@ -90,7 +90,7 @@ class Form(object):
     def _validate(self):
         if self._validated: return
         self.validate()
-        self._validated = True
+        object.__setattr__(self, '_validated', True)
     def validate(self):
         pass
     def _get_error_text(self):
@@ -102,7 +102,7 @@ class Form(object):
         if self.is_valid is None:
             return 'The form has already been submitted'
     def _set_error_text(self, text):
-        self._error_text = text
+        object.__setattr__(self, '_error_text', text)
     error_text = property(_get_error_text, _set_error_text)
     @property
     def error(self):
@@ -192,7 +192,7 @@ class HtmlField(object):
     def _init_(self, name, form):
         self.form = form
         self.name = name
-        self.form._validated = False
+        object.__setattr__(self.form, '_validated', False)
     @property
     def is_submitted(self):
         if not self.form.is_submitted: return False
@@ -210,7 +210,7 @@ class HtmlField(object):
             return value
     def _set_value(self, value):
         self._new_value = value
-        self.form._validated = False
+        object.__setattr__(self.form, '_validated', False)
     value = property(_get_value, _set_value)
     def __unicode__(self):
         value = self.value
@@ -372,7 +372,7 @@ class SelectWidget(BaseWidget):
                 raise TypeError('Duplicate option value: %s' % value)
             options[i] = option
         self._options = tuple(options)
-        self.form._validated = False
+        object.__setattr__(self.form, '_validated', False)
     options = property(attrgetter('_options'), _set_options)
     def _get_value(self): # for Select and RadioGroup
         try: return self._new_value
@@ -397,7 +397,7 @@ class SelectWidget(BaseWidget):
         elif len(selection) == 1: self._set_value(iter(selection).next())
         else: raise TypeError('This type of widget '
                               'does not support multiple selection')
-        self.form._validated = False
+        object.__setattr__(self.form, '_validated', False)
     selection = property(_get_selection, _set_selection)
     @property
     def tag(self): # for Select and MultiSelect
@@ -477,7 +477,7 @@ class MultiSelect(SelectWidget):
             if key not in self.keys:
                 raise TypeError('Invalid widget value: %r' % key)
         self._new_value = set(selection)
-        self.form._validated = False
+        object.__setattr__(self.form, '_validated', False)
     selection = property(_get_selection, _set_selection)
 
 class CheckboxGroup(MultiSelect):
