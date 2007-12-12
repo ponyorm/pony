@@ -13,6 +13,7 @@ class FormCanceled(Exception):
 class Form(object):
     def __init__(self, method='POST', secure=None, **attrs):
         self._cleared = False
+        self._validated = False
         self._error_text = None
         self._request = get_request()
         self.attrs = dict((name.lower(), str(value))
@@ -79,18 +80,23 @@ class Form(object):
     @property
     def is_valid(self):
         if not self.is_submitted: return False
-        self.validate()
+        self._validate()
         for f in self.hidden_fields:
             if not f.is_valid: return False
         for f in self.fields:
             if not f.is_valid: return False
         if self._secure and not not self._request.ticket_is_valid:
             return self._request.ticket_is_valid  # may be False or None
+    def _validate(self):
+        if self._validated: return
+        self.validate()
+        self._validated = True
     def validate(self):
         pass
     def _get_error_text(self):
         if self._cleared or self._request.form_processed: return None
         if self._error_text is not None: return self._error_text
+        self._validate()
         for f in self.fields:
             if f.error_text: return 'Some fields below contains errors'
         if self.is_valid is None:
@@ -186,6 +192,7 @@ class HtmlField(object):
     def _init_(self, name, form):
         self.form = form
         self.name = name
+        self.form._validated = False
     @property
     def is_submitted(self):
         if not self.form.is_submitted: return False
@@ -203,9 +210,10 @@ class HtmlField(object):
             return value
     def _set_value(self, value):
         self._new_value = value
+        self.form._validated = False
     value = property(_get_value, _set_value)
     def __unicode__(self):
-        value = self._get_value()
+        value = self.value
         if value is None: value = ''
         return htmltag('input', self.attrs,
                        name=self.name, value=value, type=self.HTML_TYPE)
@@ -252,7 +260,7 @@ class BaseWidget(HtmlField):
             self._set_label(name.replace('_', ' ').capitalize())
     @property
     def is_valid(self):
-        return self.is_submitted and not self._get_error_text()
+        return self.is_submitted and not self.error_text
     def _get_error_text(self):
         if self.form._cleared or self.form._request.form_processed: return None
         if self._error_text: return self._error_text
@@ -265,7 +273,7 @@ class BaseWidget(HtmlField):
         if self.required and not self.value: return 'This field is required'
     @property
     def error(self):
-        error_text = self._get_error_text()
+        error_text = self.error_text
         if not error_text: return ''
         return Html('<span class="error">%s</span>' % (error_text))
     def _set_label(self, label):
@@ -364,6 +372,7 @@ class SelectWidget(BaseWidget):
                 raise TypeError('Duplicate option value: %s' % value)
             options[i] = option
         self._options = tuple(options)
+        self.form._validated = False
     options = property(attrgetter('_options'), _set_options)
     def _get_value(self): # for Select and RadioGroup
         try: return self._new_value
@@ -380,7 +389,7 @@ class SelectWidget(BaseWidget):
         self._new_value = value
     value = property(_get_value, _set_value)
     def _get_selection(self): # for Select and RadioGroup
-        value = self._get_value()
+        value = self.value
         if value is None: return set()
         return set([ value ])
     def _set_selection(self, selection): # for Select and RadioGroup
@@ -388,6 +397,7 @@ class SelectWidget(BaseWidget):
         elif len(selection) == 1: self._set_value(iter(selection).next())
         else: raise TypeError('This type of widget '
                               'does not support multiple selection')
+        self.form._validated = False
     selection = property(_get_selection, _set_selection)
     @property
     def tag(self): # for Select and MultiSelect
@@ -467,6 +477,7 @@ class MultiSelect(SelectWidget):
             if key not in self.keys:
                 raise TypeError('Invalid widget value: %r' % key)
         self._new_value = set(selection)
+        self.form._validated = False
     selection = property(_get_selection, _set_selection)
 
 class CheckboxGroup(MultiSelect):
