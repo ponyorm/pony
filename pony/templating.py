@@ -144,6 +144,7 @@ def htmltag(_name_, _attrs_=None, **_attrs2_):
             name = name.lower().strip('_').replace('_', '-')
             if name == 'class':
                 value = (' '.join((attrs.get(name, ''), value))).strip()
+                if not value: continue
             attrs[name] = value
     attrlist = []
     make_attr = Html('%s="%s"').__mod__
