@@ -374,7 +374,7 @@ class SelectWidget(BaseWidget):
                 raise TypeError('Duplicate option value: %s' % value)
             options[i] = option
         self._options = tuple(options)
-        object.__setattr__(self.form, '_validated', False)
+        if self.form is not None: object.__setattr__(self.form, '_validated', False)
     options = property(attrgetter('_options'), _set_options)
     def _get_value(self): # for Select and RadioGroup
         try: return self._new_value
