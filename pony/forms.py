@@ -539,8 +539,8 @@ class Composite(BaseWidget):
         return '\n'.join(result)
     error_text = property(_get_error_text, BaseWidget._set_error_text)
     def _get_error(self):
-        error_lines = self.error_text.split('\n')
-        return Html('<br>\n').join(error_lines)
+        error_lines = (self.error_text or '').split('\n')
+        return Html('<div class="error">%s</div>' % Html('<br>\n').join(error_lines))
     error = property(_get_error)
     def _get_value(self):
         return (item.value for item in self.items)
