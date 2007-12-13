@@ -110,11 +110,12 @@ class Form(object):
         if not error_text: return ''
         return Html('<div class="error">%s</div>' % error_text)
     def __setattr__(self, name, x):
+        prev = getattr(self, name, None)
         if not isinstance(x, HtmlField):
+            if isinstance(prev, HtmlField): self.__delattr__(name)
             object.__setattr__(self, name, x)
             return
         if hasattr(self, name):
-            prev = getattr(self, name)
             if not isinstance(prev, HtmlField):
                 raise TypeError('Invalid form field name: %s' % name)
             try:
@@ -146,7 +147,7 @@ class Form(object):
                        _class=error_class)
     @property
     def header(self):
-        result = [ self.tag ]
+        result = [ '\n', self.tag ]
         for f in self.hidden_fields: result.extend(('\n', f.html))
         result.append(self.error)
         return htmljoin(result)
@@ -173,12 +174,12 @@ class Form(object):
     def __str__(self):
         return StrHtml(unicode(self).encode('ascii', 'xmlcharrefreplace'))
     def __unicode__(self):
-        return Html('\n').join([ self.header,
-                                 Html('<table>'),
-                                 self.table,
-                                 Html('<tr><td colspan="2">'),
-                                 self.buttons,
-                                 Html('</td></tr></table></form>')])
+        return htmljoin([ self.header,
+                          Html('\n<table>'),
+                          self.table,
+                          Html('\n<tr><td colspan="2">'),
+                          self.buttons,
+                          Html('\n</td></tr></table></form>\n\n')])
     html = property(__unicode__)
 
 next_id = count().next
@@ -287,7 +288,7 @@ class BaseWidget(HtmlField):
         self._label = label or ''
     label = property(_get_label, _set_label)
     def __unicode__(self):
-        return htmljoin([ self._label, self.tag, self.error ])
+        return htmljoin((self._label, self.tag, self.error))
     html = property(__unicode__)
 
 class File(BaseWidget):
