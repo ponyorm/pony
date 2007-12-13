@@ -81,6 +81,7 @@ class Form(object):
     def is_valid(self):
         if not self.is_submitted: return False
         self._validate()
+        if self._error_text: return False
         for f in self.hidden_fields:
             if not f.is_valid: return False
         for f in self.fields:
@@ -89,11 +90,12 @@ class Form(object):
             return self._request.ticket_is_valid  # may be False or None
     def _validate(self):
         if self._validated: return
-        self.validate()
         object.__setattr__(self, '_validated', True)
+        self.validate()
     def validate(self):
         pass
     def _get_error_text(self):
+        if not self.is_submitted: return None
         if self._cleared or self._request.form_processed: return None
         if self._error_text is not None: return self._error_text
         self._validate()
@@ -263,10 +265,10 @@ class BaseWidget(HtmlField):
     def is_valid(self):
         return self.is_submitted and not self.error_text
     def _get_error_text(self):
+        if not self.form.is_submitted: return None
         if self.form._cleared or self.form._request.form_processed: return None
         if self._error_text: return self._error_text
-        if self.is_submitted: return self._check_error()
-        return None
+        return self._check_error()
     def _set_error_text(self, text):
         self._error_text = text
     error_text = property(_get_error_text, _set_error_text)
@@ -528,6 +530,7 @@ class Composite(BaseWidget):
             if item.is_submitted: return True
         return False
     def _get_error_text(self):
+        if not self.form.is_submitted: return None
         if self.form._cleared or self.form._request.form_processed: return None
         if self._error_text: return self._error_text
         result = []
