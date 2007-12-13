@@ -104,11 +104,11 @@ class Form(object):
     def _set_error_text(self, text):
         object.__setattr__(self, '_error_text', text)
     error_text = property(_get_error_text, _set_error_text)
-    @property
-    def error(self):
+    def _get_error(self):
         error_text = self.error_text
         if not error_text: return ''
         return Html('<div class="error">%s</div>' % error_text)
+    error = property(_get_error)
     def __setattr__(self, name, x):
         prev = getattr(self, name, None)
         if not isinstance(x, HtmlField):
@@ -160,8 +160,8 @@ class Form(object):
             result.extend((Html('\n<tr class="%s">\n<th>' % classes),
                            f.label, Html('</th>\n<td>'),
                            f.tag))
-            e = f.error
-            if e: result.extend((Html('&nbsp;'), e))
+            error = f.error
+            if error: result.append(error)
             result.append(Html('</td></tr>'))
         return htmljoin(result)
     @property
@@ -276,11 +276,11 @@ class BaseWidget(HtmlField):
     def error(self):
         error_text = self.error_text
         if not error_text: return ''
-        return Html('<span class="error">%s</span>' % (error_text))
+        return Html('<div class="error">%s</div>') % error_text
     def _get_label(self, colon=True, required=True):
         if not self._label: return ''
         if not (required and self.required): required_html = ''
-        else: required_html = Html('<sup class="required">&nbsp;*</sup>')
+        else: required_html = Html('<sup class="required">*</sup>')
         colon_html = colon and Html('<span class="colon">:</span>') or ''
         return Html('<label for="%s">%s%s%s</label>') % (
             self.attrs['id'], self._label, required_html, colon_html)
@@ -536,9 +536,12 @@ class Composite(BaseWidget):
             if not error_text: continue
             result.append('%s: %s' % (item._label, error_text))
         if not result: return None
-        br = Html('<br>\n')
-        return br + br.join(result)
+        return '\n'.join(result)
     error_text = property(_get_error_text, BaseWidget._set_error_text)
+    def _get_error(self):
+        error_lines = self.error_text.split('\n')
+        return Html('<br>\n').join(error_lines)
+    error = property(_get_error)
     def _get_value(self):
         return (item.value for item in self.items)
     def _set_value(self, value):
