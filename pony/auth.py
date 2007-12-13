@@ -67,10 +67,11 @@ class Local(threading.local):
         self.lock = threading.Lock()
         self.lock.acquire()
         self.old_data = None
+        self.session = {}
         self.user = None
         self.set_user(None)
     def set_user(self, user, remember_ip=False, path='/', domain=None):
-        if self.user is not None or user is None: self.session = {}
+        if self.user is not None or user is None: self.session.clear()
         self.user = user
         self.ctime = int(time.time() // 60)
         self.remember_ip = False
