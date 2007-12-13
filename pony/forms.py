@@ -265,10 +265,10 @@ class BaseWidget(HtmlField):
     def is_valid(self):
         return self.is_submitted and not self.error_text
     def _get_error_text(self):
-        if not self.form.is_submitted: return None
         if self.form._cleared or self.form._request.form_processed: return None
         if self._error_text: return self._error_text
-        return self._check_error()
+        if self.is_submitted: return self._check_error()
+        return None
     def _set_error_text(self, text):
         self._error_text = text
     error_text = property(_get_error_text, _set_error_text)
