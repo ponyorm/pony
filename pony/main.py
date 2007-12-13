@@ -10,7 +10,8 @@ from pony.web import (application, http, url, link, Http404,
                       get_cookie, set_cookie)
 from pony.forms import (Form, Hidden, Submit, Reset,
                         File, Password, Text, TextArea, Checkbox, 
-                        Select, RadioGroup, MultiSelect, CheckboxGroup)
+                        Select, RadioGroup, MultiSelect, CheckboxGroup,
+                        Composite)
 from pony.gui.tkgui import show_gui
 import pony.gui.webgui
 
