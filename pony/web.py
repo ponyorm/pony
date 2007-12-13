@@ -30,20 +30,14 @@ class _Http(object):
     def get_request(self):
         return local.request
     request = property(get_request)
+
     def get_response(self):
         return local.response
     response = property(get_response)
-    
+
     def get_session(self):
         return auth.local.session
-    class _Session(object):
-        def __getattr__(self, attr):
-            return auth.local.session.get(attr)
-        def __setattr__(self, attr, value):
-            if value is None: auth.local.session.pop(attr, None)
-            else: auth.local.session[attr] = value
-    _session = _Session()
-    session = property(attrgetter('_session'))
+    session = property(get_session)
 
     def get_user(self):
         return auth.get_user()

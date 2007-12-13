@@ -67,12 +67,13 @@ class Local(threading.local):
         self.lock = threading.Lock()
         self.lock.acquire()
         self.old_data = None
+        self.user = None
         self.set_user(None)
     def set_user(self, user, remember_ip=False, path='/', domain=None):
+        if self.user is not None or user is None: self.session = {}
         self.user = user
         self.ctime = int(time.time() // 60)
         self.remember_ip = False
-        self.session = {}
         self.path = path
         self.domain = domain
     def load(self, data, environ):
@@ -109,7 +110,7 @@ class Local(threading.local):
         mtime = int(time.time() // 60)
         ctime_str = '%x' % self.ctime
         mtime_str = '%x' % mtime
-        if self.user is None: data = 'None'
+        if self.user is None and not self.session: data = 'None'
         else:
             info = self.user, self.session, self.domain, self.path
             pickle_data = cPickle.dumps(info, 2)
