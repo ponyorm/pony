@@ -3,6 +3,7 @@ import re, threading, os.path, copy, cPickle
 from operator import attrgetter
 from itertools import count
 
+from pony.utils import decorator
 from pony.auth import get_ticket
 from pony.templating import Html, StrHtml, htmljoin, htmltag
 from pony.web import get_request
@@ -10,7 +11,23 @@ from pony.web import get_request
 class FormCanceled(Exception):
     pass
 
+class FormMeta(type):
+    def __new__(meta, name, bases, dict):
+        init = dict.get('__init__')
+        if init is not None: dict['__init__'] = _form_init_decorator(init)
+        return super(FormMeta, meta).__new__(meta, name, bases, dict)
+
+@decorator
+def _form_init_decorator(__init__):
+    def new_init(form, *args, **keyargs):
+        try: form._init_counter += 1
+        except AttributeError: form._init_counter = 1
+        try: __init__(form, *args, **keyargs)
+        finally: form._init_counter -= 1
+    return new_init
+
 class Form(object):
+    __metaclass__ = FormMeta
     def __init__(self, method='POST', secure=None, **attrs):
         object.__setattr__(self, '_cleared', False)
         object.__setattr__(self, '_validated', False)
@@ -86,8 +103,9 @@ class Form(object):
             if not f.is_valid: return False
         for f in self.fields:
             if not f.is_valid: return False
-        if self._secure and not not self._request.ticket_is_valid:
+        if self._secure and not self._request.ticket_is_valid:
             return self._request.ticket_is_valid  # may be False or None
+        return True
     def _validate(self):
         if self._validated: return
         object.__setattr__(self, '_validated', True)
@@ -160,8 +178,7 @@ class Form(object):
             classes = f.__class__.__name__.lower() + '-field'
             if f.error_text: classes += ' has-error'
             result.extend((Html('\n<tr class="%s">\n<th>' % classes),
-                           f.label, Html('</th>\n<td>'),
-                           f.tag))
+                           f.label, Html('</th>\n<td>'), f.tag))
             error = f.error
             if error: result.append(error)
             result.append(Html('</td></tr>'))
@@ -195,31 +212,35 @@ class HtmlField(object):
     def _init_(self, name, form):
         self.form = form
         self.name = name
-        object.__setattr__(self.form, '_validated', False)
+        object.__setattr__(form, '_validated', False)
     @property
     def is_submitted(self):
-        if not self.form.is_submitted: return False
-        return self.form._request.fields.getfirst(self.name) is not None
+        form = self.form
+        if form is None or not form.is_submitted: return False
+        fields = form._request.fields
+        if fields.getfirst(self.name) is not None: return True
+        return fields.getfirst('.'+self.name) is not None
     @property
     def is_valid(self):
         return self.is_submitted
     def _get_value(self):
         try: return self._new_value
         except AttributeError:
-            if not self.form.is_submitted: return self.initial_value
+            if not self.is_submitted: return self.initial_value
             value = self.form._request.fields.getfirst(self.name)
-            if value is None: return self.initial_value
-            if value is not None: value = unicode(value, 'utf8')
-            return value
+            if value is None: return None
+            return unicode(value, 'utf8')
     def _set_value(self, value):
-        self._new_value = value
-        object.__setattr__(self.form, '_validated', False)
+        form = self.form
+        if form is None or form._init_counter: self.initial_value = value
+        else:
+            self._new_value = value
+            object.__setattr__(form, '_validated', False)
     value = property(_get_value, _set_value)
     def __unicode__(self):
         value = self.value
         if value is None: value = ''
-        return htmltag('input', self.attrs,
-                       name=self.name, value=value, type=self.HTML_TYPE)
+        return htmltag('input', self.attrs, name=self.name, value=value, type=self.HTML_TYPE)
     tag = html = property(__unicode__)
     def __str__(self):
         return StrHtml(unicode(self).encode('ascii', 'xmlcharrefreplace'))
@@ -235,10 +256,9 @@ class Ticket(Hidden):
     value = property(HtmlField._get_value, _set_value)
     def __unicode__(self):
         request_handler = None
-        if self.form is not None and self.form.__class__ is not Form:
-            request_handler = self.form.__class__
-        return htmltag('input', self.attrs, name=self.name,
-                       value=get_ticket(request_handler), type='hidden')
+        form = self.form
+        if form is not None and form.__class__ is not Form: request_handler = form.__class__
+        return htmltag('input', self.attrs, name=self.name, value=get_ticket(request_handler), type='hidden')
     tag = html = property(__unicode__)
 
 class Submit(HtmlField):
@@ -265,7 +285,8 @@ class BaseWidget(HtmlField):
     def is_valid(self):
         return self.is_submitted and not self.error_text
     def _get_error_text(self):
-        if self.form._cleared or self.form._request.form_processed: return None
+        form = self.form
+        if form is None or form._cleared or form._request.form_processed: return None
         if self._error_text: return self._error_text
         if self.is_submitted: return self._check_error()
         return None
@@ -296,23 +317,20 @@ class BaseWidget(HtmlField):
 class File(BaseWidget):
     HTML_TYPE = 'file'
     def _get_value(self):
-        if not self.form.is_submitted: return None
-        fields = self.form._request.fields
-        if not fields.has_key(self.name): return None
-        return fields[self.name].file
+        if not self.is_submitted: return None
+        x = self.form._request.fields.getfirst(self.name)
+        try: return x.file
+        except: return None
     def _set_value(self, value):
         raise TypeError('This property cannot be set')
     value = property(_get_value, _set_value)
-    def _get_filename(self):
-        try: return self._new_value
-        except AttributeError:
-            if not self.form.is_submitted: return self.initial_value
-            fields = self.form._request.fields
-            if not fields.has_key(self.name): return None
-            return os.path.basename(fields[self.name].filename)
-    def _set_filename(self, filename):
-        self._new_value = filename
-    filename = property(_get_filename, _set_filename)
+    @property
+    def filename(self):
+        if not self.is_submitted: return self.initial_value
+        x = self.form._request.fields.getfirst(self.name)
+        try: filename = x.filename
+        except: return None
+        return os.path.basename(filename)
     @property
     def tag(self):
         return htmltag('input', self.attrs, name=self.name, type=self.HTML_TYPE)
@@ -347,27 +365,27 @@ class Checkbox(BaseWidget):
         result.append(htmltag('input', name=self.name, type='hidden', value=''))
         return htmljoin(result)
 
-class SelectWidget(BaseWidget):
-    def __init__(self, label=None, required=False, value=None,
-                 options=[], **attrs):
-        BaseWidget.__init__(self, label, required, value, **attrs)
+class Select(BaseWidget):
+    def __init__(self, label=None, required=False, value=None, options=[], **attrs):
+        BaseWidget.__init__(self, label, required, **attrs)
         self._set_options(options)
+        self.value = value
     def _set_options(self, options):
         self.keys = {}
         self.values = {}
         options = list(options)
         for i, option in enumerate(options):
             if isinstance(option, tuple):
-                if len(option) == 3: key, value, description = option
+                if len(option) == 3: value, description, key = option
                 elif len(option) == 2:
-                    key, description = option
-                    value = unicode(key)
+                    value, description = option
+                    key = unicode(value)
                 else: raise TypeError('Invalid option: %r' % option)
                 description = unicode(description)
             else:
-                key = option
-                value = description = unicode(key)
-            option = key, value, description
+                value = option
+                key = description = unicode(value)
+            option = value, description, key
             x = self.keys.setdefault(key, option)
             if x is not option:
                 raise TypeError('Duplicate option key: %s' % key)
@@ -376,127 +394,104 @@ class SelectWidget(BaseWidget):
                 raise TypeError('Duplicate option value: %s' % value)
             options[i] = option
         self._options = tuple(options)
-        if self.form is not None: object.__setattr__(self.form, '_validated', False)
+        form = self.form
+        if form is not None: object.__setattr__(form, '_validated', False)
     options = property(attrgetter('_options'), _set_options)
     def _get_value(self): # for Select and RadioGroup
         try: return self._new_value
         except AttributeError:
-            if not self.form.is_submitted: return self.initial_value
-            value = self.form._request.fields.getfirst(self.name)
-            if value is not None: value = unicode(value, 'utf8')
-            option = self.values.get(value)
+            if not self.is_submitted: return self.initial_value
+            key = self.form._request.fields.getfirst(self.name)
+            if key is None: return None
+            key = unicode(key, 'utf8')
+            option = self.keys.get(key)
             if option is None: return None
             return option[0]
     def _set_value(self, value): # for Select and RadioGroup
-        if value is not None and value not in self.keys:
+        if value is not None and value not in self.values:
             raise TypeError('Invalid widget value: %r' % value)
-        self._new_value = value
+        form = self.form
+        if form is None or form._init_counter: self.initial_value = value
+        else:
+            self._new_value = value
+            object.__setattr__(form, '_validated', False)
     value = property(_get_value, _set_value)
-    def _get_selection(self): # for Select and RadioGroup
-        value = self.value
-        if value is None: return set()
-        return set([ value ])
-    def _set_selection(self, selection): # for Select and RadioGroup
-        if not selection: self._new_value = None
-        elif len(selection) == 1: self._set_value(iter(selection).next())
-        else: raise TypeError('This type of widget '
-                              'does not support multiple selection')
-        object.__setattr__(self.form, '_validated', False)
-    selection = property(_get_selection, _set_selection)
     @property
     def tag(self): # for Select and MultiSelect
-        if self.size: size = self.size
+        attrs = self.attrs.copy()
+        size = attrs.pop('size', None)
+        if size: pass
         elif not isinstance(self, MultiSelect): size = 1
         elif len(self.options) < 5: size = len(self.options)
         else: size = 5
-        result = [ htmltag('select', self.attrs, name=self.name,
+        result = [ htmltag('select', attrs, name=self.name,
                            size=size, multiple=isinstance(self, MultiSelect)) ]
-        selection = self._get_selection()
-        for key, value, description in self.options:
-            if value == description: value = None
-            result.append(htmltag('option', selected=(key in selection),
-                                            value=value))
+        value = self.value
+        if isinstance(self, MultiSelect): selection = value
+        elif value is None: selection = set()
+        else: selection = set((value,))
+        for value, description, key in self.options:
+            if key == description: key = None
+            result.append(htmltag('option', selected=(value in selection), value=key))
             result.append(description)
             result.append(Html('</option>'))
         result.append(Html('</select>'))
-        result.append(htmltag('input', name=self.name, type='hidden', value=''))
+        result.append(htmltag('input', name='.'+self.name, type='hidden', value=''))
         return htmljoin(result)
 
-class Select(SelectWidget):
-    def __init__(self, label=None, required=False, value=None,
-                 options=[], size=None, **attrs):
-        SelectWidget.__init__(self, label, required, value, options, **attrs)
-        if value is not None and value not in self.keys:
-            raise TypeError('Invalid widget initial value: %r' % value)
-        self.size = size
-
-class RadioGroup(SelectWidget):
+class RadioGroup(Select):
     @property
     def tag(self):
         result = [ htmltag('div', self.attrs, _class='radiobuttons') ]
-        selected_key = self._get_value()
-        for key, value, description in self.options:
+        selected = self.value
+        for value, description, key in self.options:
             result.append(Html('<div class="radiobutton">'))
             result.append(htmltag('input', type='radio', name=self.name,
-                                  value=value,
-                                  checked=(key == selected_key)))
-            result.append(Html('<span class="value">%s</span></div>')
-                          % description)
+                                  value=key,
+                                  checked=(value==selected)))
+            result.append(Html('<span class="value">%s</span></div>') % description)
         result.append(Html('</div>'))
-        result.append(htmltag('input', name=self.name, type='hidden', value=''))
+        result.append(htmltag('input', name='.'+self.name, type='hidden', value=''))
         return htmljoin(result)
 
-class MultiSelect(SelectWidget):
-    def __init__(self, label=None, required=False, value=None,
-                 options=[] ,size=None, **attrs):
+class MultiSelect(Select):
+    def _get_value(self):
+        try: return self._new_value
+        except AttributeError:
+            if not self.is_submitted: return self.initial_value.copy()
+            keys = self.form._request.fields.getlist(self.name)
+            result = set()
+            for key in keys:
+                key = unicode(key, 'utf8')
+                option = self.keys.get(key)
+                if option is not None: result.add(option[0])
+            return result
+    def _set_value(self, value):
         if value is None: values = set()
         elif isinstance(value, basestring): values = set((value,))
         elif hasattr(value, '__iter__'): values = set(value)
         else: values = set((value,))
-        SelectWidget.__init__(self, label, required, value, options, **attrs)
-        for key in values:
-            if key not in self.keys:
-                raise TypeError('Invalid widget initial value: %r' % key)
-        self.initial_value = values
-        self.size = size
-    def _get_value(self):
-        raise TypeError("Use 'selection' property instead")
-    def _set_value(self, value):
-        raise TypeError("Use 'selection' property instead")
+        for value in values:
+            if value not in self.values: raise TypeError('Invalid widget value: %r' % value)
+        form = self.form
+        if form is None or form._init_counter: self.initial_value = values
+        else:
+            self._new_value = values
+            object.__setattr__(form, '_validated', False)
     value = property(_get_value, _set_value)
-    def _get_selection(self):
-        try: return self._new_value
-        except AttributeError:
-            if not self.form.is_submitted: return self.initial_value
-            values = self.form._request.fields.getlist(self.name)
-            if not values: return self.initial_value
-            result = set()
-            for value in values:
-                if value is not None: value = unicode(value, 'utf8')
-                option = self.values.get(value)
-                if option is not None: result.add(option[0])
-            return result
-    def _set_selection(self, selection):
-        for key in selection:
-            if key not in self.keys:
-                raise TypeError('Invalid widget value: %r' % key)
-        self._new_value = set(selection)
-        object.__setattr__(self.form, '_validated', False)
-    selection = property(_get_selection, _set_selection)
 
 class CheckboxGroup(MultiSelect):
     @property
     def tag(self):
         result = [ htmltag('div', self.attrs, _class='checkboxes') ]
-        selection = self._get_selection()
-        for key, value, description in self.options:
+        selection = self.value
+        for value, description, key in self.options:
             result.append(Html('<div class="checkbox">'))
             result.append(htmltag('input', name=self.name, type='checkbox',
-                                  value=value, checked=(key in selection)))
-            result.append(Html('<span class="value">%s</span></div>')
-                          % description)
+                                  value=value, checked=(value in selection)))
+            result.append(Html('<span class="value">%s</span></div>') % description)
         result.append(Html('</div>'))
-        result.append(htmltag('input', name=self.name, type='hidden', value=''))
+        result.append(htmltag('input', name='.'+self.name, type='hidden', value=''))
         return htmljoin(result)
     
 class Composite(BaseWidget):
@@ -504,6 +499,9 @@ class Composite(BaseWidget):
         BaseWidget.__init__(self, label, required, **attrs)
         self.item_labels = item_labels
         self.items = []
+    def _init_(self, name, form):
+        BaseWidget._init_(self, name, form)
+        for item in self.items: item._init_(item.name, form)
     def __setattr__(self, name, x):
         prev = getattr(self, name, None)
         if not isinstance(x, HtmlField):
@@ -518,20 +516,24 @@ class Composite(BaseWidget):
         if self.required is not None and x.required is None: x.required = self.required
         self.items.append(x)
         object.__setattr__(self, name, x)
-        x._init_(name, self.form)
+        form = self.form
+        if form is not None: x._init_(name, form)
+        else: x.name = name
     def __delattr__(self, name):
         x = getattr(self, name)
         if isinstance(x, HtmlField): self.items.remove(x)
         object.__delattr__(self, name)
     @property
     def is_submitted(self):
-        if not self.form.is_submitted: return False
+        form = self.form
+        if form is None or not form.is_submitted: return False
         for item in self.items:
             if item.is_submitted: return True
         return False
     def _get_error_text(self):
-        if not self.form.is_submitted: return None
-        if self.form._cleared or self.form._request.form_processed: return None
+        form = self.form
+        if form is None or not form.is_submitted: return None
+        if form._cleared or form._request.form_processed: return None
         if self._error_text: return self._error_text
         result = []
         for item in self.items:
