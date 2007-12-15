@@ -124,11 +124,11 @@ class Form(object):
     def _set_error_text(self, text):
         object.__setattr__(self, '_error_text', text)
     error_text = property(_get_error_text, _set_error_text)
-    def _get_error(self):
+    @property
+    def error(self):
         error_text = self.error_text
         if not error_text: return ''
         return Html('<div class="error">%s</div>' % error_text)
-    error = property(_get_error)
     def __setattr__(self, name, x):
         prev = getattr(self, name, None)
         if not isinstance(x, HtmlField):
@@ -543,10 +543,10 @@ class Composite(BaseWidget):
         if not result: return None
         return '\n'.join(result)
     error_text = property(_get_error_text, BaseWidget._set_error_text)
-    def _get_error(self):
+    @property
+    def error(self):
         error_lines = (self.error_text or '').split('\n')
         return Html('<div class="error">%s</div>' % Html('<br>\n').join(error_lines))
-    error = property(_get_error)
     def _get_value(self):
         return (item.value for item in self.items)
     def _set_value(self, value):
