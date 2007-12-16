@@ -3,9 +3,10 @@ from pony.main import *
 use_autoreload()
 
 class MyForm(Form):
-    first_name = Text(required=True)
-    last_name = Text()
-    age = Text()
+    def __init__(self, first_name, last_name):
+        self.first_name = Text(value=first_name, required=True)
+        self.last_name = Text(value=last_name)
+        self.age = Text()
     def validate(self):
         if self.age.value:
             try: int(self.age.value)
@@ -17,7 +18,7 @@ class MyForm(Form):
 @http('/')
 @printhtml
 def index():
-    f = MyForm()
+    f = MyForm('John', 'Smith')
     print f
     
 start_http_server()

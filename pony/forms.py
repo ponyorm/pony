@@ -22,6 +22,7 @@ def _form_init_decorator(__init__):
     def new_init(form, *args, **keyargs):
         try: form._init_counter += 1
         except AttributeError:
+            if form.__class__ is not Form: Form.__init__.original_func(form)
             form._init_counter = 1
             form._ticket_payload = cPickle.dumps((handle_submit, (form.__class__,)+args, keyargs))
         try: __init__(form, *args, **keyargs)
