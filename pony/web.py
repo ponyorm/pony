@@ -620,8 +620,9 @@ def invoke(url):
     params.update(zip(names, args))
     params.update(keyargs)
 
-    if request.handler is not None:
-        request.handler._handle_http_request()
+    if request.ticket_payload is not None:
+        handler, handler_args, handler_keyargs = request.ticket_payload
+        handler(*handler_args, **handler_keyargs)
 
     result = info.func(*args, **keyargs)
 
@@ -766,7 +767,7 @@ class HttpRequest(object):
         self.fields = cgi.FieldStorage(
             fp=input_stream, environ=environ, keep_blank_values=True)
         self.submitted_form = self.fields.getfirst('_f')
-        self.ticket_is_valid, self.handler = auth.verify_ticket(self.fields.getfirst('_t'))
+        self.ticket_is_valid, self.ticket_payload = auth.verify_ticket(self.fields.getfirst('_t'))
         self.form_processed = False
         self.id_counter = itertools.imap('id_%d'.__mod__, itertools.count())
 

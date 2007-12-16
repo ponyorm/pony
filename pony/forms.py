@@ -21,10 +21,23 @@ class FormMeta(type):
 def _form_init_decorator(__init__):
     def new_init(form, *args, **keyargs):
         try: form._init_counter += 1
-        except AttributeError: form._init_counter = 1
+        except AttributeError:
+            form._init_counter = 1
+            form._ticket_payload = cPickle.dumps((handle_submit, (form.__class__,)+args, keyargs))
         try: __init__(form, *args, **keyargs)
         finally: form._init_counter -= 1
     return new_init
+
+def handle_submit(form_cls, *args, **keyargs):
+    request = get_request()
+    request.form_processed = None
+    form = form_cls(*args, **keyargs)
+    if not form.is_valid:
+        request.form_processed = False
+        return
+    try: form.on_submit()
+    except FormCanceled: request.form_processed = False
+    else: request.form_processed = True
 
 class Form(object):
     __metaclass__ = FormMeta
@@ -51,17 +64,6 @@ class Form(object):
                 fields.append(x)
         fields.sort(key=attrgetter('_id_'))
         for field in fields: setattr(self, field.name, copy.copy(field))
-    @classmethod
-    def _handle_http_request(cls):
-        request = get_request()
-        request.form_processed = None
-        form = cls()
-        if not form.is_valid:
-            request.form_processed = False
-            return
-        try: form.on_submit()
-        except FormCanceled: request.form_processed = False
-        else: request.form_processed = True
     def on_submit(self):
         raise FormCanceled
     def clear(self):
@@ -258,10 +260,10 @@ class Ticket(Hidden):
         raise TypeError('Cannot set value for tickets')
     value = property(HtmlField._get_value, _set_value)
     def __unicode__(self):
-        request_handler = None
+        payload = None
         form = self.form
-        if form is not None and form.__class__ is not Form: request_handler = form.__class__
-        return htmltag('input', self.attrs, name=self.name, value=get_ticket(request_handler), type='hidden')
+        if form is not None and form.__class__ is not Form: payload = form._ticket_payload
+        return htmltag('input', self.attrs, name=self.name, value=get_ticket(payload), type='hidden')
     tag = html = property(__unicode__)
 
 class Submit(HtmlField):
