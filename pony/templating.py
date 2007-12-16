@@ -6,9 +6,6 @@ from utils import (read_text_file, is_ident,
 try: real_stdout
 except: real_stdout = sys.stdout
 
-try: real_stderr
-except: real_stderr = sys.stderr
-
 class Html(unicode):
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, unicode.__repr__(self))
@@ -36,8 +33,9 @@ class Html(unicode):
 htmljoin = Html('').join
 
 class StrHtml(str):
-    def __str__(self):  # Because of bug in Python 2.4 print statement.
-        return self     # Without this StrHtml converted silently to str when printed
+    def __str__(self):        # Because of bug in Python 2.4 print statement.
+        s = str.__str__(self)
+        return StrHtml2(s) 
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, str.__repr__(self))
 ##  # Part of correct markup may not be correct markup itself
@@ -79,6 +77,10 @@ class StrHtml(str):
             return Html(unicode(self, errors='replace')).join(items)
         if isinstance(result, str): return StrHtml(result)
         return Html(result)
+
+class StrHtml2(StrHtml):
+    def __str__(self):
+        return str.__str__(self)
 
 def quote(x, unicode_replace=False):
     if isinstance(x, (int, long, float, Html)): return x
@@ -171,14 +173,6 @@ class PonyStdout(object):
 
 pony_stdout = PonyStdout()
 
-class PonyStderr(object):
-    @staticmethod
-    def write(s):
-        if isinstance(s, StrHtml): s = str.__str__(s)
-        real_stdout.write(s)
-
-pony_stderr = PonyStderr()
-
 @decorator
 def grab_stdout(f):
     def new_function(*args, **keyargs):
@@ -187,7 +181,6 @@ def grab_stdout(f):
         # The next line required for PythonWin interactive window
         # (PythonWin resets stdout all the time)
         sys.stdout = pony_stdout
-        sys.stderr = pony_stderr
         try: result = f(*args, **keyargs)
         finally: assert local.writers.pop() == data.append
         if result is not None: return (result,)
