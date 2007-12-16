@@ -13,6 +13,10 @@ class FormCanceled(Exception):
 
 class FormMeta(type):
     def __new__(meta, name, bases, dict):
+        if 'Form' in globals():
+            for value in dict.values():
+                if isinstance(value, HtmlField): raise TypeError(
+                    'You cannot place fields inside form class directly. Use __init__ method instead')
         init = dict.get('__init__')
         if init is not None: dict['__init__'] = _form_init_decorator(init)
         return super(FormMeta, meta).__new__(meta, name, bases, dict)
@@ -57,14 +61,6 @@ class Form(object):
         self._set_method(method)
         self._set_secure(secure)
         self._f = Hidden(self.attrs.get('name', ''))
-
-        fields = []
-        for name, x in self.__class__.__dict__.items():
-            if isinstance(x, HtmlField):
-                x.name = name
-                fields.append(x)
-        fields.sort(key=attrgetter('_id_'))
-        for field in fields: setattr(self, field.name, copy.copy(field))
     def on_submit(self):
         raise FormCanceled
     def clear(self):
@@ -207,11 +203,8 @@ class Form(object):
                           Html('\n</td></tr></table></form>\n\n')])
     html = property(__unicode__)
 
-next_id = count().next
-
 class HtmlField(object):
     def __init__(self, value=None):
-        self._id_ = next_id()
         self.attrs = {}
         self.form = self.name = None
         self.initial_value = value
