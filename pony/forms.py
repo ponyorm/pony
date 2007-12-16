@@ -167,10 +167,13 @@ class Form(object):
                        _class=error_class)
     @property
     def header(self):
-        result = [ '\n', self.tag ]
-        for f in self.hidden_fields: result.extend(('\n', f.html))
+        result = [ self.tag ]
+        for f in self.hidden_fields: result.append(f.html)
+        for f in self.fields:
+            hidden = f.hidden
+            if hidden: result.append(hidden)
         result.append(self.error)
-        return htmljoin(result)
+        return Html('\n') + Html('\n').join(result)
     @property
     def table(self):
         result = []
@@ -313,6 +316,9 @@ class BaseWidget(HtmlField):
     def __unicode__(self):
         return htmljoin((self._label, self.tag, self.error))
     html = property(__unicode__)
+    @property
+    def hidden(self):
+        return ''
 
 class File(BaseWidget):
     HTML_TYPE = 'file'
@@ -362,14 +368,20 @@ class Checkbox(BaseWidget):
         result.append(htmltag('input', self.attrs, name=self.name,
                               value='yes', checked=bool(self.value),
                               type = self.HTML_TYPE))
-        result.append(htmltag('input', name=self.name, type='hidden', value=''))
         return htmljoin(result)
+    @property
+    def hidden(self):
+        return htmltag('input', name='.'+self.name, type='hidden', value='')
 
 class Select(BaseWidget):
     def __init__(self, label=None, required=False, value=None, options=[], **attrs):
         BaseWidget.__init__(self, label, required, **attrs)
         self._set_options(options)
         self.value = value
+        size = attrs.get('size')
+        if size is not None: pass
+        elif not isinstance(self, MultiSelect): self.attrs['size'] = 1
+        else: self.attrs['size'] = min(len(self.options), 5)
     def _set_options(self, options):
         self.keys = {}
         self.values = {}
@@ -418,14 +430,7 @@ class Select(BaseWidget):
     value = property(_get_value, _set_value)
     @property
     def tag(self): # for Select and MultiSelect
-        attrs = self.attrs.copy()
-        size = attrs.pop('size', None)
-        if size: pass
-        elif not isinstance(self, MultiSelect): size = 1
-        elif len(self.options) < 5: size = len(self.options)
-        else: size = 5
-        result = [ htmltag('select', attrs, name=self.name,
-                           size=size, multiple=isinstance(self, MultiSelect)) ]
+        result = [ htmltag('select', self.attrs, name=self.name, multiple=isinstance(self, MultiSelect)) ]
         value = self.value
         if isinstance(self, MultiSelect): selection = value
         elif value is None: selection = set()
@@ -436,8 +441,11 @@ class Select(BaseWidget):
             result.append(description)
             result.append(Html('</option>'))
         result.append(Html('</select>'))
-        result.append(htmltag('input', name='.'+self.name, type='hidden', value=''))
         return htmljoin(result)
+    @property
+    def hidden(self):
+        if self.__class__ == Select and str(self.attrs.get('size', '')) == '1': return ''
+        return htmltag('input', name='.'+self.name, type='hidden', value='')
 
 class RadioGroup(Select):
     @property
