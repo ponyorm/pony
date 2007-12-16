@@ -8,8 +8,7 @@ from pony.auth import get_ticket
 from pony.templating import Html, StrHtml, htmljoin, htmltag
 from pony.web import get_request
 
-class FormCanceled(Exception):
-    pass
+class FormCanceled(Exception): pass
 
 class FormMeta(type):
     def __new__(meta, name, bases, dict):
@@ -52,7 +51,7 @@ class Form(object):
         object.__setattr__(self, '_error_text', None)
         object.__setattr__(self, '_request', get_request())
         object.__setattr__(self, 'attrs', dict((name.lower(), str(value))
-                                        for name, value in attrs.iteritems()))
+                                               for name, value in attrs.iteritems()))
         if 'name' not in attrs: self.attrs['name'] = self.__class__.__name__
         object.__setattr__(self, 'fields', [])
         object.__setattr__(self, 'hidden_fields', [])
@@ -395,11 +394,9 @@ class Select(BaseWidget):
                 key = description = unicode(value)
             option = value, description, key
             x = self.keys.setdefault(key, option)
-            if x is not option:
-                raise TypeError('Duplicate option key: %s' % key)
+            if x is not option: raise TypeError('Duplicate option key: %s' % key)
             x = self.values.setdefault(value, option)
-            if x is not option:
-                raise TypeError('Duplicate option value: %s' % value)
+            if x is not option: raise TypeError('Duplicate option value: %s' % value)
             options[i] = option
         self._options = tuple(options)
         form = self.form
@@ -451,8 +448,7 @@ class RadioGroup(Select):
         for value, description, key in self.options:
             result.append(Html('<div class="radiobutton">'))
             result.append(htmltag('input', type='radio', name=self.name,
-                                  value=key,
-                                  checked=(value==selected)))
+                                  value=key, checked=(value==selected)))
             result.append(Html('<span class="value">%s</span></div>') % description)
         result.append(Html('</div>'))
         result.append(htmltag('input', name='.'+self.name, type='hidden', value=''))
@@ -554,8 +550,7 @@ class Composite(BaseWidget):
     def _get_value(self):
         return (item.value for item in self.items)
     def _set_value(self, value):
-        for item, item_value in zip(self.items, value):
-            item.value = item_value
+        for item, item_value in zip(self.items, value): item.value = item_value
     value = property(_get_value, _set_value)
 ##  def _get_label(self, colon=True, required=False):
 ##      return BaseWidget._get_label(self, colon, required)
