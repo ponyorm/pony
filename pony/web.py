@@ -701,6 +701,7 @@ def http_clear():
 
 class HttpException(Exception):
     content = ''
+http.Exception = HttpException
 
 class Http400BadRequest(HttpException):
     status = '400 Bad Request'
@@ -708,13 +709,16 @@ class Http400BadRequest(HttpException):
     def __init__(self, content='Bad Request'):
         Exception.__init__(self, 'Bad Request')
         self.content = content
-
-class Http404(HttpException):
+http.BadRequest = Http400BadRequest
+        
+class Http404NotFound(HttpException):
     status = '404 Not Found'
     headers = {'Content-Type': 'text/plain'}
     def __init__(self, content='Page not found'):
         Exception.__init__(self, 'Page not found')
         self.content = content
+Http404 = Http404NotFound
+http.NotFound = Http404NotFound
 
 class HttpRedirect(HttpException):
     status_dict = {'301' : '301 Moved Permanently',
@@ -728,6 +732,7 @@ class HttpRedirect(HttpException):
         status = str(status)
         self.status = self.status_dict.get(status, status)
         self.headers = {'Location': location}
+http.Redirect = HttpRedirect
 
 ################################################################################
 
