@@ -21,7 +21,8 @@ def save(environ):
     return local.save(environ)
 
 def get_ticket(payload=None):
-    if payload is not None: assert isinstance(payload, str)
+    if payload is None: payload = ''
+    else: assert isinstance(payload, str)
     now = int(time.time())
     now_str = '%x' % now
     rnd = os.urandom(8)
@@ -53,7 +54,8 @@ def verify_ticket(ticket):
         queue.put((minute, buffer(rnd), local.lock, result))
         local.lock.acquire()
         if not result[0]: return result[0], None
-        if payload is not None: payload = cPickle.loads(payload)
+        if payload: payload = cPickle.loads(payload)
+        else: payload = None
         return True, payload
     except: return False, None
 
