@@ -12,13 +12,12 @@ class MyForm(Form):
         if age is None: pass
         elif age < 10: self.age.error_text = "Must be 10 at least"
         elif age > 120: self.age.error_text = "Must not be greater then 120"
-    def on_submit(self):
-        print self.first_name.value, self.last_name.value, self.age.value
 
 @http('/')
 @printhtml
 def index():
     f = MyForm()
-    print f
+    if f.is_valid: print '<h1>Hello, %s!</h1>' % f.first_name.value
+    else: print f
     
 start_http_server()
