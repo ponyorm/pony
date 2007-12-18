@@ -134,4 +134,7 @@ def str2guid(s):
     reverse = slice(-1, None, -1)
     return buffer(''.join((a[reverse], b[reverse], c[reverse], d, e)))
 
-
+converters = {
+    int: (int, unicode, 'Must be integer'),
+    float: (float, unicode, 'Must be float'),
+    }

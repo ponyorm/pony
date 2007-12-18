@@ -3,7 +3,7 @@ import re, threading, os.path, copy, cPickle
 from operator import attrgetter
 from itertools import count
 
-from pony.utils import decorator
+from pony.utils import decorator, converters
 from pony.auth import get_ticket
 from pony.templating import Html, StrHtml, htmljoin, htmltag
 from pony.web import get_request, Http400BadRequest
@@ -236,8 +236,9 @@ class HtmlField(object):
             self._new_value = value
             object.__setattr__(form, '_validated', False)
     value = property(_get_value, _set_value)
+    html_value = property(_get_value)
     def __unicode__(self):
-        value = self.value
+        value = self.html_value
         if value is None: value = ''
         return htmltag('input', self.attrs, name=self.name, value=value, type=self.HTML_TYPE)
     tag = html = property(__unicode__)
@@ -268,6 +269,7 @@ class Reset(HtmlField):
 
 class BaseWidget(HtmlField):
     def __init__(self, label=None, required=None, value=None, **attrs):
+        if 'type' in attrs: raise TypeError('You can set type only for Text fields')
         HtmlField.__init__(self, value)
         if 'id' not in attrs:
             request = get_request()
@@ -275,6 +277,7 @@ class BaseWidget(HtmlField):
         self.attrs = attrs
         self.required = required
         self._error_text = None
+        self._auto_error_text = None
         self._set_label(label)
     def _init_(self, name, form):
         HtmlField._init_(self, name, form)
@@ -293,7 +296,9 @@ class BaseWidget(HtmlField):
         self._error_text = text
     error_text = property(_get_error_text, _set_error_text)
     def _check_error(self):
-        if self.required and not self.value: return 'This field is required'
+        value = self.value
+        if self._auto_error_text: return self._auto_error_text
+        if self.required and not value: return 'This field is required'
     @property
     def error(self):
         error_text = self.error_text
@@ -342,6 +347,26 @@ class Password(BaseWidget):
 
 class Text(BaseWidget):
     HTML_TYPE = 'text'
+    def __init__(self, label=None, required=None, value=None, type=None, **attrs):
+        BaseWidget.__init__(self, label, required, value, **attrs)
+        self.type = type
+    def _get_value(self):
+        value = BaseWidget._get_value(self)
+        if self.type is None: return value
+        if not value: return None
+        if not isinstance(value, unicode): return value
+        str2py, py2str, err_msg = converters.get(self.type, (self.type, unicode, 'Invalid data'))
+        try: return str2py(value)
+        except:
+            self._auto_error_text = err_msg
+            return None
+    value = property(_get_value, BaseWidget._set_value)
+    @property
+    def html_value(self):
+        value = BaseWidget._get_value(self)
+        if value is None or self.type is None or isinstance(value, unicode): return value
+        str2py, py2str, err_msg = converters.get(self.type, (self.type, unicode, None))
+        py2str(value)
 
 class TextArea(BaseWidget):
     @property
