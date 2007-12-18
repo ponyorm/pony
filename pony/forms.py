@@ -6,7 +6,7 @@ from itertools import count
 from pony.utils import decorator
 from pony.auth import get_ticket
 from pony.templating import Html, StrHtml, htmljoin, htmltag
-from pony.web import get_request
+from pony.web import get_request, Http400BadRequest
 
 class FormCanceled(Exception): pass
 
@@ -227,7 +227,8 @@ class HtmlField(object):
             if not self.is_submitted: return self.initial_value
             value = self.form._request.fields.getfirst(self.name)
             if value is None: return None
-            return unicode(value, 'utf8')
+            try: return unicode(value, 'utf8')
+            except UnicodeDecodeError: raise Http400BadRequest
     def _set_value(self, value):
         form = self.form
         if form is None or form._init_counter: self.initial_value = value
@@ -408,7 +409,8 @@ class Select(BaseWidget):
             if not self.is_submitted: return self.initial_value
             key = self.form._request.fields.getfirst(self.name)
             if key is None: return None
-            key = unicode(key, 'utf8')
+            try: key = unicode(key, 'utf8')
+            except UnicodeDecodeError: raise Http400BadRequest
             option = self.keys.get(key)
             if option is None: return None
             return option[0]
@@ -462,7 +464,8 @@ class MultiSelect(Select):
             keys = self.form._request.fields.getlist(self.name)
             result = set()
             for key in keys:
-                key = unicode(key, 'utf8')
+                try: key = unicode(key, 'utf8')
+                except UnicodeDecodeError: raise Http400BadRequest
                 option = self.keys.get(key)
                 if option is not None: result.add(option[0])
             return result
