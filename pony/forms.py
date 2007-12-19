@@ -3,7 +3,7 @@ import re, threading, os.path, copy, cPickle
 from operator import attrgetter
 from itertools import count
 
-from pony.utils import decorator, converters
+from pony.utils import decorator, converters, ValidationError
 from pony.auth import get_ticket
 from pony.templating import Html, StrHtml, htmljoin, htmltag
 from pony.web import get_request, Http400BadRequest
@@ -201,6 +201,7 @@ class Form(object):
                           self.buttons,
                           Html('\n</td></tr></table></form>\n\n')])
     html = property(__unicode__)
+Form.ValidationError = ValidationError
 
 class HtmlField(object):
     def __init__(self, value=None):
@@ -352,6 +353,10 @@ class Text(BaseWidget):
         BaseWidget.__init__(self, label, required, value, **attrs)
         if isinstance(type, basestring) and type not in converters:
             raise TypeError('Unknown field type value: %r' % type)
+        elif isinstance(type, tuple):
+            if len(type) == 2: type += (None,)
+            elif len(type) != 3:
+                raise TypeError('Type tuple length must be 2 or 3. Got: %d' % len(type))
         self.type = type
         if isinstance(regex, basestring): regex = re.compile(regex, re.UNICODE)
         self.regex = regex
@@ -366,11 +371,13 @@ class Text(BaseWidget):
         type = self.type
         if type is None or not isinstance(value, unicode): return value
         if isinstance(type, tuple): str2py, py2str, err_msg = type
-        else: str2py, py2str, err_msg = converters.get(type, (self.type, unicode, 'Invalid data'))
+        else: str2py, py2str, err_msg = converters.get(type, (self.type, unicode, None))
         try: return str2py(value)
-        except:
-            self._auto_error_text = err_msg
-            return None
+        except ValidationError, e:
+            if err_msg is None: err_msg = e.err_msg
+        except: pass
+        self._auto_error_text = err_msg or 'Invalid data'
+        return None
     value = property(_get_value, BaseWidget._set_value)
     @property
     def html_value(self):
