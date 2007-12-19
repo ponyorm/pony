@@ -38,7 +38,7 @@ class Filter(object):
         result = self.spam_count / self.all_count
         for token in set(self.tokenize(message)):
             token_count = self.all.get(token, 0)
-            if not token_count: continue
+            if token_count < 2: continue
             tokenspam_count = self.spam.get(token, 0)
             numerator = (tokenspam_count + 1) * self.all_count
             denominator = (token_count + 1) * self.spam_count
