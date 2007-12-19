@@ -1,10 +1,11 @@
+# -*- coding: cp1251 -*-
+
 import re, os, os.path, sys, time, datetime
 
 from itertools import imap, ifilter
 from operator import itemgetter
 from inspect import isfunction
 from time import strptime
-from datetime import datetime
 from os import urandom
 from codecs import BOM_UTF8, BOM_LE, BOM_BE
 from locale import getpreferredencoding
@@ -81,7 +82,7 @@ def get_mtime(filename):
     return mtime
 
 def current_timestamp():
-    result = datetime.now().isoformat(' ')
+    result = datetime.datetime.now().isoformat(' ')
     if len(result) == 19: return result + '.000000'
     return result
 
@@ -93,7 +94,7 @@ def datetime2timestamp(d):
 def timestamp2datetime(t):
     time_tuple = strptime(t[:19], '%Y-%m-%d %H:%M:%S')
     microseconds = int((t[20:26] + '000000')[:6])
-    return datetime(*(time_tuple[:6] + (microseconds,)))
+    return datetime.datetime(*(time_tuple[:6] + (microseconds,)))
 
 def read_text_file(fname, encoding=None):
     f = file(fname)
@@ -134,7 +135,93 @@ def str2guid(s):
     reverse = slice(-1, None, -1)
     return buffer(''.join((a[reverse], b[reverse], c[reverse], d, e)))
 
+def _positive(s):
+    i = int(s)
+    if i > 0: return i
+    raise ValueError
+
+def _identifier(s):
+    if ident_re.match(s): return s
+    raise ValueError
+
+date_str_list = [
+    r'(?P<month>\d{1,2})/(?P<day>\d{1,2})/(?P<year>\d{4})',
+    r'(?P<day>\d{1,2})\.(?P<month>\d{1,2})\.(?P<year>\d{4})',
+    r'(?P<year>\d{4})-(?P<month>\d{1,2})-(?P<day>\d{1,4})',
+    r'(?P<year>\d{4})/(?P<month>\d{1,2})/(?P<day>\d{1,4})',
+    r'(?P<year>\d{4})\.(?P<month>\d{1,2})\.(?P<day>\d{1,4})',
+    r'\D*(?P<year>\d{4})\D+(?P<day>\d{1,2})\D*',
+    r'\D*(?P<day>\d{1,2})\D+(?P<year>\d{4})\D*'
+    ]
+date_re_list = [ re.compile('^%s$'%s, re.UNICODE) for s in date_str_list ]
+
+time_str = r'(?P<hh>\d{1,2})(?:[:. ](?P<mm>\d{1,2})(?:[:. ](?P<ss>\d{1,2}))?)?\s*(?P<ampm>[ap][m])?'
+time_re = re.compile('^%s$'%time_str)
+
+datetime_re_list = [ re.compile('^%s(?: %s)?$' % (date_str, time_str), re.UNICODE) for date_str in date_str_list ]
+
+month_lists = [
+    "jan feb mar apr may jun jul aug sep oct nov dec".split(),
+    u"янв фев мар апр май июн июл авг сен окт ноя дек".split(),
+    ]
+month_dict = {}
+
+for month_list in month_lists:
+    for i, month in enumerate(month_list):
+        month_dict[month] = i + 1
+
+month_dict[u'мая'] = 5
+    
+def str2date(s):
+    s = s.strip().lower()
+    for date_re in date_re_list:
+        match = date_re.match(s)
+        if match is not None: break
+    else: raise ValueError('Unrecognizable date format')
+    dict = match.groupdict()
+    year = dict['year']
+    day = dict['day']
+    month = dict.get('month')
+    if month is None:
+        for key, value in month_dict.iteritems():
+            if key in s: month = value; break
+        else: raise ValueError('Unrecognizable date format')
+    return datetime.date(int(year), int(month), int(day))
+
+def str2time(s):
+    s = s.strip().lower()
+    match = time_re.match(s)
+    if match is None: raise ValueError('Unrecognizable time format')
+    hh, mm, ss, ampm = match.groups()
+    if ampm == 'pm': hh = int(hh) + 12
+    return datetime.time(int(hh), int(mm or 0), int(ss or 0))
+
+def str2datetime(s):
+    s = s.strip().lower()
+    for datetime_re in datetime_re_list:
+        match = datetime_re.match(s)
+        if match is not None: break
+    else: raise ValueError('Unrecognizable datetime format')
+    dict = match.groupdict()
+    year = dict['year']
+    day = dict['day']
+    month = dict.get('month')
+    if month is None:
+        for key, value in month_dict.iteritems():
+            if key in s: month = value; break
+        else: raise ValueError('Unrecognizable datetime format')
+    hh, mm, ss = dict.get('hh'), dict.get('mm'), dict.get('ss')
+    if hh is None: hh, mm, ss = 12, 00, 00
+    elif dict.get('ampm') == 'pm': hh = int(hh) + 12
+    return datetime.datetime(int(year), int(month), int(day), int(hh), int(mm or 0), int(ss or 0))
+
 converters = {
-    int: (int, unicode, 'Must be integer'),
-    float: (float, unicode, 'Must be float'),
+    int:  (int, unicode, 'Must be number'),
+    long: (long, unicode, 'Must be number'),
+    float: (float, unicode, 'Must be real number'),
+    'positive': (_positive, unicode, 'Must be positive'),
+    'identifier': (_identifier, unicode, 'Must be correct identifier'),
+    datetime.date: (str2date, unicode, 'Must be correct date (mm/dd/yyyy or dd.mm.yyyy)'),
+    datetime.time: (str2time, unicode, 'Must be correct time (hh:mm or hh:mm:ss)'),
+    datetime.datetime: (str2datetime, unicode, 'Must be correct date & time'),
     }
