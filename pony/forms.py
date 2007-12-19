@@ -350,6 +350,8 @@ class Text(BaseWidget):
     def __init__(self, label=None, required=None, value=None, type=None, **attrs):
         BaseWidget.__init__(self, label, required, value, **attrs)
         self.type = type
+        if isinstance(type, basestring) and type not in converters:
+            raise TypeError('Unknown field type value: %r' % type)
     def _get_value(self):
         value = BaseWidget._get_value(self)
         if self.type is None: return value

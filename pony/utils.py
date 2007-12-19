@@ -135,12 +135,20 @@ def str2guid(s):
     reverse = slice(-1, None, -1)
     return buffer(''.join((a[reverse], b[reverse], c[reverse], d, e)))
 
-def _positive(s):
+def check_ip(s):
+    s = s.strip()
+    list = map(int, s.split('.'))
+    if len(list) != 4: raise ValueError
+    for number in list:
+        if not 0 <= number <= 255: raise ValueError
+    return s
+
+def check_positive(s):
     i = int(s)
     if i > 0: return i
     raise ValueError
 
-def _identifier(s):
+def check_identifier(s):
     if ident_re.match(s): return s
     raise ValueError
 
@@ -219,8 +227,9 @@ converters = {
     int:  (int, unicode, 'Must be number'),
     long: (long, unicode, 'Must be number'),
     float: (float, unicode, 'Must be real number'),
-    'positive': (_positive, unicode, 'Must be positive'),
-    'identifier': (_identifier, unicode, 'Must be correct identifier'),
+    'ip': (check_ip, unicode, 'Must be correct IP address'),
+    'positive': (check_positive, unicode, 'Must be positive'),
+    'identifier': (check_identifier, unicode, 'Must be correct identifier'),
     datetime.date: (str2date, unicode, 'Must be correct date (mm/dd/yyyy or dd.mm.yyyy)'),
     datetime.time: (str2time, unicode, 'Must be correct time (hh:mm or hh:mm:ss)'),
     datetime.datetime: (str2datetime, unicode, 'Must be correct date & time'),
