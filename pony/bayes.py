@@ -20,7 +20,7 @@ def normalize(word):
     return word
 
 class Filter(object):
-    token_re = re.compile(r'(\w|\$)+')
+    token_re = re.compile(r'(\w|\$)+', re.UNICODE)
     def __init__(self):
         self.all = {}
         self.spam = {}
