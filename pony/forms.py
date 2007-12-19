@@ -270,6 +270,7 @@ class Reset(HtmlField):
 class BaseWidget(HtmlField):
     def __init__(self, label=None, required=None, value=None, **attrs):
         if 'type' in attrs: raise TypeError('You can set type only for Text fields')
+        if 'regex' in attrs: raise TypeError('You can set regex only for Text fields')
         HtmlField.__init__(self, value)
         if 'id' not in attrs:
             request = get_request()
@@ -347,17 +348,25 @@ class Password(BaseWidget):
 
 class Text(BaseWidget):
     HTML_TYPE = 'text'
-    def __init__(self, label=None, required=None, value=None, type=None, **attrs):
+    def __init__(self, label=None, required=None, value=None, type=None, regex=None, **attrs):
         BaseWidget.__init__(self, label, required, value, **attrs)
-        self.type = type
         if isinstance(type, basestring) and type not in converters:
             raise TypeError('Unknown field type value: %r' % type)
+        self.type = type
+        if isinstance(regex, basestring): regex = re.compile(regex, re.UNICODE)
+        self.regex = regex
     def _get_value(self):
         value = BaseWidget._get_value(self)
-        if self.type is None: return value
         if not value: return None
-        if not isinstance(value, unicode): return value
-        str2py, py2str, err_msg = converters.get(self.type, (self.type, unicode, 'Invalid data'))
+        if self.regex is not None:
+            match = self.regex.match(value)
+            if match is None:
+                self._auto_error_text = 'Invalid data'
+                return None
+        type = self.type
+        if type is None or not isinstance(value, unicode): return value
+        if isinstance(type, tuple): str2py, py2str, err_msg = type
+        else: str2py, py2str, err_msg = converters.get(type, (self.type, unicode, 'Invalid data'))
         try: return str2py(value)
         except:
             self._auto_error_text = err_msg
@@ -366,9 +375,11 @@ class Text(BaseWidget):
     @property
     def html_value(self):
         value = BaseWidget._get_value(self)
-        if value is None or self.type is None or isinstance(value, unicode): return value
-        str2py, py2str, err_msg = converters.get(self.type, (self.type, unicode, None))
-        py2str(value)
+        type = self.type
+        if value is None or type is None or isinstance(value, unicode): return value
+        if isinstance(type, tuple): str2py, py2str, err_msg = type
+        else: str2py, py2str, err_msg = converters.get(type, (self.type, unicode, None))
+        return py2str(value)
 
 class TextArea(BaseWidget):
     @property
