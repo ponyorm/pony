@@ -946,6 +946,14 @@ def start_http_server(address='localhost:8080', verbose=True):
         if not autoreload.reloading: raise
     else: server_thread.start()
 
+    if host != 'localhost': return
+    url = 'http://localhost:%d/pony/shutdown?uid=%s' % (port, pony.uid)
+    import urllib
+    for i in range(5):
+        try: response_string = urllib.urlopen(url).read()
+        except: continue
+        if not response_string.startswith('+'): break
+
 def stop_http_server(address=None):
     if pony.RUNNED_AS == 'MOD_WSGI': return
     if address is None:
@@ -960,6 +968,23 @@ def stop_http_server(address=None):
                                    'because it is not started:' % (host, port))
         server_thread.server.stop()
         server_thread.join()
+
+@http('/pony/shutdown?uid=$uid', system=True)
+def http_shutdown(uid=None):
+    if uid == pony.uid: return pony.uid
+
+    environ = local.request.environ
+    if environ.get('REMOTE_ADDR') != '127.0.0.1': return pony.uid
+
+    if pony.RUNNED_AS == 'INTERACTIVE':
+        stop_http_server()
+        return '+' + pony.uid
+
+    if pony.RUNNED_AS != 'NATIVE': return pony.uid
+    if not (environ.get('HTTP_HOST', '') + ':').startswith('localhost:'): return pony.uid
+    if environ.get('SERVER_NAME') != 'localhost': return pony.uid
+    pony.shutdown = True
+    return '+' + pony.uid
 
 @pony.on_shutdown
 def do_shutdown():

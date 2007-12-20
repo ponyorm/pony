@@ -1,6 +1,8 @@
-import sys, time, threading
+import sys, time, threading, random
 from os.path import dirname
 from itertools import count
+
+uid = str(random.randint(1, 1000000))
 
 def detect_mode():
     try: 
