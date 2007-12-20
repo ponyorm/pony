@@ -6,7 +6,7 @@ import pprint, threading, time
 from datetime import timedelta
 from pony.templating import template
 
-@http('/pony/test', system=True)
+@http('/pony/test')
 @printhtml
 def test():
     print '<h1>Content of request headers</h1>'

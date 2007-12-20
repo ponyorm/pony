@@ -74,12 +74,12 @@ get_response = http.get_response
 get_param = http.get_param
 
 @decorator_with_params
-def _http(url=None, redirect=False, system=False, **http_headers):
+def _http(url=None, redirect=False, **http_headers):
     http_headers = dict([ (name.replace('_', '-').title(), value)
                           for name, value in http_headers.items() ])
     def new_decorator(old_func):
         real_url = url is None and old_func.__name__ or url
-        HttpInfo(old_func, real_url, redirect, system, http_headers)
+        HttpInfo(old_func, real_url, redirect, http_headers)
         return old_func
     return new_decorator
 
@@ -114,7 +114,7 @@ def split_url(url, strict_parsing=False):
     return path, qlist
 
 class HttpInfo(object):
-    def __init__(self, func, url, redirect, system, http_headers):
+    def __init__(self, func, url, redirect, http_headers):
         self.func = func
         if not hasattr(func, 'argspec'):
             func.argspec = self.getargspec(func)
@@ -122,7 +122,8 @@ class HttpInfo(object):
         self.url = url
         self.path, self.qlist = split_url(url, strict_parsing=True)
         self.redirect = redirect
-        self.system = system
+        module = func.__module__
+        self.system = module.startswith('pony.') and not module.startswith('pony.examples.')
         self.http_headers = http_headers
         self.args = set()
         self.keyargs = set()
@@ -141,7 +142,7 @@ class HttpInfo(object):
             is_param, x = self.parse_component(value)
             self.parsed_query.append((name, is_param, x))
         self.check()
-        if system: http_system_handlers.append(self)
+        if self.system: http_system_handlers.append(self)
         self.register()
     @staticmethod
     def getargspec(func):
@@ -926,7 +927,7 @@ class ServerThread(threading.Thread):
         self.verbose = verbose
         self.setDaemon(True)
     def run(self):
-        msg = 'Starting HTTP server at %s:%s' % (self.host, self.port)
+        msg = 'Starting HTTP server at %s:%s, uid=%s' % (self.host, self.port, pony.uid)
         log('HTTP:start', msg)
         if self.verbose: print>>sys.stderr, msg
         self.server.start()
@@ -969,7 +970,7 @@ def stop_http_server(address=None):
         server_thread.server.stop()
         server_thread.join()
 
-@http('/pony/shutdown?uid=$uid', system=True)
+@http('/pony/shutdown?uid=$uid')
 def http_shutdown(uid=None):
     if uid == pony.uid: return pony.uid
 
