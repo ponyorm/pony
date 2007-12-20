@@ -927,8 +927,8 @@ class ServerThread(threading.Thread):
         self.verbose = verbose
         self.setDaemon(True)
     def run(self):
-        msg = 'Starting HTTP server at %s:%s, uid=%s' % (self.host, self.port, pony.uid)
-        log('HTTP:start', msg)
+        msg = 'Starting HTTP server at %s:%s' % (self.host, self.port)
+        log('HTTP:start', msg + (', uid=%s' % pony.uid))
         if self.verbose: print>>sys.stderr, msg
         self.server.start()
         msg = 'HTTP server at %s:%s stopped successfully' \
