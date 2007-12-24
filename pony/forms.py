@@ -1,4 +1,4 @@
-import re, threading, os.path, copy, cPickle
+import re, threading, os.path, copy, cPickle, sys
 
 from operator import attrgetter
 from itertools import count
@@ -373,8 +373,7 @@ class Text(BaseWidget):
         if isinstance(type, tuple): str2py, py2str, err_msg = type
         else: str2py, py2str, err_msg = converters.get(type, (self.type, unicode, None))
         try: return str2py(value)
-        except ValidationError, e:
-            if err_msg is None: err_msg = e.err_msg
+        except ValidationError, e: err_msg = e.err_msg
         except: pass
         self._auto_error_text = err_msg or 'Invalid data'
         return None

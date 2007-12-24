@@ -10,8 +10,9 @@ from os import urandom
 from codecs import BOM_UTF8, BOM_LE, BOM_BE
 from locale import getpreferredencoding
 
-class ValidationError(Exception):
+class ValidationError(ValueError):
     def __init__(self, err_msg=None):
+        ValueError.__init__(self, err_msg)
         self.err_msg = err_msg
 
 def copy_func_attrs(new_func, old_func):
@@ -156,6 +157,47 @@ def check_identifier(s):
     if ident_re.match(s): return s
     raise ValueError
 
+isbn_re = re.compile(r'(?:\d[ -]?)+x?')
+
+def isbn10_checksum(digits):
+    if len(digits) != 9: raise ValueError
+    reminder = sum(digit*coef for digit, coef in zip(map(int, digits), xrange(10, 1, -1))) % 11
+    if reminder == 1: return 'X'
+    return reminder and str(11 - reminder) or '0'
+    
+def isbn13_checksum(digits):
+    if len(digits) != 12: raise ValueError
+    reminder = sum(digit*coef for digit, coef in zip(map(int, digits), (1, 3)*6)) % 10
+    return reminder and str(10 - reminder) or '0'
+
+def check_isbn(s, convert_to=None):
+    s = s.strip().upper()
+    if s[:4] == 'ISBN': s = s[4:].lstrip()
+    digits = s.replace('-', '').replace(' ', '')
+    size = len(digits)
+    if size == 10: checksum_func = isbn10_checksum
+    elif size == 13: checksum_func = isbn13_checksum
+    else: raise ValueError
+    digits, last = digits[:-1], digits[-1]
+    if checksum_func(digits) != last:
+        if last.isdigit() or size == 10 and last == 'X':
+            raise ValidationError('Invalid ISBN checksum')
+        raise ValueError
+    if convert_to is not None:
+        if size == 10 and convert_to == 13:
+            digits = '978' + digits
+            s = digits + isbn13_checksum(digits)
+        elif size == 13 and convert_to == 10 and digits[:3] == '978':
+            digits = digits[3:]
+            s = digits + isbn10_checksum(digits)
+    return s
+
+def isbn10_to_isbn13(s):
+    return check_isbn(s, convert_to=13)
+
+def isbn13_to_isbn10(s):
+    return check_isbn(s, convert_to=10)
+
 date_str_list = [
     r'(?P<month>\d{1,2})/(?P<day>\d{1,2})/(?P<year>\d{4})',
     r'(?P<day>\d{1,2})\.(?P<month>\d{1,2})\.(?P<year>\d{4})',
@@ -231,9 +273,10 @@ converters = {
     int:  (int, unicode, 'Must be number'),
     long: (long, unicode, 'Must be number'),
     float: (float, unicode, 'Must be real number'),
-    'ip': (check_ip, unicode, 'Must be correct IP address'),
-    'positive': (check_positive, unicode, 'Must be positive'),
+    'IP': (check_ip, unicode, 'Must be correct IP address'),
+    'positive': (check_positive, unicode, 'Must be positive number'),
     'identifier': (check_identifier, unicode, 'Must be correct identifier'),
+    'ISBN': (check_isbn, unicode, 'Must be correct ISBN'),
     datetime.date: (str2date, unicode, 'Must be correct date (mm/dd/yyyy or dd.mm.yyyy)'),
     datetime.time: (str2time, unicode, 'Must be correct time (hh:mm or hh:mm:ss)'),
     datetime.datetime: (str2datetime, unicode, 'Must be correct date & time'),
