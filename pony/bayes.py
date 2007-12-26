@@ -40,7 +40,7 @@ class Filter(object):
             token_count = self.all.get(token, 0)
             if token_count < 2: continue
             tokenspam_count = self.spam.get(token, 0)
-            numerator = (tokenspam_count + 1) * self.all_count
-            denominator = (token_count + 1) * self.spam_count
+            numerator = (tokenspam_count or 0.1) * self.all_count
+            denominator = (token_count) * self.spam_count
             result *= numerator / denominator
         return result
