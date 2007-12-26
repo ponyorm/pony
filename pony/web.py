@@ -760,6 +760,15 @@ class HttpRequest(object):
         self.cookies = Cookie.SimpleCookie()
         self.method = environ.get('REQUEST_METHOD', 'GET')
         if environ:
+            http_host = environ.get('HTTP_HOST')
+            if http_host:
+                if ':' in http_host: host, port = http_host.split(':')
+                else: host, port = http_host, 80
+            else:
+                host = environ['SERVER_NAME']
+                post = environ['SERVER_PORT']
+            self.host, self.port = host, int(port)
+            
             self.full_url = reconstruct_url(environ)
             if 'HTTP_COOKIE' in environ:
                 self.cookies.load(environ['HTTP_COOKIE'])
