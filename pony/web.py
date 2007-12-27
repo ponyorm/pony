@@ -17,8 +17,8 @@ class _Http(object):
         return _http(*args, **keyargs)
     def invoke(self, url):
         return invoke(url)
-    def remove(self, x):
-        return http_remove(x)
+    def remove(self, x, host=None, port=None):
+        return http_remove(x, host, port)
     def clear(self):
         return http_clear()
 
@@ -74,12 +74,12 @@ get_response = http.get_response
 get_param = http.get_param
 
 @decorator_with_params
-def _http(url=None, redirect=False, **http_headers):
+def _http(url=None, host=None, port=None, redirect=False, **http_headers):
     http_headers = dict([ (name.replace('_', '-').title(), value)
                           for name, value in http_headers.items() ])
     def new_decorator(old_func):
         real_url = url is None and old_func.__name__ or url
-        HttpInfo(old_func, real_url, redirect, http_headers)
+        HttpInfo(old_func, real_url, host, port, redirect, http_headers)
         return old_func
     return new_decorator
 
@@ -114,12 +114,19 @@ def split_url(url, strict_parsing=False):
     return path, qlist
 
 class HttpInfo(object):
-    def __init__(self, func, url, redirect, http_headers):
+    def __init__(self, func, url, host, port, redirect, http_headers):
+        url_cache.clear()
         self.func = func
         if not hasattr(func, 'argspec'):
             func.argspec = self.getargspec(func)
             func.dummy_func = self.create_dummy_func(func)
         self.url = url
+        if host is not None:
+            if not isinstance(host, basestring): raise TypeError('Host must be string')
+            if ':' in host:
+                if port is not None: raise TypeError('Duplicate port specification')
+                host, port = host.split(':')
+        self.host, self.port = host, port and int(port) or None
         self.path, self.qlist = split_url(url, strict_parsing=True)
         self.redirect = redirect
         module = func.__module__
@@ -256,12 +263,14 @@ class HttpInfo(object):
                 if is_param: result[name] = isinstance(x, list) and x[0] or '/'
                 else: result[name] = ''
             if info.star: result['*'] = len(info.parsed_path)
+            if info.host: result[('host',)] = info.host
+            if info.port: result[('port',)] = info.port
             return result
         url_map = get_url_map(self)
         qdict = dict(self.qlist)
         http_registry_lock.acquire()
         try:
-            for info, _, _ in get_http_handlers(self.path, qdict):
+            for info, _, _ in get_http_handlers(self.path, qdict, self.host, self.port):
                 if url_map == get_url_map(info):
                     log(type='Warning:URL',
                         text='Route already in use (old handler was removed): %s' % info.url)
@@ -299,7 +308,9 @@ def url(func, *args, **keyargs):
     except UnicodeDecodeError:
         raise ValueError('Url parameter value contains non-ascii symbols. '
                          'Such values must be in unicode.')
-    key = func, tuple(indexparams), tuple(sorted(keyparams.items()))
+    request = local.request
+    host, port = request.host, request.port
+    key = func, tuple(indexparams), tuple(sorted(keyparams.items())), host, port
     try: return url_cache[key]
     except KeyError: pass
     first, second = [], []
@@ -307,18 +318,16 @@ def url(func, *args, **keyargs):
         if not info.redirect: first.append(info)
         else: second.append(info)
     for info in first + second:
-        try:
-            url = build_url(info, keyparams, indexparams)
+        try: url = build_url(info, keyparams, indexparams, host, port)
         except PathError: pass
         else: break
-    else:
-        raise PathError('Suitable url path for %s() not found' % func.__name__)
-    if len(url_cache) > 1000: url_cache.clear()
+    else: raise PathError('Suitable url path for %s() not found' % func.__name__)
+    if len(url_cache) > 4000: url_cache.clear()
     url_cache[key] = url
     return url
 make_url = url
 
-def build_url(info, keyparams, indexparams):
+def build_url(info, keyparams, indexparams, host, port):
     names, argsname, keyargsname, defaults = info.func.argspec
     path = []
     used_indexparams = set()
@@ -387,7 +396,13 @@ def build_url(info, keyparams, indexparams):
 
     script_name = local.request.environ.get('SCRIPT_NAME', '')
     url = q and '?'.join((p, q)) or p
-    return '/'.join((script_name, url))
+    result = '/'.join((script_name, url))
+    if info.host is None or info.host == host:
+        if info.port is None or info.port == port: return result
+    host = info.host or host
+    port = info.port or 80
+    if port == 80: return 'http://%s%s' % (host, result)
+    return 'http://%s:%d%s' % (host, port, result)
 
 link_template = Html(u'<a href="%s">%s</a>')
 
@@ -478,7 +493,7 @@ def get_pony_static_file(path):
     headers['Cache-Control'] = 'max-age=%d' % max_age
     return file(fname, 'rb')
 
-def get_http_handlers(path, qdict):
+def get_http_handlers(path, qdict, host, port):
     # http_registry_lock.acquire()
     # try:
     variants = [ http_registry ]
@@ -501,6 +516,12 @@ def get_http_handlers(path, qdict):
     for info in infos:
         args, keyargs = {}, {}
         priority = 0
+        if info.host is not None:
+            if info.host != host: continue
+            priority += 10000
+        if info.port is not None:
+            if info.port != port: continue
+            priority += 100
         for i, (is_param, x) in enumerate(info.parsed_path):
             if not is_param:
                 priority += 1
@@ -584,7 +605,7 @@ def invoke(url):
     if path[:2] == ['pony', 'static'] and len(path) > 2:
         return get_pony_static_file(path[2:])
     qdict = dict(qlist)
-    handlers = get_http_handlers(path, qdict)
+    handlers = get_http_handlers(path, qdict, request.host, request.port)
     if not handlers:
         i = url.find('?')
         if i == -1: p, q = url, ''
@@ -592,7 +613,7 @@ def invoke(url):
         if p.endswith('/'): url2 = p[:-1] + q
         else: url2 = p + '/' + q
         path2, qlist = split_url(url2)
-        handlers = get_http_handlers(path2, qdict)
+        handlers = get_http_handlers(path2, qdict, request.host, request.port)
         if not handlers: return get_static_file(path)
         script_name = request.environ.get('SCRIPT_NAME', '')
         if not url2: url2 = script_name or '/'
@@ -662,19 +683,20 @@ def invoke(url):
     return result
 
 def _http_remove(info):
+    url_cache.clear()
     info.list.remove(info)
     info.func.http.remove(info)
             
-def http_remove(x):
+def http_remove(x, host=None, port=None):
     if isinstance(x, basestring):
         path, qlist = split_url(x, strict_parsing=True)
         qdict = dict(qlist)
         http_registry_lock.acquire()
         try:
-            for info, _, _ in get_http_handlers(path, qdict):
-                _http_remove(info)
+            for info, _, _ in get_http_handlers(path, qdict, host, port): _http_remove(info)
         finally: http_registry_lock.release()
     elif hasattr(x, 'http'):
+        assert host is None and port is None
         http_registry_lock.acquire()
         try:
             for info in list(x.http): _http_remove(info)
@@ -682,6 +704,7 @@ def http_remove(x):
     else: raise ValueError('This object is not bound to url: %r' % x)
 
 def _http_clear(dict, list1, list2):
+    url_cache.clear()
     for info in list1: info.func.http.remove(info)
     list1[:] = []
     for info in list2: info.func.http.remove(info)
@@ -777,6 +800,8 @@ class HttpRequest(object):
             auth.load(session_data, environ)
         else:
             self.full_url = None
+            self.host = 'localhost'
+            self.port = 80
         input_stream = environ.get('wsgi.input') or cStringIO.StringIO()
         self.params = {}
         self.fields = cgi.FieldStorage(
