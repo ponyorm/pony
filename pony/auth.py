@@ -43,6 +43,7 @@ def verify_ticket(ticket):
         minute = int(time_str, 16) // 60
         if minute < now - max_mtime_diff or minute > now + 1: return False, None
         rnd = base64.b64decode(rnd_str)
+        if len(rnd) != 8: return False, None
         payload = base64.b64decode(payload_str)
         hash = base64.b64decode(hash_str)
         hashobject = get_hashobject(minute)
