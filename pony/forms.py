@@ -1,4 +1,4 @@
-import re, threading, os.path, copy, cPickle, sys
+import re, threading, os.path, copy, cPickle
 
 from operator import attrgetter
 from itertools import count
@@ -60,8 +60,6 @@ class Form(object):
         self._set_method(method)
         self._set_secure(secure)
         self._f = Hidden(self.attrs.get('name', ''))
-    def on_submit(self):
-        raise FormCanceled
     def clear(self):
         object.__setattr__(self, '_cleared', True)
         object.__setattr__(self, 'is_submitted', False)
@@ -258,7 +256,7 @@ class Ticket(Hidden):
     def __unicode__(self):
         payload = None
         form = self.form
-        if form is not None and form.__class__ is not Form: payload = form._ticket_payload
+        if form is not None and hasattr(form, 'on_submit'): payload = form._ticket_payload
         return htmltag('input', self.attrs, name=self.name, value=get_ticket(payload), type='hidden')
     tag = html = property(__unicode__)
 
