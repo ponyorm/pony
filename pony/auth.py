@@ -22,7 +22,12 @@ def save(environ):
 
 def get_ticket(payload=None):
     if payload is None: payload = ''
-    else: assert isinstance(payload, str)
+    else:
+        assert isinstance(payload, str)
+        zipped = payload.encode('zip')
+        if len(zipped) < len(payload): payload = 'Z' + zipped
+        else: payload = 'N' + payload
+        
     now = int(time.time())
     now_str = '%x' % now
     rnd = os.urandom(8)
@@ -31,6 +36,7 @@ def get_ticket(payload=None):
     hashobject.update(payload)
     hashobject.update(cPickle.dumps(local.user, 2))
     hash = hashobject.digest()
+
     payload_str = base64.b64encode(payload)
     rnd_str = base64.b64encode(rnd)
     hash_str = base64.b64encode(hash)
@@ -55,6 +61,11 @@ def verify_ticket(ticket):
         queue.put((minute, buffer(rnd), local.lock, result))
         local.lock.acquire()
         if not result[0]: return result[0], None
+        if payload:
+            first = payload[0]
+            if first == 'N': payload = payload[1:]
+            elif first == 'Z': payload = payload[1:].decode('zip')
+            else: assert False
         return True, payload or None
     except: return False, None
 
