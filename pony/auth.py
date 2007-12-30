@@ -55,9 +55,7 @@ def verify_ticket(ticket):
         queue.put((minute, buffer(rnd), local.lock, result))
         local.lock.acquire()
         if not result[0]: return result[0], None
-        if payload: payload = cPickle.loads(payload)
-        else: payload = None
-        return True, payload
+        return True, payload or None
     except: return False, None
 
 ################################################################################

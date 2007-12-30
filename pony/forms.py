@@ -23,29 +23,22 @@ class FormMeta(type):
 @decorator
 def _form_init_decorator(__init__):
     def new_init(form, *args, **keyargs):
-        try: form._init_counter += 1
+        try: init_counter = form._init_counter
         except AttributeError:
             if form.__class__ is not Form: Form.__init__.original_func(form)
-            form._init_counter = 1
-            form._ticket_payload = cPickle.dumps((handle_submit, (form.__class__,)+args, keyargs))
+            object.__setattr__(form, '_init_args', cPickle.dumps((args, keyargs), 2))
+            object.__setattr__(form, '_init_counter', 1)
+        else: object.__setattr__(form, '_init_counter', init_counter+1)
         try: __init__(form, *args, **keyargs)
-        finally: form._init_counter -= 1
+        finally:
+            init_counter = form._init_counter
+            object.__setattr__(form, '_init_counter', init_counter-1)
     return new_init
-
-def handle_submit(form_cls, *args, **keyargs):
-    request = get_request()
-    request.form_processed = None
-    form = form_cls(*args, **keyargs)
-    if not form.is_valid:
-        request.form_processed = False
-        return
-    try: form.on_submit()
-    except FormCanceled: request.form_processed = False
-    else: request.form_processed = True
 
 class Form(object):
     __metaclass__ = FormMeta
     def __init__(self, method='POST', secure=None, **attrs):
+        object.__setattr__(self, '_pickle_entire_form', False)
         object.__setattr__(self, '_cleared', False)
         object.__setattr__(self, '_validated', False)
         object.__setattr__(self, '_error_text', None)
@@ -60,6 +53,36 @@ class Form(object):
         self._set_method(method)
         self._set_secure(secure)
         self._f = Hidden(self.attrs.get('name', ''))
+    def __getstate__(self):
+        state = self._init_args
+        if self._pickle_entire_form or state is None:
+            state = self.__dict__.copy()
+            for attr in ('_pickle_entire_form', '_init_args', '_init_counter',
+                         '_cleared', '_validated', '_error_text', '_request', 'is_submitted'):
+                state.pop(attr, None)
+        return state
+    def __setstate__(self, state):
+        if isinstance(state, str):
+            args, keyargs = cPickle.loads(state)
+            self.__init__(*args, **keyargs)
+        elif isinstance(state, dict):
+            state['_pickle_entire_form'] = True
+            state['_init_args'] = None
+            state['_init_counter'] = 0
+            state['_cleared'] = state['_validated'] = False
+            state['_error_text'] = None
+            state['_request'] = get_request()
+            self.__dict__.update(state)
+            self._update_status()
+        else: assert False
+    def _handle_request_(self):
+        request = get_request()
+        if not self.is_valid:
+            request.form_processed = False
+            return
+        try: self.on_submit()
+        except FormCanceled: request.form_processed = False
+        else: request.form_processed = True
     def clear(self):
         object.__setattr__(self, '_cleared', True)
         object.__setattr__(self, 'is_submitted', False)
@@ -210,6 +233,14 @@ class HtmlField(object):
         self.form = form
         self.name = name
         object.__setattr__(form, '_validated', False)
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state.pop('_initial_value', None)
+        state.pop('_new_value', None)
+        return state
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._initial_value = None
     @property
     def is_submitted(self):
         form = self.form
@@ -244,7 +275,7 @@ class HtmlField(object):
     def __str__(self):
         return StrHtml(unicode(self).encode('ascii', 'xmlcharrefreplace'))
     def __repr__(self):
-        return '<%s: %s>' % (self.name, self.__class__.__name__)
+        return '<%s: %s>' % (self.name or '?', self.__class__.__name__)
 
 class Hidden(HtmlField):
     HTML_TYPE = 'hidden'
@@ -254,9 +285,9 @@ class Ticket(Hidden):
         raise TypeError('Cannot set value for tickets')
     value = property(HtmlField._get_value, _set_value)
     def __unicode__(self):
-        payload = None
         form = self.form
-        if form is not None and hasattr(form, 'on_submit'): payload = form._ticket_payload
+        if form is not None and hasattr(form, 'on_submit'): payload = cPickle.dumps(form, 2)
+        else: payload = None
         return htmltag('input', self.attrs, name=self.name, value=get_ticket(payload), type='hidden')
     tag = html = property(__unicode__)
 
@@ -283,6 +314,17 @@ class BaseWidget(HtmlField):
         HtmlField._init_(self, name, form)
         if self._label == '':
             self._set_label(name.replace('_', ' ').capitalize())
+    def __getstate__(self):
+        dict = HtmlField.__getstate__(self)
+        dict.pop('_label', None)
+        dict.pop('_error_text', None)
+        dict.pop('_auto_error_text', None)
+        return dict
+    def __setstate__(self, state):
+        HtmlField.__setstate__(self, state)
+        self.label = None
+        self._error_text = None
+        self._auto_error_text = None
     @property
     def is_valid(self):
         return self.is_submitted and not self.error_text
