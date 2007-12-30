@@ -281,15 +281,15 @@ class Hidden(HtmlField):
     HTML_TYPE = 'hidden'
 
 class Ticket(Hidden):
-    def _set_value(self, value):
-        raise TypeError('Cannot set value for tickets')
-    value = property(HtmlField._get_value, _set_value)
-    def __unicode__(self):
+    def _get_value(self):
         form = self.form
         if form is not None and hasattr(form, 'on_submit'): payload = cPickle.dumps(form, 2)
         else: payload = None
-        return htmltag('input', self.attrs, name=self.name, value=get_ticket(payload), type='hidden')
-    tag = html = property(__unicode__)
+        return get_ticket(payload)
+    def _set_value(self, value):
+        raise TypeError('Cannot set value for tickets')
+    value = property(_get_value, _set_value)
+    html_value = property(_get_value)
 
 class Submit(HtmlField):
     HTML_TYPE = 'submit'
