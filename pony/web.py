@@ -1,5 +1,5 @@
 import re, threading, os.path, inspect, sys, cStringIO, itertools
-import cgi, cgitb, urllib, Cookie, mimetypes, cPickle
+import cgi, cgitb, urllib, Cookie, mimetypes, cPickle, time
 
 from operator import itemgetter, attrgetter
 
@@ -991,7 +991,8 @@ def start_http_server(address='localhost:8080', verbose=True):
     if host != 'localhost': return
     url = 'http://localhost:%d/pony/shutdown?uid=%s' % (port, pony.uid)
     import urllib
-    for i in range(5):
+    for i in range(6):
+        time.sleep(.2)
         try: response_string = urllib.urlopen(url).read()
         except: continue
         if not response_string.startswith('+'): break
