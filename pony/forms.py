@@ -6,7 +6,7 @@ from itertools import count
 from pony.utils import decorator, converters, ValidationError
 from pony.auth import get_ticket
 from pony.templating import Html, StrHtml, htmljoin, htmltag
-from pony.web import get_request, Http400BadRequest
+from pony.web import get_request, Http400BadRequest, HttpRedirect
 
 class FormCanceled(Exception): pass
 
@@ -80,9 +80,11 @@ class Form(object):
         if not self.is_valid:
             request.form_processed = False
             return
-        try: self.on_submit()
+        try: without_redirect = self.on_submit()
         except FormCanceled: request.form_processed = False
-        else: request.form_processed = True
+        else:
+            request.form_processed = True
+            if not without_redirect: raise HttpRedirect('.')
     def clear(self):
         object.__setattr__(self, '_cleared', True)
         object.__setattr__(self, 'is_submitted', False)
