@@ -37,6 +37,32 @@ def _form_init_decorator(__init__):
 
 class Form(object):
     __metaclass__ = FormMeta
+    def __setattr__(self, name, x):
+        prev = getattr(self, name, None)
+        if not isinstance(x, HtmlField):
+            if isinstance(prev, HtmlField): self.__delattr__(name)
+            object.__setattr__(self, name, x)
+            return
+        if hasattr(self, name):
+            if not isinstance(prev, HtmlField):
+                raise TypeError('Invalid form field name: %s' % name)
+            try:
+                if   isinstance(prev, Hidden): self.hidden_fields.remove(prev)
+                elif isinstance(prev, Submit): self.submit_fields.remove(prev)
+                else: self.fields.remove(prev)
+            except ValueError: pass
+        if   isinstance(x, Hidden): self.hidden_fields.append(x)
+        elif isinstance(x, Submit): self.submit_fields.append(x)
+        else: self.fields.append(x)
+        object.__setattr__(self, name, x)
+        x._init_(name, self)
+    def __delattr__(self, name):
+        x = getattr(self, name)
+        if isinstance(x, HtmlField):
+            if   isinstance(x, Hidden): self.hidden_fields.remove(x)
+            elif isinstance(x, Submit): self.submit_fields.remove(x)
+            else: self.fields.remove(x)
+        object.__delattr__(self, name)
     def __init__(self, method='POST', secure=None, **attrs):
         object.__setattr__(self, '_pickle_entire_form', False)
         object.__setattr__(self, '_cleared', False)
@@ -150,32 +176,6 @@ class Form(object):
         error_text = self.error_text
         if not error_text: return ''
         return Html('<div class="error">%s</div>' % error_text)
-    def __setattr__(self, name, x):
-        prev = getattr(self, name, None)
-        if not isinstance(x, HtmlField):
-            if isinstance(prev, HtmlField): self.__delattr__(name)
-            object.__setattr__(self, name, x)
-            return
-        if hasattr(self, name):
-            if not isinstance(prev, HtmlField):
-                raise TypeError('Invalid form field name: %s' % name)
-            try:
-                if   isinstance(prev, Hidden): self.hidden_fields.remove(prev)
-                elif isinstance(prev, Submit): self.submit_fields.remove(prev)
-                else: self.fields.remove(prev)
-            except ValueError: pass
-        if   isinstance(x, Hidden): self.hidden_fields.append(x)
-        elif isinstance(x, Submit): self.submit_fields.append(x)
-        else: self.fields.append(x)
-        object.__setattr__(self, name, x)
-        x._init_(name, self)
-    def __delattr__(self, name):
-        x = getattr(self, name)
-        if isinstance(x, HtmlField):
-            if   isinstance(x, Hidden): self.hidden_fields.remove(x)
-            elif isinstance(x, Submit): self.submit_fields.remove(x)
-            else: self.fields.remove(x)
-        object.__delattr__(self, name)
     @property
     def tag(self):
         attrs = self.attrs
