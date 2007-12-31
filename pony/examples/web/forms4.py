@@ -13,11 +13,14 @@ class MyForm(Form):
         elif age < 10: self.age.error_text = "Must be 10 at least"
         elif age > 120: self.age.error_text = "Must not be greater then 120"
     def on_submit(self):
+        http.session['fname'] = self.first_name.value
         print self.first_name.value
 
 @http('/')
 @printhtml
 def index():
+    fname = http.session.pop('fname', '')
+    if fname: print '<h1>%s</h1>' % fname
     f = MyForm()
     print f
     
