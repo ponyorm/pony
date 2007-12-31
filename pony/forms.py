@@ -9,6 +9,7 @@ from pony.templating import Html, StrHtml, htmljoin, htmltag
 from pony.web import get_request, Http400BadRequest, HttpRedirect
 
 class FormCanceled(Exception): pass
+FormCancelled = FormCanceled
 
 class FormMeta(type):
     def __new__(meta, name, bases, dict):
@@ -225,6 +226,7 @@ class Form(object):
                           Html('\n</td></tr></table></form>\n\n')])
     html = property(__unicode__)
 Form.ValidationError = ValidationError
+Form.Canceled = Form.Cancelled = FormCanceled
 
 class HtmlField(object):
     def __init__(self, value=None):
