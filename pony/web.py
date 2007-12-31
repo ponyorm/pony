@@ -616,8 +616,7 @@ def invoke(url):
         handlers = get_http_handlers(path2, qdict, request.host, request.port)
         if not handlers: return get_static_file(path)
         script_name = request.environ.get('SCRIPT_NAME', '')
-        if not url2: url2 = script_name or '/'
-        else: url2 = script_name + url2
+        url2 = script_name + url2 or '/'
         if url2 != script_name + url: raise HttpRedirect(url2)
     info, args, keyargs = handlers[0]
     try:
@@ -757,20 +756,25 @@ http.Redirect = HttpRedirect
 ################################################################################
 
 def reconstruct_url(environ):
-    url = environ['wsgi.url_scheme']+'://'
-    if environ.get('HTTP_HOST'): url += environ['HTTP_HOST']
+    url_scheme  = environ['wsgi.url_scheme']
+    host        = environ.get('HTTP_HOST')
+    server_name = environ['SERVER_NAME']
+    server_port = environ['SERVER_PORT']
+    script_name = environ.get('SCRIPT_NAME','')
+    path_info   = environ.get('PATH_INFO','')
+    query       = environ.get('QUERY_STRING')
+    
+    url = url_scheme + '://'
+    if host: url += host
     else:
-        url += environ['SERVER_NAME']
-        if environ['wsgi.url_scheme'] == 'https':
-            if environ['SERVER_PORT'] != '443':
-                url += ':' + environ['SERVER_PORT']
-        elif environ['SERVER_PORT'] != '80':
-            url += ':' + environ['SERVER_PORT']
+        url += server_name
+        if (url_scheme == 'https' and server_port == '443') \
+        or (url_scheme == 'http' and server_port == '80'): pass
+        else: url += ':' + server_port
 
-    url += urllib.quote(environ.get('SCRIPT_NAME',''))
-    url += urllib.quote(environ.get('PATH_INFO',''))
-    if environ.get('QUERY_STRING'):
-        url += '?' + environ['QUERY_STRING']
+    url += urllib.quote(script_name)
+    url += urllib.quote(path_info)
+    if query: url += '?' + query
     return url
 
 class HttpRequest(object):
@@ -788,10 +792,11 @@ class HttpRequest(object):
                 post = environ['SERVER_PORT']
             self.host, self.port = host, int(port)
 
-            self.url = environ['PATH_INFO']
+            url = environ['PATH_INFO']
             query = environ['QUERY_STRING']
-            if query: self.url = '%s?%s' % (self.url, query)
-
+            if query: url = '%s?%s' % (url, query)
+            self.internal_url = url
+            self.url = environ.get('SCRIPT_NAME', '') + url or '/'
             self.full_url = reconstruct_url(environ)
             if 'HTTP_COOKIE' in environ:
                 self.cookies.load(environ['HTTP_COOKIE'])
@@ -799,7 +804,7 @@ class HttpRequest(object):
             session_data = morsel and morsel.value or None
             auth.load(session_data, environ)
         else:
-            self.url = '/'
+            self.url = self.internal_url = '/'
             self.full_url = 'http://localhost/'
             self.host = 'localhost'
             self.port = 80
@@ -915,7 +920,7 @@ def application(environ, wsgi_start_response):
             form = cPickle.loads(request.payload)
             form._handle_request_()
             form = None
-        result = invoke(request.url)
+        result = invoke(request.internal_url)
     except HttpException, e:
         start_response(e.status, e.headers)
         return [ e.content ]
