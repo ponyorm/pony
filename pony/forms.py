@@ -79,7 +79,6 @@ class Form(object):
         object.__setattr__(self, '_secure', False)
         self._set_method(method)
         self._set_secure(secure)
-        self._f = Hidden(self.attrs.get('name', ''))
     def __getstate__(self):
         state = self._init_args
         if self._pickle_entire_form or state is None:
@@ -185,17 +184,19 @@ class Form(object):
         error_class = self.error_text and 'has-error' or ''
         return htmltag('form', attrs, method=self.method, accept_charset='UTF-8',
                        _class=error_class)
-    @property
-    def _ticket(self):
+    def _get_ticket(self):
         if not self._secure: return ''
         if hasattr(self, 'on_submit'): payload = cPickle.dumps(self, 2)
         else: payload = None
         ticket = get_ticket(payload)
-        return Html('<input type="hidden" name="_ticket" value="%s">') % ticket
+        return Html('<input type="hidden" name="_t" value="%s">') % ticket
     @property
     def header(self):
         result = [ self.tag ]
-        ticket = self._ticket
+        if not self._secure or not hasattr(self, 'on_submit'):
+            name = self.attrs.get('name', '')
+            result.append(Html('<input type="hidden" name="_f" value="%s">' % name))
+        ticket = self._get_ticket()
         if ticket: result.append(ticket)
         for f in self.hidden_fields: result.append(f.html)
         for f in self.fields:
