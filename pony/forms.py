@@ -194,7 +194,6 @@ class Form(object):
         for f in self.fields:
             hidden = f.hidden
             if hidden: result.append(hidden)
-        result.append(self.error)
         return Html('\n') + Html('\n').join(result)
     @property
     def table(self):
@@ -218,7 +217,7 @@ class Form(object):
     def __str__(self):
         return StrHtml(unicode(self).encode('ascii', 'xmlcharrefreplace'))
     def __unicode__(self):
-        return htmljoin([ self.header,
+        return htmljoin([ self.header, self.error,
                           Html('\n<table>'),
                           self.table,
                           Html('\n<tr><td colspan="2">'),
