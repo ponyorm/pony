@@ -130,8 +130,6 @@ class Form(object):
             object.__setattr__(self, '_secure', False)
         elif self.method == 'POST': object.__setattr__(self, '_secure', secure or secure is None)
         else: assert False
-        if self._secure: self._t = Ticket()
-        elif hasattr(self, '_t'): del self._t
         self._update_status()
     secure = property(attrgetter('_secure'), _set_secure)
     def _update_status(self):
@@ -188,8 +186,17 @@ class Form(object):
         return htmltag('form', attrs, method=self.method, accept_charset='UTF-8',
                        _class=error_class)
     @property
+    def _ticket(self):
+        if not self._secure: return ''
+        if hasattr(self, 'on_submit'): payload = cPickle.dumps(self, 2)
+        else: payload = None
+        ticket = get_ticket(payload)
+        return Html('<input type="hidden" name="_ticket" value="%s">') % ticket
+    @property
     def header(self):
         result = [ self.tag ]
+        ticket = self._ticket
+        if ticket: result.append(ticket)
         for f in self.hidden_fields: result.append(f.html)
         for f in self.fields:
             hidden = f.hidden
@@ -283,17 +290,6 @@ class HtmlField(object):
 
 class Hidden(HtmlField):
     HTML_TYPE = 'hidden'
-
-class Ticket(Hidden):
-    def _get_value(self):
-        form = self.form
-        if form is not None and hasattr(form, 'on_submit'): payload = cPickle.dumps(form, 2)
-        else: payload = None
-        return get_ticket(payload)
-    def _set_value(self, value):
-        raise TypeError('Cannot set value for tickets')
-    value = property(_get_value, _set_value)
-    html_value = property(_get_value)
 
 class Submit(HtmlField):
     HTML_TYPE = 'submit'
