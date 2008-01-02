@@ -19,7 +19,7 @@ def index():
         f.zip = Text('Zip code', required=True)
         f.first_name = Text(required=True)
         f.last_name = Text()
-        f.email = Text('E-mail', required=True)
+        f.email = Text('E-mail', required=True, type='email')
         f.password = Password(required=True)
         f.password2 = Password('Re-type password', True)
         f.comment = TextArea('You can type comment here')
@@ -33,7 +33,7 @@ def index():
     elif f.country.value == 'Russia':
         f.secure = True # Make multi-step form secure only on last step
         f.country.label = u'Выберите страну'
-        f.city = Select(u'Выберите город', True,
+        f.city = Select(u'Выберите город', required=True,
                         options = ['', u'Москва',
                                        u'Санкт-Петербург',
                                        u'Владивосток'])
@@ -41,9 +41,9 @@ def index():
         f.fist_name = Text(u'Имя', required=True)
         f.patronymic_name = Text(u'Отчество')
         f.sex = RadioGroup(u'Пол', options=[ u'Мужской', u'Женский' ])
-        f.email = Text(u'Почтовый адрес', True)
-        f.password = Password(u'Пароль', True)
-        f.password2 = Password(u'Введите пароль еще раз', True)
+        f.email = Text(u'Почтовый адрес', required=True, type='email')
+        f.password = Password(u'Пароль', required=True)
+        f.password2 = Password(u'Введите пароль еще раз', required=True)
         f.subscribe = Checkbox(u'Я хочу получать новости', value=True)
         f.news_categories = CheckboxGroup(u'Категории новостей',
                                           options=[ (1, u'Недельные выпуски'),

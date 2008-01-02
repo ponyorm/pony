@@ -198,6 +198,36 @@ def isbn10_to_isbn13(s):
 def isbn13_to_isbn10(s):
     return check_isbn(s, convert_to=10)
 
+# The next two regular expressions taken from
+# http://www.regular-expressions.info/email.html
+
+email_re = re.compile(
+    r'^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.(?:[A-Z]{2}|com|org|net|gov|mil|biz|info|name|aero|biz|info|jobs|museum)$',
+    re.IGNORECASE)
+
+rfc2822_email_re = re.compile(r'''
+    ^(?: [a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*
+     |   "(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*"
+     )
+     @
+     (?: (?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?
+     |   \[ (?: (?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}
+            (?: 25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[a-z0-9-]*[a-z0-9]
+                :(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+
+            )
+         \]
+     )$''', re.IGNORECASE | re.VERBOSE)
+
+def check_email(s):
+    s = s.strip()
+    if email_re.match(s) is None: raise ValueError
+    return s
+
+def check_rfc2822_email(s):
+    s = s.strip()
+    if rfc2822_email_re.match(s) is None: raise ValueError
+    return s
+
 date_str_list = [
     r'(?P<month>\d{1,2})/(?P<day>\d{1,2})/(?P<year>\d{4})',
     r'(?P<day>\d{1,2})\.(?P<month>\d{1,2})\.(?P<year>\d{4})',
@@ -277,6 +307,8 @@ converters = {
     'positive': (check_positive, unicode, 'Must be positive number'),
     'identifier': (check_identifier, unicode, 'Must be correct identifier'),
     'ISBN': (check_isbn, unicode, 'Must be correct ISBN'),
+    'email': (check_email, unicode, 'Must be correct e-mail address'),
+    'rfc2822_email': (check_rfc2822_email, unicode, 'Must be correct e-mail address'),
     datetime.date: (str2date, unicode, 'Must be correct date (mm/dd/yyyy or dd.mm.yyyy)'),
     datetime.time: (str2time, unicode, 'Must be correct time (hh:mm or hh:mm:ss)'),
     datetime.datetime: (str2datetime, unicode, 'Must be correct date & time'),
