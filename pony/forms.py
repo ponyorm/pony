@@ -64,7 +64,7 @@ class Form(object):
             elif isinstance(x, Submit): self.submit_fields.remove(x)
             else: self.fields.remove(x)
         object.__delattr__(self, name)
-    def __init__(self, method='POST', secure=None, **attrs):
+    def __init__(self, method='POST', secure=None, prevent_resubmit=False, **attrs):
         object.__setattr__(self, '_pickle_entire_form', False)
         object.__setattr__(self, '_cleared', False)
         object.__setattr__(self, '_validated', False)
@@ -79,6 +79,7 @@ class Form(object):
         object.__setattr__(self, '_secure', False)
         self._set_method(method)
         self._set_secure(secure)
+        object.__setattr__(self, 'prevent_resubmit', prevent_resubmit)
         self._f = Hidden(self.attrs.get('name', ''))
     def __getstate__(self):
         state = self._init_args
@@ -288,7 +289,7 @@ class Ticket(Hidden):
         form = self.form
         if form is not None and hasattr(form, 'on_submit'): payload = cPickle.dumps(form, 2)
         else: payload = None
-        return get_ticket(payload)
+        return get_ticket(payload, form.prevent_resubmit)
     def _set_value(self, value):
         raise TypeError('Cannot set value for tickets')
     value = property(_get_value, _set_value)

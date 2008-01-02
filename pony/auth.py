@@ -20,7 +20,7 @@ def load(data, environ):
 def save(environ):
     return local.save(environ)
 
-def get_ticket(payload=None):
+def get_ticket(payload=None, prevent_resubmit=False):
     if payload is None: payload = ''
     else:
         assert isinstance(payload, str)
@@ -35,6 +35,7 @@ def get_ticket(payload=None):
     hashobject.update(rnd)
     hashobject.update(payload)
     hashobject.update(cPickle.dumps(local.user, 2))
+    if prevent_resubmit: hashobject.update('+')
     hash = hashobject.digest()
 
     payload_str = base64.b64encode(payload)
@@ -56,11 +57,13 @@ def verify_ticket(ticket):
         hashobject.update(rnd)
         hashobject.update(payload)
         hashobject.update(cPickle.dumps(local.user, 2))
-        if hash != hashobject.digest(): return False, None
-        result = []
-        queue.put((minute, buffer(rnd), local.lock, result))
-        local.lock.acquire()
-        if not result[0]: return result[0], None
+        if hash != hashobject.digest():
+            hashobject.update('+')
+            if hash != hashobject.digest(): return False, None
+            result = []
+            queue.put((minute, buffer(rnd), local.lock, result))
+            local.lock.acquire()
+            if not result[0]: return result[0], None
         if payload:
             first = payload[0]
             if first == 'N': payload = payload[1:]
