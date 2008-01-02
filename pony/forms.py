@@ -3,8 +3,8 @@ import re, threading, os.path, copy, cPickle
 from operator import attrgetter
 from itertools import count
 
+from pony import auth
 from pony.utils import decorator, converters, ValidationError
-from pony.auth import get_ticket
 from pony.templating import Html, StrHtml, htmljoin, htmltag
 from pony.web import get_request, Http400BadRequest, HttpRedirect
 
@@ -113,7 +113,7 @@ class Form(object):
         try: without_redirect = self.on_submit()
         except FormCanceled: request.form_processed = False
         else:
-            request.form_processed = True
+            if request.form_processed is None: request.form_processed = True
             if without_redirect: return
             user_agent = request.environ.get('HTTP_USER_AGENT', '')
             for browser in http_303_incompatible_browsers:
@@ -158,8 +158,8 @@ class Form(object):
             if not f.is_valid: return False
         for f in self.fields:
             if not f.is_valid: return False
-        if self._secure and not self._request.ticket_is_valid:
-            return self._request.ticket_is_valid  # may be False or None
+        if self._secure and not self._request.ticket:
+            return self._request.ticket  # may be False or None
         return True
     def _validate(self):
         if self._validated: return
@@ -295,7 +295,7 @@ class Ticket(Hidden):
         form = self.form
         if form is not None and hasattr(form, 'on_submit'): payload = cPickle.dumps(form, 2)
         else: payload = None
-        return get_ticket(payload, form.prevent_resubmit)
+        return auth.get_ticket(payload, form.prevent_resubmit)
     def _set_value(self, value):
         raise TypeError('Cannot set value for tickets')
     value = property(_get_value, _set_value)

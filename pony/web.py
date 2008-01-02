@@ -814,7 +814,7 @@ class HttpRequest(object):
             fp=input_stream, environ=environ, keep_blank_values=True)
         self.form_processed = None
         self.submitted_form = self.fields.getfirst('_f')
-        self.ticket_is_valid, self.payload = auth.verify_ticket(self.fields.getfirst('_t'))
+        self.ticket, self.payload = auth.verify_ticket(self.fields.getfirst('_t'))
         self.id_counter = itertools.imap('id_%d'.__mod__, itertools.count())
 
 class HttpResponse(object):
@@ -916,11 +916,16 @@ def application(environ, wsgi_start_response):
     local.request = request = HttpRequest(environ)
     log_request(request)
     try:
-        if request.payload is not None:
-            form = cPickle.loads(request.payload)
-            form._handle_request_()
-            form = None
-        result = invoke(request.internal_url)
+        try:
+            if request.payload is not None:
+                form = cPickle.loads(request.payload)
+                form._handle_request_()
+                form = None
+            result = invoke(request.internal_url)
+        finally:
+            if request.ticket and not request.form_processed \
+                                  and request.form_processed is not None:
+                auth.unexpire_ticket(request.ticket)
     except HttpException, e:
         start_response(e.status, e.headers)
         return [ e.content ]

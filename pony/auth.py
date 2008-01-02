@@ -43,10 +43,10 @@ def get_ticket(payload=None, prevent_resubmit=False):
     hash_str = base64.b64encode(hash)
     return '%s:%s:%s:%s' % (now_str, payload_str, rnd_str, hash_str)
 
-def verify_ticket(ticket):
+def verify_ticket(ticket_str):
     now = int(time.time() // 60)
     try:
-        time_str, payload_str, rnd_str, hash_str = ticket.split(':')
+        time_str, payload_str, rnd_str, hash_str = ticket_str.split(':')
         minute = int(time_str, 16) // 60
         if minute < now - max_mtime_diff or minute > now + 1: return False, None
         rnd = base64.b64decode(rnd_str)
@@ -61,7 +61,7 @@ def verify_ticket(ticket):
             hashobject.update('+')
             if hash != hashobject.digest(): return False, None
             result = []
-            queue.put((minute, buffer(rnd), local.lock, result))
+            queue.put((2, minute, buffer(rnd), local.lock, result))
             local.lock.acquire()
             if not result[0]: return result[0], None
         if payload:
@@ -69,8 +69,13 @@ def verify_ticket(ticket):
             if first == 'N': payload = payload[1:]
             elif first == 'Z': payload = payload[1:].decode('zip')
             else: assert False
-        return True, payload or None
+        return (minute, rnd), payload or None
     except: return False, None
+
+def unexpire_ticket(ticket_id):
+    if not ticket_id: return
+    minute, rnd = ticket_id
+    queue.put((3, minute, buffer(rnd)))
 
 ################################################################################
 
@@ -148,7 +153,7 @@ queue = Queue.Queue()
 def get_hashobject(minute):
     hashobject = secret_cache.get(minute)
     if hashobject is None:
-        queue.put((minute, local.lock))
+        queue.put((1, minute, local.lock))
         local.lock.acquire()
         hashobject = secret_cache[minute]
     return hashobject.copy()
@@ -165,11 +170,11 @@ def get_sessiondb_name():
 sql_create = """
 create table if not exists time_secrets (
     minute integer primary key,
-    secret binary not null    
+    secret blob not null    
     );
 create table if not exists used_tickets (
     minute integer not null,
-    rnd    binary  not null,
+    rnd    blob  not null,
     primary key (minute, rnd)
     );
 """
@@ -191,8 +196,10 @@ class AuthThread(threading.Thread):
                 if x is None: break
                 while True:
                     try:
-                        if len(x) == 2: self.prepare_secret(*x)
-                        elif len(x) == 4: self.prepare_ticket(*x)
+                        action = x[0]
+                        if action == 1: self.prepare_secret(*x[1:])
+                        elif action == 2: self.check_ticket(*x[1:])
+                        elif action == 3: self.unexpire_ticket(*x[1:])
                         else: assert False
                     except sqlite.OperationalError:
                         con.rollback()
@@ -217,22 +224,25 @@ class AuthThread(threading.Thread):
         secret = os.urandom(32)
         con.execute('delete from used_tickets where minute < ?', [ old ])
         con.execute('delete from time_secrets where minute < ?', [ old ])
-        con.execute('insert into time_secrets values(?, ?)',
+        con.execute('insert or ignore into time_secrets values(?, ?)',
                     [ minute, buffer(secret) ])
         con.commit()
         secret_cache[minute] = hmac.new(secret, digestmod=sha)
         lock.release()
-    def prepare_ticket(self, minute, rnd, lock, result):
+    def check_ticket(self, minute, rnd, lock, result):
         con = self.connection
         row = con.execute('select rowid from used_tickets '
                           'where minute = ? and rnd = ?',
                           [minute, rnd]).fetchone()
         if row is None:
-            con.execute('insert into used_tickets values(?, ?)',
-                        [minute, rnd])
+            con.execute('insert or ignore into used_tickets values(?, ?)', [minute, rnd])
         con.commit()
         result.append(row is None and True or None)
         lock.release()
+    def unexpire_ticket(self, minute, rnd):
+        con = self.connection
+        con.execute('delete from used_tickets where minute = ? and rnd = ?', [minute, rnd])
+        con.commit()
 
 @pony.on_shutdown
 def do_shutdown():
