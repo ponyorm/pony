@@ -932,10 +932,11 @@ def application(environ, wsgi_start_response):
     else:
         response = local.response
         start_response('200 OK', response.headers)
-        if hasattr(result, 'read'): # result is file
-            # return [ result.read() ]
-            return iter(lambda: result.read(BLOCK_SIZE), '')
-        return [ result ]
+        if not hasattr(result, 'read'): return [ result ]
+        # result is a file:
+        # return [ result.read() ]
+        return iter(lambda: result.read(BLOCK_SIZE), '')
+        
 
 def parse_address(address):
     if isinstance(address, basestring):
