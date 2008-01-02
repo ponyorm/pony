@@ -36,6 +36,8 @@ def _form_init_decorator(__init__):
             object.__setattr__(form, '_init_counter', init_counter-1)
     return new_init
 
+http_303_incompatible_browsers = []
+
 class Form(object):
     __metaclass__ = FormMeta
     def __setattr__(self, name, x):
@@ -112,7 +114,11 @@ class Form(object):
         except FormCanceled: request.form_processed = False
         else:
             request.form_processed = True
-            if not without_redirect: raise HttpRedirect('.')
+            if without_redirect: return
+            user_agent = request.environ.get('HTTP_USER_AGENT', '')
+            for browser in http_303_incompatible_browsers:
+                if browser in user_agent: raise HttpRedirect('.', status='302 Found')
+            raise HttpRedirect('.', status='303 See Other')
     def clear(self):
         object.__setattr__(self, '_cleared', True)
         object.__setattr__(self, 'is_submitted', False)
