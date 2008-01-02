@@ -8,8 +8,7 @@ from pony.utils import decorator, converters, ValidationError
 from pony.templating import Html, StrHtml, htmljoin, htmltag
 from pony.web import get_request, Http400BadRequest, HttpRedirect
 
-class FormCanceled(Exception): pass
-FormCancelled = FormCanceled
+class FormNotProcessed(Exception): pass
 
 class FormMeta(type):
     def __new__(meta, name, bases, dict):
@@ -111,7 +110,7 @@ class Form(object):
             request.form_processed = False
             return
         try: without_redirect = self.on_submit()
-        except FormCanceled: request.form_processed = False
+        except FormNotProcessed: request.form_processed = False
         else:
             if request.form_processed is None: request.form_processed = True
             if without_redirect: return
@@ -232,7 +231,8 @@ class Form(object):
                           Html('\n</td></tr></table></form>\n\n')])
     html = property(__unicode__)
 Form.ValidationError = ValidationError
-Form.Canceled = Form.Cancelled = FormCanceled
+Form.NotProcessed = FormNotProcessed
+Form.DoNotDoRedirect = DoNotDoRedirect = True
 
 class HtmlField(object):
     def __init__(self, value=None):
