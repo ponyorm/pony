@@ -37,11 +37,11 @@ def test_quote():
     for i, (input, expected1, expected2) in enumerate(data):
         result = quote(input)
         if result != expected1:
-            print i, 1, input, expected1, result
+            print i, 1, `input`, `expected1`, `result`
             assert False
         result = quote(input, True)
         if result != expected2:
-            print i, 2, input, expected2, result
+            print i, 2, `input`, `expected2`, `result`
             assert False
     print 'Test passed!'
 
