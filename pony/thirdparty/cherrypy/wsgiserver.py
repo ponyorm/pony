@@ -1198,6 +1198,9 @@ class CherryPyWSGIServer(object):
             if msg == "Resource temporarily unavailable":
                 # Just try again. See http://www.cherrypy.org/ticket/479.
                 return
+            if msg == "Software caused connection abort":
+                # Quick workaround for http://www.cherrypy.org/ticket/686.
+                return
             raise
     
     def _get_interrupt(self):
