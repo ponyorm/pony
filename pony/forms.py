@@ -377,18 +377,21 @@ class File(BaseWidget):
     HTML_TYPE = 'file'
     def _get_value(self):
         if not self.is_submitted: return None
-        x = self.form._request.fields.getfirst(self.name)
-        try: return x.file
+        fields = self.form._request.fields
+        try: filename = fields[self.name].filename
         except: return None
+        if not filename: return None
+        return fields[self.name].file
     def _set_value(self, value):
         raise TypeError('This property cannot be set')
     value = property(_get_value, _set_value)
     @property
     def filename(self):
-        if not self.is_submitted: return self.initial_value
-        x = self.form._request.fields.getfirst(self.name)
-        try: filename = x.filename
+        if not self.is_submitted: return None
+        fields = self.form._request.fields
+        try: filename = fields[self.name].filename
         except: return None
+        if not filename: return None
         return os.path.basename(filename)
     @property
     def tag(self):
