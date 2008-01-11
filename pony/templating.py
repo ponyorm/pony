@@ -183,8 +183,11 @@ def grab_stdout(f):
         sys.stdout = pony_stdout
         try: result = f(*args, **keyargs)
         finally: assert local.writers.pop() == data.append
-        if result is not None: return (result,)
-        return data
+        if result is None: return data
+        if not isinstance(result, basestring):
+            if hasattr(result, '__unicode__'): result = unicode(result)
+            else: result = str(result)
+        return (result,)
     return new_function
 
 def string_consts_to_html(f):
