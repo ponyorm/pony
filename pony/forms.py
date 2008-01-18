@@ -601,7 +601,7 @@ class Composite(BaseWidget):
         self.items = []
     def _init_(self, name, form):
         BaseWidget._init_(self, name, form)
-        for item in self.items: item._init_(item.name, form)
+        for item in self.items: item._init_('%s.%s' % (name, item.name), form)
     def __setattr__(self, name, x):
         prev = getattr(self, name, None)
         if not isinstance(x, HtmlField):
@@ -617,7 +617,7 @@ class Composite(BaseWidget):
         self.items.append(x)
         object.__setattr__(self, name, x)
         form = self.form
-        if form is not None: x._init_(name, form)
+        if form is not None: x._init_('%s.%s' % (self.name, name), form)
         else: x.name = name
     def __delattr__(self, name):
         x = getattr(self, name)
