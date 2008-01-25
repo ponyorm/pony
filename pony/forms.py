@@ -595,6 +595,7 @@ class Composite(BaseWidget):
     def __init__(self, label=None, required=None, item_labels=True, **attrs):
         BaseWidget.__init__(self, label, required, **attrs)
         self.item_labels = item_labels
+        self.hidden_items = []
         self.items = []
     def _init_(self, name, form):
         BaseWidget._init_(self, name, form)
@@ -605,17 +606,17 @@ class Composite(BaseWidget):
             if isinstance(prev, BaseWidget): self.__delattr__(name)
             object.__setattr__(self, name, x)
             return
-        if not isinstance(x, BaseWidget): raise TypeError(
-            'Item of composite field must be instance of BaseWidget. Got: %s' % x.__class__.__name__)
         if hasattr(self, name):
-            if not isinstance(prev, BaseWidget): raise TypeError('Invalid item name: %s' % name)
-            self.items.remove(prev)
+            if not isinstance(prev, HtmlField): raise TypeError('Invalid composite item name: %s' % name)
+            elif isinstance(prev, Hidden): self.hidden_items.remove(prev)
+            else: self.items.remove(prev)
         if self.required is not None and x.required is None: x.required = self.required
-        self.items.append(x)
+        if isinstance(x, Hidden): self.hidden_items.append(x)
+        else: self.items.append(x)
         object.__setattr__(self, name, x)
         form = self.form
-        if form is not None: x._init_('%s.%s' % (self.name, name), form)
-        else: x.name = name
+        if form is None: x.name = name
+        else: x._init_('%s.%s' % (self.name, name), form)
     def __delattr__(self, name):
         x = getattr(self, name)
         if isinstance(x, HtmlField): self.items.remove(x)
@@ -670,3 +671,6 @@ class Composite(BaseWidget):
     def __unicode__(self):
         return htmljoin((self.label, self.tag, self.error))
     html = property(__unicode__)
+    @property
+    def hidden(self):
+        return htmljoin(item.html for item in self.hidden_items)
