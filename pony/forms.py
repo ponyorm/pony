@@ -46,14 +46,11 @@ class Form(object):
             object.__setattr__(self, name, x)
             return
         if hasattr(self, name):
-            if not isinstance(prev, HtmlField):
-                raise TypeError('Invalid form field name: %s' % name)
-            try:
-                if   isinstance(prev, Hidden): self.hidden_fields.remove(prev)
-                elif isinstance(prev, Submit): self.submit_fields.remove(prev)
-                else: self.fields.remove(prev)
-            except ValueError: pass
-        if   isinstance(x, Hidden): self.hidden_fields.append(x)
+            if not isinstance(prev, HtmlField): raise TypeError('Invalid form field name: %s' % name)
+            elif isinstance(prev, Hidden): self.hidden_fields.remove(prev)
+            elif isinstance(prev, Submit): self.submit_fields.remove(prev)
+            else: self.fields.remove(prev)
+        if isinstance(x, Hidden): self.hidden_fields.append(x)
         elif isinstance(x, Submit): self.submit_fields.append(x)
         else: self.fields.append(x)
         object.__setattr__(self, name, x)
