@@ -228,7 +228,6 @@ class Form(object):
         return htmljoin([ self.header, self.error,
                           Html('\n<table>'),
                           self.table,
-                          Html('\n<tr><td colspan="2">'),
                           buttons,
                           Html('\n</table></form>\n')])
     html = property(__unicode__)
@@ -599,7 +598,7 @@ class CheckboxGroup(MultiSelect):
         return htmljoin(result)
     
 class Composite(BaseWidget):
-    def __init__(self, label=None, required=None, item_labels=True, **attrs):
+    def __init__(self, label=None, required=None, item_labels=False, **attrs):
         BaseWidget.__init__(self, label, required, **attrs)
         self.item_labels = item_labels
         self.hidden_items = []
@@ -645,12 +644,15 @@ class Composite(BaseWidget):
             error_text = item.error_text
             if not error_text: continue
             result.append('%s: %s' % (item._label, error_text))
-        if not result: return None
-        return '\n'.join(result)
+        result = '\n'.join(result)
+        if result.isspace(): return None
+        return result
     error_text = property(_get_error_text, BaseWidget._set_error_text)
     @property
     def error(self):
-        error_lines = (self.error_text or '').split('\n')
+        error_text = self.error_text
+        if not error_text: return ''
+        error_lines = error_text.split('\n')
         return Html('<div class="error">%s</div>' % Html('<br>\n').join(error_lines))
     def _get_value(self):
         return (item.value for item in self.items if not isinstance(item, Submit))

@@ -42,6 +42,8 @@ th { font-weight: bold; }
 /* forms: */
 
 form th, form td { padding: 0.2em 0.5em; }
+form .composite-field table th,
+form .composite-field table td { padding: 0 0.5em; }
 form .required { margin-left: 0.3em; }
 form .error { margin-top: 0.5em; }
 form .required, form .error { color: red; }
