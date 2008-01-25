@@ -374,7 +374,10 @@ class BaseWidget(HtmlField):
     html = property(__unicode__)
     @property
     def hidden(self):
-        return ''
+        if not self.attrs.get('disabled'): return ''
+        value = self.html_value
+        if value is None: value = ''
+        return htmltag('input', type='hidden', name=self.name, value=value)
 
 class File(BaseWidget):
     HTML_TYPE = 'file'
