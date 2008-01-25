@@ -62,7 +62,8 @@ class Form(object):
             elif isinstance(x, Submit): self.submit_fields.remove(x)
             else: self.fields.remove(x)
         object.__delattr__(self, name)
-    def __init__(self, method='POST', secure=None, prevent_resubmit=False, **attrs):
+    def __init__(self, method='POST', secure=None,
+                 prevent_resubmit=False, buttons_align=None, **attrs):
         object.__setattr__(self, '_pickle_entire_form', False)
         object.__setattr__(self, '_cleared', False)
         object.__setattr__(self, '_validated', False)
@@ -78,6 +79,7 @@ class Form(object):
         self._set_method(method)
         self._set_secure(secure)
         object.__setattr__(self, 'prevent_resubmit', prevent_resubmit)
+        object.__setattr__(self, 'buttons_align', buttons_align)
         self._f = Hidden(self.attrs.get('name', ''))
     def __getstate__(self):
         state = self._init_args
@@ -212,7 +214,7 @@ class Form(object):
         return htmljoin(result)
     @property
     def buttons(self):
-        result = [ Html('\n<div class="buttons">') ]
+        result = [ htmltag('div', _class='buttons', align=self.buttons_align) ]
         buttons = [ f.html for f in self.submit_fields ]
         result.extend(buttons or [ htmltag('input', type='submit') ])
         result.append(Html('\n</div>'))
@@ -220,12 +222,15 @@ class Form(object):
     def __str__(self):
         return StrHtml(unicode(self).encode('ascii', 'xmlcharrefreplace'))
     def __unicode__(self):
+        if self.buttons_align is None:
+              buttons = Html('\n<tr><td>&nbsp;</td><td>%s</td></tr>') % self.buttons
+        else: buttons = Html('\n<tr><td colspan="2">%s</td></tr>') % self.buttons
         return htmljoin([ self.header, self.error,
                           Html('\n<table>'),
                           self.table,
                           Html('\n<tr><td colspan="2">'),
-                          self.buttons,
-                          Html('\n</td></tr></table></form>\n\n')])
+                          buttons,
+                          Html('\n</table></form>\n')])
     html = property(__unicode__)
 Form.ValidationError = ValidationError
 Form.NotProcessed = FormNotProcessed

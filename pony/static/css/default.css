@@ -41,13 +41,13 @@ th { font-weight: bold; }
 
 /* forms: */
 
-form th, form td { padding: 0.5em; }
+form th, form td { padding: 0.2em 0.5em; }
 form .required { margin-left: 0.3em; }
 form .error { margin-top: 0.5em; }
 form .required, form .error { color: red; }
 form .checkbox, form .radiobutton { margin: 0.3em 0; }
 form .value { padding-left: 0.5em; *padding-left: 0.2em; }
-form .buttons { margin: 1em 0; text-align: center; }
+form .buttons { margin: 0.2em 0; }
 
 form tr.composite-field table th
 {
