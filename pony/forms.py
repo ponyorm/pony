@@ -54,7 +54,7 @@ class Form(object):
         elif isinstance(x, Submit): self.submit_fields.append(x)
         else: self.fields.append(x)
         object.__setattr__(self, name, x)
-        x._init_(name, self)
+        x._init_(self, name, name.replace('_', ' ').capitalize())
     def __delattr__(self, name):
         x = getattr(self, name)
         if isinstance(x, HtmlField):
@@ -236,10 +236,12 @@ class HtmlField(object):
         self.attrs = {}
         self.form = self.name = None
         self.initial_value = value
-    def _init_(self, name, form):
+        self._label = None
+    def _init_(self, form, name, label):
+        object.__setattr__(form, '_validated', False)
         self.form = form
         self.name = name
-        object.__setattr__(form, '_validated', False)
+        if self._label is None: self._label = label
     def __getstate__(self):
         state = self.__dict__.copy()
         state.pop('_initial_value', None)
@@ -300,8 +302,11 @@ class Ticket(Hidden):
 
 class Submit(HtmlField):
     HTML_TYPE = 'submit'
+    def _init_(self, form, name, label):
+        HtmlField._init_(self, form, name, label)
+        if self.initial_value is None: self.initial_value = label
 
-class Reset(HtmlField):
+class Reset(Submit):
     HTML_TYPE = 'reset'
 
 class BaseWidget(HtmlField):
@@ -317,10 +322,6 @@ class BaseWidget(HtmlField):
         self._error_text = None
         self._auto_error_text = None
         self._set_label(label)
-    def _init_(self, name, form):
-        HtmlField._init_(self, name, form)
-        if self._label == '':
-            self._set_label(name.replace('_', ' ').capitalize())
     def __getstate__(self):
         dict = HtmlField.__getstate__(self)
         dict.pop('_label', None)
@@ -355,13 +356,14 @@ class BaseWidget(HtmlField):
         return Html('<div class="error">%s</div>') % error_text
     def _get_label(self, colon=True, required=True):
         if not self._label: return ''
+        if isinstance(self._label, Html): return self._label
         if not (required and self.required): required_html = ''
         else: required_html = Html('<sup class="required">*</sup>')
         colon_html = colon and Html('<span class="colon">:</span>') or ''
         return Html('<label for="%s">%s%s%s</label>') % (
             self.attrs['id'], self._label, required_html, colon_html)
     def _set_label(self, label):
-        self._label = label or ''
+        self._label = label
     label = property(_get_label, _set_label)
     def __unicode__(self):
         return htmljoin((self._label, self.tag, self.error))
@@ -597,15 +599,13 @@ class Composite(BaseWidget):
         self.item_labels = item_labels
         self.hidden_items = []
         self.items = []
-    def _init_(self, name, form):
-        BaseWidget._init_(self, name, form)
-        for item in self.items: item._init_('%s.%s' % (name, item.name), form)
     def __setattr__(self, name, x):
         prev = getattr(self, name, None)
         if not isinstance(x, HtmlField):
             if isinstance(prev, BaseWidget): self.__delattr__(name)
             object.__setattr__(self, name, x)
             return
+        if self.form is None: raise TypeError('You must at first assign composite to form')
         if hasattr(self, name):
             if not isinstance(prev, HtmlField): raise TypeError('Invalid composite item name: %s' % name)
             elif isinstance(prev, Hidden): self.hidden_items.remove(prev)
@@ -614,12 +614,13 @@ class Composite(BaseWidget):
         if isinstance(x, Hidden): self.hidden_items.append(x)
         else: self.items.append(x)
         object.__setattr__(self, name, x)
-        form = self.form
-        if form is None: x.name = name
-        else: x._init_('%s.%s' % (self.name, name), form)
+        item_name = '%s.%s' % (self.name, name)
+        item_label = name.replace('_', ' ').capitalize()
+        x._init_(self.form, item_name, item_label)
     def __delattr__(self, name):
         x = getattr(self, name)
-        if isinstance(x, HtmlField): self.items.remove(x)
+        if isinstance(x, Hidden): self.hidden_fields.remove(x)
+        elif isinstance(x, HtmlField): self.items.remove(x)
         object.__delattr__(self, name)
     @property
     def is_submitted(self):
@@ -635,6 +636,7 @@ class Composite(BaseWidget):
         if self._error_text: return self._error_text
         result = []
         for item in self.items:
+            if isinstance(item, Submit): continue
             error_text = item.error_text
             if not error_text: continue
             result.append('%s: %s' % (item._label, error_text))
@@ -646,26 +648,28 @@ class Composite(BaseWidget):
         error_lines = (self.error_text or '').split('\n')
         return Html('<div class="error">%s</div>' % Html('<br>\n').join(error_lines))
     def _get_value(self):
-        return (item.value for item in self.items)
+        return (item.value for item in self.items if not isinstance(item, Submit))
     def _set_value(self, value):
-        for item, item_value in zip(self.items, value): item.value = item_value
+        values = list(value)
+        items = [ item for item in self.items if not isinstance(item, Submit) ]
+        if len(items) != len(values): raise TypeError(
+            'Expected sequence of %d values. Got: %d' % (len(items), len(values)))
+        for item, value in zip(items, values): item.value = value
     value = property(_get_value, _set_value)
 ##  def _get_label(self, colon=True, required=False):
 ##      return BaseWidget._get_label(self, colon, required)
 ##  label = property(_get_label, BaseWidget._set_label)
     @property
     def tag(self):
-        nbsp = Html('&nbsp;')
-        last = len(self.items) - 1
         result = [ Html('\n<table><tr>') ]
         if self.item_labels:
             for i, item in enumerate(self.items):
-                space = i != last and nbsp or ''
-                result.append(Html('<th>%s%s</th>') % (item._get_label(colon=False), space))
+                if isinstance(item, Submit): label = Html('&nbsp;')
+                else: label = item._get_label(colon=False)
+                result.append(Html('<th>%s</th>') % label)
             result.append(Html('</tr>\n<tr>'))
         for i, item in enumerate(self.items):
-            space = i != last and nbsp or ''
-            result.append(Html('<td>%s%s</td>') % (item.tag, space))
+            result.append(Html('<td>%s</td>') % item.tag)
         result.append(Html('\n</tr></table>\n'))
         return htmljoin(result)
     def __unicode__(self):
