@@ -11,7 +11,7 @@ from pony.web import (application, http, url, link, Http404,
 from pony.forms import (Form, Hidden, Submit, Reset,
                         File, Password, Text, TextArea, Checkbox, 
                         Select, RadioGroup, MultiSelect, CheckboxGroup,
-                        Composite)
+                        Composite, StaticText)
 from pony.gui.tkgui import show_gui
 import pony.gui.webgui
 

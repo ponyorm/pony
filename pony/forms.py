@@ -688,3 +688,12 @@ class Composite(BaseWidget):
     @property
     def hidden(self):
         return htmljoin(item.html for item in self.hidden_items)
+
+class StaticText(BaseWidget):
+    def __unicode__(self):
+        return Html('<strong>%s</strong>') % self.value
+    html = tag = property(__unicode__)
+    @property
+    def hidden(self):
+        return htmltag('input', type='hidden', name=self.name, value=self.value)
+    
