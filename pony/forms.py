@@ -62,9 +62,12 @@ class Form(object):
     def __delattr__(self, name):
         x = getattr(self, name)
         if isinstance(x, HtmlField):
-            if   isinstance(x, Hidden): self.hidden_fields.remove(x)
-            elif isinstance(x, Submit): self.submit_fields.remove(x)
-            else: self.fields.remove(x)
+            try:
+                # try..except is necessary because __init__ can be called twice
+                if   isinstance(x, Hidden): self.hidden_fields.remove(x)
+                elif isinstance(x, Submit): self.submit_fields.remove(x)
+                else: self.fields.remove(x)
+            except ValueError: pass
         object.__delattr__(self, name)
     def __init__(self, method='POST', secure=None,
                  prevent_resubmit=False, buttons_align=None, **attrs):
@@ -617,7 +620,7 @@ class Composite(BaseWidget):
             if isinstance(prev, BaseWidget): self.__delattr__(name)
             object.__setattr__(self, name, x)
             return
-        if self.form is None: raise TypeError('You must at first assign composite to form')
+        if self.form is None: raise TypeError('You must first assign the Composite object to the form')
         if hasattr(self, name):
             if not isinstance(prev, HtmlField): raise TypeError('Invalid composite item name: %s' % name)
             elif isinstance(prev, Hidden): self.hidden_items.remove(prev)
