@@ -46,11 +46,15 @@ class Form(object):
             object.__setattr__(self, name, x)
             return
         if hasattr(self, name):
-            if not isinstance(prev, HtmlField): raise TypeError('Invalid form field name: %s' % name)
-            elif isinstance(prev, Hidden): self.hidden_fields.remove(prev)
-            elif isinstance(prev, Submit): self.submit_fields.remove(prev)
-            else: self.fields.remove(prev)
-        if isinstance(x, Hidden): self.hidden_fields.append(x)
+            if not isinstance(prev, HtmlField):
+                raise TypeError('Invalid form field name: %s' % name)
+            try:
+                # try..except is necessary because __init__ can be called twice
+                if   isinstance(prev, Hidden): self.hidden_fields.remove(prev)
+                elif isinstance(prev, Submit): self.submit_fields.remove(prev)
+                else: self.fields.remove(prev)
+            except ValueError: pass
+        if   isinstance(x, Hidden): self.hidden_fields.append(x)
         elif isinstance(x, Submit): self.submit_fields.append(x)
         else: self.fields.append(x)
         object.__setattr__(self, name, x)
@@ -64,6 +68,7 @@ class Form(object):
         object.__delattr__(self, name)
     def __init__(self, method='POST', secure=None,
                  prevent_resubmit=False, buttons_align=None, **attrs):
+        # Note for subclassers: __init__ can be caled twice!
         object.__setattr__(self, '_pickle_entire_form', False)
         object.__setattr__(self, '_cleared', False)
         object.__setattr__(self, '_validated', False)
