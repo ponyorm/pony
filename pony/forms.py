@@ -454,6 +454,14 @@ class Text(BaseWidget):
         else: str2py, py2str, err_msg = converters.get(type, (self.type, unicode, None))
         return py2str(value)
 
+class StaticText(BaseWidget):
+    def __unicode__(self):
+        return Html('<strong>%s</strong>') % self.value
+    html = tag = property(__unicode__)
+    @property
+    def hidden(self):
+        return htmltag('input', type='hidden', name=self.name, value=self.value)
+
 class TextArea(BaseWidget):
     @property
     def tag(self):
@@ -696,12 +704,3 @@ class Composite(BaseWidget):
     @property
     def hidden(self):
         return htmljoin(item.html for item in self.hidden_items)
-
-class StaticText(BaseWidget):
-    def __unicode__(self):
-        return Html('<strong>%s</strong>') % self.value
-    html = tag = property(__unicode__)
-    @property
-    def hidden(self):
-        return htmltag('input', type='hidden', name=self.name, value=self.value)
-    
