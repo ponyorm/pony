@@ -625,7 +625,7 @@ class Composite(BaseWidget):
     def __setattr__(self, name, x):
         prev = getattr(self, name, None)
         if not isinstance(x, HtmlField):
-            if isinstance(prev, BaseWidget): self.__delattr__(name)
+            if isinstance(prev, HtmlField): self.__delattr__(name)
             object.__setattr__(self, name, x)
             return
         if self.form is None: raise TypeError('You must first assign the Composite object to the form')
