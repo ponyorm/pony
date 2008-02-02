@@ -617,11 +617,11 @@ class CheckboxGroup(MultiSelect):
         return htmljoin(result)
     
 class Composite(BaseWidget):
-    def __init__(self, label=None, required=None, item_labels=False, **attrs):
+    def __init__(self, label=None, required=None, show_headers=True, **attrs):
         BaseWidget.__init__(self, label, required, **attrs)
-        self.item_labels = item_labels
-        self.hidden_items = []
-        self.items = []
+        self.show_headers = show_headers
+        self.hidden_fields = []
+        self.fields = []
     def __setattr__(self, name, x):
         prev = getattr(self, name, None)
         if not isinstance(x, HtmlField):
@@ -631,26 +631,26 @@ class Composite(BaseWidget):
         if self.form is None: raise TypeError('You must first assign the Composite object to the form')
         if hasattr(self, name):
             if not isinstance(prev, HtmlField): raise TypeError('Invalid composite item name: %s' % name)
-            elif isinstance(prev, Hidden): self.hidden_items.remove(prev)
-            else: self.items.remove(prev)
+            elif isinstance(prev, Hidden): self.hidden_fields.remove(prev)
+            else: self.fields.remove(prev)
         if self.required is not None and x.required is None: x.required = self.required
-        if isinstance(x, Hidden): self.hidden_items.append(x)
-        else: self.items.append(x)
+        if isinstance(x, Hidden): self.hidden_fields.append(x)
+        else: self.fields.append(x)
         object.__setattr__(self, name, x)
-        item_name = '%s.%s' % (self.name, name)
-        item_label = name.replace('_', ' ').capitalize()
-        x._init_(self.form, item_name, item_label)
+        field_name = '%s.%s' % (self.name, name)
+        field_label = name.replace('_', ' ').capitalize()
+        x._init_(self.form, field_name, field_label)
     def __delattr__(self, name):
         x = getattr(self, name)
         if isinstance(x, Hidden): self.hidden_fields.remove(x)
-        elif isinstance(x, HtmlField): self.items.remove(x)
+        elif isinstance(x, HtmlField): self.fields.remove(x)
         object.__delattr__(self, name)
     @property
     def is_submitted(self):
         form = self.form
         if form is None or not form.is_submitted: return False
-        for item in self.items:
-            if item.is_submitted: return True
+        for field in self.fields:
+            if field.is_submitted: return True
         return False
     def _get_error_text(self):
         form = self.form
@@ -658,11 +658,11 @@ class Composite(BaseWidget):
         if form._cleared or form._request.form_processed: return None
         if self._error_text: return self._error_text
         result = []
-        for item in self.items:
-            if isinstance(item, Submit): continue
-            error_text = item.error_text
+        for field in self.fields:
+            if isinstance(field, Submit): continue
+            error_text = field.error_text
             if not error_text: continue
-            result.append('%s: %s' % (item._label, error_text))
+            result.append('%s: %s' % (field._label, error_text))
         result = '\n'.join(result)
         if result.isspace(): return None
         return result
@@ -674,13 +674,13 @@ class Composite(BaseWidget):
         error_lines = error_text.split('\n')
         return Html('<div class="error">%s</div>' % Html('<br>\n').join(error_lines))
     def _get_value(self):
-        return (item.value for item in self.items if not isinstance(item, Submit))
+        return (field.value for field in self.fields if not isinstance(field, Submit))
     def _set_value(self, value):
         values = list(value)
-        items = [ item for item in self.items if not isinstance(item, Submit) ]
-        if len(items) != len(values): raise TypeError(
-            'Expected sequence of %d values. Got: %d' % (len(items), len(values)))
-        for item, value in zip(items, values): item.value = value
+        fields = [ field for field in self.fields if not isinstance(field, Submit) ]
+        if len(fields) != len(values): raise TypeError(
+            'Expected sequence of %d values. Got: %d' % (len(fields), len(values)))
+        for field, value in zip(fields, values): field.value = value
     value = property(_get_value, _set_value)
 ##  def _get_label(self, colon=True, required=False):
 ##      return BaseWidget._get_label(self, colon, required)
@@ -688,14 +688,14 @@ class Composite(BaseWidget):
     @property
     def tag(self):
         result = [ Html('\n<table><tr>') ]
-        if self.item_labels:
-            for i, item in enumerate(self.items):
-                if isinstance(item, Submit): label = Html('&nbsp;')
-                else: label = item._get_label(colon=False)
+        if self.show_headers:
+            for i, field in enumerate(self.fields):
+                if isinstance(field, Submit): label = Html('&nbsp;')
+                else: label = field._get_label(colon=False)
                 result.append(Html('<th>%s</th>') % label)
             result.append(Html('</tr>\n<tr>'))
-        for i, item in enumerate(self.items):
-            result.append(Html('<td>%s</td>') % item.tag)
+        for i, field in enumerate(self.fields):
+            result.append(Html('<td>%s</td>') % field.tag)
         result.append(Html('\n</tr></table>\n'))
         return htmljoin(result)
     def __unicode__(self):
@@ -703,4 +703,4 @@ class Composite(BaseWidget):
     html = property(__unicode__)
     @property
     def hidden(self):
-        return htmljoin(item.html for item in self.hidden_items)
+        return htmljoin(field.html for field in self.hidden_fields)
