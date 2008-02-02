@@ -124,7 +124,7 @@ class Form(object):
             user_agent = request.environ.get('HTTP_USER_AGENT', '')
             for browser in http_303_incompatible_browsers:
                 if browser in user_agent: raise HttpRedirect('.', status='302 Found')
-            raise HttpRedirect('.', status='303 See Other')
+            raise HttpRedirect(request.full_url, status='303 See Other')
     def clear(self):
         object.__setattr__(self, '_cleared', True)
         object.__setattr__(self, 'is_submitted', False)
