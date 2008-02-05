@@ -1,7 +1,7 @@
 import re, threading, os.path, copy, cPickle
 
 from operator import attrgetter
-from itertools import count
+from itertools import count, izip
 
 from pony import auth
 from pony.utils import decorator, converters, ValidationError
@@ -704,3 +704,99 @@ class Composite(BaseWidget):
     @property
     def hidden(self):
         return htmljoin(field.html for field in self.hidden_fields)
+
+class Grid(BaseWidget):
+    def __init__(self, label=None, columns=None, row_count=0, **attrs):
+        if columns is None: raise TypeError('%s columns must be specified' % self.__class__.__name__)
+        columns = list(columns)
+        if 'required' in attrs: raise TypeError('%s cannot be required' % self.__class__.__name__)
+        BaseWidget.__init__(self, label, None, **attrs)
+        self.columns = columns
+        self._rows = []
+        if row_count: self.row_count = row_count
+    def _init_(self, form, name, label):
+        BaseWidget._init_(self, form, name, label)
+        for i, row in enumerate(self._rows):
+            for j, field in enumerate(row):
+                if field is not None:
+                    field._init_(form, '%s[%d][%d]' % (name, i, j), None)
+    @property
+    def col_count(self):
+        return len(self.columns)
+    def _get_row_count(self):
+        return len(self._rows)
+    __len__ = _get_row_count
+    def _set_row_count(self, size):
+        delta = size - len(self._rows)
+        if delta < 0: self._rows[-delta:] = []
+        elif delta > 0:
+            for i in xrange(len(self._rows), size):
+                row = tuple(Text() for column in self.columns)
+                form = self.form
+                if form is not None:
+                    name = self.name
+                    for j, field in enumerate(row):
+                        field._init_(form, '%s[%d][%d]' % (name, i, j), None)
+                self._rows.append(row)
+    row_count = property(_get_row_count, _set_row_count)
+    def __iter__(self):
+        return iter(self._rows)
+    def __getitem__(self, key):
+        try: i, j = key
+        except: return self._rows[key]
+        else: return self._rows[i][j]
+    def __setitem__(self, key, value):
+        try: i, j = key
+        except: raise TypeError('Key must be pair of integers (row_index, col_index). Got: %r' % key)
+        row = list(self._rows[i])
+        row[j] = value
+        if value is None: pass
+        elif not isinstance(value, HtmlField):
+            raise TypeError('Value must be instance of HtmlField or None. Got: %r' % value)
+        else: value._init_(self.form, '%s[%d][%d]' % (self.name, i, j), None)
+        self._rows[i] = tuple(row)
+    def _get_value(self):
+        result = []
+        for row in self._rows:
+            values = []
+            for x in row:
+                if x is None: values.append(None)
+                else: values.append(x.value)
+            result.append(values)
+        return result
+    def _set_value(self, value):
+        rows = list(value)
+        if len(rows) != len(self._rows): raise TypeError('Incorrect row count')
+        for i, row in enumerate(rows):
+            if len(row) != len(self.columns):
+                raise TypeError('Incorrect col count in row %d: %d' % (i, len(row)))
+        for i, row, values in enumerate(izip(self._rows, rows)):
+            for field, value in izip(row, values):
+                if field is not None: field.value = value
+    value = property(_get_value, _set_value)
+    @property
+    def is_valid(self):
+        if not self.is_submitted or self.error_text: return False
+        for row in self._rows:
+            for field in row:
+                if field is None: continue
+                if not field.is_valid: return False
+        return True
+    @property
+    def tag(self):
+        result = [ Html('\n<table><tr>') ]
+        for column in self.columns:
+            result.append(Html('<th>%s</th>') % column)
+        result.append(Html('</tr>\n'))
+        for i, row in enumerate(self._rows):
+            result.append(Html('<tr>'))
+            for field in row:
+                if field is None: result.append(Html('<td>&nbsp;</td>'))
+                else: result.append(Html('<td>%s</td>') % field.tag)
+            result.append(Html('</tr>\n'))
+        result.append(Html('</table>\n'))
+        return htmljoin(result)
+    @property
+    def hidden(self):
+        return htmltag('input', name='.'+self.name, type='hidden', value='')
+    
