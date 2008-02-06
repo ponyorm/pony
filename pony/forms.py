@@ -728,7 +728,7 @@ class Grid(BaseWidget):
     __len__ = _get_row_count
     def _set_row_count(self, size):
         delta = size - len(self._rows)
-        if delta < 0: self._rows[-delta:] = []
+        if delta < 0: self._rows[delta:] = []
         elif delta > 0:
             for i in xrange(len(self._rows), size):
                 row = tuple(Text() for column in self.columns)
