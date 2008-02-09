@@ -1,7 +1,7 @@
 import re, threading, os.path, copy, cPickle
 
 from operator import attrgetter
-from itertools import count, izip
+from itertools import count, izip, cycle
 
 from pony import auth
 from pony.utils import decorator, converters, ValidationError
@@ -788,8 +788,8 @@ class Grid(BaseWidget):
         for column in self.columns:
             result.append(Html('<th>%s</th>') % column)
         result.append(Html('</tr>\n'))
-        for i, row in enumerate(self._rows):
-            result.append(Html('<tr>'))
+        for row, row_class in izip(self._rows, cycle(('odd', 'even'))):
+            result.append(Html('<tr class="%s">') % row_class)
             for field in row:
                 if field is None: result.append(Html('<td>&nbsp;</td>'))
                 else: result.append(Html('<td>%s</td>') % field.tag)
