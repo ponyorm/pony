@@ -18,7 +18,9 @@ class Html(unicode):
     def __add__(self, x):
         return Html(unicode.__add__(self, quote(x, True)))
     def __radd__(self, x):
-        return quote(x, True) + self
+        y = quote(x, True)
+        if y is not x: return y + self
+        raise TypeError("unsupported operand type(s) for +: %r and %r" % (x.__class__.__name__, self.__class__.__name__))
     def __mul__(self, x):
         return Html(unicode.__mul__(self, x))
     def __rmul__(self, x):
