@@ -281,7 +281,7 @@ main_re = re.compile(r"""
             (\s*[({])?                   # start of statement content (group 8)
         )
 
-    """, re.VERBOSE)
+    """, re.VERBOSE | re.DOTALL)
 
 def parse_markup(text, pos=0, nested=False):
     result = [pos, None]
