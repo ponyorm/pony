@@ -29,7 +29,7 @@ static PyObject* replace_unicode(PyObject *source) {
     for (i=0; i < size; i++) {
         switch (PyUnicode_AS_UNICODE(source)[i]) {
         case '&':
-		case '\'':
+        case '\'':
             add_size += 4;
             break;
         case '<':
@@ -78,13 +78,13 @@ static PyObject* replace_unicode(PyObject *source) {
             p[j++] = 't';
             p[j++] = ';';
             break;
-		case '\'':
-			p[j++] = '&';
-			p[j++] = '#';
-			p[j++] = '3';
-			p[j++] = '9';
-			p[j++] = ';';
-			break;
+        case '\'':
+            p[j++] = '&';
+            p[j++] = '#';
+            p[j++] = '3';
+            p[j++] = '9';
+            p[j++] = ';';
+            break;
         default:
             p[j++] = PyUnicode_AS_UNICODE(source)[i];
             break;
@@ -105,7 +105,7 @@ static PyObject* replace_string(PyObject *source) {
     for (i=0; i < size; i++) {
         switch (PyString_AS_STRING(source)[i]) {
         case '&':
-		case '\'':
+        case '\'':
             add_size += 4;
             break;
         case '<':
@@ -154,13 +154,13 @@ static PyObject* replace_string(PyObject *source) {
             p[j++] = 't';
             p[j++] = ';';
             break;
-		case '\'':
-			p[j++] = '&';
-			p[j++] = '#';
-			p[j++] = '3';
-			p[j++] = '9';
-			p[j++] = ';';
-			break;
+        case '\'':
+            p[j++] = '&';
+            p[j++] = '#';
+            p[j++] = '3';
+            p[j++] = '9';
+            p[j++] = ';';
+            break;
         default:
             p[j++] = PyString_AS_STRING(source)[i];
             break;
@@ -178,8 +178,8 @@ static PyObject* html_quote(PyObject *self, PyObject *arg_x) {
     if (PyObject_TypeCheck(arg_x, &PyInt_Type) ||            // if isinstance(x, (int, long, float, Html)): return x
         PyObject_TypeCheck(arg_x, &PyLong_Type) ||
         PyObject_TypeCheck(arg_x, &PyFloat_Type)||
-		PyObject_TypeCheck(arg_x, &Html_Type)) {            
-			Py_INCREF(arg_x); 
+        PyObject_TypeCheck(arg_x, &Html_Type)) {
+            Py_INCREF(arg_x); 
             return arg_x;
     }
     printf("B");
@@ -187,48 +187,48 @@ static PyObject* html_quote(PyObject *self, PyObject *arg_x) {
         printf("C1");
         if (PyObject_HasAttr(arg_x, PyString_FromString("__unicode__"))) {        // if hasattr(x, '__unicode__'): x = unicode(x)
             arg_x = PyObject_Unicode(arg_x);          
-            if (arg_x == NULL) 
+            if (arg_x == NULL)
                 return NULL;
-        } else {            
+        } else {
             arg_x = PyObject_Str(arg_x);                        // else: x = str(x)
         }
     }
-	if (PyObject_TypeCheck(arg_x, &Html_Type)) {
-		return arg_x;
-	}
+    if (PyObject_TypeCheck(arg_x, &Html_Type)) {
+        return arg_x;
+    }
     printf("C");
-	/*
+    /*
     if (PyObject_IsInstance(arg_x, strhtmlclass)) {            // if isinstance(x, StrHtml):
         printf(" point E\n");
-	}
-	*/
+    }
+    */
 
     ///////////// repalce /////////////
     if (PyUnicode_Check(arg_x)) {
-        arg_x = replace_unicode(arg_x); 
+        arg_x = replace_unicode(arg_x);
     } else {
         arg_x = replace_string(arg_x);
     }
     ///////////// repalce /////////////
-	printf("D");
+    printf("D");
     if (PyObject_TypeCheck(arg_x, &PyUnicode_Type)) {        // if isinstance(x, unicode): return Html(x)
-		ret = html_make_new(arg_x);
-		Py_DECREF(arg_x);
+        ret = html_make_new(arg_x);
+        Py_DECREF(arg_x);
         return ret;
     }
     printf("E");
-	/*
+    /*
     if (!unicode_replace) { // if not unicode_replace: return StrHtml(x)
-		//
+        //
     }
-	*/
+    */
     unicode_arg = PyUnicode_FromEncodedObject(arg_x, NULL, "replace");    //PyObject* PyUnicode_FromEncodedObject( PyObject *obj, const char *encoding, const char *errors)
-	printf("F");
-	ret = html_make_new(unicode_arg);
-	printf("G\n");
-	Py_DECREF(arg_x);
-	Py_DECREF(unicode_arg);
-	return ret;
+    printf("F");
+    ret = html_make_new(unicode_arg);
+    printf("G\n");
+    Py_DECREF(arg_x);
+    Py_DECREF(unicode_arg);
+    return ret;
 }
 
 
@@ -245,17 +245,17 @@ typedef struct {
 static PyObject *
 html_make_new(PyObject *arg)
 {
-	PyObject *tup, *ret;
-	if (arg == NULL)
-		return NULL;
-	tup = PyTuple_New(1);
-	if (tup == NULL)
-		return NULL;
-	Py_INCREF(arg);
-	PyTuple_SET_ITEM(tup, 0, arg);
-	ret = PyUnicode_Type.tp_new(&Html_Type, tup, NULL);
-	Py_DECREF(tup);	
-	return ret;
+    PyObject *tup, *ret;
+    if (arg == NULL)
+        return NULL;
+    tup = PyTuple_New(1);
+    if (tup == NULL)
+        return NULL;
+    Py_INCREF(arg);
+    PyTuple_SET_ITEM(tup, 0, arg);
+    ret = PyUnicode_Type.tp_new(&Html_Type, tup, NULL);
+    Py_DECREF(tup);
+    return ret;
 }
 
 static PyObject *
@@ -263,37 +263,37 @@ html_add(PyObject *self, PyObject *arg)
 {
     PyObject *con, *quoted, *ret;
     printf("__add__\n");
-	quoted = html_quote(self, arg);
-	con = PyUnicode_Concat(self, quoted /*arg*/);
-	Py_DECREF(quoted);
-	ret = html_make_new(con);
-	Py_DECREF(con);
-    return ret;	
+    quoted = html_quote(self, arg);
+    con = PyUnicode_Concat(self, quoted /*arg*/);
+    Py_DECREF(quoted);
+    ret = html_make_new(con);
+    Py_DECREF(con);
+    return ret;
 }
 
 static PyObject *
 html_join(PyObject *self, PyObject *l)
 {
-	Py_ssize_t i;
-	PyObject *quoted_list, *item, *quoted_item, *ret, *joined;
+    Py_ssize_t i;
+    PyObject *quoted_list, *item, *quoted_item, *ret, *joined;
 
-	quoted_list = PySequence_List(l);
-	if (quoted_list == NULL)
-		return NULL;
-	for (i = 0; i < PyList_Size(l); i++) {
-		item = PyList_GetItem(quoted_list, i);
-		if (item == NULL) {
-			Py_DECREF(quoted_list);
-			return NULL;
-		}
-		quoted_item = html_quote(self, item);
-		PyList_SetItem(quoted_list, i, quoted_item);
-	}
-	joined = PyUnicode_Join(self, quoted_list);
-	Py_DECREF(quoted_list);
-	ret = html_make_new(joined);
-	Py_DECREF(joined);
-	return ret;
+    quoted_list = PySequence_List(l);
+    if (quoted_list == NULL)
+        return NULL;
+    for (i = 0; i < PyList_Size(l); i++) {
+        item = PyList_GetItem(quoted_list, i);
+        if (item == NULL) {
+            Py_DECREF(quoted_list);
+            return NULL;
+        }
+        quoted_item = html_quote(self, item);
+        PyList_SetItem(quoted_list, i, quoted_item);
+    }
+    joined = PyUnicode_Join(self, quoted_list);
+    Py_DECREF(quoted_list);
+    ret = html_make_new(joined);
+    Py_DECREF(joined);
+    return ret;
 }
 
 static PyObject *
@@ -305,7 +305,7 @@ html_repeat(PyObject *self, Py_ssize_t count)
 }
 
 static PyMethodDef html_methods[] = {
-    {"join", (PyCFunction)html_join, METH_O | METH_COEXIST, ""},    
+    {"join", (PyCFunction)html_join, METH_O | METH_COEXIST, ""},
     {NULL, NULL}
 };
 
@@ -323,10 +323,10 @@ html_mod(PyObject *self, PyObject *arg)
 
 static PyNumberMethods html_as_number = {
     (binaryfunc)html_add,           /*nb_add*/
-    0,								/*nb_subtract*/
-    0,								/*nb_multiply*/
-    0,								/*nb_divide*/
-    (binaryfunc)html_mod,			/*nb_remainder*/                // __mod__
+    0,                                /*nb_subtract*/
+    0,                                /*nb_multiply*/
+    0,                                /*nb_divide*/
+    (binaryfunc)html_mod,            /*nb_remainder*/                // __mod__
 };
 
 static PySequenceMethods html_as_sequence = {
@@ -353,33 +353,33 @@ html_repr(htmlObject *self)
 static void
 html_dealloc(PyObject *self)
 {    
-	PyUnicode_Type.tp_dealloc((PyObject *) self);
+    PyUnicode_Type.tp_dealloc((PyObject *) self);
 }
 
 static PyTypeObject Html_Type = {
-		PyObject_HEAD_INIT(NULL)	
-		0,						/*ob_size*/
-		"Html",					/*tp_name*/
-		sizeof(htmlObject),		/*tp_basicsize*/
-		0,						/*tp_itemsize*/
-		/* methods */
-		(destructor)html_dealloc,/*tp_dealloc*/  
-		0,						/*tp_print*/
-		0,                      /*tp_getattr*/
-		0,						/*tp_setattr*/
-		0,						/*tp_compare*/
-		(unaryfunc)html_repr,   /*tp_repr*/
-		&html_as_number,        /*tp_as_number*/
-		&html_as_sequence,      /*tp_as_sequence*/
-		0,						/*tp_as_mapping*/
-		0,						/*tp_hash*/
-		0,                      /*tp_call*/
-        0,                      /*tp_str*/
-        0,						/*tp_getattro*/
-        0,                      /*tp_setattro*/
-        0,                      /*tp_as_buffer*/
+        PyObject_HEAD_INIT(NULL)
+        0,                        /*ob_size*/
+        "Html",                   /*tp_name*/
+        sizeof(htmlObject),       /*tp_basicsize*/
+        0,                        /*tp_itemsize*/
+        /* methods */
+        (destructor)html_dealloc, /*tp_dealloc*/  
+        0,                        /*tp_print*/
+        0,                        /*tp_getattr*/
+        0,                        /*tp_setattr*/
+        0,                        /*tp_compare*/
+        (unaryfunc)html_repr,     /*tp_repr*/
+        &html_as_number,          /*tp_as_number*/
+        &html_as_sequence,        /*tp_as_sequence*/
+        0,                        /*tp_as_mapping*/
+        0,                        /*tp_hash*/
+        0,                        /*tp_call*/
+        0,                        /*tp_str*/
+        0,                        /*tp_getattro*/
+        0,                        /*tp_setattro*/
+        0,                        /*tp_as_buffer*/
         Py_TPFLAGS_DEFAULT |
-          Py_TPFLAGS_BASETYPE | Py_TPFLAGS_CHECKTYPES,     /*tp_flags*/ 
+          Py_TPFLAGS_BASETYPE | Py_TPFLAGS_CHECKTYPES,  /*tp_flags*/ 
         0,                      /*tp_doc*/
         0,                      /*tp_traverse*/
         0,                      /*tp_clear*/
@@ -388,7 +388,7 @@ static PyTypeObject Html_Type = {
         0,                      /*tp_iter*/
         0,                      /*tp_iternext*/
         html_methods,           /*tp_methods*/
-        0,						/*tp_members*/
+        0,                      /*tp_members*/
         0,                      /*tp_getset*/
         0,                      /*tp_base*/
         0,                      /*tp_dict*/
@@ -396,8 +396,8 @@ static PyTypeObject Html_Type = {
         0,                      /*tp_descr_set*/
         0,                      /*tp_dictoffset*/
         0,                      /*tp_init*/
-        0, //PyType_GenericAlloc,                      /*tp_alloc*/
-        0, //PyType_GenericNew,                      /*tp_new*/
+        0, //PyType_GenericAlloc,  /*tp_alloc*/
+        0, //PyType_GenericNew, /*tp_new*/
         0,                      /*tp_free*/
         0,                      /*tp_is_gc*/
 };
