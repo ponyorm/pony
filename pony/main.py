@@ -13,6 +13,7 @@ from pony.forms import (Form, Hidden, Submit, Reset,
                         Select, RadioGroup, MultiSelect, CheckboxGroup,
                         Composite, Grid)
 from pony.gui.tkgui import show_gui
+import pony.blueprint
 import pony.gui.webgui
 
 from pony.orm import Entity
