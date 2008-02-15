@@ -25,3 +25,6 @@ def grid_background(column_count=24, column_width=30, gutter_width=10):
     io = StringIO()
     im.save(io, 'PNG')
     return io.getvalue()
+
+if __name__ == '__main__':
+    file('grid_test.css', 'w').write(grid())
