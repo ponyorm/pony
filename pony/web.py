@@ -514,7 +514,7 @@ def get_http_handlers(path, qdict, host, port):
             if not is_param:
                 priority += 1
                 continue
-            value = path[i]
+            value = path[i].decode('utf8')
             if isinstance(x, int): args[x] = value
             elif isinstance(x, basestring): keyargs[x] = value
             elif isinstance(x, list):
@@ -538,6 +538,7 @@ def get_http_handlers(path, qdict, host, port):
             for name, is_param, x in info.parsed_query:
                 non_used_query_params.discard(name)
                 value = qdict.get(name, not_found)
+                if value is not not_found: value = value.decode('utf8')
                 if not is_param:
                     if value != x: break
                     priority += 1
@@ -550,6 +551,13 @@ def get_http_handlers(path, qdict, host, port):
                     if value is not_found: break
                     keyargs[x] = value
                 elif isinstance(x, list):
+                    if value is not_found:
+                        for is_param, y in x[2:]:
+                            if not is_param: continue
+                            if isinstance(y, int) and diff <= y < len(names): continue
+                            break
+                        else: continue
+                        break
                     match = x[1].match(value)
                     if not match: break
                     params = [ y for is_param, y in x[2:] if is_param ]
@@ -585,6 +593,9 @@ def get_http_handlers(path, qdict, host, port):
     return result
 
 def invoke(url):
+    if isinstance(url, str):
+        try: url.decode('utf8')
+        except UnicodeDecodeError: raise Http400BadRequest
     request = local.request
     local.response = HttpResponse()
     path, qlist = split_url(url)
@@ -607,12 +618,7 @@ def invoke(url):
         url2 = script_name + url2 or '/'
         if url2 != script_name + url: raise HttpRedirect(url2)
     info, args, keyargs = handlers[0]
-    try:
-        for i, value in enumerate(args):
-            if value is not None: args[i] = value.decode('utf8')
-        for key, value in keyargs.items():
-            if value is not None: keyargs[key] = value.decode('utf8')
-    except UnicodeDecodeError: raise Http400BadRequest
+
     if info.redirect:
         for alternative in info.func.http:
             if not alternative.redirect:
