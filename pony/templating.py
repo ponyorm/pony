@@ -90,7 +90,7 @@ def quote(x, unicode_replace=False):
     if not isinstance(x, basestring):
         if hasattr(x, '__unicode__'): x = unicode(x)
         else: x = str(x)
-    if isinstance(x, Html): return x
+        if isinstance(x, Html): return x
     if isinstance(x, StrHtml):
         if not unicode_replace: return x
         return Html(unicode(x, errors='replace'))
