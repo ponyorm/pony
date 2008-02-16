@@ -112,6 +112,11 @@ def split_url(url, strict_parsing=False):
     path = map(urllib.unquote, components)
     return path, qlist
 
+class NodefaultType(object):
+    def __repr__(self): return '__nodefault__'
+    
+__nodefault__ = NodefaultType()
+
 class HttpInfo(object):
     def __init__(self, func, url, host, port, redirect, http_headers):
         url_cache.clear()
@@ -153,21 +158,27 @@ class HttpInfo(object):
     @staticmethod
     def getargspec(func):
         original_func = getattr(func, 'original_func', func)
-        names,argsname,keyargsname,defaults = inspect.getargspec(original_func)
-        names = list(names)
-        if defaults is None: new_defaults = []
-        else: new_defaults = list(defaults)
+        names, argsname, keyargsname, defaults = inspect.getargspec(original_func)
+        defaults = defaults and list(defaults) or []
+        diff = len(names) - len(defaults)
+        converters = {}
         try:
-            for i, value in enumerate(new_defaults):
-                if value is not None: new_defaults[i] = unicode(value).encode('utf8')
+            for i, value in enumerate(defaults):
+                if value is None: continue
+                elif isinstance(value, basestring):
+                    defaults[i] = unicode(value).encode('utf8')
+                elif callable(value):
+                    converters[diff+i] = value
+                    defaults[i] = __nodefault__
+                else: converters[diff+i] = value.__class__
         except UnicodeDecodeError: raise ValueError(
             'Default value contains non-ascii symbols. Such default values must be in unicode.')
-        return names, argsname, keyargsname, new_defaults
+        return names, argsname, keyargsname, defaults, converters
     @staticmethod
     def create_dummy_func(func):
-        spec = inspect.formatargspec(*func.argspec)[1:-1]
+        spec = inspect.formatargspec(*func.argspec[:-1])[1:-1]
         source = "lambda %s: __locals__()" % spec
-        return eval(source, dict(__locals__=locals))
+        return eval(source, dict(__locals__=locals, __nodefault__=__nodefault__))
     component_re = re.compile(r"""
             [$]
             (?: (\d+)              # param number (group 1)
@@ -217,7 +228,7 @@ class HttpInfo(object):
         if pos != len(component):
             raise ValueError('Invalid url component: %r' % component)
     def adjust(self, x):
-        names, argsname, keyargsname, defaults = self.func.argspec
+        names, argsname, keyargsname, defaults, converters = self.func.argspec
         args, keyargs = self.args, self.keyargs
         if isinstance(x, int):
             if x < 0 or x >= len(names) and argsname is None:
@@ -239,13 +250,16 @@ class HttpInfo(object):
                 return i
         assert False
     def check(self):
-        names, argsname, keyargsname, defaults = self.func.argspec
+        names, argsname, keyargsname, defaults, converters = self.func.argspec
         if self.star and not argsname: raise TypeError(
             "Function %s does not accept arbitrary argument list" % self.func.__name__)
         args, keyargs = self.args, self.keyargs
         diff = len(names) - len(defaults)
         for i, name in enumerate(names[:diff]):
             if i not in args: raise TypeError('Undefined path parameter: %s' % name)
+        for i, name, default in izip(xrange(diff, diff+len(defaults)), names[diff:], defaults):
+            if default is __nodefault__ and i not in args:
+                raise TypeError('Undefined path parameter: %s' % name)
         if args:
             for i in range(len(names), max(args)):
                 if i not in args:
@@ -293,13 +307,14 @@ def url(func, *args, **keyargs):
     try: keyparams = func.dummy_func(*args, **keyargs).copy()
     except TypeError, e:
         raise TypeError(e.args[0].replace('<lambda>', func.__name__))
-    names, argsname, keyargsname, defaults = func.argspec
+    names, argsname, keyargsname, defaults, converters = func.argspec
     indexparams = map(keyparams.pop, names)
     indexparams.extend(keyparams.pop(argsname, ()))
     keyparams.update(keyparams.pop(keyargsname, {}))
     try:
         for i, value in enumerate(indexparams):
-            if value is not None: indexparams[i] = unicode(value).encode('utf8')
+            if value is not None and value is not __nodefault__:
+                indexparams[i] = unicode(value).encode('utf8')
         for key, value in keyparams.items():
             if value is not None: keyparams[key] = unicode(value).encode('utf8')
     except UnicodeDecodeError: raise ValueError(
@@ -324,7 +339,7 @@ def url(func, *args, **keyargs):
 make_url = url
 
 def build_url(info, keyparams, indexparams, host, port):
-    names, argsname, keyargsname, defaults = info.func.argspec
+    names, argsname, keyargsname, defaults, converters = info.func.argspec
     path = []
     used_indexparams = set()
     used_keyparams = set()
@@ -333,7 +348,11 @@ def build_url(info, keyparams, indexparams, host, port):
         if isinstance(x, int):
             value = indexparams[x]
             used_indexparams.add(x)
-            is_default = diff <= x < len(names) and defaults[x - diff] == value
+            is_default = False
+            if diff <= x < len(names):
+                if value is __nodefault__: raise PathError('Value for paremeter %r does not set' % names[x])
+                default = defaults[x-diff]
+                if value == unicode(default).encode('utf8'): is_default = True
             return is_default, value
         elif isinstance(x, basestring):
             try: value = keyparams[x]
@@ -532,7 +551,7 @@ def get_http_handlers(path, qdict, host, port):
                     else: assert False
             else: assert False
         else:
-            names, _, _, defaults = info.func.argspec
+            names, _, _, defaults, converters = info.func.argspec
             diff = len(names) - len(defaults)
             non_used_query_params = set(qdict)
             for name, is_param, x in info.parsed_query:
@@ -576,15 +595,20 @@ def get_http_handlers(path, qdict, host, port):
                 arglist = [ None ] * len(names)
                 arglist[diff:] = defaults
                 for i, value in sorted(args.items()):
+                    converter = converters.get(i)
+                    if converter is not None:
+                        try: value = converter(value)
+                        except: break
                     try: arglist[i] = value
                     except IndexError:
                         assert i == len(arglist)
                         arglist.append(value)
-                if len(info.parsed_path) != len(path):
-                    assert info.star
-                    arglist.extend(path[len(info.parsed_path):])
-                result.append((info, arglist, keyargs, priority,
-                               len(non_used_query_params)))
+                else:
+                    if __nodefault__ in arglist[diff:]: continue
+                    if len(info.parsed_path) != len(path):
+                        assert info.star
+                        arglist.extend(path[len(info.parsed_path):])
+                    result.append((info, arglist, keyargs, priority, len(non_used_query_params)))
     if result:
         x = max(map(itemgetter(3), result))
         result = [ tup for tup in result if tup[3] == x ]
@@ -630,7 +654,7 @@ def invoke(url):
                 raise HttpRedirect(new_url, status)
     local.response.headers.update(info.http_headers)
 
-    names, argsname, keyargsname, defaults = info.func.argspec
+    names, argsname, keyargsname, defaults, converters = info.func.argspec
     params = request.params
     params.update(zip(names, args))
     params.update(keyargs)
