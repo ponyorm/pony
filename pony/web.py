@@ -1,6 +1,8 @@
-import re, threading, os.path, inspect, sys, cStringIO, itertools
+import re, threading, os.path, inspect, sys
 import cgi, cgitb, urllib, Cookie, mimetypes, cPickle, time
 
+from cStringIO import StringIO
+from itertools import imap, izip, count
 from operator import itemgetter, attrgetter
 
 from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
@@ -233,7 +235,7 @@ class HttpInfo(object):
             try: i = names.index(x)
             except ValueError:
                 if keyargsname is None or x in keyargs:
-                    raise TypeError('Invalid parameter name: %s' % x)
+                    raise TypeError('Unknown parameter name: %s' % x)
                 keyargs.add(x)
                 return x
             else:
@@ -246,9 +248,9 @@ class HttpInfo(object):
         if self.star and not argsname: raise TypeError(
             "Function %s does not accept arbitrary argument list" % self.func.__name__)
         args, keyargs = self.args, self.keyargs
-        for i, name in enumerate(names[:len(names)-len(defaults)]):
-            if i not in args:
-                raise TypeError('Undefined path parameter: %s' % name)
+        diff = len(names) - len(defaults)
+        for i, name in enumerate(names[:diff]):
+            if i not in args: raise TypeError('Undefined path parameter: %s' % name)
         if args:
             for i in range(len(names), max(args)):
                 if i not in args:
@@ -332,17 +334,16 @@ def build_url(info, keyparams, indexparams, host, port):
     path = []
     used_indexparams = set()
     used_keyparams = set()
-    offset = len(names) - len(defaults)
+    diff = len(names) - len(defaults)
     def build_param(x):
         if isinstance(x, int):
             value = indexparams[x]
             used_indexparams.add(x)
-            is_default = (offset <= x < len(names)
-                          and defaults[x - offset] == value)
+            is_default = diff <= x < len(names) and defaults[x - diff] == value
             return is_default, value
         elif isinstance(x, basestring):
             try: value = keyparams[x]
-            except KeyError: assert False, 'Parameter not found: %s' % x
+            except KeyError: assert False, 'Parameter not found: %r' % x
             used_keyparams.add(x)
             return False, value
         elif isinstance(x, list):
@@ -353,8 +354,7 @@ def build_url(info, keyparams, indexparams, host, port):
                 else:
                     is_default_2, component = build_param(y)
                     is_default = is_default and is_default_2
-                    if component is None:
-                        raise PathError('Value for parameter %s is None' % y)
+                    if component is None: raise PathError('Value for parameter %r is None' % y)
                     result.append(component)
             return is_default, ''.join(result)
         else: assert False
@@ -363,8 +363,7 @@ def build_url(info, keyparams, indexparams, host, port):
         if not is_param: component = x
         else:
             is_default, component = build_param(x)
-            if component is None:
-                raise PathError('Value for parameter %s is None' % x)
+            if component is None: raise PathError('Value for parameter %r is None' % x)
         path.append(urllib.quote(component, safe=':@&=+$,'))
     if info.star:
         for i in range(len(info.args), len(indexparams)):
@@ -378,21 +377,16 @@ def build_url(info, keyparams, indexparams, host, port):
         else:
             is_default, value = build_param(x)
             if not is_default:
-                if value is None:
-                    raise PathError('Value for parameter %s is None' % x)
+                if value is None: raise PathError('Value for parameter %r is None' % x)
                 qlist.append((name, value))
     quote_plus = urllib.quote_plus
-    q = "&".join(("%s=%s" % (quote_plus(name), quote_plus(value)))
-                 for name, value in qlist)
+    q = "&".join(("%s=%s" % (quote_plus(name), quote_plus(value))) for name, value in qlist)
 
     errmsg = 'Not all parameters were used during path construction'
-    if len(used_keyparams) != len(keyparams):
-        raise PathError(errmsg)
+    if len(used_keyparams) != len(keyparams): raise PathError(errmsg)
     if len(used_indexparams) != len(indexparams):
         for i, value in enumerate(indexparams):
-            if (i not in used_indexparams
-                and value != defaults[i-offset]):
-                    raise PathError(errmsg)
+            if i not in used_indexparams and value != defaults[i-diff]: raise PathError(errmsg)
 
     script_name = local.request.environ.get('SCRIPT_NAME', '')
     url = q and '?'.join((p, q)) or p
@@ -545,7 +539,7 @@ def get_http_handlers(path, qdict, host, port):
             else: assert False
         else:
             names, _, _, defaults = info.func.argspec
-            offset = len(names) - len(defaults)
+            diff = len(names) - len(defaults)
             non_used_query_params = set(qdict)
             for name, is_param, x in info.parsed_query:
                 non_used_query_params.discard(name)
@@ -555,7 +549,7 @@ def get_http_handlers(path, qdict, host, port):
                     priority += 1
                 elif isinstance(x, int):
                     if value is not_found:
-                        if offset <= x < len(names): continue
+                        if diff <= x < len(names): continue
                         else: break
                     else: args[x] = value
                 elif isinstance(x, basestring):
@@ -578,7 +572,7 @@ def get_http_handlers(path, qdict, host, port):
                 else: assert False
             else:
                 arglist = [ None ] * len(names)
-                arglist[-len(defaults):] = defaults
+                arglist[diff:] = defaults
                 for i, value in sorted(args.items()):
                     try: arglist[i] = value
                     except IndexError:
@@ -808,14 +802,14 @@ class HttpRequest(object):
             self.full_url = 'http://localhost/'
             self.host = 'localhost'
             self.port = 80
-        input_stream = environ.get('wsgi.input') or cStringIO.StringIO()
+        input_stream = environ.get('wsgi.input') or StringIO()
         self.params = {}
         self.fields = cgi.FieldStorage(
             fp=input_stream, environ=environ, keep_blank_values=True)
         self.form_processed = None
         self.submitted_form = self.fields.getfirst('_f')
         self.ticket, self.payload = auth.verify_ticket(self.fields.getfirst('_t'))
-        self.id_counter = itertools.imap('id_%d'.__mod__, itertools.count())
+        self.id_counter = imap('id_%d'.__mod__, count())
 
 class HttpResponse(object):
     def __init__(self):
@@ -860,7 +854,7 @@ def format_exc():
     if traceback.tb_next: traceback = traceback.tb_next
     if traceback.tb_next: traceback = traceback.tb_next
     try:
-        io = cStringIO.StringIO()
+        io = StringIO()
         hook = cgitb.Hook(file=io)
         hook.handle((exc_type, exc_value, traceback))
         return io.getvalue()
