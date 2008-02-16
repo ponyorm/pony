@@ -95,20 +95,17 @@ def split_url(url, strict_parsing=False):
         if strict_parsing:
             try: url.decode('ascii')
             except UnicodeDecodeError: raise ValueError(
-                'Url string contains non-ascii symbols. '
-                'Such urls must be in unicode.')
+                'Url string contains non-ascii symbols. Such urls must be in unicode.')
     else: raise ValueError('Url parameter must be str or unicode')
     if '?' in url:
         p, q = url.split('?', 1)
         qlist = []
         qnames = set()
-        for name, value in cgi.parse_qsl(q, strict_parsing=strict_parsing,
-                                            keep_blank_values=True):
+        for name, value in cgi.parse_qsl(q, strict_parsing=strict_parsing, keep_blank_values=True):
             if name not in qnames:
                 qlist.append((name, value))
                 qnames.add(name)
-            elif strict_parsing:
-                raise ValueError('Duplicate url parameter: %s' % name)
+            elif strict_parsing: raise ValueError('Duplicate url parameter: %s' % name)
     else: p, qlist = url, []
     components = p.split('/')
     if not components[0]: components = components[1:]
@@ -162,11 +159,9 @@ class HttpInfo(object):
         else: new_defaults = list(defaults)
         try:
             for i, value in enumerate(new_defaults):
-                if value is not None:
-                    new_defaults[i] = unicode(value).encode('utf8')
-        except UnicodeDecodeError:
-            raise ValueError('Default value contains non-ascii symbols. '
-                             'Such default values must be in unicode.')
+                if value is not None: new_defaults[i] = unicode(value).encode('utf8')
+        except UnicodeDecodeError: raise ValueError(
+            'Default value contains non-ascii symbols. Such default values must be in unicode.')
         return names, argsname, keyargsname, new_defaults
     @staticmethod
     def create_dummy_func(func):
@@ -307,9 +302,8 @@ def url(func, *args, **keyargs):
             if value is not None: indexparams[i] = unicode(value).encode('utf8')
         for key, value in keyparams.items():
             if value is not None: keyparams[key] = unicode(value).encode('utf8')
-    except UnicodeDecodeError:
-        raise ValueError('Url parameter value contains non-ascii symbols. '
-                         'Such values must be in unicode.')
+    except UnicodeDecodeError: raise ValueError(
+        'Url parameter value contains non-ascii symbols. Such values must be in unicode.')
     request = local.request
     host, port = request.host, request.port
     key = func, tuple(indexparams), tuple(sorted(keyparams.items())), host, port
@@ -625,8 +619,8 @@ def invoke(url):
                 new_url = make_url(info.func, *args, **keyargs)
                 status = '301 Moved Permanently'
                 if isinstance(info.redirect, basestring): status = info.redirect
-                elif isinstance(info.redirect, (int, long)) \
-                     and 300 <= info.redirect < 400: status = str(info.redirect)
+                elif isinstance(info.redirect, (int, long)) and 300 <= info.redirect < 400:
+                    status = str(info.redirect)
                 raise HttpRedirect(new_url, status)
     local.response.headers.update(info.http_headers)
 
