@@ -306,7 +306,7 @@ def url(func, *args, **keyargs):
         raise ValueError('Cannot create url for this object :%s' % func)
     try: keyparams = func.dummy_func(*args, **keyargs).copy()
     except TypeError, e:
-        raise TypeError(e.args[0].replace('<lambda>', func.__name__))
+        raise TypeError(e.args[0].replace('<lambda>', func.__name__, 1))
     names, argsname, keyargsname, defaults, converters = func.argspec
     indexparams = map(keyparams.pop, names)
     indexparams.extend(keyparams.pop(argsname, ()))
@@ -352,7 +352,8 @@ def build_url(info, keyparams, indexparams, host, port):
             if diff <= x < len(names):
                 if value is __nodefault__: raise PathError('Value for paremeter %r does not set' % names[x])
                 default = defaults[x-diff]
-                if value == unicode(default).encode('utf8'): is_default = True
+                if value is None and default is None or value == unicode(default).encode('utf8'):
+                    is_default = True
             return is_default, value
         elif isinstance(x, basestring):
             try: value = keyparams[x]
