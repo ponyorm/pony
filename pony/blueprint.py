@@ -3,19 +3,15 @@ from cStringIO import StringIO
 from pony.templating import template, cycle
 from pony.web import http
 
+@http('/blueprint/grid.css', type='text/css')
 @http('/blueprint/$column_count/$column_width/$gutter_width/grid.css', type='text/css')
 def grid(column_count=24, column_width=30, gutter_width=10):
-    column_count=int(column_count)
-    column_width=int(column_width)
-    gutter_width=int(gutter_width)
     page_width = column_count*(column_width+gutter_width) - gutter_width
     return template()
 
+@http('/blueprint/grid.png', type='image/png')
 @http('/blueprint/$column_count/$column_width/$gutter_width/grid.png', type='image/png')
 def grid_background(column_count=24, column_width=30, gutter_width=10):
-    column_count=int(column_count)
-    column_width=int(column_width)
-    gutter_width=int(gutter_width)
     try: import Image, ImageDraw
     except ImportError: raise http.NotFound
     im = Image.new('RGB', (column_width+gutter_width, 18), (255, 255, 255))
