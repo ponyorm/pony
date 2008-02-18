@@ -197,7 +197,7 @@ class HttpInfo(object):
         for i, item in enumerate(items):
             if item[0]:
                 pattern.append('/')
-                try: nextchar = items[i+1][1]
+                try: nextchar = items[i+1][1][0]
                 except IndexError: regexp.append('(.*)$')
                 else: regexp.append('([^%s]*)' % nextchar.replace('\\', '\\\\'))
             else:
