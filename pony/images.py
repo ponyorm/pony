@@ -23,7 +23,7 @@ def _decode_colour(colour):
     try: colour = ImageColor.colormap[colour][1:]
     except KeyError: pass
     size = len(colour)
-    if size in (3, 4): result = ''.join(char+char for char in colour)
+    if size in (3, 4): colour = ''.join(char+char for char in colour)
     elif size not in (6, 8): raise ValueError
     try: return tuple(map(ord, unhexlify(colour)))
     except: raise ValueError
@@ -76,7 +76,6 @@ def circle_gif(radius, colour, bgcolour='ffffff'):
     colour = _decode_colour(colour)
     if len(colour) != 3: raise ValueError
     bgcolour=_decode_colour(bgcolour)
-    
     img = _circle_image(radius, colour, bgcolour)
     img = img.convert("P", dither=Image.NONE, palette=Image.ADAPTIVE)
     io = StringIO()
@@ -88,16 +87,19 @@ def _line_image(format, horiz, length, colour, colour2=None):
     except: raise ValueError
     if not 0 <= length <= 10000: raise ValueError
     colour = _decode_colour(colour)
-    if colour2 is not None: colour2 = _decode_colout(colour2)
+    if colour2 is not None: colour2 = _decode_colour(colour2)
     mode = len(colour)==6 and 'RGB' or 'RGBA'
-
     img = Image.new(mode, (length, 1), colour)
     if colour2 is None: pass
     elif len(colour2) != len(colour): raise ValueError
     else:
-        raise NotImplementedError
-    if not horiz: img = img.rotate(90)
-    # if format == 'GIF': img = img.convert("P", dither=Image.NONE, palette=Image.ADAPTIVE)
+        r1, g1, b1 = colour
+        r2, g2, b2 = colour2
+        pixels = img.load()
+        for i in range(length):
+            pixels[i, 0] = ((r1 + r2*i/length), (g1 + g2*i/length), (b1 + b2*i/length))
+    if not horiz: img = img.rotate(270)
+    if format == 'GIF': img = img = img.convert("P", dither=Image.NONE, palette=Image.ADAPTIVE)
     io = StringIO()
     img.save(io, format)
     return io.getvalue()
