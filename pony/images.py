@@ -99,7 +99,7 @@ def _line_image(format, horiz, length, colour, colour2=None):
         for i in range(length):
             pixels[i, 0] = ((r1 + r2*i/length), (g1 + g2*i/length), (b1 + b2*i/length))
     if not horiz: img = img.rotate(270)
-    if format == 'GIF': img = img = img.convert("P", dither=Image.NONE, palette=Image.ADAPTIVE)
+    # if format == 'GIF': img  = img.convert("P", dither=Image.NONE, palette=Image.ADAPTIVE)
     io = StringIO()
     img.save(io, format)
     return io.getvalue()
