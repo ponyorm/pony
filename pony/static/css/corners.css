@@ -3,8 +3,8 @@
 .rounded div.top-right,
 .rounded div.bottom-left,
 .rounded div.bottom-right {
-  position:absolute; width:10px; height:10px;
-  background: url(/pony/images/circle10.png) /*top left*/ no-repeat;
+  position:absolute; width:20px; height:20px;
+  background: url(/pony/images/circle20.png) /*top left*/ no-repeat;
 }
 .rounded div.top-left {top:0; left:0; background-position: top left;}
 .rounded div.top-right {top:0; right:0; background-position: top right;}
@@ -17,10 +17,10 @@
 * html .rounded div.top-right,
 * html .rounded div.bottom-left,
 * html .rounded div.bottom-right {
-   /* url(http://pony/images/circle10.gif);
+   /* url(http://pony/images/circle20.gif);
       line-height: 1px;
       font-size: 1px;
    */
 }
-* html .rounded div.bottom-left {}
-* html .rounded div.bottom-right {}
+* html .rounded div.bottom-left {bottom:0; left:0; background-position: bottom left;}
+* html .rounded div.bottom-right {bottom:0; right:0; background-position: bottom right;}
