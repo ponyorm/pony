@@ -19,21 +19,20 @@ def cached(f, *args, **keyargs):
     if len(_cache) == MAX_CACHE_SIZE: _cache.clear()
     return _cache.setdefault(key, f(*args, **keyargs))
 
-def _normalize_colour(colour):
-    try: return ImageColor.colormap[colour][1:]
+def _decode_colour(colour):
+    try: colour = ImageColor.colormap[colour][1:]
     except KeyError: pass
     size = len(colour)
-    if size in (3, 4): return ''.join(char+char for char in colour)
-    elif size in (6, 8): return colour
-    raise ValueError
+    if size in (3, 4): result = ''.join(char+char for char in colour)
+    elif size not in (6, 8): raise ValueError
+    try: return tuple(map(ord, unhexlify(colour)))
+    except: raise ValueError
 
 def _circle_image(radius, colour, bgcolour):
     if not PIL: raise ValueError
-    if not 0 <= radius <= 100: raise ValueError
-    try:
-        colour = tuple(map(ord, unhexlify(colour)))
-        bgcolour = tuple(map(ord, unhexlify(bgcolour)))
+    try: radius = int(radius)
     except: raise ValueError
+    if not 0 <= radius <= 100: raise ValueError
     if len(colour) != len(bgcolour): raise ValueError
     mode = len(colour)==3 and 'RGB' or 'RGBA'
 
@@ -49,41 +48,80 @@ def _circle_image(radius, colour, bgcolour):
     circle.paste(quarter.rotate(270), (radius, 0, radius*2, radius))
     return circle
 
-@http('/pony/images/circle$radius.png', type='image/png')
-@http('/pony/images/circle$radius-$colour.png', type='image/png')
+@http('/pony/images/circle$radius.png',                   type='image/png')
+@http('/pony/images/circle$radius-$colour.png',           type='image/png')
 @http('/pony/images/circle$radius-$colour-$bgcolour.png', type='image/png')
 @cached
 def circle_png(radius, colour=None, bgcolour=None):
-    try: radius = int(radius)
-    except: raise ValueError
-
     if colour is not None:
-        colour = _normalize_colour(colour)
-        if bgcolour is not None: bgcolour = _normalize_colour(bgcolour)
-        elif len(colour) == 6: colour, bgcolour = colour + 'ff', colour + '00'
-        elif colour[-2:] == 'ff': bgcolour = colour[:-2] + '00'
-        elif colour[-2:] == '00': bgcolour = colour[:-2] + 'ff'
+        colour = _decode_colour(colour)
+        if bgcolour is not None: bgcolour = _decode_colour(bgcolour)
+        elif len(colour) == 3: colour, bgcolour = colour + (255,), colour + (0,)
+        elif colour[-1] == 255: bgcolour = colour[:-1] + (0,)
+        elif colour[-1] == 0: bgcolour = colour[:-1] + (255,)
         else: raise ValueError
-    else: colour, bgcolour = 'ffffff00', 'ffffffff'
+    else:
+        colour = (255, 255, 255, 0)
+        bgcolour = (255, 255, 255, 255)
             
-    im = _circle_image(radius, colour, bgcolour)
+    img = _circle_image(radius, colour, bgcolour)
     io = StringIO()
-    im.save(io, 'PNG')
+    img.save(io, 'PNG')
     return io.getvalue()
 
-@http('/pony/images/circle$radius-$colour.gif', type='image/gif')
+@http('/pony/images/circle$radius-$colour.gif',           type='image/gif')
 @http('/pony/images/circle$radius-$colour-$bgcolour.gif', type='image/gif')
 @cached
 def circle_gif(radius, colour, bgcolour='ffffff'):
-    try: radius = int(radius)
-    except: raise ValueError
-
-    colour = _normalize_colour(colour)
-    if len(colour) != 6: raise ValueError
-    bgcolour=_normalize_colour(bgcolour)
+    colour = _decode_colour(colour)
+    if len(colour) != 3: raise ValueError
+    bgcolour=_decode_colour(bgcolour)
     
-    im = _circle_image(radius, colour, bgcolour)
-    im = im.convert("P", dither=Image.NONE, palette=Image.ADAPTIVE)
+    img = _circle_image(radius, colour, bgcolour)
+    img = img.convert("P", dither=Image.NONE, palette=Image.ADAPTIVE)
     io = StringIO()
-    im.save(io, 'GIF')
+    img.save(io, 'GIF')
     return io.getvalue()
+
+def _line_image(format, horiz, length, colour, colour2=None):
+    try: length = int(length)
+    except: raise ValueError
+    if not 0 <= length <= 10000: raise ValueError
+    colour = _decode_colour(colour)
+    if colour2 is not None: colour2 = _decode_colout(colour2)
+    mode = len(colour)==6 and 'RGB' or 'RGBA'
+
+    img = Image.new(mode, (length, 1), colour)
+    if colour2 is None: pass
+    elif len(colour2) != len(colour): raise ValueError
+    else:
+        raise NotImplementedError
+    if not horiz: img = img.rotate(90)
+    # if format == 'GIF': img = img.convert("P", dither=Image.NONE, palette=Image.ADAPTIVE)
+    io = StringIO()
+    img.save(io, format)
+    return io.getvalue()
+
+@http('/pony/images/hline$length-$colour.png',          type='image/png')
+@http('/pony/images/hline$length-$colour-$colour2.png', type='image/png')
+@cached
+def hline_png(length, colour, colour2=None):
+    return _line_image('PNG', True, length, colour, colour2)
+
+@http('/pony/images/hline$length-$colour.gif',          type='image/png')
+@http('/pony/images/hline$length-$colour-$colour2.gif', type='image/png')
+@cached
+def hline_gif(length, colour, colour2=None):
+    return _line_image('GIF', True, length, colour, colour2)
+
+@http('/pony/images/vline$length-$colour.png',          type='image/png')
+@http('/pony/images/vline$length-$colour-$colour2.png', type='image/png')
+@cached
+def vline_png(length, colour, colour2=None):
+    return _line_image('PNG', False, length, colour, colour2)
+
+@http('/pony/images/vline$length-$colour.gif',          type='image/png')
+@http('/pony/images/vline$length-$colour-$colour2.gif', type='image/png')
+@cached
+def vline_gif(length, colour, colour2=None):
+    return _line_image('GIF', False, length, colour, colour2)
