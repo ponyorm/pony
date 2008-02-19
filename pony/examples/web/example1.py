@@ -102,6 +102,11 @@ def page7(name=None):
         print '<p><a href="%s">Try again</a></p>' % url(page7)
     print footer()
 
+@http
+def page8():
+    "Using of html() function"
+    return html()
+
 @http('/') # This is root page
 @printhtml
 def index():
@@ -114,8 +119,9 @@ def index():
     print '<li>%s</li>' % link(page5)
     print '<li>%s</li>' % link(page6, 2007, 10)
     print '<li>%s</li>' % link(page7)
+    print '<li>%s</li>' % link(page8)
     print '</ul>'
 
 if __name__ == '__main__':
     start_http_server()
-    show_gui()
+    # show_gui()
