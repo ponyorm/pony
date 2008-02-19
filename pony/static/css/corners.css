@@ -17,10 +17,11 @@
 * html .rounded div.top-right,
 * html .rounded div.bottom-left,
 * html .rounded div.bottom-right {
-   /* url(http://pony/images/circle20.gif);
-      line-height: 1px;
-      font-size: 1px;
-   */
+   background: url(/pony/images/circle20.gif);
+   line-height: 1px;
+   font-size: 1px;
 }
-* html .rounded div.bottom-left {bottom:0; left:0; background-position: bottom left;}
-* html .rounded div.bottom-right {bottom:0; right:0; background-position: bottom right;}
+* html .rounded div.top-left {background-position: top left;}
+* html .rounded div.top-right {background-position: top right;}
+* html .rounded div.bottom-left {bottom:-1px; background-position: bottom left;}
+* html .rounded div.bottom-right {bottom:-1px; background-position: bottom right;}

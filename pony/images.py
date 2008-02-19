@@ -32,7 +32,7 @@ def _circle_image(radius, colour, bgcolour):
     if not PIL: raise ValueError
     try: radius = int(radius)
     except: raise ValueError
-    if not 0 <= radius <= 100: raise ValueError
+    if not 2 <= radius <= 100: raise ValueError
     if len(colour) != len(bgcolour): raise ValueError
     mode = len(colour)==3 and 'RGB' or 'RGBA'
 
@@ -85,6 +85,28 @@ def circle_gif(radius, colour, bgcolour='ffffff'):
         img.save(io, 'GIF')
         return io.getvalue()
     except ValueError: raise http.NotFound
+
+@http('/pony/images/circle$radius.gif', type='image/gif')
+@cached
+def transparent_white_circle_gif(radius):
+    if not PIL: raise http.NotFound
+    try: radius = int(radius)
+    except: raise http.NotFound
+    if not 2 <= radius <= 100: raise http.NotFound
+    quarter = Image.new("P", (radius, radius), 0)
+    draw = ImageDraw.Draw(quarter)
+    draw.pieslice((0, 0, radius*2, radius*2), 180, 270, fill=1)
+
+    circle = Image.new("P", (radius*2, radius*2), 0)
+    circle.paste(quarter, (0, 0, radius, radius))
+    circle.paste(quarter.rotate(90), (0, radius, radius, radius*2))
+    circle.paste(quarter.rotate(180), (radius, radius, radius*2, radius*2))
+    circle.paste(quarter.rotate(270), (radius, 0, radius*2, radius))
+
+    circle.putpalette((255, 255, 255, 0, 0, 0))
+    io = StringIO()
+    circle.save(io, 'GIF', transparency=1)
+    return io.getvalue()
 
 def _line_image(format, horiz, length, colour, colour2=None):
     try: length = int(length)
@@ -144,6 +166,7 @@ def vline_gif(length, colour, colour2=None):
 
 @http('/pony/images/pixel.png',         type='image/png')
 @http('/pony/images/pixel-$colour.png', type='image/png')
+@cached
 def pixel_png(colour='00000000'):
     try:
         colour = _decode_colour(colour)
@@ -156,6 +179,7 @@ def pixel_png(colour='00000000'):
 
 @http('/pony/images/pixel.gif',         type='image/gif')
 @http('/pony/images/pixel-$colour.gif', type='image/gif')
+@cached
 def pixel_gif(colour=None):
     try:
         if colour is not None: colour = _decode_colour(colour)
