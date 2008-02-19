@@ -1,23 +1,27 @@
 from cStringIO import StringIO
 from binascii import unhexlify
 
-try: import Image, ImageDraw
+try: import Image, ImageDraw, ImageColor
 except ImportError: PIL = False
 else: PIL = True
 
 from pony.web import http
 
-def _decode_colour(colour):
+def _normalize_colour(colour):
+    try: return ImageColor.colormap[colour][1:]
+    except KeyError: pass
     size = len(colour)
-    if size not in (3, 4, 6, 8): raise ValueError
-    if size < 6: colour = ''.join(a+a for a in colour)
-    return tuple(map(ord, unhexlify(colour)))
+    if size in (3, 4): return ''.join(char+char for char in colour)
+    elif size in (6, 8): return colour
+    raise ValueError
 
 def _circle_image(radius, colour, bgcolour):
     if not PIL: raise ValueError
     if not 0 <= radius <= 100: raise ValueError
-    colour = _decode_colour(colour)
-    bgcolour = _decode_colour(bgcolour)
+    try:
+        colour = tuple(map(ord, unhexlify(colour)))
+        bgcolour = tuple(map(ord, unhexlify(bgcolour)))
+    except: raise ValueError
     if len(colour) != len(bgcolour): raise ValueError
     mode = len(colour)==3 and 'RGB' or 'RGBA'
 
@@ -33,22 +37,39 @@ def _circle_image(radius, colour, bgcolour):
     circle.paste(quarter.rotate(270), (radius, 0, radius*2, radius))
     return circle
 
+@http('/pony/images/circle$radius.png', type='image/png')
+@http('/pony/images/circle$radius-$colour.png', type='image/png')
 @http('/pony/images/circle$radius-$colour-$bgcolour.png', type='image/png')
-def circle_png(radius, colour, bgcolour):
+def circle_png(radius, colour=None, bgcolour=None):
     try: radius = int(radius)
     except: raise ValueError
+
+    if colour is not None:
+        colour = _normalize_colour(colour)
+        if bgcolour is not None: bgcolour = _normalize_colour(bgcolour)
+        elif len(colour) == 6: colour, bgcolour = colour + 'ff', colour + '00'
+        elif colour[-2:] == 'ff': bgcolour = colour[:-2] + '00'
+        elif colour[-2:] == '00': bgcolour = colour[:-2] + 'ff'
+        else: raise ValueError
+    else: colour, bgcolour = 'ffffff00', 'ffffffff'
+            
     im = _circle_image(radius, colour, bgcolour)
     io = StringIO()
     im.save(io, 'PNG')
     return io.getvalue()
 
+@http('/pony/images/circle$radius-$colour.gif', type='image/gif')
 @http('/pony/images/circle$radius-$colour-$bgcolour.gif', type='image/gif')
-def circle_gif(radius, colour, bgcolour):
-    bgcolour='eee'
+def circle_gif(radius, colour, bgcolour='ffffff'):
     try: radius = int(radius)
     except: raise ValueError
-    if len(colour) not in (3, 6): raise ValueError
+
+    colour = _normalize_colour(colour)
+    if len(colour) != 6: raise ValueError
+    bgcolour=_normalize_colour(bgcolour)
+    
     im = _circle_image(radius, colour, bgcolour)
+    im = im.convert("P", dither=Image.NONE, palette=Image.ADAPTIVE)
     io = StringIO()
     im.save(io, 'GIF')
     return io.getvalue()
