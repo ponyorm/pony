@@ -53,34 +53,38 @@ def _circle_image(radius, colour, bgcolour):
 @http('/pony/images/circle$radius-$colour-$bgcolour.png', type='image/png')
 @cached
 def circle_png(radius, colour=None, bgcolour=None):
-    if colour is not None:
-        colour = _decode_colour(colour)
-        if bgcolour is not None: bgcolour = _decode_colour(bgcolour)
-        elif len(colour) == 3: colour, bgcolour = colour + (255,), colour + (0,)
-        elif colour[-1] == 255: bgcolour = colour[:-1] + (0,)
-        elif colour[-1] == 0: bgcolour = colour[:-1] + (255,)
-        else: raise ValueError
-    else:
-        colour = (255, 255, 255, 0)
-        bgcolour = (255, 255, 255, 255)
-            
-    img = _circle_image(radius, colour, bgcolour)
-    io = StringIO()
-    img.save(io, 'PNG')
-    return io.getvalue()
+    try:
+        if colour is not None:
+            colour = _decode_colour(colour)
+            if bgcolour is not None: bgcolour = _decode_colour(bgcolour)
+            elif len(colour) == 3: colour, bgcolour = colour + (255,), colour + (0,)
+            elif colour[-1] == 255: bgcolour = colour[:-1] + (0,)
+            elif colour[-1] == 0: bgcolour = colour[:-1] + (255,)
+            else: raise ValueError
+        else:
+            colour = (255, 255, 255, 0)
+            bgcolour = (255, 255, 255, 255)
+                
+        img = _circle_image(radius, colour, bgcolour)
+        io = StringIO()
+        img.save(io, 'PNG')
+        return io.getvalue()
+    except ValueError: raise http.NotFound
 
 @http('/pony/images/circle$radius-$colour.gif',           type='image/gif')
 @http('/pony/images/circle$radius-$colour-$bgcolour.gif', type='image/gif')
 @cached
 def circle_gif(radius, colour, bgcolour='ffffff'):
-    colour = _decode_colour(colour)
-    if len(colour) != 3: raise ValueError
-    bgcolour=_decode_colour(bgcolour)
-    img = _circle_image(radius, colour, bgcolour)
-    img = img.convert("P", dither=Image.NONE, palette=Image.ADAPTIVE)
-    io = StringIO()
-    img.save(io, 'GIF')
-    return io.getvalue()
+    try:
+        colour = _decode_colour(colour)
+        if len(colour) != 3: raise ValueError
+        bgcolour=_decode_colour(bgcolour)
+        img = _circle_image(radius, colour, bgcolour)
+        img = img.convert("P", dither=Image.NONE, palette=Image.ADAPTIVE)
+        io = StringIO()
+        img.save(io, 'GIF')
+        return io.getvalue()
+    except ValueError: raise http.NotFound
 
 def _line_image(format, horiz, length, colour, colour2=None):
     try: length = int(length)
@@ -114,44 +118,52 @@ def _line_image(format, horiz, length, colour, colour2=None):
 @http('/pony/images/hline$length-$colour-$colour2.png', type='image/png')
 @cached
 def hline_png(length, colour, colour2=None):
-    return _line_image('PNG', True, length, colour, colour2)
+    try: return _line_image('PNG', True, length, colour, colour2)
+    except ValueError: raise http.NotFound
 
 @http('/pony/images/hline$length-$colour.gif',          type='image/gif')
 @http('/pony/images/hline$length-$colour-$colour2.gif', type='image/gif')
 @cached
 def hline_gif(length, colour, colour2=None):
-    return _line_image('GIF', True, length, colour, colour2)
+    try: return _line_image('GIF', True, length, colour, colour2)
+    except ValueError: raise http.NotFound
 
 @http('/pony/images/vline$length-$colour.png',          type='image/png')
 @http('/pony/images/vline$length-$colour-$colour2.png', type='image/png')
 @cached
 def vline_png(length, colour, colour2=None):
-    return _line_image('PNG', False, length, colour, colour2)
+    try: return _line_image('PNG', False, length, colour, colour2)
+    except ValueError: raise http.NotFound
 
 @http('/pony/images/vline$length-$colour.gif',          type='image/gif')
 @http('/pony/images/vline$length-$colour-$colour2.gif', type='image/gif')
 @cached
 def vline_gif(length, colour, colour2=None):
-    return _line_image('GIF', False, length, colour, colour2)
+    try: return _line_image('GIF', False, length, colour, colour2)
+    except ValueError: raise http.NotFound
 
 @http('/pony/images/pixel.png',         type='image/png')
 @http('/pony/images/pixel-$colour.png', type='image/png')
 def pixel_png(colour='00000000'):
-    colour = _decode_colour(colour)
-    mode = len(colour)==6 and 'RGB' or 'RGBA'
-    img = Image.new(mode, (1, 1), colour)
-    io = StringIO()
-    img.save(io, 'PNG')
-    return io.getvalue()
+    try:
+        colour = _decode_colour(colour)
+        mode = len(colour)==6 and 'RGB' or 'RGBA'
+        img = Image.new(mode, (1, 1), colour)
+        io = StringIO()
+        img.save(io, 'PNG')
+        return io.getvalue()
+    except ValueError: raise http.NotFound
 
 @http('/pony/images/pixel.gif',         type='image/gif')
 @http('/pony/images/pixel-$colour.gif', type='image/gif')
-def pixel_png(colour=None):
-    if colour is not None: colour = _decode_colour(colour)
-    img = Image.new("P", (1, 1))
-    img.putpalette(colour or (255, 255, 255))
-    img.putpixel((0, 0), 0)
-    io = StringIO()
-    if colour is None: img.save(io, 'GIF', transparency=0)
-    else: img.save(io, 'GIF')
-    return io.getvalue()
+def pixel_gif(colour=None):
+    try:
+        if colour is not None: colour = _decode_colour(colour)
+        img = Image.new("P", (1, 1))
+        img.putpalette(colour or (255, 255, 255))
+        img.putpixel((0, 0), 0)
+        io = StringIO()
+        if colour is None: img.save(io, 'GIF', transparency=0)
+        else: img.save(io, 'GIF')
+        return io.getvalue()
+    except ValueError: raise http.NotFound
