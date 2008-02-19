@@ -95,9 +95,15 @@ def _line_image(format, horiz, length, colour, colour2=None):
     else:
         r1, g1, b1 = colour
         r2, g2, b2 = colour2
-        pixels = img.load()
-        for i in range(length):
-            pixels[i, 0] = ((r1 + r2*i/length), (g1 + g2*i/length), (b1 + b2*i/length))
+        if Image.VERSION >= '1.1.6':
+            pixels = img.load()
+            for i in range(length):
+                pixels[i, 0] = ((r1 + r2*i/length), (g1 + g2*i/length), (b1 + b2*i/length))
+        else:
+            putpixel = im.im.putpixel
+            for i in range(length):
+                putpixel((i, 0), ((r1 + r2*i/length), (g1 + g2*i/length), (b1 + b2*i/length)))
+
     if not horiz: img = img.rotate(270)
     # if format == 'GIF': img  = img.convert("P", dither=Image.NONE, palette=Image.ADAPTIVE)
     io = StringIO()
@@ -110,8 +116,8 @@ def _line_image(format, horiz, length, colour, colour2=None):
 def hline_png(length, colour, colour2=None):
     return _line_image('PNG', True, length, colour, colour2)
 
-@http('/pony/images/hline$length-$colour.gif',          type='image/png')
-@http('/pony/images/hline$length-$colour-$colour2.gif', type='image/png')
+@http('/pony/images/hline$length-$colour.gif',          type='image/gif')
+@http('/pony/images/hline$length-$colour-$colour2.gif', type='image/gif')
 @cached
 def hline_gif(length, colour, colour2=None):
     return _line_image('GIF', True, length, colour, colour2)
@@ -122,8 +128,30 @@ def hline_gif(length, colour, colour2=None):
 def vline_png(length, colour, colour2=None):
     return _line_image('PNG', False, length, colour, colour2)
 
-@http('/pony/images/vline$length-$colour.gif',          type='image/png')
-@http('/pony/images/vline$length-$colour-$colour2.gif', type='image/png')
+@http('/pony/images/vline$length-$colour.gif',          type='image/gif')
+@http('/pony/images/vline$length-$colour-$colour2.gif', type='image/gif')
 @cached
 def vline_gif(length, colour, colour2=None):
     return _line_image('GIF', False, length, colour, colour2)
+
+@http('/pony/images/pixel.png',         type='image/png')
+@http('/pony/images/pixel-$colour.png', type='image/png')
+def pixel_png(colour='00000000'):
+    colour = _decode_colour(colour)
+    mode = len(colour)==6 and 'RGB' or 'RGBA'
+    img = Image.new(mode, (1, 1), colour)
+    io = StringIO()
+    img.save(io, 'PNG')
+    return io.getvalue()
+
+@http('/pony/images/pixel.gif',         type='image/gif')
+@http('/pony/images/pixel-$colour.gif', type='image/gif')
+def pixel_png(colour=None):
+    if colour is not None: colour = _decode_colour(colour)
+    img = Image.new("P", (1, 1))
+    img.putpalette(colour or (255, 255, 255))
+    img.putpixel((0, 0), 0)
+    io = StringIO()
+    if colour is None: img.save(io, 'GIF', transparency=0)
+    else: img.save(io, 'GIF')
+    return io.getvalue()
