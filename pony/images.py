@@ -6,6 +6,18 @@ except ImportError: PIL = False
 else: PIL = True
 
 from pony.web import http
+from pony.utils import simple_decorator
+
+_cache = {}
+MAX_CACHE_SIZE = 1000
+
+@simple_decorator
+def cached(f, *args, **keyargs):
+    key = (f, args, tuple(sorted(keyargs.items())))
+    value = _cache.get(key)
+    if value is not None: return value
+    if len(_cache) == MAX_CACHE_SIZE: _cache.clear()
+    return _cache.setdefault(key, f(*args, **keyargs))
 
 def _normalize_colour(colour):
     try: return ImageColor.colormap[colour][1:]
@@ -40,6 +52,7 @@ def _circle_image(radius, colour, bgcolour):
 @http('/pony/images/circle$radius.png', type='image/png')
 @http('/pony/images/circle$radius-$colour.png', type='image/png')
 @http('/pony/images/circle$radius-$colour-$bgcolour.png', type='image/png')
+@cached
 def circle_png(radius, colour=None, bgcolour=None):
     try: radius = int(radius)
     except: raise ValueError
@@ -60,6 +73,7 @@ def circle_png(radius, colour=None, bgcolour=None):
 
 @http('/pony/images/circle$radius-$colour.gif', type='image/gif')
 @http('/pony/images/circle$radius-$colour-$bgcolour.gif', type='image/gif')
+@cached
 def circle_gif(radius, colour, bgcolour='ffffff'):
     try: radius = int(radius)
     except: raise ValueError
