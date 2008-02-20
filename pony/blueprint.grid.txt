@@ -7,8 +7,15 @@
   width: $(page_width)px;
   margin: 0 auto;
 }
+
+/* Use this class on any div.span / container to see the grid. */
 .showgrid { 
   background: url(grid.png); 
+}
+
+/* Body margin for a sensile default look. */
+body {
+  margin:1.5em 0;
 }
 
 
@@ -28,9 +35,10 @@ div.last { margin-right: 0; }
 
 /* Use these classes to set the width of a column. */
 .span-1  { width: $int(column_width)px; }
-$for(column in range(2, column_count+1))
-{.span-$('%-2s' % column); { width: $int(column_width + (column-1)*(column_width + gutter_width))px; $cycle("last"){margin: 0; }}
-}
+$for(column in range(2, column_count))
+{.span-$('%-2s' % column); { width: $int(column_width + (column-1)*(column_width + gutter_width))px; }
+}.span-$(column_count);, div.span-$(column_count); { width: 950px; margin: 0; }
+
 /* Add these to a column to append empty cols. */
 .append-1  { padding-right: 40px; }  
 $for(column in range(2, column_count))
@@ -65,12 +73,14 @@ $for(column in range(1, 6))
 }
 $for(column in range(1, 6)){.pull-$(column);}$sep{, }; {
   float: left;
+	position:relative;
 }
 $for(column in range(1, 6))
 {.push-$(column); { margin: 0 -$int(column * (column_width + gutter_width))px 1.5em $int(column * (column_width + gutter_width))px; }
 }
 $for(column in range(0, 6)){.push-$(column);}$sep{, }; {
   float: right;
+	position:relative;
 }
 
 
