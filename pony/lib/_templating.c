@@ -254,20 +254,20 @@ static PyObject* _wrap(PyObject *arg, int unicode_replace) {
     PyObject *unicode_arg, *ret, *tmp;
     int make_dec = 0;
 
-    //printf(" point A");
+    printf(" point A");
     if (PyObject_TypeCheck(arg, &PyInt_Type) ||            
         PyObject_TypeCheck(arg, &PyLong_Type) ||
         PyObject_TypeCheck(arg, &PyFloat_Type)) {
             Py_INCREF(arg); 
             return arg;
     }
-    //printf("B");
+    printf("B");
     
     if (!PyObject_TypeCheck(arg, &PyBaseString_Type)) {
-        //printf("B1"); 
+        printf("B1"); 
 		return wrapper_make_new(arg, unicode_replace);
 	}
-	//printf("C");
+	printf("C");
 	if (!PyObject_TypeCheck(arg, &Html_Type) &&
 		!PyObject_TypeCheck(arg, &StrHtml_Type)) {
 			if (PyUnicode_Check(arg)) {
@@ -278,14 +278,14 @@ static PyObject* _wrap(PyObject *arg, int unicode_replace) {
             make_dec = 1;         
 		}
 		
-		//printf("D");
+		printf("D");
 		
 		if (PyObject_TypeCheck(arg, &PyString_Type)) {
 			if (!unicode_replace) {
-			    //printf("D1");
-				ret = strwrapper_make_new(arg);				
+			    printf("D1");
+				ret = strwrapper_make_new(arg);	
 			} else {
-			    //printf("D2");
+			    printf("D2");
                 unicode_arg = PyUnicode_FromEncodedObject(arg, NULL, "replace"); 
                 if (unicode_arg == NULL)
                     return NULL;  		
@@ -293,15 +293,17 @@ static PyObject* _wrap(PyObject *arg, int unicode_replace) {
 				Py_DECREF(unicode_arg);
 			}
 		} else {
-		    //printf("D3");
+		    printf("D3");
 			ret = unicodewrapper_make_new(arg);
 		}
-		//printf("E");
+		printf("E");
+		
 		if (PyObject_SetAttrString(ret, "original_value", arg) == -1) {
 		    if (make_dec) 
 		        Py_DECREF(arg);
 			return NULL;
 		}
+		
 		if (make_dec)
 		    Py_DECREF(arg);
 		return ret;
@@ -538,7 +540,8 @@ static PyObject *
 strhtml_str(strhtmlObject *self)
 {
     PyObject *s, *ret, *tup;
-    s = PyString_Type.tp_str((PyObject *)&self->string_object);
+    printf("str\n");
+    s = PyString_Type.tp_str(self);
     tup = PyTuple_New(1);
     if (tup == NULL)
         return NULL;    
@@ -552,6 +555,7 @@ static PyObject *
 strhtml_repr(strhtmlObject *self)
 {
     PyObject *uc, *ret;
+    printf("repr\n");
     uc = PyString_Type.tp_repr(self);
     ret = PyString_FromFormat("%s(%s)", ((PyObject *)self)->ob_type->tp_name, PyString_AsString(uc));
     Py_DECREF(uc);
@@ -611,7 +615,56 @@ strhtml_repeat(PyObject *self, Py_ssize_t count)
 static PyObject *
 strhtml_mod(PyObject *self, PyObject *arg)
 {
-    //if (PyObject_TypeCheck(arg_x, &PyTuple_Type)
+	PyObject *x, *wrapped_item, *item, *ret, *formatted, *unicode_arg, *unicode_self;
+	Py_ssize_t i, len;
+	printf("A");
+	if (!PyObject_TypeCheck(arg, &PyTuple_Type)) {
+		x = _wrap(arg, 0);
+		printf("B");
+	} else {
+		len = PyTuple_Size(arg);
+		x = PyTuple_New(len);
+		for (i = 0; i < len; i++) {
+			item = PyTuple_GetItem(arg, i);
+			if (item == NULL) {
+				Py_DECREF(x); // TODO: DECREF for all wrapped items
+				return NULL;
+			}
+			wrapped_item = _wrap(item, 0);
+			printf("wrapped\n");			
+			PyTuple_SetItem(x, i, wrapped_item);			
+		}
+	}
+    formatted = PyString_Format(self, x);
+    printf("C");
+    Py_DECREF(x);
+    if (PyErr_Occurred()) {
+        printf("ERR");
+        if (!PyErr_ExceptionMatches(PyExc_UnicodeDecodeError)) {
+            return NULL;
+        } else {
+            PyErr_Clear();
+            unicode_self = PyUnicode_FromEncodedObject(self, NULL, "replace");
+            formatted = PyUnicode_Format(unicode_self, x);
+            Py_DECREF(unicode_self);
+            if (formatted == NULL) // TODO: goto error and clean everything
+	            return NULL;
+            ret = html_make_new(formatted);
+            Py_DECREF(formatted);
+            return ret;
+        }
+    }
+	if (PyObject_TypeCheck(formatted, &PyString_Type)) {
+	    printf("D");
+        ret = strhtml_make_new(formatted);
+	    Py_DECREF(formatted);
+        return ret;
+	} else {
+	    printf("E");
+        ret = html_make_new(formatted);
+	    Py_DECREF(formatted);
+        return ret;
+	}
 }
 
 static PyObject *
@@ -716,7 +769,7 @@ typedef struct {
 static PyObject *
 strhtml2_str(strhtml2Object *self)
 {
-    return PyString_Type.tp_str((PyObject *)&self->strhtml_object);
+    return PyString_Type.tp_str(self);
 }
 
 static PyTypeObject StrHtml2_Type = {
@@ -937,6 +990,7 @@ strwrapper_repr(strWrapperObject *self)
 {
     PyObject *ret, *arg;
     arg = PyObject_Repr(self->original_value);
+    //printf("REPR=%s\n", PyString_AsString(arg));
     ret = html_quote(arg, 0);
     Py_DECREF(arg);
     return ret;
@@ -1026,6 +1080,7 @@ unicodewrapper_repr(unicodeWrapperObject *self)
 {
     PyObject *ret, *arg;
     arg = PyObject_Repr(self->original_value);
+    //printf("REPR=%s\n", PyString_AsString(arg));
     ret = html_quote(arg, 0);
     Py_DECREF(arg);
     return ret;
