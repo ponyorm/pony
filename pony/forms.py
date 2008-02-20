@@ -1,3 +1,4 @@
+# -*- encoding: cp1251 -*-
 import re, threading, os.path, copy, cPickle
 
 from operator import attrgetter
@@ -179,9 +180,12 @@ class Form(object):
         if self._error_text is not None: return self._error_text
         self._validate()
         for f in self.fields:
-            if f.error_text: return 'Some fields below contains errors'
+            if f.error_text:
+                # return 'Some fields below contains errors'
+                return u'Некоторые поля содержат ошибки'
         if self.is_valid is None:
-            return 'The form has already been submitted'
+            # return 'The form has already been submitted'
+            return u'Форма уже была обработана'
     def _set_error_text(self, text):
         object.__setattr__(self, '_error_text', text)
     error_text = property(_get_error_text, _set_error_text)
@@ -360,7 +364,9 @@ class BaseWidget(HtmlField):
     def _check_error(self):
         value = self.value
         if self._auto_error_text: return self._auto_error_text
-        if self.required and not value: return 'This field is required'
+        if self.required and not value:
+            # return 'This field is required'
+            return u'Это поле является обязательным'
     @property
     def error(self):
         error_text = self.error_text
@@ -433,7 +439,7 @@ class Text(BaseWidget):
         if self.regex is not None:
             match = self.regex.match(value)
             if match is None:
-                self._auto_error_text = 'Invalid data'
+                self._auto_error_text = u'Неправильные данные' # 'Invalid data'
                 return None
         type = self.type
         if type is None or not isinstance(value, unicode): return value
@@ -442,7 +448,7 @@ class Text(BaseWidget):
         try: return str2py(value)
         except ValidationError, e: err_msg = e.err_msg
         except: pass
-        self._auto_error_text = err_msg or 'Invalid data'
+        self._auto_error_text = err_msg or u'Неправильные данные' # 'Invalid data'
         return None
     value = property(_get_value, BaseWidget._set_value)
     @property
