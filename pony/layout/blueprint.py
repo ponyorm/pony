@@ -26,7 +26,7 @@ def transform(html):
                      href= pony_static_dir + '/blueprint/ie.css')
           head.append(Comment('end of IE hack'))
           content = html.makeelement('div')
-          content.set('class', 'content')
+          content.set('class', 'container')
           move_content(content, [ body ])
           body[:] = [ content ]
           body.text = None
