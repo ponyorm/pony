@@ -1,13 +1,20 @@
 import threading
 
 from lxml import etree
-from pony import layout
 
 def transform(html, charset):
     xml = html2xml(html, charset)
-    layout.normalize(xml)
-    result = layout.transform(xml)
-    return xml2html(result, charset)
+    normalize(xml)
+    # xml = transform(xml)
+    return xml2html(xml, charset)
+
+def normalize(html):
+    head = html.find('head')
+    body = html.find('body')
+    if body is None: body = SubElement(html, 'body')
+    if head is None:
+        head = html.makeelement('head')
+        html.insert(-1, head)
 
 def html2xml(x, encoding='ascii'):
     if hasattr(x, 'write_c14n'): return x
