@@ -15,7 +15,7 @@ from pony.forms import (Form, Hidden, Submit, Reset,
 from pony.gui.tkgui import show_gui
 
 import pony.gui.webgui
-import pony.blueprint
+import pony.layouts.blueprint
 import pony.images
 
 from pony.orm import Entity
