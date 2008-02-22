@@ -28,6 +28,19 @@ def _decode_colour(colour):
     try: return tuple(map(ord, unhexlify(colour)))
     except: raise ValueError
 
+def _decode_png_colours(colour1, colour2):
+    if colour1 is not None:
+        colour1 = _decode_colour(colour1)
+        if colour2 is not None: colour2 = _decode_colour(colour2)
+        elif len(colour1) == 3: colour1, colour2 = colour1 + (255,), colour1 + (0,)
+        elif colour1[-1] == 255: colour2 = colour1[:-1] + (0,)
+        elif colour1[-1] == 0: colour2 = colour1[:-1] + (255,)
+        else: raise ValueError
+    else:
+        colour1 = (255, 255, 255, 255)
+        colour2 = (255, 255, 255, 0)
+    return colour1, colour2
+
 def _circle_image(radius, colour, bgcolour):
     if not PIL: raise ValueError
     try: radius = int(radius)
@@ -48,33 +61,36 @@ def _circle_image(radius, colour, bgcolour):
     circle.paste(quarter.rotate(270), (radius, 0, radius*2, radius))
     return circle
 
-@http('/pony/images/circle$radius.png',                   type='image/png')
+@http('/pony/images/circle$radius.png',           type='image/png')
 @http('/pony/images/circle$radius-$colour.png',           type='image/png')
 @http('/pony/images/circle$radius-$colour-$bgcolour.png', type='image/png')
 @cached
-def circle_png(radius, colour=None, bgcolour=None):
+def png_circle(radius, colour='000000', bgcolour=None):
     try:
-        if colour is not None:
-            colour = _decode_colour(colour)
-            if bgcolour is not None: bgcolour = _decode_colour(bgcolour)
-            elif len(colour) == 3: colour, bgcolour = colour + (255,), colour + (0,)
-            elif colour[-1] == 255: bgcolour = colour[:-1] + (0,)
-            elif colour[-1] == 0: bgcolour = colour[:-1] + (255,)
-            else: raise ValueError
-        else:
-            colour = (255, 255, 255, 0)
-            bgcolour = (255, 255, 255, 255)
-                
+        colour, bgcolour = _decode_png_colours(colour, bgcolour)                
         img = _circle_image(radius, colour, bgcolour)
         io = StringIO()
         img.save(io, 'PNG')
         return io.getvalue()
     except ValueError: raise http.NotFound
 
+@http('/pony/images/hole$radius.png',           type='image/png')
+@http('/pony/images/hole$radius-$bgcolour.png', type='image/png')
+@cached
+def png_hole(radius, bgcolour='ffffffff'):
+    try:
+        bgcolour, colour = _decode_png_colours(bgcolour, None)
+        img = _circle_image(radius, colour, bgcolour)
+        io = StringIO()
+        img.save(io, 'PNG')
+        return io.getvalue()
+    except ValueError: raise http.NotFound
+
+@http('/pony/images/circle$radius.gif',           type='image/gif')
 @http('/pony/images/circle$radius-$colour.gif',           type='image/gif')
 @http('/pony/images/circle$radius-$colour-$bgcolour.gif', type='image/gif')
 @cached
-def circle_gif(radius, colour, bgcolour='ffffff'):
+def gif_circle(radius, colour='000000', bgcolour='ffffff'):
     try:
         colour = _decode_colour(colour)
         if len(colour) != 3: raise ValueError
@@ -86,13 +102,17 @@ def circle_gif(radius, colour, bgcolour='ffffff'):
         return io.getvalue()
     except ValueError: raise http.NotFound
 
-@http('/pony/images/circle$radius.gif', type='image/gif')
+@http('/pony/images/hole$radius.gif',           type='image/gif')
+@http('/pony/images/hole$radius-$bgcolour.gif', type='image/gif')
 @cached
-def transparent_white_circle_gif(radius):
+def gif_hole(radius, bgcolour='ffffff'):
     if not PIL: raise http.NotFound
     try: radius = int(radius)
     except: raise http.NotFound
     if not 2 <= radius <= 100: raise http.NotFound
+    bgcolour = _decode_colour(bgcolour)
+    if len(bgcolour) != 3: raise ValueError
+
     quarter = Image.new("P", (radius, radius), 0)
     draw = ImageDraw.Draw(quarter)
     draw.pieslice((0, 0, radius*2, radius*2), 180, 270, fill=1)
@@ -103,7 +123,9 @@ def transparent_white_circle_gif(radius):
     circle.paste(quarter.rotate(180), (radius, radius, radius*2, radius*2))
     circle.paste(quarter.rotate(270), (radius, 0, radius*2, radius))
 
-    circle.putpalette((255, 255, 255, 0, 0, 0))
+    if bgcolour == (0, 0, 0): palette = (255, 255, 255)
+    else: palette = bgcolour + (0, 0, 0)
+    circle.putpalette(palette)
     io = StringIO()
     circle.save(io, 'GIF', transparency=1)
     return io.getvalue()
