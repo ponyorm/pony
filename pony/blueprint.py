@@ -8,15 +8,6 @@ from pony.utils import cached
 from pony.templating import template, cycle
 from pony.web import http
 
-@http('/pony/blueprint/grid.css', type='text/css')
-@http('/pony/blueprint/$column_count/$column_width/$gutter_width/grid.css', type='text/css')
-@http('/pony/blueprint/$column_count/$column_width/$gutter_width/$ns/grid.css', type='text/css')
-@cached
-def grid(column_count=24, column_width=30, gutter_width=10, ns=''):
-    page_width = column_count*(column_width+gutter_width) - gutter_width
-    if ns: ns += '-'
-    return template()
-
 @http('/pony/blueprint/grid.png', type='image/png')
 @http('/pony/blueprint/$column_count/$column_width/$gutter_width/grid.png', type='image/png')
 @http('/pony/blueprint/$column_count/$column_width/$gutter_width/$ns/grid.png', type='image/png')
@@ -30,6 +21,61 @@ def grid_background(column_count=24, column_width=30, gutter_width=10, ns=''):
     io = StringIO()
     im.save(io, 'PNG')
     return io.getvalue()
+
+@http('/pony/blueprint/ie.css', type='text/css')
+@http('/pony/blueprint/$column_count/$column_width/$gutter_width/ie.css', type='text/css')
+@http('/pony/blueprint/$column_count/$column_width/$gutter_width/$ns/ie.css', type='text/css')
+@cached
+def ie(column_count=24, column_width=30, gutter_width=10, ns=''):
+    return template()
+
+@http('/pony/blueprint/print.css', type='text/css')
+@http('/pony/blueprint/$column_count/$column_width/$gutter_width/print.css', type='text/css')
+@http('/pony/blueprint/$column_count/$column_width/$gutter_width/$ns/print.css', type='text/css')
+@cached
+def print_(column_count=24, column_width=30, gutter_width=10, ns=''):
+    return template()
+
+@http('/pony/blueprint/screen.css', type='text/css')
+@http('/pony/blueprint/$column_count/$column_width/$gutter_width/screen.css', type='text/css')
+@http('/pony/blueprint/$column_count/$column_width/$gutter_width/$ns/screen.css', type='text/css')
+@cached
+def screen(column_count=24, column_width=30, gutter_width=10, ns=''):
+    reset_str = reset(column_count, column_width, gutter_width, ns)
+    typography_str = typography(column_count, column_width, gutter_width, ns)
+    grid_str = grid(column_count, column_width, gutter_width, ns)
+    forms_str = forms(column_count, column_width, gutter_width, ns)
+    return '\n'.join((reset_str, typography_str, grid_str, forms_str))
+    
+@http('/pony/blueprint/reset.css', type='text/css')
+@http('/pony/blueprint/$column_count/$column_width/$gutter_width/reset.css', type='text/css')
+@http('/pony/blueprint/$column_count/$column_width/$gutter_width/$ns/reset.css', type='text/css')
+@cached
+def reset(column_count=24, column_width=30, gutter_width=10, ns=''):
+    return template()
+
+@http('/pony/blueprint/typography.css', type='text/css')
+@http('/pony/blueprint/$column_count/$column_width/$gutter_width/typography.css', type='text/css')
+@http('/pony/blueprint/$column_count/$column_width/$gutter_width/$ns/typography.css', type='text/css')
+@cached
+def typography(column_count=24, column_width=30, gutter_width=10, ns=''):
+    return template()
+
+@http('/pony/blueprint/grid.css', type='text/css')
+@http('/pony/blueprint/$column_count/$column_width/$gutter_width/grid.css', type='text/css')
+@http('/pony/blueprint/$column_count/$column_width/$gutter_width/$ns/grid.css', type='text/css')
+@cached
+def grid(column_count=24, column_width=30, gutter_width=10, ns=''):
+    page_width = column_count*(column_width+gutter_width) - gutter_width
+    return template()
+
+@http('/pony/blueprint/forms.css', type='text/css')
+@http('/pony/blueprint/$column_count/$column_width/$gutter_width/forms.css', type='text/css')
+@http('/pony/blueprint/$column_count/$column_width/$gutter_width/$ns/forms.css', type='text/css')
+@cached
+def forms(column_count=24, column_width=30, gutter_width=10, ns=''):
+    return template()
+
 
 if __name__ == '__main__':
     file('grid_test.css', 'w').write(grid())
