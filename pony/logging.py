@@ -127,7 +127,7 @@ class LoggerThread(threading.Thread):
                 result.append(e)
                 return
             for row in cursor:
-                record = cPickle.loads(str(row[-1]))
+                record = cPickle.loads(str(row[-1]).decode('zip'))
                 for i, name in enumerate(sql_columns): record[name] = row[i]
                 decompress_record(record)
                 result.append(record)
@@ -139,7 +139,7 @@ class LoggerThread(threading.Thread):
         for record in records:
             compress_record(record)
             row = [ record.pop(name, None) for name in sql_columns ]
-            row.append(buffer(cPickle.dumps(record, 2)))
+            row.append(buffer(cPickle.dumps(record, 2).encode('zip')))
             rows.append(row)
         con = self.connection
         while True:
