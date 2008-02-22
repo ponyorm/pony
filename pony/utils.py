@@ -58,6 +58,17 @@ def decorator_with_params(old_dec):
     copy_func_attrs(new_dec, old_dec)
     return new_dec
 
+_cache = {}
+MAX_CACHE_SIZE = 1000
+
+@simple_decorator
+def cached(f, *args, **keyargs):
+    key = (f, args, tuple(sorted(keyargs.items())))
+    value = _cache.get(key)
+    if value is not None: return value
+    if len(_cache) == MAX_CACHE_SIZE: _cache.clear()
+    return _cache.setdefault(key, f(*args, **keyargs))
+
 def error_method(*args, **kwargs):
     raise TypeError
 

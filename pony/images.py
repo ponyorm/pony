@@ -6,18 +6,7 @@ except ImportError: PIL = False
 else: PIL = True
 
 from pony.web import http
-from pony.utils import simple_decorator
-
-_cache = {}
-MAX_CACHE_SIZE = 1000
-
-@simple_decorator
-def cached(f, *args, **keyargs):
-    key = (f, args, tuple(sorted(keyargs.items())))
-    value = _cache.get(key)
-    if value is not None: return value
-    if len(_cache) == MAX_CACHE_SIZE: _cache.clear()
-    return _cache.setdefault(key, f(*args, **keyargs))
+from pony.utils import cached
 
 def _decode_colour(colour):
     try: colour = ImageColor.colormap[colour][1:]
