@@ -4,7 +4,7 @@
 .rounded div.bottom-left,
 .rounded div.bottom-right {
   position:absolute; width:20px; height:20px;
-  background: url(/pony/images/circle20.png) /*top left*/ no-repeat;
+  background: url(/pony/images/hole20.png) /*top left*/ no-repeat;
 }
 .rounded div.top-left {top:0; left:0; background-position: top left;}
 .rounded div.top-right {top:0; right:0; background-position: top right;}
@@ -17,7 +17,7 @@
 * html .rounded div.top-right,
 * html .rounded div.bottom-left,
 * html .rounded div.bottom-right {
-   background: url(/pony/images/circle20.gif);
+   background: url(/pony/images/hole20.gif);
    line-height: 1px;
    font-size: 1px;
 }
