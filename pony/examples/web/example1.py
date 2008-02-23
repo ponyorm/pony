@@ -13,6 +13,7 @@ def page1():
 def page2():
     return """
               <h1>This is HTML page</h1>
+              <br>
               <p>Click <a href="/">here</a> for return
            """
 
@@ -32,6 +33,7 @@ def page4():
     print '<head><title>Page 3</title></head>'
     print '<body>'
     print '<h1>Hello again!</h1>'
+    print '<br>'
     print '<p>Demonstration of'
     print '<code><strong>@printhtml</strong></code> decorator'
     print '<p>Click <a href="/">here</a> for return'
@@ -42,6 +44,7 @@ def page4():
 def header(title='Demonstration of Pony features'):
     print '<title>%s</title>' % title
     print '<h1>%s</h1>' % title
+    print '<br>'
 
 @printhtml
 def footer():
@@ -90,9 +93,9 @@ def page7(name=None):
         print '</form>'
         print '<br>'
         print '<p>You can try input something &quot;illegal&quot;'
-        print 'instead of name, such as '
-        print '<code><strong>&lt;script&gt;'
-        print 'alert(&quot;You are hacked!&quot;);'
+        print 'instead of name, such as'
+        print '<p><code><strong>&lt;script&gt;',
+        print 'alert(&quot;You are hacked!&quot;);',
         print '&lt;/script&gt;</strong></code>'
         print '<p>You will see as <strong>Pony</strong> automatically prevent'
         print 'such XSS (Cross-Site Scripting) attacks '
@@ -112,14 +115,14 @@ def page8():
 def index():
     print header('Simple Pony examples')
     print '<ul>'
-    print '<li><a href="%s">HelloWorld example</a></li>' % url(page1)
-    print '<li>%s</li>' % link('Simplest HTML page', page2)
-    print '<li>%s</li>' % link(page3)
-    print '<li>%s</li>' % link(page4)
-    print '<li>%s</li>' % link(page5)
-    print '<li>%s</li>' % link(page6, 2007, 10)
-    print '<li>%s</li>' % link(page7)
-    print '<li>%s</li>' % link(page8)
+    print '<li><h4><a href="%s">HelloWorld example</a></h4></li>' % url(page1)
+    print '<li><h4>%s</h3></li>' % link('Simplest HTML page', page2)
+    print '<li><h4>%s</h3></li>' % link(page3)
+    print '<li><h4>%s</h3></li>' % link(page4)
+    print '<li><h4>%s</h3></li>' % link(page5)
+    print '<li><h4>%s</h3></li>' % link(page6, 2007, 10)
+    print '<li><h4>%s</h3></li>' % link(page7)
+    print '<li><h4>%s</h3></li>' % link(page8)
     print '</ul>'
 
 if __name__ == '__main__':
