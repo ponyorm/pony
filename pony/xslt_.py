@@ -1,14 +1,16 @@
-import threading
+import os.path, threading
 
 from lxml import etree
 
-##xslt_filename = os.path.join(pony.MAIN_DIR, 'transform.xslt')
-##xslt_transformer = etree.XSLT(etree.parse(xslt_filename))
+import pony
+
+xslt_filename = os.path.join(os.path.dirname(__file__), 'transform.xslt')
+xslt_transformer = etree.XSLT(etree.parse(xslt_filename))
 
 def transform(html, charset):
     xml = html2xml(html, charset)
     normalize(xml)
-    # xml = xslt_transformer(xml)
+    xml = xslt_transformer(xml)
     return xml2html(xml, charset)
 
 def normalize(html):
@@ -37,8 +39,7 @@ if etree.LIBXML_VERSION >= (2, 6, 28) and etree.LIBXSLT_VERSION >= (1, 1, 19):
     </xsl:stylesheet>
     """
 else: xml2html_template = """
-    <xsl:stylesheet version = '1.0'
-                    xmlns:xsl='http://www.w3.org/1999/XSL/Transform'>
+    <xsl:stylesheet version = '1.0' xmlns:xsl='http://www.w3.org/1999/XSL/Transform'>
       <xsl:output method="html" encoding="%s" indent="%s" %s/>
       <xsl:template match="/ | @* | node()">
         <xsl:copy>
