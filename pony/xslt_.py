@@ -2,10 +2,13 @@ import threading
 
 from lxml import etree
 
+##xslt_filename = os.path.join(pony.MAIN_DIR, 'transform.xslt')
+##xslt_transformer = etree.XSLT(etree.parse(xslt_filename))
+
 def transform(html, charset):
     xml = html2xml(html, charset)
     normalize(xml)
-    # xml = transform(xml)
+    # xml = xslt_transformer(xml)
     return xml2html(xml, charset)
 
 def normalize(html):
@@ -24,17 +27,26 @@ def html2xml(x, encoding='ascii'):
     if isinstance(x, str): x = unicode(x, encoding)
     return etree.HTML(x)
 
-xml2html_template = """
-<xsl:stylesheet version = '1.0'
-                xmlns:xsl='http://www.w3.org/1999/XSL/Transform'>
-  <xsl:output method="html" encoding="%s" indent="%s" %s/>
-  <xsl:template match="/ | @* | node()">
-    <xsl:copy>
-      <xsl:apply-templates select="@* | node()" />
-    </xsl:copy>
-  </xsl:template>
-</xsl:stylesheet>
-"""
+if etree.LIBXML_VERSION >= (2, 6, 28) and etree.LIBXSLT_VERSION >= (1, 1, 19):
+    xml2html_template = """
+    <xsl:stylesheet version = '1.0' xmlns:xsl='http://www.w3.org/1999/XSL/Transform'>
+      <xsl:output method="html" encoding="%s" indent="%s" %s/>
+      <xsl:template match="/">
+        <xsl:copy-of select="." />
+      </xsl:template>
+    </xsl:stylesheet>
+    """
+else: xml2html_template = """
+    <xsl:stylesheet version = '1.0'
+                    xmlns:xsl='http://www.w3.org/1999/XSL/Transform'>
+      <xsl:output method="html" encoding="%s" indent="%s" %s/>
+      <xsl:template match="/ | @* | node()">
+        <xsl:copy>
+          <xsl:apply-templates select="@* | node()" />
+        </xsl:copy>
+      </xsl:template>
+    </xsl:stylesheet>
+    """
 
 doctypes = dict(
     strict=['-//W3C//DTD HTML 4.01//EN', 'http://www.w3.org/TR/html4/strict.dtd'],
@@ -63,7 +75,7 @@ std_encoding = 'UTF-8'
 std_doctype = 'transitional'
 std_indent = True
 
-main_xslt = create_xml2html_transformer(std_encoding, std_doctype, std_indent)
+main_xml2html_transformer = create_xml2html_transformer(std_encoding, std_doctype, std_indent)
 
 def xml2html(xml, encoding='UTF-8', doctype='transitional', indent=True):
     encoding = encoding.upper().replace('_', '-')
@@ -72,8 +84,8 @@ def xml2html(xml, encoding='UTF-8', doctype='transitional', indent=True):
         if xslt is None:
             xslt = create_xml2html_transformer(encoding, doctype, indent)
             local.xml2html_cache[(encoding, doctype, indent)] = xslt
-    else: xslt = main_xslt
+    else: xslt = main_xml2html_transformer
     result = xslt(xml)
-    return (str(result).replace('<!--start of IE hack-->', '<!--[if IE]>')
-                       .replace('\n<!--end of IE hack-->', '<![endif]-->\n')
-                       .replace('<!--end of IE hack-->', '<![endif]-->\n'))
+    return (str(result).replace('<!--{{if IE}}-->', '<!--[if IE]>')
+                       .replace('\n<!--{{endif}}-->', '<![endif]-->\n')
+                       .replace('<!--{{endif}}-->', '<![endif]-->\n'))
