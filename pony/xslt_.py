@@ -87,6 +87,6 @@ def xml2html(xml, encoding='UTF-8', doctype='transitional', indent=True):
             local.xml2html_cache[(encoding, doctype, indent)] = xslt
     else: xslt = main_xml2html_transformer
     result = xslt(xml)
-    return (str(result).replace('<!--{{if IE}}-->', '<!--[if IE]>')
-                       .replace('\n<!--{{endif}}-->', '<![endif]-->\n')
-                       .replace('<!--{{endif}}-->', '<![endif]-->\n'))
+    return (str(result).replace('<!--{{[if IE]}}-->', '<!--[if IE]>')
+                       .replace('\n<!--{{[endif]}}-->', '<![endif]-->\n')
+                       .replace('<!--{{[endif]}}-->', '<![endif]-->\n'))
