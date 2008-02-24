@@ -19,6 +19,18 @@
     </head>
   </xsl:template>
 
+  <xsl:template name="blueprint-std" match="link[@blueprint]">
+    <link rel="stylesheet" href="/pony/static/blueprint/screen.css" type="text/css" media="screen, projection" />
+    <link rel="stylesheet" href="/pony/static/blueprint/print.css" type="text/css" media="print" />
+    <xsl:comment>{{[if IE]}}</xsl:comment>
+    <link rel="stylesheet" href="/pony/static/blueprint/ie.css" type="text/css" media="screen, projection" />
+    <xsl:comment>{{[endif]}}</xsl:comment>
+  </xsl:template>
+
+  <xsl:template match="link[@rounded-corners]">
+    <link href="/pony/static/css/rounded-corners.css" type="text/css" rel="stylesheet" />
+  </xsl:template>
+  
   <xsl:template match="body">
     <body>
       <xsl:choose>
@@ -34,12 +46,18 @@
     </body>
   </xsl:template>
 
-  <xsl:template name="blueprint-std" match="link[@blueprint]">
-    <link rel="stylesheet" href="/pony/static/blueprint/screen.css" type="text/css" media="screen, projection" />
-    <link rel="stylesheet" href="/pony/static/blueprint/print.css" type="text/css" media="print" />
-    <xsl:comment>{{[if IE]}}</xsl:comment>
-    <link rel="stylesheet" href="/pony/static/blueprint/ie.css" type="text/css" media="screen, projection" />
-    <xsl:comment>{{[endif]}}</xsl:comment>
+  <xsl:template match="*[@radius]">
+    <xsl:copy>
+      <xsl:apply-templates select="@*[name()!='radius']" />
+      <xsl:attribute name="class">
+        <xsl:value-of select="normalize-space(concat(@class, ' ', 'rounded'))"/>
+      </xsl:attribute>
+      <xsl:apply-templates select="node()" />
+      <div class="top-left radius-{@radius}"></div>
+      <div class="top-right radius-{@radius}"></div>
+      <div class="bottom-left radius-{@radius}"></div>
+      <div class="bottom-right radius-{@radius}"></div>      
+    </xsl:copy>
   </xsl:template>
   
 </xsl:stylesheet>
