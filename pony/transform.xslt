@@ -61,11 +61,12 @@
   </xsl:template>
 
   <xsl:template match="a[starts-with(@href, 'mailto:') and not(@onmousedown) and not(@onkeydown) and not(@no-obfuscated)]">
+    <xsl:variable name="address" select="concat(substring-before(@href, '@'), 'ATSIGN', substring-after(@href, '@'))" />
+    <a href="{$address}" style="display:none" onkeydown="this.onmousedown()">
+        <xsl:attribute name="onmousedown">var i=0; while(1&lt;2){i++};</xsl:attribute>don't click this</a>
     <xsl:copy>
       <xsl:apply-templates select="@*" />
-      <xsl:attribute name="href">
-        <xsl:value-of select="concat(substring-before(@href, '@'), 'ATSIGN', substring-after(@href, '@'))" />
-      </xsl:attribute>
+      <xsl:attribute name="href"><xsl:value-of select="$address" /></xsl:attribute>
       <xsl:attribute name="onmousedown">this.href=this.href.replace('ATSIGN','@')</xsl:attribute>
       <xsl:attribute name="onkeydown">this.onmousedown()</xsl:attribute>
       <xsl:apply-templates select="node()" />
