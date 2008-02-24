@@ -1,35 +1,38 @@
 <html>
 <head>
+  <link blueprint>
   <link href="/pony/static/css/corners.css" type="text/css" rel="stylesheet">
   <style>
 
     div#main {
-        background: url(/pony/images/vline200-2a4-844.png) repeat-x;
+        background: url(/pony/images/vline200-green-afa.png) repeat-x;
         width: 300px; padding: 20px;
     }
     div#another {
-        background: url(/pony/images/hline600-red-yellow.png) repeat-y;
+        background: url(/pony/images/hline500-abc-def.png) repeat-y;
         height: 5em;
-        width: 500px; padding: 20px; margin-top: 3em;
+        width: 460px; padding: 20px; margin-top: 2em;
     }
 
   </style>
 </head>
 <body>
+  <div class="container">
   <div id="main" class="rounded">
-    <h1>Hello!!!!!</h1>
-    <p>Do you see rounded corners?</p>
-    <div class="top-left"></div>
-    <div class="top-right"></div>
-    <div class="bottom-left"></div>
-    <div class="bottom-right"></div>
+    <h1>Hello!</h1>
+    <h3>Do you see rounded corners?</h3>
+    <div class="top-left radius-20"></div>
+    <div class="top-right radius-20"></div>
+    <div class="bottom-left radius-20"></div>
+    <div class="bottom-right radius-20"></div>
   </div>
   <div id="another" class="rounded">
     <h2>It is easy!!!</h2>
-    <div class="top-left"></div>
-    <div class="top-right"></div>
-    <div class="bottom-left"></div>
-    <div class="bottom-right"></div>
+    <div class="top-left radius-12"></div>
+    <div class="top-right radius-12"></div>
+    <div class="bottom-left radius-12"></div>
+    <div class="bottom-right radius-12"></div>
   </div> 
+  </div>
 </body>
 </html>
