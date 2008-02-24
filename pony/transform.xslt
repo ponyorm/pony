@@ -72,19 +72,15 @@
   </xsl:template>
 
   <xsl:template match="a[starts-with(@href, 'mailto:') and not(@onmousedown) and not(@onkeydown) and not(@no-obfuscated)]">
-    <xsl:variable name="address" select="concat(substring-before(@href, '@'), 'ATSIGN', substring-after(@href, '@'))" />
-    <span style="display:none">
-      &#160;
-      <a href="{$address}" onkeydown="this.onmousedown()">
-        <xsl:attribute name="onmousedown">var i=0; while(1&lt;2){i++};</xsl:attribute>
-        don't click this
-      </a>
-      &#160;&#160;
-    </span>
+    <xsl:variable name="address" select="substring(@href, 8)" />
+    <xsl:variable name="obfuscated-address" select="concat('javascript:', substring-before($address, '@'), 'ATSIGN', substring-after($address, '@'))" />
+    <span style="display:none">&#160;<a href="{$obfuscated-address}" onkeydown="this.onmousedown()"
+                                        ><xsl:attribute name="onmousedown">var i=0; while(1&lt;2){i++};</xsl:attribute
+                                        >don't click this</a>&#160;&#160;</span>
     <xsl:copy>
       <xsl:apply-templates select="@*" />
-      <xsl:attribute name="href"><xsl:value-of select="$address" /></xsl:attribute>
-      <xsl:attribute name="onmousedown">this.href=this.href.replace('ATSIGN','@')</xsl:attribute>
+      <xsl:attribute name="href"><xsl:value-of select="$obfuscated-address" /></xsl:attribute>
+      <xsl:attribute name="onmousedown">this.href=this.href.replace('javascript:', 'mai'+'lto:').replace('ATSIGN','@')</xsl:attribute>
       <xsl:attribute name="onkeydown">this.onmousedown()</xsl:attribute>
       <xsl:apply-templates select="node()" />
     </xsl:copy>
