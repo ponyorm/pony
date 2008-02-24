@@ -13,20 +13,31 @@
     <head>
       <xsl:apply-templates select="@*" />
       <xsl:if test="not(boolean($styles))">
-        <xsl:call-template name="blueprint-std" />
+        <xsl:call-template name="blueprint" />
       </xsl:if>
       <xsl:apply-templates select="*" />
     </head>
   </xsl:template>
 
-  <xsl:template name="blueprint-std" match="link[@blueprint]">
-    <link rel="stylesheet" href="/pony/static/blueprint/screen.css" type="text/css" media="screen, projection" />
-    <link rel="stylesheet" href="/pony/static/blueprint/print.css" type="text/css" media="print" />
-    <xsl:comment>{{[if IE]}}</xsl:comment>
-    <link rel="stylesheet" href="/pony/static/blueprint/ie.css" type="text/css" media="screen, projection" />
-    <xsl:comment>{{[endif]}}</xsl:comment>
+  <xsl:template name="blueprint" match="link[@blueprint]">
+    <xsl:choose>
+      <xsl:when test="@blueprint">
+        <link rel="stylesheet" href="/pony/blueprint/{@blueprint}/screen.css" type="text/css" media="screen, projection" />
+        <link rel="stylesheet" href="/pony/blueprint/{@blueprint}/print.css" type="text/css" media="print" />
+        <xsl:comment>{{[if IE]}}</xsl:comment>
+        <link rel="stylesheet" href="/pony/blueprint/{@blueprint}/ie.css" type="text/css" media="screen, projection" />
+        <xsl:comment>{{[endif]}}</xsl:comment>
+      </xsl:when>
+      <xsl:otherwise>
+        <link rel="stylesheet" href="/pony/static/blueprint/screen.css" type="text/css" media="screen, projection" />
+        <link rel="stylesheet" href="/pony/static/blueprint/print.css" type="text/css" media="print" />
+        <xsl:comment>{{[if IE]}}</xsl:comment>
+        <link rel="stylesheet" href="/pony/static/blueprint/ie.css" type="text/css" media="screen, projection" />
+        <xsl:comment>{{[endif]}}</xsl:comment>
+      </xsl:otherwise>
+    </xsl:choose>
   </xsl:template>
-
+  
   <xsl:template match="link[@rounded-corners]">
     <link href="/pony/static/css/rounded-corners.css" type="text/css" rel="stylesheet" />
   </xsl:template>
