@@ -123,23 +123,40 @@ def _line_image(format, horiz, length, colour, colour2=None):
     try: length = int(length)
     except: raise ValueError
     if not 0 <= length <= 10000: raise ValueError
+    last = length-1
     colour = _decode_colour(colour)
     if colour2 is not None: colour2 = _decode_colour(colour2)
     mode = len(colour)==6 and 'RGB' or 'RGBA'
     img = Image.new(mode, (length, 1), colour)
     if colour2 is None: pass
     elif len(colour2) != len(colour): raise ValueError
-    else:
+    elif len(colour) == 3:
         r1, g1, b1 = colour
         r2, g2, b2 = colour2
+        r, g, b = r2-r1, g2-g1, b2-b1
+        
         if Image.VERSION >= '1.1.6':
             pixels = img.load()
             for i in range(length):
-                pixels[i, 0] = ((r1 + r2*i/length), (g1 + g2*i/length), (b1 + b2*i/length))
+                pixels[i, 0] = (r1+r*i/last, g1+g*i/last, b1+b*i/last)
         else:
             putpixel = im.im.putpixel
             for i in range(length):
-                putpixel((i, 0), ((r1 + r2*i/length), (g1 + g2*i/length), (b1 + b2*i/length)))
+                putpixel((i, 0), (r1+r*i/last, g1+g*i/last, b1+b*i/last))
+    elif len(colour) == 4:
+        r1, g1, b1, t1 = colour
+        r2, g2, b2, t2 = colour2
+        r, g, b, t = r2-r1, g2-g1, b2-b1, t2-t1
+        
+        if Image.VERSION >= '1.1.6':
+            pixels = img.load()
+            for i in range(length):
+                pixels[i, 0] = (r1+r*i/last, g1+g*i/last, b1+b*i/last, t1+t*i/last)
+        else:
+            putpixel = im.im.putpixel
+            for i in range(length):
+                putpixel((i, 0), (r1+r*i/last, g1+g*i/last, b1+b*i/last, t1+t*i/last))
+    else: assert False
 
     if not horiz: img = img.rotate(270)
     # if format == 'GIF': img  = img.convert("P", dither=Image.NONE, palette=Image.ADAPTIVE)
