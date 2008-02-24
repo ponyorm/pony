@@ -14,7 +14,9 @@ comment_re = re.compile(r'/[*](?:[^*]|[*][^/])*[*]/')
 
 def compress(s):
     s = comment_re.sub(' ', s)
-    return ' '.join(s.split()).replace('{', '\n  {').replace('} ', '}\n')
+    s = ' '.join(s.split())
+    s = s.replace(': ', ':').replace(', ', ',').replace('; ', ';').replace('{ ', '{').replace('} ', '}')
+    return s.replace('{', '\n{').replace('}', '}\n')
 
 @http('/pony/blueprint/grid.png', type='image/png')
 @http('/pony/blueprint/$column_count/$column_width/$gutter_width/grid.png', type='image/png')
@@ -54,9 +56,9 @@ def screen(column_count=24, column_width=30, gutter_width=10, ns=''):
     grid_str = compress(grid(column_count, column_width, gutter_width, ns))
     forms_str = compress(forms(column_count, column_width, gutter_width, ns))
     return '\n'.join(('/* screen.css */\n\n/* reset.css */', reset_str,
-                      '\n\n/* typography.css */', typography_str,
-                      '\n\n/* grid.css */', grid_str,
-                      '\n\n/* forms.css */', forms_str))
+                      '/* typography.css */', typography_str,
+                      '/* grid.css */', grid_str,
+                      '/* forms.css */', forms_str))
     
 @http('/pony/blueprint/reset.css', type='text/css')
 @http('/pony/blueprint/$column_count/$column_width/$gutter_width/reset.css', type='text/css')
