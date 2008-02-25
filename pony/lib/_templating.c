@@ -10,9 +10,10 @@ static PyObject * html_make_new(PyObject *arg);
 static PyObject * strhtml_make_new(PyObject *arg);
 static PyObject * wrapper_make_new(PyObject *arg);
 static PyObject * unicodewrapper_make_new(PyObject *arg);
-static PyObject* replace_unicode(PyObject *source);
-static PyObject* replace_string(PyObject *source);
-static PyObject *createStrWrapperObject(PyObject *args);
+static PyObject * replace_unicode(PyObject *source);
+static PyObject * replace_string(PyObject *source);
+static PyObject * createStrWrapperObject(PyObject *args);
+static PyObject * pony_write(PyObject *self, PyObject *s);
 
 static PyObject* ex_quote(PyObject *self, PyObject *args) {
     PyObject *arg_x;
@@ -311,6 +312,7 @@ static PyObject* _wrap(PyObject *arg, int unicode_replace) {
 
 static PyMethodDef _templating_methods[] = {
     {"quote", ex_quote, METH_VARARGS, "quote() doc string"},
+    {"write", pony_write, METH_VARARGS, "write() doc string"},
     {NULL, NULL}
 };
 
@@ -575,8 +577,7 @@ strhtml_add(PyObject *arg1, PyObject *arg2)
             return NULL;
         } else {
             PyErr_Clear();
-            unicode_arg = PyUnicode_FromEncodedObject(arg1, NULL, "replace");    //PyObject* PyUnicode_FromEncodedObject( PyObject *obj, const char *encoding, const char *errors)
-            // TODO: should we decrease ref to self?
+            unicode_arg = PyUnicode_FromEncodedObject(arg1, NULL, "replace"); 
             quoted = html_quote(arg2, 1);
             con = PyUnicode_Concat(unicode_arg, quoted);
             Py_DECREF(unicode_arg);
@@ -591,7 +592,7 @@ strhtml_add(PyObject *arg1, PyObject *arg2)
     } else {
         ret = html_make_new(arg1);
     }
-    // TODO: is it correct?
+
     Py_DECREF(arg1copy);
     return ret;
 }
@@ -1011,15 +1012,19 @@ static PyTypeObject Wrapper_Type = {
 static PyObject *
 createStrWrapperObject(PyObject *arg)
 {    
-    PyObject *pmod, *pinst, *pclass, *tup;
-    // TODO: optimize with static field
-    pmod   = PyImport_ImportModule("pony.templating");
-    if (pmod == NULL) {
-        return NULL;        
-    }
-    pclass = PyObject_GetAttrString(pmod, "StrWrapper");   
-    if (pclass == NULL) {
-        return NULL;
+    PyObject *pmod, *pinst, *tup;
+    static PyObject *strwrapper_class = NULL;
+    if (strwrapper_class == NULL) {
+        pmod   = PyImport_ImportModule("pony.templating");
+        if (pmod == NULL) {
+            return NULL;        
+        }
+        strwrapper_class = PyObject_GetAttrString(pmod, "StrWrapper");   
+        if (strwrapper_class == NULL) {
+            Py_DECREF(pmod); 
+            return NULL;
+        }
+        Py_DECREF(pmod); 
     }
     tup = PyTuple_New(1);
     if (tup == NULL) {
@@ -1028,13 +1033,11 @@ createStrWrapperObject(PyObject *arg)
     Py_INCREF(arg);
     PyTuple_SET_ITEM(tup, 0, arg);
 
-    pinst  = PyEval_CallObject(pclass, tup);      
+    pinst  = PyEval_CallObject(strwrapper_class, tup);      
     Py_DECREF(tup);
     if (pinst == NULL) {
         return NULL;        
-    }
-    Py_DECREF(pmod);
-    Py_DECREF(pclass);
+    }       
     return pinst;
 }
 
@@ -1128,6 +1131,68 @@ static PyTypeObject UnicodeWrapper_Type = {
         0,                      /*tp_is_gc*/
 };
 
+/*
+    def write(s):
+        try: f = local.writers[-1]
+        except IndexError: f = real_stdout.write
+        f(s)
+*/
+
+static PyObject *
+pony_write(PyObject *self, PyObject *s)
+{
+    PyObject *f, *pmod, *real_stdout, *ret;
+    static PyObject *local = NULL;
+    static PyObject *real_stdout_write = NULL;
+    static PyObject *writers = NULL;
+    if (local == NULL || real_stdout == NULL || writers == NULL) {
+        pmod = PyImport_ImportModule("pony.templating");
+        if (pmod == NULL) {
+            return NULL;        
+        }
+        local = PyObject_GetAttrString(pmod, "local");   
+        if (local == NULL) {
+            Py_DECREF(pmod);
+            return NULL;
+        }        
+        real_stdout = PyObject_GetAttrString(pmod, "real_stdout");   
+        if (real_stdout == NULL) {
+            Py_DECREF(pmod);
+            Py_DECREF(local);
+            return NULL;
+        }  
+        real_stdout_write = PyObject_GetAttrString(real_stdout, "write");   
+        if (real_stdout_write == NULL) {
+            Py_DECREF(pmod);
+            Py_DECREF(local);
+            return NULL;
+        }       
+        writers = PyObject_GetAttrString(local, "writers");   
+        if (writers == NULL) {
+            Py_DECREF(pmod);
+            Py_DECREF(local);
+            return NULL;
+        }
+        Py_DECREF(pmod);
+        Py_DECREF(local);
+    }
+    f = PyList_GetItem(writers, PyList_Size(writers) - 1);
+    if (PyErr_Occurred()) {
+        if (!PyErr_ExceptionMatches(PyExc_IndexError)) {            
+            return NULL;
+        } else {
+            PyErr_Clear();
+            f = real_stdout_write;
+        }
+    }
+    ret = PyObject_CallObject(f, s);    
+    if (ret == NULL) {
+        return NULL;
+    }
+    Py_DECREF(ret);      
+    Py_INCREF(Py_None);
+    return Py_None;    
+}
 
 PyMODINIT_FUNC
 init_templating(void)
