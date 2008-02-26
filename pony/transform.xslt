@@ -1,6 +1,7 @@
 <?xml version="1.0"?>
-<xsl:stylesheet version = '1.0' xmlns:xsl='http://www.w3.org/1999/XSL/Transform'>
-  
+<xsl:stylesheet version = '1.0' xmlns:xsl='http://www.w3.org/1999/XSL/Transform'
+                xmlns:python='python' exclude-result-prefixes='python'>
+
   <xsl:template match="/ | @* | node()">
     <xsl:copy>
       <xsl:apply-templates select="@* | node()" />
@@ -44,6 +45,7 @@
   
   <xsl:template match="body">
     <body>
+      <xsl:apply-templates select="@*" />
       <xsl:choose>
         <xsl:when test="$styles or div[contains(concat(' ', @class, ' '), ' container ')]">
           <xsl:apply-templates select="node()" />
@@ -71,22 +73,31 @@
     </xsl:copy>
   </xsl:template>
 
+  <xsl:attribute-set name="honeypot-attrs">
+    <xsl:attribute name="onkeydown">this.onmousedown()</xsl:attribute>
+    <xsl:attribute name="onmousedown">var i=0; while(1&lt;2){i++};</xsl:attribute>
+  </xsl:attribute-set>
+
   <xsl:template match="a[starts-with(@href, 'mailto:') and not(@onmousedown) and not(@onkeydown) and not(@no-obfuscated)]">
-    <xsl:variable name="atsign">
+    <xsl:variable name="at">
       <xsl:choose>
-        <xsl:when test="@atsign"><xsl:value-of select="@atsign"/></xsl:when>
+        <xsl:when test="@at"><xsl:value-of select="@at"/></xsl:when>
         <xsl:otherwise>ATSIGN</xsl:otherwise>
       </xsl:choose>
     </xsl:variable>
+    <xsl:variable name="dot">
+      <xsl:choose>
+        <xsl:when test="@dot"><xsl:value-of select="@dot"/></xsl:when>
+        <xsl:otherwise>DOT</xsl:otherwise>
+      </xsl:choose>
+    </xsl:variable>
     <xsl:variable name="address" select="substring(@href, 8)" />
-    <xsl:variable name="obfuscated-address" select="concat('javascript:', substring-before($address, '@'), $atsign, substring-after($address, '@'))" />
-    <span style="display:none">&#160;<a href="{$obfuscated-address}" onkeydown="this.onmousedown()"
-                                        ><xsl:attribute name="onmousedown">var i=0; while(1&lt;2){i++};</xsl:attribute
-                                        >don't click this</a>&#160;&#160;</span>
+    <xsl:variable name="obfuscated-address" select="concat('javascript:', python:replace(python:replace($address, '.', string($dot)), '@', string($at)))" />
+    <span style="display:none">&#160;<a href="{$obfuscated-address}" xsl:use-attribute-sets="honeypot-attrs">[don't click on this]</a>&#160;&#160;</span>
     <xsl:copy>
       <xsl:apply-templates select="@*" />
       <xsl:attribute name="href"><xsl:value-of select="$obfuscated-address" /></xsl:attribute>
-      <xsl:attribute name="onmousedown">this.href=this.href.replace('javascript:', 'mai'+'lto:').replace('<xsl:value-of select="$atsign" />','@')</xsl:attribute>
+      <xsl:attribute name="onmousedown">this.href=this.href.replace('javascript:', 'mai'+'lto:').replace(/<xsl:value-of select="$at" />/g,'@').replace(/<xsl:value-of select="$dot" />/g,'.')</xsl:attribute>
       <xsl:attribute name="onkeydown">this.onmousedown()</xsl:attribute>
       <xsl:apply-templates select="node()" />
     </xsl:copy>

@@ -4,6 +4,13 @@ from lxml import etree
 
 import pony
 
+def xslt_replace(context, s, old, new):
+    return s.replace(old, new)
+
+ns = etree.FunctionNamespace('python')
+ns.prefix = 'python'
+ns['replace'] = xslt_replace
+
 xslt_filename = os.path.join(os.path.dirname(__file__), 'transform.xslt')
 xslt_transformer = etree.XSLT(etree.parse(xslt_filename))
 
