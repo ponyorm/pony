@@ -332,6 +332,22 @@ html_make_new(PyObject *arg)
     return ret;
 }
 
+static void
+html_dealloc(PyObject *self)
+{    
+    PyUnicode_Type.tp_dealloc((PyObject *) self);
+}
+
+static PyObject *
+html_repr(htmlObject *self)
+{
+    PyObject *uc, *ret;
+    uc = PyUnicode_Type.tp_repr((PyObject *)self);
+    ret = PyString_FromFormat("%s(%s)", ((PyObject *)self)->ob_type->tp_name, PyString_AsString(uc));
+    Py_DECREF(uc);
+    return ret;
+}
+
 static PyObject *
 html_add(PyObject *arg1, PyObject *arg2)
 {
@@ -349,32 +365,6 @@ html_add(PyObject *arg1, PyObject *arg2)
 }
 
 static PyObject *
-html_join(PyObject *self, PyObject *l)
-{            
-    Py_ssize_t i;
-    PyObject *quoted_list, *item, *quoted_item, *ret, *joined;
-//printf("A");
-    quoted_list = PySequence_List(l);
-
-    if (quoted_list == NULL)
-        return NULL;
-    for (i = 0; i < PyList_Size(quoted_list); i++) {
-        item = PyList_GetItem(quoted_list, i);
-        if (item == NULL) {
-            Py_DECREF(quoted_list);
-            return NULL;
-        }
-        quoted_item = html_quote(item, 1);
-        PyList_SetItem(quoted_list, i, quoted_item);
-    }
-    joined = PyUnicode_Join(self, quoted_list);
-    Py_DECREF(quoted_list);
-    ret = html_make_new(joined);
-    Py_DECREF(joined);
-    return ret;   
-}
-
-static PyObject *
 html_repeat(htmlObject *self, Py_ssize_t count)
 {
     PyObject *ret, *seq;
@@ -385,11 +375,6 @@ html_repeat(htmlObject *self, Py_ssize_t count)
     Py_DECREF(seq);
     return ret;
 }
-
-static PyMethodDef html_methods[] = {
-    {"join", (PyCFunction)html_join, METH_O | METH_COEXIST, ""},
-    {NULL, NULL}
-};
 
 static PyObject *
 html_mod(PyObject *self, PyObject *arg)
@@ -407,59 +392,66 @@ html_mod(PyObject *self, PyObject *arg)
 				Py_DECREF(x); // TODO: DECREF for all wrapped items
 				return NULL;
 			}
-			//printf("wrappring\n");
 			wrapped_item = _wrap(item, 1);
-			//printf("wrapped\n");
 			PyTuple_SetItem(x, i, wrapped_item);			
 		}
 	}
-	//printf("before\n");
     formatted = PyUnicode_Format(self, x);
-    //printf("after\n");
 	if (formatted == NULL)
 		return NULL;
     Py_DECREF(x);
-    //printf("before return\n");
 	ret = html_make_new(formatted);
     Py_DECREF(formatted);
-    //printf("return\n");
     return ret;
 }
+static PyObject *
+html_join(PyObject *self, PyObject *l)
+{            
+    Py_ssize_t i;
+    PyObject *quoted_list, *item, *quoted_item, *ret, *joined;
+    
+    quoted_list = PySequence_List(l);
+    if (quoted_list == NULL)
+        return NULL;
+    for (i = 0; i < PyList_Size(quoted_list); i++) {
+        item = PyList_GetItem(quoted_list, i);
+        if (item == NULL) {
+            Py_DECREF(quoted_list); // TODO: DECREF for all quoted items
+            return NULL;
+        }
+        quoted_item = html_quote(item, 1);
+        PyList_SetItem(quoted_list, i, quoted_item);
+    }
+    joined = PyUnicode_Join(self, quoted_list);
+    Py_DECREF(quoted_list);
+    ret = html_make_new(joined);
+    Py_DECREF(joined);
+    return ret;   
+}
+
+static PyMethodDef html_methods[] = {
+    {"join", (PyCFunction)html_join, METH_O | METH_COEXIST, ""},
+    {NULL, NULL}
+};
 
 static PyNumberMethods html_as_number = {
-    (binaryfunc)html_add,           /*nb_add*/
-    0,                                /*nb_subtract*/
-    0,                                /*nb_multiply*/
-    0,                                /*nb_divide*/
-    (binaryfunc)html_mod,            /*nb_remainder*/                // __mod__
+    (binaryfunc)html_add,   /*nb_add*/
+    0,                      /*nb_subtract*/
+    0,                      /*nb_multiply*/
+    0,                      /*nb_divide*/
+    (binaryfunc)html_mod,   /*nb_remainder*/               
 };
 
 static PySequenceMethods html_as_sequence = {
-    0,     /* sq_length */
-    0,     /* sq_concat */                // __add__
-    (ssizeargfunc)html_repeat,     /* sq_repeat */      // __mul__
-    0,     /* sq_item */
-    0,     /* sq_slice */
-    0,     /* sq_ass_item */
-    0,     /* sq_ass_slice */
-    0,     /* sq_contains */
+    0,                      /* sq_length */
+    0,                      /* sq_concat */          
+    (ssizeargfunc)html_repeat, /* sq_repeat */ 
+    0,                      /* sq_item */
+    0,                      /* sq_slice */
+    0,                      /* sq_ass_item */
+    0,                      /* sq_ass_slice */
+    0,                      /* sq_contains */
 };
-
-static PyObject *
-html_repr(htmlObject *self)
-{
-    PyObject *uc, *ret;
-    uc = PyUnicode_Type.tp_repr((PyObject *)self);
-    ret = PyString_FromFormat("%s(%s)", ((PyObject *)self)->ob_type->tp_name, PyString_AsString(uc));
-    Py_DECREF(uc);
-    return ret;
-}
-
-static void
-html_dealloc(PyObject *self)
-{    
-    PyUnicode_Type.tp_dealloc((PyObject *) self);
-}
 
 static PyTypeObject Html_Type = {
         PyObject_HEAD_INIT(NULL)
@@ -507,7 +499,6 @@ static PyTypeObject Html_Type = {
         0,                      /*tp_is_gc*/
 };
 
-
 typedef struct {
     PyStringObject string_object;
 } strhtmlObject;
@@ -538,7 +529,6 @@ static PyObject *
 strhtml_str(strhtmlObject *self)
 {
     PyObject *s, *ret, *tup;
-    printf("str\n");
     s = PyString_Type.tp_str((PyObject *)self);
     tup = PyTuple_New(1);
     if (tup == NULL)
@@ -553,7 +543,6 @@ static PyObject *
 strhtml_repr(strhtmlObject *self)
 {
     PyObject *uc, *ret;
-    printf("repr\n");
     uc = PyString_Type.tp_repr((PyObject *)self);
     ret = PyString_FromFormat("%s(%s)", ((PyObject *)self)->ob_type->tp_name, PyString_AsString(uc));
     Py_DECREF(uc);
@@ -561,35 +550,61 @@ strhtml_repr(strhtmlObject *self)
 }
 
 static PyObject *
-strhtml_add(PyObject *arg1, PyObject *arg2)
+strhtml_add(PyObject *arg1_o, PyObject *arg2_o)
 {
-    PyObject *con, *unicode_arg, *quoted, *ret, *arg1copy;    
-    quoted = html_quote(arg2, 0);
+    PyObject *con, *unicode_arg, *quoted, *ret, *arg1, *arg2;   
+
+    int arg1_is_self = 0;
+    if (PyType_IsSubtype(arg1_o->ob_type, &StrHtml_Type)) {
+        arg1_is_self = 1;
+    }  
+    if (arg1_is_self) {
+        printf("arg1_is_self\n");
+    } else {
+        printf("arg2_is_self\n");
+    }
+    if (arg1_is_self) {
+        arg1 = PyString_FromString(PyString_AsString(arg1_o));
+        arg2 = html_quote(arg2_o, 0);
+    } else {        
+        arg1 = html_quote(arg1_o, 0);
+        arg2 = arg2_o;
+    }
     // TODO: can html_quote raise UnicodeDecodeError?
-    arg1copy = PyString_FromString(PyString_AsString(arg1));
-    PyString_ConcatAndDel(&arg1copy, quoted);
+    PyString_Concat(&arg1, arg2);
     if (PyErr_Occurred()) {
         if (!PyErr_ExceptionMatches(PyExc_UnicodeDecodeError)) {
             return NULL;
-        } else {
-            PyErr_Clear();
-            unicode_arg = PyUnicode_FromEncodedObject(arg1, NULL, "replace"); 
-            quoted = html_quote(arg2, 1);
-            con = PyUnicode_Concat(unicode_arg, quoted);
-            Py_DECREF(unicode_arg);
-            Py_DECREF(quoted);
-            ret = html_make_new(con);
-            Py_DECREF(con);
-            return ret;
+        } else {            
+            if (arg1_is_self) {
+                PyErr_Clear();
+                Py_DECREF(arg1);
+                Py_DECREF(arg2);
+                unicode_arg = PyUnicode_FromEncodedObject(arg1_o, NULL, "replace"); 
+                quoted = html_quote(arg2_o, 1);
+                con = PyUnicode_Concat(unicode_arg, quoted);
+                Py_DECREF(unicode_arg);
+                Py_DECREF(quoted);
+                ret = html_make_new(con);
+                Py_DECREF(con);            
+                return ret;
+            } else {
+                // TODO: what should we do here?
+                return NULL;
+            }
         }
     }
-    if (PyString_Check(arg1copy)) {
+    if (PyString_Check(arg1)) {
         ret = strhtml_make_new(arg1);
     } else {
         ret = html_make_new(arg1);
     }
-
-    Py_DECREF(arg1copy);
+    if (arg1_is_self) {
+        Py_DECREF(arg1);
+        Py_DECREF(arg2);
+    } else {
+        Py_DECREF(arg1);
+    }
     return ret;
 }
 
