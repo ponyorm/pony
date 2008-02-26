@@ -774,7 +774,7 @@ http.Redirect = HttpRedirect
 
 ################################################################################
 
-def reconstruct_url(environ):
+def reconstruct_script_url(environ):
     url_scheme  = environ['wsgi.url_scheme']
     host        = environ.get('HTTP_HOST')
     server_name = environ['SERVER_NAME']
@@ -792,8 +792,6 @@ def reconstruct_url(environ):
         else: url += ':' + server_port
 
     url += urllib.quote(script_name)
-    url += urllib.quote(path_info)
-    if query: url += '?' + query
     return url
 
 class HttpRequest(object):
@@ -811,19 +809,19 @@ class HttpRequest(object):
                 post = environ['SERVER_PORT']
             self.host, self.port = host, int(port)
 
-            url = environ['PATH_INFO']
+            self.url = urllib.quote(environ['PATH_INFO'])
             query = environ['QUERY_STRING']
-            if query: url = '%s?%s' % (url, query)
-            self.internal_url = url
-            self.url = environ.get('SCRIPT_NAME', '') + url or '/'
-            self.full_url = reconstruct_url(environ)
-            if 'HTTP_COOKIE' in environ:
-                self.cookies.load(environ['HTTP_COOKIE'])
+            if query: self.url += '?' + query
+            self.script_url = reconstruct_script_url(environ)
+            self.full_url = self.script_url + self.url
+
+            if 'HTTP_COOKIE' in environ: self.cookies.load(environ['HTTP_COOKIE'])
             morsel = self.cookies.get('pony')
             session_data = morsel and morsel.value or None
             auth.load(session_data, environ)
         else:
-            self.url = self.internal_url = '/'
+            self.script_url = ''
+            self.url = '/'
             self.full_url = 'http://localhost/'
             self.host = 'localhost'
             self.port = 80
@@ -940,10 +938,9 @@ def application(environ, wsgi_start_response):
                 form = cPickle.loads(request.payload)
                 form._handle_request_()
                 form = None
-            result = invoke(request.internal_url)
+            result = invoke(request.url)
         finally:
-            if request.ticket and not request.form_processed \
-                                  and request.form_processed is not None:
+            if request.ticket and not request.form_processed and request.form_processed is not None:
                 auth.unexpire_ticket(request.ticket)
     except HttpException, e:
         start_response(e.status, e.headers)
