@@ -183,15 +183,15 @@ static PyObject* replace_string(PyObject *source) {
 static PyObject* html_quote(PyObject *arg, int unicode_replace) {
     PyObject *unicode_arg, *ret;
 
-    //printf(" point A");
+    printf(" quote J");
     if (PyObject_TypeCheck(arg, &Html_Type) ||
         PyInt_Check(arg) || PyLong_Check(arg) || PyFloat_Check(arg)) {
             Py_INCREF(arg); 
             return arg;
     }
-    //printf("B");
+    printf("K");
     if (!PyObject_TypeCheck(arg, &PyBaseString_Type)) {    // if not isinstance(x, basestring):
-        //printf("C1");
+        printf("C1");
         if (PyObject_HasAttr(arg, PyString_FromString("__unicode__"))) {        // if hasattr(x, '__unicode__'): x = unicode(x)
             arg = PyObject_Unicode(arg);          
             if (arg == NULL)
@@ -204,17 +204,17 @@ static PyObject* html_quote(PyObject *arg, int unicode_replace) {
     }
     
     }
-    //printf("C");
+    printf("L");
     if (PyObject_TypeCheck(arg, &StrHtml_Type)) {
         if (unicode_replace == 0) {
             Py_INCREF(arg);
             return arg;
         }
         unicode_arg = PyUnicode_FromEncodedObject(arg, NULL, "replace");    //PyObject* PyUnicode_FromEncodedObject( PyObject *obj, const char *encoding, const char *errors)
-        //printf("C1");
+        printf("L1");
         ret = html_make_new(unicode_arg);
         Py_DECREF(unicode_arg);
-        //printf("C2\n");
+        printf("L2\n");
         return ret;
     }
 
@@ -225,26 +225,26 @@ static PyObject* html_quote(PyObject *arg, int unicode_replace) {
         arg = replace_string(arg);
     }
     ///////////// repalce /////////////
-    //printf("D");
+    printf("M");
     if (PyObject_TypeCheck(arg, &PyUnicode_Type)) {        // if isinstance(x, unicode): return Html(x)
         ret = html_make_new(arg);
         Py_DECREF(arg);
         return ret;
     }
-    //printf("E");
+    printf("N");
     if (unicode_replace == 0) {
         ret = strhtml_make_new(arg);
         Py_DECREF(arg);
-        //printf("E1\n");
+        printf("N1\n");
         return ret;
 
     }
     unicode_arg = PyUnicode_FromEncodedObject(arg, NULL, "replace");    //PyObject* PyUnicode_FromEncodedObject( PyObject *obj, const char *encoding, const char *errors)
     Py_DECREF(arg);
-    //printf("F");
+    printf("O");
     ret = html_make_new(unicode_arg);
     Py_DECREF(unicode_arg);
-    //printf("G\n");
+    printf("P\n");
     return ret;
 }
 
@@ -252,7 +252,7 @@ static PyObject* _wrap(PyObject *arg, int unicode_replace) {
     PyObject *unicode_arg, *ret;
     int make_dec = 0;
 
-    printf(" point A");
+    printf(" wrap A");
     if (PyInt_Check(arg) || PyLong_Check(arg) || PyFloat_Check(arg)) {
             Py_INCREF(arg); 
             return arg;
@@ -299,10 +299,10 @@ static PyObject* _wrap(PyObject *arg, int unicode_replace) {
 		        Py_DECREF(arg);
 			return NULL;
 		}
-		
+		printf("F");
 		if (make_dec)
 		    Py_DECREF(arg);
-		
+		printf("G");
 		return ret;
 }
 
@@ -557,11 +557,6 @@ strhtml_add(PyObject *arg1_o, PyObject *arg2_o)
     int arg1_is_self = 0;
     if (PyType_IsSubtype(arg1_o->ob_type, &StrHtml_Type)) {
         arg1_is_self = 1;
-    }  
-    if (arg1_is_self) {
-        printf("arg1_is_self\n");
-    } else {
-        printf("arg2_is_self\n");
     }
     if (arg1_is_self) {
         arg1 = PyString_FromString(PyString_AsString(arg1_o));
@@ -629,10 +624,10 @@ strhtml_mod(PyObject *self, PyObject *arg)
 {
 	PyObject *x, *wrapped_item, *item, *ret, *formatted, *unicode_self;
 	Py_ssize_t i, len;
-	printf("A");
+	printf("mod Q");
 	if (!PyTuple_Check(arg)) {
 		x = _wrap(arg, 0);
-		printf("B");
+		printf("P");
 	} else {
 		len = PyTuple_Size(arg);
 		x = PyTuple_New(len);
@@ -648,7 +643,7 @@ strhtml_mod(PyObject *self, PyObject *arg)
 		}
 	}
     formatted = PyString_Format(self, x);
-    printf("C");
+    printf("R");
     Py_DECREF(x);
     if (PyErr_Occurred()) {
         printf("ERR");
@@ -686,12 +681,12 @@ strhtml_mod(PyObject *self, PyObject *arg)
         }
     }
 	if (PyString_Check(formatted)) {
-	    printf("D");
+	    printf("S");
         ret = strhtml_make_new(formatted);
 	    Py_DECREF(formatted);
         return ret;
 	} else {
-	    printf("E");
+	    printf("T");
         ret = html_make_new(formatted);
 	    Py_DECREF(formatted);
         return ret;
