@@ -13,6 +13,7 @@ from pony.autoreload import on_reload
 from pony.utils import decorator_with_params
 from pony.templating import Html, real_stdout
 from pony.logging import log, log_exc
+from pony.xslt import xslt_function
 
 class _Http(object):
     def __call__(self, *args, **keyargs):
@@ -922,6 +923,14 @@ def create_cookies(environ):
     return result
 
 BLOCK_SIZE = 65536
+
+@xslt_function
+def xslt_internal_url(context, s):
+    return s
+
+@xslt_function
+def xslt_external_url(context, s):
+    return s.upper()
 
 def application(environ, wsgi_start_response):
     def start_response(status, headers):

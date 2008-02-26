@@ -124,6 +124,7 @@ def index():
     print '<li><h4>%s</h3></li>' % link(page8)
     print '</ul>'
     print '<br><br><p><a href="mailto:example@example.com">automatically obfuscated e-mail</a></p>'
+    print '<p><a href="http://google.com">External link</a></p>'
 
 if __name__ == '__main__':
     start_http_server()

@@ -105,4 +105,10 @@
 
   <xsl:template match="@no-obfuscated"></xsl:template>
 
+  <xsl:template match="@href[starts-with(., 'http://') or starts-with(., 'https://')]">
+    <xsl:attribute name="href">
+      <xsl:value-of select="python:external-url(string(.))"/>
+    </xsl:attribute>
+  </xsl:template>
+
 </xsl:stylesheet>

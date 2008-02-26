@@ -11,6 +11,13 @@ ns = etree.FunctionNamespace('python')
 ns.prefix = 'python'
 ns['replace'] = xslt_replace
 
+#@decorator
+def xslt_function(f):
+    fname = f.__name__.replace('_', '-')
+    if fname.startswith('xslt-'): fname = fname[5:]
+    ns[fname] = f
+    return f
+
 xslt_filename = os.path.join(os.path.dirname(__file__), 'transform.xslt')
 xslt_transformer = etree.XSLT(etree.parse(xslt_filename))
 
