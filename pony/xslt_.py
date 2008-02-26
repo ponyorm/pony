@@ -23,7 +23,7 @@ def transform(html, charset):
 def normalize(html):
     head = html.find('head')
     body = html.find('body')
-    if body is None: body = SubElement(html, 'body')
+    if body is None: body = etree.SubElement(html, 'body')
     if head is None:
         head = html.makeelement('head')
         html.insert(-1, head)
