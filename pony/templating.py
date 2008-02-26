@@ -1,26 +1,20 @@
 import sys, os.path, threading, inspect, re, weakref, textwrap
 
-from utils import (read_text_file, is_ident,
-                   decorator, decorator_with_params, get_mtime)
+from pony.utils import read_text_file, is_ident, decorator, decorator_with_params, get_mtime
 
 try: real_stdout
-except: real_stdout = sys.stdout
+except NameError: real_stdout = sys.stdout
 
 class Html(unicode):
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, unicode.__repr__(self))
-##  # Part of correct markup may not be correct markup itself
-##  # Also commented because of possible performance issues
-##  def __getitem__(self, key):
-##      return Html(unicode.__getitem__(self, key))
-##  def __getslice__(self, i, j):
-##      return Html(unicode.__getslice__(self, i, j))
     def __add__(self, x):
         return Html(unicode.__add__(self, quote(x, True)))
     def __radd__(self, x):
         y = quote(x, True)
         if y is not x: return y + self
-        raise TypeError("unsupported operand type(s) for +: %r and %r" % (x.__class__.__name__, self.__class__.__name__))
+        raise TypeError("unsupported operand type(s) for +: %r and %r"
+                        % (x.__class__.__name__, self.__class__.__name__))
     def __mul__(self, x):
         return Html(unicode.__mul__(self, x))
     def __rmul__(self, x):
@@ -30,9 +24,13 @@ class Html(unicode):
         else: x = tuple(_wrap(item, True) for item in x)
         return Html(unicode.__mod__(self, x))
     def join(self, items):
-        return Html(unicode.join(self, (quote(item, True) for item in items)))        
-
-htmljoin = Html('').join
+        return Html(unicode.join(self, (quote(item, True) for item in items)))
+    #  Part of correct markup may not be correct markup itself
+    #  Also commented because of possible performance issues
+    #  def __getitem__(self, key):
+    #      return Html(unicode.__getitem__(self, key))
+    #  def __getslice__(self, i, j):
+    #      return Html(unicode.__getslice__(self, i, j))
 
 class StrHtml(str):
     def __str__(self):        # Because of bug in Python 2.4 print statement.
@@ -40,12 +38,6 @@ class StrHtml(str):
         return StrHtml2(s) 
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, str.__repr__(self))
-##  # Part of correct markup may not be correct markup itself
-##  # Also commented because of possible performance issues
-##  def __getitem__(self, key):
-##      return StrHtml(str.__getitem__(self, key))
-##  def __getslice__(self, i, j):
-##      return StrHtml(str.__getslice__(self, i, j))
     def __add__(self, x):
         try: result = str.__add__(self, quote(x))
         except UnicodeDecodeError:
@@ -79,13 +71,19 @@ class StrHtml(str):
             return Html(unicode(self, errors='replace')).join(items)
         if isinstance(result, str): return StrHtml(result)
         return Html(result)
+    # Part of correct markup may not be correct markup itself
+    # Also commented because of possible performance issues
+    # def __getitem__(self, key):
+    #     return StrHtml(str.__getitem__(self, key))
+    # def __getslice__(self, i, j):
+    #     return StrHtml(str.__getslice__(self, i, j))
 
 class StrHtml2(StrHtml):
     def __str__(self):
         return str.__str__(self)
 
 def quote(x, unicode_replace=False):
-    if isinstance(x, (int, long, float, Html)): return x
+    if isinstance(x, (Html, int, long, float)): return x
 
     if not isinstance(x, basestring):
         if hasattr(x, '__unicode__'): x = unicode(x)
@@ -139,6 +137,17 @@ class UnicodeWrapper(unicode):
     __slots__ = [ 'original_value' ]
     def __repr__(self):
         return quote(`self.original_value`)
+
+try: _templating
+except NameError: pass
+else:
+    Html = _templating.Html
+    StrHtml = _templating.StrHtml
+    StrHtml2 = _templating.StrHtml2
+    quote = _templating.quote
+    del _wrap, Wrapper, StrWrapper, UnicodeWrapper
+    
+htmljoin = Html('').join
 
 def htmltag(_name_, _attrs_=None, **_attrs2_):
     attrs = {}
