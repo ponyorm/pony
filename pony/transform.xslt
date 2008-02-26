@@ -21,7 +21,7 @@
 
   <xsl:template name="blueprint" match="link[@blueprint]">
     <xsl:choose>
-      <xsl:when test="@blueprint">
+      <xsl:when test="@blueprint != ''">
         <link rel="stylesheet" href="/pony/blueprint/{@blueprint}/screen.css" type="text/css" media="screen, projection" />
         <link rel="stylesheet" href="/pony/blueprint/{@blueprint}/print.css" type="text/css" media="print" />
         <xsl:comment>{{[if IE]}}</xsl:comment>
