@@ -2,6 +2,9 @@ import sys, os.path, threading, inspect, re, weakref, textwrap
 
 from pony.utils import read_text_file, is_ident, decorator, decorator_with_params, get_mtime
 
+try: from pony import _templating
+except ImportError: pass
+
 try: real_stdout
 except NameError: real_stdout = sys.stdout
 
@@ -183,6 +186,10 @@ class PonyStdout(object):
         f(s)
 
 pony_stdout = PonyStdout()
+
+try: _templating
+except NameError: pass
+else: pony_stdout.write = _templating.write
 
 @decorator
 def grab_stdout(f):
