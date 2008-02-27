@@ -930,7 +930,28 @@ def xslt_internal_url(context, s):
 
 @xslt_function
 def xslt_external_url(context, s):
-    return s.upper()
+    if s.startswith('http://'): protocol, s = 'http', s[7:]
+    elif s.startswith('https://'): protocol, s = 'https', s[8:]
+    else: assert False
+    try: i = s.index('/')
+    except ValueError: pass
+    else:
+        try: j = s.index('@', 0, i)
+        except ValueError: pass
+        else: s = s[j+1:]
+    request = local.request
+    script_url = request.script_url
+    return '%s/pony/redirect/%s/%s' % (script_url, protocol, s)
+
+@http('/pony/redirect/*')
+def external_redirect(*args):
+    url = local.request.url 
+    assert url.startswith('/pony/redirect/')
+    url = url[len('/pony/redirect/'):]
+    protocol, url = url.split('/', 1)
+    assert protocol in ('http', 'https')
+    s = '%s://%s' % (protocol, url)
+    raise HttpRedirect(s)
 
 def application(environ, wsgi_start_response):
     def start_response(status, headers):
