@@ -12,11 +12,15 @@ ns.prefix = 'python'
 ns['replace'] = xslt_replace
 
 #@decorator
-def xslt_function(f):
-    fname = f.__name__.replace('_', '-')
+def xslt_function(old_func):
+    def new_func(context, *args, **keyargs):
+        try: return old_func(*args, **keyargs)
+        except Exception, e:
+            return '%s: %s' % (e.__class__.__name__, e.args[0])
+    fname = old_func.__name__.replace('_', '-')
     if fname.startswith('xslt-'): fname = fname[5:]
-    ns[fname] = f
-    return f
+    ns[fname] = new_func
+    return old_func
 
 xslt_filename = os.path.join(os.path.dirname(__file__), 'transform.xslt')
 xslt_transformer = etree.XSLT(etree.parse(xslt_filename))

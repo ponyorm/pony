@@ -925,11 +925,14 @@ def create_cookies(environ):
 BLOCK_SIZE = 65536
 
 @xslt_function
-def xslt_internal_url(context, s):
+def xslt_internal_url(s):
     return s
 
 @xslt_function
-def xslt_external_url(context, s):
+def xslt_external_url(s):
+    request = local.request
+    script_url = request.script_url
+    if s.startswith(script_url): return xslt_internal_url(s)
     if s.startswith('http://'): protocol, s = 'http', s[7:]
     elif s.startswith('https://'): protocol, s = 'https', s[8:]
     else: assert False
@@ -939,9 +942,7 @@ def xslt_external_url(context, s):
         try: j = s.index('@', 0, i)
         except ValueError: pass
         else: s = s[j+1:]
-    request = local.request
-    script_url = request.script_url
-    return '%s/pony/redirect/%s/%s' % (script_url, protocol, s)
+    return '%s/pony/redirect/%s/%s' % (request.environ.get('SCRIPT_NAME',''), protocol, s)
 
 @http('/pony/redirect/*')
 def external_redirect(*args):
