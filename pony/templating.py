@@ -148,7 +148,7 @@ else:
     StrHtml = _templating.StrHtml
     StrHtml2 = _templating.StrHtml2
     quote = _templating.quote
-    del _wrap, Wrapper, StrWrapper, UnicodeWrapper
+    del _wrap, Wrapper, UnicodeWrapper
     
 htmljoin = Html('').join
 
