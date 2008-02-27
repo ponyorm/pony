@@ -111,4 +111,10 @@
     </xsl:attribute>
   </xsl:template>
 
+  <xsl:template match="@action[name(..)='form' and starts-with(., 'http://') or starts-with(., 'https://')]">
+    <xsl:attribute name="action">
+      <xsl:value-of select="python:external-url(string(.))"/>
+    </xsl:attribute>
+  </xsl:template>
+
 </xsl:stylesheet>
