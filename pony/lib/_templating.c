@@ -190,14 +190,14 @@ static PyObject* html_quote(PyObject *arg, int unicode_replace) {
             return arg;
     }
     printf("K");
-    if (!PyObject_TypeCheck(arg, &PyBaseString_Type)) {    // if not isinstance(x, basestring):
+    if (!PyObject_TypeCheck(arg, &PyBaseString_Type)) {    
         printf("C1");
-        if (PyObject_HasAttr(arg, PyString_FromString("__unicode__"))) {        // if hasattr(x, '__unicode__'): x = unicode(x)
+        if (PyObject_HasAttr(arg, PyString_FromString("__unicode__"))) {        
             arg = PyObject_Unicode(arg);          
             if (arg == NULL)
                 return NULL;
         } else {
-            arg = PyObject_Str(arg);                        // else: x = str(x)
+            arg = PyObject_Str(arg);                       
         }
         if (PyObject_TypeCheck(arg, &Html_Type)) {
             return arg;
@@ -210,7 +210,7 @@ static PyObject* html_quote(PyObject *arg, int unicode_replace) {
             Py_INCREF(arg);
             return arg;
         }
-        unicode_arg = PyUnicode_FromEncodedObject(arg, NULL, "replace");    //PyObject* PyUnicode_FromEncodedObject( PyObject *obj, const char *encoding, const char *errors)
+        unicode_arg = PyUnicode_FromEncodedObject(arg, NULL, "replace");   
         printf("L1");
         ret = html_make_new(unicode_arg);
         Py_DECREF(unicode_arg);
@@ -226,7 +226,7 @@ static PyObject* html_quote(PyObject *arg, int unicode_replace) {
     }
     ///////////// repalce /////////////
     printf("M");
-    if (PyObject_TypeCheck(arg, &PyUnicode_Type)) {        // if isinstance(x, unicode): return Html(x)
+    if (PyObject_TypeCheck(arg, &PyUnicode_Type)) {       
         ret = html_make_new(arg);
         Py_DECREF(arg);
         return ret;
@@ -239,7 +239,7 @@ static PyObject* html_quote(PyObject *arg, int unicode_replace) {
         return ret;
 
     }
-    unicode_arg = PyUnicode_FromEncodedObject(arg, NULL, "replace");    //PyObject* PyUnicode_FromEncodedObject( PyObject *obj, const char *encoding, const char *errors)
+    unicode_arg = PyUnicode_FromEncodedObject(arg, NULL, "replace");   
     Py_DECREF(arg);
     printf("O");
     ret = html_make_new(unicode_arg);
@@ -279,7 +279,9 @@ static PyObject* _wrap(PyObject *arg, int unicode_replace) {
 		if (PyObject_TypeCheck(arg, &PyString_Type)) {
 			if (!unicode_replace) {
 			    printf("D1");
-				ret = createStrWrapperObject(arg);					
+				ret = createStrWrapperObject(arg);	
+				if (ret == NULL)
+				    return NULL;						
 			} else {
 			    printf("D2");
                 unicode_arg = PyUnicode_FromEncodedObject(arg, NULL, "replace"); 
@@ -292,13 +294,13 @@ static PyObject* _wrap(PyObject *arg, int unicode_replace) {
 		    printf("D3");
 			ret = unicodewrapper_make_new(arg);
 		}
-		printf("E");
+		printf("E");		
 		
 		if (PyObject_SetAttrString(ret, "original_value", arg) == -1) {
 		    if (make_dec) 
 		        Py_DECREF(arg);
 			return NULL;
-		}
+		}		
 		printf("F");
 		if (make_dec)
 		    Py_DECREF(arg);
@@ -383,6 +385,8 @@ html_mod(PyObject *self, PyObject *arg)
 	Py_ssize_t i, len;
 	if (!PyTuple_Check(arg)) {
 		x = _wrap(arg, 1);
+		if (x == NULL)
+		    return NULL;
 	} else {
 		len = PyTuple_Size(arg);
 		x = PyTuple_New(len);
@@ -393,6 +397,8 @@ html_mod(PyObject *self, PyObject *arg)
 				return NULL;
 			}
 			wrapped_item = _wrap(item, 1);
+			if (wrapped_item == NULL)    // TODO: DECREF for all wrapped items
+		        return NULL;
 			PyTuple_SetItem(x, i, wrapped_item);			
 		}
 	}
@@ -624,10 +630,12 @@ strhtml_mod(PyObject *self, PyObject *arg)
 {
 	PyObject *x, *wrapped_item, *item, *ret, *formatted, *unicode_self;
 	Py_ssize_t i, len;
+
 	printf("mod Q");
 	if (!PyTuple_Check(arg)) {
 		x = _wrap(arg, 0);
-		printf("P");
+		if (x == NULL)
+		    return NULL;
 	} else {
 		len = PyTuple_Size(arg);
 		x = PyTuple_New(len);
@@ -638,6 +646,8 @@ strhtml_mod(PyObject *self, PyObject *arg)
 				return NULL;
 			}
 			wrapped_item = _wrap(item, 0);
+			if (wrapped_item == NULL)
+		        return NULL;   // TODO: DECREF for all wrapped items
 			printf("wrapped\n");			
 			PyTuple_SetItem(x, i, wrapped_item);			
 		}
@@ -654,6 +664,8 @@ strhtml_mod(PyObject *self, PyObject *arg)
             Py_DECREF(x);
 	        if (!PyTuple_Check(arg)) {
 		        x = _wrap(arg, 1);
+		        if (x == NULL)
+		            return NULL;
 		        printf("B");
 	        } else {
 		        len = PyTuple_Size(arg);
@@ -665,6 +677,8 @@ strhtml_mod(PyObject *self, PyObject *arg)
 				        return NULL;
 			        }
 			        wrapped_item = _wrap(item, 1);
+      		        if (wrapped_item == NULL) // TODO: DECREF for all wrapped items
+    	                return NULL;
 			        printf("wrapped\n");			
 			        PyTuple_SetItem(x, i, wrapped_item);			
 		        }
@@ -752,13 +766,13 @@ static PyNumberMethods strhtml_as_number = {
     0,                                /*nb_subtract*/
     0,                                /*nb_multiply*/
     0,                                /*nb_divide*/
-    (binaryfunc)strhtml_mod,            /*nb_remainder*/                // __mod__
+    (binaryfunc)strhtml_mod,            /*nb_remainder*/               
 };
 
 static PySequenceMethods strhtml_as_sequence = {
     0,     /* sq_length */
-    0,     /* sq_concat */                // __add__
-    (ssizeargfunc)strhtml_repeat,     /* sq_repeat */      // __mul__
+    0,     /* sq_concat */                
+    (ssizeargfunc)strhtml_repeat,     /* sq_repeat */     
     0,     /* sq_item */
     0,     /* sq_slice */
     0,     /* sq_ass_item */
@@ -1040,13 +1054,14 @@ createStrWrapperObject(PyObject *arg)
     Py_INCREF(arg);
     PyTuple_SET_ITEM(tup, 0, arg);
 
-    pinst  = PyEval_CallObject(strwrapper_class, tup);      
+    pinst  = PyObject_CallObject(strwrapper_class, tup);      
     Py_DECREF(tup);
     if (pinst == NULL) {
         return NULL;        
     }       
     return pinst;
 }
+
 
 typedef struct {
     PyUnicodeObject unicode_object;
@@ -1080,8 +1095,7 @@ static PyObject *
 unicodewrapper_repr(unicodeWrapperObject *self)
 {
     PyObject *ret, *arg;
-    arg = PyObject_Repr(self->original_value);
-    //printf("REPR=%s\n", PyString_AsString(arg));
+    arg = PyObject_Repr(self->original_value);    
     ret = html_quote(arg, 0);
     Py_DECREF(arg);
     return ret;
