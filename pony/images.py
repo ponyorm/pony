@@ -119,78 +119,90 @@ def gif_hole(radius, bgcolour='ffffff'):
     circle.save(io, 'GIF', transparency=1)
     return io.getvalue()
 
-def _line_image(format, horiz, length, colour, colour2=None):
-    try: length = int(length)
-    except: raise ValueError
-    if not 0 <= length <= 10000: raise ValueError
-    last = length-1
-    colour = _decode_colour(colour)
-    if colour2 is not None: colour2 = _decode_colour(colour2)
-    mode = len(colour)==6 and 'RGB' or 'RGBA'
-    img = Image.new(mode, (length, 1), colour)
-    if colour2 is None: pass
-    elif len(colour2) != len(colour): raise ValueError
-    elif len(colour) == 3:
-        r1, g1, b1 = colour
-        r2, g2, b2 = colour2
+def _calc_colours(count, start_colour, end_colour):
+    assert len(start_colour) == len(end_colour)
+    last = count - 1
+    if len(start_colour) == 3:
+        r1, g1, b1 = start_colour
+        r2, g2, b2 = end_colour
         r, g, b = r2-r1, g2-g1, b2-b1
-        
-        if Image.VERSION >= '1.1.6':
-            pixels = img.load()
-            for i in range(length):
-                pixels[i, 0] = (r1+r*i/last, g1+g*i/last, b1+b*i/last)
-        else:
-            putpixel = im.im.putpixel
-            for i in range(length):
-                putpixel((i, 0), (r1+r*i/last, g1+g*i/last, b1+b*i/last))
-    elif len(colour) == 4:
-        r1, g1, b1, t1 = colour
-        r2, g2, b2, t2 = colour2
+        for i in range(count): yield i, (r1+r*i/last, g1+g*i/last, b1+b*i/last)
+    elif len(start_colour) == 4:
+        r1, g1, b1, t1 = start_colour
+        r2, g2, b2, t2 = end_colour
         r, g, b, t = r2-r1, g2-g1, b2-b1, t2-t1
-        
-        if Image.VERSION >= '1.1.6':
-            pixels = img.load()
-            for i in range(length):
-                pixels[i, 0] = (r1+r*i/last, g1+g*i/last, b1+b*i/last, t1+t*i/last)
-        else:
-            putpixel = im.im.putpixel
-            for i in range(length):
-                putpixel((i, 0), (r1+r*i/last, g1+g*i/last, b1+b*i/last, t1+t*i/last))
+        for i in range(count): yield i, (r1+r*i/last, g1+g*i/last, b1+b*i/last, t1+t*i/last)
     else: assert False
 
+if Image.VERSION >= '1.1.6':
+
+    def _draw_gradient(img, start, stop, start_colour, end_colour):
+        pixels = img.load()
+        for i, colour in _calc_colours(stop-start, start_colour, end_colour):
+            pixels[start + i, 0] = colour
+else:
+
+    def _draw_gradient(img, start, stop, start_colour, end_colour):
+        putpixel = img.img.putpixel
+        for i, colour in _calc_colours(stop-start, start_colour, end_colour):
+            putpixel((start + i, 0), colour)
+
+def _line(format, horiz, data):
+    segments = []
+    mode = None
+    total_length = 0
+    for item in data.split('+'):
+        item = item.split('-')
+        if len(item) == 2: item.append(None)
+        elif len(item) != 3: raise ValueError #http.NotFound
+        length, colour, colour2 = item
+        try: length  = int(length)
+        except: raise ValueError #http.NotFound
+        else:
+            if length <= 0: raise ValueError #http.NotFound
+            total_length += length
+        colour = _decode_colour(colour)
+        if colour2 is not None:
+            colour2 = _decode_colour(colour2)
+            if len(colour) != len(colour2): raise ValueError #http.NotFound
+        if mode is None: mode = len(colour)==3 and 'RGB' or 'RGBA'
+        elif mode == 'RGB' and len(colour) != 3: raise ValueError #http.NotFound
+        elif mode == 'RGBA' and len(colour) != 4: raise ValueError #http.NotFound
+        segments.append((length, colour, colour2))
+    if not 0 < total_length <= 10000: raise ValueError #http.NotFound
+    if format == 'GIF' and mode == 'RGBA': raise ValueError #http.NotFound
+    img = Image.new(mode, (total_length, 1), mode=='RGB' and (0, 0, 0) or (0, 0, 0, 255))
+    draw = ImageDraw.Draw(img)
+    start = 0
+    for length, colour, colour2 in segments:
+        if colour2 is None: _draw_gradient(img, start, start+length, colour, colour)
+        else: _draw_gradient(img, start, start+length, colour, colour2)
+        start += length
     if not horiz: img = img.rotate(270)
     # if format == 'GIF': img  = img.convert("P", dither=Image.NONE, palette=Image.ADAPTIVE)
     io = StringIO()
     img.save(io, format)
     return io.getvalue()
 
-@http('/pony/images/hline$length-$colour.png',          type='image/png')
-@http('/pony/images/hline$length-$colour-$colour2.png', type='image/png')
+@http('/pony/images/hline$data.png', type='image/png')
 @cached
-def hline_png(length, colour, colour2=None):
-    try: return _line_image('PNG', True, length, colour, colour2)
-    except ValueError: raise http.NotFound
+def hline_png(data):
+    return _line('PNG', True, data)
 
-@http('/pony/images/hline$length-$colour.gif',          type='image/gif')
-@http('/pony/images/hline$length-$colour-$colour2.gif', type='image/gif')
+@http('/pony/images/hline$data.gif', type='image/gif')
 @cached
-def hline_gif(length, colour, colour2=None):
-    try: return _line_image('GIF', True, length, colour, colour2)
-    except ValueError: raise http.NotFound
+def hline_gif(data):
+    return _line('GIF', True, data)
 
-@http('/pony/images/vline$length-$colour.png',          type='image/png')
-@http('/pony/images/vline$length-$colour-$colour2.png', type='image/png')
+@http('/pony/images/vline$data.png', type='image/png')
 @cached
-def vline_png(length, colour, colour2=None):
-    try: return _line_image('PNG', False, length, colour, colour2)
-    except ValueError: raise http.NotFound
+def vline_png(data):
+    return _line('PNG', False, data)
 
-@http('/pony/images/vline$length-$colour.gif',          type='image/gif')
-@http('/pony/images/vline$length-$colour-$colour2.gif', type='image/gif')
+@http('/pony/images/vline$data.gif', type='image/gif')
 @cached
-def vline_gif(length, colour, colour2=None):
-    try: return _line_image('GIF', False, length, colour, colour2)
-    except ValueError: raise http.NotFound
+def vline_gif(data):
+    return _line('GIF', False, data)
 
 @http('/pony/images/pixel.png',         type='image/png')
 @http('/pony/images/pixel-$colour.png', type='image/png')
