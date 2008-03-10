@@ -174,7 +174,6 @@ def htmltag(_name_, _attrs_=None, **_attrs2_):
 
 class Local(threading.local):
     def __init__(self):
-        print>>sys.stderr, 'LOCAL INITIALIZATION'
         self.writers = []
 
 local = Local()
@@ -203,7 +202,6 @@ def grab_stdout(f):
         try: result = f(*args, **keyargs)
         finally:
             if local.writers.pop() != data.append: raise AssertionError
-            print>>sys.stderr, 'ASSERTION PASSED'
         if result is None: return data
         if not isinstance(result, basestring):
             if hasattr(result, '__unicode__'): result = unicode(result)
