@@ -183,15 +183,15 @@ static PyObject* replace_string(PyObject *source) {
 static PyObject* html_quote(PyObject *arg, int unicode_replace) {
     PyObject *unicode_arg, *ret;
 
-    printf(" quote J");
+    //printf(" quote J");
     if (PyObject_TypeCheck(arg, &Html_Type) ||
         PyInt_Check(arg) || PyLong_Check(arg) || PyFloat_Check(arg)) {
             Py_INCREF(arg); 
             return arg;
     }
-    printf("K");
+    //printf("K");
     if (!PyObject_TypeCheck(arg, &PyBaseString_Type)) {    
-        printf("C1");
+        //printf("C1");
         if (PyObject_HasAttr(arg, PyString_FromString("__unicode__"))) {        
             arg = PyObject_Unicode(arg);          
             if (arg == NULL)
@@ -204,17 +204,17 @@ static PyObject* html_quote(PyObject *arg, int unicode_replace) {
     }
     
     }
-    printf("L");
+    //printf("L");
     if (PyObject_TypeCheck(arg, &StrHtml_Type)) {
         if (unicode_replace == 0) {
             Py_INCREF(arg);
             return arg;
         }
         unicode_arg = PyUnicode_FromEncodedObject(arg, NULL, "replace");   
-        printf("L1");
+        //printf("L1");
         ret = html_make_new(unicode_arg);
         Py_DECREF(unicode_arg);
-        printf("L2\n");
+        //printf("L2\n");
         return ret;
     }
 
@@ -225,26 +225,26 @@ static PyObject* html_quote(PyObject *arg, int unicode_replace) {
         arg = replace_string(arg);
     }
     ///////////// repalce /////////////
-    printf("M");
+    //printf("M");
     if (PyObject_TypeCheck(arg, &PyUnicode_Type)) {       
         ret = html_make_new(arg);
         Py_DECREF(arg);
         return ret;
     }
-    printf("N");
+    //printf("N");
     if (unicode_replace == 0) {
         ret = strhtml_make_new(arg);
         Py_DECREF(arg);
-        printf("N1\n");
+        //printf("N1\n");
         return ret;
 
     }
     unicode_arg = PyUnicode_FromEncodedObject(arg, NULL, "replace");   
     Py_DECREF(arg);
-    printf("O");
+    //printf("O");
     ret = html_make_new(unicode_arg);
     Py_DECREF(unicode_arg);
-    printf("P\n");
+    //printf("P\n");
     return ret;
 }
 
@@ -252,18 +252,18 @@ static PyObject* _wrap(PyObject *arg, int unicode_replace) {
     PyObject *unicode_arg, *ret;
     int make_dec = 0;
 
-    printf(" wrap A");
+    //printf(" wrap A");
     if (PyInt_Check(arg) || PyLong_Check(arg) || PyFloat_Check(arg)) {
             Py_INCREF(arg); 
             return arg;
     }
-    printf("B");
+    //printf("B");
     
     if (!PyObject_TypeCheck(arg, &PyBaseString_Type)) {
-        printf("B1"); 
+        //printf("B1"); 
 		return wrapper_make_new(arg, unicode_replace);
 	}
-	printf("C");
+	//printf("C");
 	if (!PyObject_TypeCheck(arg, &Html_Type) &&
 		!PyObject_TypeCheck(arg, &StrHtml_Type)) {
 			if (PyUnicode_Check(arg)) {
@@ -274,16 +274,16 @@ static PyObject* _wrap(PyObject *arg, int unicode_replace) {
             make_dec = 1;         
 		}
 		
-		printf("D");
+		//printf("D");
 		
 		if (PyObject_TypeCheck(arg, &PyString_Type)) {
 			if (!unicode_replace) {
-			    printf("D1");
+			    //printf("D1");
 				ret = createStrWrapperObject(arg);	
 				if (ret == NULL)
 				    return NULL;						
 			} else {
-			    printf("D2");
+			    //printf("D2");
                 unicode_arg = PyUnicode_FromEncodedObject(arg, NULL, "replace"); 
                 if (unicode_arg == NULL)
                     return NULL;  		
@@ -291,20 +291,20 @@ static PyObject* _wrap(PyObject *arg, int unicode_replace) {
 				Py_DECREF(unicode_arg);
 			}
 		} else {
-		    printf("D3");
+		    //printf("D3");
 			ret = unicodewrapper_make_new(arg);
 		}
-		printf("E");		
+		//printf("E");		
 		
 		if (PyObject_SetAttrString(ret, "original_value", arg) == -1) {
 		    if (make_dec) 
 		        Py_DECREF(arg);
 			return NULL;
 		}		
-		printf("F");
+		//printf("F");
 		if (make_dec)
 		    Py_DECREF(arg);
-		printf("G");
+		//printf("G");
 		return ret;
 }
 
@@ -631,7 +631,7 @@ strhtml_mod(PyObject *self, PyObject *arg)
 	PyObject *x, *wrapped_item, *item, *ret, *formatted, *unicode_self;
 	Py_ssize_t i, len;
 
-	printf("mod Q");
+	//printf("mod Q");
 	if (!PyTuple_Check(arg)) {
 		x = _wrap(arg, 0);
 		if (x == NULL)
@@ -648,15 +648,15 @@ strhtml_mod(PyObject *self, PyObject *arg)
 			wrapped_item = _wrap(item, 0);
 			if (wrapped_item == NULL)
 		        return NULL;   // TODO: DECREF for all wrapped items
-			printf("wrapped\n");			
+			//printf("wrapped\n");			
 			PyTuple_SetItem(x, i, wrapped_item);			
 		}
 	}
     formatted = PyString_Format(self, x);
-    printf("R");
+    //printf("R");
     Py_DECREF(x);
     if (PyErr_Occurred()) {
-        printf("ERR");
+        //printf("ERR");
         if (!PyErr_ExceptionMatches(PyExc_UnicodeDecodeError)) {
             return NULL;
         } else {
@@ -666,7 +666,7 @@ strhtml_mod(PyObject *self, PyObject *arg)
 		        x = _wrap(arg, 1);
 		        if (x == NULL)
 		            return NULL;
-		        printf("B");
+		        //printf("B");
 	        } else {
 		        len = PyTuple_Size(arg);
 		        x = PyTuple_New(len);
@@ -679,7 +679,7 @@ strhtml_mod(PyObject *self, PyObject *arg)
 			        wrapped_item = _wrap(item, 1);
       		        if (wrapped_item == NULL) // TODO: DECREF for all wrapped items
     	                return NULL;
-			        printf("wrapped\n");			
+			        //printf("wrapped\n");			
 			        PyTuple_SetItem(x, i, wrapped_item);			
 		        }
 	        }            
@@ -695,12 +695,12 @@ strhtml_mod(PyObject *self, PyObject *arg)
         }
     }
 	if (PyString_Check(formatted)) {
-	    printf("S");
+	    //printf("S");
         ret = strhtml_make_new(formatted);
 	    Py_DECREF(formatted);
         return ret;
 	} else {
-	    printf("T");
+	    //printf("T");
         ret = html_make_new(formatted);
 	    Py_DECREF(formatted);
         return ret;
@@ -713,7 +713,7 @@ strhtml_join(PyObject *self, PyObject *l)
     Py_ssize_t i;
     PyObject *quoted_list, *item, *quoted_item, *ret, *joined, *unicode_self;
 
-    printf("A");
+    //printf("A");
     quoted_list = PySequence_List(l);
     if (quoted_list == NULL)
         return NULL;
@@ -726,11 +726,11 @@ strhtml_join(PyObject *self, PyObject *l)
         quoted_item = html_quote(item, 0);
         PyList_SetItem(quoted_list, i, quoted_item);
     }
-    printf("C");
+    //printf("C");
     joined = _PyString_Join(self, quoted_list);
-    printf("D");
+    //printf("D");
     if (PyErr_Occurred()) {
-        printf("ERR");
+        //printf("ERR");
         if (!PyErr_ExceptionMatches(PyExc_UnicodeDecodeError)) {
             Py_DECREF(quoted_list);
             return NULL;
@@ -1156,40 +1156,23 @@ static PyTypeObject UnicodeWrapper_Type = {
 static PyObject *
 pony_write(PyObject *self, PyObject *s)
 {
-    PyObject *f, *pmod, *real_stdout, *ret;
-    static PyObject *local = NULL;
-    static PyObject *real_stdout_write = NULL;
-    static PyObject *writers = NULL;
-    if (local == NULL || real_stdout_write == NULL || writers == NULL) {
+    PyObject *f, *real_stdout, *real_stdout_write, *writers, *ret;
+    static PyObject *pmod = NULL;
+    static PyObject *local = NULL; 
+    if (local == NULL || pmod == NULL) {
         pmod = PyImport_ImportModule("pony.templating");
         if (pmod == NULL) {
             return NULL;        
-        }
+        }        
         local = PyObject_GetAttrString(pmod, "local");   
         if (local == NULL) {
             Py_DECREF(pmod);
             return NULL;
-        }        
-        real_stdout = PyObject_GetAttrString(pmod, "real_stdout");   
-        if (real_stdout == NULL) {
-            Py_DECREF(pmod);
-            Py_DECREF(local);
-            return NULL;
-        }  
-        real_stdout_write = PyObject_GetAttrString(real_stdout, "write");   
-        if (real_stdout_write == NULL) {
-            Py_DECREF(pmod);
-            Py_DECREF(local);
-            return NULL;
-        }       
-        writers = PyObject_GetAttrString(local, "writers");   
-        if (writers == NULL) {
-            Py_DECREF(pmod);
-            Py_DECREF(local);
-            return NULL;
-        }
-        Py_DECREF(pmod);
-        Py_DECREF(local);
+        }   
+    }     
+    writers = PyObject_GetAttrString(local, "writers");   
+    if (writers == NULL) {
+        return NULL;
     }
     f = PyList_GetItem(writers, PyList_Size(writers) - 1);
     if (PyErr_Occurred()) {
@@ -1197,9 +1180,18 @@ pony_write(PyObject *self, PyObject *s)
             return NULL;
         } else {
             PyErr_Clear();
+            real_stdout = PyObject_GetAttrString(pmod, "real_stdout");   
+            if (real_stdout == NULL) {
+                return NULL;
+            }  
+            real_stdout_write = PyObject_GetAttrString(real_stdout, "write");   
+            if (real_stdout_write == NULL) {
+                Py_DECREF(real_stdout);
+                return NULL;
+            }    
             f = real_stdout_write;
         }
-    }
+    }    
     ret = PyObject_CallObject(f, s);    
     if (ret == NULL) {
         return NULL;
