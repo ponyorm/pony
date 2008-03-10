@@ -134,7 +134,7 @@ def _calc_colours(count, start_colour, end_colour):
         for i in range(count): yield i, (r1+r*i/last, g1+g*i/last, b1+b*i/last, t1+t*i/last)
     else: assert False
 
-if Image.VERSION >= '1.1.6':
+if PIL and Image.VERSION >= '1.1.6':
 
     def _draw_gradient(img, start, stop, start_colour, end_colour):
         pixels = img.load()
@@ -148,29 +148,30 @@ else:
             putpixel((start + i, 0), colour)
 
 def _line(format, horiz, data):
+    if not PIL: raise http.NotFound
     segments = []
     mode = None
     total_length = 0
     for item in data.split('+'):
         item = item.split('-')
         if len(item) == 2: item.append(None)
-        elif len(item) != 3: raise ValueError #http.NotFound
+        elif len(item) != 3: raise http.NotFound
         length, colour, colour2 = item
         try: length  = int(length)
-        except: raise ValueError #http.NotFound
+        except: raise http.NotFound
         else:
-            if length <= 0: raise ValueError #http.NotFound
+            if length <= 0: raise http.NotFound
             total_length += length
         colour = _decode_colour(colour)
         if colour2 is not None:
             colour2 = _decode_colour(colour2)
-            if len(colour) != len(colour2): raise ValueError #http.NotFound
+            if len(colour) != len(colour2): raise http.NotFound
         if mode is None: mode = len(colour)==3 and 'RGB' or 'RGBA'
-        elif mode == 'RGB' and len(colour) != 3: raise ValueError #http.NotFound
-        elif mode == 'RGBA' and len(colour) != 4: raise ValueError #http.NotFound
+        elif mode == 'RGB' and len(colour) != 3: raise http.NotFound
+        elif mode == 'RGBA' and len(colour) != 4: raise http.NotFound
         segments.append((length, colour, colour2))
-    if not 0 < total_length <= 10000: raise ValueError #http.NotFound
-    if format == 'GIF' and mode == 'RGBA': raise ValueError #http.NotFound
+    if not 0 < total_length <= 10000: raise http.NotFound
+    if format == 'GIF' and mode == 'RGBA': raise http.NotFound
     img = Image.new(mode, (total_length, 1), mode=='RGB' and (0, 0, 0) or (0, 0, 0, 255))
     draw = ImageDraw.Draw(img)
     start = 0
@@ -208,6 +209,7 @@ def vline_gif(data):
 @http('/pony/images/pixel-$colour.png', type='image/png')
 @cached
 def pixel_png(colour='00000000'):
+    if not PIL: raise http.NotFound
     try:
         colour = _decode_colour(colour)
         mode = len(colour)==6 and 'RGB' or 'RGBA'
@@ -221,6 +223,7 @@ def pixel_png(colour='00000000'):
 @http('/pony/images/pixel-$colour.gif', type='image/gif')
 @cached
 def pixel_gif(colour=None):
+    if not PIL: raise http.NotFound
     try:
         if colour is not None: colour = _decode_colour(colour)
         img = Image.new("P", (1, 1))
