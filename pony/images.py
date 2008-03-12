@@ -8,39 +8,39 @@ else: PIL = True
 from pony.web import http
 from pony.utils import cached
 
-def _decode_colour(colour):
-    try: colour = ImageColor.colormap[colour][1:]
+def _decode_color(color):
+    try: color = ImageColor.colormap[color][1:]
     except KeyError: pass
-    size = len(colour)
-    if size in (3, 4): colour = ''.join(char+char for char in colour)
+    size = len(color)
+    if size in (3, 4): color = ''.join(char+char for char in color)
     elif size not in (6, 8): raise ValueError
-    try: return tuple(map(ord, unhexlify(colour)))
+    try: return tuple(map(ord, unhexlify(color)))
     except: raise ValueError
 
-def _decode_png_colours(colour1, colour2):
-    if colour1 is not None:
-        colour1 = _decode_colour(colour1)
-        if colour2 is not None: colour2 = _decode_colour(colour2)
-        elif len(colour1) == 3: colour1, colour2 = colour1 + (255,), colour1 + (0,)
-        elif colour1[-1] == 255: colour2 = colour1[:-1] + (0,)
-        elif colour1[-1] == 0: colour2 = colour1[:-1] + (255,)
+def _decode_png_colors(color1, color2):
+    if color1 is not None:
+        color1 = _decode_color(color1)
+        if color2 is not None: color2 = _decode_color(color2)
+        elif len(color1) == 3: color1, color2 = color1 + (255,), color1 + (0,)
+        elif color1[-1] == 255: color2 = color1[:-1] + (0,)
+        elif color1[-1] == 0: color2 = color1[:-1] + (255,)
         else: raise ValueError
     else:
-        colour1 = (255, 255, 255, 255)
-        colour2 = (255, 255, 255, 0)
-    return colour1, colour2
+        color1 = (255, 255, 255, 255)
+        color2 = (255, 255, 255, 0)
+    return color1, color2
 
-def _circle_image(radius, colour, bgcolour):
+def _circle_image(radius, color, bgcolor):
     if not PIL: raise ValueError
     try: radius = int(radius)
     except: raise ValueError
     if not 2 <= radius <= 100: raise ValueError
-    if len(colour) != len(bgcolour): raise ValueError
-    mode = len(colour)==3 and 'RGB' or 'RGBA'
+    if len(color) != len(bgcolor): raise ValueError
+    mode = len(color)==3 and 'RGB' or 'RGBA'
 
-    quarter = Image.new(mode, (radius*4, radius*4), bgcolour)
+    quarter = Image.new(mode, (radius*4, radius*4), bgcolor)
     draw = ImageDraw.Draw(quarter)
-    draw.pieslice((0, 0, radius*8, radius*8), 180, 270, fill=colour)
+    draw.pieslice((0, 0, radius*8, radius*8), 180, 270, fill=color)
     quarter = quarter.resize((radius, radius), Image.ANTIALIAS)
 
     circle = Image.new(mode, (radius*2, radius*2), 0)
@@ -50,41 +50,41 @@ def _circle_image(radius, colour, bgcolour):
     circle.paste(quarter.rotate(270), (radius, 0, radius*2, radius))
     return circle
 
-@http('/pony/images/circle$radius.png',           type='image/png')
-@http('/pony/images/circle$radius-$colour.png',           type='image/png')
-@http('/pony/images/circle$radius-$colour-$bgcolour.png', type='image/png')
+@http('/pony/images/circle$radius.png',                 type='image/png')
+@http('/pony/images/circle$radius-$color.png',          type='image/png')
+@http('/pony/images/circle$radius-$color-$bgcolor.png', type='image/png')
 @cached
-def png_circle(radius, colour='000000', bgcolour=None):
+def png_circle(radius, color='000000', bgcolor=None):
     try:
-        colour, bgcolour = _decode_png_colours(colour, bgcolour)                
-        img = _circle_image(radius, colour, bgcolour)
+        color, bgcolor = _decode_png_colors(color, bgcolor)                
+        img = _circle_image(radius, color, bgcolor)
         io = StringIO()
         img.save(io, 'PNG')
         return io.getvalue()
     except ValueError: raise http.NotFound
 
 @http('/pony/images/hole$radius.png',           type='image/png')
-@http('/pony/images/hole$radius-$bgcolour.png', type='image/png')
+@http('/pony/images/hole$radius-$bgcolor.png', type='image/png')
 @cached
-def png_hole(radius, bgcolour='ffffffff'):
+def png_hole(radius, bgcolor='ffffffff'):
     try:
-        bgcolour, colour = _decode_png_colours(bgcolour, None)
-        img = _circle_image(radius, colour, bgcolour)
+        bgcolor, color = _decode_png_colors(bgcolor, None)
+        img = _circle_image(radius, color, bgcolor)
         io = StringIO()
         img.save(io, 'PNG')
         return io.getvalue()
     except ValueError: raise http.NotFound
 
-@http('/pony/images/circle$radius.gif',           type='image/gif')
-@http('/pony/images/circle$radius-$colour.gif',           type='image/gif')
-@http('/pony/images/circle$radius-$colour-$bgcolour.gif', type='image/gif')
+@http('/pony/images/circle$radius.gif',                 type='image/gif')
+@http('/pony/images/circle$radius-$color.gif',          type='image/gif')
+@http('/pony/images/circle$radius-$color-$bgcolor.gif', type='image/gif')
 @cached
-def gif_circle(radius, colour='000000', bgcolour='ffffff'):
+def gif_circle(radius, color='000000', bgcolor='ffffff'):
     try:
-        colour = _decode_colour(colour)
-        if len(colour) != 3: raise ValueError
-        bgcolour=_decode_colour(bgcolour)
-        img = _circle_image(radius, colour, bgcolour)
+        color = _decode_color(color)
+        if len(color) != 3: raise ValueError
+        bgcolor=_decode_color(bgcolor)
+        img = _circle_image(radius, color, bgcolor)
         img = img.convert("P", dither=Image.NONE, palette=Image.ADAPTIVE)
         io = StringIO()
         img.save(io, 'GIF')
@@ -92,15 +92,15 @@ def gif_circle(radius, colour='000000', bgcolour='ffffff'):
     except ValueError: raise http.NotFound
 
 @http('/pony/images/hole$radius.gif',           type='image/gif')
-@http('/pony/images/hole$radius-$bgcolour.gif', type='image/gif')
+@http('/pony/images/hole$radius-$bgcolor.gif', type='image/gif')
 @cached
-def gif_hole(radius, bgcolour='ffffff'):
+def gif_hole(radius, bgcolor='ffffff'):
     if not PIL: raise http.NotFound
     try: radius = int(radius)
     except: raise http.NotFound
     if not 2 <= radius <= 100: raise http.NotFound
-    bgcolour = _decode_colour(bgcolour)
-    if len(bgcolour) != 3: raise ValueError
+    bgcolor = _decode_color(bgcolor)
+    if len(bgcolor) != 3: raise ValueError
 
     quarter = Image.new("P", (radius, radius), 0)
     draw = ImageDraw.Draw(quarter)
@@ -112,40 +112,40 @@ def gif_hole(radius, bgcolour='ffffff'):
     circle.paste(quarter.rotate(180), (radius, radius, radius*2, radius*2))
     circle.paste(quarter.rotate(270), (radius, 0, radius*2, radius))
 
-    if bgcolour == (0, 0, 0): palette = (255, 255, 255)
-    else: palette = bgcolour + (0, 0, 0)
+    if bgcolor == (0, 0, 0): palette = (255, 255, 255)
+    else: palette = bgcolor + (0, 0, 0)
     circle.putpalette(palette)
     io = StringIO()
     circle.save(io, 'GIF', transparency=1)
     return io.getvalue()
 
-def _calc_colours(count, start_colour, end_colour):
-    assert len(start_colour) == len(end_colour)
+def _calc_colors(count, start_color, end_color):
+    assert len(start_color) == len(end_color)
     last = count - 1
-    if len(start_colour) == 3:
-        r1, g1, b1 = start_colour
-        r2, g2, b2 = end_colour
+    if len(start_color) == 3:
+        r1, g1, b1 = start_color
+        r2, g2, b2 = end_color
         r, g, b = r2-r1, g2-g1, b2-b1
         for i in range(count): yield i, (r1+r*i/last, g1+g*i/last, b1+b*i/last)
-    elif len(start_colour) == 4:
-        r1, g1, b1, t1 = start_colour
-        r2, g2, b2, t2 = end_colour
+    elif len(start_color) == 4:
+        r1, g1, b1, t1 = start_color
+        r2, g2, b2, t2 = end_color
         r, g, b, t = r2-r1, g2-g1, b2-b1, t2-t1
         for i in range(count): yield i, (r1+r*i/last, g1+g*i/last, b1+b*i/last, t1+t*i/last)
     else: assert False
 
 if PIL and Image.VERSION >= '1.1.6':
 
-    def _draw_gradient(img, start, stop, start_colour, end_colour):
+    def _draw_gradient(img, start, stop, start_color, end_color):
         pixels = img.load()
-        for i, colour in _calc_colours(stop-start, start_colour, end_colour):
-            pixels[start + i, 0] = colour
+        for i, color in _calc_colors(stop-start, start_color, end_color):
+            pixels[start + i, 0] = color
 else:
 
-    def _draw_gradient(img, start, stop, start_colour, end_colour):
+    def _draw_gradient(img, start, stop, start_color, end_color):
         putpixel = img.img.putpixel
-        for i, colour in _calc_colours(stop-start, start_colour, end_colour):
-            putpixel((start + i, 0), colour)
+        for i, color in _calc_colors(stop-start, start_color, end_color):
+            putpixel((start + i, 0), color)
 
 def _line(format, horiz, data):
     if not PIL: raise http.NotFound
@@ -156,28 +156,28 @@ def _line(format, horiz, data):
         item = item.split('-')
         if len(item) == 2: item.append(None)
         elif len(item) != 3: raise http.NotFound
-        length, colour, colour2 = item
+        length, color, color2 = item
         try: length  = int(length)
         except: raise http.NotFound
         else:
             if length <= 0: raise http.NotFound
             total_length += length
-        colour = _decode_colour(colour)
-        if colour2 is not None:
-            colour2 = _decode_colour(colour2)
-            if len(colour) != len(colour2): raise http.NotFound
-        if mode is None: mode = len(colour)==3 and 'RGB' or 'RGBA'
-        elif mode == 'RGB' and len(colour) != 3: raise http.NotFound
-        elif mode == 'RGBA' and len(colour) != 4: raise http.NotFound
-        segments.append((length, colour, colour2))
+        color = _decode_color(color)
+        if color2 is not None:
+            color2 = _decode_color(color2)
+            if len(color) != len(color2): raise http.NotFound
+        if mode is None: mode = len(color)==3 and 'RGB' or 'RGBA'
+        elif mode == 'RGB' and len(color) != 3: raise http.NotFound
+        elif mode == 'RGBA' and len(color) != 4: raise http.NotFound
+        segments.append((length, color, color2))
     if not 0 < total_length <= 10000: raise http.NotFound
     if format == 'GIF' and mode == 'RGBA': raise http.NotFound
     img = Image.new(mode, (total_length, 1), mode=='RGB' and (0, 0, 0) or (0, 0, 0, 255))
     draw = ImageDraw.Draw(img)
     start = 0
-    for length, colour, colour2 in segments:
-        if colour2 is None: _draw_gradient(img, start, start+length, colour, colour)
-        else: _draw_gradient(img, start, start+length, colour, colour2)
+    for length, color, color2 in segments:
+        if color2 is None: _draw_gradient(img, start, start+length, color, color)
+        else: _draw_gradient(img, start, start+length, color, color2)
         start += length
     if not horiz: img = img.rotate(270)
     # if format == 'GIF': img  = img.convert("P", dither=Image.NONE, palette=Image.ADAPTIVE)
@@ -205,32 +205,32 @@ def vline_png(data):
 def vline_gif(data):
     return _line('GIF', False, data)
 
-@http('/pony/images/pixel.png',         type='image/png')
-@http('/pony/images/pixel-$colour.png', type='image/png')
+@http('/pony/images/pixel.png',        type='image/png')
+@http('/pony/images/pixel-$color.png', type='image/png')
 @cached
-def pixel_png(colour='00000000'):
+def pixel_png(color='00000000'):
     if not PIL: raise http.NotFound
     try:
-        colour = _decode_colour(colour)
-        mode = len(colour)==6 and 'RGB' or 'RGBA'
-        img = Image.new(mode, (1, 1), colour)
+        color = _decode_color(color)
+        mode = len(color)==6 and 'RGB' or 'RGBA'
+        img = Image.new(mode, (1, 1), color)
         io = StringIO()
         img.save(io, 'PNG')
         return io.getvalue()
     except ValueError: raise http.NotFound
 
-@http('/pony/images/pixel.gif',         type='image/gif')
-@http('/pony/images/pixel-$colour.gif', type='image/gif')
+@http('/pony/images/pixel.gif',        type='image/gif')
+@http('/pony/images/pixel-$color.gif', type='image/gif')
 @cached
-def pixel_gif(colour=None):
+def pixel_gif(color=None):
     if not PIL: raise http.NotFound
     try:
-        if colour is not None: colour = _decode_colour(colour)
+        if color is not None: color = _decode_color(color)
         img = Image.new("P", (1, 1))
-        img.putpalette(colour or (255, 255, 255))
+        img.putpalette(color or (255, 255, 255))
         img.putpixel((0, 0), 0)
         io = StringIO()
-        if colour is None: img.save(io, 'GIF', transparency=0)
+        if color is None: img.save(io, 'GIF', transparency=0)
         else: img.save(io, 'GIF')
         return io.getvalue()
     except ValueError: raise http.NotFound
