@@ -944,8 +944,8 @@ def xslt_conversation():
 @xslt_function
 def xslt_url(url):
     request = local.request
-    script_url = local.request.script_url
-    base_url = local.request._base_url
+    script_url = request.script_url
+    base_url = request._base_url
     if base_url is not None and not base_url.startswith(script_url): return url
     if url.startswith(script_url): pass
     elif url.startswith('http://'): return external_url('http', url[7:])
@@ -990,7 +990,11 @@ def application(environ, wsgi_start_response):
         log(type='HTTP:response', text=status, headers=headers)
         wsgi_start_response(status, headers)
 
-    local.request = request = HttpRequest(environ)
+    # This next line is required, because hase possible side-effect
+    # (initialization of new dummy request in frest thread)
+    local.request # It must be done before creation of non-dummy request
+
+    request = local.request = HttpRequest(environ)
     log_request(request)
     try:
         try:
