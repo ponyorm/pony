@@ -939,7 +939,7 @@ def xslt_set_base_url(url):
 
 @xslt_function
 def xslt_conversation():
-    return local.response._new_conversation_data
+    return local.response.conversation_data
 
 @xslt_function
 def xslt_url(url):
