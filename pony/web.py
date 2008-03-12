@@ -42,6 +42,10 @@ class _Http(object):
         return auth.local.session
     session = property(get_session)
 
+    def get_conversation(self):
+        return auth.local.conversation
+    conversation = property(get_conversation)
+
     def get_user(self):
         return auth.get_user()
     def set_user(self, user, remember_ip=False, path='/', domain=None):
@@ -623,7 +627,7 @@ def invoke(url):
         try: url.decode('utf8')
         except UnicodeDecodeError: raise Http400BadRequest
     request = local.request
-    local.response = HttpResponse()
+    response = local.response = HttpResponse()
     path, qlist = split_url(url)
     if path[:1] == ['static'] and len(path) > 1:
         return get_static_file(path[1:])
@@ -654,7 +658,7 @@ def invoke(url):
                 elif isinstance(info.redirect, (int, long)) and 300 <= info.redirect < 400:
                     status = str(info.redirect)
                 raise HttpRedirect(new_url, status)
-    local.response.headers.update(info.http_headers)
+    response.headers.update(info.http_headers)
 
     names, argsname, keyargsname, defaults, converters = info.func.argspec
     params = request.params
@@ -664,8 +668,8 @@ def invoke(url):
     result = info.func(*args, **keyargs)
 
     headers = dict([ (name.replace('_', '-').title(), value)
-                     for name, value in local.response.headers.items() ])
-    local.response.headers = headers
+                     for name, value in response.headers.items() ])
+    response.headers = headers
 
     media_type = headers.pop('Type', 'text/plain')
     charset = headers.pop('Charset', 'UTF-8')
@@ -678,6 +682,7 @@ def invoke(url):
         content_type = '%s; charset=%s' % (media_type, charset)
         headers['Content-Type'] = content_type
 
+    response.conversation_data = auth.save_conversation()
     if media_type == 'text/html' and xslt.is_supported:
         result = xslt.transform(result, charset)
     else:
@@ -826,13 +831,16 @@ class HttpRequest(object):
             self.full_url = 'http://localhost/'
             self.host = 'localhost'
             self.port = 80
+        self._base_url = None
+        self.conversation = {}
         input_stream = environ.get('wsgi.input') or StringIO()
         self.params = {}
-        self.fields = cgi.FieldStorage(
-            fp=input_stream, environ=environ, keep_blank_values=True)
+        self.fields = cgi.FieldStorage(fp=input_stream, environ=environ, keep_blank_values=True)
         self.form_processed = None
         self.submitted_form = self.fields.getfirst('_f')
         self.ticket, self.payload = auth.verify_ticket(self.fields.getfirst('_t'))
+        self.conversation_data = self.fields.getfirst('_c')
+        auth.load_conversation(self.conversation_data)
         self.id_counter = imap('id_%d'.__mod__, count())
 
 class HttpResponse(object):
@@ -840,6 +848,7 @@ class HttpResponse(object):
         self.headers = {}
         self.cookies = Cookie.SimpleCookie()
         self._http_only_cookies = set()
+        self.conversation_data = ''
 
 class Local(threading.local):
     def __init__(self):
@@ -925,34 +934,54 @@ def create_cookies(environ):
 BLOCK_SIZE = 65536
 
 @xslt_function
-def xslt_internal_url(s):
-    return s
+def xslt_set_base_url(url):
+    local.request._base_url = url
 
 @xslt_function
-def xslt_external_url(s):
+def xslt_conversation():
+    return local.response._new_conversation_data
+
+@xslt_function
+def xslt_url(url):
     request = local.request
-    script_url = request.script_url
-    if s.startswith(script_url): return xslt_internal_url(s)
-    if s.startswith('http://'): protocol, s = 'http', s[7:]
-    elif s.startswith('https://'): protocol, s = 'https', s[8:]
-    else: assert False
+    script_url = local.request.script_url
+    base_url = local.request._base_url
+    if base_url is not None and not base_url.startswith(script_url): return url
+    if url.startswith(script_url): pass
+    elif url.startswith('http://'): return external_url('http', url[7:])
+    elif url.startswith('https://'): return external_url('https', url[8:])
+
+    conversation_data = local.response.conversation_data
+    if not conversation_data: return url
+    if '?' in url: return '%s&_c=%s' % (url, conversation_data)
+    return '%s?_c=%s' % (url, conversation_data)
+        
+def external_url(protocol, s):
+    request = local.request
     try: i = s.index('/')
     except ValueError: pass
     else:
+        # Phishing prevention
         try: j = s.index('@', 0, i)
         except ValueError: pass
         else: s = s[j+1:]
-    return '%s/pony/redirect/%s/%s' % (request.environ.get('SCRIPT_NAME',''), protocol, s)
+    return '%s://%s' % (protocol, s)
+    # return '%s/pony/redirect/%s/%s' % (request.environ.get('SCRIPT_NAME',''), protocol, s)
 
-@http('/pony/redirect/*')
-def external_redirect(*args):
-    url = local.request.url 
-    assert url.startswith('/pony/redirect/')
-    url = url[len('/pony/redirect/'):]
-    protocol, url = url.split('/', 1)
-    assert protocol in ('http', 'https')
-    s = '%s://%s' % (protocol, url)
-    raise HttpRedirect(s)
+##@http('/pony/redirect/*')
+##def external_redirect(*args):
+##    url = local.request.url 
+##    assert url.startswith('/pony/redirect/')
+##    url = url[len('/pony/redirect/'):]
+##    protocol, url = url.split('/', 1)
+##    if protocol not in ('http', 'https'): raise http.NotFound
+##    url = '%s://%s' % (protocol, url)
+##    local.response.headers['Refresh'] = '0; url=' + url
+##    return '<html></html>'
+##
+##@http('/pony/blocked')
+##def blocked_url():
+##    raise http.NotFound
 
 def application(environ, wsgi_start_response):
     def start_response(status, headers):

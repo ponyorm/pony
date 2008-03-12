@@ -2,17 +2,24 @@
 <xsl:stylesheet version = '1.0' xmlns:xsl='http://www.w3.org/1999/XSL/Transform'
                 xmlns:python='python' exclude-result-prefixes='python'>
 
+  <xsl:variable name="conversation">
+    <xsl:value-of select="python:conversation()" />
+  </xsl:variable>
+  <xsl:variable name="styles" select="/html/head/link[@blueprint or (@rel='stylesheet' and @type='text/css')] | /html/head/style" />
+
   <xsl:template match="/ | @* | node()">
     <xsl:copy>
       <xsl:apply-templates select="@* | node()" />
     </xsl:copy>
   </xsl:template>
 
-  <xsl:variable name="styles" select="/html/head/link[@blueprint or (@rel='stylesheet' and @type='text/css')] | /html/head/style" />
-
   <xsl:template match="head">
-    <head>
+    <head convdata="{string($conversation)}">
       <xsl:apply-templates select="@*" />
+      <xsl:if test="base">
+        <xsl:variable name="base-url" select="python:set-base-url(base[1]/@href)" />
+        <xsl:copy-of select="base[1]" />
+      </xsl:if>
       <xsl:if test="not(boolean($styles))">
         <xsl:call-template name="blueprint" />
       </xsl:if>
@@ -20,6 +27,8 @@
     </head>
   </xsl:template>
 
+  <xsl:template match="base" />
+  
   <xsl:template name="blueprint" match="link[@blueprint]">
     <xsl:choose>
       <xsl:when test="@blueprint != ''">
@@ -59,18 +68,25 @@
     </body>
   </xsl:template>
 
-  <xsl:template match="*[@radius]">
+  <xsl:template match="form">
     <xsl:copy>
-      <xsl:apply-templates select="@*[name()!='radius']" />
-      <xsl:attribute name="class">
-        <xsl:value-of select="normalize-space(concat(@class, ' ', 'rounded'))"/>
-      </xsl:attribute>
-      <xsl:apply-templates select="node()" />
-      <div class="top-left radius-{@radius}"></div>
-      <div class="top-right radius-{@radius}"></div>
-      <div class="bottom-left radius-{@radius}"></div>
-      <div class="bottom-right radius-{@radius}"></div>      
+      <xsl:if test="string($conversation)">
+        <input type="hidden" name="_c" value="{string($conversation)}" />
+      </xsl:if>
+      <xsl:apply-templates select="@* | node()" />
     </xsl:copy>
+  </xsl:template>
+  
+  <xsl:template match="@href[not(parent::link)]">
+    <xsl:attribute name="href">
+      <xsl:value-of select="python:url(string(.))"/>
+    </xsl:attribute>
+  </xsl:template>
+
+  <xsl:template match="@src[parent::frame or parent::iframe]">
+    <xsl:attribute name="src">
+      <xsl:value-of select="python:url(string(.))"/>
+    </xsl:attribute>
   </xsl:template>
 
   <xsl:attribute-set name="honeypot-attrs">
@@ -105,16 +121,18 @@
 
   <xsl:template match="@no-obfuscated"></xsl:template>
 
-  <xsl:template match="@href[starts-with(., 'http://') or starts-with(., 'https://')]">
-    <xsl:attribute name="href">
-      <xsl:value-of select="python:external-url(string(.))"/>
-    </xsl:attribute>
-  </xsl:template>
-
-  <xsl:template match="@action[name(..)='form' and starts-with(., 'http://') or starts-with(., 'https://')]">
-    <xsl:attribute name="action">
-      <xsl:value-of select="python:external-url(string(.))"/>
-    </xsl:attribute>
+  <xsl:template match="*[@radius]">
+    <xsl:copy>
+      <xsl:apply-templates select="@*[name()!='radius']" />
+      <xsl:attribute name="class">
+        <xsl:value-of select="normalize-space(concat(@class, ' ', 'rounded'))"/>
+      </xsl:attribute>
+      <xsl:apply-templates select="node()" />
+      <div class="top-left radius-{@radius}"></div>
+      <div class="top-right radius-{@radius}"></div>
+      <div class="bottom-left radius-{@radius}"></div>
+      <div class="bottom-right radius-{@radius}"></div>
+    </xsl:copy>
   </xsl:template>
 
 </xsl:stylesheet>

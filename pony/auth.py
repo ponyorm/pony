@@ -1,7 +1,10 @@
 import re, os, os.path, sys, time, random, threading, Queue, cPickle, base64, hmac, sha
 
+from urllib import quote_plus, unquote_plus
+
 import pony
 from pony.thirdparty import sqlite
+from pony.utils import compress, decompress
 
 ################################################################################
 
@@ -20,13 +23,20 @@ def load(data, environ):
 def save(environ):
     return local.save(environ)
 
+def get_conversation(s):
+    return local.conversation
+
+def load_conversation(s):
+    local.load_conversation(s)
+
+def save_conversation():
+    return local.save_conversation()
+
 def get_ticket(payload=None, prevent_resubmit=False):
-    if payload is None: payload = ''
+    if not payload: payload = ''
     else:
         assert isinstance(payload, str)
-        zipped = payload.encode('zip')
-        if len(zipped) < len(payload): payload = 'Z' + zipped
-        else: payload = 'N' + payload
+        payload = compress(payload)
         
     now = int(time.time())
     now_str = '%x' % now
@@ -41,7 +51,7 @@ def get_ticket(payload=None, prevent_resubmit=False):
     payload_str = base64.b64encode(payload)
     rnd_str = base64.b64encode(rnd)
     hash_str = base64.b64encode(hash)
-    return '%s:%s:%s:%s' % (now_str, payload_str, rnd_str, hash_str)
+    return ':'.join((now_str, payload_str, rnd_str, hash_str))
 
 def verify_ticket(ticket_str):
     now = int(time.time() // 60)
@@ -64,11 +74,7 @@ def verify_ticket(ticket_str):
             queue.put((2, minute, buffer(rnd), local.lock, result))
             local.lock.acquire()
             if not result[0]: return result[0], None
-        if payload:
-            first = payload[0]
-            if first == 'N': payload = payload[1:]
-            elif first == 'Z': payload = payload[1:].decode('zip')
-            else: assert False
+        if payload: payload = decompress(payload)
         return (minute, rnd), payload or None
     except: return False, None
 
@@ -90,6 +96,7 @@ class Local(threading.local):
         self.session = {}
         self.user = None
         self.set_user(None)
+        self.conversation = {}
     def set_user(self, user, remember_ip=False, path='/', domain=None):
         if self.user is not None or user is None: self.session.clear()
         self.user = user
@@ -145,6 +152,36 @@ class Local(threading.local):
             data = ':'.join([ctime_str, mtime_str, pickle_str, hash_str])
         if data == self.old_data: return None, None, None
         return data, self.domain, self.path
+    def load_conversation(self, s):
+        if not s:
+            self.conversation = {}
+            return
+        try:
+            s = unquote_plus(s)
+            time_str, pickle_str, hash_str = s.split(':')
+            minute = int(time_str, 16)
+            compressed_data = base64.b64decode(pickle_str, altchars='-_')
+            hash = base64.b64decode(hash_str, altchars='-_')
+            hashobject = get_hashobject(minute)
+            hashobject.update(compressed_data)
+            if hash != hashobject.digest(): return {}
+            conversation = cPickle.loads(decompress(compressed_data))
+            assert conversation.__class__ == dict
+            self.conversation = conversation
+        except: self.conversation = {}
+    def save_conversation(self):
+        if not self.conversation: return ''
+        now = int(time.time() // 60)
+        now_str = '%x' % now
+        compressed_data = compress(cPickle.dumps(self.conversation, 2))
+        hashobject = get_hashobject(now)
+        hashobject.update(compressed_data)
+        hash = hashobject.digest()
+
+        pickle_str = base64.b64encode(compressed_data, altchars='-_')
+        hash_str = base64.b64encode(hashobject.digest(), altchars='-_')
+        s = ':'.join((now_str, pickle_str, hash_str))
+        return quote_plus(s, safe=':')
 
 local = Local()
 secret_cache = {}
