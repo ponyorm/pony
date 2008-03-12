@@ -125,6 +125,17 @@ def read_text_file(fname, encoding=None):
     except UnicodeDecodeError:
         return text.decode(encoding or getpreferredencoding())
 
+def compress(s):
+    zipped = s.encode('zip')
+    if len(zipped) < len(s): return 'Z' + zipped
+    return 'N' + s
+
+def decompress(s):
+    first = s[0]
+    if first == 'N': return s[1:]
+    elif first == 'Z': return s[1:].decode('zip')
+    raise ValueError('Incorrect data')
+
 def new_guid():
     'new_guid() -> new_binary_guid'
     return buffer(urandom(16))
