@@ -14,7 +14,7 @@
   </xsl:template>
 
   <xsl:template match="head">
-    <head convdata="{string($conversation)}">
+    <head>
       <xsl:apply-templates select="@*" />
       <xsl:if test="base">
         <xsl:variable name="base-url" select="python:set-base-url(base[1]/@href)" />
@@ -22,13 +22,18 @@
       </xsl:if>
       <xsl:if test="not(boolean($styles))">
         <xsl:call-template name="blueprint" />
+        <xsl:call-template name="default-css" />
       </xsl:if>
       <xsl:apply-templates select="*" />
     </head>
   </xsl:template>
 
   <xsl:template match="base" />
-  
+
+  <xsl:template name="jquery" match="link[@jquery]">
+    <script src="/pony/static/jquery/jquery-1.2.3.js" language="JavaScript" type="text/javascript"></script>
+  </xsl:template>
+
   <xsl:template name="blueprint" match="link[@blueprint]">
     <xsl:choose>
       <xsl:when test="@blueprint != ''">
@@ -47,7 +52,11 @@
       </xsl:otherwise>
     </xsl:choose>
   </xsl:template>
-  
+
+  <xsl:template name="default-css" match="link[@default]">
+    <link rel="stylesheet" href="/pony/static/css/default.css" type="text/css" media="screen, projection" />
+  </xsl:template>
+
   <xsl:template match="link[@rounded-corners]">
     <link href="/pony/static/css/rounded-corners.css" type="text/css" rel="stylesheet" />
   </xsl:template>
