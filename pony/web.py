@@ -11,9 +11,15 @@ import pony
 from pony import autoreload, auth, utils, xslt
 from pony.autoreload import on_reload
 from pony.utils import decorator_with_params
-from pony.templating import Html, real_stdout
+from pony.templating import Html, printhtml, real_stdout
 from pony.logging import log, log_exc
 from pony.xslt import xslt_function
+
+@decorator_with_params
+def webpage(*args, **keyargs):
+    def new_decorator(old_func):
+        return http(*args, **keyargs)(printhtml(old_func))
+    return new_decorator
 
 class _Http(object):
     def __call__(self, *args, **keyargs):
