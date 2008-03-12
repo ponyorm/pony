@@ -947,6 +947,8 @@ def xslt_set_base_url(url):
 def xslt_conversation():
     return local.response.conversation_data
 
+protocol_re = re.compile(r'\w+:')
+
 @xslt_function
 def xslt_url(url):
     request = local.request
@@ -956,6 +958,7 @@ def xslt_url(url):
     if url.startswith(script_url): pass
     elif url.startswith('http://'): return external_url('http', url[7:])
     elif url.startswith('https://'): return external_url('https', url[8:])
+    elif protocol_re.match(url): return url
 
     conversation_data = local.response.conversation_data
     if not conversation_data: return url
@@ -971,23 +974,23 @@ def external_url(protocol, s):
         try: j = s.index('@', 0, i)
         except ValueError: pass
         else: s = s[j+1:]
-    return '%s://%s' % (protocol, s)
-    # return '%s/pony/redirect/%s/%s' % (request.environ.get('SCRIPT_NAME',''), protocol, s)
+    if not local.response.conversation_data: return '%s://%s' % (protocol, s)
+    return '%s/pony/redirect/%s/%s' % (request.environ.get('SCRIPT_NAME',''), protocol, s)
 
-##@http('/pony/redirect/*')
-##def external_redirect(*args):
-##    url = local.request.url 
-##    assert url.startswith('/pony/redirect/')
-##    url = url[len('/pony/redirect/'):]
-##    protocol, url = url.split('/', 1)
-##    if protocol not in ('http', 'https'): raise http.NotFound
-##    url = '%s://%s' % (protocol, url)
-##    local.response.headers['Refresh'] = '0; url=' + url
-##    return '<html></html>'
-##
-##@http('/pony/blocked')
-##def blocked_url():
-##    raise http.NotFound
+@http('/pony/redirect/*', type='text/html')
+def external_redirect(*args):
+    url = local.request.url 
+    assert url.startswith('/pony/redirect/')
+    url = url[len('/pony/redirect/'):]
+    protocol, url = url.split('/', 1)
+    if protocol not in ('http', 'https'): raise http.NotFound
+    url = '%s://%s' % (protocol, url)
+    local.response.headers['Refresh'] = '0; url=' + url
+    return '<html></html>'
+
+@http('/pony/blocked')
+def blocked_url():
+    raise http.NotFound
 
 def application(environ, wsgi_start_response):
     def start_response(status, headers):

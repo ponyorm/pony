@@ -43,6 +43,9 @@ def page4():
 def header(title='Demonstration of Pony features'):
     print '<title>%s</title>' % title
     print '<h1>%s</h1>' % title
+    x = http.conversation.get('x', 0) + 1
+    print '<h2>%s</h2>' % x
+    http.conversation['x'] = x
     print '<br>'
 
 @printhtml
@@ -125,6 +128,8 @@ def index():
     print '</ul>'
     print '<br><br><p><a href="mailto:example@example.com">automatically obfuscated e-mail</a></p>'
     print '<p><a href="http://www.google.com@members.tripod.com/abc/def?x=1&y=2">External link</a></p>'
+    print '<p><a href="ftp://aaa.bbb.com/xxx/yyy">FTP link</a></p>'
+    print '''<p><a href="javascript:alert('Hello');">JavaScript url</a></p>'''
 
 if __name__ == '__main__':
     start_http_server()
