@@ -170,10 +170,20 @@ class Local(threading.local):
             self.conversation = conversation
         except: self.conversation = {}
     def save_conversation(self):
-        if not self.conversation: return ''
+        c = self.conversation
+        if not c: return ''
+        for key, value in c.items():
+            class_name = key.__class__.__name__
+            if class_name == 'StrHtml':
+                del c[key]
+                c[str.__str__(key)] = value
+            elif class_name == 'Html':
+                del c[key]
+                c[unicode.__unicode__(key)] = value
+                
         now = int(time.time() // 60)
         now_str = '%x' % now
-        compressed_data = compress(cPickle.dumps(self.conversation, 2))
+        compressed_data = compress(cPickle.dumps(c, 2))
         hashobject = get_hashobject(now)
         hashobject.update(compressed_data)
         hash = hashobject.digest()
