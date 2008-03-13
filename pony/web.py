@@ -776,9 +776,9 @@ class HttpRedirect(HttpException):
                    '303' : '303 See Other',
                    '305' : '305 Use Proxy',
                    '307' : '307 Temporary Redirect'}
-    def __init__(self, location, status='302 Found'):
+    def __init__(self, location=None, status='302 Found'):
         Exception.__init__(self, location)
-        self.location = location
+        self.location = location or local.request.full_url
         status = str(status)
         self.status = self.status_dict.get(status, status)
         self.headers = {'Location': location}
