@@ -43,9 +43,6 @@ def page4():
 def header(title='Demonstration of Pony features'):
     print '<title>%s</title>' % title
     print '<h1>%s</h1>' % title
-    x = http.conversation.get('x', 0) + 1
-    print '<h2>%s</h2>' % x
-    http.conversation['x'] = x
     print '<br>'
 
 @printhtml
