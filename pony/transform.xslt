@@ -144,4 +144,11 @@
     </xsl:copy>
   </xsl:template>
 
+  <xsl:template match="img">
+    <xsl:copy>
+      <xsl:if test="not(@alt)"><xsl:attribute name="alt" /></xsl:if>
+      <xsl:apply-templates select="@* | node()" />
+    </xsl:copy>
+  </xsl:template>
+
 </xsl:stylesheet>
