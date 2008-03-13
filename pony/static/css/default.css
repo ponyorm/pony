@@ -1,59 +1,14 @@
-html, body {
-    height: 100%;
-}
-.pony-header, .pony-footer {
-    background-color: #EEEEEE;
-}
-a:hover {
-	color: red;
-}
-h1, h2, h3
-{
-	font-family: tahoma;
-	font-weight: bold;
-	color: #000066;
-	margin: 1em 0 0.6em 0;
-}
-h1 { font-size: 152%; }
-h2 { font-size: 136%; }
-h3 { font-size: 122%; }
-.pony-content p, .pony-content li, .pony-content blockquote {
-	font: normal 114%/150% "Times New Roman", Times, TimesNR, serif;
-}
-.pony-content p {
-	margin: 0.5em 0;
-}
-.pony-content blockquote {
-	margin: 0.5em 0.5em;
-}
-li { margin: 0.5em 0.5em 0.5em 1.5em; }
-ol li
-{
-	list-style-position: outside;
-	list-style-type: decimal;
-}
-ul li
-{
-	list-style-position: outside;
-	list-style-type: disc;
-}
-th { font-weight: bold; }
+/* Blueprint CSS fixes */
 
-/* forms: */
-
-form th, form td { padding: 0.2em 0.5em; }
-form .composite-field table th,
-form .composite-field table td { padding: 0 0.5em; }
-form .required { margin-left: 0.3em; }
-form .error { margin-top: 0.5em; }
-form .required, form .error { color: red; }
-form .checkbox, form .radiobutton { margin: 0.3em 0; }
-form .value { padding-left: 0.5em; *padding-left: 0.2em; }
-form .buttons { margin: 0.2em 0; }
-
-form tr.composite-field table th
-{
-	padding: 0 0.5em 0.1em 0;
-	text-align: center;
+hr {
+	height:1px;
 }
-form tr.composite-field table td { padding: 0 0.5em 0 0; }
+
+/* Forms */
+
+form th {
+	background-color:inherit;
+}
+form .required {
+	color:red;
+}
