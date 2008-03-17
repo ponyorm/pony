@@ -3,7 +3,7 @@ Implementation of JSONEncoder
 """
 import re
 try:
-    from simplejson import _speedups
+    from pony.thirdparty.simplejson import _speedups
 except ImportError:
     _speedups = None
 

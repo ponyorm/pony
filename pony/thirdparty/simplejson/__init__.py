@@ -92,8 +92,8 @@ __all__ = [
     'JSONDecoder', 'JSONEncoder',
 ]
 
-from decoder import JSONDecoder
-from encoder import JSONEncoder
+from pony.thirdparty.simplejson.decoder import JSONDecoder
+from pony.thirdparty.simplejson.encoder import JSONEncoder
 
 _default_encoder = JSONEncoder(
     skipkeys=False,

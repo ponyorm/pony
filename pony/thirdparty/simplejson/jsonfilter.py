@@ -1,4 +1,4 @@
-import simplejson
+from pony.thirdparty import simplejson
 import cgi
 
 class JSONFilter(object):
