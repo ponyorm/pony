@@ -136,6 +136,10 @@ def decompress(s):
     elif first == 'Z': return s[1:].decode('zip')
     raise ValueError('Incorrect data')
 
+def markdown(s):
+    from pony.thirdparty.markdown import markdown
+    return markdown(s)
+
 def new_guid():
     'new_guid() -> new_binary_guid'
     return buffer(urandom(16))

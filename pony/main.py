@@ -1,5 +1,6 @@
 import pony
 
+from pony.utils import markdown
 from pony.templating import (real_stdout, printtext, printhtml, Html,
                              cycle, template, html)
 from pony.autoreload import use_autoreload, USE_AUTORELOAD
