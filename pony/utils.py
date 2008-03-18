@@ -144,6 +144,12 @@ def markdown(s, escape_html=True):
     # elif isinstance(s, unicode): s = unicode(s)
     return Html(markdown(s))
 
+class JsonString(unicode): pass
+
+def json(*args, **keyargs):
+    from pony.thirdparty import simplejson
+    return JsonString(simplejson.dumps(*args, **keyargs))
+
 def new_guid():
     'new_guid() -> new_binary_guid'
     return buffer(urandom(16))
