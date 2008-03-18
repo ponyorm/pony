@@ -1,14 +1,9 @@
 /* Blueprint CSS fixes */
 
-hr {
-	height:1px;
-}
+table { border-collapse: collapse; }
+hr { height: 1px; }
 
 /* Forms */
 
-form th {
-	background-color:inherit;
-}
-form .required {
-	color:red;
-}
+form th { background-color:inherit; }
+form .required { color:red; }
