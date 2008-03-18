@@ -146,9 +146,12 @@ def markdown(s, escape_html=True):
 
 class JsonString(unicode): pass
 
-def json(*args, **keyargs):
+def json(obj, **keyargs):
     from pony.thirdparty import simplejson
-    return JsonString(simplejson.dumps(*args, **keyargs))
+    result = JsonString(simplejson.dumps(obj, **keyargs))
+    result.media_type = 'application/json'
+    if 'encoding' in keyargs: result.charset = keyargs['encoding']
+    return result
 
 def new_guid():
     'new_guid() -> new_binary_guid'

@@ -11,7 +11,7 @@ import pony
 from pony import autoreload, auth, utils, xslt
 from pony.autoreload import on_reload
 from pony.utils import decorator_with_params
-from pony.templating import Html, printhtml, real_stdout
+from pony.templating import Html, StrHtml, printhtml, real_stdout
 from pony.logging import log, log_exc
 from pony.xslt import xslt_function
 
@@ -677,14 +677,17 @@ def invoke(url):
                      for name, value in response.headers.items() ])
     response.headers = headers
 
-    media_type = headers.pop('Type', 'text/plain')
-    charset = headers.pop('Charset', 'UTF-8')
+    media_type = headers.pop('Type', None)
+    charset = headers.pop('Charset', None)
     content_type = headers.get('Content-Type')
     if content_type:
         media_type, type_params = cgi.parse_header(content_type)
         charset = type_params.get('charset', 'iso-8859-1')
     else:
-        if isinstance(result, Html): media_type = 'text/html'
+        if media_type is not None: pass
+        elif isinstance(result, (Html, StrHtml)): media_type = 'text/html'
+        else: media_type = getattr(result, 'media_type', 'text/plain')
+        charset = charset or getattr(result, 'charset', 'UTF-8')
         content_type = '%s; charset=%s' % (media_type, charset)
         headers['Content-Type'] = content_type
 
