@@ -1,7 +1,14 @@
 Blueprint CSS Framework Change Log
 ----------------------------------------------------------------
 
-Version 0.7 - Date TBD
+Version 0.7.1 - Date 21/02/2007
+--
+  Bug fixes:
+    * Fixed bug in the compressor related to Rubygems. [JC] 
+    * <tt> should be inline, not block. [OFB]
+
+
+Version 0.7 - Date 19/02/2007
 --
   New features:
     * New directory structure. [OFB]
@@ -33,9 +40,10 @@ Version 0.7 - Date TBD
     * Push-x bottom margin. [OFB]
     * Vertical align set to middle on tables. [OFB]
     * Improved .notice, .error and .success color contrast. [OFB]
+    * Size of input[text]. [OFB]
+    * Baseline alignment of <h4>. [OFB]
   
   Misc:
-    * Increased default font size to 80% (13px). [OFB]
     * Improved structure in print.css. [OFB]
     * Dual-licensed under MIT and GPL licenses. [OFB]
     * Changed name of .clear to .clearfix, and added .clear (clear:both;). [OFB]

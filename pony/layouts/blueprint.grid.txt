@@ -111,21 +111,22 @@ hr.$(ns)space {
   color: #fff;
 }
 
+
 /* Clearing floats without extra markup
    Based on How To Clear Floats Without Structural Markup by PiE
    [http://www.positioniseverything.net/easyclearing.html] */
 
-.$(ns)clearfix, .$(ns)container { display: inline-block; }
 .$(ns)clearfix:after, .$(ns)container:after {
-  content: "."; 
-  display: block; 
-  height: 0; 
-  clear: both; 
-  visibility: hidden;
+    content: "."; 
+    display: block; 
+    height: 0; 
+    clear: both; 
+    visibility: hidden;
 }
+.$(ns)clearfix, .$(ns)container {display: inline-block;}
 * html .$(ns)clearfix,
-* html .$(ns)container   { height: 1%; }
-.$(ns)clearfix, .$(ns)container  { display: block; }
+* html .$(ns)container {height: 1%;}
+.$(ns)clearfix, .$(ns)container {display: block;}
 
 /* Regular clearing
    apply to column that should drop below previous ones. */

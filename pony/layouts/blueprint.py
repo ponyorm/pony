@@ -6,9 +6,13 @@ try: import Image, ImageDraw
 except ImportError: PIL = False
 else: PIL = True
 
-from pony.utils import cached
 from pony.templating import template, cycle
-from pony.web import http
+if __name__ == '__main__':
+    def cached(func): return func
+    def http(*args, **keyargs): return lambda x: x
+else:
+    from pony.utils import cached
+    from pony.web import http
 
 comment_re = re.compile(r'/[*](?:[^*]|[*][^/])*[*]/')
 
@@ -17,6 +21,8 @@ def compress(s):
     s = ' '.join(s.split())
     s = s.replace(': ', ':').replace(', ', ',').replace('; ', ';').replace('{ ', '{').replace('} ', '}')
     return s.replace('{', '\n{').replace('}', '}\n')
+if __name__ == '__main__':
+    def compress(s): return s
 
 @http('/pony/blueprint/grid.png', type='image/png')
 @http('/pony/blueprint/$column_count/$column_width/$gutter_width/grid.png', type='image/png')
@@ -26,7 +32,7 @@ def grid_background(column_count=24, column_width=30, gutter_width=10, ns=''):
     if not PIL: raise http.NotFound
     im = Image.new('RGB', (column_width+gutter_width, 18), (255, 255, 255))
     draw = ImageDraw.Draw(im)
-    draw.rectangle((0, 0, column_width, 17), fill=(232, 239, 251))
+    draw.rectangle((0, 0, column_width-1, 17), fill=(232, 239, 251))
     draw.line((0, 17, column_width+gutter_width, 17), fill=(233, 233, 233))
     io = StringIO()
     im.save(io, 'PNG')
@@ -91,4 +97,10 @@ def forms(column_count=24, column_width=30, gutter_width=10, ns=''):
 
 
 if __name__ == '__main__':
+    file('reset_test.css', 'w').write(reset())
+    file('typography_test.css', 'w').write(typography())
+    file('forms_test.css', 'w').write(forms())
     file('grid_test.css', 'w').write(grid())
+    file('ie_test.css', 'w').write(ie())
+    file('print_test.css', 'w').write(print_())
+    
