@@ -203,7 +203,7 @@ class Form(object):
                 break
         error_class = self.error_text and 'has-error' or ''
         return htmltag('form', attrs, method=self.method, accept_charset='UTF-8',
-                       _class=('pony-form ' + error_class).strip())
+                       _class=('pony ' + error_class).strip())
     @property
     def header(self):
         result = [ self.tag ]
@@ -216,7 +216,7 @@ class Form(object):
     def table(self):
         result = []
         for f in self.fields:
-            classes = f.__class__.__name__.lower() + ' field'
+            classes = f.__class__.__name__.lower() + '-field'
             if f.error_text: classes += ' has-error'
             result.extend((Html('\n<tr class="%s">\n<th>' % classes),
                            f.label, Html('</th>\n<td>'), f.tag))
@@ -614,7 +614,7 @@ class CheckboxGroup(MultiSelect):
         result = [ htmltag('div', self.attrs, _class='checkboxes') ]
         selection = self.value
         for value, description, key in self.options:
-            result.append(Html('<div class="checkbox">'))
+            result.append(Html('<div class="checkboxgroup-item">'))
             result.append(htmltag('input', name=self.name, type='checkbox',
                                   value=value, checked=(value in selection)))
             result.append(Html('<span class="value">%s</span></div>') % description)
