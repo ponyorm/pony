@@ -5,7 +5,7 @@
   <xsl:variable name="conversation">
     <xsl:value-of select="python:conversation()" />
   </xsl:variable>
-  <xsl:variable name="styles" select="/html/head/link[@blueprint or (@rel='stylesheet' and @type='text/css')] | /html/head/style" />
+  <xsl:variable name="styles" select="/html/head/link[@default or (@rel='stylesheet' and @type='text/css')] | /html/head/style" />
 
   <xsl:template match="/ | @* | node()">
     <xsl:copy>
@@ -21,8 +21,7 @@
         <xsl:copy-of select="base[1]" />
       </xsl:if>
       <xsl:if test="not(boolean($styles))">
-        <xsl:call-template name="blueprint" />
-        <xsl:call-template name="default-css" />
+        <xsl:call-template name="default" />
       </xsl:if>
       <xsl:apply-templates select="*" />
     </head>
@@ -34,9 +33,9 @@
     <script src="/pony/static/jquery/jquery-1.2.3.js" language="JavaScript" type="text/javascript"></script>
   </xsl:template>
 
-  <xsl:template name="blueprint" match="link[@blueprint]">
+  <xsl:template name="default" match="link[@default]">
     <xsl:choose>
-      <xsl:when test="@blueprint != ''">
+      <xsl:when test="@blueprint and @blueprint != ''">
         <link rel="stylesheet" href="/pony/blueprint/{@blueprint}/screen.css" type="text/css" media="screen, projection" />
         <link rel="stylesheet" href="/pony/blueprint/{@blueprint}/print.css" type="text/css" media="print" />
         <xsl:comment>{{[if IE]}}</xsl:comment>
@@ -51,9 +50,6 @@
         <xsl:comment>{{[endif]}}</xsl:comment>
       </xsl:otherwise>
     </xsl:choose>
-  </xsl:template>
-
-  <xsl:template name="default-css" match="link[@default]">
     <link rel="stylesheet" href="/pony/static/css/default.css" type="text/css" media="screen, projection" />
   </xsl:template>
 
