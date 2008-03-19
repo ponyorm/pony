@@ -5,5 +5,52 @@ hr { height: 1px; }
 
 /* Forms */
 
-form th { background-color:inherit; }
-form .required { color:red; }
+form.pony-form table {
+    width: auto;
+    margin: 0;
+}
+form.pony-form th,
+form.pony-form td {
+    vertical-align: center;
+    background-color: transparent;
+    padding: 0.2em 0.5em;
+}
+form.pony-form .required {
+    color: red;
+    margin-left: 0.3em;
+}
+form.pony-form .error {
+    color: red;
+    background-color: transparent;
+    border: none;
+    margin: 0.5em 0;
+    padding: 0 0.5em;
+}
+form.pony-form .has-error .error {
+    padding: 0;
+}
+form.pony-form .checkbox,
+form.pony-form .radiobutton { margin: 0.3em 0; }
+form.pony-form .value { padding-left: 0.5em; *padding-left: 0.2em; }
+form.pony-form .buttons { margin: 0.2em 0; }
+
+form.pony-form tr.composite-field table th
+{
+    padding: 0 0.5em 0.1em 0;
+    text-align: center;
+}
+form.pony-form tr.composite-field table td { padding: 0 0.5em 0 0; }
+
+/* Overriding Blueprint CSS settings: */
+
+form.pony-form .field input,
+form.pony-form .field select,
+form.pony-form .field textarea {
+  border: 1px solid #bbb;
+}
+form.pony-form .field input:focus,
+form.pony-form .field select:focus,
+form.pony-form .field textarea:focus {
+  border: 1px solid #666;
+}
+form.pony-form .field textarea  { width: 300px; height: 200px; padding: 5px; }

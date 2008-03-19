@@ -203,7 +203,7 @@ class Form(object):
                 break
         error_class = self.error_text and 'has-error' or ''
         return htmltag('form', attrs, method=self.method, accept_charset='UTF-8',
-                       _class=error_class)
+                       _class=('pony-form ' + error_class).strip())
     @property
     def header(self):
         result = [ self.tag ]
@@ -216,7 +216,7 @@ class Form(object):
     def table(self):
         result = []
         for f in self.fields:
-            classes = f.__class__.__name__.lower() + '-field'
+            classes = f.__class__.__name__.lower() + ' field'
             if f.error_text: classes += ' has-error'
             result.extend((Html('\n<tr class="%s">\n<th>' % classes),
                            f.label, Html('</th>\n<td>'), f.tag))
