@@ -13,6 +13,7 @@ form.pony th,
 form.pony td {
     vertical-align: center;
     padding: 0.2em 0.5em;
+    background-color: transparent;
 }
 form.pony .required {
     color: red;
