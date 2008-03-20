@@ -435,8 +435,67 @@ html_join(PyObject *self, PyObject *l)
     return ret;   
 }
 
+static PyObject *
+html_reduce(htmlObject *self)
+{
+/*
+    PyObject *result, *args;
+    
+    args = PyTuple_New(1);
+    Py_INCREF(self->ob_type);
+    PyTuple_SET_ITEM(args, 0, (PyObject*)(self->ob_type));
+    
+    result = PyTuple_New(2);
+    Py_INCREF(html_make_new);
+    PyTuple_SET_ITEM(result, 0, html_make_new);
+    PyTuple_SET_ITEM(result, 1, args);    
+    return result;
+*/    
+    //return Py_BuildValue("(O())", ((PyObject *)self)->ob_type); //, html_getstate(self));
+/*    
+    PyObject* retVal;
+	PyObject *v, *v2;
+
+	retVal = PyTuple_New(2);
+	if (retVal == NULL) {
+		return NULL;
+	}
+
+	//v = (PyObject*)&PyUnicode_Type;
+	v = (PyObject*)&Html_Type;
+	Py_INCREF(v);
+	PyTuple_SET_ITEM(retVal, 0, v);
+
+	v = PyUnicode_FromObject(self);
+	if (v == NULL ) {
+		Py_DECREF(retVal);
+		return NULL;
+	}
+
+	v2 = PyTuple_New(1);
+	if (v2 == NULL) {
+		Py_DECREF(v);
+		Py_DECREF(retVal);
+		return NULL;
+	}
+	PyTuple_SET_ITEM(v2, 0, v);
+	PyTuple_SET_ITEM(retVal, 1, v2);
+
+	return retVal;
+*/
+  PyObject *value, *result;
+  value = PyObject_CallFunctionObjArgs((PyObject *)&PyUnicode_Type, self, NULL);
+  if (value == NULL)
+    return NULL;
+  result = Py_BuildValue("(O(O))", self->unicode_object.ob_type,
+			 value);
+  Py_DECREF(value);
+  return result;	
+}
+
 static PyMethodDef html_methods[] = {
     {"join", (PyCFunction)html_join, METH_O | METH_COEXIST, ""},
+   	{"__reduce__", (PyCFunction)html_reduce, METH_NOARGS, ""},
     {NULL, NULL}
 };
 
@@ -500,7 +559,7 @@ static PyTypeObject Html_Type = {
         0,                      /*tp_dictoffset*/
         0,                      /*tp_init*/
         0,                      /*tp_alloc*/
-        0,                      /*tp_new*/
+        (newfunc)html_make_new,//0,                      /*tp_new*/
         0,                      /*tp_free*/
         0,                      /*tp_is_gc*/
 };
@@ -1221,6 +1280,7 @@ init_templating(void)
         return;   
     if (PyType_Ready(&UnicodeWrapper_Type) < 0)
         return;
+        
     m = Py_InitModule3("_templating", _templating_methods,
                        "Templating in C");
 
