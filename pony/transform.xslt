@@ -142,7 +142,7 @@
 
   <xsl:template match="img">
     <xsl:copy>
-      <xsl:if test="not(@alt)"><xsl:attribute name="alt" /></xsl:if>
+      <xsl:attribute name="alt" />
       <xsl:apply-templates select="@* | node()" />
     </xsl:copy>
   </xsl:template>
