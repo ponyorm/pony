@@ -463,8 +463,7 @@ static PySequenceMethods html_as_sequence = {
 static PyTypeObject Html_Type = {
     PyObject_HEAD_INIT(NULL)
     0,                        /*ob_size*/
-    "pony.templating."
-    "Html",                   /*tp_name*/
+    "pony.templating.Html",   /*tp_name*/
     sizeof(htmlObject),       /*tp_basicsize*/
     0,                        /*tp_itemsize*/
     /* methods */
@@ -546,8 +545,7 @@ strhtml_repr(strhtmlObject *self)
 {
     PyObject *uc, *ret;
     uc = PyString_Type.tp_repr((PyObject *)self);
-    // TODO: now we have this string in repr: pony.templating.StrHtml
-    ret = PyString_FromFormat("%s(%s)", ((PyObject *)self)->ob_type->tp_name, PyString_AsString(uc));
+    ret = PyString_FromFormat("%s(%s)", "StrHtml", PyString_AsString(uc));
     Py_DECREF(uc);
     return ret;
 }
@@ -762,7 +760,7 @@ strhtml_reduce(strhtmlObject *self)
   
     if (value == NULL)
         return NULL;
-    result = Py_BuildValue("(O(O))", self->string_object.ob_type, self);
+    result = Py_BuildValue("(O(O))", self->string_object.ob_type, value);
     Py_DECREF(value);
     return result;	
 }
@@ -795,8 +793,7 @@ static PySequenceMethods strhtml_as_sequence = {
 static PyTypeObject StrHtml_Type = {
     PyObject_HEAD_INIT(NULL)
     0,                        /*ob_size*/
-    "pony.templating."
-    "StrHtml",                   /*tp_name*/
+    "pony.templating.StrHtml", /*tp_name*/
     sizeof(strhtmlObject),       /*tp_basicsize*/
     0,                        /*tp_itemsize*/
     /* methods */
@@ -1214,14 +1211,14 @@ pony_write(PyObject *self, PyObject *s)
     return Py_None;    
 }
 
-static PyMethodDef _pony_templating_methods[] = {
+static PyMethodDef _templating_methods[] = {
     {"quote", ex_quote, METH_VARARGS, "quote() doc string"},
     {"write", pony_write, METH_VARARGS, "write() doc string"},
     {NULL, NULL}
 };
 
 PyMODINIT_FUNC
-init_pony_templating(void)
+init_templating(void)
 {
     PyObject* m;
     Html_Type.tp_base = &PyUnicode_Type;
@@ -1241,7 +1238,7 @@ init_pony_templating(void)
     if (PyType_Ready(&UnicodeWrapper_Type) < 0)
         return;
         
-    m = Py_InitModule3("_pony_templating", _pony_templating_methods,
+    m = Py_InitModule3("_templating", _templating_methods,
                        "Implementation of pony.templating in C");
     if (m == NULL)
         return;

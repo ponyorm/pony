@@ -2,7 +2,7 @@ import sys, os.path, threading, inspect, re, weakref, textwrap
 
 from pony.utils import read_text_file, is_ident, decorator, decorator_with_params, get_mtime
 
-try: from pony import _pony_templating
+try: from pony import _templating
 except ImportError: pass
 
 try: real_stdout
@@ -141,13 +141,13 @@ class UnicodeWrapper(unicode):
     def __repr__(self):
         return quote(`self.original_value`)
 
-try: _pony_templating
+try: _templating
 except NameError: pass
 else:
-    Html = _pony_templating.Html
-    StrHtml = _pony_templating.StrHtml
-    StrHtml2 = _pony_templating.StrHtml2
-    quote = _pony_templating.quote
+    Html = _templating.Html
+    StrHtml = _templating.StrHtml
+    StrHtml2 = _templating.StrHtml2
+    quote = _templating.quote
     del _wrap, Wrapper, UnicodeWrapper
     
 htmljoin = Html('').join
@@ -187,9 +187,9 @@ class PonyStdout(object):
 
 pony_stdout = PonyStdout()
 
-try: _pony_templating
+try: _templating
 except NameError: pass
-else: pony_stdout.write = _pony_templating.write
+else: pony_stdout.write = _templating.write
 
 @decorator
 def grab_stdout(f):
