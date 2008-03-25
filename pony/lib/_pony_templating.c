@@ -308,12 +308,6 @@ static PyObject* _wrap(PyObject *arg, int unicode_replace) {
 		return ret;
 }
 
-static PyMethodDef _templating_methods[] = {
-    {"quote", ex_quote, METH_VARARGS, "quote() doc string"},
-    {"write", pony_write, METH_VARARGS, "write() doc string"},
-    {NULL, NULL}
-};
-
 typedef struct {
     PyUnicodeObject unicode_object;
 } htmlObject;
@@ -334,18 +328,12 @@ html_make_new(PyObject *arg)
     return ret;
 }
 
-static void
-html_dealloc(PyObject *self)
-{    
-    PyUnicode_Type.tp_dealloc((PyObject *) self);
-}
-
 static PyObject *
 html_repr(htmlObject *self)
 {
     PyObject *uc, *ret;
     uc = PyUnicode_Type.tp_repr((PyObject *)self);
-    ret = PyString_FromFormat("%s(%s)", ((PyObject *)self)->ob_type->tp_name, PyString_AsString(uc));
+    ret = PyString_FromFormat("%s(%s)", "Html",/*((PyObject *)self)->ob_type->tp_name*/ PyString_AsString(uc));
     Py_DECREF(uc);
     return ret;
 }
@@ -438,57 +426,11 @@ html_join(PyObject *self, PyObject *l)
 static PyObject *
 html_reduce(htmlObject *self)
 {
-/*
-    PyObject *result, *args;
-    
-    args = PyTuple_New(1);
-    Py_INCREF(self->ob_type);
-    PyTuple_SET_ITEM(args, 0, (PyObject*)(self->ob_type));
-    
-    result = PyTuple_New(2);
-    Py_INCREF(html_make_new);
-    PyTuple_SET_ITEM(result, 0, html_make_new);
-    PyTuple_SET_ITEM(result, 1, args);    
-    return result;
-*/    
-    //return Py_BuildValue("(O())", ((PyObject *)self)->ob_type); //, html_getstate(self));
-/*    
-    PyObject* retVal;
-	PyObject *v, *v2;
-
-	retVal = PyTuple_New(2);
-	if (retVal == NULL) {
-		return NULL;
-	}
-
-	//v = (PyObject*)&PyUnicode_Type;
-	v = (PyObject*)&Html_Type;
-	Py_INCREF(v);
-	PyTuple_SET_ITEM(retVal, 0, v);
-
-	v = PyUnicode_FromObject(self);
-	if (v == NULL ) {
-		Py_DECREF(retVal);
-		return NULL;
-	}
-
-	v2 = PyTuple_New(1);
-	if (v2 == NULL) {
-		Py_DECREF(v);
-		Py_DECREF(retVal);
-		return NULL;
-	}
-	PyTuple_SET_ITEM(v2, 0, v);
-	PyTuple_SET_ITEM(retVal, 1, v2);
-
-	return retVal;
-*/
   PyObject *value, *result;
-  value = PyObject_CallFunctionObjArgs((PyObject *)&PyUnicode_Type, self, NULL);
+  value = PyUnicode_FromObject((PyObject *)self);
   if (value == NULL)
-    return NULL;
-  result = Py_BuildValue("(O(O))", self->unicode_object.ob_type,
-			 value);
+       return NULL;
+  result = Py_BuildValue("(O(O))", self->unicode_object.ob_type, value);
   Py_DECREF(value);
   return result;	
 }
@@ -496,7 +438,7 @@ html_reduce(htmlObject *self)
 static PyMethodDef html_methods[] = {
     {"join", (PyCFunction)html_join, METH_O | METH_COEXIST, ""},
    	{"__reduce__", (PyCFunction)html_reduce, METH_NOARGS, ""},
-    {NULL, NULL}
+    {NULL}
 };
 
 static PyNumberMethods html_as_number = {
@@ -521,11 +463,12 @@ static PySequenceMethods html_as_sequence = {
 static PyTypeObject Html_Type = {
         PyObject_HEAD_INIT(NULL)
         0,                        /*ob_size*/
+        "pony.templating."
         "Html",                   /*tp_name*/
         sizeof(htmlObject),       /*tp_basicsize*/
         0,                        /*tp_itemsize*/
         /* methods */
-        (destructor)html_dealloc, /*tp_dealloc*/  
+        0,                        /*tp_dealloc*/  
         0,                        /*tp_print*/
         0,                        /*tp_getattr*/
         0,                        /*tp_setattr*/
@@ -559,7 +502,7 @@ static PyTypeObject Html_Type = {
         0,                      /*tp_dictoffset*/
         0,                      /*tp_init*/
         0,                      /*tp_alloc*/
-        (newfunc)html_make_new,//0,                      /*tp_new*/
+        0,                      /*tp_new*/
         0,                      /*tp_free*/
         0,                      /*tp_is_gc*/
 };
@@ -584,12 +527,6 @@ strhtml_make_new(PyObject *arg)
     return ret;
 }
 
-static void
-strhtml_dealloc(PyObject *self)
-{    
-    PyString_Type.tp_dealloc((PyObject *) self);
-}
-
 static PyObject *
 strhtml_str(strhtmlObject *self)
 {
@@ -609,6 +546,7 @@ strhtml_repr(strhtmlObject *self)
 {
     PyObject *uc, *ret;
     uc = PyString_Type.tp_repr((PyObject *)self);
+    // TODO: now we have this string in repr: pony.templating.StrHtml
     ret = PyString_FromFormat("%s(%s)", ((PyObject *)self)->ob_type->tp_name, PyString_AsString(uc));
     Py_DECREF(uc);
     return ret;
@@ -815,9 +753,24 @@ strhtml_join(PyObject *self, PyObject *l)
     return ret;
 }
 
+static PyObject *
+strhtml_reduce(strhtmlObject *self)
+{
+  PyObject *value, *result;
+  // TODO: what is the better way to copy string?
+  value = PyString_FromString(PyString_AsString(self));
+  
+  if (value == NULL)
+       return NULL;
+  result = Py_BuildValue("(O(O))", self->string_object.ob_type, self);
+  Py_DECREF(value);
+  return result;	
+}
+
 static PyMethodDef strhtml_methods[] = {
     {"join", (PyCFunction)strhtml_join, METH_O | METH_COEXIST, ""},
-    {NULL, NULL}
+    {"__reduce__", (PyCFunction)strhtml_reduce, METH_NOARGS, ""},
+    {NULL}
 };
 
 static PyNumberMethods strhtml_as_number = {
@@ -842,22 +795,23 @@ static PySequenceMethods strhtml_as_sequence = {
 static PyTypeObject StrHtml_Type = {
         PyObject_HEAD_INIT(NULL)
         0,                        /*ob_size*/
+        "pony.templating."
         "StrHtml",                   /*tp_name*/
         sizeof(strhtmlObject),       /*tp_basicsize*/
         0,                        /*tp_itemsize*/
         /* methods */
-        (destructor)strhtml_dealloc, /*tp_dealloc*/  
+        0,                        /*tp_dealloc*/  
         0,                        /*tp_print*/
         0,                        /*tp_getattr*/
         0,                        /*tp_setattr*/
         0,                        /*tp_compare*/
-        (unaryfunc)strhtml_repr,     /*tp_repr*/
-        &strhtml_as_number,          /*tp_as_number*/
-        &strhtml_as_sequence,        /*tp_as_sequence*/
+        (unaryfunc)strhtml_repr,  /*tp_repr*/
+        &strhtml_as_number,       /*tp_as_number*/
+        &strhtml_as_sequence,     /*tp_as_sequence*/
         0,                        /*tp_as_mapping*/
         0,                        /*tp_hash*/
         0,                        /*tp_call*/
-        (reprfunc)strhtml_str,                        /*tp_str*/
+        (reprfunc)strhtml_str,    /*tp_str*/
         0,                        /*tp_getattro*/
         0,                        /*tp_setattro*/
         0,                        /*tp_as_buffer*/
@@ -870,7 +824,7 @@ static PyTypeObject StrHtml_Type = {
         0,                      /*tp_weaklistoffset*/
         0,                      /*tp_iter*/
         0,                      /*tp_iternext*/
-        strhtml_methods,           /*tp_methods*/
+        strhtml_methods,        /*tp_methods*/
         0,                      /*tp_members*/
         0,                      /*tp_getset*/
         0,                      /*tp_base*/
@@ -898,8 +852,8 @@ strhtml2_str(strhtml2Object *self)
 static PyTypeObject StrHtml2_Type = {
         PyObject_HEAD_INIT(NULL)
         0,                        /*ob_size*/
-        "StrHtml2",                   /*tp_name*/
-        sizeof(strhtml2Object),       /*tp_basicsize*/
+        "StrHtml2",               /*tp_name*/
+        sizeof(strhtml2Object),   /*tp_basicsize*/
         0,                        /*tp_itemsize*/
         /* methods */
         0,                        /*tp_dealloc*/  
@@ -1082,9 +1036,9 @@ static PyTypeObject Wrapper_Type = {
         0,                      /*tp_descr_get*/
         0,                      /*tp_descr_set*/
         0,                      /*tp_dictoffset*/
-        (initproc)wrapper_init,                      /*tp_init*/
+        (initproc)wrapper_init, /*tp_init*/
         0,                      /*tp_alloc*/
-        0 /*wrapper_make_new*/,                      /*tp_new*/
+        0,                       /*tp_new*/
         0,                      /*tp_free*/
         0,                      /*tp_is_gc*/
 };
@@ -1168,7 +1122,7 @@ static PyMemberDef unicodewrapper_members[] = {
 static PyTypeObject UnicodeWrapper_Type = {
         PyObject_HEAD_INIT(NULL)
         0,                        /*ob_size*/
-        "UnicodeWrapper",                   /*tp_name*/
+        "UnicodeWrapper",         /*tp_name*/
         sizeof(unicodeWrapperObject),       /*tp_basicsize*/
         0,                        /*tp_itemsize*/
         /* methods */
@@ -1177,9 +1131,9 @@ static PyTypeObject UnicodeWrapper_Type = {
         0,                        /*tp_getattr*/
         0,                        /*tp_setattr*/
         0,                        /*tp_compare*/
-        (unaryfunc)unicodewrapper_repr,     /*tp_repr*/
-        0,          /*tp_as_number*/
-        0,        /*tp_as_sequence*/
+        (unaryfunc)unicodewrapper_repr, /*tp_repr*/
+        0,                        /*tp_as_number*/
+        0,                        /*tp_as_sequence*/
         0,                        /*tp_as_mapping*/
         0,                        /*tp_hash*/
         0,                        /*tp_call*/
@@ -1196,8 +1150,8 @@ static PyTypeObject UnicodeWrapper_Type = {
         0,                      /*tp_weaklistoffset*/
         0,                      /*tp_iter*/
         0,                      /*tp_iternext*/
-        0,           /*tp_methods*/
-        unicodewrapper_members,                      /*tp_members*/
+        0,                      /*tp_methods*/
+        unicodewrapper_members, /*tp_members*/
         0,                      /*tp_getset*/
         0,                      /*tp_base*/
         0,                      /*tp_dict*/
@@ -1260,8 +1214,14 @@ pony_write(PyObject *self, PyObject *s)
     return Py_None;    
 }
 
+static PyMethodDef _pony_templating_methods[] = {
+    {"quote", ex_quote, METH_VARARGS, "quote() doc string"},
+    {"write", pony_write, METH_VARARGS, "write() doc string"},
+    {NULL, NULL}
+};
+
 PyMODINIT_FUNC
-init_templating(void)
+init_pony_templating(void)
 {
     PyObject* m;
     Html_Type.tp_base = &PyUnicode_Type;
@@ -1281,8 +1241,10 @@ init_templating(void)
     if (PyType_Ready(&UnicodeWrapper_Type) < 0)
         return;
         
-    m = Py_InitModule3("_templating", _templating_methods,
-                       "Templating in C");
+    m = Py_InitModule3("_pony_templating", _pony_templating_methods,
+                       "Implementation of pony.templating in C");
+    if (m == NULL)
+        return;
 
     Py_INCREF(&Html_Type);
     PyModule_AddObject(m, "Html", (PyObject *)&Html_Type);
@@ -1294,4 +1256,5 @@ init_templating(void)
     PyModule_AddObject(m, "Wrapper", (PyObject *)&Wrapper_Type);
     Py_INCREF(&UnicodeWrapper_Type);
     PyModule_AddObject(m, "UnicodeWrapper", (PyObject *)&UnicodeWrapper_Type);
+
 }

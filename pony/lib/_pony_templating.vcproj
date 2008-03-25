@@ -2,7 +2,7 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="7.10"
-	Name="_templating"
+	Name="_pony_templating"
 	ProjectGUID="{FA0A0631-F82A-4D06-A9EB-7AC92A62E805}"
 	SccProjectName=""
 	SccLocalPath="">
@@ -28,7 +28,7 @@
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="TRUE"
 				UsePrecompiledHeader="2"
-				PrecompiledHeaderFile=".\Release/_templating.pch"
+				PrecompiledHeaderFile=".\Release/_pony_templating.pch"
 				AssemblerListingLocation=".\Release/"
 				ObjectFile=".\Release/"
 				ProgramDataBaseFileName=".\Release/"
@@ -39,16 +39,16 @@
 				Name="VCCustomBuildTool"/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/export:init_templating"
+				AdditionalOptions="/export:init_pony_templating"
 				AdditionalDependencies="odbc32.lib odbccp32.lib python25.lib"
-				OutputFile=".\Release/_templating.pyd"
+				OutputFile=".\Release/_pony_templating.pyd"
 				LinkIncremental="1"
 				SuppressStartupBanner="TRUE"
 				AdditionalLibraryDirectories="..\PCbuild"
 				ModuleDefinitionFile=""
-				ProgramDatabaseFile=".\Release/_templating.pdb"
+				ProgramDatabaseFile=".\Release/_pony_templating.pdb"
 				SubSystem="2"
-				ImportLibrary=".\Release/_templating.lib"
+				ImportLibrary=".\Release/_pony_templating.lib"
 				TargetMachine="1"/>
 			<Tool
 				Name="VCMIDLTool"
@@ -56,7 +56,7 @@
 				MkTypLibCompatible="TRUE"
 				SuppressStartupBanner="TRUE"
 				TargetEnvironment="1"
-				TypeLibraryName=".\Release/_templating.tlb"
+				TypeLibraryName=".\Release/_pony_templating.tlb"
 				HeaderFileName=""/>
 			<Tool
 				Name="VCPostBuildEventTool"/>
@@ -93,7 +93,7 @@
 				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS"
 				RuntimeLibrary="3"
 				UsePrecompiledHeader="2"
-				PrecompiledHeaderFile=".\Debug/_templating.pch"
+				PrecompiledHeaderFile=".\Debug/_pony_templating.pch"
 				AssemblerListingLocation=".\Debug/"
 				ObjectFile=".\Debug/"
 				ProgramDataBaseFileName=".\Debug/"
@@ -105,17 +105,17 @@
 				Name="VCCustomBuildTool"/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/export:init_templating"
+				AdditionalOptions="/export:init_pony_templating"
 				AdditionalDependencies="odbc32.lib odbccp32.lib python25_d.lib"
-				OutputFile=".\Debug/_templating_d.pyd"
+				OutputFile=".\Debug/_pony_templating_d.pyd"
 				LinkIncremental="1"
 				SuppressStartupBanner="TRUE"
 				AdditionalLibraryDirectories="..\PCbuild"
 				ModuleDefinitionFile=""
 				GenerateDebugInformation="TRUE"
-				ProgramDatabaseFile=".\Debug/_templating_d.pdb"
+				ProgramDatabaseFile=".\Debug/_pony_templating_d.pdb"
 				SubSystem="2"
-				ImportLibrary=".\Debug/_templating_d.lib"
+				ImportLibrary=".\Debug/_pony_templating_d.lib"
 				TargetMachine="1"/>
 			<Tool
 				Name="VCMIDLTool"
@@ -123,7 +123,7 @@
 				MkTypLibCompatible="TRUE"
 				SuppressStartupBanner="TRUE"
 				TargetEnvironment="1"
-				TypeLibraryName=".\Debug/_templating.tlb"
+				TypeLibraryName=".\Debug/_pony_templating.tlb"
 				HeaderFileName=""/>
 			<Tool
 				Name="VCPostBuildEventTool"/>
@@ -154,7 +154,7 @@
 			Name="Source Files"
 			Filter="cpp;c;cxx;rc;def;r;odl;hpj;bat;for;f90">
 			<File
-				RelativePath="_templating.c">
+				RelativePath="_pony_templating.c">
 				<FileConfiguration
 					Name="Release|Win32">
 					<Tool
