@@ -248,8 +248,8 @@ Form.NotProcessed = FormNotProcessed
 Form.DoNotDoRedirect = DoNotDoRedirect = True
 
 class HtmlField(object):
-    def __init__(self, value=None):
-        self.attrs = {}
+    def __init__(self, value=None, **attrs):
+        self.attrs = attrs
         self.form = self.name = None
         self.initial_value = value
         self._label = None
@@ -318,8 +318,8 @@ class Ticket(Hidden):
 
 class Submit(HtmlField):
     HTML_TYPE = 'submit'
-    def _init_(self, form, name, label):
-        HtmlField._init_(self, form, name, label)
+    def _init_(self, form, name, label, **attrs):
+        HtmlField._init_(self, form, name, label, **attrs)
         if self.initial_value is None: self.initial_value = label
 
 class Reset(Submit):
@@ -329,11 +329,10 @@ class BaseWidget(HtmlField):
     def __init__(self, label=None, required=None, value=None, **attrs):
         if 'type' in attrs: raise TypeError('You can set type only for Text fields')
         if 'regex' in attrs: raise TypeError('You can set regex only for Text fields')
-        HtmlField.__init__(self, value)
+        HtmlField.__init__(self, value, **attrs)
         if 'id' not in attrs:
             request = get_request()
             attrs['id'] = request.id_counter.next()
-        self.attrs = attrs
         self.required = required
         self._error_text = None
         self._auto_error_text = None
@@ -461,6 +460,10 @@ class Text(BaseWidget):
         return py2str(value)
 
 class StaticText(BaseWidget):
+    def __init__(self, value, **attrs):
+        if 'label' in attrs: raise TypeError("You can not set 'label' attribute for StaticText")
+        if 'required' in attrs: raise TypeError("You can not set 'required' attribute for StaticText")
+        BaseWidget.__init__(self, None, None, value, **attrs)
     def __unicode__(self):
         return Html('<strong>%s</strong>') % self.value
     html = tag = property(__unicode__)
