@@ -329,10 +329,10 @@ class BaseWidget(HtmlField):
     def __init__(self, label=None, required=None, value=None, **attrs):
         if 'type' in attrs: raise TypeError('You can set type only for Text fields')
         if 'regex' in attrs: raise TypeError('You can set regex only for Text fields')
-        HtmlField.__init__(self, value, **attrs)
         if 'id' not in attrs:
             request = get_request()
             attrs['id'] = request.id_counter.next()
+        HtmlField.__init__(self, value, **attrs)
         self.required = required
         self._error_text = None
         self._auto_error_text = None
