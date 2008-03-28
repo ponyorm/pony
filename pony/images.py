@@ -234,3 +234,45 @@ def pixel_gif(color=None):
         else: img.save(io, 'GIF')
         return io.getvalue()
     except ValueError: raise http.NotFound
+
+@http('/pony/images/tab.png', type='image/png')
+@http('/pony/images/tab-$width-$height.png', type='image/png')
+def tab_png(width=300, height=200, radius=5, topcolor=None, bottomcolor=None, bordercolor=None, backcolor=None):
+    if not PIL: raise http.NotFound
+    topcolor = topcolor and _decode_color(topcolor) or (255, 255, 255, 255)
+    bottomcolor = bottomcolor and _decode_color(bottomcolor) or (217, 234, 244, 255)
+    bordercolor = bordercolor and _decode_color(bordercolor) or (60, 85, 107, 255)
+    backcolor = backcolor and _decode_color(backcolor) or (255, 255, 255, 0)
+    gradients = []
+    for i, color in _calc_colors(height/8, topcolor, bottomcolor): gradients.append(color)
+    
+    corner = Image.new('RGBA', (radius*4, radius*4), backcolor)
+    pixels = corner.load()
+    draw = ImageDraw.Draw(corner)
+    draw.pieslice((0, 0, radius*8, radius*8), 180, 270, fill=bordercolor)
+    draw.pieslice((4, 4, radius*8-4, radius*8-4), 180, 270, fill=topcolor)
+    selected_corner = corner.copy().resize((radius, radius), Image.ANTIALIAS)
+    for x in range(0, radius*4):
+        for y in range(0, radius*4):
+            color = pixels[x, y]
+            if color == topcolor: pixels[x, y] = gradients[y/4]
+    corner = corner.resize((radius, radius), Image.ANTIALIAS)
+
+    img = Image.new('RGBA', (width, height), topcolor)
+    draw = ImageDraw.Draw(img)
+    for i, color in enumerate(gradients):
+        draw.line((0, i, width, i), fill=color)
+    draw.rectangle((0, height/8, width, height/4), fill=bottomcolor)
+    draw.rectangle((0, height/2, width, height), fill=backcolor)
+    draw.line((0, 0, width, 0), fill=bordercolor)
+    draw.line((0, 0, 0, height/2), fill=bordercolor)
+    draw.line((0, height/4-1, width, height/4-1), fill=backcolor)
+    draw.line((0, height/4, width, height/4), fill=bordercolor)
+    img.paste(corner, (0, 0))
+    img.paste(selected_corner, (0, height/4))
+    right = img.crop((0, 0, 40, height/2))
+    right = right.transpose(Image.FLIP_LEFT_RIGHT)
+    img.paste(right, (width-40, height/2))
+    io = StringIO()
+    img.save(io, 'PNG')
+    return io.getvalue()
