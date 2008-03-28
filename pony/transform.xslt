@@ -3,9 +3,9 @@
                 xmlns:python='python' exclude-result-prefixes='python'>
 
   <xsl:variable name="conversation">
-    <xsl:value-of select="python:conversation()" />
+    <xsl:value-of select="string(python:conversation())" />
   </xsl:variable>
-  <xsl:variable name="styles" select="/html/head/link[@default or (@rel='stylesheet' and @type='text/css')] | /html/head/style" />
+  <xsl:variable name="styles" select="boolean(/html/head/link[@default or (@rel='stylesheet' and @type='text/css')] | /html/head/style)" />
 
   <xsl:template match="/ | @* | node()">
     <xsl:copy>
@@ -17,7 +17,7 @@
     <head>
       <xsl:apply-templates select="@*" />
       <xsl:if test="base">
-        <xsl:variable name="base-url" select="python:set-base-url(base[1]/@href)" />
+        <xsl:variable name="base-url" select="string(python:set-base-url(base[1]/@href))" />
         <xsl:copy-of select="base[1]" />
       </xsl:if>
       <xsl:if test="not(boolean($styles))">
@@ -31,6 +31,17 @@
 
   <xsl:template name="jquery" match="link[@jquery]">
     <script src="/pony/static/jquery/jquery-1.2.3.js" language="JavaScript" type="text/javascript"></script>
+    <xsl:if test="@plugins">
+      <xsl:variable name="plugins" select="concat(' ', string(python:replace(string(@plugins), ',', ' ')), ' ')" />
+      <xsl:if test="contains($plugins, ' tabs ')">
+        <script src="/pony/static/jquery/jquery.tabs.js"></script>
+        <link rel="stylesheet" href="/pony/static/jquery/jquery.tabs.css" type="text/css" media="print, projection, screen" />
+        <xsl:comment>{{[if lte IE 7]}}</xsl:comment>
+        <link rel="stylesheet" href="/pony/static/jquery/jquery.tabs-ie.css" type="text/css" media="projection, screen" />
+        <xsl:comment>{{[endif]}}</xsl:comment>
+        <script>$(function(){$('div.pony-tabs').tabs()})</script>
+      </xsl:if>
+    </xsl:if>
   </xsl:template>
 
   <xsl:template name="default" match="link[@default]">
@@ -84,13 +95,13 @@
   
   <xsl:template match="@href[not(parent::link)]">
     <xsl:attribute name="href">
-      <xsl:value-of select="python:url(string(.))"/>
+      <xsl:value-of select="string(python:url(string(.)))"/>
     </xsl:attribute>
   </xsl:template>
 
   <xsl:template match="@src[parent::frame or parent::iframe]">
     <xsl:attribute name="src">
-      <xsl:value-of select="python:url(string(.))"/>
+      <xsl:value-of select="string(python:url(string(.)))"/>
     </xsl:attribute>
   </xsl:template>
 
@@ -114,7 +125,7 @@
     </xsl:variable>
     <xsl:variable name="address" select="substring(@href, 8)" />
     <xsl:variable name="obfuscated-address" select="concat('javascript:', python:replace(python:replace($address, '.', string($dot)), '@', string($at)))" />
-    <span style="display:none">&#160;<a href="{$obfuscated-address}" xsl:use-attribute-sets="honeypot-attrs">[don't click on this]</a>&#160;&#160;</span>
+    <span style="display:none">[ <a href="qwerty" xsl:use-attribute-sets="honeypot-attrs">don't click on this</a> ]</span>
     <xsl:copy>
       <xsl:apply-templates select="@*" />
       <xsl:attribute name="href"><xsl:value-of select="$obfuscated-address" /></xsl:attribute>
@@ -147,4 +158,57 @@
     </xsl:copy>
   </xsl:template>
 
+  <xsl:template match="tabs">
+    <div>
+      <xsl:call-template name="set-id-and-class">
+        <xsl:with-param name="pony-class" select="'pony-tabs clearfix'" />
+      </xsl:call-template>
+      <ul>
+        <xsl:for-each select="tab">
+          <li>
+            <a>
+              <xsl:attribute name="href">
+                #<xsl:call-template name="get-id" />
+              </xsl:attribute>
+              <span>
+                <xsl:value-of select="@name"/>
+              </span>
+            </a>
+          </li>
+        </xsl:for-each>
+      </ul>
+      <xsl:for-each select="tab">
+        <div>
+          <xsl:call-template name="set-id-and-class">
+            <xsl:with-param name="pony-class" select="'pony-tab'" />
+          </xsl:call-template>
+          <xsl:apply-templates select="node()" />
+        </div>
+      </xsl:for-each>
+    </div>
+  </xsl:template>
+
+  <xsl:template name="set-id-and-class">
+    <xsl:param name="pony-class"></xsl:param>
+    <xsl:attribute name="id">
+      <xsl:call-template name="get-id" />
+    </xsl:attribute>
+    <xsl:if test="$pony-class or @class">
+      <xsl:attribute name="class">
+        <xsl:value-of select="normalize-space(concat($pony-class, ' ', @class))"/>
+      </xsl:attribute>
+    </xsl:if>
+  </xsl:template>
+  
+  <xsl:template name="get-id">
+    <xsl:choose>
+      <xsl:when test="@id">
+        <xsl:value-of select="@id"/>
+      </xsl:when>
+      <xsl:otherwise>
+        <xsl:value-of select="generate-id()"/>
+      </xsl:otherwise>
+    </xsl:choose>
+  </xsl:template>
+  
 </xsl:stylesheet>

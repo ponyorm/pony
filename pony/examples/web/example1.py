@@ -49,8 +49,7 @@ def header(title='Demonstration of Pony features'):
 def footer():
     print '<p>Click <a href="/">here</a> to return to main page'
 
-@http('mypage.html')
-@printhtml
+@webpage('mypage.html')
 def page5():
     "Page with custom URL"
     print header('Demonstration of custom URL')
@@ -79,8 +78,7 @@ def page6(year, month=None, lang='en'):
     print '<p>%s</p>' % link('Go to English 2004-10', page6, 2004, 10)
     print footer()
 
-@http('/hello?first_name=$name')
-@printhtml
+@webpage('/hello?first_name=$name')
 def page7(name=None):
     "Parameters in query part of URL"
     print header('URL parameters')
@@ -104,13 +102,52 @@ def page7(name=None):
         print '<p><a href="%s">Try again</a></p>' % url(page7)
     print footer()
 
-@http
+@webpage
 def page8():
     "Using of html() function"
     return html()
 
-@http('/') # This is root page
-@printhtml
+@webpage
+def page9():
+    "Tabs"
+    print """
+    <link jquery plugins="tabs">
+    
+    <h1>Example of tabs</h1>
+    
+    <tabs>
+        <tab name="One">
+
+            <h2>Nested tabs:</h2>
+            <tabs class="span-12 prepend-1 append-1 last">
+              <tab name="Nested tab 1"><h2>Nested tab ONE</h2></tab>
+              <tab name="Nested tab 2"><h2>Nested tab TWO</h2></tab>
+              <tab name="Tab with very very long name"><h2>Nested tab THREE</h2></tab>
+            </tabs>
+
+        </tab>
+        <tab name="Two">
+
+            <h2>Content of second tab</h1>
+
+        </tab>
+        <tab name="Three"">
+
+            <h2>Tab three</h2>
+            <ul>
+            <li>One
+            <li>Two
+            <li>Three
+            </ul>
+
+        </tab>
+    </tabs>
+
+    <br><br><br><hr>
+    <p><a href="/">Return to main page</a>
+    """
+
+@webpage('/') # This is root page
 def index():
     print header('Simple Pony examples')
     print '<ul>'
@@ -122,6 +159,7 @@ def index():
     print '<li><h4>%s</h3></li>' % link(page6, 2007, 10)
     print '<li><h4>%s</h3></li>' % link(page7)
     print '<li><h4>%s</h3></li>' % link(page8)
+    print '<li><h4>%s</h3></li>' % link(page9)
     print '</ul>'
     print '<br><br><p><a href="mailto:example@example.com">automatically obfuscated e-mail</a></p>'
     print '<p><a href="http://www.google.com@members.tripod.com/abc/def?x=1&y=2">External link</a></p>'
