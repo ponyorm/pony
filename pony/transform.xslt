@@ -180,7 +180,7 @@
       <xsl:for-each select="tab">
         <div>
           <xsl:call-template name="set-id-and-class">
-            <xsl:with-param name="pony-class" select="'pony-tab'" />
+            <xsl:with-param name="pony-class" select="'pony-tab clearfix'" />
           </xsl:call-template>
           <xsl:apply-templates select="node()" />
         </div>
