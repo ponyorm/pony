@@ -1,4 +1,4 @@
-import os.path, threading
+import re, os.path, threading
 
 from lxml import etree
 
@@ -96,6 +96,8 @@ std_indent = True
 
 main_xml2html_transformer = create_xml2html_transformer(std_encoding, std_doctype, std_indent)
 
+ie_re = re.compile(r'<!--\{\{\[if ([^]]*)\]\}\}-->')
+
 def xml2html(xml, encoding='UTF-8', doctype='transitional', indent=True):
     encoding = encoding.upper().replace('_', '-')
     if encoding != std_encoding or doctype != std_doctype or indent != std_indent:
@@ -104,7 +106,8 @@ def xml2html(xml, encoding='UTF-8', doctype='transitional', indent=True):
             xslt = create_xml2html_transformer(encoding, doctype, indent)
             local.xml2html_cache[(encoding, doctype, indent)] = xslt
     else: xslt = main_xml2html_transformer
-    result = xslt(xml)
-    return (str(result).replace('<!--{{[if IE]}}-->', '<!--[if IE]>')
-                       .replace('\n<!--{{[endif]}}-->', '<![endif]-->\n')
-                       .replace('<!--{{[endif]}}-->', '<![endif]-->\n'))
+    result = str(xslt(xml))
+    result = ie_re.sub(r'<!--[if \1]>', result)
+    result = (result.replace('\n<!--{{[endif]}}-->', '<![endif]-->\n')
+                    .replace('<!--{{[endif]}}-->', '<![endif]-->\n'))
+    return result
