@@ -240,6 +240,8 @@ def printtext(old_func):
 
 @decorator
 def printhtml(old_func):
+    if hasattr(old_func, 'http'):
+        raise TypeError('Incorrect decorator order: @http must go before @printhtml in program text')
     func = grab_stdout(string_consts_to_html(old_func))
     def new_func(*args, **keyargs):
         return htmljoin(func(*args, **keyargs))
