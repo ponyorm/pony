@@ -6,9 +6,11 @@ class ParseError(Exception): pass
 space_re = re.compile(r'\s+')
 lang_re = re.compile(r'\s+([A-Za-z-]+)\s*')
 param_re = re.compile(r"\$(?:\w+|\$)")
-d = {}
 
-def process(lines):    
+translations = {}
+
+def init(lines):
+    d = {}
     for kstr, lstr_list in read_phrases(lines):
         lineno, key = kstr
         t = transform_string(key)
@@ -91,7 +93,7 @@ def transform_string(s):
 
 def translate(key, params, lang):
     try:
-        (params_order, lstr) = d[key][lang]
+        (params_order, lstr) = translations[key][lang]
     except KeyError: return None    
     result = []
     for (flag, value) in lstr:
@@ -99,27 +101,23 @@ def translate(key, params, lang):
         else: result.append(value)
     return ''.join(result)
         
-        
+if __name__ == "__main__":
+    #lines = open("c:\\temp\\trans.txt").readlines()
+    lines = []
+    lines.append('Hello,  $name\n')
+    lines.append(' ru Privet, $name\n')
+    lines.append(' de Guten Tag, 		$name\n')        
+    lines.append('Date dd/mm/yy, $dd/$mm/$yy\n')
+    lines.append(' ru Date dd/mm/yy,	$dd/$mm/$yy\n')
+    lines.append(' de Date yy/mm/dd,	$yy/$mm/$dd\n')
+    lines.append(' en-us Date mm/dd/yy,	$mm/$dd/$yy\n')
+    lines.append('Hey\n') 
+    lines.append(' ru\n') 
 
-#lines = open("c:\\temp\\trans.txt").readlines()
-
-lines = []
-lines.append('Hello,  $name\n')
-lines.append(' ru Privet, $name\n')
-lines.append(' de Guten Tag, 		$name\n')
-   	
-lines.append('Date dd/mm/yy, $dd/$mm/$yy\n')
-lines.append(' ru Date dd/mm/yy,	$dd/$mm/$yy\n')
-lines.append(' de Date yy/mm/dd,	$yy/$mm/$dd\n')
-lines.append(' en-us Date mm/dd/yy,	$mm/$dd/$yy\n')
-
-lines.append('Hey\n') 
-lines.append(' ru\n') 
-
-print process(lines)
-print translate('Hello, $#', ['Peter'], 'ru')
-print translate('Hello, $#', ['Peter'], 'de')
-print translate('Date dd/mm/yy, $#/$#/$#', ['25', '04', '77'], 'ru')
-print translate('Date dd/mm/yy, $#/$#/$#', ['25', '04', '77'], 'de')
-print translate('Date dd/mm/yy, $#/$#/$#', ['25', '04', '77'], 'en-us')
-print translate('Hey', [], 'ru')
+    translations = init(lines)
+    print translate('Hello, $#', ['Peter'], 'ru')
+    print translate('Hello, $#', ['Peter'], 'de')
+    print translate('Date dd/mm/yy, $#/$#/$#', ['25', '04', '77'], 'ru')
+    print translate('Date dd/mm/yy, $#/$#/$#', ['25', '04', '77'], 'de')
+    print translate('Date dd/mm/yy, $#/$#/$#', ['25', '04', '77'], 'en-us')
+    print translate('Hey', [], 'ru')
