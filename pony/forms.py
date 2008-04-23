@@ -467,16 +467,9 @@ class StaticText(BaseWidget):
     def __unicode__(self):
         return Html('<strong>%s</strong>') % self.value
     html = tag = property(__unicode__)
-
     @property
-    def is_submitted(self):
-        return True
-    def _get_value(self):
-        return self.initial_value
-    def _set_value(self, value):
-        self.initial_value = value
-    value = property(_get_value, _set_value)
-    html_value = property(_get_value)
+    def is_valid(self):
+        return not self.error_text
 
 class TextArea(BaseWidget):
     @property
