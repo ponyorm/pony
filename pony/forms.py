@@ -467,9 +467,16 @@ class StaticText(BaseWidget):
     def __unicode__(self):
         return Html('<strong>%s</strong>') % self.value
     html = tag = property(__unicode__)
+
     @property
-    def hidden(self):
-        return htmltag('input', type='hidden', name=self.name, value=self.value)
+    def is_submitted(self):
+        return True
+    def _get_value(self):
+        return self.initial_value
+    def _set_value(self, value):
+        self.initial_value = value
+    value = property(_get_value, _set_value)
+    html_value = property(_get_value)
 
 class TextArea(BaseWidget):
     @property
@@ -807,5 +814,10 @@ class Grid(BaseWidget):
         return htmljoin(result)
     @property
     def hidden(self):
-        return htmltag('input', name='.'+self.name, type='hidden', value='')
+        result = [ htmltag('input', name='.'+self.name, type='hidden', value='') ]
+        for row in self._rows:
+            for field in row:
+                hidden = getattr(field, 'hidden', None)
+                if hidden: result.append(hidden)
+        return Html('\n').join(result)
     
