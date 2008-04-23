@@ -167,6 +167,8 @@ def htmltag(_name_, _attrs_=None, **_attrs2_):
     for name, value in attrs.items():
         if value is True: attrlist.append(name)
         elif value is not False and value is not None:
+            if isinstance(value, StrHtml): value = str.__str__(value)
+            elif isinstance(value, Html): value = unicode(value)
             attrlist.append(make_attr((name, value)))
     return Html("<%s %s>") % (_name_, Html(' ').join(attrlist))
 
