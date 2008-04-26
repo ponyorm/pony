@@ -249,6 +249,8 @@ Form.DoNotDoRedirect = DoNotDoRedirect = True
 
 class HtmlField(object):
     def __init__(self, value=None, **attrs):
+        if 'type' in attrs: raise TypeError('You can set type only for Text fields')
+        if 'regex' in attrs: raise TypeError('You can set regex only for Text fields')
         self.attrs = attrs
         self.form = self.name = None
         self.initial_value = value
@@ -260,12 +262,12 @@ class HtmlField(object):
         if self._label is None: self._label = label
     def __getstate__(self):
         state = self.__dict__.copy()
-        state.pop('_initial_value', None)
+        # state.pop('_initial_value', None)
         state.pop('_new_value', None)
         return state
     def __setstate__(self, state):
         self.__dict__.update(state)
-        self._initial_value = None
+        # self._initial_value = None
     @property
     def is_submitted(self):
         form = self.form
@@ -327,8 +329,6 @@ class Reset(Submit):
 
 class BaseWidget(HtmlField):
     def __init__(self, label=None, required=None, value=None, **attrs):
-        if 'type' in attrs: raise TypeError('You can set type only for Text fields')
-        if 'regex' in attrs: raise TypeError('You can set regex only for Text fields')
         if 'id' not in attrs:
             request = get_request()
             attrs['id'] = request.id_counter.next()
@@ -339,13 +339,13 @@ class BaseWidget(HtmlField):
         self._set_label(label)
     def __getstate__(self):
         dict = HtmlField.__getstate__(self)
-        dict.pop('_label', None)
+        # dict.pop('_label', None)
         dict.pop('_error_text', None)
         dict.pop('_auto_error_text', None)
         return dict
     def __setstate__(self, state):
         HtmlField.__setstate__(self, state)
-        self.label = None
+        # self.label = None
         self._error_text = None
         self._auto_error_text = None
     @property
