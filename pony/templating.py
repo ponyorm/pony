@@ -242,8 +242,11 @@ def printtext(old_func):
 
 @decorator
 def printhtml(old_func):
-    if hasattr(old_func, 'http'):
-        raise TypeError('Incorrect decorator order: @http must go before @printhtml in program text')
+    decorators = getattr(old_func, 'decorators', set())
+    if 'printhtml' in decorators: return old_func
+    if decorators: raise TypeError(
+        'Incorrect decorator order: @printhtml must be first decorator to apply\n'
+        '(that is, @printhtml must be last decorator in program text).')
     func = grab_stdout(string_consts_to_html(old_func))
     def new_func(*args, **keyargs):
         return htmljoin(func(*args, **keyargs))

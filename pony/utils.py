@@ -15,30 +15,35 @@ class ValidationError(ValueError):
         ValueError.__init__(self, err_msg)
         self.err_msg = err_msg
 
-def copy_func_attrs(new_func, old_func):
-    if new_func is old_func: return
-    new_func.__name__ = old_func.__name__
-    new_func.__doc__ = old_func.__doc__
-    new_func.__module__ = old_func.__module__
-    new_func.__dict__.update(old_func.__dict__)
-    if not hasattr(old_func, 'original_func'):
-        new_func.original_func = old_func
+def copy_func_attrs(new_func, old_func, decorator_name=None):
+    if new_func is not old_func:
+        new_func.__name__ = old_func.__name__
+        new_func.__doc__ = old_func.__doc__
+        new_func.__module__ = old_func.__module__
+        d = old_func.__dict__.copy()
+        d.update(new_func.__dict__)
+        new_func.__dict__.update(d)
+        if not hasattr(old_func, 'original_func'):
+            new_func.original_func = old_func
+    if not hasattr(new_func, 'decorators'):
+        new_func.decorators = getattr(old_func, 'decorators', set()).copy()
+    if decorator_name: new_func.decorators.add(decorator_name)
 
 def simple_decorator(old_dec):
     def new_dec(old_func):
         def new_func(*args, **keyargs):
             return old_dec(old_func, *args, **keyargs)
-        copy_func_attrs(new_func, old_func)
+        copy_func_attrs(new_func, old_func, old_dec.__name__)
         return new_func
-    copy_func_attrs(new_dec, old_dec)
+    copy_func_attrs(new_dec, old_dec, 'simple_decorator')
     return new_dec
 
 def decorator(old_dec):
     def new_dec(old_func):
         new_func = old_dec(old_func)
-        copy_func_attrs(new_func, old_func)
+        copy_func_attrs(new_func, old_func, old_dec.__name__)
         return new_func
-    copy_func_attrs(new_dec, old_dec)
+    copy_func_attrs(new_dec, old_dec, 'decorator')
     return new_dec
 
 def decorator_with_params(old_dec):
@@ -46,16 +51,16 @@ def decorator_with_params(old_dec):
         if len(args) == 1 and isfunction(args[0]) and not keyargs:
             old_func = args[0]
             new_func = old_dec()(old_func)
-            copy_func_attrs(new_func, old_func)
+            copy_func_attrs(new_func, old_func, old_dec.__name__)
             return new_func
         else:
             def even_more_new_dec(old_func):
                 new_func = old_dec(*args, **keyargs)(old_func)
-                copy_func_attrs(new_func, old_func)
+                copy_func_attrs(new_func, old_func, old_dec.__name__)
                 return new_func
-            copy_func_attrs(even_more_new_dec, old_dec)
+            copy_func_attrs(even_more_new_dec, old_dec, 'decorator_with_params')
             return even_more_new_dec
-    copy_func_attrs(new_dec, old_dec)
+    copy_func_attrs(new_dec, old_dec, 'decorator_with_params')
     return new_dec
 
 _cache = {}
