@@ -38,30 +38,24 @@ def simple_decorator(old_dec):
     copy_func_attrs(new_dec, old_dec, 'simple_decorator')
     return new_dec
 
-def decorator(old_dec):
-    def new_dec(old_func):
+@simple_decorator
+def decorator(old_dec, old_func):
+    new_func = old_dec(old_func)
+    copy_func_attrs(new_func, old_func, old_dec.__name__)
+    return new_func
+
+@simple_decorator
+def decorator_with_params(old_dec, *args, **keyargs):
+    if len(args) == 1 and isfunction(args[0]) and not keyargs:
+        old_func = args[0]
         new_func = old_dec(old_func)
         copy_func_attrs(new_func, old_func, old_dec.__name__)
         return new_func
-    copy_func_attrs(new_dec, old_dec, 'decorator')
-    return new_dec
-
-def decorator_with_params(old_dec):
-    def new_dec(*args, **keyargs):
-        if len(args) == 1 and isfunction(args[0]) and not keyargs:
-            old_func = args[0]
-            new_func = old_dec(old_func)
-            copy_func_attrs(new_func, old_func, old_dec.__name__)
-            return new_func
-        else:
-            def you_should_never_see_this_decorator(old_func):
-                new_func = old_dec(old_func, *args, **keyargs)
-                copy_func_attrs(new_func, old_func, old_dec.__name__)
-                return new_func
-            # copy_func_attrs(even_more_new_dec, old_dec)
-            return you_should_never_see_this_decorator
-    copy_func_attrs(new_dec, old_dec, 'decorator_with_params')
-    return new_dec
+    def you_should_never_see_this_decorator(old_func):
+        new_func = old_dec(old_func, *args, **keyargs)
+        copy_func_attrs(new_func, old_func, old_dec.__name__)
+        return new_func
+    return you_should_never_see_this_decorator
 
 _cache = {}
 MAX_CACHE_SIZE = 1000
