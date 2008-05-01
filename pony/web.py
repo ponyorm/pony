@@ -16,10 +16,8 @@ from pony.logging import log, log_exc
 from pony.xslt import xslt_function
 
 @decorator_with_params
-def webpage(*args, **keyargs):
-    def new_decorator(old_func):
-        return http(*args, **keyargs)(printhtml(old_func))
-    return new_decorator
+def webpage(old_func, *args, **keyargs):
+    return http(*args, **keyargs)(printhtml(old_func))
 
 class _Http(object):
     def __call__(self, *args, **keyargs):
@@ -87,14 +85,12 @@ get_response = http.get_response
 get_param = http.get_param
 
 @decorator_with_params
-def _http(url=None, host=None, port=None, redirect=False, **http_headers):
+def _http(old_func, url=None, host=None, port=None, redirect=False, **http_headers):
+    real_url = url is None and old_func.__name__ or url
     http_headers = dict([ (name.replace('_', '-').title(), value)
                           for name, value in http_headers.items() ])
-    def new_decorator(old_func):
-        real_url = url is None and old_func.__name__ or url
-        HttpInfo(old_func, real_url, host, port, redirect, http_headers)
-        return old_func
-    return new_decorator
+    HttpInfo(old_func, real_url, host, port, redirect, http_headers)
+    return old_func
 
 http_registry_lock = threading.RLock()
 http_registry = ({}, [], [])

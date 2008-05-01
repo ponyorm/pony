@@ -50,16 +50,16 @@ def decorator_with_params(old_dec):
     def new_dec(*args, **keyargs):
         if len(args) == 1 and isfunction(args[0]) and not keyargs:
             old_func = args[0]
-            new_func = old_dec()(old_func)
+            new_func = old_dec(old_func)
             copy_func_attrs(new_func, old_func, old_dec.__name__)
             return new_func
         else:
-            def even_more_new_dec(old_func):
-                new_func = old_dec(*args, **keyargs)(old_func)
+            def you_should_never_see_this_decorator(old_func):
+                new_func = old_dec(old_func, *args, **keyargs)
                 copy_func_attrs(new_func, old_func, old_dec.__name__)
                 return new_func
-            copy_func_attrs(even_more_new_dec, old_dec, 'decorator_with_params')
-            return even_more_new_dec
+            # copy_func_attrs(even_more_new_dec, old_dec)
+            return you_should_never_see_this_decorator
     copy_func_attrs(new_dec, old_dec, 'decorator_with_params')
     return new_dec
 
