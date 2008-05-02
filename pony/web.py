@@ -905,13 +905,13 @@ def stop_http_server(address=None):
         server_thread.join()
 
 @decorator_with_params
-def register_http_handler(old_func, url=None, host=None, port=None, redirect=False, **http_headers):
+def http(old_func, url=None, host=None, port=None, redirect=False, **http_headers):
     real_url = url is None and old_func.__name__ or url
     http_headers = dict([ (name.replace('_', '-').title(), value)
                           for name, value in http_headers.items() ])
     HttpInfo(old_func, real_url, host, port, redirect, http_headers)
     return old_func
-register_http_handler.__name__ = 'http'
+register_http_handler = http
 
 class _Http(object):
     __call__ = staticmethod(register_http_handler)
