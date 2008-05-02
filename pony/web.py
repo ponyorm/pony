@@ -829,6 +829,81 @@ def application(environ, wsgi_start_response):
         # return [ result.read() ]
         return iter(lambda: result.read(BLOCK_SIZE), '')
 
+def parse_address(address):
+    if isinstance(address, basestring):
+        if ':' in address:
+            host, port = address.split(':')
+            return host, int(port)
+        else:
+            return address, 80
+    assert len(address) == 2
+    return tuple(address)
+
+server_threads = {}
+
+class ServerException(Exception): pass
+class   ServerStartException(ServerException): pass
+class     ServerAlreadyStarted(ServerStartException): pass
+class   ServerStopException(ServerException): pass
+class     ServerNotStarted(ServerStopException): pass
+
+class ServerThread(threading.Thread):
+    def __init__(self, host, port, application, verbose):
+        server = server_threads.setdefault((host, port), self)
+        if server != self: raise ServerAlreadyStarted(
+            'HTTP server already started: %s:%s' % (host, port))
+        threading.Thread.__init__(self)
+        self.host = host
+        self.port = port
+        self.server = CherryPyWSGIServer(
+            (host, port), [('', application)], server_name=host)
+        self.verbose = verbose
+        self.setDaemon(True)
+    def run(self):
+        msg = 'Starting HTTP server at %s:%s' % (self.host, self.port)
+        log('HTTP:start', msg + (', uid=%s' % pony.uid))
+        if self.verbose: print>>sys.stderr, msg
+        self.server.start()
+        msg = 'HTTP server at %s:%s stopped successfully' \
+              % (self.host, self.port)
+        log('HTTP:stop', msg)
+        if self.verbose: print>>sys.stderr, msg
+        server_threads.pop((self.host, self.port), None)
+
+def start_http_server(address='localhost:8080', verbose=True):
+    if pony.RUNNED_AS == 'MOD_WSGI': return
+    pony._do_mainloop = True
+    host, port = parse_address(address)
+    try:
+        server_thread = ServerThread(host, port, application, verbose=verbose)
+    except ServerAlreadyStarted:
+        if not autoreload.reloading: raise
+    else: server_thread.start()
+
+    if host != 'localhost': return
+    url = 'http://localhost:%d/pony/shutdown?uid=%s' % (port, pony.uid)
+    import urllib
+    for i in range(6):
+        time.sleep(.2)
+        try: response_string = urllib.urlopen(url).read()
+        except: continue
+        if not response_string.startswith('+'): break
+
+def stop_http_server(address=None):
+    if pony.RUNNED_AS == 'MOD_WSGI': return
+    if address is None:
+        for server_thread in server_threads.values():
+            server_thread.server.stop()
+            server_thread.join()
+    else:
+        host, port = parse_address(address)
+        server_thread = server_threads.get((host, port))
+        if server_thread is None:
+            raise ServerNotStarted('Cannot stop HTTP server at %s:%s '
+                                   'because it is not started:' % (host, port))
+        server_thread.server.stop()
+        server_thread.join()
+
 @decorator_with_params
 def _http(old_func, url=None, host=None, port=None, redirect=False, **http_headers):
     real_url = url is None and old_func.__name__ or url
@@ -940,81 +1015,6 @@ class HttpRedirect(HttpException):
         self.status = self.status_dict.get(status, status)
         self.headers = {'Location': location}
 http.Redirect = HttpRedirect
-
-def parse_address(address):
-    if isinstance(address, basestring):
-        if ':' in address:
-            host, port = address.split(':')
-            return host, int(port)
-        else:
-            return address, 80
-    assert len(address) == 2
-    return tuple(address)
-
-server_threads = {}
-
-class ServerException(Exception): pass
-class   ServerStartException(ServerException): pass
-class     ServerAlreadyStarted(ServerStartException): pass
-class   ServerStopException(ServerException): pass
-class     ServerNotStarted(ServerStopException): pass
-
-class ServerThread(threading.Thread):
-    def __init__(self, host, port, application, verbose):
-        server = server_threads.setdefault((host, port), self)
-        if server != self: raise ServerAlreadyStarted(
-            'HTTP server already started: %s:%s' % (host, port))
-        threading.Thread.__init__(self)
-        self.host = host
-        self.port = port
-        self.server = CherryPyWSGIServer(
-            (host, port), [('', application)], server_name=host)
-        self.verbose = verbose
-        self.setDaemon(True)
-    def run(self):
-        msg = 'Starting HTTP server at %s:%s' % (self.host, self.port)
-        log('HTTP:start', msg + (', uid=%s' % pony.uid))
-        if self.verbose: print>>sys.stderr, msg
-        self.server.start()
-        msg = 'HTTP server at %s:%s stopped successfully' \
-              % (self.host, self.port)
-        log('HTTP:stop', msg)
-        if self.verbose: print>>sys.stderr, msg
-        server_threads.pop((self.host, self.port), None)
-
-def start_http_server(address='localhost:8080', verbose=True):
-    if pony.RUNNED_AS == 'MOD_WSGI': return
-    pony._do_mainloop = True
-    host, port = parse_address(address)
-    try:
-        server_thread = ServerThread(host, port, application, verbose=verbose)
-    except ServerAlreadyStarted:
-        if not autoreload.reloading: raise
-    else: server_thread.start()
-
-    if host != 'localhost': return
-    url = 'http://localhost:%d/pony/shutdown?uid=%s' % (port, pony.uid)
-    import urllib
-    for i in range(6):
-        time.sleep(.2)
-        try: response_string = urllib.urlopen(url).read()
-        except: continue
-        if not response_string.startswith('+'): break
-
-def stop_http_server(address=None):
-    if pony.RUNNED_AS == 'MOD_WSGI': return
-    if address is None:
-        for server_thread in server_threads.values():
-            server_thread.server.stop()
-            server_thread.join()
-    else:
-        host, port = parse_address(address)
-        server_thread = server_threads.get((host, port))
-        if server_thread is None:
-            raise ServerNotStarted('Cannot stop HTTP server at %s:%s '
-                                   'because it is not started:' % (host, port))
-        server_thread.server.stop()
-        server_thread.join()
 
 @http('/pony/shutdown?uid=$uid')
 def http_shutdown(uid=None):
