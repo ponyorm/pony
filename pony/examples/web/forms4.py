@@ -16,13 +16,12 @@ class MyForm(Form):
         http.session['fname'] = self.first_name.value
         print self.first_name.value
 
-@http('/')
-@printhtml
+@webpage('/')
 def index():
     fname = http.session.pop('fname', '')
     if fname: print '<h1>%s</h1>' % fname
     f = MyForm()
     print f
     
-start_http_server()
+http.start()
 show_gui()

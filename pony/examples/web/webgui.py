@@ -428,5 +428,5 @@ function test() {
 
 
 if __name__ == '__main__':
-    start_http_server()
+    http.start()
     show_gui()

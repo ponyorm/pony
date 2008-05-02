@@ -4,8 +4,7 @@ from pony.main import *
 
 use_autoreload()
 
-@http('/')
-@printhtml
+@webpage('/')
 def index():
     f = Form()
     f.first_name = Text(required=True)
@@ -26,4 +25,4 @@ def index():
         print '<h1>Please fill the form:</h1>'
         print f
 
-start_http_server()
+http.start()

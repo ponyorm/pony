@@ -35,4 +35,4 @@ def example(x, y):
 def example2():
     return html('<h1>Hello again!</h1>')
 
-start_http_server()
+http.start()

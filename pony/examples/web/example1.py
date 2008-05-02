@@ -1,7 +1,6 @@
 # -*- coding: cp1251 -*-
 
 from pony.main import *
-from pony import utils
 
 use_autoreload()
 
@@ -58,11 +57,10 @@ def page5():
     print '(such as header or footer) can be factored out'
     print footer()
 
-@http('/myblog/archives/$year/posts.html')
-@http('/myblog/archives/$year/$month/posts.html')
-@http('/myblog/$lang/archives/$year/posts.html')
-@http('/myblog/$lang/archives/$year/$month/posts.html')
-@printhtml
+@webpage('/myblog/archives/$year/posts.html')
+@webpage('/myblog/archives/$year/$month/posts.html')
+@webpage('/myblog/$lang/archives/$year/posts.html')
+@webpage('/myblog/$lang/archives/$year/$month/posts.html')
 def page6(year, month=None, lang='en'):
     "Parameters encoded in URL"
     print header('My Blog Archives')
@@ -73,8 +71,7 @@ def page6(year, month=None, lang='en'):
     print '<li>Month: <strong>%s</strong>' % (month or 'Not given')
     print '</ul>'
     print '<p><a href="%s">Go to year 2003</a></p>' % url(page6, '2003')
-    print ('<p><a href="%s">Go to French 2005-11</a></p>'
-           % url(page6, 2005, 11, 'fr'))
+    print ('<p><a href="%s">Go to French 2005-11</a></p>' % url(page6, 2005, 11, 'fr'))
     print '<p>%s</p>' % link('Go to English 2004-10', page6, 2004, 10)
     print footer()
 
@@ -83,20 +80,20 @@ def page7(name=None):
     "Parameters in query part of URL"
     print header('URL parameters')
     if name is None:
-        print '<h2>What is your name?</h2>'
-        print '<form>'
-        print '<input type="text" name="first_name">'
-        print '<input type="submit" value="Send!">'
-        print '</form>'
-        print '<br>'
-        print '<p>You can try input something &quot;illegal&quot;'
-        print 'instead of name, such as'
-        print '<p><code><strong>&lt;script&gt;',
-        print 'alert(&quot;You are hacked!&quot;);',
-        print '&lt;/script&gt;</strong></code>'
-        print '<p>You will see as <strong>Pony</strong> automatically prevent'
-        print 'such XSS (Cross-Site Scripting) attacks '
-        print '(those script will not be executed)</p>'
+        print '''
+              <h2>What is your name?</h2>
+              <form>
+              <input type="text" name="first_name">
+              <input type="submit" value="Send!">
+              </form>
+              <br>
+              <p>You can try input something &quot;illegal&quot;
+              instead of name, such as
+              <p><code><strong>&lt;script&gt;alert(&quot;You are hacked!&quot;);&lt;/script&gt;</strong></code>
+              <p>You will see as <strong>Pony</strong> automatically prevent
+              such XSS (Cross-Site Scripting) attacks 
+              (those script will not be executed)</p>
+              '''
     else:
         print '<h2>Hello, %s!</h2>' % name
         print '<p><a href="%s">Try again</a></p>' % url(page7)
@@ -167,5 +164,5 @@ def index():
     print '''<p><a href="javascript:alert('Hello');">JavaScript url</a></p>'''
 
 if __name__ == '__main__':
-    start_http_server()
+    http.start()
     # show_gui()

@@ -681,7 +681,7 @@ def get_pony_static_file(path):
     headers['Cache-Control'] = 'max-age=%d' % max_age
     return file(fname, 'rb')
 
-def invoke(url):
+def http_invoke(url):
     if isinstance(url, str):
         try: url.decode('utf8')
         except UnicodeDecodeError: raise Http400BadRequest
@@ -809,7 +809,7 @@ def application(environ, wsgi_start_response):
                 form = cPickle.loads(request.payload)
                 form._handle_request_()
                 form = None
-            result = invoke(request.url)
+            result = http_invoke(request.url)
         finally:
             if request.ticket and not request.form_processed and request.form_processed is not None:
                 auth.unexpire_ticket(request.ticket)
@@ -905,43 +905,33 @@ def stop_http_server(address=None):
         server_thread.join()
 
 @decorator_with_params
-def _http(old_func, url=None, host=None, port=None, redirect=False, **http_headers):
+def register_http_handler(old_func, url=None, host=None, port=None, redirect=False, **http_headers):
     real_url = url is None and old_func.__name__ or url
     http_headers = dict([ (name.replace('_', '-').title(), value)
                           for name, value in http_headers.items() ])
     HttpInfo(old_func, real_url, host, port, redirect, http_headers)
     return old_func
+register_http_handler.__name__ = 'http'
 
 class _Http(object):
-    def __call__(self, *args, **keyargs):
-        return _http(*args, **keyargs)
-    def invoke(self, url):
-        return invoke(url)
-    def remove(self, x, host=None, port=None):
-        return http_remove(x, host, port)
-    def clear(self):
-        return http_clear()
+    __call__ = staticmethod(register_http_handler)
+    invoke = staticmethod(http_invoke)
+    remove = staticmethod(http_remove)
+    clear = staticmethod(http_clear)
+    start = staticmethod(start_http_server)
+    stop = staticmethod(stop_http_server)
 
-    def start(self, address='localhost:8080', verbose=True):
-        start_http_server(address, verbose)
-    def stop(self, address=None):
-        stop_http_server(address)
+    @property
+    def request(self): return local.request
 
-    def get_request(self):
-        return local.request
-    request = property(get_request)
+    @property
+    def response(self): return local.response
 
-    def get_response(self):
-        return local.response
-    response = property(get_response)
+    @property
+    def session(self): return auth.local.session
 
-    def get_session(self):
-        return auth.local.session
-    session = property(get_session)
-
-    def get_conversation(self):
-        return auth.local.conversation
-    conversation = property(get_conversation)
+    @property
+    def conversation(self): return auth.local.conversation
 
     def get_user(self):
         return auth.get_user()
@@ -949,33 +939,19 @@ class _Http(object):
         auth.set_user(user, remember_ip, path, domain)
     user = property(get_user, set_user)
 
-    def get_param(self, name):
-        return local.request.params.get(name)
     class _Params(object):
-        def __getattr__(self, attr):
-            return local.request.params.get(attr)
-        def __setattr__(self, attr, value):
-            local.request.params[attr] = value
+        def __getattr__(self, attr): return local.request.params.get(attr)
+        def __setattr__(self, attr, value): local.request.params[attr] = value
     _params = _Params()
     params = property(attrgetter('_params'))
 
     class _Cookies(object):
-        def set(self, name, value, expires=None, max_age=None,
-                path=None, domain=None, secure=False, http_only=False, comment=None, version=None):
-            set_cookie(name, value, expires, max_age,
-                       path, domain, secure, http_only, comment, version)
-        def __getattr__(self, attr):
-            return get_cookie(attr)
-        __setattr__ = set
+        __getattr__ = staticmethod(get_cookie)
+        __setattr__ = set = staticmethod(set_cookie)
     _cookies = _Cookies()
-    set_cookie = _cookies.set
     cookies = property(attrgetter('_cookies'))
 
 http = _Http()
-
-get_request = http.get_request
-get_response = http.get_response
-get_param = http.get_param
 
 @decorator_with_params
 def webpage(old_func, *args, **keyargs):

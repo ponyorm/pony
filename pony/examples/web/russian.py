@@ -49,5 +49,5 @@ def utf8():
     u"Шаблон сохранен в кодировке utf8"
     return html()
 
-start_http_server('localhost:8080')
+http.start()
 

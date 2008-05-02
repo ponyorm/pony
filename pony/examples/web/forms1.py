@@ -14,4 +14,4 @@ def index(a=None, b=None):
     <p>b = $b
     """)
 
-start_http_server()
+http.start()

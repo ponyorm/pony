@@ -22,5 +22,5 @@ def logout():
     http.user = None
     return html()
 
-start_http_server('localhost:8080')
-show_gui()
+http.start()
+# show_gui()

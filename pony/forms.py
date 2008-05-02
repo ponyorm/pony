@@ -7,7 +7,7 @@ from itertools import count, izip, cycle
 from pony import auth
 from pony.utils import decorator, converters, ValidationError
 from pony.templating import Html, StrHtml, htmljoin, htmltag
-from pony.web import get_request, Http400BadRequest, HttpRedirect
+from pony.web import http
 
 class FormNotProcessed(Exception): pass
 
@@ -77,7 +77,7 @@ class Form(object):
         object.__setattr__(self, '_cleared', False)
         object.__setattr__(self, '_validated', False)
         object.__setattr__(self, '_error_text', None)
-        object.__setattr__(self, '_request', get_request())
+        object.__setattr__(self, '_request', http.request)
         object.__setattr__(self, 'attrs', dict((name.lower(), str(value))
                                                for name, value in attrs.iteritems()))
         if 'name' not in attrs: self.attrs['name'] = self.__class__.__name__
@@ -108,12 +108,12 @@ class Form(object):
             state['_init_counter'] = 0
             state['_cleared'] = state['_validated'] = False
             state['_error_text'] = None
-            state['_request'] = get_request()
+            state['_request'] = http.request
             self.__dict__.update(state)
             self._update_status()
         else: assert False
     def _handle_request_(self):
-        request = get_request()
+        request = http.request
         if not self.is_valid:
             request.form_processed = False
             return
@@ -124,8 +124,8 @@ class Form(object):
             if without_redirect: return
             user_agent = request.environ.get('HTTP_USER_AGENT', '')
             for browser in http_303_incompatible_browsers:
-                if browser in user_agent: raise HttpRedirect('.', status='302 Found')
-            raise HttpRedirect(request.full_url, status='303 See Other')
+                if browser in user_agent: raise http.Redirect('.', status='302 Found')
+            raise http.Redirect(request.full_url, status='303 See Other')
     def clear(self):
         object.__setattr__(self, '_cleared', True)
         object.__setattr__(self, 'is_submitted', False)
@@ -285,7 +285,7 @@ class HtmlField(object):
             value = self.form._request.fields.getfirst(self.name)
             if value is None: return None
             try: return unicode(value, 'utf8')
-            except UnicodeDecodeError: raise Http400BadRequest
+            except UnicodeDecodeError: raise http.BadRequest
     def _set_value(self, value):
         form = self.form
         if form is None or form._init_counter: self.initial_value = value
@@ -330,7 +330,7 @@ class Reset(Submit):
 class BaseWidget(HtmlField):
     def __init__(self, label=None, required=None, value=None, **attrs):
         if 'id' not in attrs:
-            request = get_request()
+            request = http.request
             attrs['id'] = request.id_counter.next()
         HtmlField.__init__(self, value, **attrs)
         self.required = required
@@ -538,7 +538,7 @@ class Select(BaseWidget):
             key = self.form._request.fields.getfirst(self.name)
             if key is None: return None
             try: key = unicode(key, 'utf8')
-            except UnicodeDecodeError: raise Http400BadRequest
+            except UnicodeDecodeError: raise http.BadRequest
             option = self.keys.get(key)
             if option is None: return None
             return option[0]
@@ -593,7 +593,7 @@ class MultiSelect(Select):
             result = set()
             for key in keys:
                 try: key = unicode(key, 'utf8')
-                except UnicodeDecodeError: raise Http400BadRequest
+                except UnicodeDecodeError: raise http.BadRequest
                 option = self.keys.get(key)
                 if option is not None: result.add(option[0])
             return result
