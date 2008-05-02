@@ -15,87 +15,6 @@ from pony.templating import Html, StrHtml, printhtml, real_stdout
 from pony.logging import log, log_exc
 from pony.xslt import xslt_function
 
-@decorator_with_params
-def webpage(old_func, *args, **keyargs):
-    return http(*args, **keyargs)(printhtml(old_func))
-
-class _Http(object):
-    def __call__(self, *args, **keyargs):
-        return _http(*args, **keyargs)
-    def invoke(self, url):
-        return invoke(url)
-    def remove(self, x, host=None, port=None):
-        return http_remove(x, host, port)
-    def clear(self):
-        return http_clear()
-
-    def start(self, address='localhost:8080', verbose=True):
-        start_http_server(address, verbose)
-    def stop(self, address=None):
-        stop_http_server(address)
-
-    def get_request(self):
-        return local.request
-    request = property(get_request)
-
-    def get_response(self):
-        return local.response
-    response = property(get_response)
-
-    def get_session(self):
-        return auth.local.session
-    session = property(get_session)
-
-    def get_conversation(self):
-        return auth.local.conversation
-    conversation = property(get_conversation)
-
-    def get_user(self):
-        return auth.get_user()
-    def set_user(self, user, remember_ip=False, path='/', domain=None):
-        auth.set_user(user, remember_ip, path, domain)
-    user = property(get_user, set_user)
-
-    def get_param(self, name):
-        return local.request.params.get(name)
-    class _Params(object):
-        def __getattr__(self, attr):
-            return local.request.params.get(attr)
-        def __setattr__(self, attr, value):
-            local.request.params[attr] = value
-    _params = _Params()
-    params = property(attrgetter('_params'))
-
-    class _Cookies(object):
-        def set(self, name, value, expires=None, max_age=None,
-                path=None, domain=None, secure=False, http_only=False, comment=None, version=None):
-            set_cookie(name, value, expires, max_age,
-                       path, domain, secure, http_only, comment, version)
-        def __getattr__(self, attr):
-            return get_cookie(attr)
-        __setattr__ = set
-    _cookies = _Cookies()
-    set_cookie = _cookies.set
-    cookies = property(attrgetter('_cookies'))
-
-http = _Http()
-
-get_request = http.get_request
-get_response = http.get_response
-get_param = http.get_param
-
-@decorator_with_params
-def _http(old_func, url=None, host=None, port=None, redirect=False, **http_headers):
-    real_url = url is None and old_func.__name__ or url
-    http_headers = dict([ (name.replace('_', '-').title(), value)
-                          for name, value in http_headers.items() ])
-    HttpInfo(old_func, real_url, host, port, redirect, http_headers)
-    return old_func
-
-http_registry_lock = threading.RLock()
-http_registry = ({}, [], [])
-http_system_handlers = []
-
 def split_url(url, strict_parsing=False):
     if isinstance(url, unicode): url = url.encode('utf8')
     elif isinstance(url, str):
@@ -123,6 +42,10 @@ class NodefaultType(object):
     def __repr__(self): return '__nodefault__'
     
 __nodefault__ = NodefaultType()
+
+http_registry_lock = threading.RLock()
+http_registry = ({}, [], [])
+http_system_handlers = []
 
 class HttpInfo(object):
     def __init__(self, func, url, host, port, redirect, http_headers):
@@ -302,7 +225,7 @@ class HttpInfo(object):
             self.func.__dict__.setdefault('http', []).insert(0, self)
             self.list.insert(0, self)
         finally: http_registry_lock.release()
-            
+
 class PathError(Exception): pass
 
 url_cache = {}
@@ -418,95 +341,6 @@ def build_url(info, keyparams, indexparams, host, port):
     port = info.port or 80
     if port == 80: return 'http://%s%s' % (host, result)
     return 'http://%s:%d%s' % (host, port, result)
-
-link_template = Html(u'<a href="%s">%s</a>')
-
-def link(*args, **keyargs):
-    description = None
-    if isinstance(args[0], basestring):
-        description = args[0]
-        func = args[1]
-        args = args[2:]
-    else:
-        func = args[0]
-        args = args[1:]
-        if func.__doc__ is None: description = func.__name__
-        else: description = Html(func.__doc__.split('\n', 1)[0])
-    href = url(func, *args, **keyargs)
-    return link_template % (href, description)
-
-img_template = Html(u'<img src="%s" title="%s" alt="%s">')
-
-def img(*args, **keyargs):
-    description = None
-    if isinstance(args[0], basestring):
-        description = args[0]
-        func = args[1]
-        args = args[2:]
-    else:
-        func = args[0]
-        args = args[1:]
-        if func.__doc__ is None: description = func.__name__
-        else: description = Html(func.__doc__.split('\n', 1)[0])
-    href = url(func, *args, **keyargs)
-    return img_template % (href, description, description)
-
-if not mimetypes.inited: # Copied from SimpleHTTPServer
-    mimetypes.init() # try to read system mime.types
-extensions_map = mimetypes.types_map.copy()
-extensions_map.update({
-    '': 'application/octet-stream', # Default
-    '.py': 'text/plain',
-    '.c': 'text/plain',
-    '.h': 'text/plain',
-    })
-
-def guess_type(ext):
-    result = extensions_map.get(ext)
-    if result is not None: return result
-    result = extensions_map.get(ext.lower())
-    if result is not None: return result
-    return 'application/octet-stream'
-
-def get_static_dir_name():
-    if pony.MAIN_DIR is None: return None
-    return os.path.join(pony.MAIN_DIR, 'static')
-
-static_dir = get_static_dir_name()
-
-path_re = re.compile(r"^[-_.!~*'()A-Za-z0-9]+$")
-
-def get_static_file(path):
-    if not path: raise Http404
-    if static_dir is None: raise Http404
-    for component in path:
-        if not path_re.match(component): raise Http404
-    fname = os.path.join(static_dir, *path)
-    if not os.path.isfile(fname):
-        if path == [ 'favicon.ico' ]: return get_pony_static_file(path)
-        raise Http404
-    ext = os.path.splitext(path[-1])[1]
-    headers = local.response.headers
-    headers['Content-Type'] = guess_type(ext)
-    headers['Expires'] = '0'
-    headers['Cache-Control'] = 'max-age=10'
-    return file(fname, 'rb')
-
-pony_static_dir = os.path.join(os.path.dirname(__file__), 'static')
-
-def get_pony_static_file(path):
-    if not path: raise Http404
-    for component in path:
-        if not path_re.match(component): raise Http404
-    fname = os.path.join(pony_static_dir, *path)
-    if not os.path.isfile(fname): raise Http404
-    ext = os.path.splitext(path[-1])[1]
-    headers = local.response.headers
-    headers['Content-Type'] = guess_type(ext)
-    max_age = 30 * 60
-    headers['Expires'] = Cookie._getdate(max_age)
-    headers['Cache-Control'] = 'max-age=%d' % max_age
-    return file(fname, 'rb')
 
 def get_http_handlers(path, qdict, host, port):
     # http_registry_lock.acquire()
@@ -624,94 +458,6 @@ def get_http_handlers(path, qdict, host, port):
         result = [ tup[:3] for tup in result if tup[4] == x ]
     return result
 
-def invoke(url):
-    if isinstance(url, str):
-        try: url.decode('utf8')
-        except UnicodeDecodeError: raise Http400BadRequest
-    request = local.request
-    response = local.response = HttpResponse()
-    path, qlist = split_url(url)
-    if path[:1] == ['static'] and len(path) > 1:
-        return get_static_file(path[1:])
-    if path[:2] == ['pony', 'static'] and len(path) > 2:
-        return get_pony_static_file(path[2:])
-    qdict = dict(qlist)
-    handlers = get_http_handlers(path, qdict, request.host, request.port)
-    if not handlers:
-        i = url.find('?')
-        if i == -1: p, q = url, ''
-        else: p, q = url[:i], url[i:]
-        if p.endswith('/'): url2 = p[:-1] + q
-        else: url2 = p + '/' + q
-        path2, qlist = split_url(url2)
-        handlers = get_http_handlers(path2, qdict, request.host, request.port)
-        if not handlers: return get_static_file(path)
-        script_name = request.environ.get('SCRIPT_NAME', '')
-        url2 = script_name + url2 or '/'
-        if url2 != script_name + url: raise HttpRedirect(url2)
-    info, args, keyargs = handlers[0]
-
-    if info.redirect:
-        for alternative in info.func.http:
-            if not alternative.redirect:
-                new_url = make_url(info.func, *args, **keyargs)
-                status = '301 Moved Permanently'
-                if isinstance(info.redirect, basestring): status = info.redirect
-                elif isinstance(info.redirect, (int, long)) and 300 <= info.redirect < 400:
-                    status = str(info.redirect)
-                raise HttpRedirect(new_url, status)
-    response.headers.update(info.http_headers)
-
-    names, argsname, keyargsname, defaults, converters = info.func.argspec
-    params = request.params
-    params.update(zip(names, args))
-    params.update(keyargs)
-
-    result = info.func(*args, **keyargs)
-
-    headers = dict([ (name.replace('_', '-').title(), value)
-                     for name, value in response.headers.items() ])
-    response.headers = headers
-
-    media_type = headers.pop('Type', None)
-    charset = headers.pop('Charset', None)
-    content_type = headers.get('Content-Type')
-    if content_type:
-        media_type, type_params = cgi.parse_header(content_type)
-        charset = type_params.get('charset', 'iso-8859-1')
-    else:
-        if media_type is not None: pass
-        elif isinstance(result, (Html, StrHtml)): media_type = 'text/html'
-        else: media_type = getattr(result, 'media_type', 'text/plain')
-        charset = charset or getattr(result, 'charset', 'UTF-8')
-        content_type = '%s; charset=%s' % (media_type, charset)
-        headers['Content-Type'] = content_type
-
-    response.conversation_data = auth.save_conversation()
-    if media_type == 'text/html' and xslt.is_supported:
-        result = xslt.transform(result, charset)
-    else:
-        if hasattr(result, '__unicode__'): result = unicode(result)
-        if isinstance(result, unicode):
-            if media_type == 'text/html' or 'xml' in media_type :
-                  result = result.encode(charset, 'xmlcharrefreplace')
-            else: result = result.encode(charset, 'replace')
-        elif not isinstance(result, str):
-            try: result = etree.tostring(result, charset)
-            except: result = str(result)
-
-    headers.setdefault('Expires', '0')
-    max_age = headers.pop('Max-Age', '2')
-    cache_control = headers.get('Cache-Control')
-    if not cache_control: headers['Cache-Control'] = 'max-age=%s' % max_age
-    headers.setdefault('Vary', 'Cookie')
-    return result
-
-def _http_remove(info):
-    url_cache.clear()
-    info.list.remove(info)
-    info.func.http.remove(info)
-            
 def http_remove(x, host=None, port=None):
     if isinstance(x, basestring):
         path, qlist = split_url(x, strict_parsing=True)
@@ -728,6 +474,19 @@ def http_remove(x, host=None, port=None):
         finally: http_registry_lock.release()
     else: raise ValueError('This object is not bound to url: %r' % x)
 
+def _http_remove(info):
+    url_cache.clear()
+    info.list.remove(info)
+    info.func.http.remove(info)
+            
+@on_reload
+def http_clear():
+    http_registry_lock.acquire()
+    try:
+        _http_clear(*http_registry)
+        for handler in http_system_handlers: handler.register()
+    finally: http_registry_lock.release()
+
 def _http_clear(dict, list1, list2):
     url_cache.clear()
     for info in list1: info.func.http.remove(info)
@@ -737,53 +496,6 @@ def _http_clear(dict, list1, list2):
     for inner_dict, list1, list2 in dict.itervalues():
         _http_clear(inner_dict, list1, list2)
     dict.clear()
-
-@on_reload
-def http_clear():
-    http_registry_lock.acquire()
-    try:
-        _http_clear(*http_registry)
-        for handler in http_system_handlers: handler.register()
-    finally: http_registry_lock.release()
-
-################################################################################
-
-class HttpException(Exception):
-    content = ''
-http.Exception = HttpException
-
-class Http400BadRequest(HttpException):
-    status = '400 Bad Request'
-    headers = {'Content-Type': 'text/plain'}
-    def __init__(self, content='Bad Request'):
-        Exception.__init__(self, 'Bad Request')
-        self.content = content
-http.BadRequest = Http400BadRequest
-        
-class Http404NotFound(HttpException):
-    status = '404 Not Found'
-    headers = {'Content-Type': 'text/plain'}
-    def __init__(self, content='Page not found'):
-        Exception.__init__(self, 'Page not found')
-        self.content = content
-Http404 = Http404NotFound
-http.NotFound = Http404NotFound
-
-class HttpRedirect(HttpException):
-    status_dict = {'301' : '301 Moved Permanently',
-                   '302' : '302 Found',
-                   '303' : '303 See Other',
-                   '305' : '305 Use Proxy',
-                   '307' : '307 Temporary Redirect'}
-    def __init__(self, location=None, status='302 Found'):
-        Exception.__init__(self, location)
-        self.location = location or local.request.full_url
-        status = str(status)
-        self.status = self.status_dict.get(status, status)
-        self.headers = {'Location': location}
-http.Redirect = HttpRedirect
-
-################################################################################
 
 def reconstruct_script_url(environ):
     url_scheme  = environ['wsgi.url_scheme']
@@ -887,30 +599,6 @@ def set_cookie(name, value, expires=None, max_age=None, path=None, domain=None,
         if http_only: response._http_only_cookies.add(name)
         else: response._http_only_cookies.discard(name)
 
-def format_exc():
-    exc_type, exc_value, traceback = sys.exc_info()
-    if traceback.tb_next: traceback = traceback.tb_next
-    if traceback.tb_next: traceback = traceback.tb_next
-    try:
-        io = StringIO()
-        hook = cgitb.Hook(file=io)
-        hook.handle((exc_type, exc_value, traceback))
-        return io.getvalue()
-    finally:
-        del traceback
-
-def log_request(request):
-    environ = request.environ
-    headers=dict((key, value) for key, value in environ.items()
-                              if isinstance(key, basestring)
-                              and isinstance(value, basestring))
-    request_type = 'HTTP:%s' % environ.get('REQUEST_METHOD', 'GET')
-    user = auth.local.user
-    if user is not None and not isinstance(user, (int, long, basestring)):
-        user = unicode(user)
-    log(type=request_type, text=request.full_url, headers=headers,
-        user=user, session=auth.local.session)
-
 http_only_incompatible_browsers = [ 'WebTV', 'MSIE 5.0; Mac', 'Firefox/1.',
     'Firefox/2.0.0.0', 'Firefox/2.0.0.1', 'Firefox/2.0.0.2', 'Firefox/2.0.0.3', 'Firefox/2.0.0.4', ]
 
@@ -936,60 +624,171 @@ def create_cookies(environ):
         result.append(('Set-Cookie', cookie))
     return result
 
-BLOCK_SIZE = 65536
+# Copied from SimpleHTTPServer:
+if not mimetypes.inited: mimetypes.init() # try to read system mime.types
+extensions_map = mimetypes.types_map.copy()
+extensions_map.update({
+    '': 'application/octet-stream', # Default
+    '.py': 'text/plain',
+    '.c': 'text/plain',
+    '.h': 'text/plain',
+    })
 
-@xslt_function
-def xslt_set_base_url(url):
-    local.request._base_url = url
+def guess_type(ext):
+    result = extensions_map.get(ext)
+    if result is not None: return result
+    result = extensions_map.get(ext.lower())
+    if result is not None: return result
+    return 'application/octet-stream'
 
-@xslt_function
-def xslt_conversation():
-    return local.response.conversation_data
+def get_static_dir_name():
+    if pony.MAIN_DIR is None: return None
+    return os.path.join(pony.MAIN_DIR, 'static')
 
-protocol_re = re.compile(r'\w+:')
+static_dir = get_static_dir_name()
 
-@xslt_function
-def xslt_url(url):
+path_re = re.compile(r"^[-_.!~*'()A-Za-z0-9]+$")
+
+def get_static_file(path):
+    if not path: raise Http404
+    if static_dir is None: raise Http404
+    for component in path:
+        if not path_re.match(component): raise Http404
+    fname = os.path.join(static_dir, *path)
+    if not os.path.isfile(fname):
+        if path == [ 'favicon.ico' ]: return get_pony_static_file(path)
+        raise Http404
+    ext = os.path.splitext(path[-1])[1]
+    headers = local.response.headers
+    headers['Content-Type'] = guess_type(ext)
+    headers['Expires'] = '0'
+    headers['Cache-Control'] = 'max-age=10'
+    return file(fname, 'rb')
+
+pony_static_dir = os.path.join(os.path.dirname(__file__), 'static')
+
+def get_pony_static_file(path):
+    if not path: raise Http404
+    for component in path:
+        if not path_re.match(component): raise Http404
+    fname = os.path.join(pony_static_dir, *path)
+    if not os.path.isfile(fname): raise Http404
+    ext = os.path.splitext(path[-1])[1]
+    headers = local.response.headers
+    headers['Content-Type'] = guess_type(ext)
+    max_age = 30 * 60
+    headers['Expires'] = Cookie._getdate(max_age)
+    headers['Cache-Control'] = 'max-age=%d' % max_age
+    return file(fname, 'rb')
+
+def invoke(url):
+    if isinstance(url, str):
+        try: url.decode('utf8')
+        except UnicodeDecodeError: raise Http400BadRequest
     request = local.request
-    script_url = request.script_url
-    base_url = request._base_url
-    if base_url is not None and not base_url.startswith(script_url): return url
-    if url.startswith(script_url): pass
-    elif url.startswith('http://'): return external_url('http', url[7:])
-    elif url.startswith('https://'): return external_url('https', url[8:])
-    elif protocol_re.match(url): return url
+    response = local.response = HttpResponse()
+    path, qlist = split_url(url)
+    if path[:1] == ['static'] and len(path) > 1:
+        return get_static_file(path[1:])
+    if path[:2] == ['pony', 'static'] and len(path) > 2:
+        return get_pony_static_file(path[2:])
+    qdict = dict(qlist)
+    handlers = get_http_handlers(path, qdict, request.host, request.port)
+    if not handlers:
+        i = url.find('?')
+        if i == -1: p, q = url, ''
+        else: p, q = url[:i], url[i:]
+        if p.endswith('/'): url2 = p[:-1] + q
+        else: url2 = p + '/' + q
+        path2, qlist = split_url(url2)
+        handlers = get_http_handlers(path2, qdict, request.host, request.port)
+        if not handlers: return get_static_file(path)
+        script_name = request.environ.get('SCRIPT_NAME', '')
+        url2 = script_name + url2 or '/'
+        if url2 != script_name + url: raise HttpRedirect(url2)
+    info, args, keyargs = handlers[0]
 
-    conversation_data = local.response.conversation_data
-    if not conversation_data: return url
-    if '?' in url: return '%s&_c=%s' % (url, conversation_data)
-    return '%s?_c=%s' % (url, conversation_data)
-        
-def external_url(protocol, s):
-    request = local.request
-    try: i = s.index('/')
-    except ValueError: pass
+    if info.redirect:
+        for alternative in info.func.http:
+            if not alternative.redirect:
+                new_url = make_url(info.func, *args, **keyargs)
+                status = '301 Moved Permanently'
+                if isinstance(info.redirect, basestring): status = info.redirect
+                elif isinstance(info.redirect, (int, long)) and 300 <= info.redirect < 400:
+                    status = str(info.redirect)
+                raise HttpRedirect(new_url, status)
+    response.headers.update(info.http_headers)
+
+    names, argsname, keyargsname, defaults, converters = info.func.argspec
+    params = request.params
+    params.update(zip(names, args))
+    params.update(keyargs)
+
+    result = info.func(*args, **keyargs)
+
+    headers = dict([ (name.replace('_', '-').title(), value)
+                     for name, value in response.headers.items() ])
+    response.headers = headers
+
+    media_type = headers.pop('Type', None)
+    charset = headers.pop('Charset', None)
+    content_type = headers.get('Content-Type')
+    if content_type:
+        media_type, type_params = cgi.parse_header(content_type)
+        charset = type_params.get('charset', 'iso-8859-1')
     else:
-        # Phishing prevention
-        try: j = s.index('@', 0, i)
-        except ValueError: pass
-        else: s = s[j+1:]
-    if not local.response.conversation_data: return '%s://%s' % (protocol, s)
-    return '%s/pony/redirect/%s/%s' % (request.environ.get('SCRIPT_NAME',''), protocol, s)
+        if media_type is not None: pass
+        elif isinstance(result, (Html, StrHtml)): media_type = 'text/html'
+        else: media_type = getattr(result, 'media_type', 'text/plain')
+        charset = charset or getattr(result, 'charset', 'UTF-8')
+        content_type = '%s; charset=%s' % (media_type, charset)
+        headers['Content-Type'] = content_type
 
-@http('/pony/redirect/*', type='text/html')
-def external_redirect(*args):
-    url = local.request.url 
-    assert url.startswith('/pony/redirect/')
-    url = url[len('/pony/redirect/'):]
-    protocol, url = url.split('/', 1)
-    if protocol not in ('http', 'https'): raise http.NotFound
-    url = '%s://%s' % (protocol, url)
-    local.response.headers['Refresh'] = '0; url=' + url
-    return '<html></html>'
+    response.conversation_data = auth.save_conversation()
+    if media_type == 'text/html' and xslt.is_supported:
+        result = xslt.transform(result, charset)
+    else:
+        if hasattr(result, '__unicode__'): result = unicode(result)
+        if isinstance(result, unicode):
+            if media_type == 'text/html' or 'xml' in media_type :
+                  result = result.encode(charset, 'xmlcharrefreplace')
+            else: result = result.encode(charset, 'replace')
+        elif not isinstance(result, str):
+            try: result = etree.tostring(result, charset)
+            except: result = str(result)
 
-@http('/pony/blocked')
-def blocked_url():
-    raise http.NotFound
+    headers.setdefault('Expires', '0')
+    max_age = headers.pop('Max-Age', '2')
+    cache_control = headers.get('Cache-Control')
+    if not cache_control: headers['Cache-Control'] = 'max-age=%s' % max_age
+    headers.setdefault('Vary', 'Cookie')
+    return result
+
+def format_exc():
+    exc_type, exc_value, traceback = sys.exc_info()
+    if traceback.tb_next: traceback = traceback.tb_next
+    if traceback.tb_next: traceback = traceback.tb_next
+    try:
+        io = StringIO()
+        hook = cgitb.Hook(file=io)
+        hook.handle((exc_type, exc_value, traceback))
+        return io.getvalue()
+    finally:
+        del traceback
+
+def log_request(request):
+    environ = request.environ
+    headers=dict((key, value) for key, value in environ.items()
+                              if isinstance(key, basestring)
+                              and isinstance(value, basestring))
+    request_type = 'HTTP:%s' % environ.get('REQUEST_METHOD', 'GET')
+    user = auth.local.user
+    if user is not None and not isinstance(user, (int, long, basestring)):
+        user = unicode(user)
+    log(type=request_type, text=request.full_url, headers=headers,
+        user=user, session=auth.local.session)
+
+BLOCK_SIZE = 65536
 
 def application(environ, wsgi_start_response):
     def start_response(status, headers):
@@ -1029,7 +828,118 @@ def application(environ, wsgi_start_response):
         # result is a file:
         # return [ result.read() ]
         return iter(lambda: result.read(BLOCK_SIZE), '')
+
+@decorator_with_params
+def _http(old_func, url=None, host=None, port=None, redirect=False, **http_headers):
+    real_url = url is None and old_func.__name__ or url
+    http_headers = dict([ (name.replace('_', '-').title(), value)
+                          for name, value in http_headers.items() ])
+    HttpInfo(old_func, real_url, host, port, redirect, http_headers)
+    return old_func
+
+class _Http(object):
+    def __call__(self, *args, **keyargs):
+        return _http(*args, **keyargs)
+    def invoke(self, url):
+        return invoke(url)
+    def remove(self, x, host=None, port=None):
+        return http_remove(x, host, port)
+    def clear(self):
+        return http_clear()
+
+    def start(self, address='localhost:8080', verbose=True):
+        start_http_server(address, verbose)
+    def stop(self, address=None):
+        stop_http_server(address)
+
+    def get_request(self):
+        return local.request
+    request = property(get_request)
+
+    def get_response(self):
+        return local.response
+    response = property(get_response)
+
+    def get_session(self):
+        return auth.local.session
+    session = property(get_session)
+
+    def get_conversation(self):
+        return auth.local.conversation
+    conversation = property(get_conversation)
+
+    def get_user(self):
+        return auth.get_user()
+    def set_user(self, user, remember_ip=False, path='/', domain=None):
+        auth.set_user(user, remember_ip, path, domain)
+    user = property(get_user, set_user)
+
+    def get_param(self, name):
+        return local.request.params.get(name)
+    class _Params(object):
+        def __getattr__(self, attr):
+            return local.request.params.get(attr)
+        def __setattr__(self, attr, value):
+            local.request.params[attr] = value
+    _params = _Params()
+    params = property(attrgetter('_params'))
+
+    class _Cookies(object):
+        def set(self, name, value, expires=None, max_age=None,
+                path=None, domain=None, secure=False, http_only=False, comment=None, version=None):
+            set_cookie(name, value, expires, max_age,
+                       path, domain, secure, http_only, comment, version)
+        def __getattr__(self, attr):
+            return get_cookie(attr)
+        __setattr__ = set
+    _cookies = _Cookies()
+    set_cookie = _cookies.set
+    cookies = property(attrgetter('_cookies'))
+
+http = _Http()
+
+get_request = http.get_request
+get_response = http.get_response
+get_param = http.get_param
+
+@decorator_with_params
+def webpage(old_func, *args, **keyargs):
+    return http(*args, **keyargs)(printhtml(old_func))
+
+class HttpException(Exception):
+    content = ''
+http.Exception = HttpException
+
+class Http400BadRequest(HttpException):
+    status = '400 Bad Request'
+    headers = {'Content-Type': 'text/plain'}
+    def __init__(self, content='Bad Request'):
+        Exception.__init__(self, 'Bad Request')
+        self.content = content
+http.BadRequest = Http400BadRequest
         
+class Http404NotFound(HttpException):
+    status = '404 Not Found'
+    headers = {'Content-Type': 'text/plain'}
+    def __init__(self, content='Page not found'):
+        Exception.__init__(self, 'Page not found')
+        self.content = content
+Http404 = Http404NotFound
+http.NotFound = Http404NotFound
+
+class HttpRedirect(HttpException):
+    status_dict = {'301' : '301 Moved Permanently',
+                   '302' : '302 Found',
+                   '303' : '303 See Other',
+                   '305' : '305 Use Proxy',
+                   '307' : '307 Temporary Redirect'}
+    def __init__(self, location=None, status='302 Found'):
+        Exception.__init__(self, location)
+        self.location = location or local.request.full_url
+        status = str(status)
+        self.status = self.status_dict.get(status, status)
+        self.headers = {'Location': location}
+http.Redirect = HttpRedirect
 
 def parse_address(address):
     if isinstance(address, basestring):
@@ -1127,4 +1037,88 @@ def http_shutdown(uid=None):
 def do_shutdown():
     try: stop_http_server()
     except ServerNotStarted: pass
+
+link_template = Html(u'<a href="%s">%s</a>')
+
+def link(*args, **keyargs):
+    description = None
+    if isinstance(args[0], basestring):
+        description = args[0]
+        func = args[1]
+        args = args[2:]
+    else:
+        func = args[0]
+        args = args[1:]
+        if func.__doc__ is None: description = func.__name__
+        else: description = Html(func.__doc__.split('\n', 1)[0])
+    href = url(func, *args, **keyargs)
+    return link_template % (href, description)
+
+img_template = Html(u'<img src="%s" title="%s" alt="%s">')
+
+def img(*args, **keyargs):
+    description = None
+    if isinstance(args[0], basestring):
+        description = args[0]
+        func = args[1]
+        args = args[2:]
+    else:
+        func = args[0]
+        args = args[1:]
+        if func.__doc__ is None: description = func.__name__
+        else: description = Html(func.__doc__.split('\n', 1)[0])
+    href = url(func, *args, **keyargs)
+    return img_template % (href, description, description)
     
+@xslt_function
+def xslt_set_base_url(url):
+    local.request._base_url = url
+
+@xslt_function
+def xslt_conversation():
+    return local.response.conversation_data
+
+protocol_re = re.compile(r'\w+:')
+
+@xslt_function
+def xslt_url(url):
+    request = local.request
+    script_url = request.script_url
+    base_url = request._base_url
+    if base_url is not None and not base_url.startswith(script_url): return url
+    if url.startswith(script_url): pass
+    elif url.startswith('http://'): return external_url('http', url[7:])
+    elif url.startswith('https://'): return external_url('https', url[8:])
+    elif protocol_re.match(url): return url
+
+    conversation_data = local.response.conversation_data
+    if not conversation_data: return url
+    if '?' in url: return '%s&_c=%s' % (url, conversation_data)
+    return '%s?_c=%s' % (url, conversation_data)
+        
+def external_url(protocol, s):
+    request = local.request
+    try: i = s.index('/')
+    except ValueError: pass
+    else:
+        # Phishing prevention
+        try: j = s.index('@', 0, i)
+        except ValueError: pass
+        else: s = s[j+1:]
+    if not local.response.conversation_data: return '%s://%s' % (protocol, s)
+    return '%s/pony/redirect/%s/%s' % (request.environ.get('SCRIPT_NAME',''), protocol, s)
+
+@http('/pony/redirect/*', type='text/html')
+def external_redirect(*args):
+    url = local.request.url 
+    assert url.startswith('/pony/redirect/')
+    url = url[len('/pony/redirect/'):]
+    protocol, url = url.split('/', 1)
+    if protocol not in ('http', 'https'): raise http.NotFound
+    url = '%s://%s' % (protocol, url)
+    local.response.headers['Refresh'] = '0; url=' + url
+    return '<html></html>'
+
+@http('/pony/blocked')
+def blocked_url():
+    raise http.NotFound
