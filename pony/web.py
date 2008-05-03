@@ -497,25 +497,7 @@ def _http_clear(dict, list1, list2):
         _http_clear(inner_dict, list1, list2)
     dict.clear()
 
-def reconstruct_script_url(environ):
-    url_scheme  = environ['wsgi.url_scheme']
-    host        = environ.get('HTTP_HOST')
-    server_name = environ['SERVER_NAME']
-    server_port = environ['SERVER_PORT']
-    script_name = environ.get('SCRIPT_NAME','')
-    path_info   = environ.get('PATH_INFO','')
-    query       = environ.get('QUERY_STRING')
-    
-    url = url_scheme + '://'
-    if host: url += host
-    else:
-        url += server_name
-        if (url_scheme == 'https' and server_port == '443') \
-        or (url_scheme == 'http' and server_port == '80'): pass
-        else: url += ':' + server_port
-
-    url += urllib.quote(script_name)
-    return url
+q_re = re.compile('\s*q\s*=\s*([0-9.]+)\s*')
 
 class HttpRequest(object):
     def __init__(self, environ):
@@ -535,7 +517,7 @@ class HttpRequest(object):
             self.url = urllib.quote(environ['PATH_INFO'])
             query = environ['QUERY_STRING']
             if query: self.url += '?' + query
-            self.script_url = reconstruct_script_url(environ)
+            self.script_url = self._reconstruct_script_url(environ)
             self.full_url = self.script_url + self.url
 
             if 'HTTP_COOKIE' in environ: self.cookies.load(environ['HTTP_COOKIE'])
@@ -549,9 +531,9 @@ class HttpRequest(object):
             self.host = 'localhost'
             self.port = 80
         self._base_url = None
-        self.conversation = {}
-        input_stream = environ.get('wsgi.input') or StringIO()
+        self.languages = self._parse_accept_language(environ.get('HTTP_ACCEPT_LANGUAGE'))
         self.params = {}
+        input_stream = environ.get('wsgi.input') or StringIO()
         self.fields = cgi.FieldStorage(fp=input_stream, environ=environ, keep_blank_values=True)
         self.form_processed = None
         self.submitted_form = self.fields.getfirst('_f')
@@ -559,6 +541,47 @@ class HttpRequest(object):
         self.conversation_data = self.fields.getfirst('_c')
         auth.load_conversation(self.conversation_data)
         self.id_counter = imap('id_%d'.__mod__, count())
+    @staticmethod
+    def _reconstruct_script_url(environ):
+        url_scheme  = environ['wsgi.url_scheme']
+        host        = environ.get('HTTP_HOST')
+        server_name = environ['SERVER_NAME']
+        server_port = environ['SERVER_PORT']
+        script_name = environ.get('SCRIPT_NAME','')
+        path_info   = environ.get('PATH_INFO','')
+        query       = environ.get('QUERY_STRING')
+        
+        url = url_scheme + '://'
+        if host: url += host
+        else:
+            url += server_name
+            if (url_scheme == 'https' and server_port == '443') \
+            or (url_scheme == 'http' and server_port == '80'): pass
+            else: url += ':' + server_port
+
+        url += urllib.quote(script_name)
+        return url
+    @staticmethod
+    def _parse_accept_language(s):
+        if not s: return []
+        languages = {}
+        for lang in s.lower().split(','):
+            lang = lang.strip()
+            if not lang: continue
+            if ';' not in lang: languages[lang.strip()] = 1
+            else:
+                lang, params = lang.split(';', 1)
+                q = 1
+                for params in params.split(';'):
+                    match = q_re.match(params)
+                    if match is not None:
+                        try: q = float(match.group(1))
+                        except: pass
+                lang = lang.strip()
+                if lang: languages[lang] = max(q, languages.get(lang))
+        languages = sorted((q, lang) for lang, q in languages.iteritems())
+        languages.reverse()
+        return [ lang for q, lang in languages ]
 
 class HttpResponse(object):
     def __init__(self):
