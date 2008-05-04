@@ -4,7 +4,7 @@ from itertools import izip, count
 class ParseError(Exception): pass
 
 space_re = re.compile(r'\s+')
-lang_re = re.compile(r'\s+([A-Za-z-]+)\s*')
+lang_re = re.compile(r'([A-Za-z-]+)\s*')
 param_re = re.compile(r"\$(?:\w+|\$)")
 
 translations = {}
@@ -25,11 +25,11 @@ def parse(lines):
         for match in param_re.finditer(key):
             if match.group() != '$$': params_list.append(match.group())
         for lineno2, s in lstr_list:
-            s = s[:-1]
+            s = s.strip()
             m = lang_re.match(s)
             if m is None: raise ParseError(
                 "No language selector found in line %d (line=%s)" % (lineno2, s))
-            langkey = m.groups(0)[0]
+            langkey = m.group(1)
             lstr = s[m.end():]
             check_params(params_list, lineno, lstr, lineno2, langkey)
             lstr = transform_string(lstr)
@@ -51,7 +51,7 @@ def get_params_order(key, lstr):
 def read_phrases(lines):
    kstr, lstr_list = None, []
    for lineno, line in izip(count(1), lines):
-       if line.isspace(): continue
+       if not line or line.isspace(): continue
        elif line[0].isspace():
            if kstr is None: raise ParseError(
                "Translation string found but key string was expected in line %d" % lineno)
@@ -111,7 +111,8 @@ def translate(key, params, lang_list):
 if __name__ == "__main__":
     #lines = open("c:\\temp\\trans.txt").readlines()
     import textwrap
-    lines = textwrap.dedent('''Hello,  $name
+    lines = textwrap.dedent('''
+    Hello,  $name
       ru Privet, $name
       de Guten Tag,      $name
     Date dd/mm/yy, $dd/$mm/$yy
