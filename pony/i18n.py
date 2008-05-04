@@ -27,13 +27,13 @@ def parse(lines):
         for lineno2, s in lstr_list:
             s = s[:-1]
             m = lang_re.match(s)
-            if m:
-                langkey = m.groups(0)[0]
-                lstr = s[m.end():]
-                check_params(params_list, lineno, lstr, lineno2, langkey)
-                lstr = transform_string(lstr)
-                ld[langkey] = (get_params_order(t, lstr), lstr)
-            else: raise ParseError("No language selector found in line %d (line=%s)" % (lineno2, s))
+            if m is None: raise ParseError(
+                "No language selector found in line %d (line=%s)" % (lineno2, s))
+            langkey = m.groups(0)[0]
+            lstr = s[m.end():]
+            check_params(params_list, lineno, lstr, lineno2, langkey)
+            lstr = transform_string(lstr)
+            ld[langkey] = (get_params_order(t, lstr), lstr)
         d[norm_key] = ld
     return d
 
