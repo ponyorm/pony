@@ -531,7 +531,7 @@ class HttpRequest(object):
             self.host = 'localhost'
             self.port = 80
         self._base_url = None
-        self.languages = self._parse_accept_language(environ.get('HTTP_ACCEPT_LANGUAGE'))
+        self._languages = self._parse_accept_language(environ.get('HTTP_ACCEPT_LANGUAGE'))
         self.params = {}
         input_stream = environ.get('wsgi.input') or StringIO()
         self.fields = cgi.FieldStorage(fp=input_stream, environ=environ, keep_blank_values=True)
@@ -582,6 +582,17 @@ class HttpRequest(object):
         languages = sorted((q, lang) for lang, q in languages.iteritems())
         languages.reverse()
         return [ lang for q, lang in languages ]
+    @property
+    def languages(self):
+        result = []
+        lang = http.session.get('lang')
+        if lang: result.append(lang)
+        for lang in self._languages:
+            if lang not in result: result.append(lang)
+            while '-' in lang:
+                lang = lang.rsplit('-', 1)[0]
+                if lang not in result: result.append(lang)
+        return result
 
 class HttpResponse(object):
     def __init__(self):
