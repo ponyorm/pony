@@ -586,8 +586,9 @@ class HttpRequest(object):
     def languages(self):
         result = []
         lang = http.session.get('lang')
-        if lang: result.append(lang)
-        for lang in self._languages:
+        if lang: languages = [ lang.lower() ] + self._languages
+        else: languages = self._languages
+        for lang in languages:
             if lang not in result: result.append(lang)
             while '-' in lang:
                 lang = lang.rsplit('-', 1)[0]
