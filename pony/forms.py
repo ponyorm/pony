@@ -434,7 +434,7 @@ class Text(BaseWidget):
         self.regex = regex
     def _get_value(self):
         value = BaseWidget._get_value(self)
-        if not value: return None
+        if value is None: return None
         if self.regex is not None:
             match = self.regex.match(value)
             if match is None:
