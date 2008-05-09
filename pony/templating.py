@@ -834,13 +834,24 @@ def markup_from_string(str_cls, s,
 template_file_cache = {}
 
 def markup_from_file(str_cls, filename, encoding=None, keep_indent=False):
+    key = filename, str_cls, encoding, keep_indent
     mtime = get_mtime(filename)
-    old_mtime, markup = template_file_cache.get(filename, (None, None))
+    old_mtime, markup = template_file_cache.get(key, (None, None))
     if markup and mtime == old_mtime: return markup
     text = read_text_file(filename, encoding)
     markup = markup_from_string(str_cls, text, encoding, keep_indent, False)
     template_file_cache[filename] = mtime, markup
     return markup
+
+def markup_from_file_i18n(str_cls, filename, encoding=None, keep_indent=False):
+    if 'pony.web' in sys.modules:
+        from pony.web import http
+        root, ext = os.path.splitext(filename)
+        for lang in http.request.languages:
+            i18n_filename = '%s-%s%s' % (root, lang, ext)
+            try: return markup_from_file(str_cls, i18n_filename, encoding, keep_indent)
+            except OSError, IOError: pass
+    return markup_from_file(str_cls, filename, encoding, keep_indent)
 
 def _template(str_cls, default_ext,
               text=None, filename=None,
@@ -852,7 +863,7 @@ def _template(str_cls, default_ext,
     if text is None:
         if filename is None:
             filename = get_template_name(sys._getframe(2)) + default_ext
-        markup = markup_from_file(str_cls, filename, encoding, keep_indent)
+        markup = markup_from_file_i18n(str_cls, filename, encoding, keep_indent)
     else: markup = markup_from_string(str_cls, text, encoding, keep_indent)
     if globals is None and locals is None:
         globals = sys._getframe(2).f_globals
