@@ -833,37 +833,50 @@ def markup_from_string(str_cls, s,
 
 template_file_cache = {}
 
-def markup_from_file(str_cls, filename, encoding=None, keep_indent=False):
-    key = filename, str_cls, encoding, keep_indent
+redirect_prefix = 'see template: '
+translation_prefix = 'see translation for: '
+
+def markup_from_file(str_cls, filename, encoding=None):
+    key = filename, str_cls, encoding
     mtime = get_mtime(filename)
     old_mtime, markup = template_file_cache.get(key, (None, None))
     if markup and mtime == old_mtime: return markup
     text = read_text_file(filename, encoding)
-    markup = markup_from_string(str_cls, text, encoding, keep_indent, False)
+
+    if text.startswith(redirect_prefix):
+        new_filename = text[len(redirect_prefix):].strip()
+        return markup_from_file(str_cls, new_filename, encoding)
+
+    if text.startswith(translation_prefix):
+        lang = text[len(redirect_prefix):].strip().lower()
+        root, ext = os.path.splitext(filename)
+        root, _ = root.split('-', 1)
+        new_filename = '%s-%s%s' % (root, lang, ext)
+        return markup_from_file(str_cls, new_filename, encoding)
+
+    markup = markup_from_string(str_cls, text, encoding, True, False)
     template_file_cache[filename] = mtime, markup
     return markup
 
-def markup_from_file_i18n(str_cls, filename, encoding=None, keep_indent=False):
+def markup_from_file_i18n(str_cls, filename, encoding=None):
     if 'pony.web' in sys.modules:
         from pony.web import http
         root, ext = os.path.splitext(filename)
         for lang in http.request.languages:
             i18n_filename = '%s-%s%s' % (root, lang, ext)
-            try: return markup_from_file(str_cls, i18n_filename, encoding, keep_indent)
+            try: return markup_from_file(str_cls, i18n_filename, encoding)
             except OSError, IOError: pass
-    return markup_from_file(str_cls, filename, encoding, keep_indent)
+    return markup_from_file(str_cls, filename, encoding)
 
 def _template(str_cls, default_ext,
-              text=None, filename=None,
-              globals=None, locals=None,
-              encoding=None, keep_indent=False):
-    if text is not None and filename is not None:
-        raise TypeError("template function cannot accept both "
-                        "'text' and 'filename' parameters at the same time")
+              text=None, filename=None, globals=None, locals=None, encoding=None, keep_indent=None):
+    if text is not None and filename is not None: raise TypeError(
+        "template function cannot accept both 'text' and 'filename' parameters at the same time")
     if text is None:
-        if filename is None:
-            filename = get_template_name(sys._getframe(2)) + default_ext
-        markup = markup_from_file_i18n(str_cls, filename, encoding, keep_indent)
+        if filename is None: filename = get_template_name(sys._getframe(2)) + default_ext
+        if keep_indent is not None: raise TypeError(
+            "'keep_indent' argument cannot be used for file-based templates")
+        markup = markup_from_file_i18n(str_cls, filename, encoding)
     else: markup = markup_from_string(str_cls, text, encoding, keep_indent)
     if globals is None and locals is None:
         globals = sys._getframe(2).f_globals
