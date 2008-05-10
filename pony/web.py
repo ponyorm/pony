@@ -589,10 +589,14 @@ class HttpRequest(object):
         if lang: languages = [ lang.lower() ] + self._languages
         else: languages = self._languages
         for lang in languages:
-            if lang not in result: result.append(lang)
+            try: result.remove(lang)
+            except ValueError: pass
+            result.append(lang)
             while '-' in lang:
                 lang = lang.rsplit('-', 1)[0]
-                if lang not in result: result.append(lang)
+                try: result.remove(lang)
+                except ValueError: pass
+                result.append(lang)
         return result
 
 class HttpResponse(object):
