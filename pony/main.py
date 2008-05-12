@@ -12,6 +12,7 @@ from pony.forms import (Form, Hidden, Submit, Reset,
                         Composite, Grid)
 from pony.gui.tkgui import show_gui
 
+import pony.i18n
 import pony.gui.webgui
 import pony.layouts.blueprint
 import pony.images

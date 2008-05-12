@@ -1,7 +1,8 @@
-import re
+import re, os.path
 from itertools import izip, count
 
 import pony
+from pony.utils import read_text_file
 
 class I18nParseError(Exception): pass
 
@@ -27,13 +28,17 @@ def translate(key, params, lang_list):
             return ''.join(result)
     else: return None
 
+def load(filename):
+    text = read_text_file(filename)
+    translations.update(parse(text.split('\n')))
+
 def parse(lines):
     d = {}
     for kstr, lstr_list in read_phrases(lines):
         lineno, key = kstr
         t = transform_string(key)
         norm_key = []
-        for (flag, value) in t:
+        for flag, value in t:
             if flag: norm_key.append('$#')
             else: norm_key.append(value)
         norm_key = ''.join(norm_key)
@@ -80,7 +85,7 @@ def read_phrases(lines):
            if kstr is None: raise I18nParseError(
                "Translation string found but key string was expected in line %d" % lineno)
            lstr_list.append((lineno, line))
-       elif kstr is None: kstr = lineno, line
+       elif kstr is None: kstr = lineno, line  # assert lineno == 1
        else:
            yield kstr, lstr_list
            kstr, lstr_list = (lineno, line), []
@@ -109,3 +114,5 @@ def get_params_order(key, lstr):
     for v in plstr:
         result.append(pkey.index(v))
     return result
+
+load(os.path.join(pony.PONY_DIR, 'translations.txt'))
