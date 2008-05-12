@@ -11,6 +11,22 @@ param_re = re.compile(r"\$(?:\w+|\$)")
 
 translations = {}
 
+def translate(key, params, lang_list):
+    for lang in lang_list:
+        while True:
+            try: params_order, lstr = translations[key][lang]
+            except KeyError:
+                try:
+                    lang = lang[:lang.rindex('-')]
+                    continue
+                except ValueError: break
+            result = []
+            for flag, value in lstr:
+                if flag: result.append(params[params_order.pop(0)])
+                else: result.append(value)
+            return ''.join(result)
+    else: return None
+
 def parse(lines):
     d = {}
     for kstr, lstr_list in read_phrases(lines):
@@ -39,16 +55,22 @@ def parse(lines):
         d[norm_key] = ld
     return d
 
-def get_params_order(key, lstr):
-    pkey, plstr = [], []
-    for flag, value in key:
-        if flag: pkey.append(value)
-    for flag, value in lstr:
-        if flag: plstr.append(value)
+def transform_string(s):
     result = []
-    for v in plstr:
-        result.append(pkey.index(v))
-    return result
+    pos = 0
+    for match in param_re.finditer(s):
+        result.append((False, s[pos:match.start()]))
+        if match.group() == '$$': result.append((False, '$'))
+        else: result.append((True, match.group()[1:]))
+        pos = match.end()
+    result.append((False, s[pos:]))
+    prevf = None
+    result2 = []
+    for flag, value in result:
+        if flag == prevf == False: result2[-1] = (flag, result2[-1][1] + value)
+        elif value: result2.append((flag, value))
+        prevf = flag
+    return result2
 
 def read_phrases(lines):
    kstr, lstr_list = None, []
@@ -77,38 +99,13 @@ def check_params(params_list, lineno, lstr, lineno2, langkey):
         if a != b: raise I18nParseError(
             "Unknown parameter in line %d: %s (translation for %s)" % (lineno2, b, langkey))
 
-def transform_string(s):
+def get_params_order(key, lstr):
+    pkey, plstr = [], []
+    for flag, value in key:
+        if flag: pkey.append(value)
+    for flag, value in lstr:
+        if flag: plstr.append(value)
     result = []
-    pos = 0
-    for match in param_re.finditer(s):
-        result.append((False, s[pos:match.start()]))
-        if match.group() == '$$': result.append((False, '$'))
-        else: result.append((True, match.group()[1:]))
-        pos = match.end()
-    result.append((False, s[pos:]))
-    prevf = None
-    result2 = []
-    for flag, value in result:
-        if flag == prevf == False: result2[-1] = (flag, result2[-1][1] + value)
-        elif value: result2.append((flag, value))
-        prevf = flag
-    return result2
-
-translations = {}
-
-def translate(key, params, lang_list):
-    for lang in lang_list:
-        while True:
-            try: params_order, lstr = translations[key][lang]
-            except KeyError:
-                try:
-                    lang = lang[:lang.rindex('-')]
-                    continue
-                except ValueError: break
-            result = []
-            for flag, value in lstr:
-                if flag: result.append(params[params_order.pop(0)])
-                else: result.append(value)
-            return ''.join(result)
-    else: return None
- 
+    for v in plstr:
+        result.append(pkey.index(v))
+    return result
