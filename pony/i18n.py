@@ -1,7 +1,9 @@
 import re
 from itertools import izip, count
 
-class ParseError(Exception): pass
+import pony
+
+class I18nParseError(Exception): pass
 
 space_re = re.compile(r'\s+')
 lang_re = re.compile(r'([A-Za-z-]+)\s*')
@@ -27,7 +29,7 @@ def parse(lines):
         for lineno2, s in lstr_list:
             s = s.strip()
             m = lang_re.match(s)
-            if m is None: raise ParseError(
+            if m is None: raise I18nParseError(
                 "No language selector found in line %d (line=%s)" % (lineno2, s))
             langkey = m.group(1)
             lstr = s[m.end():]
@@ -53,7 +55,7 @@ def read_phrases(lines):
    for lineno, line in izip(count(1), lines):
        if not line or line.isspace(): continue
        elif line[0].isspace():
-           if kstr is None: raise ParseError(
+           if kstr is None: raise I18nParseError(
                "Translation string found but key string was expected in line %d" % lineno)
            lstr_list.append((lineno, line))
        elif kstr is None: kstr = lineno, line
@@ -67,12 +69,12 @@ def check_params(params_list, lineno, lstr, lineno2, langkey):
     params_list2 = []
     for match in param_re.finditer(lstr):
         if match.group() != '$$': params_list2.append(match.group())
-    if len(params_list) != len(params_list2): raise ParseError(
+    if len(params_list) != len(params_list2): raise I18nParseError(
         "Parameters count in line %d doesn't match with line %d" % (lineno, lineno2))
     params_list.sort()
     params_list2.sort()
     for a, b in zip(params_list, params_list2):
-        if a != b: raise ParseError(
+        if a != b: raise I18nParseError(
             "Unknown parameter in line %d: %s (translation for %s)" % (lineno2, b, langkey))
 
 def transform_string(s):
@@ -92,6 +94,8 @@ def transform_string(s):
         prevf = flag
     return result2
 
+translations = {}
+
 def translate(key, params, lang_list):
     for lang in lang_list:
         while True:
@@ -107,27 +111,4 @@ def translate(key, params, lang_list):
                 else: result.append(value)
             return ''.join(result)
     else: return None
-
-if __name__ == "__main__":
-    #lines = open("c:\\temp\\trans.txt").readlines()
-    import textwrap
-    lines = textwrap.dedent('''
-    Hello,  $name
-      ru Privet, $name
-      de Guten Tag,      $name
-    Date dd/mm/yy, $dd/$mm/$yy
-      ru Data dd/mm/yy,  $dd/$mm/$yy
-      de Datai yy/mm/dd, $yy/$mm/$dd
-      en Date mm/dd/yy,  $mm/$dd/$yy
-    Hey
-      ru
-    ''').split('\n')
-    translations = parse(lines)
-    print translate('Hello, $#', ['Peter'], ['en-ca', 'ru'])
-    print translate('Hello, $#', ['Peter'], ['de'])
-    print translate('Hello, $#', ['Peter'], ['cz'])
-    print translate('Date dd/mm/yy, $#/$#/$#', ['25', '04', '77'], ['ru'])
-    print translate('Date dd/mm/yy, $#/$#/$#', ['25', '04', '77'], ['de'])
-    print translate('Date dd/mm/yy, $#/$#/$#', ['25', '04', '77'], ['en-us'])
-    print translate('Hey', [], ['ru'])
-    raw_input()
+ 
