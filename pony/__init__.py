@@ -24,9 +24,10 @@ elif RUNNED_AS == 'MOD_WSGI':
             MAIN_FILE = module.__file__
             break
 
-MAIN_DIR = None
-if MAIN_FILE is not None:
-    MAIN_DIR = dirname(MAIN_FILE)
+if MAIN_FILE is not None: MAIN_DIR = dirname(MAIN_FILE)
+else: MAIN_DIR = None
+
+PONY_DIR = dirname(__file__)
 
 shutdown = False
 
