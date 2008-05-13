@@ -35,7 +35,7 @@ def load(filename):
 def parse(lines):
     d = {}
     for kstr, lstr_list in read_phrases(lines):
-        lineno, key = kstr
+        key_lineno, key = kstr
         t = transform_string(key)
         norm_key = []
         for flag, value in t:
@@ -44,19 +44,19 @@ def parse(lines):
         norm_key = ''.join(norm_key)
         norm_key = space_re.sub(' ', norm_key).strip()
         ld = {}        
-        params_list = []
+        key_params_list = []
         for match in param_re.finditer(key):
-            if match.group() != '$$': params_list.append(match.group())
-        for lineno2, s in lstr_list:
-            s = s.strip()
-            m = lang_re.match(s)
-            if m is None: raise I18nParseError(
-                "No language selector found in line %d (line=%s)" % (lineno2, s))
-            langkey = m.group(1)
-            lstr = s[m.end():]
-            check_params(params_list, lineno, lstr, lineno2, langkey)
+            if match.group() != '$$': key_params_list.append(match.group())
+        for lstr_lineno, line in lstr_list:
+            line = line.strip()
+            match = lang_re.match(line)
+            if match is None: raise I18nParseError(
+                "No language selector found in line %d (line=%s)" % (lstr_lineno, line))
+            lang_code = match.group(1)
+            lstr = line[match.end():]
+            check_params(key_params_list, key_lineno, lstr, lstr_lineno, lang_code)
             lstr = transform_string(lstr)
-            ld[langkey] = (get_params_order(t, lstr), lstr)
+            ld[lang_code] = (get_params_order(t, lstr), lstr)
         d[norm_key] = ld
     return d
 
@@ -92,17 +92,17 @@ def transform_string(s):
         prevf = flag
     return result2
 
-def check_params(params_list, lineno, lstr, lineno2, langkey):
-    params_list2 = []
+def check_params(key_params_list, key_lineno, lstr, lstr_lineno, lang_code):
+    lstr_params_list = []
     for match in param_re.finditer(lstr):
-        if match.group() != '$$': params_list2.append(match.group())
-    if len(params_list) != len(params_list2): raise I18nParseError(
-        "Parameters count in line %d doesn't match with line %d" % (lineno, lineno2))
-    params_list.sort()
-    params_list2.sort()
-    for a, b in zip(params_list, params_list2):
+        if match.group() != '$$': lstr_params_list.append(match.group())
+    if len(key_params_list) != len(lstr_params_list): raise I18nParseError(
+        "Parameters count in line %d doesn't match with line %d" % (key_lineno, lstr_lineno))
+    key_params_list.sort()
+    lstr_params_list.sort()
+    for a, b in zip(key_params_list, lstr_params_list):
         if a != b: raise I18nParseError(
-            "Unknown parameter in line %d: %s (translation for %s)" % (lineno2, b, langkey))
+            "Unknown parameter in line %d: %s (translation for %s)" % (lstr_lineno, b, lang_code))
 
 def get_params_order(key, lstr):
     pkey, plstr = [], []
