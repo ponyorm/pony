@@ -1,5 +1,6 @@
 import sys, os.path, threading, inspect, re, weakref, textwrap
 
+from pony import i18n
 from pony.utils import read_text_file, is_ident, decorator, decorator_with_params, get_mtime
 
 try: from pony import _templating
@@ -655,22 +656,16 @@ class I18nElement(SyntaxElement):
         self.start, self.end, cmd_name, expr, markup_args, markup_keyargs = item
         assert cmd_name is None and expr is None
         self.markup = Markup(text, markup_args[0])
-        if len(markup_args) > 1:
-            raise ParseError('Unexpected markup block', text, markup_args[1][0])
-        if markup_keyargs:
-            raise ParseError('Unexpected keyword argument',
-                             text, markup_keyrgs[0][1][0])
-        list = []
-        i = 0
-        for item in self.markup.content:
-            if isinstance(item, basestring):
-                list.append(item.replace('$', '$$'))
-            else:
-                i += 1
-                list.append('$%d' % i)
-        self.base_string = space_re.sub(' ', ''.join(list).strip())
+        if len(markup_args) > 1: raise ParseError('Unexpected markup block', text, markup_args[1][0])
+        if markup_keyargs: raise ParseError('Unexpected keyword argument', text, markup_keyrgs[0][1][0])
+        self.items = [ item for item in self.markup.content
+                            if not isinstance(item, basestring) ]
+        key_list = [ not isinstance(item, basestring) and '$#' or item.replace('$', '$$')
+                     for item in self.markup.content ]
+        self.key = ' '.join(''.join(key_list).split())
     def eval(self, globals, locals=None):
-        return ''
+        params = [ item.eval(globals, locals) for item in self.items ]
+        return i18n.translate(self.key, params, [ 'ru' ])
 
 class FunctionElement(SyntaxElement):
     def __init__(self, text, item):
