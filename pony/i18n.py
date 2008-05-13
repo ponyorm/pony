@@ -35,11 +35,11 @@ def load(filename):
 def parse(lines):
     d = {}
     for kstr, lstr_list in read_phrases(lines):
-        key_lineno, key = kstr
-        key_pieces = transform_string(key)
-        norm_key = ''.join(flag and '$#' or value for flag, value in key_pieces)
-        norm_key = ' '.join(norm_key.split())
-        key_params_list = [ match.group() for match in param_re.finditer(key)
+        key_lineno, key_line = kstr
+        key_pieces = transform_string(key_line)
+        key = ''.join(flag and '$#' or value for flag, value in key_pieces)
+        key = ' '.join(key.split())
+        key_params_list = [ match.group() for match in param_re.finditer(key_line)
                                           if match.group() != '$$' ]
         d2 = {}
         for lstr_lineno, line in lstr_list:
@@ -52,7 +52,7 @@ def parse(lines):
             check_params(key_params_list, key_lineno, lstr, lstr_lineno, lang_code)
             lstr_pieces = transform_string(lstr)
             d2[lang_code] = (get_params_order(key_pieces, lstr_pieces), lstr_pieces)
-        d[norm_key] = d2
+        d[key] = d2
     return d
 
 def read_phrases(lines):
