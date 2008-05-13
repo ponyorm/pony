@@ -60,6 +60,21 @@ def parse(lines):
         d[norm_key] = ld
     return d
 
+def read_phrases(lines):
+   kstr, lstr_list = None, []
+   for lineno, line in izip(count(1), lines):
+       if not line or line.isspace(): continue
+       elif line[0].isspace():
+           if kstr is None: raise I18nParseError(
+               "Translation string found but key string was expected in line %d" % lineno)
+           lstr_list.append((lineno, line))
+       elif kstr is None: kstr = lineno, line  # assert lineno == 1
+       else:
+           yield kstr, lstr_list
+           kstr, lstr_list = (lineno, line), []
+   if kstr is not None:
+       yield kstr, lstr_list
+
 def transform_string(s):
     result = []
     pos = 0
@@ -76,21 +91,6 @@ def transform_string(s):
         elif value: result2.append((flag, value))
         prevf = flag
     return result2
-
-def read_phrases(lines):
-   kstr, lstr_list = None, []
-   for lineno, line in izip(count(1), lines):
-       if not line or line.isspace(): continue
-       elif line[0].isspace():
-           if kstr is None: raise I18nParseError(
-               "Translation string found but key string was expected in line %d" % lineno)
-           lstr_list.append((lineno, line))
-       elif kstr is None: kstr = lineno, line  # assert lineno == 1
-       else:
-           yield kstr, lstr_list
-           kstr, lstr_list = (lineno, line), []
-   if kstr is not None:
-       yield kstr, lstr_list
 
 def check_params(params_list, lineno, lstr, lineno2, langkey):
     params_list2 = []
