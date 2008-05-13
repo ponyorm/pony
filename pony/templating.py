@@ -471,7 +471,6 @@ class Markup(SyntaxElement):
                 self.content.append(text.__class__(item))
             elif isinstance(item, tuple):
                 prev = self.content and self.content[-1] or None
-                if self.content: prev = self.content[-1]
                 cmd_name = item[2]
                 if cmd_name in ('elif', 'else', 'sep', 'separator'):
                     if isinstance(prev, basestring) and prev.isspace():
