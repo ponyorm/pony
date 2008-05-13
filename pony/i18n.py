@@ -1,5 +1,5 @@
 import re, os.path
-from itertools import izip, count
+from itertools import izip, count, chain
 
 import pony
 from pony.utils import read_text_file
@@ -13,14 +13,16 @@ param_re = re.compile(r"\$(?:\w+|\$)")
 translations = {}
 
 def translate(key, params, lang_list):
-    for lang in lang_list:
-        try: params_order, lstr = translations[key][lang]
+    d2 = translations.get(key)
+    if d2 is None: return None
+    for lang in chain(lang_list, (None,)):
+        try: params_order, lstr = d2[lang]
         except KeyError: continue
         ordered_params = map(params.__getitem__, params_order)
         ordered_params.reverse()
         return u"".join(not flag and value or ordered_params.pop()
                         for flag, value in lstr)
-    return None
+    assert False
 
 def load(filename):
     text = read_text_file(filename)
@@ -46,6 +48,7 @@ def parse(lines):
             check_params(key_params_list, key_lineno, lstr, lstr_lineno, lang_code)
             lstr_pieces = transform_string(lstr)
             d2[lang_code] = (get_params_order(key_pieces, lstr_pieces), lstr_pieces)
+        d2[None] = (get_params_order(key_pieces, key_pieces), key_pieces)
         d[key] = d2
     return d
 
