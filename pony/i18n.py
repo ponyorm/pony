@@ -14,19 +14,13 @@ translations = {}
 
 def translate(key, params, lang_list):
     for lang in lang_list:
-        while True:
-            try: params_order, lstr = translations[key][lang]
-            except KeyError:
-                try:
-                    lang = lang[:lang.rindex('-')]
-                    continue
-                except ValueError: break
-            result = []
-            for flag, value in lstr:
-                if flag: result.append(params[params_order.pop(0)])
-                else: result.append(value)
-            return ''.join(result)
-    else: return None
+        try: params_order, lstr = translations[key][lang]
+        except KeyError: continue
+        ordered_params = map(params.__getitem__, params_order)
+        ordered_params.reverse()
+        return u"".join(not flag and value or ordered_params.pop()
+                        for flag, value in lstr)
+    return None
 
 def load(filename):
     text = read_text_file(filename)
