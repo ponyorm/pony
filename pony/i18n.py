@@ -96,15 +96,9 @@ def check_params(key_params_list, key_lineno, lstr, lstr_lineno, lang_code):
         if a != b: raise I18nParseError("Unknown parameter in line %d: %s (translation for %s)"
                                         % (lstr_lineno, b, lang_code))
 
-def get_params_order(key, lstr):
-    pkey, plstr = [], []
-    for flag, value in key:
-        if flag: pkey.append(value)
-    for flag, value in lstr:
-        if flag: plstr.append(value)
-    result = []
-    for v in plstr:
-        result.append(pkey.index(v))
-    return result
+def get_params_order(key_pieces, lstr_pieces):
+    key_params = [ value for flag, value in key_pieces if flag ]
+    lstr_params = [ value for flag, value in lstr_pieces if flag ]
+    return map(key_params.index, lstr_params)
 
 load(os.path.join(pony.PONY_DIR, 'translations.txt'))
