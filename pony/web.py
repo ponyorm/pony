@@ -541,6 +541,7 @@ class HttpRequest(object):
         self.conversation_data = self.fields.getfirst('_c')
         auth.load_conversation(self.conversation_data)
         self.id_counter = imap('id_%d'.__mod__, count())
+        self.use_xslt = True
     @staticmethod
     def _reconstruct_script_url(environ):
         url_scheme  = environ['wsgi.url_scheme']
@@ -784,7 +785,7 @@ def http_invoke(url):
         headers['Content-Type'] = content_type
 
     response.conversation_data = auth.save_conversation()
-    if media_type == 'text/html' and xslt.is_supported:
+    if media_type == 'text/html' and xslt.is_supported and request.use_xslt:
         result = xslt.transform(result, charset)
     else:
         if hasattr(result, '__unicode__'): result = unicode(result)
