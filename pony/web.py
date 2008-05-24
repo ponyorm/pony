@@ -765,6 +765,7 @@ def http_invoke(url):
     params.update(keyargs)
 
     result = info.func(*args, **keyargs)
+    if isinstance(result, HttpException): raise result
 
     headers = dict([ (name.replace('_', '-').title(), value)
                      for name, value in response.headers.items() ])
