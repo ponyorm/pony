@@ -1,5 +1,5 @@
 import re, threading, os.path, inspect, sys
-import cgi, cgitb, urllib, Cookie, mimetypes, cPickle, time
+import cgi, cgitb, urllib, Cookie, cPickle, time
 
 from cStringIO import StringIO
 from itertools import imap, izip, count
@@ -8,35 +8,12 @@ from operator import itemgetter, attrgetter
 from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
 
 import pony
-from pony import autoreload, auth, utils, xslt
+from pony import autoreload, auth, webutils, xslt
 from pony.autoreload import on_reload
 from pony.utils import decorator_with_params
 from pony.templating import Html, StrHtml, printhtml, real_stdout
 from pony.logging import log, log_exc
 from pony.xslt import xslt_function
-
-def split_url(url, strict_parsing=False):
-    if isinstance(url, unicode): url = url.encode('utf8')
-    elif isinstance(url, str):
-        if strict_parsing:
-            try: url.decode('ascii')
-            except UnicodeDecodeError: raise ValueError(
-                'Url string contains non-ascii symbols. Such urls must be in unicode.')
-    else: raise ValueError('Url parameter must be str or unicode')
-    if '?' in url:
-        p, q = url.split('?', 1)
-        qlist = []
-        qnames = set()
-        for name, value in cgi.parse_qsl(q, strict_parsing=strict_parsing, keep_blank_values=True):
-            if name not in qnames:
-                qlist.append((name, value))
-                qnames.add(name)
-            elif strict_parsing: raise ValueError('Duplicate url parameter: %s' % name)
-    else: p, qlist = url, []
-    components = p.split('/')
-    if not components[0]: components = components[1:]
-    path = map(urllib.unquote, components)
-    return path, qlist
 
 class NodefaultType(object):
     def __repr__(self): return '__nodefault__'
@@ -61,7 +38,7 @@ class HttpInfo(object):
                 if port is not None: raise TypeError('Duplicate port specification')
                 host, port = host.split(':')
         self.host, self.port = host, port and int(port) or None
-        self.path, self.qlist = split_url(url, strict_parsing=True)
+        self.path, self.qlist = webutils.split_url(url, strict_parsing=True)
         self.redirect = redirect
         module = func.__module__
         self.system = module.startswith('pony.') and not module.startswith('pony.examples.')
@@ -460,7 +437,7 @@ def get_http_handlers(path, qdict, host, port):
 
 def http_remove(x, host=None, port=None):
     if isinstance(x, basestring):
-        path, qlist = split_url(x, strict_parsing=True)
+        path, qlist = webutils.split_url(x, strict_parsing=True)
         qdict = dict(qlist)
         http_registry_lock.acquire()
         try:
@@ -497,8 +474,6 @@ def _http_clear(dict, list1, list2):
         _http_clear(inner_dict, list1, list2)
     dict.clear()
 
-q_re = re.compile('\s*q\s*=\s*([0-9.]+)\s*')
-
 class HttpRequest(object):
     def __init__(self, environ):
         self.environ = environ
@@ -517,7 +492,7 @@ class HttpRequest(object):
             self.url = urllib.quote(environ['PATH_INFO'])
             query = environ['QUERY_STRING']
             if query: self.url += '?' + query
-            self.script_url = self._reconstruct_script_url(environ)
+            self.script_url = webutils.reconstruct_script_url(environ)
             self.full_url = self.script_url + self.url
 
             if 'HTTP_COOKIE' in environ: self.cookies.load(environ['HTTP_COOKIE'])
@@ -531,7 +506,7 @@ class HttpRequest(object):
             self.host = 'localhost'
             self.port = 80
         self._base_url = None
-        self._languages = self._parse_accept_language(environ.get('HTTP_ACCEPT_LANGUAGE'))
+        self.languages = self._get_languages()
         self.params = {}
         input_stream = environ.get('wsgi.input') or StringIO()
         self.fields = cgi.FieldStorage(fp=input_stream, environ=environ, keep_blank_values=True)
@@ -542,53 +517,11 @@ class HttpRequest(object):
         auth.load_conversation(self.conversation_data)
         self.id_counter = imap('id_%d'.__mod__, count())
         self.use_xslt = True
-    @staticmethod
-    def _reconstruct_script_url(environ):
-        url_scheme  = environ['wsgi.url_scheme']
-        host        = environ.get('HTTP_HOST')
-        server_name = environ['SERVER_NAME']
-        server_port = environ['SERVER_PORT']
-        script_name = environ.get('SCRIPT_NAME','')
-        path_info   = environ.get('PATH_INFO','')
-        query       = environ.get('QUERY_STRING')
-        
-        url = url_scheme + '://'
-        if host: url += host
-        else:
-            url += server_name
-            if (url_scheme == 'https' and server_port == '443') \
-            or (url_scheme == 'http' and server_port == '80'): pass
-            else: url += ':' + server_port
-
-        url += urllib.quote(script_name)
-        return url
-    @staticmethod
-    def _parse_accept_language(s):
-        if not s: return []
-        languages = {}
-        for lang in s.lower().split(','):
-            lang = lang.strip()
-            if not lang: continue
-            if ';' not in lang: languages[lang.strip()] = 1
-            else:
-                lang, params = lang.split(';', 1)
-                q = 1
-                for params in params.split(';'):
-                    match = q_re.match(params)
-                    if match is not None:
-                        try: q = float(match.group(1))
-                        except: pass
-                lang = lang.strip()
-                if lang: languages[lang] = max(q, languages.get(lang))
-        languages = sorted((q, lang) for lang, q in languages.iteritems())
-        languages.reverse()
-        return [ lang for q, lang in languages ]
-    @property
-    def languages(self):
+    def _get_languages(self):
+        languages = webutils.parse_accept_language(self.environ.get('HTTP_ACCEPT_LANGUAGE'))
+        try: languages.insert(0, auth.local.session['lang'])
+        except KeyError: pass
         result = []
-        lang = http.session.get('lang')
-        if lang: languages = [ lang.lower() ] + self._languages
-        else: languages = self._languages
         for lang in languages:
             try: result.remove(lang)
             except ValueError: pass
@@ -664,23 +597,6 @@ def create_cookies(environ):
         result.append(('Set-Cookie', cookie))
     return result
 
-# Copied from SimpleHTTPServer:
-if not mimetypes.inited: mimetypes.init() # try to read system mime.types
-extensions_map = mimetypes.types_map.copy()
-extensions_map.update({
-    '': 'application/octet-stream', # Default
-    '.py': 'text/plain',
-    '.c': 'text/plain',
-    '.h': 'text/plain',
-    })
-
-def guess_type(ext):
-    result = extensions_map.get(ext)
-    if result is not None: return result
-    result = extensions_map.get(ext.lower())
-    if result is not None: return result
-    return 'application/octet-stream'
-
 def get_static_dir_name():
     if pony.MAIN_DIR is None: return None
     return os.path.join(pony.MAIN_DIR, 'static')
@@ -700,7 +616,7 @@ def get_static_file(path):
         raise Http404
     ext = os.path.splitext(path[-1])[1]
     headers = local.response.headers
-    headers['Content-Type'] = guess_type(ext)
+    headers['Content-Type'] = webutils.guess_type(ext)
     headers['Expires'] = '0'
     headers['Cache-Control'] = 'max-age=10'
     return file(fname, 'rb')
@@ -715,7 +631,7 @@ def get_pony_static_file(path):
     if not os.path.isfile(fname): raise Http404
     ext = os.path.splitext(path[-1])[1]
     headers = local.response.headers
-    headers['Content-Type'] = guess_type(ext)
+    headers['Content-Type'] = webutils.guess_type(ext)
     max_age = 30 * 60
     headers['Expires'] = Cookie._getdate(max_age)
     headers['Cache-Control'] = 'max-age=%d' % max_age
@@ -727,7 +643,7 @@ def http_invoke(url):
         except UnicodeDecodeError: raise Http400BadRequest
     request = local.request
     response = local.response = HttpResponse()
-    path, qlist = split_url(url)
+    path, qlist = webutils.split_url(url)
     if path[:1] == ['static'] and len(path) > 1:
         return get_static_file(path[1:])
     if path[:2] == ['pony', 'static'] and len(path) > 2:
@@ -740,7 +656,7 @@ def http_invoke(url):
         else: p, q = url[:i], url[i:]
         if p.endswith('/'): url2 = p[:-1] + q
         else: url2 = p + '/' + q
-        path2, qlist = split_url(url2)
+        path2, qlist = webutils.split_url(url2)
         handlers = get_http_handlers(path2, qdict, request.host, request.port)
         if not handlers: return get_static_file(path)
         script_name = request.environ.get('SCRIPT_NAME', '')
@@ -870,16 +786,6 @@ def application(environ, wsgi_start_response):
         # return [ result.read() ]
         return iter(lambda: result.read(BLOCK_SIZE), '')
 
-def parse_address(address):
-    if isinstance(address, basestring):
-        if ':' in address:
-            host, port = address.split(':')
-            return host, int(port)
-        else:
-            return address, 80
-    assert len(address) == 2
-    return tuple(address)
-
 server_threads = {}
 
 class ServerException(Exception): pass
@@ -914,7 +820,7 @@ class ServerThread(threading.Thread):
 def start_http_server(address='localhost:8080', verbose=True):
     if pony.RUNNED_AS == 'MOD_WSGI': return
     pony._do_mainloop = True
-    host, port = parse_address(address)
+    host, port = webutils.parse_address(address)
     try:
         server_thread = ServerThread(host, port, application, verbose=verbose)
     except ServerAlreadyStarted:
@@ -937,7 +843,7 @@ def stop_http_server(address=None):
             server_thread.server.stop()
             server_thread.join()
     else:
-        host, port = parse_address(address)
+        host, port = webutils.parse_address(address)
         server_thread = server_threads.get((host, port))
         if server_thread is None:
             raise ServerNotStarted('Cannot stop HTTP server at %s:%s '
