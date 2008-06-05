@@ -665,7 +665,18 @@ class I18nElement(SyntaxElement):
         self.key = ' '.join(''.join(key_list).split())
     def eval(self, globals, locals=None):
         params = [ item.eval(globals, locals) for item in self.items ]
-        return i18n.translate(self.key, params, [ 'ru' ])
+        if 'pony.web' in sys.modules:
+            from pony.web import http
+            languages = http.request.languages
+        else: languages = []
+        result = i18n.translate(self.key, params, languages)
+        if result is not None: return result
+        params.reverse()
+        result = []
+        for element in self.markup.content:
+            if isinstance(element, basestring): result.append(element)
+            else: result.append(params.pop())
+        return self.markup.empty.join(result)
 
 class FunctionElement(SyntaxElement):
     def __init__(self, text, item):
