@@ -443,22 +443,16 @@ class SyntaxElement(object):
                        or markup_keyargs and markup_keyargs[0][0]
                        or self.end)
         if cmd_name in ('if', 'elif', 'for'):
-            if not expr: raise ParseError(
-                "'%s' statement must contain expression" % cmd_name,
-                self.text, end_of_expr)
+            if not expr: raise ParseError("'%s' statement must contain expression" % cmd_name, self.text, end_of_expr)
         elif cmd_name in ('else', 'sep', 'separator'):
-            if expr is not None: raise ParseError(
-                "'%s' statement must not contains expression" % cmd_name,
-                self.text, end_of_expr)
-        if markup_keyargs: raise ParseError(
-                "'%s' statement must not have keyword arguments" % cmd_name,
-                self.text, markup_keyargs[0][1][0])
-        if not markup_args: raise ParseError(
-                "'%s' statement must contain markup block" % cmd_name,
-                self.text, self.end)
-        if len(markup_args) > 1: raise ParseError(
-            "'%s' statement must contain exactly one markup block" % cmd_name,
-            self.text, markup_args[1][0])
+            if expr is not None: raise ParseError("'%s' statement must not contains expression" % cmd_name,
+                                                  self.text, end_of_expr)
+        if markup_keyargs: raise ParseError("'%s' statement must not have keyword arguments" % cmd_name,
+                                            self.text, markup_keyargs[0][1][0])
+        if not markup_args: raise ParseError("'%s' statement must contain markup block" % cmd_name,
+                                             self.text, self.end)
+        if len(markup_args) > 1: raise ParseError("'%s' statement must contain exactly one markup block" % cmd_name,
+                                                  self.text, markup_args[1][0])
 
 class Markup(SyntaxElement):
     def __init__(self, text, tree):
@@ -636,11 +630,8 @@ class ExprElement(SyntaxElement):
         self.text = text
         self.start,self.end,cmd_name,self.expr,markup_args,markup_keyargs = item
         assert cmd_name is None
-        if markup_args:
-            raise ParseError('Unexpected markup block', text, markup_args[0][0])
-        if markup_keyargs:
-            raise ParseError('Unexpected keyword argument',
-                             text, markup_keyrgs[0][1][0])
+        if markup_args: raise ParseError('Unexpected markup block', text, markup_args[0][0])
+        if markup_keyargs: raise ParseError('Unexpected keyword argument', text, markup_keyrgs[0][1][0])
         self.expr_code = compile(self.expr, '<?>', 'eval')
     def eval(self, globals, locals=None):
         result = eval(self.expr_code, globals, locals)
@@ -658,8 +649,7 @@ class I18nElement(SyntaxElement):
         self.markup = Markup(text, markup_args[0])
         if len(markup_args) > 1: raise ParseError('Unexpected markup block', text, markup_args[1][0])
         if markup_keyargs: raise ParseError('Unexpected keyword argument', text, markup_keyrgs[0][1][0])
-        self.items = [ item for item in self.markup.content
-                            if not isinstance(item, basestring) ]
+        self.items = [ item for item in self.markup.content if not isinstance(item, basestring) ]
         key_list = [ not isinstance(item, basestring) and '$#' or item.replace('$', '$$')
                      for item in self.markup.content ]
         self.key = ' '.join(''.join(key_list).split())
