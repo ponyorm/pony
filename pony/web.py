@@ -11,7 +11,7 @@ import pony
 from pony import autoreload, auth, webutils, xslt
 from pony.autoreload import on_reload
 from pony.utils import decorator_with_params
-from pony.templating import Html, StrHtml, printhtml, real_stdout
+from pony.templating import Html, StrHtml, printhtml, real_stdout, plainstr
 from pony.logging import log, log_exc
 from pony.xslt import xslt_function
 
@@ -885,6 +885,17 @@ class _Http(object):
     def set_user(self, user, remember_ip=False, path='/', domain=None):
         auth.set_user(user, remember_ip, path, domain)
     user = property(get_user, set_user)
+
+    def get_lang(self):
+        return auth.local.session.get('lang')
+    def set_lang(self, lang):
+        if lang and not isinstance(lang, basestring):
+            raise TypeError('http.lang must be string. Got: %s' % lang)
+        lang = plainstr(lang)
+        if not lang: auth.local.session.pop('lang', None)
+        else: auth.local.session['lang'] = lang
+        local.request.languages = local.request._get_languages()
+    lang = property(get_lang, set_lang)
 
     class _Params(object):
         def __getattr__(self, attr): return local.request.params.get(attr)
