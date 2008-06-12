@@ -11,6 +11,14 @@ except NameError:
     assert sys.stdout.__class__.__name__ != 'PonyStdout'
     real_stdout = sys.stdout
 
+def plainstr(x):
+    if not isinstance(x, basestring):
+        if hasattr(x, '__unicode__'): x = unicode(x)
+        else: x = str(x)
+    if isinstance(x, Html): return unicode(x)
+    elif isinstance(x, StrHtml): return str.__str__(x)
+    else: return x
+
 class Html(unicode):
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, unicode.__repr__(self))
