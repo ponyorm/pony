@@ -47,14 +47,14 @@ class HttpInfo(object):
         self.star = False
         for component in self.path:
             if self.star:
-                raise TypeError("'*' must be last element in url path")
-            elif component != '*':
+                raise TypeError("'$*' must be last element in url path")
+            elif component != '$*':
                 self.parsed_path.append(self.parse_component(component))
             else: self.star = True
         self.parsed_query = []
         for name, value in self.qlist:
-            if value == '*':
-                raise TypeError("'*' does not allowed in query part of url")
+            if value == '$*':
+                raise TypeError("'$*' does not allowed in query part of url")
             is_param, x = self.parse_component(value)
             self.parsed_query.append((name, is_param, x))
         self.check()
@@ -178,7 +178,7 @@ class HttpInfo(object):
             for name, is_param, x in info.parsed_query:
                 if is_param: result[name] = isinstance(x, list) and x[0] or '/'
                 else: result[name] = ''
-            if info.star: result['*'] = len(info.parsed_path)
+            if info.star: result['$*'] = len(info.parsed_path)
             if info.host: result[('host',)] = info.host
             if info.port: result[('port',)] = info.port
             return result
@@ -1041,7 +1041,7 @@ def external_url(protocol, s):
     if not local.response.conversation_data: return '%s://%s' % (protocol, s)
     return '%s/pony/redirect/%s/%s' % (request.environ.get('SCRIPT_NAME',''), protocol, s)
 
-@http('/pony/redirect/*', type='text/html')
+@http('/pony/redirect/$*', type='text/html')
 def external_redirect(*args):
     url = local.request.url 
     assert url.startswith('/pony/redirect/')
