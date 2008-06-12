@@ -191,9 +191,11 @@ class PonyStdout(object):
         f(s)
 
 pony_stdout = PonyStdout()
-pony_stdout.flush = real_stdout.flush
-pony_stdout.seek = real_stdout.seek
-pony_stdout.readline = real_stdout.readline
+try:
+    pony_stdout.flush = real_stdout.flush
+    pony_stdout.seek = real_stdout.seek
+    pony_stdout.readline = real_stdout.readline
+except AttributeError: pass
 
 try: _templating
 except NameError: pass
