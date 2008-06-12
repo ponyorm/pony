@@ -5,18 +5,25 @@ from itertools import count
 uid = str(random.randint(1, 1000000))
 
 def detect_mode():
-    try: 
-        mod_wsgi = sys.modules['mod_wsgi']
-        return 'MOD_WSGI'
-    except KeyError:
-        try: sys.modules['__main__'].__file__
-        except AttributeError:  return 'INTERACTIVE'
-        return 'NATIVE'
+    try: import google.appengine
+    except ImportError: pass
+    else:
+        try: import dev_appserver
+        except ImportError: return 'GAE-SERVER'
+        return 'GAE-LOCAL'
+
+    try: mod_wsgi = sys.modules['mod_wsgi']
+    except KeyError: pass
+    else: return 'MOD_WSGI'
+
+    try: sys.modules['__main__'].__file__
+    except AttributeError:  return 'INTERACTIVE'
+    return 'NATIVE'
 
 RUNNED_AS = detect_mode()
 
 MAIN_FILE = None
-if RUNNED_AS == 'NATIVE':
+if RUNNED_AS in ('NATIVE', 'GAE-LOCAL', 'GAE-SERVER'):
     MAIN_FILE = sys.modules['__main__'].__file__
 elif RUNNED_AS == 'MOD_WSGI':
     for module_name, module in sys.modules.items():
@@ -42,7 +49,7 @@ def exitfunc():
     _shutdown()
     prev_func()
 
-if RUNNED_AS == 'INTERACTIVE': pass
+if RUNNED_AS in ('INTERACTIVE', 'GAE-SERVER', 'GAE-LOCAL'): pass
 elif hasattr(threading, '_shutdown'):
     prev_func = threading._shutdown
     threading._shutdown = exitfunc
