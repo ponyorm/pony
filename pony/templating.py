@@ -7,7 +7,9 @@ try: from pony import _templating
 except ImportError: pass
 
 try: real_stdout
-except NameError: real_stdout = sys.stdout
+except NameError:
+    assert sys.stdout.__class__.__name__ != 'PonyStdout'
+    real_stdout = sys.stdout
 
 class Html(unicode):
     def __repr__(self):
@@ -189,6 +191,9 @@ class PonyStdout(object):
         f(s)
 
 pony_stdout = PonyStdout()
+pony_stdout.flush = real_stdout.flush
+pony_stdout.seek = real_stdout.seek
+pony_stdout.readline = real_stdout.readline
 
 try: _templating
 except NameError: pass
