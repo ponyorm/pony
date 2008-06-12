@@ -5,8 +5,6 @@ from cStringIO import StringIO
 from itertools import imap, izip, count
 from operator import itemgetter, attrgetter
 
-from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
-
 import pony
 from pony import autoreload, auth, webutils, xslt
 from pony.autoreload import on_reload
@@ -802,6 +800,7 @@ class ServerThread(threading.Thread):
         threading.Thread.__init__(self)
         self.host = host
         self.port = port
+        from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
         self.server = CherryPyWSGIServer(
             (host, port), [('', application)], server_name=host)
         self.verbose = verbose
@@ -818,7 +817,7 @@ class ServerThread(threading.Thread):
         server_threads.pop((self.host, self.port), None)
 
 def start_http_server(address='localhost:8080', verbose=True):
-    if pony.RUNNED_AS == 'MOD_WSGI': return
+    if pony.RUNNED_AS not in ('INTERACTIVE', 'NATIVE'): return
     pony._do_mainloop = True
     host, port = webutils.parse_address(address)
     try:
@@ -837,7 +836,7 @@ def start_http_server(address='localhost:8080', verbose=True):
         if not response_string.startswith('+'): break
 
 def stop_http_server(address=None):
-    if pony.RUNNED_AS == 'MOD_WSGI': return
+    if pony.RUNNED_AS not in ('INTERACTIVE', 'NATIVE'): return
     if address is None:
         for server_thread in server_threads.values():
             server_thread.server.stop()
