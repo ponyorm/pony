@@ -65,8 +65,8 @@ def generate_captcha():
     Y_SCALE = randint(15, 25)
     X_AMP = randint(3, 6)
     Y_AMP = randint(3, 6)
-    X_PHASE = randint(0, 20)
-    Y_PHASE = randint(0, 20)
+    X_PHASE = 6.28*random()
+    Y_PHASE = 6.28*random()
 
     SWIRL_X = randint(60, 100)
     SWIRL_Y = randint(70, 80)
@@ -82,17 +82,23 @@ def generate_captcha():
 
     img2 = Image.new(MODE, (WIDTH, HEIGHT), BLACK)
     pix2 = img2.load()
-    for Y in range(HEIGHT):
-        # print '.',
-        for X in range(WIDTH):
-            color_sum = BLACK
-            for dy in range(QUALITY):
-                for dx in range(QUALITY):
-                    x = X + dx / QUALITY
-                    y = Y + dy / QUALITY
 
-                    x2 = x + sin(y/Y_SCALE + X_PHASE)*Y_AMP
-                    y2 = y + sin(x/X_SCALE + Y_PHASE)*X_AMP
+    qrange = range(QUALITY)
+    ylist = [   (Y, [   (y, sin(y/Y_SCALE + Y_PHASE)*Y_AMP)
+                        for y in (Y + dy/QUALITY for dy in qrange)   ])
+                for Y in range(HEIGHT)   ]
+    xlist = [   (X, [   (x, sin(x/X_SCALE + X_PHASE)*X_AMP)
+                        for x in (X + dx/QUALITY for dx in qrange)   ])
+                for X in range(WIDTH)   ]
+
+    for Y, ylist2 in ylist:
+        print '.',
+        for X, xlist2 in xlist:
+            color_sum = BLACK
+            for y, xshift in ylist2:
+                for x, yshift in xlist2:
+                    x2 = x + xshift
+                    y2 = y + yshift
 
                     delta_x = x2 - SWIRL_X
                     delta_y = y2 - SWIRL_Y
