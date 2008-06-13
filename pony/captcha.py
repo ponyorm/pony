@@ -46,28 +46,14 @@ def get_letter_glyph(letter):
     x1, y1, x2, y2 = img.getbbox()
     return img.crop((x1, 0, x2, size[1]))
 
-def generate_captcha():
-    text = generate_text()
-    
-    img = Image.new(MODE, (WIDTH, HEIGHT), BLACK)
-    pix = img.load()
-    draw = ImageDraw.ImageDraw(img)
-
-    text_width, text_height = draw.textsize(text, font=font)
-    space_width = draw.textsize(' ', font=font)[0]
-    text_offset = TEXT_X
-    for i in range(len(text)):
-        glyph = get_letter_glyph(text[i])
-        img.paste(WHITE, (text_offset, randint(0, 15)), glyph)
-        text_offset += glyph.size[0] - randint(4, 6)
-
+def generate_map():
     X_SCALE = randint(15, 25)
     Y_SCALE = randint(15, 25)
     X_AMP = randint(3, 6)
     Y_AMP = randint(3, 6)
     X_PHASE = 6.28*random()
     Y_PHASE = 6.28*random()
-
+    
     SWIRL_X = randint(60, 100)
     SWIRL_Y = randint(70, 80)
     SWIRL_ANGLE = (random() - 0.5)
@@ -80,9 +66,6 @@ def generate_captcha():
     if SWIRL2_ANGLE > 0: SWIRL2_ANGLE += 0.2
     else: SWIRL2_ANGLE -= 0.2
 
-    img2 = Image.new(MODE, (WIDTH, HEIGHT), BLACK)
-    pix2 = img2.load()
-
     qrange = range(QUALITY)
     ylist = [   (Y, [   (y, sin(y/Y_SCALE + Y_PHASE)*Y_AMP)
                         for y in (Y + dy/QUALITY for dy in qrange)   ])
@@ -91,10 +74,11 @@ def generate_captcha():
                         for x in (X + dx/QUALITY for dx in qrange)   ])
                 for X in range(WIDTH)   ]
 
+    map = []
+    
     for Y, ylist2 in ylist:
-        print '.',
+        print '*',
         for X, xlist2 in xlist:
-            color_sum = BLACK
             for y, xshift in ylist2:
                 for x, yshift in xlist2:
                     x2 = x + xshift
@@ -122,12 +106,51 @@ def generate_captcha():
 
                     x_result = int(x4)
                     y_result = int(y4)
+                    
                     if x_result < 0 or x_result >= WIDTH or y_result < 0 or y_result >= HEIGHT:
-                        color = BLACK
+                        map.append('\x00\x00')
                     else:
-                        color = pix[x_result, y_result]
-                    color_sum += color
-            pix2[X, Y] = int(color_sum/QUALITY**2)
+                        map.append(chr(x_result - X + 128))
+                        map.append(chr(y_result - Y + 128))
+    return ''.join(map)
+
+print
+map = generate_map()
+
+def generate_captcha():
+    text = generate_text()
+    
+    img = Image.new(MODE, (WIDTH, HEIGHT), BLACK)
+    pix = img.load()
+    draw = ImageDraw.ImageDraw(img)
+
+    text_width, text_height = draw.textsize(text, font=font)
+    space_width = draw.textsize(' ', font=font)[0]
+    text_offset = TEXT_X
+    for i in range(len(text)):
+        glyph = get_letter_glyph(text[i])
+        img.paste(WHITE, (text_offset, randint(0, 15)), glyph)
+        text_offset += glyph.size[0] - randint(4, 6)
+
+    next = iter(map).next
+
+    img2 = Image.new(MODE, (WIDTH, HEIGHT), BLACK)
+    pix2 = img2.load()
+    xrange = range(WIDTH)
+    qrange = range(QUALITY**2)
+    for y in range(HEIGHT):
+        print '.',
+        for x in xrange:
+            color_sum = BLACK
+            for q in qrange:
+                xchar = next()
+                ychar = next()
+                if xchar == '\x00' == ychar: continue
+                x2 = x + ord(xchar) - 128
+                y2 = y + ord(ychar) - 128
+                color_sum += pix[x2, y2]
+            pix2[x, y] = int(color_sum/QUALITY**2)
+
     x1, y1, x2, y2 = img2.getbbox()
     img2 = img2.crop((x1-2, y1-2, x2+2, y2+2))
     return text, img2
