@@ -1,6 +1,6 @@
 from __future__ import division
 
-import time, threading, os.path
+import time, threading, os.path, glob
 from math import sin, cos, sqrt, exp
 from random import randint, random, sample, choice
 
@@ -10,7 +10,9 @@ else: PIL = True
 
 import pony
 
-font = ImageFont.truetype(os.path.join('fonts', 'VeraSe.ttf'), 60)
+font_fnames = glob.glob(os.path.join(pony.PONY_DIR, 'fonts', '*.ttf'))
+
+fonts = [ ImageFont.truetype(fname, 60) for fname in font_fnames ]
 
 numbers = '123456789'
 vovels = 'aeiou'
@@ -38,7 +40,7 @@ def generate_text():
     elif randint(0, 1): s = s[:-1]
     return s
 
-def get_letter_glyph(letter):
+def get_letter_glyph(letter, font):
     text = ' ' + letter + ' '
     size = font.getsize(text)
     img = Image.new(MODE, size, BLACK)
@@ -120,6 +122,7 @@ maps = []
 
 def generate_captcha():
     text = generate_text()
+    font = choice(fonts)
     
     img = Image.new(MODE, (WIDTH, HEIGHT), BLACK)
     pix = img.load()
@@ -129,7 +132,7 @@ def generate_captcha():
     space_width = draw.textsize(' ', font=font)[0]
     text_offset = TEXT_X
     for i in range(len(text)):
-        glyph = get_letter_glyph(text[i])
+        glyph = get_letter_glyph(text[i], font)
         img.paste(WHITE, (text_offset, randint(0, 15)), glyph)
         text_offset += glyph.size[0] - randint(4, 6)
 
