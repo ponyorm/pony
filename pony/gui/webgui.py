@@ -4,19 +4,18 @@ from pony.logging import search_log
 
 import pprint, threading, time
 from datetime import timedelta
-from pony.templating import template
+from pony.templating import html, template
 
 @http('/pony/test')
-@printhtml
 def test():
-    print '<h1>Content of request headers</h1>'
-    print '<table border="1">'
-    print '<tr><th>Header</th><th>Value</th></tr>'
-    for key, value in sorted(get_request().environ.items()):
-        if value == '': value='&nbsp;'
-        print '<tr><td>%s</td><td>%s</td></tr>' % (key, value)
-    print '</table>'
-
+    return html('''
+    <h1>Content of request headers</h1>
+    <table border="1">
+    <tr><th>Header</th><th>Value</th></tr>
+    $for(key, value in sorted(get_request().environ.items())){
+    <tr><td>$key</td><td>&nbsp;$value</td></tr>
+    }
+    </table>''')
 
 MAX_RECORD_DISPLAY_COUNT = 1000
 

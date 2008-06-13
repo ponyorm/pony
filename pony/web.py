@@ -784,6 +784,10 @@ def application(environ, wsgi_start_response):
         # return [ result.read() ]
         return iter(lambda: result.read(BLOCK_SIZE), '')
 
+def main():
+    from pony.thirdparty.wsgiref.handlers import CGIHandler
+    CGIHandler().run(application)
+
 server_threads = {}
 
 class ServerException(Exception): pass

@@ -307,7 +307,6 @@ class TkThread(threading.Thread):
             finally: tk_lock.release()
 
 def show_gui():
-    if pony.RUNNED_AS not in ('INTERACTIVE', 'NATIVE'): return
     if tk_thread: return
     TkThread().start()
 

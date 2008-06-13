@@ -1,10 +1,12 @@
 import cPickle, os, os.path, Queue, random, re, sys, traceback, thread, threading, time
 from itertools import count
+
 import pony
-from pony.thirdparty import sqlite
 from pony.utils import current_timestamp
 
-process_id = os.getpid()
+try: process_id = os.getpid()
+except AttributeError: # in GAE
+    process_id = 0
 
 sql_re = re.compile('^\s*(\w+)')
 
@@ -98,6 +100,8 @@ class LoggerThread(threading.Thread):
         threading.Thread.__init__(self, name="LoggerThread")
         self.setDaemon(True)
     def run(self):
+        from pony.thirdparty import sqlite
+        self.OperationalError = sqlite.OperationalError
         con = self.connection = sqlite.connect(get_logfile_name())
         try:
             con.execute("PRAGMA synchronous = OFF;")
@@ -146,7 +150,7 @@ class LoggerThread(threading.Thread):
             try:
                 con.executemany(sql_insert, rows)
                 con.commit()
-            except sqlite.OperationalError:
+            except self.OperationalError:
                 con.rollback()
                 time.sleep(random.random())
             else: break
@@ -195,11 +199,12 @@ def decompress_record(record):
                        for (header, value) in record['headers'].items())
         record['headers'] = headers
 
-@pony.on_shutdown
-def do_shutdown():
-    log(type='Log:shutdown')
-    queue.put(None)
-    logger_thread.join()
+if not pony.RUNNED_AS.startswith('GAE-'):
+    @pony.on_shutdown
+    def do_shutdown():
+        log(type='Log:shutdown')
+        queue.put(None)
+        logger_thread.join()
 
-logger_thread = LoggerThread()
-logger_thread.start()
+    logger_thread = LoggerThread()
+    logger_thread.start()
