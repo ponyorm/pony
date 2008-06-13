@@ -1,13 +1,14 @@
-# coding: cp1251
-
 from __future__ import division
 
+import time, threading
 from math import sin, cos, sqrt, exp
 from random import randint, random, sample, choice
 
 try: import Image, ImageDraw, ImageFont, ImageChops
 except ImportError: PIL = False
 else: PIL = True
+
+import pony
 
 font = ImageFont.truetype('VeraSe.ttf', 60)
 
@@ -77,7 +78,8 @@ def generate_map():
     map = []
     
     for Y, ylist2 in ylist:
-        print '*',
+        print '.',
+        time.sleep(.01)
         for X, xlist2 in xlist:
             for y, xshift in ylist2:
                 for x, yshift in xlist2:
@@ -114,8 +116,7 @@ def generate_map():
                         map.append(chr(y_result - Y + 128))
     return ''.join(map)
 
-print
-map = generate_map()
+maps = []
 
 def generate_captcha():
     text = generate_text()
@@ -132,32 +133,50 @@ def generate_captcha():
         img.paste(WHITE, (text_offset, randint(0, 15)), glyph)
         text_offset += glyph.size[0] - randint(4, 6)
 
-    next = iter(map).next
+    if maps: 
+        map = choice(maps)
+        next = iter(map).next
 
-    img2 = Image.new(MODE, (WIDTH, HEIGHT), BLACK)
-    pix2 = img2.load()
-    xrange = range(WIDTH)
-    qrange = range(QUALITY**2)
-    for y in range(HEIGHT):
-        print '.',
-        for x in xrange:
-            color_sum = BLACK
-            for q in qrange:
-                xchar = next()
-                ychar = next()
-                if xchar == '\x00' == ychar: continue
-                x2 = x + ord(xchar) - 128
-                y2 = y + ord(ychar) - 128
-                color_sum += pix[x2, y2]
-            pix2[x, y] = int(color_sum/QUALITY**2)
+        img2 = Image.new(MODE, (WIDTH, HEIGHT), BLACK)
+        pix2 = img2.load()
+        xrange = range(WIDTH)
+        qrange = range(QUALITY**2)
+        for y in range(HEIGHT):
+            for x in xrange:
+                color_sum = BLACK
+                for q in qrange:
+                    xchar = next()
+                    ychar = next()
+                    if xchar == '\x00' == ychar: continue
+                    x2 = x + ord(xchar) - 128
+                    y2 = y + ord(ychar) - 128
+                    color_sum += pix[x2, y2]
+                pix2[x, y] = int(color_sum/QUALITY**2)
+        img = img2
 
-    x1, y1, x2, y2 = img2.getbbox()
-    img2 = img2.crop((x1-2, y1-2, x2+2, y2+2))
-    return text, img2
+    x1, y1, x2, y2 = img.getbbox()
+    img = img.crop((x1-2, y1-2, x2+2, y2+2))
+    return text, img
 
-if __name__ == '__main__':
-    for i in range(9):
-        print
-        print i+1
-        text, img = generate_captcha()
-        img.save('captcha-%02d-%s.jpg' % (i+1, text))
+class CaptchaThread(threading.Thread):
+    def __init__(self):
+        threading.Thread.__init__(self, name="CaptchaThread")
+        self.setDaemon(True)
+    def run(self):
+        for i in range(10):
+            print i+1,
+            time.sleep(1)
+            if pony.shutdown: break
+            map = generate_map()
+            maps.append(map)
+
+if not pony.RUNNED_AS.startswith('GAE-'):
+    captcha_thread = CaptchaThread()
+    captcha_thread.start()
+
+    if __name__ == '__main__':
+        captcha_thread.join()
+        for i in range(99):
+            print i+1,
+            text, img = generate_captcha()
+            img.save('captcha-%02d-%s.jpg' % (i+1, text))
