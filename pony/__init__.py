@@ -75,5 +75,7 @@ def mainloop():
 shutdown_counter = count()
 
 def _shutdown():
+    global shutdown
+    shutdown = True
     if shutdown_counter.next(): return
     for func in reversed(shutdown_list): func()
