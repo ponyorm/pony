@@ -1,6 +1,6 @@
 from __future__ import division
 
-import time, threading
+import time, threading, os.path
 from math import sin, cos, sqrt, exp
 from random import randint, random, sample, choice
 
@@ -10,7 +10,7 @@ else: PIL = True
 
 import pony
 
-font = ImageFont.truetype('VeraSe.ttf', 60)
+font = ImageFont.truetype(os.path.join('fonts', 'VeraSe.ttf'), 60)
 
 numbers = '123456789'
 vovels = 'aeiou'
