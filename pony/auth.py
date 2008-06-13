@@ -273,7 +273,10 @@ class AuthThread(threading.Thread):
         con.execute('delete from time_secrets where minute < ?', [ old ])
         con.execute('insert or ignore into time_secrets values(?, ?)',
                     [ minute, buffer(secret) ])
+        row = con.execute('select secret from time_secrets where minute = ?',
+                          [minute]).fetchone()
         con.commit()
+        secret = str(row[0])
         secret_cache[minute] = hmac.new(secret, digestmod=sha)
         lock.release()
     def check_ticket(self, minute, rnd, lock, result):
