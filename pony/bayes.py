@@ -35,13 +35,16 @@ class Filter(object):
             self.all[token] = self.all.get(token, 0) + 1
             if is_spam: self.spam[token] = self.spam.get(token, 0) + 1
     def estimate(self, message):
-        if not self.all_count: return 1
-        result = self.spam_count / self.all_count
+        all_count = self.all_count
+        if not all_count: return 1
+        spam_count = self.spam_count
+        result = spam_count / all_count
+        getall, getspam = self.all.get, self.spam.get
         for token in set(self.tokenize(message)):
-            token_count = self.all.get(token, 0)
+            token_count = getall(token, 0)
             if token_count < 2: continue
-            tokenspam_count = self.spam.get(token, 0)
-            numerator = (tokenspam_count or 0.1) * self.all_count
-            denominator = (token_count) * self.spam_count
+            tokenspam_count = getspam(token, 0)
+            numerator = (tokenspam_count or 0.1) * all_count
+            denominator = (token_count) * spam_count
             result *= numerator / denominator
         return result
