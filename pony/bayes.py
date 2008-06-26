@@ -3,6 +3,48 @@ from __future__ import division
 
 import operator, re
 
+def grouped(s):
+    return u"(?:%s)" % s
+
+PGERUND    = grouped(u"(?:(?:üס)?טר)?ג(?:[טû]|(?=[אÿ]))")
+ADJECTIVE  = grouped(u"[ולי][וטûמ]|טל[טû]|מד[ומ]|ףל[ומ]|ץ[טû]|‏[מוף‏]|ÿ[אÿ]")
+PARTICIPLE = grouped(u"ש‏ף|רג[טû]|(?:לו|םם|רג|ש‏?)(?=[אÿ])")
+ADJECTIVAL = "%s%s?" % (ADJECTIVE, PARTICIPLE)
+REFLEXIVE  = grouped(u"[üÿ]ס")
+VERB1      = u"(?:א[כם]|וע[וי]|טכ|כ|י|לו|ם|מ(?:כ|םם?)|ע[ו‏]|ûם|ü(?:ע|רו))(?=[אÿ])"
+VERB2      = u"א(?:כ[טû]|םו)|וע(?:ט|י[וף])|טכ[טû]|י[וף]|כ[טû]|ל[טû]|םו|מ(?:םו|כ[טû])|ע(?:[טûÿ]|[ו‏]ף)|ûםו|ü(?:רט|ע[טû])|‏ף?"
+VERB       = grouped(VERB1 + '|' + VERB2)
+NOUN       = grouped(u"[אמףûü]|ג[ומ]|ו[טü]?|טל(?:א|ÿט?)|ט[וט]?|י(?:[מט]|וט?)ל(?:[אמ]|[ÿו]ט?)|ץ(?:א|ÿט?)|‏[טü]?|ÿ[טü]?")
+SUPERLATIVE  = grouped(u"ו?ריו")
+DERIVATIONAL = grouped(u"ü?עסמ")
+
+def regex(s):
+    return re.compile(s, re.UNICODE)
+
+VOVELS = u"אוטמףû‎‏ÿ"
+rv_re = regex(ur"([^%s]*[%s])(.*)" % (VOVELS, VOVELS))
+r2_re = regex(ur"([%s]*[^%s]+[%s]+[^%s])(.*)")
+word_re = regex(ur"^[א-ÿ]+$")
+
+STEP12 = u"(%s|%s?(?:%s|%s|%s)?)ט?(.*)" % (PGERUND, REFLEXIVE, ADJECTIVAL, VERB, NOUN)
+re_step12 = regex(STEP1)
+STEP3 = "%s?(.*)"
+re_step3 = regex(STEP3)
+
+def stem(word):
+    word = word.lower().replace(u'¸', u'ו')
+    if not word_re.match(word): return # word
+    rv_match = rv_re.match(word)
+    if not rv_match: return # word
+    prefix, rv = rv_match.groups()
+    r2_match = r2_re.match(rv)
+    if not r2_match: prefix2, rv2 = rv, ''
+    else: prefix2, rv2 = r2_match.groups()
+    revrv = ''.join(reversed(rv))
+    ending, rest = re_step12.match(revrv).groups()
+    rest_rv2 = rest[:-len(prefix2)]
+    
+
 endings = u"""
 א אל אלט אץ אÿ ו וג ודמ וו וי ול ולף ט טו טט טי טל טלט טץ טÿ י מ מג
 מדמ מו מי מל מלף ף ף‏ û ûו ûי ûל ûלט ûץ ü ü‏ ‏ ‏‏ ÿ ÿל ÿלט ÿץ ÿÿ ¸ל
