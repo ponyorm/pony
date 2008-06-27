@@ -1,0 +1,55 @@
+# coding: cp1251
+
+import re
+
+endings = u"""
+א אל אלט אץ אÿ ו וג ודמ וו וי ול ולף ט טו טט טי טל טלט טץ טÿ י מ מג
+מדמ מו מי מל מלף ף ף‏ û ûו ûי ûל ûלט ûץ ü ü‏ ‏ ‏‏ ÿ ÿל ÿלט ÿץ ÿÿ ¸ל
+""".split()
+
+endings_1 = set(x for x in endings if len(x) == 1)
+endings_2 = set(x for x in endings if len(x) == 2)
+endings_3 = set(x for x in endings if len(x) == 3)
+
+def basicstem(word):
+    size = len(word)
+    if size > 5 and word[-3:] in endings_3: return word[:-3]
+    if size > 4 and word[-2:] in endings_2: return word[:-2]
+    if size > 3 and word[-1:] in endings_1: return word[:-1]
+    return word
+
+def regex(s):
+    return re.compile(s, re.UNICODE)
+
+def grouped(s):
+    return u"(?:%s)" % s
+
+PGERUND    = grouped(u"(?:(?:üס)?טר)?ג(?:[טû]|(?=[אÿ]))")
+ADJECTIVE  = grouped(u"[ולי][וטûמ]|טל[טû]|מד[ומ]|ףל[ומ]|ץ[טû]|‏[מוף‏]|ÿ[אÿ]")
+PARTICIPLE = grouped(u"ש‏ף|רג[טû]|(?:לו|םם|רג|ש‏?)(?=[אÿ])")
+ADJECTIVAL = "%s%s?" % (ADJECTIVE, PARTICIPLE)
+REFLEXIVE  = grouped(u"[üÿ]ס")
+VERB1      = u"(?:א[כם]|וע[וי]|טכ|כ|י|לו|ם|מ(?:כ|םם?)|ע[ו‏]|ûם|ü(?:ע|רו))(?=[אÿ])"
+VERB2      = u"א(?:כ[טû]|םו)|וע(?:ט|י[וף])|טכ[טû]|י[וף]|כ[טû]|ל[טû]|םו|מ(?:םו|כ[טû])|ע(?:[טûÿ]|[ו‏]ף)|ûםו|ü(?:רט|ע[טû])|‏ף?"
+VERB       = grouped(VERB1 + '|' + VERB2)
+NOUN       = grouped(u"[אמףûü]|ג[ומ]|ו[טü]?|טל(?:א|ÿט?)|ט[וט]?|י(?:[מט]|וט?)?|ל(?:[אמ]|[ÿו]ט?)|ץ(?:א|ÿט?)|‏[טü]?|ÿ[טü]?")
+SUPERLATIVE  = grouped(u"ו?ריו")
+DERIVATIONAL = u"ü?עסמ"
+
+VOVELS = u"אוטמףû‎‏ÿ"
+STEP1 = u"(?:%s|%s?(?:%s|%s|%s)?)" % (PGERUND, REFLEXIVE, ADJECTIVAL, VERB, NOUN)
+STEP2 = u"ט?"
+STEP3 = u"(?:ü?עסמ(?=[^@]+[@]+[^@]))?".replace('@', VOVELS)
+STEP4 = u"(?:ü|%s?(?:ם(?=ם))?)?" % SUPERLATIVE
+stem_re = regex(STEP1+STEP2+STEP3+STEP4)
+
+def stem(word):
+    word = word.lower().replace(u'¸', u'ו')
+    if not word_re.match(word): return word
+    rv_match = rv_re.match(word)
+    if not rv_match: return word
+    prefix, rv = rv_match.groups()
+    revrv = rv[::-1]
+    ending = stem_re.match(revrv).group()
+    rest = revrv[len(ending):]
+    return prefix + rest[::-1]
