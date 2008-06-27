@@ -43,6 +43,8 @@ STEP2 = u"и?"
 STEP3 = u"(?:ь?тсо(?=[^@]+[@]+[^@]))?".replace('@', VOVELS)
 STEP4 = u"(?:ь|%s?(?:н(?=н))?)?" % SUPERLATIVE
 stem_re = regex(STEP1+STEP2+STEP3+STEP4)
+word_re = regex(ur"^[а-я]+$")
+rv_re = regex(ur"([^@]*[@])(.*)".replace('@', VOVELS))
 
 def stem(word):
     # Based on http://snowball.tartarus.org/algorithms/russian/stemmer.html
@@ -55,3 +57,14 @@ def stem(word):
     ending = stem_re.match(revrv).group()
     rest = revrv[len(ending):]
     return prefix + rest[::-1]
+
+if __name__ == '__main__':
+    from pony.utils import read_text_file
+    text = read_text_file('test-ru.txt')
+    for line in text.split('\n'):
+        if not line or line.isspace(): continue
+        word, expected = line.split()
+        s = stem(word)
+        if s != expected: print 'failed: %s (expected: %s, got: %s)' % (word, expected, s)
+    print 'done'
+    raw_input()
