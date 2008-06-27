@@ -12,6 +12,7 @@ endings_2 = set(x for x in endings if len(x) == 2)
 endings_3 = set(x for x in endings if len(x) == 3)
 
 def basicstem(word):
+    "Basic stemming. Approximate 10x faster then stem(word)"
     size = len(word)
     if size > 5 and word[-3:] in endings_3: return word[:-3]
     if size > 4 and word[-2:] in endings_2: return word[:-2]
@@ -44,6 +45,7 @@ STEP4 = u"(?:ü|%s?(?:í(?=í))?)?" % SUPERLATIVE
 stem_re = regex(STEP1+STEP2+STEP3+STEP4)
 
 def stem(word):
+    # Based on http://snowball.tartarus.org/algorithms/russian/stemmer.html
     word = word.lower().replace(u'¸', u'å')
     if not word_re.match(word): return word
     rv_match = rv_re.match(word)
