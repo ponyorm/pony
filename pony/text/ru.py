@@ -1,6 +1,11 @@
 # coding: cp1251
 
-import re
+import re, os.path
+
+from pony.utils import read_text_file
+
+stopwords_filename = os.path.join(os.path.dirname(__file__), 'stopwords-ru.txt')
+stopwords = set(read_text_file(stopwords_filename).split())
 
 endings = u"""
 а ам ами ах ая е ев его ее ей ем ему и ие ии ий им ими их ия й о ов
@@ -59,7 +64,6 @@ def stem(word):
     return prefix + rest[::-1]
 
 if __name__ == '__main__':
-    from pony.utils import read_text_file
     text = read_text_file('test-ru.txt')
     for line in text.split('\n'):
         if not line or line.isspace(): continue
