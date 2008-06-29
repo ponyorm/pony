@@ -101,7 +101,7 @@ def fast_stem(word):
     # Approximate 2x faster then snowball_stem(word)
 
     # word = word.lower().replace(u'¸', u'å')    
-    for i in xrange(min(6, len(word)-2), 0, -1):
+    for i in xrange(min(6, len(word)-3), 0, -1):
         x = endings.get(word[-i:])
         if x is not None: return word[:-i+x]
     return word
