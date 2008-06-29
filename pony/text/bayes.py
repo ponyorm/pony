@@ -1,3 +1,5 @@
+# coding: cp1251
+
 from __future__ import division
 
 import operator, re
