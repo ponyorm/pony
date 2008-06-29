@@ -127,7 +127,7 @@ class Local(threading.local):
                 if hash != hashobject.digest(): self.set_user(None); return
                 self.remember_ip = True
             else: self.remember_ip = False
-            info = cPickle.loads(pickle_data)
+            info = cPickle.loads(decompress(pickle_data))
             self.user, self.session, self.domain, self.path = info
         except: self.set_user(None)
     def save(self, environ):
@@ -139,7 +139,7 @@ class Local(threading.local):
         if self.user is None and not self.session: data = 'None'
         else:
             info = self.user, self.session, self.domain, self.path
-            pickle_data = cPickle.dumps(info, 2)
+            pickle_data = compress(cPickle.dumps(info, 2))
             hashobject = _get_hashobject(mtime)
             hashobject.update(ctime_str)
             hashobject.update(pickle_data)
