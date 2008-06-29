@@ -7,8 +7,9 @@ from pony.utils import read_text_file
 ALPHABET = set(u"אבגדהו¸זחטיךכלםמןנסעףפץצקרשüûת‎‏ÿ")
 VOVELS = u"אוטמףû‎‏ÿ"
 
-##stopwords_filename = os.path.join(os.path.dirname(__file__), 'stopwords-ru.txt')
-##stopwords = set(read_text_file(stopwords_filename).split())
+if __name__ != '__main__':
+    stopwords_filename = os.path.join(os.path.dirname(__file__), 'stopwords-ru.txt')
+    stopwords = set(read_text_file(stopwords_filename).split())
 
 basic_endings = set(u"""
 א אל אלט אץ אÿ ו וג ודמ וו וי ול ולף ט טו טט טי טל טלט טץ טÿ י מ מג
