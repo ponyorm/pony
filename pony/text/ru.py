@@ -56,7 +56,7 @@ def snowball_stem(word):
     # Based on http://snowball.tartarus.org/algorithms/russian/stemmer.html
 
     # word = word.lower().replace(u'¸', u'å')
-    if not word_re.match(word): return word
+    # if not word_re.match(word): return word
     rv_match = rv_re.match(word)
     if not rv_match: return word
     prefix, rv = rv_match.groups()
