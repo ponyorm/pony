@@ -2,6 +2,8 @@ import re, os.path
 
 from pony.utils import read_text_file
 
+ALPHABET = set('abcdefghijklmnopqrstuvwxyz')
+
 stopwords_filename = os.path.join(os.path.dirname(__file__), 'stopwords-en.txt')
 stopwords = set()
 for word in read_text_file(stopwords_filename).split():
@@ -13,7 +15,7 @@ endings = dict(
     ion=('',6), lion=('lion',6), nion=('nion',6), ions=('',7), ional=('',0), ionals=('',0), ioned=('',0),
     ial=('',6), ally=('',7), ially=('',0), ality=('',0), ionally=('',0), ionality=('',0),
     ation=('',8), ations=('',9), atory=('', 8),
-    ate=('',0), ated=('',0), ates=('',0), oated=('oat',0), eated=('eat',0),
+    ate=('',6), ated=('',0), ates=('',0), oated=('oat',0), eated=('eat',0),
     dite=('d',0), fite=('f',0), phite=('ph',0), thite=('th',0), lite=('l',0), erite=('er',0), orite=('or',0), esite=('es',0), tite=('t',0),
     dites=('d',0), fites=('f',0), phites=('ph',0), thites=('th',0), lites=('l',0), erites=('er',0), orites=('or',0), esites=('es',0), tites=('t',0),
     # ism=('',6), isms=('', 7),

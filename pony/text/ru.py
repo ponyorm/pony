@@ -4,6 +4,8 @@ import re, os.path
 
 from pony.utils import read_text_file
 
+ALPHABET = set(u"אבגדהו¸זחטיךכלםמןנסעףפץצקרשüûת‎‏ÿ")
+
 stopwords_filename = os.path.join(os.path.dirname(__file__), 'stopwords-ru.txt')
 stopwords = set(read_text_file(stopwords_filename).split())
 
