@@ -5,6 +5,8 @@ from urllib import quote_plus, unquote_plus
 import pony
 from pony.utils import compress, decompress
 
+import pony.sessionstorage.ramstorage as storage
+
 ################################################################################
 
 def get_user():
@@ -127,6 +129,10 @@ class Local(threading.local):
                 if hash != hashobject.digest(): self.set_user(None); return
                 self.remember_ip = True
             else: self.remember_ip = False
+            if pickle_data.startswith('A'): pickle_data = pickle_data[1:]
+            elif pickle_data.startswith('B'):
+                pickle_data = storage.getdata(pickle_data[1:], self.ctime, mtime)
+            else: self.set_user(None); return
             info = cPickle.loads(decompress(pickle_data))
             self.user, self.session, self.domain, self.path = info
         except: self.set_user(None)
@@ -140,6 +146,9 @@ class Local(threading.local):
         else:
             info = self.user, self.session, self.domain, self.path
             pickle_data = compress(cPickle.dumps(info, 2))
+            if len(pickle_data) <= 10: # <= 4000
+                pickle_data = 'A' + pickle_data
+            else: pickle_data = 'B' + storage.putdata(pickle_data, self.ctime, mtime)
             hashobject = _get_hashobject(mtime)
             hashobject.update(ctime_str)
             hashobject.update(pickle_data)
