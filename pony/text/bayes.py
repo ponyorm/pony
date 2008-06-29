@@ -22,24 +22,24 @@ def tokenize(message, prefix=''):
             else: continue
         yield prefix + word
 
-class Filter(object):
+class Estimator(object):
     def __init__(self):
         self.all = {}
         self.spam = {}
         self.all_count = self.spam_count = 0
     def tokenize(self, message, prefix=''):
         return tokenize(message, prefix)
-    def train(self, is_spam, message, **keyargs):
+    def train(self, good, message, **keyargs):
         self.all_count += 1
-        if is_spam: self.spam_count += 1
+        if good: self.spam_count += 1
         keyargs['']=message
         for prefix, s in keyargs.items():
             for token in set(self.tokenize(message, prefix)):
                 self.all[token] = self.all.get(token, 0) + 1
-                if is_spam: self.spam[token] = self.spam.get(token, 0) + 1
-    def spam(self, message, **keyargs):
+                if good: self.spam[token] = self.spam.get(token, 0) + 1
+    def good(self, message, **keyargs):
         self.train(True, message, **keyargs)
-    def ham(self, message, **keyargs):
+    def bad(self, message, **keyargs):
         self.train(False, message, **keyargs)
     def estimate(self, message):
         all_count = self.all_count + 1
