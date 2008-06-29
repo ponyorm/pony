@@ -18,6 +18,7 @@ endings_3 = set(x for x in endings if len(x) == 3)
 
 def basicstem(word):
     "Basic stemming. Approximate 10x faster then stem(word)"
+    word = word.lower().replace(u'¸', u'å')
     size = len(word)
     if size > 5 and word[-3:] in endings_3: return word[:-3]
     if size > 4 and word[-2:] in endings_2: return word[:-2]
@@ -64,7 +65,7 @@ def stem(word):
     return prefix + rest[::-1]
 
 if __name__ == '__main__':
-    text = read_text_file('test-ru.txt')
+    text = read_text_file('stemmingtest-ru.txt')
     for line in text.split('\n'):
         if not line or line.isspace(): continue
         word, expected = line.split()
