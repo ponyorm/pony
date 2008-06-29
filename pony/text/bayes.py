@@ -14,6 +14,7 @@ def tokenize(message, prefix=''):
             if word in en.stopwords: continue
             word = en.stem(word)
         elif first in ru.ALPHABET:
+            word = word.replace(u"¸", u"å")
             if word in ru.stopwords: continue
             word = ru.stem(word)
         else:

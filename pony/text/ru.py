@@ -5,26 +5,24 @@ import re, os.path
 from pony.utils import read_text_file
 
 ALPHABET = set(u"אבגדהו¸זחטיךכלםמןנסעףפץצקרשüûת‎‏ÿ")
+VOVELS = u"אוטמףû‎‏ÿ"
 
-stopwords_filename = os.path.join(os.path.dirname(__file__), 'stopwords-ru.txt')
-stopwords = set(read_text_file(stopwords_filename).split())
+##stopwords_filename = os.path.join(os.path.dirname(__file__), 'stopwords-ru.txt')
+##stopwords = set(read_text_file(stopwords_filename).split())
 
-endings = u"""
+basic_endings = set(u"""
 א אל אלט אץ אÿ ו וג ודמ וו וי ול ולף ט טו טט טי טל טלט טץ טÿ י מ מג
 מדמ מו מי מל מלף ף ף‏ û ûו ûי ûל ûלט ûץ ü ü‏ ‏ ‏‏ ÿ ÿל ÿלט ÿץ ÿÿ ¸ל
-""".split()
+""".split())
 
-endings_1 = set(x for x in endings if len(x) == 1)
-endings_2 = set(x for x in endings if len(x) == 2)
-endings_3 = set(x for x in endings if len(x) == 3)
-
-def basicstem(word):
-    "Basic stemming. Approximate 10x faster then stem(word)"
-    word = word.lower().replace(u'¸', u'ו')
+def basic_stem(word):
+    # Basic stemming. Approximate 5x faster then snowball_stem(word)
+    
+    # word = word.lower().replace(u'¸', u'ו')
     size = len(word)
-    if size > 5 and word[-3:] in endings_3: return word[:-3]
-    if size > 4 and word[-2:] in endings_2: return word[:-2]
-    if size > 3 and word[-1:] in endings_1: return word[:-1]
+    if size > 5 and word[-3:] in basic_endings: return word[:-3]
+    if size > 4 and word[-2:] in basic_endings: return word[:-2]
+    if size > 3 and word[-1:] in basic_endings: return word[:-1]
     return word
 
 def regex(s):
@@ -33,30 +31,30 @@ def regex(s):
 def grouped(s):
     return u"(?:%s)" % s
 
-PGERUND    = grouped(u"(?:(?:üס)?טר)?ג(?:[טû]|(?=[אÿ]))")
-ADJECTIVE  = grouped(u"[ולי][וטûמ]|טל[טû]|מד[ומ]|ףל[ומ]|ץ[טû]|‏[מוף‏]|ÿ[אÿ]")
-PARTICIPLE = grouped(u"ש‏ף|רג[טû]|(?:לו|םם|רג|ש‏?)(?=[אÿ])")
-ADJECTIVAL = "%s%s?" % (ADJECTIVE, PARTICIPLE)
-REFLEXIVE  = grouped(u"[üÿ]ס")
-VERB1      = u"(?:א[כם]|וע[וי]|טכ|כ|י|לו|ם|מ(?:כ|םם?)|ע[ו‏]|ûם|ü(?:ע|רו))(?=[אÿ])"
-VERB2      = u"א(?:כ[טû]|םו)|וע(?:ט|י[וף])|טכ[טû]|י[וף]|כ[טû]|ל[טû]|םו|מ(?:םו|כ[טû])|ע(?:[טûÿ]|[ו‏]ף)|ûםו|ü(?:רט|ע[טû])|‏ף?"
-VERB       = grouped(VERB1 + '|' + VERB2)
-NOUN       = grouped(u"[אמףûü]|ג[ומ]|ו[טü]?|טל(?:א|ÿט?)|ט[וט]?|י(?:[מט]|וט?)?|ל(?:[אמ]|[ÿו]ט?)|ץ(?:א|ÿט?)|‏[טü]?|ÿ[טü]?")
-SUPERLATIVE  = grouped(u"ו?ריו")
-DERIVATIONAL = u"ü?עסמ"
+rPGERUND    = grouped(u"(?:(?:üס)?טר)?ג(?:[טû]|(?=[אÿ]))")
+rADJECTIVE  = grouped(u"[ולי][וטûמ]|טל[טû]|מד[ומ]|ףל[ומ]|ץ[טû]|‏[מוף‏]|ÿ[אÿ]")
+rPARTICIPLE = grouped(u"ש‏ף|רג[טû]|(?:לו|םם|רג|ש‏?)(?=[אÿ])")
+rADJECTIVAL = "%s%s?" % (rADJECTIVE, rPARTICIPLE)
+rREFLEXIVE  = grouped(u"[üÿ]ס")
+rVERB1      = u"(?:א[כם]|וע[וי]|טכ|כ|י|לו|ם|מ(?:כ|םם?)|ע[ו‏]|ûם|ü(?:ע|רו))(?=[אÿ])"
+rVERB2      = u"א(?:כ[טû]|םו)|וע(?:ט|י[וף])|טכ[טû]|י[וף]|כ[טû]|ל[טû]|םו|מ(?:םו|כ[טû])|ע(?:[טûÿ]|[ו‏]ף)|ûםו|ü(?:רט|ע[טû])|‏ף?"
+rVERB       = grouped(rVERB1 + '|' + rVERB2)
+rNOUN       = grouped(u"[אמףûü]|ג[ומ]|ו[טü]?|טל(?:א|ÿט?)|ט[וט]?|י(?:[מט]|וט?)?|ל(?:[אמ]|[ÿו]ט?)|ץ(?:א|ÿט?)|‏[טü]?|ÿ[טü]?")
+rSUPERLATIVE  = grouped(u"ו?ריו")
+rDERIVATIONAL = u"ü?עסמ"
 
-VOVELS = u"אוטמףû‎‏ÿ"
-STEP1 = u"(?:%s|%s?(?:%s|%s|%s)?)" % (PGERUND, REFLEXIVE, ADJECTIVAL, VERB, NOUN)
+STEP1 = u"(?:%s|%s?(?:%s|%s|%s)?)" % (rPGERUND, rREFLEXIVE, rADJECTIVAL, rVERB, rNOUN)
 STEP2 = u"ט?"
 STEP3 = u"(?:ü?עסמ(?=[^@]+[@]+[^@]))?".replace('@', VOVELS)
-STEP4 = u"(?:ü|%s?(?:ם(?=ם))?)?" % SUPERLATIVE
+STEP4 = u"(?:ü|%s?(?:ם(?=ם))?)?" % rSUPERLATIVE
 stem_re = regex(STEP1+STEP2+STEP3+STEP4)
 word_re = regex(ur"^[א-ÿ]+$")
 rv_re = regex(ur"([^@]*[@])(.*)".replace('@', VOVELS))
 
-def stem(word):
+def snowball_stem(word):
     # Based on http://snowball.tartarus.org/algorithms/russian/stemmer.html
-    word = word.lower().replace(u'¸', u'ו')
+
+    # word = word.lower().replace(u'¸', u'ו')
     if not word_re.match(word): return word
     rv_match = rv_re.match(word)
     if not rv_match: return word
@@ -66,12 +64,67 @@ def stem(word):
     rest = revrv[len(ending):]
     return prefix + rest[::-1]
 
+PGERUND = u"*ג *גרט *גרטסü טג טגרט טגרטסü ûג ûגרט ûגרטסü".split()
+ADJECTIVE = u"וו טו ûו מו טלט ûלט וי טי ûי מי ול טל ûל מל ודמ מדמ ולף מלף טץ ûץ ף‏ ‏‏ אÿ ÿÿ מ‏ ו‏".split()
+PARTICIPLE = u"*ול *םם *גר *‏ש *ש טגר ûגר ף‏ש".split()
+VERB = u"""
+*כא *םא *ועו *יעו *כט *י *כ *ול *ם *כמ *םמ *וע *‏ע *םû *עü *ורü *םםמ
+טכא ûכא וםא ויעו ףיעו טעו טכט ûכט וי ףי טכ ûכ טל ûל ום טכמ ûכמ וםמ ÿע ףוע ף‏ע טע  ûע וםû טעü ûעü טרü ף‏ ‏
+""".split()
+REFLEXIVE = u"סÿ סü".split()
+NOUN = u"א וג מג טו üו ו טÿלט ÿלט אלט וט טט ט טוי וי מי טי י טÿל ÿל טול ול אל מל מ ף אץ טÿץ ÿץ û ü ט‏ ü‏ ‏ טÿ üÿ ÿ".split()
+SUPERLATIVE = u"ויר וירו".split()
+DERIVATIONAL = u"מסע מסעü".split()
+
+def _generate_endings():
+    adjectival = ADJECTIVE + [ p+a for p in PARTICIPLE+[u"ויר"] for a in ADJECTIVE ]
+    adjectival = [ x for x in adjectival if u'רû' not in x ]
+    verb_reflexive = VERB + [ v+r for v in VERB for r in REFLEXIVE ]
+    all = PGERUND + adjectival + verb_reflexive + NOUN
+    all += [ u"ט"+x for x in all if x[0] not in u'*טףû' ] + [u"וירו"]
+    d = {}
+    for x in all:
+        if u'טויר' in x or u'טויע' in x: continue
+        if x.startswith('*'):
+            d[u'א' + x[1:]] = 1
+            d[u'ÿ' + x[1:]] = 1
+        else:
+            d[x] = 0
+            if len(x) < 5: d[u'םם' + x] = 1
+            if len(x) < 6: d[u'ü' + x] = 0
+    return d
+
+endings = _generate_endings()
+
+def fast_stem(word):
+    # Approximate 2x faster then snowball_stem(word)
+
+    # word = word.lower().replace(u'¸', u'ו')    
+    for i in xrange(min(6, len(word)-2), 0, -1):
+        x = endings.get(word[-i:])
+        if x is not None: return word[:-i+x]
+    return word
+
+stem = fast_stem
+
 if __name__ == '__main__':
+    words = []
     text = read_text_file('stemmingtest-ru.txt')
     for line in text.split('\n'):
         if not line or line.isspace(): continue
         word, expected = line.split()
-        s = stem(word)
-        if s != expected: print 'failed: %s (expected: %s, got: %s)' % (word, expected, s)
-    print 'done'
+        words.append(word)
+        a = snowball_stem(word)
+        b = fast_stem(word)
+        if not (a == b == expected): print word, expected, a, b
+
+    import timeit
+    t1 = timeit.Timer('[ stem(word) for word in words ]', 'from __main__ import snowball_stem as stem, words')
+    t2 = timeit.Timer('[ stem(word) for word in words ]', 'from __main__ import fast_stem as stem, words')
+    t3 = timeit.Timer('[ stem(word) for word in words ]', 'from __main__ import basic_stem as stem, words')
+    print min(t1.repeat(5, 1000))
+    print min(t2.repeat(5, 1000))
+    print min(t3.repeat(5, 1000))
+
     raw_input()
+    
