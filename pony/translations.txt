@@ -1,10 +1,12 @@
-﻿# Это комментарий
-Hello
-  ru	Привет
+﻿# Сообщения форм:
+Some fields below contains errors
+  ru	Некоторые поля содержат ошибки
 
-record $1 of $2
-  ru	запись $1 из $2
-    # Это тоже комментарий
+The form has already been submitted
+  ru	Форма уже была обработана
 
-I give you $$1000
-  ru	Я дам тебе 1000 доларов
+This field is required
+  ru	Это поле является обязательным
+
+Invalid data
+  ru	Неправильные данные
