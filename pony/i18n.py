@@ -55,7 +55,7 @@ def parse(lines):
 def read_phrases(lines):
    kstr, lstr_list = None, []
    for lineno, line in izip(count(1), lines):
-       if not line or line.isspace(): continue
+       if not line or line.isspace() or line.lstrip().startswith('#'): continue
        elif line[0].isspace():
            if kstr is None: raise I18nParseError(
                "Translation string found but key string was expected in line %d" % lineno)
