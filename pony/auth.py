@@ -7,8 +7,6 @@ from pony.utils import compress, decompress
 
 import pony.sessionstorage.ramstorage as storage
 
-################################################################################
-
 def get_user():
     return local.user
 
@@ -19,19 +17,104 @@ def get_session():
     return local.session
 
 def load(data, environ):
-    local.load(data, environ)
+    ip = environ.get('REMOTE_ADDR', '')
+    user_agent = environ.get('HTTP_USER_AGENT', '')
+    local.old_data = data
+    now = int(time.time() // 60)
+    if data in (None, 'None'): set_user(None); return
+    try:
+        ctime_str, mtime_str, pickle_str, hash_str = data.split(':')
+        local.ctime = int(ctime_str, 16)
+        mtime = int(mtime_str, 16)
+        if (local.ctime < now - max_ctime_diff
+              or mtime < now - max_mtime_diff
+              or mtime > now + 1
+            ): set_user(None); return
+        pickle_data = base64.b64decode(pickle_str)
+        hash = base64.b64decode(hash_str)
+        hashobject = _get_hashobject(mtime)
+        hashobject.update(ctime_str)
+        hashobject.update(pickle_data)
+        hashobject.update(user_agent)
+        if hash != hashobject.digest():
+            hashobject.update(ip)
+            if hash != hashobject.digest(): set_user(None); return
+            local.remember_ip = True
+        else: local.remember_ip = False
+        if pickle_data.startswith('A'): pickle_data = pickle_data[1:]
+        elif pickle_data.startswith('B'):
+            pickle_data = storage.getdata(pickle_data[1:], local.ctime, mtime)
+        else: set_user(None); return
+        info = cPickle.loads(decompress(pickle_data))
+        local.user, local.session, local.domain, local.path = info
+    except: set_user(None)
 
 def save(environ):
-    return local.save(environ)
+    ip = environ.get('REMOTE_ADDR', '')
+    user_agent = environ.get('HTTP_USER_AGENT', '')
+    mtime = int(time.time() // 60)
+    ctime_str = '%x' % local.ctime
+    mtime_str = '%x' % mtime
+    if local.user is None and not local.session: data = 'None'
+    else:
+        info = local.user, local.session, local.domain, local.path
+        pickle_data = compress(cPickle.dumps(info, 2))
+        if len(pickle_data) <= 10: # <= 4000
+            pickle_data = 'A' + pickle_data
+        else: pickle_data = 'B' + storage.putdata(pickle_data, local.ctime, mtime)
+        hashobject = _get_hashobject(mtime)
+        hashobject.update(ctime_str)
+        hashobject.update(pickle_data)
+        hashobject.update(user_agent)
+        if local.remember_ip: hash_object.update(ip)
+        pickle_str = base64.b64encode(pickle_data)
+        hash_str = base64.b64encode(hashobject.digest())
+        data = ':'.join([ctime_str, mtime_str, pickle_str, hash_str])
+    if data == local.old_data: return None, None, None
+    return data, local.domain, local.path
 
 def get_conversation(s):
     return local.conversation
 
 def load_conversation(s):
-    local.load_conversation(s)
+    if not s: local.conversation = {}; return
+    try:
+        s = unquote_plus(s)
+        time_str, pickle_str, hash_str = s.split(':')
+        minute = int(time_str, 16)
+        compressed_data = base64.b64decode(pickle_str, altchars='-_')
+        hash = base64.b64decode(hash_str, altchars='-_')
+        hashobject = _get_hashobject(minute)
+        hashobject.update(compressed_data)
+        if hash != hashobject.digest(): return {}
+        conversation = cPickle.loads(decompress(compressed_data))
+        assert conversation.__class__ == dict
+        local.conversation = conversation
+    except: local.conversation = {}
 
 def save_conversation():
-    return local.save_conversation()
+    c = local.conversation
+    if not c: return ''
+    for key, value in c.items():
+        class_name = key.__class__.__name__
+        if class_name == 'StrHtml':
+            del c[key]
+            c[str.__str__(key)] = value
+        elif class_name == 'Html':
+            del c[key]
+            c[unicode.__unicode__(key)] = value
+            
+    now = int(time.time() // 60)
+    now_str = '%x' % now
+    compressed_data = compress(cPickle.dumps(c, 2))
+    hashobject = _get_hashobject(now)
+    hashobject.update(compressed_data)
+    hash = hashobject.digest()
+
+    pickle_str = base64.b64encode(compressed_data, altchars='-_')
+    hash_str = base64.b64encode(hashobject.digest(), altchars='-_')
+    s = ':'.join((now_str, pickle_str, hash_str))
+    return quote_plus(s, safe=':')
 
 def get_ticket(payload=None, prevent_resubmit=False):
     if not payload: payload = ''
@@ -104,101 +187,6 @@ class Local(threading.local):
         self.remember_ip = False
         self.path = path
         self.domain = domain
-    def load(self, data, environ):
-        ip = environ.get('REMOTE_ADDR', '')
-        user_agent = environ.get('HTTP_USER_AGENT', '')
-        self.old_data = data
-        now = int(time.time() // 60)
-        if data in (None, 'None'): self.set_user(None); return
-        try:
-            ctime_str, mtime_str, pickle_str, hash_str = data.split(':')
-            self.ctime = int(ctime_str, 16)
-            mtime = int(mtime_str, 16)
-            if (self.ctime < now - max_ctime_diff
-                  or mtime < now - max_mtime_diff
-                  or mtime > now + 1
-                ): self.set_user(None); return
-            pickle_data = base64.b64decode(pickle_str)
-            hash = base64.b64decode(hash_str)
-            hashobject = _get_hashobject(mtime)
-            hashobject.update(ctime_str)
-            hashobject.update(pickle_data)
-            hashobject.update(user_agent)
-            if hash != hashobject.digest():
-                hashobject.update(ip)
-                if hash != hashobject.digest(): self.set_user(None); return
-                self.remember_ip = True
-            else: self.remember_ip = False
-            if pickle_data.startswith('A'): pickle_data = pickle_data[1:]
-            elif pickle_data.startswith('B'):
-                pickle_data = storage.getdata(pickle_data[1:], self.ctime, mtime)
-            else: self.set_user(None); return
-            info = cPickle.loads(decompress(pickle_data))
-            self.user, self.session, self.domain, self.path = info
-        except: self.set_user(None)
-    def save(self, environ):
-        ip = environ.get('REMOTE_ADDR', '')
-        user_agent = environ.get('HTTP_USER_AGENT', '')
-        mtime = int(time.time() // 60)
-        ctime_str = '%x' % self.ctime
-        mtime_str = '%x' % mtime
-        if self.user is None and not self.session: data = 'None'
-        else:
-            info = self.user, self.session, self.domain, self.path
-            pickle_data = compress(cPickle.dumps(info, 2))
-            if len(pickle_data) <= 10: # <= 4000
-                pickle_data = 'A' + pickle_data
-            else: pickle_data = 'B' + storage.putdata(pickle_data, self.ctime, mtime)
-            hashobject = _get_hashobject(mtime)
-            hashobject.update(ctime_str)
-            hashobject.update(pickle_data)
-            hashobject.update(user_agent)
-            if self.remember_ip: hash_object.update(ip)
-            pickle_str = base64.b64encode(pickle_data)
-            hash_str = base64.b64encode(hashobject.digest())
-            data = ':'.join([ctime_str, mtime_str, pickle_str, hash_str])
-        if data == self.old_data: return None, None, None
-        return data, self.domain, self.path
-    def load_conversation(self, s):
-        if not s:
-            self.conversation = {}
-            return
-        try:
-            s = unquote_plus(s)
-            time_str, pickle_str, hash_str = s.split(':')
-            minute = int(time_str, 16)
-            compressed_data = base64.b64decode(pickle_str, altchars='-_')
-            hash = base64.b64decode(hash_str, altchars='-_')
-            hashobject = _get_hashobject(minute)
-            hashobject.update(compressed_data)
-            if hash != hashobject.digest(): return {}
-            conversation = cPickle.loads(decompress(compressed_data))
-            assert conversation.__class__ == dict
-            self.conversation = conversation
-        except: self.conversation = {}
-    def save_conversation(self):
-        c = self.conversation
-        if not c: return ''
-        for key, value in c.items():
-            class_name = key.__class__.__name__
-            if class_name == 'StrHtml':
-                del c[key]
-                c[str.__str__(key)] = value
-            elif class_name == 'Html':
-                del c[key]
-                c[unicode.__unicode__(key)] = value
-                
-        now = int(time.time() // 60)
-        now_str = '%x' % now
-        compressed_data = compress(cPickle.dumps(c, 2))
-        hashobject = _get_hashobject(now)
-        hashobject.update(compressed_data)
-        hash = hashobject.digest()
-
-        pickle_str = base64.b64encode(compressed_data, altchars='-_')
-        hash_str = base64.b64encode(hashobject.digest(), altchars='-_')
-        s = ':'.join((now_str, pickle_str, hash_str))
-        return quote_plus(s, safe=':')
 
 local = Local()
 secret_cache = {}
