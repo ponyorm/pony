@@ -46,15 +46,12 @@ class HttpInfo(object):
         self.parsed_path = []
         self.star = False
         for component in self.path:
-            if self.star:
-                raise TypeError("'$*' must be last element in url path")
-            elif component != '$*':
-                self.parsed_path.append(self.parse_component(component))
+            if self.star: raise TypeError("'$*' must be last element in url path")
+            elif component != '$*': self.parsed_path.append(self.parse_component(component))
             else: self.star = True
         self.parsed_query = []
         for name, value in self.qlist:
-            if value == '$*':
-                raise TypeError("'$*' does not allowed in query part of url")
+            if value == '$*': raise TypeError("'$*' does not allowed in query part of url")
             is_param, x = self.parse_component(value)
             self.parsed_query.append((name, is_param, x))
         self.check()
@@ -136,17 +133,14 @@ class HttpInfo(object):
         names, argsname, keyargsname, defaults, converters = self.func.argspec
         args, keyargs = self.args, self.keyargs
         if isinstance(x, int):
-            if x < 0 or x >= len(names) and argsname is None:
-                raise TypeError('Invalid parameter index: %d' % (x+1))
-            if x in args:
-                raise TypeError('Parameter index %d already in use' % (x+1))
+            if x < 0 or x >= len(names) and argsname is None: raise TypeError('Invalid parameter index: %d' % (x+1))
+            if x in args: raise TypeError('Parameter index %d already in use' % (x+1))
             args.add(x)
             return x
         elif isinstance(x, basestring):
             try: i = names.index(x)
             except ValueError:
-                if keyargsname is None or x in keyargs:
-                    raise TypeError('Unknown parameter name: %s' % x)
+                if keyargsname is None or x in keyargs: raise TypeError('Unknown parameter name: %s' % x)
                 keyargs.add(x)
                 return x
             else:
@@ -167,8 +161,7 @@ class HttpInfo(object):
                 raise TypeError('Undefined path parameter: %s' % name)
         if args:
             for i in range(len(names), max(args)):
-                if i not in args:
-                    raise TypeError('Undefined path parameter: %d' % (i+1))
+                if i not in args: raise TypeError('Undefined path parameter: %d' % (i+1))
     def register(self):
         def get_url_map(info):
             result = {}
@@ -188,8 +181,7 @@ class HttpInfo(object):
         try:
             for info, _, _ in get_http_handlers(self.path, qdict, self.host, self.port):
                 if url_map == get_url_map(info):
-                    log(type='Warning:URL',
-                        text='Route already in use (old handler was removed): %s' % info.url)
+                    log(type='Warning:URL', text='Route already in use (old handler was removed): %s' % info.url)
                     _http_remove(info)
             d, list1, list2 = http_registry
             for is_param, x in self.parsed_path:
@@ -207,11 +199,9 @@ url_cache = {}
 
 def url(func, *args, **keyargs):
     http_list = getattr(func, 'http')
-    if http_list is None:
-        raise ValueError('Cannot create url for this object :%s' % func)
+    if http_list is None: raise ValueError('Cannot create url for this object :%s' % func)
     try: keyparams = func.dummy_func(*args, **keyargs).copy()
-    except TypeError, e:
-        raise TypeError(e.args[0].replace('<lambda>', func.__name__, 1))
+    except TypeError, e: raise TypeError(e.args[0].replace('<lambda>', func.__name__, 1))
     names, argsname, keyargsname, defaults, converters = func.argspec
     indexparams = map(keyparams.pop, names)
     indexparams.extend(keyparams.pop(argsname, ()))
@@ -581,9 +571,7 @@ ONE_MONTH = 60*60*24*31
 
 def create_cookies(environ):
     data, domain, path = auth.save(environ)
-    if data is not None:
-        set_cookie('pony', data, ONE_MONTH, ONE_MONTH, path or '/', domain,
-                   http_only=True)
+    if data is not None: set_cookie('pony', data, ONE_MONTH, ONE_MONTH, path or '/', domain, http_only=True)
     user_agent = environ.get('HTTP_USER_AGENT', '')
     support_http_only = http_only_incompatible_browsers.search(user_agent) is None
     response = local.response
@@ -729,8 +717,7 @@ def format_exc():
         hook = cgitb.Hook(file=io)
         hook.handle((exc_type, exc_value, traceback))
         return io.getvalue()
-    finally:
-        del traceback
+    finally: del traceback
 
 def log_request(request):
     environ = request.environ
@@ -800,14 +787,12 @@ class     ServerNotStarted(ServerStopException): pass
 class ServerThread(threading.Thread):
     def __init__(self, host, port, application, verbose):
         server = server_threads.setdefault((host, port), self)
-        if server != self: raise ServerAlreadyStarted(
-            'HTTP server already started: %s:%s' % (host, port))
+        if server != self: raise ServerAlreadyStarted('HTTP server already started: %s:%s' % (host, port))
         threading.Thread.__init__(self)
         self.host = host
         self.port = port
         from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
-        self.server = CherryPyWSGIServer(
-            (host, port), [('', application)], server_name=host)
+        self.server = CherryPyWSGIServer((host, port), [('', application)], server_name=host)
         self.verbose = verbose
         self.setDaemon(True)
     def run(self):
@@ -815,8 +800,7 @@ class ServerThread(threading.Thread):
         log('HTTP:start', msg + (', uid=%s' % pony.uid))
         if self.verbose: print>>sys.stderr, msg
         self.server.start()
-        msg = 'HTTP server at %s:%s stopped successfully' \
-              % (self.host, self.port)
+        msg = 'HTTP server at %s:%s stopped successfully' % (self.host, self.port)
         log('HTTP:stop', msg)
         if self.verbose: print>>sys.stderr, msg
         server_threads.pop((self.host, self.port), None)
@@ -826,8 +810,7 @@ def start_http_server(address='localhost:8080', verbose=True):
     elif pony.RUNNED_AS not in ('INTERACTIVE', 'NATIVE'): return
     pony._do_mainloop = True
     host, port = webutils.parse_address(address)
-    try:
-        server_thread = ServerThread(host, port, application, verbose=verbose)
+    try: server_thread = ServerThread(host, port, application, verbose=verbose)
     except ServerAlreadyStarted:
         if not autoreload.reloading: raise
     else: server_thread.start()
