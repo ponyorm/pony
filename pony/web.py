@@ -570,8 +570,12 @@ def set_cookie(name, value, expires=None, max_age=None, path=None, domain=None,
         if http_only: response._http_only_cookies.add(name)
         else: response._http_only_cookies.discard(name)
 
-http_only_incompatible_browsers = [ 'WebTV', 'MSIE 5.0; Mac', 'Firefox/1.',
-    'Firefox/2.0.0.0', 'Firefox/2.0.0.1', 'Firefox/2.0.0.2', 'Firefox/2.0.0.3', 'Firefox/2.0.0.4', ]
+http_only_incompatible_browsers = re.compile(r'''
+    WebTV
+    | MSIE[ ]5[.]0;[ ]Mac
+    | Firefox/[1][.]
+    | Firefox/[2][.][0](?:[.][0][.][0-5])?(?:\s|$)
+''', re.VERBOSE)
 
 ONE_MONTH = 60*60*24*31
 
@@ -581,17 +585,14 @@ def create_cookies(environ):
         set_cookie('pony', data, ONE_MONTH, ONE_MONTH, path or '/', domain,
                    http_only=True)
     user_agent = environ.get('HTTP_USER_AGENT', '')
-    support_http_only = True
-    for browser in http_only_incompatible_browsers:
-        if browser in user_agent:
-            support_http_only = False
-            break
+    support_http_only = http_only_incompatible_browsers.search(user_agent) is None
     response = local.response
     result = []
     for name, morsel in response.cookies.items():
-        cookie = morsel.OutputString()
+        cookie = morsel.OutputString().rstrip()
         if support_http_only and name in response._http_only_cookies:
-            cookie += ' HttpOnly'
+            if not cookie.endswith(';'): cookie += '; HttpOnly'
+            else: cookie += ' HttpOnly'
         result.append(('Set-Cookie', cookie))
     return result
 
