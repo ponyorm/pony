@@ -85,11 +85,16 @@ def load_conversation(s):
         s = unquote_plus(s)
         time_str, pickle_str, hash_str = s.split(':')
         minute = int(time_str, 16)
+        now = int(time.time() // 60)
+        if minute < now - MAX_MTIME_DIFF or minute > now + 1:
+            local.conversation = {}; return
+        
         compressed_data = base64.b64decode(pickle_str, altchars='-_')
         hash = base64.b64decode(hash_str, altchars='-_')
         hashobject = _get_hashobject(minute)
         hashobject.update(compressed_data)
-        if hash != hashobject.digest(): return {}
+        if hash != hashobject.digest():
+            local.conversation = {}; return
         conversation = cPickle.loads(decompress(compressed_data))
         assert conversation.__class__ == dict
         local.conversation = conversation
