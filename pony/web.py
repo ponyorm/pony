@@ -822,7 +822,8 @@ class ServerThread(threading.Thread):
         server_threads.pop((self.host, self.port), None)
 
 def start_http_server(address='localhost:8080', verbose=True):
-    if pony.RUNNED_AS not in ('INTERACTIVE', 'NATIVE'): return
+    if pony.RUNNED_AS.startswith('GAE'): main(); return
+    elif pony.RUNNED_AS not in ('INTERACTIVE', 'NATIVE'): return
     pony._do_mainloop = True
     host, port = webutils.parse_address(address)
     try:
