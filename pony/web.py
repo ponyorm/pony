@@ -792,7 +792,7 @@ class ServerThread(threading.Thread):
         self.host = host
         self.port = port
         from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
-        self.server = CherryPyWSGIServer((host, port), [('', application)], server_name=host)
+        self.server = CherryPyWSGIServer((host, port), application, server_name=host)
         self.verbose = verbose
         self.setDaemon(True)
     def run(self):
