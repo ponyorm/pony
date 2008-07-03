@@ -130,10 +130,10 @@ def get_ticket(payload=None, prevent_resubmit=False):
         assert isinstance(payload, str)
         payload = compress(payload)
         
-    now = int(time.time())
+    now = int(time.time()) // 60
     now_str = '%x' % now
     rnd = os.urandom(8)
-    hashobject = _get_hashobject(now // 60)
+    hashobject = _get_hashobject(now)
     hashobject.update(rnd)
     hashobject.update(payload)
     hashobject.update(cPickle.dumps(local.user, 2))
@@ -149,7 +149,7 @@ def verify_ticket(ticket_str):
     now = int(time.time() // 60)
     try:
         time_str, payload_str, rnd_str, hash_str = ticket_str.split(':')
-        minute = int(time_str, 16) // 60
+        minute = int(time_str, 16)
         if minute < now - MAX_MTIME_DIFF or minute > now + 1: return False, None
         rnd = base64.b64decode(rnd_str)
         if len(rnd) != 8: return False, None
