@@ -7,6 +7,9 @@ from pony.utils import compress, decompress
 
 import pony.sessionstorage.ramstorage as storage
 
+MAX_CTIME_DIFF = 24*60
+MAX_MTIME_DIFF = 30
+
 def get_user():
     return local.user
 
@@ -26,8 +29,8 @@ def load(data, environ):
         ctime_str, mtime_str, pickle_str, hash_str = data.split(':')
         local.ctime = int(ctime_str, 16)
         mtime = int(mtime_str, 16)
-        if (local.ctime < now - max_ctime_diff
-              or mtime < now - max_mtime_diff
+        if (local.ctime < now - MAX_CTIME_DIFF
+              or mtime < now - MAX_MTIME_DIFF
               or mtime > now + 1
             ): set_user(None); return
         pickle_data = base64.b64decode(pickle_str)
@@ -52,17 +55,17 @@ def load(data, environ):
 def save(environ):
     ip = environ.get('REMOTE_ADDR', '')
     user_agent = environ.get('HTTP_USER_AGENT', '')
-    mtime = int(time.time() // 60)
+    now = int(time.time() // 60)
     ctime_str = '%x' % local.ctime
-    mtime_str = '%x' % mtime
+    mtime_str = '%x' % now
     if local.user is None and not local.session: data = 'None'
     else:
         info = local.user, local.session, local.domain, local.path
         pickle_data = compress(cPickle.dumps(info, 2))
         if len(pickle_data) <= 10: # <= 4000
             pickle_data = 'A' + pickle_data
-        else: pickle_data = 'B' + storage.putdata(pickle_data, local.ctime, mtime)
-        hashobject = _get_hashobject(mtime)
+        else: pickle_data = 'B' + storage.putdata(pickle_data, local.ctime, now)
+        hashobject = _get_hashobject(now)
         hashobject.update(ctime_str)
         hashobject.update(pickle_data)
         hashobject.update(user_agent)
@@ -142,7 +145,7 @@ def verify_ticket(ticket_str):
     try:
         time_str, payload_str, rnd_str, hash_str = ticket_str.split(':')
         minute = int(time_str, 16) // 60
-        if minute < now - max_mtime_diff or minute > now + 1: return False, None
+        if minute < now - MAX_MTIME_DIFF or minute > now + 1: return False, None
         rnd = base64.b64decode(rnd_str)
         if len(rnd) != 8: return False, None
         payload = base64.b64decode(payload_str)
@@ -167,9 +170,6 @@ def unexpire_ticket(ticket_id):
     
 
 ################################################################################
-
-max_ctime_diff = 24*60
-max_mtime_diff = 20
 
 class Local(threading.local):
     def __init__(self):
@@ -274,7 +274,7 @@ if not pony.RUNNED_AS.startswith('GAE-'):
                 lock.release()
                 return
             now = int(time.time() // 60)
-            old = now - max_ctime_diff
+            old = now - MAX_CTIME_DIFF
             secret = os.urandom(32)
             con.execute('delete from used_tickets where minute < ?', [ old ])
             con.execute('delete from time_secrets where minute < ?', [ old ])
@@ -345,7 +345,7 @@ else:
         secretobj = PonyTimeSecrets.get_by_key_name(keystr)
         if secretobj is None:
             now = int(time.time() // 60)
-            old = now - max_ctime_diff
+            old = now - MAX_CTIME_DIFF
             secret = os.urandom(32)
             for ticket in PonyUsedTickets.gql('where minute < :1', minute):
                 try: db.delete(ticket)
