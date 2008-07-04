@@ -11,6 +11,8 @@ typedef int Py_ssize_t;
 #define UNUSED
 #endif
 
+#define DEFAULT_ENCODING "utf-8"
+
 static Py_ssize_t
 ascii_escape_char(Py_UNICODE c, char *output, Py_ssize_t chars);
 static PyObject *
@@ -31,7 +33,8 @@ void init_speedups(void);
 #endif
 
 static Py_ssize_t
-ascii_escape_char(Py_UNICODE c, char *output, Py_ssize_t chars) {
+ascii_escape_char(Py_UNICODE c, char *output, Py_ssize_t chars)
+{
     Py_UNICODE x;
     output[chars++] = '\\';
     switch (c) {
@@ -75,7 +78,8 @@ ascii_escape_char(Py_UNICODE c, char *output, Py_ssize_t chars) {
 }
 
 static PyObject *
-ascii_escape_unicode(PyObject *pystr) {
+ascii_escape_unicode(PyObject *pystr)
+{
     Py_ssize_t i;
     Py_ssize_t input_chars;
     Py_ssize_t output_size;
@@ -99,7 +103,8 @@ ascii_escape_unicode(PyObject *pystr) {
         Py_UNICODE c = input_unicode[i];
         if (S_CHAR(c)) {
             output[chars++] = (char)c;
-        } else {
+        }
+        else {
             chars = ascii_escape_char(c, output, chars);
         }
         if (output_size - chars < (1 + MAX_EXPANSION)) {
@@ -123,7 +128,8 @@ ascii_escape_unicode(PyObject *pystr) {
 }
 
 static PyObject *
-ascii_escape_str(PyObject *pystr) {
+ascii_escape_str(PyObject *pystr)
+{
     Py_ssize_t i;
     Py_ssize_t input_chars;
     Py_ssize_t output_size;
@@ -147,7 +153,8 @@ ascii_escape_str(PyObject *pystr) {
         Py_UNICODE c = (Py_UNICODE)input_str[i];
         if (S_CHAR(c)) {
             output[chars++] = (char)c;
-        } else if (c > 0x7F) {
+        }
+        else if (c > 0x7F) {
             /* We hit a non-ASCII character, bail to unicode mode */
             PyObject *uni;
             Py_DECREF(rval);
@@ -158,7 +165,8 @@ ascii_escape_str(PyObject *pystr) {
             rval = ascii_escape_unicode(uni);
             Py_DECREF(uni);
             return rval;
-        } else {
+        }
+        else {
             chars = ascii_escape_char(c, output, chars);
         }
         /* An ASCII char can't possibly expand to a surrogate! */
@@ -181,6 +189,421 @@ ascii_escape_str(PyObject *pystr) {
     return rval;
 }
 
+void
+raise_errmsg(char *msg, PyObject *s, Py_ssize_t end)
+{
+    static PyObject *errmsg_fn = NULL;
+    PyObject *pymsg;
+    if (errmsg_fn == NULL) {
+        PyObject *decoder = PyImport_ImportModule("simplejson.decoder");
+        if (decoder == NULL) return;
+        errmsg_fn = PyObject_GetAttrString(decoder, "errmsg");
+        if (errmsg_fn == NULL) return;
+        Py_XDECREF(decoder);
+    }
+#if PY_VERSION_HEX < 0x02050000 
+    pymsg = PyObject_CallFunction(errmsg_fn, "(zOi)", msg, s, end);
+#else
+    pymsg = PyObject_CallFunction(errmsg_fn, "(zOn)", msg, s, end);
+#endif
+    PyErr_SetObject(PyExc_ValueError, pymsg);
+    Py_XDECREF(pymsg);
+/*
+
+def linecol(doc, pos):
+    lineno = doc.count('\n', 0, pos) + 1
+    if lineno == 1:
+        colno = pos
+    else:
+        colno = pos - doc.rindex('\n', 0, pos)
+    return lineno, colno
+
+def errmsg(msg, doc, pos, end=None):
+    lineno, colno = linecol(doc, pos)
+    if end is None:
+        return '%s: line %d column %d (char %d)' % (msg, lineno, colno, pos)
+    endlineno, endcolno = linecol(doc, end)
+    return '%s: line %d column %d - line %d column %d (char %d - %d)' % (
+        msg, lineno, colno, endlineno, endcolno, pos, end)
+
+*/
+}
+
+static PyObject *
+join_list_unicode(PyObject *lst)
+{
+    static PyObject *ustr = NULL;
+    static PyObject *joinstr = NULL;
+    if (ustr == NULL) {
+        Py_UNICODE c = 0;
+        ustr = PyUnicode_FromUnicode(&c, 0);
+    }
+    if (joinstr == NULL) {
+        joinstr = PyString_FromString("join");
+    }
+    if (joinstr == NULL || ustr == NULL) {
+        return NULL;
+    }
+    return PyObject_CallMethodObjArgs(ustr, joinstr, lst, NULL);
+}
+
+static PyObject *
+scanstring_str(PyObject *pystr, Py_ssize_t end, char *encoding, int strict)
+{
+    PyObject *rval;
+    Py_ssize_t len = PyString_GET_SIZE(pystr);
+    Py_ssize_t begin = end - 1;
+    Py_ssize_t next = begin;
+    char *buf = PyString_AS_STRING(pystr);
+    PyObject *chunks = PyList_New(0);
+    if (chunks == NULL) {
+        goto bail;
+    }
+    while (1) {
+        /* Find the end of the string or the next escape */
+        Py_UNICODE c = 0;
+        PyObject *chunk = NULL;
+        for (next = end; next < len; next++) {
+            c = buf[next];
+            if (c == '"' || c == '\\') {
+                break;
+            }
+            else if (strict && c <= 0x1f) {
+                raise_errmsg("Invalid control character at", pystr, begin);
+                goto bail;
+            }
+        }
+        if (!(c == '"' || c == '\\')) {
+            raise_errmsg("Unterminated string starting at", pystr, begin);
+            goto bail;
+        }
+        /* Pick up this chunk if it's not zero length */
+        if (next != end) {
+            PyObject *strchunk = PyBuffer_FromMemory(&buf[end], next - end);
+            if (strchunk == NULL) {
+                goto bail;
+            }
+            chunk = PyUnicode_FromEncodedObject(strchunk, encoding, NULL);
+            Py_XDECREF(strchunk);
+            if (chunk == NULL) {
+                goto bail;
+            }
+            if (PyList_Append(chunks, chunk)) {
+                goto bail;
+            }
+            Py_DECREF(chunk);
+        }
+        next++;
+        if (c == '"') {
+            end = next;
+            break;
+        }
+        if (next == len) {
+            raise_errmsg("Unterminated string starting at", pystr, begin);
+            goto bail;
+        }
+        c = buf[next];
+        if (c != 'u') {
+            /* Non-unicode backslash escapes */
+            end = next + 1;
+            switch (c) {
+                case '"': break;
+                case '\\': break;
+                case '/': break;
+                case 'b': c = '\b'; break;
+                case 'f': c = '\f'; break;
+                case 'n': c = '\n'; break;
+                case 'r': c = '\r'; break;
+                case 't': c = '\t'; break;
+                default: c = 0;
+            }
+            if (c == 0) {
+                raise_errmsg("Invalid \\escape", pystr, end - 2);
+                goto bail;
+            }
+        }
+        else {
+            c = 0;
+            next++;
+            end = next + 4;
+            if (end >= len) {
+                raise_errmsg("Invalid \\uXXXX escape", pystr, next - 1);
+                goto bail;
+            }
+            /* Decode 4 hex digits */
+            for (; next < end; next++) {
+                Py_ssize_t shl = (end - next - 1) << 2;
+                Py_UNICODE digit = buf[next];
+                switch (digit) {
+                    case '0': case '1': case '2': case '3': case '4':
+                    case '5': case '6': case '7': case '8': case '9':
+                        c |= (digit - '0') << shl; break;
+                    case 'a': case 'b': case 'c': case 'd': case 'e':
+                    case 'f':
+                        c |= (digit - 'a' + 10) << shl; break;
+                    case 'A': case 'B': case 'C': case 'D': case 'E':
+                    case 'F':
+                        c |= (digit - 'A' + 10) << shl; break;
+                    default:
+                        raise_errmsg("Invalid \\uXXXX escape", pystr, end - 5);
+                        goto bail;
+                }
+            }
+#ifdef Py_UNICODE_WIDE
+            /* Surrogate pair */
+            if (c >= 0xd800 && c <= 0xdbff) {
+                Py_UNICODE c2 = 0;
+                if (end + 6 >= len) {
+                    raise_errmsg("Invalid \\uXXXX\\uXXXX surrogate pair", pystr,
+                        end - 5);
+                }
+                if (buf[next++] != '\\' || buf[next++] != 'u') {
+                    raise_errmsg("Invalid \\uXXXX\\uXXXX surrogate pair", pystr,
+                        end - 5);
+                }
+                end += 6;
+                /* Decode 4 hex digits */
+                for (; next < end; next++) {
+                    Py_ssize_t shl = (end - next - 1) << 2;
+                    Py_UNICODE digit = buf[next];
+                    switch (digit) {
+                        case '0': case '1': case '2': case '3': case '4':
+                        case '5': case '6': case '7': case '8': case '9':
+                            c2 |= (digit - '0') << shl; break;
+                        case 'a': case 'b': case 'c': case 'd': case 'e':
+                        case 'f':
+                            c2 |= (digit - 'a' + 10) << shl; break;
+                        case 'A': case 'B': case 'C': case 'D': case 'E':
+                        case 'F':
+                            c2 |= (digit - 'A' + 10) << shl; break;
+                        default:
+                            raise_errmsg("Invalid \\uXXXX escape", pystr, end - 5);
+                            goto bail;
+                    }
+                }
+                c = 0x10000 + (((c - 0xd800) << 10) | (c2 - 0xdc00));
+            }
+#endif
+        }
+        chunk = PyUnicode_FromUnicode(&c, 1);
+        if (chunk == NULL) {
+            goto bail;
+        }
+        if (PyList_Append(chunks, chunk)) {
+            goto bail;
+        }
+        Py_DECREF(chunk);
+    }
+
+    rval = join_list_unicode(chunks);
+    if (rval == NULL) {
+        goto bail;
+    }
+    Py_DECREF(chunks);
+    chunks = NULL;
+#if PY_VERSION_HEX < 0x02050000 
+    return Py_BuildValue("(Ni)", rval, end);
+#else
+    return Py_BuildValue("(Nn)", rval, end);
+#endif
+bail:
+    Py_XDECREF(chunks);
+    return NULL;
+}
+
+
+static PyObject *
+scanstring_unicode(PyObject *pystr, Py_ssize_t end, int strict)
+{
+    PyObject *rval;
+    Py_ssize_t len = PyUnicode_GET_SIZE(pystr);
+    Py_ssize_t begin = end - 1;
+    Py_ssize_t next = begin;
+    const Py_UNICODE *buf = PyUnicode_AS_UNICODE(pystr);
+    PyObject *chunks = PyList_New(0);
+    if (chunks == NULL) {
+        goto bail;
+    }
+    while (1) {
+        /* Find the end of the string or the next escape */
+        Py_UNICODE c = 0;
+        PyObject *chunk = NULL;
+        for (next = end; next < len; next++) {
+            c = buf[next];
+            if (c == '"' || c == '\\') {
+                break;
+            }
+            else if (strict && c <= 0x1f) {
+                raise_errmsg("Invalid control character at", pystr, begin);
+                goto bail;
+            }
+        }
+        if (!(c == '"' || c == '\\')) {
+            raise_errmsg("Unterminated string starting at", pystr, begin);
+            goto bail;
+        }
+        /* Pick up this chunk if it's not zero length */
+        if (next != end) {
+            chunk = PyUnicode_FromUnicode(&buf[end], next - end);
+            if (chunk == NULL) {
+                goto bail;
+            }
+            if (PyList_Append(chunks, chunk)) {
+                goto bail;
+            }
+            Py_DECREF(chunk);
+        }
+        next++;
+        if (c == '"') {
+            end = next;
+            break;
+        }
+        if (next == len) {
+            raise_errmsg("Unterminated string starting at", pystr, begin);
+            goto bail;
+        }
+        c = buf[next];
+        if (c != 'u') {
+            /* Non-unicode backslash escapes */
+            end = next + 1;
+            switch (c) {
+                case '"': break;
+                case '\\': break;
+                case '/': break;
+                case 'b': c = '\b'; break;
+                case 'f': c = '\f'; break;
+                case 'n': c = '\n'; break;
+                case 'r': c = '\r'; break;
+                case 't': c = '\t'; break;
+                default: c = 0;
+            }
+            if (c == 0) {
+                raise_errmsg("Invalid \\escape", pystr, end - 2);
+                goto bail;
+            }
+        }
+        else {
+            c = 0;
+            next++;
+            end = next + 4;
+            if (end >= len) {
+                raise_errmsg("Invalid \\uXXXX escape", pystr, next - 1);
+                goto bail;
+            }
+            /* Decode 4 hex digits */
+            for (; next < end; next++) {
+                Py_ssize_t shl = (end - next - 1) << 2;
+                Py_UNICODE digit = buf[next];
+                switch (digit) {
+                    case '0': case '1': case '2': case '3': case '4':
+                    case '5': case '6': case '7': case '8': case '9':
+                        c |= (digit - '0') << shl; break;
+                    case 'a': case 'b': case 'c': case 'd': case 'e':
+                    case 'f':
+                        c |= (digit - 'a' + 10) << shl; break;
+                    case 'A': case 'B': case 'C': case 'D': case 'E':
+                    case 'F':
+                        c |= (digit - 'A' + 10) << shl; break;
+                    default:
+                        raise_errmsg("Invalid \\uXXXX escape", pystr, end - 5);
+                        goto bail;
+                }
+            }
+#ifdef Py_UNICODE_WIDE
+            /* Surrogate pair */
+            if (c >= 0xd800 && c <= 0xdbff) {
+                Py_UNICODE c2 = 0;
+                if (end + 6 >= len) {
+                    raise_errmsg("Invalid \\uXXXX\\uXXXX surrogate pair", pystr,
+                        end - 5);
+                }
+                if (buf[next++] != '\\' || buf[next++] != 'u') {
+                    raise_errmsg("Invalid \\uXXXX\\uXXXX surrogate pair", pystr,
+                        end - 5);
+                }
+                end += 6;
+                /* Decode 4 hex digits */
+                for (; next < end; next++) {
+                    Py_ssize_t shl = (end - next - 1) << 2;
+                    Py_UNICODE digit = buf[next];
+                    switch (digit) {
+                        case '0': case '1': case '2': case '3': case '4':
+                        case '5': case '6': case '7': case '8': case '9':
+                            c2 |= (digit - '0') << shl; break;
+                        case 'a': case 'b': case 'c': case 'd': case 'e':
+                        case 'f':
+                            c2 |= (digit - 'a' + 10) << shl; break;
+                        case 'A': case 'B': case 'C': case 'D': case 'E':
+                        case 'F':
+                            c2 |= (digit - 'A' + 10) << shl; break;
+                        default:
+                            raise_errmsg("Invalid \\uXXXX escape", pystr, end - 5);
+                            goto bail;
+                    }
+                }
+                c = 0x10000 + (((c - 0xd800) << 10) | (c2 - 0xdc00));
+            }
+#endif
+        }
+        chunk = PyUnicode_FromUnicode(&c, 1);
+        if (chunk == NULL) {
+            goto bail;
+        }
+        if (PyList_Append(chunks, chunk)) {
+            goto bail;
+        }
+        Py_DECREF(chunk);
+    }
+
+    rval = join_list_unicode(chunks);
+    if (rval == NULL) {
+        goto bail;
+    }
+    Py_DECREF(chunks);
+    chunks = NULL;
+#if PY_VERSION_HEX < 0x02050000 
+    return Py_BuildValue("(Ni)", rval, end);
+#else
+    return Py_BuildValue("(Nn)", rval, end);
+#endif
+bail:
+    Py_XDECREF(chunks);
+    return NULL;
+}
+
+PyDoc_STRVAR(pydoc_scanstring,
+    "scanstring(basestring, end, encoding) -> (str, end)\n"
+    "\n"
+    "..."
+);
+
+static PyObject *
+py_scanstring(PyObject* self UNUSED, PyObject *args)
+{
+    PyObject *pystr;
+    Py_ssize_t end;
+    char *encoding = NULL;
+    int strict = 0;
+#if PY_VERSION_HEX < 0x02050000 
+    if (!PyArg_ParseTuple(args, "Oi|zi:scanstring", &pystr, &end, &encoding, &strict)) {
+#else
+    if (!PyArg_ParseTuple(args, "On|zi:scanstring", &pystr, &end, &encoding, &strict)) {
+#endif
+        return NULL;
+    }
+    if (encoding == NULL) {
+        encoding = DEFAULT_ENCODING;
+    }
+    if (PyString_Check(pystr)) {
+        return scanstring_str(pystr, end, encoding, strict);
+    }
+    else if (PyUnicode_Check(pystr)) {
+        return scanstring_unicode(pystr, end, strict);
+    }
+    PyErr_SetString(PyExc_TypeError, "first argument must be a string");
+    return NULL;
+}
+
 PyDoc_STRVAR(pydoc_encode_basestring_ascii,
     "encode_basestring_ascii(basestring) -> str\n"
     "\n"
@@ -188,29 +611,30 @@ PyDoc_STRVAR(pydoc_encode_basestring_ascii,
 );
 
 static PyObject *
-py_encode_basestring_ascii(PyObject* self UNUSED, PyObject *pystr) {
+py_encode_basestring_ascii(PyObject* self UNUSED, PyObject *pystr)
+{
     /* METH_O */
     if (PyString_Check(pystr)) {
         return ascii_escape_str(pystr);
-    } else if (PyUnicode_Check(pystr)) {
+    }
+    else if (PyUnicode_Check(pystr)) {
         return ascii_escape_unicode(pystr);
     }
     PyErr_SetString(PyExc_TypeError, "first argument must be a string");
     return NULL;
 }
 
-#define DEFN(n, k) \
-    {  \
-        #n, \
-        (PyCFunction)py_ ##n, \
-        k, \
-        pydoc_ ##n \
-    }
 static PyMethodDef speedups_methods[] = {
-    DEFN(encode_basestring_ascii, METH_O),
-    {}
+    {"encode_basestring_ascii",
+        (PyCFunction)py_encode_basestring_ascii,
+        METH_O,
+        pydoc_encode_basestring_ascii},
+    {"scanstring",
+        (PyCFunction)py_scanstring,
+        METH_VARARGS,
+        pydoc_scanstring},
+    {NULL, NULL, 0, NULL}
 };
-#undef DEFN
 
 void
 init_speedups(void)

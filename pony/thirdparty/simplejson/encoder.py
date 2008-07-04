@@ -2,13 +2,15 @@
 Implementation of JSONEncoder
 """
 import re
+
 try:
-    from pony.thirdparty.simplejson import _speedups
+    from pony.thirdparty.simplejson._speedups import encode_basestring_ascii as c_encode_basestring_ascii
 except ImportError:
-    _speedups = None
+    pass
 
 ESCAPE = re.compile(r'[\x00-\x1f\\"\b\f\n\r\t]')
-ESCAPE_ASCII = re.compile(r'([\\"/]|[^\ -~])')
+ESCAPE_ASCII = re.compile(r'([\\"]|[^\ -~])')
+HAS_UTF8 = re.compile(r'[\x80-\xff]')
 ESCAPE_DCT = {
     '\\': '\\\\',
     '"': '\\"',
@@ -21,7 +23,7 @@ ESCAPE_DCT = {
 for i in range(0x20):
     ESCAPE_DCT.setdefault(chr(i), '\\u%04x' % (i,))
 
-# assume this produces an infinity on all machines (probably not guaranteed)
+# Assume this produces an infinity on all machines (probably not guaranteed)
 INFINITY = float('1e66666')
 FLOAT_REPR = repr
 
@@ -53,7 +55,10 @@ def encode_basestring(s):
         return ESCAPE_DCT[match.group(0)]
     return '"' + ESCAPE.sub(replace, s) + '"'
 
-def encode_basestring_ascii(s):
+
+def py_encode_basestring_ascii(s):
+    if isinstance(s, str) and HAS_UTF8.search(s) is not None:
+        s = s.decode('utf-8')
     def replace(match):
         s = match.group(0)
         try:
@@ -69,12 +74,13 @@ def encode_basestring_ascii(s):
                 s2 = 0xdc00 | (n & 0x3ff)
                 return '\\u%04x\\u%04x' % (s1, s2)
     return '"' + str(ESCAPE_ASCII.sub(replace, s)) + '"'
-        
+
+
 try:
-    encode_basestring_ascii = _speedups.encode_basestring_ascii
-    _need_utf8 = True
-except AttributeError:
-    _need_utf8 = False
+    encode_basestring_ascii = c_encode_basestring_ascii
+except NameError:
+    encode_basestring_ascii = py_encode_basestring_ascii
+
 
 class JSONEncoder(object):
     """
@@ -110,7 +116,7 @@ class JSONEncoder(object):
     key_separator = ': '
     def __init__(self, skipkeys=False, ensure_ascii=True,
             check_circular=True, allow_nan=True, sort_keys=False,
-            indent=None, separators=None, encoding='utf-8'):
+            indent=None, separators=None, encoding='utf-8', default=None):
         """
         Constructor for JSONEncoder, with sensible defaults.
 
@@ -142,11 +148,15 @@ class JSONEncoder(object):
         None is the most compact representation.
 
         If specified, separators should be a (item_separator, key_separator)
-        tuple. The default is (', ', ': '). To get the most compact JSON
+        tuple.  The default is (', ', ': ').  To get the most compact JSON
         representation you should specify (',', ':') to eliminate whitespace.
 
+        If specified, default is a function that gets called for objects
+        that can't otherwise be serialized.  It should return a JSON encodable
+        version of the object or raise a ``TypeError``.
+
         If encoding is not None, then all input strings will be
-        transformed into unicode using that encoding prior to JSON-encoding. 
+        transformed into unicode using that encoding prior to JSON-encoding.
         The default is UTF-8.
         """
 
@@ -159,6 +169,8 @@ class JSONEncoder(object):
         self.current_indent_level = 0
         if separators is not None:
             self.item_separator, self.key_separator = separators
+        if default is not None:
+            self.default = default
         self.encoding = encoding
 
     def _newline_indent(self):
@@ -230,7 +242,7 @@ class JSONEncoder(object):
             items = dct.iteritems()
         _encoding = self.encoding
         _do_decode = (_encoding is not None
-            and not (_need_utf8 and _encoding == 'utf-8'))
+            and not (_encoding == 'utf-8'))
         for key, value in items:
             if isinstance(key, str):
                 if _do_decode:
@@ -276,7 +288,7 @@ class JSONEncoder(object):
                 encoder = encode_basestring
             _encoding = self.encoding
             if (_encoding is not None and isinstance(o, str)
-                    and not (_need_utf8 and _encoding == 'utf-8')):
+                    and not (_encoding == 'utf-8')):
                 o = o.decode(_encoding)
             yield encoder(o)
         elif o is None:
@@ -335,19 +347,22 @@ class JSONEncoder(object):
         Return a JSON string representation of a Python data structure.
 
         >>> JSONEncoder().encode({"foo": ["bar", "baz"]})
-        '{"foo":["bar", "baz"]}'
+        '{"foo": ["bar", "baz"]}'
         """
-        # This is for extremely simple cases and benchmarks...
+        # This is for extremely simple cases and benchmarks.
         if isinstance(o, basestring):
             if isinstance(o, str):
                 _encoding = self.encoding
                 if (_encoding is not None 
-                        and not (_encoding == 'utf-8' and _need_utf8)):
+                        and not (_encoding == 'utf-8')):
                     o = o.decode(_encoding)
-            return encode_basestring_ascii(o)
-        # This doesn't pass the iterator directly to ''.join() because it
-        # sucks at reporting exceptions.  It's going to do this internally
-        # anyway because it uses PySequence_Fast or similar.
+            if self.ensure_ascii:
+                return encode_basestring_ascii(o)
+            else:
+                return encode_basestring(o)
+        # This doesn't pass the iterator directly to ''.join() because the
+        # exceptions aren't as detailed.  The list call should be roughly
+        # equivalent to the PySequence_Fast that ''.join() would do.
         chunks = list(self.iterencode(o))
         return ''.join(chunks)
 
