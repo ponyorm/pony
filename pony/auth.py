@@ -8,7 +8,7 @@ from pony.utils import compress, decompress
 import pony.sessionstorage.ramstorage as storage
 
 MAX_CTIME_DIFF = 24*60
-MAX_MTIME_DIFF = 30
+MAX_MTIME_DIFF = 60
 
 def get_user():
     return local.user
@@ -27,12 +27,10 @@ def load(data, environ):
     if data in (None, 'None'): set_user(None); return
     try:
         ctime_str, mtime_str, pickle_str, hash_str = data.split(':')
-        local.ctime = int(ctime_str, 16)
-        mtime = int(mtime_str, 16)
-        if (local.ctime < now - MAX_CTIME_DIFF
-              or mtime < now - MAX_MTIME_DIFF
-              or mtime > now + 1
-            ): set_user(None); return
+        ctime = local.ctime = int(ctime_str, 16)
+        mtime = local.mtime = int(mtime_str, 16)
+        if ctime < now - MAX_CTIME_DIFF or mtime < now - MAX_MTIME_DIFF or mtime > now + 1:
+            set_user(None); return
         pickle_data = base64.b64decode(pickle_str)
         hash = base64.b64decode(hash_str)
         hashobject = _get_hashobject(mtime)
@@ -44,11 +42,12 @@ def load(data, environ):
             if hash != hashobject.digest(): set_user(None); return
             local.remember_ip = True
         else: local.remember_ip = False
-        if pickle_data.startswith('A'): pickle_data = pickle_data[1:]
+        if pickle_data.startswith('A'):
+            compressed_data = pickle_data[1:]
         elif pickle_data.startswith('B'):
-            pickle_data = storage.getdata(pickle_data[1:], local.ctime, mtime)
+            compressed_data = storage.getdata(pickle_data[1:], ctime, mtime)
         else: set_user(None); return
-        info = cPickle.loads(decompress(pickle_data))
+        info = cPickle.loads(decompress(compressed_data))
         local.user, local.session, local.domain, local.path = info
     except: set_user(None)
 
@@ -61,10 +60,10 @@ def save(environ):
     if local.user is None and not local.session: data = 'None'
     else:
         info = local.user, local.session, local.domain, local.path
-        pickle_data = compress(cPickle.dumps(info, 2))
-        if len(pickle_data) <= 10: # <= 4000
-            pickle_data = 'A' + pickle_data
-        else: pickle_data = 'B' + storage.putdata(pickle_data, local.ctime, now)
+        compressed_data = compress(cPickle.dumps(info, 2))
+        if len(compressed_data) <= 10: # <= 4000
+            pickle_data = 'A' + compressed_data
+        else: pickle_data = 'B' + storage.putdata(compressed_data, local.ctime, now)
         hashobject = _get_hashobject(now)
         hashobject.update(ctime_str)
         hashobject.update(pickle_data)
@@ -188,7 +187,7 @@ class Local(threading.local):
     def set_user(self, user, remember_ip=False, path='/', domain=None):
         if self.user is not None or user is None: self.session.clear()
         self.user = user
-        self.ctime = int(time.time() // 60)
+        self.ctime = self.mtime = int(time.time() // 60)
         self.remember_ip = False
         self.path = path
         self.domain = domain
@@ -279,7 +278,7 @@ if not pony.RUNNED_AS.startswith('GAE-'):
                 lock.release()
                 return
             now = int(time.time() // 60)
-            old = now - MAX_CTIME_DIFF
+            old = now - MAX_MTIME_DIFF
             secret = os.urandom(32)
             con.execute('delete from used_tickets where minute < ?', [ old ])
             con.execute('delete from time_secrets where minute < ?', [ old ])
@@ -350,7 +349,7 @@ else:
         secretobj = PonyTimeSecrets.get_by_key_name(keystr)
         if secretobj is None:
             now = int(time.time() // 60)
-            old = now - MAX_CTIME_DIFF
+            old = now - MAX_MTIME_DIFF
             secret = os.urandom(32)
             for ticket in PonyUsedTickets.gql('where minute < :1', minute):
                 try: db.delete(ticket)
