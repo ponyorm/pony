@@ -70,7 +70,7 @@ def get_logfile_name():
     # (Problems with unicode symbols in directory name)
     if pony.MAIN_FILE is None: return ':memory:'
     root, ext = os.path.splitext(pony.MAIN_FILE)
-    if pony.RUNNED_AS == 'NATIVE': root = os.path.basename(root)
+    if pony.MODE == 'CHERRYPY': root = os.path.basename(root)
     return root + '-log.sqlite'
 
 sql_create = """
@@ -199,7 +199,7 @@ def decompress_record(record):
                        for (header, value) in record['headers'].items())
         record['headers'] = headers
 
-if not pony.RUNNED_AS.startswith('GAE-'):
+if not pony.MODE.startswith('GAE-'):
     @pony.on_shutdown
     def do_shutdown():
         log(type='Log:shutdown')

@@ -52,7 +52,7 @@ def reload(modules, changed_module, filename):
         reloading = False
 
 def use_autoreload():
-    if pony.RUNNED_AS != 'NATIVE' or pony.mainloop_counter.next(): return
+    if pony.MODE != 'CHERRYPY' or pony.mainloop_counter.next(): return
     load_main()
     error = False
     while True:

@@ -806,8 +806,8 @@ class ServerThread(threading.Thread):
         server_threads.pop((self.host, self.port), None)
 
 def start_http_server(address='localhost:8080', verbose=True):
-    if pony.RUNNED_AS.startswith('GAE'): main(); return
-    elif pony.RUNNED_AS not in ('INTERACTIVE', 'NATIVE'): return
+    if pony.MODE.startswith('GAE'): main(); return
+    elif pony.MODE not in ('INTERACTIVE', 'CHERRYPY'): return
     pony._do_mainloop = True
     host, port = webutils.parse_address(address)
     try: server_thread = ServerThread(host, port, application, verbose=verbose)
@@ -825,7 +825,7 @@ def start_http_server(address='localhost:8080', verbose=True):
         if not response_string.startswith('+'): break
 
 def stop_http_server(address=None):
-    if pony.RUNNED_AS not in ('INTERACTIVE', 'NATIVE'): return
+    if pony.MODE not in ('INTERACTIVE', 'CHERRYPY'): return
     if address is None:
         for server_thread in server_threads.values():
             server_thread.server.stop()
@@ -945,11 +945,11 @@ def http_shutdown(uid=None):
     environ = local.request.environ
     if environ.get('REMOTE_ADDR') != '127.0.0.1': return pony.uid
 
-    if pony.RUNNED_AS == 'INTERACTIVE':
+    if pony.MODE == 'INTERACTIVE':
         stop_http_server()
         return '+' + pony.uid
 
-    if pony.RUNNED_AS != 'NATIVE': return pony.uid
+    if pony.MODE != 'CHERRYPY': return pony.uid
     if not (environ.get('HTTP_HOST', '') + ':').startswith('localhost:'): return pony.uid
     if environ.get('SERVER_NAME') != 'localhost': return pony.uid
     pony.shutdown = True

@@ -1,7 +1,7 @@
 import pony
 
 def show_gui():
-    if pony.RUNNED_AS not in ('INTERACTIVE', 'NATIVE'): return
+    if pony.MODE not in ('INTERACTIVE', 'CHERRYPY'): return
     from pony.gui.tkgui_ import show_gui
     show_gui()
     

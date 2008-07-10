@@ -20,14 +20,14 @@ def detect_mode():
 
     try: sys.modules['__main__'].__file__
     except AttributeError:  return 'INTERACTIVE'
-    return 'NATIVE'
+    return 'CHERRYPY'
 
-RUNNED_AS = detect_mode()
+MODE = detect_mode()
 
 MAIN_FILE = None
-if RUNNED_AS in ('NATIVE', 'GAE-LOCAL', 'GAE-SERVER'):
+if MODE in ('CHERRYPY', 'GAE-LOCAL', 'GAE-SERVER'):
     MAIN_FILE = sys.modules['__main__'].__file__
-elif RUNNED_AS == 'MOD_WSGI':
+elif MODE == 'MOD_WSGI':
     for module_name, module in sys.modules.items():
         if module_name.startswith('_mod_wsgi_'):
             MAIN_FILE = module.__file__
@@ -112,7 +112,7 @@ def exitfunc():
     _shutdown()
     prev_func()
 
-if RUNNED_AS in ('INTERACTIVE', 'GAE-SERVER', 'GAE-LOCAL'): pass
+if MODE in ('INTERACTIVE', 'GAE-SERVER', 'GAE-LOCAL'): pass
 elif hasattr(threading, '_shutdown'):
     prev_func = threading._shutdown
     threading._shutdown = exitfunc
@@ -125,7 +125,7 @@ mainloop_counter = count()
 _do_mainloop = False
 
 def mainloop():
-    if not _do_mainloop or RUNNED_AS != 'NATIVE' or mainloop_counter.next(): return
+    if not _do_mainloop or MODE != 'CHERRYPY' or mainloop_counter.next(): return
     try:
         while True:
             if shutdown: break

@@ -195,7 +195,7 @@ class Local(threading.local):
 local = Local()
 secret_cache = {}
 
-if not pony.RUNNED_AS.startswith('GAE-'):
+if not pony.MODE.startswith('GAE-'):
 
     queue = Queue.Queue()
 
@@ -222,7 +222,7 @@ if not pony.RUNNED_AS.startswith('GAE-'):
         # (Problems with unicode symbols in directory name)
         if pony.MAIN_FILE is None: return ':memory:'
         root, ext = os.path.splitext(pony.MAIN_FILE)
-        if pony.RUNNED_AS == 'NATIVE': root = os.path.basename(root)
+        if pony.MODE == 'CHERRYPY': root = os.path.basename(root)
         return root + '-secrets.sqlite'
 
     sql_create = """

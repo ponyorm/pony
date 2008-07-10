@@ -171,7 +171,7 @@ class CaptchaThread(threading.Thread):
             map = generate_map()
             maps.append(map)
 
-if not pony.RUNNED_AS.startswith('GAE-'):
+if not pony.MODE.startswith('GAE-'):
     captcha_thread = CaptchaThread()
     captcha_thread.start()
 
