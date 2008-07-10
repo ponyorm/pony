@@ -10,12 +10,6 @@ try: process_id = os.getpid()
 except AttributeError: # in GAE
     process_id = 0
 
-sql_re = re.compile('^\s*(\w+)')
-
-def log_sql(sql, params=()):
-    command = (sql_re.match(sql).group(1) or '?').upper()
-    log(type='SQL:'+command, text=sql, params=params)
-
 queue = Queue.Queue()
 
 class Local(threading.local):
@@ -37,8 +31,7 @@ def log(*args, **record):
     record.setdefault('type', 'unknown')
     for field in 'user', 'text':
         value = record.setdefault(field, None)
-        if isinstance(value, str):
-            record[field] = value.decode('utf-8', 'replace')
+        if isinstance(value, str): record[field] = value.decode('utf-8', 'replace')
     queue.put(record)
 
 log(type='Log:start')
@@ -48,7 +41,11 @@ def log_exc():
         text=traceback.format_exception_only(*sys.exc_info()[:2])[-1][:-1],
         traceback=traceback.format_exc())
 
-sql_query = 'select * from log where %s order by id %s limit ?'
+sql_re = re.compile('^\s*(\w+)')
+
+def log_sql(sql, params=()):
+    command = (sql_re.match(sql).group(1) or '?').upper()
+    log(type='SQL:'+command, text=sql, params=params)
 
 def search_log(max_count=100, start_from=None, criteria=None, params=()):
     criteria = criteria or '1=1'
@@ -59,7 +56,7 @@ def search_log(max_count=100, start_from=None, criteria=None, params=()):
         else: criteria += ' and id > ?'
     direction = max_count > 0 and 'desc' or ''
     params.append(abs(max_count))
-    sql = sql_query % (criteria, direction)
+    sql = 'select * from log where %s order by id %s limit ?' % (criteria, direction)
     result = []
     queue.put((sql, params, result, local.lock))
     local.lock.acquire()
