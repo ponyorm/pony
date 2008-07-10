@@ -32,7 +32,7 @@ def reload(modules, changed_module, filename):
     global reloading
     reloading = True
     success = True
-    print 'RELOADING: %s' % shortened_module_name(filename)
+    print>>sys.stderr, 'RELOADING: %s' % shortened_module_name(filename)
     log('RELOAD:begin', text='Changed: %s' % changed_module.__name__,
         modules=dict((m.__name__, m.__file__) for m in modules))
     try:
