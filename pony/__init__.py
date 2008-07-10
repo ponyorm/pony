@@ -48,48 +48,41 @@ except NameError:
 
 class Local(threading.local):
     def __init__(self):
-        self.stdout_writers = [ real_stdout.write ]
-        self.stderr_writers = [ real_stderr.write ]
+        self.stdout_streams = [ real_stdout ]
+        self.stderr_streams = [ real_stderr ]
 
 local = Local()
 
 class PonyStdout(object):
-    try: from pony._templating import write_to_stdout as write
-    except ImportError:
-        def write(s): local.stdout_writers[-1](s)
-    write = staticmethod(write)
+    def __getattribute__(self, name):
+        return getattr(local.stdout_streams[-1], name)
 pony_stdout = PonyStdout()
-try:
-    pony_stdout.flush = real_stdout.flush
-    pony_stdout.seek = real_stdout.seek
-    pony_stdout.readline = real_stdout.readline
-except AttributeError: pass
 sys.stdout = pony_stdout
 
 class PonyStderr(object):
-    try: from pony._templating import write_to_stderr as write
-    except ImportError:
-        def write(s): local.stderr_writers[-1](s)
-    write = staticmethod(write)
+    def __getattribute__(self, name):
+        return getattr(local.stderr_streams[-1], name)
 pony_stderr = PonyStderr()
-try:
-    pony_stderr.flush = real_stderr.flush
-    pony_stderr.seek = real_stderr.seek
-    pony_stderr.readline = real_stderr.readline
-except AttributeError: pass
 sys.stderr = pony_stderr
+
+class ListStream(list):
+    write = list.append
+    writelines = list.extend
+    @staticmethod
+    def flush(): pass
 
 @decorator
 def grab_stdout(f):
     def new_function(*args, **keyargs):
-        data = []
-        local.stdout_writers.append(data.append)
+        data = ListStream()
+        local.stdout_streams.append(data)
         # The next line required for PythonWin interactive window
         # (PythonWin resets stdout all the time)
         sys.stdout = pony_stdout
         try: result = f(*args, **keyargs)
         finally:
-            if local.stdout_writers.pop() != data.append: raise AssertionError
+            top_stream = local.stdout_streams.pop() 
+            if top_stream != data: raise AssertionError
         if result is None: return data
         if not isinstance(result, basestring):
             if hasattr(result, '__unicode__'): result = unicode(result)
