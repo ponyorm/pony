@@ -17,6 +17,17 @@ if pony.MODE in ('CHERRYPY', 'INTERACTIVE'):
         prev_showwarning(message, category, filename, lineno)
     warnings.showwarning = showwarning
 
+    class PonyHandler(logging.Handler):
+        def emit(self, record):
+            if record.exc_info:
+                if not record.exc_text: record.exc_text = logging._defaultFormatter.formatException(record.exc_info)
+                keyargs = {'exc_text': record.exc_text}
+            else: keyargs = {}
+            log(type='logging:%s' % record.levelname, text=record.getMessage(),
+                levelno=record.levelno, module=record.module, lineno=record.lineno, **keyargs)
+    logging.root.setLevel(logging.INFO)
+    logging.root.addHandler(PonyHandler())
+
 queue = Queue.Queue()
 
 class Local(threading.local):
