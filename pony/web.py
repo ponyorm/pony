@@ -740,9 +740,10 @@ def application(environ, wsgi_start_response):
         log(type='HTTP:response', text=status, headers=headers)
         wsgi_start_response(status, headers)
 
-    # This next line is required, because hase possible side-effect
+    # This next line is required, because it hase possible side-effect
     # (initialization of new dummy request in frest thread)
-    local.request # It must be done before creation of non-dummy request
+    # It must be done before creation of non-dummy request
+    local.request
 
     request = local.request = HttpRequest(environ)
     log_request(request)
@@ -761,8 +762,7 @@ def application(environ, wsgi_start_response):
         return [ e.content ]
     except:
         log_exc()
-        start_response('500 Internal Server Error',
-                       {'Content-Type': 'text/html'})
+        start_response('500 Internal Server Error', {'Content-Type': 'text/html'})
         return [ format_exc() ]
     else:
         response = local.response
