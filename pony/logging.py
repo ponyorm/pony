@@ -1,4 +1,4 @@
-import cPickle, os, os.path, Queue, random, re, sys, traceback, thread, threading, time
+import cPickle, os, os.path, Queue, random, re, sys, traceback, thread, threading, time, warnings
 from itertools import count
 
 from python import logging
@@ -9,6 +9,13 @@ from pony.utils import current_timestamp
 try: process_id = os.getpid()
 except AttributeError: # in GAE
     process_id = 0
+
+if pony.MODE in ('CHERRYPY', 'INTERACTIVE'):
+    prev_showwarning = warnings.showwarning
+    def showwarning(message, category, filename, lineno):
+        log(type='warning', text=str(message), category=category.__name__, filename=filename, lineno=lineno)
+        prev_showwarning(message, category, filename, lineno)
+    warnings.showwarning = showwarning
 
 queue = Queue.Queue()
 
