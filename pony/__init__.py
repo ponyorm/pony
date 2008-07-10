@@ -48,20 +48,20 @@ except NameError:
 
 class Local(threading.local):
     def __init__(self):
-        self.stdout_streams = [ real_stdout ]
-        self.stderr_streams = [ real_stderr ]
+        self.output_streams = [ real_stdout ]
+        self.error_streams = [ real_stderr ]
 
 local = Local()
 
 class PonyStdout(object):
     def __getattribute__(self, name):
-        return getattr(local.stdout_streams[-1], name)
+        return getattr(local.output_streams[-1], name)
 pony_stdout = PonyStdout()
 sys.stdout = pony_stdout
 
 class PonyStderr(object):
     def __getattribute__(self, name):
-        return getattr(local.stderr_streams[-1], name)
+        return getattr(local.error_streams[-1], name)
 pony_stderr = PonyStderr()
 sys.stderr = pony_stderr
 
@@ -74,16 +74,16 @@ class ListStream(list):
 @decorator
 def grab_stdout(f):
     def new_function(*args, **keyargs):
-        data = ListStream()
-        local.stdout_streams.append(data)
+        output_stream = ListStream()
+        local.output_streams.append(output_stream)
         # The next line required for PythonWin interactive window
         # (PythonWin resets stdout all the time)
         sys.stdout = pony_stdout
         try: result = f(*args, **keyargs)
         finally:
-            top_stream = local.stdout_streams.pop() 
-            if top_stream != data: raise AssertionError
-        if result is None: return data
+            top_stream = local.output_streams.pop() 
+            assert top_stream is output_stream
+        if result is None: return output_stream
         if not isinstance(result, basestring):
             if hasattr(result, '__unicode__'): result = unicode(result)
             else: result = str(result)
