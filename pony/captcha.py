@@ -80,7 +80,6 @@ def generate_map():
     map = []
     
     for Y, ylist2 in ylist:
-        print '.',
         time.sleep(.01)
         for X, xlist2 in xlist:
             for y, xshift in ylist2:
@@ -167,7 +166,6 @@ class CaptchaThread(threading.Thread):
         self.setDaemon(True)
     def run(self):
         for i in range(10):
-            print i+1,
             time.sleep(1)
             if pony.shutdown: break
             map = generate_map()
@@ -180,6 +178,5 @@ if not pony.RUNNED_AS.startswith('GAE-'):
     if __name__ == '__main__':
         captcha_thread.join()
         for i in range(99):
-            print i+1,
             text, img = generate_captcha()
             img.save('captcha-%02d-%s.jpg' % (i+1, text))
