@@ -2,6 +2,8 @@ import sys, time, threading, random
 from os.path import dirname
 from itertools import count
 
+from pony.utils import decorator
+
 uid = str(random.randint(1, 1000000))
 
 def detect_mode():
@@ -35,6 +37,57 @@ if MAIN_FILE is not None: MAIN_DIR = dirname(MAIN_FILE)
 else: MAIN_DIR = None
 
 PONY_DIR = dirname(__file__)
+
+################################################################################
+
+try: real_stdout
+except NameError:
+    assert sys.stdout.__class__.__name__ != 'PonyStdout'
+    real_stdout = sys.stdout
+
+class Local(threading.local):
+    def __init__(self):
+        self.writers = []
+
+local = Local()
+
+class PonyStdout(object):
+    @staticmethod
+    def write(s):
+        try: f = local.writers[-1]
+        except IndexError: f = real_stdout.write
+        f(s)
+
+pony_stdout = PonyStdout()
+try:
+    pony_stdout.flush = real_stdout.flush
+    pony_stdout.seek = real_stdout.seek
+    pony_stdout.readline = real_stdout.readline
+except AttributeError: pass
+
+try: import pony._templating
+except ImportError: pass
+else: pony_stdout.write = pony._templating.write
+
+@decorator
+def grab_stdout(f):
+    def new_function(*args, **keyargs):
+        data = []
+        local.writers.append(data.append)
+        # The next line required for PythonWin interactive window
+        # (PythonWin resets stdout all the time)
+        sys.stdout = pony_stdout
+        try: result = f(*args, **keyargs)
+        finally:
+            if local.writers.pop() != data.append: raise AssertionError
+        if result is None: return data
+        if not isinstance(result, basestring):
+            if hasattr(result, '__unicode__'): result = unicode(result)
+            else: result = str(result)
+        return (result,)
+    return new_function
+
+################################################################################
 
 shutdown = False
 

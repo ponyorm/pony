@@ -1,7 +1,8 @@
 import pony
 
+from pony import real_stdout
 from pony.utils import markdown, json
-from pony.templating import real_stdout, printtext, printhtml, Html, cycle, template, html
+from pony.templating import printtext, printhtml, Html, cycle, template, html
 from pony.autoreload import use_autoreload, USE_AUTORELOAD
 from pony.auth import get_user, set_user, get_session
 from pony.web import main, application, webpage, http, url, link, Http404

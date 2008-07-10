@@ -9,7 +9,7 @@ import pony
 from pony import autoreload, auth, webutils, xslt
 from pony.autoreload import on_reload
 from pony.utils import decorator_with_params
-from pony.templating import Html, StrHtml, printhtml, real_stdout, plainstr
+from pony.templating import Html, StrHtml, printhtml, plainstr
 from pony.logging import log, log_exc
 from pony.xslt import xslt_function
 
