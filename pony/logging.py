@@ -107,7 +107,8 @@ class LoggerThread(threading.Thread):
         self.setDaemon(True)
     def run(self):
         from pony.thirdparty import sqlite
-        self.OperationalError = sqlite.OperationalError
+        global OperationalError
+        OperationalError = sqlite.OperationalError
         con = self.connection = sqlite.connect(get_logfile_name())
         try:
             con.execute("PRAGMA synchronous = OFF;")
@@ -156,7 +157,7 @@ class LoggerThread(threading.Thread):
             try:
                 con.executemany(sql_insert, rows)
                 con.commit()
-            except self.OperationalError:
+            except OperationalError:
                 con.rollback()
                 time.sleep(random.random())
             else: break
