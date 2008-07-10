@@ -746,31 +746,39 @@ def application(environ, wsgi_start_response):
     local.request
 
     request = local.request = HttpRequest(environ)
-    log_request(request)
+    error_stream = request.environ['wsgi.errors']
+    wsgi_errors_is_stderr = error_stream is sys.stderr
+    if not wsgi_errors_is_stderr: pony.local.error_streams.append(error_stream)
     try:
+        log_request(request)
         try:
-            if request.payload is not None:
-                form = cPickle.loads(request.payload)
-                form._handle_request_()
-                form = None
-            result = http_invoke(request.url)
-        finally:
-            if request.ticket and not request.form_processed and request.form_processed is not None:
-                auth.unexpire_ticket(request.ticket)
-    except HttpException, e:
-        start_response(e.status, e.headers)
-        return [ e.content ]
-    except:
-        log_exc()
-        start_response('500 Internal Server Error', {'Content-Type': 'text/html'})
-        return [ format_exc() ]
-    else:
-        response = local.response
-        start_response('200 OK', response.headers)
-        if not hasattr(result, 'read'): return [ result ]
-        # result is a file:
-        # return [ result.read() ]
-        return iter(lambda: result.read(BLOCK_SIZE), '')
+            try:
+                if request.payload is not None:
+                    form = cPickle.loads(request.payload)
+                    form._handle_request_()
+                    form = None
+                result = http_invoke(request.url)
+            finally:
+                if request.ticket and not request.form_processed and request.form_processed is not None:
+                    auth.unexpire_ticket(request.ticket)
+        except HttpException, e:
+            start_response(e.status, e.headers)
+            return [ e.content ]
+        except:
+            log_exc()
+            start_response('500 Internal Server Error', {'Content-Type': 'text/html'})
+            return [ format_exc() ]
+        else:
+            response = local.response
+            start_response('200 OK', response.headers)
+            if not hasattr(result, 'read'): return [ result ]
+            # result is a file:
+            # return [ result.read() ]
+            return iter(lambda: result.read(BLOCK_SIZE), '')
+    finally:
+        if not wsgi_errors_is_stderr:
+            top_stream = pony.local.error_streams.pop()
+            assert top_stream is error_stream
 
 def main():
     from pony.thirdparty.wsgiref.handlers import CGIHandler
