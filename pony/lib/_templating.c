@@ -13,7 +13,8 @@ static PyObject * unicodewrapper_make_new(PyObject *arg);
 static PyObject * replace_unicode(PyObject *source);
 static PyObject * replace_string(PyObject *source);
 static PyObject * createStrWrapperObject(PyObject *args);
-static PyObject * pony_write(PyObject *self, PyObject *s);
+static PyObject * write_to_stdout(PyObject *self, PyObject *s);
+static PyObject * write_to_stderr(PyObject *self, PyObject *s);
 
 static PyObject* ex_quote(PyObject *self, PyObject *args) {
     PyObject *arg_x;
@@ -1164,7 +1165,7 @@ static PyTypeObject UnicodeWrapper_Type = {
 
 
 static PyObject *
-pony_write(PyObject *self, PyObject *s)
+write_to_stdout(PyObject *self, PyObject *s)
 {
     PyObject *f, *real_stdout, *real_stdout_write, *writers, *ret;
     static PyObject *pmod = NULL;
@@ -1180,7 +1181,7 @@ pony_write(PyObject *self, PyObject *s)
             return NULL;
         }   
     }     
-    writers = PyObject_GetAttrString(local, "writers");   
+    writers = PyObject_GetAttrString(local, "stdout_writers");   
     if (writers == NULL) {
         return NULL;
     }
@@ -1211,9 +1212,58 @@ pony_write(PyObject *self, PyObject *s)
     return Py_None;    
 }
 
+static PyObject *
+write_to_stderr(PyObject *self, PyObject *s)
+{
+    PyObject *f, *real_stderr, *real_stderr_write, *writers, *ret;
+    static PyObject *pmod = NULL;
+    static PyObject *local = NULL; 
+    if (local == NULL || pmod == NULL) {
+        pmod = PyImport_ImportModule("pony.templating");
+        if (pmod == NULL) {
+            return NULL;        
+        }        
+        local = PyObject_GetAttrString(pmod, "local");   
+        if (local == NULL) {
+            Py_DECREF(pmod);
+            return NULL;
+        }   
+    }     
+    writers = PyObject_GetAttrString(local, "stderr_writers");   
+    if (writers == NULL) {
+        return NULL;
+    }
+    f = PyList_GetItem(writers, PyList_Size(writers) - 1);
+    if (PyErr_Occurred()) {
+        if (!PyErr_ExceptionMatches(PyExc_IndexError)) {            
+            return NULL;
+        } else {
+            PyErr_Clear();
+            real_stderr = PyObject_GetAttrString(pmod, "real_stderr");   
+            if (real_stderr == NULL) {
+                return NULL;
+            }  
+            real_stderr_write = PyObject_GetAttrString(real_stderr, "write");   
+            if (real_stderr_write == NULL) {
+                Py_DECREF(real_stderr);
+                return NULL;
+            }    
+            f = real_stderr_write;
+        }
+    }    
+    ret = PyObject_CallObject(f, s);    
+    if (ret == NULL) {
+        return NULL;
+    }
+    Py_DECREF(ret);      
+    Py_INCREF(Py_None);
+    return Py_None;    
+}
+
 static PyMethodDef _templating_methods[] = {
     {"quote", ex_quote, METH_VARARGS, "quote() doc string"},
-    {"write", pony_write, METH_VARARGS, "write() doc string"},
+    {"write_to_stdout", write_to_stdout, METH_VARARGS, "write_to_stdout(s) -> real_stdout.write(s)"},
+    {"write_to_stderr", write_to_stderr, METH_VARARGS, "write_to_stderr(s) -> real_stderr.write(s)"},
     {NULL, NULL}
 };
 

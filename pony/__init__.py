@@ -44,42 +44,52 @@ try: real_stdout
 except NameError:
     assert sys.stdout.__class__.__name__ != 'PonyStdout'
     real_stdout = sys.stdout
+    real_stderr = sys.stderr
 
 class Local(threading.local):
     def __init__(self):
-        self.writers = []
+        self.stdout_writers = [ real_stdout.write ]
+        self.stderr_writers = [ real_stderr.write ]
 
 local = Local()
 
 class PonyStdout(object):
-    @staticmethod
-    def write(s):
-        try: f = local.writers[-1]
-        except IndexError: f = real_stdout.write
-        f(s)
-
+    try: from pony._templating import write_to_stdout as write
+    except ImportError:
+        def write(s): local.stdout_writers[-1](s)
+    write = staticmethod(write)
 pony_stdout = PonyStdout()
 try:
     pony_stdout.flush = real_stdout.flush
     pony_stdout.seek = real_stdout.seek
     pony_stdout.readline = real_stdout.readline
 except AttributeError: pass
+sys.stdout = pony_stdout
 
-try: import pony._templating
-except ImportError: pass
-else: pony_stdout.write = pony._templating.write
+class PonyStderr(object):
+    try: from pony._templating import write_to_stderr as write
+    except ImportError:
+        def write(s): local.stderr_writers[-1](s)
+    write = staticmethod(write)
+pony_stderr = PonyStderr()
+try:
+    pony_stderr.flush = real_stderr.flush
+    pony_stderr.seek = real_stderr.seek
+    pony_stderr.readline = real_stderr.readline
+except AttributeError: pass
+sys.stderr = pony_stderr
 
 @decorator
 def grab_stdout(f):
     def new_function(*args, **keyargs):
         data = []
-        local.writers.append(data.append)
+        local.stdout_writers.append(data.append)
         # The next line required for PythonWin interactive window
         # (PythonWin resets stdout all the time)
         sys.stdout = pony_stdout
         try: result = f(*args, **keyargs)
         finally:
-            if local.writers.pop() != data.append: raise AssertionError
+            if local.stdout_writers.pop() != data.append: raise AssertionError
         if result is None: return data
         if not isinstance(result, basestring):
             if hasattr(result, '__unicode__'): result = unicode(result)
