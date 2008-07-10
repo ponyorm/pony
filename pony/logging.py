@@ -1,6 +1,8 @@
 import cPickle, os, os.path, Queue, random, re, sys, traceback, thread, threading, time
 from itertools import count
 
+from python import logging
+
 import pony
 from pony.utils import current_timestamp
 
