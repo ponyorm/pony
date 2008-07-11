@@ -25,8 +25,9 @@ if pony.MODE in ('CHERRYPY', 'INTERACTIVE'):
             else: keyargs = {}
             log(type='logging:%s' % record.levelname, text=record.getMessage(),
                 levelno=record.levelno, module=record.module, lineno=record.lineno, **keyargs)
-    logging.root.setLevel(logging.INFO)
-    logging.root.addHandler(PonyHandler())
+    if not logging.root.handlers:
+        logging.root.addHandler(PonyHandler())
+        logging.root.setLevel(logging.INFO)
 
 queue = Queue.Queue()
 
