@@ -24,7 +24,7 @@ if pony.MODE in ('CHERRYPY', 'INTERACTIVE'):
                 keyargs = {'exc_text': record.exc_text}
             else: keyargs = {}
             log(type='logging:%s' % record.levelname, text=record.getMessage(),
-                levelno=record.levelno, module=record.module, lineno=record.lineno, **keyargs)
+                severity=record.levelno, module=record.module, lineno=record.lineno, **keyargs)
     if not logging.root.handlers:
         logging.root.addHandler(PonyHandler())
         logging.root.setLevel(logging.INFO)
@@ -96,6 +96,7 @@ create table if not exists log (
     id           integer primary key, -- autoincremented row id
     timestamp    timestamp not null,  
     type         text not null,       -- for example HTTP:GET or SQL:SELECT
+    severity     integer,             
     process_id   integer  not null,
     thread_id    integer  not null,
     trans_id     integer,             -- reserved for future use; must be NULL
@@ -107,7 +108,7 @@ create index if not exists index_log_timestamp on log (timestamp, type);
 """
 
 sql_columns = '''
-id timestamp type process_id thread_id trans_id user text
+id timestamp type severity process_id thread_id trans_id user text
 '''.split()
 
 question_marks = ', '.join(['?'] * (len(sql_columns) + 1))
