@@ -746,9 +746,12 @@ def application(environ, wsgi_start_response):
     local.request
 
     request = local.request = HttpRequest(environ)
+    sys.stdout = pony.pony_stdout
+    sys.stderr = pony.pony_stderr
     error_stream = request.environ['wsgi.errors']
     wsgi_errors_is_stderr = error_stream is sys.stderr
     if not wsgi_errors_is_stderr: pony.local.error_streams.append(error_stream)
+    pony.local.output_streams.append(error_stream)
     try:
         log_request(request)
         try:
@@ -776,9 +779,11 @@ def application(environ, wsgi_start_response):
             # return [ result.read() ]
             return iter(lambda: result.read(BLOCK_SIZE), '')
     finally:
+        top_output_stream = pony.local.output_streams.pop()
+        assert top_output_stream is error_stream
         if not wsgi_errors_is_stderr:
-            top_stream = pony.local.error_streams.pop()
-            assert top_stream is error_stream
+            top_error_stream = pony.local.error_streams.pop()
+            assert top_error_stream is error_stream
 
 def main():
     from pony.thirdparty.wsgiref.handlers import CGIHandler
