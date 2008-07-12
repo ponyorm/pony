@@ -1,9 +1,10 @@
-from pony.main import *
-from pony import utils
-from pony.logging import search_log
-
 import pprint, threading, time
 from datetime import timedelta
+
+from pony import utils
+from pony.web import http
+from pony.logging import search_log
+
 from pony.templating import html, template
 
 @http('/pony/test')
