@@ -914,6 +914,8 @@ http = _Http()
 
 @decorator_with_params
 def webpage(old_func, *args, **keyargs):
+    if pony.MODE.startswith('GAE-'):
+        raise EnvironmentError('@webpage decorator does not work inside Google AppEngine. Use html() function instead.')
     return http(*args, **keyargs)(printhtml(old_func))
 
 class HttpException(Exception):

@@ -1,5 +1,6 @@
 import sys, os.path, threading, inspect, re, weakref, textwrap
 
+import pony
 from pony import grab_stdout
 from pony import i18n
 from pony.utils import read_text_file, is_ident, decorator, decorator_with_params, get_mtime
@@ -212,6 +213,8 @@ def printtext(old_func):
 
 @decorator
 def printhtml(old_func):
+    if pony.MODE.startswith('GAE-'):
+        raise EnvironmentError('@printhtml decorator does not work inside Google AppEngine. Use html() function instead.')
     decorators = getattr(old_func, 'decorators', set())
     if 'printhtml' in decorators: return old_func
     if decorators: raise TypeError(
