@@ -214,7 +214,8 @@ def printtext(old_func):
 @decorator
 def printhtml(old_func):
     if pony.MODE.startswith('GAE-'):
-        raise EnvironmentError('@printhtml decorator does not work inside Google AppEngine. Use html() function instead.')
+        raise EnvironmentError('@printhtml decorator does not work inside Google AppEngine.\n'
+                               'Use @http decorator and html() function instead.')
     decorators = getattr(old_func, 'decorators', set())
     if 'printhtml' in decorators: return old_func
     if decorators: raise TypeError(
