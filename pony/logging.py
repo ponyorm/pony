@@ -4,25 +4,42 @@ from itertools import count
 from python import logging
 
 import pony
+from pony import options
 from pony.utils import current_timestamp
 
 try: process_id = os.getpid()
 except AttributeError: # in GAE
     process_id = 0
 
+if pony.MODE.startswith('GAE-'): log_to_sqlite = False
+elif options.log_to_sqlite is not None: log_to_sqlite = options.log_to_sqlite
+else: log_to_sqlite = pony.MODE in ('CHERRYPY', 'INTERACTIVE')
+
+verbose = log_to_sqlite
+
+format = '[%(type)s] %(text)s'
+
 def log(*args, **record):
     if len(args) > 0: record['type'] = args[0]
     if len(args) > 1: record['text'] = args[1]
     if len(args) > 2: assert False
-    record['timestamp'] = current_timestamp()
-    record['process_id'] = process_id
-    record['thread_id'] = local.thread_id
-    record.setdefault('trans_id', None)
     record.setdefault('type', 'unknown')
     for field in 'user', 'text':
         value = record.setdefault(field, None)
         if isinstance(value, str): record[field] = value.decode('utf-8', 'replace')
-    queue.put(record)
+    if log_to_sqlite:
+        record['timestamp'] = current_timestamp()
+        record['process_id'] = process_id
+        record['thread_id'] = local.thread_id
+        record.setdefault('trans_id', None)
+        queue.put(record)
+    else:
+        type = record['type']
+        level = record.get('severity')
+        if level is not None: pass
+        elif 'traceback' in record: level = logging.ERROR
+        else: level = logging.INFO
+        logging.log(level, format, record)
 
 def log_exc():
     log(type='exception',
@@ -34,25 +51,6 @@ sql_re = re.compile('^\s*(\w+)')
 def log_sql(sql, params=()):
     command = (sql_re.match(sql).group(1) or '?').upper()
     log(type='SQL:'+command, text=sql, params=params)
-
-if pony.MODE in ('CHERRYPY', 'INTERACTIVE'):
-    prev_showwarning = warnings.showwarning
-    def showwarning(message, category, filename, lineno):
-        log(type='warning', text=str(message), category=category.__name__, filename=filename, lineno=lineno)
-        prev_showwarning(message, category, filename, lineno)
-    warnings.showwarning = showwarning
-
-    class PonyHandler(logging.Handler):
-        def emit(self, record):
-            if record.exc_info:
-                if not record.exc_text: record.exc_text = logging._defaultFormatter.formatException(record.exc_info)
-                keyargs = {'exc_text': record.exc_text}
-            else: keyargs = {}
-            log(type='logging:%s' % record.levelname, text=record.getMessage(),
-                severity=record.levelno, module=record.module, lineno=record.lineno, **keyargs)
-    if not logging.root.handlers:
-        logging.root.addHandler(PonyHandler())
-        logging.root.setLevel(logging.INFO)
 
 hdr_list = '''
 ACTUAL_SERVER_PROTOCOL
@@ -98,7 +96,29 @@ def decompress_record(record):
                        for (header, value) in record['headers'].items())
         record['headers'] = headers
 
-if not pony.MODE.startswith('GAE-'):
+if not log_to_sqlite:
+    if not logging.root.handlers:
+        if pony.MODE == 'MOD_WSGI': logging.root.setLevel(logging.WARNING)
+        else: logging.root.setLevel(logging.INFO)
+else:
+    prev_showwarning = warnings.showwarning
+    def showwarning(message, category, filename, lineno):
+        log(type='warning', text=str(message), category=category.__name__, filename=filename, lineno=lineno)
+        prev_showwarning(message, category, filename, lineno)
+    warnings.showwarning = showwarning
+
+    class PonyHandler(logging.Handler):
+        def emit(self, record):
+            if record.exc_info:
+                if not record.exc_text: record.exc_text = logging._defaultFormatter.formatException(record.exc_info)
+                keyargs = {'exc_text': record.exc_text}
+            else: keyargs = {}
+            log(type='logging:%s' % record.levelname, text=record.getMessage(),
+                severity=record.levelno, module=record.module, lineno=record.lineno, **keyargs)
+    if not logging.root.handlers:
+        logging.root.addHandler(PonyHandler())
+        logging.root.setLevel(logging.INFO)
+
     queue = Queue.Queue()
 
     class Local(threading.local):

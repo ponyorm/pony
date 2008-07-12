@@ -12,7 +12,9 @@ from pony.forms import (Form, Hidden, Submit, Reset,
                         Composite, Grid)
 from pony.gui.tkgui import show_gui
 
-import pony.gui.webgui
+try: import pony.gui.webgui
+except ImportError: pass  # may happen if pony.options.log_to_sqlite = False
+
 import pony.layouts.blueprint
 import pony.images
 

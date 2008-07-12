@@ -798,7 +798,7 @@ class   ServerStopException(ServerException): pass
 class     ServerNotStarted(ServerStopException): pass
 
 class ServerThread(threading.Thread):
-    def __init__(self, host, port, application, verbose):
+    def __init__(self, host, port, application):
         server = server_threads.setdefault((host, port), self)
         if server != self: raise ServerAlreadyStarted('HTTP server already started: %s:%s' % (host, port))
         threading.Thread.__init__(self)
@@ -806,24 +806,23 @@ class ServerThread(threading.Thread):
         self.port = port
         from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
         self.server = CherryPyWSGIServer((host, port), application, server_name=host)
-        self.verbose = verbose
         self.setDaemon(True)
     def run(self):
         msg = 'Starting HTTP server at %s:%s' % (self.host, self.port)
         log('HTTP:start', msg + (', uid=%s' % pony.uid))
-        if self.verbose: print>>sys.stderr, msg
+        if pony.logging.verbose: print>>sys.stderr, msg
         self.server.start()
         msg = 'HTTP server at %s:%s stopped successfully' % (self.host, self.port)
         log('HTTP:stop', msg)
-        if self.verbose: print>>sys.stderr, msg
+        if pony.logging.verbose: print>>sys.stderr, msg
         server_threads.pop((self.host, self.port), None)
 
-def start_http_server(address='localhost:8080', verbose=True):
+def start_http_server(address='localhost:8080'):
     if pony.MODE.startswith('GAE-'): main(); return
     elif pony.MODE not in ('INTERACTIVE', 'CHERRYPY'): return
     pony._do_mainloop = True
     host, port = webutils.parse_address(address)
-    try: server_thread = ServerThread(host, port, application, verbose=verbose)
+    try: server_thread = ServerThread(host, port, application)
     except ServerAlreadyStarted:
         if not autoreload.reloading: raise
     else: server_thread.start()
