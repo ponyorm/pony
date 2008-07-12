@@ -96,9 +96,12 @@ def decompress_record(record):
                        for (header, value) in record['headers'].items())
         record['headers'] = headers
 
+if options.logging_base_level is not None: base_lebel = options.logging_base_level
+elif pony.MODE == 'MOD_WSGI': base_level = logging.WARNING
+else: base_level = logging.INFO
+
 if not log_to_sqlite:
-    if pony.MODE == 'MOD_WSGI': logging.basicConfig(level=logging.WARNING)
-    else: logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=base_level)
     pony_logger = logging.getLogger('pony')
 else:
     prev_showwarning = warnings.showwarning
