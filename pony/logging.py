@@ -39,7 +39,7 @@ def log(*args, **record):
         if level is not None: pass
         elif 'traceback' in record: level = logging.ERROR
         else: level = logging.INFO
-        logging.log(level, format, record)
+        pony_logger.log(level, format, record)
 
 def log_exc():
     log(type='exception',
@@ -97,9 +97,9 @@ def decompress_record(record):
         record['headers'] = headers
 
 if not log_to_sqlite:
-    if not logging.root.handlers:
-        if pony.MODE == 'MOD_WSGI': logging.root.setLevel(logging.WARNING)
-        else: logging.root.setLevel(logging.INFO)
+    if pony.MODE == 'MOD_WSGI': logging.basicConfig(level=logging.WARNING)
+    else: logging.basicConfig(level=logging.INFO)
+    pony_logger = logging.getLogger('pony')
 else:
     prev_showwarning = warnings.showwarning
     def showwarning(message, category, filename, lineno):
