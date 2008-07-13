@@ -3,7 +3,7 @@ import itertools, linecache, sys, time, os, imp, traceback
 from os.path import abspath, basename, dirname, exists, splitext
 
 import pony
-from pony.logging import log, log_exc
+from pony.logging import log, log_exc, ERROR, DEBUG
 
 USE_AUTORELOAD = True
 
@@ -32,9 +32,10 @@ def reload(modules, changed_module, filename):
     global reloading
     reloading = True
     success = True
-    if pony.logging.verbose: print>>sys.stderr, 'RELOADING: %s' % shortened_module_name(filename)
-    log('RELOAD:begin', text='Changed: %s' % changed_module.__name__,
-        modules=dict((m.__name__, m.__file__) for m in modules))
+    module_name = shortened_module_name(filename)
+    if pony.logging.verbose: print>>sys.stderr, 'RELOADING: %s' % module_name
+    log(type='RELOAD:begin', prefix='RELOADING: ', text=module_name, severity=ERROR,
+        module=changed_module.__name__, modules=dict((m.__name__, m.__file__) for m in modules))
     try:
         try:
             for clear_func in clear_funcs: clear_func()
@@ -47,8 +48,8 @@ def reload(modules, changed_module, filename):
             log_exc()
             raise
     finally:
-        log('RELOAD:end', success=success,
-            text=success and 'Reloaded successfully' or 'Reloaded with errors')
+        log(type='RELOAD:end', severity=DEBUG,
+            text=success and 'Reloaded successfully' or 'Reloaded with errors', success=success)
         reloading = False
 
 def use_autoreload():

@@ -1,5 +1,4 @@
-import re, threading, os.path, inspect, sys
-import cgi, cgitb, urllib, Cookie, cPickle, time
+import re, threading, os.path, inspect, sys, warnings, cgi, cgitb, urllib, Cookie, cPickle, time
 
 from cStringIO import StringIO
 from itertools import imap, izip, count
@@ -10,7 +9,7 @@ from pony import autoreload, auth, webutils, xslt
 from pony.autoreload import on_reload
 from pony.utils import decorator_with_params
 from pony.templating import Html, StrHtml, printhtml, plainstr
-from pony.logging import log, log_exc
+from pony.logging import log, log_exc, DEBUG, WARNING
 from pony.xslt import xslt_function
 
 class NodefaultType(object):
@@ -181,7 +180,7 @@ class HttpInfo(object):
         try:
             for info, _, _ in get_http_handlers(self.path, qdict, self.host, self.port):
                 if url_map == get_url_map(info):
-                    log(type='Warning:URL', text='Route already in use (old handler was removed): %s' % info.url)
+                    warnings.warn('Route already in use (old handler was removed): %s' % info.url)
                     _http_remove(info)
             d, list1, list2 = http_registry
             for is_param, x in self.parsed_path:
@@ -724,12 +723,13 @@ def log_request(request):
     headers=dict((key, value) for key, value in environ.items()
                               if isinstance(key, basestring)
                               and isinstance(value, basestring))
-    request_type = 'HTTP:%s' % environ.get('REQUEST_METHOD', 'GET')
+    method = environ.get('REQUEST_METHOD', 'GET')
+    request_type = 'HTTP:%s' % method
     user = auth.local.user
     if user is not None and not isinstance(user, (int, long, basestring)):
         user = unicode(user)
-    log(type=request_type, text=request.full_url, headers=headers,
-        user=user, session=auth.local.session)
+    log(type=request_type, prefix=method+' ', text=request.full_url, severity=DEBUG,
+        headers=headers, user=user, session=auth.local.session)
 
 BLOCK_SIZE = 65536
 
@@ -737,7 +737,7 @@ def application(environ, wsgi_start_response):
     def start_response(status, headers):
         headers = [ (name, str(value)) for name, value in headers.items() ]
         headers.extend(create_cookies(environ))
-        log(type='HTTP:response', text=status, headers=headers)
+        log(type='HTTP:response', prefix='Response: ', text=status, severity=DEBUG, headers=headers)
         wsgi_start_response(status, headers)
 
     # This next line is required, because it hase possible side-effect
@@ -809,11 +809,11 @@ class ServerThread(threading.Thread):
         self.setDaemon(True)
     def run(self):
         msg = 'Starting HTTP server at %s:%s' % (self.host, self.port)
-        log('HTTP:start', msg + (', uid=%s' % pony.uid))
+        log(type='HTTP:start', text=msg, severity=WARNING, host=self.host, port=self.port, uid=pony.uid)
         if pony.logging.verbose: print>>sys.stderr, msg
         self.server.start()
         msg = 'HTTP server at %s:%s stopped successfully' % (self.host, self.port)
-        log('HTTP:stop', msg)
+        log(type='HTTP:stop', text=msg, severity=WARNING, host=self.host, port=self.port)
         if pony.logging.verbose: print>>sys.stderr, msg
         server_threads.pop((self.host, self.port), None)
 

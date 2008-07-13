@@ -2,6 +2,12 @@ import cPickle, os, os.path, Queue, random, re, sys, traceback, thread, threadin
 from itertools import count
 
 from python import logging
+NOTSET = logging.NOTSET
+DEBUG = logging.DEBUG
+INFO = logging.INFO
+WARNING = logging.WARNING
+ERROR = logging.ERROR
+CRITICAL = logging.CRITICAL
 
 import pony
 from pony import options
@@ -16,39 +22,39 @@ else: log_to_sqlite = pony.MODE in ('CHERRYPY', 'INTERACTIVE')
 
 verbose = log_to_sqlite
 
-format = '[%(type)s] %(text)s'
-
 def log(*args, **record):
-    if len(args) > 0: record['type'] = args[0]
-    if len(args) > 1: record['text'] = args[1]
-    if len(args) > 2: assert False
+    if args:
+        record['type'] = args[0]
+        if len(args) > 1:
+            record['text'] = args[1]
+            assert len(args) == 2
     record.setdefault('type', 'unknown')
     for field in 'user', 'text':
-        value = record.setdefault(field, None)
+        value = record.get(field)
         if isinstance(value, str): record[field] = value.decode('utf-8', 'replace')
-    if log_to_sqlite:
+    if not log_to_sqlite:
+        level = record.get('severity') or INFO
+        prefix = record.get('prefix', '')
+        message = prefix + record.get('text', '')
+        traceback = record.get('traceback')
+        if traceback: message = ''.join((message, '\n', traceback))
+        if message: pony_logger.log(level, message)
+    else:
         record['timestamp'] = current_timestamp()
         record['process_id'] = process_id
         record['thread_id'] = local.thread_id
         record.setdefault('trans_id', None)
-        queue.put(record)
-    else:
-        type = record['type']
-        level = record.get('severity')
-        if level is not None: pass
-        elif 'traceback' in record: level = logging.ERROR
-        else: level = logging.INFO
-        pony_logger.log(level, format, record)
+        queue.put(record) # record can be modified inside LoggerThread
 
 def log_exc():
-    log(type='exception', text=traceback.format_exception_only(*sys.exc_info()[:2])[-1][:-1],
-        traceback=traceback.format_exc())
+    log(type='exception', prefix='Exception: ', text=traceback.format_exception_only(*sys.exc_info()[:2])[-1][:-1],
+        severity=WARNING, traceback=traceback.format_exc())
 
 sql_re = re.compile('^\s*(\w+)')
 
 def log_sql(sql, params=()):
     command = (sql_re.match(sql).group(1) or '?').upper()
-    log(type='SQL:'+command, text=sql, params=params)
+    log(type='SQL:'+command, prefix='SQL: ', text=sql, severity=DEBUG, params=params)
 
 hdr_list = '''
     ACTUAL_SERVER_PROTOCOL
@@ -92,17 +98,15 @@ def decompress_record(record):
         headers = dict((get(header, header), value) for (header, value) in record['headers'].items())
         record['headers'] = headers
 
-if options.logging_base_level is not None: base_lebel = options.logging_base_level
-elif pony.MODE == 'MOD_WSGI': base_level = logging.WARNING
-else: base_level = logging.INFO
-
 if not log_to_sqlite:
-    logging.basicConfig(level=base_level)
+    logging.basicConfig(level=options.logging_level or WARNING, format='%(message)s')
     pony_logger = logging.getLogger('pony')
+    pony_logger.setLevel(options.logging_pony_level or NOTSET)
 else:
     prev_showwarning = warnings.showwarning
     def showwarning(message, category, filename, lineno):
-        log(type='warning', text=str(message), category=category.__name__, filename=filename, lineno=lineno)
+        log(type='warning', prefix='Warning: ', text=str(message), severity=WARNING,
+            category=category.__name__, filename=filename, lineno=lineno)
         prev_showwarning(message, category, filename, lineno)
     warnings.showwarning = showwarning
 
@@ -116,7 +120,7 @@ else:
                 severity=record.levelno, module=record.module, lineno=record.lineno, **keyargs)
     if not logging.root.handlers:
         logging.root.addHandler(PonyHandler())
-        logging.root.setLevel(logging.INFO)
+        logging.root.setLevel(INFO)
 
     queue = Queue.Queue()
 
@@ -221,6 +225,7 @@ else:
         def save_records(self, records):
             rows = []
             for record in records:
+                record.pop('prefix', None)
                 compress_record(record)
                 row = [ record.pop(name, None) for name in sql_columns ]
                 row.append(buffer(cPickle.dumps(record, 2).encode('zip')))
@@ -237,10 +242,10 @@ else:
 
     @pony.on_shutdown
     def do_shutdown():
-        log(type='Log:shutdown')
+        log(type='Log:shutdown', severity=INFO)
         queue.put(None)
         logger_thread.join()
 
     logger_thread = LoggerThread()
     logger_thread.start()
-    log(type='Log:start')
+    log(type='Log:start', severity=INFO)
