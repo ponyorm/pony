@@ -9,7 +9,7 @@ from pony import autoreload, auth, webutils, xslt
 from pony.autoreload import on_reload
 from pony.utils import decorator_with_params
 from pony.templating import Html, StrHtml, printhtml, plainstr
-from pony.logging import log, log_exc, DEBUG, WARNING
+from pony.logging import log, log_exc, DEBUG, INFO, WARNING
 from pony.xslt import xslt_function
 
 class NodefaultType(object):
@@ -728,7 +728,7 @@ def log_request(request):
     user = auth.local.user
     if user is not None and not isinstance(user, (int, long, basestring)):
         user = unicode(user)
-    log(type=request_type, prefix=method+' ', text=request.full_url, severity=DEBUG,
+    log(type=request_type, prefix=method+' ', text=request.full_url, severity=INFO,
         headers=headers, user=user, session=auth.local.session)
 
 BLOCK_SIZE = 65536
@@ -808,13 +808,11 @@ class ServerThread(threading.Thread):
         self.server = CherryPyWSGIServer((host, port), application, server_name=host)
         self.setDaemon(True)
     def run(self):
-        msg = 'Starting HTTP server at %s:%s' % (self.host, self.port)
-        log(type='HTTP:start', text=msg, severity=WARNING, host=self.host, port=self.port, uid=pony.uid)
-        if pony.logging.verbose: print>>sys.stderr, msg
+        message = 'Starting HTTP server at %s:%s' % (self.host, self.port)
+        log(type='HTTP:start', text=message, severity=WARNING, host=self.host, port=self.port, uid=pony.uid)
         self.server.start()
-        msg = 'HTTP server at %s:%s stopped successfully' % (self.host, self.port)
-        log(type='HTTP:stop', text=msg, severity=WARNING, host=self.host, port=self.port)
-        if pony.logging.verbose: print>>sys.stderr, msg
+        message = 'HTTP server at %s:%s stopped successfully' % (self.host, self.port)
+        log(type='HTTP:stop', text=message, severity=WARNING, host=self.host, port=self.port)
         server_threads.pop((self.host, self.port), None)
 
 def start_http_server(address='localhost:8080'):

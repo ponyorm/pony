@@ -32,9 +32,7 @@ def reload(modules, changed_module, filename):
     global reloading
     reloading = True
     success = True
-    module_name = shortened_module_name(filename)
-    if pony.logging.verbose: print>>sys.stderr, 'RELOADING: %s' % module_name
-    log(type='RELOAD:begin', prefix='RELOADING: ', text=module_name, severity=ERROR,
+    log(type='RELOAD:begin', prefix='RELOADING: ', text=shortened_module_name(filename), severity=ERROR,
         module=changed_module.__name__, modules=dict((m.__name__, m.__file__) for m in modules))
     try:
         try:

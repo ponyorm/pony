@@ -20,7 +20,23 @@ if pony.MODE.startswith('GAE-'): log_to_sqlite = False
 elif options.log_to_sqlite is not None: log_to_sqlite = options.log_to_sqlite
 else: log_to_sqlite = pony.MODE in ('CHERRYPY', 'INTERACTIVE')
 
-verbose = log_to_sqlite
+logging.basicConfig(level=options.logging_level or INFO, format='%(message)s')
+root_logger = logging.root
+console_handler = None
+for handler in root_logger.handlers:
+    if isinstance(handler, logging.StreamHandler):
+        if handler.stream is pony.real_stderr: handler.stream = pony.pony_stderr # monkeypatching
+        if handler.stream is pony.pony_stderr: console_handler = handler
+
+pony_logger = logging.getLogger('pony')
+pony_logger.setLevel(options.logging_pony_level or WARNING)
+
+warnings_logger = logging.getLogger('warnings')
+prev_showwarning = warnings.showwarning
+def showwarning(message, category, filename, lineno):
+    text = warnings.formatwarning(message, category, filename, lineno)
+    warnings_logger.warning(text)
+warnings.showwarning = showwarning
 
 def log(*args, **record):
     if args:
@@ -32,14 +48,14 @@ def log(*args, **record):
     for field in 'user', 'text':
         value = record.get(field)
         if isinstance(value, str): record[field] = value.decode('utf-8', 'replace')
-    if not log_to_sqlite:
-        level = record.get('severity') or INFO
+    level = record.get('severity') or INFO
+    if pony_logger.level <= level and root_logger.level <= level and not record.get('type', '').startswith('logging:'):
         prefix = record.get('prefix', '')
         message = prefix + record.get('text', '')
         traceback = record.get('traceback')
         if traceback: message = ''.join((message, '\n', traceback))
         if message: pony_logger.log(level, message)
-    else:
+    if log_to_sqlite:
         record['timestamp'] = current_timestamp()
         record['process_id'] = process_id
         record['thread_id'] = local.thread_id
@@ -47,8 +63,8 @@ def log(*args, **record):
         queue.put(record) # record can be modified inside LoggerThread
 
 def log_exc():
-    log(type='exception', prefix='Exception: ', text=traceback.format_exception_only(*sys.exc_info()[:2])[-1][:-1],
-        severity=WARNING, traceback=traceback.format_exc())
+    log(type='exception', prefix='Exception: ', severity=WARNING,
+        text=traceback.format_exception_only(*sys.exc_info()[:2])[-1][:-1], traceback=traceback.format_exc())
 
 sql_re = re.compile('^\s*(\w+)')
 
@@ -98,29 +114,18 @@ def decompress_record(record):
         headers = dict((get(header, header), value) for (header, value) in record['headers'].items())
         record['headers'] = headers
 
-if not log_to_sqlite:
-    logging.basicConfig(level=options.logging_level or WARNING, format='%(message)s')
-    pony_logger = logging.getLogger('pony')
-    pony_logger.setLevel(options.logging_pony_level or NOTSET)
-else:
-    prev_showwarning = warnings.showwarning
-    def showwarning(message, category, filename, lineno):
-        log(type='warning', prefix='Warning: ', text=str(message), severity=WARNING,
-            category=category.__name__, filename=filename, lineno=lineno)
-        prev_showwarning(message, category, filename, lineno)
-    warnings.showwarning = showwarning
-
+if log_to_sqlite:
     class PonyHandler(logging.Handler):
         def emit(self, record):
+            if record.name == 'pony': return
             if record.exc_info:
                 if not record.exc_text: record.exc_text = logging._defaultFormatter.formatException(record.exc_info)
                 keyargs = {'exc_text': record.exc_text}
             else: keyargs = {}
-            log(type='logging:%s' % record.levelname, text=record.getMessage(),
+            log(type='logging:%s' % record.name, text=record.getMessage(),
                 severity=record.levelno, module=record.module, lineno=record.lineno, **keyargs)
-    if not logging.root.handlers:
-        logging.root.addHandler(PonyHandler())
-        logging.root.setLevel(INFO)
+    pony_handler = PonyHandler()
+    logging.root.addHandler(pony_handler)
 
     queue = Queue.Queue()
 
