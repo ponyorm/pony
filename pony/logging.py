@@ -8,8 +8,7 @@ from pony import options
 from pony.utils import current_timestamp
 
 try: process_id = os.getpid()
-except AttributeError: # in GAE
-    process_id = 0
+except AttributeError: process_id = 0 # in GAE
 
 if pony.MODE.startswith('GAE-'): log_to_sqlite = False
 elif options.log_to_sqlite is not None: log_to_sqlite = options.log_to_sqlite
@@ -42,8 +41,7 @@ def log(*args, **record):
         pony_logger.log(level, format, record)
 
 def log_exc():
-    log(type='exception',
-        text=traceback.format_exception_only(*sys.exc_info()[:2])[-1][:-1],
+    log(type='exception', text=traceback.format_exception_only(*sys.exc_info()[:2])[-1][:-1],
         traceback=traceback.format_exc())
 
 sql_re = re.compile('^\s*(\w+)')
@@ -53,29 +51,29 @@ def log_sql(sql, params=()):
     log(type='SQL:'+command, text=sql, params=params)
 
 hdr_list = '''
-ACTUAL_SERVER_PROTOCOL
-AUTH_TYPE
-HTTP_ACCEPT
-HTTP_ACCEPT_CHARSET
-HTTP_ACCEPT_ENCODING
-HTTP_ACCEPT_LANGUAGE
-HTTP_CONNECTION
-HTTP_COOKIE
-HTTP_HOST
-HTTP_KEEP_ALIVE
-HTTP_USER_AGENT
-PATH_INFO
-QUERY_STRING
-REMOTE_ADDR
-REMOTE_PORT
-REQUEST_METHOD
-SCRIPT_NAME
-SERVER_NAME
-SERVER_PORT
-SERVER_PROTOCOL
-SERVER_SOFTWARE
-wsgi.url_scheme
-'''.split()
+    ACTUAL_SERVER_PROTOCOL
+    AUTH_TYPE
+    HTTP_ACCEPT
+    HTTP_ACCEPT_CHARSET
+    HTTP_ACCEPT_ENCODING
+    HTTP_ACCEPT_LANGUAGE
+    HTTP_CONNECTION
+    HTTP_COOKIE
+    HTTP_HOST
+    HTTP_KEEP_ALIVE
+    HTTP_USER_AGENT
+    PATH_INFO
+    QUERY_STRING
+    REMOTE_ADDR
+    REMOTE_PORT
+    REQUEST_METHOD
+    SCRIPT_NAME
+    SERVER_NAME
+    SERVER_PORT
+    SERVER_PROTOCOL
+    SERVER_SOFTWARE
+    wsgi.url_scheme
+    '''.split()
 
 hdr_dict1 = dict((header, i) for i, header in enumerate(hdr_list))
 hdr_dict2 = dict(enumerate(hdr_list))
@@ -84,16 +82,14 @@ def compress_record(record):
     type = record['type']
     if type.startswith('HTTP:') and type[5].isupper():
         get = hdr_dict1.get
-        headers = dict((get(header, header), value)
-                       for (header, value) in record['headers'].items())
+        headers = dict((get(header, header), value) for (header, value) in record['headers'].items())
         record['headers'] = headers
 
 def decompress_record(record):
     type = record['type']
     if type.startswith('HTTP:') and type[5].isupper():
         get = hdr_dict2.get
-        headers = dict((get(header, header), value)
-                       for (header, value) in record['headers'].items())
+        headers = dict((get(header, header), value) for (header, value) in record['headers'].items())
         record['headers'] = headers
 
 if options.logging_base_level is not None: base_lebel = options.logging_base_level
@@ -211,11 +207,9 @@ else:
                 con.close()
         def execute_query(self, sql, params, result, lock):
             try:
-                try:
-                    cursor = self.connection.execute(sql, params)
+                try: cursor = self.connection.execute(sql, params)
                 except Exception, e:
-                    result.append(e)
-                    return
+                    result.append(e); return
                 for row in cursor:
                     record = cPickle.loads(str(row[-1]).decode('zip'))
                     for i, name in enumerate(sql_columns): record[name] = row[i]
