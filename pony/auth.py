@@ -3,12 +3,13 @@ from binascii import hexlify
 from urllib import quote_plus, unquote_plus
 
 import pony
+from pony import options
 from pony.utils import compress, decompress
 
 import pony.sessionstorage.ramstorage as storage
 
-MAX_CTIME_DIFF = 24*60
-MAX_MTIME_DIFF = 60
+MAX_CTIME_DIFF = options.auth_max_ctime_diff or 60*24
+MAX_MTIME_DIFF = options.auth_max_mtime_diff or 60*2
 
 def get_user():
     return local.user
