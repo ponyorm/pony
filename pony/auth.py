@@ -4,7 +4,7 @@ from urllib import quote_plus, unquote_plus
 
 import pony
 from pony import options
-from pony.utils import compress, decompress
+from pony.utils import compress, decompress, simple_decorator
 
 import pony.sessionstorage.ramstorage as storage
 
@@ -27,13 +27,19 @@ class Local(threading.local):
 
 local = Local()
 
-def get_user():
-    return local.user
+secret_cache = {}
 
 set_user = local.set_user
 
+def get_user():
+    return local.user
+
 def get_session():
     return local.session
+
+def get_hashobject(minute):
+    hashobject = secret_cache.get(minute) or _get_hashobject(minute)
+    return hashobject.copy()
 
 def load(data, environ):
     ip = environ.get('REMOTE_ADDR', '')
@@ -49,7 +55,7 @@ def load(data, environ):
             set_user(None); return
         pickle_data = base64.b64decode(pickle_str)
         hash = base64.b64decode(hash_str)
-        hashobject = _get_hashobject(mtime)
+        hashobject = get_hashobject(mtime)
         hashobject.update(ctime_str)
         hashobject.update(pickle_data)
         hashobject.update(user_agent)
@@ -80,7 +86,7 @@ def save(environ):
         if len(compressed_data) <= 10: # <= 4000
             pickle_data = 'A' + compressed_data
         else: pickle_data = 'B' + storage.putdata(compressed_data, local.ctime, now)
-        hashobject = _get_hashobject(now)
+        hashobject = get_hashobject(now)
         hashobject.update(ctime_str)
         hashobject.update(pickle_data)
         hashobject.update(user_agent)
@@ -106,7 +112,7 @@ def load_conversation(s):
         
         compressed_data = base64.b64decode(pickle_str, altchars='-_')
         hash = base64.b64decode(hash_str, altchars='-_')
-        hashobject = _get_hashobject(minute)
+        hashobject = get_hashobject(minute)
         hashobject.update(compressed_data)
         if hash != hashobject.digest():
             local.conversation = {}; return
@@ -130,7 +136,7 @@ def save_conversation():
     now = int(time.time() // 60)
     now_str = '%x' % now
     compressed_data = compress(cPickle.dumps(c, 2))
-    hashobject = _get_hashobject(now)
+    hashobject = get_hashobject(now)
     hashobject.update(compressed_data)
     hash = hashobject.digest()
 
@@ -148,7 +154,7 @@ def get_ticket(payload=None, prevent_resubmit=False):
     now = int(time.time()) // 60
     now_str = '%x' % now
     rnd = os.urandom(8)
-    hashobject = _get_hashobject(now)
+    hashobject = get_hashobject(now)
     hashobject.update(rnd)
     hashobject.update(payload)
     hashobject.update(cPickle.dumps(local.user, 2))
@@ -170,7 +176,7 @@ def verify_ticket(ticket_str):
         if len(rnd) != 8: return False, None
         payload = base64.b64decode(payload_str)
         hash = base64.b64decode(hash_str)
-        hashobject = _get_hashobject(minute)
+        hashobject = get_hashobject(minute)
         hashobject.update(rnd)
         hashobject.update(payload)
         hashobject.update(cPickle.dumps(local.user, 2))
@@ -188,28 +194,54 @@ def unexpire_ticket(ticket_id):
     minute, rnd = ticket_id
     _unexpire_ticket(minute, rnd)
     
-secret_cache = {}
-
 if not pony.MODE.startswith('GAE-'):
 
     queue = Queue.Queue()
 
-    def _verify_ticket(minute, rnd):
-        result = []
-        queue.put((2, minute, buffer(rnd), local.lock, result))
+    @simple_decorator
+    def exec_in_auth_thread(f, *args, **keyargs):
+        result_holder = []
+        queue.put((local.lock, f, args, keyargs, result_holder))
         local.lock.acquire()
-        return result[0]
+        return result_holder[0]
 
+    @simple_decorator
+    def exec_async(f, *args, **keyargs):
+        queue.put((None, f, args, keyargs, None))
+
+    connection = None
+
+    @exec_in_auth_thread
+    def _verify_ticket(minute, rnd):
+        rnd = buffer(rnd)
+        row = connection.execute('select rowid from used_tickets where minute = ? and rnd = ?', [minute, rnd]).fetchone()
+        if row is None: connection.execute('insert or ignore into used_tickets values(?, ?)', [minute, rnd])
+        connection.commit()
+        return row is None and True or None
+
+    @exec_async
     def _unexpire_ticket(minute, rnd):
-        queue.put((3, minute, buffer(rnd)))
+        connection.execute('delete from used_tickets where minute = ? and rnd = ?', [minute, buffer(rnd)])
+        connection.commit()
 
+    @exec_in_auth_thread
     def _get_hashobject(minute):
-        hashobject = secret_cache.get(minute)
-        if hashobject is None:
-            queue.put((1, minute, local.lock))
-            local.lock.acquire()
-            hashobject = secret_cache[minute]
-        return hashobject.copy()
+        result = secret_cache.get(minute)
+        if result: return result
+        row = connection.execute('select secret from time_secrets where minute = ?', [minute]).fetchone()
+        if row is None:
+            now = int(time.time() // 60)
+            old = now - MAX_MTIME_DIFF
+            secret = os.urandom(32)
+            connection.execute('delete from used_tickets where minute < ?', [ old ])
+            connection.execute('delete from time_secrets where minute < ?', [ old ])
+            connection.execute('insert or ignore into time_secrets values(?, ?)', [ minute, buffer(secret) ])
+            row = connection.execute('select secret from time_secrets where minute = ?', [minute]).fetchone()
+            connection.commit()
+        else: connection.rollback()
+        secret = str(row[0])
+        secret_cache[minute] = result = hmac.new(secret, digestmod=sha)
+        return result
 
     def get_sessiondb_name():
         # This function returns relative path, if possible.
@@ -238,62 +270,27 @@ if not pony.MODE.startswith('GAE-'):
             self.setDaemon(True)
         def run(self):
             from pony.thirdparty import sqlite
-            con = self.connection = sqlite.connect(get_sessiondb_name())
+            global connection
+            connection = sqlite.connect(get_sessiondb_name())
             try:
-                con.execute("PRAGMA synchronous = OFF;")
-                con.executescript(sql_create)
-                for minute, secret in con.execute('select * from time_secrets'):
+                connection.execute("PRAGMA synchronous = OFF;")
+                connection.executescript(sql_create)
+                for minute, secret in connection.execute('select * from time_secrets'):
                     secret_cache[minute] = hmac.new(str(secret), digestmod=sha)
-                self.connection.commit()
+                connection.commit()
                 while True:
                     x = queue.get()
                     if x is None: break
+                    lock, func, args, keyargs, result_holder = x
                     while True:
-                        try:
-                            action = x[0]
-                            if action == 1: self._get_hashobject(*x[1:])
-                            elif action == 2: self._verify_ticket(*x[1:])
-                            elif action == 3: self._unexpire_ticket(*x[1:])
-                            else: assert False
+                        try: result = func(*args, **keyargs)
                         except sqlite.OperationalError:
-                            con.rollback()
+                            connection.rollback()
                             time.sleep(random.random())
                         else: break
-            finally:
-                con.close()
-        def _get_hashobject(self, minute, lock):
-            if minute in secret_cache:
-                lock.release()
-                return
-            con = self.connection
-            row = con.execute('select secret from time_secrets where minute = ?', [minute]).fetchone()
-            if row is not None:
-                con.rollback()
-                secret_cache[minute] = str(row[0])
-                lock.release()
-                return
-            now = int(time.time() // 60)
-            old = now - MAX_MTIME_DIFF
-            secret = os.urandom(32)
-            con.execute('delete from used_tickets where minute < ?', [ old ])
-            con.execute('delete from time_secrets where minute < ?', [ old ])
-            con.execute('insert or ignore into time_secrets values(?, ?)', [ minute, buffer(secret) ])
-            row = con.execute('select secret from time_secrets where minute = ?', [minute]).fetchone()
-            con.commit()
-            secret = str(row[0])
-            secret_cache[minute] = hmac.new(secret, digestmod=sha)
-            lock.release()
-        def _verify_ticket(self, minute, rnd, lock, result):
-            con = self.connection
-            row = con.execute('select rowid from used_tickets where minute = ? and rnd = ?', [minute, rnd]).fetchone()
-            if row is None: con.execute('insert or ignore into used_tickets values(?, ?)', [minute, rnd])
-            con.commit()
-            result.append(row is None and True or None)
-            lock.release()
-        def _unexpire_ticket(self, minute, rnd):
-            con = self.connection
-            con.execute('delete from used_tickets where minute = ? and rnd = ?', [minute, rnd])
-            con.commit()
+                    if result_holder is not None: result_holder.append(result)
+                    if lock is not None: lock.release()
+            finally: connection.close()
 
     @pony.on_shutdown
     def do_shutdown():
