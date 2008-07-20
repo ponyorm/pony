@@ -11,11 +11,26 @@ import pony.sessionstorage.ramstorage as storage
 MAX_CTIME_DIFF = options.auth_max_ctime_diff or 60*24
 MAX_MTIME_DIFF = options.auth_max_mtime_diff or 60*2
 
+class Local(threading.local):
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.lock.acquire()
+        self.old_data = None
+        self.session = {}
+        self.user = None
+        self.conversation = {}
+        self.set_user(None)
+    def set_user(self, user, remember_ip=False, path='/', domain=None):
+        if self.user is not None or user is None: self.session.clear()
+        now = int(time.time() // 60)
+        self.__dict__.update(user=user, ctime=now, mtime=now, remember_ip=remember_ip, path=path, domain=domain)
+
+local = Local()
+
 def get_user():
     return local.user
 
-def set_user(user, remember_ip=False, path='/', domain=None):
-    local.set_user(user, remember_ip, path, domain)
+set_user = local.set_user
 
 def get_session():
     return local.session
@@ -173,27 +188,6 @@ def unexpire_ticket(ticket_id):
     minute, rnd = ticket_id
     _unexpire_ticket(minute, rnd)
     
-
-################################################################################
-
-class Local(threading.local):
-    def __init__(self):
-        self.lock = threading.Lock()
-        self.lock.acquire()
-        self.old_data = None
-        self.session = {}
-        self.user = None
-        self.set_user(None)
-        self.conversation = {}
-    def set_user(self, user, remember_ip=False, path='/', domain=None):
-        if self.user is not None or user is None: self.session.clear()
-        self.user = user
-        self.ctime = self.mtime = int(time.time() // 60)
-        self.remember_ip = False
-        self.path = path
-        self.domain = domain
-
-local = Local()
 secret_cache = {}
 
 if not pony.MODE.startswith('GAE-'):
