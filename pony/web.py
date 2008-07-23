@@ -740,7 +740,7 @@ def application(environ, wsgi_start_response):
         log(type='HTTP:response', prefix='Response: ', text=status, severity=DEBUG, headers=headers)
         wsgi_start_response(status, headers)
 
-    # This next line is required, because it hase possible side-effect
+    # This next line is required, because it has possible side-effect
     # (initialization of new dummy request in frest thread)
     # It must be done before creation of non-dummy request
     local.request
