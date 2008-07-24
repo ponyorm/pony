@@ -5,8 +5,11 @@ from urllib import quote_plus, unquote_plus
 import pony
 from pony import options
 from pony.utils import compress, decompress, simple_decorator
+from pony.sessionstorage import ramstorage as storage
 
-import pony.sessionstorage.ramstorage as storage
+COOKIE_NAME = options.auth_cookie_name or 'pony'
+COOKIE_PATH = options.auth_cookie_path or '/'
+COOKIE_DOMAIN = options.auth_cookie_domain or None
 
 MAX_CTIME_DIFF = options.auth_max_ctime_diff or 60*24
 MAX_MTIME_DIFF = options.auth_max_mtime_diff or 60*2
@@ -20,10 +23,10 @@ class Local(threading.local):
         self.user = None
         self.conversation = {}
         self.set_user(None)
-    def set_user(self, user, remember_ip=False, path='/', domain=None):
+    def set_user(self, user, remember_ip=False):
         if self.user is not None or user is None: self.session.clear()
         now = int(time.time() // 60)
-        self.__dict__.update(user=user, ctime=now, mtime=now, remember_ip=remember_ip, path=path, domain=domain)
+        self.__dict__.update(user=user, ctime=now, mtime=now, remember_ip=remember_ip)
 
 local = Local()
 
@@ -70,7 +73,7 @@ def load(data, environ):
             compressed_data = storage.getdata(pickle_data[1:], ctime, mtime)
         else: set_user(None); return
         info = cPickle.loads(decompress(compressed_data))
-        local.user, local.session, local.domain, local.path = info
+        local.user, local.session = info
     except: set_user(None)
 
 def save(environ):
@@ -81,7 +84,7 @@ def save(environ):
     mtime_str = '%x' % now
     if local.user is None and not local.session: data = 'None'
     else:
-        info = local.user, local.session, local.domain, local.path
+        info = local.user, local.session
         compressed_data = compress(cPickle.dumps(info, 2))
         if len(compressed_data) <= 10: # <= 4000
             pickle_data = 'A' + compressed_data
@@ -94,8 +97,8 @@ def save(environ):
         pickle_str = base64.b64encode(pickle_data)
         hash_str = base64.b64encode(hashobject.digest())
         data = ':'.join([ctime_str, mtime_str, pickle_str, hash_str])
-    if data == local.old_data: return None, None, None
-    return data, local.domain, local.path
+    if data == local.old_data: return None
+    return data
 
 def get_conversation(s):
     return local.conversation

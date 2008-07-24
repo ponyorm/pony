@@ -569,8 +569,9 @@ http_only_incompatible_browsers = re.compile(r'''
 ONE_MONTH = 60*60*24*31
 
 def create_cookies(environ):
-    data, domain, path = auth.save(environ)
-    if data is not None: set_cookie('pony', data, ONE_MONTH, ONE_MONTH, path or '/', domain, http_only=True)
+    data = auth.save(environ)
+    if data is not None: set_cookie(auth.COOKIE_NAME, data, ONE_MONTH, ONE_MONTH,
+                                    auth.COOKIE_PATH, auth.COOKIE_DOMAIN, http_only=True)
     user_agent = environ.get('HTTP_USER_AGENT', '')
     support_http_only = http_only_incompatible_browsers.search(user_agent) is None
     response = local.response
@@ -880,8 +881,8 @@ class _Http(object):
 
     def get_user(self):
         return auth.get_user()
-    def set_user(self, user, remember_ip=False, path='/', domain=None):
-        auth.set_user(user, remember_ip, path, domain)
+    def set_user(self, user, remember_ip=False):
+        auth.set_user(user, remember_ip)
     user = property(get_user, set_user)
 
     def get_lang(self):
