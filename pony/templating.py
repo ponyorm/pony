@@ -1,4 +1,4 @@
-import sys, os.path, threading, inspect, re, weakref, textwrap
+import sys, os.path, threading, inspect, re, weakref, textwrap, copy_reg
 
 import pony
 from pony import grab_stdout
@@ -157,6 +157,16 @@ else:
     StrHtml2 = _templating.StrHtml2
     quote = _templating.quote
     del _wrap, Wrapper, UnicodeWrapper
+
+def load(s): return s
+
+def save_html(x): return load, (unicode(x),)
+copy_reg.pickle(Html, save_html)
+
+def save_strhtml(x): return load, (str.__str__(x),)
+copy_reg.pickle(StrHtml, save_strhtml)
+copy_reg.pickle(StrHtml2, save_strhtml)
+
     
 htmljoin = Html('').join
 

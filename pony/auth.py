@@ -124,15 +124,6 @@ def load_conversation(s):
 def save_conversation():
     c = local.conversation
     if not c: return ''
-    for key, value in c.items():
-        class_name = key.__class__.__name__
-        if class_name == 'StrHtml':
-            del c[key]
-            c[str.__str__(key)] = value
-        elif class_name == 'Html':
-            del c[key]
-            c[unicode.__unicode__(key)] = value
-            
     now = int(time.time() // 60)
     now_str = '%x' % now
     compressed_data = compress(cPickle.dumps(c, 2))
