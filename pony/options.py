@@ -4,10 +4,10 @@ logging_level = None
 logging_pony_level = None
 
 #auth options:
-auth_max_ctime_diff = None
-auth_max_mtime_diff = None
-auth_cookie_name = None
-auth_cookie_path = None
+auth_max_ctime_diff = 60*24
+auth_max_mtime_diff = 60*2
+auth_cookie_name = 'pony'
+auth_cookie_path = '/'
 auth_cookie_domain = None
 
 # pickle options:

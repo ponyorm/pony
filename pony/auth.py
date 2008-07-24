@@ -1,5 +1,9 @@
-import re, os, os.path, sys, time, random, threading, Queue, cPickle, base64, hmac, sha
+import re, os, os.path, sys, threading, hmac, sha
+from base64 import b64encode, b64decode
 from binascii import hexlify
+from cPickle import loads, dumps
+from random import random
+from time import time, sleep
 from urllib import quote_plus, unquote_plus
 
 import pony
@@ -7,26 +11,28 @@ from pony import options
 from pony.utils import compress, decompress, simple_decorator
 from pony.sessionstorage import ramstorage as storage
 
-COOKIE_NAME = options.auth_cookie_name or 'pony'
-COOKIE_PATH = options.auth_cookie_path or '/'
-COOKIE_DOMAIN = options.auth_cookie_domain or None
+COOKIE_NAME = options.auth_cookie_name
+COOKIE_PATH = options.auth_cookie_path
+COOKIE_DOMAIN = options.auth_cookie_domain
 
-MAX_CTIME_DIFF = options.auth_max_ctime_diff or 60*24
-MAX_MTIME_DIFF = options.auth_max_mtime_diff or 60*2
+MAX_CTIME_DIFF = options.auth_max_ctime_diff
+MAX_MTIME_DIFF = options.auth_max_mtime_diff
 
 class Local(threading.local):
     def __init__(self):
         self.lock = threading.Lock()
         self.lock.acquire()
-        self.old_data = None
-        self.session = {}
-        self.user = None
-        self.conversation = {}
-        self.set_user(None)
+        self.clear()
+    def clear(self):
+        now = int(time()) // 60
+        lock = self.lock
+        self.__dict__.clear()
+        self.__dict__.update(lock=lock, user=None, environ={}, session={}, conversation={}, ctime=now, mtime=now,
+                             cookie_value=None, remember_ip=False)
     def set_user(self, user, remember_ip=False):
         if self.user is not None or user is None: self.session.clear()
-        now = int(time.time() // 60)
-        self.__dict__.update(user=user, ctime=now, mtime=now, remember_ip=remember_ip)
+        self.user = user
+        self.remember_ip = remember_ip
 
 local = Local()
 
@@ -44,48 +50,53 @@ def get_hashobject(minute):
     hashobject = secret_cache.get(minute) or _get_hashobject(minute)
     return hashobject.copy()
 
-def load(data, environ):
+def load(cookie_value, environ):
+    local.clear()
+    local.environ = environ
     ip = environ.get('REMOTE_ADDR', '')
     user_agent = environ.get('HTTP_USER_AGENT', '')
-    local.old_data = data
-    now = int(time.time() // 60)
-    if data in (None, 'None'): set_user(None); return
+
+    local.cookie_value = cookie_value
+    now = int(time()) // 60
+    if cookie_value in (None, 'None'): return
     try:
-        ctime_str, mtime_str, pickle_str, hash_str = data.split(':')
+        ctime_str, mtime_str, pickle_str, hash_str = cookie_value.split(':')
         ctime = local.ctime = int(ctime_str, 16)
         mtime = local.mtime = int(mtime_str, 16)
-        if ctime < now - MAX_CTIME_DIFF or mtime < now - MAX_MTIME_DIFF or mtime > now + 1:
-            set_user(None); return
-        pickle_data = base64.b64decode(pickle_str)
-        hash = base64.b64decode(hash_str)
+        ctime_diff = now - ctime
+        mtime_diff = now - mtime
+        if ctime_diff < -1 or mtime_diff < -1: return
+        if ctime_diff > MAX_CTIME_DIFF or mtime_diff > MAX_MTIME_DIFF: return
+        pickle_data = b64decode(pickle_str)
+        hash = b64decode(hash_str)
         hashobject = get_hashobject(mtime)
         hashobject.update(ctime_str)
         hashobject.update(pickle_data)
         hashobject.update(user_agent)
         if hash != hashobject.digest():
             hashobject.update(ip)
-            if hash != hashobject.digest(): set_user(None); return
+            if hash != hashobject.digest(): return
             local.remember_ip = True
         else: local.remember_ip = False
         if pickle_data.startswith('A'):
             compressed_data = pickle_data[1:]
         elif pickle_data.startswith('B'):
             compressed_data = storage.getdata(pickle_data[1:], ctime, mtime)
-        else: set_user(None); return
-        info = cPickle.loads(decompress(compressed_data))
+        else: return
+        info = loads(decompress(compressed_data))
         local.user, local.session = info
-    except: set_user(None)
+    except: return
 
 def save(environ):
     ip = environ.get('REMOTE_ADDR', '')
     user_agent = environ.get('HTTP_USER_AGENT', '')
-    now = int(time.time() // 60)
+    now = int(time()) // 60
     ctime_str = '%x' % local.ctime
     mtime_str = '%x' % now
-    if local.user is None and not local.session: data = 'None'
+    if local.user is None and not local.session: cookie_value = 'None'
     else:
         info = local.user, local.session
-        compressed_data = compress(cPickle.dumps(info, 2))
+        compressed_data = compress(dumps(info, 2))
         if len(compressed_data) <= 10: # <= 4000
             pickle_data = 'A' + compressed_data
         else: pickle_data = 'B' + storage.putdata(compressed_data, local.ctime, now)
@@ -94,11 +105,11 @@ def save(environ):
         hashobject.update(pickle_data)
         hashobject.update(user_agent)
         if local.remember_ip: hash_object.update(ip)
-        pickle_str = base64.b64encode(pickle_data)
-        hash_str = base64.b64encode(hashobject.digest())
-        data = ':'.join([ctime_str, mtime_str, pickle_str, hash_str])
-    if data == local.old_data: return None
-    return data
+        pickle_str = b64encode(pickle_data)
+        hash_str = b64encode(hashobject.digest())
+        cookie_value = ':'.join([ctime_str, mtime_str, pickle_str, hash_str])
+    if cookie_value == local.cookie_value: return None
+    return cookie_value
 
 def get_conversation(s):
     return local.conversation
@@ -109,17 +120,17 @@ def load_conversation(s):
         s = unquote_plus(s)
         time_str, pickle_str, hash_str = s.split(':')
         minute = int(time_str, 16)
-        now = int(time.time() // 60)
+        now = int(time()) // 60
         if minute < now - MAX_MTIME_DIFF or minute > now + 1:
             local.conversation = {}; return
         
-        compressed_data = base64.b64decode(pickle_str, altchars='-_')
-        hash = base64.b64decode(hash_str, altchars='-_')
+        compressed_data = b64decode(pickle_str, altchars='-_')
+        hash = b64decode(hash_str, altchars='-_')
         hashobject = get_hashobject(minute)
         hashobject.update(compressed_data)
         if hash != hashobject.digest():
             local.conversation = {}; return
-        conversation = cPickle.loads(decompress(compressed_data))
+        conversation = loads(decompress(compressed_data))
         assert conversation.__class__ == dict
         local.conversation = conversation
     except: local.conversation = {}
@@ -127,15 +138,15 @@ def load_conversation(s):
 def save_conversation():
     c = local.conversation
     if not c: return ''
-    now = int(time.time() // 60)
+    now = int(time()) // 60
     now_str = '%x' % now
-    compressed_data = compress(cPickle.dumps(c, 2))
+    compressed_data = compress(dumps(c, 2))
     hashobject = get_hashobject(now)
     hashobject.update(compressed_data)
     hash = hashobject.digest()
 
-    pickle_str = base64.b64encode(compressed_data, altchars='-_')
-    hash_str = base64.b64encode(hashobject.digest(), altchars='-_')
+    pickle_str = b64encode(compressed_data, altchars='-_')
+    hash_str = b64encode(hashobject.digest(), altchars='-_')
     s = ':'.join((now_str, pickle_str, hash_str))
     return quote_plus(s, safe=':')
 
@@ -145,35 +156,35 @@ def get_ticket(payload=None, prevent_resubmit=False):
         assert isinstance(payload, str)
         payload = compress(payload)
         
-    now = int(time.time()) // 60
+    now = int(time()) // 60
     now_str = '%x' % now
     rnd = os.urandom(8)
     hashobject = get_hashobject(now)
     hashobject.update(rnd)
     hashobject.update(payload)
-    hashobject.update(cPickle.dumps(local.user, 2))
+    hashobject.update(dumps(local.user, 2))
     if prevent_resubmit: hashobject.update('+')
     hash = hashobject.digest()
 
-    payload_str = base64.b64encode(payload)
-    rnd_str = base64.b64encode(rnd)
-    hash_str = base64.b64encode(hash)
+    payload_str = b64encode(payload)
+    rnd_str = b64encode(rnd)
+    hash_str = b64encode(hash)
     return ':'.join((now_str, payload_str, rnd_str, hash_str))
 
 def verify_ticket(ticket_str):
-    now = int(time.time() // 60)
+    now = int(time()) // 60
     try:
         time_str, payload_str, rnd_str, hash_str = ticket_str.split(':')
         minute = int(time_str, 16)
         if minute < now - MAX_MTIME_DIFF or minute > now + 1: return False, None
-        rnd = base64.b64decode(rnd_str)
+        rnd = b64decode(rnd_str)
         if len(rnd) != 8: return False, None
-        payload = base64.b64decode(payload_str)
-        hash = base64.b64decode(hash_str)
+        payload = b64decode(payload_str)
+        hash = b64decode(hash_str)
         hashobject = get_hashobject(minute)
         hashobject.update(rnd)
         hashobject.update(payload)
-        hashobject.update(cPickle.dumps(local.user, 2))
+        hashobject.update(dumps(local.user, 2))
         if hash != hashobject.digest():
             hashobject.update('+')
             if hash != hashobject.digest(): return False, None
@@ -190,7 +201,8 @@ def unexpire_ticket(ticket_id):
     
 if not pony.MODE.startswith('GAE-'):
 
-    queue = Queue.Queue()
+    from Queue import Queue
+    queue = Queue()
 
     @simple_decorator
     def exec_in_auth_thread(f, *args, **keyargs):
@@ -224,7 +236,7 @@ if not pony.MODE.startswith('GAE-'):
         if result: return result
         row = connection.execute('select secret from time_secrets where minute = ?', [minute]).fetchone()
         if row is None:
-            now = int(time.time() // 60)
+            now = int(time()) // 60
             old = now - MAX_MTIME_DIFF
             secret = os.urandom(32)
             connection.execute('delete from used_tickets where minute < ?', [ old ])
@@ -280,7 +292,7 @@ if not pony.MODE.startswith('GAE-'):
                         try: result = func(*args, **keyargs)
                         except sqlite.OperationalError:
                             connection.rollback()
-                            time.sleep(random.random())
+                            sleep(random())
                         else: break
                     if result_holder is not None: result_holder.append(result)
                     if lock is not None: lock.release()
@@ -334,7 +346,7 @@ else:
         keystr = 'm%s' % minute
         secretobj = PonyTimeSecrets.get_by_key_name(keystr)
         if secretobj is None:
-            now = int(time.time() // 60)
+            now = int(time()) // 60
             old = now - MAX_MTIME_DIFF
             secret = os.urandom(32)
             for ticket in PonyUsedTickets.gql('where minute < :1', minute):
