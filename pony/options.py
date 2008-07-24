@@ -9,3 +9,6 @@ auth_max_mtime_diff = None
 auth_cookie_name = None
 auth_cookie_path = None
 auth_cookie_domain = None
+
+# pickle options:
+pickle_extension_codes_start_offset = 230

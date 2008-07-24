@@ -2,7 +2,7 @@ import sys, os.path, threading, inspect, re, weakref, textwrap, copy_reg
 
 import pony
 from pony import grab_stdout
-from pony import i18n
+from pony import options, i18n
 from pony.utils import read_text_file, is_ident, decorator, decorator_with_params, get_mtime
 
 try: from pony import _templating
@@ -158,15 +158,14 @@ else:
     quote = _templating.quote
     del _wrap, Wrapper, UnicodeWrapper
 
-def load(s): return s
+copy_reg.pickle(Html, lambda x: (unicode, (unicode(x),)))
+copy_reg.pickle(StrHtml, lambda x: (str, (str.__str__(x),)))
+copy_reg.pickle(StrHtml2, lambda x: (str, (str.__str__(x),)))
 
-def save_html(x): return load, (unicode(x),)
-copy_reg.pickle(Html, save_html)
-
-def save_strhtml(x): return load, (str.__str__(x),)
-copy_reg.pickle(StrHtml, save_strhtml)
-copy_reg.pickle(StrHtml2, save_strhtml)
-
+start_offset = options.pickle_extension_codes_start_offset
+if start_offset is not None:
+    copy_reg.add_extension('__builtin__', 'unicode', start_offset)
+    copy_reg.add_extension('__builtin__', 'str', start_offset+1)
     
 htmljoin = Html('').join
 
