@@ -524,7 +524,6 @@ class HttpResponse(object):
     def __init__(self):
         self.headers = {}
         self.cookies = Cookie.SimpleCookie()
-        self._http_only_cookies = set()
         self.conversation_data = ''
 
 class Local(threading.local):
@@ -543,10 +542,7 @@ def set_cookie(name, value, expires=None, max_age=None, path=None, domain=None,
                secure=False, http_only=False, comment=None, version=None):
     response = local.response
     cookies = response.cookies
-    if value is None:
-        cookies.pop(name, None)
-        response._http_only_cookies.discard(name)
-    else:
+    if value is not None:
         cookies[name] = value
         morsel = cookies[name]
         if expires is not None: morsel['expires'] = expires
@@ -556,14 +552,13 @@ def set_cookie(name, value, expires=None, max_age=None, path=None, domain=None,
         if comment is not None: morsel['comment'] = comment
         if version is not None: morsel['version'] = version
         if secure: morsel['secure'] = True
-        if http_only: response._http_only_cookies.add(name)
-        else: response._http_only_cookies.discard(name)
+        morsel.http_only = http_only
+    else: cookies.pop(name, None)
 
 http_only_incompatible_browsers = re.compile(r'''
     WebTV
     | MSIE[ ]5[.]0;[ ]Mac
-    | Firefox/[1][.]
-    | Firefox/[2][.][0](?:[.][0][.][0-5])?(?:\s|$)
+    | Firefox/[12][.]
 ''', re.VERBOSE)
 
 ONE_MONTH = 60*60*24*31
@@ -578,7 +573,7 @@ def create_cookies(environ):
     result = []
     for name, morsel in response.cookies.items():
         cookie = morsel.OutputString().rstrip()
-        if support_http_only and name in response._http_only_cookies:
+        if support_http_only and getattr(morsel, 'http_only', False):
             if not cookie.endswith(';'): cookie += '; HttpOnly'
             else: cookie += ' HttpOnly'
         result.append(('Set-Cookie', cookie))
