@@ -28,7 +28,8 @@ class Local(threading.local):
         lock = self.lock
         self.__dict__.clear()
         self.__dict__.update(lock=lock, user=None, environ={}, session={}, conversation={}, ctime=now, mtime=now,
-                             cookie_value=None, remember_ip=False)
+                             cookie_value=None, remember_ip=False,
+                             ticket=False, ticket_payload=None)
     def set_user(self, user, remember_ip=False):
         if self.user is not None or user is None: self.session.clear()
         self.user = user
@@ -50,15 +51,18 @@ def get_hashobject(minute):
     hashobject = secret_cache.get(minute) or _get_hashobject(minute)
     return hashobject.copy()
 
-def load(cookie_value, environ):
+def load(environ, cookies=None):
     local.clear()
     local.environ = environ
+    if cookies is None:
+        cookies =  Cookie.SimpleCookie()
+        if 'HTTP_COOKIE' in environ: cookies.load(environ['HTTP_COOKIE'])
+    morsel = cookies.get(COOKIE_NAME)
+    local.cookie_value = cookie_value = morsel and morsel.value or None
+    if not cookie_value: return
+    now = int(time()) // 60
     ip = environ.get('REMOTE_ADDR', '')
     user_agent = environ.get('HTTP_USER_AGENT', '')
-
-    local.cookie_value = cookie_value
-    now = int(time()) // 60
-    if cookie_value in (None, 'None'): return
     try:
         ctime_str, mtime_str, pickle_str, hash_str = cookie_value.split(':')
         ctime = local.ctime = int(ctime_str, 16)
@@ -87,13 +91,13 @@ def load(cookie_value, environ):
         local.user, local.session = info
     except: return
 
-def save(environ):
+def save(environ, cookies):
     ip = environ.get('REMOTE_ADDR', '')
     user_agent = environ.get('HTTP_USER_AGENT', '')
     now = int(time()) // 60
     ctime_str = '%x' % local.ctime
     mtime_str = '%x' % now
-    if local.user is None and not local.session: cookie_value = 'None'
+    if local.user is None and not local.session: cookie_value = ''
     else:
         info = local.user, local.session
         compressed_data = compress(dumps(info, 2))
@@ -176,9 +180,9 @@ def verify_ticket(ticket_str):
     try:
         time_str, payload_str, rnd_str, hash_str = ticket_str.split(':')
         minute = int(time_str, 16)
-        if minute < now - MAX_MTIME_DIFF or minute > now + 1: return False, None
+        if minute < now - MAX_MTIME_DIFF or minute > now + 1: return
         rnd = b64decode(rnd_str)
-        if len(rnd) != 8: return False, None
+        if len(rnd) != 8: return
         payload = b64decode(payload_str)
         hash = b64decode(hash_str)
         hashobject = get_hashobject(minute)
@@ -187,16 +191,17 @@ def verify_ticket(ticket_str):
         hashobject.update(dumps(local.user, 2))
         if hash != hashobject.digest():
             hashobject.update('+')
-            if hash != hashobject.digest(): return False, None
+            if hash != hashobject.digest(): return
             result = _verify_ticket(minute, rnd)
-            if not result: return result, None
+            if not result: local.ticket = result; return
         if payload: payload = decompress(payload)
-        return (minute, rnd), payload or None
-    except: return False, None
+        local.ticket = minute, rnd
+        local.ticket_payload = payload or None
+    except: return
 
-def unexpire_ticket(ticket_id):
-    if not ticket_id: return
-    minute, rnd = ticket_id
+def unexpire_ticket():
+    if not local.ticket: return
+    minute, rnd = local.ticket
     _unexpire_ticket(minute, rnd)
     
 if not pony.MODE.startswith('GAE-'):

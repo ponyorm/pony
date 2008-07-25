@@ -165,8 +165,8 @@ class Form(object):
             if not f.is_valid: return False
         for f in self.fields:
             if not f.is_valid: return False
-        if self._secure and not self._request.ticket:
-            return self._request.ticket  # may be False or None
+        if self._secure and not auth.local.ticket:
+            return auth.local.ticket  # may be False or None
         return True
     def _validate(self):
         if self._validated: return

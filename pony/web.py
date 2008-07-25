@@ -464,8 +464,9 @@ def _http_clear(dict, list1, list2):
 class HttpRequest(object):
     def __init__(self, environ):
         self.environ = environ
-        self.cookies = Cookie.SimpleCookie()
         self.method = environ.get('REQUEST_METHOD', 'GET')
+        self.cookies = Cookie.SimpleCookie()
+        if 'HTTP_COOKIE' in environ: self.cookies.load(environ['HTTP_COOKIE'])
         if environ:
             http_host = environ.get('HTTP_HOST')
             if http_host:
@@ -481,11 +482,6 @@ class HttpRequest(object):
             if query: self.url += '?' + query
             self.script_url = webutils.reconstruct_script_url(environ)
             self.full_url = self.script_url + self.url
-
-            if 'HTTP_COOKIE' in environ: self.cookies.load(environ['HTTP_COOKIE'])
-            morsel = self.cookies.get('pony')
-            session_data = morsel and morsel.value or None
-            auth.load(session_data, environ)
         else:
             self.script_url = ''
             self.url = '/'
@@ -499,9 +495,7 @@ class HttpRequest(object):
         self.fields = cgi.FieldStorage(fp=input_stream, environ=environ, keep_blank_values=True)
         self.form_processed = None
         self.submitted_form = self.fields.getfirst('_f')
-        self.ticket, self.payload = auth.verify_ticket(self.fields.getfirst('_t'))
         self.conversation_data = self.fields.getfirst('_c')
-        auth.load_conversation(self.conversation_data)
         self.id_counter = imap('id_%d'.__mod__, count())
         self.use_xslt = True
     def _get_languages(self):
@@ -563,15 +557,14 @@ http_only_incompatible_browsers = re.compile(r'''
 
 ONE_MONTH = 60*60*24*31
 
-def create_cookies(environ):
-    data = auth.save(environ)
+def create_cookies(environ, cookies):
+    data = auth.save(environ, cookies)
     if data is not None: set_cookie(auth.COOKIE_NAME, data, ONE_MONTH, ONE_MONTH,
                                     auth.COOKIE_PATH, auth.COOKIE_DOMAIN, http_only=True)
     user_agent = environ.get('HTTP_USER_AGENT', '')
     support_http_only = http_only_incompatible_browsers.search(user_agent) is None
-    response = local.response
     result = []
-    for name, morsel in response.cookies.items():
+    for name, morsel in cookies.items():
         cookie = morsel.OutputString().rstrip()
         if support_http_only and getattr(morsel, 'http_only', False):
             if not cookie.endswith(';'): cookie += '; HttpOnly'
@@ -729,51 +722,48 @@ def log_request(request):
 
 BLOCK_SIZE = 65536
 
-def application(environ, wsgi_start_response):
-    def start_response(status, headers):
-        headers = [ (name, str(value)) for name, value in headers.items() ]
-        headers.extend(create_cookies(environ))
-        log(type='HTTP:response', prefix='Response: ', text=status, severity=DEBUG, headers=headers)
-        wsgi_start_response(status, headers)
-
-    # This next line is required, because it has possible side-effect
-    # (initialization of new dummy request in frest thread)
-    # It must be done before creation of non-dummy request
-    local.request
-
-    request = local.request = HttpRequest(environ)
+def application(environ, start_response):
     sys.stdout = pony.pony_stdout
     sys.stderr = pony.pony_stderr
-    error_stream = request.environ['wsgi.errors']
+    error_stream = environ['wsgi.errors']
     wsgi_errors_is_stderr = error_stream is sys.stderr
     if not wsgi_errors_is_stderr: pony.local.error_streams.append(error_stream)
     pony.local.output_streams.append(error_stream)
+
+    request = local.request = HttpRequest(environ)
+    auth.load(environ, request.cookies)
+    auth.verify_ticket(request.fields.getfirst('_t'))
+    auth.load_conversation(request.conversation_data)
     try:
         log_request(request)
         try:
             try:
-                if request.payload is not None:
-                    form = cPickle.loads(request.payload)
+                if auth.local.ticket_payload is not None:
+                    form = cPickle.loads(auth.local.ticket_payload)
                     form._handle_request_()
                     form = None
                 result = http_invoke(request.url)
             finally:
-                if request.ticket and not request.form_processed and request.form_processed is not None:
-                    auth.unexpire_ticket(request.ticket)
+                if auth.local.ticket and not request.form_processed and request.form_processed is not None:
+                    auth.unexpire_ticket()
         except HttpException, e:
-            start_response(e.status, e.headers)
-            return [ e.content ]
+            status, headers, content = e.status, e.headers, [ e.content ]
         except:
             log_exc()
-            start_response('500 Internal Server Error', {'Content-Type': 'text/html'})
-            return [ format_exc() ]
+            status = '500 Internal Server Error'
+            headers = {'Content-Type': 'text/html'}
+            content = [ format_exc() ]
         else:
             response = local.response
-            start_response('200 OK', response.headers)
-            if not hasattr(result, 'read'): return [ result ]
-            # result is a file:
-            # return [ result.read() ]
-            return iter(lambda: result.read(BLOCK_SIZE), '')
+            status, headers = '200 OK', response.headers
+            headers = [ (name, str(value)) for name, value in headers.items() ]
+            headers.extend(create_cookies(environ, response.cookies))
+            if not hasattr(result, 'read'): content = [ result ]
+            else: content = iter(lambda: result.read(BLOCK_SIZE), '')  # content = [ result.read() ]
+
+        log(type='HTTP:response', prefix='Response: ', text=status, severity=DEBUG, headers=headers)
+        start_response(status, headers)
+        return content
     finally:
         top_output_stream = pony.local.output_streams.pop()
         assert top_output_stream is error_stream
