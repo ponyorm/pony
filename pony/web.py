@@ -495,7 +495,6 @@ class HttpRequest(object):
         self.fields = cgi.FieldStorage(fp=input_stream, environ=environ, keep_blank_values=True)
         self.form_processed = None
         self.submitted_form = self.fields.getfirst('_f')
-        self.conversation_data = self.fields.getfirst('_c')
         self.id_counter = imap('id_%d'.__mod__, count())
         self.use_xslt = True
     def _get_languages(self):
@@ -518,7 +517,6 @@ class HttpResponse(object):
     def __init__(self):
         self.headers = {}
         self.cookies = Cookie.SimpleCookie()
-        self.conversation_data = ''
 
 class Local(threading.local):
     def __init__(self):
@@ -697,8 +695,8 @@ def application(environ, start_response):
 
     request = local.request = HttpRequest(environ)
     auth.load(environ, request.cookies)
+    auth.load_conversation(request.fields)
     auth.verify_ticket(request.fields.getfirst('_t'))
-    auth.load_conversation(request.conversation_data)
     try:
         log_request(request)
         try:

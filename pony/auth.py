@@ -35,7 +35,9 @@ class Local(threading.local):
                              cookie_value=None, remember_ip=False,
                              ticket=False, ticket_payload=None)
     def set_user(self, user, remember_ip=False):
-        if self.user is not None or user is None: self.session.clear()
+        if self.user is not None or user is None:
+            self.session.clear()
+            self.conversation.clear()
         self.user = user
         self.remember_ip = remember_ip
 
@@ -123,26 +125,24 @@ def save(environ, cookies):
 def get_conversation(s):
     return local.conversation
 
-def load_conversation(s):
-    if not s: local.conversation = {}; return
+def load_conversation(fields):
+    s = fields.getfirst(options.auth_conversation_field_name)
+    if not s: return
     try:
         s = unquote_plus(s)
         time_str, pickle_str, hash_str = s.split(':')
         minute = int(time_str, 16)
         now = int(time()) // 60
-        if minute < now - MAX_MTIME_DIFF or minute > now + 1:
-            local.conversation = {}; return
-        
+        if minute < now - MAX_MTIME_DIFF or minute > now + 1: return
         compressed_data = b64decode(pickle_str, altchars='-_')
         hash = b64decode(hash_str, altchars='-_')
         hashobject = get_hashobject(minute)
         hashobject.update(compressed_data)
-        if hash != hashobject.digest():
-            local.conversation = {}; return
+        if hash != hashobject.digest(): return
         conversation = loads(decompress(compressed_data))
         assert conversation.__class__ == dict
         local.conversation = conversation
-    except: local.conversation = {}
+    except: return
 
 def save_conversation():
     c = local.conversation
