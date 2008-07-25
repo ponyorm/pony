@@ -95,3 +95,35 @@ def parse_address(address):
             return address, 80
     assert len(address) == 2
     return tuple(address)
+
+def set_cookie(cookies, name, value, expires=None, max_age=None, path=None, domain=None,
+               secure=False, http_only=False, comment=None, version=None):
+    if value is None: cookies.pop(name, None); return
+    cookies[name] = value
+    morsel = cookies[name]
+    if expires is not None: morsel['expires'] = expires
+    if max_age is not None: morsel['max-age'] = max_age
+    if path is not None: morsel['path'] = path
+    if domain is not None: morsel['domain'] = domain
+    if comment is not None: morsel['comment'] = comment
+    if version is not None: morsel['version'] = version
+    if secure: morsel['secure'] = True
+    morsel.http_only = http_only
+
+http_only_incompatible_browsers = re.compile(r'''
+    WebTV
+    | MSIE[ ]5[.]0;[ ]Mac
+    | Firefox/[12][.]
+''', re.VERBOSE)
+
+def serialize_cookies(environ, cookies):
+    user_agent = environ.get('HTTP_USER_AGENT', '')
+    support_http_only = http_only_incompatible_browsers.search(user_agent) is None
+    result = []
+    for name, morsel in cookies.items():
+        cookie = morsel.OutputString().rstrip()
+        if support_http_only and getattr(morsel, 'http_only', False):
+            if not cookie.endswith(';'): cookie += '; HttpOnly'
+            else: cookie += ' HttpOnly'
+        result.append(('Set-Cookie', cookie))
+    return result

@@ -7,13 +7,17 @@ from time import time, sleep
 from urllib import quote_plus, unquote_plus
 
 import pony
-from pony import options
+from pony import options, webutils
 from pony.utils import compress, decompress, simple_decorator
 from pony.sessionstorage import ramstorage as storage
 
 COOKIE_NAME = options.auth_cookie_name
 COOKIE_PATH = options.auth_cookie_path
 COOKIE_DOMAIN = options.auth_cookie_domain
+
+COOKIE_EXPIRES = options.auth_cookie_expires = 60*60*24*31
+COOKIE_MAX_AGE = options.auth_cookie_max_age 
+
 
 MAX_CTIME_DIFF = options.auth_max_ctime_diff
 MAX_MTIME_DIFF = options.auth_max_mtime_diff
@@ -113,7 +117,8 @@ def save(environ, cookies):
         hash_str = b64encode(hashobject.digest())
         cookie_value = ':'.join([ctime_str, mtime_str, pickle_str, hash_str])
     if cookie_value == local.cookie_value: return None
-    return cookie_value
+    webutils.set_cookie(cookies, COOKIE_NAME, cookie_value, COOKIE_EXPIRES, COOKIE_MAX_AGE, COOKIE_PATH, COOKIE_DOMAIN,
+                        http_only=True)
 
 def get_conversation(s):
     return local.conversation

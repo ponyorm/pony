@@ -534,43 +534,8 @@ def get_cookie(name, default=None):
 
 def set_cookie(name, value, expires=None, max_age=None, path=None, domain=None,
                secure=False, http_only=False, comment=None, version=None):
-    response = local.response
-    cookies = response.cookies
-    if value is not None:
-        cookies[name] = value
-        morsel = cookies[name]
-        if expires is not None: morsel['expires'] = expires
-        if max_age is not None: morsel['max-age'] = max_age
-        if path is not None: morsel['path'] = path
-        if domain is not None: morsel['domain'] = domain
-        if comment is not None: morsel['comment'] = comment
-        if version is not None: morsel['version'] = version
-        if secure: morsel['secure'] = True
-        morsel.http_only = http_only
-    else: cookies.pop(name, None)
-
-http_only_incompatible_browsers = re.compile(r'''
-    WebTV
-    | MSIE[ ]5[.]0;[ ]Mac
-    | Firefox/[12][.]
-''', re.VERBOSE)
-
-ONE_MONTH = 60*60*24*31
-
-def create_cookies(environ, cookies):
-    data = auth.save(environ, cookies)
-    if data is not None: set_cookie(auth.COOKIE_NAME, data, ONE_MONTH, ONE_MONTH,
-                                    auth.COOKIE_PATH, auth.COOKIE_DOMAIN, http_only=True)
-    user_agent = environ.get('HTTP_USER_AGENT', '')
-    support_http_only = http_only_incompatible_browsers.search(user_agent) is None
-    result = []
-    for name, morsel in cookies.items():
-        cookie = morsel.OutputString().rstrip()
-        if support_http_only and getattr(morsel, 'http_only', False):
-            if not cookie.endswith(';'): cookie += '; HttpOnly'
-            else: cookie += ' HttpOnly'
-        result.append(('Set-Cookie', cookie))
-    return result
+    webutils.set_cookie(local.response.cookies,
+                        name, value, expires, max_age, path, domain, secure, http_only, comment, version)
 
 def get_static_dir_name():
     if pony.MAIN_DIR is None: return None
@@ -754,10 +719,11 @@ def application(environ, start_response):
             headers = {'Content-Type': 'text/html'}
             content = [ format_exc() ]
         else:
+            status = '200 OK'
             response = local.response
-            status, headers = '200 OK', response.headers
-            headers = [ (name, str(value)) for name, value in headers.items() ]
-            headers.extend(create_cookies(environ, response.cookies))
+            auth.save(environ, response.cookies)
+            headers = [ (name, str(value)) for name, value in response.headers.items()
+                      ] + webutils.serialize_cookies(environ, response.cookies)
             if not hasattr(result, 'read'): content = [ result ]
             else: content = iter(lambda: result.read(BLOCK_SIZE), '')  # content = [ result.read() ]
 
