@@ -65,7 +65,7 @@ def load(environ, cookies=None):
         ctime_diff = now - ctime
         mtime_diff = now - mtime
         if ctime_diff < -1 or mtime_diff < -1: return
-        if ctime_diff > options.MAX_CTIME_DIFF or mtime_diff > options.MAX_MTIME_DIFF: return
+        if ctime_diff > options.MAX_SESSION_CTIME or mtime_diff > options.MAX_SESSION_MTIME: return
         pickle_data = b64decode(pickle_str)
         hash = b64decode(hash_str)
         hashobject = get_hashobject(mtime)
@@ -122,7 +122,7 @@ def load_conversation(fields):
         time_str, pickle_str, hash_str = s.split(':')
         minute = int(time_str, 16)
         now = int(time()) // 60
-        if minute < now - options.MAX_MTIME_DIFF or minute > now + 1: return
+        if minute < now - options.MAX_SESSION_MTIME or minute > now + 1: return
         compressed_data = b64decode(pickle_str, altchars='-_')
         hash = b64decode(hash_str, altchars='-_')
         hashobject = get_hashobject(minute)
@@ -174,7 +174,7 @@ def verify_ticket(ticket_str):
     try:
         time_str, payload_str, rnd_str, hash_str = ticket_str.split(':')
         minute = int(time_str, 16)
-        if minute < now - options.MAX_MTIME_DIFF or minute > now + 1: return
+        if minute < now - options.MAX_SESSION_MTIME or minute > now + 1: return
         rnd = b64decode(rnd_str)
         if len(rnd) != 8: return
         payload = b64decode(payload_str)
@@ -236,7 +236,7 @@ if not pony.MODE.startswith('GAE-'):
         row = connection.execute('select secret from time_secrets where minute = ?', [minute]).fetchone()
         if row is None:
             now = int(time()) // 60
-            old = now - options.MAX_MTIME_DIFF
+            old = now - options.MAX_SESSION_MTIME
             secret = os.urandom(32)
             connection.execute('delete from used_tickets where minute < ?', [ old ])
             connection.execute('delete from time_secrets where minute < ?', [ old ])
@@ -346,7 +346,7 @@ else:
         secretobj = PonyTimeSecrets.get_by_key_name(keystr)
         if secretobj is None:
             now = int(time()) // 60
-            old = now - options.MAX_MTIME_DIFF
+            old = now - options.MAX_SESSION_MTIME
             secret = os.urandom(32)
             for ticket in PonyUsedTickets.gql('where minute < :1', minute):
                 try: db.delete(ticket)

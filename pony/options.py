@@ -9,8 +9,8 @@ COOKIE_PATH = '/'
 COOKIE_DOMAIN = None
 COOKIE_EXPIRES = 60*60*24*31  # one month
 COOKIE_MAX_AGE = 60*60*24*31  # one month
-MAX_CTIME_DIFF = 60*24  # one day
-MAX_MTIME_DIFF = 60*2  # 2 hours
+MAX_SESSION_CTIME = 60*24  # one day
+MAX_SESSION_MTIME = 60*2  # 2 hours
 CONVERSATION_FIELD_NAME = '_c'
 
 # pickle options:
