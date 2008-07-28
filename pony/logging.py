@@ -16,11 +16,11 @@ from pony.utils import current_timestamp
 try: process_id = os.getpid()
 except AttributeError: process_id = 0 # in GAE
 
-if pony.MODE.startswith('GAE-'): log_to_sqlite = False
-elif options.log_to_sqlite is not None: log_to_sqlite = options.log_to_sqlite
-else: log_to_sqlite = pony.MODE in ('CHERRYPY', 'INTERACTIVE')
+if pony.MODE.startswith('GAE-'): LOG_TO_SQLITE = False
+elif options.LOG_TO_SQLITE is not None: LOG_TO_SQLITE = options.LOG_TO_SQLITE
+else: LOG_TO_SQLITE = pony.MODE in ('CHERRYPY', 'INTERACTIVE')
 
-logging.basicConfig(level=options.logging_level or INFO, format='%(message)s')
+logging.basicConfig(level=options.LOGGING_LEVEL or INFO, format='%(message)s')
 root_logger = logging.root
 console_handler = None
 for handler in root_logger.handlers:
@@ -29,7 +29,7 @@ for handler in root_logger.handlers:
         if handler.stream is pony.pony_stderr: console_handler = handler
 
 pony_logger = logging.getLogger('pony')
-pony_logger.setLevel(options.logging_pony_level or WARNING)
+pony_logger.setLevel(options.LOGGING_PONY_LEVEL or WARNING)
 
 warnings_logger = logging.getLogger('warnings')
 prev_showwarning = warnings.showwarning
@@ -55,7 +55,7 @@ def log(*args, **record):
         traceback = record.get('traceback')
         if traceback: message = ''.join((message, '\n', traceback))
         if message: pony_logger.log(level, message)
-    if log_to_sqlite:
+    if LOG_TO_SQLITE:
         record['timestamp'] = current_timestamp()
         record['process_id'] = process_id
         record['thread_id'] = local.thread_id
@@ -114,7 +114,7 @@ def decompress_record(record):
         headers = dict((get(header, header), value) for (header, value) in record['headers'].items())
         record['headers'] = headers
 
-if log_to_sqlite:
+if LOG_TO_SQLITE:
     class PonyHandler(logging.Handler):
         def emit(self, record):
             if record.name == 'pony': return

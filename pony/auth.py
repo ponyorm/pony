@@ -11,17 +11,6 @@ from pony import options, webutils
 from pony.utils import compress, decompress, simple_decorator
 from pony.sessionstorage import ramstorage as storage
 
-COOKIE_NAME = options.auth_cookie_name
-COOKIE_PATH = options.auth_cookie_path
-COOKIE_DOMAIN = options.auth_cookie_domain
-
-COOKIE_EXPIRES = options.auth_cookie_expires = 60*60*24*31
-COOKIE_MAX_AGE = options.auth_cookie_max_age 
-
-
-MAX_CTIME_DIFF = options.auth_max_ctime_diff
-MAX_MTIME_DIFF = options.auth_max_mtime_diff
-
 class Local(threading.local):
     def __init__(self):
         self.lock = threading.Lock()
@@ -63,7 +52,7 @@ def load(environ, cookies=None):
     if cookies is None:
         cookies =  Cookie.SimpleCookie()
         if 'HTTP_COOKIE' in environ: cookies.load(environ['HTTP_COOKIE'])
-    morsel = cookies.get(COOKIE_NAME)
+    morsel = cookies.get(options.COOKIE_NAME)
     local.cookie_value = cookie_value = morsel and morsel.value or None
     if not cookie_value: return
     now = int(time()) // 60
@@ -76,7 +65,7 @@ def load(environ, cookies=None):
         ctime_diff = now - ctime
         mtime_diff = now - mtime
         if ctime_diff < -1 or mtime_diff < -1: return
-        if ctime_diff > MAX_CTIME_DIFF or mtime_diff > MAX_MTIME_DIFF: return
+        if ctime_diff > options.MAX_CTIME_DIFF or mtime_diff > options.MAX_MTIME_DIFF: return
         pickle_data = b64decode(pickle_str)
         hash = b64decode(hash_str)
         hashobject = get_hashobject(mtime)
@@ -119,21 +108,21 @@ def save(environ, cookies):
         hash_str = b64encode(hashobject.digest())
         cookie_value = ':'.join([ctime_str, mtime_str, pickle_str, hash_str])
     if cookie_value == local.cookie_value: return None
-    webutils.set_cookie(cookies, COOKIE_NAME, cookie_value, COOKIE_EXPIRES, COOKIE_MAX_AGE, COOKIE_PATH, COOKIE_DOMAIN,
-                        http_only=True)
+    webutils.set_cookie(cookies, options.COOKIE_NAME, cookie_value, options.COOKIE_EXPIRES, options.COOKIE_MAX_AGE,
+                        options.COOKIE_PATH, options.COOKIE_DOMAIN, http_only=True)
 
 def get_conversation(s):
     return local.conversation
 
 def load_conversation(fields):
-    s = fields.getfirst(options.auth_conversation_field_name)
+    s = fields.getfirst(options.CONVERSATION_FIELD_NAME)
     if not s: return
     try:
         s = unquote_plus(s)
         time_str, pickle_str, hash_str = s.split(':')
         minute = int(time_str, 16)
         now = int(time()) // 60
-        if minute < now - MAX_MTIME_DIFF or minute > now + 1: return
+        if minute < now - options.MAX_MTIME_DIFF or minute > now + 1: return
         compressed_data = b64decode(pickle_str, altchars='-_')
         hash = b64decode(hash_str, altchars='-_')
         hashobject = get_hashobject(minute)
@@ -185,7 +174,7 @@ def verify_ticket(ticket_str):
     try:
         time_str, payload_str, rnd_str, hash_str = ticket_str.split(':')
         minute = int(time_str, 16)
-        if minute < now - MAX_MTIME_DIFF or minute > now + 1: return
+        if minute < now - options.MAX_MTIME_DIFF or minute > now + 1: return
         rnd = b64decode(rnd_str)
         if len(rnd) != 8: return
         payload = b64decode(payload_str)
@@ -247,7 +236,7 @@ if not pony.MODE.startswith('GAE-'):
         row = connection.execute('select secret from time_secrets where minute = ?', [minute]).fetchone()
         if row is None:
             now = int(time()) // 60
-            old = now - MAX_MTIME_DIFF
+            old = now - options.MAX_MTIME_DIFF
             secret = os.urandom(32)
             connection.execute('delete from used_tickets where minute < ?', [ old ])
             connection.execute('delete from time_secrets where minute < ?', [ old ])
@@ -357,7 +346,7 @@ else:
         secretobj = PonyTimeSecrets.get_by_key_name(keystr)
         if secretobj is None:
             now = int(time()) // 60
-            old = now - MAX_MTIME_DIFF
+            old = now - options.MAX_MTIME_DIFF
             secret = os.urandom(32)
             for ticket in PonyUsedTickets.gql('where minute < :1', minute):
                 try: db.delete(ticket)

@@ -158,14 +158,19 @@ else:
     quote = _templating.quote
     del _wrap, Wrapper, UnicodeWrapper
 
-copy_reg.pickle(Html, lambda x: (unicode, (unicode(x),)))
-copy_reg.pickle(StrHtml, lambda x: (str, (str.__str__(x),)))
-copy_reg.pickle(StrHtml2, lambda x: (str, (str.__str__(x),)))
-
-start_offset = options.pickle_extension_codes_start_offset
-if start_offset is not None:
+start_offset = options.PICKLE_START_OFFSET
+if options.PICKLE_HTML_AS_PLAIN_STR:
+    copy_reg.pickle(Html, lambda x: (unicode, (unicode(x),)))
+    copy_reg.pickle(StrHtml, lambda x: (str, (str.__str__(x),)))
+    copy_reg.pickle(StrHtml2, lambda x: (str, (str.__str__(x),)))
     copy_reg.add_extension('__builtin__', 'unicode', start_offset)
     copy_reg.add_extension('__builtin__', 'str', start_offset+1)
+else:
+    copy_reg.pickle(Html, lambda x: (Html, (unicode(x),)))
+    copy_reg.pickle(StrHtml, lambda x: (StrHtml, (str.__str__(x),)))
+    copy_reg.pickle(StrHtml2, lambda x: (StrHtml, (str.__str__(x),)))
+    copy_reg.add_extension('pony.templating', 'Html', start_offset)
+    copy_reg.add_extension('pony.templating', 'StrHtml', start_offset+1)
     
 htmljoin = Html('').join
 
