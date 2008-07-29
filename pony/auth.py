@@ -64,7 +64,7 @@ def load(environ, cookies=None):
     local.ip = ip = environ.get('REMOTE_ADDR')
     local.user_agent = user_agent = environ.get('HTTP_USER_AGENT')
     try:
-        ctime_str, mtime_str, pickle_str, hash_str, longlife_key = cookie_value.split(':')
+        ctime_str, mtime_str, data_str, hash_str, longlife_key = cookie_value.split(':')
         ctime = local.ctime = int(ctime_str, 16)
         mtime = local.mtime = int(mtime_str, 16)
         ctime_diff = now - ctime
@@ -72,23 +72,21 @@ def load(environ, cookies=None):
         if ctime_diff < -1 or mtime_diff < -1: return
         if ctime_diff > options.MAX_SESSION_CTIME or mtime_diff > options.MAX_SESSION_MTIME:
             resurrect_longlife_session(longlife_key); return
-        pickle_data = b64decode(pickle_str)
+        data = b64decode(data_str)
         hash = b64decode(hash_str)
         hashobject = get_hashobject(mtime)
         hashobject.update(ctime_str)
-        hashobject.update(pickle_data)
+        hashobject.update(data)
         hashobject.update(user_agent or '')
         if hash != hashobject.digest():
             hashobject.update(ip or '')
             if hash != hashobject.digest(): return
             local.remember_ip = True
         else: local.remember_ip = False
-        if pickle_data.startswith('C'):
-            compressed_data = pickle_data[1:]
-        elif pickle_data.startswith('S'):
-            compressed_data = storage.getdata(pickle_data[1:], ctime, mtime)
+        if data.startswith('C'): data = pickle_data[1:]
+        elif data.startswith('S'): data = storage.getdata(data[1:], ctime, mtime)
         else: return
-        info = loads(decompress(compressed_data))
+        info = loads(data)
         local.user, local.session = info
         local.longlife_key = longlife_key or None
         local.longlife_session = bool(longlife_key)
@@ -140,22 +138,22 @@ def save(cookies):
     if local.user is None and not local.session: cookie_value = ''
     else:
         info = local.user, local.session
-        compressed_data = compress(dumps(info))
-        if len(compressed_data) <= 10: # <= 4000
-            pickle_data = 'C' + compressed_data
-        else: pickle_data = 'S' + storage.putdata(compressed_data, local.ctime, now)
+        data = dumps(info)
+        if len(data) <= 10: # <= 4000
+            data = 'C' + data
+        else: data = 'S' + storage.putdata(data, local.ctime, now)
         hashobject = get_hashobject(now)
         hashobject.update(ctime_str)
-        hashobject.update(pickle_data)
+        hashobject.update(data)
         hashobject.update(local.user_agent or '')
         if local.remember_ip: hashobject.update(local.ip or '')
-        pickle_str = b64encode(pickle_data)
+        data_str = b64encode(data)
         hash_str = b64encode(hashobject.digest())
         if local.user and local.longlife_session:
             if not local.longlife_key: set_longlife_session()
             longlife_key = local.longlife_key or ''
         else: longlife_key = ''
-        cookie_value = ':'.join([ ctime_str, mtime_str, pickle_str, hash_str, longlife_key ])
+        cookie_value = ':'.join([ ctime_str, mtime_str, data_str, hash_str, longlife_key ])
     if cookie_value == local.cookie_value: return None
     max_time = (options.MAX_LONGLIFE_SESSION+1)*24*60*60
     webutils.set_cookie(cookies, options.COOKIE_NAME, cookie_value, max_time, max_time,
@@ -173,12 +171,12 @@ def load_conversation(fields):
         minute = int(time_str, 16)
         now = int(time()) // 60
         if minute < now - options.MAX_SESSION_MTIME or minute > now + 1: return
-        compressed_data = b64decode(pickle_str, altchars='-_')
+        data = b64decode(pickle_str, altchars='-_')
         hash = b64decode(hash_str, altchars='-_')
         hashobject = get_hashobject(minute)
-        hashobject.update(compressed_data)
+        hashobject.update(data)
         if hash != hashobject.digest(): return
-        conversation = loads(decompress(compressed_data))
+        conversation = loads(data)
         assert conversation.__class__ == dict
         local.conversation = conversation
     except: return
@@ -188,14 +186,14 @@ def save_conversation():
     if not c: return ''
     now = int(time()) // 60
     now_str = '%x' % now
-    compressed_data = compress(dumps(c))
+    data = dumps(c)
     hashobject = get_hashobject(now)
-    hashobject.update(compressed_data)
+    hashobject.update(data)
     hash = hashobject.digest()
 
-    pickle_str = b64encode(compressed_data, altchars='-_')
+    data_str = b64encode(data, altchars='-_')
     hash_str = b64encode(hashobject.digest(), altchars='-_')
-    s = ':'.join((now_str, pickle_str, hash_str))
+    s = ':'.join((now_str, data_str, hash_str))
     return quote_plus(s, safe=':')
 
 def get_ticket(payload=None, prevent_resubmit=False):
@@ -250,14 +248,14 @@ def unexpire_ticket():
 
 def loads(s):
     type = options.COOKIE_SERIALIZATION_TYPE
-    if type == 'json': return simplejson.loads(s)
-    elif type == 'pickle': return cPickle.loads(s)
+    if type == 'json': return simplejson.loads(decompress(s))
+    elif type == 'pickle': return cPickle.loads(decompress(s))
     else: raise TypeError("Incorrect value of pony.options.COOKIE_SERIALIZATION_TYPE (must be 'json' or 'pickle')")
 
 def dumps(obj):
     type = options.COOKIE_SERIALIZATION_TYPE
-    if type == 'json': return simplejson.dumps(obj, separators=(',', ':'))
-    elif type == 'pickle': return cPickle.dumps(obj, 2)
+    if type == 'json': return compress(simplejson.dumps(obj, separators=(',', ':')))
+    elif type == 'pickle': return compress(cPickle.dumps(obj, 2))
     else: raise TypeError("Incorrect value of pony.options.COOKIE_SERIALIZATION_TYPE (must be 'json' or 'pickle')")
     
 if not pony.MODE.startswith('GAE-'):
