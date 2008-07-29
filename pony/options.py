@@ -4,6 +4,7 @@ LOGGING_LEVEL = None
 LOGGING_PONY_LEVEL = None
 
 #auth options:
+COOKIE_SERIALIZATION_TYPE = 'json' # may be 'json' or 'pickle'
 COOKIE_NAME = 'pony'
 COOKIE_PATH = '/'
 COOKIE_DOMAIN = None

@@ -1,10 +1,11 @@
-import re, os, os.path, sys, threading, hmac, sha
+import re, os, os.path, sys, threading, hmac, sha, cPickle
 from base64 import b64encode, b64decode
 from binascii import hexlify
-from cPickle import loads, dumps
 from random import random
 from time import time, sleep
 from urllib import quote_plus, unquote_plus
+
+from pony.thirdparty import simplejson
 
 import pony
 from pony import options, webutils
@@ -82,9 +83,9 @@ def load(environ, cookies=None):
             if hash != hashobject.digest(): return
             local.remember_ip = True
         else: local.remember_ip = False
-        if pickle_data.startswith('A'):
+        if pickle_data.startswith('C'):
             compressed_data = pickle_data[1:]
-        elif pickle_data.startswith('B'):
+        elif pickle_data.startswith('S'):
             compressed_data = storage.getdata(pickle_data[1:], ctime, mtime)
         else: return
         info = loads(decompress(compressed_data))
@@ -139,10 +140,10 @@ def save(cookies):
     if local.user is None and not local.session: cookie_value = ''
     else:
         info = local.user, local.session
-        compressed_data = compress(dumps(info, 2))
+        compressed_data = compress(dumps(info))
         if len(compressed_data) <= 10: # <= 4000
-            pickle_data = 'A' + compressed_data
-        else: pickle_data = 'B' + storage.putdata(compressed_data, local.ctime, now)
+            pickle_data = 'C' + compressed_data
+        else: pickle_data = 'S' + storage.putdata(compressed_data, local.ctime, now)
         hashobject = get_hashobject(now)
         hashobject.update(ctime_str)
         hashobject.update(pickle_data)
@@ -187,7 +188,7 @@ def save_conversation():
     if not c: return ''
     now = int(time()) // 60
     now_str = '%x' % now
-    compressed_data = compress(dumps(c, 2))
+    compressed_data = compress(dumps(c))
     hashobject = get_hashobject(now)
     hashobject.update(compressed_data)
     hash = hashobject.digest()
@@ -209,7 +210,7 @@ def get_ticket(payload=None, prevent_resubmit=False):
     hashobject = get_hashobject(now)
     hashobject.update(rnd)
     hashobject.update(payload)
-    hashobject.update(dumps(local.user, 2))
+    hashobject.update(dumps(local.user))
     if prevent_resubmit: hashobject.update('+')
     hash = hashobject.digest()
 
@@ -231,7 +232,7 @@ def verify_ticket(ticket_str):
         hashobject = get_hashobject(minute)
         hashobject.update(rnd)
         hashobject.update(payload)
-        hashobject.update(dumps(local.user, 2))
+        hashobject.update(dumps(local.user))
         if hash != hashobject.digest():
             hashobject.update('+')
             if hash != hashobject.digest(): return
@@ -246,6 +247,18 @@ def unexpire_ticket():
     if not local.ticket: return
     minute, rnd = local.ticket
     _unexpire_ticket(minute, rnd)
+
+def loads(s):
+    type = options.COOKIE_SERIALIZATION_TYPE
+    if type == 'json': return simplejson.loads(s)
+    elif type == 'pickle': return cPickle.loads(s)
+    else: raise TypeError("Incorrect value of pony.options.COOKIE_SERIALIZATION_TYPE (must be 'json' or 'pickle')")
+
+def dumps(obj):
+    type = options.COOKIE_SERIALIZATION_TYPE
+    if type == 'json': return simplejson.dumps(obj, separators=(',', ':'))
+    elif type == 'pickle': return cPickle.dumps(obj, 2)
+    else: raise TypeError("Incorrect value of pony.options.COOKIE_SERIALIZATION_TYPE (must be 'json' or 'pickle')")
     
 if not pony.MODE.startswith('GAE-'):
 
