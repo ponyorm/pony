@@ -7,10 +7,9 @@ LOGGING_PONY_LEVEL = None
 COOKIE_NAME = 'pony'
 COOKIE_PATH = '/'
 COOKIE_DOMAIN = None
-COOKIE_EXPIRES = 60*60*24*31  # one month
-COOKIE_MAX_AGE = 60*60*24*31  # one month
 MAX_SESSION_CTIME = 60*24  # one day
 MAX_SESSION_MTIME = 60*2  # 2 hours
+MAX_LONGLIFE_SESSION = 14  # 14 days
 CONVERSATION_FIELD_NAME = '_c'
 
 # pickle options:

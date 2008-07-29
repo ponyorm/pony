@@ -21,14 +21,18 @@ class Local(threading.local):
         lock = self.lock
         self.__dict__.clear()
         self.__dict__.update(lock=lock, user=None, environ={}, session={}, conversation={}, ctime=now, mtime=now,
-                             cookie_value=None, remember_ip=False,
+                             cookie_value=None, remember_ip=False, longlife_session=False, longlife_key=None,
                              ip=None, user_agent=None, ticket=False, ticket_payload=None)
-    def set_user(self, user, remember_ip=False):
+    def set_user(self, user, longlife_session=False, remember_ip=False):
         if self.user is not None or user is None:
             self.session.clear()
             self.conversation.clear()
         self.user = user
-        self.remember_ip = remember_ip
+        if user:
+            self.longlife_session = longlife_session
+            self.remember_ip = remember_ip
+        elif self.longlife_key: remove_longlife_session()
+        else: self.longlife_session = self.remember_ip = False
 
 local = Local()
 
@@ -59,14 +63,14 @@ def load(environ, cookies=None):
     local.ip = ip = environ.get('REMOTE_ADDR')
     local.user_agent = user_agent = environ.get('HTTP_USER_AGENT')
     try:
-        ctime_str, mtime_str, pickle_str, hash_str = cookie_value.split(':')
+        ctime_str, mtime_str, pickle_str, hash_str, longlife_key = cookie_value.split(':')
         ctime = local.ctime = int(ctime_str, 16)
         mtime = local.mtime = int(mtime_str, 16)
         ctime_diff = now - ctime
         mtime_diff = now - mtime
         if ctime_diff < -1 or mtime_diff < -1: return
         if ctime_diff > options.MAX_SESSION_CTIME or mtime_diff > options.MAX_SESSION_MTIME:
-            return
+            resurrect_longlife_session(longlife_key); return
         pickle_data = b64decode(pickle_str)
         hash = b64decode(hash_str)
         hashobject = get_hashobject(mtime)
@@ -85,7 +89,48 @@ def load(environ, cookies=None):
         else: return
         info = loads(decompress(compressed_data))
         local.user, local.session = info
+        local.longlife_key = longlife_key or None
+        local.longlife_session = bool(longlife_key)
     except: return
+
+def set_longlife_session():
+    if local.user is not None:
+        data = dumps(local.user)
+        ip = local.remember_ip and local.ip or None
+        id, rnd = _create_longlife_session(data, ip)
+        local.longlife_key = '%x+%s' % (id, b64encode(rnd))
+        local.longlife_session = True
+    else:
+        local.longlife_session = False
+        local.longlife_key = None
+
+def resurrect_longlife_session(key):
+    if not key: return
+    try:
+        id, rnd = key.split('+')
+        id = int(id, 16)
+        rnd = b64decode(rnd)
+    except: return
+    data, ip = _get_longlife_session(id, rnd)
+    if data is None: return
+    if ip:
+        if ip != local.ip: return
+        local.remember_ip = True
+    local.user = loads(data)
+    local.longlife_session = True
+    local.longlife_key = key
+
+def remove_longlife_session():
+    local.longlife_session = False
+    key = local.longlife_key
+    if not key: return
+    local.longlife_key = None
+    try:
+        id, rnd = key.split('+')
+        id = int(id, 16)
+        rnd = b64decode(rnd)
+    except: return
+    _remove_longlife_session(id, rnd)
 
 def save(cookies):
     now = int(time()) // 60
@@ -105,9 +150,14 @@ def save(cookies):
         if local.remember_ip: hashobject.update(local.ip or '')
         pickle_str = b64encode(pickle_data)
         hash_str = b64encode(hashobject.digest())
-        cookie_value = ':'.join([ctime_str, mtime_str, pickle_str, hash_str])
+        if local.user and local.longlife_session:
+            if not local.longlife_key: set_longlife_session()
+            longlife_key = local.longlife_key or ''
+        else: longlife_key = ''
+        cookie_value = ':'.join([ ctime_str, mtime_str, pickle_str, hash_str, longlife_key ])
     if cookie_value == local.cookie_value: return None
-    webutils.set_cookie(cookies, options.COOKIE_NAME, cookie_value, options.COOKIE_EXPIRES, options.COOKIE_MAX_AGE,
+    max_time = (options.MAX_LONGLIFE_SESSION+1)*24*60*60
+    webutils.set_cookie(cookies, options.COOKIE_NAME, cookie_value, max_time, max_time,
                         options.COOKIE_PATH, options.COOKIE_DOMAIN, http_only=True)
 
 def get_conversation(s):
@@ -246,6 +296,34 @@ if not pony.MODE.startswith('GAE-'):
         secret_cache[minute] = result = hmac.new(secret, digestmod=sha)
         return result
 
+    @exec_in_auth_thread
+    def _get_longlife_session(id, rnd):
+        row = connection.execute('select rnd, ctime, data, ip from longlife_sessions where id=?', [ id ]).fetchone()
+        if row is None: connection.rollback(); return None, None
+        rnd2, ctime, data, ip = row
+        if buffer(rnd) != rnd2: connection.rollback(); return None, None
+        now = int(time() // 60)
+        old = now - options.MAX_LONGLIFE_SESSION*24*60
+        if ctime < old:
+            connection.execute('delete from longlife_sessions where ctime < ?', [ old ])
+            connection.commit(); return None, None
+        return str(data), ip
+
+    @exec_in_auth_thread
+    def _create_longlife_session(data, ip):
+        rnd = os.urandom(8)
+        now = int(time() // 60)
+        cursor = connection.execute('insert into longlife_sessions(rnd, ctime, ip, data) values(?, ?, ?, ?)',
+                                    [ buffer(rnd), now, ip, buffer(data) ])
+        id = cursor.lastrowid
+        connection.commit()
+        return id, rnd
+
+    @exec_in_auth_thread
+    def _remove_longlife_session(id, rnd):
+        connection.execute('delete from longlife_sessions where id = ? and rnd = ?', [ id, buffer(rnd) ])
+        connection.commit()
+
     def get_sessiondb_name():
         # This function returns relative path, if possible.
         # It is workaround for bug in SQLite
@@ -265,6 +343,14 @@ if not pony.MODE.startswith('GAE-'):
         rnd    blob  not null,
         primary key (minute, rnd)
         );
+    create table if not exists longlife_sessions (
+        id    integer primary key,
+        rnd   blob    not null,
+        ctime integer not null,
+        ip    text,
+        data  blob    not null
+        );
+    create index if not exists longlife_sessions_ctime on longlife_sessions(ctime);
     """
 
     class AuthThread(threading.Thread):

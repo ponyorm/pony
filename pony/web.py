@@ -830,8 +830,8 @@ class _Http(object):
 
     def get_user(self):
         return auth.get_user()
-    def set_user(self, user, remember_ip=False):
-        auth.set_user(user, remember_ip)
+    def set_user(self, user, longlife_session=False, remember_ip=False):
+        auth.set_user(user, longlife_session, remember_ip)
     user = property(get_user, set_user)
 
     def get_lang(self):
