@@ -412,31 +412,37 @@ else:
     from google.appengine.ext import db
     from google.appengine.api import users
 
-    class PonyTimeSecrets(db.Model):
+    class PonyTimeSecret(db.Model):
         minute = db.IntegerProperty(required=True)
         secret = db.BlobProperty(required=True)
 
-    class PonyUsedTickets(db.Model):
+    class PonyUsedTicket(db.Model):
         minute = db.IntegerProperty(required=True)
         rnd = db.BlobProperty(required=True)
 
-    for time_secret in PonyTimeSecrets.all():
+    class PonyLonglifeSession(db.Model):
+        rnd = db.BlobProperty(required=True)
+        ctime = db.IntegerProperty(required=True)
+        ip = db.TextProperty()
+        data = db.BlobProperty(required=True)
+
+    for time_secret in PonyTimeSecret.all():
         secret_cache[time_secret.minute] = hmac.new(time_secret.secret, digestmod=hash)
 
     def _verify_ticket(minute, rnd):
         keystr = 'm%s_%s' % (minute, hexlify(rnd))
-        ticket = PonyUsedTickets.get_by_key_name(keystr)
+        ticket = PonyUsedTicket.get_by_key_name(keystr)
         if ticket is None:
             while True:
-                try: PonyUsedTickets(key_name=keystr, minute=minute, rnd=rnd).put()
+                try: PonyUsedTicket(key_name=keystr, minute=minute, rnd=rnd).put()
                 except db.TransactionFailedError: pass
                 else: break
-                if PonyUsedTickets.get_by_key_name(keystr) is not None: break
+                if PonyUsedTicket.get_by_key_name(keystr) is not None: break
         return not ticket and True or None
 
     def _unexpire_ticket(minute, rnd):
         keystr = 'm%s_%s' % (minute, hexlify(rnd))
-        ticket = PonyUsedTickets.get_by_key_name([keystr])
+        ticket = PonyUsedTicket.get_by_key_name([keystr])
         if not ticket: return
         try: db.delete(ticket)
         except db.TransactionFailedError: pass
@@ -446,21 +452,48 @@ else:
         if hashobject is not None: return hashobject.copy()
 
         keystr = 'm%s' % minute
-        secretobj = PonyTimeSecrets.get_by_key_name(keystr)
+        secretobj = PonyTimeSecret.get_by_key_name(keystr)
         if secretobj is None:
             now = int(time()) // 60
             old = now - options.MAX_SESSION_MTIME
             secret = os.urandom(32)
-            for ticket in PonyUsedTickets.gql('where minute < :1', minute):
+            for ticket in PonyUsedTicket.gql('where minute < :1', minute):
                 try: db.delete(ticket)
                 except db.TransactionFailedError: pass
-            for secretobj in PonyTimeSecrets.gql('where minute < :1', minute):
+            for secretobj in PonyTimeSecret.gql('where minute < :1', minute):
                 try: db.delete(secretobj)
                 except db.TransactionFailedError: pass
             while True:
-                try: secretobj = PonyTimeSecrets.get_or_insert(keystr, minute=minute, secret=secret)
+                try: secretobj = PonyTimeSecret.get_or_insert(keystr, minute=minute, secret=secret)
                 except db.TransactionFailedError: continue
                 else: break
         hashobject = hmac.new(secretobj.secret, digestmod=hash)
         secret_cache[minute] = hashobject
         return hashobject.copy()
+
+    def _get_longlife_session(id, rnd):
+        sessionobj = PonyLonglifeSession.get_by_id(id)
+        if sessionobj is None: return None, None
+        if rnd != sessionobj.rnd: return None, None
+        now = int(time() // 60)
+        old = now - options.MAX_LONGLIFE_SESSION*24*60
+        if sessionobj.ctime < old:
+            for secretobj in PonyLonglifeSession.gql('where ctime < :1', old):
+                try: db.delete(sessionobj)
+                except db.TransactionFailedError: pass
+        return sessionobj.data, sessionobj.ip
+
+    def _create_longlife_session(data, ip):
+        rnd = os.urandom(8)
+        now = int(time() // 60)
+        while True:
+            try: key = PonyLonglifeSession(rnd=rnd, ctime=now, ip=ip, data=data).put()
+            except db.TransactionFailedError: continue  # is try..except necessary here?
+            else: break
+        return key.id(), rnd
+
+    def _remove_longlife_session(id, rnd):
+        try:
+            sessionobj = PonyLonglifeSession.get_by_id(id)
+            if sessionobj is not None: sessionobj.delete()
+        except db.TransactionFailedError: pass  # is try..except necessary here?
