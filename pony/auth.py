@@ -22,7 +22,7 @@ class Local(threading.local):
         self.__dict__.clear()
         self.__dict__.update(lock=lock, user=None, environ={}, session={}, conversation={}, ctime=now, mtime=now,
                              cookie_value=None, remember_ip=False,
-                             ticket=False, ticket_payload=None)
+                             ip=None, user_agent=None, ticket=False, ticket_payload=None)
     def set_user(self, user, remember_ip=False):
         if self.user is not None or user is None:
             self.session.clear()
@@ -56,8 +56,8 @@ def load(environ, cookies=None):
     local.cookie_value = cookie_value = morsel and morsel.value or None
     if not cookie_value: return
     now = int(time()) // 60
-    ip = environ.get('REMOTE_ADDR', '')
-    user_agent = environ.get('HTTP_USER_AGENT', '')
+    local.ip = ip = environ.get('REMOTE_ADDR')
+    local.user_agent = user_agent = environ.get('HTTP_USER_AGENT')
     try:
         ctime_str, mtime_str, pickle_str, hash_str = cookie_value.split(':')
         ctime = local.ctime = int(ctime_str, 16)
@@ -65,15 +65,16 @@ def load(environ, cookies=None):
         ctime_diff = now - ctime
         mtime_diff = now - mtime
         if ctime_diff < -1 or mtime_diff < -1: return
-        if ctime_diff > options.MAX_SESSION_CTIME or mtime_diff > options.MAX_SESSION_MTIME: return
+        if ctime_diff > options.MAX_SESSION_CTIME or mtime_diff > options.MAX_SESSION_MTIME:
+            return
         pickle_data = b64decode(pickle_str)
         hash = b64decode(hash_str)
         hashobject = get_hashobject(mtime)
         hashobject.update(ctime_str)
         hashobject.update(pickle_data)
-        hashobject.update(user_agent)
+        hashobject.update(user_agent or '')
         if hash != hashobject.digest():
-            hashobject.update(ip)
+            hashobject.update(ip or '')
             if hash != hashobject.digest(): return
             local.remember_ip = True
         else: local.remember_ip = False
@@ -86,9 +87,7 @@ def load(environ, cookies=None):
         local.user, local.session = info
     except: return
 
-def save(environ, cookies):
-    ip = environ.get('REMOTE_ADDR', '')
-    user_agent = environ.get('HTTP_USER_AGENT', '')
+def save(cookies):
     now = int(time()) // 60
     ctime_str = '%x' % local.ctime
     mtime_str = '%x' % now
@@ -102,8 +101,8 @@ def save(environ, cookies):
         hashobject = get_hashobject(now)
         hashobject.update(ctime_str)
         hashobject.update(pickle_data)
-        hashobject.update(user_agent)
-        if local.remember_ip: hash_object.update(ip)
+        hashobject.update(local.user_agent or '')
+        if local.remember_ip: hashobject.update(local.ip or '')
         pickle_str = b64encode(pickle_data)
         hash_str = b64encode(hashobject.digest())
         cookie_value = ':'.join([ctime_str, mtime_str, pickle_str, hash_str])
@@ -236,10 +235,9 @@ if not pony.MODE.startswith('GAE-'):
         row = connection.execute('select secret from time_secrets where minute = ?', [minute]).fetchone()
         if row is None:
             now = int(time()) // 60
-            old = now - options.MAX_SESSION_MTIME
             secret = os.urandom(32)
-            connection.execute('delete from used_tickets where minute < ?', [ old ])
-            connection.execute('delete from time_secrets where minute < ?', [ old ])
+            connection.execute('delete from used_tickets where minute < ?', [ now - options.MAX_SESSION_MTIME ])
+            connection.execute('delete from time_secrets where minute < ?', [ now - options.MAX_SESSION_MTIME ])
             connection.execute('insert or ignore into time_secrets values(?, ?)', [ minute, buffer(secret) ])
             row = connection.execute('select secret from time_secrets where minute = ?', [minute]).fetchone()
             connection.commit()

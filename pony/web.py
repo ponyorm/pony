@@ -719,7 +719,7 @@ def application(environ, start_response):
         else:
             status = '200 OK'
             response = local.response
-            auth.save(environ, response.cookies)
+            auth.save(response.cookies)
             headers = [ (name, str(value)) for name, value in response.headers.items()
                       ] + webutils.serialize_cookies(environ, response.cookies)
             if not hasattr(result, 'read'): content = [ result ]
