@@ -148,10 +148,13 @@ def save(cookies):
 
         info = local.user, local.session
         data = dumps(info)
-        if len(data) <= 3000: data = 'C' + data
-        else: data = 'S' + storage.putdata(data, local.ctime, now)
         hashobject = get_hashobject(now)
         hashobject.update(ctime_str)
+
+        total_size = len(ctime_str)+len(mtime_str)+(1+int(len(data)*1.37)+3)+hashobject.digest_size+len(longlife_key)+4
+        if total_size <= options.MAX_COOKIE_SIZE: data = 'C' + data
+        else: data = 'S' + storage.putdata(data, local.ctime, now)
+
         hashobject.update(data)
         hashobject.update(local.user_agent or '')
         if local.remember_ip: hashobject.update(local.ip or '')
