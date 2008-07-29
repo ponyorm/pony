@@ -4,6 +4,7 @@ LOGGING_LEVEL = None
 LOGGING_PONY_LEVEL = None
 
 #auth options:
+HASH_ALGORITHM = None  # None means sha-1
 COOKIE_SERIALIZATION_TYPE = 'json' # may be 'json' or 'pickle'
 COOKIE_NAME = 'pony'
 COOKIE_PATH = '/'

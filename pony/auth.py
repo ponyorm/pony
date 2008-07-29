@@ -1,4 +1,4 @@
-import re, os, os.path, sys, threading, hmac, sha, cPickle
+import re, os, os.path, sys, threading, hmac, cPickle
 from base64 import b64encode, b64decode
 from binascii import hexlify
 from random import random
@@ -11,6 +11,11 @@ import pony
 from pony import options, webutils
 from pony.utils import compress, decompress, simple_decorator
 from pony.sessionstorage import ramstorage as storage
+
+hash = pony.options.HASH_ALGORITHM
+if hash is None:
+    try: from hashlib import sha1 as hash
+    except ImportError: import sha as hash
 
 class Local(threading.local):
     def __init__(self):
@@ -304,7 +309,7 @@ if not pony.MODE.startswith('GAE-'):
             connection.commit()
         else: connection.rollback()
         secret = str(row[0])
-        secret_cache[minute] = result = hmac.new(secret, digestmod=sha)
+        secret_cache[minute] = result = hmac.new(secret, digestmod=hash)
         return result
 
     @exec_in_auth_thread
@@ -376,7 +381,7 @@ if not pony.MODE.startswith('GAE-'):
                 connection.execute("PRAGMA synchronous = OFF;")
                 connection.executescript(sql_create)
                 for minute, secret in connection.execute('select * from time_secrets'):
-                    secret_cache[minute] = hmac.new(str(secret), digestmod=sha)
+                    secret_cache[minute] = hmac.new(str(secret), digestmod=hash)
                 connection.commit()
                 while True:
                     x = queue.get()
@@ -413,7 +418,7 @@ else:
         rnd = db.BlobProperty(required=True)
 
     for time_secret in PonyTimeSecrets.all():
-        secret_cache[time_secret.minute] = hmac.new(time_secret.secret, digestmod=sha)
+        secret_cache[time_secret.minute] = hmac.new(time_secret.secret, digestmod=hash)
 
     def _verify_ticket(minute, rnd):
         keystr = 'm%s_%s' % (minute, hexlify(rnd))
@@ -453,6 +458,6 @@ else:
                 try: secretobj = PonyTimeSecrets.get_or_insert(keystr, minute=minute, secret=secret)
                 except db.TransactionFailedError: continue
                 else: break
-        hashobject = hmac.new(secretobj.secret, digestmod=sha)
+        hashobject = hmac.new(secretobj.secret, digestmod=hash)
         secret_cache[minute] = hashobject
         return hashobject.copy()
