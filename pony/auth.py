@@ -140,12 +140,15 @@ def save(cookies):
     now = int(time()) // 60
     ctime_str = '%x' % local.ctime
     mtime_str = '%x' % now
-    if local.user is None and not local.session: cookie_value = ''
-    else:
+    if local.user is not None or local.session:
+        if local.user and local.longlife_session:
+            if not local.longlife_key: set_longlife_session()
+            longlife_key = local.longlife_key or ''
+        else: longlife_key = ''
+
         info = local.user, local.session
         data = dumps(info)
-        if len(data) <= 10: # <= 4000
-            data = 'C' + data
+        if len(data) <= 3000: data = 'C' + data
         else: data = 'S' + storage.putdata(data, local.ctime, now)
         hashobject = get_hashobject(now)
         hashobject.update(ctime_str)
@@ -154,15 +157,12 @@ def save(cookies):
         if local.remember_ip: hashobject.update(local.ip or '')
         data_str = b64encode(data)
         hash_str = b64encode(hashobject.digest())
-        if local.user and local.longlife_session:
-            if not local.longlife_key: set_longlife_session()
-            longlife_key = local.longlife_key or ''
-        else: longlife_key = ''
         cookie_value = ':'.join([ ctime_str, mtime_str, data_str, hash_str, longlife_key ])
-    if cookie_value == local.cookie_value: return None
-    max_time = (options.MAX_LONGLIFE_SESSION+1)*24*60*60
-    webutils.set_cookie(cookies, options.COOKIE_NAME, cookie_value, max_time, max_time,
-                        options.COOKIE_PATH, options.COOKIE_DOMAIN, http_only=True)
+    else: cookie_value = ''
+    if cookie_value != local.cookie_value:
+        max_time = (options.MAX_LONGLIFE_SESSION+1)*24*60*60
+        webutils.set_cookie(cookies, options.COOKIE_NAME, cookie_value, max_time, max_time,
+                            options.COOKIE_PATH, options.COOKIE_DOMAIN, http_only=True)
 
 def get_conversation(s):
     return local.conversation
