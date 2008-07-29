@@ -88,7 +88,7 @@ def load(environ, cookies=None):
             if hash != hashobject.digest(): return
             local.remember_ip = True
         else: local.remember_ip = False
-        if data.startswith('C'): data = pickle_data[1:]
+        if data.startswith('C'): data = data[1:]
         elif data.startswith('S'): data = storage.getdata(data[1:], ctime, mtime)
         else: return
         info = loads(data)
@@ -172,11 +172,11 @@ def load_conversation(fields):
     if not s: return
     try:
         s = unquote_plus(s)
-        time_str, pickle_str, hash_str = s.split(':')
+        time_str, data_str, hash_str = s.split(':')
         minute = int(time_str, 16)
         now = int(time()) // 60
         if minute < now - options.MAX_SESSION_MTIME or minute > now + 1: return
-        data = b64decode(pickle_str, altchars='-_')
+        data = b64decode(data_str, altchars='-_')
         hash = b64decode(hash_str, altchars='-_')
         hashobject = get_hashobject(minute)
         hashobject.update(data)
