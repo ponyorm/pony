@@ -793,9 +793,8 @@ def stop_http_server(address=None):
     else:
         host, port = webutils.parse_address(address)
         server_thread = server_threads.get((host, port))
-        if server_thread is None:
-            raise ServerNotStarted('Cannot stop HTTP server at %s:%s '
-                                   'because it is not started:' % (host, port))
+        if server_thread is None: raise ServerNotStarted(
+            'Cannot stop HTTP server at %s:%s because it is not started:' % (host, port))
         server_thread.server.stop()
         server_thread.join()
 
