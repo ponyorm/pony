@@ -73,8 +73,12 @@ def translate(key, params, lang_list):
     assert False
 
 def load(filename):
-    text = read_text_file(filename)
-    translations.update(parse(text.split('\n')))
+    _update(translations, parse(read_text_file(filename).split('\n')))
+
+def _update(trans1, trans2):
+    for key, d2 in trans2.iteritems():
+        d1 = trans1.setdefault(key, d2)
+        if d1 is not d2: d1.update(d2)
 
 def parse(lines):
     d = {}
