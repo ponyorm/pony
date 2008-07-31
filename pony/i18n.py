@@ -1,8 +1,13 @@
-import re, os.path
+import re, os, threading
 from itertools import izip, count, chain
+from time import time
+from glob import glob
+from os.path import join, exists
 
 import pony
-from pony.utils import read_text_file
+from pony import options
+from pony.logging import log, log_exc, ERROR, DEBUG
+from pony.utils import read_text_file, get_mtime, shortened_filename
 
 class I18nParseError(Exception): pass
 
@@ -12,7 +17,50 @@ param_re = re.compile(r"\$(?:\w+|\$)")
 
 translations = {}
 
+trans_files = []
+
+def reg_trans_file(filename):
+    for fname, mtime in trans_files:
+        if fname == filename: return
+    mtime = get_mtime(filename)
+    load(filename)
+    trans_files.append((filename, mtime))
+
+last_check_time = 0
+
+lock = threading.Lock()
+
+def reload():
+    global last_check_time
+    now = time()
+    if abs(now - last_check_time) <= options.RELOADING_CHECK_INTERVAL: return
+    lock.acquire()
+    try:
+        if abs(now - last_check_time) <= options.RELOADING_CHECK_INTERVAL: return
+        last_check_time = now
+        for fname, mtime in trans_files:
+            try: new_mtime = get_mtime(fname)
+            except:
+                if mtime is None: continue
+            if new_mtime != mtime: break
+        else: return
+        success = True
+        log(type='RELOAD:begin', prefix='RELOADING: ', text=shortened_filename(fname), severity=ERROR)
+        try:
+            translations.clear()
+            for i, (fname, mtime) in enumerate(trans_files):
+                try: load(fname)
+                except:
+                    success = False
+                    log_exc()
+                    trans_files[i] = fname, None
+                else: trans_files[i] = fname, get_mtime(fname)
+        finally: log(type='RELOAD:end', severity=DEBUG,
+                     text=success and 'Reloaded successfully' or 'Reloaded with errors', success=success)
+    finally: lock.release()
+
 def translate(key, params, lang_list):
+    reload()
     d2 = translations.get(key)
     if d2 is None: return None
     for lang in chain(lang_list, (None,)):
@@ -98,4 +146,11 @@ def get_params_order(key_pieces, lstr_pieces):
     lstr_params = [ value for flag, value in lstr_pieces if flag ]
     return map(key_params.index, lstr_params)
 
-load(os.path.join(pony.PONY_DIR, 'translations.txt'))
+fnames = [ join(pony.PONY_DIR, 'translations.txt')
+         ] + sorted(glob(join(pony.PONY_DIR, 'translations-*.txt')))
+if pony.MAIN_DIR is not None:
+    fname = join(pony.MAIN_DIR, 'translations.txt')
+    if exists(fname): fnames.append(fname)
+    fnames.extend(sorted(glob(join(pony.MAIN_DIR, 'translations-*.txt'))))
+for fname in fnames:
+    reg_trans_file(fname)

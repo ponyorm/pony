@@ -10,6 +10,8 @@ from os import urandom
 from codecs import BOM_UTF8, BOM_LE, BOM_BE
 from locale import getpreferredencoding
 
+import pony
+
 class ValidationError(ValueError):
     def __init__(self, err_msg=None):
         ValueError.__init__(self, err_msg)
@@ -85,6 +87,12 @@ def absolutize_path(filename, frame_depth=2):
     code_filename = sys._getframe(frame_depth).f_code.co_filename
     code_path = os.path.dirname(code_filename)
     return os.path.join(code_path, filename)
+
+def shortened_filename(filename):
+    if pony.MAIN_DIR is None: return filename
+    maindir = pony.MAIN_DIR + os.sep
+    if filename.startswith(maindir): return filename[len(maindir):]
+    return filename
 
 def get_mtime(filename):
     stat = os.stat(filename)

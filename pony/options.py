@@ -1,3 +1,6 @@
+# reloading options:
+RELOADING_CHECK_INTERVAL = 1.0  # in seconds
+
 # logging options:
 LOG_TO_SQLITE = None
 LOGGING_LEVEL = None

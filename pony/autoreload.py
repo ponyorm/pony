@@ -3,7 +3,7 @@ import itertools, linecache, sys, time, os, imp, traceback
 from os.path import abspath, basename, dirname, exists, splitext
 
 import pony
-from pony.utils import get_mtime
+from pony.utils import get_mtime, shortened_filename
 from pony.logging import log, log_exc, ERROR, DEBUG
 
 USE_AUTORELOAD = True
@@ -23,17 +23,11 @@ def load_main():
     finally:
         if file: file.close()
 
-def shortened_module_name(filename):
-    if pony.MAIN_DIR is None: return filename
-    maindir = pony.MAIN_DIR + os.sep
-    if filename.startswith(maindir): return filename[len(maindir):]
-    return filename
-
 def reload(modules, changed_module, filename):
     global reloading
     reloading = True
     success = True
-    log(type='RELOAD:begin', prefix='RELOADING: ', text=shortened_module_name(filename), severity=ERROR,
+    log(type='RELOAD:begin', prefix='RELOADING: ', text=shortened_filename(filename), severity=ERROR,
         module=changed_module.__name__, modules=dict((m.__name__, m.__file__) for m in modules))
     try:
         try:
