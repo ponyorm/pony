@@ -20,11 +20,11 @@ translations = {}
 trans_files = []
 
 def reg_trans_file(filename):
-    for fname, mtime in trans_files:
+    for fname, mtime, trans in trans_files:
         if fname == filename: return
     mtime = get_mtime(filename)
-    load(filename)
-    trans_files.append((filename, mtime))
+    trans = load(filename)
+    trans_files.append((filename, mtime, trans))
 
 last_check_time = 0
 
@@ -38,25 +38,31 @@ def reload():
     try:
         if abs(now - last_check_time) <= options.RELOADING_CHECK_INTERVAL: return
         last_check_time = now
-        for fname, mtime in trans_files:
+        changed = set()
+        for fname, mtime, trans in trans_files:
             try: new_mtime = get_mtime(fname)
             except:
                 if mtime is None: continue
-            if new_mtime != mtime: break
-        else: return
-        success = True
-        log(type='RELOAD:begin', prefix='RELOADING: ', text=shortened_filename(fname), severity=ERROR)
+            if new_mtime != mtime: changed.add(fname)
+        if not changed: return
+
+        erroneous = set()
+        log(type='RELOAD:begin', prefix='RELOADING: ', text=shortened_filename(fname), severity=ERROR,
+            files=[ fname for fname, mtime, trans in trans_files ], changed=changed)
         try:
             translations.clear()
-            for i, (fname, mtime) in enumerate(trans_files):
-                try: load(fname)
-                except:
-                    success = False
-                    log_exc()
-                    trans_files[i] = fname, None
-                else: trans_files[i] = fname, get_mtime(fname)
+            for i, (fname, mtime, trans) in enumerate(trans_files):
+                if fname not in changed: update(translations, trans)
+                else:
+                    try: load(fname)
+                    except:
+                        erroneous.add(fname)
+                        log_exc()
+                        trans_files[i] = fname, None
+                    else: trans_files[i] = fname, get_mtime(fname)
         finally: log(type='RELOAD:end', severity=DEBUG,
-                     text=success and 'Reloaded successfully' or 'Reloaded with errors', success=success)
+                     text=erroneous and 'Reloaded with errors' or 'Reloaded successfully',
+                     success=not erroneous, erroneous=erroneous)
     finally: lock.release()
 
 def translate(key, params, lang_list):
@@ -74,10 +80,11 @@ def translate(key, params, lang_list):
 
 def load(filename):
     textlines = read_text_file(filename).split('\n')
-    trans2 = parse(textlines)
-    _update(translations, trans2)
+    trans = parse(textlines)
+    update(translations, trans)
+    return trans
 
-def _update(trans1, trans2):
+def update(trans1, trans2):
     for key, d2 in trans2.iteritems():
         trans1.setdefault(key, {}).update(d2)
 
