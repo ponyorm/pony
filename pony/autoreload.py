@@ -3,6 +3,7 @@ import itertools, linecache, sys, time, os, imp, traceback
 from os.path import abspath, basename, dirname, exists, splitext
 
 import pony
+from pony.utils import get_mtime
 from pony.logging import log, log_exc, ERROR, DEBUG
 
 USE_AUTORELOAD = True
@@ -67,9 +68,7 @@ def use_autoreload():
                 if filename.endswith(".pyc") or filename.endswith(".pyo"):
                     filename = filename[:-1]
                 if not exists(filename): continue
-                stat = os.stat(filename)
-                mtime = stat.st_mtime
-                if sys.platform == "win32": mtime -= stat.st_ctime
+                mtime = get_mtime(filename)
                 if mtimes.setdefault(filename, mtime) != mtime:
                     try: reload(modules, m, filename)
                     except Exception:
