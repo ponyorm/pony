@@ -714,7 +714,7 @@ def application(environ, start_response):
         except:
             log_exc()
             status = '500 Internal Server Error'
-            headers = {'Content-Type': 'text/html'}
+            headers = [ ('Content-Type', 'text/html') ]
             content = [ format_exc() ]
         else:
             status = '200 OK'
@@ -871,7 +871,7 @@ http.Exception = HttpException
 
 class Http400BadRequest(HttpException):
     status = '400 Bad Request'
-    headers = {'Content-Type': 'text/plain'}
+    headers = [ ('Content-Type', 'text/plain') ]
     def __init__(self, content='Bad Request'):
         Exception.__init__(self, 'Bad Request')
         self.content = content
@@ -879,7 +879,7 @@ http.BadRequest = Http400BadRequest
         
 class Http404NotFound(HttpException):
     status = '404 Not Found'
-    headers = {'Content-Type': 'text/plain'}
+    headers = [ ('Content-Type', 'text/plain') ]
     def __init__(self, content='Page not found'):
         Exception.__init__(self, 'Page not found')
         self.content = content
@@ -897,7 +897,7 @@ class HttpRedirect(HttpException):
         self.location = location or local.request.full_url
         status = str(status)
         self.status = self.status_dict.get(status, status)
-        self.headers = {'Location': location}
+        self.headers = [ ('Location', location) ]
 http.Redirect = HttpRedirect
 
 @http('/pony/shutdown?uid=$uid')
