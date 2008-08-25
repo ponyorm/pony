@@ -5,12 +5,11 @@ from itertools import imap, izip, count
 from operator import itemgetter, attrgetter
 
 import pony
-from pony import autoreload, auth, webutils, xslt
+from pony import autoreload, auth, webutils
 from pony.autoreload import on_reload
 from pony.utils import decorator_with_params
 from pony.templating import Html, StrHtml, printhtml, plainstr
 from pony.logging import log, log_exc, DEBUG, INFO, WARNING
-from pony.xslt import xslt_function
 
 class NodefaultType(object):
     def __repr__(self): return '__nodefault__'
@@ -496,7 +495,6 @@ class HttpRequest(object):
         self.form_processed = None
         self.submitted_form = self.fields.getfirst('_f')
         self.id_counter = imap('id_%d'.__mod__, count())
-        self.use_xslt = True
     def _get_languages(self):
         languages = webutils.parse_accept_language(self.environ.get('HTTP_ACCEPT_LANGUAGE'))
         try: languages.insert(0, auth.local.session['lang'])
@@ -640,17 +638,14 @@ def http_invoke(url):
         headers['Content-Type'] = content_type
 
     response.conversation_data = auth.save_conversation()
-    if media_type == 'text/html' and xslt.is_supported and request.use_xslt:
-        result = xslt.transform(result, charset)
-    else:
-        if hasattr(result, '__unicode__'): result = unicode(result)
-        if isinstance(result, unicode):
-            if media_type == 'text/html' or 'xml' in media_type :
-                  result = result.encode(charset, 'xmlcharrefreplace')
-            else: result = result.encode(charset, 'replace')
-        elif not isinstance(result, str):
-            try: result = etree.tostring(result, charset)
-            except: result = str(result)
+    if hasattr(result, '__unicode__'): result = unicode(result)
+    if isinstance(result, unicode):
+        if media_type == 'text/html' or 'xml' in media_type :
+              result = result.encode(charset, 'xmlcharrefreplace')
+        else: result = result.encode(charset, 'replace')
+    elif not isinstance(result, str):
+        try: result = etree.tostring(result, charset)
+        except: result = str(result)
 
     headers.setdefault('Expires', '0')
     max_age = headers.pop('Max-Age', '2')
@@ -953,56 +948,3 @@ def img(*args, **keyargs):
         else: description = Html(func.__doc__.split('\n', 1)[0])
     href = url(func, *args, **keyargs)
     return img_template % (href, description, description)
-    
-@xslt_function
-def xslt_set_base_url(url):
-    local.request._base_url = url
-
-@xslt_function
-def xslt_conversation():
-    return local.response.conversation_data
-
-protocol_re = re.compile(r'\w+:')
-
-@xslt_function
-def xslt_url(url):
-    request = local.request
-    script_url = request.script_url
-    base_url = request._base_url
-    if base_url is not None and not base_url.startswith(script_url): return url
-    if url.startswith(script_url): pass
-    elif url.startswith('http://'): return external_url('http', url[7:])
-    elif url.startswith('https://'): return external_url('https', url[8:])
-    elif protocol_re.match(url): return url
-
-    conversation_data = local.response.conversation_data
-    if not conversation_data: return url
-    if '?' in url: return '%s&_c=%s' % (url, conversation_data)
-    return '%s?_c=%s' % (url, conversation_data)
-        
-def external_url(protocol, s):
-    request = local.request
-    try: i = s.index('/')
-    except ValueError: pass
-    else:
-        # Phishing prevention
-        try: j = s.index('@', 0, i)
-        except ValueError: pass
-        else: s = s[j+1:]
-    if not local.response.conversation_data: return '%s://%s' % (protocol, s)
-    return '%s/pony/redirect/%s/%s' % (request.environ.get('SCRIPT_NAME',''), protocol, s)
-
-@http('/pony/redirect/$*', type='text/html')
-def external_redirect(*args):
-    url = local.request.url 
-    assert url.startswith('/pony/redirect/')
-    url = url[len('/pony/redirect/'):]
-    protocol, url = url.split('/', 1)
-    if protocol not in ('http', 'https'): raise http.NotFound
-    url = '%s://%s' % (protocol, url)
-    local.response.headers['Refresh'] = '0; url=' + url
-    return '<html></html>'
-
-@http('/pony/blocked')
-def blocked_url():
-    raise http.NotFound
