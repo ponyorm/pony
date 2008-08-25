@@ -329,7 +329,7 @@ def parse_markup(text, pos=0, nested=False):
             command, end = parse_command(text, start, end-1, None)
             result.append(command)
         elif i == 7: # $expression.path
-            result.append((start, end, None, match.group(7), None, None))
+            result.append((start, end, None, match.group(7), None))
         elif i == 8: # $function.call(...)
             cmd_name = match.group(7)
             command, end = parse_command(text, match.start(), end-1, cmd_name)
@@ -342,11 +342,6 @@ command_re = re.compile(r"""
     (?:                         
         (;)                     # end of command (group 1)
     |   ([{])                   # start of markup block (group 2)
-    |   (                       # keyword argument (group 3)
-            [$]
-            ([A-Za-z_]\w*)      # keyword name (group 4)
-            \s*=\s*[{]
-        )
     )?
 
 """, re.VERBOSE)
@@ -355,27 +350,19 @@ def parse_command(text, start, pos, name):
     exprlist = None
     if text[pos] == '(':
         exprlist, pos = parse_exprlist(text, pos+1)
-    markup_args, markup_keyargs = [], []
+    markup_args = []
     while True:
         match = command_re.match(text, pos)
         assert match
         end = match.end()
         i = match.lastindex
         if i is None:
-            return (start,pos,name,exprlist,markup_args,markup_keyargs), pos
+            return (start, pos, name, exprlist, markup_args), pos
         elif i == 1:
-            return (start,end,name,exprlist,markup_args,markup_keyargs), end
+            return (start, end, name, exprlist, markup_args), end
         elif i == 2:
-            if markup_keyargs: raise ParseError(
-                'Positional arguments cannot go after keyword arguments',
-                text, end)
             arg, end = parse_markup(text, end, True)
             markup_args.append(arg)
-        elif i == 3:
-            keyname = match.group(4)
-            assert keyname is not None
-            keyarg, end = parse_markup(text, end, True)
-            markup_keyargs.append((keyname, keyarg))
         else: assert False
         pos = end
    
@@ -425,21 +412,17 @@ class SyntaxElement(object):
         errpos = self.text.index(name, pos) + len(name)
         raise ParseError("Unexpected '%s' statement" % name, self.text, errpos)
     def _check_statement(self, item):
-        cmd_name, expr, markup_args, markup_keyargs = item[2:]
-        end_of_expr = (markup_args and markup_args[0][0]
-                       or markup_keyargs and markup_keyargs[0][0]
-                       or self.end)
+        cmd_name, expr, markup_args = item[2:]
+        end_of_expr = markup_args and markup_args[0][0] or self.end
         if cmd_name in ('if', 'elif', 'for'):
             if not expr: raise ParseError("'%s' statement must contain expression" % cmd_name, self.text, end_of_expr)
         elif cmd_name in ('else', 'sep', 'separator'):
-            if expr is not None: raise ParseError("'%s' statement must not contains expression" % cmd_name,
-                                                  self.text, end_of_expr)
-        if markup_keyargs: raise ParseError("'%s' statement must not have keyword arguments" % cmd_name,
-                                            self.text, markup_keyargs[0][1][0])
-        if not markup_args: raise ParseError("'%s' statement must contain markup block" % cmd_name,
-                                             self.text, self.end)
-        if len(markup_args) > 1: raise ParseError("'%s' statement must contain exactly one markup block" % cmd_name,
-                                                  self.text, markup_args[1][0])
+            if expr is not None: raise ParseError(
+                "'%s' statement must not contains expression" % cmd_name, self.text, end_of_expr)
+        if not markup_args: raise ParseError(
+            "'%s' statement must contain markup block" % cmd_name, self.text, self.end)
+        if len(markup_args) > 1: raise ParseError(
+            "'%s' statement must contain exactly one markup block" % cmd_name, self.text, markup_args[1][0])
 
 class Markup(SyntaxElement):
     def __init__(self, text, tree):
@@ -615,10 +598,9 @@ class ForElement(SyntaxElement):
 class ExprElement(SyntaxElement):
     def __init__(self, text, item):
         self.text = text
-        self.start,self.end,cmd_name,self.expr,markup_args,markup_keyargs = item
+        self.start,self.end,cmd_name,self.expr,markup_args = item
         assert cmd_name is None
         if markup_args: raise ParseError('Unexpected markup block', text, markup_args[0][0])
-        if markup_keyargs: raise ParseError('Unexpected keyword argument', text, markup_keyrgs[0][1][0])
         self.expr_code = compile(self.expr, '<?>', 'eval')
     def eval(self, globals, locals=None):
         result = eval(self.expr_code, globals, locals)
@@ -631,11 +613,10 @@ space_re = re.compile(r'\s+')
 class I18nElement(SyntaxElement):
     def __init__(self, text, item):
         self.text = text
-        self.start, self.end, cmd_name, expr, markup_args, markup_keyargs = item
+        self.start, self.end, cmd_name, expr, markup_args = item
         assert cmd_name is None and expr is None
         self.markup = Markup(text, markup_args[0])
         if len(markup_args) > 1: raise ParseError('Unexpected markup block', text, markup_args[1][0])
-        if markup_keyargs: raise ParseError('Unexpected keyword argument', text, markup_keyrgs[0][1][0])
         self.items = [ item for item in self.markup.content if not isinstance(item, basestring) ]
         key_list = [ not isinstance(item, basestring) and '$#' or item.replace('$', '$$')
                      for item in self.markup.content ]
@@ -658,12 +639,9 @@ class I18nElement(SyntaxElement):
 class FunctionElement(SyntaxElement):
     def __init__(self, text, item):
         self.text = text
-        (self.start, self.end, self.expr, self.params,
-                            markup_args, markup_keyargs) = item
+        (self.start, self.end, self.expr, self.params, markup_args) = item
         self.params = self.params or ''
         self.markup_args = [ Markup(text, item) for item in markup_args ]
-        self.markup_keyargs = [ (key, Markup(text, item))
-                                for (key, item) in markup_keyargs ]
         self.func_code = compile(self.expr, '<?>', 'eval')
         s = '(lambda *args, **keyargs: (list(args), keyargs))(%s)' % self.params
         self.params_code = compile(s, '<?>', 'eval')
@@ -671,15 +649,9 @@ class FunctionElement(SyntaxElement):
         func = eval(self.func_code, globals, locals)
         args, keyargs = eval(self.params_code, globals, locals)
         if getattr(func, 'lazy', False):
-            args.extend([BoundMarkup(m, globals, locals)
-                         for m in self.markup_args])
-            for key, markup in self.markup_keyargs:
-                keyargs[key] = BoundMarkup(markup, globals, locals)
+            args.extend([BoundMarkup(m, globals, locals) for m in self.markup_args])
         else:
-            for arg in self.markup_args:
-                args.append(arg.eval(globals, locals))
-            for key, arg in self.markup_keyargs:
-                keyargs[key] = arg.eval(globals, locals)
+            for arg in self.markup_args: args.append(arg.eval(globals, locals))
         result = func(*args, **keyargs)
         if inspect.isroutine(result): result = result()
         if isinstance(result, basestring): return result
