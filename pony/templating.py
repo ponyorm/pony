@@ -290,12 +290,22 @@ main_re = re.compile(r"""
         |   ( [A-Za-z_]\w*               # multi-part name (group 7)
               (?:\s*\.\s*[A-Za-z_]\w*)*
             )
-            (\s*[({])?                   # start of statement content (group 8)
+            (\s*(?:[(]|\\?[{]))?                   # start of statement content (group 8)
         )
 
     """, re.VERBOSE | re.DOTALL)
 
-def parse_markup(text, pos=0, nested=False):
+def parse_markup(text, start_pos=0, nested=False):
+    def remove_spaces(tree):
+        if not nested: return tree
+        assert text[start_pos-1] == '{'
+        if text[start_pos-2] != '\\': return tree
+        start = tree[2]
+        if isinstance(start, basestring): tree[2] = start.lstrip()
+        end = tree[-1]
+        if isinstance(end, basestring): tree[-1] = end.rstrip()
+        return tree
+    pos = start_pos
     result = [pos, None]
     brace_counter = 0
     while True:
@@ -306,7 +316,7 @@ def parse_markup(text, pos=0, nested=False):
             result.append(text[pos:])
             end = len(text)
             result[1] = end-1
-            return joinstrings(result), end
+            return remove_spaces(joinstrings(result)), end
         start, end = match.span()
         i = match.lastindex
         if start != pos: result.append(text[pos:start])
@@ -317,7 +327,7 @@ def parse_markup(text, pos=0, nested=False):
             if not brace_counter:
                 if nested:
                     result[1] = end-1
-                    return joinstrings(result), end
+                    return remove_spaces(joinstrings(result)), end
                 raise ParseError("Unexpected symbol '}'", text, end)
             brace_counter -= 1
             result.append('}')
@@ -341,7 +351,7 @@ command_re = re.compile(r"""
     \s*                         # optional whitespace
     (?:                         
         (;)                     # end of command (group 1)
-    |   ([{])                   # start of markup block (group 2)
+    |   (\\?[{])                   # start of markup block (group 2)
     )?
 
 """, re.VERBOSE)
