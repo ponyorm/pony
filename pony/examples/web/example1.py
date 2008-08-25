@@ -28,11 +28,15 @@ def page3():
 @printhtml
 def page4():
     "Using of <strong>@printhtml</strong> decorator"
-    print '<title>Page 3</title>'
+    print '<html>'
+    print '<head><title>Page 3</title></head>'
+    print '<body>'
     print '<h1>Hello again!</h1>'
     print '<br>'
     print '<p>Demonstration of <strong>@printhtml</strong> decorator'
     print '<p>Click <a href="/">here</a> for return'
+    print '</body>'
+    print '</html>'
 
 @printhtml
 def header(title='Demonstration of Pony features'):

@@ -6,7 +6,7 @@ use_autoreload()
 
 @webpage('/')
 def index():
-    f = Form(method='POST', prevent_resubmit=True)
+    f = Form()
     f.first_name = Text(required=True)
     f.last_name = Text()
     f.birth_date = Composite(required=True)

@@ -5,7 +5,7 @@ from itertools import imap, izip, count
 from operator import itemgetter, attrgetter
 
 import pony
-from pony import autoreload, auth, webutils, xslt, options
+from pony import autoreload, auth, webutils, xslt
 from pony.autoreload import on_reload
 from pony.utils import decorator_with_params
 from pony.templating import Html, StrHtml, printhtml, plainstr
@@ -496,6 +496,7 @@ class HttpRequest(object):
         self.form_processed = None
         self.submitted_form = self.fields.getfirst('_f')
         self.id_counter = imap('id_%d'.__mod__, count())
+        self.use_xslt = True
     def _get_languages(self):
         languages = webutils.parse_accept_language(self.environ.get('HTTP_ACCEPT_LANGUAGE'))
         try: languages.insert(0, auth.local.session['lang'])
@@ -512,107 +513,10 @@ class HttpRequest(object):
                 result.append(lang)
         return result
 
-element_re = re.compile(r'\s*(?:<!--.*?--\s*>\s*)*(</?\s*([!A-Za-z-]\w*)\b[^>]*>)', re.DOTALL)
-
-header_tags = set("!doctype html head title base script style meta link object".split())
-
-css_re = re.compile('<link\b[^>]\btype\s*=\s*([\'"])text/css\1')
-
-class _UsePlaceholders(Exception): pass
-
 class HttpResponse(object):
     def __init__(self):
         self.headers = {}
         self.cookies = Cookie.SimpleCookie()
-        self.postprocessing = True
-        self.base_stylesheets = []
-        self.component_stylesheets = []
-        self.scripts = []
-    def add_base_stylesheets(self, links):
-        stylesheets = self.base_stylesheets
-        for link in links:
-            if not isinstance(link, (basestring, tuple)): raise TypeError('Reference to CSS stylesheet must be string or tuple')
-            if link not in css_list: stylesheets.append(link)
-    def add_component_stylesheets(self, links):
-        stylesheets = self.component_stylesheets
-        for link in links:
-            if not isinstance(href, (basestring, tuple)): raise TypeError('Reference to CSS stylesheet must be string or tuple')
-            if link not in css_list: stylesheets.append(link)
-    def add_scripts(self, links):
-        scripts = self.scripts
-        for link in links:
-            if not isinstance(link, (basestring, tuple)): raise TypeError('Reference to script must be string or tuple')
-            if link not in scripts: scripts.append(link)
-    def postprocess(self, html, charset):
-        if not self.postprocessing: return html
-        elif html.__class__ == str: html = StrHtml(html)
-        elif html.__class__ == unicode: html = Html(html)
-        stylesheets = self.base_stylesheets
-        if not stylesheets: stylesheets = options.STD_STYLESHEETS
-        base_css = StrHtml('\n').join(css_link(link) for link in stylesheets)
-        component_css = StrHtml('\n').join(css_link(link) for link in self.component_stylesheets)
-        scripts = StrHtml('\n').join(script_link(link) for link in self.scripts)
-
-        doctype = ''
-        try:        
-            match = element_re.search(html)
-            if match is None or match.group(2).lower() not in header_tags:
-                doctype = StrHtml(options.STD_DOCTYPE)
-                head = ''
-                body = html
-            else:
-                first_element = match.group(2).lower()
-
-                for match2 in element_re.finditer(html):
-                    element = match2.group(2).lower()
-                    if element not in header_tags: break
-                    match1 = match2
-                bound = match1.end(1)
-                head = html.__class__(html[:bound])
-                body = html.__class__(html[bound:])
-
-                if first_element in ('!doctype', 'html'): raise _UsePlaceholders
-                doctype = StrHtml(options.STD_DOCTYPE)
-
-            match = element_re.search(head)
-            if match is None or match.group(2).lower() != 'head':
-                head_list = [ head ]
-                if css_re.search(head) is None:
-                    head_list = [base_css, head]
-                head_list.append(component_css)
-                head_list.append(scripts)
-                head = StrHtml('\n').join([ StrHtml('<head>') ] + head_list + [ StrHtml('</head>') ])
-            else: raise _UsePlaceholders
-        except _UsePlaceholders:
-            head = head.replace(options.BASE_STYLESHEETS_PLACEHOLDER, base_css, 1)
-            head = head.replace(options.COMPONENT_STYLESHEETS_PLACEHOLDER, component_css, 1)
-            head = head.replace(options.SCRIPTS_PLACEHOLDER, scripts, 1)
-            head = html.__class__(head)
-
-        match = element_re.search(body)
-        element = match.group(2).lower()
-        if element != 'body':
-            if 'blueprint' not in base_css: body_list = [ body ]
-            else: body_list = [ StrHtml('<div class="container">'), body, StrHtml('</div>') ]
-            body = StrHtml('\n').join([ StrHtml('<body>') ] + body_list + [ StrHtml('</body>') ])
-
-        if doctype: result = StrHtml('\n').join([doctype, head, body])
-        else: result = StrHtml('\n').join([head, body])
-
-        return result.encode(charset, 'xmlcharrefreplace')
-
-def css_link(link):
-    if isinstance(link, basestring): link = (link,)
-    elif len(link) > 3: raise TypeError('too many parameters for CSS reference')
-    href, media, cond = (link + (None, None))[:3]
-    result = [ StrHtml('<link rel="stylesheet" href="%s" type="text/css"') % href ]
-    if media: result.append(StrHtml(' media="%s"') % media)
-    result.append(StrHtml('>'))
-    if cond: result = [ StrHtml('<!--[%s]>') % cond ] + result + [StrHtml('<![endif]-->') ]
-    return StrHtml('').join(result)
-
-def script_link(link):
-    return StrHtml('<script src="%s"></script>') % link
 
 class Local(threading.local):
     def __init__(self):
@@ -736,7 +640,8 @@ def http_invoke(url):
         headers['Content-Type'] = content_type
 
     response.conversation_data = auth.save_conversation()
-    if media_type == 'text/html': result = response.postprocess(result, charset)
+    if media_type == 'text/html' and xslt.is_supported and request.use_xslt:
+        result = xslt.transform(result, charset)
     else:
         if hasattr(result, '__unicode__'): result = unicode(result)
         if isinstance(result, unicode):
