@@ -1,3 +1,14 @@
+STD_DOCTYPE = '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">'
+STD_STYLESHEETS = [
+    ("/pony/static/blueprint/screen.css", "screen, projection"),
+    ("/pony/static/blueprint/print.css", "print"),
+    ("/pony/static/blueprint/ie.css.css", "screen, projection", "if IE"),
+    ("/pony/static/blueprint/default.css", "screen, projection"),
+    ]
+BASE_STYLESHEETS_PLACEHOLDER = '<!--PONY-BASE-STYLESHEETS-->'
+COMPONENT_STYLESHEETS_PLACEHOLDER = '<!--PONY-COMPONENTS-STYLESHEETS-->'
+SCRIPTS_PLACEHOLDER = '<!--PONY-SCRIPTS-->'
+
 # reloading options:
 RELOADING_CHECK_INTERVAL = 1.0  # in seconds
 
