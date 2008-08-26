@@ -299,6 +299,12 @@ newline_re = re.compile(r'^ *\n')
 
 def parse_markup(text, start_pos=0, nested=False):
     def remove_spaces(tree):
+        for i in range(3, len(tree)):
+            item = tree[i]
+            prev = tree[i-1]
+            if isinstance(item, basestring) and isinstance(prev, tuple):
+                prev_markups = prev[4]
+                if prev_markups: tree[i] = newline_re.sub('', item)
         if not nested: return tree
         assert text[start_pos-1] == '{'
         start = tree[2]
