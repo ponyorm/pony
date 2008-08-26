@@ -645,9 +645,9 @@ class ExprElement(SyntaxElement):
         self.start, self.end, cmd_name, self.expr, markup_args = item
         assert cmd_name is None
         self.expr_code = compile(self.expr, '<?>', 'eval')
-        if len(markup_args) > 1: raise ParseError('Unexpected markup block', text, markup_args[0][0])
-        elif markup_args: self.markup = Markup(text, markup_args[0])
-        else: self.markup = None
+        if not markup_args: self.markup = None
+        elif len(markup_args) > 1: raise ParseError('Unexpected markup block', text, markup_args[0][0])
+        else: self.markup = Markup(text, markup_args[0])
     def eval(self, globals, locals=None):
         try: result = eval(self.expr_code, globals, locals)
         except:
