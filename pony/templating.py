@@ -426,7 +426,7 @@ class SyntaxElement(object):
         end_of_expr = markup_args and markup_args[0][0] or self.end
         if cmd_name in ('if', 'elif', 'for'):
             if not expr: raise ParseError("'%s' statement must contain expression" % cmd_name, self.text, end_of_expr)
-        elif cmd_name in ('else', 'sep', 'separator'):
+        elif cmd_name in ('else', 'sep', 'separator', 'try'):
             if expr is not None: raise ParseError(
                 "'%s' statement must not contains expression" % cmd_name, self.text, end_of_expr)
         if not markup_args: raise ParseError(
@@ -447,7 +447,7 @@ class Markup(SyntaxElement):
             elif isinstance(item, tuple):
                 prev = self.content and self.content[-1] or None
                 cmd_name = item[2]
-                if cmd_name in ('elif', 'else', 'sep', 'separator'):
+                if cmd_name in ('elif', 'else', 'sep', 'separator', 'except'):
                     if isinstance(prev, basestring) and prev.isspace():
                         self.content.pop()
                         prev = self.content and self.content[-1] or None
@@ -470,6 +470,13 @@ class Markup(SyntaxElement):
                     if not isinstance(prev, ForElement):
                         self._raise_unexpected_statement(item)
                     prev.append_separator(item)
+                elif cmd_name == 'try':
+                    self.content.append(TryElement(text, item))
+                elif cmd_name == 'except':
+                    if not isinstance(prev, TryElement):
+                        print repr(prev)
+                        self._raise_unexpected_statement(item)
+                    prev.append_except(item)
                 else: self.content.append(FunctionElement(text, item))
             else: assert False
     def eval(self, globals, locals=None):
@@ -605,6 +612,33 @@ class ForElement(SyntaxElement):
             else: locals[name] = old_value
         return self.empty.join(result)
 
+class TryElement(SyntaxElement):
+    def __init__(self, text, item):
+        self.text = text
+        self.start, self.end = item[:2]
+        self._check_statement(item)
+        self.markup = Markup(text, item[4][0])
+        self.except_list = []
+        self.else_ = None
+    def append_except(self, item):
+        self._check_statement(item)
+        self.end = item[1]
+        expr, markup_args = item[3:5]
+        if expr is None: code = None
+        else: code = compile(expr.lstrip(), '<?>', 'eval')
+        self.except_list.append((code, Markup(self.text, markup_args[0])))
+    def eval(self, globals, locals=None):
+        try: return self.markup.eval(globals, locals)
+        except Exception:
+            exc_type, exc_value, traceback = sys.exc_info()
+            try:
+                for code, markup in self.except_list:
+                    if code is None: return markup.eval(globals, locals)
+                    exc = eval(code, globals, locals)
+                    if issubclass(exc_type, exc): return markup.eval(globals, locals)
+                raise exc_type, exc_value, traceback
+            finally: del traceback
+                
 class ExprElement(SyntaxElement):
     def __init__(self, text, item):
         self.text = text
