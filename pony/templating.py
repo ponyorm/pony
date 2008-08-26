@@ -545,33 +545,33 @@ var_list_re_2 = re.compile(r"""
 
     """, re.VERBOSE)
 
-def parse_var_list(text, pos, end, nested=False):
+def parse_var_list(expr, pos, nested=False):
     result = []
     errmsg = "Incorrect Python expression inside 'for' statement"
     while True:
-        match = var_list_re_1.match(text, pos, end)
+        match = var_list_re_1.match(expr, pos)
         if not match:
-            if result and not nested and text[pos:end].isspace():
+            if result and not nested and expr[pos:].isspace():
                 return result
-            raise ParseError(errmsg, text, end)
+            raise ParseError(errmsg, expr, len(expr))
         pos = match.end()
         i = match.lastindex
         if i == 1:
             ident = match.group(1)
             result.append(match.group(1))
         elif i == 2:
-            vars, pos = parse_var_list(text, pos, end, True)
+            vars, pos = parse_var_list(expr, pos, True)
             result.extend(vars)
         else: assert False
-        match = var_list_re_2.match(text, pos, end)
-        if not match: raise ParseError(errmsg, text, end)
+        match = var_list_re_2.match(expr, pos)
+        if not match: raise ParseError(errmsg, expr, len(expr))
         pos = match.end()
         i = match.lastindex
         if i == 1:
-            if not nested: raise ParseError("Unexpected ')'", text, pos)
+            if not nested: raise ParseError("Unexpected ')'", expr, pos)
             return result, pos
         elif i == 2:
-            if nested: raise ParseError("')' expected", text, pos)
+            if nested: raise ParseError("')' expected", expr, pos)
             return result
         elif i == 3: pass
         else: assert False
@@ -584,7 +584,7 @@ class ForElement(SyntaxElement):
         self._check_statement(item)
         self.expr = item[3]
         self.markup = Markup(text, item[4][0])
-        self.var_names = parse_var_list(self.expr, 0, len(self.expr))
+        self.var_names = parse_var_list(self.expr, 0)
         self.separator = self.else_ = None
         var_list = ', '.join(self.var_names)
         list_expr = '[ (%s,) for %s ]' % (var_list, self.expr)
