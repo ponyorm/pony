@@ -509,7 +509,7 @@ var_list_re_1 = re.compile(r"""
     \s*
     (?:
         ([A-Za-z_]\w*)    # group 1
-    |   ([[(])             # group 2
+    |   ([[(])            # group 2
     )
 
     """, re.VERBOSE)
@@ -520,7 +520,7 @@ var_list_re_2 = re.compile(r"""
     (?:
         (?: ,\s* )?     # trailing comma
         (?:
-            ([])])       # group 1
+            ([])])      # group 1
         |   \b(in)\b    # group 2
         )
     |   (,)             # group 3
