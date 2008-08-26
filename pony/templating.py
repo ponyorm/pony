@@ -390,16 +390,16 @@ exprlist_re = re.compile(r"""
 
         (                         # comments (group 1):
             \#.*?(?:\n|\Z)        # - Python-style comment inside expressions
-        |   [$]//.*?(?:\n|\Z)     # - $// comment
-        |   [$]/\*.*?(?:\*/|\Z)   # - $/* comment */
+        |   [$]?//.*?(?:\n|\Z)     # - $// comment
+        |   [$]?/\*.*?(?:\*/|\Z)   # - $/* comment */
         )
     |   ([(])                     # open parenthesis (group 2)
     |   ([)])                     # close parenthesis (group 3)
     |   ([$])?[A-Za-z_]\w*        # Python identifier with optional $ ($ is group 4)
-    |   '(?:[^'\\]|\\.)*?'        # 'string'
-    |   "(?:[^"\\]|\\.)*?"        # "string"
     |   '''(?:[^\\]|\\.)*?'''     # '''triple-quoted string'''
     |   \"""(?:[^\\]|\\.)*?\"""   # \"""triple-quoted string\"""
+    |   '(?:[^'\\]|\\.)*?'        # 'string'
+    |   "(?:[^"\\]|\\.)*?"        # "string"
 
     """, re.VERBOSE)
 
