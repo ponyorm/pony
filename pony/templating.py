@@ -566,7 +566,7 @@ class ForElement(SyntaxElement):
         self.start, self.end = item[:2]
         self._check_statement(item)
         self.expr = item[3]
-        self.markup = Markup(self.text, item[4][0])
+        self.markup = Markup(text, item[4][0])
         self.var_names = parse_var_list(self.expr, 0, len(self.expr))
         self.separator = self.else_ = None
         var_list = ', '.join(self.var_names)
@@ -608,7 +608,7 @@ class ForElement(SyntaxElement):
 class ExprElement(SyntaxElement):
     def __init__(self, text, item):
         self.text = text
-        self.start,self.end,cmd_name,self.expr,markup_args = item
+        self.start, self.end, cmd_name, self.expr, markup_args = item
         assert cmd_name is None
         if markup_args: raise ParseError('Unexpected markup block', text, markup_args[0][0])
         self.expr_code = compile(self.expr, '<?>', 'eval')
@@ -649,7 +649,7 @@ class I18nElement(SyntaxElement):
 class FunctionElement(SyntaxElement):
     def __init__(self, text, item):
         self.text = text
-        (self.start, self.end, self.expr, self.params, markup_args) = item
+        self.start, self.end, self.expr, self.params, markup_args = item
         self.params = self.params or ''
         self.markup_args = [ Markup(text, item) for item in markup_args ]
         self.func_code = compile(self.expr, '<?>', 'eval')
