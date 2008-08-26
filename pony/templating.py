@@ -610,10 +610,15 @@ class ExprElement(SyntaxElement):
         self.text = text
         self.start, self.end, cmd_name, self.expr, markup_args = item
         assert cmd_name is None
-        if markup_args: raise ParseError('Unexpected markup block', text, markup_args[0][0])
         self.expr_code = compile(self.expr, '<?>', 'eval')
+        if len(markup_args) > 1: raise ParseError('Unexpected markup block', text, markup_args[0][0])
+        elif markup_args: self.markup = Markup(text, markup_args[0])
+        else: self.markup = None
     def eval(self, globals, locals=None):
-        result = eval(self.expr_code, globals, locals)
+        try: result = eval(self.expr_code, globals, locals)
+        except:
+            if not self.markup: raise
+            return self.markup.eval(globals, locals)
         if inspect.isroutine(result): result = result()
         if isinstance(result, basestring): return result
         return unicode(result)
