@@ -244,7 +244,7 @@ def printhtml(old_func):
 
 @decorator
 def lazy(old_func):
-    old_func.lazy = True
+    old_func.__lazy__ = True
     return old_func
 
 def err(text, end, length=30):
@@ -287,7 +287,7 @@ main_re = re.compile(r"""
             )
         |   ([(])                        # start of $(expression) (group 5)
         |   ([{])                        # start of ${markup} (group 6)
-        |   ( [A-Za-z_]\w*               # multi-part name (group 7)
+        |   ( \.?[A-Za-z_]\w*               # multi-part name (group 7)
               (?:\s*\.\s*[A-Za-z_]\w*)*
             )
             (\s*(?:[(]|\\?[{]))?                   # start of statement content (group 8)
@@ -348,12 +348,15 @@ def parse_markup(text, start_pos=0, nested=False):
         elif i in (5, 6): # $(expression) or ${i18n markup}
             command, end = parse_command(text, start, end-1, None)
             result.append(command)
-        elif i == 7: # $expression.path
-            result.append((start, end, None, match.group(7), None))
-        elif i == 8: # $function.call(...)
+        elif i >= 7:
             cmd_name = match.group(7)
-            command, end = parse_command(text, match.start(), end-1, cmd_name)
-            result.append(command)
+            if cmd_name is not None and cmd_name.startswith('.'):
+                if not is_ident(cmd_name[1:]): raise ParseError('Invalid method call', text, start)
+            if i == 7: # $expression.path
+                result.append((start, end, None, cmd_name, None))
+            elif i == 8: # $function.call(...)
+                command, end = parse_command(text, match.start(), end-1, cmd_name)
+                result.append(command)
         pos = end
 
 command_re = re.compile(r"""
@@ -456,12 +459,15 @@ class Markup(SyntaxElement):
             if isinstance(item, basestring):
                 self.content.append(text.__class__(item))
             elif isinstance(item, tuple):
-                prev = self.content and self.content[-1] or None
+                if self.content: prev = self.content[-1]
+                else: prev = None
                 cmd_name = item[2]
-                if cmd_name in ('elif', 'else', 'sep', 'separator', 'except'):
-                    if isinstance(prev, basestring) and prev.isspace():
+                if cmd_name is not None and cmd_name.startswith('.') \
+                   or cmd_name in ('elif', 'else', 'sep', 'separator', 'except'):
+                    if isinstance(prev, basestring) and not prev or prev.isspace():
                         self.content.pop()
-                        prev = self.content and self.content[-1] or None
+                        if self.content: prev = self.content[-1]
+                        else: prev = None
                 if cmd_name is None:
                     if item[3]: self.content.append(ExprElement(text, item))
                     else: self.content.append(I18nElement(text, item))
@@ -485,9 +491,12 @@ class Markup(SyntaxElement):
                     self.content.append(TryElement(text, item))
                 elif cmd_name == 'except':
                     if not isinstance(prev, TryElement):
-                        print repr(prev)
                         self._raise_unexpected_statement(item)
                     prev.append_except(item)
+                elif cmd_name.startswith('.'):
+                    if not isinstance(prev, FunctionElement):
+                        self._raise_unexpected_statement(item)
+                    prev.append_method(item)
                 else: self.content.append(FunctionElement(text, item))
             else: assert False
     def eval(self, globals, locals=None):
@@ -737,14 +746,32 @@ class FunctionElement(SyntaxElement):
         self.func_code = compile(self.expr, '<?>', 'eval')
         s = '(lambda *args, **keyargs: (list(args), keyargs))(%s)' % self.params
         self.params_code = compile(s, '<?>', 'eval')
+        self.methods = []
+    def append_method(self, item):
+        start, end, expr, params, markup_args = item
+        assert expr.startswith('.')
+        method_name = expr[1:]
+        params = params or ''
+        markup_args = [ Markup(self.text, item) for item in markup_args ]
+        s = '(lambda *args, **keyargs: (list(args), keyargs))(%s)' % self.params
+        params_code = compile(s, '<?>', 'eval')
+        self.methods.append((method_name, params_code, markup_args))
     def eval(self, globals, locals=None):
         func = eval(self.func_code, globals, locals)
         args, keyargs = eval(self.params_code, globals, locals)
-        if getattr(func, 'lazy', False):
+        if getattr(func, '__lazy__', False):
             args.extend([BoundMarkup(m, globals, locals) for m in self.markup_args])
         else:
             for arg in self.markup_args: args.append(arg.eval(globals, locals))
         result = func(*args, **keyargs)
+        for method_name, params_code, markup_args in self.methods:
+            method = getattr(result, method_name)
+            args, keyargs = eval(params_code, globals, locals)
+            if getattr(method, '__lazy__', False):
+                args.extend([BoundMarkup(m, globals, locals) for m in markup_args])
+            else:
+                for arg in markup_args: args.append(arg.eval(globals, locals))
+            method(*args, **keyargs)
         if inspect.isroutine(result): result = result()
         if isinstance(result, basestring): return result
         return unicode(result)
