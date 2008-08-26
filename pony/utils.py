@@ -69,12 +69,12 @@ def cached(f, *args, **keyargs):
 def error_method(*args, **kwargs):
     raise TypeError
 
-ident_re = re.compile(r'^[A-Za-z_]\w*\Z')
+_ident_re = re.compile(r'^[A-Za-z_]\w*\Z')
 
 # is_ident = ident_re.match
 def is_ident(string):
     'is_ident(string) -> bool'
-    return bool(ident_re.match(string))
+    return bool(_ident_re.match(string))
 
 def import_module(name):
     "import_module('a.b.c') -> <module a.b.c>"

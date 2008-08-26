@@ -413,7 +413,8 @@ def parse_exprlist(text, pos):
         start, end = match.span()
         i = match.lastindex
         result.append(text[pos:start])
-        if i == 1: pass  # comment
+        if i == 1:  # comment
+            result.append(' ')
         elif i == 2:
             counter += 1
             result.append('(')
@@ -576,13 +577,43 @@ def parse_var_list(expr, pos, nested=False):
         elif i == 3: pass
         else: assert False
 
+for_re = re.compile(r"""
+        '''(?:[^\\]|\\.)*?'''     # '''triple-quoted string'''
+    |   \"""(?:[^\\]|\\.)*?\"""   # \"""triple-quoted string\"""
+    |   '(?:[^'\\]|\\.)*?'        # 'string'
+    |   "(?:[^"\\]|\\.)*?"        # "string"
+    |   ;                         
+    """, re.VERBOSE)
+
+ident_re = re.compile(r'[A-Za-z_]\w*')
+
+def parse_for(expr):
+    elements = []
+    while True:
+        for match in for_re.finditer(expr):
+            if match.group() == ';':
+                elements.append(expr[:match.start()])
+                expr = expr[match.end():]
+                break
+        else: elements.append(expr); break
+    expr = elements[0]
+    assignments = []
+    for s in elements[1:]:
+        if '=' not in s: raise ParseError('Invalid assignment', s, 0)
+        a, b = s.split('=', 1)
+        var_names = ident_re.findall(a)
+        compile(b.lstrip(), '<?>', 'eval') # check; can raise exception
+        code = compile(s.lstrip(), '<?>', 'single')
+        assignments.append((var_names, code))
+    return expr, assignments
+
 class ForElement(SyntaxElement):
     def __init__(self, text, item):
         self.text = text
         self.empty = text.__class__()
         self.start, self.end = item[:2]
         self._check_statement(item)
-        self.expr = item[3]
+        self.expr, self.assignments = parse_for(item[3])
         self.markup = Markup(text, item[4][0])
         self.var_names = parse_var_list(self.expr, 0)
         self.separator = self.else_ = None
@@ -603,8 +634,9 @@ class ForElement(SyntaxElement):
         if locals is None: locals = {}
         not_found = object()
         old_values = []
-        var_names = self.var_names + [ 'for' ]
-        for name in var_names:
+        all_var_names = self.var_names + [ 'for' ]
+        for ass_names, _ in self.assignments: all_var_names.extend(ass_names)
+        for name in all_var_names:
             old_values.append(locals.get(name, not_found))
         result = []
         list = eval(self.code, globals, locals)
@@ -616,8 +648,9 @@ class ForElement(SyntaxElement):
                 result.append(self.separator.eval(globals, locals))
             for name, value in zip(self.var_names, item): locals[name] = value
             locals['for'] = i, len(list)
+            for _, code in self.assignments: exec code in globals, locals
             result.append(self.markup.eval(globals, locals))
-        for name, old_value in zip(self.var_names, old_values):
+        for name, old_value in zip(all_var_names, old_values):
             if old_value is not_found: del locals[name]
             else: locals[name] = old_value
         return self.empty.join(result)
