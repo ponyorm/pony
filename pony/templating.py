@@ -295,12 +295,16 @@ main_re = re.compile(r"""
 
     """, re.VERBOSE | re.DOTALL)
 
+newline_re = re.compile(r'^ *\n')
+
 def parse_markup(text, start_pos=0, nested=False):
     def remove_spaces(tree):
         if not nested: return tree
         assert text[start_pos-1] == '{'
-        if text[start_pos-2] != '\\': return tree
         start = tree[2]
+        if text[start_pos-2] != '\\':
+            tree[2] = newline_re.sub('', start)
+            return tree
         if isinstance(start, basestring): tree[2] = start.lstrip()
         end = tree[-1]
         if isinstance(end, basestring): tree[-1] = end.rstrip()
