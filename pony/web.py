@@ -732,7 +732,6 @@ def http_invoke(url):
         content_type = '%s; charset=%s' % (media_type, charset)
         headers['Content-Type'] = content_type
 
-    response.conversation_data = auth.save_conversation()
     if media_type == 'text/html': result = response.postprocess(result)
     if hasattr(result, '__unicode__'): result = unicode(result)
     if isinstance(result, unicode):
@@ -786,7 +785,6 @@ def application(environ, start_response):
 
     request = local.request = HttpRequest(environ)
     auth.load(environ, request.cookies)
-    auth.load_conversation(request.fields)
     auth.verify_ticket(request.fields.getfirst('_t'))
     try:
         log_request(request)
@@ -914,9 +912,6 @@ class _Http(object):
 
     @property
     def session(self): return auth.local.session
-
-    @property
-    def conversation(self): return auth.local.conversation
 
     def get_user(self):
         return auth.get_user()

@@ -26,13 +26,11 @@ class Local(threading.local):
         now = int(time()) // 60
         lock = self.lock
         self.__dict__.clear()
-        self.__dict__.update(lock=lock, user=None, environ={}, session={}, conversation={}, ctime=now, mtime=now,
+        self.__dict__.update(lock=lock, user=None, environ={}, session={}, ctime=now, mtime=now,
                              cookie_value=None, remember_ip=False, longlife_session=False, longlife_key=None,
                              ip=None, user_agent=None, ticket=False, ticket_payload=None)
     def set_user(self, user, longlife_session=False, remember_ip=False):
-        if self.user is not None or user is None:
-            self.session.clear()
-            self.conversation.clear()
+        if self.user is not None or user is None: self.session.clear()
         self.user = user
         if user:
             self.longlife_session = longlife_session
@@ -166,43 +164,6 @@ def save(cookies):
         max_time = (options.MAX_LONGLIFE_SESSION+1)*24*60*60
         webutils.set_cookie(cookies, options.COOKIE_NAME, cookie_value, max_time, max_time,
                             options.COOKIE_PATH, options.COOKIE_DOMAIN, http_only=True)
-
-def get_conversation(s):
-    return local.conversation
-
-def load_conversation(fields):
-    s = fields.getfirst(options.CONVERSATION_FIELD_NAME)
-    if not s: return
-    try:
-        s = unquote_plus(s)
-        time_str, data_str, hash_str = s.split(':')
-        minute = int(time_str, 16)
-        now = int(time()) // 60
-        if minute < now - options.MAX_SESSION_MTIME or minute > now + 1: return
-        data = b64decode(data_str, altchars='-_')
-        hash = b64decode(hash_str, altchars='-_')
-        hashobject = get_hashobject(minute)
-        hashobject.update(data)
-        if hash != hashobject.digest(): return
-        conversation = loads(data)
-        assert conversation.__class__ == dict
-        local.conversation = conversation
-    except: return
-
-def save_conversation():
-    c = local.conversation
-    if not c: return ''
-    now = int(time()) // 60
-    now_str = '%x' % now
-    data = dumps(c)
-    hashobject = get_hashobject(now)
-    hashobject.update(data)
-    hash = hashobject.digest()
-
-    data_str = b64encode(data, altchars='-_')
-    hash_str = b64encode(hashobject.digest(), altchars='-_')
-    s = ':'.join((now_str, data_str, hash_str))
-    return quote_plus(s, safe=':')
 
 def get_ticket(payload=None, prevent_resubmit=False):
     if not payload: payload = ''
