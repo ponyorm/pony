@@ -737,6 +737,8 @@ class I18nElement(SyntaxElement):
             else: result.append(params.pop())
         return self.markup.empty.join(result)
 
+_func_code = compile('__pony_func__(*__pony_args__, **__pony_keyargs__)', '<?>', 'eval')
+
 class FunctionElement(SyntaxElement):
     def __init__(self, text, item):
         self.text = text
@@ -763,7 +765,11 @@ class FunctionElement(SyntaxElement):
             args.extend([BoundMarkup(m, globals, locals) for m in self.markup_args])
         else:
             for arg in self.markup_args: args.append(arg.eval(globals, locals))
-        result = func(*args, **keyargs)
+        if locals is None: locals = {}
+        locals['__pony_func__'] = func
+        locals['__pony_args__'] = args
+        locals['__pony_keyargs__'] = keyargs
+        result = eval(_func_code, globals, locals)
         for method_name, params_code, markup_args in self.methods:
             method = getattr(result, method_name)
             args, keyargs = eval(params_code, globals, locals)
