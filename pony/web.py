@@ -531,12 +531,12 @@ class HttpResponse(object):
         stylesheets = self.base_stylesheets
         for link in links:
             if not isinstance(link, (basestring, tuple)): raise TypeError('Reference to CSS stylesheet must be string or tuple')
-            if link not in css_list: stylesheets.append(link)
+            if link not in stylesheets: stylesheets.append(link)
     def add_component_stylesheets(self, links):
         stylesheets = self.component_stylesheets
         for link in links:
-            if not isinstance(href, (basestring, tuple)): raise TypeError('Reference to CSS stylesheet must be string or tuple')
-            if link not in css_list: stylesheets.append(link)
+            if not isinstance(link, (basestring, tuple)): raise TypeError('Reference to CSS stylesheet must be string or tuple')
+            if link not in stylesheets: stylesheets.append(link)
     def add_scripts(self, links):
         scripts = self.scripts
         for link in links:
@@ -1039,3 +1039,18 @@ def img(*args, **keyargs):
         else: description = Html(func.__doc__.split('\n', 1)[0])
     href = url(func, *args, **keyargs)
     return img_template % (href, description, description)
+
+@decorator_with_params
+def component(old_func, css=None, js=None):
+    def new_func(*args, **keyargs):
+        response = local.response
+        if css is not None:
+            if isinstance(css, (basestring, tuple)):
+                  response.add_component_stylesheets([ css ])
+            else: response.add_component_stylesheets(css)
+        if js is not None:
+            if isinstance(js, basestring):
+                  response.add_scripts([ js ])
+            else: response.add_scripts(js)
+        return old_func(*args, **keyargs)
+    return new_func
