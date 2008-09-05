@@ -10,6 +10,7 @@ from pony.autoreload import on_reload
 from pony.utils import decorator_with_params
 from pony.templating import Html, StrHtml, printhtml, plainstr
 from pony.logging import log, log_exc, DEBUG, INFO, WARNING
+from pony.db import with_transaction
 
 class NodefaultType(object):
     def __repr__(self): return '__nodefault__'
@@ -711,7 +712,8 @@ def http_invoke(url):
     params.update(zip(names, args))
     params.update(keyargs)
 
-    result = info.func(*args, **keyargs)
+    result = with_transaction(info.func, *args, **keyargs)
+    
     if isinstance(result, HttpException): raise result
 
     headers = dict([ (name.replace('_', '-').title(), value)

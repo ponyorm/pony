@@ -1,11 +1,9 @@
 from pony.thirdparty import sqlite
 
-def connect(filename):
-    return Connection(filename)
+paramstyle = 'qmark'
 
-class Connection(object):
-    def __init__(self, filename):
-        self.filename = filename
-        self.dbapi_connection = sqlite.connect(filename)
-        self.paramstyle = 'qmark'
-    
+def connect(filename):
+    return sqlite.connect(filename)
+
+def release(con):
+    pass
