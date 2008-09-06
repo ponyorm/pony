@@ -100,8 +100,8 @@ def adapt_sql(sql, paramstyle):
     elif keyargs:
         source = '{%s}' % ','.join('%r:%s' % item for item in keyargs.items())
         code = compile(source, '<?>', 'eval')
-    else: code = None
-    result = adapted_sql, params, code
+    else: code = compile('None', '<?>', 'eval')
+    result = adapted_sql, code
     sql_cache[(sql, paramstyle)] = result
     return result
 
@@ -114,6 +114,7 @@ class Database(object):
         self.args = args
         self.keyargs = keyargs
         self.sql_insert_cache = {}
+        self.sql_update_cache = {}
     def _get_connection(self):
         x = local.connections.get(self)
         if x is not None: return x[:2]
@@ -128,12 +129,11 @@ class Database(object):
         if not select_re.match(sql): sql = 'select ' + sql
         if globals is None:
             assert locals is None
-            globals = sys._getframe(2).f_globals
-            locals = sys._getframe(2).f_locals
+            globals = sys._getframe(1).f_globals
+            locals = sys._getframe(1).f_locals
         con, provider = self._get_connection()
-        adapted_sql, params, code = adapt_sql(sql, provider.paramstyle)
-        if params is None: values = None
-        else: values = eval(code, globals, locals)
+        adapted_sql, code = adapt_sql(sql, provider.paramstyle)
+        values = eval(code, globals, locals)
         cursor = con.cursor()
         if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
         else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
@@ -150,12 +150,11 @@ class Database(object):
         if not select_re.match(sql): sql = 'select ' + sql
         if globals is None:
             assert locals is None
-            globals = sys._getframe(2).f_globals
-            locals = sys._getframe(2).f_locals
+            globals = sys._getframe(1).f_globals
+            locals = sys._getframe(1).f_locals
         con, provider = self._get_connection()
-        adapted_sql, params, code = adapt_sql(sql, provider.paramstyle)
-        if params is None: values = None
-        else: values = eval(code, globals, locals)
+        adapted_sql, code = adapt_sql(sql, provider.paramstyle)
+        values = eval(code, globals, locals)
         cursor = con.cursor()
         if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
         else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
@@ -164,42 +163,81 @@ class Database(object):
     def execute(self, sql, globals=None, locals=None):
         if globals is None:
             assert locals is None
-            globals = sys._getframe(2).f_globals
-            locals = sys._getframe(2).f_locals
+            globals = sys._getframe(1).f_globals
+            locals = sys._getframe(1).f_locals
         con, provider = self._get_connection()
-        adapted_sql, params, code = adapt_sql(sql, provider.paramstyle)
-        if params is None: values = None
-        else: values = eval(code, globals, locals)
+        adapted_sql, code = adapt_sql(sql, provider.paramstyle)
+        values = eval(code, globals, locals)
         cursor = con.cursor()
         if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
         else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         return cursor
-    def insert(self, table_name, *args, **keyargs):
-        if args:
-            if len(args) != 2: raise TypeError('Invalid positional argument count')
-            names, values = args
-            if len(names) != len(values): raise TypeError('Names count do not correspond to values count')
-            for name, value in zip(names, values):
-                if keyargs.setdefault(name, value) != value:
-                    raise TypeError('Ambiguous value for column %r' % name)
+    def _prepare_params(self, params):
+        d = {}
+        if hasattr(params, 'keys'):
+            for name in params: d[name] = params[name]
+        else:
+            it = iter(params)
+            while True:
+                try: name = it.next()
+                except StopIteration: break
+                try: value = it.next()
+                except StopIteration: raise TypeError('Uneven positional argument count')
+                d[name] = value
+        return sorted(d.items())
+    def insert(self, table_name, params):
+        items = self._prepare_args(args, keyargs)
         con, provider = self._get_connection()
-        items = sorted(keyargs.items())
         key = table_name, tuple(name for name, value in items)
         x = self.sql_insert_cache.get(key)
         if x is None:
             ast = [ INSERT, table_name, [ name for name, value in items ], [ [PARAM, i] for i in range(len(items)) ] ]
             adapted_sql, params = provider.ast2sql(ast)
-            self.sql_insert_cache[key] = adapted_sql, params
         else: adapted_sql, params = x
-        for i, param in enumerate(params): assert param.key == i
-        values = tuple(value for name, value in items)
+        if not isinstance(params, dict):
+            for i, param in enumerate(params): assert param.key == i
+            values = tuple(value for name, value in items)
+        else: values = dict((key, items[i]) for key, i in params.items())
         cursor = con.cursor()
         wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         return getattr(cursor, 'lastrowid', None)
-    def update(self, table_name, where, *args, **keyargs):
-        pass
+    def update(self, table_name, params, where, globals=None, locals=None):
+        items = self._prepare_params(params)
+        con, provider = self._get_connection()
+        key = table_name, where, tuple(name for name, value in items)
+        x = self.sql_update_cache.get(key)
+        if x is None:
+            ast = [ UPDATE, table_name, [ (name, [PARAM, i]) for i, (name, value) in enumerate(items) ] ]
+            sql1, params1 = provider.ast2sql(ast)
+        else: adapted_sql, params = x
+        sql2, code = adapt_sql(where, provider.paramstyle)
+        if globals is None:
+            assert locals is None
+            globals = sys._getframe(1).f_globals
+            locals = sys._getframe(1).f_locals
+        params2 = eval(code, globals, locals)
+        adapted_sql = sql1 + ' WHERE ' + sql2
+        if params1.__class__ is tuple:
+            for i, key in enumerate(params1): assert key == i
+            if params2 is not None: values = tuple(value for name, value in items) + params2
+        elif params1.__class__ is dict:
+            values = dict((key, items[i]) for key, i in params.items())
+            if params2 is not None: values.update(params2)
+        else: assert False
+        cursor = con.cursor()
+        wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
     def delete(self, table_name, where, globals=None, locals=None):
-        pass
+        if globals is None:
+            assert locals is None
+            globals = sys._getframe(1).f_globals
+            locals = sys._getframe(1).f_locals
+        con, provider = self._get_connection()
+        sql = ('delete from %s where ' % provider.quote_name(table_name)) + where
+        adapted_sql, code = adapt_sql(sql, provider.paramstyle)
+        values = eval(code, globals, locals)
+        cursor = con.cursor()
+        if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
+        else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
     def commit(self):
         con, provider = self._get_connection()
         wrap_dbapi_exceptions(provider, con.commit)
@@ -230,31 +268,31 @@ def get_connection():
 
 def select(sql):
     db = _get_database()
-    return db.select(sql)
+    return db.select(sql, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
     
 def get(sql):
     db = _get_database()
-    return db.get(sql)
+    return db.get(sql, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
 
 def exists(sql):
     db = _get_database()
-    return db.exists(sql)
+    return db.exists(sql, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
 
 def execute(sql):
     db = _get_database()
-    return db.execute(sql)
+    return db.execute(sql, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
 
 def insert(table_name, *args, **keyargs):
     db = _get_database()
     return db.insert(table_name, *args, **keyargs)
 
-def update(table_name, where, *args, **keyargs):
+def update(table_name, params, where):
     db = _get_database()
-    return db.update(table_name, where, *args, **keyargs)
+    return db.update(table_name, params, where, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
 
 def delete(table_name, where):
     db = _get_database()
-    return db.delete(table_name, where)
+    return db.delete(table_name, where, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
 
 def commit():
     db = _get_database()

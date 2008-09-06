@@ -6,6 +6,9 @@ from pony.thirdparty.sqlite import (Warning, Error, InterfaceError, DatabaseErro
 
 from pony.dbapiprovider import SQLBuilder
 
+quote_name = SQLBuilder.quote_name
+param = SQLBuilder.param
+
 paramstyle = 'qmark'
 
 def connect(filename):

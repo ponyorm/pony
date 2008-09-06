@@ -3,7 +3,8 @@ import sys, threading
 from pony.sqlsymbols import *
 
 def quote_name(name):
-    return '"%s"' % name.replace('"', '""')
+    if isinstance(name, basestring): return '"%s"' % name.replace('"', '""')
+    return '.'.join(quote_name(item) for item in name)
 
 class AstError(Exception): pass
 
@@ -69,7 +70,7 @@ class SQLBuilder(object):
         self.ast = ast
         self.result = flat(self(ast))
         self.sql = u''.join(map(unicode, self.result))
-        self.params = [ x for x in self.result if isinstance(x, self.param) ]
+        self.params = tuple(x.key for x in self.result if isinstance(x, self.param))
     def __call__(self, ast):
         symbol = ast[0]
         if not isinstance(symbol, basestring):
@@ -91,6 +92,9 @@ class SQLBuilder(object):
         return [ 'INSERT INTO ', self.quote_name(table_name), ' (',
                  join(', ', [self.quote_name(column) for column in columns ]),
                  ') VALUES (', join(', ', [self(value) for value in values]), ')' ]
+    def UPDATE(self, table_name, pairs):
+        return [ 'UPDATE ', self.quote_name(table_name), ' SET ',
+                 join(', ', [ (self.quote_name(name), '=', self(param)) for name, param in pairs]) ]
     def SELECT(self, *sections):
         return [ self(s) for s in sections ]
     def ALL(self, *expr_list):
