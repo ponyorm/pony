@@ -16,7 +16,7 @@ class Param(object):
     def __cmp__(self, other):
         if other.__class__ is not Param: return NotImplemented
         return cmp(self.key, other.key)
-    def __str__(self):
+    def __unicode__(self):
         return '?'
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self.key)
@@ -25,7 +25,7 @@ class Value(object):
     __slots__ = 'value',
     def __init__(self, value):
         self.value = value
-    def __str__(self):
+    def __unicode__(self):
         value = self.value
         if isinstance(value, (int, long)): return str(value)
         if isinstance(value, basestring): return self.quote_str(value)
@@ -68,7 +68,7 @@ class SQLBuilder(object):
     def __init__(self, ast):
         self.ast = ast
         self.result = flat(self(ast))
-        self.sql = ''.join(map(str, self.result))
+        self.sql = u''.join(map(unicode, self.result))
         self.params = [ x for x in self.result if isinstance(x, self.param) ]
     def __call__(self, ast):
         symbol = ast[0]
@@ -87,6 +87,10 @@ class SQLBuilder(object):
             else:
                 del traceback
                 raise
+    def INSERT(self, table_name, columns, values):
+        return [ 'INSERT INTO ', self.quote_name(table_name), ' (',
+                 join(', ', [self.quote_name(column) for column in columns ]),
+                 ') VALUES (', join(', ', [self(value) for value in values]), ')' ]
     def SELECT(self, *sections):
         return [ self(s) for s in sections ]
     def ALL(self, *expr_list):
@@ -110,7 +114,7 @@ class SQLBuilder(object):
                 if join_cond is None: result.append(', ')
                 else: result.append(' %s JOIN ' % join_type)
             if kind == TABLE:
-                if isinstance(x, basestring): result += x, ' AS ', alias
+                if isinstance(x, basestring): result += self.quote_name(x), ' AS ', alias
                 else: result += self.compound_name(x), ' AS ', alias
             elif kind == SELECT:
                 result += '(', self.SELECT(*x), ') AS ', alias
