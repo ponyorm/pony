@@ -1,4 +1,4 @@
-from decompiler2 import *
+from pony.decompiler import *
 import compiler
 
 class TestDecompiler:
