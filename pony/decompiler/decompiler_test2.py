@@ -1,12 +1,15 @@
 from decompiler2 import *
 import compiler
 
-class TestDecompiler2:
+class TestDecompiler:
 
     def verify(self, expr):
         expected = str(compiler.parse(expr))
-	result = self.add_framing(decompile_to_aststring(eval(expr)))
-	assert result == expected
+        result = self.add_framing(str(decompile_to_ast(eval(expr))))
+        if result != expected:            
+            print 'result = ' + result
+            print 'expected = ' + expected
+            raise Exception('Test failed')
 
     def add_framing(self, result):
         result = str(result)
@@ -14,16 +17,16 @@ class TestDecompiler2:
         return "Module(None, Stmt([Discard(GenExpr(" + result + "))]))"
     
     def test_1(self):
-	self.verify('(a for b in Student)') 
+        self.verify('(a for b in Student)') 
 
     def test_2(self):
         self.verify('(a for b, c in Student)')  
         
     def test_3(self):
-	self.verify('(a for b in Student for c in [])')
+        self.verify('(a for b in Student for c in [])')
 
     def test_4(self):
-	self.verify('(a for b in Student for c in [] for d in [])')
+        self.verify('(a for b in Student for c in [] for d in [])')
 
     def test_5(self):
         self.verify('(a for b in Student if f)')
@@ -152,3 +155,19 @@ class TestDecompiler2:
 
     def test_f4(self):
         self.verify("(func(a, a.attr, keyarg=123) for a in Student if a.method(x, *y, **z) == 4)")
+
+    #g = (a(lambda x,y: x > 0) for a in [])    
+    #g = (a(b, lambda x,y: x > 0) for a in [])
+    #g = (a(b, lambda x,y: x > 0) for a,b,x,y in [])
+
+    #g = (a for b in Student if c > d > e)
+    #g = (a for b in Student if c > d > d2)
+
+def main():
+    t = TestDecompiler()
+    for attr in dir(t):
+        if attr.startswith('test_'):
+            getattr(t, attr)()
+            print attr + ' done.'
+
+if __name__ == '__main__': main()        

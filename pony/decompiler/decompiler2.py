@@ -68,12 +68,15 @@ class Decompiler:
         self.stack = []
         self.labels = {}
         self.last_label = 0
-        self.text = []        
+        self.text = []
+        
         self.expr_inner = None
         self.assign = []
-        self.ifs = []
-        self.final_expr = None
         self.it = None
+        self.ifs = []
+        
+        self.final_expr = None
+        
         if nesting is None:
             self.nesting = 0
         else:
@@ -496,23 +499,17 @@ class Decompiler:
                 print "check_current_ip(%s)" % self.last_label
             self.check_current_ip(self.last_label)
 
-def decompile_tostring(g):
+def decompile_to_ast(g):
 	code = Code(g.gi_frame.f_code)
 	d = Decompiler()
 	d.decompile(code)
 	return d.final_expr
 
-def decompile_to_aststring(g):
-	code = Code(g.gi_frame.f_code)
-	d = Decompiler()
-	d.decompile(code)
-	return str(d.final_expr)
-
 def ttest():
     #g = (a for b in Student)
     #g = (a for b in Student for c in [])
     #g = (a for b in Student for c in [] for d in [])
-    #g = (a for b, c in Student)
+    g = (a for b, c in Student)
     #g = (a for b in Student if f)
     #g = (a for b in Student if f if r)
     #g = (a for b in Student if f and r)
@@ -561,7 +558,7 @@ def ttest():
     #g = (func(a, a.attr, keyarg=123) for a in Student if a.method(x, *y, **z) is not None)
     #g = (func(a, a.attr, b, b.c.d, keyarg1=123, keyarg2=456) for a in Student if a.method(x, x1, *y, **z) is not None)
 
-    g = (a(lambda x,y: x > 0) for a in [])    
+    #g = (a(lambda x,y: x > 0) for a in [])    
     #g = (a(b, lambda x,y: x > 0) for a in [])
     #g = (a(b, lambda x,y: x > 0) for a,b,x,y in [])
 
@@ -569,9 +566,6 @@ def ttest():
     #g = (a for b in Student if c > d > d2)
 
     
-    code = Code(g.gi_frame.f_code)
-    d = Decompiler()
-    d.decompile(code)
-    print str(d.final_expr)
+    print decompile_to_ast(g)
 
 ttest()
