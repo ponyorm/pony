@@ -1,6 +1,19 @@
 from pony.decompiler import *
 import compiler
 
+# test entities
+
+class Meta(type):
+      def __iter__(self):
+           return iter([])
+      
+class Entity(object):
+    __metaclass__ = Meta
+      
+class Student(Entity):
+      pass
+
+
 class TestDecompiler:
 
     def verify(self, expr):
