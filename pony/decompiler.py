@@ -2,9 +2,7 @@ from opcode import opname
 from opcode import cmp_op
 from compiler.ast import * 
 
-from student import *
-
-debug = 1
+debug = 0
 
 class Expression:
     def __init__(self, operand, operation):
@@ -16,10 +14,10 @@ class Expression:
 class Code:
     def __init__(self, code, op_count=None):
         self.code = code.co_code
-        self.varnames = code.co_varnames
-        self.names = code.co_names
-        self.consts = code.co_consts
-        self.freevars = code.co_freevars
+        self.co_varnames = code.co_varnames
+        self.co_names = code.co_names
+        self.co_consts = code.co_consts
+        self.co_freevars = code.co_freevars
         self.counter = op_count
         self.i = 0
         self.cp = 0
@@ -52,16 +50,8 @@ class Code:
         if debug:
             print "%d" % oparg
         return oparg
-    def get_varname(self, n):
-        return self.varnames[n]
-    def get_name(self, n):
-        return self.names[n]
-    def get_const(self, n):
-        return self.consts[n]
     def get_current_ip(self):
         return self.cp
-    def get_deref(self, n):
-        return self.freevars[n]
 
 class Decompiler:
     def __init__(self, nesting = None):
@@ -318,25 +308,25 @@ class Decompiler:
         
     def LOAD_ATTR(self, code):
         oparg = code.get_arg()
-        varname = code.get_name(oparg)
+        varname = code.co_names[oparg]
         tos = self.stack.pop()
         self.stack.append(Getattr(tos, varname))
 
     def LOAD_CONST(self, code):
         oparg = code.get_arg()
-        const = Const(code.get_const(oparg))
+        const = Const(code.co_consts[oparg])
         self.stack.append(const)
 
     def LOAD_DEREF(self, code):        
-        varname = code.get_deref(code.get_arg())
+        varname = code.co_freevars[code.get_arg()]
         self.stack.append(varname)
 
     def LOAD_FAST(self, code):
-        varname = code.get_varname(code.get_arg())        
+        varname = code.co_varnames[code.get_arg()]
         self.stack.append(Name(varname))
         
     def LOAD_GLOBAL(self, code):
-        name = code.get_name(code.get_arg())
+        name = code.co_names[code.get_arg()]
         self.stack.append(Name(name))
 
     LOAD_NAME = LOAD_GLOBAL
@@ -448,12 +438,12 @@ class Decompiler:
 
     def STORE_ATTR(self, code):
         oparg = code.get_arg()
-        varname = code.get_name(oparg)
+        varname = code.co_names[oparg]
         tos = self.stack.pop()
         self.assign.append(AssAttr(tos, varname, 'OP_ASSIGN'))
 
     def STORE_FAST(self, code):
-        varname = code.get_varname(code.get_arg())        
+        varname = code.co_varnames[code.get_arg()]
         self.assign.append(AssName(varname, 'OP_ASSIGN')) # for 'varname'
         self.stack.pop()
 
@@ -509,7 +499,7 @@ def ttest():
     #g = (a for b in Student)
     #g = (a for b in Student for c in [])
     #g = (a for b in Student for c in [] for d in [])
-    g = (a for b, c in Student)
+    g = (a for b, c in [])
     #g = (a for b in Student if f)
     #g = (a for b in Student if f if r)
     #g = (a for b in Student if f and r)
