@@ -1,561 +1,418 @@
-from opcode import opname
-from opcode import cmp_op
-from compiler.ast import * 
+from compiler import ast
+from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
+from opcode import hasconst, hasname, hasjrel, haslocal, hascompare, hasfree
 
-debug = 0
+def binop(node_type, args_holder=tuple):
+    def method(self):
+        oper2 = self.stack.pop()
+        oper1 = self.stack.pop()
+        return node_type(args_holder((oper1, oper2)))
+    return method
 
-class Expression:
-    def __init__(self, operand, operation):
-        self.operand = operand
-        self.operation = operation
-    def __repr__(self):
-        return "EXPR(%s %s)" % (self.operand, self.operation)
+def decompile(code):
+    return GeneratorDecompiler(code).ast
 
-class Code:
-    def __init__(self, code, op_count=None):
-        self.code = code.co_code
-        self.co_varnames = code.co_varnames
-        self.co_names = code.co_names
-        self.co_consts = code.co_consts
-        self.co_freevars = code.co_freevars
-        self.counter = op_count
-        self.i = 0
-        self.cp = 0
-        self.stop = len(self.code)
-        self.indent=0
-        self.currentop = None
-    def set_stop(self, n):        
-        if n:
-            if debug:
-                print "----- block started"
-            self.stop = self.i + n
-            self.indent = self.indent + 1
-        else:
-            self.stop = len(self.code)
-            self.indent = self.indent - 1
-    def get_nextop(self):
-        if self.i < self.stop:
-            oc = ord(self.code[self.i])
-            self.currentop = opname[oc]
-            self.cp = self.i
-            self.i = self.i + 1
-            return self.currentop
-        else:
-            raise StopIteration
-    def get_currentop(self):
-        return self.currentop
-    def get_arg(self):
-        oparg = ord(self.code[self.i]) + ord(self.code[self.i+1]) * 256
-        self.i = self.i + 2
-        if debug:
-            print "%d" % oparg
-        return oparg
-    def get_current_ip(self):
-        return self.cp
+class AstGenerated(Exception): pass
 
-class Decompiler:
-    def __init__(self, nesting = None):
-        self.stack = []
-        self.labels = {}
-        self.last_label = 0
-        self.text = []
-        
-        self.expr_inner = None
-        self.assign = []
-        self.it = None
-        self.ifs = []
-        
-        self.final_expr = None
-        
-        if nesting is None:
-            self.nesting = 0
-        else:
-            self.nesting = nesting + 1
-        
-    def decompile(self, code):
+class GeneratorDecompiler(object):
+    def __init__(self, code, start=0, end=None):
+        self.code = code
+        self.start = self.pos = start
+        if end is None: end = len(code.co_code)
+        self.end = end
+        stack = [ ast.GenExprInner(None, []) ]
+        self.stack = stack
+        self.ast = None
+        self.decompile()
+        self.ast = self.stack.pop()
+        # assert not self.stack, self.stack
+    def decompile(self):
+        code = self.code
+        co_code = code.co_code
+        free = code.co_cellvars + code.co_freevars
         try:
-            while True:
-                on = code.get_nextop()
-                if debug:
-                    print code.get_current_ip(), on,
-                on = on.replace('+', '_')
-                func = getattr(self, on)                
-                func(code)
-                self.check_current_ip(code.get_current_ip())
-        except StopIteration:
-            if debug:
-                print "----- block finished"
-
-    def check_current_ip(self, ip):
-        label = self.labels.get(ip)        
-        if label is not None:
-            print "stack=", self.stack
-            if len(self.stack) >= 2:                
-                while len(self.stack) >= 2 and isinstance(self.stack[-1], Expression) and isinstance(self.stack[-2], Expression):
-                    tos = self.stack.pop()
-                    tos2 = self.stack.pop()
-                    if debug:
-                        print "get from stack TOS=", tos
-                        print "get from stack TOS1=", tos2
-                    if tos2.operation == 'And':
-                        tos = Expression(And([tos2.operand, tos.operand]), tos.operation)
-                    else:
-                        tos = Expression(Or([tos2.operand, tos.operand]), tos.operation)
-                    #tos = "(%s) %s (%s)" % (tos2, oper2, tos)                    
-                    self.stack.append(tos)
-                    if debug:
-                        print "new TOS=", tos
-
-    def unfold(self, ei):
-        if isinstance(ei, dict):
-            print "Dict found"
-            if len(ei) == 0:
-                result = Dict(())
-            else:
-                result = Dict([i for i in ei.items()])
-        else:
-            result = ei
+            while self.pos < self.end:
+                i = self.pos
+                op = ord(code.co_code[i])
+                i += 1
+                if op >= HAVE_ARGUMENT:
+                    oparg = ord(co_code[i]) + ord(co_code[i+1])*256
+                    i += 2
+                    if op == EXTENDED_ARG:
+                        op = ord(code.co_code[i])
+                        oparg = ord(co_code[i]) + ord(co_code[i+1])*256 + oparg*65536
+                        i += 2
+                    if op in hasconst: arg = [code.co_consts[oparg]]
+                    elif op in hasname: arg = [code.co_names[oparg]]
+                    elif op in hasjrel: arg = [i + oparg]
+                    elif op in haslocal: arg = [code.co_varnames[oparg]]
+                    elif op in hascompare: arg = [cmp_op[oparg]]
+                    elif op in hasfree: arg = [free[oparg]]
+                    else: arg = [oparg]
+                else: arg = []
+                opname = opnames[op].replace('+', '_')
+                # print opname, arg, self.stack
+                method = getattr(self, opname, None)
+                if method is None: raise NotImplementedError('Unsupported operation: %s' % opname)
+                self.pos = i
+                x = method(*arg)
+                if x is not None: self.stack.append(x)
+        except AstGenerated: pass
+    def pop_items(self, size):
+        if not size: return ()
+        result = self.stack[-size:]
+        self.stack[-size:] = []
         return result
+    def store(self, node):
+        stack = self.stack
+        if not stack: stack.append(node); return
+        top = stack[-1]
+        if isinstance(top, (ast.AssTuple, ast.AssList)) and len(top.nodes) < top.count:
+            top.nodes.append(node)
+            if len(top.nodes) == top.count: self.store(stack.pop())
+        elif isinstance(top, ast.GenExprFor):
+            assert top.assign is None
+            top.assign = node
+        else: stack.append(node)
 
-    def BINARY_POWER(self, code):
+    BINARY_POWER        = binop(ast.Power)
+    BINARY_MULTIPLY     = binop(ast.Mul)
+    BINARY_DIVIDE       = binop(ast.Div)
+    BINARY_FLOOR_DIVIDE = binop(ast.FloorDiv)
+    BINARY_ADD          = binop(ast.Add)
+    BINARY_SUBTRACT     = binop(ast.Sub)
+    BINARY_LSHIFT       = binop(ast.LeftShift)
+    BINARY_RSHIFT       = binop(ast.RightShift)
+    BINARY_AND          = binop(ast.Bitand, list)
+    BINARY_XOR          = binop(ast.Bitxor, list)
+    BINARY_OR           = binop(ast.Bitor, list)
+    BINARY_TRUE_DIVIDE  = BINARY_DIVIDE
+    BINARY_MODULO       = binop(ast.Mod)
+    
+    def BINARY_SUBSCR(self):
         oper2 = self.stack.pop()
         oper1 = self.stack.pop()
-        expr = Power((oper1, oper2))
-        self.stack.append(expr)
+        if isinstance(oper2, ast.Tuple): return ast.Subscript(oper1, 'OP_APPLY', list(oper2.nodes))
+        else: return ast.Subscript(oper1, 'OP_APPLY', [ oper2 ])
 
-    def BINARY_MULTIPLY(self, code):
-        oper2 = self.stack.pop()
-        oper1 = self.stack.pop()
-        expr = Mul((oper1, oper2))
-        self.stack.append(expr)
+    def BUILD_LIST(self, size):
+        return ast.List(self.pop_items(size))
 
-    def BINARY_DIVIDE(self, code):
-        oper2 = self.stack.pop()
-        oper1 = self.stack.pop()
-        expr = Div((oper1, oper2))
-        self.stack.append(expr)
+    def BUILD_MAP(self, not_used):
+        # Pushes a new empty dictionary object onto the stack. The argument is ignored and set to zero by the compiler
+        return ast.Dict(())
 
-    def BINARY_FLOOR_DIVIDE(self, code):
-        oper2 = self.stack.pop()
-        oper1 = self.stack.pop()
-        expr = FloorDiv((oper1, oper2))
-        self.stack.append(expr)
+    def BUILD_SLICE(self, size):
+        return ast.Sliceobj(self.pop_items(size))
+        
+    def BUILD_TUPLE(self, size):
+        
+        return ast.Tuple(self.pop_items(size))
 
-    def BINARY_ADD(self, code):
-        oper2 = self.stack.pop()
-        oper1 = self.stack.pop()
-        expr = Add((oper1, oper2))
-        self.stack.append(expr)
-
-    def BINARY_SUBTRACT(self, code):
-        oper2 = self.stack.pop()
-        oper1 = self.stack.pop()
-        expr = Sub((oper1, oper2))
-        self.stack.append(expr)
-
-    def BINARY_SUBSCR(self, code):
-        oper2 = self.stack.pop()
-        oper1 = self.stack.pop()
-        if isinstance(oper2, Tuple):
-            oper2 = list(oper2.asList())
-        else:
-            oper2 = [oper2]
-        expr = Subscript(oper1, 'OP_APPLY', oper2)
-        self.stack.append(expr)
-
-    def BINARY_LSHIFT(self, code):
-        oper2 = self.stack.pop()
-        oper1 = self.stack.pop()
-        expr = LeftShift((oper1, oper2))
-        self.stack.append(expr)
-
-    def BINARY_RSHIFT(self, code):
-        oper2 = self.stack.pop()
-        oper1 = self.stack.pop()
-        expr = RightShift((oper1, oper2))
-        self.stack.append(expr)
-
-    def BINARY_AND(self, code):
-        oper2 = self.stack.pop()
-        oper1 = self.stack.pop()
-        expr = Bitand([oper1, oper2])
-        self.stack.append(expr)
-
-    def BINARY_XOR(self, code):
-        oper2 = self.stack.pop()
-        oper1 = self.stack.pop()
-        expr = Bitxor([oper1, oper2])
-        self.stack.append(expr)
-
-    def BINARY_OR(self, code):
-        oper2 = self.stack.pop()
-        oper1 = self.stack.pop()
-        expr = Bitor([oper1, oper2])
-        self.stack.append(expr)
-
-    BINARY_TRUE_DIVIDE = BINARY_DIVIDE
-
-    def BINARY_MODULO(self, code):
-        oper2 = self.stack.pop()
-        oper1 = self.stack.pop()
-        expr = Mod((oper1, oper2))
-        self.stack.append(expr)
-
-    def BUILD_LIST(self, code):
-        oparg = code.get_arg()
-        if oparg == 0:
-            self.stack.append(List(()))     # to be consistent to compile.parse([])
-        else:
-            t = [self.unfold(self.stack.pop()) for i in range(oparg)]
-            t.reverse()
-            self.stack.append(List(t))
-
-    def BUILD_MAP(self, code):
-        zero = code.get_arg()      # Pushes a new empty dictionary object onto the stack. The argument is ignored and set to zero by the compiler
-        self.stack.append({})
-
-    def BUILD_SLICE(self, code):
-        count = code.get_arg()
-        slice = [self.stack.pop() for i in range(count)]
-        slice.reverse()
-        self.stack.append(Sliceobj(slice)) 
-        if debug: print ""
-
-    def BUILD_TUPLE(self, code):
-        oparg = code.get_arg()
-        t = [self.unfold(self.stack.pop()) for i in range(oparg)]
-        t.reverse()
-        self.stack.append(Tuple(t))
-
-    def CALL_FUNCTION(self, code):
-        currentop = code.get_currentop()
-        oparg = code.get_arg()
-        kwarg, posarg = divmod(oparg, 256)
+    def CALL_FUNCTION(self, argc, star=None, star2=None):
+        pop = self.stack.pop
+        kwarg, posarg = divmod(argc, 256)
         args = []
-        var = varkw = None
-        if debug:
-            print "posarg=%s kwarg=%s" % (posarg, kwarg)
-        if currentop in ('CALL_FUNCTION_KW','CALL_FUNCTION_VAR_KW'):
-            varkw = self.stack.pop()
-        if currentop in ('CALL_FUNCTION_VAR','CALL_FUNCTION_VAR_KW'):
-            var = self.stack.pop()
         for i in range(kwarg):
-            value = self.stack.pop()
-            name = self.stack.pop()
-            args.insert(0, Keyword(name.value, value))   # no Const in keyargs
-        for i in range(posarg):
-            args.insert(0, self.stack.pop())
-        funcname = self.stack.pop()
-        funccall = CallFunc(funcname, args, var, varkw)
-        self.stack.append(funccall)
-        if debug:
-            print "FUNCTION CALL = %s" % funccall
+            arg = pop()
+            key = pop().value
+            args.append(ast.Keyword(key, arg))
+        for i in range(posarg): args.append(pop())
+        args.reverse()
+        return ast.CallFunc(pop(), args, star, star2)
 
-    CALL_FUNCTION_VAR = CALL_FUNCTION
-    CALL_FUNCTION_KW = CALL_FUNCTION
-    CALL_FUNCTION_VAR_KW = CALL_FUNCTION
+    def CALL_FUNCTION_VAR(self, argc):
+        return self.CALL_FUNCTION(argc, self.stack.pop())
 
+    def CALL_FUNCTION_KW(self, argc):
+        return self.CALL_FUNCTION(argc, None, self.stack.pop())
 
-    def COMPARE_OP(self, code):
-        print "stack=", self.stack
-        oparg = code.get_arg()
-        op = cmp_op[oparg]
+    def CALL_FUNCTION_VAR_KW(self, argc):
+        star2 = self.stack.pop()
+        star = self.stack.pop()
+        return self.CALL_FUNCTION(argc, star, star2)
+
+    def COMPARE_OP(self, op):
         oper2 = self.stack.pop()
         oper1 = self.stack.pop()
-        print "oper1=", oper1, " op=", op, " oper2=", oper2        
-        expr = Compare(oper1, [(op, oper2)])
-        self.stack.append(expr)
-        #self.stack.append("FAKE COMPARE")
-        if debug:
-            print "--PUSH EXPR=", expr
+        return ast.Compare(oper1, [(op, oper2)])
 
-    def DUP_TOP(self, code):
-        self.stack.append(self.stack[-1])
-        if debug:
-            print ""
+    def DUP_TOP(self):
+        return self.stack[-1]
 
-    def FOR_ITER(self, code):
-        code.set_stop(code.get_arg() + 1)   # include POP_BLOCK
-        self.it = self.stack[-1]
-        self.stack.append('FAKE(FOR_ITER)')
-        print "iter=", self.it
+    def FOR_ITER(self, endpos):
+        assign = None
+        iter = self.stack.pop()
+        ifs = []
+        node = ast.GenExprFor(assign, iter, ifs)
+        node.endpos = endpos
+        return node
 
-    def GET_ITER(self, code):
+    def GET_ITER(self):
         pass
 
-    def JUMP_ABSOLUTE(self, code):
-        oparg = code.get_arg()
+    def JUMP_IF_FALSE(self, endpos):
+        self.conditional_jump(endpos, ast.And)
 
-    JUMP_FORWARD = JUMP_ABSOLUTE
-    
-    def JUMP_IF_FALSE(self, code):
-        oparg = code.get_arg()
-        cmp = self.stack[-1]
-        expr = Expression(cmp, 'And')
-        self.stack[-1] = expr 
-        target = oparg + code.get_current_ip() + 3
-        gr = self.labels.setdefault(target, 1)
-        self.last_label = target
+    def JUMP_IF_TRUE(self, endpos):
+        self.conditional_jump(endpos, ast.Or)
 
-    def JUMP_IF_TRUE(self, code):
-        oparg = code.get_arg()
-        cmp = self.stack[-1]
-        expr = Expression(cmp, 'Or')
-        self.stack[-1] = expr 
-        target = oparg + code.get_current_ip() + 3
-        gr = self.labels.setdefault(target, 1)
-        self.last_label = target
-        
-    def LOAD_ATTR(self, code):
-        oparg = code.get_arg()
-        varname = code.co_names[oparg]
-        tos = self.stack.pop()
-        self.stack.append(Getattr(tos, varname))
+    def conditional_jump(self, endpos, clausetype):
+        expr = self.stack.pop()
+        if not self.stack:
+            clause = clausetype([ expr ])
+            clause.endpos = endpos
+            self.stack.append(clause)
+        top = self.stack[-1]
+        if isinstance(top, (ast.And, ast.Or)):
+            if top.endpos == endpos:
+                if top.__class__ == clausetype: top.nodes.append(expr)
+                else:
+                    clause = clausetype([ expr ])
+                    clause.endpos = endpos
+                    self.stack.append(clause)
+            elif top.endpos > endpos:
+                clause = clausetype([ expr ])
+                clause.endpos = endpos
+                self.stack.append(clause)
+            else:
+                top.nodes.append(expr)
+                self.stack.pop()
+                if len(self.stack) >= 2:
+                    top2 = self.stack[-1]
+                    if top2.__class__ == clausetype and top2.endpos == endpos:
+                        top2.nodes.append(top)
+                        return
+                clause = clausetype([ top ])
+                clause.endpos = endpos
+                self.stack.append(clause)
+        else:
+            clause = clausetype([ expr ])
+            clause.endpos = endpos
+            self.stack.append(clause)
 
-    def LOAD_CONST(self, code):
-        oparg = code.get_arg()
-        const = Const(code.co_consts[oparg])
-        self.stack.append(const)
+    def LOAD_ATTR(self, attr_name):
+        return ast.Getattr(self.stack.pop(), attr_name)
 
-    def LOAD_DEREF(self, code):        
-        varname = code.co_freevars[code.get_arg()]
-        self.stack.append(varname)
+    def LOAD_CLOSURE(self, freevar):
+        raise NotImplementedError
 
-    def LOAD_FAST(self, code):
-        varname = code.co_varnames[code.get_arg()]
-        self.stack.append(Name(varname))
-        
-    def LOAD_GLOBAL(self, code):
-        name = code.co_names[code.get_arg()]
-        self.stack.append(Name(name))
+    def LOAD_CONST(self, const_value):
+        return ast.Const(const_value)
 
-    LOAD_NAME = LOAD_GLOBAL
+    def LOAD_DEREF(self, freevar):
+        raise NotImplementedError
 
-    def MAKE_FUNCTION(self, code):
-        oparg = code.get_arg()
-        func = self.stack.pop()
-        # call function later
-        arglist = [self.stack.pop() for i in range(oparg)]
-        self.stack.append("FUNCTION CALL: %s (%s)" % (func, arglist))
-        if debug: print ""
+    def LOAD_FAST(self, varname):
+        return ast.Name(varname)
 
-    def NOP(self, code):
+    def LOAD_GLOBAL(self, varname):
+        return ast.Name(varname)
+
+    def LOAD_NAME(self, varname):
+        return ast.Name(varname)
+
+    def POP_TOP(self):
         pass
-    
-    def POP_BLOCK(self, code):
-        if debug:
-            print ""
-        if len(self.stack) > 0:
-            print "stack=", self.stack
-            ifexpr = []
-            while len(self.stack) > 0 and isinstance(self.stack[-1], Expression):                       
-                expr = self.stack.pop()
-                ifexpr.append(GenExprIf(expr.operand))
-            ifexpr.reverse()
-            self.ifs = ifexpr
-            if debug:
-                print "if expr = ", ifexpr
 
-    def POP_TOP(self, code):
-        print "stack=", self.stack
-        #if len(self.stack) > 0:
-        #    self.stack.pop()
-        if debug:
-            print ""
+    def RETURN_VALUE(self):
+        pass
 
-    def RETURN_VALUE(self, code):
-        if debug:
-            print ""
-
-    def ROT_TWO(self, code):
+    def ROT_TWO(self):
         tos = self.stack.pop()
         tos1 = self.stack.pop()
         self.stack.append(tos)
         self.stack.append(tos1)
-        if debug:
-            print ""
 
-    def ROT_THREE(self, code):
+    def ROT_THREE(self):
         tos = self.stack.pop()
         tos1 = self.stack.pop()
         tos2 = self.stack.pop()
         self.stack.append(tos)
         self.stack.append(tos2)
         self.stack.append(tos1)
-        if debug:
-            print ""
 
-    def SETUP_LOOP(self, code):
-        oparg = code.get_arg()        
-        code.set_stop(oparg + 1) # include POP_BLOCK
-        d = Decompiler(self.nesting)
-        d.decompile(code)
-        if debug:
-            print "expr_inner =", d.expr_inner
-            print "    assign =", d.assign
-            print "      iter =", d.it
-            print "       ifs =", d.ifs
-            
-        self.expr_inner = d.expr_inner
-        if len(d.assign) == 1:
-            assign = d.assign[0]
-        else:
-            assign = AssTuple(d.assign)
-            
-        ast_for = [GenExprFor(assign, d.it, d.ifs)]
-        if d.final_expr != None:
-            ast_for.extend(d.final_expr)
-        if self.nesting == 0: # the most outer loop            
-            self.final_expr = GenExprInner(self.expr_inner, ast_for)
-        else:
-            self.final_expr = ast_for
-        
-        if debug:
-            print "nesting=", self.nesting
-            print "labels =", self.labels
-            print "self.ast_expr=", self.final_expr
-        code.set_stop(None)
+    def SETUP_LOOP(self, endpos):
+        pass
 
-    def SLICE_0(self, code):
-        tos = self.stack.pop()
-        self.stack.append(Slice(tos, 'OP_APPLY', None, None))
-
-    def SLICE_1(self, code):
+    def SLICE_0(self):
+        return ast.Slice(self.stack.pop(), 'OP_APPLY', None, None)
+    
+    def SLICE_1(self):
         tos = self.stack.pop()
         tos1 = self.stack.pop()
-        self.stack.append(Slice(tos1, 'OP_APPLY', tos, None))
-
-    def SLICE_2(self, code):
+        return ast.Slice(tos1, 'OP_APPLY', tos, None)
+    
+    def SLICE_2(self):
         tos = self.stack.pop()
         tos1 = self.stack.pop()
-        self.stack.append(Slice(tos1, 'OP_APPLY', None, tos))
-
-    def SLICE_3(self, code):
+        return ast.Slice(tos1, 'OP_APPLY', None, tos)
+    
+    def SLICE_3(self):
         tos = self.stack.pop()
         tos1 = self.stack.pop()
         tos2 = self.stack.pop()
-        self.stack.append(Slice(tos2, 'OP_APPLY', tos1, tos))
+        return ast.Slice(tos2, 'OP_APPLY', tos1, tos)
+    
+    def STORE_ATTR(self, attrname):
+        self.store(ast.AssAttr(self.stack.pop(), attrname, 'OP_ASSIGN'))
 
-    def STORE_ATTR(self, code):
-        oparg = code.get_arg()
-        varname = code.co_names[oparg]
-        tos = self.stack.pop()
-        self.assign.append(AssAttr(tos, varname, 'OP_ASSIGN'))
+    def STORE_FAST(self, varname):
+        self.store(ast.AssName(varname, 'OP_ASSIGN'))
 
-    def STORE_FAST(self, code):
-        varname = code.co_varnames[code.get_arg()]
-        self.assign.append(AssName(varname, 'OP_ASSIGN')) # for 'varname'
-        self.stack.pop()
-
-    def STORE_SUBSCR(self, code):
+    def STORE_SUBSCR(self):
         tos = self.stack.pop()
         tos1 = self.stack.pop()
         tos2 = self.stack.pop()
-        if tos2 == 'FAKE(FOR_ITER)':
+        if isinstance(tos2, ast.GenExprFor):
+            assert False
             self.assign.append(Subscript(tos1, 'OP_ASSIGN', [tos]))
-        else:
-            tos1[tos] = tos2
-        if debug: print ""
+        elif isinstance(tos1, ast.Dict):
+            if tos1.items == (): tos1.items = []
+            tos1.items.append((tos, tos2))
+        else: assert False
 
-    def UNARY_POSITIVE(self, code):
-        self.stack.append(UnaryAdd(self.stack.pop()))
+    def UNARY_POSITIVE(self):
+        return ast.UnaryAdd(self.stack.pop())
 
-    def UNARY_NEGATIVE(self, code):
-        self.stack.append(UnarySub(self.stack.pop()))
+    def UNARY_NEGATIVE(self):
+        return ast.UnarySub(self.stack.pop())
 
-    def UNARY_NOT(self, code):
-        self.stack.append(Not(self.stack.pop()))
+    def UNARY_NOT(self):
+        return ast.Not(self.stack.pop())
         
-    def UNARY_CONVERT(self, code):        
-        self.stack.append(Backquote(self.stack.pop()))
+    def UNARY_CONVERT(self):
+        return ast.Backquote(self.stack.pop())
 
-    def UNARY_INVERT(self, code):
-        self.stack.append(Invert(self.stack.pop()))
+    def UNARY_INVERT(self):
+        return ast.Invert(self.stack.pop())
 
-    def UNPACK_SEQUENCE(self, code):
-        count = code.get_arg()
-        for i in range(count):
-            self.stack.append('UNPACK_SEQUENCE %s' % i)
-        # push to stack 'count' values
-        # and store them later with STORE_FAST        
+    def UNPACK_SEQUENCE(self, count):
+        ass_tuple = ast.AssTuple([])
+        ass_tuple.count = count
+        return ass_tuple
 
-    def YIELD_VALUE(self, code):
-        ei = self.stack.pop()
-        self.expr_inner = self.unfold(ei)
-        if debug:
-            print ""
-        if self.last_label:
-            if debug: 
-                print "check_current_ip(%s)" % self.last_label
-            self.check_current_ip(self.last_label)
+    def pack(self, endpos=None):
+        while len(self.stack) >= 2:
+            top = self.stack[-1]
+            top2 = self.stack[-2]
+            if not isinstance(top2, (ast.And, ast.Or)): break
+            if endpos is None or top2.endpos > endpos: break
+            top2.nodes.append(top)
+            self.stack.pop()
+        top = self.stack[-1]
+        if isinstance(top, ast.And) and len(top.nodes) == 1:
+            self.stack.pop()
+            self.stack.append(top.nodes[0])
 
-def decompile_to_ast(g):
-	code = Code(g.gi_frame.f_code)
-	d = Decompiler()
-	d.decompile(code)
-	return d.final_expr
+    def YIELD_VALUE(self):
+        self.pack(self.pos)
+        expr = self.stack.pop()
+        fors = []
+        while True:
+            self.pack()
+            top = self.stack.pop()
+            if isinstance(top, ast.GenExprInner): break
+            elif not isinstance(top, (ast.GenExprFor)):
+                cond = ast.GenExprIf(top)
+                top = self.stack.pop()
+                assert isinstance(top, ast.GenExprFor)
+                top.ifs.append(cond)
+                fors.append(top)
+            else: fors.append(top)
+        fors.reverse()
+        inner = top
+        assert isinstance(inner, ast.GenExprInner) and inner.expr is None and not inner.quals
+        inner.expr = expr
+        inner.quals = fors
+        self.stack.append(ast.GenExpr(inner))
+        raise AstGenerated
 
-def ttest():
-    #g = (a for b in Student)
-    #g = (a for b in Student for c in [])
-    #g = (a for b in Student for c in [] for d in [])
-    g = (a for b, c in [])
-    #g = (a for b in Student if f)
-    #g = (a for b in Student if f if r)
-    #g = (a for b in Student if f and r)
-    #g = (a for b in Student if f and r or t)
-    #g = (a for b in Student if f == 5 and r or not t)
-    #g = (a for b in Student if not -t)
-    #g = (a for b in Student if t is None)
-    #g = (a ** 2 for b in Student if t ** r == y)
-    #g = (a|b for c in Student if t^e > r | (y & (u & (w % z))))
-
-    #g = ([a, b, c] for a in [] if a > b)
-    #g = ([a, b, 4] for d in Student if a[4,5] > b[1,2,3])
-    #g = ((a, b, c) for a in [] if a > b)
-
-    #g = (a[2:4,6:8] for a in [])    
-    #g = (a[2:4:6,6:8] for a, y in [])
-    # a[(2:4:6, 6:8)] for a, y in .0 - what to do with ()
-
-    #g = (a[:] for i in [])
-    #g = (a[b:] for i in [])
-    #g = (a[:b] for i in [])
-    #g = (a[b:c] for i in [])
+test_lines = """
+    (a for b in T)
+    (a for b, c in T)
+    (a for b in T1 for c in T2)
+    (a for b in T1 for c in T2 for d in T3)
+    (a for b in T if f)
+    (a for b in T if f and h)
+    (a for b in T if f and h or t)
+    (a for b in T if f == 5 and r or t)
+    (a for b in T if f and r and t)
     
-    #g = (a|b for i in [])
-    #here add all binary ops
-
-    #g = (~a for i, j in [])
-    #here add all unary ops
-
-    #g = ({'a' : x, 'b' : y} for a, b in [])    
-
-    #g = (a.b.c for d.e.f in Student)
-    #g = (a for b in Student if c > d)
-    #g = (a for b in Student if c > d for e in Student if f < g)
-    #g = (s for s in Student if s.age > 20 and (s.group.number == 4142 or 'FFF' in s.marks.subject.name))
-    #g = ( (s,d,w) for t in Student if ((4 != x.a) or (a * 3 > 20) or (a * 2 < 5) and (a * 8 == 20)))
-    #g = ( (s,d,w) for t in Student   if ( 4 != x.a  or  a * 3 > 20 ) and ( a * 2 < 5  or  a * 8 == 20 ))
-    #g = ( (s,d,w) for t in Student if (((4 != x.a) or (a * 3 > 20)) and (a * 2 < 5) ))
-    #g = ( (s,d,w) for t in Student if ((4 != x.a) or (a * 3 > 20) and (a * 2 < 5) ))
-    #g = ( (s,d,w) for t in Student if ((4 != x.amount or amount * 3 > 20 or amount * 2 < 5) and (amount * 8 == 20)))
-    #g = ( (s,t,w) for t in Student if ((4 != x.a.b or a * 3 > 20 or a * 2 < 5 and v == 6) and a * 8 == 20 or (f > 4) ))
-    #g = (s for t in Student if a == 5)
-    #g = (s for s in Student if a == 5 for f in Student if t > 4 )
-
-    #g = (func1(a, a.attr, keyarg=123, *e) for s in Student)
-    #g = (func(a, a.attr, keyarg=123) for a in Student if a.method(x, *y, **z) is not None)
-    #g = (func(a, a.attr, b, b.c.d, keyarg1=123, keyarg2=456) for a in Student if a.method(x, x1, *y, **z) is not None)
-
-    #g = (a(lambda x,y: x > 0) for a in [])    
-    #g = (a(b, lambda x,y: x > 0) for a in [])
-    #g = (a(b, lambda x,y: x > 0) for a,b,x,y in [])
-
-    #g = (a for b in Student if c > d > e)
-    #g = (a for b in Student if c > d > d2)
-
+    (a for b in T if f == 5 and +r or not t)
+    (a for b in T if -t and ~r or `f`)
     
-    print decompile_to_ast(g)
+    (a**2 for b in T if t * r > y / 3)
+    (a + 2 for b in T if t + r > y // 3)
+    (a[2,v] for b in T if t - r > y[3])
+    ((a + 2) * 3 for b in T if t[r, e] > y[3, r * 4, t])
+    (a<<2 for b in T if t>>e > r & (y & u))
+    (a|b for c in T1 if t^e > r | (y & (u & (w % z))))
+    
+    ([a, b, c] for d in T)
+    ([a, b, 4] for d in T if a[4, b] > b[1,v,3])
+    ((a, b, c) for d in T)
+    ({} for d in T)
+    ({'a' : x, 'b' : y} for a, b in T)
+    (({'a' : x, 'b' : y}, {'c' : x1, 'd' : 1}) for a, b, c, d in T)
+    ([{'a' : x, 'b' : y}, {'c' : x1, 'd' : 1}] for a, b, c, d in T)
 
-ttest()
+    (a[1:2] for b in T)
+    (a[:2] for b in T)
+    (a[2:] for b in T)
+    (a[:] for b in T)
+    (a[1:2:3] for b in T)
+    (a[1:2, 3:4] for b in T)
+    (a[2:4:6,6:8] for a, y in T)
+
+    (a.b.c for d.e.f.g in T)
+    # (a.b.c for d[g] in T)
+
+    ((s,d,w) for t in T if (4 != x.a or a*3 > 20) and a * 2 < 5)
+    ([s,d,w] for t in T if (4 != x.amount or amount * 3 > 20 or amount * 2 < 5) and amount*8 == 20)
+    ([s,d,w] for t in T if (4 != x.a or a*3 > 20 or a*2 < 5 or 4 == 5) and a * 8 == 20)
+    (s for s in T if s.a > 20 and (s.x.y == 123 or 'ABC' in s.p.q.r))
+    (a for b in T1 if c > d for e in T2 if f < g)
+
+    (func1(a, a.attr, keyarg=123) for s in T)
+    (func1(a, a.attr, keyarg=123, *e) for s in T)
+    (func1(a, b, a.attr1, a.b.c, keyarg1=123, keyarg2='mx', *e, **f) for s in T)
+    (func(a, a.attr, keyarg=123) for a in T if a.method(x, *y, **z) == 4)
+"""
+
+def test():
+    import sys
+    if sys.version[:3] > '2.4': outmost_iterable_name = '.0'
+    else: outmost_iterable_name = '[outmost-iterable]'
+    import dis, compiler
+    for line in test_lines.split('\n'):
+        if not line or line.isspace(): continue
+        line = line.strip()
+        if line.startswith('#'): continue
+        code = compile(line, '<?>', 'eval').co_consts[0]
+        ast1 = compiler.parse(line).node.nodes[0].expr
+        ast1.code.quals[0].iter.name = outmost_iterable_name
+        try: ast2 = decompile(code)
+        except Exception, e:
+            print
+            print line
+            print
+            print ast1
+            print
+            dis.dis(code)
+            raise
+        if str(ast1) != str(ast2):
+            print
+            print line
+            print
+            print ast1
+            print
+            print ast2
+            print
+            dis.dis(code)
+            break
+        else: print 'OK: %s' % line
+    else: print 'Done!'
+            
+if __name__ == '__main__': test()
+    
