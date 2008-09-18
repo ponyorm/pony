@@ -9,8 +9,8 @@ def binop(node_type, args_holder=tuple):
         return node_type(args_holder((oper1, oper2)))
     return method
 
-def decompile(code):
-    return GeneratorDecompiler(code).ast
+def decompile(gen):
+    return GeneratorDecompiler(gen.gi_frame.f_code).ast
 
 class AstGenerated(Exception): pass
 
