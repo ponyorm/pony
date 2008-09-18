@@ -152,30 +152,26 @@ class GeneratorDecompiler(object):
         pass
 
     def JUMP_IF_FALSE(self, endpos):
-        self.conditional_jump(endpos, ast.And)
+        return self.conditional_jump(endpos, ast.And)
 
     def JUMP_IF_TRUE(self, endpos):
-        self.conditional_jump(endpos, ast.Or)
+        return self.conditional_jump(endpos, ast.Or)
 
     def conditional_jump(self, endpos, clausetype):
-        expr = self.stack.pop()
-        if not self.stack:
-            clause = clausetype([ expr ])
+        def new_clause(item):
+            clause = clausetype([ item ])
             clause.endpos = endpos
-            self.stack.append(clause)
+            return clause
+
+        expr = self.stack.pop()
+        if not self.stack: return new_clause(expr)
         top = self.stack[-1]
         if isinstance(top, (ast.And, ast.Or)):
             if top.endpos == endpos:
                 if top.__class__ == clausetype: top.nodes.append(expr)
-                else:
-                    clause = clausetype([ expr ])
-                    clause.endpos = endpos
-                    self.stack.append(clause)
-            elif top.endpos > endpos:
-                clause = clausetype([ expr ])
-                clause.endpos = endpos
-                self.stack.append(clause)
-            else:
+                else: return new_clause(expr)
+            elif top.endpos > endpos: return new_clause(expr)
+            else: # top.endpos < endpos
                 top.nodes.append(expr)
                 self.stack.pop()
                 if len(self.stack) >= 2:
@@ -183,13 +179,8 @@ class GeneratorDecompiler(object):
                     if top2.__class__ == clausetype and top2.endpos == endpos:
                         top2.nodes.append(top)
                         return
-                clause = clausetype([ top ])
-                clause.endpos = endpos
-                self.stack.append(clause)
-        else:
-            clause = clausetype([ expr ])
-            clause.endpos = endpos
-            self.stack.append(clause)
+                return new_clause(top)
+        else: return new_clause(expr)
 
     def LOAD_ATTR(self, attr_name):
         return ast.Getattr(self.stack.pop(), attr_name)
@@ -392,7 +383,7 @@ def test():
         code = compile(line, '<?>', 'eval').co_consts[0]
         ast1 = compiler.parse(line).node.nodes[0].expr
         ast1.code.quals[0].iter.name = outmost_iterable_name
-        try: ast2 = decompile(code)
+        try: ast2 = GeneratorDecompiler(code).ast
         except Exception, e:
             print
             print line
