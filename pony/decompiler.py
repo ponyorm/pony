@@ -12,6 +12,13 @@ def binop(node_type, args_holder=tuple):
 def decompile(gen):
     return GeneratorDecompiler(gen.gi_frame.f_code).ast
 
+def simplify(clause):
+    if isinstance(clause, ast.And):
+        if len(clause.nodes) == 1: return clause.nodes[0]
+    elif isinstance(clause, ast.Or):
+        if len(clause.nodes) == 1: return ast.Not(clause.nodes[0])
+    return clause    
+
 class AstGenerated(Exception): pass
 
 class GeneratorDecompiler(object):
@@ -20,8 +27,9 @@ class GeneratorDecompiler(object):
         self.start = self.pos = start
         if end is None: end = len(code.co_code)
         self.end = end
-        stack = [ ast.GenExprInner(None, []) ]
+        stack = []
         self.stack = stack
+        self.targets = {}
         self.ast = None
         self.decompile()
         self.ast = self.stack.pop()
@@ -33,6 +41,7 @@ class GeneratorDecompiler(object):
         try:
             while self.pos < self.end:
                 i = self.pos
+                if i in self.targets: self.process_target(i)
                 op = ord(code.co_code[i])
                 i += 1
                 if op >= HAVE_ARGUMENT:
@@ -106,7 +115,6 @@ class GeneratorDecompiler(object):
         return ast.Sliceobj(self.pop_items(size))
         
     def BUILD_TUPLE(self, size):
-        
         return ast.Tuple(self.pop_items(size))
 
     def CALL_FUNCTION(self, argc, star=None, star2=None):
@@ -158,29 +166,29 @@ class GeneratorDecompiler(object):
         return self.conditional_jump(endpos, ast.Or)
 
     def conditional_jump(self, endpos, clausetype):
-        def new_clause(item):
-            clause = clausetype([ item ])
-            clause.endpos = endpos
-            return clause
-
+        i = self.pos  # next instruction
+        if i in self.targets: self.process_target(i)
         expr = self.stack.pop()
-        if not self.stack: return new_clause(expr)
-        top = self.stack[-1]
-        if isinstance(top, (ast.And, ast.Or)):
-            if top.endpos == endpos:
-                if top.__class__ == clausetype: top.nodes.append(expr)
-                else: return new_clause(expr)
-            elif top.endpos > endpos: return new_clause(expr)
-            else: # top.endpos < endpos
-                top.nodes.append(expr)
-                self.stack.pop()
-                if len(self.stack) >= 2:
-                    top2 = self.stack[-1]
-                    if top2.__class__ == clausetype and top2.endpos == endpos:
-                        top2.nodes.append(top)
-                        return
-                return new_clause(top)
-        else: return new_clause(expr)
+        clause = clausetype([ expr ])
+        clause.endpos = endpos
+        self.targets.setdefault(endpos, clause)
+        return clause
+
+    def process_target(self, pos):
+        if pos is None: limit = None
+        else: limit = self.targets.pop(pos, None)
+        top = self.stack.pop()
+        while True:
+            top = simplify(top)
+            if top is limit: break
+            if isinstance(top, ast.GenExprFor): break
+            top2 = self.stack[-1]
+            if isinstance(top2, ast.GenExprFor): break
+            assert isinstance(top2, (ast.And, ast.Or))
+            if top2.__class__ == top.__class__: top2.nodes.extend(top.nodes)
+            else: top2.nodes.append(top)
+            top = self.stack.pop()
+        self.stack.append(top)
 
     def LOAD_ATTR(self, attr_name):
         return ast.Getattr(self.stack.pop(), attr_name)
@@ -283,28 +291,13 @@ class GeneratorDecompiler(object):
         ass_tuple.count = count
         return ass_tuple
 
-    def pack(self, endpos=None):
-        while len(self.stack) >= 2:
-            top = self.stack[-1]
-            top2 = self.stack[-2]
-            if not isinstance(top2, (ast.And, ast.Or)): break
-            if endpos is None or top2.endpos > endpos: break
-            top2.nodes.append(top)
-            self.stack.pop()
-        top = self.stack[-1]
-        if isinstance(top, ast.And) and len(top.nodes) == 1:
-            self.stack.pop()
-            self.stack.append(top.nodes[0])
-
     def YIELD_VALUE(self):
-        self.pack(self.pos)
         expr = self.stack.pop()
         fors = []
-        while True:
-            self.pack()
+        while self.stack:
+            self.process_target(None)
             top = self.stack.pop()
-            if isinstance(top, ast.GenExprInner): break
-            elif not isinstance(top, (ast.GenExprFor)):
+            if not isinstance(top, (ast.GenExprFor)):
                 cond = ast.GenExprIf(top)
                 top = self.stack.pop()
                 assert isinstance(top, ast.GenExprFor)
@@ -312,11 +305,7 @@ class GeneratorDecompiler(object):
                 fors.append(top)
             else: fors.append(top)
         fors.reverse()
-        inner = top
-        assert isinstance(inner, ast.GenExprInner) and inner.expr is None and not inner.quals
-        inner.expr = expr
-        inner.quals = fors
-        self.stack.append(ast.GenExpr(inner))
+        self.stack.append(ast.GenExpr(ast.GenExprInner(expr, fors)))
         raise AstGenerated
 
 test_lines = """
@@ -369,6 +358,9 @@ test_lines = """
     (func1(a, a.attr, keyarg=123, *e) for s in T)
     (func1(a, b, a.attr1, a.b.c, keyarg1=123, keyarg2='mx', *e, **f) for s in T)
     (func(a, a.attr, keyarg=123) for a in T if a.method(x, *y, **z) == 4)
+
+    ((x or y) and (p or q) for a in T if (a or b) and (c or d))
+    (x.y for x in T if (a and (b or (c and d))) or X)    
 """
 
 def test():
