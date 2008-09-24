@@ -550,8 +550,11 @@ class HttpResponse(object):
         stylesheets = self.base_stylesheets
         if not stylesheets: stylesheets = options.STD_STYLESHEETS
         base_css = StrHtml('\n').join(css_link(link) for link in stylesheets)
+        if base_css: base_css += StrHtml('\n')
         component_css = StrHtml('\n').join(css_link(link) for link in self.component_stylesheets)
+        if component_css: component_css += StrHtml('\n')
         scripts = StrHtml('\n').join(script_link(link) for link in self.scripts)
+        if scripts: scripts += StrHtml('\n')
 
         doctype = ''
         try:        
@@ -563,11 +566,11 @@ class HttpResponse(object):
             else:
                 first_element = match.group(2).lower()
 
-                for match2 in element_re.finditer(html):
-                    element = match2.group(2).lower()
+                for match in element_re.finditer(html):
+                    element = match.group(2).lower()
                     if element not in header_tags: break
-                    match1 = match2
-                bound = match1.end(1)
+                    last_match = match
+                bound = last_match.end(1)
                 head = html.__class__(html[:bound])
                 body = html.__class__(html[bound:])
 
@@ -576,12 +579,8 @@ class HttpResponse(object):
 
             match = element_re.search(head)
             if match is None or match.group(2).lower() != 'head':
-                head_list = [ head ]
-                if css_re.search(head) is None:
-                    head_list = [base_css, head]
-                head_list.append(component_css)
-                head_list.append(scripts)
-                head = StrHtml('\n').join([ StrHtml('<head>') ] + head_list + [ StrHtml('</head>') ])
+                if css_re.search(head) is not None: base_css = ''
+                head = StrHtml('<head>\n%s%s%s%s</head>' % (base_css, head, component_css, scripts))
             else: raise _UsePlaceholders
         except _UsePlaceholders:
             head = head.replace(options.BASE_STYLESHEETS_PLACEHOLDER, base_css, 1)
@@ -590,11 +589,9 @@ class HttpResponse(object):
             head = html.__class__(head)
 
         match = element_re.search(body)
-        element = match.group(2).lower()
-        if element != 'body':
-            if 'blueprint' not in base_css: body_list = [ body ]
-            else: body_list = [ StrHtml('<div class="container">'), body, StrHtml('</div>') ]
-            body = StrHtml('\n').join([ StrHtml('<body>') ] + body_list + [ StrHtml('</body>') ])
+        if match is None or match.group(2).lower() != 'body':
+            if 'blueprint' in base_css: body = StrHtml('<div class="container">\n%s\n</div>\n') % body
+            body = StrHtml('<body>\n%s</body>') % body
 
         if doctype: return StrHtml('\n').join([doctype, head, body])
         else: return StrHtml('\n').join([head, body])
