@@ -2,6 +2,9 @@ from compiler import ast
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
 from opcode import hasconst, hasname, hasjrel, haslocal, hascompare, hasfree
 
+##ast.And.__repr__ = lambda self: "And(%s: %s)" % (getattr(self, 'endpos', '?'), repr(self.nodes),)
+##ast.Or.__repr__ = lambda self: "Or(%s: %s)" % (getattr(self, 'endpos', '?'), repr(self.nodes),)
+
 def binop(node_type, args_holder=tuple):
     def method(self):
         oper2 = self.stack.pop()
@@ -14,10 +17,14 @@ def decompile(gen):
 
 def simplify(clause):
     if isinstance(clause, ast.And):
-        if len(clause.nodes) == 1: return clause.nodes[0]
+        if len(clause.nodes) == 1: result = clause.nodes[0]
+        else: return clause
     elif isinstance(clause, ast.Or):
-        if len(clause.nodes) == 1: return ast.Not(clause.nodes[0])
-    return clause    
+        if len(clause.nodes) == 1: result = ast.Not(clause.nodes[0])
+        else: return clause
+    else: return clause
+    if getattr(result, 'endpos', 0) < clause.endpos: result.endpos = clause.endpos
+    return result
 
 class AstGenerated(Exception): pass
 
@@ -152,9 +159,7 @@ class GeneratorDecompiler(object):
         assign = None
         iter = self.stack.pop()
         ifs = []
-        node = ast.GenExprFor(assign, iter, ifs)
-        node.endpos = endpos
-        return node
+        return ast.GenExprFor(assign, iter, ifs)
 
     def GET_ITER(self):
         pass
@@ -174,21 +179,44 @@ class GeneratorDecompiler(object):
         self.targets.setdefault(endpos, clause)
         return clause
 
-    def process_target(self, pos):
+    def process_target(self, pos, partial=False):
         if pos is None: limit = None
+        elif partial: limit = self.targets.get(pos, None)
         else: limit = self.targets.pop(pos, None)
         top = self.stack.pop()
         while True:
             top = simplify(top)
             if top is limit: break
             if isinstance(top, ast.GenExprFor): break
+
             top2 = self.stack[-1]
             if isinstance(top2, ast.GenExprFor): break
-            assert isinstance(top2, (ast.And, ast.Or))
-            if top2.__class__ == top.__class__: top2.nodes.extend(top.nodes)
-            else: top2.nodes.append(top)
+            if partial and hasattr(top2, 'endpos') and top2.endpos == pos: break
+
+            if isinstance(top2, (ast.And, ast.Or)):
+                if top2.__class__ == top.__class__: top2.nodes.extend(top.nodes)
+                else: top2.nodes.append(top)
+            elif isinstance(top2, ast.IfExp):  # Python 2.5
+                top2.else_ = top
+                if hasattr(top, 'endpos'):
+                    top2.endpos = top.endpos
+                    if self.targets.get(top.endpos) is top: self.targets[top.endpos] = top2
+            else: assert False
+            top2.endpos = max(top2.endpos, getattr(top, 'endpos', 0))
             top = self.stack.pop()
         self.stack.append(top)
+
+    def JUMP_FORWARD(self, endpos):
+        i = self.pos  # next instruction
+        self.process_target(i, True)
+        then = self.stack.pop()
+        self.process_target(i, False)
+        test = self.stack.pop()
+        if_exp = ast.IfExp(simplify(test), simplify(then), None)
+        if_exp.endpos = endpos
+        self.targets.setdefault(endpos, if_exp)
+        if self.targets.get(endpos) is then: self.targets[endpos] = if_exp
+        return if_exp
 
     def LOAD_ATTR(self, attr_name):
         return ast.Getattr(self.stack.pop(), attr_name)
@@ -305,10 +333,12 @@ class GeneratorDecompiler(object):
                 fors.append(top)
             else: fors.append(top)
         fors.reverse()
-        self.stack.append(ast.GenExpr(ast.GenExprInner(expr, fors)))
+        self.stack.append(ast.GenExpr(ast.GenExprInner(simplify(expr), fors)))
         raise AstGenerated
 
 test_lines = """
+    (a and b if c and d else e and f for i in T if (A and B if C and D else E and F))
+
     (a for b in T)
     (a for b, c in T)
     (a for b in T1 for c in T2)
@@ -360,7 +390,14 @@ test_lines = """
     (func(a, a.attr, keyarg=123) for a in T if a.method(x, *y, **z) == 4)
 
     ((x or y) and (p or q) for a in T if (a or b) and (c or d))
-    (x.y for x in T if (a and (b or (c and d))) or X)    
+    (x.y for x in T if (a and (b or (c and d))) or X)
+
+    (a if b else c for x in T)
+    (x for x in T if (d if e else f))
+    (a if b else c for x in T if (d if e else f))
+    (a and b or c and d if x and y or p and q else r and n or m and k for i in T)   
+    (i for i in T if (a and b or c and d if x and y or p and q else r and n or m and k))   
+    (a and b or c and d if x and y or p and q else r and n or m and k for i in T if (A and B or C and D if X and Y or P and Q else R and N or M and K))
 """
 
 def test():
