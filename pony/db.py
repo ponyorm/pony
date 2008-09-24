@@ -172,21 +172,9 @@ class Database(object):
         if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
         else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         return cursor
-    def _prepare_params(self, params):
-        d = {}
-        if hasattr(params, 'keys'):
-            for name in params: d[name] = params[name]
-        else:
-            it = iter(params)
-            while True:
-                try: name = it.next()
-                except StopIteration: break
-                try: value = it.next()
-                except StopIteration: raise TypeError('Uneven positional argument count')
-                d[name] = value
-        return sorted(d.items())
-    def insert(self, table_name, params):
-        items = self._prepare_args(args, keyargs)
+    def insert(self, table_name, **keyargs):
+        items = keyargs.items()
+        items.sort()
         con, provider = self._get_connection()
         key = table_name, tuple(name for name, value in items)
         x = self.sql_insert_cache.get(key)
@@ -195,34 +183,35 @@ class Database(object):
             adapted_sql, params = provider.ast2sql(ast)
         else: adapted_sql, params = x
         if not isinstance(params, dict):
-            for i, param in enumerate(params): assert param.key == i
+            for i, param in enumerate(params): assert param == i
             values = tuple(value for name, value in items)
         else: values = dict((key, items[i]) for key, i in params.items())
         cursor = con.cursor()
         wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         return getattr(cursor, 'lastrowid', None)
-    def update(self, table_name, params, where, globals=None, locals=None):
-        items = self._prepare_params(params)
+    def update(self, table_name, where, globals=None, locals=None, **keyargs):
+        items = keyargs.items()
+        items.sort()
         con, provider = self._get_connection()
-        key = table_name, where, tuple(name for name, value in items)
-        x = self.sql_update_cache.get(key)
-        if x is None:
+        key = table_name, tuple(name for name, value in items)
+        try: sql1, params1 = self.sql_update_cache[key]
+        except KeyError:
             ast = [ UPDATE, table_name, [ (name, [PARAM, i]) for i, (name, value) in enumerate(items) ] ]
             sql1, params1 = provider.ast2sql(ast)
-        else: adapted_sql, params = x
+
         sql2, code = adapt_sql(where, provider.paramstyle)
         if globals is None:
             assert locals is None
             globals = sys._getframe(1).f_globals
             locals = sys._getframe(1).f_locals
-        params2 = eval(code, globals, locals)
+        values2 = eval(code, globals, locals)
         adapted_sql = sql1 + ' WHERE ' + sql2
         if params1.__class__ is tuple:
-            for i, key in enumerate(params1): assert key == i
-            if params2 is not None: values = tuple(value for name, value in items) + params2
+            for i, param in enumerate(params1): assert param == i
+            values = tuple(value for name, value in items) + (values2 or ())
         elif params1.__class__ is dict:
-            values = dict((key, items[i]) for key, i in params.items())
-            if params2 is not None: values.update(params2)
+            values = dict((key, items[i]) for key, i in params1.items())
+            values.update(values2)
         else: assert False
         cursor = con.cursor()
         wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
@@ -282,13 +271,13 @@ def execute(sql):
     db = _get_database()
     return db.execute(sql, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
 
-def insert(table_name, *args, **keyargs):
+def insert(table_name, **keyargs):
     db = _get_database()
-    return db.insert(table_name, *args, **keyargs)
+    return db.insert(table_name, **keyargs)
 
-def update(table_name, params, where):
+def update(table_name, table_name, where, **keyargs):
     db = _get_database()
-    return db.update(table_name, params, where, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
+    return db.update(table_name, where, sys._getframe(1).f_globals, sys._getframe(1).f_locals, **keyargs)
 
 def delete(table_name, where):
     db = _get_database()
