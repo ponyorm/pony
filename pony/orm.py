@@ -109,8 +109,7 @@ class Attribute(object):
                 if old_key is not None: new_index[old_key] = obj
         undo_funcs.append(undo_func)
         try:
-            for key in obj._keys_:
-                if key is obj._pk_attrs_: continue
+            for key in obj._keys_[1:]:
                 if attr not in key: continue
                 position = list(key).index(attr)
                 new_key = map(data.__getitem__, map(get_new_offset, key))
@@ -523,12 +522,15 @@ class Entity(object):
         new_attrs.sort(key=attrgetter('_id_'))
         entity._new_attrs_ = new_attrs
 
-        entity._keys_ = keys = entity.__dict__.get('_keys_', {})
+        keys = entity.__dict__.get('_keys_', {})
         primary_keys = set(key for key, is_pk in keys.items() if is_pk)
         if direct_bases:
             if primary_keys: raise DiagramError(
                 'Primary key cannot be redefined in derived classes')
-            for base in direct_bases: keys.update(base._keys_)
+            for base in direct_bases:
+                keys[base._keys_[0]] = True
+                for key in base._keys_[1:]: keys[key] = False
+                
             primary_keys = set(key for key, is_pk in keys.items() if is_pk)
                                    
         if len(primary_keys) > 1: raise DiagramError(
@@ -542,10 +544,12 @@ class Entity(object):
             type.__setattr__(entity, 'id', attr)  # entity.id = attr
             entity._new_attrs_.insert(0, attr)
             key, is_pk = _keys_.popitem()
-            entity._keys_[key] = True
-            entity._pk_attrs_ = key
-        else: entity._pk_attrs_ = primary_keys.pop()
-        for i, attr in enumerate(entity._pk_attrs_): attr.pk_offset = i
+            keys[key] = True
+            pk_attrs = key
+        else: pk_attrs = primary_keys.pop()
+        entity._keys_ = [ pk_attrs ] + [ key for key, is_pk in keys.items() if not is_pk ]
+
+        for i, attr in enumerate(pk_attrs): attr.pk_offset = i
 
         entity._attrs_ = base_attrs + new_attrs
         entity._attr_dict_ = dict((attr.name, attr) for attr in entity._attrs_)
@@ -659,7 +663,7 @@ class Entity(object):
             data[0] = obj
             data[1] = status
             get_new_offset = obj._new_offsets_.__getitem__
-            for a, v in zip(obj._pk_attrs_, pk): data[get_new_offset(a)] = v
+            for a, v in zip(obj._keys_[0], pk): data[get_new_offset(a)] = v
             if status != 'U': raise NotImplementedError
         return data
     @property
@@ -670,10 +674,11 @@ class Entity(object):
         raise NotImplementedError
     @classmethod
     def create(entity, *args, **keyargs):
+        pk_attrs = entity._keys_[0]
         if args:
-            if len(args) != len(entity._pk_attrs_):
+            if len(args) != len(pk_attrs):
                 raise CreateError('Invalid count of attrs in primary key')
-            for attr, value in zip(entity._pk_attrs_, args):
+            for attr, value in zip(pk_attrs, args):
                 if keyargs.setdefault(attr.name, value) != value:
                     raise CreateError('Ambiguous attribute value for %r' % attr.name)
         for name in ifilterfalse(entity._attr_dict_.__contains__, keyargs):
@@ -689,7 +694,7 @@ class Entity(object):
             value = keyargs.get(attr.name, UNKNOWN)
             data[get_old_offset(attr)] = None
             data[get_new_offset(attr)] = attr.check(value, entity)
-        pk = tuple(map(data.__getitem__, map(get_new_offset, entity._pk_attrs_)))
+        pk = tuple(map(data.__getitem__, map(get_new_offset, pk_attrs)))
         if None in pk:
             obj = object.__new__(entity)
             obj._pk_ = None
@@ -775,8 +780,7 @@ class Entity(object):
         undo = []
         undo_funcs = []
         try:
-            for key in obj._keys_:
-                if key is obj._pk_attrs_: continue
+            for key in obj._keys_[1:]:
                 new_key = tuple(map(data.__getitem__, map(get_new_offset, key)))
                 old_key = tuple(map(old_data.__getitem__, map(get_new_offset, key)))
                 if None in new_key or UNKNOWN in new_key: new_key = None
@@ -871,7 +875,7 @@ class EntityInfo(object):
         for table, attr_map in info.table_map.items():
             key_columns_1 = [ column for column in table.columns if column.is_part_of_pk ]
             key_columns_2 = []
-            for attr in entity._pk_attrs_:
+            for attr in entity._keys_[0]:
                 columns = attr_map.get(attr)
                 if columns is None: raise MappingError(
                     'Key attribute %r does not have correspond column in table %r' % (attr.name, table.name))
