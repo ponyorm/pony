@@ -12,6 +12,9 @@ from pony.templating import Html, StrHtml, printhtml, plainstr
 from pony.logging import log, log_exc, DEBUG, INFO, WARNING
 from pony.db import with_transaction
 
+try: from pony.thirdparty import etree
+except ImportError: etree = None
+
 class NodefaultType(object):
     def __repr__(self): return '__nodefault__'
     
@@ -738,8 +741,10 @@ def http_invoke(url):
               result = result.encode(charset, 'xmlcharrefreplace')
         else: result = result.encode(charset, 'replace')
     elif not isinstance(result, str):
-        try: result = etree.tostring(result, charset)
-        except: result = str(result)
+        if etree is None: result = str(result)
+        else:
+            try: result = etree.tostring(result, charset)
+            except: result = str(result)
 
     headers.setdefault('Expires', '0')
     max_age = headers.pop('Max-Age', '2')

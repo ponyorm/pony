@@ -3,7 +3,9 @@ from operator import itemgetter, attrgetter
 from itertools import count, imap, izip, ifilter, ifilterfalse
 
 from pony import utils
-from pony.thirdparty import etree
+
+try: from pony.thirdparty import etree
+except ImportError: etree = None
 
 class OrmError(Exception): pass
 
@@ -923,6 +925,7 @@ class DataSource(object):
     def __new__(cls, provider, *args, **keyargs):
         mapping = keyargs.pop('mapping', None)
         if isinstance(mapping, basestring):
+            if etree is None: raise ImportError('cElementTree library does not found')
             filename = utils.absolutize_path(mapping)
             try: mtime = utils.get_mtime(filename)
             except OSError:
