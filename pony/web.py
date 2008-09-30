@@ -10,7 +10,7 @@ from pony.autoreload import on_reload
 from pony.utils import decorator_with_params
 from pony.templating import Html, StrHtml, printhtml, plainstr
 from pony.logging import log, log_exc, DEBUG, INFO, WARNING
-from pony.db import with_transaction
+from pony.db import with_transaction, RowNotFound
 
 try: from pony.thirdparty import etree
 except ImportError: etree = None
@@ -712,7 +712,8 @@ def http_invoke(url):
     params.update(zip(names, args))
     params.update(keyargs)
 
-    result = with_transaction(info.func, *args, **keyargs)
+    try: result = with_transaction(info.func, *args, **keyargs)
+    except RowNotFound: raise Http404NotFound
     
     if isinstance(result, HttpException): raise result
 
