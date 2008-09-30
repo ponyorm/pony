@@ -984,6 +984,8 @@ class HttpRedirect(HttpException):
                    '305' : '305 Use Proxy',
                    '307' : '307 Temporary Redirect'}
     def __init__(self, location=None, status='302 Found'):
+        if location and not isinstance(location, basestring):
+            raise TypeError('Redirect location must be string. Got: %r' % location)
         Exception.__init__(self, location)
         self.location = location or local.request.full_url
         status = str(status)
