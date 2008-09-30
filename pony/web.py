@@ -525,6 +525,7 @@ class _UsePlaceholders(Exception): pass
 
 class HttpResponse(object):
     def __init__(self):
+        self.status = '200 OK'
         self.headers = {}
         self.cookies = Cookie.SimpleCookie()
         self.postprocessing = True
@@ -714,8 +715,6 @@ def http_invoke(url):
 
     try: result = with_transaction(info.func, *args, **keyargs)
     except RowNotFound: raise Http404NotFound
-    
-    if isinstance(result, HttpException): raise result
 
     headers = dict([ (name.replace('_', '-').title(), value)
                      for name, value in response.headers.items() ])
@@ -804,20 +803,22 @@ def application(environ, start_response):
                 if auth.local.ticket and not request.form_processed and request.form_processed is not None:
                     auth.unexpire_ticket()
         except HttpException, e:
-            status, headers, content = e.status, e.headers, [ e.content ]
+            status, headers, result = e.status, e.headers, e.content
         except:
             log_exc()
             status = '500 Internal Server Error'
-            headers = [ ('Content-Type', 'text/html') ]
-            content = [ format_exc() ]
+            headers = {'Content-Type': 'text/html'}
+            result = format_exc()
         else:
-            status = '200 OK'
-            response = local.response
-            auth.save(response.cookies)
-            headers = [ (name, str(value)) for name, value in response.headers.items()
-                      ] + webutils.serialize_cookies(environ, response.cookies)
-            if not hasattr(result, 'read'): content = [ result ]
-            else: content = iter(lambda: result.read(BLOCK_SIZE), '')  # content = [ result.read() ]
+            status = local.response.status
+            headers = local.response.headers
+
+        headers = [ (name, str(value)) for name, value in headers.items() ]
+        if not status.startswith('5'):
+            auth.save(local.response.cookies)
+            headers += webutils.serialize_cookies(environ, local.response.cookies)
+        if not hasattr(result, 'read'): content = [ result ]
+        else: content = iter(lambda: result.read(BLOCK_SIZE), '')  # content = [ result.read() ]
 
         log(type='HTTP:response', prefix='Response: ', text=status, severity=DEBUG, headers=headers)
         start_response(status, headers)
@@ -962,7 +963,7 @@ http.Exception = HttpException
 
 class Http400BadRequest(HttpException):
     status = '400 Bad Request'
-    headers = [ ('Content-Type', 'text/plain') ]
+    headers = {'Content-Type' : 'text/plain'}
     def __init__(self, content='Bad Request'):
         Exception.__init__(self, 'Bad Request')
         self.content = content
@@ -970,7 +971,7 @@ http.BadRequest = Http400BadRequest
         
 class Http404NotFound(HttpException):
     status = '404 Not Found'
-    headers = [ ('Content-Type', 'text/plain') ]
+    headers = {'Content-Type' : 'text/plain'}
     def __init__(self, content='Page not found'):
         Exception.__init__(self, 'Page not found')
         self.content = content
@@ -990,7 +991,7 @@ class HttpRedirect(HttpException):
         self.location = location or local.request.full_url
         status = str(status)
         self.status = self.status_dict.get(status, status)
-        self.headers = [ ('Location', location) ]
+        self.headers = {'Location' : location}
 http.Redirect = HttpRedirect
 
 @http('/pony/shutdown?uid=$uid')
