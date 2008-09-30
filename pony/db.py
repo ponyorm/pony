@@ -16,7 +16,9 @@ class DBException(Exception):
 class NoDefaultDbException(DBException): pass
 class CommitException(DBException): pass
 class RollbackException(DBException): pass
-class MultipleRowException(DBException): pass
+
+class RowNotFound(DBException): pass
+class MultipleRowsFound(DBException): pass
 
 ##StandardError
 ##        |__Warning
@@ -126,6 +128,7 @@ class Database(object):
         con, provider = self._get_connection()
         return con
     def select(self, sql, globals=None, locals=None):
+        sql = sql[:]  # sql = templating.plainstr(sql)
         if not select_re.match(sql): sql = 'select ' + sql
         if globals is None:
             assert locals is None
@@ -141,12 +144,17 @@ class Database(object):
         if result and len(result[0]) == 1: result = [ row[0] for row in result ]
         return result
     def get(self, sql, globals=None, locals=None):
+        if globals is None:
+            assert locals is None
+            globals = sys._getframe(1).f_globals
+            locals = sys._getframe(1).f_locals
         rows = self.select(sql, globals, locals)
-        if not rows: return None
-        if len(rows) > 1: raise MultipleRowsException
+        if not rows: raise RowNotFound
+        if len(rows) > 1: raise MultipleRowsFound
         row = rows[0]
         return row
     def exists(self, sql, globals=None, locals=None):
+        sql = sql[:]  # sql = templating.plainstr(sql)
         if not select_re.match(sql): sql = 'select ' + sql
         if globals is None:
             assert locals is None
@@ -161,6 +169,7 @@ class Database(object):
         result = cursor.fetchone()
         return bool(result)
     def execute(self, sql, globals=None, locals=None):
+        sql = sql[:]  # sql = templating.plainstr(sql)
         if globals is None:
             assert locals is None
             globals = sys._getframe(1).f_globals
@@ -173,6 +182,7 @@ class Database(object):
         else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         return cursor
     def insert(self, table_name, **keyargs):
+        table_name = table_name[:]  # table_name = templating.plainstr(table_name)
         items = keyargs.items()
         items.sort()
         con, provider = self._get_connection()
@@ -190,6 +200,8 @@ class Database(object):
         wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         return getattr(cursor, 'lastrowid', None)
     def update(self, table_name, where, globals=None, locals=None, **keyargs):
+        table_name = table_name[:]  # table_name = templating.plainstr(table_name)
+        where = where[:]  # where = templating.plainstr(where)
         items = keyargs.items()
         items.sort()
         con, provider = self._get_connection()
@@ -216,6 +228,8 @@ class Database(object):
         cursor = con.cursor()
         wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
     def delete(self, table_name, where, globals=None, locals=None):
+        table_name = table_name[:]  # table_name = templating.plainstr(table_name)
+        where = where[:]  # where = templating.plainstr(where)
         if globals is None:
             assert locals is None
             globals = sys._getframe(1).f_globals
