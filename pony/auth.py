@@ -61,11 +61,11 @@ def load(environ, cookies=None):
         cookies =  Cookie.SimpleCookie()
         if 'HTTP_COOKIE' in environ: cookies.load(environ['HTTP_COOKIE'])
     morsel = cookies.get(options.COOKIE_NAME)
+    local.ip = ip = environ.get('REMOTE_ADDR')
+    local.user_agent = user_agent = environ.get('HTTP_USER_AGENT')
     local.cookie_value = cookie_value = morsel and morsel.value or None
     if not cookie_value: return
     now = int(time()) // 60
-    local.ip = ip = environ.get('REMOTE_ADDR')
-    local.user_agent = user_agent = environ.get('HTTP_USER_AGENT')
     try:
         ctime_str, mtime_str, data_str, hash_str, longlife_key = cookie_value.split(':')
         ctime = local.ctime = int(ctime_str, 16)
