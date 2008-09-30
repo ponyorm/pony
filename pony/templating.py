@@ -12,9 +12,9 @@ def plainstr(x):
     if not isinstance(x, basestring):
         if hasattr(x, '__unicode__'): x = unicode(x)
         else: x = str(x)
-    if isinstance(x, Html): return unicode(x)
-    elif isinstance(x, StrHtml): return str.__str__(x)
-    else: return x
+    # if isinstance(x, Html): return unicode(x)
+    # if isinstance(x, StrHtml): return str.__str__(x)
+    return x[:]
 
 class Html(unicode):
     def __repr__(self):
