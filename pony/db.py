@@ -275,7 +275,7 @@ def insert(table_name, **keyargs):
     db = _get_database()
     return db.insert(table_name, **keyargs)
 
-def update(table_name, table_name, where, **keyargs):
+def update(table_name, where, **keyargs):
     db = _get_database()
     return db.update(table_name, where, sys._getframe(1).f_globals, sys._getframe(1).f_locals, **keyargs)
 
