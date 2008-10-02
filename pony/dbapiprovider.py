@@ -2,9 +2,11 @@ import sys, threading
 
 from pony.sqlsymbols import *
 
-def quote_name(name):
-    if isinstance(name, basestring): return '"%s"' % name.replace('"', '""')
-    return '.'.join(quote_name(item) for item in name)
+def quote_name(name, quote_char='"'):
+    if isinstance(name, basestring):
+        name = name.replace(quote_char, quote_char+quote_char)
+        return quote_char + name + quote_char
+    return '.'.join(quote_name(item, quote_char) for item in name)
 
 class AstError(Exception): pass
 
@@ -65,9 +67,9 @@ def binary_op(symbol):
 class SQLBuilder(object):
     param = Param
     value = Value
-    quote_name = staticmethod(quote_name)
-    def __init__(self, ast):
+    def __init__(self, ast, quote_char='"'):
         self.ast = ast
+        self.quote_char = quote_char
         self.result = flat(self(ast))
         self.sql = u''.join(map(unicode, self.result))
         self.params = tuple(x.key for x in self.result if isinstance(x, self.param))
@@ -88,6 +90,8 @@ class SQLBuilder(object):
             else:
                 del traceback
                 raise
+    def quote_name(self, name):
+        return quote_name(name, self.quote_char)
     def INSERT(self, table_name, columns, values):
         return [ 'INSERT INTO ', self.quote_name(table_name), ' (',
                  join(', ', [self.quote_name(column) for column in columns ]),

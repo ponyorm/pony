@@ -1,23 +1,23 @@
-from pony.thirdparty import sqlite as module
+from pony.thirdparty import sqlite
 
 from pony.thirdparty.sqlite import (Warning, Error, InterfaceError, DatabaseError,
                                     DataError, OperationalError, IntegrityError, InternalError,
                                     ProgrammingError, NotSupportedError)
 
-from pony.dbapiprovider import SQLBuilder
-
-quote_name = SQLBuilder.quote_name
-param = SQLBuilder.param
+from pony import dbapiprovider
 
 paramstyle = 'qmark'
 
-def connect(filename):
-    return module.connect(filename)
+def quote_name(connection, name):
+    return dbapiprovider.quote_name(name)
 
-def release(con):
+def connect(filename):
+    return sqlite.connect(filename)
+
+def release(connection):
     pass
 
-def ast2sql(ast):
-    b = SQLBuilder(ast)
+def ast2sql(con, ast):
+    b = dbapiprovider.SQLBuilder(ast)
     return b.sql, b.params
 

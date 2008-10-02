@@ -53,7 +53,7 @@ def wrap_dbapi_exceptions(provider, func, *args, **keyargs):
     except provider.OperationalError, e: raise OperationalError(exceptions=[e])
     except provider.DataError, e: raise DataError(exceptions=[e])
     except provider.DatabaseError, e: raise DatabaseError(exceptions=[e])
-    except provider.InrefaceError, e: raise InrefaceError(exceptions=[e])
+    except provider.InterfaceError, e: raise InterfaceError(exceptions=[e])
     except provider.Error, e: raise Error(exceptions=[e])
     except provider.Warning, e: raise Warning(exceptions=[e])
 
@@ -190,7 +190,7 @@ class Database(object):
         x = self.sql_insert_cache.get(key)
         if x is None:
             ast = [ INSERT, table_name, [ name for name, value in items ], [ [PARAM, i] for i in range(len(items)) ] ]
-            adapted_sql, params = provider.ast2sql(ast)
+            adapted_sql, params = provider.ast2sql(con, ast)
         else: adapted_sql, params = x
         if not isinstance(params, dict):
             for i, param in enumerate(params): assert param == i
@@ -209,7 +209,7 @@ class Database(object):
         try: sql1, params1 = self.sql_update_cache[key]
         except KeyError:
             ast = [ UPDATE, table_name, [ (name, [PARAM, i]) for i, (name, value) in enumerate(items) ] ]
-            sql1, params1 = provider.ast2sql(ast)
+            sql1, params1 = provider.ast2sql(con, ast)
 
         sql2, code = adapt_sql(where, provider.paramstyle)
         if globals is None:
@@ -235,7 +235,7 @@ class Database(object):
             globals = sys._getframe(1).f_globals
             locals = sys._getframe(1).f_locals
         con, provider = self._get_connection()
-        sql = ('delete from %s where ' % provider.quote_name(table_name)) + where
+        sql = ('delete from %s where ' % provider.quote_name(con, table_name)) + where
         adapted_sql, code = adapt_sql(sql, provider.paramstyle)
         values = eval(code, globals, locals)
         cursor = con.cursor()
