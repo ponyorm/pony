@@ -1,5 +1,7 @@
 import pony
 
+import pony.patches.interactive
+
 from pony import real_stdout
 from pony.utils import markdown, json
 from pony.templating import printtext, printhtml, Html, cycle, template, html
