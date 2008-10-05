@@ -1,5 +1,6 @@
 import re, sys, threading
 
+from pony import options
 from pony.utils import import_module
 from pony.sqlsymbols import *
 
@@ -19,6 +20,7 @@ class RollbackException(DBException): pass
 
 class RowNotFound(DBException): pass
 class MultipleRowsFound(DBException): pass
+class TooManyRowsFound(DBException): pass
 
 ##StandardError
 ##        |__Warning
@@ -166,8 +168,10 @@ class Database(object):
         cursor = con.cursor()
         if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
         else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
-        result = cursor.fetchall()
-        if result and len(result[0]) == 1: result = [ row[0] for row in result ]
+        result = cursor.fetchmany(options.MAX_ROWS_COUNT)
+        if cursor.fetchone() is not None: raise TooManyRowsFound
+        if len(cursor.description) == 1: result = [ row[0] for row in result ]
+        elif type(result) != list: result = list(result)
         return result
     def get(self, sql, globals=None, locals=None):
         if globals is None:

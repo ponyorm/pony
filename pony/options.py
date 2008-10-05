@@ -36,3 +36,6 @@ PICKLE_HTML_AS_PLAIN_STR = True
 # encoding options for pony.pathces.repr
 SOURCE_ENCODING = None
 CONSOLE_ENCODING = None
+
+# db options
+MAX_ROWS_COUNT = 1000
