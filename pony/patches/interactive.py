@@ -11,19 +11,21 @@ escape_re = re.compile(r'''
     )  
     ''', re.VERBOSE)
 
-def restore_escapes(s, encoding=None):
-    encoding = (encoding or getattr(sys.stderr, 'encoding', None)
+def restore_escapes(s):
+    source_encoding = options.SOURCE_ENCODING or locale.getpreferredencoding()
+    console_encoding = ( getattr(sys.stderr, 'encoding', None)
                          or getattr(sys.stdout, 'encoding', None)
                          or options.CONSOLE_ENCODING
-                         or locale.getpreferredencoding())
+                         or locale.getpreferredencoding() )
+    s = s.decode(source_encoding).encode(console_encoding)
     def f(match):
         esc = match.group()
         code = int(esc[2:], 16)
         if esc.startswith('\\x'):
             if code < 32: return esc
-            return chr(code)
+            return chr(code).decode(source_encoding).encode(console_encoding)
         char = unichr(code)
-        try: return char.encode(encoding)
+        try: return char.encode(console_encoding)
         except UnicodeEncodeError: return esc
     return escape_re.sub(f, s)
 
