@@ -47,13 +47,13 @@ def log(*args, **record):
     record.setdefault('type', 'unknown')
     for field in 'user', 'text':
         value = record.get(field)
-        if isinstance(value, str): record[field] = value.decode('utf-8', 'replace')
+        # if isinstance(value, str): record[field] = value.decode('utf-8', 'replace')
     level = record.get('severity') or INFO
     if pony_logger.level <= level and root_logger.level <= level and not record.get('type', '').startswith('logging:'):
         prefix = record.get('prefix', '')
         message = prefix + record.get('text', '')
         traceback = record.get('traceback')
-        if traceback: message = ''.join((message, '\n', traceback))
+        if traceback: message = '\n'.join((message, traceback))
         if message: pony_logger.log(level, message)
     if LOG_TO_SQLITE:
         record['timestamp'] = current_timestamp()
