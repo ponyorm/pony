@@ -22,7 +22,7 @@ def connect(*args, **keyargs):
     return MySQLdb.connect(*args, **keyargs)
 
 def release(connection):
-    pass
+    connection.close()
 
 def ast2sql(con, ast):
     b = MySQLBuilder(ast, "`")

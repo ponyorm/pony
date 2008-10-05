@@ -16,7 +16,7 @@ def connect(*args, **keyargs):
     return pyodbc.connect(*args, **keyargs)
 
 def release(connection):
-    pass
+    connection.close()
 
 def ast2sql(connection, ast):
     quote_char = connection.getinfo(pyodbc.SQL_IDENTIFIER_QUOTE_CHAR)

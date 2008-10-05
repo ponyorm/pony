@@ -15,7 +15,7 @@ def connect(filename):
     return sqlite.connect(filename)
 
 def release(connection):
-    pass
+    connection.close()
 
 def ast2sql(con, ast):
     b = dbapiprovider.SQLBuilder(ast)
