@@ -129,6 +129,30 @@ class Database(object):
     def get_connection(self):
         con, provider = self._get_connection()
         return con
+    def release(self):
+        x = local.connections.pop(self, None)
+        if x is None: return
+        connection, provider, _ = x
+        provider.release(connection)
+    def commit(self):
+        con, provider = self._get_connection()
+        wrap_dbapi_exceptions(provider, con.commit)
+    def rollback(self):
+        con, provider = self._get_connection()
+        wrap_dbapi_exceptions(provider, con.rollback)
+    def execute(self, sql, globals=None, locals=None):
+        sql = sql[:]  # sql = templating.plainstr(sql)
+        if globals is None:
+            assert locals is None
+            globals = sys._getframe(1).f_globals
+            locals = sys._getframe(1).f_locals
+        con, provider = self._get_connection()
+        adapted_sql, code = adapt_sql(sql, provider.paramstyle)
+        values = eval(code, globals, locals)
+        cursor = con.cursor()
+        if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
+        else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
+        return cursor
     def select(self, sql, globals=None, locals=None):
         sql = sql[:]  # sql = templating.plainstr(sql)
         if not select_re.match(sql): sql = 'select ' + sql
@@ -170,19 +194,6 @@ class Database(object):
         else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         result = cursor.fetchone()
         return bool(result)
-    def execute(self, sql, globals=None, locals=None):
-        sql = sql[:]  # sql = templating.plainstr(sql)
-        if globals is None:
-            assert locals is None
-            globals = sys._getframe(1).f_globals
-            locals = sys._getframe(1).f_locals
-        con, provider = self._get_connection()
-        adapted_sql, code = adapt_sql(sql, provider.paramstyle)
-        values = eval(code, globals, locals)
-        cursor = con.cursor()
-        if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
-        else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
-        return cursor
     def insert(self, table_name, **keyargs):
         table_name = table_name[:]  # table_name = templating.plainstr(table_name)
         items = keyargs.items()
@@ -243,22 +254,6 @@ class Database(object):
         cursor = con.cursor()
         if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
         else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
-    def commit(self):
-        con, provider = self._get_connection()
-        wrap_dbapi_exceptions(provider, con.commit)
-    def rollback(self):
-        con, provider = self._get_connection()
-        wrap_dbapi_exceptions(provider, con.rollback)
-    def release(self):
-        x = local.connections.pop(self, None)
-        if x is None: return
-        connection, provider, _ = x
-        provider.release(connection)
-
-def release():
-    for con, provider, _ in local.connections.values():
-        provider.release(con)
-    local.connections.clear()
 
 def _get_database():
     db = local.default_db
@@ -272,6 +267,15 @@ def get_connection():
     db = _get_database()
     return db.get_connection()
 
+def release():
+    for con, provider, _ in local.connections.values():
+        provider.release(con)
+    local.connections.clear()
+
+def execute(sql):
+    db = _get_database()
+    return db.execute(sql, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
+
 def select(sql):
     db = _get_database()
     return db.select(sql, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
@@ -283,10 +287,6 @@ def get(sql):
 def exists(sql):
     db = _get_database()
     return db.exists(sql, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
-
-def execute(sql):
-    db = _get_database()
-    return db.execute(sql, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
 
 def insert(table_name, **keyargs):
     db = _get_database()
