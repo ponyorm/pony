@@ -33,5 +33,6 @@ CONVERSATION_FIELD_NAME = '_c'
 PICKLE_START_OFFSET = 230
 PICKLE_HTML_AS_PLAIN_STR = True
 
-# encoding option for pony.pathces.repr
+# encoding options for pony.pathces.repr
+SOURCE_ENCODING = None
 CONSOLE_ENCODING = None
