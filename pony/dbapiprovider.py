@@ -20,7 +20,7 @@ class Param(object):
         if other.__class__ is not Param: return NotImplemented
         return cmp(self.key, other.key)
     def __unicode__(self):
-        return '?'
+        return u'?'
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self.key)
 
@@ -37,7 +37,6 @@ class Value(object):
         return '%s(%r)' % (self.__class__.__name__, self.value)
     def quote_str(self, s):
         return "'%s'" % s.replace("'", "''")
-
 
 def flat(tree):
     stack = [ tree ]
