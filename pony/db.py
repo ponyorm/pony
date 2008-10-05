@@ -117,6 +117,8 @@ class Database(object):
         self.keyargs = keyargs
         self.sql_insert_cache = {}
         self.sql_update_cache = {}
+        con = self.get_connection()
+        self.release()
     def _get_connection(self):
         x = local.connections.get(self)
         if x is not None: return x[:2]
@@ -250,10 +252,11 @@ class Database(object):
     def release(self):
         x = local.connections.pop(self, None)
         if x is None: return
-        x[0].release()
+        connection, provider, _ = x
+        provider.release(connection)
 
 def release():
-    for con, provider in local.connections.values():
+    for con, provider, _ in local.connections.values():
         provider.release(con)
     local.connections.clear()
 
