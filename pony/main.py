@@ -12,7 +12,8 @@ from pony.forms import (Form, Hidden, Submit, Reset,
                         File, Password, StaticText, Text, TextArea, Checkbox, 
                         Select, RadioGroup, MultiSelect, CheckboxGroup,
                         Composite, Grid)
-from pony.db import Database
+from pony.db import Database, RowNotFound, MultipleRowsFound
+
 from pony.gui.tkgui import show_gui
 
 try: import pony.gui.webgui
