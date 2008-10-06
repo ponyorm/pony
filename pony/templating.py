@@ -464,7 +464,7 @@ class Markup(SyntaxElement):
                 cmd_name = item[2]
                 if cmd_name is not None and cmd_name.startswith('.') \
                    or cmd_name in ('elif', 'else', 'sep', 'separator', 'except'):
-                    if isinstance(prev, basestring) and not prev or prev.isspace():
+                    if isinstance(prev, basestring) and (not prev or prev.isspace()):
                         self.content.pop()
                         if self.content: prev = self.content[-1]
                         else: prev = None
