@@ -367,7 +367,6 @@ class BaseWidget(HtmlField):
         return Html('<div class="error">%s</div>') % error_text
     def _get_label(self, colon=True, required=True):
         if not self._label: return ''
-        if isinstance(self._label, Html): return self._label
         if not (required and self.required): required_html = ''
         else: required_html = Html('<sup class="required">*</sup>')
         colon_html = colon and Html('<span class="colon">:</span>') or ''
