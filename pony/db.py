@@ -217,42 +217,10 @@ class Database(object):
         wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         return getattr(cursor, 'lastrowid', None)
 
-def _get_database():
-    db = local.default_db
-    if db is not None: return db
-    db = sys._getframe(2).f_globals.get('__database__')
-    if db is None: raise NoDefaultDbException('There is no default database defined')
-    local.default_db = db
-    return db
-
-def get_connection():
-    db = _get_database()
-    return db.get_connection()
-
 def release():
     for con, provider, _ in local.connections.values():
         provider.release(con)
     local.connections.clear()
-
-def execute(sql):
-    db = _get_database()
-    return db.execute(sql, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
-
-def select(sql):
-    db = _get_database()
-    return db.select(sql, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
-    
-def get(sql):
-    db = _get_database()
-    return db.get(sql, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
-
-def exists(sql):
-    db = _get_database()
-    return db.exists(sql, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
-
-def insert(table_name, **keyargs):
-    db = _get_database()
-    return db.insert(table_name, **keyargs)
 
 def commit():
     db = _get_database()
