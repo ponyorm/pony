@@ -1,7 +1,7 @@
 import re, sys, threading
 
 from pony import options
-from pony.utils import import_module
+from pony.utils import import_module, parse_expr
 from pony.sqlsymbols import *
 
 class DBException(Exception):
@@ -66,38 +66,48 @@ class Local(threading.local):
 
 local = Local()        
 
-param_re = re.compile(r'[$]([$]|[A-Za-z_]\w*)')
-
 sql_cache = {}
 
 def adapt_sql(sql, paramstyle):
-    result = sql_cache.get((sql, paramstyle))
-    if result is not None: return result
-    args, keyargs = [], {}
-    if paramstyle == 'qmark':
-        def replace(expr): args.append(expr); return '?'
-    elif paramstyle == 'format':
-        def replace(expr): args.append(expr); return '%s'
-    elif paramstyle == 'numeric':
-        def replace(expr): args.append(expr); return ':%d' % len(args)
-    elif paramstyle == 'named':
-        def replace(expr):
-            key = 'param%d' % (len(keyargs) + 1)
-            keyargs[key] = expr
-            return ':' + key
-    elif paramstyle == 'pyformat':
-        def replace(expr):
-            key = 'param%d' % (len(keyargs) + 1)
-            keyargs[key] = expr
-            return '%%(%s)s' % key
-    else: assert False
-    def replace_func(match):
-        expr = match.group(1)
-        if expr == '$': return '$'
-        compile(expr, '<?>', 'eval')
-        return replace(expr)
-    adapted_sql = param_re.sub(replace_func, sql)
-    params = args or keyargs or None
+    pos = 0
+    result = []
+    args = []
+    keyargs = {}
+    while True:
+        try: i = sql.index('$', pos)
+        except ValueError:
+            result.append(sql[pos:])
+            break
+        result.append(sql[pos:i])
+        if sql[i+1] == '$':
+            result.append('$')
+            pos = i+2
+        else:
+            try: expr = parse_expr(sql, i+1)
+            except ValueError:
+                raise # TODO
+            pos = i + len(expr) + 1
+            if expr.endswith(';'): expr = expr[:-1]
+            compile(expr, '<?>', 'eval')  # expr correction check
+            if paramstyle == 'qmark':
+                args.append(expr)
+                result.append('?')
+            elif paramstyle == 'format':
+                args.append(expr)
+                result.append('%s')
+            elif paramstyle == 'numeric':
+                args.append(expr)
+                result.append(':%d' % len(args))
+            elif paramstyle == 'named':
+                key = 'param%d' % (len(keyargs) + 1)
+                keyargs[key] = expr
+                result.append(':' + key)
+            elif paramstyle == 'pyformat':
+                key = 'param%d' % (len(keyargs) + 1)
+                keyargs[key] = expr
+                result.append('%%(%s)s' % key)
+            else: raise NotImplementedError
+    adapted_sql = ''.join(result)
     if args:
         source = '(%s,)' % ', '.join(args)
         code = compile(source, '<?>', 'eval')
