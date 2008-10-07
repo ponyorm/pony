@@ -12,18 +12,21 @@ escape_re = re.compile(r'''
     ''', re.VERBOSE)
 
 def restore_escapes(s):
+    if not options.UNESCAPE_REPR: return s
     source_encoding = options.SOURCE_ENCODING or locale.getpreferredencoding()
     console_encoding = ( getattr(sys.stderr, 'encoding', None)
                          or getattr(sys.stdout, 'encoding', None)
                          or options.CONSOLE_ENCODING
                          or locale.getpreferredencoding() )
-    s = s.decode(source_encoding).encode(console_encoding)
+    try: s = s.decode(source_encoding).encode(console_encoding)
+    except UnicodeDecodeError, UnicodeEncodeError: pass
     def f(match):
         esc = match.group()
         code = int(esc[2:], 16)
         if esc.startswith('\\x'):
             if code < 32: return esc
-            return chr(code).decode(source_encoding).encode(console_encoding)
+            try: return chr(code).decode(source_encoding).encode(console_encoding)
+            except (UnicodeDecodeError, UnicodeEncodeError): return esc
         char = unichr(code)
         try: return char.encode(console_encoding)
         except UnicodeEncodeError: return esc
