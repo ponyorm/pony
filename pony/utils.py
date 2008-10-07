@@ -350,3 +350,58 @@ converters = {
     datetime.time: (str2time, unicode, 'Must be correct time (hh:mm or hh:mm:ss)'),
     datetime.datetime: (str2datetime, unicode, 'Must be correct date & time'),
     }
+
+expr1_re = re.compile(r'''
+        ([A-Za-z_]\w*)  # identifier (group 1)
+    |   ([(])           # open parenthesis (group 2)
+    ''', re.VERBOSE)
+
+expr2_re = re.compile(r'''
+     \s*(?:
+            (;)                 # semicolon (group 1)
+        |   (\.\s*[A-Za-z_]\w*) # dot + identifier (group 2)
+        |   ([([])              # open parenthesis or braces (group 3)
+        )
+    ''', re.VERBOSE)
+
+expr3_re = re.compile(r"""
+        [()[\]]                   # parenthesis or braces (group 1)
+    |   '''(?:[^\\]|\\.)*?'''     # '''triple-quoted string'''
+    |   \"""(?:[^\\]|\\.)*?\"""   # \"""triple-quoted string\"""
+    |   '(?:[^'\\]|\\.)*?'        # 'string'
+    |   "(?:[^"\\]|\\.)*?"        # "string"
+    """, re.VERBOSE)
+
+def parse_expr(s, pos=0):
+    match = expr1_re.match(s, pos)
+    if match is None: raise ValueError
+    start = pos
+    i = match.lastindex
+    if i == 1: pos = match.end()  # identifier
+    elif i == 2: pass  # "("
+    else: assert False
+    while True:
+        match = expr2_re.match(s, pos)
+        if match is None: return s[start:pos]
+        pos = match.end()
+        i = match.lastindex
+        if i == 1: return s[start:pos]  # ";" - explicit end of expression
+        elif i == 2: pass  # .identifier
+        elif i == 3:  # "(" or "["
+            pos = match.end()
+            counter = 1
+            open = match.group(i)
+            if open == '(': close = ')'
+            elif open == '[': close = ']'
+            else: assert False
+            while True:
+                match = expr3_re.search(s, pos)
+                if match is None: raise ValueError
+                pos = match.end()
+                x = match.group()
+                if x == open: counter += 1
+                elif x == close:
+                    counter -= 1
+                    if not counter: break
+        else: assert False
+        
