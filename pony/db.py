@@ -216,48 +216,6 @@ class Database(object):
         cursor = con.cursor()
         wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         return getattr(cursor, 'lastrowid', None)
-    def update(self, table_name, where, globals=None, locals=None, **keyargs):
-        table_name = table_name[:]  # table_name = templating.plainstr(table_name)
-        where = where[:]  # where = templating.plainstr(where)
-        items = keyargs.items()
-        items.sort()
-        con, provider = self._get_connection()
-        key = table_name, tuple(name for name, value in items)
-        try: sql1, params1 = self.sql_update_cache[key]
-        except KeyError:
-            ast = [ UPDATE, table_name, [ (name, [PARAM, i]) for i, (name, value) in enumerate(items) ] ]
-            sql1, params1 = provider.ast2sql(con, ast)
-
-        sql2, code = adapt_sql(where, provider.paramstyle)
-        if globals is None:
-            assert locals is None
-            globals = sys._getframe(1).f_globals
-            locals = sys._getframe(1).f_locals
-        values2 = eval(code, globals, locals)
-        adapted_sql = sql1 + ' WHERE ' + sql2
-        if params1.__class__ is tuple:
-            for i, param in enumerate(params1): assert param == i
-            values = tuple(value for name, value in items) + (values2 or ())
-        elif params1.__class__ is dict:
-            values = dict((key, items[i]) for key, i in params1.items())
-            values.update(values2)
-        else: assert False
-        cursor = con.cursor()
-        wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
-    def delete(self, table_name, where, globals=None, locals=None):
-        table_name = table_name[:]  # table_name = templating.plainstr(table_name)
-        where = where[:]  # where = templating.plainstr(where)
-        if globals is None:
-            assert locals is None
-            globals = sys._getframe(1).f_globals
-            locals = sys._getframe(1).f_locals
-        con, provider = self._get_connection()
-        sql = ('delete from %s where ' % provider.quote_name(con, table_name)) + where
-        adapted_sql, code = adapt_sql(sql, provider.paramstyle)
-        values = eval(code, globals, locals)
-        cursor = con.cursor()
-        if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
-        else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
 
 def _get_database():
     db = local.default_db
@@ -295,14 +253,6 @@ def exists(sql):
 def insert(table_name, **keyargs):
     db = _get_database()
     return db.insert(table_name, **keyargs)
-
-def update(table_name, where, **keyargs):
-    db = _get_database()
-    return db.update(table_name, where, sys._getframe(1).f_globals, sys._getframe(1).f_locals, **keyargs)
-
-def delete(table_name, where):
-    db = _get_database()
-    return db.delete(table_name, where, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
 
 def commit():
     db = _get_database()
