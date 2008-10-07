@@ -217,12 +217,12 @@ class Database(object):
         wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         return getattr(cursor, 'lastrowid', None)
 
+def use_db(db):
+    local.default_db = db
+
 def _get_database():
     db = local.default_db
-    if db is not None: return db
-    db = sys._getframe(2).f_globals.get('__database__')
     if db is None: raise NoDefaultDbException('There is no default database defined')
-    local.default_db = db
     return db
 
 def get_connection():
