@@ -109,7 +109,7 @@ def adapt_sql(sql, paramstyle):
     sql_cache[(sql, paramstyle)] = result
     return result
 
-select_re = re.compile('\s*select\b', re.IGNORECASE)
+select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class Database(object):
     def __init__(self, provider, *args, **keyargs):
