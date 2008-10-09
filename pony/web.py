@@ -1,4 +1,4 @@
-import re, threading, os.path, inspect, sys, warnings, cgi, cgitb, urllib, Cookie, cPickle, time
+import re, threading, os.path, inspect, sys, warnings, cgi, urllib, Cookie, cPickle, time
 
 from cStringIO import StringIO
 from itertools import imap, izip, count
@@ -11,6 +11,7 @@ from pony.utils import decorator_with_params
 from pony.templating import Html, StrHtml, printhtml, plainstr
 from pony.logging import log, log_exc, DEBUG, INFO, WARNING
 from pony.db import with_transaction, RowNotFound
+from pony.htmltb import format_exc
 
 try: from pony.thirdparty import etree
 except ImportError: etree = None
@@ -752,17 +753,6 @@ def http_invoke(url):
     if not cache_control: headers['Cache-Control'] = 'max-age=%s' % max_age
     headers.setdefault('Vary', 'Cookie')
     return result
-
-def format_exc():
-    exc_type, exc_value, traceback = sys.exc_info()
-    if traceback.tb_next: traceback = traceback.tb_next
-    if traceback.tb_next: traceback = traceback.tb_next
-    try:
-        io = StringIO()
-        hook = cgitb.Hook(file=io)
-        hook.handle((exc_type, exc_value, traceback))
-        return io.getvalue()
-    finally: del traceback
 
 def log_request(request):
     environ = request.environ
