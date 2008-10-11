@@ -1,0 +1,28 @@
+.source-lines {
+    margin: 0;
+    list-style: none;
+}
+.source-lines .odd th,
+.source-lines .odd td {
+    background-color: #f8f8f8;
+}
+.source-lines .even th,
+.source-lines .even td {
+    background-color: white;
+}
+.source-lines .current th,
+.source-lines .current td {
+    background-color: #fbe3e4;
+}
+.source-lines th,
+.source-lines td {
+    padding: 0;
+}
+.source-lines th.line-number {
+    width: 4em;
+    color: #888;
+}
+.source-lines th,
+.source-lines td {
+    font: 1em 'andale mono', 'lucida console', monospace; line-height: 1.5;
+}

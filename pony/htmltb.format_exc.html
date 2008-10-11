@@ -1,0 +1,21 @@
+<link rel="stylesheet" href="/pony/static/css/htmltb.css" type="text/css" media="screen, projection">
+<script src="/pony/static/jquery/jquery-1.2.3.js"></script>
+<script src="/pony/static/js/htmltb.js"></script>
+<h1>Oops...</h1>
+<p class="error"><strong>$exc_type.__name__:</strong> $str(exc_value)</p>
+<p><a id="system-show" href="">Show system frames</a><a id="system-hide" href="">Hide system frames</a></p>
+<dl class="traceback">
+$for(record in records) {
+  <dt class="$record.moduletype">File&nbsp;"$record.file", line&nbsp;$record.lnum in&nbsp;$record.func</dt>
+  <dd class="$record.moduletype">
+    <table class="source-lines">
+    $for(line, lnum in izip(record.lines, count(record.lnum-record.index))){
+      <tr class="$if(lnum==record.lnum){current}$else{$cycle{odd}{even}}">
+          <th class="line-number">$lnum$if(lnum==record.lnum){&nbsp;>&nbsp;}</th>
+          <td>$if(line and not line.isspace()){$line}$else{&nbsp;}</td>
+      </tr>
+    }
+    </table>
+  </dd>
+}
+</dl>

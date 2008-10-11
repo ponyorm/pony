@@ -798,7 +798,7 @@ def application(environ, start_response):
             log_exc()
             status = '500 Internal Server Error'
             headers = {'Content-Type': 'text/html'}
-            result = format_exc()
+            result = local.response.postprocess(format_exc())
         else:
             status = local.response.status
             headers = local.response.headers
