@@ -305,11 +305,11 @@ def parse_markup(text, start_pos=0, nested=False):
             if isinstance(item, basestring) and isinstance(prev, tuple):
                 prev_markups = prev[4]
                 if prev_markups: tree[i] = newline_re.sub('', item)
-        if not nested: return tree
+        if not nested or len(tree) == 2: return tree
         assert text[start_pos-1] == '{'
         start = tree[2]
         if text[start_pos-2] != '\\':
-            tree[2] = newline_re.sub('', start)
+            if isinstance(start, basestring): tree[2] = newline_re.sub('', start)
             return tree
         if isinstance(start, basestring): tree[2] = start.lstrip()
         end = tree[-1]
