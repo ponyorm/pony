@@ -1,28 +1,38 @@
-.source-lines {
+#menu {
+    margin: 0 0 1em 0;
+    list-style: none;
+}
+.traceback dt {
+    margin-top: 1em;
+}
+.traceback dt.system {
+    color: #888
+}
+.traceback .source {
     margin: 0;
     list-style: none;
 }
-.source-lines .odd th,
-.source-lines .odd td {
+.traceback .source .odd th,
+.traceback .source .odd td {
     background-color: #f8f8f8;
 }
-.source-lines .even th,
-.source-lines .even td {
+.traceback .source .even th,
+.traceback .source .even td {
     background-color: white;
 }
-.source-lines .current th,
-.source-lines .current td {
+.traceback .source .current th,
+.traceback .source .current td {
     background-color: #fbe3e4;
 }
-.source-lines th,
-.source-lines td {
+.traceback .source th,
+.traceback .source td {
     padding: 0;
+    font: 1em 'andale mono', 'lucida console', monospace; line-height: 1.5;
 }
-.source-lines th.line-number {
+.traceback .source th.number {
     width: 4em;
     color: #888;
 }
-.source-lines th,
-.source-lines td {
-    font: 1em 'andale mono', 'lucida console', monospace; line-height: 1.5;
+.traceback .source td.line {
+    white-space: pre;
 }
