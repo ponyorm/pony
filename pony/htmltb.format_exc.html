@@ -9,7 +9,7 @@
 </ul>
 <dl class="traceback">
 $for(record in records) {
-  <dt class="$record.moduletype">Module <span class="highlight" title="$record.file">$record.module</span>, line&nbsp;$record.lnum in&nbsp;<span class="highlight">$record.func</span></dt>
+  <dt class="$record.moduletype">Module <span class="highlight" title="$record.file">$record.module</span>, line&nbsp;$record.lnum, function&nbsp;<span class="highlight">$record.func</span></dt>
   <dd class="$record.moduletype">
     <table class="source">
     $for(line, lnum in izip(record.lines, count(record.lnum-record.index))){
