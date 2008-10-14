@@ -8,16 +8,18 @@ class Record(object):
     def __init__(self, **keyargs):
         self.__dict__.update(keyargs)
 
-def format_exc(context=5):
-    exc_type, exc_value, tb = sys.exc_info()
-##    if tb.tb_next is not None: tb = tb.tb_next  # application() frame
-##    if tb.tb_next is not None: tb = tb.tb_next  # http_invoke() frame
-##    if tb.tb_next is not None: tb = tb.tb_next  # with_transaction() frame
+def format_exc(info=None, context=5):
+    if info: exc_type, exc_value, tb = info
+    else:
+        exc_type, exc_value, tb = sys.exc_info()
+        # if tb.tb_next is not None: tb = tb.tb_next  # application() frame
+        # if tb.tb_next is not None: tb = tb.tb_next  # http_invoke() frame
+        # if tb.tb_next is not None: tb = tb.tb_next  # with_transaction() frame
     try:
         records = []
         for frame, file, lnum, func, lines, index in inspect.getinnerframes(tb, context):
             record = Record(frame=frame, file=file, lnum=lnum, func=func, lines=lines, index=index)
-            module = record.module = frame.f_globals['__name__']
+            module = record.module = frame.f_globals['__name__'] or '?'
             if module == 'pony' or module.startswith('pony.'): record.moduletype = 'system'
             else: record.moduletype = 'user'
             records.append(record)
