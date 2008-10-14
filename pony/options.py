@@ -3,7 +3,7 @@ STD_STYLESHEETS = [
     ("/pony/static/blueprint/screen.css", "screen, projection"),
     ("/pony/static/blueprint/print.css", "print"),
     ("/pony/static/blueprint/ie.css.css", "screen, projection", "if IE"),
-    ("/pony/static/blueprint/default.css", "screen, projection"),
+    ("/pony/static/css/default.css", "screen, projection"),
     ]
 BASE_STYLESHEETS_PLACEHOLDER = '<!--PONY-BASE-STYLESHEETS-->'
 COMPONENT_STYLESHEETS_PLACEHOLDER = '<!--PONY-COMPONENTS-STYLESHEETS-->'
