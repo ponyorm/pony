@@ -8,7 +8,7 @@ from urllib import quote_plus, unquote_plus
 from pony.thirdparty import simplejson
 
 import pony
-from pony import options, webutils
+from pony import options, httputils
 from pony.utils import compress, decompress, simple_decorator
 from pony.sessionstorage import ramstorage as storage
 
@@ -162,7 +162,7 @@ def save(cookies):
     else: cookie_value = ''
     if cookie_value != local.cookie_value:
         max_time = (options.MAX_LONGLIFE_SESSION+1)*24*60*60
-        webutils.set_cookie(cookies, options.COOKIE_NAME, cookie_value, max_time, max_time,
+        httputils.set_cookie(cookies, options.COOKIE_NAME, cookie_value, max_time, max_time,
                             options.COOKIE_PATH, options.COOKIE_DOMAIN, http_only=True)
 
 def get_ticket(payload=None, prevent_resubmit=False):
