@@ -7,7 +7,7 @@ from pony.utils import markdown, json
 from pony.templating import printtext, printhtml, Html, cycle, template, html
 from pony.autoreload import use_autoreload, USE_AUTORELOAD
 from pony.auth import get_user, set_user, get_session
-from pony.web import main, application, http, url, Http404, component
+from pony.web import main, application, http, url, component
 from pony.webutils import webpage, link
 from pony.forms import (Form, Hidden, Submit, Reset,
                         File, Password, StaticText, Text, TextArea, Checkbox, 
