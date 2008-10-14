@@ -404,4 +404,9 @@ def parse_expr(s, pos=0):
                     counter -= 1
                     if not counter: break
         else: assert False
+
+def tostring(x):
+    if isinstance(x, basestring): return x
+    if hasattr(x, '__unicode__'): return unicode(x)
+    return str(x)
         
