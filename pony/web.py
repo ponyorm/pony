@@ -786,26 +786,31 @@ def application(environ, start_response):
     auth.verify_ticket(request.fields.getfirst('_t'))
     try:
         log_request(request)
-        try:
-            try:
-                if auth.local.ticket_payload is not None:
-                    form = cPickle.loads(auth.local.ticket_payload)
-                    form._handle_request_()
-                    form = None
-                result = http_invoke(request.url)
-            finally:
-                if auth.local.ticket and not request.form_processed and request.form_processed is not None:
-                    auth.unexpire_ticket()
-        except HttpException, e:
-            status, headers, result = e.status, e.headers, e.content
-        except:
-            log_exc()
+        if autoreload.reloading_exception and not request.url.startswith('/pony/static/'):
             status = '500 Internal Server Error'
             headers = {'Content-Type': 'text/html'}
-            result = local.response.postprocess(format_exc())
+            result = local.response.postprocess(format_exc(autoreload.reloading_exception))
         else:
-            status = local.response.status
-            headers = local.response.headers
+            try:
+                try:
+                    if auth.local.ticket_payload is not None:
+                        form = cPickle.loads(auth.local.ticket_payload)
+                        form._handle_request_()
+                        form = None
+                    result = http_invoke(request.url)
+                finally:
+                    if auth.local.ticket and not request.form_processed and request.form_processed is not None:
+                        auth.unexpire_ticket()
+            except HttpException, e:
+                status, headers, result = e.status, e.headers, e.content
+            except:
+                log_exc()
+                status = '500 Internal Server Error'
+                headers = {'Content-Type': 'text/html'}
+                result = local.response.postprocess(format_exc())
+            else:
+                status = local.response.status
+                headers = local.response.headers
 
         headers = [ (name, str(value)) for name, value in headers.items() ]
         if not status.startswith('5'):

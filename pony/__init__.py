@@ -100,9 +100,18 @@ def on_shutdown(func):
     if func not in shutdown_list: shutdown_list.append(func)
     return func
 
+exception_in_main = None  # sets to exception instance by use_autoreload()
+
 def exitfunc():
     mainloop()
     _shutdown()
+    if sys.platform == 'win32' and MODE == 'CHERRYPY' and exception_in_main:
+        # If somebody start script on Windows by double-clicking on it
+        # and some problem take place, this code prevents instant closing
+        # of console window before user have shance to read error message.
+        # This works only if use_autoreload() has been called
+        print '\nPress Enter to exit...'
+        raw_input()
     prev_func()
 
 if MODE in ('INTERACTIVE', 'GAE-SERVER', 'GAE-LOCAL'): pass
@@ -115,7 +124,7 @@ else:
 
 mainloop_counter = count()
 
-_do_mainloop = False
+_do_mainloop = False  # sets to True by pony.web.start_http_server()
 
 def mainloop():
     if not _do_mainloop or MODE != 'CHERRYPY' or mainloop_counter.next(): return

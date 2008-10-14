@@ -45,13 +45,18 @@ def reload(modules, changed_module, filename):
             success=not erroneous, erroneous=erroneous)
         reloading = False
 
+reloading_exception = None
+
 def use_autoreload():
     if pony.MODE != 'CHERRYPY' or pony.mainloop_counter.next(): return
-    load_main()
-    error = False
+    try: load_main()
+    except Exception, e:
+        pony.exception_in_main = e
+        raise
+    global reloading_exception
     while True:
         if pony.shutdown: sys.exit()
-        if not error:
+        if not reloading_exception:
             modules = [ m for name, m in sys.modules.items()
                         if getattr(m, 'USE_AUTORELOAD', False)
                            and (name.startswith('pony.examples.')
@@ -66,9 +71,11 @@ def use_autoreload():
                 if mtimes.setdefault(filename, mtime) != mtime:
                     try: reload(modules, m, filename)
                     except Exception:
-                        error = True
+                        # Запоминаем traceback так что мы можем отобразить его
+                        # на веб-странице позднее, когда поступит какой-либо HTTP запрос
+                        reloading_exception = sys.exc_info()
                         traceback.print_exc()
-                    else: error = False
+                    else: reloading_exception = None
                     break
             time.sleep(1)
         except:
