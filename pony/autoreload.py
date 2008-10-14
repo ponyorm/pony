@@ -1,3 +1,5 @@
+# coding: cp1251
+
 import itertools, linecache, sys, time, os, imp, traceback
 
 from os.path import abspath, basename, dirname, exists, splitext
