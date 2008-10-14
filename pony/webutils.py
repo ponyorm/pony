@@ -90,3 +90,26 @@ def rounded(markup, **attrs):
                     '<div class="bottom-right radius-%s"></div>\n'
                     '</%s>') % (radius, radius, radius, radius, tagname)]
     return Html('\n').join(result)
+
+class tabs(object):
+    @component(css=[ ('/pony/static/jquery/jquery.tabs.css', 'print, projection, screen'),
+                     ('/pony/static/jquery/jquery.tabs-ie.css', 'projection, screen', 'if lte IE 7') ],
+                 js=[ '/pony/static/jquery/jquery-1.2.3.js',
+                      '/pony/static/jquery/jquery.tabs.js',
+                      '/pony/static/js/tabs.js' ])
+    def __init__(self, **attrs):
+        self.attrs = attrs
+        self._tabs = []
+    def tab(self, name, markup, **attrs):
+        if id not in attrs: attrs['id'] = http.response.next_id()
+        self._tabs.append((name, markup, attrs))
+    def __unicode__(self):
+        next_id = http.response.next_id
+        result = [htmltag('div', {'class':'pony-tabs clearfix'}, **self.attrs), Html('\n<ul>\n') ]
+        for name, markup, attrs in self._tabs:
+            result.append(Html('<li><a href="#%s"><span>%s</span></a>\n') % (attrs['id'], name))
+        result.append(Html('</ul>\n'))
+        for name, markup, attrs in self._tabs:
+            result.extend([htmltag('div', {'class': 'pony-tab clearfix'}, **attrs), markup, Html('</div>\n')])
+        result.append(Html('</div>'))
+        return Html('').join(result)

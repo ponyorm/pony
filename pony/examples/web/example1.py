@@ -103,42 +103,34 @@ def page8():
 @webpage
 def page9():
     "Tabs"
-    print """
+    return html("""
     <link jquery plugins="tabs">
     
     <h1>Example of tabs</h1>
     
-    <tabs>
-        <tab name="One">
-
+    $tabs()
+    $.tab("One") {
             <h2>Nested tabs:</h2>
-            <tabs class="span-12 prepend-1 append-1 last">
-              <tab name="Nested tab 1"><h2>Nested tab ONE</h2></tab>
-              <tab name="Nested tab 2"><h2>Nested tab TWO</h2></tab>
-              <tab name="Tab with very very long name"><h2>Nested tab THREE</h2></tab>
-            </tabs>
-
-        </tab>
-        <tab name="Two">
-
+            $tabs(class_="span-12 prepend-1 append-1 last")
+            $.tab("Nested tab 1"){<h2>Nested tab ONE</h2>}
+            $.tab("Nested tab 2"){<h2>Nested tab TWO</h2>}
+            $.tab("Tab with very very long name"){<h2>Nested tab THREE</h2>}
+    }
+    $.tab("Two") {
             <h2>Content of second tab</h1>
-
-        </tab>
-        <tab name="Three"">
-
+    }
+    $.tab("Three") {
             <h2>Tab three</h2>
             <ul>
             <li>One
             <li>Two
             <li>Three
             </ul>
-
-        </tab>
-    </tabs>
+    }
 
     <br><br><br><hr>
     <p><a href="/">Return to main page</a>
-    """
+    """)
 
 @webpage('/') # This is root page
 def index():
