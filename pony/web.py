@@ -5,7 +5,7 @@ from itertools import imap, izip, count
 from operator import itemgetter, attrgetter
 
 import pony
-from pony import autoreload, auth, webutils, options
+from pony import autoreload, auth, httputils, options
 from pony.autoreload import on_reload
 from pony.utils import decorator_with_params, tostring
 from pony.templating import Html, StrHtml, printhtml, plainstr
@@ -39,7 +39,7 @@ class HttpInfo(object):
                 if port is not None: raise TypeError('Duplicate port specification')
                 host, port = host.split(':')
         self.host, self.port = host, port and int(port) or None
-        self.path, self.qlist = webutils.split_url(url, strict_parsing=True)
+        self.path, self.qlist = httputils.split_url(url, strict_parsing=True)
         self.redirect = redirect
         module = func.__module__
         self.system = module.startswith('pony.') and not module.startswith('pony.examples.')
@@ -428,7 +428,7 @@ def get_http_handlers(path, qdict, host, port):
 
 def http_remove(x, host=None, port=None):
     if isinstance(x, basestring):
-        path, qlist = webutils.split_url(x, strict_parsing=True)
+        path, qlist = httputils.split_url(x, strict_parsing=True)
         qdict = dict(qlist)
         http_registry_lock.acquire()
         try:
@@ -484,7 +484,7 @@ class HttpRequest(object):
             self.url = urllib.quote(environ['PATH_INFO'])
             query = environ['QUERY_STRING']
             if query: self.url += '?' + query
-            self.script_url = webutils.reconstruct_script_url(environ)
+            self.script_url = httputils.reconstruct_script_url(environ)
             self.full_url = self.script_url + self.url
         else:
             self.script_url = ''
@@ -501,7 +501,7 @@ class HttpRequest(object):
         self.submitted_form = self.fields.getfirst('_f')
         self.id_counter = imap('id_%d'.__mod__, count())
     def _get_languages(self):
-        languages = webutils.parse_accept_language(self.environ.get('HTTP_ACCEPT_LANGUAGE'))
+        languages = httputils.parse_accept_language(self.environ.get('HTTP_ACCEPT_LANGUAGE'))
         try: languages.insert(0, auth.local.session['lang'])
         except KeyError: pass
         result = []
@@ -632,7 +632,7 @@ def get_cookie(name, default=None):
 
 def set_cookie(name, value, expires=None, max_age=None, path=None, domain=None,
                secure=False, http_only=False, comment=None, version=None):
-    webutils.set_cookie(local.response.cookies,
+    httputils.set_cookie(local.response.cookies,
                         name, value, expires, max_age, path, domain, secure, http_only, comment, version)
 
 def get_static_dir_name():
@@ -654,7 +654,7 @@ def get_static_file(path):
         raise Http404
     ext = os.path.splitext(path[-1])[1]
     headers = local.response.headers
-    headers['Content-Type'] = webutils.guess_type(ext)
+    headers['Content-Type'] = httputils.guess_type(ext)
     headers['Expires'] = '0'
     headers['Cache-Control'] = 'max-age=10'
     return file(fname, 'rb')
@@ -669,7 +669,7 @@ def get_pony_static_file(path):
     if not os.path.isfile(fname): raise Http404
     ext = os.path.splitext(path[-1])[1]
     headers = local.response.headers
-    headers['Content-Type'] = webutils.guess_type(ext)
+    headers['Content-Type'] = httputils.guess_type(ext)
     max_age = 30 * 60
     headers['Expires'] = Cookie._getdate(max_age)
     headers['Cache-Control'] = 'max-age=%d' % max_age
@@ -681,7 +681,7 @@ def http_invoke(url):
         except UnicodeDecodeError: raise Http400BadRequest
     request = local.request
     response = local.response = HttpResponse()
-    path, qlist = webutils.split_url(url)
+    path, qlist = httputils.split_url(url)
     if path[:1] == ['static'] and len(path) > 1:
         return get_static_file(path[1:])
     if path[:2] == ['pony', 'static'] and len(path) > 2:
@@ -694,7 +694,7 @@ def http_invoke(url):
         else: p, q = url[:i], url[i:]
         if p.endswith('/'): url2 = p[:-1] + q
         else: url2 = p + '/' + q
-        path2, qlist = webutils.split_url(url2)
+        path2, qlist = httputils.split_url(url2)
         handlers = get_http_handlers(path2, qdict, request.host, request.port)
         if not handlers: return get_static_file(path)
         script_name = request.environ.get('SCRIPT_NAME', '')
@@ -810,7 +810,7 @@ def application(environ, start_response):
         headers = [ (name, str(value)) for name, value in headers.items() ]
         if not status.startswith('5'):
             auth.save(local.response.cookies)
-            headers += webutils.serialize_cookies(environ, local.response.cookies)
+            headers += httputils.serialize_cookies(environ, local.response.cookies)
         if not hasattr(result, 'read'): content = [ result ]
         else: content = iter(lambda: result.read(BLOCK_SIZE), '')  # content = [ result.read() ]
 
@@ -858,7 +858,7 @@ def start_http_server(address='localhost:8080'):
     if pony.MODE.startswith('GAE-'): main(); return
     elif pony.MODE not in ('INTERACTIVE', 'CHERRYPY'): return
     pony._do_mainloop = True
-    host, port = webutils.parse_address(address)
+    host, port = httputils.parse_address(address)
     try: server_thread = ServerThread(host, port, application)
     except ServerAlreadyStarted:
         if not autoreload.reloading: raise
@@ -880,7 +880,7 @@ def stop_http_server(address=None):
             server_thread.server.stop()
             server_thread.join()
     else:
-        host, port = webutils.parse_address(address)
+        host, port = httputils.parse_address(address)
         server_thread = server_threads.get((host, port))
         if server_thread is None: raise ServerNotStarted(
             'Cannot stop HTTP server at %s:%s because it is not started:' % (host, port))
