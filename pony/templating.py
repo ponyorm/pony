@@ -755,7 +755,7 @@ class FunctionElement(SyntaxElement):
         method_name = expr[1:]
         params = params or ''
         markup_args = [ Markup(self.text, item) for item in markup_args ]
-        s = '(lambda *args, **keyargs: (list(args), keyargs))(%s)' % self.params
+        s = '(lambda *args, **keyargs: (list(args), keyargs))(%s)' % params
         params_code = compile(s, '<?>', 'eval')
         self.methods.append((method_name, params_code, markup_args))
     def eval(self, globals, locals=None):
@@ -774,9 +774,8 @@ class FunctionElement(SyntaxElement):
             method = getattr(result, method_name)
             args, keyargs = eval(params_code, globals, locals)
             if getattr(method, '__lazy__', False):
-                args.extend([BoundMarkup(m, globals, locals) for m in markup_args])
-            else:
-                for arg in markup_args: args.append(arg.eval(globals, locals))
+                  args.extend([BoundMarkup(m, globals, locals) for m in markup_args])
+            else: args.extend([ m.eval(globals, locals) for m in markup_args ])
             method(*args, **keyargs)
         if inspect.isroutine(result): result = result()
         if isinstance(result, basestring): return result
