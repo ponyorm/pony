@@ -499,7 +499,6 @@ class HttpRequest(object):
         self.fields = cgi.FieldStorage(fp=input_stream, environ=environ, keep_blank_values=True)
         self.form_processed = None
         self.submitted_form = self.fields.getfirst('_f')
-        self.id_counter = imap('id_%d'.__mod__, count())
     def _get_languages(self):
         languages = httputils.parse_accept_language(self.environ.get('HTTP_ACCEPT_LANGUAGE'))
         try: languages.insert(0, auth.local.session['lang'])
@@ -533,20 +532,21 @@ class HttpResponse(object):
         self.base_stylesheets = []
         self.component_stylesheets = []
         self.scripts = []
+        self.next_id = imap('id_%d'.__mod__, count()).next
     def add_base_stylesheets(self, links):
         stylesheets = self.base_stylesheets
         for link in links:
-            if not isinstance(link, (basestring, tuple)): raise TypeError('Reference to CSS stylesheet must be string or tuple')
+            if not isinstance(link, (basestring, tuple)): raise TypeError('Reference to CSS stylesheet must be string or tuple. Got: %r' % link)
             if link not in stylesheets: stylesheets.append(link)
     def add_component_stylesheets(self, links):
         stylesheets = self.component_stylesheets
         for link in links:
-            if not isinstance(link, (basestring, tuple)): raise TypeError('Reference to CSS stylesheet must be string or tuple')
+            if not isinstance(link, (basestring, tuple)): raise TypeError('Reference to CSS stylesheet must be string or tuple. Got: %r' % link)
             if link not in stylesheets: stylesheets.append(link)
     def add_scripts(self, links):
         scripts = self.scripts
         for link in links:
-            if not isinstance(link, (basestring, tuple)): raise TypeError('Reference to script must be string or tuple')
+            if not isinstance(link, basestring): raise TypeError('Reference to script must be string. Got: %r' % link)
             if link not in scripts: scripts.append(link)
     def postprocess(self, html):
         if not self.postprocessing: return html
