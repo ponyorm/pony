@@ -1,8 +1,8 @@
 import pony
 
 from pony.utils import decorator_with_params, tostring
-from pony.templating import Html, printhtml
-from pony.web import http, url, css_link, script_link
+from pony.templating import htmltag, Html, printhtml
+from pony.web import http, url, css_link, script_link, component
 
 @decorator_with_params
 def webpage(old_func, *args, **keyargs):
@@ -78,3 +78,15 @@ def img(*args, **keyargs):
         else: description = Html(func.__doc__.split('\n', 1)[0])
     href = url(func, *args, **keyargs)
     return img_template % (href, description, description)
+
+@component(css='/pony/static/css/rounded-corners.css')
+def rounded(markup, **attrs):
+    tagname = attrs.pop('tagname', 'div')
+    radius = attrs.pop('radius', 10)
+    result = [ htmltag(tagname, {'class': 'rounded'}, **attrs), markup,
+               Html('<div class="top-left radius-%s"></div>\n'
+                    '<div class="top-right radius-%s"></div>\n'
+                    '<div class="bottom-left radius-%s"></div>\n'
+                    '<div class="bottom-right radius-%s"></div>\n'
+                    '</%s>') % (radius, radius, radius, radius, tagname)]
+    return Html('\n').join(result)
