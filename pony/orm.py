@@ -673,6 +673,58 @@ class Entity(object):
         return OldProxy(obj)
     @classmethod
     def find(entity, *args, **keyargs):
+        pk_attrs = entity._keys_[0]
+        if args:
+            if len(args) != len(pk_attrs):
+                raise CreateError('Invalid count of attrs in primary key')
+            for attr, value in zip(pk_attrs, args):
+                if keyargs.setdefault(attr.name, value) != value:
+                    raise CreateError('Ambiguous attribute value for %r' % attr.name)
+        for name in ifilterfalse(entity._attr_dict_.__contains__, keyargs):
+            raise CreateError('Unknown attribute %r' % name)
+
+        info = entity._get_info()
+        trans = local.transaction
+
+        get_new_offset = entity._new_offsets_.__getitem__
+        get_old_offset = entity._old_offsets_.__getitem__
+        data = entity._data_template_[:]
+        used_attrs = []
+        for attr in entity._attrs_:
+            value = keyargs.get(attr.name, UNKNOWN)
+            data[get_old_offset(attr)] = None
+            if value is not UNKNOWN:
+                value = attr.check(value, entity)
+                used_attrs.append((attr, value))
+            data[get_new_offset(attr)] = value
+
+        for key in entity._keys_:
+            key_value = tuple(map(data.__getitem__, map(get_new_offset, key)))
+            if None in key_value: continue
+            try: old_index, new_index = trans.indexes[key]
+            except KeyError: continue
+            obj2 = new_index.get(key_value)
+            if obj2 is None: continue
+            obj2_data = trans.objects[obj2]
+            obj2_get_new_offset = obj2._new_offsets_.__getitem__
+            try:
+                for attr in used_attrs:
+                    value = data[get_new_offset(attr)]
+                    value2 = obj2_data[obj2_get_new_offset(attr)]
+                    if value2 is UNKNOWN: raise NotImplementedError
+                    if value != value2: return None
+            except KeyError: return None
+            return obj2
+        
+        tables = {}
+        select_list = []
+        from_list = []
+        where_list = []
+        table_counter = count(1)
+        column_counter = count(1)
+        for attr, value in used_attrs:
+            pass
+
         raise NotImplementedError
     @classmethod
     def create(entity, *args, **keyargs):
