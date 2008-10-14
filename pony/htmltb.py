@@ -17,8 +17,8 @@ def format_exc(context=5):
         records = []
         for frame, file, lnum, func, lines, index in inspect.getinnerframes(tb, context):
             record = Record(frame=frame, file=file, lnum=lnum, func=func, lines=lines, index=index)
-            record.module = frame.f_globals['__name__']
-            if record.module.startswith('pony.'): record.moduletype = 'system'
+            module = record.module = frame.f_globals['__name__']
+            if module == 'pony' or module.startswith('pony.'): record.moduletype = 'system'
             else: record.moduletype = 'user'
             records.append(record)
         return html()
