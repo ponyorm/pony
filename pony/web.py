@@ -613,7 +613,7 @@ def css_links(links):
     return StrHtml('\n').join(css_link(link) for link in links)
 
 def script_link(link):
-    return StrHtml('<script src="%s"></script>') % link
+    return StrHtml('<script type="text/javascript" src="%s"></script>') % link
 
 def script_links(links):
     return StrHtml('\n').join(script_link(link) for link in links)
