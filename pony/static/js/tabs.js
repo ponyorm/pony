@@ -1,1 +1,1 @@
-$(function(){$('div.pony-tabs').tabs()})
+$(function(){$('div.pony-tabs>ul').tabs()})

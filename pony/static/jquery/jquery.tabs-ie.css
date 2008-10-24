@@ -7,14 +7,14 @@ Recommended usage (Conditional Comments):
 <![endif]-->
 
 */
-.tabs-nav { /* auto clear */
+.ui-tabs-nav { /* auto clear */
     display: inline-block;
 }
-.tabs-nav .tabs-disabled {
+.ui-tabs-nav .ui-tabs-disabled {
     position: relative; /* fixes opacity */
     filter: alpha(opacity=40);
 }
-.tabs-nav .tabs-disabled a span {
+.ui-tabs-nav .ui-tabs-disabled a span {
     _height: 19px; /* for some reason the height is 1px to less with opacity... */
     min-height: 19px; /* ...in both IE 6 and 7 */
 }

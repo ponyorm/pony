@@ -26,8 +26,8 @@ def blueprint_link(column_count=24, column_width=30, gutter_width=10, ns=''):
         '<!--[if IE]><link rel="stylesheet" href="/pony/static/blueprint/%s/ie.css.css" type="text/css" media="screen, projection"><![endif]-->\n'
         ) % (params, params, params)
 
-def jquery_link(version='1.2.3'):
-    return Html('<script src="/pony/static/jquery/jquery-%s.js"></script>' % version)
+def jquery_link():
+    return Html('<script src="/pony/static/jquery/jquery.js"></script>')
 
 link_funcs = dict(
     blueprint=blueprint_link,
@@ -94,8 +94,9 @@ def rounded(markup, **attrs):
 class tabs(object):
     @component(css=[ ('/pony/static/jquery/jquery.tabs.css', 'print, projection, screen'),
                      ('/pony/static/jquery/jquery.tabs-ie.css', 'projection, screen', 'if lte IE 7') ],
-                 js=[ '/pony/static/jquery/jquery-1.2.3.js',
-                      '/pony/static/jquery/jquery.tabs.js',
+                 js=[ '/pony/static/jquery/jquery.js',
+                      '/pony/static/jquery/ui.core.js',
+                      '/pony/static/jquery/ui.tabs.js',
                       '/pony/static/js/tabs.js' ])
     def __init__(self, **attrs):
         self.attrs = attrs
