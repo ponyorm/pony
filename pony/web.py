@@ -550,7 +550,10 @@ class HttpResponse(object):
             if link not in scripts: scripts.append(link)
     def postprocess(self, html):
         if not self.postprocessing: return html
-        elif html.__class__ == str: html = StrHtml(html)
+        if isinstance(html, basestring): pass
+        elif hasattr(html, '__unicode__'): html = unicode(html)
+        else: html = str(html)
+        if html.__class__ == str: html = StrHtml(html)
         elif html.__class__ == unicode: html = Html(html)
         stylesheets = self.base_stylesheets
         if not stylesheets: stylesheets = options.STD_STYLESHEETS
