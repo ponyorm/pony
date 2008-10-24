@@ -10,7 +10,7 @@ from pony.auth import get_user, set_user, get_session
 from pony.web import main, application, http, url, component
 from pony.webutils import webpage, link, rounded, tabs
 from pony.forms import (Form, Hidden, Submit, Reset,
-                        File, Password, StaticText, Text, TextArea, Checkbox, 
+                        File, Password, StaticText, Text, DatePicker, TextArea, Checkbox, 
                         Select, RadioGroup, MultiSelect, CheckboxGroup,
                         Composite, Grid)
 from pony.db import Database, RowNotFound, MultipleRowsFound

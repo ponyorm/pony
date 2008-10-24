@@ -7,7 +7,7 @@ from itertools import count, izip, cycle
 from pony import auth
 from pony.utils import decorator, converters, ValidationError
 from pony.templating import Html, StrHtml, htmljoin, htmltag, html
-from pony.web import http
+from pony.web import http, component
 
 class FormNotProcessed(Exception): pass
 
@@ -449,6 +449,22 @@ class Text(BaseWidget):
         if isinstance(type, tuple): str2py, py2str, err_msg = type
         else: str2py, py2str, err_msg = converters.get(type, (self.type, unicode, None))
         return py2str(value)
+
+class DatePicker(Text):
+    def __init__(self, label=None, required=None, value=None, **attrs):
+        if 'type' in attrs: raise TypeError("You can not set 'type' attribute for DatePicker")
+        if 'regex' in attrs: raise TypeError("You can not set 'regex' attribute for DatePicker")
+        Text.__init__(self, label, required, value, **attrs)
+
+    @property
+    @component(css=[ ('/pony/static/jquery/ui.datepicker.css', 'print, projection, screen'),
+                     ('/pony/static/jquery/ui.datepicker-ie.css', 'projection, screen', 'if lte IE 7') ],
+                 js=[ '/pony/static/jquery/jquery.js',
+                      '/pony/static/jquery/ui.core.js',
+                      '/pony/static/jquery/ui.datepicker.js',
+                      '/pony/static/js/datepicker.js' ])
+    def tag(self):
+        return Text.tag.fget(self)
 
 class StaticText(BaseWidget):
     def __init__(self, value, **attrs):

@@ -92,8 +92,8 @@ def rounded(markup, **attrs):
     return Html('\n').join(result)
 
 class tabs(object):
-    @component(css=[ ('/pony/static/jquery/jquery.tabs.css', 'print, projection, screen'),
-                     ('/pony/static/jquery/jquery.tabs-ie.css', 'projection, screen', 'if lte IE 7') ],
+    @component(css=[ ('/pony/static/jquery/ui.tabs.css', 'print, projection, screen'),
+                     ('/pony/static/jquery/ui.tabs-ie.css', 'projection, screen', 'if lte IE 7') ],
                  js=[ '/pony/static/jquery/jquery.js',
                       '/pony/static/jquery/ui.core.js',
                       '/pony/static/jquery/ui.tabs.js',
