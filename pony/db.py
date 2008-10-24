@@ -308,15 +308,19 @@ def auto_rollback():
         del exceptions
         local.connections.clear()
 
-def with_transaction(func, *args, **keyargs):
+def with_transaction(func, args, keyargs, allowed_exceptions=[]):
     try: result = func(*args, **keyargs)
-    except:
+    except Exception, e:
         exc_info = sys.exc_info()
         try:
             # write to log
-            auto_rollback()
+            for exc_class in allowed_exceptions:
+                if isinstance(e, exc_class):
+                    auto_commit()
+                    break
+            else: auto_rollback()
         finally:
             try: raise exc_info[0], exc_info[1], exc_info[2]
             finally: del exc_info
-    else: auto_commit()
+    auto_commit()
     return result

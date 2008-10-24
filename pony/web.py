@@ -721,7 +721,7 @@ def http_invoke(url):
     params.update(zip(names, args))
     params.update(keyargs)
 
-    try: result = with_transaction(info.func, *args, **keyargs)
+    try: result = with_transaction(info.func, args, keyargs, [ HttpRedirect ])
     except RowNotFound: raise Http404NotFound
 
     headers = dict([ (name.replace('_', '-').title(), value)
