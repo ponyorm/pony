@@ -10,7 +10,7 @@ def page1():
 
 @http(type='text/html')
 def page2():
-    return """
+    print """
               <h1>This is HTML page</h1>
               <br>
               <p>Click <a href="/">here</a> for return
@@ -19,7 +19,7 @@ def page2():
 @http
 def page3():
     "This page deliberately contains error"
-    a = 'hello'
+    a = u'проверка'
     b = 10
     c = 1/0
     return a

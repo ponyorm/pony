@@ -1,12 +1,16 @@
-import sys, inspect #, cgitb, cStringIO
+import sys, inspect, locale #, cgitb, cStringIO
 from itertools import izip, count
 
 import pony
+from pony import options
 from pony.templating import html, cycle
 
 class Record(object):
     def __init__(self, **keyargs):
         self.__dict__.update(keyargs)
+
+def detect_source_encoding(filename):  # TODO
+    return options.SOURCE_ENCODING or locale.getpreferredencoding()
 
 def format_exc(info=None, context=5):
     if info: exc_type, exc_value, tb = info
@@ -18,6 +22,8 @@ def format_exc(info=None, context=5):
     try:
         records = []
         for frame, file, lnum, func, lines, index in inspect.getinnerframes(tb, context):
+            source_encoding = detect_source_encoding(file)
+            lines = [ line.decode(source_encoding, 'replace') for line in lines ]
             record = Record(frame=frame, file=file, lnum=lnum, func=func, lines=lines, index=index)
             module = record.module = frame.f_globals['__name__'] or '?'
             if module == 'pony' or module.startswith('pony.'): record.moduletype = 'system'

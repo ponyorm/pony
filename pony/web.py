@@ -791,8 +791,9 @@ def application(environ, start_response):
         log_request(request)
         if autoreload.reloading_exception and not request.url.startswith('/pony/static/'):
             status = '500 Internal Server Error'
-            headers = {'Content-Type': 'text/html'}
-            result = local.response.postprocess(format_exc(autoreload.reloading_exception))
+            headers = {'Content-Type': 'text/html; charset=UTF-8'}
+            result = format_exc(autoreload.reloading_exception)
+            local.response.postprocess(result).encode('utf8')
         else:
             try:
                 try:
@@ -809,8 +810,8 @@ def application(environ, start_response):
             except:
                 log_exc()
                 status = '500 Internal Server Error'
-                headers = {'Content-Type': 'text/html'}
-                result = local.response.postprocess(format_exc())
+                headers = {'Content-Type': 'text/html; charset=UTF-8'}
+                result = local.response.postprocess(format_exc()).encode('utf8')
             else:
                 status = local.response.status
                 headers = local.response.headers
