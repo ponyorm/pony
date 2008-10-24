@@ -3,9 +3,10 @@ import re, threading, os.path, copy, cPickle
 
 from operator import attrgetter
 from itertools import count, izip, cycle
+import datetime
 
 from pony import auth
-from pony.utils import decorator, converters, ValidationError
+from pony.utils import decorator, converters, str2date, ValidationError
 from pony.templating import Html, StrHtml, htmljoin, htmltag, html
 from pony.web import http, component
 
@@ -465,6 +466,19 @@ class DatePicker(Text):
                       '/pony/static/js/datepicker.js' ])
     def tag(self):
         return Text.tag.fget(self)
+    def _get_value(self):
+        value = BaseWidget._get_value(self)
+        if value is None: return None
+        try: return str2date(value)
+        except: self._auto_error_text = html('${Invalid date}')
+        return None
+    value = property(_get_value, Text._set_value)
+    @property
+    def html_value(self):
+        value = Text._get_value(self)
+        if isinstance(value, datetime.date): return value.strftime('%m/%d/%Y')
+        if value is None: return value
+        return unicode(value)
 
 class StaticText(BaseWidget):
     def __init__(self, value, **attrs):

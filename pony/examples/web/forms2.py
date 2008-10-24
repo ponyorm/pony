@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date
 
 from pony.main import *
 
@@ -9,7 +9,7 @@ def index():
     f = Form()
     f.first_name = Text(required=True)
     f.last_name = Text()
-    f.birth_date = DatePicker()
+    f.birth_date = DatePicker(value=date.today())
 
 ##    f.birth_date = Composite(required=True)
 ##    f.birth_date.year = Text(size=4)
