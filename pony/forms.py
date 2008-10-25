@@ -6,7 +6,8 @@ from itertools import count, izip, cycle
 import datetime
 
 from pony import auth
-from pony.utils import decorator, converters, str2date, ValidationError
+from pony.utils import decorator, ValidationError
+from pony.converting import converters, str2date
 from pony.templating import Html, StrHtml, htmljoin, htmltag, html
 from pony.web import http, component
 
