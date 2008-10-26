@@ -28,9 +28,9 @@ def load_main():
 def reload(modules, changed_module, filename):
     global reloading
     reloading = True
+    success = True
     log(type='RELOAD:begin', prefix='RELOADING: ', text=shortened_filename(filename), severity=ERROR,
         module=changed_module.__name__, modules=dict((m.__name__, m.__file__) for m in modules))
-    erroneous = set()
     try:
         try:
             for clear_func in clear_funcs: clear_func()
@@ -39,12 +39,12 @@ def reload(modules, changed_module, filename):
             for m in modules: sys.modules.pop(m.__name__, None)
             load_main()
         except Exception:
-            erroneous.add(m.__file__)
+            success = False
             log_exc()
             raise
     finally:
-        log(type='RELOAD:end', severity=DEBUG, text=erroneous and 'Reloaded with errors' or 'Reloaded successfully',
-            success=not erroneous, erroneous=erroneous)
+        log(type='RELOAD:end', severity=DEBUG,
+            text=success and 'Reloaded successfully' or 'Reloaded with errors', success=success)
         reloading = False
 
 reloading_exception = None
