@@ -7,8 +7,10 @@ from time import strptime
 from os import urandom
 from codecs import BOM_UTF8, BOM_LE, BOM_BE
 from locale import getpreferredencoding
+from linecache import getlines
 
 import pony
+from pony import options
 
 class ValidationError(ValueError):
     def __init__(self, err_msg=None):
@@ -97,6 +99,16 @@ def get_mtime(filename):
     mtime = stat.st_mtime
     if sys.platform == "win32": mtime -= stat.st_ctime
     return mtime
+
+coding_re = re.compile(r'coding[:=]\s*([-\w.]+)')
+
+def detect_source_encoding(filename):
+    for i, line in enumerate(getlines(filename)):
+        if i == 0 and line.startswith(BOM_UTF8): return 'utf-8'
+        if not line.lstrip().startswith('#'): continue
+        match = coding_re.search(line)
+        if match is not None: return match.group(1)
+    else: return options.SOURCE_ENCODING or getpreferredencoding()
 
 def current_timestamp():
     result = datetime.datetime.now().isoformat(' ')
