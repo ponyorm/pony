@@ -1,4 +1,4 @@
-import sys, os.path, threading, inspect, re, weakref, textwrap, copy_reg
+import itertools, sys, os.path, threading, inspect, re, weakref, textwrap, copy_reg
 
 import pony
 from pony import grab_stdout
@@ -800,8 +800,7 @@ def _cycle_check(args):
 
 @lazy
 def cycle(*args):
-    if len(args) < 2: raise TypeError(
-        '$cycle() function takes at least 2 arguments (%d given)' % len(args))
+    if len(args) < 2: return itertools.cycle(*args)
     if isinstance(args[0], BoundMarkup):
         current, total = _cycle_check(args[1:])
         return args[current % len(args)]()
@@ -836,6 +835,7 @@ def cycle(*args):
         if i > 0: return (current == i - 1) and markup() or ''
         elif i < 0: return (i == current - total) and markup() or ''
         else: raise TypeError('$cycle first argument cannot be 0')
+__builtins__['cycle'] = cycle
     
 codename_cache = {}
 
