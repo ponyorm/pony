@@ -36,3 +36,12 @@
 .traceback .source td.line {
     white-space: pre;
 }
+.traceback .source td.line .ident {
+    cursor: help;
+}
+.traceback .source td.line .comment {
+    color: green;
+}
+.traceback .source td.line .string {
+    color: blue;
+}
