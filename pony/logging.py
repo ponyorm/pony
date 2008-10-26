@@ -154,6 +154,7 @@ if LOG_TO_SQLITE:
         return result
 
     def get_logfile_name():
+        return r'C:\Data\Docs\Dev\GAE\alexander-kozlovsky\pony\examples\web\example1-log.sqlite'
         # This function returns relative path, if possible.
         # It is workaround for bug in SQLite
         # (Problems with unicode symbols in directory name)

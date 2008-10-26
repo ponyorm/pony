@@ -6,7 +6,7 @@ from operator import attrgetter
 
 import pony
 
-from pony import routing, autoreload, auth, httputils, options
+from pony import routing, postprocessing, autoreload, auth, httputils, options
 from pony.utils import decorator_with_params
 from pony.templating import Html, StrHtml, plainstr
 from pony.logging import log, log_exc, DEBUG, INFO, WARNING
@@ -16,44 +16,38 @@ from pony.htmltb import format_exc
 try: from pony.thirdparty import etree
 except ImportError: etree = None
 
-url_cache = {}
+class HttpException(Exception):
+    content = ''
 
-def url(func, *args, **keyargs):
-    routes = getattr(func, 'routes')
-    if routes is None: raise ValueError('Cannot create url for this object :%s' % func)
-    try: keyparams = func.dummy_func(*args, **keyargs).copy()
-    except TypeError, e: raise TypeError(e.args[0].replace('<lambda>', func.__name__, 1))
-    names, argsname, keyargsname, defaults, converters = func.argspec
-    indexparams = map(keyparams.pop, names)
-    indexparams.extend(keyparams.pop(argsname, ()))
-    keyparams.update(keyparams.pop(keyargsname, {}))
-    try:
-        for i, value in enumerate(indexparams):
-            if value is not None and value is not routing.__nodefault__:
-                indexparams[i] = unicode(value).encode('utf8')
-        for key, value in keyparams.items():
-            if value is not None: keyparams[key] = unicode(value).encode('utf8')
-    except UnicodeDecodeError: raise ValueError(
-        'Url parameter value contains non-ascii symbols. Such values must be in unicode.')
-    request = local.request
-    host, port = request.host, request.port
-    script_name = local.request.environ.get('SCRIPT_NAME', '')
-    key = func, tuple(indexparams), tuple(sorted(keyparams.items())), host, port, script_name
-    try: return url_cache[key]
-    except KeyError: pass
-    first, second = [], []
-    for route in routes:
-        if not route.redirect: first.append(route)
-        else: second.append(route)
-    for route in first + second:
-        try: url = routing.build_url(route, keyparams, indexparams, host, port, script_name)
-        except routing.PathError: pass
-        else: break
-    else: raise PathError('Suitable url path for %s() not found' % func.__name__)
-    if len(url_cache) > 4000: url_cache.clear()
-    url_cache[key] = url
-    return url
-make_url = url
+class Http400BadRequest(HttpException):
+    status = '400 Bad Request'
+    headers = {'Content-Type' : 'text/plain'}
+    def __init__(self, content='Bad Request'):
+        Exception.__init__(self, 'Bad Request')
+        self.content = content
+
+class Http404NotFound(HttpException):
+    status = '404 Not Found'
+    headers = {'Content-Type' : 'text/plain'}
+    def __init__(self, content='Page not found'):
+        Exception.__init__(self, 'Page not found')
+        self.content = content
+Http404 = Http404NotFound
+
+class HttpRedirect(HttpException):
+    status_dict = {'301' : '301 Moved Permanently',
+                   '302' : '302 Found',
+                   '303' : '303 See Other',
+                   '305' : '305 Use Proxy',
+                   '307' : '307 Temporary Redirect'}
+    def __init__(self, location=None, status='302 Found'):
+        if location and not isinstance(location, basestring):
+            raise TypeError('Redirect location must be string. Got: %r' % location)
+        Exception.__init__(self, location)
+        self.location = location or local.request.full_url
+        status = str(status)
+        self.status = self.status_dict.get(status, status)
+        self.headers = {'Location' : location}
 
 class HttpRequest(object):
     def __init__(self, environ):
@@ -105,14 +99,6 @@ class HttpRequest(object):
                 result.append(lang)
         return result
 
-element_re = re.compile(r'\s*(?:<!--.*?--\s*>\s*)*(</?\s*([!A-Za-z-]\w*)\b[^>]*>)', re.DOTALL)
-
-header_tags = set("!doctype html head title base script style meta link object".split())
-
-css_re = re.compile('<link\b[^>]\btype\s*=\s*([\'"])text/css\1')
-
-class _UsePlaceholders(Exception): pass
-
 class HttpResponse(object):
     def __init__(self):
         self.status = '200 OK'
@@ -138,78 +124,52 @@ class HttpResponse(object):
         for link in links:
             if not isinstance(link, basestring): raise TypeError('Reference to script must be string. Got: %r' % link)
             if link not in scripts: scripts.append(link)
-    def postprocess(self, html):
-        if not self.postprocessing: return html
-        if isinstance(html, basestring): pass
-        elif hasattr(html, '__unicode__'): html = unicode(html)
-        else: html = str(html)
-        if html.__class__ == str: html = StrHtml(html)
-        elif html.__class__ == unicode: html = Html(html)
-        stylesheets = self.base_stylesheets
-        if not stylesheets: stylesheets = options.STD_STYLESHEETS
-        base_css = css_links(stylesheets)
-        if base_css: base_css += StrHtml('\n')
-        component_css = css_links(self.component_stylesheets)
-        if component_css: component_css += StrHtml('\n')
-        scripts = script_links(self.scripts)
-        if scripts: scripts += StrHtml('\n')
+    def postprocess(self, content):
+        if not self.postprocessing: return content
+        if content is None: return 'No content'
+        if isinstance(content, basestring): pass
+        elif hasattr(content, '__unicode__'): content = unicode(content)
+        else: content = str(content)
+        if content.__class__ is str: content = StrHtml(content)
+        elif content.__class__ is unicode: content = Html(content)
+        return postprocessing.postprocess(content, self.base_stylesheets, self.component_stylesheets, self.scripts)
 
-        doctype = ''
-        try:        
-            match = element_re.search(html)
-            if match is None or match.group(2).lower() not in header_tags:
-                doctype = StrHtml(options.STD_DOCTYPE)
-                head = ''
-                body = html
-            else:
-                first_element = match.group(2).lower()
-
-                for match in element_re.finditer(html):
-                    element = match.group(2).lower()
-                    if element not in header_tags: break
-                    last_match = match
-                bound = last_match.end(1)
-                head = html.__class__(html[:bound])
-                body = html.__class__(html[bound:])
-
-                if first_element in ('!doctype', 'html'): raise _UsePlaceholders
-                doctype = StrHtml(options.STD_DOCTYPE)
-
-            match = element_re.search(head)
-            if match is None or match.group(2).lower() != 'head':
-                if css_re.search(head) is not None: base_css = ''
-                head = StrHtml('<head>\n%s%s%s%s</head>' % (base_css, head, component_css, scripts))
-            else: raise _UsePlaceholders
-        except _UsePlaceholders:
-            head = head.replace(options.BASE_STYLESHEETS_PLACEHOLDER, base_css, 1)
-            head = head.replace(options.COMPONENT_STYLESHEETS_PLACEHOLDER, component_css, 1)
-            head = head.replace(options.SCRIPTS_PLACEHOLDER, scripts, 1)
-            head = html.__class__(head)
-
-        match = element_re.search(body)
-        if match is None or match.group(2).lower() != 'body':
-            if 'blueprint' in base_css: body = StrHtml('<div class="container">\n%s\n</div>\n') % body
-            body = StrHtml('<body>\n%s</body>') % body
-
-        if doctype: return StrHtml('\n').join([doctype, head, body])
-        else: return StrHtml('\n').join([head, body])
-
-def css_link(link):
-    if isinstance(link, basestring): link = (link,)
-    elif len(link) > 3: raise TypeError('too many parameters for CSS reference')
-    href, media, cond = (link + (None, None))[:3]
-    result = '<link rel="stylesheet" href="%s" type="text/css"%s>' % (href, media and ' media="%s"' % media or '')
-    if cond: result = '<!--[%s]>%s<![endif]-->' % (cond, result)
-    return StrHtml(result)
-
-def css_links(links):
-    return StrHtml('\n').join(css_link(link) for link in links)
-
-def script_link(link):
-    return StrHtml('<script type="text/javascript" src="%s"></script>') % link
-
-def script_links(links):
-    return StrHtml('\n').join(script_link(link) for link in links)
+def url(func, *args, **keyargs):
+    routes = getattr(func, 'routes')
+    if routes is None: raise ValueError('Cannot create url for this object :%s' % func)
+    try: keyparams = func.dummy_func(*args, **keyargs).copy()
+    except TypeError, e: raise TypeError(e.args[0].replace('<lambda>', func.__name__, 1))
+    names, argsname, keyargsname, defaults, converters = func.argspec
+    indexparams = map(keyparams.pop, names)
+    indexparams.extend(keyparams.pop(argsname, ()))
+    keyparams.update(keyparams.pop(keyargsname, {}))
+    try:
+        for i, value in enumerate(indexparams):
+            if value is not None and value is not routing.__nodefault__:
+                indexparams[i] = unicode(value).encode('utf8')
+        for key, value in keyparams.items():
+            if value is not None: keyparams[key] = unicode(value).encode('utf8')
+    except UnicodeDecodeError: raise ValueError(
+        'Url parameter value contains non-ascii symbols. Such values must be in unicode.')
+    request = local.request
+    host, port = request.host, request.port
+    script_name = local.request.environ.get('SCRIPT_NAME', '')
+    key = func, tuple(indexparams), tuple(sorted(keyparams.items())), host, port, script_name
+    try: return routing.url_cache[key]
+    except KeyError: pass
+    first, second = [], []
+    for route in routes:
+        if not route.redirect: first.append(route)
+        else: second.append(route)
+    for route in first + second:
+        try: url = routing.build_url(route, keyparams, indexparams, host, port, script_name)
+        except routing.PathError: pass
+        else: break
+    else: raise PathError('Suitable url path for %s() not found' % func.__name__)
+    if len(routing.url_cache) > 4000: routing.url_cache.clear()
+    routing.url_cache[key] = url
+    return url
+make_url = url
 
 class Local(threading.local):
     def __init__(self):
@@ -496,7 +456,6 @@ class Http(object):
     @staticmethod
     @decorator_with_params
     def __call__(func, url=None, host=None, port=None, redirect=False, **headers):
-        url_cache.clear()
         real_url = url is None and func.__name__ or url
         headers = dict([ (name.replace('_', '-').title(), value) for name, value in headers.items() ])
         routing.Route(func, real_url, host, port, redirect, headers)
@@ -541,42 +500,9 @@ class Http(object):
     cookies = property(attrgetter('_cookies'))
 
 http = Http()
-
-class HttpException(Exception):
-    content = ''
 http.Exception = HttpException
-
-class Http400BadRequest(HttpException):
-    status = '400 Bad Request'
-    headers = {'Content-Type' : 'text/plain'}
-    def __init__(self, content='Bad Request'):
-        Exception.__init__(self, 'Bad Request')
-        self.content = content
 http.BadRequest = Http400BadRequest
-        
-class Http404NotFound(HttpException):
-    status = '404 Not Found'
-    headers = {'Content-Type' : 'text/plain'}
-    def __init__(self, content='Page not found'):
-        Exception.__init__(self, 'Page not found')
-        self.content = content
-Http404 = Http404NotFound
 http.NotFound = Http404NotFound
-
-class HttpRedirect(HttpException):
-    status_dict = {'301' : '301 Moved Permanently',
-                   '302' : '302 Found',
-                   '303' : '303 See Other',
-                   '305' : '305 Use Proxy',
-                   '307' : '307 Temporary Redirect'}
-    def __init__(self, location=None, status='302 Found'):
-        if location and not isinstance(location, basestring):
-            raise TypeError('Redirect location must be string. Got: %r' % location)
-        Exception.__init__(self, location)
-        self.location = location or local.request.full_url
-        status = str(status)
-        self.status = self.status_dict.get(status, status)
-        self.headers = {'Location' : location}
 http.Redirect = HttpRedirect
 
 @http('/pony/shutdown?uid=$uid')

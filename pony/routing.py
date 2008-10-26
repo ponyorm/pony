@@ -15,8 +15,11 @@ registry_lock = threading.RLock()
 registry = ({}, [], [])
 system_routes = []
 
+url_cache = {}
+
 class Route(object):
     def __init__(self, func, url, host, port, redirect, headers):
+        url_cache.clear()
         self.func = func
         if not hasattr(func, 'argspec'):
             func.argspec = self.getargspec(func)

@@ -2,7 +2,8 @@ import pony
 
 from pony.utils import decorator_with_params, tostring
 from pony.templating import htmltag, Html, printhtml
-from pony.web import local, http, url, css_link, script_link
+from pony.web import local, http, url
+from pony.postprocessing import css_link, script_link
 
 @decorator_with_params
 def webpage(old_func, *args, **keyargs):
