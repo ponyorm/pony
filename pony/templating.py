@@ -835,7 +835,11 @@ def cycle(*args):
         if i > 0: return (current == i - 1) and markup() or ''
         elif i < 0: return (i == current - total) and markup() or ''
         else: raise TypeError('$cycle first argument cannot be 0')
-__builtins__['cycle'] = cycle
+
+try: __builtins__['cycle'] = cycle
+except:  # Just in case... I'm not sure is it needed
+    try: __builtins__.cycle = cycle
+    except: pass
     
 codename_cache = {}
 
