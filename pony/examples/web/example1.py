@@ -20,8 +20,8 @@ def page2():
 def page3():
     "This page deliberately contains error"
     a = u'проверка'
-    b = 10          # комментарий
-    c = 1/u"строка" # еще один
+    b = None   # комментарий
+    c = a / b  # еще один
     return a
     
 @http

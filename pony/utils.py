@@ -110,6 +110,38 @@ def detect_source_encoding(filename):
         if match is not None: return match.group(1)
     else: return options.SOURCE_ENCODING or getpreferredencoding()
 
+escape_re = re.compile(r'''
+    (?<!\\)\\         # single backslash
+    (?:
+        x[0-9a-f]{2}  # byte escaping
+    |   u[0-9a-f]{4}  # unicode escaping
+    |   U[0-9a-f]{8}  # long unicode escaping
+    )  
+    ''', re.VERBOSE)
+
+def restore_escapes(s, console_encoding=None, source_encoding=None):
+    if not options.UNESCAPE_REPR: return s
+    if source_encoding is None:
+        source_encoding = options.SOURCE_ENCODING or getpreferredencoding()
+    if console_encoding is None:
+        console_encoding = ( getattr(sys.stderr, 'encoding', None)
+                             or getattr(sys.stdout, 'encoding', None)
+                             or options.CONSOLE_ENCODING
+                             or getpreferredencoding() )
+    try: s = s.decode(source_encoding).encode(console_encoding)
+    except UnicodeDecodeError, UnicodeEncodeError: pass
+    def f(match):
+        esc = match.group()
+        code = int(esc[2:], 16)
+        if esc.startswith('\\x'):
+            if code < 32: return esc
+            try: return chr(code).decode(source_encoding).encode(console_encoding)
+            except (UnicodeDecodeError, UnicodeEncodeError): return esc
+        char = unichr(code)
+        try: return char.encode(console_encoding)
+        except UnicodeEncodeError: return esc
+    return escape_re.sub(f, s)
+
 def current_timestamp():
     result = datetime.datetime.now().isoformat(' ')
     if len(result) == 19: return result + '.000000'
