@@ -486,22 +486,21 @@ def stop_http_server(address=None):
         server_thread.server.stop()
         server_thread.join()
 
-@decorator_with_params
-def http(old_func, url=None, host=None, port=None, redirect=False, **headers):
-    url_cache.clear()
-    real_url = url is None and old_func.__name__ or url
-    headers = dict([ (name.replace('_', '-').title(), value) for name, value in headers.items() ])
-    routing.Route(old_func, real_url, host, port, redirect, headers)
-    return old_func
-register_route = http
-
-class _Http(object):
-    __call__ = staticmethod(register_route)
+class Http(object):
     invoke = staticmethod(invoke)
     remove = staticmethod(routing.remove)
     clear = staticmethod(routing.clear)
     start = staticmethod(start_http_server)
     stop = staticmethod(stop_http_server)
+
+    @staticmethod
+    @decorator_with_params
+    def __call__(func, url=None, host=None, port=None, redirect=False, **headers):
+        url_cache.clear()
+        real_url = url is None and func.__name__ or url
+        headers = dict([ (name.replace('_', '-').title(), value) for name, value in headers.items() ])
+        routing.Route(func, real_url, host, port, redirect, headers)
+        return func
 
     @property
     def request(self): return local.request
@@ -541,7 +540,7 @@ class _Http(object):
     _cookies = _Cookies()
     cookies = property(attrgetter('_cookies'))
 
-http = _Http()
+http = Http()
 
 class HttpException(Exception):
     content = ''
