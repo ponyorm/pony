@@ -1,12 +1,12 @@
-import re, threading, os.path, inspect, sys, warnings, cgi, urllib, Cookie, cPickle, time
+import re, threading, os.path, sys, cgi, urllib, Cookie, cPickle, time
 
 from cStringIO import StringIO
-from itertools import imap, izip, count
-from operator import itemgetter, attrgetter
+from itertools import imap, count
+from operator import attrgetter
 
 import pony
+
 from pony import autoreload, auth, httputils, options
-from pony.autoreload import on_reload
 from pony.utils import decorator_with_params
 from pony.templating import Html, StrHtml, plainstr
 from pony.logging import log, log_exc, DEBUG, INFO, WARNING
@@ -16,17 +16,27 @@ from pony.htmltb import format_exc
 try: from pony.thirdparty import etree
 except ImportError: etree = None
 
+# next imports will be extracted to routes.py
+
+import re, threading, inspect, warnings, urllib
+
+from itertools import izip
+from operator import itemgetter
+
+from pony.httputils import split_url
+from pony.autoreload import on_reload
+
 class NodefaultType(object):
     def __repr__(self): return '__nodefault__'
     
 __nodefault__ = NodefaultType()
 
-http_registry_lock = threading.RLock()
-http_registry = ({}, [], [])
-http_system_handlers = []
+registry_lock = threading.RLock()
+registry = ({}, [], [])
+system_routes = []
 
-class HttpInfo(object):
-    def __init__(self, func, url, host, port, redirect, http_headers):
+class Route(object):
+    def __init__(self, func, url, host, port, redirect, headers):
         url_cache.clear()
         self.func = func
         if not hasattr(func, 'argspec'):
@@ -39,11 +49,11 @@ class HttpInfo(object):
                 if port is not None: raise TypeError('Duplicate port specification')
                 host, port = host.split(':')
         self.host, self.port = host, port and int(port) or None
-        self.path, self.qlist = httputils.split_url(url, strict_parsing=True)
+        self.path, self.qlist = split_url(url, strict_parsing=True)
         self.redirect = redirect
         module = func.__module__
         self.system = module.startswith('pony.') and not module.startswith('pony.examples.')
-        self.http_headers = http_headers
+        self.headers = headers
         self.args = set()
         self.keyargs = set()
         self.parsed_path = []
@@ -58,7 +68,7 @@ class HttpInfo(object):
             is_param, x = self.parse_component(value)
             self.parsed_query.append((name, is_param, x))
         self.check()
-        if self.system: http_system_handlers.append(self)
+        if self.system: system_routes.append(self)
         self.register()
     @staticmethod
     def getargspec(func):
@@ -166,43 +176,43 @@ class HttpInfo(object):
             for i in range(len(names), max(args)):
                 if i not in args: raise TypeError('Undefined path parameter: %d' % (i+1))
     def register(self):
-        def get_url_map(info):
+        def get_url_map(route):
             result = {}
-            for i, (is_param, x) in enumerate(info.parsed_path):
+            for i, (is_param, x) in enumerate(route.parsed_path):
                 if is_param: result[i] = isinstance(x, list) and x[0] or '/'
                 else: result[i] = ''
-            for name, is_param, x in info.parsed_query:
+            for name, is_param, x in route.parsed_query:
                 if is_param: result[name] = isinstance(x, list) and x[0] or '/'
                 else: result[name] = ''
-            if info.star: result['$*'] = len(info.parsed_path)
-            if info.host: result[('host',)] = info.host
-            if info.port: result[('port',)] = info.port
+            if route.star: result['$*'] = len(route.parsed_path)
+            if route.host: result[('host',)] = route.host
+            if route.port: result[('port',)] = route.port
             return result
         url_map = get_url_map(self)
         qdict = dict(self.qlist)
-        http_registry_lock.acquire()
+        registry_lock.acquire()
         try:
-            for info, _, _ in get_http_handlers(self.path, qdict, self.host, self.port):
-                if url_map == get_url_map(info):
-                    warnings.warn('Route already in use (old handler was removed): %s' % info.url)
-                    _http_remove(info)
-            d, list1, list2 = http_registry
+            for route, _, _ in get_routes(self.path, qdict, self.host, self.port):
+                if url_map == get_url_map(route):
+                    warnings.warn('Url path already in use (old route was removed): %s' % route.url)
+                    _remove(route)
+            d, list1, list2 = registry
             for is_param, x in self.parsed_path:
                 if is_param: d, list1, list2 = d.setdefault(None, ({}, [], []))
                 else: d, list1, list2 = d.setdefault(x, ({}, [], []))
             if not self.star: self.list = list1
             else: self.list = list2
-            self.func.__dict__.setdefault('http', []).insert(0, self)
+            self.func.__dict__.setdefault('routes', []).insert(0, self)
             self.list.insert(0, self)
-        finally: http_registry_lock.release()
+        finally: registry_lock.release()
 
 class PathError(Exception): pass
 
 url_cache = {}
 
 def url(func, *args, **keyargs):
-    http_list = getattr(func, 'http')
-    if http_list is None: raise ValueError('Cannot create url for this object :%s' % func)
+    routes = getattr(func, 'routes')
+    if routes is None: raise ValueError('Cannot create url for this object :%s' % func)
     try: keyparams = func.dummy_func(*args, **keyargs).copy()
     except TypeError, e: raise TypeError(e.args[0].replace('<lambda>', func.__name__, 1))
     names, argsname, keyargsname, defaults, converters = func.argspec
@@ -223,11 +233,11 @@ def url(func, *args, **keyargs):
     try: return url_cache[key]
     except KeyError: pass
     first, second = [], []
-    for info in http_list:
-        if not info.redirect: first.append(info)
-        else: second.append(info)
-    for info in first + second:
-        try: url = build_url(info, keyparams, indexparams, host, port)
+    for route in routes:
+        if not route.redirect: first.append(route)
+        else: second.append(route)
+    for route in first + second:
+        try: url = build_url(route, keyparams, indexparams, host, port)
         except PathError: pass
         else: break
     else: raise PathError('Suitable url path for %s() not found' % func.__name__)
@@ -236,8 +246,8 @@ def url(func, *args, **keyargs):
     return url
 make_url = url
 
-def build_url(info, keyparams, indexparams, host, port):
-    names, argsname, keyargsname, defaults, converters = info.func.argspec
+def build_url(route, keyparams, indexparams, host, port):
+    names, argsname, keyargsname, defaults, converters = route.func.argspec
     path = []
     used_indexparams = set()
     used_keyparams = set()
@@ -271,20 +281,20 @@ def build_url(info, keyparams, indexparams, host, port):
             return is_default, ''.join(result)
         else: assert False
 
-    for is_param, x in info.parsed_path:
+    for is_param, x in route.parsed_path:
         if not is_param: component = x
         else:
             is_default, component = build_param(x)
             if component is None: raise PathError('Value for parameter %r is None' % x)
         path.append(urllib.quote(component, safe=':@&=+$,'))
-    if info.star:
-        for i in range(len(info.args), len(indexparams)):
+    if route.star:
+        for i in range(len(route.args), len(indexparams)):
             path.append(urllib.quote(indexparams[i], safe=':@&=+$,'))
             used_indexparams.add(i)
     p = '/'.join(path)
 
     qlist = []
-    for name, is_param, x in info.parsed_query:
+    for name, is_param, x in route.parsed_query:
         if not is_param: qlist.append((name, x))
         else:
             is_default, value = build_param(x)
@@ -303,18 +313,18 @@ def build_url(info, keyparams, indexparams, host, port):
     script_name = local.request.environ.get('SCRIPT_NAME', '')
     url = q and '?'.join((p, q)) or p
     result = '/'.join((script_name, url))
-    if info.host is None or info.host == host:
-        if info.port is None or info.port == port: return result
-    host = info.host or host
-    port = info.port or 80
+    if route.host is None or route.host == host:
+        if route.port is None or route.port == port: return result
+    host = route.host or host
+    port = route.port or 80
     if port == 80: return 'http://%s%s' % (host, result)
     return 'http://%s:%d%s' % (host, port, result)
 
-def get_http_handlers(path, qdict, host, port):
-    # http_registry_lock.acquire()
+def get_routes(path, qdict, host, port):
+    # registry_lock.acquire()
     # try:
-    variants = [ http_registry ]
-    infos = []
+    variants = [ registry ]
+    routes = []
     for i, component in enumerate(path):
         new_variants = []
         for d, list1, list2 in variants:
@@ -323,23 +333,23 @@ def get_http_handlers(path, qdict, host, port):
             # if component:
             variant = d.get(None)
             if variant: new_variants.append(variant)
-            infos.extend(list2)
+            routes.extend(list2)
         variants = new_variants
-    for d, list1, list2 in variants: infos.extend(list1)
-    # finally: http_registry_lock.release()
+    for d, list1, list2 in variants: routes.extend(list1)
+    # finally: registry_lock.release()
 
     result = []
     not_found = object()
-    for info in infos:
+    for route in routes:
         args, keyargs = {}, {}
         priority = 0
-        if info.host is not None:
-            if info.host != host: continue
+        if route.host is not None:
+            if route.host != host: continue
             priority += 10000
-        if info.port is not None:
-            if info.port != port: continue
+        if route.port is not None:
+            if route.port != port: continue
             priority += 100
-        for i, (is_param, x) in enumerate(info.parsed_path):
+        for i, (is_param, x) in enumerate(route.parsed_path):
             if not is_param:
                 priority += 1
                 continue
@@ -361,10 +371,10 @@ def get_http_handlers(path, qdict, host, port):
                     else: assert False
             else: assert False
         else:
-            names, _, _, defaults, converters = info.func.argspec
+            names, _, _, defaults, converters = route.func.argspec
             diff = len(names) - len(defaults)
             non_used_query_params = set(qdict)
-            for name, is_param, x in info.parsed_query:
+            for name, is_param, x in route.parsed_query:
                 non_used_query_params.discard(name)
                 value = qdict.get(name, not_found)
                 if value is not not_found: value = value.decode('utf8')
@@ -415,10 +425,10 @@ def get_http_handlers(path, qdict, host, port):
                         arglist.append(value)
                 else:
                     if __nodefault__ in arglist[diff:]: continue
-                    if len(info.parsed_path) != len(path):
-                        assert info.star
-                        arglist.extend(path[len(info.parsed_path):])
-                    result.append((info, arglist, keyargs, priority, len(non_used_query_params)))
+                    if len(route.parsed_path) != len(path):
+                        assert route.star
+                        arglist.extend(path[len(route.parsed_path):])
+                    result.append((route, arglist, keyargs, priority, len(non_used_query_params)))
     if result:
         x = max(map(itemgetter(3), result))
         result = [ tup for tup in result if tup[3] == x ]
@@ -426,43 +436,43 @@ def get_http_handlers(path, qdict, host, port):
         result = [ tup[:3] for tup in result if tup[4] == x ]
     return result
 
-def http_remove(x, host=None, port=None):
+def remove(x, host=None, port=None):
     if isinstance(x, basestring):
-        path, qlist = httputils.split_url(x, strict_parsing=True)
+        path, qlist = split_url(x, strict_parsing=True)
         qdict = dict(qlist)
-        http_registry_lock.acquire()
+        registry_lock.acquire()
         try:
-            for info, _, _ in get_http_handlers(path, qdict, host, port): _http_remove(info)
-        finally: http_registry_lock.release()
-    elif hasattr(x, 'http'):
+            for route, _, _ in get_routes(path, qdict, host, port): _remove(route)
+        finally: registry_lock.release()
+    elif hasattr(x, 'routes'):
         assert host is None and port is None
-        http_registry_lock.acquire()
+        registry_lock.acquire()
         try:
-            for info in list(x.http): _http_remove(info)
-        finally: http_registry_lock.release()
+            for route in list(x.routes): _remove(route)
+        finally: registry_lock.release()
     else: raise ValueError('This object is not bound to url: %r' % x)
 
-def _http_remove(info):
+def _remove(route):
     url_cache.clear()
-    info.list.remove(info)
-    info.func.http.remove(info)
+    route.list.remove(route)
+    route.func.routes.remove(route)
             
 @on_reload
-def http_clear():
-    http_registry_lock.acquire()
+def clear():
+    registry_lock.acquire()
     try:
-        _http_clear(*http_registry)
-        for handler in http_system_handlers: handler.register()
-    finally: http_registry_lock.release()
+        _clear(*registry)
+        for route in system_routes: route.register()
+    finally: registry_lock.release()
 
-def _http_clear(dict, list1, list2):
+def _clear(dict, list1, list2):
     url_cache.clear()
-    for info in list1: info.func.http.remove(info)
+    for route in list1: route.func.routes.remove(route)
     list1[:] = []
-    for info in list2: info.func.http.remove(info)
+    for route in list2: route.func.routes.remove(route)
     list2[:] = []
     for inner_dict, list1, list2 in dict.itervalues():
-        _http_clear(inner_dict, list1, list2)
+        _clear(inner_dict, list1, list2)
     dict.clear()
 
 class HttpRequest(object):
@@ -678,7 +688,7 @@ def get_pony_static_file(path):
     headers['Cache-Control'] = 'max-age=%d' % max_age
     return file(fname, 'rb')
 
-def http_invoke(url):
+def invoke(url):
     if isinstance(url, str):
         try: url.decode('utf8')
         except UnicodeDecodeError: raise Http400BadRequest
@@ -690,38 +700,38 @@ def http_invoke(url):
     if path[:2] == ['pony', 'static'] and len(path) > 2:
         return get_pony_static_file(path[2:])
     qdict = dict(qlist)
-    handlers = get_http_handlers(path, qdict, request.host, request.port)
-    if not handlers:
+    routes = get_routes(path, qdict, request.host, request.port)
+    if not routes:
         i = url.find('?')
         if i == -1: p, q = url, ''
         else: p, q = url[:i], url[i:]
         if p.endswith('/'): url2 = p[:-1] + q
         else: url2 = p + '/' + q
         path2, qlist = httputils.split_url(url2)
-        handlers = get_http_handlers(path2, qdict, request.host, request.port)
-        if not handlers: return get_static_file(path)
+        routes = get_routes(path2, qdict, request.host, request.port)
+        if not routes: return get_static_file(path)
         script_name = request.environ.get('SCRIPT_NAME', '')
         url2 = script_name + url2 or '/'
         if url2 != script_name + url: raise HttpRedirect(url2)
-    info, args, keyargs = handlers[0]
+    route, args, keyargs = routes[0]
 
-    if info.redirect:
-        for alternative in info.func.http:
+    if route.redirect:
+        for alternative in route.func.routes:
             if not alternative.redirect:
-                new_url = make_url(info.func, *args, **keyargs)
+                new_url = make_url(route.func, *args, **keyargs)
                 status = '301 Moved Permanently'
-                if isinstance(info.redirect, basestring): status = info.redirect
-                elif isinstance(info.redirect, (int, long)) and 300 <= info.redirect < 400:
-                    status = str(info.redirect)
+                if isinstance(route.redirect, basestring): status = route.redirect
+                elif isinstance(route.redirect, (int, long)) and 300 <= route.redirect < 400:
+                    status = str(route.redirect)
                 raise HttpRedirect(new_url, status)
-    response.headers.update(info.http_headers)
+    response.headers.update(route.headers)
 
-    names, argsname, keyargsname, defaults, converters = info.func.argspec
+    names, argsname, keyargsname, defaults, converters = route.func.argspec
     params = request.params
     params.update(zip(names, args))
     params.update(keyargs)
 
-    try: result = with_transaction(info.func, args, keyargs, [ HttpRedirect ])
+    try: result = with_transaction(route.func, args, keyargs, [ HttpRedirect ])
     except RowNotFound: raise Http404NotFound
 
     headers = dict([ (name.replace('_', '-').title(), value)
@@ -801,7 +811,7 @@ def application(environ, start_response):
                         form = cPickle.loads(auth.local.ticket_payload)
                         form._handle_request_()
                         form = None
-                    result = http_invoke(request.url)
+                    result = invoke(request.url)
                 finally:
                     if auth.local.ticket and not request.form_processed and request.form_processed is not None:
                         auth.unexpire_ticket()
@@ -897,19 +907,18 @@ def stop_http_server(address=None):
         server_thread.join()
 
 @decorator_with_params
-def http(old_func, url=None, host=None, port=None, redirect=False, **http_headers):
+def http(old_func, url=None, host=None, port=None, redirect=False, **headers):
     real_url = url is None and old_func.__name__ or url
-    http_headers = dict([ (name.replace('_', '-').title(), value)
-                          for name, value in http_headers.items() ])
-    HttpInfo(old_func, real_url, host, port, redirect, http_headers)
+    headers = dict([ (name.replace('_', '-').title(), value) for name, value in headers.items() ])
+    Route(old_func, real_url, host, port, redirect, headers)
     return old_func
-register_http_handler = http
+register_route = http
 
 class _Http(object):
-    __call__ = staticmethod(register_http_handler)
-    invoke = staticmethod(http_invoke)
-    remove = staticmethod(http_remove)
-    clear = staticmethod(http_clear)
+    __call__ = staticmethod(register_route)
+    invoke = staticmethod(invoke)
+    remove = staticmethod(remove)
+    clear = staticmethod(clear)
     start = staticmethod(start_http_server)
     stop = staticmethod(stop_http_server)
 

@@ -39,12 +39,12 @@ link_template = Html(u'<a href="%s">%s</a>')
 def link(*args, **keyargs):
     if not args: raise TypeError('link() function requires at least one positional argument')
     first = args[0]
-    if hasattr(first, 'http'):
+    if hasattr(first, 'routes'):
         func = first
         args = args[1:]
         if func.__doc__ is None: description = func.__name__
         else: description = Html(func.__doc__.split('\n', 1)[0])
-    elif len(args) > 1 and hasattr(args[1], 'http'):
+    elif len(args) > 1 and hasattr(args[1], 'routes'):
         description = tostring(first)
         func = args[1]
         args = args[2:]
