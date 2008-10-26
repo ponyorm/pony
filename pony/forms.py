@@ -9,7 +9,8 @@ from pony import auth
 from pony.utils import decorator, ValidationError
 from pony.converting import converters, str2date
 from pony.templating import Html, StrHtml, htmljoin, htmltag, html
-from pony.web import http, component
+from pony.web import http
+from pony.webutils import component
 
 class FormNotProcessed(Exception): pass
 

@@ -601,18 +601,3 @@ def http_shutdown(uid=None):
 def do_shutdown():
     try: stop_http_server()
     except ServerNotStarted: pass
-
-@decorator_with_params
-def component(old_func, css=None, js=None):
-    def new_func(*args, **keyargs):
-        response = local.response
-        if css is not None:
-            if isinstance(css, (basestring, tuple)):
-                  response.add_component_stylesheets([ css ])
-            else: response.add_component_stylesheets(css)
-        if js is not None:
-            if isinstance(js, basestring):
-                  response.add_scripts([ js ])
-            else: response.add_scripts(js)
-        return old_func(*args, **keyargs)
-    return new_func

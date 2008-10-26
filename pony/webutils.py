@@ -2,7 +2,7 @@ import pony
 
 from pony.utils import decorator_with_params, tostring
 from pony.templating import htmltag, Html, printhtml
-from pony.web import http, url, css_link, script_link, component
+from pony.web import local, http, url, css_link, script_link
 
 @decorator_with_params
 def webpage(old_func, *args, **keyargs):
@@ -78,6 +78,21 @@ def img(*args, **keyargs):
         else: description = Html(func.__doc__.split('\n', 1)[0])
     href = url(func, *args, **keyargs)
     return img_template % (href, description, description)
+
+@decorator_with_params
+def component(old_func, css=None, js=None):
+    def new_func(*args, **keyargs):
+        response = local.response
+        if css is not None:
+            if isinstance(css, (basestring, tuple)):
+                  response.add_component_stylesheets([ css ])
+            else: response.add_component_stylesheets(css)
+        if js is not None:
+            if isinstance(js, basestring):
+                  response.add_scripts([ js ])
+            else: response.add_scripts(js)
+        return old_func(*args, **keyargs)
+    return new_func
 
 @component(css='/pony/static/css/rounded-corners.css')
 def rounded(markup, **attrs):
