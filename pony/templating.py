@@ -243,9 +243,9 @@ def printhtml(old_func):
 ################################################################################
 
 @decorator
-def lazy(old_func):
-    old_func.__lazy__ = True
-    return old_func
+def lazy(func):
+    func.__lazy__ = True
+    return func
 
 def err(text, end, length=30):
     start = end - length
