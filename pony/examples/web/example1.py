@@ -10,7 +10,7 @@ def page1():
 
 @http(type='text/html')
 def page2():
-    print """
+    return """
               <h1>This is HTML page</h1>
               <br>
               <p>Click <a href="/">here</a> for return
