@@ -8,6 +8,9 @@
 .traceback dt.system {
     color: #888
 }
+.traceback dt .module {
+    cursor: help;
+}
 .traceback .source {
     margin: 0;
     list-style: none;
