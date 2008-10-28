@@ -57,24 +57,25 @@ def postprocess(content, stylesheets, component_stylesheets, scripts):
             head = content.__class__(content[:bound])
             body = content.__class__(content[bound:])
 
-            if first_element in ('!doctype', 'content'): raise _UsePlaceholders
+            if first_element in ('!doctype', 'html'): raise _UsePlaceholders
             doctype = StrHtml(options.STD_DOCTYPE)
 
         match = element_re.search(head)
-        if match is None or match.group(2).lower() != 'head':
-            if css_re.search(head) is not None: base_css = ''
-            head = StrHtml('<head>\n%s%s%s%s</head>' % (base_css, head, component_css, scripts))
-        else: raise _UsePlaceholders
+        if match is not None and match.group(2).lower() == 'head': raise _UsePlaceholders
+
+        if css_re.search(head) is not None: base_css = ''
+        head = StrHtml('<head>\n%s%s%s%s</head>' % (base_css, head, component_css, scripts))
+
+        match = element_re.search(body)
+        if match is None or match.group(2).lower() != 'body':
+            if 'blueprint' in base_css: body = StrHtml('<div class="container">\n%s\n</div>\n') % body
+            body = StrHtml('<body>\n%s</body>') % body
+
     except _UsePlaceholders:
         head = head.replace(options.BASE_STYLESHEETS_PLACEHOLDER, base_css, 1)
         head = head.replace(options.COMPONENT_STYLESHEETS_PLACEHOLDER, component_css, 1)
         head = head.replace(options.SCRIPTS_PLACEHOLDER, scripts, 1)
         head = content.__class__(head)
-
-    match = element_re.search(body)
-    if match is None or match.group(2).lower() != 'body':
-        if 'blueprint' in base_css: body = StrHtml('<div class="container">\n%s\n</div>\n') % body
-        body = StrHtml('<body>\n%s</body>') % body
 
     if doctype: return StrHtml('\n').join([doctype, head, body])
     else: return StrHtml('\n').join([head, body])
