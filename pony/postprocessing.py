@@ -60,16 +60,15 @@ def postprocess(content, stylesheets, component_stylesheets, scripts):
             if first_element in ('!doctype', 'html'): raise _UsePlaceholders
             doctype = StrHtml(options.STD_DOCTYPE)
 
-        match = element_re.search(head)
-        if match is not None and match.group(2).lower() == 'head': raise _UsePlaceholders
-
-        if css_re.search(head) is not None: base_css = ''
-        head = StrHtml('<head>\n%s%s%s%s</head>' % (base_css, head, component_css, scripts))
-
         match = element_re.search(body)
         if match is None or match.group(2).lower() != 'body':
             if 'blueprint' in base_css: body = StrHtml('<div class="container">\n%s\n</div>\n') % body
             body = StrHtml('<body>\n%s</body>') % body
+
+        match = element_re.search(head)
+        if match is not None and match.group(2).lower() == 'head': raise _UsePlaceholders
+        if css_re.search(head) is not None: base_css = ''
+        head = StrHtml('<head>\n%s%s%s%s</head>' % (base_css, head, component_css, scripts))
 
     except _UsePlaceholders:
         head = head.replace(options.BASE_STYLESHEETS_PLACEHOLDER, base_css, 1)
