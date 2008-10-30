@@ -117,7 +117,7 @@ def page9():
             $.tab("Tab with very very long name"){<h2>Nested tab THREE</h2>}
     }
     $.tab("Two") {
-            <h2>Content of second tab</h1>
+            <h2>Content of second tab</h2>
     }
     $.tab("Three") {
             <h2>Tab three</h2>
