@@ -137,14 +137,14 @@ def index():
     print header('Simple Pony examples')
     print '<ul>'
     print '<li><h4><a href="%s">HelloWorld example</a></h4></li>' % url(page1)
-    print '<li><h4>%s</h3></li>' % link('Simplest HTML page', page2)
-    print '<li><h4>%s</h3></li>' % link(page3)
-    print '<li><h4>%s</h3></li>' % link(page4)
-    print '<li><h4>%s</h3></li>' % link(page5)
-    print '<li><h4>%s</h3></li>' % link(page6, 2007, 10)
-    print '<li><h4>%s</h3></li>' % link(page7)
-    print '<li><h4>%s</h3></li>' % link(page8)
-    print '<li><h4>%s</h3></li>' % link(page9)
+    print '<li><h4>%s</h4></li>' % link('Simplest HTML page', page2)
+    print '<li><h4>%s</h4></li>' % link(page3)
+    print '<li><h4>%s</h4></li>' % link(page4)
+    print '<li><h4>%s</h4></li>' % link(page5)
+    print '<li><h4>%s</h4></li>' % link(page6, 2007, 10)
+    print '<li><h4>%s</h4></li>' % link(page7)
+    print '<li><h4>%s</h4></li>' % link(page8)
+    print '<li><h4>%s</h4></li>' % link(page9)
     print '</ul>'
     print '<br><br><p><a href="mailto:example@example.com">automatically obfuscated e-mail</a></p>'
     print '<p><a href="http://www.google.com@members.tripod.com/abc/def?x=1&y=2">External link</a></p>'
