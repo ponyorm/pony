@@ -1,6 +1,11 @@
 $(function(){
     $("#system-hide").hide()
-    $(".system").hide()
+    system = $(".system")
+    if(system.length == 0) {
+        $("#system-show").hide()
+    } else {
+        system.hide()
+    }
     
     $("#system-show").click(function(){
         $("#system-show").hide()

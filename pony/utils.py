@@ -120,7 +120,7 @@ escape_re = re.compile(r'''
     ''', re.VERBOSE)
 
 def restore_escapes(s, console_encoding=None, source_encoding=None):
-    if not options.UNESCAPE_REPR: return s
+    if not options.RESTORE_ESCAPES: return s
     if source_encoding is None:
         source_encoding = options.SOURCE_ENCODING or getpreferredencoding()
     if console_encoding is None:

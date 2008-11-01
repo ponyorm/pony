@@ -34,9 +34,13 @@ PICKLE_START_OFFSET = 230
 PICKLE_HTML_AS_PLAIN_STR = True
 
 # encoding options for pony.pathces.repr
-UNESCAPE_REPR = True
+RESTORE_ESCAPES = True
 SOURCE_ENCODING = None
 CONSOLE_ENCODING = None
 
 # db options
 MAX_ROWS_COUNT = 1000
+
+# htmltb options
+HTMLTB_REMOVE_ADDR = True
+HTMLTB_RESTORE_ESCAPES = True

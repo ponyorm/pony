@@ -4,27 +4,58 @@ from repr import Repr
 from itertools import izip, count
 
 import pony
-from pony import options
+from pony import options, utils
 from pony.utils import detect_source_encoding, is_ident, restore_escapes
 from pony.templating import html, cycle, quote, htmljoin, Html, StrHtml
+
+def restore_escapes(s):
+    if not options.HTMLTB_RESTORE_ESCAPES: return s
+    return utils.restore_escapes(s, 'utf-8').decode('utf-8')
+
+addr_re = re.compile(r' at 0x[0-9A-F]{8}(?:[0-9A-F]{8})?>')
 
 class Repr2(Repr):
     def __init__(self):
         Repr.__init__(self)
-        self.maxstring = 120
-        self.maxother = 120
+        self.maxstring = 76
+        self.maxother = 76
     def repr_str(self, x, level):
-        s = restore_escapes(repr(x[:self.maxstring]), 'utf-8').decode('utf-8')
+        s = repr(x[:self.maxstring])
+        s = restore_escapes(s)
         if len(s) > self.maxstring:
             i = max(0, (self.maxstring-3)//2)
             j = max(0, self.maxstring-3-i)
-            s = restore_escapes(repr(x[:i] + x[len(x)-j:]), 'utf-8').decode('utf-8')
+            s = repr(x[:i] + x[len(x)-j:])
+            s = restore_escapes(s)
             s = s[:i] + '...' + s[len(s)-j:]
         return s
     repr_unicode = repr_str
+    def repr1(self, x, level):
+        typename = type(x).__name__
+        if ' ' in typename: typename = '_'.join(typename.split())
+        method = getattr(self, 'repr_' + typename, None)
+        if method is not None: return method(x, level)
+        try: s = repr(x)  # Bugs in x.__repr__() can cause arbitrary exceptions
+        except: s = '<%s object at %x>' % (x.__class__.__name__, id(x))
+        s = restore_escapes(s)
+        if options.HTMLTB_REMOVE_ADDR: s = addr_re.sub('>', s)
+        return truncate(s, self.maxother)
+    def repr_instance(self, x, level):
+        try: s = repr(x)  # Bugs in x.__repr__() can cause arbitrary exceptions
+        except: s = '<%s instance at %x>' % (x.__class__.__name__, id(x))
+        s = restore_escapes(s)
+        if options.HTMLTB_REMOVE_ADDR: s = addr_re.sub('>', s)
+        return truncate(s, self.maxstring)
 
-_repr = Repr2()
-nice_repr = _repr.repr
+def truncate(s, maxlen):
+    if len(s) > maxlen:
+        i = max(0, (maxlen-3)//2)
+        j = max(0, maxlen-3-i)
+        s = s[:i] + '...' + s[len(s)-j:]
+    return s
+
+aRepr2 = Repr2()
+repr2 = aRepr2.repr
 
 class Record(object):
     def __init__(self, **keyargs):
@@ -34,9 +65,15 @@ def format_exc(info=None, context=5):
     if info: exc_type, exc_value, tb = info
     else:
         exc_type, exc_value, tb = sys.exc_info()
+        exc_value = restore_escapes(str(exc_value))
+
         # if tb.tb_next is not None: tb = tb.tb_next  # application() frame
         # if tb.tb_next is not None: tb = tb.tb_next  # http_invoke() frame
         # if tb.tb_next is not None: tb = tb.tb_next  # with_transaction() frame
+        while tb.tb_next is not None:
+            module = tb.tb_frame.f_globals.get('__name__') or '?'
+            if module == 'pony' or module.startswith('pony.'): tb = tb.tb_next
+            else: break
     try:
         records = []
         for frame, file, lnum, func, lines, index in inspect.getinnerframes(tb, context):
@@ -44,7 +81,7 @@ def format_exc(info=None, context=5):
             source_encoding = detect_source_encoding(file)
             lines = [ format_line(frame, line.decode(source_encoding, 'replace')) for line in lines ]
             record = Record(frame=frame, file=file, lnum=lnum, func=func, lines=lines, index=index)
-            module = record.module = frame.f_globals['__name__'] or '?'
+            module = record.module = frame.f_globals.get('__name__') or '?'
             if module == 'pony' or module.startswith('pony.'): record.moduletype = 'system'
             else: record.moduletype = 'user'
             records.append(record)
@@ -107,7 +144,7 @@ def format_line(frame, line):
                         else: obj = getattr(prev, x, __undefined__)
                     chain.append(obj)
                     if obj is __undefined__: title = 'undefined'
-                    else: title = quote(nice_repr(obj))
+                    else: title = quote(repr2(obj))
                     result.append(ident_html % (title, x))
                 else: result.append(quote(x))
         elif i == 3: result.append(comment_html % match.group())
