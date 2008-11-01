@@ -40,6 +40,7 @@ def format_exc(info=None, context=5):
     try:
         records = []
         for frame, file, lnum, func, lines, index in inspect.getinnerframes(tb, context):
+            if index is None: continue
             source_encoding = detect_source_encoding(file)
             lines = [ format_line(frame, line.decode(source_encoding, 'replace')) for line in lines ]
             record = Record(frame=frame, file=file, lnum=lnum, func=func, lines=lines, index=index)
