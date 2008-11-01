@@ -125,11 +125,11 @@ def restore_escapes(s, console_encoding=None, source_encoding=None):
         source_encoding = options.SOURCE_ENCODING or getpreferredencoding()
     if console_encoding is None:
         console_encoding = ( getattr(sys.stderr, 'encoding', None)
-                             or getattr(sys.stdout, 'encoding', None)
+                             or getattr(pony.real_stdout, 'encoding', None)
                              or options.CONSOLE_ENCODING
                              or getpreferredencoding() )
     try: s = s.decode(source_encoding).encode(console_encoding)
-    except UnicodeDecodeError, UnicodeEncodeError: pass
+    except (UnicodeDecodeError, UnicodeEncodeError): pass
     def f(match):
         esc = match.group()
         code = int(esc[2:], 16)
