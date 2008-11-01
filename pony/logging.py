@@ -11,7 +11,7 @@ CRITICAL = logging.CRITICAL
 
 import pony
 from pony import options
-from pony.utils import current_timestamp
+from pony.utils import current_timestamp, restore_escapes
 
 try: process_id = os.getpid()
 except AttributeError: process_id = 0 # in GAE
@@ -51,9 +51,9 @@ def log(*args, **record):
     level = record.get('severity') or INFO
     if pony_logger.level <= level and root_logger.level <= level and not record.get('type', '').startswith('logging:'):
         prefix = record.get('prefix', '')
-        message = prefix + record.get('text', '')
-        traceback = record.get('traceback')
-        if traceback: message = '\n'.join((message, traceback))
+        if record['type'] == 'exception': message = record['traceback']
+        else: message = prefix + record.get('text', '')
+        message = restore_escapes(message)
         if message: pony_logger.log(level, message)
     if LOG_TO_SQLITE:
         record['timestamp'] = current_timestamp()
