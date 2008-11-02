@@ -3,6 +3,7 @@ import re, threading, inspect, warnings, urllib
 from itertools import izip
 from operator import itemgetter
 
+import pony
 from pony.httputils import split_url
 from pony.autoreload import on_reload
 
@@ -176,7 +177,8 @@ class Route(object):
         try:
             for route, _, _ in get_routes(self.path, qdict, self.host, self.port):
                 if url_map == get_url_map(route):
-                    warnings.warn('Url path already in use (old route was removed): %s' % route.url)
+                    if pony.MODE != 'INTERACTIVE':
+                        warnings.warn('Url path already in use (old route was removed): %s' % route.url)
                     _remove(route)
             d, list1, list2 = registry
             for is_param, x in self.parsed_path:
