@@ -343,7 +343,7 @@ def application(environ, start_response):
             status = '500 Internal Server Error'
             headers = {'Content-Type': 'text/html; charset=UTF-8'}
             result = format_exc(autoreload.reloading_exception)
-            local.response.postprocess(result).encode('utf8')
+            result = local.response.postprocess(result).encode('utf8')
         else:
             try:
                 try:
