@@ -1,4 +1,4 @@
-import re, os, os.path, sys, time, datetime
+import re, os, os.path, sys, time, datetime, types
 
 from itertools import imap, ifilter
 from operator import itemgetter
@@ -276,5 +276,9 @@ def parse_expr(s, pos=0):
 def tostring(x):
     if isinstance(x, basestring): return x
     if hasattr(x, '__unicode__'): return unicode(x)
-    return str(x)
-        
+    try: return str(x)
+    except: pass
+    try: return repr(x)
+    except: pass
+    if type(x) == types.InstanceType: return '<%s instance at 0x%X>' % (x.__class__.__name__)
+    return '<%s object at 0x%X>' % (x.__class__.__name__)
