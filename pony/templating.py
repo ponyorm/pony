@@ -247,14 +247,14 @@ def lazy(func):
     func.__lazy__ = True
     return func
 
-def err(text, end, length=30):
+def err(text, end, length=50):
     start = end - length
     if start > 0: return text[start:end]
     return text[:end]
 
 class ParseError(Exception):
     def __init__(self, message, text, pos):
-        Exception.__init__(self, '%s: %s' % (message, err(text, pos)))
+        Exception.__init__(self, '%s: %r' % (message, err(text, pos)))
         self.message = message
         self.text = text
         self.pos = pos
