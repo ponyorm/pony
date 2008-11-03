@@ -76,7 +76,6 @@ def use_autoreload():
                         # Запоминаем traceback так что мы можем отобразить его
                         # на веб-странице позднее, когда поступит какой-либо HTTP запрос
                         reloading_exception = sys.exc_info()
-                        traceback.print_exc()
                     else: reloading_exception = None
                     break
             time.sleep(1)
