@@ -49,10 +49,15 @@ def log(*args, **record):
         value = record.get(field)
         # if isinstance(value, str): record[field] = value.decode('utf-8', 'replace')
     level = record.get('severity') or INFO
-    if pony_logger.level <= level and root_logger.level <= level and not record.get('type', '').startswith('logging:'):
+    type = record.get('type', '')
+    if pony_logger.level <= level and root_logger.level <= level and not type.startswith('logging:'):
         prefix = record.get('prefix', '')
-        if record['type'] == 'exception': message = record['traceback']
-        else: message = prefix + record.get('text', '')
+        text = record.get('text', '')
+        if type != 'exception': message = prefix + text
+        else:
+            message = record['traceback']
+            if text.startswith('SyntaxError: '):
+                message = message.decode('utf-8', 'replace').encode('cp1251')
         message = restore_escapes(message)
         if message: pony_logger.log(level, message)
     if LOG_TO_SQLITE:
