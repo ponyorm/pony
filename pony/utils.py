@@ -300,4 +300,4 @@ def pos2linenum (offset_array, pos):
         offset = pos
     else:
         offset = pos - offset_array[line - 1]
-    return line, offset
+    return line + 1, offset
