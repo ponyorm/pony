@@ -371,8 +371,7 @@ command_re = re.compile(r"""
     
 def parse_command(text, start, pos, name):
     exprlist = None
-    if text[pos] == '(':
-        exprlist, pos = parse_exprlist(text, pos+1)
+    if text[pos] == '(': exprlist, pos = parse_exprlist(text, pos+1)
     markup_args = []
     while True:
         match = command_re.match(text, pos)
@@ -900,8 +899,7 @@ def compile_html_template(source):
 
 template_string_cache = {}
 
-def markup_from_string(str_cls, s,
-                         encoding=None, keep_indent=False, caching=True):
+def markup_from_string(str_cls, s, encoding=None, keep_indent=False, caching=True):
     if caching:
         try: return template_string_cache[s]
         except KeyError: pass
@@ -950,8 +948,7 @@ def markup_from_file_i18n(str_cls, filename, encoding=None):
             except OSError, IOError: pass
     return markup_from_file(str_cls, filename, encoding)
 
-def _template(str_cls, default_ext,
-              text=None, filename=None, globals=None, locals=None, encoding=None, keep_indent=None):
+def _template(str_cls, default_ext, text=None, filename=None, globals=None, locals=None, encoding=None, keep_indent=None):
     if text is not None and filename is not None: raise TypeError(
         "template function cannot accept both 'text' and 'filename' parameters at the same time")
     if text is None:
