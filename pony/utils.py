@@ -1,6 +1,6 @@
 import re, os, os.path, sys, time, datetime, types
 
-from itertools import imap, ifilter
+from itertools import imap, ifilter, izip
 from operator import itemgetter
 from inspect import isfunction
 from time import strptime
@@ -8,6 +8,8 @@ from os import urandom
 from codecs import BOM_UTF8, BOM_LE, BOM_BE
 from locale import getpreferredencoding
 from linecache import getlines
+from bisect import bisect
+import string
 
 import pony
 from pony import options
@@ -282,3 +284,21 @@ def tostring(x):
     except: pass
     if type(x) == types.InstanceType: return '<%s instance at 0x%X>' % (x.__class__.__name__)
     return '<%s object at 0x%X>' % (x.__class__.__name__)
+
+def offsets_of_lines(s):
+    offset_array = []
+    si = -1
+    try:
+        while True:
+            si = string.index(s, '\n', si + 1)
+            offset_array.append(si)
+    except ValueError: pass
+    return offset_array
+
+def pos2linenum (offset_array, pos):
+    line = bisect(offset_array, pos)
+    if line == 0:
+        offset = pos
+    else:
+        offset = pos - offset_array[line - 1]
+    return line, offset
