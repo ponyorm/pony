@@ -6,6 +6,7 @@ use_autoreload()
 def index():
     a = http['a']
     b = http['b']
+    c = http['a', 'b']
     return html("""
     <form method="POST">
       <p><input type="text" name="a">
@@ -13,7 +14,8 @@ def index():
       <p><input type="submit" value="send">
     </form>
     <p>a = $a
-    <p>b = $b  
+    <p>b = $b
+    <p>c = $c
     """)
 
 http.start()

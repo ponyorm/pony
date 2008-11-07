@@ -487,8 +487,10 @@ class Http(object):
         local.request.languages = local.request._get_languages()
     lang = property(get_lang, set_lang)
 
-    def __getitem__(self, key):
-        return local.request.fields.getfirst(key)
+    def __getitem__(self, x):
+        getfirst = local.request.fields.getfirst
+        if isinstance(x, basestring): return getfirst(x)
+        return tuple(getfirst(key) for key in x)
 
     class _Params(object):
         def __getattr__(self, attr): return local.request.params.get(attr)
