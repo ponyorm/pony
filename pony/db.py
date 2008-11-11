@@ -187,8 +187,9 @@ class Database(object):
             row_class = type("row", (tuple,), {})
             for i, column_info in enumerate(cursor.description):
                 column_name = column_info[0]
-                if is_ident(column_name) and not hasattr(tuple, column_name):
-                    setattr(row_class, column_name, property(itemgetter(i)))
+                if not is_ident(column_name): continue
+                if hasattr(tuple, column_name) and column_name.startswith('__'): continue
+                setattr(row_class, column_name, property(itemgetter(i)))
             result = [ row_class(row) for row in result ]
         return result
     def get(self, sql, globals=None, locals=None):
