@@ -1,7 +1,9 @@
 import re, sys, threading
 
+from operator import itemgetter
+
 from pony import options
-from pony.utils import import_module, parse_expr
+from pony.utils import import_module, parse_expr, is_ident
 from pony.sqlsymbols import *
 
 class DBException(Exception):
@@ -181,7 +183,13 @@ class Database(object):
         result = cursor.fetchmany(options.MAX_ROWS_COUNT)
         if cursor.fetchone() is not None: raise TooManyRowsFound
         if len(cursor.description) == 1: result = [ row[0] for row in result ]
-        elif type(result) != list: result = list(result)
+        else:
+            row_class = type("row", (tuple,), {})
+            for i, column_info in enumerate(cursor.description):
+                column_name = column_info[0]
+                if is_ident(column_name) and not hasattr(tuple, column_name):
+                    setattr(row_class, column_name, property(itemgetter(i)))
+            result = [ row_class(row) for row in result ]
         return result
     def get(self, sql, globals=None, locals=None):
         if globals is None:
