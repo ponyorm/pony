@@ -165,7 +165,7 @@ def url(func, *args, **keyargs):
         try: url = routing.build_url(route, keyparams, indexparams, host, port, script_name)
         except routing.PathError: pass
         else: break
-    else: raise PathError('Suitable url path for %s() not found' % func.__name__)
+    else: raise routing.PathError('Suitable url path for %s() not found' % func.__name__)
     if len(routing.url_cache) > 4000: routing.url_cache.clear()
     routing.url_cache[key] = url
     return url
