@@ -33,9 +33,9 @@ form.pony .radiobutton { margin: 0.3em 0; }
 form.pony .value { padding-left: 0.5em; *padding-left: 0.2em; }
 form.pony .buttons { margin: 0.2em 0; }
 
-form.pony tr.composite-field table th
+form.pony tr.composite-field-row table th
 {
     padding: 0 0.5em 0.1em 0;
     text-align: center;
 }
-form.pony tr.composite-field table td { padding: 0 0.5em 0 0; }
+form.pony tr.composite-field-row table td { padding: 0 0.5em 0 0; }

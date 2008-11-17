@@ -215,7 +215,7 @@ class Form(object):
     def table(self):
         result = []
         for f in self.fields:
-            classes = f.__class__.__name__.lower() + '-field'
+            classes = f.__class__.__name__.lower() + '-field-row'
             if f.error_text: classes += ' has-error'
             result.extend((Html('\n<tr class="%s">\n<th>' % classes),
                            f.label, Html('</th>\n<td>'), f.tag))
@@ -296,7 +296,8 @@ class HtmlField(object):
     def __unicode__(self):
         value = self.html_value
         if value is None: value = ''
-        return htmltag('input', self.attrs, name=self.name, value=value, type=self.HTML_TYPE)
+        return htmltag('input', self.attrs, name=self.name, value=value, type=self.HTML_TYPE,
+                       _class_='%s-field' % self.__class__.__name__.lower())
     tag = html = property(__unicode__)
     def __str__(self):
         return StrHtml(unicode(self).encode('ascii', 'xmlcharrefreplace'))

@@ -1,1 +1,1 @@
-$(function(){$('tr.datepicker-field>td>input').datepicker({ firstDay: 1 })})
+$(function(){$('input.datepicker-field').datepicker({ firstDay: 1 })})
