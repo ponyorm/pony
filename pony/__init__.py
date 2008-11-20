@@ -2,7 +2,7 @@ import sys, time, threading, random
 from os.path import dirname
 from itertools import count
 
-from pony.utils import decorator
+from pony.utils import decorator, tostring
 
 uid = str(random.randint(1, 1000000))
 
@@ -84,10 +84,7 @@ def grab_stdout(f):
             top_stream = local.output_streams.pop() 
             assert top_stream is output_stream
         if result is None: return output_stream
-        if not isinstance(result, basestring):
-            if hasattr(result, '__unicode__'): result = unicode(result)
-            else: result = str(result)
-        return (result,)
+        return (tostring(result),)
     return new_function
 
 ################################################################################
