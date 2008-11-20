@@ -88,7 +88,7 @@ def adapt_sql(sql, paramstyle):
             try: expr = parse_expr(sql, i+1)
             except ValueError:
                 raise # TODO
-            pos = i + len(expr) + 1
+            pos = i+1 + len(expr)
             if expr.endswith(';'): expr = expr[:-1]
             compile(expr, '<?>', 'eval')  # expr correction check
             if paramstyle == 'qmark':
