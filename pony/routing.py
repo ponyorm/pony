@@ -22,10 +22,17 @@ class Route(object):
     def __init__(self, func, url, host, port, redirect, headers):
         url_cache.clear()
         self.func = func
-        if not hasattr(func, 'argspec'):
-            func.argspec = self.getargspec(func)
+        argspec = getattr(func, 'argspec', None)
+        if argspec is None:
+            argspec = func.argspec = self.getargspec(func)
             func.dummy_func = self.create_dummy_func(func)
-        self.url = url
+        if url is not None: self.url = url
+        elif argspec[1] is not None: raise TypeError('Not supported: *%s' % argspec[1])
+        elif argspec[2] is not None: raise TypeError('Not supported: **%s' % argspec[2])
+        else:
+            url = func.__name__
+            if argspec[0]:
+                url = '?'.join((url, '&'.join('=$'.join((argname, argname)) for argname in argspec[0])))
         if host is not None:
             if not isinstance(host, basestring): raise TypeError('Host must be string')
             if ':' in host:

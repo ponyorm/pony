@@ -456,9 +456,8 @@ class Http(object):
     @staticmethod
     @decorator_with_params
     def __call__(func, url=None, host=None, port=None, redirect=False, **headers):
-        real_url = url is None and func.__name__ or url
         headers = dict([ (name.replace('_', '-').title(), value) for name, value in headers.items() ])
-        routing.Route(func, real_url, host, port, redirect, headers)
+        routing.Route(func, url, host, port, redirect, headers)
         return func
 
     @property
