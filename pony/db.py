@@ -38,7 +38,7 @@ class TooManyRowsFound(DBException): pass
 
 class Warning(DBException): pass
 class Error(DBException): pass
-class   InrefaceError(Error): pass
+class   InterfaceError(Error): pass
 class   DatabaseError(Error): pass
 class     DataError(DatabaseError): pass
 class     OperationalError(DatabaseError): pass
