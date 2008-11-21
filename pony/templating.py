@@ -3,7 +3,7 @@ import itertools, sys, os.path, threading, inspect, re, weakref, textwrap, copy_
 import pony
 from pony import grab_stdout
 from pony import options, i18n
-from pony.utils import read_text_file, is_ident, decorator, decorator_with_params, get_mtime
+from pony.utils import read_text_file, is_ident, decorator, decorator_with_params, get_mtime, parse_expr
 
 try: from pony import _templating
 except ImportError: pass
@@ -352,8 +352,11 @@ def parse_markup(text, start_pos=0, nested=False):
             cmd_name = match.group(7)
             if cmd_name is not None and cmd_name.startswith('.'):
                 if not is_ident(cmd_name[1:]): raise ParseError('Invalid method call', text, start)
-            if i == 7: # $expression.path
-                result.append((start, end, None, cmd_name, None))
+            if i == 7: # $expression
+                expr = parse_expr(text, start+1)
+                end = start+1 + len(expr)
+                if expr.endswith(';'): expr = expr[:-1]
+                result.append((start, end, None, expr, None))
             elif i == 8: # $function.call(...)
                 command, end = parse_command(text, match.start(), end-1, cmd_name)
                 result.append(command)
