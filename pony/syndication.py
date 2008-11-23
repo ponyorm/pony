@@ -56,8 +56,7 @@ class Feed(object):
     def __str__(self):
         return tostring(self.atom())
     def atom(self, pretty_print=True):
-        if pretty_print: indent = '\n  '
-        else: indent = ''     
+        indent = pretty_print and '\n  ' or ''
         feed = Element('{http://www.w3.org/2005/Atom}feed', **nsmap_keyargs)
         feed.text = indent
         link = SubElement(feed, '{http://www.w3.org/2005/Atom}link')
@@ -90,11 +89,11 @@ class Feed(object):
             set_atom_text(rights, self.rights)
             rights.tail = indent
         for entry in self.entries:
-            entry = entry.atom()
+            entry = entry.atom(pretty_print)
             entry[-1].tail = indent
             feed.append(entry)
             entry.tail = indent
-        feed[-1].tail = indent and '\n' or ''
+        feed[-1].tail = pretty_print and '\n' or ''
         return feed
 
 class Entry(object):
@@ -113,8 +112,7 @@ class Entry(object):
     def __str__(self):
         return tostring(self.atom())
     def atom(self, pretty_print=True):
-        if pretty_print: indent = '\n    '
-        else: indent = ''
+        indent = pretty_print and '\n    ' or ''
         entry = Element('{http://www.w3.org/2005/Atom}entry', **nsmap_keyargs)
         entry.text = indent
         link = SubElement(entry, '{http://www.w3.org/2005/Atom}link')
@@ -154,5 +152,5 @@ class Entry(object):
             published = SubElement(entry, '{http://www.w3.org/2005/Atom}published')
             published.text = atom_date(self.published)
             published.tail = indent
-        entry[-1].tail = indent and '\n' or ''
+        entry[-1].tail = pretty_print and '\n' or ''
         return entry
