@@ -212,6 +212,9 @@ class Form(object):
             if hidden: result.append(hidden)
         return Html('\n') + Html('\n').join(result)
     @property
+    def footer(self):
+        return Html('</form>')
+    @property
     def table(self):
         result = []
         for f in self.fields:
@@ -240,7 +243,9 @@ class Form(object):
                           Html('\n<table>'),
                           self.table,
                           buttons,
-                          Html('\n</table></form>\n')])
+                          Html('\n</table>\n'),
+                          self.footer,
+                          Html('\n')])
     html = property(__unicode__)
 Form.ValidationError = ValidationError
 Form.NotProcessed = FormNotProcessed
