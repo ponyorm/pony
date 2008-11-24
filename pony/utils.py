@@ -125,7 +125,9 @@ def restore_escapes(s, console_encoding=None, source_encoding=None):
     if source_encoding is None:
         source_encoding = options.SOURCE_ENCODING or getpreferredencoding()
     if console_encoding is None:
-        console_encoding = ( getattr(sys.stderr, 'encoding', None)
+        try: console_encoding = getattr(sys.stderr, 'encoding', None)
+        except: console_encoding = None  # workaround for PythonWin win32ui.error "The MFC object has died."
+        console_encoding = ( console_encoding
                              or getattr(pony.real_stdout, 'encoding', None)
                              or options.CONSOLE_ENCODING
                              or getpreferredencoding() )
