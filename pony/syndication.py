@@ -18,7 +18,7 @@ def utc(dt):
     return dt.replace(tzinfo=None) - dt.utcoffset()
 
 def atom_date(date):
-    return utc(date).isoformat() + 'Z'
+    return utc(date).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 def rss2_date(date):
     return rfc822.formatdate(time.mktime(utc(date).timetuple()))
