@@ -83,8 +83,8 @@ class Feed(object):
 
         feed = Element('{http://www.w3.org/2005/Atom}feed', **nsmap_keyargs)
         feed.text = indent
-        if self.base: feed.set('base', self.base)
-        if self.language: feed.set('lang', self.language)
+        if self.base: feed.set('{http://www.w3.org/XML/1998/namespace}base', self.base)
+        if self.language: feed.set('{http://www.w3.org/XML/1998/namespace}lang', self.language)
 
         title = SubElement(feed, '{http://www.w3.org/2005/Atom}title')
         set_atom_text(title, self.title)
@@ -186,8 +186,8 @@ class Entry(object):
 
         entry = Element('{http://www.w3.org/2005/Atom}entry', **nsmap_keyargs)
         entry.text = indent
-        if self.base: entry.set('base', self.base)
-        if self.language: entry.set('lang', self.language)
+        if self.base: entry.set('{http://www.w3.org/XML/1998/namespace}base', self.base)
+        if self.language: entry.set('{http://www.w3.org/XML/1998/namespace}lang', self.language)
 
         link = SubElement(entry, '{http://www.w3.org/2005/Atom}link', href=self.link)
 
