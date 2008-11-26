@@ -43,13 +43,13 @@ def rss2_author(author):
 
 def set_atom_text(element, text):
     if isinstance(text, (Html, StrHtml)):
-        element.set('{http://www.w3.org/2005/Atom}type', 'html')
+        element.set('type', 'html')
         element.text = text[:]
     elif isinstance(text, basestring):
-        element.set('{http://www.w3.org/2005/Atom}type', 'text')
+        element.set('type', 'text')
         element.text = text
     elif hasattr(text, 'makeelement') and getattr(text, 'tag') == '{http://www.w3.org/1999/xhtml}div':
-        element.set('{http://www.w3.org/2005/Atom}type', 'xhtml')
+        element.set('type', 'xhtml')
         element.append(text)
     else: raise TypeError('Inappropriate text value: %r' % text)
 
@@ -83,8 +83,8 @@ class Feed(object):
 
         feed = Element('{http://www.w3.org/2005/Atom}feed', **nsmap_keyargs)
         feed.text = indent
-        if self.base: feed.set('{http://www.w3.org/XML/1998/namespace}base', self.base)
-        if self.language: feed.set('{http://www.w3.org/XML/1998/namespace}lang', self.language)
+        if self.base: feed.set('base', self.base)
+        if self.language: feed.set('lang', self.language)
 
         title = SubElement(feed, '{http://www.w3.org/2005/Atom}title')
         set_atom_text(title, self.title)
@@ -93,13 +93,10 @@ class Feed(object):
             subtitle = SubElement(feed, '{http://www.w3.org/2005/Atom}summary')
             set_atom_text(subtitle, self.subtitle)
 
-        link = SubElement(feed, '{http://www.w3.org/2005/Atom}link')
-        link.set('{http://www.w3.org/2005/Atom}href', self.link)
+        link = SubElement(feed, '{http://www.w3.org/2005/Atom}link', href=self.link)
 
         if self.feed_link:
-            feed_link = SubElement(feed, '{http://www.w3.org/2005/Atom}link')
-            feed_link.set('{http://www.w3.org/2005/Atom}rel', 'self')
-            feed_link.set('{http://www.w3.org/2005/Atom}href', self.feed_link)
+            feed_link = SubElement(feed, '{http://www.w3.org/2005/Atom}link', rel='self', href=self.feed_link)
 
         updated = SubElement(feed, '{http://www.w3.org/2005/Atom}updated')
         updated.text = atom_date(self.updated)
@@ -189,11 +186,10 @@ class Entry(object):
 
         entry = Element('{http://www.w3.org/2005/Atom}entry', **nsmap_keyargs)
         entry.text = indent
-        if self.base: entry.set('{http://www.w3.org/XML/1998/namespace}base', self.base)
-        if self.language: entry.set('{http://www.w3.org/XML/1998/namespace}lang', self.language)
+        if self.base: entry.set('base', self.base)
+        if self.language: entry.set('lang', self.language)
 
-        link = SubElement(entry, '{http://www.w3.org/2005/Atom}link')
-        link.set('{http://www.w3.org/2005/Atom}href', self.link)
+        link = SubElement(entry, '{http://www.w3.org/2005/Atom}link', href=self.link)
 
         title = SubElement(entry, '{http://www.w3.org/2005/Atom}title')
         set_atom_text(title, self.title)
@@ -214,11 +210,8 @@ class Entry(object):
 
         if self.enclosure:
             href, media_type, length = self.enclosure
-            enclosure = SubElement(entry, '{http://www.w3.org/2005/Atom}link')
-            enclosure.set('{http://www.w3.org/2005/Atom}rel', 'enclosure')
-            enclosure.set('{http://www.w3.org/2005/Atom}href', href)
-            enclosure.set('{http://www.w3.org/2005/Atom}type', media_type)
-            enclosure.set('{http://www.w3.org/2005/Atom}length', length)
+            enclosure = SubElement(entry, '{http://www.w3.org/2005/Atom}link',
+                                   rel='enclosure', href=href, type=media_type, length=length)
 
         if self.author:
             author = atom_author(self.author)
