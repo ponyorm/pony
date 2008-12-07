@@ -68,7 +68,7 @@ def postprocess(content, stylesheets, component_stylesheets, scripts):
         match = element_re.search(head)
         if match is not None and match.group(2).lower() == 'head': raise _UsePlaceholders
         if css_re.search(head) is not None: base_css = ''
-        head = StrHtml('<head>\n%s%s%s%s</head>') % (base_css, head, component_css, scripts)
+        head = StrHtml('<head>\n%s%s%s%s</head>') % (base_css, component_css, scripts, head)
 
     except _UsePlaceholders:
         head = head.replace(options.BASE_STYLESHEETS_PLACEHOLDER, base_css, 1)
