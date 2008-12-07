@@ -1,7 +1,7 @@
 import pony
 
 from pony.utils import decorator_with_params, tostring
-from pony.templating import htmltag, Html, printhtml
+from pony.templating import htmltag, Html, printhtml, htmljoin
 from pony.web import local, http, url
 from pony.postprocessing import css_link, script_link
 
@@ -35,10 +35,9 @@ link_funcs = dict(
     jquery=jquery_link
     )
 
-link_template = Html(u'<a href="%s">%s</a>')
-
 def link(*args, **keyargs):
     if not args: raise TypeError('link() function requires at least one positional argument')
+    attrs = None
     first = args[0]
     if hasattr(first, 'routes'):
         func = first
@@ -49,6 +48,14 @@ def link(*args, **keyargs):
         description = tostring(first)
         func = args[1]
         args = args[2:]
+    elif len(args) > 2 and hasattr(args[2], 'routes'):
+        attrs = args[1]
+        if isinstance(attrs, basestring): attrs = {'class': attrs}
+        elif not hasattr(attrs, 'items'):
+            raise TypeError('Invalid second argument of link() function: %r' % second)
+        description = tostring(first)
+        func = args[2]
+        args = args[3:]
     elif isinstance(first, basestring):
         func = link_funcs.get(first)
         if func is not None: return func(*args[1:], **keyargs)
@@ -62,7 +69,7 @@ def link(*args, **keyargs):
         raise TypeError('Invalid arguments of link() function')
         
     href = url(func, *args, **keyargs)
-    return link_template % (href, description)
+    return htmljoin([htmltag('a', attrs, href=href), description, Html('</a>')])
 
 img_template = Html(u'<img src="%s" title="%s" alt="%s">')
 
