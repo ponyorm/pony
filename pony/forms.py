@@ -129,6 +129,13 @@ class Form(object):
             for browser in http_303_incompatible_browsers:
                 if browser in user_agent: raise http.Redirect('.', status='302 Found')
             raise http.Redirect(request.full_url, status='303 See Other')
+    @property
+    def data(self):
+        result = {}
+        for f in self.hidden_fields:
+            if f.name not in ('_f', '_t'): result[f.name] = f.value
+        for f in self.fields: result[f.name] = f.value
+        return result
     def clear(self):
         object.__setattr__(self, '_cleared', True)
         object.__setattr__(self, 'is_submitted', False)
