@@ -1,12 +1,12 @@
-import re, sys, inspect, keyword #, cgitb, cStringIO
+import re, sys, inspect, keyword, linecache, os.path #, cgitb, cStringIO
 
 from repr import Repr
 from itertools import izip, count
 
 import pony
 from pony import options, utils
-from pony.utils import detect_source_encoding, is_ident, tostring
-from pony.templating import html, cycle, quote, htmljoin, Html, StrHtml
+from pony.utils import detect_source_encoding, is_ident, tostring, pos2lineno, getlines, getlines2
+from pony.templating import html, cycle, quote, htmljoin, Html, StrHtml, ParseError
 
 def restore_escapes(s):
     s = tostring(s)
@@ -60,29 +60,55 @@ repr2 = aRepr2.repr
 
 class Record(object):
     def __init__(self, **keyargs):
+        self.frame = None
+        self.func = self.module = self.filename = self.fname = '<?>'
+        self.moduletype = 'user'
         self.__dict__.update(keyargs)
+        filename = self.filename
+        if filename and filename != '<?>': self.fname = os.path.split(filename)[1]
 
 def format_exc(info=None, context=5):
     if info: exc_type, exc_value, tb = info
     else: exc_type, exc_value, tb = sys.exc_info()
-    exc_value = restore_escapes(exc_value)
-    while tb.tb_next is not None:
-        module = tb.tb_frame.f_globals.get('__name__') or '?'
-        if module == 'pony' or module.startswith('pony.'): tb = tb.tb_next
-        else: break
-    if exc_type is not SyntaxError: frames = inspect.getinnerframes(tb, context)
-    else: frames = []
     try:
+        exc_msg = restore_escapes(exc_value)
+        while tb.tb_next is not None:
+            module = tb.tb_frame.f_globals.get('__name__') or '?'
+            if module == 'pony' or module.startswith('pony.'): tb = tb.tb_next
+            else: break
         records = []
-        for frame, file, lnum, func, lines, index in frames:
-            if index is None: continue
-            source_encoding = detect_source_encoding(file)
-            lines = [ format_line(frame, line.decode(source_encoding, 'replace')) for line in lines ]
-            record = Record(frame=frame, file=file, lnum=lnum, func=func, lines=lines, index=index)
-            module = record.module = frame.f_globals.get('__name__') or '?'
-            if module == 'pony' or module.startswith('pony.'): record.moduletype = 'system'
-            else: record.moduletype = 'user'
-            records.append(record)
+        if issubclass(exc_type, SyntaxError) and exc_value.filename and exc_value.filename != '<?>':
+            lines, index = getlines2(exc_value.filename, exc_value.lineno, context=5)
+            source_encoding = detect_source_encoding(exc_value.filename)
+            lines = [ format_line(None, line.decode(source_encoding, 'replace')) for line in lines ]
+            record = Record(filename=exc_value.filename, lineno=exc_value.lineno, lines=lines, index=index)
+            records = [ record ]
+        else:
+            frames = inspect.getinnerframes(tb, context)
+            prev_frame = None
+            for frame, filename, lineno, func, lines, index in frames:
+                if index is None: continue
+                source_encoding = detect_source_encoding(filename)
+                lines = [ format_line(frame, line.decode(source_encoding, 'replace')) for line in lines ]
+                record = Record(frame=frame, filename=filename, lineno=lineno, func=func, lines=lines, index=index)
+                module = record.module = frame.f_globals.get('__name__') or '?'
+                if module == 'pony' or module.startswith('pony.'): record.moduletype = 'system'
+                else: record.moduletype = 'user'
+                records.append(record)
+                if module != 'pony.templating': pass
+                elif func in ('_eval', '_compile'):
+                    element = prev_frame.f_locals['self']  # instance of SyntaxElement subclass
+                    text, offsets = element.source
+                    lineno, offset = pos2lineno(element.start, offsets)
+                    lines, index = getlines(text, offsets, lineno, context=5)
+                    record = Record(lineno=lineno, lines=lines, index=index)
+                    records.append(record)
+                prev_frame = frame
+            if issubclass(exc_type, ParseError):
+                text, offsets = exc_value.source
+                lines, index = getlines(text, offsets, exc_value.lineno, context=5)
+                record = Record(lineno=exc_value.lineno, lines=lines, index=index)
+                records.append(record)
         return html()
     finally: del tb
 
@@ -112,8 +138,10 @@ str_html = StrHtml('<span class="string">%s</span>')
 __undefined__ = object()
 
 def format_line(frame, line):
-    f_locals = frame.f_locals
-    f_globals = frame.f_globals
+    if frame is not None:
+        f_locals = frame.f_locals
+        f_globals = frame.f_globals
+    else: f_locals = f_globals = {}
     result = []
     pos = 0
     end = len(line)

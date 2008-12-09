@@ -2,19 +2,26 @@
 <script src="/pony/static/jquery/jquery.js"></script>
 <script src="/pony/static/js/htmltb.js"></script>
 <h1>Oops...</h1>
-<p class="error"><strong>$exc_type.__name__:</strong> $exc_value</p>
+<p class="error"><strong>$exc_type.__name__:</strong> $exc_msg</p>
 <ul id="menu">
   <li id="system-show"><a href="">Show system frames</a></li>
   <li id="system-hide"><a href="">Hide system frames</a></li>
 </ul>
 <dl class="traceback">
 $for(record in records) {
-  <dt class="$record.moduletype">Module <span class="module highlight" title="$record.file">$record.module</span>, line&nbsp;$record.lnum, function&nbsp;<span class="highlight">$record.func</span></dt>
+  <dt class="$record.moduletype">
+  $if(record.module and record.module != '<?>') {
+    Module <span class="module highlight" title="$record.filename">$record.module</span>,
+    line&nbsp;$record.lineno, function&nbsp;<span class="highlight">$record.func</span>
+  } $else {
+    File <span class="filename highlight" title="$record.filename">$record.fname</span>
+  }
+  </dt>
   <dd class="$record.moduletype">
     <table class="source">
-    $for(line, lnum in izip(record.lines, count(record.lnum-record.index))){
-      <tr class="$if(lnum==record.lnum){current}$else{$cycle{odd}{even}}">
-          <th class="number">$lnum$if(lnum==record.lnum){&nbsp;>&nbsp;}</th>
+    $for(line, lineno in izip(record.lines, count(record.lineno-record.index))){
+      <tr class="$if(lineno==record.lineno){current}$else{$cycle{odd}{even}}">
+          <th class="number">$lineno$if(lineno==record.lineno){&nbsp;>&nbsp;}</th>
           <td class="line">$if(line and not line.isspace()){$line}$else{&nbsp;}</td>
       </tr>
     }

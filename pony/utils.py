@@ -1,4 +1,4 @@
-import re, os, os.path, sys, time, datetime, types
+import re, os, os.path, sys, time, datetime, types, linecache
 
 from itertools import imap, ifilter
 from operator import itemgetter
@@ -7,7 +7,6 @@ from time import strptime
 from os import urandom
 from codecs import BOM_UTF8, BOM_LE, BOM_BE
 from locale import getpreferredencoding
-from linecache import getlines
 from bisect import bisect
 
 import pony
@@ -104,7 +103,7 @@ def get_mtime(filename):
 coding_re = re.compile(r'coding[:=]\s*([-\w.]+)')
 
 def detect_source_encoding(filename):
-    for i, line in enumerate(getlines(filename)):
+    for i, line in enumerate(linecache.getlines(filename)):
         if i == 0 and line.startswith(BOM_UTF8): return 'utf-8'
         if not line.lstrip().startswith('#'): continue
         match = coding_re.search(line)
@@ -288,20 +287,43 @@ def tostring(x):
     if type(x) == types.InstanceType: return '<%s instance at 0x%X>' % (x.__class__.__name__)
     return '<%s object at 0x%X>' % (x.__class__.__name__)
 
-def offsets_of_lines(s):
-    offset_array = []
+def make_offsets(s):
+    offsets = [ 0 ]
     si = -1
     try:
         while True:
             si = s.index('\n', si + 1)
-            offset_array.append(si)
+            offsets.append(si + 1)
     except ValueError: pass
-    return offset_array
+    offsets.append(len(s))
+    return offsets
 
-def pos2linenum (offset_array, pos):
-    line = bisect(offset_array, pos)
-    if line == 0:
-        offset = pos
-    else:
-        offset = pos - offset_array[line - 1]
-    return line + 1, offset
+def pos2lineno(pos, offsets):
+    line = bisect(offsets, pos, 0, len(offsets)-1)
+    if line == 1: offset = pos
+    else: offset = pos - offsets[line - 1]
+    return line, offset
+
+def getline(text, offsets, lineno):
+    return text[offsets[lineno-1]:offsets[lineno]]
+
+def getlines(text, offsets, lineno, context=1):
+    if context <= 0: return [], None
+    start = max(0, lineno - 1 - context//2)
+    end = min(len(offsets)-1, start + context)
+    start = max(0, end - context)
+    lines = []
+    for i in range(start, end): lines.append(text[offsets[i]:offsets[i+1]])
+    index = lineno - 1 - start
+    return lines, index
+
+def getlines2(filename, lineno, context=1):
+    if context <= 0: return [], None
+    lines = linecache.getlines(filename)
+    if not lines: return [], None
+    start = max(0, lineno - 1 - context//2)
+    end = min(len(lines), start + context)
+    start = max(0, end - context)
+    lines = lines[start:start+context]
+    index = lineno - 1 - start
+    return lines, index

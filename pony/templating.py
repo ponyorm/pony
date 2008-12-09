@@ -2,8 +2,8 @@ import itertools, sys, os.path, threading, inspect, re, weakref, textwrap, copy_
 
 import pony
 from pony import grab_stdout
-from pony import options, i18n
-from pony.utils import read_text_file, is_ident, decorator, decorator_with_params, get_mtime, parse_expr
+from pony import options, i18n, utils
+from pony.utils import read_text_file, is_ident, decorator, decorator_with_params, get_mtime, make_offsets, pos2lineno, getline
 
 try: from pony import _templating
 except ImportError: pass
@@ -247,17 +247,21 @@ def lazy(func):
     func.__lazy__ = True
     return func
 
-def err(text, end, length=50):
-    start = end - length
-    if start > 0: return text[start:end]
-    return text[:end]
+def _compile(s):
+    return compile(s, '<?>', 'eval')
+
+def _eval(code, globals, locals):
+    return eval(code, globals, locals)
 
 class ParseError(Exception):
-    def __init__(self, message, text, pos):
-        Exception.__init__(self, '%s: %r' % (message, err(text, pos)))
+    def __init__(self, message, source, pos):
         self.message = message
-        self.text = text
+        self.source = source
         self.pos = pos
+        text, offsets = source[:2]
+        self.lineno, self.offset = pos2lineno(pos, offsets)
+        self.line = getline(text, offsets, self.lineno)
+        Exception.__init__(self, '%s: %s' % (message, self.line))
 
 def joinstrings(list):
     result = []
@@ -297,7 +301,8 @@ main_re = re.compile(r"""
 
 newline_re = re.compile(r'^ *\n')
 
-def parse_markup(text, start_pos=0, nested=False):
+def parse_markup(source, start_pos=0, nested=False):
+    text = source[0]
     def remove_spaces(tree):
         for i in range(3, len(tree)):
             item = tree[i]
@@ -322,7 +327,7 @@ def parse_markup(text, start_pos=0, nested=False):
         match = main_re.search(text, pos)
         if not match:
             if nested or brace_counter:
-                raise ParseError('Unexpected end of text', text, len(text))
+                raise ParseError('Unexpected end of text', source, len(text))
             result.append(text[pos:])
             end = len(text)
             result[1] = end-1
@@ -338,7 +343,7 @@ def parse_markup(text, start_pos=0, nested=False):
                 if nested:
                     result[1] = end-1
                     return remove_spaces(joinstrings(result)), end
-                raise ParseError("Unexpected symbol '}'", text, end)
+                raise ParseError("Unexpected symbol '}'", source, end)
             brace_counter -= 1
             result.append('}')
         elif i == 3: # $$
@@ -346,19 +351,20 @@ def parse_markup(text, start_pos=0, nested=False):
         elif i == 4: # $/* comment */ or $// comment
             pass
         elif i in (5, 6): # $(expression) or ${i18n markup}
-            command, end = parse_command(text, start, end-1, None)
+            command, end = parse_command(source, start, end-1, None)
             result.append(command)
         elif i >= 7:
             cmd_name = match.group(7)
             if cmd_name is not None and cmd_name.startswith('.'):
-                if not is_ident(cmd_name[1:]): raise ParseError('Invalid method call', text, start)
+                if not is_ident(cmd_name[1:]): raise ParseError('Invalid method call', source, start)
             if i == 7: # $expression
-                expr = parse_expr(text, start+1)
+                try: expr = utils.parse_expr(text, start+1)
+                except ValueError: raise ParseError('Invalid Python expression', source, start+1)
                 end = start+1 + len(expr)
                 if expr.endswith(';'): expr = expr[:-1]
                 result.append((start, end, None, expr, None))
             elif i == 8: # $function.call(...)
-                command, end = parse_command(text, match.start(), end-1, cmd_name)
+                command, end = parse_command(source, match.start(), end-1, cmd_name)
                 result.append(command)
         pos = end
 
@@ -372,9 +378,10 @@ command_re = re.compile(r"""
 
 """, re.VERBOSE)
     
-def parse_command(text, start, pos, name):
+def parse_command(source, start, pos, name):
+    text = source[0]
     exprlist = None
-    if text[pos] == '(': exprlist, pos = parse_exprlist(text, pos+1)
+    if text[pos] == '(': exprlist, pos = parse_exprlist(source, pos+1)
     markup_args = []
     while True:
         match = command_re.match(text, pos)
@@ -386,7 +393,7 @@ def parse_command(text, start, pos, name):
         elif i == 1:
             return (start, end, name, exprlist, markup_args), end
         elif i == 2:
-            arg, end = parse_markup(text, end, True)
+            arg, end = parse_markup(source, end, True)
             markup_args.append(arg)
         else: assert False
         pos = end
@@ -408,13 +415,13 @@ exprlist_re = re.compile(r"""
 
     """, re.VERBOSE)
 
-def parse_exprlist(text, pos):
+def parse_exprlist(source, pos):
+    text = source[0]
     result = []
     counter = 1
     while True:
         match = exprlist_re.search(text, pos)
-        if not match:
-            raise ParseError('Unexpected end of text', text, len(text))
+        if not match: raise ParseError('Unexpected end of text', source, len(text))
         start, end = match.span()
         i = match.lastindex
         result.append(text[pos:start])
@@ -435,25 +442,26 @@ class SyntaxElement(object):
     def _raise_unexpected_statement(self, item):
         pos = item[0]
         name = item[2]
-        errpos = self.text.index(name, pos) + len(name)
-        raise ParseError("Unexpected '%s' statement" % name, self.text, errpos)
+        errpos = self.source[0].index(name, pos) + len(name)
+        raise ParseError("Unexpected '%s' statement" % name, self.source, errpos)
     def _check_statement(self, item):
         cmd_name, expr, markup_args = item[2:]
         end_of_expr = markup_args and markup_args[0][0] or self.end
         if cmd_name in ('if', 'elif', 'for'):
-            if not expr: raise ParseError("'%s' statement must contain expression" % cmd_name, self.text, end_of_expr)
+            if not expr: raise ParseError("'%s' statement must contain expression" % cmd_name, self.source, end_of_expr)
         elif cmd_name in ('else', 'sep', 'separator', 'try'):
             if expr is not None: raise ParseError(
-                "'%s' statement must not contains expression" % cmd_name, self.text, end_of_expr)
+                "'%s' statement must not contains expression" % cmd_name, self.source, end_of_expr)
         if not markup_args: raise ParseError(
-            "'%s' statement must contain markup block" % cmd_name, self.text, self.end)
+            "'%s' statement must contain markup block" % cmd_name, self.source, self.end)
         if len(markup_args) > 1: raise ParseError(
-            "'%s' statement must contain exactly one markup block" % cmd_name, self.text, markup_args[1][0])
+            "'%s' statement must contain exactly one markup block" % cmd_name, self.source, markup_args[1][0])
 
 class Markup(SyntaxElement):
-    def __init__(self, text, tree):
+    def __init__(self, source, tree):
         assert isinstance(tree, list)
-        self.text = text
+        text = source[0]
+        self.source = source
         self.empty = text.__class__()
         self.start, self.end = tree[:2]
         self.content = []
@@ -471,10 +479,10 @@ class Markup(SyntaxElement):
                         if self.content: prev = self.content[-1]
                         else: prev = None
                 if cmd_name is None:
-                    if item[3]: self.content.append(ExprElement(text, item))
-                    else: self.content.append(I18nElement(text, item))
+                    if item[3]: self.content.append(ExprElement(source, item))
+                    else: self.content.append(I18nElement(source, item))
                 elif cmd_name == 'if':
-                    self.content.append(IfElement(text, item))
+                    self.content.append(IfElement(source, item))
                 elif cmd_name == 'elif':
                     if not isinstance(prev, IfElement):
                         self._raise_unexpected_statement(item)
@@ -484,13 +492,13 @@ class Markup(SyntaxElement):
                         self._raise_unexpected_statement(item)
                     prev.append_else(item)
                 elif cmd_name == 'for':
-                    self.content.append(ForElement(text, item))
+                    self.content.append(ForElement(source, item))
                 elif cmd_name in ('sep', 'separator'):
                     if not isinstance(prev, ForElement):
                         self._raise_unexpected_statement(item)
                     prev.append_separator(item)
                 elif cmd_name == 'try':
-                    self.content.append(TryElement(text, item))
+                    self.content.append(TryElement(source, item))
                 elif cmd_name == 'except':
                     if not isinstance(prev, TryElement):
                         self._raise_unexpected_statement(item)
@@ -499,7 +507,7 @@ class Markup(SyntaxElement):
                     if not isinstance(prev, FunctionElement):
                         self._raise_unexpected_statement(item)
                     prev.append_method(item)
-                else: self.content.append(FunctionElement(text, item))
+                else: self.content.append(FunctionElement(source, item))
             else: assert False
     def eval(self, globals, locals=None):
         result = []
@@ -509,8 +517,8 @@ class Markup(SyntaxElement):
         return self.empty.join(result)
 
 class IfElement(SyntaxElement):
-    def __init__(self, text, item):
-        self.text = text
+    def __init__(self, source, item):
+        self.source = source
         self.start, self.end = item[:2]
         self.chain = []
         self._append(item)
@@ -525,11 +533,11 @@ class IfElement(SyntaxElement):
         end, expr, markup_args = item[1], item[3], item[4]
         self.end = end
         if expr is None: expr_code = None
-        else: expr_code = compile(expr.lstrip(), '<?>', 'eval')
-        self.chain.append((expr, expr_code, Markup(self.text, markup_args[0])))
+        else: expr_code = _compile(expr.lstrip())
+        self.chain.append((expr, expr_code, Markup(self.source, markup_args[0])))
     def eval(self, globals, locals=None):
         for expr, expr_code, markup in self.chain:
-            if expr is None or eval(expr_code, globals, locals):
+            if expr is None or _eval(expr_code, globals, locals):
                 return markup.eval(globals, locals)
         return ''
 
@@ -557,7 +565,7 @@ var_list_re_2 = re.compile(r"""
 
     """, re.VERBOSE)
 
-def parse_var_list(expr, pos, nested=False):
+def parse_var_list(source, start, expr, pos, nested=False):
     result = []
     errmsg = "Incorrect Python expression inside 'for' statement"
     while True:
@@ -565,25 +573,25 @@ def parse_var_list(expr, pos, nested=False):
         if not match:
             if result and not nested and expr[pos:].isspace():
                 return result
-            raise ParseError(errmsg, expr, len(expr))
+            raise ParseError(errmsg, source, start)
         pos = match.end()
         i = match.lastindex
         if i == 1:
             ident = match.group(1)
             result.append(match.group(1))
         elif i == 2:
-            vars, pos = parse_var_list(expr, pos, True)
+            vars, pos = parse_var_list(source, start, expr, pos, True)
             result.extend(vars)
         else: assert False
         match = var_list_re_2.match(expr, pos)
-        if not match: raise ParseError(errmsg, expr, len(expr))
+        if not match: raise ParseError(errmsg, source, start)
         pos = match.end()
         i = match.lastindex
         if i == 1:
-            if not nested: raise ParseError("Unexpected ')'", expr, pos)
+            if not nested: raise ParseError("Unexpected ')'", source, start)
             return result, pos
         elif i == 2:
-            if nested: raise ParseError("')' expected", expr, pos)
+            if nested: raise ParseError("')' expected. Got: 'in'", source, start)
             return result
         elif i == 3: pass
         else: assert False
@@ -598,49 +606,49 @@ for_re = re.compile(r"""
 
 ident_re = re.compile(r'[A-Za-z_]\w*')
 
-def parse_for(expr):
-    elements = []
-    while True:
-        for match in for_re.finditer(expr):
-            if match.group() == ';':
-                elements.append(expr[:match.start()])
-                expr = expr[match.end():]
-                break
-        else: elements.append(expr); break
-    expr = elements[0]
-    assignments = []
-    for s in elements[1:]:
-        if '=' not in s: raise ParseError('Invalid assignment', s, 0)
-        a, b = s.split('=', 1)
-        var_names = ident_re.findall(a)
-        compile(b.lstrip(), '<?>', 'eval') # check; can raise exception
-        code = compile(s.lstrip(), '<?>', 'single')
-        assignments.append((var_names, code))
-    return expr, assignments
-
 class ForElement(SyntaxElement):
-    def __init__(self, text, item):
-        self.text = text
+    def __init__(self, source, item):
+        text = source[0]
+        self.source = source
         self.empty = text.__class__()
         self.start, self.end = item[:2]
         self._check_statement(item)
-        self.expr, self.assignments = parse_for(item[3])
-        self.markup = Markup(text, item[4][0])
-        self.var_names = parse_var_list(self.expr, 0)
+        self.expr, self.assignments = self._parse_for(item[3])
+        self.markup = Markup(source, item[4][0])
+        self.var_names = parse_var_list(self.source, self.start, self.expr, 0)
         self.separator = self.else_ = None
         var_list = ', '.join(self.var_names)
         list_expr = '[ (%s,) for %s ]' % (var_list, self.expr)
-        self.code = compile(list_expr, '<?>', 'eval')
+        self.code = _compile(list_expr)
+    def _parse_for(self, expr):
+        elements = []
+        while True:
+            for match in for_re.finditer(expr):
+                if match.group() == ';':
+                    elements.append(expr[:match.start()])
+                    expr = expr[match.end():]
+                    break
+            else: elements.append(expr); break
+        expr = elements[0]
+        assignments = []
+        for s in elements[1:]:
+            if '=' not in s: raise ParseError('Invalid assignment: %r' % s, self.source, self.start)
+            a, b = s.split('=', 1)
+            var_names = ident_re.findall(a)
+            _compile(b.lstrip()) # check; can raise exception
+            code = compile(s.lstrip(), '<?>', 'single')
+            assignments.append((var_names, code))
+        return expr, assignments
     def append_separator(self, item):
         if self.separator or self.else_: self._raise_unexpected_statement(item)
         self._check_statement(item)
         self.end = item[1]
-        self.separator = Markup(self.text, item[4][0])
+        self.separator = Markup(self.source, item[4][0])
     def append_else(self, item):
         if self.else_: self._raise_unexpected_statement(item)
         self._check_statement(item)
         self.end = item[1]
-        self.else_ = Markup(self.text, item[4][0])
+        self.else_ = Markup(self.source, item[4][0])
     def eval(self, globals, locals=None):
         if locals is None: locals = {}
         not_found = object()
@@ -650,7 +658,7 @@ class ForElement(SyntaxElement):
         for name in all_var_names:
             old_values.append(locals.get(name, not_found))
         result = []
-        list = eval(self.code, globals, locals)
+        list = _eval(self.code, globals, locals)
         if not list:
             if self.else_: return self.else_.eval(globals, locals)
             return ''
@@ -667,11 +675,11 @@ class ForElement(SyntaxElement):
         return self.empty.join(result)
 
 class TryElement(SyntaxElement):
-    def __init__(self, text, item):
-        self.text = text
+    def __init__(self, source, item):
+        self.source = source
         self.start, self.end = item[:2]
         self._check_statement(item)
-        self.markup = Markup(text, item[4][0])
+        self.markup = Markup(source, item[4][0])
         self.except_list = []
         self.else_ = None
     def append_except(self, item):
@@ -679,8 +687,8 @@ class TryElement(SyntaxElement):
         self.end = item[1]
         expr, markup_args = item[3:5]
         if expr is None: code = None
-        else: code = compile(expr.lstrip(), '<?>', 'eval')
-        self.except_list.append((code, Markup(self.text, markup_args[0])))
+        else: code = _compile(expr.lstrip())
+        self.except_list.append((code, Markup(self.source, markup_args[0])))
     def eval(self, globals, locals=None):
         try: return self.markup.eval(globals, locals)
         except Exception:
@@ -688,22 +696,22 @@ class TryElement(SyntaxElement):
             try:
                 for code, markup in self.except_list:
                     if code is None: return markup.eval(globals, locals)
-                    exc = eval(code, globals, locals)
+                    exc = _eval(code, globals, locals)
                     if issubclass(exc_type, exc): return markup.eval(globals, locals)
                 raise exc_type, exc_value, traceback
             finally: del traceback
                 
 class ExprElement(SyntaxElement):
-    def __init__(self, text, item):
-        self.text = text
+    def __init__(self, source, item):
+        self.source = source
         self.start, self.end, cmd_name, self.expr, markup_args = item
         assert cmd_name is None
-        self.expr_code = compile(self.expr, '<?>', 'eval')
+        self.expr_code = _compile(self.expr)
         if not markup_args: self.markup = None
-        elif len(markup_args) > 1: raise ParseError('Unexpected markup block', text, markup_args[0][0])
-        else: self.markup = Markup(text, markup_args[0])
+        elif len(markup_args) > 1: raise ParseError('Unexpected markup block', source, markup_args[0][0])
+        else: self.markup = Markup(source, markup_args[0])
     def eval(self, globals, locals=None):
-        try: result = eval(self.expr_code, globals, locals)
+        try: result = _eval(self.expr_code, globals, locals)
         except:
             if not self.markup: raise
             return self.markup.eval(globals, locals)
@@ -714,12 +722,12 @@ class ExprElement(SyntaxElement):
 space_re = re.compile(r'\s+')
 
 class I18nElement(SyntaxElement):
-    def __init__(self, text, item):
-        self.text = text
+    def __init__(self, source, item):
+        self.source = source
         self.start, self.end, cmd_name, expr, markup_args = item
         assert cmd_name is None and expr is None
-        self.markup = Markup(text, markup_args[0])
-        if len(markup_args) > 1: raise ParseError('Unexpected markup block', text, markup_args[1][0])
+        self.markup = Markup(source, markup_args[0])
+        if len(markup_args) > 1: raise ParseError('Unexpected markup block', source, markup_args[1][0])
         self.items = [ item for item in self.markup.content if not isinstance(item, basestring) ]
         key_list = [ not isinstance(item, basestring) and '$#' or item.replace('$', '$$')
                      for item in self.markup.content ]
@@ -742,27 +750,27 @@ class I18nElement(SyntaxElement):
 _func_code = compile('__pony_func__(*__pony_args__, **__pony_keyargs__)', '<?>', 'eval')
 
 class FunctionElement(SyntaxElement):
-    def __init__(self, text, item):
-        self.text = text
+    def __init__(self, source, item):
+        self.source = source
         self.start, self.end, self.expr, self.params, markup_args = item
         self.params = self.params or ''
-        self.markup_args = [ Markup(text, item) for item in markup_args ]
-        self.func_code = compile(self.expr, '<?>', 'eval')
+        self.markup_args = [ Markup(source, item) for item in markup_args ]
+        self.func_code = _compile(self.expr)
         s = '(lambda *args, **keyargs: (list(args), keyargs))(%s)' % self.params
-        self.params_code = compile(s, '<?>', 'eval')
+        self.params_code = _compile(s)
         self.methods = []
     def append_method(self, item):
         start, end, expr, params, markup_args = item
         assert expr.startswith('.')
         method_name = expr[1:]
         params = params or ''
-        markup_args = [ Markup(self.text, item) for item in markup_args ]
+        markup_args = [ Markup(self.source, item) for item in markup_args ]
         s = '(lambda *args, **keyargs: (list(args), keyargs))(%s)' % params
-        params_code = compile(s, '<?>', 'eval')
+        params_code = _compile(s)
         self.methods.append((method_name, params_code, markup_args))
     def eval(self, globals, locals=None):
-        func = eval(self.func_code, globals, locals)
-        args, keyargs = eval(self.params_code, globals, locals)
+        func = _eval(self.func_code, globals, locals)
+        args, keyargs = _eval(self.params_code, globals, locals)
         if getattr(func, '__lazy__', False):
             args.extend([BoundMarkup(m, globals, locals) for m in self.markup_args])
         else:
@@ -771,10 +779,10 @@ class FunctionElement(SyntaxElement):
         locals['__pony_func__'] = func
         locals['__pony_args__'] = args
         locals['__pony_keyargs__'] = keyargs
-        result = eval(_func_code, globals, locals)
+        result = _eval(_func_code, globals, locals)
         for method_name, params_code, markup_args in self.methods:
             method = getattr(result, method_name)
-            args, keyargs = eval(params_code, globals, locals)
+            args, keyargs = _eval(params_code, globals, locals)
             if getattr(method, '__lazy__', False):
                   args.extend([BoundMarkup(m, globals, locals) for m in markup_args])
             else: args.extend([ m.eval(globals, locals) for m in markup_args ])
@@ -824,14 +832,12 @@ def cycle(*args):
                         'string or markup. Got: %s' % str(type(args[0])))
     elif isinstance(args[1], (int, long)):
         if len(args) == 2: raise TypeError('Markup expected')
-        if len(args) > 3:
-            raise TypeError('$cycle() function got too many arguments')
+        if len(args) > 3: raise TypeError('$cycle() function got too many arguments')
         current, total = _cycle_check(args[2:])
         i, j, markup = args
         return (current % j == i - 1) and markup() or ''
     else:
-        if len(args) > 2:
-            raise TypeError('$cycle() function got too many arguments')
+        if len(args) > 2: raise TypeError('$cycle() function got too many arguments')
         current, total = _cycle_check(args[1:])
         i, markup = args
         if i > 0: return (current == i - 1) and markup() or ''
@@ -892,25 +898,17 @@ def get_template_name(frame):
     finally:
         frame = None
 
-def compile_text_template(source):
-    tree = parse_markup(source)[0]
-    return Markup(source, tree)
-
-def compile_html_template(source):
-    tree = parse_markup(source)[0]
-    return Markup(Html(source), tree)
-
 template_string_cache = {}
 
 def markup_from_string(str_cls, s, encoding=None, keep_indent=False, caching=True):
     if caching:
         try: return template_string_cache[s]
         except KeyError: pass
-    if isinstance(s, unicode): text = s
-    else: text = unicode(s, encoding or 'ascii', errors='replace')
-    if not keep_indent: text = textwrap.dedent(text)
-    tree = parse_markup(text)[0]
-    markup = Markup(str_cls(text), tree)
+    if not isinstance(s, unicode): s = unicode(s, encoding or 'ascii', errors='replace')
+    if not keep_indent: s = textwrap.dedent(s)
+    source = str_cls(s), make_offsets(s)
+    tree = parse_markup(source)[0]
+    markup = Markup(source, tree)
     if caching: template_string_cache[s] = markup
     return markup
 
@@ -924,20 +922,20 @@ def markup_from_file(str_cls, filename, encoding=None):
     mtime = get_mtime(filename)
     old_mtime, markup = template_file_cache.get(key, (None, None))
     if markup and mtime == old_mtime: return markup
-    text = read_text_file(filename, encoding)
+    s = read_text_file(filename, encoding)
 
-    if text.startswith(redirect_prefix):
-        new_filename = text[len(redirect_prefix):].strip()
+    if s.startswith(redirect_prefix):
+        new_filename = s[len(redirect_prefix):].strip()
         return markup_from_file(str_cls, new_filename, encoding)
 
-    if text.startswith(translation_prefix):
-        lang = text[len(redirect_prefix):].strip().lower()
+    if s.startswith(translation_prefix):
+        lang = s[len(redirect_prefix):].strip().lower()
         root, ext = os.path.splitext(filename)
         root, _ = root.split('-', 1)
         new_filename = '%s-%s%s' % (root, lang, ext)
         return markup_from_file(str_cls, new_filename, encoding)
 
-    markup = markup_from_string(str_cls, text, encoding, True, False)
+    markup = markup_from_string(str_cls, s, encoding, True, False)
     template_file_cache[filename] = mtime, markup
     return markup
 
