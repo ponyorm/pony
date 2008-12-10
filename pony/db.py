@@ -86,7 +86,7 @@ def adapt_sql(sql, paramstyle):
             result.append('$')
             pos = i+2
         else:
-            try: expr = parse_expr(sql, i+1)
+            try: expr, _ = parse_expr(sql, i+1)
             except ValueError:
                 raise # TODO
             pos = i+1 + len(expr)

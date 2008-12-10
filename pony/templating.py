@@ -358,7 +358,7 @@ def parse_markup(source, start_pos=0, nested=False):
             if cmd_name is not None and cmd_name.startswith('.'):
                 if not is_ident(cmd_name[1:]): raise ParseError('Invalid method call', source, start)
             if i == 7: # $expression
-                try: expr = utils.parse_expr(text, start+1)
+                try: expr, _ = utils.parse_expr(text, start+1)
                 except ValueError: raise ParseError('Invalid Python expression', source, start+1)
                 end = start+1 + len(expr)
                 if expr.endswith(';'): expr = expr[:-1]

@@ -243,26 +243,27 @@ expr3_re = re.compile(r"""
     """, re.VERBOSE)
 
 def parse_expr(s, pos=0):
+    z = 0
     match = expr1_re.match(s, pos)
     if match is None: raise ValueError
     start = pos
     i = match.lastindex
     if i == 1: pos = match.end()  # identifier
-    elif i == 2: pass  # "("
+    elif i == 2: z = 2  # "("
     else: assert False
     while True:
         match = expr2_re.match(s, pos)
-        if match is None: return s[start:pos]
+        if match is None: return s[start:pos], z==1
         pos = match.end()
         i = match.lastindex
-        if i == 1: return s[start:pos]  # ";" - explicit end of expression
-        elif i == 2: pass  # .identifier
+        if i == 1: return s[start:pos], False  # ";" - explicit end of expression
+        elif i == 2: z = 2  # .identifier
         elif i == 3:  # "(" or "["
             pos = match.end()
             counter = 1
             open = match.group(i)
             if open == '(': close = ')'
-            elif open == '[': close = ']'
+            elif open == '[': close = ']'; z = 2
             else: assert False
             while True:
                 match = expr3_re.search(s, pos)
@@ -272,7 +273,7 @@ def parse_expr(s, pos=0):
                 if x == open: counter += 1
                 elif x == close:
                     counter -= 1
-                    if not counter: break
+                    if not counter: z += 1; break
         else: assert False
 
 def tostring(x):
