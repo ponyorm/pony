@@ -900,13 +900,13 @@ def get_template_name(frame):
 
 template_string_cache = {}
 
-def markup_from_string(str_cls, s, encoding=None, keep_indent=False, caching=True):
+def markup_from_string(str_cls, s, encoding=None, keep_indent=False, caching=True, filename=None):
     if caching:
         try: return template_string_cache[s]
         except KeyError: pass
     if not isinstance(s, unicode): s = unicode(s, encoding or 'ascii', errors='replace')
     if not keep_indent: s = textwrap.dedent(s)
-    source = str_cls(s), make_offsets(s)
+    source = str_cls(s), make_offsets(s), filename
     tree = parse_markup(source)[0]
     markup = Markup(source, tree)
     if caching: template_string_cache[s] = markup
@@ -935,7 +935,7 @@ def markup_from_file(str_cls, filename, encoding=None):
         new_filename = '%s-%s%s' % (root, lang, ext)
         return markup_from_file(str_cls, new_filename, encoding)
 
-    markup = markup_from_string(str_cls, s, encoding, True, False)
+    markup = markup_from_string(str_cls, s, encoding, True, False, filename)
     template_file_cache[filename] = mtime, markup
     return markup
 

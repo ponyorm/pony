@@ -60,9 +60,7 @@ repr2 = aRepr2.repr
 
 class Record(object):
     def __init__(self, **keyargs):
-        self.frame = None
-        self.func = self.module = self.filename = self.fname = '<?>'
-        self.moduletype = 'user'
+        self.moduletype = self.func = self.module = self.filename = self.fname = None
         self.__dict__.update(keyargs)
         filename = self.filename
         if filename and filename != '<?>': self.fname = os.path.split(filename)[1]
@@ -90,22 +88,23 @@ def format_exc(info=None, context=5):
                 if index is None: continue
                 source_encoding = detect_source_encoding(filename)
                 lines = [ format_line(frame, line.decode(source_encoding, 'replace')) for line in lines ]
-                record = Record(frame=frame, filename=filename, lineno=lineno, func=func, lines=lines, index=index)
-                module = record.module = frame.f_globals.get('__name__') or '?'
-                if module == 'pony' or module.startswith('pony.'): record.moduletype = 'system'
-                else: record.moduletype = 'user'
+                module = frame.f_globals.get('__name__') or '?'
+                if module == 'pony' or module.startswith('pony.'): moduletype = 'module-system'
+                else: moduletype = 'module-user'
+                record = Record(moduletype=moduletype, module=module, filename=filename,
+                                lineno=lineno, func=func, lines=lines, index=index)
                 records.append(record)
                 if module != 'pony.templating': pass
                 elif func in ('_eval', '_compile'):
                     element = prev_frame.f_locals['self']  # instance of SyntaxElement subclass
-                    text, offsets = element.source
+                    text, offsets, filename = (element.source + (None,))[:3]
                     lineno, offset = pos2lineno(element.start, offsets)
                     lines, index = getlines(text, offsets, lineno, context=5)
-                    record = Record(lineno=lineno, lines=lines, index=index)
+                    record = Record(filename=filename, lineno=lineno, lines=lines, index=index)
                     records.append(record)
                 prev_frame = frame
             if issubclass(exc_type, ParseError):
-                text, offsets = exc_value.source
+                text, offsets = exc_value.source[:2]
                 lines, index = getlines(text, offsets, exc_value.lineno, context=5)
                 record = Record(lineno=exc_value.lineno, lines=lines, index=index)
                 records.append(record)

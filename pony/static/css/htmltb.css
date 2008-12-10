@@ -5,10 +5,11 @@
 .traceback dt {
     margin-top: 1em;
 }
-.traceback dt.system {
+.traceback dt.module-system {
     color: #888
 }
-.traceback dt .module {
+.traceback dt .module-name,
+.traceback dt .template-name {
     cursor: help;
 }
 .traceback .source {
