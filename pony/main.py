@@ -1,6 +1,7 @@
 import pony
 
-import pony.patches.interactive
+if pony.MODE in ('INTERACTIVE', 'CHERRYPY'):
+    import pony.patches.interactive
 
 from pony import real_stdout
 from pony.utils import markdown, json
