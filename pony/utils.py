@@ -129,7 +129,7 @@ def restore_escapes(s, console_encoding=None, source_encoding=None):
         try: console_encoding = console_encoding or getattr(pony.real_stdout, 'encoding', None)
         except: pass
         console_encoding = console_encoding or options.CONSOLE_ENCODING
-        console_encoding = console_encoding or getpreferredencoding() )
+        console_encoding = console_encoding or getpreferredencoding()
     try: s = s.decode(source_encoding).encode(console_encoding)
     except (UnicodeDecodeError, UnicodeEncodeError): pass
     def f(match):
