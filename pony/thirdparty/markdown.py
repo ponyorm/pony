@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-# Copyright (c) 2007 ActiveState Corp.
+# Copyright (c) 2007-2008 ActiveState Corp.
+# License: MIT (http://www.opensource.org/licenses/mit-license.php)
 
 r"""A fast and complete Python implementation of Markdown.
 
@@ -38,15 +39,13 @@ text-to-HTML conversion tool for web writers.
 
 # Dev Notes:
 # - There is already a Python markdown processor
-#   (http://www.freewisdom.org/projects/python-markdown/) but (1) I've run
-#   into a number of problems with it (improper Markdown processing) and (2)
-#   emails to the author's given contact address have bounced.
+#   (http://www.freewisdom.org/projects/python-markdown/).
 # - Python's regex syntax doesn't have '\z', so I'm using '\Z'. I'm
 #   not yet sure if there implications with this. Compare 'pydoc sre'
 #   and 'perldoc perlre'.
 
-__version_info__ = (1, 0, 1, 4) # first three nums match Markdown.pl
-__version__ = '.'.join(map(str, __version_info__))
+__version_info__ = (1, 0, 1, 12, 'a') # first three nums match Markdown.pl
+__version__ = '1.0.1.12a'
 __author__ = "Trent Mick"
 
 import os
@@ -54,7 +53,10 @@ import sys
 from pprint import pprint
 import re
 import logging
-import md5
+try:
+    from hashlib import md5
+except ImportError:
+    from md5 import md5
 import optparse
 from random import random
 import codecs
@@ -87,8 +89,8 @@ def _escape_hash(s):
     # Lame attempt to avoid possible collision with someone actually
     # using the MD5 hexdigest of one of these chars in there text.
     # Other ideas: random.random(), uuid.uuid()
-    #return md5.md5(s).hexdigest()   # Markdown.pl effectively does this.
-    return 'md5:'+md5.md5(s).hexdigest()
+    #return md5(s).hexdigest()   # Markdown.pl effectively does this.
+    return 'md5:'+md5(s).hexdigest()
 g_escape_table = dict([(ch, _escape_hash(ch))
                        for ch in '\\`*_{}[]()>#+-.!'])
 
@@ -122,8 +124,12 @@ def markdown(text, html4tags=False, tab_width=DEFAULT_TAB_WIDTH,
                     use_file_vars=use_file_vars).convert(text)
 
 class Markdown(object):
-    # The set of "extras" to enable in processing. This can be set
-    # via (a) subclassing and (b) the constructor "extras" argument.
+    # The dict of "extras" to enable in processing -- a mapping of
+    # extra name to argument for the extra. Most extras do not have an
+    # argument, in which case the value is None.
+    #
+    # This can be set via (a) subclassing and (b) the constructor
+    # "extras" argument.
     extras = None
 
     urls = None
@@ -155,12 +161,15 @@ class Markdown(object):
             self.safe_mode = safe_mode
 
         if self.extras is None:
-            self.extras = set()
-        elif not isinstance(self.extras, set):
-            self.extras = set(self.extras)
+            self.extras = {}
+        elif not isinstance(self.extras, dict):
+            self.extras = dict([(e, None) for e in self.extras])
         if extras:
+            if not isinstance(extras, dict):
+                extras = dict([(e, None) for e in extras])
             self.extras.update(extras)
-        self._instance_extra = self.extras.copy()
+        assert isinstance(self.extras, dict)
+        self._instance_extras = self.extras.copy()
         self.link_patterns = link_patterns
         self.use_file_vars = use_file_vars
         self._outdent_re = re.compile(r'^(\t|[ ]{1,%d})' % tab_width, re.M)
@@ -171,7 +180,7 @@ class Markdown(object):
         self.html_blocks = {}
         self.html_spans = {}
         self.list_level = 0
-        self.extras = self._instance_extra.copy()
+        self.extras = self._instance_extras.copy()
         if "footnotes" in self.extras:
             self.footnotes = {}
             self.footnote_ids = []
@@ -198,7 +207,16 @@ class Markdown(object):
             emacs_vars = self._get_emacs_vars(text)
             if "markdown-extras" in emacs_vars:
                 splitter = re.compile("[ ,]+")
-                self.extras.update(splitter.split(emacs_vars["markdown-extras"]))
+                for e in splitter.split(emacs_vars["markdown-extras"]):
+                    if '=' in e:
+                        ename, earg = e.split('=', 1)
+                        try:
+                            earg = int(earg)
+                        except ValueError:
+                            pass
+                    else:
+                        ename, earg = e, None
+                    self.extras[ename] = earg
 
         # Standardize line endings:
         text = re.sub("\r\n|\r", "\n", text)
@@ -462,8 +480,69 @@ class Markdown(object):
 
         # Special case for standalone HTML comments:
         if "<!--" in text:
-            _html_comment_re = _html_comment_re_from_tab_width(self.tab_width)
-            text = _html_comment_re.sub(hash_html_block_sub, text)
+            start = 0
+            while True:
+                # Delimiters for next comment block.
+                try:
+                    start_idx = text.index("<!--", start)
+                except ValueError, ex:
+                    break
+                try:
+                    end_idx = text.index("-->", start_idx) + 3
+                except ValueError, ex:
+                    break
+
+                # Start position for next comment block search.
+                start = end_idx
+
+                # Validate whitespace before comment.
+                if start_idx:
+                    # - Up to `tab_width - 1` spaces before start_idx.
+                    for i in range(self.tab_width - 1):
+                        if text[start_idx - 1] != ' ':
+                            break
+                        start_idx -= 1
+                        if start_idx == 0:
+                            break
+                    # - Must be preceded by 2 newlines or hit the start of
+                    #   the document.
+                    if start_idx == 0:
+                        pass
+                    elif start_idx == 1 and text[0] == '\n':
+                        start_idx = 0  # to match minute detail of Markdown.pl regex
+                    elif text[start_idx-2:start_idx] == '\n\n':
+                        pass
+                    else:
+                        break
+
+                # Validate whitespace after comment.
+                # - Any number of spaces and tabs.
+                while end_idx < len(text):
+                    if text[end_idx] not in ' \t':
+                        break
+                    end_idx += 1
+                # - Must be following by 2 newlines or hit end of text.
+                if text[end_idx:end_idx+2] not in ('', '\n', '\n\n'):
+                    continue
+
+                # Escape and hash (must match `_hash_html_block_sub`).
+                html = text[start_idx:end_idx]
+                if raw and self.safe_mode:
+                    html = self._sanitize_html(html)
+                key = _hash_text(html)
+                self.html_blocks[key] = html
+                text = text[:start_idx] + "\n\n" + key + "\n\n" + text[end_idx:]
+
+        if "xml" in self.extras:
+            # Treat XML processing instructions and namespaced one-liner
+            # tags as if they were block HTML tags. E.g., if standalone
+            # (i.e. are their own paragraph), the following do not get 
+            # wrapped in a <p> tag:
+            #    <?foo bar?>
+            #
+            #    <xi:include xmlns:xi="http://www.w3.org/2001/XInclude" href="chapter_1.md"/>
+            _xml_oneliner_re = _xml_oneliner_re_from_tab_width(self.tab_width)
+            text = _xml_oneliner_re.sub(hash_html_block_sub, text)
 
         return text
 
@@ -472,25 +551,26 @@ class Markdown(object):
         # hash references.
         less_than_tab = self.tab_width - 1
     
-        # Link defs are in the form: ^[id]: url "optional title"
+        # Link defs are in the form:
+        #   [id]: url "optional title"
         _link_def_re = re.compile(r"""
             ^[ ]{0,%d}\[(.+)\]: # id = \1
               [ \t]*
               \n?               # maybe *one* newline
               [ \t]*
-            <?(\S+?)>?          # url = \2
-              [ \t]*
-              \n?               # maybe one newline
+            <?(.+?)>?           # url = \2
               [ \t]*
             (?:
+                \n?             # maybe one newline
+                [ \t]*
                 (?<=\s)         # lookbehind for whitespace
                 ['"(]
-                (.+?)           # title = \3
+                ([^\n]*)        # title = \3
                 ['")]
                 [ \t]*
             )?  # title is optional
             (?:\n+|\Z)
-            """ % less_than_tab, re.X | re.M)
+            """ % less_than_tab, re.X | re.M | re.U)
         return _link_def_re.sub(self._extract_link_def_sub, text)
 
     def _extract_link_def_sub(self, match):
@@ -563,6 +643,9 @@ class Markdown(object):
 
         text = self._do_lists(text)
 
+        if "pyshell" in self.extras:
+            text = self._prepare_pyshell_blocks(text)
+
         text = self._do_code_blocks(text)
 
         text = self._do_block_quotes(text)
@@ -576,6 +659,31 @@ class Markdown(object):
         text = self._form_paragraphs(text)
 
         return text
+
+    def _pyshell_block_sub(self, match):
+        lines = match.group(0).splitlines(0)
+        _dedentlines(lines)
+        indent = ' ' * self.tab_width
+        s = ('\n' # separate from possible cuddled paragraph
+             + indent + ('\n'+indent).join(lines)
+             + '\n\n')
+        return s
+        
+    def _prepare_pyshell_blocks(self, text):
+        """Ensure that Python interactive shell sessions are put in
+        code blocks -- even if not properly indented.
+        """
+        if ">>>" not in text:
+            return text
+
+        less_than_tab = self.tab_width - 1
+        _pyshell_block_re = re.compile(r"""
+            ^([ ]{0,%d})>>>[ ].*\n   # first line
+            ^(\1.*\S+.*\n)*         # any number of subsequent lines
+            ^\n                     # ends with a blank line
+            """ % less_than_tab, re.M | re.X)
+
+        return _pyshell_block_re.sub(self._pyshell_block_sub, text)
 
     def _run_span_gamut(self, text):
         # These are all the transformations that occur *within* block-level
@@ -896,6 +1004,9 @@ class Markdown(object):
     _setext_h_re = re.compile(r'^(.+)[ \t]*\n(=+|-+)[ \t]*\n+', re.M)
     def _setext_h_sub(self, match):
         n = {"=": 1, "-": 2}[match.group(2)[0]]
+        demote_headers = self.extras.get("demote-headers")
+        if demote_headers:
+            n = min(n + demote_headers, 6)
         return "<h%d>%s</h%d>\n\n" \
                % (n, self._run_span_gamut(match.group(1)), n)
 
@@ -910,6 +1021,9 @@ class Markdown(object):
         ''', re.X | re.M)
     def _atx_h_sub(self, match):
         n = len(match.group(1))
+        demote_headers = self.extras.get("demote-headers")
+        if demote_headers:
+            n = min(n + demote_headers, 6)
         return "<h%d>%s</h%d>\n\n" \
                % (n, self._run_span_gamut(match.group(2)), n)
 
@@ -1069,7 +1183,7 @@ class Markdown(object):
         except util.ClassNotFound:
             return None
 
-    def _color_with_pygments(self, codeblock, lexer):
+    def _color_with_pygments(self, codeblock, lexer, **formatter_opts):
         import pygments
         import pygments.formatters
 
@@ -1087,7 +1201,7 @@ class Markdown(object):
                 """Return the source with a code, pre, and div."""
                 return self._wrap_div(self._wrap_pre(self._wrap_code(source)))
 
-        formatter = HtmlCodeFormatter(cssclass="codehilite")
+        formatter = HtmlCodeFormatter(cssclass="codehilite", **formatter_opts)
         return pygments.highlight(codeblock, lexer, formatter)
 
     def _code_block_sub(self, match):
@@ -1103,7 +1217,9 @@ class Markdown(object):
             lexer = self._get_pygments_lexer(lexer_name)
             codeblock = rest.lstrip("\n")   # Remove lexer declaration line.
             if lexer:
-                colored = self._color_with_pygments(codeblock, lexer)
+                formatter_opts = self.extras['code-color'] or {}
+                colored = self._color_with_pygments(codeblock, lexer,
+                                                    **formatter_opts)
                 return "\n\n%s\n\n" % colored
 
         codeblock = self._encode_code(codeblock)
@@ -1296,6 +1412,7 @@ class Markdown(object):
     #   http://bumppo.net/projects/amputator/
     _ampersand_re = re.compile(r'&(?!#?[xX]?(?:[0-9a-fA-F]+|\w+);)')
     _naked_lt_re = re.compile(r'<(?![a-z/?\$!])', re.I)
+    _naked_gt_re = re.compile(r'''(?<![a-z?!/'"-])>''', re.I)
 
     def _encode_amps_and_angles(self, text):
         # Smart processing for ampersands and angle brackets that need
@@ -1304,6 +1421,11 @@ class Markdown(object):
     
         # Encode naked <'s
         text = self._naked_lt_re.sub('&lt;', text)
+
+        # Encode naked >'s
+        # Note: Other markdown implementations (e.g. Markdown.pl, PHP
+        # Markdown) don't do this.
+        text = self._naked_gt_re.sub('&gt;', text)
         return text
 
     def _encode_backslash_escapes(self, text):
@@ -1364,10 +1486,14 @@ class Markdown(object):
         lookbehind assertion to attempt to guard against this.
         """
         link_from_hash = {}
-        for regex, href in self.link_patterns:
+        for regex, repl in self.link_patterns:
             replacements = []
             for match in regex.finditer(text):
-                replacements.append((match.span(), match.expand(href)))
+                if hasattr(repl, "__call__"):
+                    href = repl(match)
+                else:
+                    href = match.expand(repl)
+                replacements.append((match.span(), href))
             for (start, end), href in reversed(replacements):
                 escaped_href = (
                     href.replace('"', '&quot;')  # b/c of attr quote
@@ -1375,7 +1501,7 @@ class Markdown(object):
                         .replace('*', g_escape_table['*'])
                         .replace('_', g_escape_table['_']))
                 link = '<a href="%s">%s</a>' % (escaped_href, text[start:end])
-                hash = md5.md5(link).hexdigest()
+                hash = md5(link).hexdigest()
                 link_from_hash[hash] = link
                 text = text[:start] + hash + text[end:]
         for hash, link in link_from_hash.items():
@@ -1394,11 +1520,16 @@ class Markdown(object):
 
 
 class MarkdownWithExtras(Markdown):
-    """A markdowner class that enables all optional extras except:
+    """A markdowner class that enables most extras:
 
-    - code-friendly: because it *disables* part of the syntax
-    - link-patterns: because you need to specify some actual
-      link-patterns anyway
+    - footnotes
+    - code-color (only has effect if 'pygments' Python module on path)
+
+    These are not included:
+    - pyshell (specific to Python-related documenting)
+    - code-friendly (because it *disables* part of the syntax)
+    - link-patterns (because you need to specify some actual
+      link-patterns anyway)
     """
     extras = ["footnotes", "code-color"]
 
@@ -1555,25 +1686,26 @@ class _memoized(object):
       return self.func.__doc__
 
 
-def _html_comment_re_from_tab_width(tab_width):
+def _xml_oneliner_re_from_tab_width(tab_width):
+    """Standalone XML processing instruction regex."""
     return re.compile(r"""
         (?:
             (?<=\n\n)       # Starting after a blank line
             |               # or
             \A\n?           # the beginning of the doc
         )
-        (                       # save in $1
+        (                           # save in $1
             [ ]{0,%d}
             (?:
-                <!
-                (--.*?--\s*)+
-                >
+                <\?\w+\b\s+.*?\?>   # XML processing instruction
+                |
+                <\w+:\w+\b\s+.*?/>  # namespaced single tag
             )
             [ \t]*
             (?=\n{2,}|\Z)       # followed by a blank line or end of document
         )
-        """ % (tab_width - 1), re.X | re.S)
-_html_comment_re_from_tab_width = _memoized(_html_comment_re_from_tab_width)
+        """ % (tab_width - 1), re.X)
+_xml_oneliner_re_from_tab_width = _memoized(_xml_oneliner_re_from_tab_width)
 
 def _hr_tag_re_from_tab_width(tab_width):
      return re.compile(r"""
@@ -1608,7 +1740,7 @@ def _xml_encode_email_char_at_random(ch):
         return '&#%s;' % ord(ch)
 
 def _hash_text(text):
-    return 'md5:'+md5.md5(text.encode("utf-8")).hexdigest()
+    return 'md5:'+md5(text.encode("utf-8")).hexdigest()
 
 
 #---- mainline
@@ -1622,7 +1754,12 @@ def _test():
     import doctest
     doctest.testmod()
 
-def main(argv=sys.argv):
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv
+    if not logging.root.handlers:
+        logging.basicConfig()
+
     usage = "usage: %prog [PATHS...]"
     version = "%prog "+__version__
     parser = optparse.OptionParser(prog="markdown2", usage=usage,
@@ -1645,7 +1782,9 @@ def main(argv=sys.argv):
                            "'code-friendly' disables _/__ for emphasis; "
                            "'code-color' adds code-block syntax coloring; "
                            "'link-patterns' adds auto-linking based on patterns; "
-                           "'footnotes' adds the footnotes syntax.")
+                           "'footnotes' adds the footnotes syntax;"
+                           "'xml' passes one-liner processing instructions and namespaced XML tags;"
+                           "'pyshell' to put unindented Python interactive shell sessions in a <code> block.")
     parser.add_option("--use-file-vars",
                       help="Look for and use Emacs-style 'markdown-extras' "
                            "file var to turn on extras. See "
@@ -1665,9 +1804,19 @@ def main(argv=sys.argv):
         return _test()
 
     if opts.extras:
-        extras = set()
+        extras = {}
         for s in opts.extras:
-            extras.update( re.compile("[,;: ]+").split(s) )
+            splitter = re.compile("[,;: ]+")
+            for e in splitter.split(s):
+                if '=' in e:
+                    ename, earg = e.split('=', 1)
+                    try:
+                        earg = int(earg)
+                    except ValueError:
+                        pass
+                else:
+                    ename, earg = e, None
+                extras[ename] = earg
     else:
         extras = None
 
@@ -1690,13 +1839,18 @@ def main(argv=sys.argv):
     else:
         link_patterns = None
 
-    from os.path import join, dirname
-    markdown_pl = join(dirname(__file__), "test", "Markdown.pl")
+    from os.path import join, dirname, abspath
+    markdown_pl = join(dirname(dirname(abspath(__file__))), "test",
+                       "Markdown.pl")
     for path in paths:
         if opts.compare:
-            print "-- Markdown.pl"
-            os.system('perl %s "%s"' % (markdown_pl, path))
-            print "-- markdown2.py"
+            print "==== Markdown.pl ===="
+            perl_cmd = 'perl %s "%s"' % (markdown_pl, path)
+            o = os.popen(perl_cmd)
+            perl_html = o.read()
+            o.close()
+            sys.stdout.write(perl_html)
+            print "==== markdown2.py ===="
         html = markdown_path(path, encoding=opts.encoding,
                              html4tags=opts.html4tags,
                              safe_mode=opts.safe_mode,
@@ -1704,9 +1858,10 @@ def main(argv=sys.argv):
                              use_file_vars=opts.use_file_vars)
         sys.stdout.write(
             html.encode(sys.stdout.encoding or "utf-8", 'xmlcharrefreplace'))
+        if opts.compare:
+            print "==== match? %r ====" % (perl_html == html)
 
 
 if __name__ == "__main__":
-    logging.basicConfig()
     sys.exit( main(sys.argv) )
 
