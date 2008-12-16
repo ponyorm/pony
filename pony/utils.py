@@ -178,13 +178,12 @@ def decompress(s):
     elif first == 'Z': return s[1:].decode('zip')
     raise ValueError('Incorrect data')
 
-def markdown(s, escape_html=True):
-    from pony.templating import Html, StrHtml, quote
+def markdown(s):
+    from pony.templating import Html, quote
     from pony.thirdparty.markdown import markdown
-    if escape_html: s = quote(s)
-    # if isinstance(s, str): s = str.__str__(s)
-    # elif isinstance(s, unicode): s = unicode(s)
-    return Html(markdown(s))
+    s = quote(s)[:]
+    result = markdown(s, html4tags=True)
+    return Html(result)
 
 class JsonString(unicode): pass
 
