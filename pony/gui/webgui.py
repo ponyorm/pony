@@ -3,7 +3,7 @@ import os.path
 import pony
 
 from pony.utils import read_text_file, markdown
-from pony.web import http
+from pony.web import http, url
 from pony.templating import html, Html
 
 @http('/pony/test')
@@ -19,10 +19,17 @@ def test():
     </table>''')
 
 @http('/pony/docs/$page?lang=$lang')
-@http('/pony/docs', redirect=True)
+@http('/pony/docs/', redirect=True)
 def docs(page='MainPage', lang=None):
-    if lang: page = page + '-' + lang
-    filename = os.path.join(pony.PONY_DIR, 'docs', page + '.txt')
-    if not os.path.exists(filename): raise http.NotFound
+    if lang:
+        filename = os.path.join(pony.PONY_DIR, 'docs', '%s-%s.txt' % (page, lang))
+        if not os.path.exists(filename): raise http.NotFound
+    else:
+        for lang in http.request.languages:
+            filename = os.path.join(pony.PONY_DIR, 'docs', '%s-%s.txt' % (page, lang))
+            if os.path.exists(filename): raise http.Redirect(url(docs, page, lang))
+        else:
+            filename = os.path.join(pony.PONY_DIR, 'docs', page + '.txt')
+            if not os.path.exists(filename): raise http.NotFound
     text = read_text_file(filename)
     return markdown(Html(text))
