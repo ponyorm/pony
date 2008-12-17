@@ -16,22 +16,22 @@
     margin: 0;
     list-style: none;
 }
-.traceback .source .odd th,
-.traceback .source .odd td {
-    background-color: #f8f8f8;
-}
-.traceback .source .even th,
-.traceback .source .even td {
-    background-color: white;
-}
-.traceback .source .current th,
-.traceback .source .current td {
-    background-color: #fbe3e4;
-}
 .traceback .source th,
 .traceback .source td {
     padding: 0;
     font: 1em 'andale mono', 'lucida console', monospace; line-height: 1.5;
+}
+.traceback .source tr.odd th,
+.traceback .source tr.odd td {
+    background-color: #f8f8f8;
+}
+.traceback .source tr.even th,
+.traceback .source tr.even td {
+    background-color: white;
+}
+.traceback .source tr.current th,
+.traceback .source tr.current td {
+    background-color: #fbe3e4;
 }
 .traceback .source th.number {
     width: 4em;
