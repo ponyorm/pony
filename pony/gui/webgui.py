@@ -11,7 +11,7 @@ from pony.templating import html, template
 def test():
     return html('''
     <h1>Content of request headers</h1>
-    <table>
+    <table class="border">
       <tr><th>Header</th><th>Value</th></tr>
       $for(key, value in sorted(http.request.environ.items()))
       {

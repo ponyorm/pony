@@ -3,6 +3,11 @@
 table { border-collapse: collapse; }
 hr { height: 1px; }
 
+/* Table with borders */
+
+table.border th,
+table.border td { border: 1px solid black; }
+
 /* Forms */
 
 form.pony table {
