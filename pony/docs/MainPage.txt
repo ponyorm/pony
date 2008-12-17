@@ -1,0 +1,6 @@
+﻿Documentation
+=============
+
+This text written in [markdown](http://en.wikipedia.org/wiki/Markdown).
+
+There is a link on [Test page](TestPage).
