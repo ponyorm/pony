@@ -4,6 +4,7 @@ import pony
 
 from pony.utils import read_text_file, markdown
 from pony.web import http, url
+from pony.webutils import link
 from pony.templating import html, Html
 
 @http('/pony/test')
@@ -31,5 +32,12 @@ def docs(page='MainPage', lang=None):
         else:
             filename = os.path.join(pony.PONY_DIR, 'docs', page + '.txt')
             if not os.path.exists(filename): raise http.NotFound
+
     text = read_text_file(filename)
-    return markdown(Html(text))
+    content = markdown(Html(text))
+    return html('''
+    $link('/pony/static/css/docs.css')
+    <body><div class="container">
+    <div class="span-20">$content</div>
+    </div></body>
+    ''')

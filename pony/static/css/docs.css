@@ -1,0 +1,6 @@
+/* large text font */
+p {
+    font-size: 1.2em;
+    line-height: 2em;
+    margin-bottom: 1.25em;
+}
