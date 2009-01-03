@@ -240,7 +240,7 @@ def invoke(url):
     if path[:2] == ['pony', 'static'] and len(path) > 2:
         return get_pony_static_file(path[2:])
     qdict = dict(qlist)
-    routes = routing.get_routes(path, qdict, request.host, request.port)
+    routes = routing.get_routes(path, qdict, request.method, request.host, request.port)
     if not routes:
         i = url.find('?')
         if i == -1: p, q = url, ''
@@ -248,7 +248,7 @@ def invoke(url):
         if p.endswith('/'): url2 = p[:-1] + q
         else: url2 = p + '/' + q
         path2, qlist = httputils.split_url(url2)
-        routes = routing.get_routes(path2, qdict, request.host, request.port)
+        routes = routing.get_routes(path2, qdict, request.method, request.host, request.port)
         if not routes: return get_static_file(path)
         script_name = request.environ.get('SCRIPT_NAME', '')
         url2 = script_name + url2 or '/'
@@ -456,8 +456,37 @@ class Http(object):
     @staticmethod
     @decorator_with_params
     def __call__(func, url=None, host=None, port=None, redirect=False, **headers):
-        headers = dict([ (name.replace('_', '-').title(), value) for name, value in headers.items() ])
-        routing.Route(func, url, host, port, redirect, headers)
+        routing.Route(func, url, None, host, port, redirect, headers)
+        return func
+
+    @staticmethod
+    @decorator_with_params
+    def HEAD(func, url=None, host=None, port=None, redirect=False, **headers):
+        routing.Route(func, url, 'HEAD', host, port, redirect, headers)
+        return func
+
+    @staticmethod
+    @decorator_with_params
+    def GET(func, url=None, host=None, port=None, redirect=False, **headers):
+        routing.Route(func, url, 'GET', host, port, redirect, headers)
+        return func
+
+    @staticmethod
+    @decorator_with_params
+    def POST(func, url=None, host=None, port=None, redirect=False, **headers):
+        routing.Route(func, url, 'POST', host, port, redirect, headers)
+        return func
+
+    @staticmethod
+    @decorator_with_params
+    def PUT(func, url=None, host=None, port=None, redirect=False, **headers):
+        routing.Route(func, url, 'PUT', host, port, redirect, headers)
+        return func
+
+    @staticmethod
+    @decorator_with_params
+    def DELETE(func, url=None, host=None, port=None, redirect=False, **headers):
+        routing.Route(func, url, 'DELETE', host, port, redirect, headers)
         return func
 
     @property

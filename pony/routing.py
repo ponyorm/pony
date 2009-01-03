@@ -19,9 +19,11 @@ system_routes = []
 url_cache = {}
 
 class Route(object):
-    def __init__(self, func, url, host, port, redirect, headers):
+    def __init__(self, func, url, method, host, port, redirect, headers):
         url_cache.clear()
         self.func = func
+        module = func.__module__
+        self.system = module.startswith('pony.') and not module.startswith('pony.examples.')
         argspec = getattr(func, 'argspec', None)
         if argspec is None:
             argspec = func.argspec = self.getargspec(func)
@@ -33,17 +35,19 @@ class Route(object):
             url = func.__name__
             if argspec[0]:
                 url = '?'.join((url, '&'.join('=$'.join((argname, argname)) for argname in argspec[0])))
+        if method is not None and method not in ('HEAD', 'GET', 'POST', 'PUT', 'DELETE'):
+            raise TypeError('Invalid HTTP method: %r' % method)
+        self.method = method
         if host is not None:
             if not isinstance(host, basestring): raise TypeError('Host must be string')
             if ':' in host:
                 if port is not None: raise TypeError('Duplicate port specification')
                 host, port = host.split(':')
-        self.host, self.port = host, port and int(port) or None
+        self.host = host
+        self.port = port and int(port) or None
         self.path, self.qlist = split_url(url, strict_parsing=True)
         self.redirect = redirect
-        module = func.__module__
-        self.system = module.startswith('pony.') and not module.startswith('pony.examples.')
-        self.headers = headers
+        self.headers = dict([ (name.replace('_', '-').title(), value) for name, value in headers.items() ])        
         self.args = set()
         self.keyargs = set()
         self.parsed_path = []
@@ -182,11 +186,11 @@ class Route(object):
         qdict = dict(self.qlist)
         registry_lock.acquire()
         try:
-            for route, _, _ in get_routes(self.path, qdict, self.host, self.port):
-                if url_map == get_url_map(route):
-                    if pony.MODE != 'INTERACTIVE':
-                        warnings.warn('Url path already in use (old route was removed): %s' % route.url)
-                    _remove(route)
+            for route, _, _ in get_routes(self.path, qdict, self.method, self.host, self.port):
+                if url_map != get_url_map(route) or self.method != route.method: continue
+                if pony.MODE != 'INTERACTIVE':
+                    warnings.warn('Url path already in use (old route was removed): %s' % route.url)
+                _remove(route)
             d, list1, list2 = registry
             for is_param, x in self.parsed_path:
                 if is_param: d, list1, list2 = d.setdefault(None, ({}, [], []))
@@ -197,7 +201,7 @@ class Route(object):
             self.list.insert(0, self)
         finally: registry_lock.release()
 
-def get_routes(path, qdict, host, port):
+def get_routes(path, qdict, method, host, port):
     # registry_lock.acquire()
     # try:
     variants = [ registry ]
@@ -222,10 +226,15 @@ def get_routes(path, qdict, host, port):
         priority = 0
         if route.host is not None:
             if route.host != host: continue
-            priority += 10000
+            priority += 4000
         if route.port is not None:
             if route.port != port: continue
-            priority += 100
+            priority += 2000
+        if method == route.method:
+            if method is not None: priority += 1000
+        elif route.method is None and method in ('HEAD', 'GET', 'POST'): pass
+        else: continue
+        
         for i, (is_param, x) in enumerate(route.parsed_path):
             if not is_param:
                 priority += 1
@@ -388,13 +397,13 @@ def build_url(route, keyparams, indexparams, host, port, script_name):
     if port == 80: return 'http://%s%s' % (host, result)
     return 'http://%s:%d%s' % (host, port, result)
 
-def remove(x, host=None, port=None):
+def remove(x, method=None, host=None, port=None):
     if isinstance(x, basestring):
         path, qlist = split_url(x, strict_parsing=True)
         qdict = dict(qlist)
         registry_lock.acquire()
         try:
-            for route, _, _ in get_routes(path, qdict, host, port): _remove(route)
+            for route, _, _ in get_routes(path, qdict, method, host, port): _remove(route)
         finally: registry_lock.release()
     elif hasattr(x, 'routes'):
         assert host is None and port is None
