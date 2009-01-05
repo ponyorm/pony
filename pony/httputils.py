@@ -127,3 +127,12 @@ def serialize_cookies(environ, cookies):
             else: cookie += ' HttpOnly'
         result.append(('Set-Cookie', cookie))
     return result
+
+def http_put(url, type, data):
+    # Source: http://stackoverflow.com/questions/111945/is-there-anyway-to-do-http-put-in-python
+    import urllib2
+    opener = urllib2.build_opener(urllib2.HTTPHandler)
+    request = urllib2.Request(url, data)
+    request.add_header('Content-Type', type)
+    request.get_method = lambda: 'PUT'
+    return opener.open(request)
