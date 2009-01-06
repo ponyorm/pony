@@ -7,14 +7,11 @@ from operator import attrgetter
 import pony
 
 from pony import routing, postprocessing, autoreload, auth, httputils, options
-from pony.utils import decorator_with_params
+from pony.utils import decorator_with_params, tostring
 from pony.templating import Html, StrHtml
 from pony.logging import log, log_exc, DEBUG, INFO, WARNING
 from pony.db import with_transaction, RowNotFound
 from pony.htmltb import format_exc
-
-try: from pony.thirdparty import etree
-except ImportError: etree = None
 
 class HttpException(Exception):
     content = ''
@@ -297,6 +294,8 @@ def invoke(url):
 
     try: result = with_transaction(route.func, args, keyargs, [ HttpRedirect ])
     except RowNotFound: raise Http404NotFound
+    if hasattr(result, 'read'): pass  # Assume result is a file-like object
+    else: result = tostring(result)
 
     headers = dict([ (name.replace('_', '-').title(), value)
                      for name, value in response.headers.items() ])
@@ -316,25 +315,21 @@ def invoke(url):
         content_type = '%s; charset=%s' % (media_type, charset)
         headers['Content-Type'] = content_type
 
-    if media_type == 'text/html': result = response.postprocess(result)
-    if hasattr(result, '__unicode__'): result = unicode(result)
-    if isinstance(result, unicode):
-        if media_type == 'text/html' or 'xml' in media_type :
-              result = result.encode(charset, 'xmlcharrefreplace')
-        else: result = result.encode(charset, 'replace')
-    elif not isinstance(result, str):
-        if etree is None: result = str(result)
-        else:
-            try: result = etree.tostring(result, charset)
-            except: result = str(result)
+    if isinstance(result, basestring): 
+        if media_type == 'text/html': result = response.postprocess(result)
+        if isinstance(result, unicode):
+            if media_type == 'text/html' or 'xml' in media_type :
+                  result = result.encode(charset, 'xmlcharrefreplace')
+            else: result = result.encode(charset, 'replace')
+        headers.setdefault('Content-Length', len(result))
 
     headers.setdefault('Expires', '0')
     max_age = headers.pop('Max-Age', '2')
     cache_control = headers.get('Cache-Control')
     if not cache_control: headers['Cache-Control'] = 'max-age=%s' % max_age
     headers.setdefault('Vary', 'Cookie')
-    headers.setdefault('Content-Length', len(result))
-    if request.method == 'HEAD': return ''
+
+    if request.method == 'HEAD' and 'Content-Length' in headers: return ''
     return result
 
 def log_request(request):
