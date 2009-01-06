@@ -15,20 +15,19 @@ from pony.htmltb import format_exc
 
 class HttpException(Exception):
     content = ''
+    headers = {}
 
 class Http4xxException(HttpException):
     pass
 
 class Http400BadRequest(Http4xxException):
     status = '400 Bad Request'
-    headers = {'Content-Type' : 'text/plain'}
     def __init__(self, content='Bad Request'):
         Exception.__init__(self, 'Bad Request')
         self.content = content
 
 class Http404NotFound(Http4xxException):
     status = '404 Not Found'
-    headers = {'Content-Type' : 'text/plain'}
     def __init__(self, msg='Page not found', content=None):
         Exception.__init__(self, msg)
         self.content = content or msg
@@ -36,7 +35,7 @@ class Http404NotFound(Http4xxException):
 
 class Http405MethodNotAllowed(Http4xxException):
     status = '405 Method Not Allowed'
-    headers = {'Content-Type' : 'text/plain', 'Allow' : 'GET, HEAD'}
+    headers = {'Allow' : 'GET, HEAD'}
     def __init__(self, msg='Method not allowed', content=None):
         Exception.__init__(self, msg)
         self.content = content or msg
@@ -294,40 +293,14 @@ def invoke(url):
 
     try: result = with_transaction(route.func, args, keyargs, [ HttpRedirect ])
     except RowNotFound: raise Http404NotFound
-    if hasattr(result, 'read'): pass  # Assume result is a file-like object
-    else: result = tostring(result)
 
-    headers = dict([ (name.replace('_', '-').title(), value)
-                     for name, value in response.headers.items() ])
-    response.headers = headers
-
-    media_type = headers.pop('Type', None)
-    charset = headers.pop('Charset', None)
-    content_type = headers.get('Content-Type')
-    if content_type:
-        media_type, type_params = cgi.parse_header(content_type)
-        charset = type_params.get('charset', 'iso-8859-1')
-    else:
-        if media_type is not None: pass
-        elif isinstance(result, (Html, StrHtml)): media_type = 'text/html'
-        else: media_type = getattr(result, 'media_type', 'text/plain')
-        charset = charset or getattr(result, 'charset', 'UTF-8')
-        content_type = '%s; charset=%s' % (media_type, charset)
-        headers['Content-Type'] = content_type
-
-    if isinstance(result, basestring): 
-        if media_type == 'text/html': result = response.postprocess(result)
-        if isinstance(result, unicode):
-            if media_type == 'text/html' or 'xml' in media_type :
-                  result = result.encode(charset, 'xmlcharrefreplace')
-            else: result = result.encode(charset, 'replace')
-        headers.setdefault('Content-Length', len(result))
-
+    headers = response.headers
     headers.setdefault('Expires', '0')
     max_age = headers.pop('Max-Age', '2')
     cache_control = headers.get('Cache-Control')
     if not cache_control: headers['Cache-Control'] = 'max-age=%s' % max_age
     headers.setdefault('Vary', 'Cookie')
+
     return result
 
 def log_request(request):
@@ -363,8 +336,7 @@ def application(environ, start_response):
         log_request(request)
         if autoreload.reloading_exception and not request.url.startswith('/pony/static/'):
             status, headers = INTERNAL_SERVER_ERROR
-            error_info = format_exc(autoreload.reloading_exception)
-            result = local.response.postprocess(error_info).encode('utf8')
+            result = format_exc(autoreload.reloading_exception)
         elif request.method not in ('HEAD', 'GET', 'POST', 'PUT', 'DELETE'):
             status = '501 Not Implemented'
             headers = {'Content-Type' : 'text/plain'}
@@ -385,19 +357,47 @@ def application(environ, start_response):
             except:
                 log_exc()
                 status, headers = INTERNAL_SERVER_ERROR
-                result = local.response.postprocess(format_exc()).encode('utf8')
+                result = format_exc()
             else:
                 status = local.response.status
                 headers = local.response.headers
 
-        headers = [ (name, str(value)) for name, value in headers.items() ]
+        if hasattr(result, 'read'): pass  # Assume result is a file-like object
+        else: result = tostring(result)
+        headers = dict([ (name.replace('_', '-').title(), str(value))
+                         for name, value in headers.items() ])
+        media_type = headers.pop('Type', None)
+        charset = headers.pop('Charset', None)
+        content_type = headers.get('Content-Type')
+        if content_type:
+            media_type, type_params = cgi.parse_header(content_type)
+            charset = type_params.get('charset', 'iso-8859-1')
+        else:
+            if media_type is not None: pass
+            elif isinstance(result, (Html, StrHtml)): media_type = 'text/html'
+            else: media_type = getattr(result, 'media_type', 'text/plain')
+            charset = charset or getattr(result, 'charset', 'UTF-8')
+            content_type = '%s; charset=%s' % (media_type, charset)
+            headers['Content-Type'] = content_type
+
+        response = local.response
+        if isinstance(result, basestring): 
+            if media_type == 'text/html': result = response.postprocess(result)
+            if isinstance(result, unicode):
+                if media_type == 'text/html' or 'xml' in media_type :
+                      result = result.encode(charset, 'xmlcharrefreplace')
+                else: result = result.encode(charset, 'replace')
+            headers['Content-Length'] = str(len(result))
+
+        headers = headers.items()
         if not status.startswith('5'):
-            auth.save(local.response.cookies)
-            headers += httputils.serialize_cookies(environ, local.response.cookies)
+            auth.save(response.cookies)
+            headers += httputils.serialize_cookies(environ, response.cookies)
 
         log(type='HTTP:response', prefix='Response: ', text=status, severity=DEBUG, headers=headers)
         start_response(status, headers)
-        if request.method == 'HEAD' and 'Content-Length' in headers: result = ''
+
+        if request.method == 'HEAD' and 'Content-Length' in headers: return ''
         if not hasattr(result, 'read'): return [ result ]
         else: return iter(lambda: result.read(BLOCK_SIZE), '')  # return [ result.read() ]
     finally:
