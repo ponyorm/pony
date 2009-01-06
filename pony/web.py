@@ -8,7 +8,7 @@ import pony
 
 from pony import routing, postprocessing, autoreload, auth, httputils, options
 from pony.utils import decorator_with_params
-from pony.templating import Html, StrHtml, plainstr
+from pony.templating import Html, StrHtml
 from pony.logging import log, log_exc, DEBUG, INFO, WARNING
 from pony.db import with_transaction, RowNotFound
 from pony.htmltb import format_exc
@@ -538,11 +538,11 @@ class Http(object):
     def get_lang(self):
         return auth.local.session.get('lang')
     def set_lang(self, lang):
-        if lang and not isinstance(lang, basestring):
-            raise TypeError('http.lang must be string. Got: %s' % lang)
-        lang = plainstr(lang)
-        if not lang: auth.local.session.pop('lang', None)
-        else: auth.local.session['lang'] = lang
+        if lang:
+            if not isinstance(lang, basestring):
+                raise TypeError('http.lang must be string. Got: %s' % lang)
+            auth.local.session['lang'] = lang[:]  # = utils.plainstr(lang)
+        else: auth.local.session.pop('lang', None)
         local.request.languages = local.request._get_languages()
     lang = property(get_lang, set_lang)
 
