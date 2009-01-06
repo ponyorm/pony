@@ -32,17 +32,18 @@ class Http400BadRequest(Http4xxException):
 class Http404NotFound(Http4xxException):
     status = '404 Not Found'
     headers = {'Content-Type' : 'text/plain'}
-    def __init__(self, content='Page not found'):
-        Exception.__init__(self, 'Page not found')
-        self.content = content
+    def __init__(self, msg='Page not found', content=None):
+        Exception.__init__(self, msg)
+        self.content = content or msg
+        if isinstance(content, (Html, StrHtml)): self.headers = {'Content-Type' : ''}
 Http404 = Http404NotFound
 
 class Http405MethodNotAllowed(Http4xxException):
     status = '405 Method Not Allowed'
     headers = {'Content-Type' : 'text/plain', 'Allow' : 'GET, HEAD'}
-    def __init__(self, content='Method not allowed'):
-        Exception.__init__(self, 'Method not allowed')
-        self.content = content
+    def __init__(self, msg='Method not allowed', content=None):
+        Exception.__init__(self, msg)
+        self.content = content or msg
 
 class HttpRedirect(HttpException):
     status_dict = {'301' : '301 Moved Permanently',
