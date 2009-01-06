@@ -36,7 +36,6 @@ class Http404NotFound(Http4xxException):
         Exception.__init__(self, msg)
         self.content = content or msg
         if isinstance(content, (Html, StrHtml)): self.headers = {'Content-Type' : ''}
-Http404 = Http404NotFound
 
 class Http405MethodNotAllowed(Http4xxException):
     status = '405 Method Not Allowed'
