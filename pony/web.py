@@ -328,8 +328,6 @@ def invoke(url):
     cache_control = headers.get('Cache-Control')
     if not cache_control: headers['Cache-Control'] = 'max-age=%s' % max_age
     headers.setdefault('Vary', 'Cookie')
-
-    if request.method == 'HEAD' and 'Content-Length' in headers: return ''
     return result
 
 def log_request(request):
@@ -396,12 +394,12 @@ def application(environ, start_response):
         if not status.startswith('5'):
             auth.save(local.response.cookies)
             headers += httputils.serialize_cookies(environ, local.response.cookies)
-        if not hasattr(result, 'read'): content = [ result ]
-        else: content = iter(lambda: result.read(BLOCK_SIZE), '')  # content = [ result.read() ]
 
         log(type='HTTP:response', prefix='Response: ', text=status, severity=DEBUG, headers=headers)
         start_response(status, headers)
-        return content
+        if request.method == 'HEAD' and 'Content-Length' in headers: result = ''
+        if not hasattr(result, 'read'): return [ result ]
+        else: return iter(lambda: result.read(BLOCK_SIZE), '')  # return [ result.read() ]
     finally:
         top_output_stream = pony.local.output_streams.pop()
         assert top_output_stream is error_stream
