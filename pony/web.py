@@ -207,14 +207,14 @@ static_dir = get_static_dir_name()
 path_re = re.compile(r"^[-_.!~*'()A-Za-z0-9]+$")
 
 def get_static_file(path):
-    if not path: raise Http404
-    if static_dir is None: raise Http404
+    if not path: raise Http404NotFound
+    if static_dir is None: raise Http404NotFound
     for component in path:
-        if not path_re.match(component): raise Http404
+        if not path_re.match(component): raise Http404NotFound
     fname = os.path.join(static_dir, *path)
     if not os.path.isfile(fname):
         if path == [ 'favicon.ico' ]: return get_pony_static_file(path)
-        raise Http404
+        raise Http404NotFound
     method = local.request.method
     if method not in ('GET', 'HEAD'): raise Http405MethodNotAllowed
     ext = os.path.splitext(path[-1])[1]
@@ -229,11 +229,11 @@ def get_static_file(path):
 pony_static_dir = os.path.join(os.path.dirname(__file__), 'static')
 
 def get_pony_static_file(path):
-    if not path: raise Http404
+    if not path: raise Http404NotFound
     for component in path:
-        if not path_re.match(component): raise Http404
+        if not path_re.match(component): raise Http404NotFound
     fname = os.path.join(pony_static_dir, *path)
-    if not os.path.isfile(fname): raise Http404
+    if not os.path.isfile(fname): raise Http404NotFound
     method = local.request.method
     if method not in ('GET', 'HEAD'): raise Http405MethodNotAllowed
     ext = os.path.splitext(path[-1])[1]
