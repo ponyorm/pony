@@ -226,13 +226,14 @@ def get_routes(path, qdict, method, host, port):
         priority = 0
         if route.host is not None:
             if route.host != host: continue
-            priority += 4000
+            priority += 8000
         if route.port is not None:
             if route.port != port: continue
-            priority += 2000
+            priority += 4000
         if method == route.method:
-            if method is not None: priority += 1000
+            if method is not None: priority += 2000
         elif route.method is None and method in ('HEAD', 'GET', 'POST'): pass
+        elif route.method == 'GET' and method == 'HEAD': priority += 1000
         else: continue
         
         for i, (is_param, x) in enumerate(route.parsed_path):

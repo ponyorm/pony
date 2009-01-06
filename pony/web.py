@@ -19,20 +19,30 @@ except ImportError: etree = None
 class HttpException(Exception):
     content = ''
 
-class Http400BadRequest(HttpException):
+class Http4xxException(HttpException):
+    pass
+
+class Http400BadRequest(Http4xxException):
     status = '400 Bad Request'
     headers = {'Content-Type' : 'text/plain'}
     def __init__(self, content='Bad Request'):
         Exception.__init__(self, 'Bad Request')
         self.content = content
 
-class Http404NotFound(HttpException):
+class Http404NotFound(Http4xxException):
     status = '404 Not Found'
     headers = {'Content-Type' : 'text/plain'}
     def __init__(self, content='Page not found'):
         Exception.__init__(self, 'Page not found')
         self.content = content
 Http404 = Http404NotFound
+
+class Http405MethodNotAllowed(Http4xxException):
+    status = '405 Method Not Allowed'
+    headers = {'Content-Type' : 'text/plain', 'Allow' : 'GET, HEAD'}
+    def __init__(self, content='Method not allowed'):
+        Exception.__init__(self, 'Method not allowed')
+        self.content = content
 
 class HttpRedirect(HttpException):
     status_dict = {'301' : '301 Moved Permanently',
@@ -205,11 +215,15 @@ def get_static_file(path):
     if not os.path.isfile(fname):
         if path == [ 'favicon.ico' ]: return get_pony_static_file(path)
         raise Http404
+    method = local.request.method
+    if method not in ('GET', 'HEAD'): raise Http405MethodNotAllowed
     ext = os.path.splitext(path[-1])[1]
     headers = local.response.headers
     headers['Content-Type'] = httputils.guess_type(ext)
     headers['Expires'] = '0'
     headers['Cache-Control'] = 'max-age=10'
+    headers['Content-Length'] = os.path.getsize(fname)
+    if method == 'HEAD': return ''
     return file(fname, 'rb')
 
 pony_static_dir = os.path.join(os.path.dirname(__file__), 'static')
@@ -220,12 +234,16 @@ def get_pony_static_file(path):
         if not path_re.match(component): raise Http404
     fname = os.path.join(pony_static_dir, *path)
     if not os.path.isfile(fname): raise Http404
+    method = local.request.method
+    if method not in ('GET', 'HEAD'): raise Http405MethodNotAllowed
     ext = os.path.splitext(path[-1])[1]
     headers = local.response.headers
     headers['Content-Type'] = httputils.guess_type(ext)
     max_age = 30 * 60
     headers['Expires'] = Cookie._getdate(max_age)
     headers['Cache-Control'] = 'max-age=%d' % max_age
+    headers['Content-Length'] = os.path.getsize(fname)
+    if method == 'HEAD': return ''
     return file(fname, 'rb')
 
 def invoke(url):
@@ -241,7 +259,8 @@ def invoke(url):
         return get_pony_static_file(path[2:])
     qdict = dict(qlist)
     routes = routing.get_routes(path, qdict, request.method, request.host, request.port)
-    if not routes:
+    if routes: pass
+    elif request.method in ('GET', 'HEAD'):
         i = url.find('?')
         if i == -1: p, q = url, ''
         else: p, q = url[:i], url[i:]
@@ -253,6 +272,11 @@ def invoke(url):
         script_name = request.environ.get('SCRIPT_NAME', '')
         url2 = script_name + url2 or '/'
         if url2 != script_name + url: raise HttpRedirect(url2)
+    else:
+        routes = routing.get_routes(path, qdict, 'GET', request.host, request.port)
+        if routes: raise Http405MethodNotAllowed
+        raise Http404NotFound
+    
     route, args, keyargs = routes[0]
 
     if route.redirect:
@@ -309,6 +333,8 @@ def invoke(url):
     cache_control = headers.get('Cache-Control')
     if not cache_control: headers['Cache-Control'] = 'max-age=%s' % max_age
     headers.setdefault('Vary', 'Cookie')
+    headers.setdefault('Content-Length', len(result))
+    if request.method == 'HEAD': return ''
     return result
 
 def log_request(request):
