@@ -12,6 +12,9 @@ from bisect import bisect
 import pony
 from pony import options
 
+try: from pony.thirdparty import etree
+except ImportError: etree = None
+
 class ValidationError(ValueError):
     def __init__(self, err_msg=None):
         ValueError.__init__(self, err_msg)
@@ -280,6 +283,7 @@ def tostring(x):
     if hasattr(x, '__unicode__'):
         try: return unicode(x)
         except: pass
+    if etree is not None and hasattr(x, 'makeelement'): return etree.tostring(x)
     try: return str(x)
     except: pass
     try: return repr(x)
