@@ -132,10 +132,7 @@ class HttpResponse(object):
             if link not in scripts: scripts.append(link)
     def postprocess(self, content):
         if not self.postprocessing: return content
-        if content is None: return 'No content'
-        if isinstance(content, basestring): pass
-        elif hasattr(content, '__unicode__'): content = unicode(content)
-        else: content = str(content)
+        content = tostring(content)
         if content.__class__ is str: content = StrHtml(content)
         elif content.__class__ is unicode: content = Html(content)
         return postprocessing.postprocess(content, self.base_stylesheets, self.component_stylesheets, self.scripts)
