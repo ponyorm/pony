@@ -375,7 +375,7 @@ def application(environ, start_response):
             result = local.response.postprocess(error_info).encode('utf8')
         elif request.method not in ('HEAD', 'GET', 'POST', 'PUT', 'DELETE'):
             status = '501 Not Implemented'
-            header = {'Content-Type' : 'text/plain'}
+            headers = {'Content-Type' : 'text/plain'}
             result = 'Unknown HTTP method: %s' % request.method
         else:
             try:
