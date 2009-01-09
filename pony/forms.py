@@ -390,7 +390,7 @@ class BaseWidget(HtmlField):
         self._label = label
     label = property(_get_label, _set_label)
     def __unicode__(self):
-        return htmljoin((self._label, self.tag, self.error))
+        return htmljoin((self.label, self.tag, self.error))
     html = property(__unicode__)
     @property
     def hidden(self):
