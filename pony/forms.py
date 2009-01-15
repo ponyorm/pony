@@ -453,7 +453,8 @@ class Text(BaseWidget):
         else: str2py, py2str, err_msg = converters.get(type, (self.type, unicode, None))
         try: return str2py(value)
         except ValidationError, e: err_msg = e.err_msg
-        except: pass
+        except:
+            if value == '': return None
         self._auto_error_text = err_msg or html('${Invalid data}')
         return None
     value = property(_get_value, BaseWidget._set_value)
