@@ -56,16 +56,27 @@ local = Local()
 class PonyStdout(object):
     def __getattribute__(self, name):
         return getattr(local.output_streams[-1], name)
+    def _get_softspace(self):
+        return local.output_streams[-1].softspace
+    def _set_softspace(self, value):
+        local.output_streams[-1].softspace = value
+    softspace = property(_get_softspace, _set_softspace)
 pony_stdout = PonyStdout()
 sys.stdout = pony_stdout
 
 class PonyStderr(object):
     def __getattribute__(self, name):
         return getattr(local.error_streams[-1], name)
+    def _get_softspace(self):
+        return local.error_streams[-1].softspace
+    def _set_softspace(self, value):
+        local.error_streams[-1].softspace = value
+    softspace = property(_get_softspace, _set_softspace)
 pony_stderr = PonyStderr()
 sys.stderr = pony_stderr
 
 class ListStream(list):
+    softspace = 0
     write = list.append
     writelines = list.extend
     @staticmethod
