@@ -6,8 +6,8 @@ from itertools import count, izip, cycle
 import datetime
 
 from pony import auth
-from pony.utils import decorator, ValidationError
-from pony.converting import converters, str2date
+from pony.utils import decorator
+from pony.converting import converters, str2date, str2py
 from pony.templating import Html, StrHtml, htmljoin, htmltag, html
 from pony.web import http
 from pony.webutils import component
@@ -254,7 +254,6 @@ class Form(object):
                           self.footer,
                           Html('\n')])
     html = property(__unicode__)
-Form.ValidationError = ValidationError
 Form.NotProcessed = FormNotProcessed
 Form.DoNotDoRedirect = DoNotDoRedirect = True
 
@@ -447,16 +446,10 @@ class Text(BaseWidget):
             if match is None:
                 self._auto_error_text = html('${Invalid data}')
                 return None
-        type = self.type
-        if type is None or not isinstance(value, unicode): return value
-        if isinstance(type, tuple): str2py, py2str, err_msg = type
-        else: str2py, py2str, err_msg = converters.get(type, (self.type, unicode, None))
-        try: return str2py(value)
-        except ValidationError, e: err_msg = e.err_msg
-        except:
-            if value == '': return None
-        self._auto_error_text = err_msg or html('${Invalid data}')
-        return None
+        try: return str2py(value, self.type)
+        except ValueError, e:
+            self._auto_error_text = e.args[0]
+            return None
     value = property(_get_value, BaseWidget._set_value)
     @property
     def html_value(self):

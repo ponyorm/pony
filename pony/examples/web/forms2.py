@@ -9,6 +9,7 @@ def index():
     f = Form()
     f.first_name = Text(required=True)
     f.last_name = Text()
+    f.age = Text(type=int)
     f.birth_date = DatePicker()
 
 ##    f.birth_date = Composite(required=True)

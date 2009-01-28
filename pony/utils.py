@@ -15,11 +15,6 @@ from pony import options
 try: from pony.thirdparty import etree
 except ImportError: etree = None
 
-class ValidationError(ValueError):
-    def __init__(self, err_msg=None):
-        ValueError.__init__(self, err_msg)
-        self.err_msg = err_msg
-
 def copy_func_attrs(new_func, old_func, decorator_name=None):
     if new_func is not old_func:
         new_func.__name__ = old_func.__name__
