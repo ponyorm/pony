@@ -7,7 +7,7 @@ import datetime
 
 from pony import auth
 from pony.utils import decorator
-from pony.converting import converters, str2date, str2py
+from pony.converting import str2py, ValidationError, converters, str2date
 from pony.templating import Html, StrHtml, htmljoin, htmltag, html
 from pony.web import http
 from pony.webutils import component
@@ -447,8 +447,8 @@ class Text(BaseWidget):
                 self._auto_error_text = html('${Invalid data}')
                 return None
         try: return str2py(value, self.type)
-        except ValueError, e:
-            self._auto_error_text = e.args[0]
+        except ValidationError, e:
+            self._auto_error_text = e.translated_msg
             return None
     value = property(_get_value, BaseWidget._set_value)
     @property
@@ -477,7 +477,7 @@ class DatePicker(Text):
         return Text.tag.fget(self)
     def _get_value(self):
         value = BaseWidget._get_value(self)
-        if value is None: return None
+        if not value: return None
         try: return str2date(value)
         except: self._auto_error_text = html('${Invalid date}')
         return None

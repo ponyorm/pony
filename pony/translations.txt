@@ -11,5 +11,8 @@ This field is required
 Invalid data
   ru	Неправильные данные
 
+Invalid date
+  ru	Неправильная дата
+
 Must be number
   ru    Должно быть числом

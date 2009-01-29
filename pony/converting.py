@@ -5,11 +5,6 @@ import re, datetime
 from pony.utils import is_ident
 from pony.templating import html
 
-class ValidationError(ValueError):
-    def __init__(self, err_msg=None):
-        ValueError.__init__(self, err_msg)
-        self.err_msg = err_msg
-
 def check_ip(s):
     s = s.strip()
     list = map(int, s.split('.'))
@@ -184,13 +179,18 @@ converters = {
     datetime.datetime: (str2datetime, unicode, 'Must be correct date & time'),
     }
 
+class ValidationError(ValueError):
+    def __init__(self, err_msg=None, translated_msg=None):
+        ValueError.__init__(self, err_msg)
+        self.err_msg = err_msg
+        self.translated_msg = translated_msg or err_msg
+
 def str2py(value, type):
     if type is None or not isinstance(value, unicode): return value
     if isinstance(type, tuple): str2py, py2str, err_msg = type
     else: str2py, py2str, err_msg = converters.get(type, (type, unicode, None))
     try: return str2py(value)
-    except ValidationError, e: err_msg = e.err_msg
+    except ValidationError: raise
     except:
         if value == '': return None
-        if err_msg: err_msg = html('${%s}' % err_msg)
-    raise ValueError(err_msg)
+        raise ValidationError(err_msg, html('${%s}' % (err_msg or 'Incorrect data')))
