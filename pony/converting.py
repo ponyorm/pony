@@ -165,14 +165,14 @@ def str2datetime(s):
     return datetime.datetime(int(year), int(month), int(day), int(hh), int(mm or 0), int(ss or 0))
 
 converters = {
-    int:  (int, unicode, 'Must be number'),
-    long: (long, unicode, 'Must be number'),
-    float: (float, unicode, 'Must be real number'),
-    'IP': (check_ip, unicode, 'Must be correct IP address'),
-    'positive': (check_positive, unicode, 'Must be positive number'),
-    'identifier': (check_identifier, unicode, 'Must be correct identifier'),
-    'ISBN': (check_isbn, unicode, 'Must be correct ISBN'),
-    'email': (check_email, unicode, 'Must be correct e-mail address'),
+    int:  (int, unicode, 'Incorrect number'),
+    long: (long, unicode, 'Incorrect number'),
+    float: (float, unicode, 'Must be a real number'),
+    'IP': (check_ip, unicode, 'Incorrect IP address'),
+    'positive': (check_positive, unicode, 'Must be a positive number'),
+    'identifier': (check_identifier, unicode, 'Incorrect identifier'),
+    'ISBN': (check_isbn, unicode, 'Incorrect ISBN'),
+    'email': (check_email, unicode, 'Incorrect e-mail address'),
     'rfc2822_email': (check_rfc2822_email, unicode, 'Must be correct e-mail address'),
     datetime.date: (str2date, unicode, 'Must be correct date (mm/dd/yyyy or dd.mm.yyyy)'),
     datetime.time: (str2time, unicode, 'Must be correct time (hh:mm or hh:mm:ss)'),

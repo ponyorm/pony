@@ -1,5 +1,5 @@
 ﻿# Сообщения форм:
-Some fields below contains errors
+Some fields below contain errors
   ru	Некоторые поля содержат ошибки
 
 The form has already been submitted
@@ -11,35 +11,35 @@ This field is required
 Invalid data
   ru	Неправильные данные
 
-Invalid date
-  ru	Неправильная дата
+Incorrect date
+  ru	Нужна корректная дата
 
-Must be number
-  ru    Должно быть числом
+Incorrect number
+  ru    Нужно ввести число
 
-Must be real number
-  ru    Должно быть вещественным числом
+Must be a real number
+  ru    Должно быть вещественным числом
 
-Must be correct IP address
-  ru    Должно быть корректным IP-адресом
+Incorrect IP address
+  ru    Неправильный IP-адрес
 
-Must be positive number
+Must be a positive number
   ru    Должно быть положительным числом
 
-Must be correct identifier
-  ru    Должно быть корректным идентификатором
+Incorrect identifier
+  ru    Некорректный идентификатор
 
-Must be correct ISBN
-  ru    Должно быть корректным ISBN
+Incorrect ISBN
+  ru    Неправильный ISBN
 
-Must be correct e-mail address
-  ru    Должно быть корректным e-mail адресом
+Incorrect e-mail address
+  ru    Неправильный e-mail адрес
 
 Must be correct date (mm/dd/yyyy or dd.mm.yyyy)
-  ru    Должно быть корректной датой (мм/дд/гггг или дд.мм.гггг)
+  ru    Нужно ввести дату (мм/дд/гггг или дд.мм.гггг)
 
 Must be correct time (hh:mm or hh:mm:ss)
-  ru    Должно быть корректным временем (чч:мм или чч:мм:сс)
+  ru    Нужно ввести время (чч:мм или чч:мм:сс)
 
 Must be correct date & time
-  ru    Должно быть корректной датой со временем
+  ru    Нужно ввести дату со временем

@@ -479,7 +479,7 @@ class DatePicker(Text):
         value = BaseWidget._get_value(self)
         if not value: return None
         try: return str2date(value)
-        except: self._auto_error_text = html('${Invalid date}')
+        except: self._auto_error_text = html('${Incorrect date}')
         return None
     value = property(_get_value, Text._set_value)
     @property
