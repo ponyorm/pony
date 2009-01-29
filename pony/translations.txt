@@ -16,3 +16,30 @@ Invalid date
 
 Must be number
   ru    Должно быть числом
+
+Must be real number
+  ru    Должно быть вещественным числом
+
+Must be correct IP address
+  ru    Должно быть корректным IP-адресом
+
+Must be positive number
+  ru    Должно быть положительным числом
+
+Must be correct identifier
+  ru    Должно быть корректным идентификатором
+
+Must be correct ISBN
+  ru    Должно быть корректным ISBN
+
+Must be correct e-mail address
+  ru    Должно быть корректным e-mail адресом
+
+Must be correct date (mm/dd/yyyy or dd.mm.yyyy)
+  ru    Должно быть корректной датой (мм/дд/гггг или дд.мм.гггг)
+
+Must be correct time (hh:mm or hh:mm:ss)
+  ru    Должно быть корректным временем (чч:мм или чч:мм:сс)
+
+Must be correct date & time
+  ru    Должно быть корректной датой со временем
