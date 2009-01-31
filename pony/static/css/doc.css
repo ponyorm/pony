@@ -1,6 +1,8 @@
 /* large text font */
-p {
+p, li {
     font-size: 1.2em;
     line-height: 2em;
+}
+p {
     margin-bottom: 1.25em;
 }
