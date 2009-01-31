@@ -19,24 +19,24 @@ def test():
       }
     </table>''')
 
-@http('/pony/docs/$page?lang=$lang')
-@http('/pony/docs/', redirect=True)
+@http('/pony/doc/$page?lang=$lang')
+@http('/pony/doc/', redirect=True)
 def docs(page='MainPage', lang=None):
     if lang:
-        filename = os.path.join(pony.PONY_DIR, 'docs', '%s-%s.txt' % (page, lang))
+        filename = os.path.join(pony.PONY_DIR, 'doc', '%s-%s.txt' % (page, lang))
         if not os.path.exists(filename): raise http.NotFound
     else:
         for lang in http.request.languages:
-            filename = os.path.join(pony.PONY_DIR, 'docs', '%s-%s.txt' % (page, lang))
+            filename = os.path.join(pony.PONY_DIR, 'doc', '%s-%s.txt' % (page, lang))
             if os.path.exists(filename): raise http.Redirect(url(docs, page, lang))
         else:
-            filename = os.path.join(pony.PONY_DIR, 'docs', page + '.txt')
+            filename = os.path.join(pony.PONY_DIR, 'doc', page + '.txt')
             if not os.path.exists(filename): raise http.NotFound
 
     text = read_text_file(filename)
     content = markdown(Html(text))
     return html('''
-    $link('/pony/static/css/docs.css')
+    $link('/pony/static/css/doc.css')
     <body><div class="container">
     <div class="span-20">$content</div>
     </div></body>
