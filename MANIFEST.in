@@ -2,7 +2,7 @@ include pony/translations.txt
 include pony/htmltb.format_exc.html
 include pony/captcha/map.dat
 include pony/captcha/VeraSe.ttf
-include pony/docs/*.txt
+include pony/doc/*.txt
 include pony/examples/orm/mapping1.xml
 
 recursive-include pony/static *.*
@@ -13,6 +13,6 @@ include pony/examples/web/*.html
 include pony/examples/web/static/images/1.jpg  
 include pony/layouts/*.txt 
 
-include pony/patches/pythonwin/framework/interact.py 
-include pony/patches/pythonwin/scintilla/view.py 
+include pony/patches/pywin/framework/interact.py 
+include pony/patches/pywin/scintilla/view.py 
 include pony/text/*.txt 
