@@ -3,7 +3,7 @@ from distutils.command.install import INSTALL_SCHEMES
 from glob import glob
 
 name = "Pony"
-pony_version = "0.1"
+pony_version = "0.0.1a1"
 description = "web framework"
 long_description = "Pony is a web framework"
 classifiers=[
