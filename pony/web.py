@@ -26,14 +26,17 @@ class Http400BadRequest(Http4xxException):
         Exception.__init__(self, 'Bad Request')
         self.content = content
 
+welcome_template_filename = os.path.join(pony.PONY_DIR, 'welcome.html')
+notfound_template_filename = os.path.join(pony.PONY_DIR, 'notfound.html')
+
 class Http404NotFound(Http4xxException):
     status = '404 Not Found'
     def __init__(self, msg='Page not found', content=None):
         Exception.__init__(self, msg)
         if content: pass
         elif not routing.has_user_routes:
-              content = html(filename=os.path.join(pony.PONY_DIR, 'welcome.html'))
-        else: content = html(filename=os.path.join(pony.PONY_DIR, 'notfound.html'))
+              content = html(filename=welcome_template_filename)
+        else: content = html(filename=notfound_template_filename)
         self.content = content or msg
 
 class Http405MethodNotAllowed(Http4xxException):
