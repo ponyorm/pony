@@ -8,7 +8,7 @@ import pony
 
 from pony import routing, postprocessing, autoreload, auth, httputils, options
 from pony.utils import decorator_with_params, tostring
-from pony.templating import Html, StrHtml
+from pony.templating import html, Html, StrHtml
 from pony.logging import log, log_exc, DEBUG, INFO, WARNING
 from pony.db import with_transaction, RowNotFound
 from pony.htmltb import format_exc
@@ -30,8 +30,11 @@ class Http404NotFound(Http4xxException):
     status = '404 Not Found'
     def __init__(self, msg='Page not found', content=None):
         Exception.__init__(self, msg)
+        if content: pass
+        elif not routing.has_user_routes:
+              content = html(filename=os.path.join(pony.PONY_DIR, 'welcome.html'))
+        else: content = html(filename=os.path.join(pony.PONY_DIR, 'notfound.html'))
         self.content = content or msg
-        if isinstance(content, (Html, StrHtml)): self.headers = {'Content-Type' : ''}
 
 class Http405MethodNotAllowed(Http4xxException):
     status = '405 Method Not Allowed'

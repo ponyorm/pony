@@ -15,6 +15,7 @@ __nodefault__ = NodefaultType()
 registry_lock = threading.RLock()
 registry = ({}, [], [])
 system_routes = []
+has_user_routes = False
 
 url_cache = {}
 
@@ -62,7 +63,6 @@ class Route(object):
             is_param, x = self.parse_component(value)
             self.parsed_query.append((name, is_param, x))
         self.check()
-        if self.system: system_routes.append(self)
         self.register()
     @staticmethod
     def getargspec(func):
@@ -199,6 +199,8 @@ class Route(object):
             else: self.list = list2
             self.func.__dict__.setdefault('routes', []).insert(0, self)
             self.list.insert(0, self)
+            if self.system: system_routes.append(self)
+            else: global has_user_routes; has_user_routes = True
         finally: registry_lock.release()
 
 def get_routes(path, qdict, method, host, port):
@@ -425,6 +427,7 @@ def clear():
     try:
         _clear(*registry)
         for route in system_routes: route.register()
+        has_user_routes = False
     finally: registry_lock.release()
 
 def _clear(dict, list1, list2):
