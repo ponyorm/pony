@@ -24,14 +24,14 @@ def test():
 def docs(page='MainPage', lang=None):
     if lang:
         filename = os.path.join(pony.PONY_DIR, 'doc', '%s-%s.txt' % (page, lang))
-        if not os.path.exists(filename): raise http.NotFound
+        if not os.path.exists(filename): raise http.Redirect(url(docs, '404'))
     else:
         for lang in http.request.languages:
             filename = os.path.join(pony.PONY_DIR, 'doc', '%s-%s.txt' % (page, lang))
             if os.path.exists(filename): raise http.Redirect(url(docs, page, lang))
         else:
             filename = os.path.join(pony.PONY_DIR, 'doc', page + '.txt')
-            if not os.path.exists(filename): raise http.NotFound
+            if not os.path.exists(filename): raise http.Redirect(url(docs, '404'))
 
     text = read_text_file(filename)
     content = markdown(Html(text))
