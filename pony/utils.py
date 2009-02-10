@@ -1,3 +1,5 @@
+#coding: cp1251
+
 import re, os, os.path, sys, time, datetime, types, linecache
 
 from itertools import imap, ifilter
@@ -176,11 +178,14 @@ def decompress(s):
     elif first == 'Z': return s[1:].decode('zip')
     raise ValueError('Incorrect data')
 
+nbsp_re = re.compile(ur"\s+(и|с|в|от)\s+")
+
 def markdown(s):
     from pony.templating import Html, quote
     from pony.thirdparty.markdown import markdown
     s = quote(s)[:]
     result = markdown(s, html4tags=True)
+    result = nbsp_re.sub(r" \1&nbsp;", result)
     return Html(result)
 
 class JsonString(unicode): pass
