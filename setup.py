@@ -34,7 +34,8 @@ packages=[
     "pony.thirdparty.wsgiref" 
 ]
 download_url="http://download.justpony.org/"
-data_files = [ ('pony', ['pony/htmltb.format_exc.html', 'pony/translations.txt']), 
+data_files = [ ('pony', ['pony/welcome.html', 'pony/notfound.html',
+                         'pony/htmltb.format_exc.html', 'pony/translations.txt']), 
                ('pony/captcha', ['pony/captcha/map.dat', 'pony/captcha/VeraSe.ttf']),
                ('pony/doc', glob('pony/doc/*.txt') ),               
                ('pony/examples/orm', ['pony/examples/orm/mapping1.xml']),
