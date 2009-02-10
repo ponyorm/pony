@@ -191,49 +191,29 @@ def set_cookie(name, value, expires=None, max_age=None, path=None, domain=None,
     httputils.set_cookie(local.response.cookies,
                         name, value, expires, max_age, path, domain, secure, http_only, comment, version)
 
-def get_static_dir_name():
-    if pony.MAIN_DIR is None: return None
-    return os.path.join(pony.MAIN_DIR, 'static')
-
-static_dir = get_static_dir_name()
-
 path_re = re.compile(r"^[-_.!~*'()A-Za-z0-9]+$")
 
-def get_static_file(path):
+pony_static_dir = os.path.join(os.path.dirname(__file__), 'static')
+
+def get_static_file(path, dir=None, max_age=10):
     if not path: raise Http404NotFound
-    if static_dir is None: raise Http404NotFound
+    if dir is None: dir = options.STATIC_DIR
+    if dir is None:
+        if pony.MAIN_DIR is None: raise Http404NotFound
+        dir = os.path.join(pony.MAIN_DIR, 'static')
     for component in path:
         if not path_re.match(component): raise Http404NotFound
-    fname = os.path.join(static_dir, *path)
+    fname = os.path.join(dir, *path)
     if not os.path.isfile(fname):
-        if path == [ 'favicon.ico' ]: return get_pony_static_file(path)
+        if path == [ 'favicon.ico' ]: get_static_file(path, pony_static_dir, 30*60)
         raise Http404NotFound
     method = local.request.method
     if method not in ('GET', 'HEAD'): raise Http405MethodNotAllowed
     ext = os.path.splitext(path[-1])[1]
     headers = local.response.headers
     headers['Content-Type'] = httputils.guess_type(ext)
-    headers['Expires'] = '0'
-    headers['Cache-Control'] = 'max-age=10'
-    headers['Content-Length'] = os.path.getsize(fname)
-    if method == 'HEAD': return ''
-    return file(fname, 'rb')
-
-pony_static_dir = os.path.join(os.path.dirname(__file__), 'static')
-
-def get_pony_static_file(path):
-    if not path: raise Http404NotFound
-    for component in path:
-        if not path_re.match(component): raise Http404NotFound
-    fname = os.path.join(pony_static_dir, *path)
-    if not os.path.isfile(fname): raise Http404NotFound
-    method = local.request.method
-    if method not in ('GET', 'HEAD'): raise Http405MethodNotAllowed
-    ext = os.path.splitext(path[-1])[1]
-    headers = local.response.headers
-    headers['Content-Type'] = httputils.guess_type(ext)
-    max_age = 30 * 60
-    headers['Expires'] = Cookie._getdate(max_age)
+    if max_age <= 60: headers['Expires'] = '0'
+    else: headers['Expires'] = Cookie._getdate(max_age)
     headers['Cache-Control'] = 'max-age=%d' % max_age
     headers['Content-Length'] = os.path.getsize(fname)
     if method == 'HEAD': return ''
@@ -249,7 +229,7 @@ def invoke(url):
     if path[:1] == ['static'] and len(path) > 1:
         return get_static_file(path[1:])
     if path[:2] == ['pony', 'static'] and len(path) > 2:
-        return get_pony_static_file(path[2:])
+        return get_static_file(path[2:], pony_static_dir, 30*60)
     qdict = dict(qlist)
     routes = routing.get_routes(path, qdict, request.method, request.host, request.port)
     if routes: pass
