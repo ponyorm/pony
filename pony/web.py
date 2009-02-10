@@ -414,10 +414,12 @@ class ServerThread(threading.Thread):
         self.setDaemon(True)
     def run(self):
         message = 'Starting HTTP server at %s:%s' % (self.host, self.port)
-        log(type='HTTP:start', text=message, severity=WARNING, host=self.host, port=self.port, uid=pony.uid)
+        print>>pony.real_stderr, message
+        # log(type='HTTP:start', text=message, severity=WARNING, host=self.host, port=self.port, uid=pony.uid)
         self.server.start()
         message = 'HTTP server at %s:%s stopped successfully' % (self.host, self.port)
-        log(type='HTTP:stop', text=message, severity=WARNING, host=self.host, port=self.port)
+        print>>pony.real_stderr, message
+        # log(type='HTTP:stop', text=message, severity=WARNING, host=self.host, port=self.port)
         server_threads.pop((self.host, self.port), None)
 
 def start_http_server(address='localhost:8080'):
