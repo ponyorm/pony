@@ -136,23 +136,20 @@ class Form(object):
         for f in self.fields: result[f.name] = f.value
         return result
     def _set_data(self, d):
-        for name, value in d.items():
-            for f in self.fields:
-                if f.name == name: break
-            else:
-                for f in self.hidden_fields:
-                    if f.name == name: break
-                else: raise ValueError("There is no field named '%s' in the form" % name)
+        fields = []
         for name, value in d.items():
             for f in self.fields:
                 if f.name == name:
-                    f.value = value
+                    fields.append(f)
                     break
             else:
                 for f in self.hidden_fields:
                     if f.name == name:
-                        f.value = value
+                        fields.append(f)
                         break
+                else: raise ValueError("There is no field named '%s' in the form" % name)
+        for f in fields:
+            f.value = d[f.name]
     data = property(_get_data, _set_data)
     def clear(self):
         object.__setattr__(self, '_cleared', True)
