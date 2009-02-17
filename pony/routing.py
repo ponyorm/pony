@@ -199,7 +199,7 @@ class Route(object):
             else: self.list = list2
             self.func.__dict__.setdefault('routes', []).insert(0, self)
             self.list.insert(0, self)
-            if self.system: system_routes.append(self)
+            if self.system and self not in system_routes: system_routes.append(self)
             else: global has_user_routes; has_user_routes = True
         finally: registry_lock.release()
 
