@@ -138,16 +138,9 @@ class Form(object):
     def _set_data(self, d):
         fields = []
         for name, value in d.items():
-            for f in self.fields:
-                if f.name == name:
-                    fields.append(f)
-                    break
-            else:
-                for f in self.hidden_fields:
-                    if f.name == name:
-                        fields.append(f)
-                        break
-                else: raise ValueError("There is no field named '%s' in the form" % name)
+            f = getattr(self, name, None)
+            if f: fields.append(f)
+            else: raise ValueError("There is no field named '%s' in the form" % name)
         for f in fields:
             f.value = d[f.name]
     data = property(_get_data, _set_data)
