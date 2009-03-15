@@ -550,7 +550,9 @@ class Select(BaseWidget):
         options = list(options)
         for i, option in enumerate(options):
             if isinstance(option, tuple):
-                if len(option) == 3: value, description, key = option
+                if len(option) == 3:
+                    value, description, key = option
+                    key = unicode(key)
                 elif len(option) == 2:
                     value, description = option
                     key = unicode(value)
