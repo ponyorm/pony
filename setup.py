@@ -4,7 +4,7 @@ from glob import glob
 import sys
 
 name = "Pony"
-pony_version = "0.0.1a1"
+version = "0.0.1a1"
 description = "web framework"
 long_description = "Pony is a web framework"
 classifiers=[
@@ -20,7 +20,7 @@ classifiers=[
 ]
 author="Pony Team"
 author_email="team@justpony.org"
-url="http://www.justpony.org"
+url="http://justpony.org"
 license="AGPL, Commercial"
 packages=[
     "pony", "pony.captcha",
@@ -34,7 +34,7 @@ packages=[
     "pony.thirdparty.cherrypy", "pony.thirdparty.simplejson",
     "pony.thirdparty.wsgiref" 
 ]
-download_url="http://download.justpony.org/"
+download_url="http://pypi.python.org/pypi/pony/"
 data_files = [ ['pony', ['pony/welcome.html', 'pony/notfound.html',
                          'pony/htmltb.format_exc.html', 'pony/translations.txt']], 
                ['pony/captcha', ['pony/captcha/map.dat', 'pony/captcha/VeraSe.ttf']],
@@ -71,13 +71,12 @@ for scheme in INSTALL_SCHEMES.values():
     scheme['data'] = scheme['purelib']
 
 
-from sys import version, exit
 def main():
-    python_version = version
+    python_version = sys.version
     if python_version < '2.4' or python_version >= '2.7':
         s = "I'm sorry, but %s %s requires Python version 2.4, 2.5 or 2.6. You have version %s"
         print s % (name, pony_version, python_version.split(' ', 1)[0])
-        exit(1)
+        sys.exit(1)
     
     if sys.argv[1] == 'bdist_wininst':
         for fileInfo in data_files:
@@ -85,7 +84,7 @@ def main():
 
     setup(
         name=name,
-        version=pony_version,
+        version=version,
         description=description,
         long_description=long_description,
         classifiers=classifiers,
