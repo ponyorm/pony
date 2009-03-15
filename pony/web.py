@@ -456,6 +456,8 @@ def stop_http_server(address=None):
         server_thread.join()
 
 class Http(object):
+    NO_REDIRECT = True
+    
     invoke = staticmethod(invoke)
     remove = staticmethod(routing.remove)
     clear = staticmethod(routing.clear)
