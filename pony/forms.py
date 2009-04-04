@@ -170,8 +170,8 @@ class Form(object):
         object.__setattr__(self, 'is_submitted', False)
         request = self._request
         if self._cleared or request.form_processed: return
-        if request.form_processed is not None \
-           and request.submitted_form != self.attrs.get('name'): return
+        if request.form_processed: return
+        if request.submitted_form != self.attrs.get('name'): return
         if self.method == 'POST' and request.method != 'POST': return
         object.__setattr__(self, 'is_submitted', True)
     @property
