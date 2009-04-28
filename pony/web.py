@@ -526,10 +526,15 @@ class Http(object):
         local.request.languages = local.request._get_languages()
     lang = property(get_lang, set_lang)
 
-    def __getitem__(self, x):
-        getfirst = local.request.fields.getfirst
-        if isinstance(x, basestring): return getfirst(x)
-        return tuple(getfirst(key) for key in x)
+    def __getitem__(self, key):
+        if isinstance(key, basestring):
+            result = local.request.fields.getfirst(key)
+            if result is None: return None
+            try: return result.decode('utf8')
+            except UnicodeDecodeError: raise Http400BadRequest
+        elif hasattr(key, '__iter__'): # sequence of field names
+            return tuple(map(self.__getitem__, key))
+        else: raise KeyError, key
 
     class _Params(object):
         def __getattr__(self, attr): return local.request.params.get(attr)
