@@ -88,7 +88,6 @@ class HttpRequest(object):
             self.full_url = 'http://localhost/'
             self.host = 'localhost'
             self.port = 80
-        self._base_url = None
         self.languages = self._get_languages()
         self.params = {}
         input_stream = environ.get('wsgi.input') or StringIO()
