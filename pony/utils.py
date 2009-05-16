@@ -17,6 +17,9 @@ from pony import options
 try: from pony.thirdparty import etree
 except ImportError: etree = None
 
+if pony.MODE.startswith('GAE-'): localbase = object
+else: from pony.threading import local as localbase
+
 def copy_func_attrs(new_func, old_func, decorator_name=None):
     if new_func is not old_func:
         new_func.__name__ = old_func.__name__

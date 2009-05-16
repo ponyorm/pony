@@ -2,8 +2,6 @@ import sys, time, threading, random
 from os.path import dirname
 from itertools import count
 
-from pony.utils import decorator, tostring
-
 uid = str(random.randint(1, 1000000))
 
 def detect_mode():
@@ -40,13 +38,16 @@ PONY_DIR = dirname(__file__)
 
 ################################################################################
 
+# pony.MODE must be defined before this import
+from pony.utils import decorator, tostring, localbase
+
 try: real_stdout
 except NameError:
     assert sys.stdout.__class__.__name__ != 'PonyStdout'
     real_stdout = sys.stdout
     real_stderr = sys.stderr
 
-class Local(threading.local):
+class Local(localbase):
     def __init__(self):
         self.output_streams = [ real_stdout ]
         self.error_streams = [ real_stderr ]

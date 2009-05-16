@@ -9,7 +9,7 @@ from pony.thirdparty import simplejson
 
 import pony
 from pony import options, httputils
-from pony.utils import compress, decompress, simple_decorator
+from pony.utils import compress, decompress, simple_decorator, localbase
 from pony.sessionstorage import ramstorage as storage
 
 hash = pony.options.HASH_ALGORITHM
@@ -17,7 +17,7 @@ if hash is None:
     try: from hashlib import sha1 as hash
     except ImportError: import sha as hash
 
-class Local(threading.local):
+class Local(localbase):
     def __init__(self):
         self.lock = threading.Lock()
         self.lock.acquire()

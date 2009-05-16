@@ -3,7 +3,7 @@ import re, sys, threading
 from operator import itemgetter
 
 from pony import options
-from pony.utils import import_module, parse_expr, is_ident
+from pony.utils import import_module, parse_expr, is_ident, localbase
 from pony.sqlsymbols import *
 
 class DBException(Exception):
@@ -47,7 +47,6 @@ class     InternalError(DatabaseError): pass
 class     ProgrammingError(DatabaseError): pass
 class     NotSupportedError(DatabaseError): pass
 
-
 def wrap_dbapi_exceptions(provider, func, *args, **keyargs):
     try: return func(*args, **keyargs)
     except provider.NotSupportedError, e: raise NotSupportedError(exceptions=[e])
@@ -61,7 +60,7 @@ def wrap_dbapi_exceptions(provider, func, *args, **keyargs):
     except provider.Error, e: raise Error(exceptions=[e])
     except provider.Warning, e: raise Warning(exceptions=[e])
 
-class Local(threading.local):
+class Local(localbase):
     def __init__(self):
         self.default_db = None
         self.connections = {}

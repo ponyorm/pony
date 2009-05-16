@@ -11,7 +11,7 @@ CRITICAL = logging.CRITICAL
 
 import pony
 from pony import options
-from pony.utils import current_timestamp, restore_escapes
+from pony.utils import current_timestamp, restore_escapes, localbase
 
 try: process_id = os.getpid()
 except AttributeError: process_id = 0 # in GAE
@@ -134,7 +134,7 @@ if LOG_TO_SQLITE:
 
     queue = Queue.Queue()
 
-    class Local(threading.local):
+    class Local(localbase):
         def __init__(self):
             self.thread_id = thread.get_ident()
             self.lock = threading.Lock()

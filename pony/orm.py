@@ -1181,7 +1181,7 @@ class Cache(object):
         trans.row_template = ROW_HEADER + [ UNKNOWN ]*(row_size-len(ROW_HEADER))
         trans.rows = {}
 
-class Local(threading.local):
+class Local(utils.localbase):
     def __init__(trans):
         trans.transaction = None
 

@@ -7,7 +7,7 @@ from operator import attrgetter
 import pony
 
 from pony import routing, postprocessing, autoreload, auth, httputils, options
-from pony.utils import decorator_with_params, tostring
+from pony.utils import decorator_with_params, tostring, localbase
 from pony.templating import html, Html, StrHtml
 from pony.logging import log, log_exc, DEBUG, INFO, WARNING
 from pony.db import with_transaction, RowNotFound
@@ -179,7 +179,7 @@ def url(func, *args, **keyargs):
     return url
 make_url = url
 
-class Local(threading.local):
+class Local(localbase):
     def __init__(self):
         self.request = HttpRequest({})
         self.response = HttpResponse()
