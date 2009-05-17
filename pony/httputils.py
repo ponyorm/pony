@@ -11,6 +11,12 @@ extensions_map.update({
     '.py': 'text/plain',
     '.c': 'text/plain',
     '.h': 'text/plain',
+    '.asc': 'text/plain',
+    '.diff': 'text/plain',
+    '.csv': 'text/comma-separated-values',
+    '.rss': 'application/rss+xml',
+    '.text': 'text/plain',
+    '.wbmp': 'image/vnd.wap.wbmp'
     })
 
 def guess_type(ext):
