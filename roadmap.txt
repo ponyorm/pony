@@ -1,13 +1,5 @@
 0. logo
-1. fix bugs
-
-	a. http['field_name'] 
-	   (http['field_name'] or '').decode('utf8')
-
-	b. reloading in GAE leads to exception in except_hook
-	   pony\patches\interactive.py
-
-	c. C modules
+1. fix bugs with C modules
 2. fcgi(fastcgi)
 3. GAE Memcache
 4. mapper
