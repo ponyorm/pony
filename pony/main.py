@@ -12,7 +12,7 @@ from pony.web import main, application, http, url
 from pony.webutils import webpage, component, link, rounded, tabs
 from pony.forms import (Form, Hidden, Submit, Reset,
                         File, Password, StaticText, Text, DatePicker, TextArea, Checkbox, 
-                        Select, RadioGroup, MultiSelect, CheckboxGroup,
+                        Select, AutoSelect, RadioGroup, MultiSelect, CheckboxGroup,
                         Composite, Grid)
 from pony.db import Database, RowNotFound, MultipleRowsFound
 

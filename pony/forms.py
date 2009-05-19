@@ -49,6 +49,7 @@ class Form(object):
             if isinstance(prev, HtmlField): self.__delattr__(name)
             object.__setattr__(self, name, x)
             return
+        if name == 'submit': raise TypeError('Invalid form field name: submit')
         if hasattr(self, name):
             if not isinstance(prev, HtmlField):
                 raise TypeError('Invalid form field name: %s' % name)
@@ -243,9 +244,10 @@ class Form(object):
         return htmljoin(result)
     @property
     def buttons(self):
+        if not self.submit_fields: return ''
         result = [ htmltag('div', _class='buttons', align=self.buttons_align) ]
         buttons = [ f.html for f in self.submit_fields ]
-        result.extend(buttons or [ htmltag('input', type='submit') ])
+        result.extend(buttons)
         result.append(Html('\n</div>'))
         return htmljoin(result)
     def __str__(self):
@@ -609,6 +611,15 @@ class Select(BaseWidget):
     def hidden(self):
         if self.__class__ == Select and str(self.attrs.get('size', '')) == '1': return ''
         return htmltag('input', name='.'+self.name, type='hidden', value='')
+
+class AutoSelect(Select):
+    def __init__(self, label=None, required=False, value=None, options=[], **attrs):
+        Select.__init__(self, label, required, value, options, onchange='this.form.submit()', **attrs)
+    @property
+    def tag(self):
+        return Select.tag.fget(self) + Html('\n<noscript>\n'
+                                            '<input type="submit" value="apply">\n'
+                                            '</noscript>\n')
 
 class RadioGroup(Select):
     @property

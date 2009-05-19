@@ -22,6 +22,8 @@ def index():
 ##        try: birth_date = datetime(int(year), int(month), int(day))
 ##        except ValueError: f.birth_date.error_text = 'Incorrect date'
 
+    f.btn = Submit('Send')
+
     if f.is_valid:
         print '<h1>Hello, %s!</h1>' % f.first_name.value
         print '<h2>Birth date: %s</h2>' % f.birth_date.value
