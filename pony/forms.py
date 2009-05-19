@@ -73,7 +73,7 @@ class Form(object):
                 else: self.fields.remove(x)
             except ValueError: pass
         object.__delattr__(self, name)
-    def __init__(self, method='POST', secure=None,
+    def __init__(self, method='GET', secure=None,
                  prevent_resubmit=False, buttons_align=None, **attrs):
         # Note for subclassers: __init__ can be caled twice!
         object.__setattr__(self, '_pickle_entire_form', False)
