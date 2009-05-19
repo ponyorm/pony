@@ -199,7 +199,7 @@ class Form(object):
         if self._error_text is not None: return self._error_text
         self._validate()
         for f in self.fields:
-            if f.error_text: return html('${Some fields below contains errors}')
+            if f.error_text: return html('${Some fields below contain errors}')
         if self.is_valid is None: return html('${The form has already been submitted}')
     def _set_error_text(self, text):
         object.__setattr__(self, '_error_text', text)
