@@ -303,7 +303,7 @@ BLOCK_SIZE = 65536
 STD_ERROR_HEADERS = {'Content-Type': 'text/html; charset=UTF-8'}
 INTERNAL_SERVER_ERROR = '500 Internal Server Error', STD_ERROR_HEADERS
 
-def application(environ, start_response):
+def app(environ):
     sys.stdout = pony.pony_stdout
     sys.stderr = pony.pony_stderr
     error_stream = environ['wsgi.errors']
@@ -375,19 +375,21 @@ def application(environ, start_response):
         if not status.startswith('5'):
             auth.save(response.cookies)
             headers += httputils.serialize_cookies(environ, response.cookies)
-
         log(type='HTTP:response', prefix='Response: ', text=status, severity=DEBUG, headers=headers)
-        start_response(status, headers)
-
-        if request.method == 'HEAD' and 'Content-Length' in headers: return ''
-        if not hasattr(result, 'read'): return [ result ]
-        else: return iter(lambda: result.read(BLOCK_SIZE), '')  # return [ result.read() ]
+        if request.method == 'HEAD' and 'Content-Length' in headers: result = ''
+        return status, headers, result
     finally:
         top_output_stream = pony.local.output_streams.pop()
         assert top_output_stream is error_stream
         if not wsgi_errors_is_stderr:
             top_error_stream = pony.local.error_streams.pop()
             assert top_error_stream is error_stream
+
+def application(environ, start_response):
+    status, headers, result = app(environ)
+    start_response(status, headers)
+    if not hasattr(result, 'read'): return [ result ]
+    else: return iter(lambda: result.read(BLOCK_SIZE), '')  # return [ result.read() ]
 
 def main():
     from pony.thirdparty.wsgiref.handlers import CGIHandler
