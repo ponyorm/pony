@@ -9,7 +9,7 @@ if pony.MODE.startswith('GAE-'):
         return app(environ)
 
 else:
-
+    import bdb
     class Local(threading.local):
         def __init__(self):
             self.lock = threading.Lock()
@@ -31,6 +31,13 @@ else:
     from Queue import Queue
     queue = Queue()
 
+    #run_app = compile('status, headers, result = app(environ)', '<?>', 'exec')
+
+    def f(app, environ, result_holder) :
+        status, headers, result = app(environ)
+        headers.append(('X-Debug', 'True'))
+        result_holder.append((status, headers, result))
+
     class DebugThread(threading.Thread):
         def __init__(self):
             threading.Thread.__init__(self, name="DebugThread")
@@ -40,7 +47,10 @@ else:
                 x = queue.get()
                 if x is None: break
                 lock, app, environ, result_holder = x
-                status, headers, result = app(environ)
+                debugger = bdb.Bdb()
+                d = dict(app=app, environ=environ, result_holder=result_holder)
+                debugger.run('x = app(environ)', d)
+                status, headers, result = d['x']
                 headers.append(('X-Debug', 'True'))
                 result_holder.append((status, headers, result))
                 lock.release()
