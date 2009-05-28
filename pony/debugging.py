@@ -31,7 +31,7 @@ else:
     from Queue import Queue
     queue = Queue()
 
-    #run_app = compile('status, headers, result = app(environ)', '<?>', 'exec')
+    run_app = compile('x = app(environ)', '<?>', 'exec')
 
     def f(app, environ, result_holder) :
         status, headers, result = app(environ)
@@ -49,7 +49,7 @@ else:
                 lock, app, environ, result_holder = x
                 debugger = bdb.Bdb()
                 d = dict(app=app, environ=environ, result_holder=result_holder)
-                debugger.run('x = app(environ)', d)
+                debugger.run(run_app, d)
                 status, headers, result = d['x']
                 headers.append(('X-Debug', 'True'))
                 result_holder.append((status, headers, result))
