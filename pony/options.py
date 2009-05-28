@@ -1,3 +1,5 @@
+DEBUG = True
+
 STATIC_DIR = None
 
 #postprocessing options:

@@ -12,6 +12,7 @@ from pony.templating import html, Html, StrHtml
 from pony.logging import log, log_exc, DEBUG, INFO, WARNING
 from pony.db import with_transaction, RowNotFound
 from pony.htmltb import format_exc
+from pony.debugging import debug_app
 
 class HttpException(Exception):
     content = ''
@@ -386,7 +387,8 @@ def app(environ):
             assert top_error_stream is error_stream
 
 def application(environ, start_response):
-    status, headers, result = app(environ)
+    if options.DEBUG: status, headers, result = debug_app(app, environ)
+    else: status, headers, result = app(environ)
     start_response(status, headers)
     if not hasattr(result, 'read'): return [ result ]
     else: return iter(lambda: result.read(BLOCK_SIZE), '')  # return [ result.read() ]
