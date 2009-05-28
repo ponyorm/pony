@@ -1,5 +1,5 @@
 
-import threading
+import re, threading
 
 import pony
 
@@ -17,7 +17,12 @@ else:
 
     local = Local()
 
+    debug_re = re.compile('(^|&)debug=')
+
     def debug_app(app, environ):
+        query = environ.get('QUERY_STRING', '')
+        if not debug_re.search(query): return app(environ)
+       
         result_holder = []
         queue.put((local.lock, app, environ, result_holder))
         local.lock.acquire()
@@ -36,6 +41,7 @@ else:
                 if x is None: break
                 lock, app, environ, result_holder = x
                 status, headers, result = app(environ)
+                headers.append(('X-Debug', 'True'))
                 result_holder.append((status, headers, result))
                 lock.release()
 
