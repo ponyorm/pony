@@ -46,6 +46,13 @@ def reconstruct_script_url(environ):
     url += quote(script_name)
     return url
 
+def reconstruct_url(environ):
+    url = reconstruct_script_url(environ)
+    url += quote(environ['PATH_INFO'])
+    query = environ['QUERY_STRING']
+    if query: url += '?' + query
+    return url
+
 q_re = re.compile('\s*q\s*=\s*([0-9.]+)\s*')
 
 def parse_accept_language(s):
