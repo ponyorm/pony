@@ -410,6 +410,12 @@ class BaseWidget(HtmlField):
 
 class File(BaseWidget):
     HTML_TYPE = 'file'
+    def __init__(self, label=None, required=None, **attrs):
+        if 'value' in attrs: raise TypeError('Cannot set value of File field')
+        BaseWidget.__init__(self, label, required, **attrs)
+    def _init_(self, form, name, label):
+        if form.method != 'POST': raise TypeError('Only form with method="POST" can contain File fields')
+        BaseWidget._init_(self, form, name, label)
     def _get_value(self):
         if not self.is_submitted: return None
         fields = self.form._request.fields
