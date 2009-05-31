@@ -1,5 +1,5 @@
 
-import re, threading
+import re, threading, cStringIO
 
 import pony
 from pony import httputils
@@ -23,9 +23,23 @@ else:
     def debug_app(app, environ):
         query = environ.get('QUERY_STRING', '')
         if not debug_re.search(query): return app(environ)
+
+        env = dict((key, value) for key, value in environ.iteritems()
+                                if isinstance(key, basestring) and isinstance(value, basestring))
+        env['wsgi.version'] = environ['wsgi.version']
+        env['wsgi.url_scheme'] = environ['wsgi.url_scheme']
+        env['wsgi.multithread'] = environ['wsgi.multithread']
+        env['wsgi.multiprocess'] = environ['wsgi.multiprocess']
+        env['wsgi.run_once'] = environ['wsgi.run_once']
+        content_length = int(environ.get('CONTENT_LENGTH', '0'))
+        input_data = environ['wsgi.input'].read(content_length)
+        env['wsgi.input'] = cStringIO.StringIO(input_data)
+        env['wsgi.errors'] = cStringIO.StringIO()
+        file_wrapper = environ.get('wsgi.file_wrapper')
+        if file_wrapper is not None: env['wsgi.file_wrapper'] = file_wrapper
        
         result_holder = []
-        queue.put((local.lock, app, environ, result_holder))
+        queue.put((local.lock, app, env, result_holder))
         local.lock.acquire()
         return result_holder[0]
 
