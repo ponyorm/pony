@@ -16,7 +16,11 @@ extensions_map.update({
     '.csv': 'text/comma-separated-values',
     '.rss': 'application/rss+xml',
     '.text': 'text/plain',
-    '.wbmp': 'image/vnd.wap.wbmp'
+    '.wbmp': 'image/vnd.wap.wbmp',
+    '.dwg': 'image/x-dwg',
+    '.ico': 'image/x-icon',
+    '.bz2': 'application/x-bzip2',
+    '.gz': 'application/x-gzip'
     })
 
 def guess_type(ext):
