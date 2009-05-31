@@ -390,7 +390,10 @@ def application(environ, start_response):
     if options.DEBUG: status, headers, result = debug_app(app, environ)
     else: status, headers, result = app(environ)
     start_response(status, headers)
+
+    # result must be str or file-like object:
     if not hasattr(result, 'read'): return [ result ]
+    elif 'wsgi.file_wrapper' in environ: return environ['wsgi.file_wrapper'](result, BLOCK_SIZE)
     else: return iter(lambda: result.read(BLOCK_SIZE), '')  # return [ result.read() ]
 
 def main():
