@@ -41,6 +41,8 @@ def _form_init_decorator(__init__):
 
 http_303_incompatible_browsers = []
 
+DEFAULT = object()
+
 class Form(object):
     __metaclass__ = FormMeta
     def __setattr__(self, name, x):
@@ -74,8 +76,8 @@ class Form(object):
                 else: self.fields.remove(x)
             except ValueError: pass
         object.__delattr__(self, name)
-    def __init__(self, method='GET', secure=None,
-                 prevent_resubmit=False, buttons_align=None, **attrs):
+    def __init__(self, method='GET', secure=DEFAULT,
+                 prevent_resubmit=True, buttons_align=None, **attrs):
         # Note for subclassers: __init__ can be caled twice!
         object.__setattr__(self, '_pickle_entire_form', False)
         object.__setattr__(self, '_cleared', False)
@@ -84,16 +86,18 @@ class Form(object):
         object.__setattr__(self, '_request', http.request)
         object.__setattr__(self, 'attrs', dict((name.lower(), str(value))
                                                for name, value in attrs.iteritems()))
-        if 'name' not in attrs: self.attrs['name'] = self.__class__.__name__
         object.__setattr__(self, 'fields', [])
         object.__setattr__(self, 'hidden_fields', [])
         object.__setattr__(self, 'submit_fields', [])
         object.__setattr__(self, '_secure', False)
         self._set_method(method)
+        if secure is DEFAULT: secure = (method=='POST')
         self._set_secure(secure)
         object.__setattr__(self, 'prevent_resubmit', prevent_resubmit)
         object.__setattr__(self, 'buttons_align', buttons_align)
-        self._f = Hidden(self.attrs.get('name', ''))
+        if self.__class__ is not Form and 'name' not in attrs: self.attrs['name'] = self.__class__.__name__
+        name = self.attrs.get('name')
+        if name: self._f = Hidden(name)
     def __getstate__(self):
         state = self._init_args
         if self._pickle_entire_form or state is None:
@@ -150,19 +154,15 @@ class Form(object):
         object.__setattr__(self, 'is_submitted', False)
     def _set_method(self, method):
         method = method.upper()
-        if method not in ('GET', 'POST'): raise TypeError(
-            'Invalid form method: %s (must be GET or POST)' % method)
-        if method == 'GET' and self._secure:
-            raise TypeError('GET form cannot be secure')
+        if method == 'GET': self.secure = False
+        elif method != 'POST': raise TypeError('Invalid form method: %s (must be GET or POST)' % method)
         object.__setattr__(self, '_method', method)
         self._update_status()
     method = property(attrgetter('_method'), _set_method)
     def _set_secure(self, secure):
-        if self._method == 'GET':
-            if secure: raise TypeError('GET form cannot be secure')
-            object.__setattr__(self, '_secure', False)
-        elif self.method == 'POST': object.__setattr__(self, '_secure', secure or secure is None)
-        else: assert False
+        if secure == self._secure: return
+        if secure and self._method == 'GET': raise TypeError('GET form cannot be secure')
+        object.__setattr__(self, '_secure', secure)
         if self._secure: self._t = Ticket()
         elif hasattr(self, '_t'): del self._t
         self._update_status()
@@ -173,11 +173,11 @@ class Form(object):
         if self._cleared or request.form_processed: return
         if request.form_processed: return
         if request.submitted_form != self.attrs.get('name'): return
-        if self.method == 'POST' and request.method != 'POST': return
         object.__setattr__(self, 'is_submitted', True)
     @property
     def is_valid(self):
         if not self.is_submitted: return False
+        if self.method == 'POST' and http.request.method != 'POST': return False
         self._validate()
         if self._error_text: return False
         for f in self.hidden_fields:
@@ -208,7 +208,7 @@ class Form(object):
     def error(self):
         error_text = self.error_text
         if not error_text: return ''
-        return Html('<div class="error">%s</div>' % error_text)
+        return Html('\n<div class="error">%s</div>' % error_text)
     @property
     def tag(self):
         attrs = self.attrs
