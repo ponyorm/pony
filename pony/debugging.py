@@ -18,7 +18,7 @@ else:
 
     local = Local()
 
-    debug_re = re.compile(r'((?<=\?|&)|^)debug(=[^&]*)?&?')
+    debug_re = re.compile(r'(?:(?<=\?|&)|^)debug(?:=([^&]*))?&?')
 
     def debug_app(app, environ):
         query = environ.get('QUERY_STRING', '')
@@ -37,9 +37,11 @@ else:
         env['wsgi.errors'] = cStringIO.StringIO()
         file_wrapper = environ.get('wsgi.file_wrapper')
         if file_wrapper is not None: env['wsgi.file_wrapper'] = file_wrapper
-       
+
+        url = httputils.reconstruct_url(environ)
+        command = debug_re.search(url).group(1)
         result_holder = []
-        queue.put((local.lock, app, env, result_holder))
+        queue.put((local.lock, app, env, result_holder, url, command))
         local.lock.acquire()
         return result_holder[0]
 
@@ -59,8 +61,7 @@ else:
             # print>>pony.real_stdout, 222
 
             while last is not None:
-                lock, app, environ, result_holder = last
-                url = httputils.reconstruct_url(environ)
+                lock, app, environ, result_holder, url, command = last                
                 url = debug_re.sub('', url)
                 if url.endswith('&'): url = url[:-1]
                 debugger = Debugger(url)
@@ -70,7 +71,7 @@ else:
                 # print>>pony.real_stdout, 999
                 if result is not None:
                     status, headers, content = result
-                    lock, app, environ, result_holder = last
+                    lock, app, environ, result_holder, url, command = last
                     headers.append(('X-Debug', 'Result'))
                     result_holder.append((status, headers, content))
                     lock.release()
@@ -78,41 +79,52 @@ else:
                     last = queue.get()
                     # print>>pony.real_stdout, 'bbb'
 
+# set_step     step   "Stop after one line of code"
+# set_next     next   "Stop on the next line in or below the given frame"     frame should be specified as a paramater
+# set_return   return "Stop when returning from the given frame"              frame should be specified as a paramater
+# set_continue cont   "Don't stop except at breakpoints or when finished"
+
     class Debugger(bdb.Bdb):
         def __init__(self, url):
             self.url = url
             bdb.Bdb.__init__(self)
-        def process_queue(self, response_text):
+        def process_queue(self, response_text, frame):
             # print>>pony.real_stdout, 444
             global last
             if last is None: self.set_quit(); return
             # print>>pony.real_stdout, 555
-            lock, app, environ, result_holder = last
-            url = httputils.reconstruct_url(environ)
+            lock, app, environ, result_holder, url, command = last
             url = debug_re.sub('', url)
             if url.endswith('&'): url = url[:-1]
             if url != self.url: self.set_quit(); return
-            # print>>pony.real_stdout, 666
-            # if response_text.startswith('call '): self.set_continue() else:
-            self.set_step()
             headers = [('Content-Type', 'text/plain'), ('X-Debug', 'Step')]
             result_holder.append(('200 OK', headers, response_text))
             lock.release()
             # print>>pony.real_stdout, 777
             last = queue.get()
             # print>>pony.real_stdout, 888
+            lock, app, environ, result_holder, url, command = last
+            if command == 'step':
+                self.set_step()
+            elif command == 'next':
+                self.set_next(frame)
+            elif command == 'return':
+                self.set_return(frame)
+            elif command == 'cont':
+                self.set_continue()
+            else: self.set_step()
         def user_call(self, frame, args):
-            self.process_queue('call ' + (frame.f_code.co_name or "<unknown>"))
+            self.process_queue('call ' + (frame.f_code.co_name or "<unknown>"), frame)
         def user_line(self, frame):
             name = frame.f_code.co_name or "<unknown>"
             filename = self.canonic(frame.f_code.co_filename)
-            self.process_queue('stop at %s %s in %s' % (filename, frame.f_lineno, name))
+            self.process_queue('stop at %s %s in %s' % (filename, frame.f_lineno, name), frame)
         def user_return(self, frame, value):
             name = frame.f_code.co_name or "<unknown>"
-            self.process_queue('return from ' + name)
+            self.process_queue('return from ' + name, frame)
         def user_exception(self, frame, exception):
             name = frame.f_code.co_name or "<unknown>"
-            self.process_queue('exception in %s %s' % (name, exception))
+            self.process_queue('exception in %s %s' % (name, exception), frame)
 
     @pony.on_shutdown
     def do_shutdown():
