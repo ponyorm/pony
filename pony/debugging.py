@@ -4,6 +4,11 @@ import re, threading, cStringIO
 import pony
 from pony import httputils
 
+debug_dashboard = """ <br> 
+    <a href="?debug=step">step</a> <a href="?debug=next">next</a>
+    <a href="?debug=return">return</a> <a href="?debug=cont">cont</a>
+"""
+
 if pony.MODE.startswith('GAE-'):
     
     def debug_app(app, environ):
@@ -97,8 +102,8 @@ else:
             url = debug_re.sub('', url)
             if url.endswith('&'): url = url[:-1]
             if url != self.url: self.set_quit(); return
-            headers = [('Content-Type', 'text/plain'), ('X-Debug', 'Step')]
-            result_holder.append(('200 OK', headers, response_text))
+            headers = [('Content-Type', 'text/html'), ('X-Debug', 'Step')]
+            result_holder.append(('200 OK', headers, response_text + debug_dashboard))
             lock.release()
             # print>>pony.real_stdout, 777
             last = queue.get()
