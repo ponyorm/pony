@@ -4,11 +4,6 @@ import re, threading, cStringIO
 import pony
 from pony import httputils
 
-debug_dashboard = """ <br> 
-    <a href="?debug=step">step</a> <a href="?debug=next">next</a>
-    <a href="?debug=return">return</a> <a href="?debug=cont">cont</a>
-"""
-
 if pony.MODE.startswith('GAE-'):
     
     def debug_app(app, environ):
@@ -107,7 +102,6 @@ else:
                 debug_url = url
             else:
                 debug_url = '%s&' % url
-
             debug_dashboard = """ <br> 
             <a href="%sdebug=step">step</a> <a href="%sdebug=next">next</a>
             <a href="%sdebug=return">return</a> <a href="%sdebug=cont">cont</a>
