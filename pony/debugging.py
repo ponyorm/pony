@@ -103,6 +103,15 @@ else:
             if url.endswith('&'): url = url[:-1]
             if url != self.url: self.set_quit(); return
             headers = [('Content-Type', 'text/html'), ('X-Debug', 'Step')]
+            if url.endswith('?'):
+                debug_url = url
+            else:
+                debug_url = '%s&' % url
+
+            debug_dashboard = """ <br> 
+            <a href="%sdebug=step">step</a> <a href="%sdebug=next">next</a>
+            <a href="%sdebug=return">return</a> <a href="%sdebug=cont">cont</a>
+            """ % (debug_url, debug_url, debug_url, debug_url)
             result_holder.append(('200 OK', headers, response_text + debug_dashboard))
             lock.release()
             # print>>pony.real_stdout, 777
