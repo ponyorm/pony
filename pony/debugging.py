@@ -97,6 +97,8 @@ else:
             url = debug_re.sub('', url)
             if url.endswith('&'): url = url[:-1]
             if url != self.url: self.set_quit(); return
+            module = frame.f_globals.get('__name__') or '?'
+            if module == 'pony' or module.startswith('pony.'): self.set_step; return
             headers = [('Content-Type', 'text/html'), ('X-Debug', 'Step')]
             if url.endswith('?'):
                 debug_url = url
