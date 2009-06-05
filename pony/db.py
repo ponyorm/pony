@@ -320,12 +320,7 @@ def auto_rollback():
         local.connections.clear()
 
 def with_transaction(func, args, keyargs, allowed_exceptions=[]):
-    try:
-        web = sys.modules.get('pony.web')
-        if web is not None:
-            debugger = web.local.request.environ.get['debugger']
-            if debugger is not None: debugger.set_trace()
-        result = func(*args, **keyargs)
+    try: result = func(*args, **keyargs)
     except Exception, e:
         exc_info = sys.exc_info()
         try:

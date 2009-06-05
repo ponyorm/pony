@@ -3,14 +3,28 @@ import re, threading, cStringIO, weakref
 
 import pony
 from pony import httputils
+from pony.utils import simple_decorator
 
 if pony.MODE.startswith('GAE-'):
     
     def debug_app(app, environ):
         return app(environ)
 
+    def with_debug(func):
+        return func
+    
 else:
+
     import bdb
+
+    @simple_decorator
+    def with_debug(func, *args, **keyargs):
+        web = sys.modules.get('pony.web')
+        if web is not None:
+            debugger = web.local.request.environ.get('debugger')
+            if debugger is not None: debugger().set_trace()
+        return func(*args, **keyargs)
+
     class Local(threading.local):
         def __init__(self):
             self.lock = threading.Lock()
