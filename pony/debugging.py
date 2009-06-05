@@ -1,5 +1,5 @@
 
-import re, threading, cStringIO
+import re, threading, cStringIO, weakref
 
 import pony
 from pony import httputils
@@ -65,6 +65,7 @@ else:
                 url = debug_re.sub('', url)
                 if url.endswith('&'): url = url[:-1]
                 debugger = Debugger(url)
+                environ['debugger'] = weakref.ref(debugger)
                 # print>>pony.real_stdout, 333
 
                 result = debugger.runcall(app, environ)
@@ -97,8 +98,6 @@ else:
             url = debug_re.sub('', url)
             if url.endswith('&'): url = url[:-1]
             if url != self.url: self.set_quit(); return
-            module = frame.f_globals.get('__name__') or '?'
-            if module == 'pony' or module.startswith('pony.'): self.set_step(); return
             headers = [('Content-Type', 'text/html'), ('X-Debug', 'Step')]
             if url.endswith('?'):
                 debug_url = url
@@ -114,6 +113,7 @@ else:
             last = queue.get()
             # print>>pony.real_stdout, 888
             lock, app, environ, result_holder, url, command = last
+            environ['debugger'] = weakref.ref(self)
             if command == 'step':
                 self.set_step()
             elif command == 'next':
