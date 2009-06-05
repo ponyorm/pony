@@ -3,6 +3,7 @@ import re, threading, os.path, sys, cgi, urllib, Cookie, cPickle, time
 from cStringIO import StringIO
 from itertools import imap, count
 from operator import attrgetter
+from bdb import BdbQuit
 
 import pony
 
@@ -337,6 +338,7 @@ def app(environ):
                         auth.unexpire_ticket()
             except HttpException, e:
                 status, headers, result = e.status, e.headers, e.content
+            except BdbQuit: raise
             except:
                 log_exc()
                 status, headers = INTERNAL_SERVER_ERROR
