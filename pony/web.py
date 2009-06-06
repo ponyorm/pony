@@ -13,7 +13,7 @@ from pony.templating import html, Html, StrHtml
 from pony.logging import log, log_exc, DEBUG, INFO, WARNING
 from pony.db import with_transaction, RowNotFound
 from pony.htmltb import format_exc
-from pony.debugging import debug_app
+from pony.debugging import debug_app, with_debug
 
 class HttpException(Exception):
     content = ''
@@ -475,37 +475,37 @@ class Http(object):
     @staticmethod
     @decorator_with_params
     def __call__(func, url=None, host=None, port=None, redirect=False, **headers):
-        routing.Route(func, url, None, host, port, redirect, headers)
+        routing.Route(with_debug(func), url, None, host, port, redirect, headers)
         return func
 
     @staticmethod
     @decorator_with_params
     def HEAD(func, url=None, host=None, port=None, redirect=False, **headers):
-        routing.Route(func, url, 'HEAD', host, port, redirect, headers)
+        routing.Route(with_debug(func), url, 'HEAD', host, port, redirect, headers)
         return func
 
     @staticmethod
     @decorator_with_params
     def GET(func, url=None, host=None, port=None, redirect=False, **headers):
-        routing.Route(func, url, 'GET', host, port, redirect, headers)
+        routing.Route(with_debug(func), url, 'GET', host, port, redirect, headers)
         return func
 
     @staticmethod
     @decorator_with_params
     def POST(func, url=None, host=None, port=None, redirect=False, **headers):
-        routing.Route(func, url, 'POST', host, port, redirect, headers)
+        routing.Route(with_debug(func), url, 'POST', host, port, redirect, headers)
         return func
 
     @staticmethod
     @decorator_with_params
     def PUT(func, url=None, host=None, port=None, redirect=False, **headers):
-        routing.Route(func, url, 'PUT', host, port, redirect, headers)
+        routing.Route(with_debug(func), url, 'PUT', host, port, redirect, headers)
         return func
 
     @staticmethod
     @decorator_with_params
     def DELETE(func, url=None, host=None, port=None, redirect=False, **headers):
-        routing.Route(func, url, 'DELETE', host, port, redirect, headers)
+        routing.Route(with_debug(func), url, 'DELETE', host, port, redirect, headers)
         return func
 
     @property
