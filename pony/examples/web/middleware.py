@@ -2,13 +2,17 @@ from pony.main import *
 from pony import middleware
 from pony.templating import Html, StrHtml
 
+use_autoreload()
+
 http.start()
 
 @http('/')
 def index():
     return html('''
-    <h1>Hello, world!</h1>
+    <h1>Hello, world!!!</h1>
     <p><a href="/test/100/200">test page</a></p>
+    <p>$([ getattr(x, '__name__', '?') for x in middleware.decorator_list ])
+    <p>$([ getattr(x, '__name__', '?') for x in middleware.pony_middleware_list ])
     ''')
 
 @http('/TEST/$a/$b')

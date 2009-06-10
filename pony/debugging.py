@@ -7,11 +7,11 @@ from pony.utils import simple_decorator
 
 if pony.MODE.startswith('GAE-'):
     
-    def middleware_decorator(func):
+    def debugging_middleware_decorator(func):
         return func
 
     @simple_decorator    
-    def debug_middleware(app, environ):
+    def debugging_pony_middleware(app, environ):
         return app(environ)
 
 else:
@@ -19,7 +19,7 @@ else:
     import bdb
 
     @simple_decorator
-    def middleware_decorator(func, *args, **keyargs):
+    def debugging_middleware_decorator(func, *args, **keyargs):
         if options.DEBUG:
             web = sys.modules.get('pony.web')
             if web is not None:
@@ -37,7 +37,7 @@ else:
     debug_re = re.compile(r'(?:(?<=\?|&)|^)debug(?:=([^&]*))?&?')
 
     @simple_decorator
-    def debug_middleware(app, environ):
+    def debugging_pony_middleware(app, environ):
         if not options.DEBUG: return app(environ)
         query = environ.get('QUERY_STRING', '')
         if not debug_re.search(query): return app(environ)

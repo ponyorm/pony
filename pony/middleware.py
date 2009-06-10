@@ -22,7 +22,7 @@ def decorator_wrap(func):
 @on_reload
 def init():
     wsgi_middleware_list[:] = []
-    pony_middleware_list[:] = [ debugging.debug_middleware ]
-    decorator_list[:] = [ debugging.middleware_decorator, db.middleware_decorator ]
+    pony_middleware_list[:] = [ debugging.debugging_pony_middleware ]
+    decorator_list[:] = [ debugging.debugging_middleware_decorator, db.db_middleware_decorator ]
 
 init()
