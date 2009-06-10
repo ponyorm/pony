@@ -108,6 +108,7 @@ else:
             self.url = url
             bdb.Bdb.__init__(self)
             self.__state = 0
+            self.__top_user_frame = None
         def process_queue(self, response_text, frame):
             if self.__state == 0:
                 self.__state = 1
@@ -123,9 +124,9 @@ else:
             if url != self.url: self.set_quit(); return
             if self.__state == 1:
                 module = frame.f_globals.get('__name__') or '?'
-                if module == 'pony' or module.startswith('pony.'):
-                      self.set_step; return
-                else: self.__state = 2
+                if module == 'pony' or module.startswith('pony.'): self.set_step(); return
+                self.__top_user_frame = frame
+                self.__state = 2
             headers = [('Content-Type', 'text/html'), ('X-Debug', 'Step')]
             if url.endswith('?'):
                 debug_url = url
@@ -157,9 +158,12 @@ else:
             name = frame.f_code.co_name or "<unknown>"
             filename = self.canonic(frame.f_code.co_filename)
             self.process_queue('stop at %s %s in %s' % (filename, frame.f_lineno, name), frame)
-        # def user_return(self, frame, value):
-        #     name = frame.f_code.co_name or "<unknown>"
-        #     self.process_queue('return from ' + name, frame)
+        def user_return(self, frame, value):
+            if frame is self.__top_user_frame:
+                self.__top_user_frame = None
+                self.set_continue()
+            # name = frame.f_code.co_name or "<unknown>"
+            # self.process_queue('return from ' + name, frame)
         def user_exception(self, frame, exception):
             name = frame.f_code.co_name or "<unknown>"
             self.process_queue('exception in %s %s' % (name, exception), frame)
