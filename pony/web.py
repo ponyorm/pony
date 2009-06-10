@@ -475,37 +475,43 @@ class Http(object):
     @staticmethod
     @decorator_with_params
     def __call__(func, url=None, host=None, port=None, redirect=False, **headers):
-        routing.Route(with_debug(func), url, None, host, port, redirect, headers)
+        func = with_debug(func)
+        routing.Route(func, url, None, host, port, redirect, headers)
         return func
 
     @staticmethod
     @decorator_with_params
     def HEAD(func, url=None, host=None, port=None, redirect=False, **headers):
-        routing.Route(with_debug(func), url, 'HEAD', host, port, redirect, headers)
+        func = with_debug(func)
+        routing.Route(func, url, 'HEAD', host, port, redirect, headers)
         return func
 
     @staticmethod
     @decorator_with_params
     def GET(func, url=None, host=None, port=None, redirect=False, **headers):
-        routing.Route(with_debug(func), url, 'GET', host, port, redirect, headers)
+        func = with_debug(func)
+        routing.Route(func, url, 'GET', host, port, redirect, headers)
         return func
 
     @staticmethod
     @decorator_with_params
     def POST(func, url=None, host=None, port=None, redirect=False, **headers):
-        routing.Route(with_debug(func), url, 'POST', host, port, redirect, headers)
+        func = with_debug(func)
+        routing.Route(func, url, 'POST', host, port, redirect, headers)
         return func
 
     @staticmethod
     @decorator_with_params
     def PUT(func, url=None, host=None, port=None, redirect=False, **headers):
-        routing.Route(with_debug(func), url, 'PUT', host, port, redirect, headers)
+        func = with_debug(func)
+        routing.Route(func, url, 'PUT', host, port, redirect, headers)
         return func
 
     @staticmethod
     @decorator_with_params
     def DELETE(func, url=None, host=None, port=None, redirect=False, **headers):
-        routing.Route(with_debug(func), url, 'DELETE', host, port, redirect, headers)
+        func = with_debug(func)
+        routing.Route(func, url, 'DELETE', host, port, redirect, headers)
         return func
 
     @property
