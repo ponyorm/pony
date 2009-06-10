@@ -2,27 +2,29 @@
 import re, sys, threading, cStringIO, weakref
 
 import pony
-from pony import httputils
+from pony import options, httputils
 from pony.utils import simple_decorator
 
 if pony.MODE.startswith('GAE-'):
     
-    def debug_app(app, environ):
+    def middleware_decorator(func):
+        return func
+
+    @simple_decorator    
+    def debug_middleware(app, environ):
         return app(environ)
 
-    def with_debug(func):
-        return func
-    
 else:
 
     import bdb
 
     @simple_decorator
-    def with_debug(func, *args, **keyargs):
-        web = sys.modules.get('pony.web')
-        if web is not None:
-            debugger = web.local.request.environ.get('debugger')
-            if debugger is not None: debugger().set_trace()
+    def middleware_decorator(func, *args, **keyargs):
+        if options.DEBUG:
+            web = sys.modules.get('pony.web')
+            if web is not None:
+                debugger = web.local.request.environ.get('debugger')
+                if debugger is not None: debugger().set_trace()
         return func(*args, **keyargs)
 
     class Local(threading.local):
@@ -34,7 +36,9 @@ else:
 
     debug_re = re.compile(r'(?:(?<=\?|&)|^)debug(?:=([^&]*))?&?')
 
-    def debug_app(app, environ):
+    @simple_decorator
+    def debug_middleware(app, environ):
+        if not options.DEBUG: return app(environ)
         query = environ.get('QUERY_STRING', '')
         if not debug_re.search(query): return app(environ)
 

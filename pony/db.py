@@ -3,7 +3,7 @@ import re, sys, threading
 from operator import itemgetter
 
 from pony import options
-from pony.utils import import_module, parse_expr, is_ident, localbase
+from pony.utils import import_module, parse_expr, is_ident, localbase, simple_decorator
 from pony.sqlsymbols import *
 
 class DBException(Exception):
@@ -335,3 +335,13 @@ def with_transaction(func, args, keyargs, allowed_exceptions=[]):
             finally: del exc_info
     auto_commit()
     return result
+
+@simple_decorator
+def middleware_decorator(func, *args, **keyargs):
+    web = sys.modules.get('pony.web')
+    allowed_exceptions = web and [ web.HttpRedirect ] or []
+    try: return with_transaction(func, args, keyargs, allowed_exceptions)
+    except RowNotFound:
+        if web: raise web.HttpNotFound
+        raise
+    

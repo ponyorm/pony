@@ -7,13 +7,11 @@ from bdb import BdbQuit
 
 import pony
 
-from pony import routing, postprocessing, autoreload, auth, httputils, options
+from pony import routing, postprocessing, autoreload, auth, httputils, options, middleware
 from pony.utils import decorator_with_params, tostring, localbase
 from pony.templating import html, Html, StrHtml
 from pony.logging import log, log_exc, DEBUG, INFO, WARNING
-from pony.db import with_transaction, RowNotFound
 from pony.htmltb import format_exc
-from pony.debugging import debug_app, with_debug
 
 class HttpException(Exception):
     content = ''
@@ -275,8 +273,8 @@ def invoke(url):
     params.update(zip(names, args))
     params.update(keyargs)
 
-    try: result = with_transaction(route.func, args, keyargs, [ HttpRedirect ])
-    except RowNotFound: raise Http404NotFound
+    middlewared_func = middleware.decorator_wrap(route.func)
+    result = middlewared_func(*args, **keyargs)
 
     headers = response.headers
     headers.setdefault('Expires', '0')
@@ -388,15 +386,18 @@ def app(environ):
             top_error_stream = pony.local.error_streams.pop()
             assert top_error_stream is error_stream
 
-def application(environ, start_response):
-    if options.DEBUG: status, headers, result = debug_app(app, environ)
-    else: status, headers, result = app(environ)
+def inner_application(environ, start_response):
+    middlewared_app = middleware.pony_wrap(app)
+    status, headers, result = middlewared_app(environ)
     start_response(status, headers)
-
     # result must be str or file-like object:
     if not hasattr(result, 'read'): return [ result ]
     elif 'wsgi.file_wrapper' in environ: return environ['wsgi.file_wrapper'](result, BLOCK_SIZE)
     else: return iter(lambda: result.read(BLOCK_SIZE), '')  # return [ result.read() ]
+
+def application(environ, start_response):
+    middlewared_application = middleware.wsgi_wrap(inner_application)
+    return middlewared_application(environ, start_response)
 
 def main():
     from pony.thirdparty.wsgiref.handlers import CGIHandler
@@ -475,42 +476,36 @@ class Http(object):
     @staticmethod
     @decorator_with_params
     def __call__(func, url=None, host=None, port=None, redirect=False, **headers):
-        func = with_debug(func)
         routing.Route(func, url, None, host, port, redirect, headers)
         return func
 
     @staticmethod
     @decorator_with_params
     def HEAD(func, url=None, host=None, port=None, redirect=False, **headers):
-        func = with_debug(func)
         routing.Route(func, url, 'HEAD', host, port, redirect, headers)
         return func
 
     @staticmethod
     @decorator_with_params
     def GET(func, url=None, host=None, port=None, redirect=False, **headers):
-        func = with_debug(func)
         routing.Route(func, url, 'GET', host, port, redirect, headers)
         return func
 
     @staticmethod
     @decorator_with_params
     def POST(func, url=None, host=None, port=None, redirect=False, **headers):
-        func = with_debug(func)
         routing.Route(func, url, 'POST', host, port, redirect, headers)
         return func
 
     @staticmethod
     @decorator_with_params
     def PUT(func, url=None, host=None, port=None, redirect=False, **headers):
-        func = with_debug(func)
         routing.Route(func, url, 'PUT', host, port, redirect, headers)
         return func
 
     @staticmethod
     @decorator_with_params
     def DELETE(func, url=None, host=None, port=None, redirect=False, **headers):
-        func = with_debug(func)
         routing.Route(func, url, 'DELETE', host, port, redirect, headers)
         return func
 
