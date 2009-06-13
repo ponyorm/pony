@@ -73,35 +73,22 @@ else:
             threading.Thread.__init__(self, name="DebugThread")
             self.setDaemon(True)
         def run(self):
-            # print>>pony.real_stdout, 111
             global last
             last = queue.get()
-            # print>>pony.real_stdout, 222
-
             while last is not None:
                 lock, app, environ, result_holder, url, command = last                
                 url = debug_re.sub('', url)
                 if url.endswith('&'): url = url[:-1]
                 debugger = Debugger(url)
                 environ['debugger'] = weakref.ref(debugger)
-                # print>>pony.real_stdout, 333
-
                 result = debugger.runcall(app, environ)
-                # print>>pony.real_stdout, 999
                 if result is not None:
                     status, headers, content = result
                     lock, app, environ, result_holder, url, command = last
                     headers.append(('X-Debug', 'Result'))
                     result_holder.append((status, headers, content))
                     lock.release()
-                    # print>>pony.real_stdout, 'aaa'
                     last = queue.get()
-                    # print>>pony.real_stdout, 'bbb'
-
-# set_step     step   "Stop after one line of code"
-# set_next     next   "Stop on the next line in or below the given frame"     frame should be specified as a paramater
-# set_return   return "Stop when returning from the given frame"              frame should be specified as a paramater
-# set_continue cont   "Don't stop except at breakpoints or when finished"
 
     class Debugger(bdb.Bdb):
         def __init__(self, url):
@@ -114,10 +101,8 @@ else:
                 self.__state = 1
                 self.set_continue()
                 return
-            # print>>pony.real_stdout, 444
             global last
             if last is None: self.set_quit(); return
-            # print>>pony.real_stdout, 555
             lock, app, environ, result_holder, url, command = last
             url = debug_re.sub('', url)
             if url.endswith('&'): url = url[:-1]
@@ -128,32 +113,21 @@ else:
                 self.__top_user_frame = frame
                 self.__state = 2
             headers = [('Content-Type', 'text/html'), ('X-Debug', 'Step')]
-            if url.endswith('?'):
-                debug_url = url
-            else:
-                debug_url = '%s&' % url
+            if not url.endswith('?'): url += '&'
             debug_dashboard = """ <br> 
             <a href="%sdebug=step">step</a> <a href="%sdebug=next">next</a>
             <a href="%sdebug=return">return</a> <a href="%sdebug=cont">cont</a>
-            """ % (debug_url, debug_url, debug_url, debug_url)
+            """ % (url, url, url, url)
             result_holder.append(('200 OK', headers, response_text + debug_dashboard))
             lock.release()
-            # print>>pony.real_stdout, 777
             last = queue.get()
-            # print>>pony.real_stdout, 888
             lock, app, environ, result_holder, url, command = last
             environ['debugger'] = weakref.ref(self)
-            if command == 'step':
-                self.set_step()
-            elif command == 'next':
-                self.set_next(frame)
-            elif command == 'return':
-                self.set_return(frame)
-            elif command == 'cont':
-                self.set_continue()
+            if command == 'step': self.set_step()
+            elif command == 'next': self.set_next(frame)
+            elif command == 'return': self.set_return(frame)
+            elif command == 'cont': self.set_continue()
             else: self.set_step()
-        # def user_call(self, frame, args):
-        #     self.process_queue('call ' + (frame.f_code.co_name or "<unknown>"), frame)
         def user_line(self, frame):
             name = frame.f_code.co_name or "<unknown>"
             filename = self.canonic(frame.f_code.co_filename)
@@ -162,11 +136,9 @@ else:
             if frame is self.__top_user_frame:
                 self.__top_user_frame = None
                 self.set_continue()
-            # name = frame.f_code.co_name or "<unknown>"
-            # self.process_queue('return from ' + name, frame)
-        def user_exception(self, frame, exception):
-            name = frame.f_code.co_name or "<unknown>"
-            self.process_queue('exception in %s %s' % (name, exception), frame)
+        # def user_exception(self, frame, exception):
+        #   name = frame.f_code.co_name or "<unknown>"
+        #   self.process_queue('exception in %s %s' % (name, exception), frame)
 
     @pony.on_shutdown
     def do_shutdown():
