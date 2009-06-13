@@ -46,6 +46,6 @@ CONSOLE_ENCODING = None
 # db options
 MAX_ROWS_COUNT = 1000
 
-# htmltb options
-HTMLTB_REMOVE_ADDR = True
-HTMLTB_RESTORE_ESCAPES = True
+# debugging options
+DEBUGGING_REMOVE_ADDR = True
+DEBUGGING_RESTORE_ESCAPES = True
