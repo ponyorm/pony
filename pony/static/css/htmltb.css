@@ -31,7 +31,7 @@
 }
 .traceback .source tr.current th,
 .traceback .source tr.current td {
-    background-color: #fbe3e4;
+    background-color: #fbe3e4;s
 }
 .traceback .source th.number {
     width: 4em;
@@ -39,6 +39,9 @@
 }
 .traceback .source td.line {
     white-space: pre;
+}
+.traceback .source td.line .syntax-error {
+    background-color: #ff8080;
 }
 .traceback .source td.line .ident {
     cursor: help;

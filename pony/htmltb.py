@@ -6,7 +6,7 @@ from itertools import izip, count
 import pony
 from pony import options, utils
 from pony.utils import detect_source_encoding, is_ident, tostring, pos2lineno, getlines, getlines2
-from pony.templating import html, cycle, quote, htmljoin, Html, StrHtml, ParseError
+from pony.templating import html, cycle, htmljoin, Html, StrHtml, ParseError
 
 def restore_escapes(s):
     s = tostring(s)
@@ -81,7 +81,7 @@ def format_exc(info=None, context=5):
             formatted_lines = []
             for i, line in enumerate(lines):
                 syntax_error_offset = None
-                if i == index: syntax_error_offset = exc_value.offset
+                if i == index: syntax_error_offset = exc_value.offset - 1
                 formatted_lines.append(format_line(None, line.decode(source_encoding, 'replace'), syntax_error_offset))
             record = Record(filename=exc_value.filename, lineno=exc_value.lineno, lines=formatted_lines, index=index)
             records = [ record ]
@@ -121,8 +121,8 @@ python_re = re.compile(r"""
         (?:                                      
             '''(?:[^\\]|\\.)*?(?:'''|\Z)         #     '''triple-quoted string'''
         |   \"""(?:[^\\]|\\.)*?(?:\"""|\Z)       #     \"""triple-quoted string\"""
-        |   '(?:[^'\\]|\\.)*?'                   #     'string'
-        |   "(?:[^"\\]|\\.)*?"                   #     "string"
+        |   '(?:[^'\\]|\\.)*?(?:'|$)             #     'string'
+        |   "(?:[^"\\]|\\.)*?(?:"|$)             #     "string"
         ))
     |   ([A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*)  # identifier chain (group 2)
     |   (\#.*$)                                  # comment (group 3)
@@ -174,10 +174,15 @@ def format_line(frame, line, syntax_error_offset=None):
     result = []
     prev = __undefined__
     for kind, start, end, x in parse_line(line):
-        if kind == 'string': result.append(str_html % x)
-        elif kind == 'comment': result.append(comment_html % x)
-        elif kind == 'other': result.append(quote(x))
-        elif kind == 'keyword': result.append(x); prev = __undefined__
+        if syntax_error_offset is not None and start <= syntax_error_offset < end:
+            i = syntax_error_offset - start
+            if x[i] != '\n': y = x[:i] + syntax_error_html % x[i] + x[i+1:]
+            else: y = x[:i] + syntax_error_html % ' ' + x[i:]
+        else: y = x
+        if kind == 'string': result.append(str_html % y)
+        elif kind == 'comment': result.append(comment_html % y)
+        elif kind == 'other': result.append(y)
+        elif kind == 'keyword': result.append(keyword_html % y); prev = __undefined__
         else:
             if kind == 'identifier':
                 obj = f_locals.get(x, __undefined__)
@@ -191,8 +196,8 @@ def format_line(frame, line, syntax_error_offset=None):
                 else: obj = getattr(prev, x, __undefined__)
             else: assert False
             if obj is __undefined__: title = 'undefined'
-            else: title = quote(repr2(obj))
-            result.append(ident_html % (title, x))
+            else: title = repr2(obj)
+            result.append(ident_html % (title, y))
             prev = obj
     return htmljoin(result)        
 
