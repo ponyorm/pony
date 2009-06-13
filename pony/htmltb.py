@@ -78,8 +78,12 @@ def format_exc(info=None, context=5):
         if issubclass(exc_type, SyntaxError) and exc_value.filename and exc_value.filename != '<?>':
             lines, index = getlines2(exc_value.filename, exc_value.lineno, context=5)
             source_encoding = detect_source_encoding(exc_value.filename)
-            lines = [ format_line(None, line.decode(source_encoding, 'replace')) for line in lines ]
-            record = Record(filename=exc_value.filename, lineno=exc_value.lineno, lines=lines, index=index)
+            formatted_lines = []
+            for i, line in enumerate(lines):
+                syntax_error_offset = None
+                if i == index: syntax_error_offset = exc_value.offset
+                formatted_lines.append(format_line(None, line.decode(source_encoding, 'replace'), syntax_error_offset))
+            record = Record(filename=exc_value.filename, lineno=exc_value.lineno, lines=formatted_lines, index=index)
             records = [ record ]
         else:
             frames = inspect.getinnerframes(tb, context)
@@ -87,12 +91,12 @@ def format_exc(info=None, context=5):
             for frame, filename, lineno, func, lines, index in frames:
                 if index is None: continue
                 source_encoding = detect_source_encoding(filename)
-                lines = [ format_line(frame, line.decode(source_encoding, 'replace')) for line in lines ]
+                formatted_lines = [ format_line(frame, line.decode(source_encoding, 'replace')) for line in lines ]
                 module = frame.f_globals.get('__name__') or '?'
                 if module == 'pony' or module.startswith('pony.'): moduletype = 'module-system'
                 else: moduletype = 'module-user'
                 record = Record(moduletype=moduletype, module=module, filename=filename,
-                                lineno=lineno, func=func, lines=lines, index=index)
+                                lineno=lineno, func=func, lines=formatted_lines, index=index)
                 records.append(record)
                 if module != 'pony.templating': pass
                 elif func in ('_eval', '_compile'):
@@ -129,54 +133,68 @@ ident_re = re.compile(r'[A-Za-z_]\w*')
 end1_re = re.compile(r"(?:[^\\]|\\.)*?'''")
 end2_re = re.compile(r'(?:[^\\]|\\.)*?"""')
 
-ident_html = StrHtml('<span class="ident" title="%s">%s</span>')
-keyword_html = StrHtml('<strong>%s</strong>')
-comment_html = StrHtml('<span class="comment">%s</span>')
-str_html = StrHtml('<span class="string">%s</span>')
+ident_html = Html('<span class="ident" title="%s">%s</span>')
+keyword_html = Html('<strong>%s</strong>')
+comment_html = Html('<span class="comment">%s</span>')
+str_html = Html('<span class="string">%s</span>')
+syntax_error_html = Html('<span class="syntax-error">%s</span>')
+
+def parse_line(line):
+    pos = 0
+    stop = len(line)
+    while pos < stop:
+        match = python_re.search(line, pos)
+        if match is None: break
+        start, end = match.span()
+        yield 'other', pos, start, line[pos:start]
+        i = match.lastindex
+        if i == 1: yield 'string', start, end, match.group()
+        elif i == 2:
+            pos = start
+            for x in re.split('(\W+)', match.group()):
+                next = pos + len(x)
+                if x in keyword.kwlist: yield 'keyword', pos, next, x
+                elif is_ident(x):
+                    if pos == start: yield 'identifier', pos, next, x
+                    else: yield 'attribute', pos, next, x
+                else: yield 'other', pos, next, x
+                pos = next
+        elif i == 3: yield 'comment', start, end, match.group()
+        else: assert False
+        pos = end
+    yield 'other', pos, stop, line[pos:]
 
 __undefined__ = object()
 
-def format_line(frame, line):
+def format_line(frame, line, syntax_error_offset=None):
     if frame is not None:
         f_locals = frame.f_locals
         f_globals = frame.f_globals
     else: f_locals = f_globals = {}
     result = []
-    pos = 0
-    end = len(line)
-    while pos < end:
-        match = python_re.search(line, pos)
-        if match is None: break
-        result.append(quote(line[pos:match.start()]))
-        i = match.lastindex
-        if i == 1: result.append(str_html % match.group())
-        elif i == 2:
-            chain = []
-            prev = __undefined__
-            for x in re.split('(\W+)', match.group()):
-                if x in keyword.kwlist: result.append(keyword_html % x)
-                elif is_ident(x):
-                    if not chain:
-                        obj = f_locals.get(x, __undefined__)
-                        if obj is __undefined__: obj = f_globals.get(x, __undefined__)
-                        if obj is __undefined__:
-                            builtins = f_globals.get('__builtins__')
-                            if isinstance(builtins, dict): obj = builtins.get(x, __undefined__)
-                            else: obj = getattr(builtins, x, __undefined__)
-                    else:
-                        prev = chain[-1]
-                        if prev is __undefined__: obj = __undefined__
-                        else: obj = getattr(prev, x, __undefined__)
-                    chain.append(obj)
-                    if obj is __undefined__: title = 'undefined'
-                    else: title = quote(repr2(obj))
-                    result.append(ident_html % (title, x))
-                else: result.append(quote(x))
-        elif i == 3: result.append(comment_html % match.group())
-        else: assert False
-        pos = match.end()
-    result.append(quote(line[pos:]))
-    return htmljoin(result)
+    prev = __undefined__
+    for kind, start, end, x in parse_line(line):
+        if kind == 'string': result.append(str_html % x)
+        elif kind == 'comment': result.append(comment_html % x)
+        elif kind == 'other': result.append(quote(x))
+        elif kind == 'keyword': result.append(x); prev = __undefined__
+        else:
+            if kind == 'identifier':
+                obj = f_locals.get(x, __undefined__)
+                if obj is __undefined__: obj = f_globals.get(x, __undefined__)
+                if obj is __undefined__:
+                    builtins = f_globals.get('__builtins__')
+                    if isinstance(builtins, dict): obj = builtins.get(x, __undefined__)
+                    else: obj = getattr(builtins, x, __undefined__)
+            elif kind == 'attribute':
+                if prev is __undefined__: obj = __undefined__
+                else: obj = getattr(prev, x, __undefined__)
+            else: assert False
+            if obj is __undefined__: title = 'undefined'
+            else: title = quote(repr2(obj))
+            result.append(ident_html % (title, x))
+            prev = obj
+    return htmljoin(result)        
 
 ##def format_exc():
 ##    exc_type, exc_value, traceback = sys.exc_info()
