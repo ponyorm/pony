@@ -124,8 +124,9 @@ python_re = re.compile(r"""
         |   '(?:[^'\\]|\\.)*?(?:'|$)             #     'string'
         |   "(?:[^"\\]|\\.)*?(?:"|$)             #     "string"
         ))
-    |   ([A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*)  # identifier chain (group 2)
-    |   (\#.*$)                                  # comment (group 3)
+    |   ([(,]\s*[A-Za-z_]\w*\s*=)                # named argument (group 2)
+    |   ([A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*)  # identifier chain (group 3)
+    |   (\#.*$)                                  # comment (group 4)
     """, re.VERBOSE)
            
 
@@ -149,7 +150,8 @@ def parse_line(line):
         yield 'other', pos, start, line[pos:start]
         i = match.lastindex
         if i == 1: yield 'string', start, end, match.group()
-        elif i == 2:
+        elif i == 2: yield 'other', start, end, match.group()
+        elif i == 3:
             pos = start
             for x in re.split('(\W+)', match.group()):
                 next = pos + len(x)
@@ -159,7 +161,7 @@ def parse_line(line):
                     else: yield 'attribute', pos, next, x
                 else: yield 'other', pos, next, x
                 pos = next
-        elif i == 3: yield 'comment', start, end, match.group()
+        elif i == 4: yield 'comment', start, end, match.group()
         else: assert False
         pos = end
     yield 'other', pos, stop, line[pos:]
