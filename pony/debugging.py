@@ -196,6 +196,7 @@ def format_line(frame, line, syntax_error_offset=None):
         elif kind == 'comment': result.append(comment_html % y)
         elif kind == 'other': result.append(y)
         elif kind == 'keyword': result.append(keyword_html % y); prev = __undefined__
+        elif frame is None: result.append(y)
         else:
             if kind == 'identifier':
                 obj = f_locals.get(x, __undefined__)
