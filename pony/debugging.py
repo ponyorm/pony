@@ -215,6 +215,9 @@ def format_line(frame, line, syntax_error_offset=None):
             prev = obj
     return htmljoin(result)
 
+def format_record(record):
+    return html()
+
 if pony.MODE.startswith('GAE-'):
     
     def debugging_middleware_decorator(func):
