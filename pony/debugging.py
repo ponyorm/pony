@@ -74,7 +74,14 @@ class Record(object):
         self.lines = lines
         self.index = index
         self.func = func
-
+    @staticmethod
+    def from_frame(frame, context=5):
+        module = frame.f_globals.get('__name__') or '?'
+        filename, lineno, func, lines, index = inspect.getframeinfo(frame, context)
+        source_encoding = detect_source_encoding(filename)
+        formatted_lines = [ format_line(frame, line.decode(source_encoding, 'replace')) for line in lines ]
+        return Record(module, filename, lineno, formatted_lines, index, func)
+        
 def format_exc(info=None, context=5):
     if info: exc_type, exc_value, tb = info
     else: exc_type, exc_value, tb = sys.exc_info()
@@ -309,7 +316,7 @@ else:
             bdb.Bdb.__init__(self)
             self.__state = 0
             self.__top_user_frame = None
-        def process_queue(self, response_text, frame):
+        def process_queue(self, frame):
             if self.__state == 0:
                 self.__state = 1
                 self.set_continue()
@@ -327,11 +334,8 @@ else:
                 self.__state = 2
             headers = [('Content-Type', 'text/html'), ('X-Debug', 'Step')]
             if not url.endswith('?'): url += '&'
-            debug_dashboard = """ <br> 
-            <a href="%sdebug=step">step</a> <a href="%sdebug=next">next</a>
-            <a href="%sdebug=return">return</a> <a href="%sdebug=cont">cont</a>
-            """ % (url, url, url, url)
-            result_holder.append(('200 OK', headers, response_text + debug_dashboard))
+            record = Record.from_frame(frame, context=9)
+            result_holder.append(('200 OK', headers, html()))
             lock.release()
             last = queue.get()
             lock, app, environ, result_holder, url, command = last
@@ -342,9 +346,7 @@ else:
             elif command == 'cont': self.set_continue()
             else: self.set_step()
         def user_line(self, frame):
-            name = frame.f_code.co_name or "<unknown>"
-            filename = self.canonic(frame.f_code.co_filename)
-            self.process_queue('stop at %s %s in %s' % (filename, frame.f_lineno, name), frame)
+           self.process_queue(frame)
         def user_return(self, frame, value):
             if frame is self.__top_user_frame:
                 self.__top_user_frame = None

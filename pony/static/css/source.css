@@ -1,6 +1,11 @@
 #menu {
     margin: 0 0 1em 0;
     list-style: none;
+    display: inline-block;
+}
+#menu li {
+    float: left;
+    margin-right: 1em;
 }
 .frames dt {
     margin-top: 1em;

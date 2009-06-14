@@ -1,0 +1,23 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<head><link rel="stylesheet" href="/pony/static/blueprint/screen.css" type="text/css" media="screen, projection">
+<link rel="stylesheet" href="/pony/static/blueprint/print.css" type="text/css" media="print">
+<!--[if IE]><link rel="stylesheet" href="/pony/static/blueprint/ie.css.css" type="text/css" media="screen, projection"><![endif]-->
+<link rel="stylesheet" href="/pony/static/css/default.css" type="text/css" media="screen, projection">
+</head>
+<body>
+<div class="container">
+
+  <link rel="stylesheet" href="/pony/static/css/source.css" type="text/css" media="screen, projection">
+  <h1>Debugging...</h1>
+  <ul id="menu">
+    <li><a href="$(url)debug=step">step</a></li>
+    <li><a href="$(url)debug=next">next</a></li>
+    <li><a href="$(url)debug=return">return</a></li>
+    <li><a href="$(url)debug=cont">cont</a></li>
+  </ul>
+  <dl class="frames">
+    $format_record(record)
+  </dl>
+
+</div>
+</body>
