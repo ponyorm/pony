@@ -9,8 +9,8 @@
 </ul>
 <dl class="frames">
 $for(record in records) {
-  <dt class="$(record.moduletype or 'template')">
-  $if(not record.moduletype) {
+  <dt class="$(record.moduletype)">
+  $if(record.moduletype == 'template') {
     Template $if(record.fname){ <span class="template-name highlight" title="$(record.filename or '')">$record.fname</span> }
   }
   $else {

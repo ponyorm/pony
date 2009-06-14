@@ -59,11 +59,21 @@ aRepr2 = Repr2()
 repr2 = aRepr2.repr
 
 class Record(object):
-    def __init__(self, **keyargs):
-        self.moduletype = self.func = self.module = self.filename = self.fname = None
-        self.__dict__.update(keyargs)
-        filename = self.filename
+    def __init__(self, module, filename, lineno, lines, index, func=None):
+        self.func = None
+        
+        self.module = module
+        if module == '<template>': self.moduletype = 'template'
+        elif module == 'pony' or module.startswith('pony.'): self.moduletype = 'module-system'
+        else: self.moduletype = 'module-user'
+
+        self.filename = filename
         if filename and filename != '<?>': self.fname = os.path.split(filename)[1]
+        else: self.fname = None
+        self.lineno = lineno
+        self.lines = lines
+        self.index = index
+        self.func = func
 
 def format_exc(info=None, context=5):
     if info: exc_type, exc_value, tb = info
@@ -83,20 +93,19 @@ def format_exc(info=None, context=5):
                 syntax_error_offset = None
                 if i == index: syntax_error_offset = exc_value.offset - 1
                 formatted_lines.append(format_line(None, line.decode(source_encoding, 'replace'), syntax_error_offset))
-            record = Record(filename=exc_value.filename, lineno=exc_value.lineno, lines=formatted_lines, index=index)
+            record = Record(module='<?>', filename=exc_value.filename, lineno=exc_value.lineno,
+                            lines=formatted_lines, index=index)
             records = [ record ]
         else:
             frames = inspect.getinnerframes(tb, context)
             prev_frame = None
             for frame, filename, lineno, func, lines, index in frames:
                 if index is None: continue
+                module = frame.f_globals.get('__name__') or '?'
                 source_encoding = detect_source_encoding(filename)
                 formatted_lines = [ format_line(frame, line.decode(source_encoding, 'replace')) for line in lines ]
-                module = frame.f_globals.get('__name__') or '?'
-                if module == 'pony' or module.startswith('pony.'): moduletype = 'module-system'
-                else: moduletype = 'module-user'
-                record = Record(moduletype=moduletype, module=module, filename=filename,
-                                lineno=lineno, func=func, lines=formatted_lines, index=index)
+                record = Record(module=module, filename=filename, lineno=lineno,
+                                lines=formatted_lines, index=index, func=func)
                 records.append(record)
                 if module != 'pony.templating': pass
                 elif func in ('_eval', '_compile'):
@@ -104,13 +113,15 @@ def format_exc(info=None, context=5):
                     text, offsets, filename = (element.source + (None,))[:3]
                     lineno, offset = pos2lineno(element.start, offsets)
                     lines, index = getlines(text, offsets, lineno, context=5)
-                    record = Record(filename=filename, lineno=lineno, lines=lines, index=index)
+                    record = Record(module='<template>', filename=filename, lineno=lineno,
+                                    lines=lines, index=index)
                     records.append(record)
                 prev_frame = frame
             if issubclass(exc_type, ParseError):
                 text, offsets = exc_value.source[:2]
                 lines, index = getlines(text, offsets, exc_value.lineno, context=5)
-                record = Record(lineno=exc_value.lineno, lines=lines, index=index)
+                record = Record(module='<template>', filename='<?>', lineno=exc_value.lineno,
+                                lines=lines, index=index)
                 records.append(record)
         return html()
     finally: del tb
