@@ -78,6 +78,7 @@ class Record(object):
     def from_frame(frame, context=5):
         module = frame.f_globals.get('__name__') or '?'
         filename, lineno, func, lines, index = inspect.getframeinfo(frame, context)
+        if lines is None: lines = []  # if lines is None then index also is None
         source_encoding = detect_source_encoding(filename)
         formatted_lines = [ format_line(frame, line.decode(source_encoding, 'replace')) for line in lines ]
         return Record(module, filename, lineno, formatted_lines, index, func)
@@ -335,6 +336,7 @@ else:
             headers = [('Content-Type', 'text/html'), ('X-Debug', 'Step')]
             if not url.endswith('?'): url += '&'
             record = Record.from_frame(frame, context=9)
+            if record.index is None: self.set_step(); return
             result_holder.append(('200 OK', headers, html()))
             lock.release()
             last = queue.get()
