@@ -296,7 +296,7 @@ else:
         
         statement_match = statement_re.search(url)
         if statement_match is not None:
-            statement = statement_match.group(1)
+            statement = unquote(statement_match.group(1))
             url = statement_re.sub('', url)
             if url.endswith('&'): url = url[:-1]
         else: statement = None
@@ -368,7 +368,7 @@ else:
                 elif command == 'cont': self.set_continue()
                 else:
                     try:
-                        result = repr1(eval(unquote(statement), frame.f_globals, frame.f_locals))
+                        result = repr1(eval(statement, frame.f_globals, frame.f_locals))
                     except: result = 'exception occured'
                     result_holder.append(('200 OK', headers, html()))
                     lock.release()
