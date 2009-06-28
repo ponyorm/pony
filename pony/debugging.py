@@ -1,4 +1,4 @@
-import re, sys, os.path, threading, cStringIO, weakref, inspect, keyword, linecache
+import re, sys, os.path, threading, cStringIO, weakref, inspect, keyword, linecache, traceback
 
 from repr import Repr
 from itertools import izip, count
@@ -369,7 +369,7 @@ else:
                 else:
                     try:
                         result = repr1(eval(statement, frame.f_globals, frame.f_locals))
-                    except: result = 'exception occured'
+                    except: result = traceback.format_exc()
                     result_holder.append(('200 OK', headers, html()))
                     lock.release()
                     continue
