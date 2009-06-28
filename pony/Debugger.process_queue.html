@@ -20,12 +20,12 @@
     $format_record(record)
   </dl>
   <form action="." method="GET">
-    <label for="statement">Expression</label><br>
-    <textarea name="statement" rows="5" cols="50"></textarea><br>
+    <label for="expr">Expression</label><br>
+    <textarea name="expr" rows="5" cols="50"></textarea><br>
     <input name="debug" type="submit" value="eval">
   </form>
   $if(result is not None) {
-  <pre><strong>$statement</strong></pre>
+  <pre><strong>$expr</strong></pre>
   <hr>
   <pre>$result</pre>
   }
