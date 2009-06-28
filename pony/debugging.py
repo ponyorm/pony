@@ -347,14 +347,20 @@ else:
             if record.index is None: self.set_step(); return
             result_holder.append(('200 OK', headers, html()))
             lock.release()
-            last = queue.get()
-            lock, app, environ, result_holder, url, command, statement = last
-            environ['debugger'] = weakref.ref(self)
-            if command == 'step': self.set_step()
-            elif command == 'next': self.set_next(frame)
-            elif command == 'return': self.set_return(frame)
-            elif command == 'cont': self.set_continue()
-            else: self.set_step()
+            while True:
+                last = queue.get()
+                lock, app, environ, result_holder, url, command, statement = last
+                environ['debugger'] = weakref.ref(self)
+                if command == 'step': self.set_step()
+                elif command == 'next': self.set_next(frame)
+                elif command == 'return': self.set_return(frame)
+                elif command == 'cont': self.set_continue()
+                elif command == 'eval':
+                    result_holder.append(('200 OK', headers, html()))
+                    lock.release()
+                    continue
+                else: self.set_step()
+                break
         def user_line(self, frame):
            self.process_queue(frame)
         def user_return(self, frame, value):
