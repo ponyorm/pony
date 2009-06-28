@@ -2,6 +2,7 @@ import re, sys, os.path, threading, cStringIO, weakref, inspect, keyword, lineca
 
 from repr import Repr
 from itertools import izip, count
+from urllib import unquote
 
 import pony
 from pony import options, utils, httputils
@@ -328,6 +329,7 @@ else:
             self.__state = 0
             self.__top_user_frame = None
         def process_queue(self, frame):
+            result = None
             if self.__state == 0:
                 self.__state = 1
                 self.set_continue()
@@ -355,11 +357,13 @@ else:
                 elif command == 'next': self.set_next(frame)
                 elif command == 'return': self.set_return(frame)
                 elif command == 'cont': self.set_continue()
-                elif command == 'eval':
+                else:
+                    try:
+                        result = eval(unquote(statement), frame.f_globals, frame.f_locals)
+                    except: result = 'exception occured'
                     result_holder.append(('200 OK', headers, html()))
                     lock.release()
                     continue
-                else: self.set_step()
                 break
         def user_line(self, frame):
            self.process_queue(frame)
