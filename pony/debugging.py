@@ -279,6 +279,8 @@ else:
 
         url = httputils.reconstruct_url(environ)
         command = debug_re.search(url).group(1)
+        url = debug_re.sub('', url)
+        if url.endswith('&'): url = url[:-1]
         result_holder = []
         queue.put((local.lock, app, env, result_holder, url, command))
         local.lock.acquire()
@@ -298,8 +300,6 @@ else:
             last = queue.get()
             while last is not None:
                 lock, app, environ, result_holder, url, command = last                
-                url = debug_re.sub('', url)
-                if url.endswith('&'): url = url[:-1]
                 debugger = Debugger(url)
                 environ['debugger'] = weakref.ref(debugger)
                 result = debugger.runcall(app, environ)
@@ -325,8 +325,6 @@ else:
             global last
             if last is None: self.set_quit(); return
             lock, app, environ, result_holder, url, command = last
-            url = debug_re.sub('', url)
-            if url.endswith('&'): url = url[:-1]
             if url != self.url: self.set_quit(); return
             if self.__state == 1:
                 module = frame.f_globals.get('__name__') or '?'
