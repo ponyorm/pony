@@ -368,7 +368,10 @@ else:
                 elif command == 'cont': self.set_continue()
                 else:
                     try:
-                        result = repr1(eval(statement, frame.f_globals, frame.f_locals))
+                        try: result = repr1(eval(statement, frame.f_globals, frame.f_locals))
+                        except SyntaxError:
+                            exec statement in frame.f_globals, frame.f_locals
+                            result = None
                     except: result = traceback.format_exc()
                     result_holder.append(('200 OK', headers, html()))
                     lock.release()
