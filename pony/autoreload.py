@@ -55,6 +55,7 @@ def use_autoreload():
     except Exception, e:
         pony.exception_in_main = e
         raise
+    if not pony._do_mainloop: sys.exit()
     global reloading_exception
     while True:
         if pony.shutdown: sys.exit()
