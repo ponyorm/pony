@@ -256,6 +256,7 @@ else:
     local = Local()
 
     debug_re = re.compile(r'(?:(?<=\?|&)|^)debug(?:=([^&]*))?&?')
+    statement_re = re.compile(r'(?:(?<=\?|&)|^)statement(?:=([^&]*))?&?')
 
     @simple_decorator
     def debugging_pony_middleware(app, environ):
@@ -278,11 +279,20 @@ else:
         if file_wrapper is not None: env['wsgi.file_wrapper'] = file_wrapper
 
         url = httputils.reconstruct_url(environ)
+
         command = debug_re.search(url).group(1)
         url = debug_re.sub('', url)
         if url.endswith('&'): url = url[:-1]
+        
+        statement_match = statement_re.search(url)
+        if statement_match is not None:
+            statement = statement_match.group(1)
+            url = statement_re.sub('', url)
+            if url.endswith('&'): url = url[:-1]
+        else: statement = None
+
         result_holder = []
-        queue.put((local.lock, app, env, result_holder, url, command))
+        queue.put((local.lock, app, env, result_holder, url, command, statement))
         local.lock.acquire()
         return result_holder[0]
 
@@ -299,13 +309,13 @@ else:
             global last
             last = queue.get()
             while last is not None:
-                lock, app, environ, result_holder, url, command = last                
+                lock, app, environ, result_holder, url, command, statement = last                
                 debugger = Debugger(url)
                 environ['debugger'] = weakref.ref(debugger)
                 result = debugger.runcall(app, environ)
                 if result is not None:
                     status, headers, content = result
-                    lock, app, environ, result_holder, url, command = last
+                    lock, app, environ, result_holder, url, command, statement = last
                     headers.append(('X-Debug', 'Result'))
                     result_holder.append((status, headers, content))
                     lock.release()
@@ -324,7 +334,7 @@ else:
                 return
             global last
             if last is None: self.set_quit(); return
-            lock, app, environ, result_holder, url, command = last
+            lock, app, environ, result_holder, url, command, statement = last
             if url != self.url: self.set_quit(); return
             if self.__state == 1:
                 module = frame.f_globals.get('__name__') or '?'
@@ -338,7 +348,7 @@ else:
             result_holder.append(('200 OK', headers, html()))
             lock.release()
             last = queue.get()
-            lock, app, environ, result_holder, url, command = last
+            lock, app, environ, result_holder, url, command, statement = last
             environ['debugger'] = weakref.ref(self)
             if command == 'step': self.set_step()
             elif command == 'next': self.set_next(frame)
