@@ -16,6 +16,15 @@ def restore_escapes(s):
 
 addr_re = re.compile(r' at 0x[0-9a-fA-F]{8}(?:[0-9a-fA-F]{8})?>')
 
+class Repr1(Repr):
+    def __init__(self):
+        Repr.__init__(self)
+        self.maxstring = 100
+        self.maxother = 100
+
+aRepr1 = Repr1()
+repr1 = aRepr1.repr
+
 class Repr2(Repr):
     def __init__(self):
         Repr.__init__(self)
@@ -49,15 +58,15 @@ class Repr2(Repr):
         if options.DEBUGGING_REMOVE_ADDR: s = addr_re.sub('>', s)
         return truncate(s, self.maxstring)
 
+aRepr2 = Repr2()
+repr2 = aRepr2.repr
+
 def truncate(s, maxlen):
     if len(s) > maxlen:
         i = max(0, (maxlen-3)//2)
         j = max(0, maxlen-3-i)
         s = s[:i] + '...' + s[len(s)-j:]
     return s
-
-aRepr2 = Repr2()
-repr2 = aRepr2.repr
 
 class Record(object):
     def __init__(self, module, filename, lineno, lines, index, func=None):
@@ -359,7 +368,7 @@ else:
                 elif command == 'cont': self.set_continue()
                 else:
                     try:
-                        result = eval(unquote(statement), frame.f_globals, frame.f_locals)
+                        result = repr1(eval(unquote(statement), frame.f_globals, frame.f_locals))
                     except: result = 'exception occured'
                     result_holder.append(('200 OK', headers, html()))
                     lock.release()
