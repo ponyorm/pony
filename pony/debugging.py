@@ -2,7 +2,7 @@ import re, sys, os.path, threading, cStringIO, weakref, inspect, keyword, lineca
 
 from repr import Repr
 from itertools import izip, count
-from urllib import unquote
+from urllib import unquote_plus
 
 import pony
 from pony import options, utils, httputils
@@ -296,7 +296,7 @@ else:
         
         statement_match = statement_re.search(url)
         if statement_match is not None:
-            statement = unquote(statement_match.group(1))
+            statement = unquote_plus(statement_match.group(1))
             url = statement_re.sub('', url)
             if url.endswith('&'): url = url[:-1]
         else: statement = None
