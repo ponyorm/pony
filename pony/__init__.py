@@ -51,6 +51,7 @@ class Local(localbase):
     def __init__(self):
         self.output_streams = [ real_stdout ]
         self.error_streams = [ real_stderr ]
+        self.error_stream_nested = 0  # nested calls counter to prevent infinite recursion with flup.fcgi
 
 local = Local()
 
@@ -67,7 +68,12 @@ sys.stdout = pony_stdout
 
 class PonyStderr(object):
     def __getattribute__(self, name):
-        return getattr(local.error_streams[-1], name)
+        nested = local.error_stream_nested
+        if nested: return getattr(real_stderr, name)
+        try:
+            local.error_stream_nested = nested + 1
+            return getattr(local.error_streams[-1], name)
+        finally: local.error_stream_nested = nested
     def _get_softspace(self):
         return local.error_streams[-1].softspace
     def _set_softspace(self, value):
