@@ -74,7 +74,7 @@ class HttpRequest(object):
                 else: host, port = http_host, 80
             else:
                 host = environ['SERVER_NAME']
-                post = environ['SERVER_PORT']
+                port = environ['SERVER_PORT']
             self.host, self.port = host, int(port)
 
             self.url = urllib.quote(environ['PATH_INFO'])
