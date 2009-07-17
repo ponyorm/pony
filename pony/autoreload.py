@@ -76,7 +76,7 @@ def check_files():
         sys.exit()
 
 def use_autoreload():
-    if pony.MODE != 'CHERRYPY' or pony.mainloop_counter.next(): return
+    if pony.MODE not in ('CHERRYPY', 'FCGI-FLUP') or pony.mainloop_counter.next(): return
     try: load_main()
     except Exception, e:
         pony.exception_in_main = e

@@ -18,7 +18,7 @@ except AttributeError: process_id = 0 # in GAE
 
 if pony.MODE.startswith('GAE-'): LOG_TO_SQLITE = False
 elif options.LOG_TO_SQLITE is not None: LOG_TO_SQLITE = options.LOG_TO_SQLITE
-else: LOG_TO_SQLITE = pony.MODE in ('CHERRYPY', 'INTERACTIVE')
+else: LOG_TO_SQLITE = pony.MODE in ('CHERRYPY', 'INTERACTIVE', 'FCGI-FLUP')
 
 logging.basicConfig(level=options.LOGGING_LEVEL or INFO, format='%(message)s')
 root_logger = logging.root
@@ -164,7 +164,7 @@ if LOG_TO_SQLITE:
         # (Problems with unicode symbols in directory name)
         if pony.MAIN_FILE is None: return ':memory:'
         root, ext = os.path.splitext(pony.MAIN_FILE)
-        if pony.MODE == 'CHERRYPY': root = os.path.basename(root)
+        if pony.MODE != 'MOD_WSGI': root = os.path.basename(root)
         return root + '-log.sqlite'
 
     sql_create = """

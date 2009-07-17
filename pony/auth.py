@@ -310,7 +310,7 @@ if not pony.MODE.startswith('GAE-'):
         # (Problems with unicode symbols in directory name)
         if pony.MAIN_FILE is None: return ':memory:'
         root, ext = os.path.splitext(pony.MAIN_FILE)
-        if pony.MODE == 'CHERRYPY': root = os.path.basename(root)
+        if pony.MODE != 'MOD_WSGI': root = os.path.basename(root)
         return root + '-secrets.sqlite'
 
     sql_create = """

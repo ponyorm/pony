@@ -16,6 +16,8 @@ def detect_mode():
     except KeyError: pass
     else: return 'MOD_WSGI'
 
+    if 'flup.server.fcgi' in sys.modules: return 'FCGI-FLUP'
+
     try: sys.modules['__main__'].__file__
     except AttributeError:  return 'INTERACTIVE'
     return 'CHERRYPY'
@@ -23,7 +25,7 @@ def detect_mode():
 MODE = detect_mode()
 
 MAIN_FILE = None
-if MODE in ('CHERRYPY', 'GAE-LOCAL', 'GAE-SERVER'):
+if MODE in ('CHERRYPY', 'GAE-LOCAL', 'GAE-SERVER', 'FCGI-FLUP'):
     MAIN_FILE = sys.modules['__main__'].__file__
 elif MODE == 'MOD_WSGI':
     for module_name, module in sys.modules.items():
@@ -142,7 +144,9 @@ mainloop_counter = count()
 _do_mainloop = False  # sets to True by pony.web.start_http_server()
 
 def mainloop():
-    if not _do_mainloop or MODE != 'CHERRYPY' or mainloop_counter.next(): return
+    if not _do_mainloop: return
+    if MODE not in ('CHERRYPY', 'FCGI-FLUP'): return
+    if mainloop_counter.next(): return
     try:
         while True:
             if shutdown: break
