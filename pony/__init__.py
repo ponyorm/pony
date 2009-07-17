@@ -123,10 +123,10 @@ def exitfunc():
     mainloop()
     _shutdown()
     if sys.platform == 'win32' and MODE == 'CHERRYPY' and exception_in_main:
-        # If somebody start script on Windows by double-clicking on it
-        # and some problem take place, this code prevents instant closing
-        # of console window before user have chance to read error message.
-        # This works only if use_autoreload() has been called
+        # If a script is started in Windows by double-clicking 
+        # and a problem occurs, then the following code will
+        # prevent the console window from closing immediately.
+        # This only works if use_autoreload() has been called
         print '\nPress Enter to exit...'
         raw_input()
     prev_func()
