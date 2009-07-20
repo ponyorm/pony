@@ -50,11 +50,13 @@
     [('k4', 'v4_new'), ('k3', 'v3'), ('x', '91'), ('k5', 'v5'), ('k1', 'v1')]
 """
 
+from heapq import heappush, heappop, heapify
 from threading import Lock
 from time import time
+from weakref import ref
 
 class Node(object):
-    __slots__ = 'prev', 'next', 'expire', 'key', 'value'
+    __slots__ = 'prev', 'next', 'expire', 'key', 'value', '__weakref__'
 
 def normalize(key, value="", expire=None):
     if isinstance(key, tuple): hash_value, key = key
@@ -65,12 +67,15 @@ def normalize(key, value="", expire=None):
     return key, value, expire
 
 class Memcache(object):
-    def __init__(self):
+    def __init__(self, max_data_size):
         self.dict = {}
         list = self.list = Node()
         list.prev = list.next = list.expire = list.key = list.value = None
         list.prev = list.next = list
         self.lock = Lock()
+        self.heap = []
+        self.data_size = 0
+        self.max_data_size = max_data_size
     def __len__(self):
         return len(self.dict)
     def __contains__(self, key):
@@ -87,74 +92,127 @@ class Memcache(object):
             node = list.prev
             while node is not list:
                 expire = node.expire
-                if expire is not None and expire <= now:
-                    prev, next = node.prev, node.next
-                    prev.next = next
-                    next.prev = prev
-                    del self.dict[node.key]
+                if expire is not None and expire <= now: self._delete_node(node)
                 else: append((node.key, node.value))
                 node = node.prev
         finally: self.lock.release()
         return result
-    def _find(self, key, do_create_when_not_present):
+    def _delete_node(self, node):
+        prev, next = node.prev, node.next
+        prev.next = next
+        next.prev = prev
+        del self.dict[node.key]
+        self.data_size -= (len(node.key) + len(node.value))
+    def _find_node(self, key):
+        now = time()
         node = self.dict.get(key)
-        if node is not None:
-            expire = node.expire
-            success = expire is None or expire > time()
-            prev, next, expire = node.prev, node.next, node.expire
-            prev.next = next
-            next.prev = prev
+        if node is None: return None
+        expire = node.expire
+        success = expire is None or expire > now
+        prev, next = node.prev, node.next
+        prev.next = next
+        next.prev = prev
+        return node
+    def _create_node(self, key):
+        self.dict[key] = node = Node()
+        node.key = key
+        node.value = None
+        return node
+    def _place_on_top(self, node):
+        list = self.list
+        node.next = list
+        node.prev = prev_top = list.prev
+        list.prev = prev_top.next = node
+    def _set_node_value(self, node, value, expire):
+        prev_value = node.value
+        node.value, node.expire = value, expire
+        if prev_value is None:
+            self.data_size += len(node.key)
+            self.data_size += len(value)
         else:
-            success = False
-            if do_create_when_not_present:
-                self.dict[key] = node = Node()
-                node.key = key
-        if node is not None:
-            list = self.list
-            node.next = list
-            node.prev = prev_top = list.prev
-            list.prev = prev_top.next = node
-        return success, node
+            self.data_size -= len(prev_value)
+            self.data_size += len(value)
+        if expire is not None: heappush(self.heap, (expire, ref(node)))
+        self._delete_expired_nodes()
+        self._conform_to_limits()
+        if len(self.heap) > len(self.dict) * 2: self._pack_heap()
+    def _delete_expired_nodes(self):
+        now = time()
+        heap = self.heap
+        while heap:
+            expire, node_ref = heap[0]
+            if expire > now: break
+            heappop(heap)
+            node = node_ref()
+            if node is not None and expire == node.expire: self._delete_node(node)
+    def _conform_to_limits(self):
+        list = self.list
+        while self.data_size > self.max_data_size:
+            bottom = list.next
+            self._delete_node(bottom)
+    def _pack_heap(self):
+        new_heap = []
+        for item in self.heap:
+            expire, node_ref = item
+            node = node_ref()
+            if node is not None and expire == node.expire: new_heap.append(item)
+        heapify(new_heap)
+        self.heap = new_heap
     def get(self, key):
         key, _, _ = normalize(key)
         self.lock.acquire()
         try:
-            success, node = self._find(key, False)
-            if success: return node.value
-            return None
+            node = self._find_node(key)
+            if node is None: return None
+            self._place_on_top(node)
+            return node.value
         finally: self.lock.release()
     def set(self, key, value, expire=None):
         key, value, expire = normalize(key, value, expire)
         self.lock.acquire()
         try:
-            success, node = self._find(key, True)
-            node.value, node.expire = value, expire
+            node = self._find_node(key)
+            if node is None: node = self._create_node(key)
+            self._place_on_top(node)
+            self._set_node_value(node, value, expire)
         finally: self.lock.release()
         return True
     def add(self, key, value, expire=None):
         key, value, expire = normalize(key, value, expire)
         self.lock.acquire()
         try:
-            success, node = self._find(key, True)
-            if success: return False
-            node.value, node.expire = value, expire
+            node = self._find_node(key)
+            if node:
+                self._place_on_top(node)
+                return False
+            node = self._create_node(key)
+            self._place_on_top(node)
+            self._set_node_value(node, value, expire)
         finally: self.lock.release()
         return True
     def replace(self, key, value, expire=None):
         key, value, expire = normalize(key, value, expire)
         self.lock.acquire()
         try:
-            success, node = self._find(key, False)
-            if not success: return False
-            node.value, node.expire = value, expire
+            node = self._find_node(key)
+            if node is None: return False
+            self._place_on_top(node)
+            self._set_node_value(node, value, expire)
         finally: self.lock.release()
         return True
+    def delete(self, key):
+        key, _, _ = normalize(key)
+        node = self._find_node(key)
+        if node is None: return 1
+        self._delete_node(node)
+        return 2
     def incr(self, key, delta=1):
         key, _, _ = normalize(key)
         self.lock.acquire()
         try:
-            success, node = self._find(key, False)
-            if not success: return None
+            node = self._find_node(key)
+            if node is None: return None
+            self._place_on_top(node)
             try: value = int(node.value) + delta
             except ValueError: return None
             node.value = str(value)
@@ -164,8 +222,9 @@ class Memcache(object):
         key, _, _ = normalize(key)
         self.lock.acquire()
         try:
-            success, node = self._find(key, False)
-            if not success: return None
+            node = self._find_node(key)
+            if node is None: return None
+            self._place_on_top(node)
             try: value = int(node.value) - delta
             except ValueError: return None
             node.value = str(value)
@@ -175,6 +234,7 @@ class Memcache(object):
         self.lock.acquire()
         try:
             self.dict.clear()
+            self.heap = []
             self.list.prev = self.list.next = self.list
             for node in self.dict.itervalues():
                 node.prev = node.next = None
