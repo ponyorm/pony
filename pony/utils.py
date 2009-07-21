@@ -168,7 +168,9 @@ def read_text_file(fname, encoding=None):
         if text[:len(bom)] == bom: return text[len(bom):].decode(enc)
     try: return text.decode('utf8')
     except UnicodeDecodeError:
-        return text.decode(encoding or getpreferredencoding())
+        try: return text.decode(encoding or getpreferredencoding())
+        except UnicodeDecodeError:
+            return text.decode('ascii', 'replace')
 
 def compress(s):
     zipped = s.encode('zip')
