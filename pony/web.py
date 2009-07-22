@@ -8,7 +8,7 @@ from bdb import BdbQuit
 import pony
 
 from pony import routing, autoreload, auth, httputils, options, middleware
-from pony.utils import decorator_with_params, tostring, localbase
+from pony.utils import simple_decorator, decorator_with_params, tostring, localbase
 from pony.templating import html, Html, StrHtml
 from pony.postprocessing import postprocess
 from pony.logging import log, log_exc, DEBUG, INFO, WARNING
@@ -219,6 +219,33 @@ def get_static_file(path, dir=None, max_age=10):
     if method == 'HEAD': return ''
     return file(fname, 'rb')
 
+@simple_decorator
+def normalize_result(func, *args, **keyargs):
+    result = func(*args, **keyargs)
+    headers = dict([ (name.replace('_', '-').title(), str(value))
+                     for name, value in local.response.headers.items() ])
+    media_type = headers.pop('Type', None)
+    charset = headers.pop('Charset', None)
+    content_type = headers.get('Content-Type')
+    if content_type:
+        media_type, type_params = cgi.parse_header(content_type)
+        charset = type_params.get('charset', 'iso-8859-1')
+    else:
+        if media_type is not None: pass
+        elif isinstance(result, (Html, StrHtml)): media_type = 'text/html'
+        else: media_type = getattr(result, 'media_type', 'text/plain')
+        charset = charset or getattr(result, 'charset', 'UTF-8')
+        content_type = '%s; charset=%s' % (media_type, charset)
+        headers['Content-Type'] = content_type
+    local.response.headers = headers
+    if hasattr(result, 'read'): return result  # Assume result is a file-like object
+    result = tostring(result)
+    if media_type != 'text/html': return result
+    elif isinstance(result, (Html, StrHtml)): return result
+    elif isinstance(result, unicode): return Html(result)
+    elif isinstance(result, str): return StrHtml(result)
+    else: assert False
+
 def invoke(url):
     if isinstance(url, str):
         try: url.decode('utf8')
@@ -268,7 +295,7 @@ def invoke(url):
     params.update(zip(names, args))
     params.update(keyargs)
 
-    middlewared_func = middleware.decorator_wrap(route.func)
+    middlewared_func = middleware.decorator_wrap(normalize_result(route.func))
     result = middlewared_func(*args, **keyargs)
 
     headers = response.headers
@@ -345,35 +372,20 @@ def app(environ):
                 headers = response.headers
                 postprocessing = response.postprocessing
 
-        if hasattr(result, 'read'): pass  # Assume result is a file-like object
-        else: result = tostring(result)
-        headers = dict([ (name.replace('_', '-').title(), str(value))
-                         for name, value in headers.items() ])
-        media_type = headers.pop('Type', None)
-        charset = headers.pop('Charset', None)
-        content_type = headers.get('Content-Type')
-        if content_type:
-            media_type, type_params = cgi.parse_header(content_type)
-            charset = type_params.get('charset', 'iso-8859-1')
-        else:
-            if media_type is not None: pass
-            elif isinstance(result, (Html, StrHtml)): media_type = 'text/html'
-            else: media_type = getattr(result, 'media_type', 'text/plain')
-            charset = charset or getattr(result, 'charset', 'UTF-8')
-            content_type = '%s; charset=%s' % (media_type, charset)
-            headers['Content-Type'] = content_type
-
+        content_type = headers.get('Content-Type', 'text/plain')
+        media_type, type_params = cgi.parse_header(content_type)
+        charset = type_params.get('charset', 'iso-8859-1')
         if isinstance(result, basestring): 
             if media_type == 'text/html' and postprocessing:
                 if no_exception:
                       result = postprocess(result, response.base_stylesheets, response.component_stylesheets, response.scripts)
                 else: result = postprocess(result, [], [], [])
-
             if isinstance(result, unicode):
                 if media_type == 'text/html' or 'xml' in media_type :
                       result = result.encode(charset, 'xmlcharrefreplace')
                 else: result = result.encode(charset, 'replace')
             headers['Content-Length'] = str(len(result))
+        else: print>>pony.real_stderr, '***', request.url, headers.items()
 
         headers = headers.items()
         if not status.startswith('5'):
@@ -392,11 +404,12 @@ def app(environ):
 def inner_application(environ, start_response):
     middlewared_app = middleware.pony_wrap(app)
     status, headers, result = middlewared_app(environ)
+    print '!!!', status, headers
     start_response(status, headers)
     # result must be str or file-like object:
     if not hasattr(result, 'read'): return [ result ]
     elif 'wsgi.file_wrapper' in environ: return environ['wsgi.file_wrapper'](result, BLOCK_SIZE)
-    else: return iter(lambda: result.read(BLOCK_SIZE), '')  # return [ result.read() ]
+    else: print>>pony.real_stderr, '???'; return iter(lambda: result.read(BLOCK_SIZE), '')  # return [ result.read() ]
 
 def application(environ, start_response):
     middlewared_application = middleware.wsgi_wrap(inner_application)
