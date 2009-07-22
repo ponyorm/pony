@@ -7,9 +7,10 @@ from bdb import BdbQuit
 
 import pony
 
-from pony import routing, postprocessing, autoreload, auth, httputils, options, middleware
+from pony import routing, autoreload, auth, httputils, options, middleware
 from pony.utils import decorator_with_params, tostring, localbase
 from pony.templating import html, Html, StrHtml
+from pony.postprocessing import postprocess
 from pony.logging import log, log_exc, DEBUG, INFO, WARNING
 from pony.debugging import format_exc
 
@@ -135,12 +136,6 @@ class HttpResponse(object):
         for link in links:
             if not isinstance(link, basestring): raise TypeError('Reference to script must be string. Got: %r' % link)
             if link not in scripts: scripts.append(link)
-    def postprocess(self, content):
-        if not self.postprocessing: return content
-        content = tostring(content)
-        if content.__class__ is str: content = StrHtml(content)
-        elif content.__class__ is unicode: content = Html(content)
-        return postprocessing.postprocess(content, self.base_stylesheets, self.component_stylesheets, self.scripts)
 
 def url(func, *args, **keyargs):
     routes = getattr(func, 'routes')
@@ -229,7 +224,7 @@ def invoke(url):
         try: url.decode('utf8')
         except UnicodeDecodeError: raise Http400BadRequest
     request = local.request
-    response = local.response = HttpResponse()
+    response = local.response
     path, qlist = httputils.split_url(url)
     if path[:1] == ['static'] and len(path) > 1:
         return get_static_file(path[1:])
@@ -312,8 +307,11 @@ def app(environ):
     pony.local.output_streams.append(error_stream)
 
     request = local.request = HttpRequest(environ)
+    response = local.response = HttpResponse()
     auth.load(environ, request.cookies)
     auth.verify_ticket(request.fields.getfirst('_t'))
+    postprocessing = True
+    no_exception = False
     try:
         log_request(request)
         if autoreload.reloading_exception and not request.url.startswith('/pony/static/'):
@@ -342,8 +340,10 @@ def app(environ):
                 status, headers = INTERNAL_SERVER_ERROR
                 result = format_exc()
             else:
-                status = local.response.status
-                headers = local.response.headers
+                no_exception = True
+                status = response.status
+                headers = response.headers
+                postprocessing = response.postprocessing
 
         if hasattr(result, 'read'): pass  # Assume result is a file-like object
         else: result = tostring(result)
@@ -363,9 +363,14 @@ def app(environ):
             content_type = '%s; charset=%s' % (media_type, charset)
             headers['Content-Type'] = content_type
 
-        response = local.response
         if isinstance(result, basestring): 
-            if media_type == 'text/html': result = response.postprocess(result)
+            if media_type == 'text/html' and postprocessing:
+                if result.__class__ is str: result = StrHtml(result)
+                elif result.__class__ is unicode: result = Html(result)
+                if no_exception:
+                      result = postprocess(result, response.base_stylesheets, response.component_stylesheets, response.scripts)
+                else: result = postprocess(result, [], [], [])
+
             if isinstance(result, unicode):
                 if media_type == 'text/html' or 'xml' in media_type :
                       result = result.encode(charset, 'xmlcharrefreplace')
