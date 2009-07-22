@@ -215,7 +215,7 @@ def get_static_file(path, dir=None, max_age=10):
     if max_age <= 60: headers['Expires'] = '0'
     else: headers['Expires'] = Cookie._getdate(max_age)
     headers['Cache-Control'] = 'max-age=%d' % max_age
-    headers['Content-Length'] = os.path.getsize(fname)
+    headers['Content-Length'] = str(os.path.getsize(fname))
     if method == 'HEAD': return ''
     return file(fname, 'rb')
 
@@ -385,7 +385,6 @@ def app(environ):
                       result = result.encode(charset, 'xmlcharrefreplace')
                 else: result = result.encode(charset, 'replace')
             headers['Content-Length'] = str(len(result))
-        else: print>>pony.real_stderr, '***', request.url, headers.items()
 
         headers = headers.items()
         if not status.startswith('5'):
@@ -404,12 +403,11 @@ def app(environ):
 def inner_application(environ, start_response):
     middlewared_app = middleware.pony_wrap(app)
     status, headers, result = middlewared_app(environ)
-    print '!!!', status, headers
     start_response(status, headers)
     # result must be str or file-like object:
     if not hasattr(result, 'read'): return [ result ]
     elif 'wsgi.file_wrapper' in environ: return environ['wsgi.file_wrapper'](result, BLOCK_SIZE)
-    else: print>>pony.real_stderr, '???'; return iter(lambda: result.read(BLOCK_SIZE), '')  # return [ result.read() ]
+    else: return iter(lambda: result.read(BLOCK_SIZE), '')  # return [ result.read() ]
 
 def application(environ, start_response):
     middlewared_application = middleware.wsgi_wrap(inner_application)
