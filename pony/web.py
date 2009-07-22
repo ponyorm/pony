@@ -387,6 +387,9 @@ def app(environ):
             headers['Content-Length'] = str(len(result))
 
         headers = headers.items()
+        for header, value in headers:
+            assert isinstance(header, str)
+            assert isinstance(value, str)
         if not status.startswith('5'):
             auth.save(response.cookies)
             headers += httputils.serialize_cookies(environ, response.cookies)
