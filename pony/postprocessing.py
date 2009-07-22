@@ -29,7 +29,10 @@ def script_links(links):
     return StrHtml('\n').join(script_link(link) for link in links)
 
 def postprocess(content, stylesheets, component_stylesheets, scripts):
-    assert isinstance(content, (StrHtml, Html))
+    assert isinstance(content, basestring)
+    if isinstance(content, (Html, StrHtml)): pass
+    elif isinstance(content, str): content = StrHtml(content)
+    elif isinstance(content, unicode): content = Html(content)
     
     if not stylesheets: stylesheets = options.STD_STYLESHEETS
     base_css = css_links(stylesheets)

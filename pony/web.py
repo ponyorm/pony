@@ -365,8 +365,6 @@ def app(environ):
 
         if isinstance(result, basestring): 
             if media_type == 'text/html' and postprocessing:
-                if result.__class__ is str: result = StrHtml(result)
-                elif result.__class__ is unicode: result = Html(result)
                 if no_exception:
                       result = postprocess(result, response.base_stylesheets, response.component_stylesheets, response.scripts)
                 else: result = postprocess(result, [], [], [])
