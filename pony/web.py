@@ -333,7 +333,7 @@ def app(environ):
     if not wsgi_errors_is_stderr: pony.local.error_streams.append(error_stream)
     if error_stream.__class__.__name__ == 'TeeOutputStream': # flup-fcgi monkeypatching
         assert error_stream._streamList[0] is pony.pony_stderr
-        error_stream._streamList[0] = pony.real_stderr
+        error_stream._streamList = (pony.real_stderr,) + error_stream._streamList[1:]
         
     pony.local.output_streams.append(error_stream)
 
