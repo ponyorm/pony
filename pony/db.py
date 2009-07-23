@@ -337,7 +337,7 @@ def with_transaction(func, args, keyargs, allowed_exceptions=[]):
     return result
 
 @simple_decorator
-def db_middleware_decorator(func, *args, **keyargs):
+def db_decorator(func, *args, **keyargs):
     web = sys.modules.get('pony.web')
     allowed_exceptions = web and [ web.HttpRedirect ] or []
     try: return with_transaction(func, args, keyargs, allowed_exceptions)

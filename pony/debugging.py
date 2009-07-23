@@ -238,19 +238,18 @@ def format_record(record):
 
 if pony.MODE.startswith('GAE-'):
     
-    def debugging_middleware_decorator(func):
+    def debugging_decorator(func):
         return func
 
-    @simple_decorator    
-    def debugging_pony_middleware(app, environ):
-        return app(environ)
+    def debugging_middleware(app):
+        return app
 
 else:
 
     import bdb
 
     @simple_decorator
-    def debugging_middleware_decorator(func, *args, **keyargs):
+    def debugging_decorator(func, *args, **keyargs):
         if options.DEBUG:
             web = sys.modules.get('pony.web')
             if web is not None:
@@ -269,7 +268,7 @@ else:
     expr_re = re.compile(r'(?:(?<=\?|&)|^)expr(?:=([^&]*))?&?')
 
     @simple_decorator
-    def debugging_pony_middleware(app, environ):
+    def debugging_middleware(app, environ):
         if not options.DEBUG: return app(environ)
         query = environ.get('QUERY_STRING', '')
         if not debug_re.search(query): return app(environ)
