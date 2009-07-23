@@ -331,6 +331,10 @@ def app(environ):
     error_stream = environ['wsgi.errors']
     wsgi_errors_is_stderr = error_stream is sys.stderr
     if not wsgi_errors_is_stderr: pony.local.error_streams.append(error_stream)
+    if error_stream.__class__.__name__ == 'TeeOutputStream': # flup-fcgi monkeypatching
+        assert error_stream._streamList[0] is pony.pony_stderr
+        error_stream._streamList[0] = pony.real_stderr
+        
     pony.local.output_streams.append(error_stream)
 
     request = local.request = HttpRequest(environ)
