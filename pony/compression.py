@@ -36,7 +36,8 @@ def compression_middleware(app, environ):
     elif mime_type in compressable_mime_types: pass
     else: return status, headers, content
 
-    if not isinstance(content, str): content = content.read()
+    if hasattr(content, 'read'): content = content.read()  # read string from file-like object
+    else: assert isinstance(content, str)
     if len(content) < min_compressed_length: return status, headers, content
     if 'gzip' in accept_encoding:
         io = StringIO()

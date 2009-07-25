@@ -220,8 +220,14 @@ def get_static_file(path, dir=None, max_age=10):
     return file(fname, 'rb')
 
 @simple_decorator
-def normalize_result(func, *args, **keyargs):
-    result = func(*args, **keyargs)
+def normalize_result_decorator(func, *args, **keyargs):
+    content, headers = normalize_result(func(*args, **keyargs), local.response.headers)
+    local.response.headers = headers
+    return content
+
+def normalize_result(result, headers):
+    if hasattr(result, 'read'): content = result  # file-like object
+    else: content = tostring(result)
     headers = dict([ (name.replace('_', '-').title(), str(value))
                      for name, value in local.response.headers.items() ])
     media_type = headers.pop('Type', None)
@@ -231,20 +237,20 @@ def normalize_result(func, *args, **keyargs):
         media_type, type_params = cgi.parse_header(content_type)
         charset = type_params.get('charset', 'iso-8859-1')
     else:
-        if media_type is not None: pass
-        elif isinstance(result, (Html, StrHtml)): media_type = 'text/html'
-        else: media_type = getattr(result, 'media_type', 'text/plain')
-        charset = charset or getattr(result, 'charset', 'UTF-8')
+        if media_type is None: media_type = getattr(result, 'media_type', None)
+        if media_type is None:
+            if isinstance(content, (Html, StrHtml)): media_type = 'text/html'
+            else: media_type = 'text/plain'
+        if charset is None: charset = getattr(result, 'charset', 'UTF-8')
         content_type = '%s; charset=%s' % (media_type, charset)
         headers['Content-Type'] = content_type
-    local.response.headers = headers
-    if hasattr(result, 'read'): return result  # Assume result is a file-like object
-    result = tostring(result)
-    if media_type != 'text/html': return result
-    elif isinstance(result, (Html, StrHtml)): return result
-    elif isinstance(result, unicode): return Html(result)
-    elif isinstance(result, str): return StrHtml(result)
+    if hasattr(content, 'read') \
+       or media_type != 'text/html' \
+       or isinstance(content, (Html, StrHtml)): pass
+    elif isinstance(content, unicode): content = Html(content)
+    elif isinstance(content, str): content = StrHtml(content)
     else: assert False
+    return content, headers
 
 def invoke(url):
     if isinstance(url, str):
@@ -295,7 +301,7 @@ def invoke(url):
     params.update(zip(names, args))
     params.update(keyargs)
 
-    middlewared_func = middleware.decorator_wrap(normalize_result(route.func))
+    middlewared_func = middleware.decorator_wrap(normalize_result_decorator(route.func))
     result = middlewared_func(*args, **keyargs)
 
     headers = response.headers
@@ -365,11 +371,12 @@ def app(environ):
                         auth.unexpire_ticket()
             except HttpException, e:
                 status, headers, result = e.status, e.headers, e.content
+                result, headers = normalize_result(result, headers)
             except BdbQuit: raise
             except:
                 log_exc()
                 status, headers = INTERNAL_SERVER_ERROR
-                result = format_exc()
+                result, headers = normalize_result(format_exc(), headers)
             else:
                 no_exception = True
                 status = response.status
