@@ -229,7 +229,7 @@ def normalize_result(result, headers):
     if hasattr(result, 'read'): content = result  # file-like object
     else: content = tostring(result)
     headers = dict([ (name.replace('_', '-').title(), str(value))
-                     for name, value in local.response.headers.items() ])
+                     for name, value in headers.items() ])
     media_type = headers.pop('Type', None)
     charset = headers.pop('Charset', None)
     content_type = headers.get('Content-Type')
@@ -372,6 +372,7 @@ def app(environ):
             except HttpException, e:
                 status, headers, result = e.status, e.headers, e.content
                 result, headers = normalize_result(result, headers)
+                print headers
             except BdbQuit: raise
             except:
                 log_exc()
