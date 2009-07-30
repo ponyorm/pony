@@ -372,7 +372,6 @@ def app(environ):
             except HttpException, e:
                 status, headers, result = e.status, e.headers, e.content
                 result, headers = normalize_result(result, headers)
-                print headers
             except BdbQuit: raise
             except:
                 log_exc()
