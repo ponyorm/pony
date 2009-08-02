@@ -205,7 +205,7 @@ def get_static_file(path, dir=None, max_age=10):
         if not path_re.match(component): raise Http404NotFound
     fname = os.path.join(dir, *path)
     if not os.path.isfile(fname):
-        if path == [ 'favicon.ico' ]: get_static_file(path, pony_static_dir, 30*60)
+        if path == [ 'favicon.ico' ]: return get_static_file(path, pony_static_dir, 30*60)
         raise Http404NotFound
     method = local.request.method
     if method not in ('GET', 'HEAD'): raise Http405MethodNotAllowed
