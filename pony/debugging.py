@@ -351,11 +351,11 @@ else:
                 if module == 'pony' or module.startswith('pony.'): self.set_step(); return
                 self.__top_user_frame = frame
                 self.__state = 2
-            headers = [('Content-Type', 'text/html'), ('X-Debug', 'Step')]
+            headers = [('Content-Type', 'text/html; charset=UTF-8'), ('X-Debug', 'Step')]
             if not url.endswith('?'): url += '&'
             record = Record.from_frame(frame, context=9)
             if record.index is None: self.set_step(); return
-            result_holder.append(('200 OK', headers, html()))
+            result_holder.append(('200 OK', headers, html().encode('utf8')))
             lock.release()
             while True:
                 last = queue.get()
@@ -369,7 +369,7 @@ else:
                     try:
                         result = repr1(eval(expr, frame.f_globals, frame.f_locals))
                     except: result = traceback.format_exc()
-                    result_holder.append(('200 OK', headers, html()))
+                    result_holder.append(('200 OK', headers, html().encode('utf8')))
                     lock.release()
                     continue
                 break
