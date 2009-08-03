@@ -28,6 +28,11 @@ def script_link(link):
 def script_links(links):
     return StrHtml('\n').join(script_link(link) for link in links)
 
+favicon_links = Html('''
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
+''')
+
 def postprocess(content, stylesheets, component_stylesheets, scripts):
     assert isinstance(content, basestring)
     if isinstance(content, (Html, StrHtml)): pass
@@ -71,7 +76,7 @@ def postprocess(content, stylesheets, component_stylesheets, scripts):
         match = element_re.search(head)
         if match is not None and match.group(2).lower() == 'head': raise _UsePlaceholders
         if css_re.search(head) is not None: base_css = ''
-        head = StrHtml('<head>') + base_css + head + component_css + scripts + StrHtml('</head>')
+        head = StrHtml('<head>') + favicon_links + base_css + head + component_css + scripts + StrHtml('</head>')
 
     except _UsePlaceholders:
         head = head.replace(options.BASE_STYLESHEETS_PLACEHOLDER, base_css, 1)
