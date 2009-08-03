@@ -35,7 +35,7 @@ class Http404NotFound(Http4xxException):
     def __init__(self, msg='Page not found', content=None):
         Exception.__init__(self, msg)
         if content: pass
-        elif not routing.has_user_routes:
+        elif not routing.user_routes:
               content = html(filename=welcome_template_filename)
         else: content = html(filename=notfound_template_filename)
         self.content = content or msg

@@ -15,7 +15,7 @@ __nodefault__ = NodefaultType()
 registry_lock = threading.RLock()
 registry = ({}, [], [])
 system_routes = []
-has_user_routes = False
+user_routes = []
 
 url_cache = {}
 
@@ -34,8 +34,8 @@ class Route(object):
         elif argspec[2] is not None: raise TypeError('Not supported: **%s' % argspec[2])
         else:
             url = func.__name__
-            if argspec[0]:
-                url = '?'.join((url, '&'.join('=$'.join((argname, argname)) for argname in argspec[0])))
+            if argspec[0]: url = '?'.join((url, '&'.join('=$'.join((argname, argname)) for argname in argspec[0])))
+            self.url = url
         if method is not None and method not in ('HEAD', 'GET', 'POST', 'PUT', 'DELETE'):
             raise TypeError('Invalid HTTP method: %r' % method)
         self.method = method
@@ -200,7 +200,7 @@ class Route(object):
             self.func.__dict__.setdefault('routes', []).insert(0, self)
             self.list.insert(0, self)
             if self.system and self not in system_routes: system_routes.append(self)
-            else: global has_user_routes; has_user_routes = True
+            else: user_routes.append(self)
         finally: registry_lock.release()
 
 def get_routes(path, qdict, method, host, port):
@@ -420,6 +420,8 @@ def _remove(route):
     url_cache.clear()
     route.list.remove(route)
     route.func.routes.remove(route)
+    if self.system: system_routes.remove(routre.url)
+    else: user_routes.remove(route)
             
 @on_reload
 def clear():
@@ -427,7 +429,7 @@ def clear():
     try:
         _clear(*registry)
         for route in system_routes: route.register()
-        has_user_routes = False
+        user_routes.clear()
     finally: registry_lock.release()
 
 def _clear(dict, list1, list2):
