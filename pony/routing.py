@@ -420,7 +420,7 @@ def _remove(route):
     url_cache.clear()
     route.list.remove(route)
     route.func.routes.remove(route)
-    if self.system: system_routes.remove(routre.url)
+    if route.system: system_routes.remove(routre.url)
     else: user_routes.remove(route)
             
 @on_reload
