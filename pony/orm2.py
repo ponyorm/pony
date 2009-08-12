@@ -50,8 +50,7 @@ class Attribute(object):
         attr.reverse = keyargs.pop('reverse', None)
         if attr.reverse is None: pass
         elif not isinstance(attr.reverse, (basestring, Attribute)):
-            raise TypeError("Value of 'reverse' option must be name of "
-                            "reverse attribute). Got: %r" % attr.reverse)
+            raise TypeError("Value of 'reverse' option must be name of reverse attribute). Got: %r" % attr.reverse)
         elif not isinstance(attr.type, (basestring, EntityMeta)):
             raise DiagramError('Reverse option cannot be set for this type %r' % attr.type)
         for option in keyargs: raise TypeError('Unknown option %r' % option)
