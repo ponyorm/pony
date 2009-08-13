@@ -169,6 +169,7 @@ class Required(Attribute): pass
 
 class Unique(Required):
     def __new__(cls, *args, **keyargs):
+        is_pk = issubclass(cls, PrimaryKey)
         if not args: raise TypeError('Invalid count of positional arguments')
         attrs = tuple(a for a in args if isinstance(a, Attribute))
         non_attrs = [ a for a in args if not isinstance(a, Attribute) ]
@@ -177,9 +178,17 @@ class Unique(Required):
         keys = cls_dict.setdefault('_keys_', {})
         if not attrs:
             result = Required.__new__(cls, *args, **keyargs)
-            keys[(result,)] = issubclass(cls, PrimaryKey)
+            keys[(result,)] = is_pk
             return result
-        keys[attrs] = issubclass(cls, PrimaryKey)
+        for attr in attrs:
+            if attr.is_collection or (is_pk and not attr.is_required): raise TypeError(
+                '%s attribute cannot be part of %s' % (attr.__class__.__name__, is_pk and 'primary key' or 'unique index'))
+            attr.is_indexed = True
+        if len(attrs) == 1:
+            attr = attrs[0]
+            if not isinstance(attr, Optional): raise TypeError('Invalid declaration')
+            attr.is_unique = True
+        keys[attrs] = is_pk
 
 class PrimaryKey(Unique): pass
 
@@ -343,3 +352,400 @@ class EntityMeta(type):
         return iter(())
 
 new_instance_counter = count(1).next
+
+class Entity(object):
+    __metaclass__ = EntityMeta
+    __slots__ = '__dict__', '__weakref__', '_keys_'
+    @classmethod
+    def _cls_setattr_(entity, name, value):
+        if name.startswith('_') and name.endswith('_'):
+            type.__setattr__(entity, name, value)
+        else: raise NotImplementedError
+    @classmethod
+    def _cls_init_(entity, diagram):
+        if entity.__name__ in diagram.entities:
+            raise DiagramError('Entity %s already exists' % entity.__name__)
+        entity._objects_ = {}
+        entity._lock_ = threading.Lock()
+        direct_bases = [ c for c in entity.__bases__ if issubclass(c, Entity) and c is not Entity ]
+        entity._direct_bases_ = direct_bases
+        entity._all_bases_ = set((entity,))
+        for base in direct_bases: entity._all_bases_.update(base._all_bases_)
+        if direct_bases:
+            roots = set(base._root_ for base in direct_bases)
+            if len(roots) > 1: raise DiagramError(
+                'With multiple inheritance of entities, inheritance graph must be diamond-like')
+            entity._root_ = roots.pop()
+            for base in direct_bases:
+                if base._diagram_ is not diagram: raise DiagramError(
+                    'When use inheritance, base and derived entities must belong to same diagram')
+        else: entity._root_ = entity
+
+        base_attrs = []
+        base_attrs_dict = {}
+        for base in direct_bases:
+            for a in base._attrs_:
+                if base_attrs_dict.setdefault(a.name, a) is not a:
+                    raise DiagramError('Ambiguous attribute name %s' % a.name)
+                base_attrs.append(a)
+        entity._base_attrs_ = base_attrs
+
+        new_attrs = []
+        for name, attr in entity.__dict__.items():
+            if name in base_attrs_dict: raise DiagramError(
+                'Name %s hide base attribute %s' % (name,base_attrs_dict[name]))
+            if not isinstance(attr, Attribute): continue
+            if name.startswith('_') and name.endswith('_'): raise DiagramError(
+                'Attribute name cannot both starts and ends with underscore. Got: %s' % name)
+            if attr.entity is not None: raise DiagramError('Duplicate use of attribute %s' % value)
+            attr._init_(entity, name)
+            new_attrs.append(attr)
+        new_attrs.sort(key=attrgetter('_id_'))
+        entity._new_attrs_ = new_attrs
+
+        keys = entity.__dict__.get('_keys_', {})
+        primary_keys = set(key for key, is_pk in keys.items() if is_pk)
+        if direct_bases:
+            if primary_keys: raise DiagramError(
+                'Primary key cannot be redefined in derived classes')
+            for base in direct_bases:
+                keys[base._keys_[0]] = True
+                for key in base._keys_[1:]: keys[key] = False
+            primary_keys = set(key for key, is_pk in keys.items() if is_pk)
+                                   
+        if len(primary_keys) > 1: raise DiagramError(
+            'Only one primary key can be defined in each entity class')
+        elif not primary_keys:
+            if hasattr(entity, 'id'): raise DiagramError(
+                "Cannot create primary key for %s automatically because name 'id' is alredy in use" % entity.__name__)
+            _keys_ = {}
+            attr = PrimaryKey(int, auto=True) # Side effect: modifies _keys_ local variable
+            attr._init_(entity, 'id')
+            type.__setattr__(entity, 'id', attr)  # entity.id = attr
+            entity._new_attrs_.insert(0, attr)
+            key, is_pk = _keys_.popitem()
+            keys[key] = True
+            pk_attrs = key
+        else: pk_attrs = primary_keys.pop()
+        entity._keys_ = [ pk_attrs ] + [ key for key, is_pk in keys.items() if not is_pk ]
+
+        for i, attr in enumerate(pk_attrs): attr.pk_offset = i
+
+        entity._attrs_ = base_attrs + new_attrs
+        entity._attr_dict_ = dict((attr.name, attr) for attr in entity._attrs_)
+        entity._bits_ = {}
+        next_offset = count().next
+        for i, attr in enumerate(entity._attrs_):
+            
+            entity._bits_[attr] = 1 << i
+
+        next_offset = count(len(DATA_HEADER)).next
+        entity._old_offsets_ = old_offsets = {}
+        entity._new_offsets_ = new_offsets = {}
+        for attr in entity._attrs_:
+            if attr.pk_offset is None:
+                old_offsets[attr] = next_offset()
+                new_offsets[attr] = next_offset()
+            else: old_offsets[attr] = new_offsets[attr] = next_offset()
+        data_size = next_offset()
+        entity._data_template_ = DATA_HEADER + [ UNKNOWN ]*(data_size - len(DATA_HEADER))
+
+        diagram.lock.acquire()
+        try:
+            diagram.clear()
+            entity._diagram_ = diagram
+            diagram.entities[entity.__name__] = entity
+            entity._link_reverse_attrs_()
+        finally: diagram.lock.release()
+
+    @classmethod
+    def _link_reverse_attrs_(entity):
+        diagram = entity._diagram_
+        for attr in entity._new_attrs_:
+            py_type = attr.py_type
+            if isinstance(py_type, basestring):
+                entity2 = diagram.entities.get(py_type)
+                if entity2 is None: continue
+                attr.py_type = entity2
+            elif issubclass(py_type, Entity):
+                entity2 = py_type
+                if entity2._diagram_ is not diagram: raise DiagramError(
+                    'Interrelated entities must belong to same diagram. '
+                    'Entities %s and %s belongs to different diagrams'
+                    % (entity.__name__, entity2.__name__))
+            else: continue
+            
+            reverse = attr.reverse
+            if isinstance(reverse, basestring):
+                attr2 = getattr(entity2, reverse, None)
+                if attr2 is None:
+                    raise DiagramError('Reverse attribute %s.%s not found' % (entity2.__name__, reverse))
+            elif isinstance(reverse, Attribute):
+                attr2 = reverse
+                if attr2.entity is not entity2:
+                    raise DiagramError('Incorrect reverse attribute %s used in %s' % (attr2, attr))
+            elif reverse is not None:
+                raise DiagramError("Value of 'reverse' option must be string. Got: %r" % type(reverse))
+            else:
+                candidates1 = []
+                candidates2 = []
+                for attr2 in entity2._new_attrs_:
+                    if attr2.py_type not in (entity, entity.__name__): continue
+                    reverse2 = attr2.reverse
+                    if reverse2 in (attr, attr.name): candidates1.append(attr2)
+                    elif reverse2 is None: candidates2.append(attr2)
+                msg = 'Ambiguous reverse attribute for %s'
+                if len(candidates1) > 1: raise DiagramError(msg % attr)
+                elif len(candidates1) == 1: attr2 = candidates1[0]
+                elif len(candidates2) > 1: raise DiagramError(msg % attr)
+                elif len(candidates2) == 1: attr2 = candidates2[0]
+                else: raise DiagramError('Reverse attribute for %s not found' % attr)
+
+            type2 = attr2.py_type
+            msg = 'Inconsistent reverse attributes %s and %s'
+            if isinstance(type2, basestring):
+                if type2 != entity.__name__: raise DiagramError(msg % (attr, attr2))
+                attr2.py_type = entity
+            elif type2 != entity: raise DiagramError(msg % (attr, attr2))
+            reverse2 = attr2.reverse
+            if reverse2 not in (None, attr, attr.name): raise DiagramError(msg % (attr,attr2))
+
+            attr.reverse = attr2
+            attr2.reverse = attr
+    @classmethod
+    def _get_info(entity):
+        trans = local.transaction
+        if trans is None:
+            data_source = entity._diagram_.data_source
+            if data_source is None:
+                outer_dict = sys._getframe(1).f_locals
+                data_source = outer_dict.get('_data_source_')
+            if data_source is not None: data_source.begin()
+            else: raise TransactionError('There are no active transaction in thread %s. '
+                                         'Cannot start transaction automatically, '
+                                         'because default data source does not set'
+                                         % thread.get_ident())
+        else: data_source = trans.data_source
+        info = data_source.entities.get(entity)
+        if info is not None: return info
+        data_source.generate_schema(entity._diagram_)
+        return data_source.entities[entity]
+    def __init__(obj, *args, **keyargs):
+        raise TypeError('You cannot create entity instances directly. '
+                        'Use Entity.create(...) or Entity.find(...) instead')
+    def __repr__(obj):
+        pk = obj._pk_
+        if pk is None: key_str = 'new:%d' % obj._new_
+        else: key_str = ', '.join(repr(item) for item in pk)
+        return '%s(%s)' % (obj.__class__.__name__, key_str)
+    def _get_data(obj, status):
+        trans = local.transaction
+        data = trans.objects.get(obj)
+        if data is None:
+            pk = obj._pk_
+            if pk is None: raise TransferringObjectWithoutPkError(obj)
+            data = trans.objects[obj] = obj._data_template_[:]
+            data[0] = obj
+            data[1] = status
+            get_new_offset = obj._new_offsets_.__getitem__
+            for a, v in zip(obj._keys_[0], pk): data[get_new_offset(a)] = v
+            if status != 'U': raise NotImplementedError
+        return data
+    @property
+    def old(obj):
+        return OldProxy(obj)
+    @classmethod
+    def find(entity, *args, **keyargs):
+        pk_attrs = entity._keys_[0]
+        if args:
+            if len(args) != len(pk_attrs):
+                raise CreateError('Invalid count of attrs in primary key')
+            for attr, value in zip(pk_attrs, args):
+                if keyargs.setdefault(attr.name, value) != value:
+                    raise CreateError('Ambiguous attribute value for %r' % attr.name)
+        for name in ifilterfalse(entity._attr_dict_.__contains__, keyargs):
+            raise CreateError('Unknown attribute %r' % name)
+
+        info = entity._get_info()
+        trans = local.transaction
+
+        get_new_offset = entity._new_offsets_.__getitem__
+        get_old_offset = entity._old_offsets_.__getitem__
+        data = entity._data_template_[:]
+        used_attrs = []
+        for attr in entity._attrs_:
+            value = keyargs.get(attr.name, UNKNOWN)
+            data[get_old_offset(attr)] = None
+            if value is not UNKNOWN:
+                value = attr.check(value, entity)
+                used_attrs.append((attr, value))
+            data[get_new_offset(attr)] = value
+
+        for key in entity._keys_:
+            key_value = tuple(map(data.__getitem__, map(get_new_offset, key)))
+            if None in key_value: continue
+            try: old_index, new_index = trans.indexes[key]
+            except KeyError: continue
+            obj2 = new_index.get(key_value)
+            if obj2 is None: continue
+            obj2_data = trans.objects[obj2]
+            obj2_get_new_offset = obj2._new_offsets_.__getitem__
+            try:
+                for attr in used_attrs:
+                    value = data[get_new_offset(attr)]
+                    value2 = obj2_data[obj2_get_new_offset(attr)]
+                    if value2 is UNKNOWN: raise NotImplementedError
+                    if value != value2: return None
+            except KeyError: return None
+            return obj2
+        
+        tables = {}
+        select_list = []
+        from_list = []
+        where_list = []
+        table_counter = count(1)
+        column_counter = count(1)
+        for attr, value in used_attrs:
+            pass
+
+        raise NotImplementedError
+    @classmethod
+    def create(entity, *args, **keyargs):
+        pk_attrs = entity._keys_[0]
+        if args:
+            if len(args) != len(pk_attrs):
+                raise CreateError('Invalid count of attrs in primary key')
+            for attr, value in zip(pk_attrs, args):
+                if keyargs.setdefault(attr.name, value) != value:
+                    raise CreateError('Ambiguous attribute value for %r' % attr.name)
+        for name in ifilterfalse(entity._attr_dict_.__contains__, keyargs):
+            raise CreateError('Unknown attribute %r' % name)
+
+        info = entity._get_info()
+        trans = local.transaction
+
+        get_new_offset = entity._new_offsets_.__getitem__
+        get_old_offset = entity._old_offsets_.__getitem__
+        data = entity._data_template_[:]
+        for attr in entity._attrs_:
+            value = keyargs.get(attr.name, UNKNOWN)
+            data[get_old_offset(attr)] = None
+            data[get_new_offset(attr)] = attr.check(value, entity)
+        pk = tuple(map(data.__getitem__, map(get_new_offset, pk_attrs)))
+        if None in pk:
+            obj = object.__new__(entity)
+            obj._pk_ = None
+            obj._new_ = new_instance_counter()
+        else:
+            obj = object.__new__(entity)
+            obj._pk_ = pk
+            obj._new_ = None
+            entity._lock_.acquire()
+            try: obj = entity._objects_.setdefault(pk, obj)
+            finally: entity._lock_.release()
+            if obj in trans.objects:
+                key_str = ', '.join(repr(item) for item in pk)
+                raise CreateError('%s with such primary key already exists: %s' % (obj.__class__.__name__, key_str))
+        data[0] = obj
+        data[1] = 'C'
+
+        undo_funcs = []
+        try:
+            for key in entity._keys_:
+                key_value = tuple(map(data.__getitem__, map(get_new_offset, key)))
+                if None in key_value: continue
+                try: old_index, new_index = trans.indexes[key]
+                except KeyError: old_index, new_index = trans.indexes[key] = ({}, {})
+                obj2 = new_index.setdefault(key_value, obj)
+                if obj2 is not obj:
+                    key_str = ', '.join(repr(item) for item in key_value)
+                    raise CreateError('%s with such unique index already exists: %s' % (obj2.__class__.__name__, key_str))
+            for attr in entity._attrs_:
+                if attr.reverse is None: continue
+                value = data[get_new_offset(attr)]
+                if value is None: continue
+                attr.update_reverse(obj, None, value, undo_funcs)
+        except:
+            for undo_func in reversed(undo_funcs): undo_func()
+            for key in entity._keys_:
+                key_value = tuple(map(data.__getitem__, map(get_new_offset, key)))
+                index_pair = trans.indexes.get(key)
+                if index_pair is None: continue
+                old_index, new_index = index_pair
+                if new_index.get(key_value) is obj: del new_index[key_value]
+            raise
+        if trans.objects.setdefault(obj, data) is not data: raise AssertionError
+
+##        if obj._pk_ is None: return obj
+##
+##        for table in info.tables:
+##            cache = trans.caches.get(table)
+##            if cache is None: cache = trans.caches[table] = Cache(table)
+##            new_row = cache.row_template[:]
+##            new_row[0] = obj
+##            new_row[1] = 'C'
+##            for column in table.columns:
+##                for attr in column.attrs:
+##                    if entity is attr.entity or issubclass(entity, attr.entity):
+##                        value = data[get_new_offset(attr)]
+##                        new_row[column.new_offset] = value
+##                        break
+##                else: new_row[column.new_offset] = None
+##            if cache.rows.setdefault(pk, new_row) is not new_row: raise AssertionError
+        return obj
+    def set(obj, **keyargs):
+        pk = obj._pk_
+        info = obj._get_info()
+        trans = local.transaction
+        get_new_offset = obj._new_offsets_.__getitem__
+        get_old_offset = obj._old_offsets_.__getitem__
+
+        data = trans.objects.get(obj) or obj._get_data('U')
+        old_data = data[:]
+
+        attrs = set()
+        for name, value in keyargs.items():
+            attr = obj._attr_dict_.get(name)
+            if attr is None: raise UpdateError("Unknown attribute: %r" % name)
+            value = attr.check(value, obj.__class__)
+            if data[get_new_offset(attr)] == value: continue
+            if attr.pk_offset is not None: raise UpdateError('Cannot change value of primary key')
+            attrs.add(attr)
+            data[get_new_offset(attr)] = value
+        if not attrs: return
+
+        undo = []
+        undo_funcs = []
+        try:
+            for key in obj._keys_[1:]:
+                new_key = tuple(map(data.__getitem__, map(get_new_offset, key)))
+                old_key = tuple(map(old_data.__getitem__, map(get_new_offset, key)))
+                if None in new_key or UNKNOWN in new_key: new_key = None
+                if None in old_key or UNKNOWN in old_key: old_key = None
+                if old_key == new_key: continue
+                try: old_index, new_index = trans.indexes[key]
+                except KeyError: old_index, new_index = trans.indexes[key] = ({}, {})
+                if new_key is not None:
+                    obj2 = new_index.setdefault(new_key, obj)
+                    if obj2 is not obj:
+                        key_str = ', '.join(repr(item) for item in new_key)
+                        raise UpdateError('Cannot update %s.%s: %s with such unique index already exists: %s'
+                                          % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, key_str))
+                if old_key is not None: del new_index[old_key]
+                undo.append((new_index, obj, old_key, new_key))
+            for attr in attrs:
+                if attr.reverse is None: continue
+                old = old_data[obj._old_offsets_[attr]]
+                if old is UNKNOWN: raise NotImplementedError
+                offset = get_new_offset(attr)
+                prev = old_data[offset]
+                value = data[offset]
+                attr.update_reverse(obj, prev, value, undo_funcs)
+        except:
+            for undo_func in reversed(undo_funcs): undo_func()
+            for new_index, obj, old_key, new_key in undo:
+                if new_key is not None: del new_index[new_key]
+                if old_key is not None: new_index[old_key] = obj
+            data[:] = old_data
+            raise
+        if data[1] != 'C': data[1] = 'U'
