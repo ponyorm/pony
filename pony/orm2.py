@@ -6,7 +6,6 @@ except ImportError: etree = None
 
 class OrmError(Exception): pass
 
-
 class DiagramError(OrmError): pass
 class SchemaError(OrmError): pass
 class MappingError(OrmError): pass
@@ -25,18 +24,19 @@ DEFAULT = DefaultValueType()
 next_id = count().next
 
 class Attribute(object):
-    __slots__ = 'is_required', 'is_unique', 'is_indexed', 'is_collection', \
-                'id', 'bit', 'pk_offset', 'type', 'entity', 'name', 'oldname', \
-                'args', 'auto', 'default', 'reverse', 'composite_keydefs'
+    __slots__ = 'is_required', 'is_unique', 'is_indexed', 'is_collection', 'is_pk', \
+                'id', 'pk_offset', 'type', 'entity', 'name', 'oldname', \
+                'args', 'auto', 'default', 'reverse', 'composite_keys'
     def __init__(attr, type, *args, **keyargs):
         if attr.__class__ is Attribute: raise TypeError("'Atrribute' is abstract type")
         attr.is_required = isinstance(attr, Required)
         attr.is_unique = isinstance(attr, Unique)  # Also can be set to True later
         attr.is_indexed = attr.is_unique  # Also can be set to True later
         attr.is_collection = isinstance(attr, Collection)
+        attr.is_pk = isinstance(attr, PrimaryKey)
+        if attr.is_pk: attr.pk_offset = 0
+        else: attr.pk_offset = None
         attr.id = next_id()
-        attr.bit = 0
-        attr.pk_offset = None
         attr.type = type
         attr.entity = attr.name = attr.oldname = None
         attr.args = args
@@ -54,7 +54,7 @@ class Attribute(object):
         elif not isinstance(attr.type, (basestring, EntityMeta)):
             raise DiagramError('Reverse option cannot be set for this type %r' % attr.type)
         for option in keyargs: raise TypeError('Unknown option %r' % option)
-        attr.composite_keydefs = []
+        attr.composite_keys = []
     def _init_(attr, entity, name):
         attr.entity = entity
         attr.name = name
@@ -88,7 +88,7 @@ class Attribute(object):
     def __set__(attr, obj, val, is_reverse=False):
         val = attr.check(obj, val)
         prev = attr.get(obj)
-        if prev == val: obj._rbits_ |= attr.bit; return
+        if prev == val: obj._rbits_ |= obj._bits_[attr]; return
         is_indexed = attr.is_indexed
         reverse = attr.reverse
         if reverse is None:
@@ -105,11 +105,11 @@ class Attribute(object):
     def __delete__(attr, obj):
         raise NotImplementedError
     def get(attr, obj, setbit=False):
-        if setbit: obj._rbits_ |= attr.bit
+        if setbit: obj._rbits_ |= obj._bits_[attr]
         val = obj.__dict__.get(attr.name, UNKNOWN)
         if val is UNKNOWN: raise NotImplementedError
     def set(attr, obj, val, setbit=True):
-        if setbit: obj._wbits_ |= attr.bit
+        if setbit: obj._wbits_ |= obj._bits_[attr]
         obj.__dict__[attr.name] = val
     def update_reverse(attr, obj, val, is_reverse):
         reverse = attr.reverse
@@ -123,6 +123,7 @@ class Attribute(object):
         else: raise NotImplementedError
     def check_indexes(attr, obj, val):
         trans = obj._trans_
+        if val is None and trans.ignore_none: return
         if attr.is_unique:
             index = trans.simple_indexes.get(attr)
             if index is not None:
@@ -130,36 +131,37 @@ class Attribute(object):
                 if obj2 is not None: raise UpdateError(
                     'Cannot update %s.%s: %s with such unique index value already exists: %r'
                     % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, val))
-        for keydef, i in attr.composite_keydefs:
-            old_key_ = obj.__dict__.get(keydef)
-            new_key = list(old_key)
-            new_key[i] = val
-            new_key = tuple(new_key)
-            if keydef.ignore_none and None in new_key: continue
-            index = trans.composite_indexes.get(keydef)
+        for key, i in attr.composite_keys:
+            prev = obj.__dict__.get(key)
+            new = list(prev)
+            new[i] = val
+            new = tuple(new)
+            if trans.ignore_none and None in new: continue
+            index = trans.composite_indexes.get(key)
             if index is None: continue
-            obj2 = index.get(new_key)
+            obj2 = index.get(new)
             if obj2 is None: continue
-            key_str = ', '.join(str(v) for v in new_key)
+            key_str = ', '.join(str(v) for v in new)
             raise UpdateError('Cannot update %s.%s: %s with such unique index value already exists: %r'
                               % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, val))
     def update_indexes(attr, obj, val):
         trans = obj._trans_
+        if val is None and trans.ignore_none: return
         if attr.is_unique:
             index = trans.simple_indexes.get(attr)
             if index is None: index = trans.simple_indexes[attr] = {}
             obj2 = index.setdefault(val, obj)
             assert obj2 is obj
-        for keydef, i in attr.composite_keydefs:
-            old_key = obj.__dict__.get(keydef)
-            new_key = list(old_key)
-            new_key[i] = val
-            new_key = tuple(new_key)
-            obj.__dict__[keydef] = new_key
-            if keydef.ignore_none and None in new_key: continue
-            index = trans.composite_indexes.get(keydef)
-            if index is None: index = trans.composite_indexes[keydef] = {}
-            obj2 = index.setdefault(new_key, obj)
+        for key, i in attr.composite_keys:
+            prev = obj.__dict__.get(key)
+            new = list(prev)
+            new[i] = val
+            new = tuple(new)
+            obj.__dict__[key] = new
+            if trans.ignore_none and None in new: continue
+            index = trans.composite_indexes.get(key)
+            if index is None: index = trans.composite_indexes[key] = {}
+            obj2 = index.setdefault(new, obj)
             assert obj2 is obj
             
 class Optional(Attribute): pass
@@ -172,12 +174,12 @@ class Unique(Required):
         non_attrs = [ a for a in args if not isinstance(a, Attribute) ]
         if attrs and (non_attrs or keyargs): raise TypeError('Invalid arguments')
         cls_dict = sys._getframe(1).f_locals
+        keys = cls_dict.setdefault('_keys_', {})
         if not attrs:
             result = Required.__new__(cls, *args, **keyargs)
+            keys[(result,)] = issubclass(cls, PrimaryKey)
             return result
-        else:
-            keys = cls_dict.setdefault('_keys_', {})
-            keys[attrs] = issubclass(cls, PrimaryKey)
+        keys[attrs] = issubclass(cls, PrimaryKey)
 
 class PrimaryKey(Unique): pass
 
@@ -318,3 +320,26 @@ class SetProperty(object):
         else: raise NotImplementedError
         val.difference_update(remove_set)
         return setprop
+
+class EntityMeta(type):
+    def __new__(meta, name, bases, dict):
+        if 'Entity' in globals():
+            if '__slots__' in dict: raise TypeError('Entity classes cannot contain __slots__ variable')
+            dict['__slots__'] = ()
+        return super(EntityMeta, meta).__new__(meta, name, bases, dict)
+    def __init__(entity, name, bases, dict):
+        super(EntityMeta, entity).__init__(name, bases, dict)
+        if 'Entity' not in globals(): return
+        outer_dict = sys._getframe(1).f_locals
+        diagram = (dict.pop('_diagram_', None)
+                   or outer_dict.get('_diagram_')
+                   or outer_dict.setdefault('_diagram_', Diagram()))
+        if not hasattr(diagram, 'data_source'):
+            diagram.data_source = outer_dict.get('_data_source_')
+        entity._cls_init_(diagram)
+    def __setattr__(entity, name, value):
+        entity._cls_setattr_(name, value)
+    def __iter__(entity):
+        return iter(())
+
+new_instance_counter = count(1).next
