@@ -75,7 +75,7 @@ class Attribute(object):
             'Required attribute %s.%s cannot be set to None' % (obj.__class__.__name__, attr.name))
         else: return val
         reverse = attr.reverse
-        if reverse is None: return val
+        if reverse is None or not val: return val
         if obj._trans_ is not val._trans_: raise TransactionError('An attempt to mix objects belongs to different transactions')
         if isinstance(val, reverse.entity): return val
         if obj is not None: entity = obj.__class__
@@ -181,13 +181,15 @@ class Unique(Required):
             keys[(result,)] = is_pk
             return result
         for attr in attrs:
-            if attr.is_collection or (is_pk and not attr.is_required): raise TypeError(
+            if attr.is_collection or (is_pk and not attr.is_required and not attr.auto): raise TypeError(
                 '%s attribute cannot be part of %s' % (attr.__class__.__name__, is_pk and 'primary key' or 'unique index'))
             attr.is_indexed = True
         if len(attrs) == 1:
             attr = attrs[0]
             if not isinstance(attr, Optional): raise TypeError('Invalid declaration')
             attr.is_unique = True
+        else:
+            for i, attr in enumerate(attrs): attr.composite_keys.append((attrs, i))
         keys[attrs] = is_pk
 
 class PrimaryKey(Unique): pass
@@ -246,8 +248,8 @@ class Set(Collection):
         raise NotImplementedError
     def update_reverse(attr, obj, val):
         prev = attr.get(obj)
-        remove_set = prev and (val and prev-val or prev) or ()
-        add_set = val and (prev and val-prev or val) or ()
+        remove_set = prev and (not val and prev or prev-val) or ()
+        add_set = val and (not prev and val or val-prev) or ()
         reverse = attr.reverse
         if not isinstance(reverse, Collection):
             for robj in remove_set: reverse.__set__(robj, None, True)
@@ -306,7 +308,7 @@ class SetProperty(object):
         if not add_set: return setprop
         reverse = attr.reverse
         if reverse is None: raise NotImplementedError
-        if not reverse.is_collection:
+        if reverse.is_indexed:
             for robj in add_set: reverse.check_indexes(robj, obj)
             for robj in add_set: reverse.__set__(robj, obj, True)
         elif isinstance(reverse, Set):
@@ -355,7 +357,7 @@ new_instance_counter = count(1).next
 
 class Entity(object):
     __metaclass__ = EntityMeta
-    __slots__ = '__dict__', '__weakref__', '_keys_'
+    __slots__ = '__dict__', '__weakref__', '_pk_', '_new_', '_trans_', '_status_', '_rbits_', '_wbits_'
     @classmethod
     def _cls_setattr_(entity, name, value):
         if name.startswith('_') and name.endswith('_'):
