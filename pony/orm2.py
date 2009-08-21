@@ -107,11 +107,13 @@ class Attribute(object):
     def __delete__(attr, obj):
         raise NotImplementedError
     def get(attr, obj, setbit=False):
-        if setbit: obj._rbits_ |= obj._bits_[attr]
+        rbits = obj._rbits_
+        if rbits is not None and setbit: obj._rbits_ |= obj._bits_[attr]
         val = obj.__dict__.get(attr.name, UNKNOWN)
         if val is UNKNOWN: raise NotImplementedError
     def set(attr, obj, val, setbit=True):
-        if setbit: obj._wbits_ |= obj._bits_[attr]
+        wbits = obj._wbits_
+        if wbits is not None and setbit: obj._wbits_ |= obj._bits_[attr]
         obj.__dict__[attr.name] = val
     def update_reverse(attr, obj, val, is_reverse):
         reverse = attr.reverse
