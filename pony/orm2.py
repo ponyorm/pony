@@ -48,7 +48,7 @@ class Attribute(object):
                 raise TypeError('Default value for required attribute %s cannot be None' % attr)
 
         attr.reverse = keyargs.pop('reverse', None)
-        if attr.reverse is None: pass
+        if not attr.reverse: pass
         elif not isinstance(attr.reverse, (basestring, Attribute)):
             raise TypeError("Value of 'reverse' option must be name of reverse attribute). Got: %r" % attr.reverse)
         elif not isinstance(attr.type, (basestring, EntityMeta)):
@@ -60,7 +60,7 @@ class Attribute(object):
         attr.name = name
         attr.oldname = intern('__old_' + name)
     def __str__(attr):
-        owner_name = attr.entity is None and '?' or attr.entity.__name__
+        owner_name = not attr.entity and '?' or attr.entity.__name__
         return '%s.%s' % (owner_name, attr.name or '?')
     def __repr__(attr):
         return '<Attribute %s: %s>' % (attr, attr.__class__.__name__)
@@ -75,7 +75,7 @@ class Attribute(object):
             'Required attribute %s.%s cannot be set to None' % (obj.__class__.__name__, attr.name))
         else: return val
         reverse = attr.reverse
-        if reverse is None or not val: return val
+        if not reverse or not val: return val
         if obj._trans_ is not val._trans_: raise TransactionError('An attempt to mix objects belongs to different transactions')
         if isinstance(val, reverse.entity): return val
         if obj is not None: entity = obj.__class__
@@ -91,15 +91,15 @@ class Attribute(object):
         if prev == val: obj._rbits_ |= obj._bits_[attr]; return
         is_indexed = attr.is_indexed
         reverse = attr.reverse
-        if reverse is None:
+        if not reverse:
             if is_indexed: attr.check_indexes(obj, val)
             attr.set(obj, val)
             if is_indexed: attr.update_indexes(obj, val)
         else:
             if is_indexed: attr.check_indexes(obj, val)
             if val is not None and reverse.is_indexed: reverse.check_indexes(val, obj)
-            attr.update_reverse(obj, val, is_reverse)
             attr.set(obj, val)
+            attr.update_reverse(obj, val, is_reverse)
             if is_indexed: attr.update_indexes(obj, val)
         if obj._status_ != 'created': obj._status_ = 'updated'
     def __delete__(attr, obj):
@@ -115,53 +115,53 @@ class Attribute(object):
         reverse = attr.reverse
         prev = obj.__dict__[attr.name]
         if not reverse.is_collection:
-            if prev is not None: reverse.__set__(prev, None, True)
-            if not is_reverse and val is not None: reverse.__set__(val, obj, True)
+            if prev: reverse.__set__(prev, None, True)
+            if not is_reverse and val: reverse.__set__(val, obj, True)
         elif isinstance(reverse, Set):
-            if prev is not None: reverse.get(prev).remove(obj)
-            if not is_reverse and val is not None: reverse.get(val).add(obj)
+            if prev: reverse.get(prev).remove(obj)
+            if not is_reverse and val: reverse.get(val).add(obj)
         else: raise NotImplementedError
     def check_indexes(attr, obj, val):
         trans = obj._trans_
         if val is None and trans.ignore_none: return
         if attr.is_unique:
-            index = trans.simple_indexes.get(attr)
-            if index is not None:
+            index = trans.indexes.get(attr)
+            if index:
                 obj2 = index.get(val)
                 if obj2 is not None: raise UpdateError(
                     'Cannot update %s.%s: %s with such unique index value already exists: %r'
                     % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, val))
         for key, i in attr.composite_keys:
-            prev = obj.__dict__.get(key)
-            new = list(prev)
-            new[i] = val
-            new = tuple(new)
-            if trans.ignore_none and None in new: continue
-            index = trans.composite_indexes.get(key)
-            if index is None: continue
-            obj2 = index.get(new)
-            if obj2 is None: continue
-            key_str = ', '.join(str(v) for v in new)
+            prev_keyval = obj.__dict__.get(key)
+            new_keyval = list(prev_keyval)
+            new_keyval[i] = val
+            new_keyval = tuple(new_keyval)
+            if trans.ignore_none and None in new_keyval: continue
+            index = trans.indexes.get(key)
+            if not index: continue
+            obj2 = index.get(new_keyval)
+            if not obj2: continue
+            key_str = ', '.join(str(v) for v in new_keyval)
             raise UpdateError('Cannot update %s.%s: %s with such unique index value already exists: %r'
                               % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, val))
     def update_indexes(attr, obj, val):
         trans = obj._trans_
         if val is None and trans.ignore_none: return
         if attr.is_unique:
-            index = trans.simple_indexes.get(attr)
-            if index is None: index = trans.simple_indexes[attr] = {}
+            index = trans.indexes.get(attr)
+            if index is None: index = trans.indexes[attr] = {}
             obj2 = index.setdefault(val, obj)
             assert obj2 is obj
         for key, i in attr.composite_keys:
-            prev = obj.__dict__.get(key)
-            new = list(prev)
-            new[i] = val
-            new = tuple(new)
-            obj.__dict__[key] = new
-            if trans.ignore_none and None in new: continue
-            index = trans.composite_indexes.get(key)
-            if index is None: index = trans.composite_indexes[key] = {}
-            obj2 = index.setdefault(new, obj)
+            prev_keyval = obj.__dict__.get(key)
+            new_keyval = list(prev_keyval)
+            new_keyval[i] = val
+            new_keyval = tuple(new_keyval)
+            obj.__dict__[key] = new_keyval
+            if trans.ignore_none and None in new_keyval: continue
+            index = trans.indexes.get(key)
+            if index is None: index = trans.indexes[key] = {}
+            obj2 = index.setdefault(new_keyval, obj)
             assert obj2 is obj
             
 class Optional(Attribute): pass
@@ -176,10 +176,12 @@ class Unique(Required):
         if attrs and (non_attrs or keyargs): raise TypeError('Invalid arguments')
         cls_dict = sys._getframe(1).f_locals
         keys = cls_dict.setdefault('_keys_', {})
+
         if not attrs:
             result = Required.__new__(cls, *args, **keyargs)
             keys[(result,)] = is_pk
             return result
+
         for attr in attrs:
             if attr.is_collection or (is_pk and not attr.is_required and not attr.auto): raise TypeError(
                 '%s attribute cannot be part of %s' % (attr.__class__.__name__, is_pk and 'primary key' or 'unique index'))
@@ -191,6 +193,7 @@ class Unique(Required):
         else:
             for i, attr in enumerate(attrs): attr.composite_keys.append((attrs, i))
         keys[attrs] = is_pk
+        return None
 
 class PrimaryKey(Unique): pass
 
@@ -216,7 +219,7 @@ class Set(Collection):
         assert val is not UNKNOWN
         if val is None or val is DEFAULT: return set()
         reverse = attr.reverse
-        if reverse is None: raise NotImplementedError
+        if not reverse: raise NotImplementedError
         trans = obj._trans_
         if isinstance(val, reverse.entity): result = set((val,))
         else:
@@ -239,7 +242,7 @@ class Set(Collection):
         prev = attr.get(obj)
         if val == prev: return
         reverse = attr.reverse
-        if reverse is None: raise NotImplementedError
+        if not reverse: raise NotImplementedError
         if not reverse.is_collection:
             for robj in val: reverse.check_indexes(robj, obj)
         attr.update_reverse(obj, val)
@@ -307,7 +310,7 @@ class SetProperty(object):
         add_set.difference_update(val)
         if not add_set: return setprop
         reverse = attr.reverse
-        if reverse is None: raise NotImplementedError
+        if not reverse: raise NotImplementedError
         if reverse.is_indexed:
             for robj in add_set: reverse.check_indexes(robj, obj)
             for robj in add_set: reverse.__set__(robj, obj, True)
@@ -323,7 +326,7 @@ class SetProperty(object):
         remove_set.intersection_update(val)
         if not remove_set: return setprop
         reverse = attr.reverse
-        if reverse is None: raise NotImplementedError
+        if not reverse: raise NotImplementedError
         if not reverse.is_collection:
             for robj in remove_set: reverse.__set__(robj, None, True)
         elif isinstance(reverse, Set):
@@ -348,20 +351,20 @@ class EntityMeta(type):
         if not hasattr(diagram, 'data_source'):
             diagram.data_source = outer_dict.get('_data_source_')
         entity._cls_init_(diagram)
-    def __setattr__(entity, name, value):
-        entity._cls_setattr_(name, value)
+    def __setattr__(entity, name, val):
+        entity._cls_setattr_(name, val)
     def __iter__(entity):
         return iter(())
 
-new_instance_counter = count(1).next
+new_instance_next_id = count(1).next
 
 class Entity(object):
     __metaclass__ = EntityMeta
-    __slots__ = '__dict__', '__weakref__', '_pk_', '_new_', '_trans_', '_status_', '_rbits_', '_wbits_'
+    __slots__ = '__dict__', '__weakref__', '_pkval_', '_newid_', '_trans_', '_status_', '_rbits_', '_wbits_'
     @classmethod
-    def _cls_setattr_(entity, name, value):
+    def _cls_setattr_(entity, name, val):
         if name.startswith('_') and name.endswith('_'):
-            type.__setattr__(entity, name, value)
+            type.__setattr__(entity, name, val)
         else: raise NotImplementedError
     @classmethod
     def _cls_init_(entity, diagram):
@@ -387,19 +390,17 @@ class Entity(object):
         base_attrs_dict = {}
         for base in direct_bases:
             for a in base._attrs_:
-                if base_attrs_dict.setdefault(a.name, a) is not a:
-                    raise DiagramError('Ambiguous attribute name %s' % a.name)
+                if base_attrs_dict.setdefault(a.name, a) is not a: raise DiagramError('Ambiguous attribute name %s' % a.name)
                 base_attrs.append(a)
         entity._base_attrs_ = base_attrs
 
         new_attrs = []
         for name, attr in entity.__dict__.items():
-            if name in base_attrs_dict: raise DiagramError(
-                'Name %s hide base attribute %s' % (name,base_attrs_dict[name]))
+            if name in base_attrs_dict: raise DiagramError('Name %s hide base attribute %s' % (name,base_attrs_dict[name]))
             if not isinstance(attr, Attribute): continue
             if name.startswith('_') and name.endswith('_'): raise DiagramError(
                 'Attribute name cannot both starts and ends with underscore. Got: %s' % name)
-            if attr.entity is not None: raise DiagramError('Duplicate use of attribute %s' % value)
+            if attr.entity is not None: raise DiagramError('Duplicate use of attribute %s' % name)
             attr._init_(entity, name)
             new_attrs.append(attr)
         new_attrs.sort(key=attrgetter('_id_'))
@@ -408,15 +409,13 @@ class Entity(object):
         keys = entity.__dict__.get('_keys_', {})
         primary_keys = set(key for key, is_pk in keys.items() if is_pk)
         if direct_bases:
-            if primary_keys: raise DiagramError(
-                'Primary key cannot be redefined in derived classes')
+            if primary_keys: raise DiagramError('Primary key cannot be redefined in derived classes')
             for base in direct_bases:
                 keys[base._keys_[0]] = True
                 for key in base._keys_[1:]: keys[key] = False
             primary_keys = set(key for key, is_pk in keys.items() if is_pk)
                                    
-        if len(primary_keys) > 1: raise DiagramError(
-            'Only one primary key can be defined in each entity class')
+        if len(primary_keys) > 1: raise DiagramError('Only one primary key can be defined in each entity class')
         elif not primary_keys:
             if hasattr(entity, 'id'): raise DiagramError(
                 "Cannot create primary key for %s automatically because name 'id' is alredy in use" % entity.__name__)
@@ -472,22 +471,18 @@ class Entity(object):
             elif issubclass(py_type, Entity):
                 entity2 = py_type
                 if entity2._diagram_ is not diagram: raise DiagramError(
-                    'Interrelated entities must belong to same diagram. '
-                    'Entities %s and %s belongs to different diagrams'
+                    'Interrelated entities must belong to same diagram. Entities %s and %s belongs to different diagrams'
                     % (entity.__name__, entity2.__name__))
             else: continue
             
             reverse = attr.reverse
             if isinstance(reverse, basestring):
                 attr2 = getattr(entity2, reverse, None)
-                if attr2 is None:
-                    raise DiagramError('Reverse attribute %s.%s not found' % (entity2.__name__, reverse))
+                if attr2 is None: raise DiagramError('Reverse attribute %s.%s not found' % (entity2.__name__, reverse))
             elif isinstance(reverse, Attribute):
                 attr2 = reverse
-                if attr2.entity is not entity2:
-                    raise DiagramError('Incorrect reverse attribute %s used in %s' % (attr2, attr))
-            elif reverse is not None:
-                raise DiagramError("Value of 'reverse' option must be string. Got: %r" % type(reverse))
+                if attr2.entity is not entity2: raise DiagramError('Incorrect reverse attribute %s used in %s' % (attr2, attr))
+            elif reverse is not None: raise DiagramError("Value of 'reverse' option must be string. Got: %r" % type(reverse))
             else:
                 candidates1 = []
                 candidates2 = []
@@ -495,7 +490,7 @@ class Entity(object):
                     if attr2.py_type not in (entity, entity.__name__): continue
                     reverse2 = attr2.reverse
                     if reverse2 in (attr, attr.name): candidates1.append(attr2)
-                    elif reverse2 is None: candidates2.append(attr2)
+                    elif not reverse2: candidates2.append(attr2)
                 msg = 'Ambiguous reverse attribute for %s'
                 if len(candidates1) > 1: raise DiagramError(msg % attr)
                 elif len(candidates1) == 1: attr2 = candidates1[0]
@@ -533,12 +528,11 @@ class Entity(object):
         data_source.generate_schema(entity._diagram_)
         return data_source.entities[entity]
     def __init__(obj, *args, **keyargs):
-        raise TypeError('You cannot create entity instances directly. '
-                        'Use Entity.create(...) or Entity.find(...) instead')
+        raise TypeError('You cannot create entity instances directly. Use Entity.create(...) or Entity.find(...) instead')
     def __repr__(obj):
-        pk = obj._pk_
-        if pk is None: key_str = 'new:%d' % obj._new_
-        else: key_str = ', '.join(repr(item) for item in pk)
+        pkval = obj._pkval_
+        if pkval is None: key_str = 'new:%d' % obj._newid_
+        else: key_str = ', '.join(repr(val) for val in pkval)
         return '%s(%s)' % (obj.__class__.__name__, key_str)
     @classmethod
     def find(entity, *args, **keyargs):
@@ -546,8 +540,8 @@ class Entity(object):
         if args:
             if len(args) != len(pk_attrs):
                 raise CreateError('Invalid count of attrs in primary key')
-            for attr, value in zip(pk_attrs, args):
-                if keyargs.setdefault(attr.name, value) != value:
+            for attr, val in zip(pk_attrs, args):
+                if keyargs.setdefault(attr.name, val) != val:
                     raise CreateError('Ambiguous attribute value for %r' % attr.name)
         for name in ifilterfalse(entity._attr_dict_.__contains__, keyargs):
             raise CreateError('Unknown attribute %r' % name)
@@ -560,12 +554,12 @@ class Entity(object):
         data = entity._data_template_[:]
         used_attrs = []
         for attr in entity._attrs_:
-            value = keyargs.get(attr.name, UNKNOWN)
+            val = keyargs.get(attr.name, UNKNOWN)
             data[get_old_offset(attr)] = None
-            if value is not UNKNOWN:
-                value = attr.check(value, entity)
-                used_attrs.append((attr, value))
-            data[get_new_offset(attr)] = value
+            if val is not UNKNOWN:
+                val = attr.check(val, entity)
+                used_attrs.append((attr, val))
+            data[get_new_offset(attr)] = val
 
         for key in entity._keys_:
             key_value = tuple(map(data.__getitem__, map(get_new_offset, key)))
@@ -578,10 +572,10 @@ class Entity(object):
             obj2_get_new_offset = obj2._new_offsets_.__getitem__
             try:
                 for attr in used_attrs:
-                    value = data[get_new_offset(attr)]
-                    value2 = obj2_data[obj2_get_new_offset(attr)]
-                    if value2 is UNKNOWN: raise NotImplementedError
-                    if value != value2: return None
+                    val = data[get_new_offset(attr)]
+                    val2 = obj2_data[obj2_get_new_offset(attr)]
+                    if val2 is UNKNOWN: raise NotImplementedError
+                    if val != val2: return None
             except KeyError: return None
             return obj2
         
@@ -591,7 +585,7 @@ class Entity(object):
         where_list = []
         table_counter = count(1)
         column_counter = count(1)
-        for attr, value in used_attrs:
+        for attr, val in used_attrs:
             pass
 
         raise NotImplementedError
@@ -601,8 +595,8 @@ class Entity(object):
         if args:
             if len(args) != len(pk_attrs):
                 raise CreateError('Invalid count of attrs in primary key')
-            for attr, value in zip(pk_attrs, args):
-                if keyargs.setdefault(attr.name, value) != value:
+            for attr, val in zip(pk_attrs, args):
+                if keyargs.setdefault(attr.name, val) != val:
                     raise CreateError('Ambiguous attribute value for %r' % attr.name)
         for name in ifilterfalse(entity._attr_dict_.__contains__, keyargs):
             raise CreateError('Unknown attribute %r' % name)
@@ -614,23 +608,23 @@ class Entity(object):
         get_old_offset = entity._old_offsets_.__getitem__
         data = entity._data_template_[:]
         for attr in entity._attrs_:
-            value = keyargs.get(attr.name, UNKNOWN)
+            val = keyargs.get(attr.name, UNKNOWN)
             data[get_old_offset(attr)] = None
-            data[get_new_offset(attr)] = attr.check(value, entity)
-        pk = tuple(map(data.__getitem__, map(get_new_offset, pk_attrs)))
-        if None in pk:
+            data[get_new_offset(attr)] = attr.check(val, entity)
+        pkval = tuple(map(data.__getitem__, map(get_new_offset, pk_attrs)))
+        if None in pkval:
             obj = object.__new__(entity)
-            obj._pk_ = None
-            obj._new_ = new_instance_counter()
+            obj._pkval_ = None
+            obj._newid_ = new_instance_next_id()
         else:
             obj = object.__new__(entity)
-            obj._pk_ = pk
-            obj._new_ = None
+            obj._pkval_ = pkval
+            obj._newid_ = None
             entity._lock_.acquire()
-            try: obj = entity._objects_.setdefault(pk, obj)
+            try: obj = entity._objects_.setdefault(pkval, obj)
             finally: entity._lock_.release()
             if obj in trans.objects:
-                key_str = ', '.join(repr(item) for item in pk)
+                key_str = ', '.join(repr(item) for item in pkval)
                 raise CreateError('%s with such primary key already exists: %s' % (obj.__class__.__name__, key_str))
         data[0] = obj
         data[1] = 'C'
@@ -648,9 +642,9 @@ class Entity(object):
                     raise CreateError('%s with such unique index already exists: %s' % (obj2.__class__.__name__, key_str))
             for attr in entity._attrs_:
                 if attr.reverse is None: continue
-                value = data[get_new_offset(attr)]
-                if value is None: continue
-                attr.update_reverse(obj, None, value, undo_funcs)
+                val = data[get_new_offset(attr)]
+                if val is None: continue
+                attr.update_reverse(obj, None, val, undo_funcs)
         except:
             for undo_func in reversed(undo_funcs): undo_func()
             for key in entity._keys_:
@@ -663,7 +657,7 @@ class Entity(object):
         if trans.objects.setdefault(obj, data) is not data: raise AssertionError
         return obj
     def set(obj, **keyargs):
-        pk = obj._pk_
+        pkval = obj._pkval_
         info = obj._get_info()
         trans = local.transaction
         get_new_offset = obj._new_offsets_.__getitem__
@@ -673,14 +667,14 @@ class Entity(object):
         old_data = data[:]
 
         attrs = set()
-        for name, value in keyargs.items():
+        for name, val in keyargs.items():
             attr = obj._attr_dict_.get(name)
             if attr is None: raise UpdateError("Unknown attribute: %r" % name)
-            value = attr.check(value, obj.__class__)
-            if data[get_new_offset(attr)] == value: continue
+            val = attr.check(val, obj.__class__)
+            if data[get_new_offset(attr)] == val: continue
             if attr.pk_offset is not None: raise UpdateError('Cannot change value of primary key')
             attrs.add(attr)
-            data[get_new_offset(attr)] = value
+            data[get_new_offset(attr)] = val
         if not attrs: return
 
         undo = []
@@ -708,8 +702,8 @@ class Entity(object):
                 if old is UNKNOWN: raise NotImplementedError
                 offset = get_new_offset(attr)
                 prev = old_data[offset]
-                value = data[offset]
-                attr.update_reverse(obj, prev, value, undo_funcs)
+                val = data[offset]
+                attr.update_reverse(obj, prev, val, undo_funcs)
         except:
             for undo_func in reversed(undo_funcs): undo_func()
             for new_index, obj, old_key, new_key in undo:
