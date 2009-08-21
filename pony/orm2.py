@@ -512,24 +512,6 @@ class Entity(object):
 
             attr.reverse = attr2
             attr2.reverse = attr
-    @classmethod
-    def _get_info(entity):
-        trans = local.transaction
-        if trans is None:
-            data_source = entity._diagram_.data_source
-            if data_source is None:
-                outer_dict = sys._getframe(1).f_locals
-                data_source = outer_dict.get('_data_source_')
-            if data_source is not None: data_source.begin()
-            else: raise TransactionError('There are no active transaction in thread %s. '
-                                         'Cannot start transaction automatically, '
-                                         'because default data source does not set'
-                                         % thread.get_ident())
-        else: data_source = trans.data_source
-        info = data_source.entities.get(entity)
-        if info is not None: return info
-        data_source.generate_schema(entity._diagram_)
-        return data_source.entities[entity]
     def __init__(obj, *args, **keyargs):
         raise TypeError('You cannot create entity instances directly. Use Entity.create(...) or Entity.find(...) instead')
     def __repr__(obj):
