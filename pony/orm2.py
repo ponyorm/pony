@@ -64,29 +64,31 @@ class Attribute(object):
         return '%s.%s' % (owner_name, attr.name or '?')
     def __repr__(attr):
         return '<Attribute %s: %s>' % (attr, attr.__class__.__name__)
-    def check(attr, obj, val):
+    def check(attr, val, obj=None, entity=None):
         assert val is not UNKNOWN
+        if entity is not None: pass
+        elif obj is not None: entity = obj.__class__
+        else: entity = attr.entity
         if val is DEFAULT:
             val = attr.default
             if val is None and attr.is_required and not attr.auto: raise ConstraintError(
-                'Required attribute %s.%s does not specified' % (obj.__class__.__name__, attr.name))
+                'Required attribute %s.%s does not specified' % (entity.__name__, attr.name))
         if val is not None: pass
         elif attr.is_required: raise ConstraintError(
-            'Required attribute %s.%s cannot be set to None' % (obj.__class__.__name__, attr.name))
+            'Required attribute %s.%s cannot be set to None' % (entity.__name__, attr.name))
         else: return val
         reverse = attr.reverse
         if not reverse or not val: return val
-        if obj._trans_ is not val._trans_: raise TransactionError('An attempt to mix objects belongs to different transactions')
-        if isinstance(val, reverse.entity): return val
-        if obj is not None: entity = obj.__class__
-        else: entity = attr.entity
-        raise ConstraintError('Value of attribute %s.%s must be an instance of %s. Got: %s'
-                              % (obj.__class__.__name__, attr.name, reverse.entity.__name__, val))
+        if not isinstance(val, reverse.entity): raise ConstraintError(
+            'Value of attribute %s.%s must be an instance of %s. Got: %s' % (entity.__name__, attr.name, reverse.entity.__name__, val))
+        trans = obj and obj._trans_ or get_trans()
+        if trans is not val._trans_: raise TransactionError('An attempt to mix objects belongs to different transactions')
+        return val
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
         return attr.get(obj, True)
     def __set__(attr, obj, val, is_reverse=False):
-        val = attr.check(obj, val)
+        val = attr.check(val, obj)
         prev = attr.get(obj)
         if prev == val: obj._rbits_ |= obj._bits_[attr]; return
         is_indexed = attr.is_indexed
@@ -215,12 +217,11 @@ class Collection(Attribute):
         pass
 
 class Set(Collection):
-    def check(attr, val, obj):
+    def check(attr, val, obj=None, entity=None):
         assert val is not UNKNOWN
         if val is None or val is DEFAULT: return set()
         reverse = attr.reverse
         if not reverse: raise NotImplementedError
-        trans = obj._trans_
         if isinstance(val, reverse.entity): result = set((val,))
         else:
             rentity = reverse.entity
@@ -230,7 +231,7 @@ class Set(Collection):
                     if not isinstance(robj, rentity): raise TypeError
             except TypeError: raise TypeError('Item of collection %s.%s must be instance of %s. Got: %r'
                                               % (obj.__class__.__name__, attr.name, rentity.__name__, robj))
-        trans = obj._trans_
+        trans = obj and obj._trans_ or get_trans()
         for robj in result:
             if robj._trans_ is not trans: raise TransactionError('An attempt to mix objects belongs to different transactions')
         return result
@@ -238,7 +239,7 @@ class Set(Collection):
         if obj is None: return attr
         return SetProperty(obj, attr)
     def __set__(attr, obj, val):
-        val = attr.check(val, obj.__class__)
+        val = attr.check(val, obj)
         prev = attr.get(obj)
         if val == prev: return
         reverse = attr.reverse
@@ -557,7 +558,7 @@ class Entity(object):
             val = keyargs.get(attr.name, UNKNOWN)
             data[get_old_offset(attr)] = None
             if val is not UNKNOWN:
-                val = attr.check(val, entity)
+                val = attr.check(val, None, entity)
                 used_attrs.append((attr, val))
             data[get_new_offset(attr)] = val
 
@@ -610,7 +611,7 @@ class Entity(object):
         for attr in entity._attrs_:
             val = keyargs.get(attr.name, UNKNOWN)
             data[get_old_offset(attr)] = None
-            data[get_new_offset(attr)] = attr.check(val, entity)
+            data[get_new_offset(attr)] = attr.check(val, None, entity)
         pkval = tuple(map(data.__getitem__, map(get_new_offset, pk_attrs)))
         if None in pkval:
             obj = object.__new__(entity)
@@ -670,7 +671,7 @@ class Entity(object):
         for name, val in keyargs.items():
             attr = obj._attr_dict_.get(name)
             if attr is None: raise UpdateError("Unknown attribute: %r" % name)
-            val = attr.check(val, obj.__class__)
+            val = attr.check(val, obj)
             if data[get_new_offset(attr)] == val: continue
             if attr.pk_offset is not None: raise UpdateError('Cannot change value of primary key')
             attrs.add(attr)
