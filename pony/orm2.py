@@ -540,22 +540,6 @@ class Entity(object):
         if pk is None: key_str = 'new:%d' % obj._new_
         else: key_str = ', '.join(repr(item) for item in pk)
         return '%s(%s)' % (obj.__class__.__name__, key_str)
-    def _get_data(obj, status):
-        trans = local.transaction
-        data = trans.objects.get(obj)
-        if data is None:
-            pk = obj._pk_
-            if pk is None: raise TransferringObjectWithoutPkError(obj)
-            data = trans.objects[obj] = obj._data_template_[:]
-            data[0] = obj
-            data[1] = status
-            get_new_offset = obj._new_offsets_.__getitem__
-            for a, v in zip(obj._keys_[0], pk): data[get_new_offset(a)] = v
-            if status != 'U': raise NotImplementedError
-        return data
-    @property
-    def old(obj):
-        return OldProxy(obj)
     @classmethod
     def find(entity, *args, **keyargs):
         pk_attrs = entity._keys_[0]
@@ -677,23 +661,6 @@ class Entity(object):
                 if new_index.get(key_value) is obj: del new_index[key_value]
             raise
         if trans.objects.setdefault(obj, data) is not data: raise AssertionError
-
-##        if obj._pk_ is None: return obj
-##
-##        for table in info.tables:
-##            cache = trans.caches.get(table)
-##            if cache is None: cache = trans.caches[table] = Cache(table)
-##            new_row = cache.row_template[:]
-##            new_row[0] = obj
-##            new_row[1] = 'C'
-##            for column in table.columns:
-##                for attr in column.attrs:
-##                    if entity is attr.entity or issubclass(entity, attr.entity):
-##                        value = data[get_new_offset(attr)]
-##                        new_row[column.new_offset] = value
-##                        break
-##                else: new_row[column.new_offset] = None
-##            if cache.rows.setdefault(pk, new_row) is not new_row: raise AssertionError
         return obj
     def set(obj, **keyargs):
         pk = obj._pk_
