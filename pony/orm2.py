@@ -244,7 +244,7 @@ class Set(Collection):
         if val == prev: return
         reverse = attr.reverse
         if not reverse: raise NotImplementedError
-        if not reverse.is_collection:
+        if reverse.is_indexed:
             for robj in val: reverse.check_indexes(robj, obj)
         attr.update_reverse(obj, val)
         attr.set(obj, val, False)
