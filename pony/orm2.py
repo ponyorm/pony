@@ -94,15 +94,15 @@ class Attribute(object):
         is_indexed = attr.is_indexed
         reverse = attr.reverse
         if not reverse:
-            if is_indexed: attr.check_indexes(obj, val)
+            if is_indexed: composite_dict = attr.check_indexes(obj, val)
             attr.set(obj, val)
-            if is_indexed: attr.update_indexes(obj, val)
+            if is_indexed: attr.update_indexes(obj, val, composite_dict)
         else:
-            if is_indexed: attr.check_indexes(obj, val)
-            if val is not None and reverse.is_indexed: reverse.check_indexes(val, obj)
+            if is_indexed: composite_dict = attr.check_indexes(obj, val)
+            if val and reverse.is_indexed: reverse.check_indexes(val, obj)
             attr.set(obj, val)
             attr.update_reverse(obj, val, is_reverse)
-            if is_indexed: attr.update_indexes(obj, val)
+            if is_indexed: attr.update_indexes(obj, val, composite_dict)
         if obj._status_ != 'created': obj._status_ = 'updated'
     def __delete__(attr, obj):
         raise NotImplementedError
@@ -133,7 +133,7 @@ class Attribute(object):
             yield key, tuple(new_keyval)
     def check_indexes(attr, obj, val):
         trans = obj._trans_
-        if val is None and trans.ignore_none: return
+        if val is None and trans.ignore_none: return {}
         if attr.is_unique:
             index = trans.indexes.get(attr)
             if index:
@@ -141,6 +141,7 @@ class Attribute(object):
                 if obj2 is not None: raise UpdateError(
                     'Cannot update %s.%s: %s with such unique index value already exists: %r'
                     % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, val))
+        composite_dict = {}
         for key, new_keyval in attr.new_keyvals(obj, val):
             if trans.ignore_none and None in new_keyval: continue
             index = trans.indexes.get(key)
@@ -150,7 +151,9 @@ class Attribute(object):
             key_str = ', '.join(str(v) for v in new_keyval)
             raise UpdateError('Cannot update %s.%s: %s with such unique index value already exists: %r'
                               % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, val))
-    def update_indexes(attr, obj, val):
+            composite_dict[attr] = new_keyval
+        return composite_dict
+    def update_indexes(attr, obj, val, composite_dict=None):
         trans = obj._trans_
         if val is None and trans.ignore_none: return
         if attr.is_unique:
@@ -158,9 +161,12 @@ class Attribute(object):
             if index is None: index = trans.indexes[attr] = {}
             obj2 = index.setdefault(val, obj)
             assert obj2 is obj
-        for key, new_keyval in attr.new_keyvals(obj, val):
+        if composite_dict is None: keyval_iter = attr.new_keyvals(obj, val)
+        elif not composite_dict: return 
+        else: keyval_iter = composite_dict.items()
+        for key, new_keyval in keyval_iter:
             obj.__dict__[key] = new_keyval
-            if trans.ignore_none and None in new_keyval: continue
+            if not composite_dict and trans.ignore_none and None in new_keyval: continue
             index = trans.indexes.get(key)
             if index is None: index = trans.indexes[key] = {}
             obj2 = index.setdefault(new_keyval, obj)
