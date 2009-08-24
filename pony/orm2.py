@@ -92,17 +92,10 @@ class Attribute(object):
         prev = attr.get(obj)
         if prev == val: obj._rbits_ |= obj._bits_[attr]; return
         is_indexed = attr.is_indexed
-        reverse = attr.reverse
-        if not reverse:
-            if is_indexed: attr.check_indexes(obj, val)
-            attr.set(obj, val)
-            if is_indexed: attr.update_indexes(obj, val)
-        else:
-            if is_indexed: attr.check_indexes(obj, val)
-            if val is not None and reverse.is_indexed: reverse.check_indexes(val, obj)
-            attr.set(obj, val)
-            attr.update_reverse(obj, val, is_reverse)
-            if is_indexed: attr.update_indexes(obj, val)
+        if is_indexed: attr.check_indexes(obj, val)
+        attr.set(obj, val)
+        if attr.reverse: attr.update_reverse(obj, val, is_reverse)
+        if is_indexed: attr.update_indexes(obj, val)
         if obj._status_ != 'created': obj._status_ = 'updated'
     def __delete__(attr, obj):
         raise NotImplementedError
