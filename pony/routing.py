@@ -429,7 +429,7 @@ def clear():
     try:
         _clear(*registry)
         for route in system_routes: route.register()
-        user_routes.clear()
+        del(user_routes[:])
     finally: registry_lock.release()
 
 def _clear(dict, list1, list2):
