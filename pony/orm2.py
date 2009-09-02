@@ -88,8 +88,9 @@ class Attribute(object):
         if obj is None: return attr
         return attr.get(obj, True)
     def get(attr, obj, setbit=False):
-        rbits = obj._rbits_
-        if rbits is not None and setbit: obj._rbits_ |= obj._bits_[attr]
+        if setbit:
+            rbits = obj._rbits_
+            if rbits is not None: obj._rbits_ |= obj._bits_[attr]
         val = obj.__dict__.get(attr.name, UNKNOWN)
         if val is UNKNOWN: raise NotImplementedError
     def __set__(attr, obj, val, is_reverse=False):
@@ -113,8 +114,9 @@ class Attribute(object):
             if not is_reverse and val: reverse.get(val).add(obj)
         else: raise NotImplementedError
     def set(attr, obj, val, setbit=True):
-        wbits = obj._wbits_
-        if wbits is not None and setbit: obj._wbits_ |= obj._bits_[attr]
+        if setbit:
+            wbits = obj._wbits_
+            if wbits is not None: obj._wbits_ |= obj._bits_[attr]
         obj.__dict__[attr.name] = val
     def __delete__(attr, obj):
         raise NotImplementedError
