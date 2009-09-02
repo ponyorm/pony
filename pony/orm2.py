@@ -118,12 +118,6 @@ class Attribute(object):
         obj.__dict__[attr.name] = val
     def __delete__(attr, obj):
         raise NotImplementedError
-    def new_keyvals(attr, obj, val):
-        for key, i in attr.composite_keys:
-            prev_keyval = obj.__dict__.get(key)
-            new_keyval = list(prev_keyval)
-            new_keyval[i] = val
-            yield key, tuple(new_keyval)
     def check_indexes(attr, obj, val):
         trans = obj._trans_
         if val is None and trans.ignore_none: return
@@ -134,7 +128,11 @@ class Attribute(object):
                 if obj2 is not None: raise UpdateError(
                     'Cannot update %s.%s: %s with such unique index value already exists: %r'
                     % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, val))
-        for key, new_keyval in attr.new_keyvals(obj, val):
+        for key, i in attr.composite_keys:
+            prev_keyval = obj.__dict__.get(key)
+            new_keyval = list(prev_keyval)
+            new_keyval[i] = val
+            new_keyval = tuple(new_keyval)
             if trans.ignore_none and None in new_keyval: continue
             index = trans.indexes.get(key)
             if not index: continue
@@ -151,7 +149,11 @@ class Attribute(object):
             if index is None: index = trans.indexes[attr] = {}
             obj2 = index.setdefault(val, obj)
             assert obj2 is obj
-        for key, new_keyval in attr.new_keyvals(obj, val):
+        for key, i in attr.composite_keys:
+            prev_keyval = obj.__dict__.get(key)
+            new_keyval = list(prev_keyval)
+            new_keyval[i] = val
+            new_keyval = tuple(new_keyval)
             obj.__dict__[key] = new_keyval
             if trans.ignore_none and None in new_keyval: continue
             index = trans.indexes.get(key)
