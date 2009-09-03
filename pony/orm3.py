@@ -1,4 +1,4 @@
-from itertools import count
+from itertools import count, ifilter, ifilterfalse, izip
 from operator import attrgetter
 
 try: from pony.thirdparty import etree
@@ -10,7 +10,7 @@ class DiagramError(OrmError): pass
 class SchemaError(OrmError): pass
 class MappingError(OrmError): pass
 class TransactionError(OrmError): pass
-class UpdateError(TransactionError): pass
+class IndexError(TransactionError): pass
 
 class UnknownValueType(object):
     def __repr__(self): return 'UNKNOWN'
@@ -93,11 +93,20 @@ class Attribute(object):
         val = obj.__dict__.get(attr, UNKNOWN)
         if val is UNKNOWN: val = obj._load_(attr)
         return val
-    def __set__(attr, obj, val, is_reverse=False):
+    def __set__(attr, obj, val, fromdb=False):
         val = attr.check(val, obj)
-        if obj._status_ != 'created': obj._status_ = 'updated'
-        raise NotImplementedError
+        try: attr.prepare(obj, val, fromdb)
+        except IndexError:
+            obj._trans_.revert()
+            raise
+        try: attr.set(obj, val, fromdb)
+        except: assert False
     def __delete__(attr, obj):
+        raise NotImplementedError
+    def prepare(attr, obj, val, fromdb=False):
+        raise NotImplementedError
+    def set(attr, obj, val, fromdb=False)
+        if obj._status_ != 'created': obj._status_ = 'updated'
         raise NotImplementedError
             
 class Optional(Attribute): pass
@@ -145,6 +154,10 @@ class Collection(Attribute):
         assert False, 'Abstract method'
     def __delete__(attr, obj):
         assert False, 'Abstract method'
+    def prepare(attr, obj, val, fromdb=False):
+        assert False, 'Abstract method'
+    def set(attr, obj, val, fromdb=False)
+        assert False, 'Abstract method'
 
 class Set(Collection):
     def check(attr, val, obj=None, entity=None):
@@ -168,9 +181,12 @@ class Set(Collection):
     def __get__(attr, obj, type=None):
         if obj is None: return attr
         return SetProperty(obj, attr)
-    def __set__(attr, obj, val):
-        raise NotImplementedError
     def __delete__(attr, obj):
+        raise NotImplementedError
+    def prepare(attr, obj, val, fromdb=False):
+        raise NotImplementedError
+    def set(attr, obj, val, fromdb=False)
+        if obj._status_ != 'created': obj._status_ = 'updated'
         raise NotImplementedError
 
 ##class List(Collection): pass
@@ -282,13 +298,22 @@ class Entity(object):
         new_attrs.sort(key=attrgetter('_id_'))
         entity._new_attrs_ = new_attrs
 
+        entity._attrs_ = base_attrs + new_attrs
+        entity._adict_ = dict((attr.name, attr) for attr in entity._attrs_)
+        entity._required_attrs_ = [ attr for attr in entity._attrs_ if attr.is_required ]
+        entity._bits_ = {}
+        next_offset = count().next
+        for attr in enumerate(entity._attrs_):
+            if attr.is_collection or attr.pk_offset is not None: continue
+            entity._bits_[attr] = 1 << next_offset()
+
         keys = entity.__dict__.get('_keys_', {})
         primary_keys = set(key for key, is_pk in keys.items() if is_pk)
         if direct_bases:
             if primary_keys: raise DiagramError('Primary key cannot be redefined in derived classes')
             for base in direct_bases:
-                keys[base._keys_[0]] = True
-                for key in base._keys_[1:]: keys[key] = False
+                keys[base._pk_attrs_] = True
+                for key in base._keys_: keys[key] = False
             primary_keys = set(key for key, is_pk in keys.items() if is_pk)
                                    
         if len(primary_keys) > 1: raise DiagramError('Only one primary key can be defined in each entity class')
@@ -304,36 +329,18 @@ class Entity(object):
             keys[key] = True
             pk_attrs = key
         else: pk_attrs = primary_keys.pop()
-        entity._keys_ = [ pk_attrs ] + [ key for key, is_pk in keys.items() if not is_pk ]
-
         for i, attr in enumerate(pk_attrs): attr.pk_offset = i
+        entity._pk_attrs_ = pk_attrs
+        entity._pk_names_ = tuple(attr.name for attr in pk_attrs)
+        entity._pk_is_composite_ = len(pk_attrs) > 1
+        entity._pk_ = len(pk_attrs) > 1 and pk_attrs or pk_attrs[0]
+        entity._keys_ = [ key for key, is_pk in keys.items() if not is_pk ]
+        entity._simple_keys_ = [ key[0] for key in entity._keys_ if len(key) == 1 ]
+        entity._composite_keys_ = [ key for key in entity._keys_ if len(key) > 1 ]
 
-        entity._attrs_ = base_attrs + new_attrs
-        entity._attr_dict_ = dict((attr.name, attr) for attr in entity._attrs_)
-        entity._bits_ = {}
-        next_offset = count().next
-        for i, attr in enumerate(entity._attrs_):
-            
-            entity._bits_[attr] = 1 << i
-
-        next_offset = count(len(DATA_HEADER)).next
-        entity._old_offsets_ = old_offsets = {}
-        entity._new_offsets_ = new_offsets = {}
-        for attr in entity._attrs_:
-            if attr.pk_offset is None:
-                old_offsets[attr] = next_offset()
-                new_offsets[attr] = next_offset()
-            else: old_offsets[attr] = new_offsets[attr] = next_offset()
-        data_size = next_offset()
-        entity._data_template_ = DATA_HEADER + [ UNKNOWN ]*(data_size - len(DATA_HEADER))
-
-        diagram.lock.acquire()
-        try:
-            diagram.clear()
-            entity._diagram_ = diagram
-            diagram.entities[entity.__name__] = entity
-            entity._link_reverse_attrs_()
-        finally: diagram.lock.release()
+        entity._diagram_ = diagram
+        diagram.entities[entity.__name__] = entity
+        entity._link_reverse_attrs_()
 
     @classmethod
     def _link_reverse_attrs_(entity):
@@ -399,6 +406,48 @@ class Entity(object):
     def create(entity, *args, **keyargs):
         raise NotImplementedError
     def set(obj, **keyargs):
+        avdict = obj._keyargs_to_avdict_(keyargs)
+        for attr in ifilter(avdict.__contains__, obj._pk_attrs_):
+            raise TypeError('Cannot change value of primary key attribute %s' % attr.name)
         raise NotImplementedError
-    def _load_(obj)        :
+    def _prepare_(obj, avdict, fromdb=False):
         raise NotImplementedError
+    def _set_(obj, avdict, fromdb=False):
+        raise NotImplementedError
+    def _load_(obj, attr):
+        raise NotImplementedError
+    @classmethod
+    def _normalize_args_(entity, args, keyargs, setdefault=False):
+        pk_names = entity._pk_names_        
+        if not args: pass
+        elif len(args) != len(pk_names): raise TypeError('Invalid count of attrs in primary key')
+        else:
+            for name, val in izip(pk_names, args):
+                if keyargs.setdefault(name, val) is not val:
+                    raise TypeError('Ambiguos value of attribute %s' % name)
+        avdict = {}
+        if setdefault:
+            for name in ifilterfalse(entity._adict_.__contains__, keyargs):
+                raise TypeError('Unknown attribute %r' % name)
+            for attr in entity._attrs_:
+                val = keyargs.get(attr.name, DEFAULT)
+                avdict[attr] = attr.check(val, None, entity)
+        else:
+            get = entity._adict_.get 
+            for name, val in keyargs.items():
+                attr = get(name)
+                if attr is None: raise TypeError('Unknown attribute %r' % name)
+                avdict[attr] = attr.check(val, None, entity)
+        if entity._pk_is_composite_:
+            pkval = map(avdict.get, entity._pk_attrs_)
+            pkval = None not in pkval and tuple(pkval) or None
+        else: pkval = avdict.get(entity._pk_)
+        return pkval, avdict        
+    def _keyargs_to_avdict_(obj, keyargs):
+        avdict = {}
+        get = entity._adict_.get
+        for name, val in keyargs.items():
+            attr = get(name)
+            if attr is None: raise TypeError('Unknown attribute %r' % name)
+            avdict[attr] = attr.check(val, obj)
+        return avdict
