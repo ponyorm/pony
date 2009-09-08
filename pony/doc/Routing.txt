@@ -478,7 +478,7 @@ HTTP методом DELETE:
     def test():
         return "methods GET, POST, HEAD"
 
-Для всех трех методов - GET, POST, HEAD, будет вызвана функция `test_all_three`.
+Для всех трех методов - GET, POST, HEAD, будет вызвана функция `test2`.
 Если мы хотим, чтобы при обращении к одному и тому же URL для метода POST вызывалась одна функция,
 а для GET и HEAD другая, нужно написать следующий код:
 
@@ -486,7 +486,7 @@ HTTP методом DELETE:
     def test():
         return "method GET and HEAD"
 
-    @http.POST("/test")
+    @http.POST("/test2")
     def test_post():
         return "method POST only"
 
