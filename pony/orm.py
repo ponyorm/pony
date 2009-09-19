@@ -457,7 +457,8 @@ class EntityMeta(type):
         super(EntityMeta, entity).__init__(name, bases, dict)
         if 'Entity' not in globals(): return
         outer_dict = sys._getframe(1).f_locals
-        diagram = (dict.pop('_diagram_', None) or outer_dict.get('_diagram_')
+        diagram = (dict.pop('_diagram_', None)
+                   or outer_dict.get('_diagram_')
                    or outer_dict.setdefault('_diagram_', Diagram()))
         if not hasattr(diagram, 'data_source'):
             diagram.data_source = outer_dict.get('_data_source_')
@@ -483,34 +484,31 @@ class Entity(object):
             raise DiagramError('Entity %s already exists' % entity.__name__)
         entity._objects_ = {}
         entity._lock_ = threading.Lock()
-        direct_bases = [ c for c in entity.__bases__
-                           if issubclass(c, Entity) and c is not Entity ]
+        direct_bases = [ c for c in entity.__bases__ if issubclass(c, Entity) and c is not Entity ]
         entity._direct_bases_ = direct_bases
         entity._all_bases_ = set((entity,))
         for base in direct_bases: entity._all_bases_.update(base._all_bases_)
         if direct_bases:
             roots = set(base._root_ for base in direct_bases)
-            if len(roots) > 1:
-                raise DiagramError('With multiple inheritance of entities, inheritance graph must be diamond-like')
+            if len(roots) > 1: raise DiagramError(
+                'With multiple inheritance of entities, inheritance graph must be diamond-like')
             entity._root_ = roots.pop()
             for base in direct_bases:
-                if base._diagram_ is not diagram:
-                    raise DiagramError('When use inheritance, base and derived entities must belong to same diagram')
+                if base._diagram_ is not diagram: raise DiagramError(
+                    'When use inheritance, base and derived entities must belong to same diagram')
         else: entity._root_ = entity
 
         base_attrs = []
         base_attrs_dict = {}
         for base in direct_bases:
             for a in base._attrs_:
-                if base_attrs_dict.setdefault(a.name, a) is not a:
-                    raise DiagramError('Ambiguous attribute name %s' % a.name)
+                if base_attrs_dict.setdefault(a.name, a) is not a: raise DiagramError('Ambiguous attribute name %s' % a.name)
                 base_attrs.append(a)
         entity._base_attrs_ = base_attrs
 
         new_attrs = []
         for name, attr in entity.__dict__.items():
-            if name in base_attrs_dict: raise DiagramError(
-                'Name %s hide base attribute %s' % (name,base_attrs_dict[name]))
+            if name in base_attrs_dict: raise DiagramError('Name %s hide base attribute %s' % (name,base_attrs_dict[name]))
             if not isinstance(attr, Attribute): continue
             if name.startswith('_') and name.endswith('_'): raise DiagramError(
                 'Attribute name cannot both starts and ends with underscore. Got: %s' % name)
@@ -530,14 +528,12 @@ class Entity(object):
                 
             primary_keys = set(key for key, is_pk in keys.items() if is_pk)
                                    
-        if len(primary_keys) > 1: raise DiagramError(
-            'Only one primary key can be defined in each entity class')
+        if len(primary_keys) > 1: raise DiagramError('Only one primary key can be defined in each entity class')
         elif not primary_keys:
             if hasattr(entity, 'id'): raise DiagramError("Name 'id' is alredy in use")
             _keys_ = {}
             attr = PrimaryKey(int, auto=True) # Side effect: modifies _keys_ local variable
-            attr.name = 'id'
-            attr.entity = entity
+            attr._init_(entity, 'id')
             type.__setattr__(entity, 'id', attr)  # entity.id = attr
             entity._new_attrs_.insert(0, attr)
             key, is_pk = _keys_.popitem()
@@ -582,22 +578,18 @@ class Entity(object):
             elif issubclass(py_type, Entity):
                 entity2 = py_type
                 if entity2._diagram_ is not diagram: raise DiagramError(
-                    'Interrelated entities must belong to same diagram. '
-                    'Entities %s and %s belongs to different diagrams'
+                    'Interrelated entities must belong to same diagram. Entities %s and %s belongs to different diagrams'
                     % (entity.__name__, entity2.__name__))
             else: continue
             
             reverse = attr.reverse
             if isinstance(reverse, basestring):
                 attr2 = getattr(entity2, reverse, None)
-                if attr2 is None:
-                    raise DiagramError('Reverse attribute %s.%s not found' % (entity2.__name__, reverse))
+                if attr2 is None: raise DiagramError('Reverse attribute %s.%s not found' % (entity2.__name__, reverse))
             elif isinstance(reverse, Attribute):
                 attr2 = reverse
-                if attr2.entity is not entity2:
-                    raise DiagramError('Incorrect reverse attribute %s used in %s' % (attr2, attr))
-            elif reverse is not None:
-                raise DiagramError("Value of 'reverse' option must be string. Got: %r" % type(reverse))
+                if attr2.entity is not entity2: raise DiagramError('Incorrect reverse attribute %s used in %s' % (attr2, attr))
+            elif reverse is not None: raise DiagramError("Value of 'reverse' option must be string. Got: %r" % type(reverse))
             else:
                 candidates1 = []
                 candidates2 = []
@@ -643,8 +635,7 @@ class Entity(object):
         data_source.generate_schema(entity._diagram_)
         return data_source.entities[entity]
     def __init__(obj, *args, **keyargs):
-        raise TypeError('You cannot create entity instances directly. '
-                        'Use Entity.create(...) or Entity.find(...) instead')
+        raise TypeError('You cannot create entity instances directly. Use Entity.create(...) or Entity.find(...) instead')
     def __repr__(obj):
         pk = obj._pk_
         if pk is None: key_str = 'new:%d' % obj._new_
