@@ -71,9 +71,11 @@ class Attribute(object):
         return '%s.%s' % (owner_name, attr.name or '?')
     def __repr__(attr):
         return '<Attribute %s: %s>' % (attr, attr.__class__.__name__)
-    def check(attr, val, entity=None):
+    def check(attr, val, obj=None, entity=None):
         assert val is not UNKNOWN
-        if entity is None: entity = attr.entity
+        if entity is not None: pass
+        elif obj is not None: entity = obj.__class__
+        else: entity = attr.entity
         if val is None:
             if attr.is_required: raise ConstraintError(
                 'Required attribute %s.%s cannot be set to None' % (entity.__name__, attr.name))
@@ -103,7 +105,7 @@ class Attribute(object):
         if val is UNKNOWN: raise NotImplementedError
         return val
     def __set__(attr, obj, val, undo_funcs=None):
-        val = attr.check(val, obj.__class__)
+        val = attr.check(val, obj)
         pk = obj._pk_
         if attr.pk_offset is not None:
             if pk is not None and val == pk[attr.pk_offset]: return
@@ -243,10 +245,12 @@ class Collection(Attribute):
         assert False, 'Abstract method'
 
 class Set(Collection):
-    def check(attr, val, entity=None):
+    def check(attr, val, obj=None, entity=None):
         assert val is not UNKNOWN
         if val is None or val is DEFAULT: return None
-        if entity is None: entity = attr.entity
+        if entity is not None: pass
+        elif obj is not None: entity = obj.__class__
+        else: entity = attr.entity
         reverse = attr.reverse
         if not isinstance(val, reverse.entity):
             try:
@@ -288,7 +292,7 @@ class Set(Collection):
         if obj is None: return attr
         return SetProperty(obj, attr)
     def __set__(attr, obj, val):
-        val = attr.check(val, obj.__class__)
+        val = attr.check(val, obj)
         info = obj._get_info()
         trans = local.transaction
         data = trans.objects.get(obj) or obj._get_data('R')
@@ -406,7 +410,7 @@ class SetProperty(object):
         val = data[new_offset]
         if val is None: val = data[new_offset] = set()
 
-        add_set = attr.check(x, obj.__class__)
+        add_set = attr.check(x, obj)
         add_set.difference_update(val)
         if not add_set: return setprop
 
@@ -433,7 +437,7 @@ class SetProperty(object):
         val = data[new_offset]
         if val is None: val = set()
 
-        remove_set = attr.check(x, obj.__class__)
+        remove_set = attr.check(x, obj)
         remove_set.intersection_update(val)
         if not remove_set: return setprop
         
@@ -686,7 +690,7 @@ class Entity(object):
             val = keyargs.get(attr.name, UNKNOWN)
             data[get_old_offset(attr)] = None
             if val is not UNKNOWN:
-                val = attr.check(val, entity)
+                val = attr.check(val, None, entity)
                 used_attrs.append((attr, val))
             data[get_new_offset(attr)] = val
 
@@ -739,7 +743,7 @@ class Entity(object):
         for attr in entity._attrs_:
             val = keyargs.get(attr.name, DEFAULT)
             data[get_old_offset(attr)] = None
-            data[get_new_offset(attr)] = attr.check(val, entity)
+            data[get_new_offset(attr)] = attr.check(val, None, entity)
         pk = tuple(map(data.__getitem__, map(get_new_offset, pk_attrs)))
         if None in pk:
             obj = object.__new__(entity)
@@ -816,7 +820,7 @@ class Entity(object):
         for name, val in keyargs.items():
             attr = obj._attr_dict_.get(name)
             if attr is None: raise TypeError("Unknown attribute: %r" % name)
-            val = attr.check(val, obj.__class__)
+            val = attr.check(val, obj)
             if data[get_new_offset(attr)] == val: continue
             if attr.pk_offset is not None: raise TypeError('Cannot change value of primary key')
             attrs.add(attr)
