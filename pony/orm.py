@@ -517,7 +517,7 @@ class Entity(object):
             if name.startswith('_') and name.endswith('_'): raise DiagramError(
                 'Attribute name cannot both starts and ends with underscore. Got: %s' % name)
             if attr.entity is not None:
-                raise DiagramError('Duplicate use of attribute %s' % value)
+                raise DiagramError('Duplicate use of attribute %s' % name)
             attr.name = name
             attr.entity = entity
             new_attrs.append(attr)
