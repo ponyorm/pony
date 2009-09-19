@@ -38,7 +38,7 @@ class Attribute(object):
     def __init__(attr, py_type, *args, **keyargs):
         if attr.__class__ is Attribute: raise TypeError("'Atrribute' is abstract type")
         attr.pk_offset = None
-        attr._id_ = next_id()
+        attr.id = next_id()
         attr.py_type = py_type
         attr.name = None
         attr.entity = None
@@ -521,7 +521,7 @@ class Entity(object):
             attr.name = name
             attr.entity = entity
             new_attrs.append(attr)
-        new_attrs.sort(key=attrgetter('_id_'))
+        new_attrs.sort(key=attrgetter('id'))
         entity._new_attrs_ = new_attrs
 
         keys = entity.__dict__.get('_keys_', {})
