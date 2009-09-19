@@ -56,6 +56,9 @@ class Attribute(object):
         elif not isinstance(attr.py_type, (basestring, EntityMeta)):
             raise DiagramError('Reverse option cannot be set for this type %r' % attr.py_type)
         for option in keyargs: raise TypeError('Unknown option %r' % option)
+    def _init_(attr, entity, name):
+        attr.entity = entity
+        attr.name = name
     def __str__(attr):
         owner_name = not attr.entity and '?' or attr.entity.__name__
         return '%s.%s' % (owner_name, attr.name or '?')
@@ -512,8 +515,7 @@ class Entity(object):
             if name.startswith('_') and name.endswith('_'): raise DiagramError(
                 'Attribute name cannot both starts and ends with underscore. Got: %s' % name)
             if attr.entity is not None: raise DiagramError('Duplicate use of attribute %s' % name)
-            attr.name = name
-            attr.entity = entity
+            attr._init_(entity, name)
             new_attrs.append(attr)
         new_attrs.sort(key=attrgetter('id'))
         entity._new_attrs_ = new_attrs
