@@ -52,7 +52,7 @@ class Attribute(object):
                 raise TypeError('Default value for required attribute %s cannot be None' % attr)
 
         attr.reverse = keyargs.pop('reverse', None)
-        if attr.reverse is None: pass
+        if not attr.reverse: pass
         elif not isinstance(attr.reverse, (basestring, Attribute)):
             raise TypeError("Value of 'reverse' option must be name of "
                             "reverse attribute). Got: %r" % attr.reverse)
@@ -60,7 +60,7 @@ class Attribute(object):
             raise DiagramError('Reverse option cannot be set for this type %r' % attr.py_type)
         for option in keyargs: raise TypeError('Unknown option %r' % option)
     def __str__(attr):
-        owner_name = attr.entity is None and '?' or attr.entity.__name__
+        owner_name = not attr.entity and '?' or attr.entity.__name__
         return '%s.%s' % (owner_name, attr.name or '?')
     def __repr__(attr):
         return '<Attribute %s: %s>' % (attr, attr.__class__.__name__)
@@ -131,7 +131,7 @@ class Attribute(object):
                                           % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, key_str))
                 if old_key is not None: del new_index[old_key]
                 undo.append((new_index, obj, old_key, new_key))
-            if attr.reverse is not None:
+            if attr.reverse:
                 old = data[obj._old_offsets_[attr]]
                 if old is UNKNOWN: raise NotImplementedError
                 if not is_reverse_call: attr.update_reverse(obj, prev, value, undo_funcs)
@@ -610,7 +610,7 @@ class Entity(object):
                     if attr2.py_type not in (entity, entity.__name__): continue
                     reverse2 = attr2.reverse
                     if reverse2 in (attr, attr.name): candidates1.append(attr2)
-                    elif reverse2 is None: candidates2.append(attr2)
+                    elif not reverse2: candidates2.append(attr2)
                 msg = 'Ambiguous reverse attribute for %s'
                 if len(candidates1) > 1: raise DiagramError(msg % attr)
                 elif len(candidates1) == 1: attr2 = candidates1[0]
@@ -778,7 +778,7 @@ class Entity(object):
                     key_str = ', '.join(repr(item) for item in key_value)
                     raise IndexError('%s with such unique index already exists: %s' % (obj2.__class__.__name__, key_str))
             for attr in entity._attrs_:
-                if attr.reverse is None: continue
+                if not attr.reverse: continue
                 value = data[get_new_offset(attr)]
                 if value is None: continue
                 attr.update_reverse(obj, None, value, undo_funcs)
@@ -851,7 +851,7 @@ class Entity(object):
                 if old_key is not None: del new_index[old_key]
                 undo.append((new_index, obj, old_key, new_key))
             for attr in attrs:
-                if attr.reverse is None: continue
+                if not attr.reverse: continue
                 old = old_data[obj._old_offsets_[attr]]
                 if old is UNKNOWN: raise NotImplementedError
                 offset = get_new_offset(attr)
