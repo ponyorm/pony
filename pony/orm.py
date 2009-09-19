@@ -549,7 +549,8 @@ class Entity(object):
                                    
         if len(primary_keys) > 1: raise DiagramError('Only one primary key can be defined in each entity class')
         elif not primary_keys:
-            if hasattr(entity, 'id'): raise DiagramError("Name 'id' is alredy in use")
+            if hasattr(entity, 'id'): raise DiagramError(
+                "Cannot create primary key for %s automatically because name 'id' is alredy in use" % entity.__name__)
             _keys_ = {}
             attr = PrimaryKey(int, auto=True) # Side effect: modifies _keys_ local variable
             attr._init_(entity, 'id')
