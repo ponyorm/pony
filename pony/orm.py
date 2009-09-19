@@ -22,10 +22,15 @@ ROW_HEADER = [ None, None, 0, 0 ]
 ROW_READ_MASK = 2
 ROW_UPDATE_MASK = 3
 
-class UnknownType(object):
+class UnknownValueType(object):
     def __repr__(self): return 'UNKNOWN'
 
-UNKNOWN = UnknownType()
+UNKNOWN = UnknownValueType()
+
+class DefaultValueType(object):
+    def __repr__(self): return 'DEFAULT'
+
+DEFAULT = DefaultValueType()
 
 next_id = count().next
 
