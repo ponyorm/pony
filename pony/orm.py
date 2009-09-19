@@ -40,11 +40,9 @@ class Attribute(object):
         attr.pk_offset = None
         attr.id = next_id()
         attr.py_type = py_type
-        attr.name = None
-        attr.entity = None
+        attr.entity = attr.name = None
         attr.args = args
         attr.auto = keyargs.pop('auto', False)
-
         try: attr.default = keyargs.pop('default')
         except KeyError: attr.default = None
         else:
@@ -54,8 +52,7 @@ class Attribute(object):
         attr.reverse = keyargs.pop('reverse', None)
         if not attr.reverse: pass
         elif not isinstance(attr.reverse, (basestring, Attribute)):
-            raise TypeError("Value of 'reverse' option must be name of "
-                            "reverse attribute). Got: %r" % attr.reverse)
+            raise TypeError("Value of 'reverse' option must be name of reverse attribute). Got: %r" % attr.reverse)
         elif not isinstance(attr.py_type, (basestring, EntityMeta)):
             raise DiagramError('Reverse option cannot be set for this type %r' % attr.py_type)
         for option in keyargs: raise TypeError('Unknown option %r' % option)
@@ -223,10 +220,8 @@ class Collection(Attribute):
     def __init__(attr, py_type, *args, **keyargs):
         if attr.__class__ is Collection: raise TypeError("'Collection' is abstract type")
         Attribute.__init__(attr, py_type, *args, **keyargs)
-        if attr.default is not None: raise TypeError(
-            'default value could not be set for collection attribute %s' % attr)
-        if attr.auto: raise TypeError(
-            "'auto' option could not be set for collection attribute %s" % attr)
+        if attr.default is not None: raise TypeError('default value could not be set for collection attribute')
+        if attr.auto: raise TypeError("'auto' option could not be set for collection attribute")
     def __get__(attr, obj, type=None):
         assert False, 'Abstract method'
     def __set__(attr, obj, value):
@@ -516,8 +511,7 @@ class Entity(object):
             if not isinstance(attr, Attribute): continue
             if name.startswith('_') and name.endswith('_'): raise DiagramError(
                 'Attribute name cannot both starts and ends with underscore. Got: %s' % name)
-            if attr.entity is not None:
-                raise DiagramError('Duplicate use of attribute %s' % name)
+            if attr.entity is not None: raise DiagramError('Duplicate use of attribute %s' % name)
             attr.name = name
             attr.entity = entity
             new_attrs.append(attr)
@@ -527,8 +521,7 @@ class Entity(object):
         keys = entity.__dict__.get('_keys_', {})
         primary_keys = set(key for key, is_pk in keys.items() if is_pk)
         if direct_bases:
-            if primary_keys: raise DiagramError(
-                'Primary key cannot be redefined in derived classes')
+            if primary_keys: raise DiagramError('Primary key cannot be redefined in derived classes')
             for base in direct_bases:
                 keys[base._keys_[0]] = True
                 for key in base._keys_[1:]: keys[key] = False
