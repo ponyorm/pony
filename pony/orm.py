@@ -491,7 +491,7 @@ new_instance_counter = count(1).next
 
 class Entity(object):
     __metaclass__ = EntityMeta
-    __slots__ = '__weakref__', '_pk_', '_new_'
+    __slots__ = '__weakref__', '_pk_', '_new_', '_trans_'
     @classmethod
     def _cls_setattr_(entity, name, val):
         if name.startswith('_') and name.endswith('_'):
@@ -754,12 +754,12 @@ class Entity(object):
             data[get_old_offset(attr)] = None
             data[get_new_offset(attr)] = attr.check(val, None, entity)
         pk = tuple(map(data.__getitem__, map(get_new_offset, pk_attrs)))
+        obj = object.__new__(entity)
+        obj._trans_ = trans
         if None in pk:
-            obj = object.__new__(entity)
             obj._pk_ = None
             obj._new_ = new_instance_counter()
         else:
-            obj = object.__new__(entity)
             obj._pk_ = pk
             obj._new_ = None
             obj._trans_ = trans
@@ -1196,6 +1196,7 @@ local = Local()
 def get_trans():
     trans = local.transaction
     if trans is None: raise NotImplementedError
+    return trans
 
 def begin(data_source=None):
     if local.transaction is not None:
