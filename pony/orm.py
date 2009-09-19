@@ -90,6 +90,9 @@ class Attribute(object):
         if not reverse or not val: return val
         if not isinstance(val, reverse.entity): raise ConstraintError(
             'Value of attribute %s.%s must be an instance of %s. Got: %s' % (entity.__name__, attr.name, reverse.entity.__name__, val))
+        if obj is not None: trans = obj._trans_
+        else: trans = get_trans()
+        if trans is not val._trans_: raise TransactionError('An attempt to mix objects belongs to different transactions')
         return val
     def get_old(attr, obj):
         raise NotImplementedError
@@ -99,7 +102,7 @@ class Attribute(object):
         try: return pk[attr.pk_offset]
         except TypeError: pass  # pk is None or attr.pk_offset is None
         attr_info = obj._get_info().attr_map[attr]
-        trans = local.transaction
+        trans = obj._trans_
         data = trans.objects.get(obj) or obj._get_data('R')
         val = data[obj._new_offsets_[attr]]
         if val is UNKNOWN: raise NotImplementedError
@@ -112,7 +115,7 @@ class Attribute(object):
             raise TypeError('Cannot change value of primary key')
 
         attr_info = obj._get_info().attr_map[attr]
-        trans = local.transaction
+        trans = obj._trans_
         data = trans.objects.get(obj) or obj._get_data('U')
         get_new_offset = obj._new_offsets_.__getitem__
         prev = data[get_new_offset(attr)]
@@ -252,17 +255,23 @@ class Set(Collection):
         elif obj is not None: entity = obj.__class__
         else: entity = attr.entity
         reverse = attr.reverse
-        if not isinstance(val, reverse.entity):
+        if not reverse: raise NotImplementedError
+        if isinstance(val, reverse.entity): result = set((val,))
+        else:
+            rentity = reverse.entity
             try:
                 result = set(val)  # may raise TypeError if val is not iterable
-                for val in result:
-                    if not isinstance(val, reverse.entity): raise TypeError
-            except TypeError: raise TypeError('Item of collection %s.%s must be instance of %s. Got: %s'
-                                              % (entity.__name__, attr.name, reverse.entity.__name__, val))
-        else: result = set((val,))
+                for robj in result:
+                    if not isinstance(robj, rentity): raise TypeError
+            except TypeError: raise TypeError('Item of collection %s.%s must be instance of %s. Got: %r'
+                                              % (entity.__name__, attr.name, rentity.__name__, robj))
+        if obj is not None: trans = obj._trans_
+        else: trans = get_trans()
+        for robj in result:
+            if robj._trans_ is not trans: raise TransactionError('An attempt to mix objects belongs to different transactions')
         return result
     def reverse_add(attr, objects, reverse_obj, undo_funcs):
-        trans = local.transaction
+        trans = reverse_obj._trans_
         undo = []
         for obj in objects:
             data = trans.objects.get(obj) or obj._get_data('U')
@@ -276,7 +285,7 @@ class Set(Collection):
                 val.remove(reverse_obj)
         undo_funcs.append(undo_func)
     def reverse_remove(attr, objects, reverse_obj, undo_funcs):
-        trans = local.transaction
+        trans = reverse_obj._trans_
         undo = []
         for obj in objects:
             data = trans.objects.get(obj) or obj._get_data('U')
@@ -294,7 +303,7 @@ class Set(Collection):
     def __set__(attr, obj, val):
         val = attr.check(val, obj)
         info = obj._get_info()
-        trans = local.transaction
+        trans = obj._trans_
         data = trans.objects.get(obj) or obj._get_data('R')
         old_offset = obj._old_offsets_[attr]
         new_offset = obj._new_offsets_[attr]
@@ -347,7 +356,7 @@ class SetProperty(object):
         attr = setprop._attr_
         obj = setprop._obj_
         info = obj._get_info()
-        trans = local.transaction
+        trans = obj._trans_
         data = trans.objects.get(obj) or obj._get_data('R')
 
         old_offset = obj._old_offsets_[attr]
@@ -386,7 +395,7 @@ class SetProperty(object):
         attr = setprop._attr_
         obj = setprop._obj_
         info = obj._get_info()
-        trans = local.transaction
+        trans = obj._trans_
         data = trans.objects.get(obj) or obj._get_data('R')
 
         new_offset = obj._new_offsets_[attr]
@@ -403,7 +412,7 @@ class SetProperty(object):
         attr = setprop._attr_
         obj = setprop._obj_
         info = obj._get_info()
-        trans = local.transaction
+        trans = obj._trans_
         data = trans.objects.get(obj) or obj._get_data('R')
 
         new_offset = obj._new_offsets_[attr]
@@ -430,7 +439,7 @@ class SetProperty(object):
         attr = setprop._attr_
         obj = setprop._obj_
         info = obj._get_info()
-        trans = local.transaction
+        trans = obj._trans_
         data = trans.objects.get(obj) or obj._get_data('R')
 
         new_offset = obj._new_offsets_[attr]
@@ -652,7 +661,7 @@ class Entity(object):
         else: key_str = ', '.join(repr(item) for item in pk)
         return '%s(%s)' % (obj.__class__.__name__, key_str)
     def _get_data(obj, status):
-        trans = local.transaction
+        trans = obj._trans_
         data = trans.objects.get(obj)
         if data is None:
             pk = obj._pk_
@@ -680,7 +689,7 @@ class Entity(object):
             raise TypeError('Unknown attribute %r' % name)
 
         info = entity._get_info()
-        trans = local.transaction
+        trans = get_trans()
 
         get_new_offset = entity._new_offsets_.__getitem__
         get_old_offset = entity._old_offsets_.__getitem__
@@ -735,7 +744,7 @@ class Entity(object):
             raise TypeError('Unknown attribute %r' % name)
 
         info = entity._get_info()
-        trans = local.transaction
+        trans = get_trans()
 
         get_new_offset = entity._new_offsets_.__getitem__
         get_old_offset = entity._old_offsets_.__getitem__
@@ -753,6 +762,7 @@ class Entity(object):
             obj = object.__new__(entity)
             obj._pk_ = pk
             obj._new_ = None
+            obj._trans_ = trans
             entity._lock_.acquire()
             try: obj = entity._objects_.setdefault(pk, obj)
             finally: entity._lock_.release()
@@ -809,7 +819,7 @@ class Entity(object):
     def set(obj, **keyargs):
         pk = obj._pk_
         info = obj._get_info()
-        trans = local.transaction
+        trans = obj._trans_
         get_new_offset = obj._new_offsets_.__getitem__
         get_old_offset = obj._old_offsets_.__getitem__
 
@@ -1183,11 +1193,9 @@ class Local(utils.localbase):
 
 local = Local()
 
-def get_transaction():
-    return local.transaction
-
-def no_trans_error():
-    raise TransactionError('There are no active transaction in thread %s' % thread.get_ident())
+def get_trans():
+    trans = local.transaction
+    if trans is None: raise NotImplementedError
 
 def begin(data_source=None):
     if local.transaction is not None:
@@ -1208,3 +1216,6 @@ def rollback():
     trans = local.transaction
     if trans is None: no_trans_error()
     trans.rollback()
+
+def no_trans_error():
+    raise TransactionError('There are no active transaction in thread %s' % thread.get_ident())
