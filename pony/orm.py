@@ -14,12 +14,7 @@ class SchemaError(OrmError): pass
 class MappingError(OrmError): pass
 class TransactionError(OrmError): pass
 class ConstraintError(TransactionError): pass
-class CreateError(TransactionError): pass
-class UpdateError(TransactionError): pass
-class TransferringObjectWithoutPkError(TransactionError):
-    def __init__(self, obj):
-        msg = 'Transferring %s with undefined primary key from one transaction to another is not allowed'
-        TransactionError.__init__(self, msg % obj.__class__.__name__)
+class IndexError(TransactionError): pass
 
 DATA_HEADER = [ None, None ]
 
@@ -91,7 +86,7 @@ class Attribute(object):
         pk = obj._pk_
         if attr.pk_offset is not None:
             if pk is not None and value == pk[attr.pk_offset]: return
-            raise UpdateError('Cannot change value of primary key')
+            raise TypeError('Cannot change value of primary key')
 
         attr_info = obj._get_info().attr_map[attr]
         trans = local.transaction
@@ -127,7 +122,7 @@ class Attribute(object):
                     obj2 = new_index.setdefault(new_key, obj)
                     if obj2 is not obj:
                         key_str = ', '.join(repr(item) for item in new_key)
-                        raise UpdateError('Cannot update %s.%s: %s with such unique index already exists: %s'
+                        raise IndexError('Cannot update %s.%s: %s with such unique index already exists: %s'
                                           % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, key_str))
                 if old_key is not None: del new_index[old_key]
                 undo.append((new_index, obj, old_key, new_key))
@@ -660,7 +655,7 @@ class Entity(object):
         data = trans.objects.get(obj)
         if data is None:
             pk = obj._pk_
-            if pk is None: raise TransferringObjectWithoutPkError(obj)
+            if pk is None: assert False # raise TransferringObjectWithoutPkError(obj)
             data = trans.objects[obj] = obj._data_template_[:]
             data[0] = obj
             data[1] = status
@@ -676,12 +671,12 @@ class Entity(object):
         pk_attrs = entity._keys_[0]
         if args:
             if len(args) != len(pk_attrs):
-                raise CreateError('Invalid count of attrs in primary key')
+                raise TypeError('Invalid count of attrs in primary key')
             for attr, value in zip(pk_attrs, args):
                 if keyargs.setdefault(attr.name, value) != value:
-                    raise CreateError('Ambiguous attribute value for %r' % attr.name)
+                    raise TypeError('Ambiguous attribute value for %r' % attr.name)
         for name in ifilterfalse(entity._attr_dict_.__contains__, keyargs):
-            raise CreateError('Unknown attribute %r' % name)
+            raise TypeError('Unknown attribute %r' % name)
 
         info = entity._get_info()
         trans = local.transaction
@@ -731,12 +726,12 @@ class Entity(object):
         pk_attrs = entity._keys_[0]
         if args:
             if len(args) != len(pk_attrs):
-                raise CreateError('Invalid count of attrs in primary key')
+                raise TypeError('Invalid count of attrs in primary key')
             for attr, value in zip(pk_attrs, args):
                 if keyargs.setdefault(attr.name, value) != value:
-                    raise CreateError('Ambiguous attribute value for %r' % attr.name)
+                    raise TypeError('Ambiguous attribute value for %r' % attr.name)
         for name in ifilterfalse(entity._attr_dict_.__contains__, keyargs):
-            raise CreateError('Unknown attribute %r' % name)
+            raise TypeError('Unknown attribute %r' % name)
 
         info = entity._get_info()
         trans = local.transaction
@@ -762,7 +757,7 @@ class Entity(object):
             finally: entity._lock_.release()
             if obj in trans.objects:
                 key_str = ', '.join(repr(item) for item in pk)
-                raise CreateError('%s with such primary key already exists: %s' % (obj.__class__.__name__, key_str))
+                raise IndexError('%s with such primary key already exists: %s' % (obj.__class__.__name__, key_str))
         data[0] = obj
         data[1] = 'C'
 
@@ -776,7 +771,7 @@ class Entity(object):
                 obj2 = new_index.setdefault(key_value, obj)
                 if obj2 is not obj:
                     key_str = ', '.join(repr(item) for item in key_value)
-                    raise CreateError('%s with such unique index already exists: %s' % (obj2.__class__.__name__, key_str))
+                    raise IndexError('%s with such unique index already exists: %s' % (obj2.__class__.__name__, key_str))
             for attr in entity._attrs_:
                 if attr.reverse is None: continue
                 value = data[get_new_offset(attr)]
@@ -823,10 +818,10 @@ class Entity(object):
         attrs = set()
         for name, value in keyargs.items():
             attr = obj._attr_dict_.get(name)
-            if attr is None: raise UpdateError("Unknown attribute: %r" % name)
+            if attr is None: raise TypeError("Unknown attribute: %r" % name)
             value = attr.check(value, obj.__class__)
             if data[get_new_offset(attr)] == value: continue
-            if attr.pk_offset is not None: raise UpdateError('Cannot change value of primary key')
+            if attr.pk_offset is not None: raise TypeError('Cannot change value of primary key')
             attrs.add(attr)
             data[get_new_offset(attr)] = value
         if not attrs: return
@@ -846,7 +841,7 @@ class Entity(object):
                     obj2 = new_index.setdefault(new_key, obj)
                     if obj2 is not obj:
                         key_str = ', '.join(repr(item) for item in new_key)
-                        raise UpdateError('Cannot update %s.%s: %s with such unique index already exists: %s'
+                        raise IndexError('Cannot update %s.%s: %s with such unique index already exists: %s'
                                           % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, key_str))
                 if old_key is not None: del new_index[old_key]
                 undo.append((new_index, obj, old_key, new_key))
