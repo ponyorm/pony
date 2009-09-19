@@ -37,7 +37,13 @@ next_id = count().next
 class Attribute(object):
     def __init__(attr, py_type, *args, **keyargs):
         if attr.__class__ is Attribute: raise TypeError("'Atrribute' is abstract type")
-        attr.pk_offset = None
+        attr.is_required = isinstance(attr, Required)
+        attr.is_unique = isinstance(attr, Unique)  # Also can be set to True later
+        attr.is_indexed = attr.is_unique  # Also can be set to True later
+        attr.is_collection = isinstance(attr, Collection)
+        attr.is_pk = isinstance(attr, PrimaryKey)
+        if attr.is_pk: attr.pk_offset = 0
+        else: attr.pk_offset = None
         attr.id = next_id()
         attr.py_type = py_type
         attr.entity = attr.name = None
@@ -46,7 +52,7 @@ class Attribute(object):
         try: attr.default = keyargs.pop('default')
         except KeyError: attr.default = None
         else:
-            if attr.default is None and isinstance(attr, Required):
+            if attr.default is None and attr.is_required:
                 raise TypeError('Default value for required attribute %s cannot be None' % attr)
 
         attr.reverse = keyargs.pop('reverse', None)
@@ -56,6 +62,7 @@ class Attribute(object):
         elif not isinstance(attr.py_type, (basestring, EntityMeta)):
             raise DiagramError('Reverse option cannot be set for this type %r' % attr.py_type)
         for option in keyargs: raise TypeError('Unknown option %r' % option)
+        attr.composite_keys = []
     def _init_(attr, entity, name):
         attr.entity = entity
         attr.name = name
@@ -65,13 +72,22 @@ class Attribute(object):
     def __repr__(attr):
         return '<Attribute %s: %s>' % (attr, attr.__class__.__name__)
     def check(attr, val, entity=None):
-        if val is UNKNOWN: val = attr.default
-        if val is None: return val
+        assert val is not UNKNOWN
+        if entity is None: entity = attr.entity
+        if val is None:
+            if attr.is_required: raise ConstraintError(
+                'Required attribute %s.%s cannot be set to None' % (entity.__name__, attr.name))
+            return val
+        elif val is DEFAULT:
+            val = attr.default
+            if val is None:
+                if attr.is_required and not attr.auto: raise ConstraintError(
+                    'Required attribute %s.%s does not specified' % (entity.__name__, attr.name))
+                return val
         reverse = attr.reverse
-        if reverse and not isinstance(val, reverse.entity):
-            if entity is None: entity = attr.entity
-            raise ConstraintError('Value of attribute %s.%s must be an instance of %s. Got: %s'
-                                  % (entity.__name__, attr.name, reverse.entity.__name__, val))
+        if not reverse or not val: return val
+        if not isinstance(val, reverse.entity): raise ConstraintError(
+            'Value of attribute %s.%s must be an instance of %s. Got: %s' % (entity.__name__, attr.name, reverse.entity.__name__, val))
         return val
     def get_old(attr, obj):
         raise NotImplementedError
@@ -137,7 +153,7 @@ class Attribute(object):
                 if not is_reverse_call: attr.update_reverse(obj, prev, val, undo_funcs)
                 elif prev is not None:
                     reverse = attr.reverse
-                    if not isinstance(reverse, Collection): reverse.__set__(prev, None, undo_funcs)
+                    if not reverse.is_collection: reverse.__set__(prev, None, undo_funcs)
                     elif isinstance(reverse, Set): reverse.reverse_remove((prev,), obj, undo_funcs)
                     else: raise NotImplementedError
         except:
@@ -168,7 +184,7 @@ class Attribute(object):
         raise NotImplementedError
     def update_reverse(attr, obj, prev, val, undo_funcs):
         reverse = attr.reverse
-        if not isinstance(reverse, Collection):
+        if not reverse.is_collection:
             if prev is not None: reverse.__set__(prev, None, undo_funcs)
             if val is not None: reverse.__set__(val, obj, undo_funcs)
         elif isinstance(reverse, Set):
@@ -177,45 +193,35 @@ class Attribute(object):
         else: raise NotImplementedError
 
 class Optional(Attribute): pass
-
-class Required(Attribute):
-    def check(attr, val, entity=None):
-        msg = None
-        if val is UNKNOWN:
-            val = attr.default
-            if val is None and not attr.auto: msg = 'Required attribute %s.%s does not specified'
-        elif val is None: msg = 'Required attribute %s.%s cannot be set to None'
-        if msg is None: return Attribute.check(attr, val, entity)
-        if entity is None: entity = attr.entity
-        raise ConstraintError(msg % (entity.__name__, attr.name))
+class Required(Attribute): pass
 
 class Unique(Required):
     def __new__(cls, *args, **keyargs):
-        is_primary_key = issubclass(cls, PrimaryKey)
+        is_pk = issubclass(cls, PrimaryKey)
         if not args: raise TypeError('Invalid count of positional arguments')
         attrs = tuple(a for a in args if isinstance(a, Attribute))
         non_attrs = [ a for a in args if not isinstance(a, Attribute) ]
-        if attrs and non_attrs: raise TypeError('Invalid arguments')
+        if attrs and (non_attrs or keyargs): raise TypeError('Invalid arguments')
         cls_dict = sys._getframe(1).f_locals
         keys = cls_dict.setdefault('_keys_', {})
+
         if not attrs:
             result = Required.__new__(cls, *args, **keyargs)
-            keys[(result,)] = is_primary_key
+            keys[(result,)] = is_pk
             return result
+
+        for attr in attrs:
+            if attr.is_collection or (is_pk and not attr.is_required and not attr.auto): raise TypeError(
+                '%s attribute cannot be part of %s' % (attr.__class__.__name__, is_pk and 'primary key' or 'unique index'))
+            attr.is_indexed = True
+        if len(attrs) == 1:
+            attr = attrs[0]
+            if attr.is_required: raise TypeError('Invalid declaration')
+            attr.is_unique = True
         else:
-            msg = None
-            for attr in attrs:
-                if isinstance(attr, Collection):
-                    key_type = is_primary_key and 'primary key' or 'unique index'
-                    msg = "Collection attribute '%s' cannot be part of " + key_type
-                elif is_primary_key and isinstance(attr, Optional):
-                    msg = "Optional attribute '%s' cannot be part of primary key"
-                if msg is not None:
-                    attr_name = ''
-                    for name, val in cls_dict.items():
-                        if val is attr: attr_name = name
-                    raise TypeError(msg % attr_name)
-            keys[attrs] = issubclass(cls, PrimaryKey)
+            for i, attr in enumerate(attrs): attr.composite_keys.append((attrs, i))
+        keys[attrs] = is_pk
+        return None
 
 class PrimaryKey(Unique): pass
 
@@ -238,17 +244,17 @@ class Collection(Attribute):
 
 class Set(Collection):
     def check(attr, val, entity=None):
-        if val is None or val is UNKNOWN: return None
+        assert val is not UNKNOWN
+        if val is None or val is DEFAULT: return None
+        if entity is None: entity = attr.entity
         reverse = attr.reverse
         if not isinstance(val, reverse.entity):
             try:
                 result = set(val)  # may raise TypeError if val is not iterable
                 for val in result:
                     if not isinstance(val, reverse.entity): raise TypeError
-            except TypeError:
-                if entity is None: entity = attr.entity
-                raise TypeError('Item of collection %s.%s must be instance of %s. Got: %s'
-                                % (entity.__name__, attr.name, reverse.entity.__name__, val))
+            except TypeError: raise TypeError('Item of collection %s.%s must be instance of %s. Got: %s'
+                                              % (entity.__name__, attr.name, reverse.entity.__name__, val))
         else: result = set((val,))
         return result
     def reverse_add(attr, objects, reverse_obj, undo_funcs):
@@ -306,7 +312,7 @@ class Set(Collection):
         raise NotImplementedError
     def update_reverse(attr, obj, prev, val, undo_funcs):
         reverse = attr.reverse
-        if not isinstance(reverse, Collection):
+        if not reverse.is_collection:
             if prev is not None:
                 if val is None: remove_set = prev
                 else: remove_set = prev.difference(val)
@@ -407,7 +413,7 @@ class SetProperty(object):
         undo_funcs = []
         reverse = attr.reverse
         try:
-            if not isinstance(reverse, Collection):
+            if not reverse.is_collection:
                 for obj2 in add_set: reverse.__set__(obj2, obj, undo_funcs)
             elif isinstance(reverse, Set): reverse.reverse_add(add_set, obj, undo_funcs)
             else: raise NotImplementedError
@@ -434,7 +440,7 @@ class SetProperty(object):
         undo_funcs = []
         reverse = attr.reverse
         try:
-            if not isinstance(reverse, Collection):
+            if not reverse.is_collection:
                 for obj2 in remove_set: reverse.__set__(obj2, None, undo_funcs)
             elif isinstance(reverse, Set): reverse.reverse_remove(remove_set, obj, undo_funcs)
             else: raise NotImplementedError
@@ -731,7 +737,7 @@ class Entity(object):
         get_old_offset = entity._old_offsets_.__getitem__
         data = entity._data_template_[:]
         for attr in entity._attrs_:
-            val = keyargs.get(attr.name, UNKNOWN)
+            val = keyargs.get(attr.name, DEFAULT)
             data[get_old_offset(attr)] = None
             data[get_new_offset(attr)] = attr.check(val, entity)
         pk = tuple(map(data.__getitem__, map(get_new_offset, pk_attrs)))
@@ -939,7 +945,7 @@ class AttrInfo(object):
             ds_table_map = ds_attr_map.get(attr.name)
             if ds_table_map is None: continue
             for table, columns in ds_table_map.items(): attr_info.table_map[table] = columns[:]
-        if not attr_info.table_map and not isinstance(attr, Collection): raise MappingError(
+        if not attr_info.table_map and not attr.is_collection: raise MappingError(
             'Attribute %s.%s does not have correspond column' % (attr.entity.__name__, attr.name))
     def __repr__(attr_info):
         entity_name = attr_info.enity_info.entity.__name__
