@@ -61,15 +61,15 @@ class Attribute(object):
         return '%s.%s' % (owner_name, attr.name or '?')
     def __repr__(attr):
         return '<Attribute %s: %s>' % (attr, attr.__class__.__name__)
-    def check(attr, value, entity=None):
-        if value is UNKNOWN: value = attr.default
-        if value is None: return value
+    def check(attr, val, entity=None):
+        if val is UNKNOWN: val = attr.default
+        if val is None: return val
         reverse = attr.reverse
-        if reverse and not isinstance(value, reverse.entity):
+        if reverse and not isinstance(val, reverse.entity):
             if entity is None: entity = attr.entity
             raise ConstraintError('Value of attribute %s.%s must be an instance of %s. Got: %s'
-                                  % (entity.__name__, attr.name, reverse.entity.__name__, value))
-        return value
+                                  % (entity.__name__, attr.name, reverse.entity.__name__, val))
+        return val
     def get_old(attr, obj):
         raise NotImplementedError
     def __get__(attr, obj, type=None):
@@ -80,14 +80,14 @@ class Attribute(object):
         attr_info = obj._get_info().attr_map[attr]
         trans = local.transaction
         data = trans.objects.get(obj) or obj._get_data('R')
-        value = data[obj._new_offsets_[attr]]
-        if value is UNKNOWN: raise NotImplementedError
-        return value
-    def __set__(attr, obj, value, undo_funcs=None):
-        value = attr.check(value, obj.__class__)
+        val = data[obj._new_offsets_[attr]]
+        if val is UNKNOWN: raise NotImplementedError
+        return val
+    def __set__(attr, obj, val, undo_funcs=None):
+        val = attr.check(val, obj.__class__)
         pk = obj._pk_
         if attr.pk_offset is not None:
-            if pk is not None and value == pk[attr.pk_offset]: return
+            if pk is not None and val == pk[attr.pk_offset]: return
             raise TypeError('Cannot change value of primary key')
 
         attr_info = obj._get_info().attr_map[attr]
@@ -97,7 +97,7 @@ class Attribute(object):
         prev = data[get_new_offset(attr)]
         if attr.reverse and prev is UNKNOWN:
             raise NotImplementedError
-        if prev == value: return
+        if prev == val: return
 
         is_reverse_call = undo_funcs is not None
         if not is_reverse_call: undo_funcs = []
@@ -113,7 +113,7 @@ class Attribute(object):
                 position = list(key).index(attr)
                 new_key = map(data.__getitem__, map(get_new_offset, key))
                 old_key = tuple(new_key)
-                new_key[position] = value
+                new_key[position] = val
                 new_key = tuple(new_key)
                 if None in new_key or UNKNOWN in new_key: new_key = None
                 if None in old_key or UNKNOWN in old_key: old_key = None
@@ -131,7 +131,7 @@ class Attribute(object):
             if attr.reverse:
                 old = data[obj._old_offsets_[attr]]
                 if old is UNKNOWN: raise NotImplementedError
-                if not is_reverse_call: attr.update_reverse(obj, prev, value, undo_funcs)
+                if not is_reverse_call: attr.update_reverse(obj, prev, val, undo_funcs)
                 elif prev is not None:
                     reverse = attr.reverse
                     if not isinstance(reverse, Collection): reverse.__set__(prev, None, undo_funcs)
@@ -143,7 +143,7 @@ class Attribute(object):
             raise
 
         if data[1] != 'C': data[1] = 'U'
-        data[get_new_offset(attr)] = value
+        data[get_new_offset(attr)] = val
 
 ##        if pk is None: return
 ##        
@@ -160,29 +160,29 @@ class Attribute(object):
 ##            if row[1] != 'C':
 ##                row[1] = 'U'
 ##                row[ROW_UPDATE_MASK] |= column.mask
-##            row[column.new_offset] = value
+##            row[column.new_offset] = val
     def __delete__(attr, obj):
         raise NotImplementedError
-    def update_reverse(attr, obj, prev, value, undo_funcs):
+    def update_reverse(attr, obj, prev, val, undo_funcs):
         reverse = attr.reverse
         if not isinstance(reverse, Collection):
             if prev is not None: reverse.__set__(prev, None, undo_funcs)
-            if value is not None: reverse.__set__(value, obj, undo_funcs)
+            if val is not None: reverse.__set__(val, obj, undo_funcs)
         elif isinstance(reverse, Set):
             if prev is not None: reverse.reverse_remove((prev,), obj, undo_funcs)
-            if value is not None: reverse.reverse_add((value,), obj, undo_funcs)
+            if val is not None: reverse.reverse_add((val,), obj, undo_funcs)
         else: raise NotImplementedError
 
 class Optional(Attribute): pass
 
 class Required(Attribute):
-    def check(attr, value, entity=None):
+    def check(attr, val, entity=None):
         msg = None
-        if value is UNKNOWN:
-            value = attr.default
-            if value is None and not attr.auto: msg = 'Required attribute %s.%s does not specified'
-        elif value is None: msg = 'Required attribute %s.%s cannot be set to None'
-        if msg is None: return Attribute.check(attr, value, entity)
+        if val is UNKNOWN:
+            val = attr.default
+            if val is None and not attr.auto: msg = 'Required attribute %s.%s does not specified'
+        elif val is None: msg = 'Required attribute %s.%s cannot be set to None'
+        if msg is None: return Attribute.check(attr, val, entity)
         if entity is None: entity = attr.entity
         raise ConstraintError(msg % (entity.__name__, attr.name))
 
@@ -209,8 +209,8 @@ class Unique(Required):
                     msg = "Optional attribute '%s' cannot be part of primary key"
                 if msg is not None:
                     attr_name = ''
-                    for name, value in cls_dict.items():
-                        if value is attr: attr_name = name
+                    for name, val in cls_dict.items():
+                        if val is attr: attr_name = name
                     raise TypeError(msg % attr_name)
             keys[attrs] = issubclass(cls, PrimaryKey)
 
@@ -224,7 +224,7 @@ class Collection(Attribute):
         if attr.auto: raise TypeError("'auto' option could not be set for collection attribute")
     def __get__(attr, obj, type=None):
         assert False, 'Abstract method'
-    def __set__(attr, obj, value):
+    def __set__(attr, obj, val):
         assert False, 'Abstract method'
     def __delete__(attr, obj):
         assert False, 'Abstract method'
@@ -234,19 +234,19 @@ class Collection(Attribute):
         assert False, 'Abstract method'
 
 class Set(Collection):
-    def check(attr, value, entity=None):
-        if value is None or value is UNKNOWN: return None
+    def check(attr, val, entity=None):
+        if val is None or val is UNKNOWN: return None
         reverse = attr.reverse
-        if not isinstance(value, reverse.entity):
+        if not isinstance(val, reverse.entity):
             try:
-                result = set(value)  # may raise TypeError if value is not iterable
-                for value in result:
-                    if not isinstance(value, reverse.entity): raise TypeError
+                result = set(val)  # may raise TypeError if val is not iterable
+                for val in result:
+                    if not isinstance(val, reverse.entity): raise TypeError
             except TypeError:
                 if entity is None: entity = attr.entity
                 raise TypeError('Item of collection %s.%s must be instance of %s. Got: %s'
-                                % (entity.__name__, attr.name, reverse.entity.__name__, value))
-        else: result = set((value,))
+                                % (entity.__name__, attr.name, reverse.entity.__name__, val))
+        else: result = set((val,))
         return result
     def reverse_add(attr, objects, reverse_obj, undo_funcs):
         trans = local.transaction
@@ -254,13 +254,13 @@ class Set(Collection):
         for obj in objects:
             data = trans.objects.get(obj) or obj._get_data('U')
             new_offset = obj._new_offsets_[attr]
-            value = data[new_offset]
-            if value is None: value = data[new_offset] = set()
-            undo.append(value)
-            value.add(reverse_obj)
+            val = data[new_offset]
+            if val is None: val = data[new_offset] = set()
+            undo.append(val)
+            val.add(reverse_obj)
         def undo_func():
-            for value in undo:
-                value.remove(reverse_obj)
+            for val in undo:
+                val.remove(reverse_obj)
         undo_funcs.append(undo_func)
     def reverse_remove(attr, objects, reverse_obj, undo_funcs):
         trans = local.transaction
@@ -268,57 +268,57 @@ class Set(Collection):
         for obj in objects:
             data = trans.objects.get(obj) or obj._get_data('U')
             new_offset = obj._new_offsets_[attr]
-            value = data[new_offset]
-            undo.append(value)
-            value.remove(reverse_obj) # ???
+            val = data[new_offset]
+            undo.append(val)
+            val.remove(reverse_obj) # ???
         def undo_func():
-            for value in undo:
-                value.add(reverse_obj)
+            for val in undo:
+                val.add(reverse_obj)
         undo_funcs.append(undo_func)
     def __get__(attr, obj, type=None):
         if obj is None: return attr
         return SetProperty(obj, attr)
-    def __set__(attr, obj, value):
-        value = attr.check(value, obj.__class__)
+    def __set__(attr, obj, val):
+        val = attr.check(val, obj.__class__)
         info = obj._get_info()
         trans = local.transaction
         data = trans.objects.get(obj) or obj._get_data('R')
         old_offset = obj._old_offsets_[attr]
         new_offset = obj._new_offsets_[attr]
         prev = data[new_offset]
-        if prev == value: return
+        if prev == val: return
 
         old = data[old_offset]
         if old is not None:
             if old is UNKNOWN or not old.loaded: raise NotImplementedError
 
         undo_funcs = []
-        data[new_offset] = value
-        try: attr.update_reverse(obj, prev, value, undo_funcs)
+        data[new_offset] = val
+        try: attr.update_reverse(obj, prev, val, undo_funcs)
         except:
             for undo_func in reversed(undo_funcs): undo_func()
             data[new_offset] = prev
             raise
     def __delete__(attr, obj):
         raise NotImplementedError
-    def update_reverse(attr, obj, prev, value, undo_funcs):
+    def update_reverse(attr, obj, prev, val, undo_funcs):
         reverse = attr.reverse
         if not isinstance(reverse, Collection):
             if prev is not None:
-                if value is None: remove_set = prev
-                else: remove_set = prev.difference(value)
+                if val is None: remove_set = prev
+                else: remove_set = prev.difference(val)
                 for reverse_obj in remove_set: reverse.__set__(reverse_obj, None, undo_funcs)
-            if value is not None:
-                if prev is None: add_set = value
-                else: add_set = value.difference(prev)
+            if val is not None:
+                if prev is None: add_set = val
+                else: add_set = val.difference(prev)
                 for reverse_obj in add_set: reverse.__set__(reverse_obj, obj, undo_funcs)
         elif isinstance(reverse, Set):
             if prev is not None:
-                if value is None: reverse.reverse_remove(prev, obj, undo_funcs)
-                else: reverse.reverse_remove(prev.difference(value), obj, undo_funcs)
-            if value is not None:
-                if prev is None: reverse.reverse_add(value, obj, undo_funcs)
-                else: reverse.reverse_add(value.difference(prev), obj, undo_funcs)
+                if val is None: reverse.reverse_remove(prev, obj, undo_funcs)
+                else: reverse.reverse_remove(prev.difference(val), obj, undo_funcs)
+            if val is not None:
+                if prev is None: reverse.reverse_add(val, obj, undo_funcs)
+                else: reverse.reverse_add(val.difference(prev), obj, undo_funcs)
         else: raise NotImplementedError
 
 ##class List(Collection): pass
@@ -343,9 +343,9 @@ class SetProperty(object):
             if prev is UNKNOWN or not prev.loaded: raise NotImplementedError
 
         new_offset = obj._new_offsets_[attr]
-        value = data[new_offset]
-        if value is None: return set()
-        return value
+        val = data[new_offset]
+        if val is None: return set()
+        return val
     def __repr__(setprop):
         return '%r.%s->%r' % (setprop._obj_, setprop._attr_.name, setprop._get_value())
     def __len__(setprop):
@@ -377,9 +377,9 @@ class SetProperty(object):
         data = trans.objects.get(obj) or obj._get_data('R')
 
         new_offset = obj._new_offsets_[attr]
-        value = data[new_offset]
-        if value is None: return False
-        if x in value: return True
+        val = data[new_offset]
+        if val is None: return False
+        if x in val: return True
         
         old_offset = obj._old_offsets_[attr]
         prev = data[old_offset]
@@ -394,11 +394,11 @@ class SetProperty(object):
         data = trans.objects.get(obj) or obj._get_data('R')
 
         new_offset = obj._new_offsets_[attr]
-        value = data[new_offset]
-        if value is None: value = data[new_offset] = set()
+        val = data[new_offset]
+        if val is None: val = data[new_offset] = set()
 
         add_set = attr.check(x, obj.__class__)
-        add_set.difference_update(value)
+        add_set.difference_update(val)
         if not add_set: return setprop
 
         undo_funcs = []
@@ -411,7 +411,7 @@ class SetProperty(object):
         except:
             for undo_func in undo_funcs: undo_func()
             raise
-        value.update(add_set)
+        val.update(add_set)
         return setprop
     def __isub__(setprop, x):
         attr = setprop._attr_
@@ -421,11 +421,11 @@ class SetProperty(object):
         data = trans.objects.get(obj) or obj._get_data('R')
 
         new_offset = obj._new_offsets_[attr]
-        value = data[new_offset]
-        if value is None: value = set()
+        val = data[new_offset]
+        if val is None: val = set()
 
         remove_set = attr.check(x, obj.__class__)
-        remove_set.intersection_update(value)
+        remove_set.intersection_update(val)
         if not remove_set: return setprop
         
         undo_funcs = []
@@ -438,7 +438,7 @@ class SetProperty(object):
         except:
             for undo_func in undo_funcs: undo_func()
             raise
-        value.difference_update(remove_set)
+        val.difference_update(remove_set)
         return setprop
 
 class _OldSet(set):
@@ -459,8 +459,8 @@ class EntityMeta(type):
         if not hasattr(diagram, 'data_source'):
             diagram.data_source = outer_dict.get('_data_source_')
         entity._cls_init_(diagram)
-    def __setattr__(entity, name, value):
-        entity._cls_setattr_(name, value)
+    def __setattr__(entity, name, val):
+        entity._cls_setattr_(name, val)
     def __iter__(entity):
         return iter(())
 
@@ -470,9 +470,9 @@ class Entity(object):
     __metaclass__ = EntityMeta
     __slots__ = '__weakref__', '_pk_', '_new_'
     @classmethod
-    def _cls_setattr_(entity, name, value):
+    def _cls_setattr_(entity, name, val):
         if name.startswith('_') and name.endswith('_'):
-            type.__setattr__(entity, name, value)
+            type.__setattr__(entity, name, val)
         else: raise NotImplementedError
     @classmethod
     def _cls_init_(entity, diagram):
@@ -670,8 +670,8 @@ class Entity(object):
         if args:
             if len(args) != len(pk_attrs):
                 raise TypeError('Invalid count of attrs in primary key')
-            for attr, value in zip(pk_attrs, args):
-                if keyargs.setdefault(attr.name, value) != value:
+            for attr, val in zip(pk_attrs, args):
+                if keyargs.setdefault(attr.name, val) != val:
                     raise TypeError('Ambiguous attribute value for %r' % attr.name)
         for name in ifilterfalse(entity._attr_dict_.__contains__, keyargs):
             raise TypeError('Unknown attribute %r' % name)
@@ -684,12 +684,12 @@ class Entity(object):
         data = entity._data_template_[:]
         used_attrs = []
         for attr in entity._attrs_:
-            value = keyargs.get(attr.name, UNKNOWN)
+            val = keyargs.get(attr.name, UNKNOWN)
             data[get_old_offset(attr)] = None
-            if value is not UNKNOWN:
-                value = attr.check(value, entity)
-                used_attrs.append((attr, value))
-            data[get_new_offset(attr)] = value
+            if val is not UNKNOWN:
+                val = attr.check(val, entity)
+                used_attrs.append((attr, val))
+            data[get_new_offset(attr)] = val
 
         for key in entity._keys_:
             key_value = tuple(map(data.__getitem__, map(get_new_offset, key)))
@@ -702,10 +702,10 @@ class Entity(object):
             obj2_get_new_offset = obj2._new_offsets_.__getitem__
             try:
                 for attr in used_attrs:
-                    value = data[get_new_offset(attr)]
-                    value2 = obj2_data[obj2_get_new_offset(attr)]
-                    if value2 is UNKNOWN: raise NotImplementedError
-                    if value != value2: return None
+                    val = data[get_new_offset(attr)]
+                    val2 = obj2_data[obj2_get_new_offset(attr)]
+                    if val2 is UNKNOWN: raise NotImplementedError
+                    if val != val2: return None
             except KeyError: return None
             return obj2
         
@@ -715,7 +715,7 @@ class Entity(object):
         where_list = []
         table_counter = count(1)
         column_counter = count(1)
-        for attr, value in used_attrs:
+        for attr, val in used_attrs:
             pass
 
         raise NotImplementedError
@@ -725,8 +725,8 @@ class Entity(object):
         if args:
             if len(args) != len(pk_attrs):
                 raise TypeError('Invalid count of attrs in primary key')
-            for attr, value in zip(pk_attrs, args):
-                if keyargs.setdefault(attr.name, value) != value:
+            for attr, val in zip(pk_attrs, args):
+                if keyargs.setdefault(attr.name, val) != val:
                     raise TypeError('Ambiguous attribute value for %r' % attr.name)
         for name in ifilterfalse(entity._attr_dict_.__contains__, keyargs):
             raise TypeError('Unknown attribute %r' % name)
@@ -738,9 +738,9 @@ class Entity(object):
         get_old_offset = entity._old_offsets_.__getitem__
         data = entity._data_template_[:]
         for attr in entity._attrs_:
-            value = keyargs.get(attr.name, UNKNOWN)
+            val = keyargs.get(attr.name, UNKNOWN)
             data[get_old_offset(attr)] = None
-            data[get_new_offset(attr)] = attr.check(value, entity)
+            data[get_new_offset(attr)] = attr.check(val, entity)
         pk = tuple(map(data.__getitem__, map(get_new_offset, pk_attrs)))
         if None in pk:
             obj = object.__new__(entity)
@@ -772,9 +772,9 @@ class Entity(object):
                     raise IndexError('%s with such unique index already exists: %s' % (obj2.__class__.__name__, key_str))
             for attr in entity._attrs_:
                 if not attr.reverse: continue
-                value = data[get_new_offset(attr)]
-                if value is None: continue
-                attr.update_reverse(obj, None, value, undo_funcs)
+                val = data[get_new_offset(attr)]
+                if val is None: continue
+                attr.update_reverse(obj, None, val, undo_funcs)
         except:
             for undo_func in reversed(undo_funcs): undo_func()
             for key in entity._keys_:
@@ -797,8 +797,8 @@ class Entity(object):
 ##            for column in table.columns:
 ##                for attr in column.attrs:
 ##                    if entity is attr.entity or issubclass(entity, attr.entity):
-##                        value = data[get_new_offset(attr)]
-##                        new_row[column.new_offset] = value
+##                        val = data[get_new_offset(attr)]
+##                        new_row[column.new_offset] = val
 ##                        break
 ##                else: new_row[column.new_offset] = None
 ##            if cache.rows.setdefault(pk, new_row) is not new_row: raise AssertionError
@@ -814,14 +814,14 @@ class Entity(object):
         old_data = data[:]
 
         attrs = set()
-        for name, value in keyargs.items():
+        for name, val in keyargs.items():
             attr = obj._attr_dict_.get(name)
             if attr is None: raise TypeError("Unknown attribute: %r" % name)
-            value = attr.check(value, obj.__class__)
-            if data[get_new_offset(attr)] == value: continue
+            val = attr.check(val, obj.__class__)
+            if data[get_new_offset(attr)] == val: continue
             if attr.pk_offset is not None: raise TypeError('Cannot change value of primary key')
             attrs.add(attr)
-            data[get_new_offset(attr)] = value
+            data[get_new_offset(attr)] = val
         if not attrs: return
 
         undo = []
@@ -849,8 +849,8 @@ class Entity(object):
                 if old is UNKNOWN: raise NotImplementedError
                 offset = get_new_offset(attr)
                 prev = old_data[offset]
-                value = data[offset]
-                attr.update_reverse(obj, prev, value, undo_funcs)
+                val = data[offset]
+                attr.update_reverse(obj, prev, val, undo_funcs)
         except:
             for undo_func in reversed(undo_funcs): undo_func()
             for new_index, obj, old_key, new_key in undo:
