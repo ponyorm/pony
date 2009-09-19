@@ -98,9 +98,9 @@ class Attribute(object):
         raise NotImplementedError
     def __get__(attr, obj, type=None):
         if obj is None: return attr
-        pk = obj._pk_
-        try: return pk[attr.pk_offset]
-        except TypeError: pass  # pk is None or attr.pk_offset is None
+        pkval = obj._pkval_
+        try: return pkval[attr.pk_offset]
+        except TypeError: pass  # pkval is None or attr.pk_offset is None
         attr_info = obj._get_info().attr_map[attr]
         trans = obj._trans_
         data = trans.objects.get(obj) or obj._get_data('R')
@@ -109,9 +109,9 @@ class Attribute(object):
         return val
     def __set__(attr, obj, val, undo_funcs=None):
         val = attr.check(val, obj)
-        pk = obj._pk_
+        pkval = obj._pkval_
         if attr.pk_offset is not None:
-            if pk is not None and val == pk[attr.pk_offset]: return
+            if pkval is not None and val == pkval[attr.pk_offset]: return
             raise TypeError('Cannot change value of primary key')
 
         attr_info = obj._get_info().attr_map[attr]
@@ -169,17 +169,17 @@ class Attribute(object):
         if data[1] != 'C': data[1] = 'U'
         data[get_new_offset(attr)] = val
 
-##        if pk is None: return
+##        if pkval is None: return
 ##        
 ##        for table, column in attr_info.tables.items():
 ##            cache = trans.caches.get(table)
 ##            if cache is None: cache = trans.caches[table] = Cache(table)
-##            row = cache.rows.get(pk)
+##            row = cache.rows.get(pkval)
 ##            if row is None:
-##                row = cache.rows[pk] = cache.row_template[:]
+##                row = cache.rows[pkval] = cache.row_template[:]
 ##                row[0] = obj
 ##                row[1] = 'U'
-##                for c, v in zip(table.pk_columns, pk): row[c.new_offset] = v
+##                for c, v in zip(table.pk_columns, pkval): row[c.new_offset] = v
 ##            else: assert row[0] is obj
 ##            if row[1] != 'C':
 ##                row[1] = 'U'
@@ -491,7 +491,7 @@ new_instance_counter = count(1).next
 
 class Entity(object):
     __metaclass__ = EntityMeta
-    __slots__ = '__weakref__', '_pk_', '_new_', '_trans_'
+    __slots__ = '__weakref__', '_pkval_', '_newid_', '_trans_'
     @classmethod
     def _cls_setattr_(entity, name, val):
         if name.startswith('_') and name.endswith('_'):
@@ -656,21 +656,21 @@ class Entity(object):
     def __init__(obj, *args, **keyargs):
         raise TypeError('You cannot create entity instances directly. Use Entity.create(...) or Entity.find(...) instead')
     def __repr__(obj):
-        pk = obj._pk_
-        if pk is None: key_str = 'new:%d' % obj._new_
-        else: key_str = ', '.join(repr(item) for item in pk)
+        pkval = obj._pkval_
+        if pkval is None: key_str = 'new:%d' % obj._newid_
+        else: key_str = ', '.join(repr(item) for item in pkval)
         return '%s(%s)' % (obj.__class__.__name__, key_str)
     def _get_data(obj, status):
         trans = obj._trans_
         data = trans.objects.get(obj)
         if data is None:
-            pk = obj._pk_
-            if pk is None: assert False # raise TransferringObjectWithoutPkError(obj)
+            pkval = obj._pkval_
+            if pkval is None: assert False # raise TransferringObjectWithoutPkError(obj)
             data = trans.objects[obj] = obj._data_template_[:]
             data[0] = obj
             data[1] = status
             get_new_offset = obj._new_offsets_.__getitem__
-            for a, v in zip(obj._keys_[0], pk): data[get_new_offset(a)] = v
+            for a, v in zip(obj._keys_[0], pkval): data[get_new_offset(a)] = v
             if status != 'U': raise NotImplementedError
         return data
     @property
@@ -753,21 +753,20 @@ class Entity(object):
             val = keyargs.get(attr.name, DEFAULT)
             data[get_old_offset(attr)] = None
             data[get_new_offset(attr)] = attr.check(val, None, entity)
-        pk = tuple(map(data.__getitem__, map(get_new_offset, pk_attrs)))
+        pkval = tuple(map(data.__getitem__, map(get_new_offset, pk_attrs)))
         obj = object.__new__(entity)
         obj._trans_ = trans
-        if None in pk:
-            obj._pk_ = None
-            obj._new_ = new_instance_counter()
+        if None in pkval:
+            obj._pkval_ = None
+            obj._newid_ = new_instance_counter()
         else:
-            obj._pk_ = pk
-            obj._new_ = None
-            obj._trans_ = trans
+            obj._pkval_ = pkval
+            obj._newid_ = None
             entity._lock_.acquire()
-            try: obj = entity._objects_.setdefault(pk, obj)
+            try: obj = entity._objects_.setdefault(pkval, obj)
             finally: entity._lock_.release()
             if obj in trans.objects:
-                key_str = ', '.join(repr(item) for item in pk)
+                key_str = ', '.join(repr(item) for item in pkval)
                 raise IndexError('%s with such primary key already exists: %s' % (obj.__class__.__name__, key_str))
         data[0] = obj
         data[1] = 'C'
@@ -799,7 +798,7 @@ class Entity(object):
             raise
         if trans.objects.setdefault(obj, data) is not data: raise AssertionError
 
-##        if obj._pk_ is None: return obj
+##        if obj._pkval_ is None: return obj
 ##
 ##        for table in info.tables:
 ##            cache = trans.caches.get(table)
@@ -814,10 +813,10 @@ class Entity(object):
 ##                        new_row[column.new_offset] = val
 ##                        break
 ##                else: new_row[column.new_offset] = None
-##            if cache.rows.setdefault(pk, new_row) is not new_row: raise AssertionError
+##            if cache.rows.setdefault(pkval, new_row) is not new_row: raise AssertionError
         return obj
     def set(obj, **keyargs):
-        pk = obj._pk_
+        pkval = obj._pkval_
         info = obj._get_info()
         trans = obj._trans_
         get_new_offset = obj._new_offsets_.__getitem__
@@ -873,17 +872,17 @@ class Entity(object):
             raise
         if data[1] != 'C': data[1] = 'U'
 
-##        if pk is None: return
+##        if pkval is None: return
 ##
 ##        for table in info.tables:
 ##            cache = trans.caches.get(table)
 ##            if cache is None: cache = trans.caches[table] = Cache(table)
-##            row = cache.rows.get(pk)
+##            row = cache.rows.get(pkval)
 ##            if row is None:
 ##                row = cache.row_template[:]
 ##                row[0] = obj
 ##                row[1] = 'U'
-##                for c, v in zip(table.pk_columns, pk): row[c.new_offset] = v
+##                for c, v in zip(table.pk_columns, pkval): row[c.new_offset] = v
 ##            else: assert row[0] is obj
 ##            for attr in attrs:
 ##                attr_info = info.attrs[attr]
