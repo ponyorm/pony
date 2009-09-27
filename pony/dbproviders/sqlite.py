@@ -11,7 +11,7 @@ paramstyle = 'qmark'
 
 class Local(localbase):
     def __init__(self):
-        self.connection = None
+        self.db_to_conn = {}
 
 local = Local()
 
@@ -19,12 +19,13 @@ def quote_name(connection, name):
     return dbapiprovider.quote_name(name)
 
 def connect(filename):
-    if local.connection is None:
-        local.connection = sqlite.connect(filename)
-    return local.connection
+    conn = local.db_to_conn.get(filename)
+    if conn is None:
+        local.db_to_conn[filename] = conn = sqlite.connect(filename)
+    return conn
 
 def release(connection):
-    connection.close()
+    pass
 
 def ast2sql(con, ast):
     b = dbapiprovider.SQLBuilder(ast)
