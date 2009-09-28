@@ -635,6 +635,7 @@ text-field-row, textarea-field, select-field-row, checkbox-field-row, radiobutto
 ѕо умолчанию все POST формы создаютс€ как secure. Ёто можно отключить, указав при создании формы secure=False
 
 ### Ёскапирование
+__ссылка на HtmlGeneration.txt вместо этого описани€__
 Ёскапирование позвол€ет защититьс€ от Cross-Site Scripting (XSS) атак.
 —уть этой атаки в следующем.
 ƒопустим есть веб-сайт, на котором есть форум. 
