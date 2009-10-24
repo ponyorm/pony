@@ -1,4 +1,14 @@
+### Функция html
 
+
+параметры:
+text=None, filename=None, globals=None, locals=None, encoding=None, keep_indent=None
+
+
+-------------
+если это не функция а метод класса 
+то будет имя класса, имя метода, html
+--------------
 
 ### Функция link
 
@@ -23,3 +33,23 @@ link("blueprint")
 И так еще можно:
 link("foo/bar.css")
 link("foo/bar.js")
+
+### Операторы
+
+### оператор for
+
+функции, которые можно использовать в операторе for
+$separator
+$cycle
+        'odd'
+        'even'
+        'first'
+        'not first'
+        'last'
+        'not last'
+
+### оператор if
+
+### оператор try...except
+
+### оператор IF
