@@ -1,0 +1,7 @@
+
+- набор ссылок для того, чтобы использовать blueprint, при этом можно
+задавать параметры
+def blueprint_link(column_count=24, column_width=30, gutter_width=10, ns=''):
+link("blueprint", 20) - 20 колонок
+link("blueprint", column_width=40)
+
