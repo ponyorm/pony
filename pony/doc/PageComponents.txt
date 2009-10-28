@@ -1,0 +1,31 @@
+есть кусочек, который мы хотим использовать на нескольких страницах
+
+в этом случае этому кусочку должен соотв какой то цсс или джаваскрипт
+они должны быть встроены в начало страницы, а наш блок - в середину
+получается, что нам нужно встроить цсс и джскр в начало
+
+компонент страницы это функция, кусочек, который сопровождается своим цсс и/или джскр
+
+def component(old_func, css=None, js=None)
+это декоратор с параметрами
+может быть список цсс и джскр
+
+
+например
+@component(css='/pony/static/css/rounded-corners.css')
+def rounded(markup, **attrs)
+
+может компонент используется в 10 разных местах
+в страницу будет включена одна копия ссылки
+
+class tabs(object):                                        media                      условное выражение
+    @component(css=[ ('/pony/static/jquery/ui.tabs.css', 'print, projection, screen'),
+                     ('/pony/static/jquery/ui.tabs-ie.css', 'projection, screen', 'if lte IE 7') ],
+                 js=[ '/pony/static/jquery/jquery.js',
+                      '/pony/static/jquery/ui.core.js',
+                      '/pony/static/jquery/ui.tabs.js',
+                      '/pony/static/js/tabs.js' ])
+посмотреть def css_link(link) в постпроцессинг
+
+примеры - rounded, tabs
+рассмотреть что то типа rounded
