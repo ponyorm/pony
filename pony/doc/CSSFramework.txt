@@ -1,7 +1,8 @@
 
-- набор ссылок для того, чтобы использовать blueprint, при этом можно
-задавать параметры
-def blueprint_link(column_count=24, column_width=30, gutter_width=10, ns=''):
-link("blueprint", 20) - 20 колонок
-link("blueprint", column_width=40)
+pony.options
 
+BASE_STYLESHEETS_PLACEHOLDER = '<!--PONY-BASE-STYLESHEETS-->'
+COMPONENT_STYLESHEETS_PLACEHOLDER = '<!--PONY-COMPONENTS-STYLESHEETS-->'
+SCRIPTS_PLACEHOLDER = '<!--PONY-SCRIPTS-->'
+
+если вписать эти плейсхолдеры, то пони заменит плейсхолдеры кодом
