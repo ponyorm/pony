@@ -54,12 +54,11 @@ def reload():
             for i, (fname, mtime, trans) in enumerate(trans_files):
                 if fname not in changed: update(translations, trans)
                 else:
-                    try: load(fname)
+                    try: trans = load(fname)
                     except:
                         erroneous.add(fname)
                         log_exc()
-                        trans_files[i] = fname, None
-                    else: trans_files[i] = fname, get_mtime(fname)
+                    else: trans_files[i] = fname, get_mtime(fname), trans
         finally: log(type='RELOAD:end', severity=DEBUG,
                      text=erroneous and 'Reloaded with errors' or 'Reloaded successfully',
                      success=not erroneous, erroneous=erroneous)
