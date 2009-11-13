@@ -77,3 +77,17 @@ div.scrollableArea
 	width: auto;
 	height: 100%;
 }
+
+#makeMeScrollable
+{
+	width:100%;
+	height: 400px;
+	position: relative;
+}
+#makeMeScrollable div.scrollableArea *
+{
+	position: relative;
+	float: left;
+	margin: 0;
+	padding: 0;
+}
