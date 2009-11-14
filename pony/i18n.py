@@ -158,12 +158,18 @@ def get_params_order(key_pieces, lstr_pieces):
     return map(key_params.index, lstr_params)
 
 def init():
-    fnames = [ join(pony.PONY_DIR, 'translations.txt')
-             ] + sorted(glob(join(pony.PONY_DIR, 'translations-*.txt')))
+    translations.clear()
+    trans_files[:] = []
+
+    pony_main_translation_file = join(pony.PONY_DIR, 'translations.txt')
+    fnames = [ pony_main_translation_file ]
+    fnames.extend(sorted(glob(join(pony.PONY_DIR, 'translations-*.txt'))))
+
     if pony.MAIN_DIR is not None:
-        fname = join(pony.MAIN_DIR, 'translations.txt')
-        if exists(fname): fnames.append(fname)
+        app_main_translation_file = join(pony.MAIN_DIR, 'translations.txt')
+        if exists(app_main_translation_file): fnames.append(app_main_translation_file)
         fnames.extend(sorted(glob(join(pony.MAIN_DIR, 'translations-*.txt'))))
+
     for fname in fnames:
         reg_trans_file(fname)
 
