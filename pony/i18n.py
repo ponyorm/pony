@@ -37,12 +37,12 @@ def reg_trans_file(filename):
         if fname == filename: return
     mtime = get_mtime(filename)
     trans = load(filename)
+    update(translations, trans)
     trans_files.append((filename, mtime, trans))
 
 def load(filename):
     textlines = read_text_file(filename).split('\n')
     trans = parse(textlines)
-    update(translations, trans)
     return trans
 
 def update(trans1, trans2):
@@ -75,13 +75,13 @@ def reload():
         try:
             translations.clear()
             for i, (fname, mtime, trans) in enumerate(trans_files):
-                if fname not in changed: update(translations, trans)
-                else:
+                if fname in changed:
                     try: trans = load(fname)
                     except:
                         erroneous.add(fname)
                         log_exc()
                     else: trans_files[i] = fname, get_mtime(fname), trans
+                update(translations, trans)
         finally: log(type='RELOAD:end', severity=DEBUG,
                      text=erroneous and 'Reloaded with errors' or 'Reloaded successfully',
                      success=not erroneous, erroneous=erroneous)
