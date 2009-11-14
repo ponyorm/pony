@@ -19,12 +19,35 @@ translations = {}
 
 trans_files = []
 
+def translate(key, params, lang_list):
+    reload()
+    d2 = translations.get(key)
+    if d2 is None: return None
+    for lang in chain(lang_list, (None,)):
+        try: params_order, lstr = d2[lang]
+        except KeyError: continue
+        ordered_params = map(params.__getitem__, params_order)
+        ordered_params.reverse()
+        return u"".join(not flag and value or ordered_params.pop()
+                        for flag, value in lstr)
+    assert False
+
 def reg_trans_file(filename):
     for fname, mtime, trans in trans_files:
         if fname == filename: return
     mtime = get_mtime(filename)
     trans = load(filename)
     trans_files.append((filename, mtime, trans))
+
+def load(filename):
+    textlines = read_text_file(filename).split('\n')
+    trans = parse(textlines)
+    update(translations, trans)
+    return trans
+
+def update(trans1, trans2):
+    for key, d2 in trans2.iteritems():
+        trans1.setdefault(key, {}).update(d2)
 
 last_check_time = 0
 
@@ -63,29 +86,6 @@ def reload():
                      text=erroneous and 'Reloaded with errors' or 'Reloaded successfully',
                      success=not erroneous, erroneous=erroneous)
     finally: lock.release()
-
-def translate(key, params, lang_list):
-    reload()
-    d2 = translations.get(key)
-    if d2 is None: return None
-    for lang in chain(lang_list, (None,)):
-        try: params_order, lstr = d2[lang]
-        except KeyError: continue
-        ordered_params = map(params.__getitem__, params_order)
-        ordered_params.reverse()
-        return u"".join(not flag and value or ordered_params.pop()
-                        for flag, value in lstr)
-    assert False
-
-def load(filename):
-    textlines = read_text_file(filename).split('\n')
-    trans = parse(textlines)
-    update(translations, trans)
-    return trans
-
-def update(trans1, trans2):
-    for key, d2 in trans2.iteritems():
-        trans1.setdefault(key, {}).update(d2)
 
 def parse(lines):
     d = {}
