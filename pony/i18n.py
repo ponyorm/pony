@@ -61,12 +61,12 @@ def reload():
     try:
         if abs(now - last_check_time) <= options.RELOADING_CHECK_INTERVAL: return
         last_check_time = now
-        changed = set()
+        changed = {}
         for fname, mtime, trans in trans_files:
             try: new_mtime = get_mtime(fname)
-            except:
-                if mtime is None: continue
-            if new_mtime != mtime: changed.add(fname)
+            except:  # file not found?
+                new_mtime = None
+            if new_mtime != mtime: changed[fname] = new_mtime
         if not changed: return
 
         erroneous = set()
@@ -76,11 +76,14 @@ def reload():
             translations.clear()
             for i, (fname, mtime, trans) in enumerate(trans_files):
                 if fname in changed:
-                    try: trans = load(fname)
-                    except:
-                        erroneous.add(fname)
-                        log_exc()
-                    else: trans_files[i] = fname, get_mtime(fname), trans
+                    new_mtime = changed[fname]
+                    trans = {}
+                    if new_mtime is not None:
+                        try: trans = load(fname)
+                        except:
+                            erroneous.add(fname)
+                            log_exc()
+                    trans_files[i] = fname, new_mtime, trans
                 update(translations, trans)
         finally: log(type='RELOAD:end', severity=DEBUG,
                      text=erroneous and 'Reloaded with errors' or 'Reloaded successfully',
