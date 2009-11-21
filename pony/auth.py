@@ -11,7 +11,7 @@ import pony
 from pony import options, httputils
 from pony.utils import compress, decompress, simple_decorator, localbase
 from pony.sessionstorage import ramstorage as storage
-from pony.logging import log_exc()
+from pony.logging import log_exc
 
 hash = pony.options.HASH_ALGORITHM
 if hash is None:
