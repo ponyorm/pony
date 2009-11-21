@@ -11,6 +11,7 @@ import pony
 from pony import options, httputils
 from pony.utils import compress, decompress, simple_decorator, localbase
 from pony.sessionstorage import ramstorage as storage
+from pony.logging import log_exc()
 
 hash = pony.options.HASH_ALGORITHM
 if hash is None:
@@ -93,7 +94,9 @@ def load(environ, cookies=None):
         local.user, local.session = info
         local.longlife_key = longlife_key or None
         local.longlife_session = bool(longlife_key)
-    except: return
+    except:
+        log_exc()
+        return
 
 def set_longlife_session():
     if local.user is not None:
