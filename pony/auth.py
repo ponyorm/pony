@@ -18,6 +18,30 @@ if hash is None:
     try: from hashlib import sha1 as hash
     except ImportError: import sha as hash
 
+class Session(object):
+    def __init__(self, dict=None, **keyargs):
+        if dict: self.__dict__.update(dict)
+        self.__dict__.update(keyargs)
+    def __call__(self, key, default):
+        return self.__dict__.get(key, default)
+    def __getitem__(self, key):
+        return self.__dict__[key]
+    def __setitem__(self, key, value):
+        self.__dict__[key] = value
+    def __getattr__(self, attr):
+        return self.__dict__.get(attr)
+    def __setattr__(self, attr, value):
+        if value is None: self.__dict__.pop(value, None)
+        else: self.__dict__[attr] = value
+    def __contains__(self, key):
+        return key in self.__dict__
+    def __iter__(self):
+        return iter(self.__dict__.keys())
+    def __len__(self):
+        return len(self.__dict__)
+    def clear(self):
+        self.__dict__.clear()
+
 class Local(localbase):
     def __init__(self):
         self.lock = threading.Lock()
@@ -27,7 +51,7 @@ class Local(localbase):
         now = int(time()) // 60
         lock = self.lock
         self.__dict__.clear()
-        self.__dict__.update(lock=lock, user=None, environ={}, session={}, ctime=now, mtime=now,
+        self.__dict__.update(lock=lock, user=None, environ={}, session=Session(), ctime=now, mtime=now,
                              cookie_value=None, remember_ip=False, longlife_session=False, longlife_key=None,
                              ip=None, user_agent=None, ticket=False, ticket_payload=None)
     def set_user(self, user, longlife_session=False, remember_ip=False):
@@ -91,7 +115,8 @@ def load(environ, cookies=None):
         elif data.startswith('S'): data = storage.getdata(data[1:], ctime, mtime)
         else: return
         info = loads(data)
-        local.user, local.session = info
+        local.user, session_dict = info
+        local.session = Session(session_dict)
         local.longlife_key = longlife_key or None
         local.longlife_session = bool(longlife_key)
     except:
@@ -147,7 +172,7 @@ def save(cookies):
             longlife_key = local.longlife_key or ''
         else: longlife_key = ''
 
-        info = local.user, local.session
+        info = local.user, local.session.__dict__
         data = dumps(info)
         hashobject = get_hashobject(now)
         hashobject.update(ctime_str)

@@ -324,7 +324,7 @@ def log_request(request):
     if user is not None and not isinstance(user, (int, long, basestring)):
         user = unicode(user)
     log(type=request_type, prefix=method+' ', text=request.full_url, severity=INFO,
-        headers=headers, user=user, session=auth.local.session)
+        headers=headers, user=user, session=auth.local.session.__dict__)
 
 BLOCK_SIZE = 65536
 
@@ -553,12 +553,12 @@ class Http(object):
     user = property(get_user, set_user)
 
     def get_lang(self):
-        return auth.local.session.get('lang')
+        return auth.local.session.lang
     def set_lang(self, lang):
         if lang:
             if not isinstance(lang, basestring):
                 raise TypeError('http.lang must be string. Got: %s' % lang)
-            auth.local.session['lang'] = lang[:]  # = utils.plainstr(lang)
+            auth.local.session.lang = lang[:]  # = utils.plainstr(lang)
         else: auth.local.session.pop('lang', None)
         local.request.languages = local.request._get_languages()
     lang = property(get_lang, set_lang)
