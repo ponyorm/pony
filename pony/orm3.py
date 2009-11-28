@@ -133,7 +133,7 @@ class Unique(Required):
             attr.is_indexed = True
         if len(attrs) == 1:
             attr = attrs[0]
-            if not isinstance(attr, Optional): raise TypeError('Invalid declaration')
+            if attr.is_required: raise TypeError('Invalid declaration')
             attr.is_unique = True
         else:
             for i, attr in enumerate(attrs): attr.composite_keys.append((attrs, i))
