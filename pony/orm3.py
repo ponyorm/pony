@@ -303,7 +303,7 @@ class Entity(object):
         entity._required_attrs_ = [ attr for attr in entity._attrs_ if attr.is_required ]
         entity._bits_ = {}
         next_offset = count().next
-        for attr in enumerate(entity._attrs_):
+        for attr in entity._attrs_:
             if attr.is_collection or attr.pk_offset is not None: continue
             entity._bits_[attr] = 1 << next_offset()
 
