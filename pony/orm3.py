@@ -28,7 +28,7 @@ class Attribute(object):
     __slots__ = 'is_required', 'is_unique', 'is_indexed', 'is_collection', 'is_pk', \
                 'id', 'pk_offset', 'type', 'entity', 'name', 'oldname', \
                 'args', 'auto', 'default', 'reverse', 'composite_keys'
-    def __init__(attr, type, *args, **keyargs):
+    def __init__(attr, py_type, *args, **keyargs):
         if attr.__class__ is Attribute: raise TypeError("'Atrribute' is abstract type")
         attr.is_required = isinstance(attr, Required)
         attr.is_unique = isinstance(attr, Unique)  # Also can be set to True later
@@ -38,7 +38,7 @@ class Attribute(object):
         if attr.is_pk: attr.pk_offset = 0
         else: attr.pk_offset = None
         attr.id = next_id()
-        attr.type = type
+        attr.py_type = py_type
         attr.entity = attr.name = None
         attr.args = args
         attr.auto = keyargs.pop('auto', False)
@@ -52,8 +52,8 @@ class Attribute(object):
         if not attr.reverse: pass
         elif not isinstance(attr.reverse, (basestring, Attribute)):
             raise TypeError("Value of 'reverse' option must be name of reverse attribute). Got: %r" % attr.reverse)
-        elif not isinstance(attr.type, (basestring, EntityMeta)):
-            raise DiagramError('Reverse option cannot be set for this type %r' % attr.type)
+        elif not isinstance(attr.py_type, (basestring, EntityMeta)):
+            raise DiagramError('Reverse option cannot be set for this type %r' % attr.py_type)
         for option in keyargs: raise TypeError('Unknown option %r' % option)
         attr.composite_keys = []
     def _init_(attr, entity, name):
