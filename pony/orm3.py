@@ -295,7 +295,7 @@ class Entity(object):
             if attr.entity is not None: raise DiagramError('Duplicate use of attribute %s' % name)
             attr._init_(entity, name)
             new_attrs.append(attr)
-        new_attrs.sort(key=attrgetter('_id_'))
+        new_attrs.sort(key=attrgetter('id'))
         entity._new_attrs_ = new_attrs
 
         entity._attrs_ = base_attrs + new_attrs
