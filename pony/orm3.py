@@ -105,7 +105,7 @@ class Attribute(object):
         raise NotImplementedError
     def prepare(attr, obj, val, fromdb=False):
         raise NotImplementedError
-    def set(attr, obj, val, fromdb=False)
+    def set(attr, obj, val, fromdb=False):
         if obj._status_ != 'created': obj._status_ = 'updated'
         raise NotImplementedError
             
@@ -156,7 +156,7 @@ class Collection(Attribute):
         assert False, 'Abstract method'
     def prepare(attr, obj, val, fromdb=False):
         assert False, 'Abstract method'
-    def set(attr, obj, val, fromdb=False)
+    def set(attr, obj, val, fromdb=False):
         assert False, 'Abstract method'
 
 class Set(Collection):
@@ -185,7 +185,7 @@ class Set(Collection):
         raise NotImplementedError
     def prepare(attr, obj, val, fromdb=False):
         raise NotImplementedError
-    def set(attr, obj, val, fromdb=False)
+    def set(attr, obj, val, fromdb=False):
         if obj._status_ != 'created': obj._status_ = 'updated'
         raise NotImplementedError
 
