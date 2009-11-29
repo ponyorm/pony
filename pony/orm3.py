@@ -73,10 +73,10 @@ class Attribute(object):
             val = attr.default
             if val is None and attr.is_required and not attr.auto: raise ConstraintError(
                 'Required attribute %s.%s does not specified' % (entity.__name__, attr.name))
-        if val is not None: pass
-        elif attr.is_required: raise ConstraintError(
-            'Required attribute %s.%s cannot be set to None' % (entity.__name__, attr.name))
-        else: return val
+        if val is None:
+            if attr.is_required: raise ConstraintError(
+                'Required attribute %s.%s cannot be set to None' % (entity.__name__, attr.name))
+            return val
         reverse = attr.reverse
         if not reverse or not val: return val
         if not isinstance(val, reverse.entity): raise ConstraintError(
