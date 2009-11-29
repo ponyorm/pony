@@ -175,7 +175,8 @@ class Set(Collection):
                     if not isinstance(robj, rentity): raise TypeError
             except TypeError: raise TypeError('Item of collection %s.%s must be instance of %s. Got: %r'
                                               % (obj.__class__.__name__, attr.name, rentity.__name__, robj))
-        trans = obj and obj._trans_ or get_trans()
+        if obj is not None: trans = obj._trans_
+        else: trans = get_trans()
         for robj in result:
             if robj._trans_ is not trans: raise TransactionError('An attempt to mix objects belongs to different transactions')
         return result
