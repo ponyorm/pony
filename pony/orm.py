@@ -537,15 +537,6 @@ class Entity(object):
         new_attrs.sort(key=attrgetter('id'))
         entity._new_attrs_ = new_attrs
 
-        entity._attrs_ = base_attrs + new_attrs
-        entity._adict_ = dict((attr.name, attr) for attr in entity._attrs_)
-        entity._required_attrs_ = [ attr for attr in entity._attrs_ if attr.is_required ]
-        entity._bits_ = {}
-        next_offset = count().next
-        for attr in entity._attrs_:
-            if attr.is_collection or attr.pk_offset is not None: continue
-            entity._bits_[attr] = 1 << next_offset()
-
         keys = entity.__dict__.get('_keys_', {})
         primary_keys = set(key for key, is_pk in keys.items() if is_pk)
         if direct_bases:
@@ -576,6 +567,15 @@ class Entity(object):
         entity._keys_ = [ key for key, is_pk in keys.items() if not is_pk ]
         entity._simple_keys_ = [ key[0] for key in entity._keys_ if len(key) == 1 ]
         entity._composite_keys_ = [ key for key in entity._keys_ if len(key) > 1 ]
+
+        entity._attrs_ = base_attrs + new_attrs
+        entity._adict_ = dict((attr.name, attr) for attr in entity._attrs_)
+        entity._required_attrs_ = [ attr for attr in entity._attrs_ if attr.is_required ]
+        entity._bits_ = {}
+        next_offset = count().next
+        for attr in entity._attrs_:
+            if attr.is_collection or attr.pk_offset is not None: continue
+            entity._bits_[attr] = 1 << next_offset()
 
         next_offset = count(len(DATA_HEADER)).next
         entity._old_offsets_ = old_offsets = {}
