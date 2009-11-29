@@ -170,8 +170,8 @@ class Set(Collection):
         else:
             rentity = reverse.entity
             try:
-                robjects = set(val)  # may raise TypeError if val is not iterable
-                for robj in robjects:
+                result = set(val)  # may raise TypeError if val is not iterable
+                for robj in result:
                     if not isinstance(robj, rentity): raise TypeError
             except TypeError: raise TypeError('Item of collection %s.%s must be instance of %s. Got: %r'
                                               % (obj.__class__.__name__, attr.name, rentity.__name__, robj))
