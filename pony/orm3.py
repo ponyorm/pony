@@ -100,13 +100,15 @@ class Attribute(object):
         except IndexError:
             obj._trans_.revert()
             raise
-        try: attr.set(obj, val, fromdb)
+        try:
+            attr.set(obj, val, fromdb)
+            obj._trans_.save()
         except: assert False
     def __delete__(attr, obj):
         raise NotImplementedError
-    def prepare(attr, obj, val, fromdb=False):
+    def prepare(attr, obj, val, fromdb=False, is_reverse_call=False):
         raise NotImplementedError
-    def set(attr, obj, val, fromdb=False):
+    def set(attr, obj, val, fromdb=False, is_reverse_call=False):
         if obj._status_ != 'created': obj._status_ = 'updated'
         raise NotImplementedError
             
@@ -191,7 +193,6 @@ class Set(Collection):
     def prepare(attr, obj, val, fromdb=False):
         raise NotImplementedError
     def set(attr, obj, val, fromdb=False):
-        if obj._status_ != 'created': obj._status_ = 'updated'
         raise NotImplementedError
 
 ##class List(Collection): pass
