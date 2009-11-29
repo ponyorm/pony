@@ -164,6 +164,9 @@ class Set(Collection):
     def check(attr, val, obj=None, entity=None):
         assert val is not UNKNOWN
         if val is None or val is DEFAULT: return set()
+        if entity is not None: pass
+        elif obj is not None: entity = obj.__class__
+        else: entity = attr.entity
         reverse = attr.reverse
         if not reverse: raise NotImplementedError
         if isinstance(val, reverse.entity): result = set((val,))
@@ -174,7 +177,7 @@ class Set(Collection):
                 for robj in result:
                     if not isinstance(robj, rentity): raise TypeError
             except TypeError: raise TypeError('Item of collection %s.%s must be instance of %s. Got: %r'
-                                              % (obj.__class__.__name__, attr.name, rentity.__name__, robj))
+                                              % (entity.__name__, attr.name, rentity.__name__, robj))
         if obj is not None: trans = obj._trans_
         else: trans = get_trans()
         for robj in result:
