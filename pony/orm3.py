@@ -81,7 +81,8 @@ class Attribute(object):
         if not reverse or not val: return val
         if not isinstance(val, reverse.entity): raise ConstraintError(
             'Value of attribute %s.%s must be an instance of %s. Got: %s' % (entity.__name__, attr.name, reverse.entity.__name__, val))
-        trans = obj and obj._trans_ or get_trans()
+        if obj is not None: trans = obj._trans_
+        else: trans = get_trans()
         if trans is not val._trans_: raise TransactionError('An attempt to mix objects belongs to different transactions')
         return val
     def __get__(attr, obj, cls=None):
