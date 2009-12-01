@@ -1,8 +1,7 @@
-
 pony.options
 
 BASE_STYLESHEETS_PLACEHOLDER = '<!--PONY-BASE-STYLESHEETS-->'
 COMPONENT_STYLESHEETS_PLACEHOLDER = '<!--PONY-COMPONENTS-STYLESHEETS-->'
 SCRIPTS_PLACEHOLDER = '<!--PONY-SCRIPTS-->'
 
-если вписать эти плейсхолдеры, то пони заменит плейсхолдеры кодом
+РµСЃР»Рё РІРїРёСЃР°С‚СЊ СЌС‚Рё РїР»РµР№СЃС…РѕР»РґРµСЂС‹, С‚Рѕ РїРѕРЅРё Р·Р°РјРµРЅРёС‚ РїР»РµР№СЃС…РѕР»РґРµСЂС‹ РєРѕРґРѕРј

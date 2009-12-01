@@ -1,8 +1,8 @@
 
 $for(var in expr) {
     text
-    $cycle{text1}{text2}{text3}                     - по очереди
-    $cycle(i,j){text}                               i,j например (1,5) на первом витке из 5ти
+    $cycle{text1}{text2}{text3}                     - РїРѕ РѕС‡РµСЂРµРґРё
+    $cycle(i,j){text}                               i,j РЅР°РїСЂРёРјРµСЂ (1,5) РЅР° РїРµСЂРІРѕРј РІРёС‚РєРµ РёР· 5С‚Рё
     $cycle("odd"){text}   $//  $cycle(1,2){text}
     $cycle("even"){text}  $//  $cycle(2,2){text}
     $cycle("first"){text}
