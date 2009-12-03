@@ -43,3 +43,46 @@ Must be correct time (hh:mm or hh:mm:ss)
 
 Must be correct date & time
   ru    Нужно ввести дату со временем
+
+# debugger
+Debugging...
+  ru    Отладка...
+  
+step
+  ru    шаг
+
+next
+  ru    дальше
+
+return
+  ru    возврат
+
+cont
+  ru    продолжить
+
+Module
+  ru    Модуль
+
+line
+  ru    строка
+
+function
+  ru    функция
+
+Expression
+  ru    Выражение
+
+eval
+  ru    вычислить
+  
+Show system frames
+  ru    Показать системные фреймы
+
+Hide system frames
+  ru    Скрыть системные фреймы
+  
+Oops...
+  ru    Ой...
+  
+eval
+  ru    Вычислить

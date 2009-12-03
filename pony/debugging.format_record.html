@@ -3,8 +3,8 @@ $if(record.moduletype == 'template') {
   Template $if(record.fname){ <span class="template-name highlight" title="$(record.filename or '')">$record.fname</span> }
 }
 $else {
-  Module <span class="module-name highlight" title="$(record.filename or '')">$record.module</span>,
-  line&nbsp;$record.lineno$if(record.func){, function&nbsp;<span class="highlight">$record.func</span>}
+  ${Module} <span class="module-name highlight" title="$(record.filename or '')">$record.module</span>,
+  ${line}&nbsp;$record.lineno$if(record.func){, ${function}&nbsp;<span class="highlight">$record.func</span>}
 }
 </dt>
 <dd class="$record.moduletype">
