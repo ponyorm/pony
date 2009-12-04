@@ -365,13 +365,14 @@ else:
                 elif command == 'next': self.set_next(frame)
                 elif command == 'return': self.set_return(frame)
                 elif command == 'cont': self.set_continue()
-                else:
+                elif command == 'eval':
                     try:
                         result = repr1(eval(expr, frame.f_globals, frame.f_locals))
                     except: result = traceback.format_exc()
                     result_holder.append(('200 OK', headers, html().encode('utf8')))
                     lock.release()
                     continue
+                else: self.set_step()
                 break
         def user_line(self, frame):
            self.process_queue(frame)
