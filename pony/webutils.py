@@ -137,3 +137,8 @@ class tabs(object):
             result.extend([htmltag('div', {'class': 'pony-tab clearfix'}, **attrs), markup, Html('</div>\n')])
         result.append(Html('</div>'))
         return Html('').join(result)
+
+@component(css='/pony/static/css/button.css')
+def button(link, markup, **attrs):
+    result = [htmltag('a', {'class' : 'button', 'href' : link}, **attrs), Html('<span>%s</span></a>') % markup]
+    return Html('').join(result)

@@ -9,7 +9,7 @@ from pony.templating import printtext, printhtml, Html, cycle, template, html
 from pony.autoreload import use_autoreload, USE_AUTORELOAD
 from pony.auth import get_user, set_user, get_session
 from pony.web import main, application, http, url
-from pony.webutils import webpage, component, link, rounded, tabs, img
+from pony.webutils import webpage, component, link, rounded, tabs, img, button
 from pony.forms import (Form, Hidden, Submit, Reset,
                         File, Password, StaticText, Text, DatePicker, TextArea, Checkbox, 
                         Select, AutoSelect, RadioGroup, MultiSelect, CheckboxGroup,

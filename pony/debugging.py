@@ -337,6 +337,7 @@ else:
             self.__state = 0
             self.__top_user_frame = None
         def process_queue(self, frame):
+            from pony.webutils import button  
             result = None
             if self.__state == 0:
                 self.__state = 1
@@ -365,14 +366,13 @@ else:
                 elif command == 'next': self.set_next(frame)
                 elif command == 'return': self.set_return(frame)
                 elif command == 'cont': self.set_continue()
-                elif command == 'eval':
+                elif expr:
                     try:
                         result = repr1(eval(expr, frame.f_globals, frame.f_locals))
                     except: result = traceback.format_exc()
                     result_holder.append(('200 OK', headers, html().encode('utf8')))
                     lock.release()
                     continue
-                else: self.set_step()
                 break
         def user_line(self, frame):
            self.process_queue(frame)

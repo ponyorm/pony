@@ -3,18 +3,26 @@
 <link rel="stylesheet" href="/pony/static/blueprint/print.css" type="text/css" media="print">
 <!--[if IE]><link rel="stylesheet" href="/pony/static/blueprint/ie.css.css" type="text/css" media="screen, projection"><![endif]-->
 <link rel="stylesheet" href="/pony/static/css/default.css" type="text/css" media="screen, projection">
+<link rel="stylesheet" href="/pony/static/css/source.css" type="text/css" media="screen, projection">
+<link rel="stylesheet" href="/pony/static/css/button.css" type="text/css" media="screen, projection">
 </head>
 <body>
 <div class="container">
 
-  <link rel="stylesheet" href="/pony/static/css/source.css" type="text/css" media="screen, projection">
+
   <h1>${Debugging...}</h1>
-  <ul id="menu">
+<!--  <ul id="menu">
     <li><a href="$(url)debug=step">[ ${step} ]</a></li>
     <li><a href="$(url)debug=next">[ ${next} ]</a></li>
     <li><a href="$(url)debug=return">[ ${return} ]</a></li>
     <li><a href="$(url)debug=cont">[ ${cont} ]</a></li>
   </ul>
+-->
+  $button{ $(url)debug=step }{ ${step} }
+  $button{ $(url)debug=next }{ ${next} }
+  $button{ $(url)debug=return }{ ${return} }
+  $button{ $(url)debug=cont }{ ${cont} }
+  <br>
   <br>
   <dl class="frames">
     $format_record(record)
@@ -22,7 +30,7 @@
   <form action="." method="GET">
     <label for="expr">${Expression}</label><br>
     <textarea name="expr" rows="5" cols="50"></textarea><br>
-    <input name="debug" type="submit" value="eval">
+    <input name="debug" type="submit" value="${eval}">
   </form>
   $if(result is not None) {
   <pre><strong>$expr</strong></pre>
