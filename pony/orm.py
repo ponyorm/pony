@@ -485,7 +485,13 @@ class EntityMeta(type):
     def __setattr__(entity, name, val):
         entity._cls_setattr_(name, val)
     def __iter__(entity):
-        return iter(())
+        return EntityIter(entity)
+
+class EntityIter(object):
+    def __init__(self, entity):
+        self.entity = entity
+    def next(self):
+        raise StopIteration
 
 new_instance_counter = count(1).next
 
