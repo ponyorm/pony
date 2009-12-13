@@ -81,23 +81,25 @@ class SQLBuilder(object):
         try:
             return method(*ast[1:])
         except TypeError:
-            traceback = sys.exc_info()[2]
-            if traceback.tb_next is None:
-                del traceback
-                raise AstError('Invalid data for method %s: %r'
-                               % (symbol, ast[1:]))
-            else:
-                del traceback
-                raise
+            raise
+##            traceback = sys.exc_info()[2]
+##            if traceback.tb_next is None:
+##                del traceback
+##                raise AstError('Invalid data for method %s: %r'
+##                               % (symbol, ast[1:]))
+##            else:
+##                del traceback
+##                raise
     def quote_name(self, name):
         return quote_name(name, self.quote_char)
     def INSERT(self, table_name, columns, values):
         return [ 'INSERT INTO ', self.quote_name(table_name), ' (',
                  join(', ', [self.quote_name(column) for column in columns ]),
                  ') VALUES (', join(', ', [self(value) for value in values]), ')' ]
-    def UPDATE(self, table_name, pairs):
-        return [ 'UPDATE ', self.quote_name(table_name), ' SET ',
-                 join(', ', [ (self.quote_name(name), '=', self(param)) for name, param in pairs]) ]
+    def UPDATE(self, table_name, pairs, where=None):
+        return [ 'UPDATE ', self.quote_name(table_name), '\nSET ',
+                 join(', ', [ (self.quote_name(name), '=', self(param)) for name, param in pairs]),
+                 where and [ '\n', self(where) ] or [] ]
     def SELECT(self, *sections):
         return [ self(s) for s in sections ]
     def ALL(self, *expr_list):
@@ -179,9 +181,9 @@ class SQLBuilder(object):
     CONCAT = binary_op(' || ')
 
     def IS_NULL(self, expr):
-        return expr, ' IS NULL'
+        return self(expr), ' IS NULL'
     def IS_NOT_NULL(self, expr):
-        return expr, ' IS NOT NULL'
+        return self(expr), ' IS NOT NULL'
     def LIKE(self, expr, template, escape=None):
         result = self(expr), ' LIKE ', self(template)
         if escape: result = result + (' ESCAPE ', self(escape))
@@ -194,16 +196,16 @@ class SQLBuilder(object):
         return self(expr1), ' BETWEEN ', self(expr2), ' AND ', self(expr3)
     def NOT_BETWEEN(self, expr1, expr2, expr3):
         return self(expr1), ' NOT BETWEEN ', self(expr2), ' AND ', self(expr3)
-    def IN(self, expr1, *x):
+    def IN(self, expr1, x):
         if not x: raise AstError('Empty IN clause')
         if len(x) == 1 and x[0] == SELECT:
-            return self(expr1), ' IN (', self.SELECT(*x), ')'
+            return self(expr1), ' IN (', self.SELECT(x), ')'
         expr_list = [ self(expr) for expr in x ]
         return self(expr1), ' IN (', join(', ', expr_list), ')'
-    def NOT_IN(self, expr1, *x):
+    def NOT_IN(self, expr1, x):
         if not x: raise AstError('Empty IN clause')
         if len(x) == 1 and x[0] == SELECT:
-            return self(expr1), ' NOT IN (', self.SELECT(*x), ')'
+            return self(expr1), ' NOT IN (', self.SELECT(x), ')'
         expr_list = [ self(expr) for expr in x ]
         return self(expr1), ' NOT IN (', join(', ', expr_list), ')'
     def EXISTS(self, *sections):
