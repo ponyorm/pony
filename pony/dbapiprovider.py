@@ -30,6 +30,7 @@ class Value(object):
         self.value = value
     def __unicode__(self):
         value = self.value
+        if value is None: return 'null'
         if isinstance(value, (int, long)): return str(value)
         if isinstance(value, basestring): return self.quote_str(value)
         assert False

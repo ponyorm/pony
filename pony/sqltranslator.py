@@ -17,6 +17,7 @@ primitive_types = set([ int, unicode ])
 type_normalization_dict = { long : int, str : unicode, StrHtml : unicode, Html : unicode }
 
 def normalize_type(t):
+    if t is NoneType: return t
     t = type_normalization_dict.get(t, t)
     if t not in primitive_types and not isinstance(t, orm.EntityMeta): raise TypeError, t
     return t
@@ -27,7 +28,8 @@ def is_comparable_types(op, type1, type2):
     if op in ('is', 'is not'): return type2 is NoneType
     if op in ('<', '<=', '>', '>='): return type1 is type2 and type1 in primitive_types
     if op in ('==', '<>', '!='):
-        if type1 in primitive_types: return type1 is type2
+        if type1 is NoneType or type2 is NoneType: return True
+        elif type1 in primitive_types: return type1 is type2
         elif isinstance(type1, orm.EntityMeta): return type1._root_ is type2._root_
         else: return False
     if op in ['in', 'not in']:
@@ -123,6 +125,14 @@ class Annotator(object):
     def process_Tuple(self, node):
         self.process_List(node)
         node.type = tuple(node.type)
+    def process_And(self, node):
+        for n in node.nodes:
+            if n.type is not bool: raise TypeError
+        node.type = bool
+    process_Or = process_And
+    def process_Not(self, node):
+        if node.expr.type is not bool: raise TypeError
+        node.type = bool
 
 def build_query(gen):
     tree = annotate(gen)
@@ -170,68 +180,91 @@ class QueryBuilder(object):
         for qual in self.tree.quals:
             for if_ in qual.ifs:
                 test = if_.test                
-                assert isinstance(test, ast.Compare)
-                assert len(test.ops) == 1
-                a = test.expr
-                op, b = test.ops[0]
-                if op == 'is':
-                    assert isinstance(b, ast.Const) and b.value is None
-                    criteria.append([ IS_NULL, self.build_expr(a) ])
-                elif op == 'is not':
-                    assert isinstance(b, ast.Const) and b.value is None
-                    criteria.append([ IS_NOT_NULL, self.build_expr(a) ])
-                elif op in ('in', 'not in'):
-                    expr_a = self.build_expr(a)
-                    if isinstance(expr_a, Composite):
-                        if not isinstance(b, (ast.List, ast.Tuple)): raise TypeError
-                        orlist = [ OR ]
-                        for node in b.nodes:                            
-                            if not isinstance(node, ast.Name): raise TypeError
-                            composite = self.expr_Name(node)
-                            assert isinstance(composite, Composite)
-                            andlist = [ AND ]
-                            for a_item, b_item in zip(expr_a.items, composite.items):
-                                andlist.append([ EQ, a_item, b_item ])
-                            orlist.append(andlist)
-                        criteria.append(orlist)
-                    else:
-                        if isinstance(b, ast.Const):
-                            if not isinstance(b.value, tuple): raise TypeError
-                            items = [ [ VALUE, item ] for item in b.value ] 
-                        elif isinstance(b, (ast.List, ast.Tuple)):
-                            items = []
-                            for node in b.nodes:
-                                if not isinstance(node, (ast.Const, ast.Name)): raise TypeError
-                                items.append(self.build_expr(node))
-                        else: raise TypeError
-                        criteria.append([ op == 'in' and IN or NOT_IN, self.build_expr(a), items ])
-                elif op in cmpops:
-                    expr_a = self.build_expr(a)
-                    expr_b = self.build_expr(b)
-                    if isinstance(expr_a, Composite):
-                        if not isinstance(expr_b, Composite): raise TypeError
-                        if len(expr_a.items) != len(expr_b.items): raise TypeError
-                        if op == '==':
-                            andlist = [ AND ]
-                            for a_item, b_item in zip(expr_a.items, expr_b.items):
-                                andlist.append([ EQ, a_item, b_item ])
-                            criteria.append(andlist)
-                        elif op == '!=':
-                            orlist = [ OR ]
-                            for a_item, b_item in zip(expr_a.items, expr_b.items):
-                                orlist.append([ NE, a_item, b_item ])
-                            criteria.append(orlist)
-                        else: raise TypeError
-                    else:
-                        if isinstance(expr_b, Composite): raise TypeError
-                        criteria.append([ cmpops[op], expr_a, expr_b ])
-                else: assert False
+                if test.type is not bool: raise TypeError
+                criteria.append(self.build_expr(test))                
         if not criteria: self.where = []
         elif len(criteria) == 1: self.where = [ WHERE, criteria[0] ]
         else: self.where = [ WHERE, AND, criteria ]
     def build_expr(self, expr):
         method = getattr(self, 'expr_' + expr.__class__.__name__)
         return method(expr)
+    def expr_And(self, node):
+        return [ AND ] + [ self.build_expr(n) for n in node.nodes ]
+    def expr_Or(self, node):
+        return [ OR ] + [ self.build_expr(n) for n in node.nodes ]
+    def expr_Not(self, node):
+        return [ NOT, self.build_expr(node.expr) ]
+    def expr_Compare(self, node):
+        criteria = []
+        a = node.expr
+        for op, b in node.ops:
+            if op in ('is', 'is not'):
+                sqlop = op == 'is' and IS_NULL or IS_NOT_NULL
+                assert isinstance(b, ast.Const) and b.value is None
+                expr_a = self.build_expr(a)
+                if not isinstance(expr_a, Composite): criteria.append([ sqlop, expr_a ])
+                else:
+                    for item in expr_a.items: criteria.append([ sqlop, item ])
+            elif op in ('in', 'not in'):
+                expr_a = self.build_expr(a)
+                if isinstance(expr_a, Composite):
+                    if not isinstance(b, (ast.List, ast.Tuple)): raise TypeError
+                    orlist = [ OR ]
+                    for node in b.nodes:                            
+                        if not isinstance(node, ast.Name): raise TypeError
+                        composite = self.expr_Name(node)
+                        assert isinstance(composite, Composite)
+                        andlist = [ AND ]
+                        for a_item, b_item in zip(expr_a.items, composite.items):
+                            andlist.append([ EQ, a_item, b_item ])
+                        orlist.append(andlist)
+                    criteria.append(orlist)
+                else:
+                    if isinstance(b, ast.Const):
+                        if not isinstance(b.value, tuple): raise TypeError
+                        items = [ [ VALUE, item ] for item in b.value ] 
+                    elif isinstance(b, (ast.List, ast.Tuple)):
+                        items = []
+                        for node in b.nodes:
+                            if not isinstance(node, (ast.Const, ast.Name)): raise TypeError
+                            items.append(self.build_expr(node))
+                    else: raise TypeError
+                    criteria.append([ op == 'in' and IN or NOT_IN, self.build_expr(a), items ])
+            elif op in cmpops:
+                expr_a = self.build_expr(a)
+                expr_b = self.build_expr(b)
+                if not isinstance(expr_a, Composite) and not isinstance(expr_b, Composite):
+                    if b.type is NoneType:
+                        if op == '==': criteria.append([ IS_NULL, expr_a ])
+                        elif op in ('!=', '<>'): criteria.append([ IS_NOT_NULL, expr_a ])
+                        else: raise TypeError
+                    elif a.type is NoneType:
+                        if op == '==': criteria.append([ IS_NULL, expr_b ])
+                        elif op in ('!=', '<>'): criteria.append([ IS_NOT_NULL, expr_b ])
+                        else: raise TypeError
+                    else: criteria.append([ cmpops[op], expr_a, expr_b ])
+                elif a.type is NoneType or b.type is NoneType:
+                    items = b.type is NoneType and expr_a.items or expr_b.items
+                    if op == '==': sqlop = IS_NULL
+                    elif op in ('!=', '<>'): sqlop = IS_NOT_NULL
+                    else: TypeError
+                    for item in items: criteria.append([ sqlop, item ])
+                else:
+                    if not isinstance(expr_b, Composite): raise TypeError
+                    assert len(expr_a.items) != len(expr_b.items)
+                    if op == '==':
+                        for a_item, b_item in zip(expr_a.items, expr_b.items):
+                            criteria.append([ EQ, a_item, b_item ])
+                    elif op in ('!=', '<>'):
+                        orlist = [ OR ]
+                        for a_item, b_item in zip(expr_a.items, expr_b.items):
+                            orlist.append([ NE, a_item, b_item ])
+                        criteria.append(orlist)
+                    else: raise TypeError
+            else: assert False
+            a = b
+        if len(criteria) == 1: return criteria[0]
+        return [ AND ] + criteria
     def expr_Const(self, node):
         return [ VALUE, node.value ]
     def expr_Getattr(self, node):
@@ -243,7 +276,9 @@ class QueryBuilder(object):
     def expr_Name(self, node):
         type = node.type
         name = node.name
-        if not isinstance(type, orm.EntityMeta):
+        if type is NoneType:
+            return [ VALUE, None ]
+        elif not isinstance(type, orm.EntityMeta):
             val = self.vars[name]
             self.params[name] = val
             return [ PARAM, node.name ]
@@ -259,9 +294,10 @@ class QueryBuilder(object):
             else: assert False
         elif len(key) > 1:
             if name in self.tree.itertypes:
-                return Composite.from_type(type)
+                return Composite.from_entity(type, name)
             elif name in self.vars:
-                return Composite.from_obj(obj, name)
+                obj = self.vars[name]
+                return Composite.from_obj(obj, name, self.params)
             else: assert False
         else: assert False
 
@@ -269,29 +305,21 @@ class Composite(object):
     def __init__(self, items):
         self.items = items
     @staticmethod
-    def from_type(type):
-        assert len(obj._pk_attrs_) > 1
-        table_name = type.__name__
+    def from_entity(entity, alias):
+        assert len(entity._pk_attrs_) > 1
         items = []
-        for attr in type._pk_attrs_:
-            if not isinstance(attr.py_type, orm.EntityMeta):
-                items.append([ COLUMN, table_name, attr.name ])
-            else:
-                for _, _, subattr_name in Composite.from_type(attr.py_type).items:
-                    items.append([ COLUMN, table_name, attr.name + '_' + subattr_name ])
+        for attr, column in entity._expanded_pkattrs_:
+            items.append([ COLUMN, alias, column ])
         return Composite(items)
     @staticmethod
     def from_obj(obj, varname, params):
         assert len(obj._pk_attrs_) > 1
         items = []
-        for attr, val in zip(obj._pk_attrs_, obj._pkval_):
-            pname = varname + '_' + attr.name
-            if not isinstance(attr, orm.Entity):
-                params[pname] = val
-                items.append([ PARAM, pname ])
-            else:
-                raise NotImplementedError
-        else: assert False
+        for (attr, name), val in zip(obj._expanded_pkattrs_, obj._expand_pkval_()):
+            pname = varname + '_' + name
+            params[pname] = val
+            items.append([ PARAM, pname ])
+        return Composite(items)
 
 def select(gen):
     sql_ast, params = build_query(gen)    

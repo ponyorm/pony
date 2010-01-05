@@ -567,6 +567,7 @@ class Entity(object):
         else: pk_attrs = primary_keys.pop()
         for i, attr in enumerate(pk_attrs): attr.pk_offset = i
         entity._pk_attrs_ = pk_attrs
+        entity._expanded_pkattrs_ = entity._expand_pkattrs_()
         entity._pk_names_ = tuple(attr.name for attr in pk_attrs)
         entity._pk_is_composite_ = len(pk_attrs) > 1
         entity._pk_ = len(pk_attrs) > 1 and pk_attrs or pk_attrs[0]
@@ -670,8 +671,23 @@ class Entity(object):
         if info is not None: return info
         data_source.generate_schema(entity._diagram_)
         return data_source.entities[entity]
+    @classmethod
+    def _expand_pkattrs_(entity):
+        result = []
+        for attr in entity._pk_attrs_:
+            if not isinstance(attr.py_type, EntityMeta): result.append((attr, attr.name))
+            else:
+                for attr2, name2 in attr.py_type._expand_pkattrs_():
+                    items((attr2, attr.name + '_' + name2))
+        return result
     def __init__(obj, *args, **keyargs):
         raise TypeError('You cannot create entity instances directly. Use Entity.create(...) or Entity.find(...) instead')
+    def _expand_pkval_(self):
+        result = []
+        for val in self._pkval_:
+            if not isinstance(val, Entity): result.append(val)
+            else: result.extend(val._expand_pkval_())
+        return result
     def __repr__(obj):
         pkval = obj._pkval_
         if pkval is None: key_str = 'new:%d' % obj._newid_
