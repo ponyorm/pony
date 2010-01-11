@@ -1,0 +1,19 @@
+http.session.x работает аналогично прежнему http.session.get("x"), то есть если параметр x в сессии отсутствовал, то результатом будет None
+
+http.session["x"] работает как и раньше (если x в сессии отсутсвует, то возникает KeyError)
+
+http.session.foo = bar работает почти как http.session["foo"] = bar, за исключением того, что http.session.foo = None удаляет foo из сессии
+
+http.session("foo", default) работает так, как раньше http.session.get("foo", default)
+
+в http.session единственным именованным методом остался http.session.clear()
+
+Чтобы сделать итерацию по содержимому сессии, нужно сделать так:
+for key in http.session:
+    print key, http.session["key"]
+
+или так:
+for key, value in http.session.__dict__.iteritems():
+    print key, value
+
+Вообще, получить доступ к dictionary, в котором реально хранятся данные, можно с помощью http.session.__dict__
