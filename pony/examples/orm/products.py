@@ -90,6 +90,7 @@ select(c for c in Customer
                                                          if o.customer == c))
 
 select(c for c in Customer if u'Московский' in c.orders.shop.district.name)
+select(c for c in Customer if c.orders.shop.district.name.contains(u'Московский'))
 
 select(s for s in Shop if s.district.name == u'Московский').orders.customer
 
