@@ -4,15 +4,15 @@ from decimal import Decimal
 from pony.orm import *
 
 class District(Entity):
-    name = Required(unicode)
+    name = Unique(unicode)
     shops = Set('Shop')
 
 class Shop(Entity):
-    name = Required(unicode)
-    address = Required(unicode)
+    name = Unique(unicode)
+    address = Unique(unicode)
     district = Required(District)
     employees = Set('Employee')
-    products = Dict(Product, 'Quantity')
+    products = Dict('Product', 'Quantity')
     orders = Set('Order')
 
 class Person(Entity):
