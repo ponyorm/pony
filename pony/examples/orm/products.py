@@ -98,16 +98,54 @@ select(s for s in Shop if s.district.name == u'Московский').orders.customer
 
 select(p for p in Product if len(p.shops) == 1)  # Не сработает если в Quantities допускается quantity==0
 
-select(p for p in Product if 1 == len(select(q.shop for q in Quantities
-                                                    if q.product == p and q.quantity > 0)))
+select(p for p in Product if len(q.shop for q in Quantities
+                                        if q.product == p and q.quantity > 0) == 1)
 
-select(p for p in Product if 1 == len(select(q for q in p.shops.values()
-                                               if q.quantity > 0)))
+select(p for p in Product if len(q for q in p.shops.values()
+                                   if q.quantity > 0) == 1)
+
+select(q.product for q in Quantities if HAVING(COUNT(q.shop) == 1))
 
 # 4. Сотрудники, работающие в Московском районе
+
+select(e for e in Employee if e.shop.district.name == u'Московский')
+
 # 5. Товары, которых вообще нет на складе
+
+select(p for p in Product
+         if p not in select(q.product for q in Quantities
+                                      if q.quantity > 0))
+
+select(p for p in Product
+         if not exists(q for q in Quantities
+                         if q.product == p and q.quantity > 0))
+
 # 6. Товары, которые есть во всех магазинах
+
+select(p for p in Product
+         if len(s for s in Shop) == len(q.shop for q in p.shops.values()
+                                               if q.quantity > 0))
+
 # 7. Заказы, состоящие из нескольких товаров
+
+select(o for o in Order if len(o.items) > 1)
+
 # 8. Максимальная цена
+
+select(max(p.price for p in Product))
+
 # 9. Самый дорогой товар
+
+select(p for p in Product if p.price == max(p.price for p in Product))
+
+select(p for p in Product).orderby(lambda p: -p.price)[0]
+
 # 10. Товар, принесший максимальную прибыль
+
+select(p for p in Product
+       if sum(i.price * i.quantity for i in p.orders.values()))
+          == max(sum(i.price * i.quantity for p2 in Product
+                                          for i in p2.orders.values()))
+
+select(p, sum(i.price * i.quantity for i in OrderItem if i.product == p) for p in Product
+       ).orderby(lambda p, profit: -profit)[0]
