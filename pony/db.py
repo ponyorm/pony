@@ -227,11 +227,11 @@ class Database(object):
         key = table_name, tuple(name for name, value in items)
         x = self.sql_insert_cache.get(key)
         if x is None:
-            ast = [ INSERT, table_name, [ name for name, value in items ], [ [PARAM, i] for i in range(len(items)) ] ]
+            ast = [ INSERT, table_name, [ name for name, value in items ], [ [PARAM, 'p%d' % i] for i in range(len(items)) ] ]
             adapted_sql, params = provider.ast2sql(con, ast)
         else: adapted_sql, params = x
         if not isinstance(params, dict):
-            for i, param in enumerate(params): assert param == i
+            for i, param in enumerate(params): assert param == 'p%d' % i
             values = tuple(value for name, value in items)
         else: values = dict((key, items[i]) for key, i in params.items())
         cursor = con.cursor()
