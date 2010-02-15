@@ -31,7 +31,7 @@ class Session(object):
     def __getattr__(self, attr):
         return self.__dict__.get(attr)
     def __setattr__(self, attr, value):
-        if value is None: self.__dict__.pop(value, None)
+        if value is None: self.__dict__.pop(attr, None)
         else: self.__dict__[attr] = value
     def __contains__(self, key):
         return key in self.__dict__
