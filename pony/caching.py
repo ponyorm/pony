@@ -66,7 +66,9 @@ def normalize(key, value="", expire=None):
     if not isinstance(value, str): raise ValueError('Value must be string. Got: %s' % value.__class__.__name__)
     if len(key) > 1024 * 1024: raise ValueError('Key size too big: %d' % len(key))
     if len(value) > 1024 * 1024: raise ValueError('Value size too big: %d' % len(value))
-    if expire is not None and expire <= MONTH: expire = time() + expire
+    if expire is not None:
+        if expire <= MONTH: expire = time() + expire
+        elif expire <= MONTH * 100: raise ValueError('Invalid expire value: %d' % expire)
     return key, value, expire
 
 class Memcache(object):
