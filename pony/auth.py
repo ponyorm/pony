@@ -167,6 +167,9 @@ def remove_longlife_session():
     except: return
     _remove_longlife_session(id, rnd)
 
+def base64size(original_size):
+    return (original_size + 2 - ((original_size + 2) % 3)) * 4 // 3
+
 def save(cookies):
     now = int(time()) // 60
     ctime_str = '%x' % local.ctime
@@ -182,7 +185,8 @@ def save(cookies):
         hashobject = get_hashobject(now)
         hashobject.update(ctime_str)
 
-        total_size = len(ctime_str)+len(mtime_str)+(1+int(len(data)*1.37)+3)+hashobject.digest_size+len(longlife_key)+4
+        total_size = len(ctime_str) + len(mtime_str) + base64size(1+len(data))
+        total_size += base64size(hashobject.digest_size) + len(longlife_key) + 4
         if total_size <= options.MAX_COOKIE_SIZE: data = 'C' + data
         else: data = 'S' + storage.putdata(data, local.ctime, now)
 
@@ -192,6 +196,8 @@ def save(cookies):
         data_str = b64encode(data)
         hash_str = b64encode(hashobject.digest())
         cookie_value = ':'.join([ ctime_str, mtime_str, data_str, hash_str, longlife_key ])
+        assert len(cookie_value) <= options.MAX_COOKIE_SIZE
+        if total_size <= options.MAX_COOKIE_SIZE: assert total_size == len(cookie_value)
     else: cookie_value = ''
     if cookie_value != local.cookie_value:
         max_time = (options.MAX_LONGLIFE_SESSION+1)*24*60*60
