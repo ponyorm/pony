@@ -28,11 +28,16 @@ class Session(object):
         return self.__dict__[key]
     def __setitem__(self, key, value):
         self.__dict__[key] = value
+    def __delitem__(self, key):
+        del self.__dict__[key]
     def __getattr__(self, attr):
         return self.__dict__.get(attr)
     def __setattr__(self, attr, value):
         if value is None: self.__dict__.pop(attr, None)
         else: self.__dict__[attr] = value
+    def __delattr__(self, attr):
+        try: del self.__dict__[attr]
+        except KeyError: raise AttributeError, attr
     def __contains__(self, key):
         return key in self.__dict__
     def __iter__(self):
