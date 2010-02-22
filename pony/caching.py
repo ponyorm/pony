@@ -89,12 +89,12 @@ class Memcache(object):
         list = self.list
         self.lock.acquire()
         try:
-            node = list.prev
+            node = list.next
             while node is not list:
                 expire = node.expire
                 if expire is not None and expire <= now: self._delete_node(node)
                 else: append((node.key, node.value))
-                node = node.prev
+                node = node.next
         finally: self.lock.release()
         return result
     def _delete_node(self, node):
@@ -121,9 +121,9 @@ class Memcache(object):
         return node
     def _place_on_top(self, node):
         list = self.list
-        node.next = list
-        node.prev = prev_top = list.prev
-        list.prev = prev_top.next = node
+        old_top = list.next
+        node.prev, node.next = list, old_top
+        list.next = old_top.prev = node
     def _set_node_value(self, node, value, expire):
         prev_value = node.value
         node.value, node.expire = value, expire
@@ -149,7 +149,7 @@ class Memcache(object):
     def _conform_to_limits(self):
         list = self.list
         while self.data_size > self.max_data_size:
-            bottom = list.next
+            bottom = list.prev
             self._delete_node(bottom)
     def _pack_heap(self):
         new_heap = []
