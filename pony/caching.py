@@ -62,6 +62,7 @@ def normalize(key, value="", expire=None):
     if isinstance(key, tuple): hash_value, key = key
     elif not isinstance(key, str): raise ValueError('Key must be tuple or string. Got: %s' % key.__class__.__name__)
     if not isinstance(value, str): raise ValueError('Value must be string. Got: %s' % value.__class__.__name__)
+    if len(key) > 1024 * 1024: raise ValueError('Key size too big: %d' % len(key))
     if len(value) > 1024 * 1024: raise ValueError('Value size too big: %d' % len(value))
     if expire is not None: expire = time() + expire
     return key, value, expire
