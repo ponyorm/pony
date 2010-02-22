@@ -56,7 +56,9 @@ from time import time
 from weakref import ref
 
 class Node(object):
-    __slots__ = 'prev', 'next', 'expire', 'key', 'value', '__weakref__'
+    __slots__ = 'prev', 'next', 'key', 'value', 'expire', '__weakref__'
+
+MONTH = 31*24*60*60
 
 def normalize(key, value="", expire=None):
     if isinstance(key, tuple): hash_value, key = key
@@ -64,7 +66,7 @@ def normalize(key, value="", expire=None):
     if not isinstance(value, str): raise ValueError('Value must be string. Got: %s' % value.__class__.__name__)
     if len(key) > 1024 * 1024: raise ValueError('Key size too big: %d' % len(key))
     if len(value) > 1024 * 1024: raise ValueError('Value size too big: %d' % len(value))
-    if expire is not None: expire = time() + expire
+    if expire is not None and expire <= MONTH: expire = time() + expire
     return key, value, expire
 
 class Memcache(object):
@@ -145,7 +147,7 @@ class Memcache(object):
             if expire > now: break
             heappop(heap)
             node = node_ref()
-            if node is not None and expire == node.expire: self._delete_node(node)
+            if node is not None and node.expire <= now: self._delete_node(node)
     def _conform_to_limits(self):
         list = self.list
         while self.data_size > self.max_data_size:
