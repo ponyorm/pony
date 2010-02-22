@@ -73,12 +73,12 @@ def normalize(key, value="", expire=None):
 
 class Memcache(object):
     def __init__(self, max_data_size=64*1024*1024):
-        self.dict = {}
-        list = self.list = Node()
-        list.prev = list.next = list.expire = list.key = list.value = None
-        list.prev = list.next = list
         self.lock = Lock()
         self.heap = []
+        self.dict = {}
+        self.list = list = Node()
+        list.prev = list.next = list.expire = list.key = list.value = None
+        list.prev = list.next = list
         self.data_size = 0
         self.max_data_size = max_data_size
     def __len__(self):
