@@ -121,6 +121,7 @@ class Memcache(object):
         self.dict[key] = node = Node()
         node.key = key
         node.value = None
+        self.data_size += len(node.key)
         return node
     def _place_on_top(self, node):
         list = self.list
@@ -128,12 +129,9 @@ class Memcache(object):
         node.prev, node.next = list, old_top
         list.next = old_top.prev = node
     def _set_node_value(self, node, value, expire):
-        if node.value is None:
-            self.data_size += len(node.key)
-            self.data_size += len(value)
-        else:
+        if node.value is not None:
             self.data_size -= len(node.value)
-            self.data_size += len(value)
+        self.data_size += len(value)
         node.value, node.expire = value, expire
         if expire is not None: heappush(self.heap, (expire, ref(node)))
         self._delete_expired_nodes()
