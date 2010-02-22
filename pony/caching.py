@@ -126,14 +126,13 @@ class Memcache(object):
         node.prev, node.next = list, old_top
         list.next = old_top.prev = node
     def _set_node_value(self, node, value, expire):
-        prev_value = node.value
-        node.value, node.expire = value, expire
-        if prev_value is None:
+        if node.value is None:
             self.data_size += len(node.key)
             self.data_size += len(value)
         else:
             self.data_size -= len(prev_value)
             self.data_size += len(value)
+        node.value, node.expire = value, expire
         if expire is not None: heappush(self.heap, (expire, ref(node)))
         self._delete_expired_nodes()
         self._conform_to_limits()
