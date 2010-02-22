@@ -132,7 +132,7 @@ class Memcache(object):
             self.data_size += len(node.key)
             self.data_size += len(value)
         else:
-            self.data_size -= len(prev_value)
+            self.data_size -= len(node.value)
             self.data_size += len(value)
         node.value, node.expire = value, expire
         if expire is not None: heappush(self.heap, (expire, ref(node)))
