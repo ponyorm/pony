@@ -104,15 +104,16 @@ class Memcache(object):
         del self.dict[node.key]
         self.data_size -= (len(node.key) + len(node.value))
     def _find_node(self, key):
-        now = time()
         node = self.dict.get(key)
         if node is None: return None
-        expire = node.expire
-        success = expire is None or expire > now
         prev, next = node.prev, node.next
         prev.next = next
         next.prev = prev
-        return node
+        expire = node.expire
+        if expire is None or expire > time(): return node
+        del self.dict[node.key]
+        self.data_size -= (len(node.key) + len(node.value))
+        return None
     def _create_node(self, key):
         self.dict[key] = node = Node()
         node.key = key
