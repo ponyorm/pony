@@ -102,10 +102,11 @@ class Memcache(object):
                 node = node.next
         finally: self.lock.release()
         return result
-    def _delete_node(self, node):
-        prev, next = node.prev, node.next
-        prev.next = next
-        next.prev = prev
+    def _delete_node(self, node, unlink=True):
+        if unlink:
+            prev, next = node.prev, node.next
+            prev.next = next
+            next.prev = prev
         del self.dict[node.key]
         self.data_size -= (len(node.key) + len(node.value))
     def _find_node(self, key):
@@ -116,8 +117,7 @@ class Memcache(object):
         next.prev = prev
         expire = node.expire
         if expire is None or expire > time(): return node
-        del self.dict[node.key]
-        self.data_size -= (len(node.key) + len(node.value))
+        self._delete_node(node, unlink=False)
         return None
     def _create_node(self, key):
         self.dict[key] = node = Node()
