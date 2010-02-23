@@ -80,6 +80,7 @@ class Memcache(object):
         list.prev = list.next = list.expire = list.key = list.value = None
         list.prev = list.next = list
         self.data_size = 0
+        if not isinstance(max_data_size, int): raise TypeError, 'Max data size must be int. Got: %s' % type(max_data_size).__name__
         self.max_data_size = max_data_size
     def __len__(self):
         return len(self.dict)
@@ -98,7 +99,7 @@ class Memcache(object):
             while node is not list:
                 expire = node.expire
                 if expire is not None and expire <= now: self._delete_node(node)
-                else: append((node.key, node.value))
+                elif node.value is not None: append((node.key, node.value))
                 node = node.next
         finally: self.lock.release()
         return result
@@ -108,7 +109,8 @@ class Memcache(object):
             prev.next = next
             next.prev = prev
         del self.dict[node.key]
-        self.data_size -= (len(node.key) + len(node.value))
+        self.data_size -= len(node.key)
+        if node.value is not None: self.data_size -= len(node.value)
     def _find_node(self, key):
         node = self.dict.get(key)
         if node is None: return None
@@ -131,9 +133,8 @@ class Memcache(object):
         node.prev, node.next = list, old_top
         list.next = old_top.prev = node
     def _set_node_value(self, node, value, expire):
-        if node.value is not None:
-            self.data_size -= len(node.value)
-        self.data_size += len(value)
+        if node.value is not None: self.data_size -= len(node.value)
+        if value is not None: self.data_size += len(value)
         node.value, node.expire = value, expire
         if expire is not None: heappush(self.heap, (expire, ref(node)))
         self._delete_expired_nodes()
@@ -187,7 +188,7 @@ class Memcache(object):
         self.lock.acquire()
         try:
             node = self._find_node(key)
-            if node:
+            if node is not None:
                 self._place_on_top(node)
                 return False
             node = self._create_node(key)
@@ -202,14 +203,19 @@ class Memcache(object):
             node = self._find_node(key)
             if node is None: return False
             self._place_on_top(node)
+            if node.value is None: return False
             self._set_node_value(node, value, expire)
         finally: self.lock.release()
         return True
-    def delete(self, key):
+    def delete(self, key, seconds=None):
         key, _, _ = normalize(key)
         node = self._find_node(key)
-        if node is None: return 1
-        self._delete_node(node)
+        if node is None or node.value is None: return 1
+        if seconds is not None:
+            if seconds <= MONTH: seconds = time() + seconds
+            elif seconds <= MONTH * 100: raise ValueError('Invalid seconds value: %d' % seconds)
+            self._set_node_value(node, value=None, expire=seconds)
+        else: self._delete_node(node)
         return 2
     def incr(self, key, delta=1):
         key, _, _ = normalize(key)
@@ -218,23 +224,15 @@ class Memcache(object):
             node = self._find_node(key)
             if node is None: return None
             self._place_on_top(node)
-            try: value = int(node.value) + delta
+            value = node.value
+            if value is None: return None
+            try: value = int(value) + delta
             except ValueError: return None
             node.value = str(value)
         finally: self.lock.release()
         return value
     def decr(self, key, delta=1):
-        key, _, _ = normalize(key)
-        self.lock.acquire()
-        try:
-            node = self._find_node(key)
-            if node is None: return None
-            self._place_on_top(node)
-            try: value = int(node.value) - delta
-            except ValueError: return None
-            node.value = str(value)
-        finally: self.lock.release()
-        return value
+        self.incr(key, -delta)
     def flush_all(self):
         self.lock.acquire()
         try:
