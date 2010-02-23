@@ -147,7 +147,9 @@ class Memcache(object):
             if expire > now: break
             heappop(heap)
             node = node_ref()
-            if node is not None and node.expire <= now: self._delete_node(node)
+            if node is not None:
+                expire = node.expire
+                if expire is not None and expire <= now: self._delete_node(node)
     def _conform_to_limits(self):
         list = self.list
         while self.data_size > self.max_data_size:
