@@ -57,6 +57,7 @@ class Local(localbase):
         lock = self.lock
         self.__dict__.clear()
         self.__dict__.update(lock=lock, user=None, environ={}, session=Session(), ctime=now, mtime=now,
+                             storage_key=None,
                              cookie_value=None, remember_ip=False, longlife_session=False, longlife_key=None,
                              ip=None, user_agent=None, ticket=False, ticket_payload=None)
     def set_user(self, user, longlife_session=False, remember_ip=False):
@@ -116,12 +117,17 @@ def load(environ, cookies=None):
             if hash != hashobject.digest(): return
             local.remember_ip = True
         else: local.remember_ip = False
-        if data.startswith('C'): data = data[1:]
-        elif data.startswith('S'): data = storage.getdata(data[1:], ctime, mtime)
+        if data.startswith('C'):
+            storage_key = None
+            data = data[1:]
+        elif data.startswith('S'):
+            storage_key = data[1:]
+            data = storage.getdata(storage_key, ctime, mtime)
         else: return
         info = loads(data)
         local.user, session_dict = info
         local.session = Session(session_dict)
+        local.storage_key = storage_key
         local.longlife_key = longlife_key or None
         local.longlife_session = bool(longlife_key)
     except:
@@ -188,16 +194,13 @@ def save(cookies):
         total_size = len(ctime_str) + len(mtime_str) + base64size(1+len(data))
         total_size += base64size(hashobject.digest_size) + len(longlife_key) + 4
         if total_size <= options.MAX_COOKIE_SIZE: data = 'C' + data
-        else: data = 'S' + storage.putdata(data, local.ctime, now)
-
+        else: data = 'S' + storage.putdata(data, local.ctime, now, local.storage_key)
         hashobject.update(data)
         hashobject.update(local.user_agent or '')
         if local.remember_ip: hashobject.update(local.ip or '')
         data_str = b64encode(data)
         hash_str = b64encode(hashobject.digest())
         cookie_value = ':'.join([ ctime_str, mtime_str, data_str, hash_str, longlife_key ])
-        assert len(cookie_value) <= options.MAX_COOKIE_SIZE
-        if total_size <= options.MAX_COOKIE_SIZE: assert total_size == len(cookie_value)
     else: cookie_value = ''
     if cookie_value != local.cookie_value:
         max_time = (options.MAX_LONGLIFE_SESSION+1)*24*60*60
