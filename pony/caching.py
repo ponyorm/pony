@@ -60,11 +60,16 @@ class Node(object):
 
 MONTH = 31*24*60*60
 
+char_table = "?" * 256
+noncontrol_chars = "".join(chr(i) for i in range(32, 256) if i != 127)
+
 def normalize(key, value="", expire=None):
     if isinstance(key, tuple): hash_value, key = key
     elif not isinstance(key, str): raise ValueError('Key must be tuple or string. Got: %s' % key.__class__.__name__)
-    if not isinstance(value, str): raise ValueError('Value must be string. Got: %s' % value.__class__.__name__)
     if len(key) > 1024 * 1024: raise ValueError('Key size too big: %d' % len(key))
+    if key.translate(char_table, noncontrol_chars): raise ValueError('Key cannot contains control characters')
+
+    if not isinstance(value, str): raise ValueError('Value must be string. Got: %s' % value.__class__.__name__)
     if len(value) > 1024 * 1024: raise ValueError('Value size too big: %d' % len(value))
     if expire is not None:
         if expire <= MONTH: expire = time() + expire
@@ -173,6 +178,7 @@ class Memcache(object):
             self._place_on_top(node)
             return node.value
         finally: self.lock.release()
+    
     def set(self, key, value, expire=None):
         key, value, expire = normalize(key, value, expire)
         self.lock.acquire()
