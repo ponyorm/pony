@@ -73,7 +73,8 @@ def normalize(key, value="", expire=None):
     if len(value) > 1024 * 1024: raise ValueError('Value size too big: %d' % len(value))
     if expire is not None:
         expire = int(expire)
-        if expire < 0: raise ValueError('Expiration must not be negative')
+        if expire == 0: expire = None
+        elif expire < 0: raise ValueError('Expiration must not be negative')
         elif expire <= MONTH: expire = int(time()) + expire
         elif expire <= MONTH * 100: raise ValueError('Invalid expire value: %d' % expire)
     return key, value, expire
@@ -237,16 +238,11 @@ class Memcache(object):
                 result.append(key)
         return result
     def delete(self, key, seconds=None):
-        key, _, _ = normalize(key)
+        key, _, seconds = normalize(key, "", seconds)
         node = self._find_node(key)
         if node is None or node.value is None: return 1
-        if seconds is not None:
-            seconds = int(seconds)
-            if seconds < 0: raise ValueError('Seconds must not be negative')
-            elif seconds <= MONTH: seconds = int(time()) + seconds
-            elif seconds <= MONTH * 100: raise ValueError('Invalid seconds value: %d' % seconds)
-            self._set_node_value(node, value=None, expire=seconds)
-        else: self._delete_node(node)
+        if seconds is None: self._delete_node(node)
+        else: self._set_node_value(node, None, seconds)
         return 2
     def delete_multi(self, keys, seconds=None, key_prefix=''):
         for key in keys:
