@@ -72,7 +72,8 @@ def normalize(key, value="", expire=None):
     if not isinstance(value, str): raise ValueError('Value must be string. Got: %s' % value.__class__.__name__)
     if len(value) > 1024 * 1024: raise ValueError('Value size too big: %d' % len(value))
     if expire is not None:
-        if expire <= MONTH: expire = time() + expire
+        expire = int(expire)
+        if expire <= MONTH: expire = int(time()) + expire
         elif expire <= MONTH * 100: raise ValueError('Invalid expire value: %d' % expire)
     return key, value, expire
 
@@ -94,7 +95,7 @@ class Memcache(object):
     def __iter__(self):
         return iter(self.items())
     def items(self):
-        now = time()
+        now = int(time())
         result = []
         append = result.append
         list = self.list
@@ -123,7 +124,7 @@ class Memcache(object):
         prev.next = next
         next.prev = prev
         expire = node.expire
-        if expire is None or expire > time(): return node
+        if expire is None or expire > int(time()): return node
         self._delete_node(node, unlink=False)
         return None
     def _create_node(self, key):
@@ -146,7 +147,7 @@ class Memcache(object):
         self._conform_to_limits()
         if len(self.heap) > len(self.dict) * 2: self._pack_heap()
     def _delete_expired_nodes(self):
-        now = time()
+        now = int(time())
         heap = self.heap
         while heap:
             expire, node_ref = heap[0]
@@ -218,7 +219,8 @@ class Memcache(object):
         node = self._find_node(key)
         if node is None or node.value is None: return 1
         if seconds is not None:
-            if seconds <= MONTH: seconds = time() + seconds
+            seconds = int(seconds)
+            if seconds <= MONTH: seconds = int(time()) + seconds
             elif seconds <= MONTH * 100: raise ValueError('Invalid seconds value: %d' % seconds)
             self._set_node_value(node, value=None, expire=seconds)
         else: self._delete_node(node)
