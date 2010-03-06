@@ -52,7 +52,7 @@
 
 from heapq import heappush, heappop, heapify
 from threading import Lock
-from time import time
+from time import time as gettime
 from weakref import ref
 
 class Node(object):
@@ -75,7 +75,7 @@ def normalize(key, value="", expire=None):
         expire = int(expire)
         if expire == 0: expire = None
         elif expire < 0: raise ValueError('Expiration must not be negative')
-        elif expire <= MONTH: expire = int(time()) + expire
+        elif expire <= MONTH: expire = int(gettime()) + expire
         elif expire <= MONTH * 100: raise ValueError('Invalid expire value: %d' % expire)
     return key, value, expire
 
@@ -97,7 +97,7 @@ class Memcache(object):
     def __iter__(self):
         return iter(self.items())
     def items(self):
-        now = int(time())
+        now = int(gettime())
         result = []
         append = result.append
         list = self.list
@@ -126,7 +126,7 @@ class Memcache(object):
         prev.next = next
         next.prev = prev
         expire = node.expire
-        if expire is None or expire > int(time()): return node
+        if expire is None or expire > int(gettime()): return node
         self._delete_node(node, unlink=False)
         return None
     def _create_node(self, key):
@@ -149,7 +149,7 @@ class Memcache(object):
         self._conform_to_limits()
         if len(self.heap) > len(self.dict) * 2: self._pack_heap()
     def _delete_expired_nodes(self):
-        now = int(time())
+        now = int(gettime())
         heap = self.heap
         while heap:
             expire, node_ref = heap[0]
@@ -187,8 +187,8 @@ class Memcache(object):
             val = self.get(key_prefix + key)
             if val is not None: result[key] = val
         return result
-    def set(self, key, value, expire=None):
-        key, value, expire = normalize(key, value, expire)
+    def set(self, key, value, time=None):
+        key, value, expire = normalize(key, value, time)
         self.lock.acquire()
         try:
             node = self._find_node(key)
@@ -197,12 +197,12 @@ class Memcache(object):
             self._set_node_value(node, value, expire)
         finally: self.lock.release()
         return True
-    def set_multi(self, mapping, expire=None, key_prefix=''):
+    def set_multi(self, mapping, time=None, key_prefix=''):
         for key, value in mapping.iteritems():
-            self.set(key_prefix + key, value, expire)
+            self.set(key_prefix + key, value, time)
         return []
-    def add(self, key, value, expire=None):
-        key, value, expire = normalize(key, value, expire)
+    def add(self, key, value, time=None):
+        key, value, expire = normalize(key, value, time)
         self.lock.acquire()
         try:
             node = self._find_node(key)
@@ -214,14 +214,14 @@ class Memcache(object):
             self._set_node_value(node, value, expire)
         finally: self.lock.release()
         return True
-    def add_multi(self, mapping, expire=None, key_prefix=''):
+    def add_multi(self, mapping, time=None, key_prefix=''):
         result = []
         for key, value in mapping.iteritems():
-            if not self.add(key_prefix + key, value, expire):
+            if not self.add(key_prefix + key, value, time):
                 result.append(key)
         return result
-    def replace(self, key, value, expire=None):
-        key, value, expire = normalize(key, value, expire)
+    def replace(self, key, value, time=None):
+        key, value, expire = normalize(key, value, time)
         self.lock.acquire()
         try:
             node = self._find_node(key)
@@ -231,10 +231,10 @@ class Memcache(object):
             self._set_node_value(node, value, expire)
         finally: self.lock.release()
         return True
-    def replace_multi(self, mapping, expire=None, key_prefix=''):
+    def replace_multi(self, mapping, time=None, key_prefix=''):
         result = []
         for key, value in mapping.iteritems():
-            if not self.replace(key_prefix + key, value, expire):
+            if not self.replace(key_prefix + key, value, time):
                 result.append(key)
         return result
     def delete(self, key, seconds=None):
