@@ -280,7 +280,8 @@ class Memcache(object):
         return value
     def decr(self, key, delta=1):
         self.decr_count += 1
-        self.incr(key, -delta)
+        self.incr_count -= 1
+        return self.incr(key, -delta)
     def flush_all(self):
         self.lock.acquire()
         try:
