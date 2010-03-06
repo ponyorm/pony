@@ -275,6 +275,7 @@ class Memcache(object):
             if value is None: return None
             try: value = int(value) + delta
             except ValueError: return None
+            if value < 0: value = 0
             node.value = str(value)
         finally: self._lock.release()
         return value
