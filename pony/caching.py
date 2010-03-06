@@ -81,32 +81,32 @@ def normalize(key, value="", expire=None):
 
 class Memcache(object):
     def __init__(self, max_data_size=64*1024*1024):
-        self.lock = Lock()
-        self.heap = []
-        self.dict = {}
-        self.list = list = Node()
+        self._lock = Lock()
+        self._heap = []
+        self._dict = {}
+        self._list = list = Node()
         list.prev = list.next = list.expire = list.key = list.value = None
         list.prev = list.next = list
         list.access = int(gettime())
-        self.data_size = 0
+        self._data_size = 0
         if not isinstance(max_data_size, int): raise TypeError, 'Max data size must be int. Got: %s' % type(max_data_size).__name__
         self.max_data_size = max_data_size
-        self.hits = self.misses = self.evictions = 0
-        self.get_count = self.set_count = 0
-        self.add_count = self.replace_count = self.delete_count = 0
-        self.incr_count = self.decr_count = 0
+        self._hits = self._misses = self._evictions = 0
+        self._get_count = self._set_count = 0
+        self._add_count = self._replace_count = self._delete_count = 0
+        self._incr_count = self._decr_count = 0
     def __len__(self):
-        return len(self.dict)
+        return len(self._dict)
     def __contains__(self, key):
-        return key in self.dict
+        return key in self._dict
     def __iter__(self):
         return iter(self.items())
     def items(self):
         now = int(gettime())
         result = []
         append = result.append
-        list = self.list
-        self.lock.acquire()
+        list = self._list
+        self._lock.acquire()
         try:
             node = list.next
             while node is not list:
@@ -114,18 +114,18 @@ class Memcache(object):
                 if expire is not None and expire <= now: self._delete_node(node)
                 elif node.value is not None: append((node.key, node.value))
                 node = node.next
-        finally: self.lock.release()
+        finally: self._lock.release()
         return result
     def _delete_node(self, node, unlink=True):
         if unlink:
             prev, next = node.prev, node.next
             prev.next = next
             next.prev = prev
-        del self.dict[node.key]
-        self.data_size -= len(node.key)
-        if node.value is not None: self.data_size -= len(node.value)
+        del self._dict[node.key]
+        self._data_size -= len(node.key)
+        if node.value is not None: self._data_size -= len(node.value)
     def _find_node(self, key):
-        node = self.dict.get(key)
+        node = self._dict.get(key)
         if node is None: return None
         prev, next = node.prev, node.next
         prev.next = next
@@ -135,28 +135,28 @@ class Memcache(object):
         self._delete_node(node, unlink=False)
         return None
     def _create_node(self, key):
-        self.dict[key] = node = Node()
+        self._dict[key] = node = Node()
         node.key = key
         node.value = None
-        self.data_size += len(node.key)
+        self._data_size += len(node.key)
         return node
     def _place_on_top(self, node):
-        list = self.list
+        list = self._list
         old_top = list.next
         node.prev, node.next = list, old_top
         list.next = old_top.prev = node
         node.access = int(gettime())
     def _set_node_value(self, node, value, expire):
-        if node.value is not None: self.data_size -= len(node.value)
-        if value is not None: self.data_size += len(value)
+        if node.value is not None: self._data_size -= len(node.value)
+        if value is not None: self._data_size += len(value)
         node.value, node.expire = value, expire
-        if expire is not None: heappush(self.heap, (expire, ref(node)))
+        if expire is not None: heappush(self._heap, (expire, ref(node)))
         self._delete_expired_nodes()
         self._conform_to_limits()
-        if len(self.heap) > len(self.dict) * 2: self._pack_heap()
+        if len(self._heap) > len(self._dict) * 2: self._pack_heap()
     def _delete_expired_nodes(self):
         now = int(gettime())
-        heap = self.heap
+        heap = self._heap
         while heap:
             expire, node_ref = heap[0]
             if expire > now: break
@@ -166,32 +166,32 @@ class Memcache(object):
                 expire = node.expire
                 if expire is not None and expire <= now: self._delete_node(node)
     def _conform_to_limits(self):
-        list = self.list
-        while self.data_size > self.max_data_size:
+        list = self._list
+        while self._data_size > self.max_data_size:
             bottom = list.prev
             self._delete_node(bottom)
-            self.evictions += 1
+            self._evictions += 1
     def _pack_heap(self):
         new_heap = []
-        for item in self.heap:
+        for item in self._heap:
             expire, node_ref = item
             node = node_ref()
             if node is not None and expire == node.expire: new_heap.append(item)
         heapify(new_heap)
-        self.heap = new_heap
+        self._heap = new_heap
     def get(self, key):
-        self.get_count += 1
+        self._get_count += 1
         key, _, _ = normalize(key)
-        self.lock.acquire()
+        self._lock.acquire()
         try:
             node = self._find_node(key)
             if node is None:
-                self.misses += 1
+                self._misses += 1
                 return None
             self._place_on_top(node)
-            self.hits += 1
+            self._hits += 1
             return node.value
-        finally: self.lock.release()
+        finally: self._lock.release()
     def get_multi(self, keys, key_prefix=''):
         result = {}
         for key in keys:
@@ -199,24 +199,24 @@ class Memcache(object):
             if val is not None: result[key] = val
         return result
     def set(self, key, value, time=None):
-        self.set_count += 1
+        self._set_count += 1
         key, value, expire = normalize(key, value, time)
-        self.lock.acquire()
+        self._lock.acquire()
         try:
             node = self._find_node(key)
             if node is None: node = self._create_node(key)
             self._place_on_top(node)
             self._set_node_value(node, value, expire)
-        finally: self.lock.release()
+        finally: self._lock.release()
         return True
     def set_multi(self, mapping, time=None, key_prefix=''):
         for key, value in mapping.iteritems():
             self.set(key_prefix + key, value, time)
         return []
     def add(self, key, value, time=None):
-        self.add_count += 1
+        self._add_count += 1
         key, value, expire = normalize(key, value, time)
-        self.lock.acquire()
+        self._lock.acquire()
         try:
             node = self._find_node(key)
             if node is not None:
@@ -225,7 +225,7 @@ class Memcache(object):
             node = self._create_node(key)
             self._place_on_top(node)
             self._set_node_value(node, value, expire)
-        finally: self.lock.release()
+        finally: self._lock.release()
         return True
     def add_multi(self, mapping, time=None, key_prefix=''):
         result = []
@@ -234,16 +234,16 @@ class Memcache(object):
                 result.append(key)
         return result
     def replace(self, key, value, time=None):
-        self.replace_count += 1
+        self._replace_count += 1
         key, value, expire = normalize(key, value, time)
-        self.lock.acquire()
+        self._lock.acquire()
         try:
             node = self._find_node(key)
             if node is None: return False
             self._place_on_top(node)
             if node.value is None: return False
             self._set_node_value(node, value, expire)
-        finally: self.lock.release()
+        finally: self._lock.release()
         return True
     def replace_multi(self, mapping, time=None, key_prefix=''):
         result = []
@@ -252,7 +252,7 @@ class Memcache(object):
                 result.append(key)
         return result
     def delete(self, key, seconds=None):
-        self.delete_count += 1
+        self._delete_count += 1
         key, _, seconds = normalize(key, "", seconds)
         node = self._find_node(key)
         if node is None or node.value is None: return 1
@@ -264,9 +264,9 @@ class Memcache(object):
             self.delete(key_prefix + key, seconds)
         return []
     def incr(self, key, delta=1):
-        self.incr_count += 1
+        self._incr_count += 1
         key, _, _ = normalize(key)
-        self.lock.acquire()
+        self._lock.acquire()
         try:
             node = self._find_node(key)
             if node is None: return None
@@ -276,25 +276,25 @@ class Memcache(object):
             try: value = int(value) + delta
             except ValueError: return None
             node.value = str(value)
-        finally: self.lock.release()
+        finally: self._lock.release()
         return value
     def decr(self, key, delta=1):
-        self.decr_count += 1
-        self.incr_count -= 1
+        self._decr_count += 1
+        self._incr_count -= 1
         return self.incr(key, -delta)
     def flush_all(self):
-        self.lock.acquire()
+        self._lock.acquire()
         try:
-            self.dict.clear()
-            self.heap = []
-            self.list.prev = self.list.next = self.list
-            for node in self.dict.itervalues():
+            self._dict.clear()
+            self._heap = []
+            self._list.prev = self._list.next = self._list
+            for node in self._dict.itervalues():
                 node.prev = node.next = None
-        finally: self.lock.release()
+        finally: self._lock.release()
     def get_stats(self):
-        return dict(items=len(self.dict), bytes=self.data_size,
-                    hits=self.hits, misses=self.misses, evictions=self.evictions,
-                    oldest_item_age=int(gettime())-self.list.prev.access,
-                    cmd_get=self.get_count, cmd_set=self.set_count,
-                    cmd_add=self.add_count, cmd_replace=self.replace_count, cmd_delete=self.delete_count,
-                    cmd_incr = self.incr_count, cmd_decr=self.decr_count)
+        return dict(items=len(self._dict), bytes=self._data_size,
+                    hits=self._hits, misses=self._misses, evictions=self._evictions,
+                    oldest_item_age=int(gettime())-self._list.prev.access,
+                    cmd_get=self._get_count, cmd_set=self._set_count,
+                    cmd_add=self._add_count, cmd_replace=self._replace_count, cmd_delete=self._delete_count,
+                    cmd_incr = self._incr_count, cmd_decr=self._decr_count)
