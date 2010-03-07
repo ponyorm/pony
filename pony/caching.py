@@ -63,13 +63,13 @@ MAX_KEY_LENGTH = 250
 MAX_VALUE_LENGTH = 1024*1024  # 1 Megabyte
 
 char_table = "?" * 256
-noncontrol_chars = "".join(chr(i) for i in range(32, 256) if i != 127)
+noncontrol_chars = "".join(chr(i) for i in range(33, 256) if i != 127)
 
 def normalize(key, value="", expire=None):
     if isinstance(key, tuple): hash_value, key = key
     elif not isinstance(key, str): raise ValueError('Key must be tuple or string. Got: %s' % key.__class__.__name__)
     if len(key) > MAX_KEY_LENGTH: raise ValueError('Key size too big: %d' % len(key))
-    if key.translate(char_table, noncontrol_chars): raise ValueError('Key cannot contains control characters')
+    if key.translate(char_table, noncontrol_chars): raise ValueError('Key cannot contains spaces or control characters')
 
     if not isinstance(value, str): raise ValueError('Value must be string. Got: %s' % value.__class__.__name__)
     if len(value) > MAX_VALUE_LENGTH: raise ValueError('Value size too big: %d' % len(value))
