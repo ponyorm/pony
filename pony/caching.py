@@ -105,20 +105,18 @@ class Memcache(object):
         return len(self._dict)
     def __iter__(self):
         return iter(self.items())
+    @with_lock
     def items(self):
         now = int(gettime())
         result = []
         append = result.append
         list = self._list
-        self._lock.acquire()
-        try:
-            node = list.next
-            while node is not list:
-                expire = node.expire
-                if expire is not None and expire <= now: self._delete_node(node)
-                elif node.value is not None: append((node.key, node.value))
-                node = node.next
-        finally: self._lock.release()
+        node = list.next
+        while node is not list:
+            expire = node.expire
+            if expire is not None and expire <= now: self._delete_node(node)
+            elif node.value is not None: append((node.key, node.value))
+            node = node.next
         return result
     def _delete_node(self, node, unlink=True):
         if unlink:
@@ -265,41 +263,36 @@ class Memcache(object):
         for key in keys:
             self._delete(key_prefix + key, seconds)
         return []
+    @with_lock
     def incr(self, key, delta=1):
         self._incr_count += 1
         key, _, _ = normalize(key)
-        self._lock.acquire()
-        try:
-            node = self._find_node(key)
-            if node is None: return None
-            self._place_on_top(node)
-            value = node.value
-            if value is None: return None
-            try: value = int(value) + delta
-            except ValueError: return None
-            if value < 0: value = 0
-            node.value = str(value)
-        finally: self._lock.release()
+        node = self._find_node(key)
+        if node is None: return None
+        self._place_on_top(node)
+        value = node.value
+        if value is None: return None
+        try: value = int(value) + delta
+        except ValueError: return None
+        if value < 0: value = 0
+        node.value = str(value)
         return value
     def decr(self, key, delta=1):
         self._decr_count += 1
         self._incr_count -= 1
         return self.incr(key, -delta)
+    @with_lock
     def flush_all(self):
-        self._lock.acquire()
-        try:
-            self._dict.clear()
-            self._heap = []
-            self._list.prev = self._list.next = self._list
-            for node in self._dict.itervalues():
-                node.prev = node.next = None
-        finally: self._lock.release()
+        self._dict.clear()
+        self._heap = []
+        self._list.prev = self._list.next = self._list
+        for node in self._dict.itervalues():
+            node.prev = node.next = None
+    @with_lock
     def get_stats(self):
-        self._lock.acquire()
-        try: return dict(items=len(self._dict), bytes=self._data_size,
-                         hits=self._hits, misses=self._misses, evictions=self._evictions,
-                         oldest_item_age=int(gettime())-self._list.prev.access,
-                         cmd_get=self._get_count, cmd_set=self._set_count,
-                         cmd_add=self._add_count, cmd_replace=self._replace_count, cmd_delete=self._delete_count,
-                         cmd_incr = self._incr_count, cmd_decr=self._decr_count)
-        finally: self._lock.release()
+        return dict(items=len(self._dict), bytes=self._data_size,
+                    hits=self._hits, misses=self._misses, evictions=self._evictions,
+                    oldest_item_age=int(gettime())-self._list.prev.access,
+                    cmd_get=self._get_count, cmd_set=self._set_count,
+                    cmd_add=self._add_count, cmd_replace=self._replace_count, cmd_delete=self._delete_count,
+                    cmd_incr = self._incr_count, cmd_decr=self._decr_count)
