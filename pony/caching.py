@@ -59,6 +59,8 @@ class Node(object):
     __slots__ = 'prev', 'next', 'key', 'value', 'expire', 'access', '__weakref__'
 
 MONTH = 31*24*60*60
+MAX_KEY_LENGTH = 250
+MAX_VALUE_LENGTH = 1024*1024  # 1 Megabyte
 
 char_table = "?" * 256
 noncontrol_chars = "".join(chr(i) for i in range(32, 256) if i != 127)
@@ -66,11 +68,11 @@ noncontrol_chars = "".join(chr(i) for i in range(32, 256) if i != 127)
 def normalize(key, value="", expire=None):
     if isinstance(key, tuple): hash_value, key = key
     elif not isinstance(key, str): raise ValueError('Key must be tuple or string. Got: %s' % key.__class__.__name__)
-    if len(key) > 1024 * 1024: raise ValueError('Key size too big: %d' % len(key))
+    if len(key) > MAX_KEY_LENGTH: raise ValueError('Key size too big: %d' % len(key))
     if key.translate(char_table, noncontrol_chars): raise ValueError('Key cannot contains control characters')
 
     if not isinstance(value, str): raise ValueError('Value must be string. Got: %s' % value.__class__.__name__)
-    if len(value) > 1024 * 1024: raise ValueError('Value size too big: %d' % len(value))
+    if len(value) > MAX_VALUE_LENGTH: raise ValueError('Value size too big: %d' % len(value))
     if expire is not None:
         expire = int(expire)
         if expire == 0: expire = None
@@ -85,8 +87,10 @@ def with_lock(func, self, *args, **keyargs):
     try: return func(self, *args, **keyargs)
     finally: self._lock.release()
 
+DEFAULT_MAX_DATA_SIZE = 64*1024*1024  # 64 Megabytes
+
 class Memcache(object):
-    def __init__(self, max_data_size=64*1024*1024):
+    def __init__(self, max_data_size=DEFAULT_MAX_DATA_SIZE):
         self._lock = Lock()
         self._heap = []
         self._dict = {}
