@@ -256,7 +256,9 @@ class Memcache(object):
         node = self._find_node(key)
         if node is None or node.value is None: return 1
         if seconds is None: self._delete_node(node)
-        else: self._set_node_value(node, None, seconds)
+        else:
+            self._place_on_top(node)
+            self._set_node_value(node, None, seconds)
         return 2
     delete = with_lock(_delete)
     @with_lock
