@@ -254,10 +254,13 @@ class Memcache(object):
     def delete(self, key, seconds=None):
         self._delete_count += 1
         key, _, seconds = normalize(key, "", seconds)
-        node = self._find_node(key)
-        if node is None or node.value is None: return 1
-        if seconds is None: self._delete_node(node)
-        else: self._set_node_value(node, None, seconds)
+        self._lock.acquire()
+        try:
+            node = self._find_node(key)
+            if node is None or node.value is None: return 1
+            if seconds is None: self._delete_node(node)
+            else: self._set_node_value(node, None, seconds)
+        finally: self._lock.release()
         return 2
     def delete_multi(self, keys, seconds=None, key_prefix=''):
         for key in keys:
@@ -293,9 +296,11 @@ class Memcache(object):
                 node.prev = node.next = None
         finally: self._lock.release()
     def get_stats(self):
-        return dict(items=len(self._dict), bytes=self._data_size,
-                    hits=self._hits, misses=self._misses, evictions=self._evictions,
-                    oldest_item_age=int(gettime())-self._list.prev.access,
-                    cmd_get=self._get_count, cmd_set=self._set_count,
-                    cmd_add=self._add_count, cmd_replace=self._replace_count, cmd_delete=self._delete_count,
-                    cmd_incr = self._incr_count, cmd_decr=self._decr_count)
+        self._lock.acquire()
+        try: return dict(items=len(self._dict), bytes=self._data_size,
+                         hits=self._hits, misses=self._misses, evictions=self._evictions,
+                         oldest_item_age=int(gettime())-self._list.prev.access,
+                         cmd_get=self._get_count, cmd_set=self._set_count,
+                         cmd_add=self._add_count, cmd_replace=self._replace_count, cmd_delete=self._delete_count,
+                         cmd_incr = self._incr_count, cmd_decr=self._decr_count)
+        finally: self._lock.release()
