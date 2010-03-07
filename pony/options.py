@@ -23,7 +23,8 @@ LOGGING_LEVEL = None
 LOGGING_PONY_LEVEL = None
 
 #auth options:
-MAX_COOKIE_SIZE = 3000
+##MAX_COOKIE_SIZE = 3000
+MAX_COOKIE_SIZE = 0 ##for memcahed work test
 MAX_SESSION_CTIME = 60*24  # one day
 MAX_SESSION_MTIME = 60*2  # 2 hours
 MAX_LONGLIFE_SESSION = 14  # 14 days
