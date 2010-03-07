@@ -281,6 +281,30 @@ class Memcache(object):
     def decr(self, key, delta=1):
         return self.incr(key, -delta)
     @with_lock
+    def append(self, key, value):
+        key, value, _ = normalize(key, value)
+        node = self._find_node(key)
+        if node is None: return False
+        self._place_on_top(node)
+        if node.value is None: return False
+        self._data_size += len(value)
+        node.value += value
+        self._delete_expired_nodes()
+        self._conform_to_limits()
+        return True
+    @with_lock
+    def prepend(self, key, value):
+        key, value, _ = normalize(key, value)
+        node = self._find_node(key)
+        if node is None: return False
+        self._place_on_top(node)
+        if node.value is None: return False
+        self._data_size += len(value)
+        node.value = value + node.value
+        self._delete_expired_nodes()
+        self._conform_to_limits()
+        return True
+    @with_lock
     def flush_all(self):
         self._dict.clear()
         self._heap = []
