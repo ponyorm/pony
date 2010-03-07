@@ -97,10 +97,10 @@ class Memcache(object):
         self._data_size = 0
         if not isinstance(max_data_size, int): raise TypeError, 'Max data size must be int. Got: %s' % type(max_data_size).__name__
         self.max_data_size = max_data_size
-        self._hits = self._misses = self._evictions = 0
-        self._get_count = self._set_count = 0
-        self._add_count = self._replace_count = self._delete_count = 0
-        self._incr_count = self._decr_count = 0
+        self._stat_get_hits = self._stat_get_misses = self._stat_evictions = 0
+        self._stat_cmd_get = self._stat_cmd_set = 0
+        self._stat_total_items = 0
+        self._start_time = int(gettime())
     def __len__(self):
         return len(self._dict)
     def __iter__(self):
@@ -141,6 +141,7 @@ class Memcache(object):
         node.key = key
         node.value = None
         self._data_size += len(node.key)
+        self._stat_total_items += 1
         return node
     def _place_on_top(self, node):
         list = self._list
@@ -172,7 +173,7 @@ class Memcache(object):
         while self._data_size > self.max_data_size:
             bottom = list.prev
             self._delete_node(bottom)
-            self._evictions += 1
+            self._stat_evictions += 1
     def _pack_heap(self):
         new_heap = []
         for item in self._heap:
@@ -182,14 +183,14 @@ class Memcache(object):
         heapify(new_heap)
         self._heap = new_heap
     def _get(self, key):
-        self._get_count += 1
+        self._stat_cmd_get += 1
         key, _, _ = normalize(key)
         node = self._find_node(key)
         if node is None:
-            self._misses += 1
+            self._stat_get_misses += 1
             return None
         self._place_on_top(node)
-        self._hits += 1
+        self._stat_get_hits += 1
         return node.value
     get = with_lock(_get)
     @with_lock
@@ -200,7 +201,7 @@ class Memcache(object):
             if val is not None: result[key] = val
         return result
     def _set(self, key, value, time=None):
-        self._set_count += 1
+        self._stat_cmd_set += 1
         key, value, expire = normalize(key, value, time)
         node = self._find_node(key)
         if node is None: node = self._create_node(key)
@@ -214,7 +215,7 @@ class Memcache(object):
             self._set(key_prefix + key, value, time)
         return []
     def _add(self, key, value, time=None):
-        self._add_count += 1
+        self._stat_cmd_set += 1
         key, value, expire = normalize(key, value, time)
         node = self._find_node(key)
         if node is not None:
@@ -233,7 +234,7 @@ class Memcache(object):
                 result.append(key)
         return result
     def _replace(self, key, value, time=None):
-        self._replace_count += 1
+        self._stat_cmd_set += 1
         key, value, expire = normalize(key, value, time)
         node = self._find_node(key)
         if node is None: return False
@@ -250,7 +251,7 @@ class Memcache(object):
                 result.append(key)
         return result
     def _delete(self, key, seconds=None):
-        self._delete_count += 1
+        self._stat_cmd_set += 1
         key, _, seconds = normalize(key, "", seconds)
         node = self._find_node(key)
         if node is None or node.value is None: return 1
@@ -265,7 +266,7 @@ class Memcache(object):
         return []
     @with_lock
     def incr(self, key, delta=1):
-        self._incr_count += 1
+        self._stat_cmd_set += 1
         key, _, _ = normalize(key)
         node = self._find_node(key)
         if node is None: return None
@@ -278,8 +279,6 @@ class Memcache(object):
         node.value = str(value)
         return value
     def decr(self, key, delta=1):
-        self._decr_count += 1
-        self._incr_count -= 1
         return self.incr(key, -delta)
     @with_lock
     def flush_all(self):
@@ -290,9 +289,10 @@ class Memcache(object):
             node.prev = node.next = None
     @with_lock
     def get_stats(self):
-        return dict(items=len(self._dict), bytes=self._data_size,
-                    hits=self._hits, misses=self._misses, evictions=self._evictions,
+        now = int(gettime())
+        return dict(curr_items=len(self._dict), total_items=self._stat_total_items,
+                    bytes=self._data_size, limit_maxbytes=self.max_data_size,
+                    get_hits=self._stat_get_hits, get_misses=self._stat_get_misses, evictions=self._stat_evictions,
                     oldest_item_age=int(gettime())-self._list.prev.access,
-                    cmd_get=self._get_count, cmd_set=self._set_count,
-                    cmd_add=self._add_count, cmd_replace=self._replace_count, cmd_delete=self._delete_count,
-                    cmd_incr = self._incr_count, cmd_decr=self._decr_count)
+                    cmd_get=self._stat_cmd_get, cmd_set=self._stat_cmd_set,
+                    time=now, uptime=now-self._start_time)
