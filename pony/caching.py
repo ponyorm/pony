@@ -58,7 +58,7 @@ from pony.utils import simple_decorator
 class Node(object):
     __slots__ = 'prev', 'next', 'key', 'value', 'expire', 'access', '__weakref__'
 
-MONTH = 31*24*60*60
+MONTH = 30*24*60*60
 MAX_KEY_LENGTH = 250
 MAX_VALUE_LENGTH = 1024*1024  # 1 Megabyte
 
