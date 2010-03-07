@@ -40,8 +40,6 @@
     [('k3', 'v3'), ('x', '91'), ('k5', 'v5'), ('k4', 'v4'), ('k1', 'v1')]
     >>> len(cache)
     5
-    >>> 'x' in cache
-    True
     >>> cache.replace('k4', 'v4_new')
     True
     >>> cache.replace('notexists', 'value')
@@ -105,8 +103,6 @@ class Memcache(object):
         self._incr_count = self._decr_count = 0
     def __len__(self):
         return len(self._dict)
-    def __contains__(self, key):
-        return key in self._dict
     def __iter__(self):
         return iter(self.items())
     def items(self):
