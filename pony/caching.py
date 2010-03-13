@@ -53,6 +53,8 @@ from threading import Lock
 from time import time as gettime
 from weakref import ref
 
+import pony
+from pony import options
 from pony.utils import simple_decorator
 
 class Node(object):
@@ -326,3 +328,25 @@ class Memcache(object):
                     oldest_item_age=int(gettime())-self._list.prev.access,
                     cmd_get=self._stat_cmd_get, cmd_set=self._stat_cmd_set,
                     time=now, uptime=now-self._start_time)
+
+if pony.MODE.startswith('GAE-'):
+    import google.appengine.api.memcache
+    memcache = google.appengine.api.memcache.Client()
+    session_memcache = memcache
+    orm_memcache = memcache
+    templating_memcache = memcache
+    responce_memcache = memcache
+else:
+    def choose_memcache(opt, default=None):
+        if opt is None:
+            if default is not None: return default
+            return Memcache()
+        if hasattr(opt, 'get_multi'): return opt
+        from pony.thirdparty.memcache import Client
+        return Client(opt)
+    
+    memcache = choose_memcache(options.MEMCACHE)
+    session_memcache = choose_memcache(options.SESSION_MEMCACHE, memcache)
+    orm_memcache = choose_memcache(options.ORM_MEMCACHE, memcache)
+    templating_memcache = choose_memcache(options.TEMPLATING_MEMCACHE, memcache)
+    responce_memcache = choose_memcache(options.RESPONCE_MEMCACHE, memcache)        

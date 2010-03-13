@@ -35,6 +35,15 @@ COOKIE_DOMAIN = None
 HASH_ALGORITHM = None  # sha-1 by default
 # HASH_ALGORITHM = hashlib.sha512
 
+# memcached options (ignored under GAE):
+MEMCACHE = None  # Use in-process python version by default
+# MEMCACHE = [ "127.0.0.1:11211" ]
+# MEMCACHE = MyMemcacheConnectionImplementation(...)
+SESSION_MEMCACHE = None     # Use general memcache connection by default
+ORM_MEMCACHE = None         # Use general memcache connection by default
+TEMPLATING_MEMCACHE = None  # Use general memcache connection by default
+RESPONCE_MEMCACHE = None    # Use general memcache connection by default
+
 # pickle options:
 PICKLE_START_OFFSET = 230
 PICKLE_HTML_AS_PLAIN_STR = True
