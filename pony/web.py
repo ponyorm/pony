@@ -178,6 +178,7 @@ class Local(localbase):
     def __init__(self):
         self.request = HttpRequest({})
         self.response = HttpResponse()
+        self.no_cookies = False
 
 local = Local()        
 
@@ -191,10 +192,16 @@ def set_cookie(name, value, expires=None, max_age=None, path=None, domain=None,
     httputils.set_cookie(local.response.cookies,
                         name, value, expires, max_age, path, domain, secure, http_only, comment, version)
 
+@simple_decorator
+def no_cookies(func, *args, **keyargs):
+    local.no_cookies = True
+    return func(*args, **keyargs)
+
 path_re = re.compile(r"^[-_.!~*'()A-Za-z0-9]+$")
 
 pony_static_dir = os.path.join(os.path.dirname(__file__), 'static')
 
+@no_cookies
 def get_static_file(path, dir=None, max_age=10):
     if not path: raise Http404NotFound
     if dir is None: dir = options.STATIC_DIR
@@ -345,6 +352,7 @@ def app(environ):
 
     request = local.request = HttpRequest(environ)
     response = local.response = HttpResponse()
+    local.no_cookies = False
     auth.load(environ, request.cookies)
     auth.verify_ticket(request.fields.getfirst('_t'))
     postprocessing = True
@@ -401,7 +409,7 @@ def app(environ):
         for header, value in headers:
             assert isinstance(header, str)
             assert isinstance(value, str)
-        if not status.startswith('5'):
+        if not local.no_cookies and not status.startswith('5'):
             auth.save(response.cookies)
             headers += httputils.serialize_cookies(environ, response.cookies)
         log(type='HTTP:response', prefix='Response: ', text=status, severity=DEBUG, headers=headers)

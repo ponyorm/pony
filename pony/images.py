@@ -5,7 +5,7 @@ try: import Image, ImageDraw, ImageColor
 except ImportError: PIL = False
 else: PIL = True
 
-from pony.web import http
+from pony.web import http, no_cookies
 from pony.utils import cached
 
 def _decode_color(color):
@@ -53,6 +53,7 @@ def _circle_image(radius, color, bgcolor):
 @http('/pony/images/circle$radius.png',                 type='image/png')
 @http('/pony/images/circle$radius-$color.png',          type='image/png')
 @http('/pony/images/circle$radius-$color-$bgcolor.png', type='image/png')
+@no_cookies
 @cached
 def png_circle(radius, color='000000', bgcolor=None):
     try:
@@ -65,6 +66,7 @@ def png_circle(radius, color='000000', bgcolor=None):
 
 @http('/pony/images/hole$radius.png',           type='image/png')
 @http('/pony/images/hole$radius-$bgcolor.png', type='image/png')
+@no_cookies
 @cached
 def png_hole(radius, bgcolor='ffffffff'):
     try:
@@ -78,6 +80,7 @@ def png_hole(radius, bgcolor='ffffffff'):
 @http('/pony/images/circle$radius.gif',                 type='image/gif')
 @http('/pony/images/circle$radius-$color.gif',          type='image/gif')
 @http('/pony/images/circle$radius-$color-$bgcolor.gif', type='image/gif')
+@no_cookies
 @cached
 def gif_circle(radius, color='000000', bgcolor='ffffff'):
     try:
@@ -93,6 +96,7 @@ def gif_circle(radius, color='000000', bgcolor='ffffff'):
 
 @http('/pony/images/hole$radius.gif',           type='image/gif')
 @http('/pony/images/hole$radius-$bgcolor.gif', type='image/gif')
+@no_cookies
 @cached
 def gif_hole(radius, bgcolor='ffffff'):
     if not PIL: raise http.NotFound
@@ -186,27 +190,32 @@ def _line(format, horiz, data):
     return io.getvalue()
 
 @http('/pony/images/hline$data.png', type='image/png')
+@no_cookies
 @cached
 def hline_png(data):
     return _line('PNG', True, data)
 
 @http('/pony/images/hline$data.gif', type='image/gif')
+@no_cookies
 @cached
 def hline_gif(data):
     return _line('GIF', True, data)
 
 @http('/pony/images/vline$data.png', type='image/png')
+@no_cookies
 @cached
 def vline_png(data):
     return _line('PNG', False, data)
 
 @http('/pony/images/vline$data.gif', type='image/gif')
+@no_cookies
 @cached
 def vline_gif(data):
     return _line('GIF', False, data)
 
 @http('/pony/images/pixel.png',        type='image/png')
 @http('/pony/images/pixel-$color.png', type='image/png')
+@no_cookies
 @cached
 def pixel_png(color='00000000'):
     if not PIL: raise http.NotFound
@@ -221,6 +230,7 @@ def pixel_png(color='00000000'):
 
 @http('/pony/images/pixel.gif',        type='image/gif')
 @http('/pony/images/pixel-$color.gif', type='image/gif')
+@no_cookies
 @cached
 def pixel_gif(color=None):
     if not PIL: raise http.NotFound
@@ -237,6 +247,8 @@ def pixel_gif(color=None):
 
 @http('/pony/images/tab.png', type='image/png')
 @http('/pony/images/tab-$width-$height.png', type='image/png')
+@no_cookies
+@cached
 def tab_png(width=300, height=200, radius=5, topcolor=None, bottomcolor=None, bordercolor=None, backcolor=None):
     if not PIL: raise http.NotFound
     topcolor = topcolor and _decode_color(topcolor) or (255, 255, 255, 255)
