@@ -32,7 +32,8 @@ COOKIE_SERIALIZATION_TYPE = 'json' # may be 'json' or 'pickle'
 COOKIE_NAME = 'pony'
 COOKIE_PATH = '/'
 COOKIE_DOMAIN = None
-HASH_ALGORITHM = None  # None means sha-1
+HASH_ALGORITHM = None  # sha-1 by default
+# HASH_ALGORITHM = hashlib.sha512
 
 # pickle options:
 PICKLE_START_OFFSET = 230
