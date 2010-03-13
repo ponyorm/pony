@@ -1,27 +1,39 @@
-from pony.thirdparty import memcache
 import os, binascii
 
-_servers = ["127.0.0.1:11211"] ## Servers list
+from pony.caching import session_memcache as memcache
 
-_memcached = memcache.Client(_servers, debug = 0)
 DEFAULT_TIME = 0
-EMPTY_KEY = ''
+COOKIE_PREFIX = 'mc:'   # stands for "M"emcached
+MEMCACHE_PREFIX = 's:'  # stands for "S"ession
 
-def _key_generate(data):
-    key = binascii.hexlify(os.urandom(16))
-    return key
+def id2key(session_id):
+    assert type(session_id) is str
+    if not session_id.startswith(COOKIE_PREFIX): return None
+    return MEMCACHE_PREFIX + session_id[len(COOKIE_PREFIX):]
 
-class SessionDataNotFound(Exception): pass
+def key2id(key):
+    assert type(key) is str
+    if not key.startswith(MEMCACHE_PREFIX): return None
+    return COOKIE_PREFIX + key[len(MEMCACHE_PREFIX):]
 
-def getdata(key, ctime, mtime):
-    try: k = str(key)
-    except: raise TypeError("Key must be string")
-    data = _memcached.get(k)
-    if data is not None: return data
-    else: raise SessionDataNotFound()
+def get(session_id, ctime, mtime):
+    key = id2key(session_id)
+    if key is None: return None
+    return memcache.get(key)
 
-def putdata(data, ctime, mtime, oldkey=None, time = DEFAULT_TIME):
-    if not oldkey: key = _key_generate(data)
-    else: key = oldkey
-    if _memcached.set(key,data,time): return key
-    else: return EMPTY_KEY
+def put(data, ctime, mtime, session_id=None, expire=DEFAULT_TIME):
+    assert type(data) is str
+    if not session_id:
+        key = MEMCACHE_PREFIX + binascii.hexlify(os.urandom(15))  # 32 bytes
+        if not memcache.add(key, data, expire): return '<memcache error>'
+    else:
+        key = id2key(session_id)
+        assert key is not None
+        # Race conditions between simultaneous requests are possible
+        if not memcache.set(key, data, expire): return '<memcache error>'
+    return key2id(key)
+
+def delete(session_id):
+    key = id2key(session_id)
+    assert key is not None
+    memcache.delete(key)  # May be resurrected by simultaneous requests (race condition)

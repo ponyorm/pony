@@ -10,14 +10,16 @@ from pony.thirdparty import simplejson
 import pony
 from pony import options, httputils
 from pony.utils import compress, decompress, simple_decorator, localbase
-##from pony.sessionstorage import ramstorage as storage
-from pony.sessionstorage import memcachedstorage as storage
 from pony.logging import log_exc
 
 hash = pony.options.HASH_ALGORITHM
 if hash is None:
     try: from hashlib import sha1 as hash
     except ImportError: import sha as hash
+
+storage = pony.options.SESSION_STORAGE
+if storage is None:
+    from pony.sessionstorage import memcachedstorage as storage
 
 class Session(object):
     def __init__(self, dict=None, **keyargs):
@@ -58,7 +60,7 @@ class Local(localbase):
         lock = self.lock
         self.__dict__.clear()
         self.__dict__.update(lock=lock, user=None, environ={}, session=Session(), ctime=now, mtime=now,
-                             storage_key=None,
+                             session_id=None,
                              cookie_value=None, remember_ip=False, longlife_session=False, longlife_key=None,
                              ip=None, user_agent=None, ticket=False, ticket_payload=None)
     def set_user(self, user, longlife_session=False, remember_ip=False):
@@ -118,17 +120,18 @@ def load(environ, cookies=None):
             if hash != hashobject.digest(): return
             local.remember_ip = True
         else: local.remember_ip = False
-        if data.startswith('C'):
-            storage_key = None
+        if data.startswith('C'):  # "C" stands for "C"ookies-only
+            session_id = None
             data = data[1:]
-        elif data.startswith('S'):
-            storage_key = data[1:]
-            data = storage.getdata(storage_key, ctime, mtime)
+        elif data.startswith('S'):  # "S" stands for "S"torage
+            session_id = data[1:]
+            data = storage.get(session_id, ctime, mtime)
+            if data is None: return
         else: return
         info = loads(data)
         local.user, session_dict = info
         local.session = Session(session_dict)
-        local.storage_key = storage_key
+        local.session_id = session_id
         local.longlife_key = longlife_key or None
         local.longlife_session = bool(longlife_key)
     except:
@@ -174,8 +177,8 @@ def remove_longlife_session():
     except: return
     _remove_longlife_session(id, rnd)
 
-def base64size(original_size):
-    return (original_size + 2 - ((original_size + 2) % 3)) * 4 // 3
+# def base64size(original_size):
+#     return (original_size + 2 - ((original_size + 2) % 3)) * 4 // 3
 
 def save(cookies):
     now = int(time()) // 60
@@ -189,20 +192,23 @@ def save(cookies):
 
         info = local.user, local.session.__dict__
         data = dumps(info)
+        if storage is False: data = 'C' + data  # "C" stands for "C"ookies-only
+        else:
+            session_id = storage.put(data, local.ctime, now, local.session_id)
+            if session_id is None: session_id = ''  # What is the best way to handle storage errors?
+            elif local.session_id is not None: assert session_id == local.session_id
+            data = 'S' + session_id  # "S" stands for "S"torage
         hashobject = get_hashobject(now)
         hashobject.update(ctime_str)
-
-        total_size = len(ctime_str) + len(mtime_str) + base64size(1+len(data))
-        total_size += base64size(hashobject.digest_size) + len(longlife_key) + 4
-        if total_size <= options.MAX_COOKIE_SIZE: data = 'C' + data
-        else: data = 'S' + storage.putdata(data, local.ctime, now, local.storage_key)
         hashobject.update(data)
         hashobject.update(local.user_agent or '')
         if local.remember_ip: hashobject.update(local.ip or '')
         data_str = b64encode(data)
         hash_str = b64encode(hashobject.digest())
         cookie_value = ':'.join([ ctime_str, mtime_str, data_str, hash_str, longlife_key ])
-    else: cookie_value = ''
+    else:
+        cookie_value = ''
+        if storage and local.session_id: storage.delete(local.session_id)
     if cookie_value != local.cookie_value:
         max_time = (options.MAX_LONGLIFE_SESSION+1)*24*60*60
         httputils.set_cookie(cookies, options.COOKIE_NAME, cookie_value, max_time, max_time,

@@ -23,8 +23,6 @@ LOGGING_LEVEL = None
 LOGGING_PONY_LEVEL = None
 
 #auth options:
-##MAX_COOKIE_SIZE = 3000
-MAX_COOKIE_SIZE = 0 ##for memcahed work test
 MAX_SESSION_CTIME = 60*24  # one day
 MAX_SESSION_MTIME = 60*2  # 2 hours
 MAX_LONGLIFE_SESSION = 14  # 14 days
@@ -34,6 +32,11 @@ COOKIE_PATH = '/'
 COOKIE_DOMAIN = None
 HASH_ALGORITHM = None  # sha-1 by default
 # HASH_ALGORITHM = hashlib.sha512
+
+SESSION_STORAGE = None  # pony.sessionstorage.memcachedstorage by default
+# SESSION_STORAGE = mystoragemodule
+# SESSION_STORAGE = False  # means use cookies for save session data,
+                           # can lead to race conditions
 
 # memcached options (ignored under GAE):
 MEMCACHE = None  # Use in-process python version by default
