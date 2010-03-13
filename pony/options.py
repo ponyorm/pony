@@ -33,7 +33,6 @@ COOKIE_NAME = 'pony'
 COOKIE_PATH = '/'
 COOKIE_DOMAIN = None
 HASH_ALGORITHM = None  # None means sha-1
-CONVERSATION_FIELD_NAME = '_c'
 
 # pickle options:
 PICKLE_START_OFFSET = 230
