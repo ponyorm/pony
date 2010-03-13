@@ -204,7 +204,7 @@ class Memcache(object):
             val = self._get(key_prefix + key)
             if val is not None: result[key] = val
         return result
-    def _set(self, key, value, time=None):
+    def _set(self, key, value, time=0):
         self._stat_cmd_set += 1
         key, value, expire = normalize(key, value, time)
         node = self._find_node(key)
@@ -214,11 +214,11 @@ class Memcache(object):
         return True
     set = with_lock(_set)
     @with_lock
-    def set_multi(self, mapping, time=None, key_prefix=''):
+    def set_multi(self, mapping, time=0, key_prefix=''):
         for key, value in mapping.iteritems():
             self._set(key_prefix + key, value, time)
         return []
-    def _add(self, key, value, time=None):
+    def _add(self, key, value, time=0):
         self._stat_cmd_set += 1
         key, value, expire = normalize(key, value, time)
         node = self._find_node(key)
@@ -231,13 +231,13 @@ class Memcache(object):
         return True
     add = with_lock(_add)
     @with_lock
-    def add_multi(self, mapping, time=None, key_prefix=''):
+    def add_multi(self, mapping, time=0, key_prefix=''):
         result = []
         for key, value in mapping.iteritems():
             if not self._add(key_prefix + key, value, time):
                 result.append(key)
         return result
-    def _replace(self, key, value, time=None):
+    def _replace(self, key, value, time=0):
         self._stat_cmd_set += 1
         key, value, expire = normalize(key, value, time)
         node = self._find_node(key)
@@ -248,13 +248,13 @@ class Memcache(object):
         return True
     replace = with_lock(_replace)
     @with_lock
-    def replace_multi(self, mapping, time=None, key_prefix=''):
+    def replace_multi(self, mapping, time=0, key_prefix=''):
         result = []
         for key, value in mapping.iteritems():
             if not self._replace(key_prefix + key, value, time):
                 result.append(key)
         return result
-    def _delete(self, key, seconds=None):
+    def _delete(self, key, seconds=0):
         self._stat_cmd_set += 1
         key, _, seconds = normalize(key, "", seconds)
         node = self._find_node(key)
@@ -266,7 +266,7 @@ class Memcache(object):
         return 2
     delete = with_lock(_delete)
     @with_lock
-    def delete_multi(self, keys, seconds=None, key_prefix=''):
+    def delete_multi(self, keys, seconds=0, key_prefix=''):
         for key in keys:
             self._delete(key_prefix + key, seconds)
         return []
