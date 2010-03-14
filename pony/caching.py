@@ -346,7 +346,7 @@ else:
         return Client(opt)
     
     memcache = choose_memcache(options.MEMCACHE)
-    session_memcache = choose_memcache(options.SESSION_MEMCACHE, memcache)
-    orm_memcache = choose_memcache(options.ORM_MEMCACHE, memcache)
-    templating_memcache = choose_memcache(options.TEMPLATING_MEMCACHE, memcache)
-    responce_memcache = choose_memcache(options.RESPONCE_MEMCACHE, memcache)        
+    session_memcache = choose_memcache(options.ALTERNATIVE_SESSION_MEMCACHE, memcache)
+    orm_memcache = choose_memcache(options.ALTERNATIVE_ORM_MEMCACHE, memcache)
+    templating_memcache = choose_memcache(options.ALTERNATIVE_TEMPLATING_MEMCACHE, memcache)
+    responce_memcache = choose_memcache(options.ALTERNATIVE_RESPONCE_MEMCACHE, memcache)        

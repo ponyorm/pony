@@ -42,10 +42,10 @@ SESSION_STORAGE = None  # pony.sessionstorage.memcachedstorage by default
 MEMCACHE = None  # Use in-process python version by default
 # MEMCACHE = [ "127.0.0.1:11211" ]
 # MEMCACHE = MyMemcacheConnectionImplementation(...)
-SESSION_MEMCACHE = None     # Use general memcache connection by default
-ORM_MEMCACHE = None         # Use general memcache connection by default
-TEMPLATING_MEMCACHE = None  # Use general memcache connection by default
-RESPONCE_MEMCACHE = None    # Use general memcache connection by default
+ALTERNATIVE_SESSION_MEMCACHE = None     # Use general memcache connection by default
+ALTERNATIVE_ORM_MEMCACHE = None         # Use general memcache connection by default
+ALTERNATIVE_TEMPLATING_MEMCACHE = None  # Use general memcache connection by default
+ALTERNATIVE_RESPONCE_MEMCACHE = None    # Use general memcache connection by default
 
 # pickle options:
 PICKLE_START_OFFSET = 230
