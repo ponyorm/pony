@@ -45,7 +45,7 @@ from pony.utils import decorator, tostring, localbase
 
 try: real_stdout
 except NameError:
-    assert sys.stdout.__class__.__name__ != 'PonyStdout'
+    assert type(sys.stdout).__name__ != 'PonyStdout'
     real_stdout = sys.stdout
     real_stderr = sys.stderr
 
