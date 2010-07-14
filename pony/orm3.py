@@ -12,15 +12,20 @@ class MappingError(OrmError): pass
 class TransactionError(OrmError): pass
 class IndexError(TransactionError): pass
 
-class UnknownValueType(object):
-    def __repr__(self): return 'UNKNOWN'
+class NotLoadedValueType(object):
+    def __repr__(self): return 'NOT_LOADED'
 
-UNKNOWN = UnknownValueType()
+NOT_LOADED = NotLoadedValueType()
 
 class DefaultValueType(object):
     def __repr__(self): return 'DEFAULT'
 
 DEFAULT = DefaultValueType()
+
+class NoUndoNeededType()
+    def __repr__(self): return 'NO_UNDO_NEEDED'
+
+NO_UNDO_NEEDED = NoUndoNeededType()
 
 next_id = count().next
 
@@ -65,7 +70,7 @@ class Attribute(object):
     def __repr__(attr):
         return '<Attribute %s: %s>' % (attr, attr.__class__.__name__)
     def check(attr, val, obj=None, entity=None):
-        assert val is not UNKNOWN
+        assert val is not NOT_LOADED
         if entity is not None: pass
         elif obj is not None: entity = obj.__class__
         else: entity = attr.entity
@@ -85,21 +90,29 @@ class Attribute(object):
         else: trans = get_trans()
         if trans is not val._trans_: raise TransactionError('An attempt to mix objects belongs to different transactions')
         return val
+    def load(attr, obj):
+        raise NotImplementedError
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
         rbits = obj._rbits_
         if rbits is not None: obj._rbits_ |= obj._bits_[attr]
         return attr.get(obj)
     def get(attr, obj):
-        val = obj.__dict__.get(attr, UNKNOWN)
-        if val is UNKNOWN: val = obj._load_(attr)
+        val = obj.__dict__.get(attr, NOT_LOADED)
+        if val is NOT_LOADED: val = attr.load(obj)
         return val
     def __set__(attr, obj, val, undo_funcs=None):
+        is_reverse_call = undo_funcs is not None
+        reverse = attr.reverse
         val = attr.check(val, obj)
         pkval = obj._pkval_
         if attr.pk_offset is not None:
             if pkval is not None and val == pkval[attr.pk_offset]: return
             raise TypeError('Cannot change value of primary key')
+        prev =  obj.__dict__.get(attr, NOT_LOADED)
+        if prev is NOT_LOADED and not reverse is not None and not reverse.is_collection:
+            assert not is_reverse_call
+            prev = attr.load(obj)
         trans = obj._trans_
         status = obj._status_
         if status != 'created': obj._status_ = 'updated'
@@ -108,13 +121,10 @@ class Attribute(object):
         if not attr.reverse and not attr.is_indexed:
             obj.__dict__[attr] = val
             return
-        prev = attr.get(obj)
         if prev == val:
-            wbits = obj._wbits_
-            if wbits is not None: obj._wbits_ = wbits | obj._bits_[attr]
+            assert not is_reverse_call
             return
         obj.__dict__[attr] = val
-        is_reverse_call = undo_funcs is not None
         if not is_reverse_call: undo_funcs = []
         undo = []
         def undo_func():
@@ -122,45 +132,62 @@ class Attribute(object):
             obj.wbits = wbits
             obj.__dict__[attr] = prev
             for new_index, obj, old_key, new_key in undo:
-                if new_key is not None: del new_index[new_key]
-                if old_key is not None: new_index[old_key] = obj
+                if new_key is NO_UNDO_NEEDED: pass
+                else: del new_index[new_key]
+                if old_key is NO_UNDO_NEEDED: pass
+                else: new_index[old_key] = obj
         undo_funcs.append(undo_func)
         try:
             if attr.is_unique:
                 index = trans.indexes.get(attr)
                 if index is None: index = trans.indexes[attr] = {}
-                if val is not None:
-                    obj2 = index.setdefault(val, obj)
+                if val is None and trans.ignore_none: new_keyval = NO_UNDO_NEEDED
+                else:
+                    new_keyval = val
+                    obj2 = index.setdefault(new_keyval, obj)
                     if obj2 is not obj: raise IndexError(
                         'Cannot update %s.%s: %s with such unique index already exists: %s'
-                        % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, val))
-                if prev is not None: del index[prev]
-                undo.append((index, obj, prev, val))
+                        % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, new_keyval))
+                if prev is NOT_LOADED: prev_keyval = NO_UNDO_NEEDED
+                elif prev is None and trans.ignore_none: prev_keyval = NO_UNDO_NEEDED
+                else:
+                    prev_keyval = prev
+                    del index[prev_keyval]
+                undo.append((index, obj, prev_keyval, new_keyval))
             for key, i in attr.composite_keys:
                 prev_keyval = obj.__dict__.get(key)
                 new_keyval = list(prev_keyval)
                 new_keyval[i] = val
                 new_keyval = tuple(new_keyval)
                 if trans.ignore_none:
-                    if None in prev_keyval: prev_keyval = None
-                    if None in new_keyval: new_keyval = None
-                    if prev_keyval is None and new_keyval is None: continue
+                    if None in prev_keyval: prev_keyval = NO_UNDO_NEEDED
+                    if None in new_keyval: new_keyval = NO_UNDO_NEEDED
+                if prev_keyval is NO_UNDO_NEEDED: pass
+                elif NOT_LOADED in prev_keyval: prev_keyval = NO_UNDO_NEEDED
+                if new_keyval is NO_UNDO_NEEDED: pass
+                elif NOT_LOADED in new_keyval: prev_keyval = NO_UNDO_NEEDED
+                if prev_keyval is NO_UNDO_NEEDED and new_keyval is NO_UNDO_NEEDED: continue
                 index = trans.indexes.get(key)
                 if index is None: index = trans.indexes[key] = {}
-                if new_keyval is not None:
+                if new_keyval is NO_UNDO_NEEDED: pass
+                else:
                     obj2 = index.setdefault(new_keyval, obj)
                     if obj2 is not obj:
                         key_str = ', '.join(repr(item) for item in new_keyval)
                         raise IndexError('Cannot update %s.%s: %s with such unique index already exists: %s'
                                           % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, key_str))
-                if prev_keyval is not None: del index[prev_keyval]
+                if prev_keyval is NO_UNDO_NEEDED: pass
+                else: del index[prev_keyval]
                 undo.append((index, obj, prev_keyval, new_keyval))
-            if not attr.reverse: pass
+            if not reverse: pass
             elif not is_reverse_call: attr.update_reverse(obj, prev, val, undo_funcs)
             elif prev is not None:
-                reverse = attr.reverse
-                if not reverse.is_collection: reverse.__set__(prev, None, undo_funcs)
-                elif isinstance(reverse, Set): reverse.reverse_remove((prev,), obj, undo_funcs)
+                if not reverse.is_collection:
+                    assert prev is not NOT_LOADED
+                    reverse.__set__(prev, None, undo_funcs)
+                elif isinstance(reverse, Set):
+                    if prev is NOT_LOADED: pass
+                    else: reverse.reverse_remove((prev,), obj, undo_funcs)
                 else: raise NotImplementedError
         except:
             if not is_reverse_call:
@@ -169,10 +196,12 @@ class Attribute(object):
     def update_reverse(attr, obj, prev, val, undo_funcs):
         reverse = attr.reverse
         if not reverse.is_collection:
-            if val is not None: reverse.__set__(val, obj, undo_funcs)
+            assert prev is not NOT_LOADED
             if prev is not None: reverse.__set__(prev, None, undo_funcs)
+            if val is not None: reverse.__set__(val, obj, undo_funcs)
         elif isinstance(reverse, Set):
-            if prev is not None: reverse.reverse_remove((prev,), obj, undo_funcs)
+            if prev is NOT_LOADED: pass
+            elif prev is not None: reverse.reverse_remove((prev,), obj, undo_funcs)
             if val is not None: reverse.reverse_add((val,), obj, undo_funcs)
         else: raise NotImplementedError
     def __delete__(attr, obj):
@@ -230,7 +259,7 @@ class Collection(Attribute):
 
 class Set(Collection):
     def check(attr, val, obj=None, entity=None):
-        assert val is not UNKNOWN
+        assert val is not NOT_LOADED
         if val is None or val is DEFAULT: return set()
         if entity is not None: pass
         elif obj is not None: entity = obj.__class__
@@ -485,8 +514,6 @@ class Entity(object):
     def _prepare_(obj, avdict, fromdb=False):
         raise NotImplementedError
     def _set_(obj, avdict, fromdb=False):
-        raise NotImplementedError
-    def _load_(obj, attr):
         raise NotImplementedError
     @classmethod
     def _normalize_args_(entity, args, keyargs, setdefault=False):
