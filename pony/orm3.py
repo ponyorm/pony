@@ -113,7 +113,6 @@ class Attribute(object):
         if prev is NOT_LOADED and not reverse is not None and not reverse.is_collection:
             assert not is_reverse_call
             prev = attr.load(obj)
-        trans = obj._trans_
         status = obj._status_
         if status != 'created': obj._status_ = 'updated'
         wbits = obj._wbits_
@@ -137,6 +136,7 @@ class Attribute(object):
                 if old_key is NO_UNDO_NEEDED: pass
                 else: new_index[old_key] = obj
         undo_funcs.append(undo_func)
+        trans = obj._trans_
         try:
             if attr.is_unique:
                 index = trans.indexes.get(attr)
@@ -155,17 +155,18 @@ class Attribute(object):
                     del index[prev_keyval]
                 undo.append((index, obj, prev_keyval, new_keyval))
             for key, i in attr.composite_keys:
-                prev_keyval = obj.__dict__.get(key)
-                new_keyval = list(prev_keyval)
-                new_keyval[i] = val
-                new_keyval = tuple(new_keyval)
+                get = obj.__dict__.get
+                keyval_list = [ get(a, NOT_LOADED) for a in key ]
+                prev_keyval = tuple(keyval_list)
+                keyval_list[i] = val
+                new_keyval = tuple(keyval_list)
                 if trans.ignore_none:
                     if None in prev_keyval: prev_keyval = NO_UNDO_NEEDED
                     if None in new_keyval: new_keyval = NO_UNDO_NEEDED
                 if prev_keyval is NO_UNDO_NEEDED: pass
                 elif NOT_LOADED in prev_keyval: prev_keyval = NO_UNDO_NEEDED
                 if new_keyval is NO_UNDO_NEEDED: pass
-                elif NOT_LOADED in new_keyval: prev_keyval = NO_UNDO_NEEDED
+                elif NOT_LOADED in new_keyval: new_keyval = NO_UNDO_NEEDED
                 if prev_keyval is NO_UNDO_NEEDED and new_keyval is NO_UNDO_NEEDED: continue
                 index = trans.indexes.get(key)
                 if index is None: index = trans.indexes[key] = {}
