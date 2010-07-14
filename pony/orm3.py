@@ -94,22 +94,88 @@ class Attribute(object):
         val = obj.__dict__.get(attr, UNKNOWN)
         if val is UNKNOWN: val = obj._load_(attr)
         return val
-    def __set__(attr, obj, val, fromdb=False):
+    def __set__(attr, obj, val, undo_funcs=None):
         val = attr.check(val, obj)
-        try: attr.prepare(obj, val, fromdb)
-        except IndexError:
-            obj._trans_.revert()
-            raise
+        pkval = obj._pkval_
+        if attr.pk_offset is not None:
+            if pkval is not None and val == pkval[attr.pk_offset]: return
+            raise TypeError('Cannot change value of primary key')
+        trans = obj._trans_
+        status = obj._status_
+        if status != 'created': obj._status_ = 'updated'
+        wbits = obj._wbits_
+        if wbits is not None: obj._wbits_ = wbits | obj._bits_[attr]
+        if not attr.reverse and not attr.is_indexed:
+            obj.__dict__[attr] = val
+            return
+        prev = attr.get(obj)
+        if prev == val:
+            wbits = obj._wbits_
+            if wbits is not None: obj._wbits_ = wbits | obj._bits_[attr]
+            return
+        obj.__dict__[attr] = val
+        is_reverse_call = undo_funcs is not None
+        if not is_reverse_call: undo_funcs = []
+        undo = []
+        def undo_func():
+            obj.status = status
+            obj.wbits = wbits
+            obj.__dict__[attr] = prev
+            for new_index, obj, old_key, new_key in undo:
+                if new_key is not None: del new_index[new_key]
+                if old_key is not None: new_index[old_key] = obj
+        undo_funcs.append(undo_func)
         try:
-            attr.set(obj, val, fromdb)
-            obj._trans_.save()
-        except: assert False
+            if attr.is_unique:
+                index = trans.indexes.get(attr)
+                if index is None: index = trans.indexes[attr] = {}
+                if val is not None:
+                    obj2 = index.setdefault(val, obj)
+                    if obj2 is not obj: raise IndexError(
+                        'Cannot update %s.%s: %s with such unique index already exists: %s'
+                        % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, val))
+                if prev is not None: del index[prev]
+                undo.append((index, obj, prev, val))
+            for key, i in attr.composite_keys:
+                prev_keyval = obj.__dict__.get(key)
+                new_keyval = list(prev_keyval)
+                new_keyval[i] = val
+                new_keyval = tuple(new_keyval)
+                if trans.ignore_none:
+                    if None in prev_keyval: prev_keyval = None
+                    if None in new_keyval: new_keyval = None
+                    if prev_keyval is None and new_keyval is None: continue
+                index = trans.indexes.get(key)
+                if index is None: index = trans.indexes[key] = {}
+                if new_keyval is not None:
+                    obj2 = index.setdefault(new_keyval, obj)
+                    if obj2 is not obj:
+                        key_str = ', '.join(repr(item) for item in new_keyval)
+                        raise IndexError('Cannot update %s.%s: %s with such unique index already exists: %s'
+                                          % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, key_str))
+                if prev_keyval is not None: del index[prev_keyval]
+                undo.append((index, obj, prev_keyval, new_keyval))
+            if not attr.reverse: pass
+            elif not is_reverse_call: attr.update_reverse(obj, prev, val, undo_funcs)
+            elif prev is not None:
+                reverse = attr.reverse
+                if not reverse.is_collection: reverse.__set__(prev, None, undo_funcs)
+                elif isinstance(reverse, Set): reverse.reverse_remove((prev,), obj, undo_funcs)
+                else: raise NotImplementedError
+        except:
+            if not is_reverse_call:
+                for undo_func in reversed(undo_funcs): undo_func()
+            raise
+    def update_reverse(attr, obj, prev, val, undo_funcs):
+        reverse = attr.reverse
+        if not reverse.is_collection:
+            if val is not None: reverse.__set__(val, obj, undo_funcs)
+            if prev is not None: reverse.__set__(prev, None, undo_funcs)
+        elif isinstance(reverse, Set):
+            if prev is not None: reverse.reverse_remove((prev,), obj, undo_funcs)
+            if val is not None: reverse.reverse_add((val,), obj, undo_funcs)
+        else: raise NotImplementedError
     def __delete__(attr, obj):
-        raise NotImplementedError
-    def prepare(attr, obj, val, fromdb=False, is_reverse_call=False):
-        raise NotImplementedError
-    def set(attr, obj, val, fromdb=False, is_reverse_call=False):
-        if obj._status_ != 'created': obj._status_ = 'updated'
         raise NotImplementedError
             
 class Optional(Attribute): pass
