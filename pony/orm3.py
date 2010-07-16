@@ -247,6 +247,8 @@ class Collection(Attribute):
         Attribute.__init__(attr, py_type, *args, **keyargs)
         if attr.default is not None: raise TypeError('default value could not be set for collection attribute')
         if attr.auto: raise TypeError("'auto' option could not be set for collection attribute")
+    def load(attr, obj):
+        assert False, 'Abstract method'
     def __get__(attr, obj, type=None):
         assert False, 'Abstract method'
     def __set__(attr, obj, val):
@@ -257,6 +259,9 @@ class Collection(Attribute):
         assert False, 'Abstract method'
     def set(attr, obj, val, fromdb=False):
         assert False, 'Abstract method'
+
+class _set(dict):
+    __slots__ = 'fully_loaded'
 
 class Set(Collection):
     def check(attr, val, obj=None, entity=None):
@@ -281,53 +286,96 @@ class Set(Collection):
         for robj in result:
             if robj._trans_ is not trans: raise TransactionError('An attempt to mix objects belongs to different transactions')
         return result
+    def load(attr, obj):
+        raise NotImplementedError
+    def copy(attr, obj):
+        val = obj.__dict__.get(attr, NOT_LOADED)
+        if val is NOT_LOADED or not val.fully_loaded: val = attr.load(obj)      
+        return set(x for x, status in val.iteritems() if status != 'deleted')
     def __get__(attr, obj, type=None):
         if obj is None: return attr
-        return SetProperty(obj, attr)
+        return SetWrapper(obj, attr)
+    def __set__(attr, obj, val):
+        raise NotImplementedError
     def __delete__(attr, obj):
         raise NotImplementedError
-    def prepare(attr, obj, val, fromdb=False):
-        raise NotImplementedError
-    def set(attr, obj, val, fromdb=False):
-        raise NotImplementedError
+    def reverse_add(attr, objects, x, undo_funcs):
+        for obj in objects:
+            val = obj.__dict__.get(attr, NOT_LOADED)
+            if val is NOT_LOADED:
+                val = obj.__dict__[attr] = _set()
+                val.fully_loaded = False
+            val[x] = 'added'
+    def reverse_remove(attr, objects, x, undo_funcs):
+        for obj in objects:
+            val = obj.__dict__.get(attr, NOT_LOADED)
+            if val is NOT_LOADED:
+                val = obj.__dict__[attr] = _set()
+                val.fully_loaded = False
+            val[x] = 'deleted'
 
 ##class List(Collection): pass
 ##class Dict(Collection): pass
 ##class Relation(Collection): pass
 
-class SetProperty(object):
+class SetWrapper(object):
     __slots__ = '_obj_', '_attr_'
-    def __init__(setprop, obj, attr):
-        setprop._obj_ = obj
-        setprop._attr_ = attr
-    def copy(setprop):
-        return setprop._attr_.get(setprop._obj_).copy()
-    def __repr__(setprop):
-        val = setprop._attr_.get(setprop._obj_)
-        return '%r.%s->%r' % (setprop._obj_, setprop._attr_.name, val)
-    def __len__(setprop):
-        return len(setprop._attr_.get(setprop._obj_))
-    def __iter__(setprop):
-        return iter(list(setprop._attr_.get(setprop._obj_)))
-    def __eq__(setprop, x):
-        val = setprop._attr_.get(setprop._obj_)
-        if isinstance(x, SetProperty):
-            if setprop._obj_ is x._obj_ and _attr_ is x._attr_: return True
-            return val == x._attr_.get(x._obj_)
-        if not isinstance(x, set): x = set(x)
+    def __init__(wrapper, obj, attr):
+        wrapper._obj_ = obj
+        wrapper._attr_ = attr
+    def copy(wrapper):
+        return wrapper._attr_.copy(wrapper._obj_)
+    def __repr__(wrapper):
+        val = wrapper.copy()
+        return '%r.%s->%r' % (wrapper._obj_, wrapper._attr_.name, val)
+    def __str__(wrapper):
+        return str(wrapper.copy())
+    def __len__(wrapper):
+        return len(wrapper.copy())
+    def __iter__(wrapper):
+        return iter(wrapper.copy())
+    def __eq__(wrapper, x):
+        if isinstance(x, SetWrapper):
+            if wrapper._obj_ is x._obj_ and _attr_ is x._attr_: return True
+            else: x = x.copy()
+        elif not isinstance(x, set): x = set(x)
+        val = wrapper.copy()
         return val == x
-    def __ne__(setprop, x):
-        return not setprop.__eq__(x)
-    def __add__(setprop, x):
-        return setprop._attr_.get(setprop._obj_).union(x)
-    def __sub__(setprop, x):
-        return setprop._attr_.get(setprop._obj_).difference(x)
-    def __contains__(setprop, x):
-        return x in setprop._attr_.get(setprop._obj_)
-    def __iadd__(setprop, x):
-        raise NotImplementedError
-    def __isub__(setprop, x):
-        raise NotImplementedError
+    def __ne__(wrapper, x):
+        return not wrapper.__eq__(x)
+    def __add__(wrapper, x):
+        return wrapper.copy().union(x)
+    def __sub__(wrapper, x):
+        return wrapper.copy().difference(x)
+    def __contains__(wrapper, x):
+        obj = wrapper._obj_
+        attr = wrapper._attr_
+        val = obj.__dict__.get(attr, NOT_LOADED)
+        if val is not NOT_LOADED:
+            status = val.get(x)
+            if status is None: pass
+            elif status == 'deleted': return False
+            else: return True
+        val = attr.load(obj)
+        return val.get(x, 'deleted') != 'deleted'
+    def __iadd__(wrapper, x):
+        obj = wrapper._obj_
+        attr = wrapper._attr_
+        val = obj.__dict__.get(attr, NOT_LOADED)
+        if val is NOT_LOADED:
+            val = obj.__dict__[attr] = _set()
+            val.fully_loaded = False
+        x = attr.check(x)
+        for y in x: val[y] = 'added'
+    def __isub__(wrapper, x):
+        obj = wrapper._obj_
+        attr = wrapper._attr_
+        val = obj.__dict__.get(attr, NOT_LOADED)
+        if val is NOT_LOADED:
+            val = obj.__dict__[attr] = _set()
+            val.fully_loaded = False
+        x = attr.check(x)
+        for y in x: val[y] = 'deleted'
 
 class EntityMeta(type):
     def __new__(meta, name, bases, dict):
