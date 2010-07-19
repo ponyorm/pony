@@ -1,5 +1,6 @@
-from itertools import count, ifilter, ifilterfalse, izip
+import sys, threading
 from operator import attrgetter
+from itertools import count, ifilter, ifilterfalse, izip
 
 try: from pony.thirdparty import etree
 except ImportError: etree = None
@@ -9,6 +10,7 @@ class OrmError(Exception): pass
 class DiagramError(OrmError): pass
 class SchemaError(OrmError): pass
 class MappingError(OrmError): pass
+class ConstraintError(OrmError): pass
 class TransactionError(OrmError): pass
 class IndexError(TransactionError): pass
 
@@ -22,7 +24,7 @@ class DefaultValueType(object):
 
 DEFAULT = DefaultValueType()
 
-class NoUndoNeededType()
+class NoUndoNeededType(object):
     def __repr__(self): return 'NO_UNDO_NEEDED'
 
 NO_UNDO_NEEDED = NoUndoNeededType()
@@ -387,11 +389,14 @@ class EntityMeta(type):
         super(EntityMeta, entity).__init__(name, bases, dict)
         if 'Entity' not in globals(): return
         outer_dict = sys._getframe(1).f_locals
-        diagram = (dict.pop('_diagram_', None)
-                   or outer_dict.get('_diagram_')
-                   or outer_dict.setdefault('_diagram_', Diagram()))
-        if not hasattr(diagram, 'data_source'):
-            diagram.data_source = outer_dict.get('_data_source_')
+
+        diagram = dict.pop('_diagram_', None) or outer_dict.get('_diagram_')
+        if diagram is None:
+            data_source = outer_dict.get('_data_source_')
+            # if data_source is None: raise NotImplementedError
+            diagram = Diagram(data_source)
+            outer_dict['_diagram_'] = diagram
+
         entity._cls_init_(diagram)
     def __setattr__(entity, name, val):
         entity._cls_setattr_(name, val)
@@ -543,7 +548,7 @@ class Entity(object):
             attr.reverse = attr2
             attr2.reverse = attr
     def __init__(obj, *args, **keyargs):
-        raise TypeError('You cannot create entity instances directly. Use Entity.create(...) or Entity.find(...) instead')
+        raise TypeError('Cannot create entity instances directly. Use Entity.create(...) or Entity.find(...) instead')
     def __repr__(obj):
         pkval = obj._pkval_
         if pkval is None: key_str = 'new:%d' % obj._newid_
@@ -554,13 +559,13 @@ class Entity(object):
         raise NotImplementedError
     @classmethod
     def create(entity, *args, **keyargs):
-        raise NotImplementedError
+        pkval, avdict = entity._normalize_args_(args, keyargs, True)
+        print pkval, avdict
+
     def set(obj, **keyargs):
         avdict = obj._keyargs_to_avdict_(keyargs)
         for attr in ifilter(avdict.__contains__, obj._pk_attrs_):
             raise TypeError('Cannot change value of primary key attribute %s' % attr.name)
-        raise NotImplementedError
-    def _prepare_(obj, avdict, fromdb=False):
         raise NotImplementedError
     def _set_(obj, avdict, fromdb=False):
         raise NotImplementedError
@@ -599,3 +604,24 @@ class Entity(object):
             if attr is None: raise TypeError('Unknown attribute %r' % name)
             avdict[attr] = attr.check(val, obj)
         return avdict
+
+class Diagram(object):
+    def __init__(diagram, data_source):
+        diagram.entities = {}
+        diagram.data_source = data_source
+
+class Transaction(object):
+    def __init__(trans):
+        trans.indexes = {}
+        trans.ignore_none = True
+
+class Local(threading.local):
+    def __init__(self):
+        self.trans = None
+
+local = Local()
+
+def get_trans():
+    trans = local.trans
+    if trans is None: trans = local.trans = Transaction()
+    return trans
