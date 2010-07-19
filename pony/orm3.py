@@ -417,8 +417,6 @@ class Entity(object):
     def _cls_init_(entity, diagram):
         if entity.__name__ in diagram.entities:
             raise DiagramError('Entity %s already exists' % entity.__name__)
-        entity._objects_ = {}
-        entity._lock_ = threading.Lock()
         direct_bases = [ c for c in entity.__bases__ if issubclass(c, Entity) and c is not Entity ]
         entity._direct_bases_ = direct_bases
         entity._all_bases_ = set((entity,))
