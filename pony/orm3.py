@@ -106,13 +106,14 @@ class Attribute(object):
     def __set__(attr, obj, val, undo_funcs=None):
         is_reverse_call = undo_funcs is not None
         reverse = attr.reverse
+        if not reverse: raise NotImplementedError
         val = attr.check(val, obj)
         pkval = obj._pkval_
         if attr.pk_offset is not None:
             if pkval is not None and val == pkval[attr.pk_offset]: return
             raise TypeError('Cannot change value of primary key')
         prev =  obj.__dict__.get(attr, NOT_LOADED)
-        if prev is NOT_LOADED and not reverse is not None and not reverse.is_collection:
+        if prev is NOT_LOADED and reverse and not reverse.is_collection:
             assert not is_reverse_call
             prev = attr.load(obj)
         status = obj._status_
@@ -274,11 +275,11 @@ class Set(Collection):
         else: entity = attr.entity
         reverse = attr.reverse
         if not reverse: raise NotImplementedError
-        if isinstance(val, reverse.entity): result = set((val,))
+        if isinstance(val, reverse.entity): result = (val,)
         else:
             rentity = reverse.entity
             try:
-                result = set(val)  # may raise TypeError if val is not iterable
+                if not isinstance(val, set): result = set(val)  # may raise TypeError if val is not iterable
                 for robj in result:
                     if not isinstance(robj, rentity): raise TypeError
             except TypeError: raise TypeError('Item of collection %s.%s must be instance of %s. Got: %r'
@@ -298,7 +299,32 @@ class Set(Collection):
         if obj is None: return attr
         return SetWrapper(obj, attr)
     def __set__(attr, obj, val):
-        raise NotImplementedError
+        val = attr.check(val, obj)
+        reverse = attr.reverse
+        if not reverse: raise NotImplementedError
+        prev =  obj.__dict__.get(attr, NOT_LOADED)
+        if prev is NOT_LOADED or not pref.fully_loaded: prev = attr.load(obj)
+        added = set(ifilterfalse(prev.__contains__, val))
+        deleted = set()
+        for robj, status in prev.iteritems():
+            if robj in val:
+                if status != 'added': added.add(robj)
+            else:
+                if status != 'deleted': deleted.add(robj)
+        undo_funcs = []
+        try:
+            for robj in deleted: reverse.__set__(robj, None, undo_funcs)
+            for robj in added: reverse.__set__(robj, obj, undo_funcs)
+        except:
+            for undo_func in reversed(undo_funcs): undo_func()
+            raise
+        for robj, status in prev.iteritems():
+            if robj in val:
+                if status != 'added': prev[robj] = 'added'
+            else:
+                if status != 'deleted': prev[robj] = 'deleted'
+        for robj in deleted: prev[robj] = 'deleted'
+        for robj in added: prev[robj] = 'added'
     def __delete__(attr, obj):
         raise NotImplementedError
     def reverse_add(attr, objects, x, undo_funcs):
