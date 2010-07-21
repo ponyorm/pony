@@ -116,10 +116,13 @@ class Attribute(object):
         if prev is NOT_LOADED and reverse and not reverse.is_collection:
             assert not is_reverse_call
             prev = attr.load(obj)
+        trans = obj._trans_
         status = obj._status_
         if status != 'created': obj._status_ = 'updated'
         wbits = obj._wbits_
-        if wbits is not None: obj._wbits_ = wbits | obj._bits_[attr]
+        if wbits is not None:
+            obj._wbits_ = wbits | obj._bits_[attr]
+            trans.updated.add(obj)
         if not attr.reverse and not attr.is_indexed:
             obj.__dict__[attr] = val
             return
@@ -132,6 +135,7 @@ class Attribute(object):
         def undo_func():
             obj.status = status
             obj.wbits = wbits
+            if not wbits: trans.updated.remove(obj)
             obj.__dict__[attr] = prev
             for new_index, obj, old_key, new_key in undo:
                 if new_key is NO_UNDO_NEEDED: pass
@@ -139,7 +143,6 @@ class Attribute(object):
                 if old_key is NO_UNDO_NEEDED: pass
                 else: new_index[old_key] = obj
         undo_funcs.append(undo_func)
-        trans = obj._trans_
         try:
             if attr.is_unique:
                 index = trans.indexes.get(attr)
@@ -298,49 +301,55 @@ class Set(Collection):
     def __get__(attr, obj, type=None):
         if obj is None: return attr
         return SetWrapper(obj, attr)
-    def __set__(attr, obj, val):
+    def __set__(attr, obj, val, undo_funcs=None):
         val = attr.check(val, obj)
         reverse = attr.reverse
         if not reverse: raise NotImplementedError
         prev =  obj.__dict__.get(attr, NOT_LOADED)
         if prev is NOT_LOADED or not pref.fully_loaded: prev = attr.load(obj)
-        added = set(ifilterfalse(prev.__contains__, val))
-        deleted = set()
+        to_add = set(ifilterfalse(prev.__contains__, val))
+        to_delete = set()
         for robj, status in prev.iteritems():
             if robj in val:
-                if status != 'added': added.add(robj)
+                if status != 'added': to_add.add(robj)
             else:
-                if status != 'deleted': deleted.add(robj)
-        undo_funcs = []
+                if status != 'deleted': to_delete.add(robj)
+        if undo_funcs is None: undo_funcs = []
         try:
-            for robj in deleted: reverse.__set__(robj, None, undo_funcs)
-            for robj in added: reverse.__set__(robj, obj, undo_funcs)
+            if not reverse.is_collection:
+                for robj in to_deleted: reverse.__set__(robj, None, undo_funcs)
+                for robj in to_added: reverse.__set__(robj, obj, undo_funcs)
+            else:
+                reverse.reverse_remove(to_delete, obj, undo_funcs)
+                reverse.reverse_add(to_add, obj, undo_funcs)
         except:
             for undo_func in reversed(undo_funcs): undo_func()
             raise
-        for robj, status in prev.iteritems():
-            if robj in val:
-                if status != 'added': prev[robj] = 'added'
-            else:
-                if status != 'deleted': prev[robj] = 'deleted'
-        for robj in deleted: prev[robj] = 'deleted'
-        for robj in added: prev[robj] = 'added'
+        for robj in to_deleted: prev[robj] = 'deleted'
+        for robj in to_added: prev[robj] = 'added'
+        trans = obj._trans_
+        trans.deleted.setdefault(attr, {}).setdefault(obj, set()).update(to_delete)
+        trans.added.setdefault(attr, {}).setdefault(obj, set()).update(to_add)
     def __delete__(attr, obj):
         raise NotImplementedError
-    def reverse_add(attr, objects, x, undo_funcs):
+    def reverse_add(attr, objects, robj, undo_funcs):
+        trans = robj._trans_
         for obj in objects:
             val = obj.__dict__.get(attr, NOT_LOADED)
             if val is NOT_LOADED:
                 val = obj.__dict__[attr] = _set()
                 val.fully_loaded = False
-            val[x] = 'added'
-    def reverse_remove(attr, objects, x, undo_funcs):
+            val[robj] = 'added'
+            trans.added.setdefault(attr, {}).setdefault(obj, set()).add(robj)
+    def reverse_remove(attr, objects, robj, undo_funcs):
+        trans = robj._trans_
         for obj in objects:
             val = obj.__dict__.get(attr, NOT_LOADED)
             if val is NOT_LOADED:
                 val = obj.__dict__[attr] = _set()
                 val.fully_loaded = False
-            val[x] = 'deleted'
+            val[robj] = 'deleted'
+            trans.deleted.setdefault(attr, {}).setdefault(obj, set()).add(robj)
 
 ##class List(Collection): pass
 ##class Dict(Collection): pass
@@ -636,8 +645,13 @@ class Diagram(object):
 
 class Transaction(object):
     def __init__(trans):
-        trans.indexes = {}
         trans.ignore_none = True
+        trans.indexes = {}
+        trans.created = set()
+        trans.deleted = set()
+        trans.updated = set()
+        trans.added = {}
+        trans.removed = {}
 
 class Local(threading.local):
     def __init__(self):
