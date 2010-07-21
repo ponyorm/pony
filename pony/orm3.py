@@ -179,10 +179,9 @@ class Attribute(object):
                 if new_keyval is NO_UNDO_NEEDED: pass
                 else:
                     obj2 = index.setdefault(new_keyval, obj)
-                    if obj2 is not obj:
-                        key_str = ', '.join(repr(item) for item in new_keyval)
-                        raise IndexError('Cannot update %s.%s: %s with such unique index already exists: %s'
-                                          % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, key_str))
+                    if obj2 is not obj: raise IndexError(
+                        'Cannot update %s.%s: %s with such unique index already exists: %s'
+                        % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, new_keyval))
                 if prev_keyval is NO_UNDO_NEEDED: pass
                 else: del index[prev_keyval]
                 undo.append((index, obj, prev_keyval, new_keyval))
@@ -599,7 +598,12 @@ class Entity(object):
         obj._status_ = 'created'
         obj._pkval_ = pkval
         if pkval is None: obj._newid_ = new_instance_next_id()
-        else: obj._newid_ = None
+        else:
+            obj._newid_ = None
+            if pkval in trans.indexes.setdefault(entity._pk_, {}):
+                if entity._pk_is_composite_: pkval = ', '.join(str(item) for item in pkval)
+                raise IndexError('Cannot create %s: instance with such primary key already exists: %s'
+                                 % (obj.__class__.__name__, pkval))
         obj._rbits_ = obj._wbits_ = None
         indexes = {}
         for attr in entity._simple_keys_:
@@ -611,10 +615,9 @@ class Entity(object):
         for attrs in entity._composite_keys_:
             keyval = tuple(map(avdict.__getitem__, attrs))
             if keyval in trans.indexes.setdefault(attrs, {}):
-                s1 = ', '.join(attr.name for attr in attrs)
-                s2 = ', '.join(str(item) for item in keyval)
+                attr_names = ', '.join(attr.name for attr in attrs)
                 raise IndexError('Cannot create %s: such values for attributes (%s) already exist: (%s)'
-                                 % (obj.__class__.__name__, s1, s2))
+                                 % (obj.__class__.__name__, attr_names, keyval))
             indexes[attrs] = keyval
         undo_funcs = []
         try:
@@ -626,6 +629,8 @@ class Entity(object):
         except:
             for undo_func in undo_funcs: undo_func()
             raise
+        if pkval is not None:
+            trans.indexes[entity._pk_][pkval] = obj
         for key, keyval in indexes.iteritems():
             trans.indexes[key][keyval] = obj
         trans.created.add(obj)
