@@ -593,8 +593,43 @@ class Entity(object):
     @classmethod
     def create(entity, *args, **keyargs):
         pkval, avdict = entity._normalize_args_(args, keyargs, True)
-        print pkval, avdict
-
+        trans = get_trans()
+        obj = object.__new__(entity)
+        obj._trans_ = trans
+        obj._status_ = 'created'
+        obj._pkval_ = pkval
+        if pkval is None: obj._newid_ = new_instance_next_id()
+        else: obj._newid_ = None
+        obj._rbits_ = obj._wbits_ = None
+        indexes = {}
+        for attr in entity._simple_keys_:
+            keyval = avdict[attr]
+            if keyval in trans.indexes.setdefault(attr, {}): raise IndexError(
+                'Cannot create %s: such value for attribute %s already exists: %s'
+                % (obj.__class__.__name__, attr.name, new_keyval))
+            indexes[attr] = keyval
+        for attrs in entity._composite_keys_:
+            keyval = tuple(map(avdict.__getitem__, attrs))
+            if keyval in trans.indexes.setdefault(attrs, {}):
+                s1 = ', '.join(attr.name for attr in attrs)
+                s2 = ', '.join(str(item) for item in keyval)
+                raise IndexError('Cannot create %s: such values for attributes (%s) already exist: (%s)'
+                                 % (obj.__class__.__name__, s1, s2))
+            indexes[attrs] = keyval
+        undo_funcs = []
+        try:
+            for attr, val in avdict.iteritems():
+                if not attr.is_collection:
+                    obj.__dict__[attr] = val
+                    if attr.reverse: attr.update_reverse(obj, None, val, undo_funcs)
+                else: attr.__set__(obj, val, undo_funcs)
+        except:
+            for undo_func in undo_funcs: undo_func()
+            raise
+        for key, keyval in indexes.iteritems():
+            trans.indexes[key][keyval] = obj
+        trans.created.add(obj)
+        return obj
     def set(obj, **keyargs):
         avdict = obj._keyargs_to_avdict_(keyargs)
         for attr in ifilter(avdict.__contains__, obj._pk_attrs_):
@@ -626,7 +661,8 @@ class Entity(object):
                 avdict[attr] = attr.check(val, None, entity)
         if entity._pk_is_composite_:
             pkval = map(avdict.get, entity._pk_attrs_)
-            pkval = None not in pkval and tuple(pkval) or None
+            if None in pkval: pkval = None
+            else: pkval = tuple(pkval)
         else: pkval = avdict.get(entity._pk_)
         return pkval, avdict        
     def _keyargs_to_avdict_(obj, keyargs):
