@@ -66,11 +66,9 @@ class Attribute(object):
     def _init_(attr, entity, name):
         attr.entity = entity
         attr.name = name
-    def __str__(attr):
+    def __repr__(attr):
         owner_name = not attr.entity and '?' or attr.entity.__name__
         return '%s.%s' % (owner_name, attr.name or '?')
-    def __repr__(attr):
-        return '<Attribute %s: %s>' % (attr, attr.__class__.__name__)
     def check(attr, val, obj=None, entity=None):
         assert val is not NOT_LOADED
         if entity is not None: pass
@@ -129,15 +127,14 @@ class Attribute(object):
         if prev == val:
             assert not is_reverse_call
             return
-        obj.__dict__[attr] = val
         if not is_reverse_call: undo_funcs = []
         undo = []
         def undo_func():
             obj.status = status
             obj.wbits = wbits
-            if not wbits: trans.updated.remove(obj)
+            if wbits == 0: trans.updated.remove(obj)
             obj.__dict__[attr] = prev
-            for new_index, obj, old_key, new_key in undo:
+            for new_index, old_key, new_key in undo:
                 if new_key is NO_UNDO_NEEDED: pass
                 else: del new_index[new_key]
                 if old_key is NO_UNDO_NEEDED: pass
@@ -159,7 +156,7 @@ class Attribute(object):
                 else:
                     prev_keyval = prev
                     del index[prev_keyval]
-                undo.append((index, obj, prev_keyval, new_keyval))
+                undo.append((index, prev_keyval, new_keyval))
             for key, i in attr.composite_keys:
                 get = obj.__dict__.get
                 keyval_list = [ get(a, NOT_LOADED) for a in key ]
@@ -184,7 +181,10 @@ class Attribute(object):
                         % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, new_keyval))
                 if prev_keyval is NO_UNDO_NEEDED: pass
                 else: del index[prev_keyval]
-                undo.append((index, obj, prev_keyval, new_keyval))
+                undo.append((index, prev_keyval, new_keyval))
+
+            obj.__dict__[attr] = val
+                
             if not reverse: pass
             elif not is_reverse_call: attr.update_reverse(obj, prev, val, undo_funcs)
             elif prev is not None:
@@ -280,22 +280,30 @@ class Set(Collection):
         if isinstance(val, reverse.entity): result = (val,)
         else:
             rentity = reverse.entity
-            try:
-                if not isinstance(val, set): result = set(val)  # may raise TypeError if val is not iterable
-                for robj in result:
-                    if not isinstance(robj, rentity): raise TypeError
-            except TypeError: raise TypeError('Item of collection %s.%s must be instance of %s. Got: %r'
-                                              % (entity.__name__, attr.name, rentity.__name__, robj))
+            if isinstance(val, set): result = val
+            else:
+                try: result = set(val)
+                except TypeError: raise TypeError(
+                    'Item of collection %s.%s must be an instance of %s. Got: %r'
+                    % (entity.__name__, attr.name, rentity.__name__, val))
+            for robj in result:
+                if not isinstance(robj, rentity): raise TypeError(
+                    'Item of collection %s.%s must be an instance of %s. Got: %r'
+                    % (entity.__name__, attr.name, rentity.__name__, robj))
         if obj is not None: trans = obj._trans_
         else: trans = get_trans()
         for robj in result:
             if robj._trans_ is not trans: raise TransactionError('An attempt to mix objects belongs to different transactions')
         return result
     def load(attr, obj):
-        raise NotImplementedError
+        if obj._status_ == 'created':
+            val = obj.__dict__[attr] = _set()
+            val.fully_loaded = True
+            return val
+        elif not val.fully_loaded: raise NotImplementedError
     def copy(attr, obj):
         val = obj.__dict__.get(attr, NOT_LOADED)
-        if val is NOT_LOADED or not val.fully_loaded: val = attr.load(obj)      
+        if val is NOT_LOADED or not val.fully_loaded: val = attr.load(obj)
         return set(x for x, status in val.iteritems() if status != 'deleted')
     def __get__(attr, obj, type=None):
         if obj is None: return attr
@@ -305,7 +313,7 @@ class Set(Collection):
         reverse = attr.reverse
         if not reverse: raise NotImplementedError
         prev =  obj.__dict__.get(attr, NOT_LOADED)
-        if prev is NOT_LOADED or not pref.fully_loaded: prev = attr.load(obj)
+        if prev is NOT_LOADED or not prev.fully_loaded: prev = attr.load(obj)
         to_add = set(ifilterfalse(prev.__contains__, val))
         to_delete = set()
         for robj, status in prev.iteritems():
@@ -316,18 +324,18 @@ class Set(Collection):
         if undo_funcs is None: undo_funcs = []
         try:
             if not reverse.is_collection:
-                for robj in to_deleted: reverse.__set__(robj, None, undo_funcs)
-                for robj in to_added: reverse.__set__(robj, obj, undo_funcs)
+                for robj in to_delete: reverse.__set__(robj, None, undo_funcs)
+                for robj in to_add: reverse.__set__(robj, obj, undo_funcs)
             else:
                 reverse.reverse_remove(to_delete, obj, undo_funcs)
                 reverse.reverse_add(to_add, obj, undo_funcs)
         except:
             for undo_func in reversed(undo_funcs): undo_func()
             raise
-        for robj in to_deleted: prev[robj] = 'deleted'
-        for robj in to_added: prev[robj] = 'added'
+        for robj in to_delete: prev[robj] = 'deleted'
+        for robj in to_add: prev[robj] = 'added'
         trans = obj._trans_
-        trans.deleted.setdefault(attr, {}).setdefault(obj, set()).update(to_delete)
+        trans.removed.setdefault(attr, {}).setdefault(obj, set()).update(to_delete)
         trans.added.setdefault(attr, {}).setdefault(obj, set()).update(to_add)
     def __delete__(attr, obj):
         raise NotImplementedError
@@ -348,7 +356,7 @@ class Set(Collection):
                 val = obj.__dict__[attr] = _set()
                 val.fully_loaded = False
             val[robj] = 'deleted'
-            trans.deleted.setdefault(attr, {}).setdefault(obj, set()).add(robj)
+            trans.removed.setdefault(attr, {}).setdefault(obj, set()).add(robj)
 
 ##class List(Collection): pass
 ##class Dict(Collection): pass
@@ -394,7 +402,7 @@ class SetWrapper(object):
             else: return True
         val = attr.load(obj)
         return val.get(x, 'deleted') != 'deleted'
-    def __iadd__(wrapper, x):
+    def add(wrapper, x):
         obj = wrapper._obj_
         attr = wrapper._attr_
         val = obj.__dict__.get(attr, NOT_LOADED)
@@ -403,7 +411,10 @@ class SetWrapper(object):
             val.fully_loaded = False
         x = attr.check(x)
         for y in x: val[y] = 'added'
-    def __isub__(wrapper, x):
+    def __iadd__(wrapper, x):
+        wrapper.add(x)
+        return wrapper
+    def remove(wrapper, x):
         obj = wrapper._obj_
         attr = wrapper._attr_
         val = obj.__dict__.get(attr, NOT_LOADED)
@@ -412,6 +423,9 @@ class SetWrapper(object):
             val.fully_loaded = False
         x = attr.check(x)
         for y in x: val[y] = 'deleted'
+    def __isub__(wrapper, x):
+        wrapper.remove(x)
+        return wrapper
 
 class EntityMeta(type):
     def __new__(meta, name, bases, dict):
@@ -583,9 +597,9 @@ class Entity(object):
         raise TypeError('Cannot create entity instances directly. Use Entity.create(...) or Entity.find(...) instead')
     def __repr__(obj):
         pkval = obj._pkval_
-        if pkval is None: key_str = 'new:%d' % obj._newid_
-        else: key_str = ', '.join(repr(val) for val in pkval)
-        return '%s(%s)' % (obj.__class__.__name__, key_str)
+        if pkval is None: return '%s(new:%d)' % (obj.__class__.__name__, obj._newid_)
+        elif obj._pk_is_composite_: return '%s%r' % (obj.__class__.__name__, pkval)
+        else: return '%s(%r)' % (obj.__class__.__name__, pkval)
     @classmethod
     def find(entity, *args, **keyargs):
         raise NotImplementedError
