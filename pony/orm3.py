@@ -79,8 +79,11 @@ class Attribute(object):
             if val is None and attr.is_required and not attr.auto: raise ConstraintError(
                 'Required attribute %s.%s does not specified' % (entity.__name__, attr.name))
         if val is None:
-            if attr.is_required: raise ConstraintError(
-                'Required attribute %s.%s cannot be set to None' % (entity.__name__, attr.name))
+            if attr.is_required:
+                if obj is None: raise ConstraintError(
+                    'Required attribute %s.%s cannot be set to None' % (entity.__name__, attr.name))
+                else: raise ConstraintError(
+                    'Required attribute %s.%s for %r cannot be set to None' % (entity.__name__, attr.name, obj))
             return val
         reverse = attr.reverse
         if not reverse or not val: return val
@@ -104,7 +107,6 @@ class Attribute(object):
     def __set__(attr, obj, val, undo_funcs=None):
         is_reverse_call = undo_funcs is not None
         reverse = attr.reverse
-        if not reverse: raise NotImplementedError
         val = attr.check(val, obj)
         pkval = obj._pkval_
         if attr.pk_offset is not None:
@@ -116,9 +118,9 @@ class Attribute(object):
             prev = attr.load(obj)
         trans = obj._trans_
         status = obj._status_
-        if status != 'created': obj._status_ = 'updated'
         wbits = obj._wbits_
         if wbits is not None:
+            obj._status_ = 'updated'
             obj._wbits_ = wbits | obj._bits_[attr]
             trans.updated.add(obj)
         if not attr.reverse and not attr.is_indexed:
@@ -134,54 +136,22 @@ class Attribute(object):
             obj.wbits = wbits
             if wbits == 0: trans.updated.remove(obj)
             obj.__dict__[attr] = prev
-            for new_index, old_key, new_key in undo:
+            for index, old_key, new_key in undo:
                 if new_key is NO_UNDO_NEEDED: pass
-                else: del new_index[new_key]
+                else: del index[new_key]
                 if old_key is NO_UNDO_NEEDED: pass
-                else: new_index[old_key] = obj
+                else: index[old_key] = obj
         undo_funcs.append(undo_func)
         try:
             if attr.is_unique:
-                index = trans.indexes.get(attr)
-                if index is None: index = trans.indexes[attr] = {}
-                if val is None and trans.ignore_none: new_keyval = NO_UNDO_NEEDED
-                else:
-                    new_keyval = val
-                    obj2 = index.setdefault(new_keyval, obj)
-                    if obj2 is not obj: raise IndexError(
-                        'Cannot update %s.%s: %s with such unique index already exists: %s'
-                        % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, new_keyval))
-                if prev is NOT_LOADED: prev_keyval = NO_UNDO_NEEDED
-                elif prev is None and trans.ignore_none: prev_keyval = NO_UNDO_NEEDED
-                else:
-                    prev_keyval = prev
-                    del index[prev_keyval]
-                undo.append((index, prev_keyval, new_keyval))
-            for key, i in attr.composite_keys:
+                trans.update_simple_index(obj, attr, prev, val, undo)
+            for attrs, i in attr.composite_keys:
                 get = obj.__dict__.get
-                keyval_list = [ get(a, NOT_LOADED) for a in key ]
-                prev_keyval = tuple(keyval_list)
-                keyval_list[i] = val
-                new_keyval = tuple(keyval_list)
-                if trans.ignore_none:
-                    if None in prev_keyval: prev_keyval = NO_UNDO_NEEDED
-                    if None in new_keyval: new_keyval = NO_UNDO_NEEDED
-                if prev_keyval is NO_UNDO_NEEDED: pass
-                elif NOT_LOADED in prev_keyval: prev_keyval = NO_UNDO_NEEDED
-                if new_keyval is NO_UNDO_NEEDED: pass
-                elif NOT_LOADED in new_keyval: new_keyval = NO_UNDO_NEEDED
-                if prev_keyval is NO_UNDO_NEEDED and new_keyval is NO_UNDO_NEEDED: continue
-                index = trans.indexes.get(key)
-                if index is None: index = trans.indexes[key] = {}
-                if new_keyval is NO_UNDO_NEEDED: pass
-                else:
-                    obj2 = index.setdefault(new_keyval, obj)
-                    if obj2 is not obj: raise IndexError(
-                        'Cannot update %s.%s: %s with such unique index already exists: %s'
-                        % (obj.__class__.__name__, attr.name, obj2.__class__.__name__, new_keyval))
-                if prev_keyval is NO_UNDO_NEEDED: pass
-                else: del index[prev_keyval]
-                undo.append((index, prev_keyval, new_keyval))
+                vals = [ get(a, NOT_LOADED) for a in attrs ]
+                prevs = tuple(vals)
+                vals[i] = val
+                vals = tuple(vals)
+                trans.update_composite_index(obj, attrs, prevs, vals, undo)
 
             obj.__dict__[attr] = val
                 
@@ -616,23 +586,23 @@ class Entity(object):
             obj._newid_ = None
             if pkval in trans.indexes.setdefault(entity._pk_, {}):
                 if entity._pk_is_composite_: pkval = ', '.join(str(item) for item in pkval)
-                raise IndexError('Cannot create %s: instance with such primary key already exists: %s'
+                raise IndexError('Cannot create %s: instance with primary key %s already exists'
                                  % (obj.__class__.__name__, pkval))
         obj._rbits_ = obj._wbits_ = None
         indexes = {}
         for attr in entity._simple_keys_:
-            keyval = avdict[attr]
-            if keyval in trans.indexes.setdefault(attr, {}): raise IndexError(
-                'Cannot create %s: such value for attribute %s already exists: %s'
-                % (obj.__class__.__name__, attr.name, new_keyval))
-            indexes[attr] = keyval
+            val = avdict[attr]
+            if val in trans.indexes.setdefault(attr, {}): raise IndexError(
+                'Cannot create %s: value %s for key %s already exists'
+                % (obj.__class__.__name__, val, attr.name))
+            indexes[attr] = val
         for attrs in entity._composite_keys_:
-            keyval = tuple(map(avdict.__getitem__, attrs))
-            if keyval in trans.indexes.setdefault(attrs, {}):
+            vals = tuple(map(avdict.__getitem__, attrs))
+            if vals in trans.indexes.setdefault(attrs, {}):
                 attr_names = ', '.join(attr.name for attr in attrs)
-                raise IndexError('Cannot create %s: such values for attributes (%s) already exist: (%s)'
-                                 % (obj.__class__.__name__, attr_names, keyval))
-            indexes[attrs] = keyval
+                raise IndexError('Cannot create %s: value %s for composite key (%s) already exists'
+                                 % (obj.__class__.__name__, vals, attr_names))
+            indexes[attrs] = vals
         undo_funcs = []
         try:
             for attr, val in avdict.iteritems():
@@ -650,10 +620,69 @@ class Entity(object):
         trans.created.add(obj)
         return obj
     def set(obj, **keyargs):
-        avdict = obj._keyargs_to_avdict_(keyargs)
-        for attr in ifilter(avdict.__contains__, obj._pk_attrs_):
-            raise TypeError('Cannot change value of primary key attribute %s' % attr.name)
-        raise NotImplementedError
+        avdict, collection_avdict = obj._keyargs_to_avdicts_(keyargs)
+        trans = obj._trans_
+        status = obj._status_
+        wbits = obj._wbits_
+        if avdict:
+            for attr in avdict:
+                prev = obj.__dict__.get(attr, NOT_LOADED)
+                if prev is NOT_LOADED and attr.reverse and not attr.reverse.is_collection:
+                    attr.load(obj)
+            if wbits is not None:
+                obj._status_ = 'updated'
+                new_wbits = wbits
+                for attr in avdict: new_wbits |= obj._bits_[attr]
+                obj._wbits_ = new_wbits
+                trans.updated.add(obj)
+            if not collection_avdict:
+                for attr in avdict:
+                    if attr.reverse or attr.is_indexed: break
+                else:
+                    obj.__dict__.update(avdict)
+                    return
+        undo_funcs = []
+        undo = []
+        def undo_func():
+            obj.status = status
+            obj.wbits = wbits
+            if wbits == 0: trans.updated.discard(obj)
+            for index, old_key, new_key in undo:
+                if new_key is NO_UNDO_NEEDED: pass
+                else: del index[new_key]
+                if old_key is NO_UNDO_NEEDED: pass
+                else: index[old_key] = obj
+        NOT_FOUND = object()
+        try:
+            for attr in obj._simple_keys_:
+                val = avdict.get(attr, NOT_FOUND)
+                if val is NOT_FOUND: continue
+                prev = obj.__dict__.get(attr, NOT_LOADED)
+                if prev == val: continue
+                trans.update_simple_index(obj, attr, prev, val, undo)
+            for attrs in obj._composite_keys_:
+                for attr in attrs:
+                    if attr in avdict: break
+                else: continue
+                get = obj.__dict__.get
+                vals = [ get(a, NOT_LOADED) for a in attrs ]
+                prevs = tuple(vals)
+                for i, attr in enumerate(attrs):
+                    val = avdict.get(attr, NOT_FOUND)
+                    if val is NOT_FOUND: continue
+                    vals[i] = val
+                vals = tuple(vals)
+                trans.update_composite_index(obj, attrs, prevs, vals, undo)
+            for attr, val in avdict.iteritems():
+                if not attr.reverse: continue
+                prev = obj.__dict__.get(attr, NOT_LOADED)
+                attr.update_reverse(obj, prev, val, undo_funcs)
+            for attr, val in collection_avdict.iteritems():
+                attr.__set__(obj, val, undo_funcs)
+        except:
+            for undo_func in undo_funcs: undo_func()
+            raise
+        obj.__dict__.update(avdict)
     def _set_(obj, avdict, fromdb=False):
         raise NotImplementedError
     @classmethod
@@ -684,14 +713,20 @@ class Entity(object):
             else: pkval = tuple(pkval)
         else: pkval = avdict.get(entity._pk_)
         return pkval, avdict        
-    def _keyargs_to_avdict_(obj, keyargs):
-        avdict = {}
-        get = entity._adict_.get
+    def _keyargs_to_avdicts_(obj, keyargs):
+        avdict, collection_avdict = {}, {}
+        get = obj._adict_.get
         for name, val in keyargs.items():
             attr = get(name)
             if attr is None: raise TypeError('Unknown attribute %r' % name)
-            avdict[attr] = attr.check(val, obj)
-        return avdict
+            val = attr.check(val, obj)
+            if not attr.is_collection:
+                if attr.pk_offset is not None:
+                    prev = obj.__dict__.get(attr, NOT_LOADED)
+                    if prev != val: raise TypeError('Cannot change value of primary key attribute %s' % attr.name)
+                else: avdict[attr] = val
+            else: collection_avdict[attr] = val
+        return avdict, collection_avdict
 
 class Diagram(object):
     def __init__(diagram, data_source):
@@ -707,6 +742,40 @@ class Transaction(object):
         trans.updated = set()
         trans.added = {}
         trans.removed = {}
+    def update_simple_index(trans, obj, attr, prev, val, undo):
+        index = trans.indexes.get(attr)
+        if index is None: index = trans.indexes[attr] = {}
+        if val is None and trans.ignore_none: val = NO_UNDO_NEEDED
+        else:
+            obj2 = index.setdefault(val, obj)
+            if obj2 is not obj: raise IndexError(
+                'Cannot update %s.%s: %s with key %s already exists'
+                % (obj.__class__.__name__, attr.name, obj2, val))
+        if prev is NOT_LOADED: prev = NO_UNDO_NEEDED
+        elif prev is None and trans.ignore_none: prev = NO_UNDO_NEEDED
+        else: del index[prev]
+        undo.append((index, prev, val))
+    def update_composite_index(trans, obj, attrs, prevs, vals, undo):
+        if trans.ignore_none:
+            if None in prevs: prevs = NO_UNDO_NEEDED
+            if None in vals: vals = NO_UNDO_NEEDED
+        if prevs is NO_UNDO_NEEDED: pass
+        elif NOT_LOADED in prevs: prevs = NO_UNDO_NEEDED
+        if vals is NO_UNDO_NEEDED: pass
+        elif NOT_LOADED in vals: vals = NO_UNDO_NEEDED
+        if prevs is NO_UNDO_NEEDED and vals is NO_UNDO_NEEDED: return
+        index = trans.indexes.get(attrs)
+        if index is None: index = trans.indexes[attrs] = {}
+        if vals is NO_UNDO_NEEDED: pass
+        else:
+            obj2 = index.setdefault(vals, obj)
+            if obj2 is not obj:
+                attr_names = ', '.join(attr.name for attr in attrs)
+                raise IndexError('Cannot update %r: composite key (%s) with value %s already exists for %r'
+                % (obj, attr_names, vals, obj2))
+        if prevs is NO_UNDO_NEEDED: pass
+        else: del index[prevs]
+        undo.append((index, prevs, vals))
 
 class Local(threading.local):
     def __init__(self):
