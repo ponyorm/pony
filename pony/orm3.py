@@ -48,6 +48,7 @@ class Attribute(object):
         if py_type == 'Entity' or py_type is Entity:
             raise TypeError('Cannot link attribute to Entity class. Must use Entity subclass instead')
         attr.py_type = py_type
+        attr.sql_type = keyargs.pop('sql_type', None)
         attr.entity = attr.name = None
         attr.args = args
         attr.auto = keyargs.pop('auto', False)
@@ -70,6 +71,19 @@ class Attribute(object):
     def _init_(attr, entity, name):
         attr.entity = entity
         attr.name = name
+        if attr.column is not None:
+            if attr.columns is not None:
+                raise TypeError("Parameters 'column' and 'columns' cannot be specified simultaneously")
+            if not isinstance(attr.column, basestring):
+                raise TypeError("Parameter 'column' must be a string. Got: %r" % attr.column)
+            attr.columns = [ attr.column ]
+        elif attr.columns is not None:
+            if not isinstance(attr.columns, (tuple, list)):
+                raise TypeError("Parameter 'columns' must be a list. Got: %r'" % attr.columns)
+            if not attr.columns: raise TypeError("Parameter 'columns' must not be empty list")
+            for column in attr.columns:
+                if not isinstance(column, basestring):
+                    raise TypeError("Items of parameter 'columns' must be strings. Got: %r" % column)
     def __repr__(attr):
         owner_name = not attr.entity and '?' or attr.entity.__name__
         return '%s.%s' % (owner_name, attr.name or '?')
@@ -221,8 +235,13 @@ class Unique(Required):
 class PrimaryKey(Unique): pass
 
 class Collection(Attribute):
+    __slots__ = 'table'
     def __init__(attr, py_type, *args, **keyargs):
         if attr.__class__ is Collection: raise TypeError("'Collection' is abstract type")
+        table = keyargs.pop('table', None)
+        if table is not None and not isinstance(table, basestring):
+            raise TypeError("Parameter 'table' must be a string. Got: %r" % table)
+        attr.table = table
         Attribute.__init__(attr, py_type, *args, **keyargs)
         if attr.default is not None: raise TypeError('default value could not be set for collection attribute')
         if attr.auto: raise TypeError("'auto' option could not be set for collection attribute")
@@ -503,8 +522,8 @@ class Entity(object):
             pk_attrs = key
         else: pk_attrs = primary_keys.pop()
         for i, attr in enumerate(pk_attrs): attr.pk_offset = i
+        entity._pk_info_ = None
         entity._pk_attrs_ = pk_attrs
-        entity._pk_names_ = tuple(attr.name for attr in pk_attrs)
         entity._pk_is_composite_ = len(pk_attrs) > 1
         entity._pk_ = len(pk_attrs) > 1 and pk_attrs or pk_attrs[0]
         entity._keys_ = [ key for key, is_pk in keys.items() if not is_pk ]
@@ -525,7 +544,7 @@ class Entity(object):
                 if entity2 is None:
                     diagram.unmapped_attrs.setdefault(py_type, set()).add(attr)
                     continue
-                attr.py_type = entity2
+                attr.py_type = py_type = entity2
             elif not issubclass(py_type, Entity): continue
 
             entity2 = py_type
@@ -572,6 +591,19 @@ class Entity(object):
             raise DiagramError('Reverse attribute for %s.%s was not found' % (attr.entity.__name__, attr.name))
     def __init__(obj, *args, **keyargs):
         raise TypeError('Cannot create entity instances directly. Use Entity.create(...) or Entity.find(...) instead')
+    @classmethod
+    def _calculate_pk_info_(entity):
+        if entity._pk_info_ is not None: return entity._pk_info_
+        pk_info = []
+        for attr in entity._pk_attrs_:
+            py_type = attr.py_type
+            assert not isinstance(py_type, basestring)
+            if not issubclass(py_type, Entity): pk_info.append((attr, attr.name))
+            else:
+                for attr2, name in attr.py_type._calculate_pk_info_():
+                    pk_info.append((attr2, attr.name + '_' + name))
+        entity._pk_info_ = pk_info
+        return pk_info
     def __repr__(obj):
         pkval = obj._pkval_
         if pkval is None: return '%s(new:%d)' % (obj.__class__.__name__, obj._newid_)
@@ -694,13 +726,12 @@ class Entity(object):
         raise NotImplementedError
     @classmethod
     def _normalize_args_(entity, args, keyargs, setdefault=False):
-        pk_names = entity._pk_names_        
         if not args: pass
-        elif len(args) != len(pk_names): raise TypeError('Invalid count of attrs in primary key')
+        elif len(args) != len(entity._pk_attrs_): raise TypeError('Invalid count of attrs in primary key')
         else:
-            for name, val in izip(pk_names, args):
-                if keyargs.setdefault(name, val) is not val:
-                    raise TypeError('Ambiguos value of attribute %s' % name)
+            for attr, val in izip(entity._pk_attrs_, args):
+                if keyargs.setdefault(attr.name, val) is not val:
+                    raise TypeError('Ambiguos value of attribute %s' % attr.name)
         avdict = {}
         if setdefault:
             for name in ifilterfalse(entity._adict_.__contains__, keyargs):
@@ -745,6 +776,96 @@ class Diagram(object):
         if filename is not None: raise NotImplementedError
         for entity_name in diagram.unmapped_attrs:
             raise DiagramError('Entity definition %s was not found' % entity_name)
+
+        mapping = diagram.mapping = Mapping()
+        for entity in diagram.entities.values(): entity._calculate_pk_info_()
+        for entity in diagram.entities.values():
+            table_name = entity.__dict__.get('_table_')
+            if table_name is None:
+                table_name = entity._table_ = entity.__name__
+            elif not isinstance(table_name, basestring):
+                raise TypeError('%s._table_ property must be a string. Got: %r' % (entity.__name__, table_name))
+            table = mapping.tables.get(table_name)
+            if table is None:
+                table = mapping.tables[table_name] = Table(mapping, table_name)
+            elif table.entities: raise NotImplementedError
+            table.entities.add(entity)
+
+            if entity._base_attrs_: raise NotImplementedError
+            for attr in entity._new_attrs_:
+                py_type = attr.py_type
+                if attr.is_collection:
+                    reverse = attr.reverse
+                    if not reverse.is_collection:
+                        if attr.table is not None: raise MappingError(
+                            "Parameter 'table' is allowed for many to many relations only")
+                        continue
+                    name1 = attr.entity.__name__
+                    name2 = reverse.entity.__name__
+                    if name1 >= name2: continue
+                    if attr.table:
+                        if reverse.table != attr.table: raise MappingError(
+                            "Parameter 'table' for %s.%s and %s.%s do not match"
+                            % (attr.entity.__name__, attr.name, reverse.entity.__name__, reverse.name))
+                        table_name = attr.table
+                    else: table_name = name1 + '_' + name2
+                    m2m_table = mapping.tables.get(table_name)
+                    if m2m_table is None:
+                        m2m_table = mapping.tables[table_name] = Table(mapping, table_name)
+                        pk_info = entity._pk_info_
+                        if reverse.columns:
+                            if len(reverse.columns) != len(pk_info): raise MappingError(
+                                'Invalid number of columns for %s.%s' % (reverse.entity.__name__, reverse.name))
+                            for col_name, (attr2, name2) in zip(reverse.columns, pk_info):
+                                m2m_table.add_column(col_name, True, attr2)
+                        else:
+                            reverse.columns = []
+                            prefix = attr.entity.__name__.lower() + '_'
+                            for attr2, name in pk_info:
+                                col_name = prefix + name
+                                reverse.columns.append(col_name)
+                                m2m_table.add_column(col_name, True, attr2)
+                        pk_info = reverse.entity._pk_info_
+                        if attr.columns:
+                            if len(attr.columns) != len(pk_info): raise MappingError(
+                                'Invalid number of columns for %s.%s' % (attr.entity.__name__, attr.name))
+                            for col_name, (attr2, name2) in zip(attr.columns, pk_info):
+                                m2m_table.add_column(col_name, True, attr2)
+                        else:
+                            attr.columns = []
+                            prefix = reverse.entity.__name__.lower() + '_'
+                            for attr2, name in pk_info:
+                                col_name = prefix + name
+                                attr.columns.append(col_name)
+                                m2m_table.add_column(col_name, True, attr2)
+                    else:
+                        if m2m_table.entities or m2m_table.m2m: raise MappingError(
+                            "Table name '%s' is already in use" % table_name)
+                        raise NotImplementedError
+                    m2m_table.m2m.add(attr)
+                    m2m_table.m2m.add(reverse)
+                elif attr.columns is None:
+                    if not issubclass(py_type, Entity):
+                        col_name = attr.column = attr.name
+                        attr.columns = [ attr.name ]
+                        table.add_column(col_name, attr.pk_offset is not None, attr)
+                    else:
+                        attr.columns = []
+                        for attr2, name2 in py_type._pk_info_:
+                            col_name = attr.name + '_' + name2
+                            attr.columns.append(col_name)
+                            table.add_column(col_name, attr.pk_offset is not None, attr2)
+                else:
+                    if not issubclass(py_type, Entity):
+                        if len(attr.columns) > 1: raise MappingError(
+                            'Invalid number of columns for %s.%s' % (attr.entity.__name__, attr.name))
+                        table.add_column(attr.name, attr.pk_offset is not None, attr)
+                    else:
+                        pk_info = attr.reverse.entity._pk_info_
+                        if len(attr.columns) != len(pk_info): raise MappingError(
+                            'Invalid number of columns for %s.%s' % (attr.entity.__name__, attr.name))
+                        for col_name, (attr2, name2) in zip(attr.columns, pk_info):
+                            table.add_column(col_name, attr.pk_offset is not None, attr2)
 
 def generate_mapping(*args, **keyargs):
     outer_dict = sys._getframe(1).f_locals
@@ -811,3 +932,32 @@ class Mapping(object):
     def __init__(mapping):
         mapping.tables = {}
 
+class Table(object):
+    def __init__(table, mapping, name):
+        table.mapping = mapping
+        table.name = name
+        table.column_list = []
+        table.column_dict = {}
+        table.entities = set()
+        table.m2m = set()
+    def __repr__(table):
+        return '<Table(%s)>' % table.name
+    def add_column(table, col_name, pk, attr):
+        print table.name, col_name
+        if col_name in table.column_dict:
+            raise MappingError('Column %s in table %s was already mapped' % (col_name, table.name))
+        column = Column(table, col_name, pk, attr)
+        table.column_list.append(column)
+        table.column_dict[col_name] = column
+        return column
+
+class Column(object):
+    def __init__(column, table, name, pk=False, attr=None):
+        column.table = table
+        column.name = name
+        column.pk = pk
+        column.attr = attr
+        column.sql_type = attr.sql_type
+    def __repr__(column):
+        if column.pk: return '<Column(%s.%s) PK>' % (column.table.name, column.name)
+        return '<Column(%s.%s)>' % (column.table.name, column.name)
