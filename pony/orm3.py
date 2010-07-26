@@ -45,6 +45,8 @@ class Attribute(object):
         if attr.is_pk: attr.pk_offset = 0
         else: attr.pk_offset = None
         attr.id = next_id()
+        if py_type == 'Entity' or py_type is Entity:
+            raise TypeError('Cannot link attribute to Entity class. Must use Entity subclass instead')
         attr.py_type = py_type
         attr.entity = attr.name = None
         attr.args = args
@@ -61,6 +63,8 @@ class Attribute(object):
             raise TypeError("Value of 'reverse' option must be name of reverse attribute). Got: %r" % attr.reverse)
         elif not isinstance(attr.py_type, (basestring, EntityMeta)):
             raise DiagramError('Reverse option cannot be set for this type %r' % attr.py_type)
+        attr.column = keyargs.pop('column', None)
+        attr.columns = keyargs.pop('columns', None)
         for option in keyargs: raise TypeError('Unknown option %r' % option)
         attr.composite_keys = []
     def _init_(attr, entity, name):
@@ -410,9 +414,7 @@ class EntityMeta(type):
 
         diagram = dict.pop('_diagram_', None) or outer_dict.get('_diagram_')
         if diagram is None:
-            data_source = outer_dict.get('_data_source_')
-            # if data_source is None: raise NotImplementedError
-            diagram = Diagram(data_source)
+            diagram = Diagram()
             outer_dict['_diagram_'] = diagram
 
         entity._cls_init_(diagram)
@@ -512,22 +514,24 @@ class Entity(object):
         entity._diagram_ = diagram
         diagram.entities[entity.__name__] = entity
         entity._link_reverse_attrs_()
-
     @classmethod
     def _link_reverse_attrs_(entity):
         diagram = entity._diagram_
+        unmapped_attrs = diagram.unmapped_attrs.pop(entity.__name__, set())
         for attr in entity._new_attrs_:
             py_type = attr.py_type
             if isinstance(py_type, basestring):
                 entity2 = diagram.entities.get(py_type)
-                if entity2 is None: continue
+                if entity2 is None:
+                    diagram.unmapped_attrs.setdefault(py_type, set()).add(attr)
+                    continue
                 attr.py_type = entity2
-            elif issubclass(py_type, Entity):
-                entity2 = py_type
-                if entity2._diagram_ is not diagram: raise DiagramError(
-                    'Interrelated entities must belong to same diagram. Entities %s and %s belongs to different diagrams'
-                    % (entity.__name__, entity2.__name__))
-            else: continue
+            elif not issubclass(py_type, Entity): continue
+
+            entity2 = py_type
+            if entity2._diagram_ is not diagram: raise DiagramError(
+                'Interrelated entities must belong to same diagram. Entities %s and %s belongs to different diagrams'
+                % (entity.__name__, entity2.__name__))
             
             reverse = attr.reverse
             if isinstance(reverse, basestring):
@@ -563,6 +567,9 @@ class Entity(object):
 
             attr.reverse = attr2
             attr2.reverse = attr
+            unmapped_attrs.discard(attr2)          
+        for attr in unmapped_attrs:
+            raise DiagramError('Reverse attribute for %s.%s was not found' % (attr.entity.__name__, attr.name))
     def __init__(obj, *args, **keyargs):
         raise TypeError('Cannot create entity instances directly. Use Entity.create(...) or Entity.find(...) instead')
     def __repr__(obj):
@@ -729,9 +736,21 @@ class Entity(object):
         return avdict, collection_avdict
 
 class Diagram(object):
-    def __init__(diagram, data_source):
+    def __init__(diagram):
         diagram.entities = {}
-        diagram.data_source = data_source
+        diagram.unmapped_attrs = {}
+        diagram.mapping = None
+    def generate_mapping(diagram, filename=None):
+        if diagram.mapping: raise MappingError('Mapping was already generated')
+        if filename is not None: raise NotImplementedError
+        for entity_name in diagram.unmapped_attrs:
+            raise DiagramError('Entity definition %s was not found' % entity_name)
+
+def generate_mapping(*args, **keyargs):
+    outer_dict = sys._getframe(1).f_locals
+    diagram = outer_dict.get('_diagram_')
+    if diagram is None: raise MappingError('No default diagram found')
+    diagram.generate_mapping(*args, **keyargs)
 
 class Transaction(object):
     def __init__(trans):
@@ -787,3 +806,8 @@ def get_trans():
     trans = local.trans
     if trans is None: trans = local.trans = Transaction()
     return trans
+
+class Mapping(object):
+    def __init__(mapping):
+        mapping.tables = {}
+
