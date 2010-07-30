@@ -5,6 +5,9 @@ from itertools import count, ifilter, ifilterfalse, izip
 try: from pony.thirdparty import etree
 except ImportError: etree = None
 
+import dbapiprovider
+from pony.sqlsymbols import *
+
 class OrmError(Exception): pass
 
 class DiagramError(OrmError): pass
@@ -13,6 +16,7 @@ class MappingError(OrmError): pass
 class ConstraintError(OrmError): pass
 class TransactionError(OrmError): pass
 class IndexError(TransactionError): pass
+class MultipleObjectsFoundError(OrmError): pass
 
 class NotLoadedValueType(object):
     def __repr__(self): return 'NOT_LOADED'
@@ -96,15 +100,21 @@ class Attribute(object):
             val = attr.default
             if val is None and attr.is_required and not attr.auto: raise ConstraintError(
                 'Required attribute %s.%s does not specified' % (entity.__name__, attr.name))
-        if val is None:
+        elif val is None:
             if attr.is_required:
                 if obj is None: raise ConstraintError(
                     'Required attribute %s.%s cannot be set to None' % (entity.__name__, attr.name))
                 else: raise ConstraintError(
                     'Required attribute %s.%s for %r cannot be set to None' % (entity.__name__, attr.name, obj))
             return val
+        if val is None: return val
         reverse = attr.reverse
-        if not reverse or not val: return val
+        if not reverse:
+            if isinstance(val, attr.py_type): return val
+            elif isinstance(val, Entity): raise TypeError(
+                'Attribute %s.%s must be of %s type. Got: %s'
+                % (attr.entity.__name__, attr.name, attr.py_type.__name__, val))
+            return attr.py_type(val)
         if not isinstance(val, reverse.entity): raise ConstraintError(
             'Value of attribute %s.%s must be an instance of %s. Got: %s' % (entity.__name__, attr.name, reverse.entity.__name__, val))
         if obj is not None: trans = obj._trans_
@@ -446,7 +456,7 @@ new_instance_next_id = count(1).next
 
 class Entity(object):
     __metaclass__ = EntityMeta
-    __slots__ = '__dict__', '__weakref__', '_pkval_', '_newid_', '_trans_', '_status_', '_rbits_', '_wbits_'
+    __slots__ = '__dict__', '__weakref__', '_pkval_', '_reduced_pkval_', '_newid_', '_trans_', '_status_', '_rbits_', '_wbits_'
     @classmethod
     def _cls_setattr_(entity, name, val):
         if name.startswith('_') and name.endswith('_'):
@@ -488,16 +498,6 @@ class Entity(object):
             attr._init_(entity, name)
             new_attrs.append(attr)
         new_attrs.sort(key=attrgetter('id'))
-        entity._new_attrs_ = new_attrs
-
-        entity._attrs_ = base_attrs + new_attrs
-        entity._adict_ = dict((attr.name, attr) for attr in entity._attrs_)
-        entity._required_attrs_ = [ attr for attr in entity._attrs_ if attr.is_required ]
-        entity._bits_ = {}
-        next_offset = count().next
-        for attr in entity._attrs_:
-            if attr.is_collection or attr.pk_offset is not None: continue
-            entity._bits_[attr] = 1 << next_offset()
 
         keys = entity.__dict__.get('_keys_', {})
         primary_keys = set(key for key, is_pk in keys.items() if is_pk)
@@ -507,7 +507,7 @@ class Entity(object):
                 keys[base._pk_attrs_] = True
                 for key in base._keys_: keys[key] = False
             primary_keys = set(key for key, is_pk in keys.items() if is_pk)
-                                   
+
         if len(primary_keys) > 1: raise DiagramError('Only one primary key can be defined in each entity class')
         elif not primary_keys:
             if hasattr(entity, 'id'): raise DiagramError(
@@ -516,7 +516,7 @@ class Entity(object):
             attr = PrimaryKey(int, auto=True) # Side effect: modifies _keys_ local variable
             attr._init_(entity, 'id')
             type.__setattr__(entity, 'id', attr)  # entity.id = attr
-            entity._new_attrs_.insert(0, attr)
+            new_attrs.insert(0, attr)
             key, is_pk = _keys_.popitem()
             keys[key] = True
             pk_attrs = key
@@ -529,6 +529,16 @@ class Entity(object):
         entity._keys_ = [ key for key, is_pk in keys.items() if not is_pk ]
         entity._simple_keys_ = [ key[0] for key in entity._keys_ if len(key) == 1 ]
         entity._composite_keys_ = [ key for key in entity._keys_ if len(key) > 1 ]
+
+        entity._new_attrs_ = new_attrs
+        entity._attrs_ = base_attrs + new_attrs
+        entity._adict_ = dict((attr.name, attr) for attr in entity._attrs_)
+        entity._required_attrs_ = [ attr for attr in entity._attrs_ if attr.is_required ]
+        entity._bits_ = {}
+        next_offset = count().next
+        for attr in entity._attrs_:
+            if attr.is_collection or attr.pk_offset is not None: continue
+            entity._bits_[attr] = 1 << next_offset()
 
         entity._diagram_ = diagram
         diagram.entities[entity.__name__] = entity
@@ -604,6 +614,18 @@ class Entity(object):
                     pk_info.append((attr2, attr.name + '_' + name))
         entity._pk_info_ = pk_info
         return pk_info
+    def _calculate_reduced_pkval_(obj):
+        if hasattr(obj, '_reduced_pkval_'): return obj._reduced_pkval_
+        if len(obj._pk_attrs_) == 1:
+              pk_pairs = [ (obj.__class__._pk_, obj._pkval_) ]
+        else: pk_pairs = zip(obj._pk_attrs_, obj._pkval_)
+        reduced_pkval = []
+        for attr, val in pk_pairs:
+            if not issubclass(attr.py_type, Entity): reduced_pkval.append(val)
+            elif len(attr.py_type._pk_attrs_) == 1: reduced_pkval.append(val._reduced_pkval_)
+            else: reduced_pkval.extend(val._reduced_pkval_)
+        if len(reduced_pkval) > 1: obj._reduced_pkval_ = tuple(reduced_pkval)
+        else: obj._reduced_pkval_ = reduced_pkval[0]
     def __repr__(obj):
         pkval = obj._pkval_
         if pkval is None: return '%s(new:%d)' % (obj.__class__.__name__, obj._newid_)
@@ -611,7 +633,95 @@ class Entity(object):
         else: return '%s(%r)' % (obj.__class__.__name__, pkval)
     @classmethod
     def find(entity, *args, **keyargs):
-        raise NotImplementedError
+        pkval, avdict = entity._normalize_args_(args, keyargs, False)
+        for attr in avdict:
+            if attr.is_collection: raise TypeError(
+                'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
+        trans = get_trans()
+        obj = None
+        if pkval is not None:
+            index = trans.indexes.get(entity._pk_)
+            if index is not None: obj = index.get(pkval)
+        if obj is None:
+            for attr in ifilter(avdict.__contains__, entity._simple_keys_):
+                index = trans.indexes.get(attr)
+                if index is None: continue
+                val = avdict[attr]
+                obj = index.get(val)
+                if obj is not None: break
+        if obj is None:
+            NOT_FOUND = object()
+            for attrs in entity._composite_keys_:
+                vals = tuple(avdict.get(attr, NOT_FOUND) for attr in attrs)
+                if NOT_FOUND in vals: continue
+                index = trans.indexes.get(attrs)
+                if index is None: continue
+                obj = index.get(vals)
+                if obj is not None: break
+        if obj is None:
+            for attr, val in avdict.iteritems():
+                reverse = attr.reverse
+                if reverse and not reverse.is_collection:
+                    obj = reverse.__get__(val)
+                    break
+        if obj is None:
+            for attr, val in avdict.iteritems():
+                if isinstance(val, Entity) and val._reduced_pkval_ is None:
+                    reverse = attr.reverse
+                    if not reverse.is_collection:
+                        obj = reverse.__get__(val)
+                        if obj is None: return None
+                    elif isinstance(reverse, Set):
+                        objects = reverse.__get__(val).copy()
+                        if not objects: return None
+                        if len(objects) == 1: obj = objects[0]
+                        else:
+                            filtered_objects = []
+                            for obj in objects:
+                                for attr, val in avdict.iteritems():
+                                    if val != attr.get(obj): break
+                                else: filtered_objects.append(obj)
+                            if not filtered_objects: return None
+                            elif len(filtered_objects) == 1: return filtered_objects[0]
+                            else: raise MultipleObjectsFoundError(
+                                'Multiple objects was found. Use %s.find_all(...) instead of %s.find(...) to retrieve them'
+                                % (entity.__name__, entity.__name__))
+                    else: raise NotImplementedError
+        if obj is not None:
+            for attr, val in avdict.iteritems():
+                if val != attr.__get__(obj): return None
+            return obj
+
+        table_name = entity._table_
+
+        select_list = [ ALL ]
+        for attr in entity._attrs_:
+            if attr.is_collection: continue
+            for column in attr.columns:
+                select_list.append([ COLUMN, 'T1', column ])
+        from_list = [ FROM, [ 'T1', TABLE, table_name ]]
+
+        where_list = [ WHERE ]
+        criteria_list = [ AND ]
+        params = {}
+        for attr, val in avdict.iteritems():
+            if issubclass(attr.py_type, Entity): val = val._reduced_pkval_
+            if attr.column is not None: pairs = [ (attr.column, val) ]
+            else:
+                assert len(attr.columns) == len(val)
+                pairs = zip(attr.columns, val)
+            for column, val in pairs:
+                param_id = len(params) + 1
+                params[param_id] = val
+                criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, param_id ] ])
+        if len(criteria_list) == 1: where_list.append(criteria_list[0])
+        else: where_list.append([ AND, criteria_list ])
+
+        sql_ast = [ SELECT, select_list, from_list, where_list ]
+        builder = dbapiprovider.SQLBuilder(sql_ast)
+        print builder.sql
+        print [ params[i] for i in builder.params ]
+
     @classmethod
     def create(entity, *args, **keyargs):
         pkval, avdict = entity._normalize_args_(args, keyargs, True)
@@ -620,13 +730,16 @@ class Entity(object):
         obj._trans_ = trans
         obj._status_ = 'created'
         obj._pkval_ = pkval
-        if pkval is None: obj._newid_ = new_instance_next_id()
+        if pkval is None:
+            obj._newid_ = new_instance_next_id()
+            obj._reduced_pkval_ = None
         else:
             obj._newid_ = None
             if pkval in trans.indexes.setdefault(entity._pk_, {}):
                 if entity._pk_is_composite_: pkval = ', '.join(str(item) for item in pkval)
                 raise IndexError('Cannot create %s: instance with primary key %s already exists'
                                  % (obj.__class__.__name__, pkval))
+            obj._calculate_reduced_pkval_()
         obj._rbits_ = obj._wbits_ = None
         indexes = {}
         for attr in entity._simple_keys_:
@@ -654,8 +767,8 @@ class Entity(object):
             raise
         if pkval is not None:
             trans.indexes[entity._pk_][pkval] = obj
-        for key, keyval in indexes.iteritems():
-            trans.indexes[key][keyval] = obj
+        for key, vals in indexes.iteritems():
+            trans.indexes[key][vals] = obj
         trans.created.add(obj)
         return obj
     def set(obj, **keyargs):
@@ -825,6 +938,7 @@ class Diagram(object):
                                 col_name = prefix + name
                                 reverse.columns.append(col_name)
                                 m2m_table.add_column(col_name, True, attr2)
+                            if len(reverse.columns) == 1: reverse.column = reverse.columns[0]
                         pk_info = reverse.entity._pk_info_
                         if attr.columns:
                             if len(attr.columns) != len(pk_info): raise MappingError(
@@ -838,6 +952,7 @@ class Diagram(object):
                                 col_name = prefix + name
                                 attr.columns.append(col_name)
                                 m2m_table.add_column(col_name, True, attr2)
+                            if len(attr.columns) == 1: attr.column = attr.columns[0]
                     else:
                         if m2m_table.entities or m2m_table.m2m: raise MappingError(
                             "Table name '%s' is already in use" % table_name)
@@ -855,6 +970,7 @@ class Diagram(object):
                             col_name = attr.name + '_' + name2
                             attr.columns.append(col_name)
                             table.add_column(col_name, attr.pk_offset is not None, attr2)
+                        if len(attr.columns) == 1: attr.column = attr.columns[0]
                 else:
                     if not issubclass(py_type, Entity):
                         if len(attr.columns) > 1: raise MappingError(
@@ -943,7 +1059,6 @@ class Table(object):
     def __repr__(table):
         return '<Table(%s)>' % table.name
     def add_column(table, col_name, pk, attr):
-        print table.name, col_name
         if col_name in table.column_dict:
             raise MappingError('Column %s in table %s was already mapped' % (col_name, table.name))
         column = Column(table, col_name, pk, attr)
