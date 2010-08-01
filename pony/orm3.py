@@ -457,7 +457,7 @@ next_new_instance_id = count(1).next
 
 class Entity(object):
     __metaclass__ = EntityMeta
-    __slots__ = '__dict__', '__weakref__', '_pkval_', '_reduced_pkval_', '_newid_', '_trans_', '_status_', '_rbits_', '_wbits_'
+    __slots__ = '__dict__', '__weakref__', '_pkval_', '_raw_pkval_', '_newid_', '_trans_', '_status_', '_rbits_', '_wbits_'
     @classmethod
     def _cls_setattr_(entity, name, val):
         if name.startswith('_') and name.endswith('_'):
@@ -616,18 +616,18 @@ class Entity(object):
                     pk_info.append((attr2, attr.name + '_' + name))
         entity._pk_info_ = pk_info
         return pk_info
-    def _calculate_reduced_pkval_(obj):
-        if hasattr(obj, '_reduced_pkval_'): return obj._reduced_pkval_
+    def _calculate_raw_pkval_(obj):
+        if hasattr(obj, '_raw_pkval_'): return obj._raw_pkval_
         if len(obj._pk_attrs_) == 1:
               pk_pairs = [ (obj.__class__._pk_, obj._pkval_) ]
         else: pk_pairs = zip(obj._pk_attrs_, obj._pkval_)
-        reduced_pkval = []
+        raw_pkval = []
         for attr, val in pk_pairs:
-            if not issubclass(attr.py_type, Entity): reduced_pkval.append(val)
-            elif len(attr.py_type._pk_attrs_) == 1: reduced_pkval.append(val._reduced_pkval_)
-            else: reduced_pkval.extend(val._reduced_pkval_)
-        if len(reduced_pkval) > 1: obj._reduced_pkval_ = tuple(reduced_pkval)
-        else: obj._reduced_pkval_ = reduced_pkval[0]
+            if not issubclass(attr.py_type, Entity): raw_pkval.append(val)
+            elif len(attr.py_type._pk_attrs_) == 1: raw_pkval.append(val._raw_pkval_)
+            else: raw_pkval.extend(val._raw_pkval_)
+        if len(raw_pkval) > 1: obj._raw_pkval_ = tuple(raw_pkval)
+        else: obj._raw_pkval_ = raw_pkval[0]
     def __repr__(obj):
         pkval = obj._pkval_
         if pkval is None: return '%s(new:%d)' % (obj.__class__.__name__, obj._newid_)
@@ -668,7 +668,7 @@ class Entity(object):
                     break
         if obj is None:
             for attr, val in avdict.iteritems():
-                if isinstance(val, Entity) and val._reduced_pkval_ is None:
+                if isinstance(val, Entity) and val._raw_pkval_ is None:
                     reverse = attr.reverse
                     if not reverse.is_collection:
                         obj = reverse.__get__(val)
@@ -707,7 +707,7 @@ class Entity(object):
         criteria_list = [ AND ]
         params = {}
         for attr, val in avdict.iteritems():
-            if issubclass(attr.py_type, Entity): val = val._reduced_pkval_
+            if issubclass(attr.py_type, Entity): val = val._raw_pkval_
             if attr.column is not None: pairs = [ (attr.column, val) ]
             else:
                 assert len(attr.columns) == len(val)
@@ -734,14 +734,14 @@ class Entity(object):
         obj._pkval_ = pkval
         if pkval is None:
             obj._newid_ = next_new_instance_id()
-            obj._reduced_pkval_ = None
+            obj._raw_pkval_ = None
         else:
             obj._newid_ = None
             if pkval in trans.indexes.setdefault(entity._pk_, {}):
                 if entity._pk_is_composite_: pkval = ', '.join(str(item) for item in pkval)
                 raise IndexError('Cannot create %s: instance with primary key %s already exists'
                                  % (obj.__class__.__name__, pkval))
-            obj._calculate_reduced_pkval_()
+            obj._calculate_raw_pkval_()
         obj._rbits_ = obj._wbits_ = None
         indexes = {}
         for attr in entity._simple_keys_:
