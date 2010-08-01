@@ -33,7 +33,7 @@ class NoUndoNeededType(object):
 
 NO_UNDO_NEEDED = NoUndoNeededType()
 
-next_id = count().next
+next_attr_id = count().next
 
 class Attribute(object):
     __slots__ = 'is_required', 'is_unique', 'is_indexed', 'is_collection', 'is_pk', \
@@ -48,7 +48,7 @@ class Attribute(object):
         attr.is_pk = isinstance(attr, PrimaryKey)
         if attr.is_pk: attr.pk_offset = 0
         else: attr.pk_offset = None
-        attr.id = next_id()
+        attr.id = next_attr_id()
         if py_type == 'Entity' or py_type is Entity:
             raise TypeError('Cannot link attribute to Entity class. Must use Entity subclass instead')
         attr.py_type = py_type
@@ -452,7 +452,8 @@ class EntityMeta(type):
     def __iter__(entity):
         return iter(())
 
-new_instance_next_id = count(1).next
+next_entity_id = count(1).next
+next_new_instance_id = count(1).next
 
 class Entity(object):
     __metaclass__ = EntityMeta
@@ -466,6 +467,7 @@ class Entity(object):
     def _cls_init_(entity, diagram):
         if entity.__name__ in diagram.entities:
             raise DiagramError('Entity %s already exists' % entity.__name__)
+        entity._id_ = next_entity_id()
         direct_bases = [ c for c in entity.__bases__ if issubclass(c, Entity) and c is not Entity ]
         entity._direct_bases_ = direct_bases
         entity._all_bases_ = set((entity,))
@@ -731,7 +733,7 @@ class Entity(object):
         obj._status_ = 'created'
         obj._pkval_ = pkval
         if pkval is None:
-            obj._newid_ = new_instance_next_id()
+            obj._newid_ = next_new_instance_id()
             obj._reduced_pkval_ = None
         else:
             obj._newid_ = None
@@ -891,8 +893,10 @@ class Diagram(object):
             raise DiagramError('Entity definition %s was not found' % entity_name)
 
         mapping = diagram.mapping = Mapping()
-        for entity in diagram.entities.values(): entity._calculate_pk_info_()
-        for entity in diagram.entities.values():
+        entities = list(sorted(diagram.entities.values(), key=attrgetter('_id_')))
+        for entity in entities:
+            entity._calculate_pk_info_()
+        for entity in entities:
             table_name = entity.__dict__.get('_table_')
             if table_name is None:
                 table_name = entity._table_ = entity.__name__
