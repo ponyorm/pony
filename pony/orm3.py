@@ -917,7 +917,9 @@ class Diagram(object):
         diagram.entities = {}
         diagram.unmapped_attrs = {}
         diagram.mapping = None
-    def generate_mapping(diagram, filename=None):
+        diagram.database = None
+    def generate_mapping(diagram, database, filename=None, check_tables=False):
+        diagram.database = database
         if diagram.mapping: raise MappingError('Mapping was already generated')
         if filename is not None: raise NotImplementedError
         for entity_name in diagram.unmapped_attrs:
@@ -1018,6 +1020,14 @@ class Diagram(object):
                             'Invalid number of columns for %s.%s' % (attr.entity.__name__, attr.name))
                         for col_name, (attr2, name2) in zip(attr.columns, pk_info):
                             table.add_column(col_name, attr.pk_offset is not None, attr2)
+        if not check_tables: return
+        for table in mapping.tables.values():
+            sql_ast = [ SELECT,
+                        [ ALL, ] + [ [ COLUMN, table.name, column.name ] for column in table.column_list ],
+                        [ FROM, [ table.name, TABLE, table.name ] ],
+                        [ WHERE, [ EQ, [ VALUE, 0 ], [ VALUE, 1 ] ] ]
+                      ]
+            database._exec_ast(sql_ast)
 
 def generate_mapping(*args, **keyargs):
     outer_dict = sys._getframe(1).f_locals
