@@ -33,7 +33,7 @@ class NoUndoNeededType(object):
 
 NO_UNDO_NEEDED = NoUndoNeededType()
 
-next_attr_id = count().next
+next_attr_id = count(1).next
 
 class Attribute(object):
     __slots__ = 'is_required', 'is_unique', 'is_indexed', 'is_collection', 'is_pk', \
@@ -412,7 +412,7 @@ class SetWrapper(object):
         if val is NOT_LOADED:
             val = obj.__dict__[attr] = _set()
             val.fully_loaded = False
-        x = attr.check(x)
+        x = attr.check(x, obj)
         for y in x: val[y] = 'added'
     def __iadd__(wrapper, x):
         wrapper.add(x)
@@ -424,7 +424,7 @@ class SetWrapper(object):
         if val is NOT_LOADED:
             val = obj.__dict__[attr] = _set()
             val.fully_loaded = False
-        x = attr.check(x)
+        x = attr.check(x, obj)
         for y in x: val[y] = 'deleted'
     def __isub__(wrapper, x):
         wrapper.remove(x)
