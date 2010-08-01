@@ -1010,7 +1010,8 @@ class Diagram(object):
                     if not issubclass(py_type, Entity):
                         if len(attr.columns) > 1: raise MappingError(
                             'Invalid number of columns for %s.%s' % (attr.entity.__name__, attr.name))
-                        table.add_column(attr.name, attr.pk_offset is not None, attr)
+                        assert attr.column is not None
+                        table.add_column(attr.column, attr.pk_offset is not None, attr)
                     else:
                         pk_info = attr.reverse.entity._pk_info_
                         if len(attr.columns) != len(pk_info): raise MappingError(
