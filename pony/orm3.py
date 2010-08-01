@@ -307,7 +307,7 @@ class Set(Collection):
     def copy(attr, obj):
         val = obj.__dict__.get(attr, NOT_LOADED)
         if val is NOT_LOADED or not val.fully_loaded: val = attr.load(obj)
-        return set(x for x, status in val.iteritems() if status != 'deleted')
+        return set(x for x, status in val.iteritems() if status != 'removed')
     def __get__(attr, obj, type=None):
         if obj is None: return attr
         return SetWrapper(obj, attr)
@@ -318,27 +318,27 @@ class Set(Collection):
         prev =  obj.__dict__.get(attr, NOT_LOADED)
         if prev is NOT_LOADED or not prev.fully_loaded: prev = attr.load(obj)
         to_add = set(ifilterfalse(prev.__contains__, val))
-        to_delete = set()
+        to_remove = set()
         for robj, status in prev.iteritems():
             if robj in val:
                 if status != 'added': to_add.add(robj)
             else:
-                if status != 'deleted': to_delete.add(robj)
+                if status != 'removed': to_remove.add(robj)
         if undo_funcs is None: undo_funcs = []
         try:
             if not reverse.is_collection:
-                for robj in to_delete: reverse.__set__(robj, None, undo_funcs)
+                for robj in to_remove: reverse.__set__(robj, None, undo_funcs)
                 for robj in to_add: reverse.__set__(robj, obj, undo_funcs)
             else:
-                reverse.reverse_remove(to_delete, obj, undo_funcs)
+                reverse.reverse_remove(to_remove, obj, undo_funcs)
                 reverse.reverse_add(to_add, obj, undo_funcs)
         except:
             for undo_func in reversed(undo_funcs): undo_func()
             raise
-        for robj in to_delete: prev[robj] = 'deleted'
+        for robj in to_remove: prev[robj] = 'removed'
         for robj in to_add: prev[robj] = 'added'
         trans = obj._trans_
-        trans.removed.setdefault(attr, {}).setdefault(obj, set()).update(to_delete)
+        trans.removed.setdefault(attr, {}).setdefault(obj, set()).update(to_remove)
         trans.added.setdefault(attr, {}).setdefault(obj, set()).update(to_add)
     def __delete__(attr, obj):
         raise NotImplementedError
@@ -358,7 +358,7 @@ class Set(Collection):
             if val is NOT_LOADED:
                 val = obj.__dict__[attr] = _set()
                 val.fully_loaded = False
-            val[robj] = 'deleted'
+            val[robj] = 'removed'
             trans.removed.setdefault(attr, {}).setdefault(obj, set()).add(robj)
 
 ##class List(Collection): pass
@@ -401,10 +401,10 @@ class SetWrapper(object):
         if val is not NOT_LOADED:
             status = val.get(x)
             if status is None: pass
-            elif status == 'deleted': return False
+            elif status == 'removed': return False
             else: return True
         val = attr.load(obj)
-        return val.get(x, 'deleted') != 'deleted'
+        return val.get(x, 'removed') != 'removed'
     def add(wrapper, x):
         obj = wrapper._obj_
         attr = wrapper._attr_
@@ -425,7 +425,7 @@ class SetWrapper(object):
             val = obj.__dict__[attr] = _set()
             val.fully_loaded = False
         x = attr.check(x, obj)
-        for y in x: val[y] = 'deleted'
+        for y in x: val[y] = 'removed'
     def __isub__(wrapper, x):
         wrapper.remove(x)
         return wrapper
