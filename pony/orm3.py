@@ -634,6 +634,37 @@ class Entity(object):
         elif obj._pk_is_composite_: return '%s%r' % (obj.__class__.__name__, pkval)
         else: return '%s(%r)' % (obj.__class__.__name__, pkval)
     @classmethod
+    def _get_by_raw_pkval_(entity, raw_pkval):
+        i = 0
+        pkval = []
+        for attr in entity._pk_attrs_:
+            if attr.column is not None:
+                val = raw_pkval[i]
+                i += 1
+                if not issubclass(attr.py_type, Entity):
+                      val = attr.check(val, None, entity)
+                else: val = attr.py_type._get_by_raw_pkval((val,))
+            else:
+                if not issubclass(attr.py_type, Entity): raise NotImplementedError
+                vals = pkval[i:i+len(attr.columns)]
+                val = attr.py_type._get_by_raw_pkval(vals)
+            pkval.append(val)
+        if not entity._pk_is_composite_: pkval = pkval[0]
+        else: pkval = tuple(pkval)
+        trans = get_trans()
+        index = trans.indexes.setdefault(entity._pk_, {})
+        obj = index.get(pkval)
+        if obj is not None: return obj
+        obj = object.__new__(entity)
+        obj._trans_ = trans
+        obj._status_ = 'loaded'
+        obj._pkval_ = pkval
+        obj._newid_ = None
+        obj._rbits_ = obj._wbits_ = 0
+        obj._raw_pkval_ = raw_pkval
+        index[pkval] = obj
+        return obj
+    @classmethod
     def find(entity, *args, **keyargs):
         pkval, avdict = entity._normalize_args_(args, keyargs, False)
         for attr in avdict:
