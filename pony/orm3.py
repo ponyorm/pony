@@ -36,7 +36,7 @@ NO_UNDO_NEEDED = NoUndoNeededType()
 next_attr_id = count(1).next
 
 class Attribute(object):
-    __slots__ = 'is_required', 'is_unique', 'is_indexed', 'is_collection', 'is_pk', \
+    __slots__ = 'is_required', 'is_unique', 'is_indexed', 'is_pk', 'is_link', 'is_collection', 'is_ref', \
                 'id', 'pk_offset', 'type', 'entity', 'name', 'oldname', \
                 'args', 'auto', 'default', 'reverse', 'composite_keys'
     def __init__(attr, py_type, *args, **keyargs):
@@ -44,7 +44,6 @@ class Attribute(object):
         attr.is_required = isinstance(attr, Required)
         attr.is_unique = isinstance(attr, Unique)  # Also can be set to True later
         attr.is_indexed = attr.is_unique  # Also can be set to True later
-        attr.is_collection = isinstance(attr, Collection)
         attr.is_pk = isinstance(attr, PrimaryKey)
         if attr.is_pk: attr.pk_offset = 0
         else: attr.pk_offset = None
@@ -52,6 +51,9 @@ class Attribute(object):
         if py_type == 'Entity' or py_type is Entity:
             raise TypeError('Cannot link attribute to Entity class. Must use Entity subclass instead')
         attr.py_type = py_type
+        attr.is_link = isinstance(py_type, basestring) or issubclass(py_type, Entity)
+        attr.is_collection = isinstance(attr, Collection)
+        attr.is_ref = attr.is_link and not attr.is_collection
         attr.sql_type = keyargs.pop('sql_type', None)
         attr.entity = attr.name = None
         attr.args = args
@@ -550,6 +552,7 @@ class Entity(object):
         diagram = entity._diagram_
         unmapped_attrs = diagram.unmapped_attrs.pop(entity.__name__, set())
         for attr in entity._new_attrs_:
+            if not attr.is_link: continue
             py_type = attr.py_type
             if isinstance(py_type, basestring):
                 entity2 = diagram.entities.get(py_type)
@@ -557,8 +560,8 @@ class Entity(object):
                     diagram.unmapped_attrs.setdefault(py_type, set()).add(attr)
                     continue
                 attr.py_type = py_type = entity2
-            elif not issubclass(py_type, Entity): continue
-
+            assert issubclass(py_type, Entity)
+            
             entity2 = py_type
             if entity2._diagram_ is not diagram: raise DiagramError(
                 'Interrelated entities must belong to same diagram. Entities %s and %s belongs to different diagrams'
@@ -610,7 +613,7 @@ class Entity(object):
         for attr in entity._pk_attrs_:
             py_type = attr.py_type
             assert not isinstance(py_type, basestring)
-            if not issubclass(py_type, Entity): pk_info.append((attr, attr.name))
+            if not attr.is_ref: pk_info.append((attr, attr.name))
             else:
                 for attr2, name in attr.py_type._calculate_pk_info_():
                     pk_info.append((attr2, attr.name + '_' + name))
@@ -623,7 +626,7 @@ class Entity(object):
         else: pk_pairs = zip(obj._pk_attrs_, obj._pkval_)
         raw_pkval = []
         for attr, val in pk_pairs:
-            if not issubclass(attr.py_type, Entity): raw_pkval.append(val)
+            if not attr.is_link: raw_pkval.append(val)
             elif len(attr.py_type._pk_attrs_) == 1: raw_pkval.append(val._raw_pkval_)
             else: raw_pkval.extend(val._raw_pkval_)
         if len(raw_pkval) > 1: obj._raw_pkval_ = tuple(raw_pkval)
@@ -641,11 +644,10 @@ class Entity(object):
             if attr.column is not None:
                 val = raw_pkval[i]
                 i += 1
-                if not issubclass(attr.py_type, Entity):
-                      val = attr.check(val, None, entity)
+                if not attr.is_link: val = attr.check(val, None, entity)
                 else: val = attr.py_type._get_by_raw_pkval((val,))
             else:
-                if not issubclass(attr.py_type, Entity): raise NotImplementedError
+                if not attr.is_link: raise NotImplementedError
                 vals = pkval[i:i+len(attr.columns)]
                 val = attr.py_type._get_by_raw_pkval(vals)
             pkval.append(val)
@@ -738,7 +740,7 @@ class Entity(object):
         criteria_list = [ AND ]
         params = {}
         for attr, val in avdict.iteritems():
-            if issubclass(attr.py_type, Entity): val = val._raw_pkval_
+            if attr.is_ref: val = val._raw_pkval_
             if attr.column is not None: pairs = [ (attr.column, val) ]
             else:
                 assert len(attr.columns) == len(val)
@@ -997,7 +999,7 @@ class Diagram(object):
                     m2m_table.m2m.add(attr)
                     m2m_table.m2m.add(reverse)
                 elif attr.columns is None:
-                    if not issubclass(py_type, Entity):
+                    if not attr.is_ref:
                         col_name = attr.column = attr.name
                         attr.columns = [ attr.name ]
                         table.add_column(col_name, attr.pk_offset is not None, attr)
@@ -1009,7 +1011,7 @@ class Diagram(object):
                             table.add_column(col_name, attr.pk_offset is not None, attr2)
                         if len(attr.columns) == 1: attr.column = attr.columns[0]
                 else:
-                    if not issubclass(py_type, Entity):
+                    if not attr.is_ref:
                         if len(attr.columns) > 1: raise MappingError(
                             'Invalid number of columns for %s.%s' % (attr.entity.__name__, attr.name))
                         assert attr.column is not None
