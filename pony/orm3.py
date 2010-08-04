@@ -346,23 +346,53 @@ class Set(Collection):
     def __delete__(attr, obj):
         raise NotImplementedError
     def reverse_add(attr, objects, robj, undo_funcs):
+        undo = []
         trans = robj._trans_
         for obj in objects:
             val = obj.__dict__.get(attr, NOT_LOADED)
             if val is NOT_LOADED:
                 val = obj.__dict__[attr] = _set()
                 val.fully_loaded = False
+            prev_status = val.get(robj)
+            if prev_status == 'added': continue
+            if prev_status == 'removed': trans.removed[attr][obj].delete(robj)
             val[robj] = 'added'
             trans.added.setdefault(attr, {}).setdefault(obj, set()).add(robj)
+            undo.append((obj, prev_status))
+        def undo_func():
+            for obj, prev_status in undo:
+                assert prev_status in (None, 'loaded', 'removed')
+                trans.added[attr][obj].delete(robj)
+                val = obj.__dict__[attr]
+                if prev_status is not None:
+                    val[robj] = prev_status
+                    if prev_status == 'removed': trans.removed[attr][obj].add(robj)
+                else: del val[robj]
+        undo_funcs.append(undo_func)
     def reverse_remove(attr, objects, robj, undo_funcs):
+        undo = []
         trans = robj._trans_
         for obj in objects:
             val = obj.__dict__.get(attr, NOT_LOADED)
             if val is NOT_LOADED:
                 val = obj.__dict__[attr] = _set()
                 val.fully_loaded = False
+            prev_status = val.get(robj)
+            if prev_status == 'removed': continue
+            if prev_status == 'added': trans.added[attr][obj].delete(robj)
             val[robj] = 'removed'
             trans.removed.setdefault(attr, {}).setdefault(obj, set()).add(robj)
+            undo.append((obj, prev_status))
+        def undo_func():
+            for obj, prev_status in undo:
+                assert prev_status in (None, 'loaded', 'removed')
+                trans.removed[attr][obj].delete(robj)
+                val = obj.__dict__[attr]
+                if prev_status is None:
+                    val[robj] = prev_status
+                    if prev_status == 'added': trans.added[attr][obj].add(robj)
+                else: del val[robj]
+        undo_funcs.append(undo_func)
 
 ##class List(Collection): pass
 ##class Dict(Collection): pass
