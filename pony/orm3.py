@@ -388,7 +388,7 @@ class Set(Collection):
                 assert prev_status in (None, 'loaded', 'removed')
                 trans.removed[attr][obj].delete(robj)
                 val = obj.__dict__[attr]
-                if prev_status is None:
+                if prev_status is not None:
                     val[robj] = prev_status
                     if prev_status == 'added': trans.added[attr][obj].add(robj)
                 else: del val[robj]
