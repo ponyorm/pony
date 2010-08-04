@@ -127,8 +127,9 @@ class Attribute(object):
         raise NotImplementedError
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
-        rbits = obj._rbits_
-        if rbits is not None: obj._rbits_ |= obj._bits_[attr]
+        bit = obj._bits_[attr]
+        wbits = obj._wbits_
+        if wbits is not None and not wbits & bit: obj._rbits_ |= bit
         return attr.get(obj)
     def get(attr, obj):
         val = obj.__dict__.get(attr, NOT_LOADED)
