@@ -302,11 +302,9 @@ class Set(Collection):
             if robj._trans_ is not trans: raise TransactionError('An attempt to mix objects belongs to different transactions')
         return result
     def load(attr, obj):
-        if obj._status_ == 'created':
-            val = obj.__dict__[attr] = _set()
-            val.fully_loaded = True
-            return val
-        elif not val.fully_loaded: raise NotImplementedError
+        val = obj.__dict__.get(attr, NOT_LOADED)
+        if val is not NOT_LOADED and val.fully_loaded: return val
+        raise NotImplementedError
     def copy(attr, obj):
         val = obj.__dict__.get(attr, NOT_LOADED)
         if val is NOT_LOADED or not val.fully_loaded: val = attr.load(obj)
@@ -319,7 +317,12 @@ class Set(Collection):
         reverse = attr.reverse
         if not reverse: raise NotImplementedError
         prev =  obj.__dict__.get(attr, NOT_LOADED)
-        if prev is NOT_LOADED or not prev.fully_loaded: prev = attr.load(obj)
+        if prev is NOT_LOADED:
+            if obj._status_ == 'created':
+                prev = obj.__dict__[attr] = _set()
+                prev.fully_loaded = True
+            else: prev = attr.load()
+        elif not prev.fully_loaded: prev = attr.load()
         to_add = set(ifilterfalse(prev.__contains__, val))
         to_remove = set()
         for robj, status in prev.iteritems():
