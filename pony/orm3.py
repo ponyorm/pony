@@ -358,14 +358,14 @@ class Set(Collection):
                 val.fully_loaded = False
             prev_status = val.get(robj)
             if prev_status == 'added': continue
-            if prev_status == 'removed': trans.removed[attr][obj].delete(robj)
+            if prev_status == 'removed': trans.removed[attr][obj].remove(robj)
             val[robj] = 'added'
             trans.added.setdefault(attr, {}).setdefault(obj, set()).add(robj)
             undo.append((obj, prev_status))
         def undo_func():
             for obj, prev_status in undo:
                 assert prev_status in (None, 'loaded', 'removed')
-                trans.added[attr][obj].delete(robj)
+                trans.added[attr][obj].remove(robj)
                 val = obj.__dict__[attr]
                 if prev_status is not None:
                     val[robj] = prev_status
@@ -382,14 +382,14 @@ class Set(Collection):
                 val.fully_loaded = False
             prev_status = val.get(robj)
             if prev_status == 'removed': continue
-            if prev_status == 'added': trans.added[attr][obj].delete(robj)
+            if prev_status == 'added': trans.added[attr][obj].remove(robj)
             val[robj] = 'removed'
             trans.removed.setdefault(attr, {}).setdefault(obj, set()).add(robj)
             undo.append((obj, prev_status))
         def undo_func():
             for obj, prev_status in undo:
                 assert prev_status in (None, 'loaded', 'removed')
-                trans.removed[attr][obj].delete(robj)
+                trans.removed[attr][obj].remove(robj)
                 val = obj.__dict__[attr]
                 if prev_status is not None:
                     val[robj] = prev_status
