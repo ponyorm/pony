@@ -427,7 +427,7 @@ class Set(Collection):
         for obj in objects:
             setdata = obj.__dict__.get(attr, NOT_LOADED)
             if setdata is NOT_LOADED:
-                val = obj.__dict__[attr] = SetData()
+                setdata = obj.__dict__[attr] = SetData()
             if setdata.modified is None: setdata.modified = {}
             item_status = setdata.modified.get(item)
             if item_status == 'added': continue
@@ -446,7 +446,7 @@ class Set(Collection):
         for obj in objects:
             setdata = obj.__dict__.get(attr, NOT_LOADED)
             if setdata is NOT_LOADED:
-                val = obj.__dict__[attr] = SetData()
+                setdata = obj.__dict__[attr] = SetData()
             setdata.loaded.add(item)
     def reverse_remove(attr, objects, item, undo_funcs):
         undo = []
@@ -455,7 +455,7 @@ class Set(Collection):
         for obj in objects:
             setdata = obj.__dict__.get(attr, NOT_LOADED)
             if setdata is NOT_LOADED:
-                val = obj.__dict__[attr] = SetData()
+                setdata = obj.__dict__[attr] = SetData()
             if setdata.modified is None: setdata.modified = {}
             item_status = setdata.modified.get(item)
             if item_status == 'removed': continue
@@ -474,7 +474,7 @@ class Set(Collection):
         for obj in objects:
             setdata = obj.__dict__.get(attr, NOT_LOADED)
             if setdata is NOT_LOADED:
-                val = obj.__dict__[attr] = SetData()
+                setdata = obj.__dict__[attr] = SetData()
             setdata.loaded.remove(item)
 
 ##class List(Collection): pass
@@ -796,11 +796,11 @@ class Entity(object):
                 val = raw_pkval[i]
                 i += 1
                 if not attr.is_link: val = attr.check(val, None, entity)
-                else: val = attr.py_type._get_by_raw_pkval((val,))
+                else: val = attr.py_type._get_by_raw_pkval_((val,))
             else:
                 if not attr.is_link: raise NotImplementedError
                 vals = pkval[i:i+len(attr.columns)]
-                val = attr.py_type._get_by_raw_pkval(vals)
+                val = attr.py_type._get_by_raw_pkval_(vals)
             pkval.append(val)
         if not entity._pk_is_composite_: pkval = pkval[0]
         else: pkval = tuple(pkval)
@@ -880,9 +880,11 @@ class Entity(object):
 
         table_name = entity._table_
 
+        attr_offsets = {} 
         select_list = [ ALL ]
         for attr in entity._attrs_:
             if attr.is_collection: continue
+            attr_offsets[attr] = len(select_list) - 1
             for column in attr.columns:
                 select_list.append([ COLUMN, 'T1', column ])
         from_list = [ FROM, [ 'T1', TABLE, table_name ]]
@@ -908,6 +910,42 @@ class Entity(object):
         print builder.sql
         print [ params[i] for i in builder.params ]
 
+        database = entity._diagram_.database
+        cursor = database._exec_ast(sql_ast, params)
+        row = cursor.fetchone()
+        if row is None: return None
+        if cursor.fetchone() is not None: raise MultipleObjectsFoundError(
+            'Multiple objects was found. Use %s.find_all(...) instead of %s.find(...) to retrieve them'
+            % (entity.__name__, entity.__name__))
+        
+        avdict = {}
+        for attr, i in attr_offsets.iteritems():
+            if attr.column is not None:
+                val = row[i]
+                if not attr.is_ref: val = attr.check(val, None, entity)
+                else: val = attr.py_type._get_by_raw_pkval_((val,))
+            else:
+                if not attr.is_ref: raise NotImplementedError
+                vals = row[i:i+len(attr.columns)]
+                val = attr.py_type._get_by_raw_pkval_(vals)
+            avdict[attr] = val
+        if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_, None)            
+        else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
+        index = trans.indexes.setdefault(entity._pk_, {})
+        obj = index.get(pkval)
+        if obj is None:
+            obj = object.__new__(entity)
+            obj._trans_ = trans
+            obj._status_ = 'loaded'
+            obj._pkval_ = pkval
+            obj._newid_ = None
+            obj._rbits_ = obj._wbits_ = 0
+            index[pkval] = obj
+            obj._calculate_raw_pkval_()
+        status = obj._status_
+        if status == 'deleted': return None
+        obj._db_set_(avdict)
+        return obj
     @classmethod
     def create(entity, *args, **keyargs):
         pkval, avdict = entity._normalize_args_(args, keyargs, True)
@@ -962,6 +1000,7 @@ class Entity(object):
         rbits = obj._rbits_
         wbits = obj._wbits_
         for attr, old in avdict.items():
+            assert attr.pk_offset is None
             prev_old = obj.__dict__.get(attr.name, NOT_LOADED)
             if prev_old == old:
                 del avdict[attr]
