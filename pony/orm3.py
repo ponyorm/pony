@@ -32,10 +32,10 @@ class DefaultValueType(object):
 
 DEFAULT = DefaultValueType()
 
-class NoUndoNeededType(object):
+class NoUndoNeededValueType(object):
     def __repr__(self): return 'NO_UNDO_NEEDED'
 
-NO_UNDO_NEEDED = NoUndoNeededType()
+NO_UNDO_NEEDED = NoUndoNeededValueType()
 
 next_attr_id = count(1).next
 
@@ -128,13 +128,16 @@ class Attribute(object):
         if trans is not val._trans_: raise TransactionError('An attempt to mix objects belongs to different transactions')
         return val
     def load(attr, obj):
-        raise NotImplementedError
+        obj._load_()
+        return obj.__dict__[attr]
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
+        result = attr.get(obj)
+        if attr.pk_offset is not None: return result
         bit = obj._bits_[attr]
         wbits = obj._wbits_
         if wbits is not None and not wbits & bit: obj._rbits_ |= bit
-        return attr.get(obj)
+        return result
     def get(attr, obj):
         if obj._status_ == 'deleted': raise OperationWithDeletedObjectError('%s was deleted' % obj)
         val = obj.__dict__.get(attr, NOT_LOADED)
@@ -814,15 +817,14 @@ class Entity(object):
         obj._pkval_ = pkval
         obj._newid_ = None
         obj._rbits_ = obj._wbits_ = 0
-        obj._raw_pkval_ = raw_pkval
         index[pkval] = obj
+        if not obj._pk_is_composite_: obj.__dict__[entity._pk_] = pkval
+        else:
+            for attr, val in zip(entity._pk_attrs_, pkval): obj.__dict__[attr] = val
+        obj._raw_pkval_ = raw_pkval
         return obj
     @classmethod
-    def find(entity, *args, **keyargs):
-        pkval, avdict = entity._normalize_args_(args, keyargs, False)
-        for attr in avdict:
-            if attr.is_collection: raise TypeError(
-                'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
+    def _find_in_cache_(entity, pkval, avdict):
         trans = get_trans()
         obj = None
         if pkval is not None:
@@ -877,9 +879,14 @@ class Entity(object):
             for attr, val in avdict.iteritems():
                 if val != attr.__get__(obj): return None
             return obj
-
+        raise KeyError
+    def _load_(obj):
+        obj2 = obj._find_in_db_(obj._pkval_)
+        if obj2 is None: raise UnrepeatableReadError('%s disappeared' % obj)
+        assert obj2 is obj
+    @classmethod
+    def _find_in_db_(entity, pkval, avdict=None):
         table_name = entity._table_
-
         attr_offsets = {} 
         select_list = [ ALL ]
         for attr in entity._attrs_:
@@ -892,7 +899,10 @@ class Entity(object):
         where_list = [ WHERE ]
         criteria_list = [ AND ]
         params = {}
-        for attr, val in avdict.iteritems():
+        if avdict is not None: items = avdict.items()
+        elif not entity._pk_is_composite_: items = [(entity._pk_, pkval)]
+        else: items = zip(entity._pk_attrs_, pkval)
+        for attr, val in items:
             if attr.is_ref: val = val._raw_pkval_
             if attr.column is not None: pairs = [ (attr.column, val) ]
             else:
@@ -931,6 +941,7 @@ class Entity(object):
             avdict[attr] = val
         if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_, None)            
         else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
+        trans = get_trans()
         index = trans.indexes.setdefault(entity._pk_, {})
         obj = index.get(pkval)
         if obj is None:
@@ -941,11 +952,24 @@ class Entity(object):
             obj._newid_ = None
             obj._rbits_ = obj._wbits_ = 0
             index[pkval] = obj
+            if not obj._pk_is_composite_: obj.__dict__[entity._pk_] = pkval
+            else:
+                for attr, val in zip(entity._pk_attrs_, pkval): obj.__dict__[attr] = val
             obj._calculate_raw_pkval_()
         status = obj._status_
         if status == 'deleted': return None
         obj._db_set_(avdict)
         return obj
+    @classmethod
+    def find(entity, *args, **keyargs):
+        pkval, avdict = entity._normalize_args_(args, keyargs, False)
+        for attr in avdict:
+            if attr.is_collection: raise TypeError(
+                'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
+        try:
+            return entity._find_in_cache_(pkval, avdict)
+        except KeyError:
+            return entity._find_in_db_(pkval, avdict)
     @classmethod
     def create(entity, *args, **keyargs):
         pkval, avdict = entity._normalize_args_(args, keyargs, True)
