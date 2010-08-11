@@ -14,9 +14,12 @@ class DiagramError(OrmError): pass
 class SchemaError(OrmError): pass
 class MappingError(OrmError): pass
 class ConstraintError(OrmError): pass
-class TransactionError(OrmError): pass
-class IndexError(TransactionError): pass
 class MultipleObjectsFoundError(OrmError): pass
+class IndexError(OrmError): pass
+class TransactionError(OrmError): pass
+class IntegrityError(TransactionError): pass
+class IsolationError(TransactionError): pass
+class UnrepeatableReadError(IsolationError): pass
 
 class NotLoadedValueType(object):
     def __repr__(self): return 'NOT_LOADED'
@@ -200,6 +203,45 @@ class Attribute(object):
             if not is_reverse_call:
                 for undo_func in reversed(undo_funcs): undo_func()
             raise
+    def db_set(attr, obj, old, is_reverse_call=False):
+        assert obj._status_ not in ('created', 'deleted')
+        assert attr.pk_offset is None
+        reverse = attr.reverse
+        old = attr.check(old, obj)
+        prev_old = obj.__dict__.get(attr.name, NOT_LOADED)
+        if prev_old == old: return
+        bit = obj._bits_[attr]
+        if obj._rbits_ & bit:
+            assert prev_old is not NOT_LOADED
+            raise UnrepeatableReadError('Value of %s.%s for %s was updated outside of current transaction (was: %s, now: %s)'
+                                        % (obj.__class__.__name__, attr.name, obj, prev_old, old))
+        obj.__dict__[attr.name] = old
+        if obj._wbits_ & bit: return
+        val = old
+        prev = obj.__dict__.get(attr, NOT_LOADED)
+        assert prev == prev_old
+
+        if not attr.reverse and not attr.is_indexed: return
+        trans = obj._trans_
+        if attr.is_unique: trans.db_update_simple_index(obj, attr, prev, val)
+        for attrs, i in attr.composite_keys:
+            get = obj.__dict__.get
+            vals = [ get(a, NOT_LOADED) for a in attrs ]
+            prevs = tuple(vals)
+            vals[i] = val
+            vals = tuple(vals)
+            trans.db_update_composite_index(obj, attrs, prevs, vals)
+        if not reverse: pass
+        elif not is_reverse_call: attr.db_update_reverse(obj, prev, val)
+        elif prev is not None:
+            if not reverse.is_collection:
+                assert prev is not NOT_LOADED
+                reverse.db_set(prev, None, is_reverse_call=True)
+            elif isinstance(reverse, Set):
+                if prev is NOT_LOADED: pass
+                else: reverse.db_reverse_remove((prev,), obj)
+            else: raise NotImplementedError
+        obj.__dict__[attr] = val
     def update_reverse(attr, obj, prev, val, undo_funcs):
         reverse = attr.reverse
         if not reverse.is_collection:
@@ -210,6 +252,17 @@ class Attribute(object):
             if prev is NOT_LOADED: pass
             elif prev is not None: reverse.reverse_remove((prev,), obj, undo_funcs)
             if val is not None: reverse.reverse_add((val,), obj, undo_funcs)
+        else: raise NotImplementedError
+    def db_update_reverse(attr, obj, prev, val):
+        reverse = attr.reverse
+        if not reverse.is_collection:
+            if prev is NOT_LOADED: pass
+            elif prev is not None: reverse.db_set(prev, None)
+            if val is not None: reverse.db_set(val, obj)
+        elif isinstance(reverse, Set):
+            if prev is NOT_LOADED: pass
+            elif prev is not None: reverse.db_reverse_remove((prev,), obj)
+            if val is not None: reverse.db_reverse_add((val,), obj)
         else: raise NotImplementedError
     def __delete__(attr, obj):
         raise NotImplementedError
@@ -383,6 +436,12 @@ class Set(Collection):
                 else: setdata[item] = 'removed'
                 if not was_modified_earlier: modified_collections.remove(obj)
         undo_funcs.append(undo_func)
+    def db_reverse_add(attr, objects, item):
+        for obj in objects:
+            setdata = obj.__dict__.get(attr, NOT_LOADED)
+            if setdata is NOT_LOADED:
+                val = obj.__dict__[attr] = SetData()
+            setdata.loaded.add(item)
     def reverse_remove(attr, objects, item, undo_funcs):
         undo = []
         trans = item._trans_
@@ -405,6 +464,12 @@ class Set(Collection):
                 else: setdata[item] = 'added'
                 if not was_modified_earlier: modified_collections.remove(obj)
         undo_funcs.append(undo_func)
+    def db_reverse_remove(attr, objects, item):
+        for obj in objects:
+            setdata = obj.__dict__.get(attr, NOT_LOADED)
+            if setdata is NOT_LOADED:
+                val = obj.__dict__[attr] = SetData()
+            setdata.loaded.remove(item)
 
 ##class List(Collection): pass
 ##class Dict(Collection): pass
@@ -883,6 +948,50 @@ class Entity(object):
             trans.indexes[key][vals] = obj
         trans.created.add(obj)
         return obj
+    def _db_set_(obj, avdict):
+        assert obj._status_ not in ('created', 'deleted')
+        rbits = obj._rbits_
+        wbits = obj._wbits_
+        for attr, old in avdict.items():
+            prev_old = obj.__dict__.get(attr.name, NOT_LOADED)
+            if prev_old == old:
+                del avdict[attr]
+                continue
+            bit = obj._bits_[attr]
+            if rbits & bit: raise UnrepeatableReadError(
+                'Value of %s.%s for %s was updated outside of current transaction (was: %s, now: %s)'
+                % (obj.__class__.__name__, attr.name, obj, prev_old, old))
+            obj.__dict__[attr.name] = old
+            if wbits & bit:
+                del avdict[attr]
+                continue
+            prev = obj.__dict__.get(attr, NOT_LOADED)
+            assert prev == prev_old
+        if not avdict: return
+        for attr in obj._simple_keys_:
+            val = avdict.get(attr, NOT_FOUND)
+            if val is NOT_FOUND: continue
+            prev = obj.__dict__.get(attr, NOT_LOADED)
+            if prev == val: continue
+            trans.db_update_simple_index(obj, attr, prev, val)
+        for attrs in obj._composite_keys_:
+            for attr in attrs:
+                if attr in avdict: break
+            else: continue
+            get = obj.__dict__.get
+            vals = [ get(a, NOT_LOADED) for a in attrs ]
+            prevs = tuple(vals)
+            for i, attr in enumerate(attrs):
+                val = avdict.get(attr, NOT_FOUND)
+                if val is NOT_FOUND: continue
+                vals[i] = val
+            vals = tuple(vals)
+            trans.db_update_composite_index(obj, attrs, prevs, vals)
+        for attr, val in avdict.iteritems():
+            if not attr.reverse: continue
+            prev = obj.__dict__.get(attr, NOT_LOADED)
+            attr.db_update_reverse(obj, prev, val)
+        obj.__dict__.update(avdict)
     def set(obj, **keyargs):
         avdict, collection_avdict = obj._keyargs_to_avdicts_(keyargs)
         trans = obj._trans_
@@ -947,8 +1056,6 @@ class Entity(object):
             for undo_func in undo_funcs: undo_func()
             raise
         obj.__dict__.update(avdict)
-    def _set_(obj, avdict, fromdb=False):
-        raise NotImplementedError
     @classmethod
     def _normalize_args_(entity, args, keyargs, setdefault=False):
         if not args: pass
@@ -1135,6 +1242,17 @@ class Transaction(object):
         elif prev is None and trans.ignore_none: prev = NO_UNDO_NEEDED
         else: del index[prev]
         undo.append((index, prev, val))
+    def db_update_simple_index(trans, obj, attr, prev, val):
+        index = trans.indexes.get(attr)
+        if index is None: index = trans.indexes[attr] = {}
+        if val is None or trans.ignore_none: pass
+        else:
+            obj2 = index.setdefault(val, obj)
+            if obj2 is not obj: raise IntegrityError(
+                '%s with unique index %s.%s already exists: %s'
+                % (obj2.__class__.__name__, obj.__class__.__name__, attr.name, new_keyval))
+                # attribute which was created or updated lately clashes with one stored in database
+        index.pop(prev, None)
     def update_composite_index(trans, obj, attrs, prevs, vals, undo):
         if trans.ignore_none:
             if None in prevs: prevs = NO_UNDO_NEEDED
@@ -1152,10 +1270,22 @@ class Transaction(object):
             if obj2 is not obj:
                 attr_names = ', '.join(attr.name for attr in attrs)
                 raise IndexError('Cannot update %r: composite key (%s) with value %s already exists for %r'
-                % (obj, attr_names, vals, obj2))
+                                 % (obj, attr_names, vals, obj2))
         if prevs is NO_UNDO_NEEDED: pass
         else: del index[prevs]
         undo.append((index, prevs, vals))
+    def db_update_composite_index(trans, obj, attrs, prevs, vals):
+        index = trans.indexes.get(attrs)
+        if index is None: index = trans.indexes[attrs] = {}
+        if NOT_LOADED in vals: pass
+        elif None in vals and trans.ignore_none: pass
+        else:
+            obj2 = index.setdefault(vals, obj)
+            if obj2 is not obj:
+                key_str = ', '.join(repr(item) for item in new_keyval)
+                raise IntegrityError('%s with unique index %s.%s already exists: %s'
+                                     % (obj2.__class__.__name__, obj.__class__.__name__, attr.name, key_str))
+        index.pop(prevs, None)
 
 class Local(threading.local):
     def __init__(self):
