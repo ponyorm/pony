@@ -791,6 +791,38 @@ class Entity(object):
         elif obj._pk_is_composite_: return '%s%r' % (obj.__class__.__name__, pkval)
         else: return '%s(%r)' % (obj.__class__.__name__, pkval)
     @classmethod
+    def _new_(entity, pkval, status, raw_pkval=None):
+        assert status in ('loaded', 'created')
+        trans = get_trans()
+        index = trans.indexes.setdefault(entity._pk_, {})
+        if pkval is None: obj = None
+        else: obj = index.get(pkval)
+        if obj is None: pass
+        elif status == 'created':
+            if entity._pk_is_composite_: pkval = ', '.join(str(item) for item in pkval)
+            raise IndexError('Cannot create %s: instance with primary key %s already exists'
+                             % (obj.__class__.__name__, pkval))                
+        else: return obj
+        obj = object.__new__(entity)
+        obj._trans_ = trans
+        obj._status_ = status
+        obj._pkval_ = pkval
+        if pkval is None:
+            obj._newid_ = next_new_instance_id()
+            obj._raw_pkval_ = None
+        else:
+            obj._newid_ = None
+            if raw_pkval is None: obj._calculate_raw_pkval_()
+            else: obj._raw_pkval_ = raw_pkval
+        if status == 'created':
+            obj._rbits_ = obj._wbits_ = None
+        else: obj._rbits_ = obj._wbits_ = 0
+        if obj._pk_is_composite_:
+            for attr, val in zip(entity._pk_attrs_, pkval): obj.__dict__[attr] = val
+        else: obj.__dict__[entity._pk_] = pkval
+        index[pkval] = obj
+        return obj
+    @classmethod
     def _get_by_raw_pkval_(entity, raw_pkval):
         i = 0
         pkval = []
@@ -807,21 +839,8 @@ class Entity(object):
             pkval.append(val)
         if not entity._pk_is_composite_: pkval = pkval[0]
         else: pkval = tuple(pkval)
-        trans = get_trans()
-        index = trans.indexes.setdefault(entity._pk_, {})
-        obj = index.get(pkval)
-        if obj is not None: return obj
-        obj = object.__new__(entity)
-        obj._trans_ = trans
-        obj._status_ = 'loaded'
-        obj._pkval_ = pkval
-        obj._newid_ = None
-        obj._rbits_ = obj._wbits_ = 0
-        index[pkval] = obj
-        if not obj._pk_is_composite_: obj.__dict__[entity._pk_] = pkval
-        else:
-            for attr, val in zip(entity._pk_attrs_, pkval): obj.__dict__[attr] = val
-        obj._raw_pkval_ = raw_pkval
+        obj = entity._new_(pkval, 'loaded', raw_pkval)
+        assert obj._status_ not in ('deleted', 'cancelled')
         return obj
     @classmethod
     def _find_in_cache_(entity, pkval, avdict):
@@ -885,7 +904,7 @@ class Entity(object):
         if obj2 is None: raise UnrepeatableReadError('%s disappeared' % obj)
         assert obj2 is obj
     @classmethod
-    def _find_in_db_(entity, pkval, avdict=None):
+    def _construct_sql_(entity, pkval, avdict=None):
         table_name = entity._table_
         attr_offsets = {} 
         select_list = [ ALL ]
@@ -914,20 +933,10 @@ class Entity(object):
                 criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, param_id ] ])
         if len(criteria_list) == 1: where_list.append(criteria_list[0])
         else: where_list.append([ AND, criteria_list ])
-
         sql_ast = [ SELECT, select_list, from_list, where_list ]
-        builder = dbapiprovider.SQLBuilder(sql_ast)
-        print builder.sql
-        print [ params[i] for i in builder.params ]
-
-        database = entity._diagram_.database
-        cursor = database._exec_ast(sql_ast, params)
-        row = cursor.fetchone()
-        if row is None: return None
-        if cursor.fetchone() is not None: raise MultipleObjectsFoundError(
-            'Multiple objects was found. Use %s.find_all(...) instead of %s.find(...) to retrieve them'
-            % (entity.__name__, entity.__name__))
-        
+        return sql_ast, params, attr_offsets
+    @classmethod
+    def _parse_row_(entity, row, attr_offsets):
         avdict = {}
         for attr, i in attr_offsets.iteritems():
             if attr.column is not None:
@@ -941,23 +950,25 @@ class Entity(object):
             avdict[attr] = val
         if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_, None)            
         else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
-        trans = get_trans()
-        index = trans.indexes.setdefault(entity._pk_, {})
-        obj = index.get(pkval)
-        if obj is None:
-            obj = object.__new__(entity)
-            obj._trans_ = trans
-            obj._status_ = 'loaded'
-            obj._pkval_ = pkval
-            obj._newid_ = None
-            obj._rbits_ = obj._wbits_ = 0
-            index[pkval] = obj
-            if not obj._pk_is_composite_: obj.__dict__[entity._pk_] = pkval
-            else:
-                for attr, val in zip(entity._pk_attrs_, pkval): obj.__dict__[attr] = val
-            obj._calculate_raw_pkval_()
-        status = obj._status_
-        if status in ('deleted', 'cancelled'): return None
+        return pkval, avdict
+    @classmethod
+    def _find_in_db_(entity, pkval, avdict=None):
+        sql_ast, params, attr_offsets = entity._construct_sql_(pkval, avdict)
+        builder = dbapiprovider.SQLBuilder(sql_ast)
+        print builder.sql
+        print [ params[i] for i in builder.params ]
+
+        database = entity._diagram_.database
+        cursor = database._exec_ast(sql_ast, params)
+        row = cursor.fetchone()
+        if row is None: return None
+        if cursor.fetchone() is not None: raise MultipleObjectsFoundError(
+            'Multiple objects was found. Use %s.find_all(...) instead of %s.find(...) to retrieve them'
+            % (entity.__name__, entity.__name__))
+
+        pkval, avdict = entity._parse_row_(row, attr_offsets)
+        obj = entity._new_(pkval, 'loaded')
+        if obj._status_ in ('deleted', 'cancelled'): return None
         obj._db_set_(avdict)
         return obj
     @classmethod
@@ -973,22 +984,8 @@ class Entity(object):
     @classmethod
     def create(entity, *args, **keyargs):
         pkval, avdict = entity._normalize_args_(args, keyargs, True)
+        obj = entity._new_(pkval, 'created')
         trans = get_trans()
-        obj = object.__new__(entity)
-        obj._trans_ = trans
-        obj._status_ = 'created'
-        obj._pkval_ = pkval
-        if pkval is None:
-            obj._newid_ = next_new_instance_id()
-            obj._raw_pkval_ = None
-        else:
-            obj._newid_ = None
-            if pkval in trans.indexes.setdefault(entity._pk_, {}):
-                if entity._pk_is_composite_: pkval = ', '.join(str(item) for item in pkval)
-                raise IndexError('Cannot create %s: instance with primary key %s already exists'
-                                 % (obj.__class__.__name__, pkval))
-            obj._calculate_raw_pkval_()
-        obj._rbits_ = obj._wbits_ = None
         indexes = {}
         for attr in entity._simple_keys_:
             val = avdict[attr]
