@@ -6,6 +6,7 @@ try: from pony.thirdparty import etree
 except ImportError: etree = None
 
 import dbapiprovider
+from pony import options
 from pony.sqlsymbols import *
 
 class OrmError(Exception): pass
@@ -16,6 +17,7 @@ class MappingError(OrmError): pass
 class ConstraintError(OrmError): pass
 class IndexError(OrmError): pass
 class MultipleObjectsFoundError(OrmError): pass
+class TooManyObjectsFoundError(OrmError): pass
 class OperationWithDeletedObjectError(OrmError): pass
 class TransactionError(OrmError): pass
 class IntegrityError(TransactionError): pass
@@ -108,6 +110,7 @@ class Attribute(object):
                 'Required attribute %s.%s does not specified' % (entity.__name__, attr.name))
         elif val is None:
             if attr.is_required:
+                print attr, val, obj, entity
                 if obj is None: raise ConstraintError(
                     'Required attribute %s.%s cannot be set to None' % (entity.__name__, attr.name))
                 else: raise ConstraintError(
@@ -915,8 +918,7 @@ class Entity(object):
                 select_list.append([ COLUMN, 'T1', column ])
         from_list = [ FROM, [ 'T1', TABLE, table_name ]]
 
-        where_list = [ WHERE ]
-        criteria_list = [ AND ]
+        criteria_list = []
         params = {}
         if avdict is not None: items = avdict.items()
         elif not entity._pk_is_composite_: items = [(entity._pk_, pkval)]
@@ -931,9 +933,13 @@ class Entity(object):
                 param_id = len(params) + 1
                 params[param_id] = val
                 criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, param_id ] ])
-        if len(criteria_list) == 1: where_list.append(criteria_list[0])
-        else: where_list.append([ AND, criteria_list ])
-        sql_ast = [ SELECT, select_list, from_list, where_list ]
+        sql_ast = [ SELECT, select_list, from_list ]
+        if criteria_list:
+            where_list = [ WHERE ]
+            if len(criteria_list) == 1: where_list.append(criteria_list[0])
+            else: where_list.append([ AND ] + criteria_list)
+            sql_ast.append(where_list)
+        print criteria_list, sql_ast
         return sql_ast, params, attr_offsets
     @classmethod
     def _parse_row_(entity, row, attr_offsets):
@@ -952,35 +958,49 @@ class Entity(object):
         else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
         return pkval, avdict
     @classmethod
-    def _find_in_db_(entity, pkval, avdict=None):
+    def _find_in_db_(entity, pkval, avdict=None, max_rows_count=None):
         sql_ast, params, attr_offsets = entity._construct_sql_(pkval, avdict)
         builder = dbapiprovider.SQLBuilder(sql_ast)
         print builder.sql
         print [ params[i] for i in builder.params ]
-
         database = entity._diagram_.database
         cursor = database._exec_ast(sql_ast, params)
-        row = cursor.fetchone()
-        if row is None: return None
-        if cursor.fetchone() is not None: raise MultipleObjectsFoundError(
-            'Multiple objects was found. Use %s.find_all(...) instead of %s.find(...) to retrieve them'
-            % (entity.__name__, entity.__name__))
-
-        pkval, avdict = entity._parse_row_(row, attr_offsets)
-        obj = entity._new_(pkval, 'loaded')
-        if obj._status_ in ('deleted', 'cancelled'): return None
-        obj._db_set_(avdict)
-        return obj
+        if max_rows_count is None: max_rows_count = options.MAX_ROWS_COUNT
+        rows = cursor.fetchmany(max_rows_count + 1)
+        if len(rows) == max_rows_count + 1:
+            if max_rows_count == 1: raise MultipleObjectsFoundError(
+                'Multiple objects was found. Use %s.find_all(...) instead of %s.find_one(...) to retrieve them'
+                % (entity.__name__, entity.__name__))
+            raise TooManyObjectsFoundError(
+                'Found more then pony.options.MAX_ROWS_COUNT=%d objects' % options.MAX_ROWS_COUNT)
+        objects = []
+        for row in rows:
+            pkval, avdict = entity._parse_row_(row, attr_offsets)
+            obj = entity._new_(pkval, 'loaded')
+            if obj._status_ in ('deleted', 'cancelled'): continue
+            obj._db_set_(avdict)
+            objects.append(obj)
+        return objects
     @classmethod
-    def find(entity, *args, **keyargs):
+    def _find_(entity, max_objects_count, args, keyargs):
         pkval, avdict = entity._normalize_args_(args, keyargs, False)
         for attr in avdict:
             if attr.is_collection: raise TypeError(
                 'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
         try:
-            return entity._find_in_cache_(pkval, avdict)
+            objects = [ entity._find_in_cache_(pkval, avdict) ]
         except KeyError:
-            return entity._find_in_db_(pkval, avdict)
+            objects = entity._find_in_db_(pkval, avdict, max_objects_count)
+        return objects        
+    @classmethod
+    def find_one(entity, *args, **keyargs):
+        objects = entity._find_(1, args, keyargs)
+        if not objects: return None
+        assert len(objects) == 1
+        return objects[0]
+    @classmethod
+    def find_all(entity, *args, **keyargs):
+        return entity._find_(None, args, keyargs)
     @classmethod
     def create(entity, *args, **keyargs):
         pkval, avdict = entity._normalize_args_(args, keyargs, True)
