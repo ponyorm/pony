@@ -139,12 +139,12 @@ class Attribute(object):
         if wbits is not None and not wbits & bit: obj._rbits_ |= bit
         return result
     def get(attr, obj):
-        if obj._status_ == 'deleted': raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         val = obj.__dict__.get(attr, NOT_LOADED)
         if val is NOT_LOADED: val = attr.load(obj)
         return val
     def __set__(attr, obj, val, undo_funcs=None):
-        if obj._status_ == 'deleted': raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         is_reverse_call = undo_funcs is not None
         reverse = attr.reverse
         val = attr.check(val, obj)
@@ -210,7 +210,7 @@ class Attribute(object):
                 for undo_func in reversed(undo_funcs): undo_func()
             raise
     def db_set(attr, obj, old, is_reverse_call=False):
-        assert obj._status_ not in ('created', 'deleted')
+        assert obj._status_ not in ('created', 'deleted', 'cancelled')
         assert attr.pk_offset is None
         reverse = attr.reverse
         old = attr.check(old, obj)
@@ -370,7 +370,7 @@ class Set(Collection):
         if setdata is not NOT_LOADED and setdata.fully_loaded: return setdata
         raise NotImplementedError
     def copy(attr, obj):
-        if obj._status_ == 'deleted': raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         setdata = obj.__dict__.get(attr, NOT_LOADED)
         if setdata is NOT_LOADED or not setdata.fully_loaded: setdata = attr.load(obj)
         items = setdata.loaded.copy()
@@ -381,11 +381,11 @@ class Set(Collection):
             else: assert False
         return items
     def __get__(attr, obj, type=None):
-        if obj._status_ == 'deleted': raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         if obj is None: return attr
         return SetWrapper(obj, attr)
     def __set__(attr, obj, val, undo_funcs=None):
-        if obj._status_ == 'deleted': raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         items = attr.check(val, obj)
         reverse = attr.reverse
         if not reverse: raise NotImplementedError
@@ -515,7 +515,7 @@ class SetWrapper(object):
         return wrapper.copy().difference(x)
     def __contains__(wrapper, item):
         obj = wrapper._obj_
-        if obj._status_ == 'deleted': raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         attr = wrapper._attr_
         setdata = obj.__dict__.get(attr, NOT_LOADED)
         if setdata is not NOT_LOADED:
@@ -531,7 +531,7 @@ class SetWrapper(object):
         return item in setdata.loaded
     def add(wrapper, x):
         obj = wrapper._obj_
-        if obj._status_ == 'deleted': raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         attr = wrapper._attr_
         reverse = attr.reverse
         if not reverse: raise NotImplementedError
@@ -556,7 +556,7 @@ class SetWrapper(object):
         return wrapper
     def remove(wrapper, x):
         obj = wrapper._obj_
-        if obj._status_ == 'deleted': raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         attr = wrapper._attr_
         reverse = attr.reverse
         if not reverse: raise NotImplementedError
@@ -957,7 +957,7 @@ class Entity(object):
                 for attr, val in zip(entity._pk_attrs_, pkval): obj.__dict__[attr] = val
             obj._calculate_raw_pkval_()
         status = obj._status_
-        if status == 'deleted': return None
+        if status in ('deleted', 'cancelled'): return None
         obj._db_set_(avdict)
         return obj
     @classmethod
@@ -1020,7 +1020,7 @@ class Entity(object):
         trans.created.add(obj)
         return obj
     def _db_set_(obj, avdict):
-        assert obj._status_ not in ('created', 'deleted')
+        assert obj._status_ not in ('created', 'deleted', 'cancelled')
         rbits = obj._rbits_
         wbits = obj._wbits_
         for attr, old in avdict.items():
@@ -1065,7 +1065,7 @@ class Entity(object):
             attr.db_update_reverse(obj, prev, val)
         obj.__dict__.update(avdict)
     def set(obj, **keyargs):
-        if obj._status_ == 'deleted': raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         avdict, collection_avdict = obj._keyargs_to_avdicts_(keyargs)
         trans = obj._trans_
         status = obj._status_
