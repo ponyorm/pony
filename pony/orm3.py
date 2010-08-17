@@ -110,7 +110,6 @@ class Attribute(object):
                 'Required attribute %s.%s does not specified' % (entity.__name__, attr.name))
         elif val is None:
             if attr.is_required:
-                print attr, val, obj, entity
                 if obj is None: raise ConstraintError(
                     'Required attribute %s.%s cannot be set to None' % (entity.__name__, attr.name))
                 else: raise ConstraintError(
@@ -378,8 +377,50 @@ class Set(Collection):
         if setdata is NOT_LOADED: setdata = obj.__dict__[attr] = SetData()
         if not reverse.is_collection:
             attr.py_type._find_(None, (), {reverse.name:obj})
-        else: raise NotImplementedError
+        else:
+            sql_ast, params = attr.construct_sql_m2m(obj)
+            builder = dbapiprovider.SQLBuilder(sql_ast)
+            print builder.sql
+            print [ params[i] for i in builder.params ]
+            print
+            database = obj._diagram_.database
+            cursor = database._exec_ast(sql_ast, params)
+            items = []
+            loaded, modified = setdata.loaded, setdata.modified
+            for row in cursor.fetchall():
+                item = attr.py_type._get_by_raw_pkval_(row)
+                if item in loaded: continue
+                loaded.add(item)
+                if modified and item in modified: continue
+                items.append(item)
+            reverse.db_reverse_add(items, obj)
+        setdata.fully_loaded = True
         return setdata
+    def construct_sql_m2m(attr, obj):
+        reverse = attr.reverse
+        assert reverse is not None and reverse.is_collection and issubclass(reverse.py_type, Entity)
+        table_name = attr.table
+        assert table_name is not None
+        select_list = [ ALL ]
+        for column in attr.columns:
+            select_list.append([COLUMN, 'T1', column ])
+        from_list = [ FROM, [ 'T1', TABLE, table_name ]]
+       
+        criteria_list = []
+        params = {}
+        raw_pkval = obj._calculate_raw_pkval_()
+        if not obj._pk_is_composite_: raw_pkval = [ raw_pkval ]
+        for column, val in zip(reverse.columns, raw_pkval):
+            param_id = len(params) + 1
+            params[param_id] = val
+            criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, param_id ]])
+        sql_ast = [ SELECT, select_list, from_list ]
+        if criteria_list:
+            where_list = [ WHERE ]
+            if len(criteria_list) == 1: where_list.append(criteria_list[0])
+            else: where_list.append([ AND ] + criteria_list)
+            sql_ast.append(where_list)
+        return sql_ast, params
     def copy(attr, obj):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         setdata = obj.__dict__.get(attr, NOT_LOADED)
@@ -392,8 +433,8 @@ class Set(Collection):
             else: assert False
         return items
     def __get__(attr, obj, type=None):
-        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         if obj is None: return attr
+        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         return SetWrapper(obj, attr)
     def __set__(attr, obj, val, undo_funcs=None):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
@@ -824,7 +865,8 @@ class Entity(object):
         else:
             obj._newid_ = None
             if raw_pkval is None: obj._calculate_raw_pkval_()
-            else: obj._raw_pkval_ = raw_pkval
+            elif len(raw_pkval) > 1: obj._raw_pkval_ = raw_pkval
+            else: obj._raw_pkval_ = raw_pkval[0]
         if status == 'created':
             obj._rbits_ = obj._wbits_ = None
         else: obj._rbits_ = obj._wbits_ = 0
@@ -911,9 +953,9 @@ class Entity(object):
             return obj
         raise KeyError
     def _load_(obj):
-        obj2 = obj._find_in_db_(obj._pkval_)
-        if obj2 is None: raise UnrepeatableReadError('%s disappeared' % obj)
-        assert obj2 is obj
+        objects = obj._find_in_db_(obj._pkval_)
+        if not objects: raise UnrepeatableReadError('%s disappeared' % obj)
+        assert len(objects) == 1 and obj == objects[0]
     @classmethod
     def _construct_sql_(entity, pkval, avdict=None):
         table_name = entity._table_
@@ -947,7 +989,6 @@ class Entity(object):
             if len(criteria_list) == 1: where_list.append(criteria_list[0])
             else: where_list.append([ AND ] + criteria_list)
             sql_ast.append(where_list)
-        print criteria_list, sql_ast
         return sql_ast, params, attr_offsets
     @classmethod
     def _parse_row_(entity, row, attr_offsets):
@@ -971,6 +1012,7 @@ class Entity(object):
         builder = dbapiprovider.SQLBuilder(sql_ast)
         print builder.sql
         print [ params[i] for i in builder.params ]
+        print
         database = entity._diagram_.database
         cursor = database._exec_ast(sql_ast, params)
         if max_rows_count is None: max_rows_count = options.MAX_ROWS_COUNT
@@ -1242,7 +1284,9 @@ class Diagram(object):
                             "Parameter 'table' for %s.%s and %s.%s do not match"
                             % (attr.entity.__name__, attr.name, reverse.entity.__name__, reverse.name))
                         table_name = attr.table
-                    else: table_name = name1 + '_' + name2
+                    else:
+                        table_name = name1 + '_' + name2
+                        attr.table = reverse.table = table_name
                     m2m_table = mapping.tables.get(table_name)
                     if m2m_table is None:
                         m2m_table = mapping.tables[table_name] = Table(mapping, table_name)
