@@ -369,9 +369,17 @@ class Set(Collection):
                 raise TransactionError('An attempt to mix objects belongs to different transactions')
         return items
     def load(attr, obj):
+        assert obj._status_ not in ('deleted', 'cancelled')
         setdata = obj.__dict__.get(attr, NOT_LOADED)
         if setdata is not NOT_LOADED and setdata.fully_loaded: return setdata
-        raise NotImplementedError
+        reverse = attr.reverse
+        if reverse is None: raise NotImplementedError
+        assert issubclass(reverse.py_type, Entity)
+        if setdata is NOT_LOADED: setdata = obj.__dict__[attr] = SetData()
+        if not reverse.is_collection:
+            attr.py_type._find_(None, (), {reverse.name:obj})
+        else: raise NotImplementedError
+        return setdata
     def copy(attr, obj):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         setdata = obj.__dict__.get(attr, NOT_LOADED)
