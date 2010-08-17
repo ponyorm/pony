@@ -174,8 +174,8 @@ class Attribute(object):
         if not is_reverse_call: undo_funcs = []
         undo = []
         def undo_func():
-            obj.status = status
-            obj.wbits = wbits
+            obj._status_ = status
+            obj._wbits_ = wbits
             if wbits == 0: trans.updated.remove(obj)
             obj.__dict__[attr] = prev
             for index, old_key, new_key in undo:
@@ -1157,8 +1157,8 @@ class Entity(object):
         undo_funcs = []
         undo = []
         def undo_func():
-            obj.status = status
-            obj.wbits = wbits
+            obj._status_ = status
+            obj._wbits_ = wbits
             if wbits == 0: trans.updated.discard(obj)
             for index, old_key, new_key in undo:
                 if new_key is NO_UNDO_NEEDED: pass
