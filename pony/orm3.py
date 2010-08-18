@@ -42,7 +42,7 @@ NO_UNDO_NEEDED = NoUndoNeededValueType()
 next_attr_id = count(1).next
 
 class Attribute(object):
-    __slots__ = 'is_required', 'is_unique', 'is_indexed', 'is_pk', 'is_link', 'is_collection', 'is_ref', \
+    __slots__ = 'is_required', 'is_unique', 'is_indexed', 'is_pk', 'is_collection', \
                 'id', 'pk_offset', 'type', 'entity', 'name', 'oldname', \
                 'args', 'auto', 'default', 'reverse', 'composite_keys'
     def __init__(attr, py_type, *args, **keyargs):
@@ -50,6 +50,7 @@ class Attribute(object):
         attr.is_required = isinstance(attr, Required)
         attr.is_unique = isinstance(attr, Unique)  # Also can be set to True later
         attr.is_indexed = attr.is_unique  # Also can be set to True later
+        attr.is_collection = isinstance(attr, Collection)
         attr.is_pk = isinstance(attr, PrimaryKey)
         if attr.is_pk: attr.pk_offset = 0
         else: attr.pk_offset = None
@@ -57,9 +58,6 @@ class Attribute(object):
         if py_type == 'Entity' or py_type is Entity:
             raise TypeError('Cannot link attribute to Entity class. Must use Entity subclass instead')
         attr.py_type = py_type
-        attr.is_link = isinstance(py_type, basestring) or issubclass(py_type, Entity)
-        attr.is_collection = isinstance(attr, Collection)
-        attr.is_ref = attr.is_link and not attr.is_collection
         attr.sql_type = keyargs.pop('sql_type', None)
         attr.entity = attr.name = None
         attr.args = args
@@ -778,7 +776,6 @@ class Entity(object):
         diagram = entity._diagram_
         unmapped_attrs = diagram.unmapped_attrs.pop(entity.__name__, set())
         for attr in entity._new_attrs_:
-            if not attr.is_link: continue
             py_type = attr.py_type
             if isinstance(py_type, basestring):
                 entity2 = diagram.entities.get(py_type)
@@ -786,7 +783,7 @@ class Entity(object):
                     diagram.unmapped_attrs.setdefault(py_type, set()).add(attr)
                     continue
                 attr.py_type = py_type = entity2
-            assert issubclass(py_type, Entity)
+            elif not issubclass(py_type, Entity): continue
             
             entity2 = py_type
             if entity2._diagram_ is not diagram: raise DiagramError(
@@ -839,10 +836,10 @@ class Entity(object):
         for attr in entity._pk_attrs_:
             py_type = attr.py_type
             assert not isinstance(py_type, basestring)
-            if not attr.is_ref: pk_info.append((attr, attr.name))
-            else:
+            if attr.reverse:
                 for attr2, name in attr.py_type._calculate_pk_info_():
                     pk_info.append((attr2, attr.name + '_' + name))
+            else: pk_info.append((attr, attr.name))
         entity._pk_info_ = pk_info
         return pk_info
     def _calculate_raw_pkval_(obj):
@@ -852,7 +849,7 @@ class Entity(object):
         else: pk_pairs = zip(obj._pk_attrs_, obj._pkval_)
         raw_pkval = []
         for attr, val in pk_pairs:
-            if not attr.is_link: raw_pkval.append(val)
+            if not attr.reverse: raw_pkval.append(val)
             elif len(attr.py_type._pk_attrs_) == 1: raw_pkval.append(val._raw_pkval_)
             else: raw_pkval.extend(val._raw_pkval_)
         if len(raw_pkval) > 1: obj._raw_pkval_ = tuple(raw_pkval)
@@ -903,10 +900,10 @@ class Entity(object):
             if attr.column is not None:
                 val = raw_pkval[i]
                 i += 1
-                if not attr.is_link: val = attr.check(val, None, entity)
+                if not attr.reverse: val = attr.check(val, None, entity)
                 else: val = attr.py_type._get_by_raw_pkval_((val,))
             else:
-                if not attr.is_link: raise NotImplementedError
+                if not attr.reverse: raise NotImplementedError
                 vals = pkval[i:i+len(attr.columns)]
                 val = attr.py_type._get_by_raw_pkval_(vals)
             pkval.append(val)
@@ -995,7 +992,7 @@ class Entity(object):
         elif not entity._pk_is_composite_: items = [(entity._pk_, pkval)]
         else: items = zip(entity._pk_attrs_, pkval)
         for attr, val in items:
-            if attr.is_ref: val = val._raw_pkval_
+            if attr.reverse: val = val._raw_pkval_
             if attr.column is not None: pairs = [ (attr.column, val) ]
             else:
                 assert len(attr.columns) == len(val)
@@ -1017,10 +1014,10 @@ class Entity(object):
         for attr, i in attr_offsets.iteritems():
             if attr.column is not None:
                 val = row[i]
-                if not attr.is_ref: val = attr.check(val, None, entity)
+                if not attr.reverse: val = attr.check(val, None, entity)
                 else: val = attr.py_type._get_by_raw_pkval_((val,))
             else:
-                if not attr.is_ref: raise NotImplementedError
+                if not attr.reverse: raise NotImplementedError
                 vals = row[i:i+len(attr.columns)]
                 val = attr.py_type._get_by_raw_pkval_(vals)
             avdict[attr] = val
