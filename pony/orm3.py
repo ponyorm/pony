@@ -338,6 +338,15 @@ class SetData(object):
         setdata.loaded = set()
         setdata.fully_loaded = False
         setdata.modified = None
+    def __iter__(setdata):
+        modified = setdata.modified
+        if modified:
+            for item in setdata.loaded:
+                if modified.get(item) != 'removed': yield item
+            for item, status in modified.iteritems():
+                if status == 'added': yield item
+        else:
+            for item in setdata.loaded: yield item
     
 class Set(Collection):
     def check(attr, val, obj=None, entity=None):
@@ -421,6 +430,14 @@ class Set(Collection):
             else: where_list.append([ AND ] + criteria_list)
             sql_ast.append(where_list)
         return sql_ast, params
+    def is_empty(attr, obj):
+        setdata = obj.__dict__.get(attr, NOT_LOADED)
+        if setdata is NOT_LOADED: setdata = attr.load(obj)
+        for item in setdata: return False
+        if setdata.fully_loaded: return True
+        setdata = attr.load(obj)
+        for item in setdata: return False
+        return True
     def copy(attr, obj):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         setdata = obj.__dict__.get(attr, NOT_LOADED)
@@ -493,8 +510,8 @@ class Set(Collection):
             for obj, item_status, was_modified_earlier in undo:
                 assert item_status in (None, 'removed')
                 setdata = obj.__dict__[attr]
-                if item_status is None: del setdata[item]
-                else: setdata[item] = 'removed'
+                if item_status is None: del setdata.modified[item]
+                else: setdata.modified[item] = 'removed'
                 if not was_modified_earlier: modified_collections.remove(obj)
         undo_funcs.append(undo_func)
     def db_reverse_add(attr, objects, item):
@@ -521,8 +538,8 @@ class Set(Collection):
             for obj, item_status, was_modified_earlier in undo:
                 assert item_status in (None, 'added')
                 setdata = obj.__dict__[attr]
-                if item_status is None: del setdata[item]
-                else: setdata[item] = 'added'
+                if item_status is None: del setdata.modified[item]
+                else: setdata.modified[item] = 'added'
                 if not was_modified_earlier: modified_collections.remove(obj)
         undo_funcs.append(undo_func)
     def db_reverse_remove(attr, objects, item):
@@ -548,6 +565,9 @@ class SetWrapper(object):
         return '%r.%s->%r' % (wrapper._obj_, wrapper._attr_.name, val)
     def __str__(wrapper):
         return str(wrapper.copy())
+    def __nonzero__(wrapper):
+        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        return not _attr_.is_empty()
     def __len__(wrapper):
         return len(wrapper.copy())
     def __iter__(wrapper):
@@ -863,6 +883,7 @@ class Entity(object):
             obj._newid_ = next_new_instance_id()
             obj._raw_pkval_ = None
         else:
+            index[pkval] = obj
             obj._newid_ = None
             if raw_pkval is None: obj._calculate_raw_pkval_()
             elif len(raw_pkval) > 1: obj._raw_pkval_ = raw_pkval
@@ -873,7 +894,6 @@ class Entity(object):
         if obj._pk_is_composite_:
             for attr, val in zip(entity._pk_attrs_, pkval): obj.__dict__[attr] = val
         else: obj.__dict__[entity._pk_] = pkval
-        index[pkval] = obj
         return obj
     @classmethod
     def _get_by_raw_pkval_(entity, raw_pkval):
@@ -1131,6 +1151,86 @@ class Entity(object):
             prev = obj.__dict__.get(attr, NOT_LOADED)
             attr.db_update_reverse(obj, prev, val)
         obj.__dict__.update(avdict)
+    def _delete_(obj, undo_funcs=None):
+        is_recursive_call = undo_funcs is not None
+        if not is_recursive_call: undo_funcs = []
+        status = obj._status_
+        assert status not in ('deleted', 'cancelled')
+        undo_list = []
+        undo_dict = {}
+        def undo_func():
+            obj._status_ = status
+            obj.__dict__.update(undo_dict)
+            for index, old_key in undo_list: index[old_key] = obj
+        undo_funcs.append(undo_func)
+        try:
+            for attr in obj._attrs_:
+                reverse = attr.reverse
+                if not reverse: continue
+                if not attr.is_collection:
+                    val = obj.__dict__.get(attr, NOT_LOADED)
+                    if val is None: continue
+                    if not reverse.is_collection:
+                        if val is NOT_LOADED: val = attr.load(obj)
+                        if val is None: continue
+                        if reverse.is_required:
+                            raise ConstraintError('Cannot delete %s: Attribute %s.%s for %s cannot be set to None'
+                                                  % (obj, reverse.entity.__name__, reverse.name, val))
+                        reverse.__set__(val, None, undo_funcs)
+                    elif isinstance(reverse, Set):
+                        if val is NOT_LOADED: pass
+                        else: reverse.reverse_remove((val,), obj, undo_funcs)
+                    else: raise NotImplementedError
+                elif isinstance(attr, Set):
+                    if reverse.is_required and not attr.is_empty(obj): raise ConstraintError(
+                        'Cannot delete %s: Attribute %s.%s for associated objects cannot be set to None'
+                        % (obj, reverse.entity.__name__, reverse.name))
+                    attr.__set__(obj, (), undo_funcs)
+                else: raise NotImplementedError
+
+            trans = obj._trans_
+
+            for attr in obj._simple_keys_:
+                val = obj.__dict__.get(attr, NOT_LOADED)
+                if val is NOT_LOADED: continue
+                if val is None and trans.ignore_none: continue
+                index = trans.indexes.get(attr)
+                if index is None: continue
+                obj2 = index.pop(val)
+                assert obj2 is obj
+                undo_list.append((index, val))
+                
+            for attrs in obj._composite_keys_:
+                get = obj.__dict__.get
+                vals = tuple(get(a, NOT_LOADED) for a in attrs)
+                if NOT_LOADED in vals: continue
+                if trans.ignore_none and None in vals: continue
+                index = trans.indexes.get(attrs)
+                if index is None: continue
+                obj2 = index.pop(vals)
+                assert obj2 is obj
+                undo_list.append((index, vals))
+
+            if status == 'created':
+                obj._status_ = 'cancelled'
+                assert obj in trans.created
+                trans.created.remove(obj)
+            else:
+                obj._status_ = 'deleted'
+                trans.updated.discard(obj)
+                trans.deleted.add(obj)
+            for attr in obj._attrs_:
+                if attr.pk_offset is None:
+                    val = obj.__dict__.pop(attr, NOT_LOADED)
+                    if val is NOT_LOADED: continue
+                    undo_dict[attr] = val
+        except:
+            if not is_recursive_call:
+                for undo_func in reversed(undo_funcs): undo_func()
+            raise
+    def delete(obj):
+        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        obj._delete_()
     def set(obj, **keyargs):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         avdict, collection_avdict = obj._keyargs_to_avdicts_(keyargs)
