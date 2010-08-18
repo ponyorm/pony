@@ -1,3 +1,4 @@
+from pony.db import Database
 from pony.orm3 import *
 
 class Student(Entity):
@@ -23,12 +24,13 @@ class Subject(Entity):
 
 class Mark(Entity):
     _table_ = "Exams"
-    student = Required(Student, column="zach")
-    subject = Required(Subject)
+    student = Required(Student, column="student")
+    subject = Required(Subject, column="subject")
     value = Required(int)
     PrimaryKey(student, subject)
 
-generate_mapping()
+db = Database('sqlite', 'C:\\Data\\Docs\\Dev\\GAE\\alexander-kozlovsky\\pony\\examples\\orm\\students01\\students.db3')
+generate_mapping(db, check_tables=True)
 
 g1 = Group.create(number='4142', kaf=44)
 g2 = Group.create(number='3137', kaf=33)
