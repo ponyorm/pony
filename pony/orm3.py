@@ -983,6 +983,7 @@ class Entity(object):
         select_list = [ ALL ]
         for attr in entity._attrs_:
             if attr.is_collection: continue
+            if not attr.columns: continue
             attr_offsets[attr] = len(select_list) - 1
             for column in attr.columns:
                 select_list.append([ COLUMN, 'T1', column ])
@@ -1127,6 +1128,8 @@ class Entity(object):
             prev = obj.__dict__.get(attr, NOT_LOADED)
             assert prev == prev_old
         if not avdict: return
+        NOT_FOUND = object()
+        trans = obj._trans_
         for attr in obj._simple_keys_:
             val = avdict.get(attr, NOT_FOUND)
             if val is NOT_FOUND: continue
@@ -1424,11 +1427,30 @@ class Diagram(object):
                         raise NotImplementedError
                     m2m_table.m2m.add(attr)
                     m2m_table.m2m.add(reverse)
-                elif attr.columns is None:
-                    if not attr.is_ref:
+                elif not attr.reverse:
+                    if attr.columns:
+                        if len(attr.columns) > 1: raise MappingError(
+                            'Invalid number of columns for %s.%s' % (attr.entity.__name__, attr.name))
+                        assert attr.column is not None
+                        table.add_column(attr.column, attr.pk_offset is not None, attr)
+                    else:
                         col_name = attr.column = attr.name
                         attr.columns = [ attr.name ]
                         table.add_column(col_name, attr.pk_offset is not None, attr)
+                else:
+                    reverse = attr.reverse
+                    if attr.columns:
+                        if not attr.is_required and reverse.is_required: raise MappingError(
+                            "Parameter 'column' cannot be specified for attribute %s.%s. "
+                            "Specify this parameter for reverse attribute %s.%s or make %s.%s optional"
+                            % (attr.entity.__name__, attr.name, reverse.entity.__name__, reverse.name, reverse.entity.__name__, reverse.name))
+                        pk_info = attr.reverse.entity._pk_info_
+                        if len(attr.columns) != len(pk_info): raise MappingError(
+                            'Invalid number of columns for %s.%s' % (attr.entity.__name__, attr.name))
+                        for col_name, (attr2, name2) in zip(attr.columns, pk_info):
+                            table.add_column(col_name, attr.pk_offset is not None, attr2)
+                    elif not attr.is_required and (reverse.is_required or reverse.columns
+                                                   or attr.entity.__name__ > reverse.entity.__name__): pass
                     else:
                         attr.columns = []
                         for attr2, name2 in py_type._pk_info_:
@@ -1436,18 +1458,6 @@ class Diagram(object):
                             attr.columns.append(col_name)
                             table.add_column(col_name, attr.pk_offset is not None, attr2)
                         if len(attr.columns) == 1: attr.column = attr.columns[0]
-                else:
-                    if not attr.is_ref:
-                        if len(attr.columns) > 1: raise MappingError(
-                            'Invalid number of columns for %s.%s' % (attr.entity.__name__, attr.name))
-                        assert attr.column is not None
-                        table.add_column(attr.column, attr.pk_offset is not None, attr)
-                    else:
-                        pk_info = attr.reverse.entity._pk_info_
-                        if len(attr.columns) != len(pk_info): raise MappingError(
-                            'Invalid number of columns for %s.%s' % (attr.entity.__name__, attr.name))
-                        for col_name, (attr2, name2) in zip(attr.columns, pk_info):
-                            table.add_column(col_name, attr.pk_offset is not None, attr2)
         if not check_tables: return
         for table in mapping.tables.values():
             sql_ast = [ SELECT,
