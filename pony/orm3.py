@@ -1440,10 +1440,15 @@ class Diagram(object):
                 else:
                     reverse = attr.reverse
                     if attr.columns:
-                        if not attr.is_required and reverse.is_required: raise MappingError(
-                            "Parameter 'column' cannot be specified for attribute %s.%s. "
-                            "Specify this parameter for reverse attribute %s.%s or make %s.%s optional"
-                            % (attr.entity.__name__, attr.name, reverse.entity.__name__, reverse.name, reverse.entity.__name__, reverse.name))
+                        if not attr.is_required:
+                            if reverse.is_required: raise MappingError(
+                                "Parameter 'column' cannot be specified for attribute %s.%s. "
+                                "Specify this parameter for reverse attribute %s.%s or make %s.%s optional"
+                                % (attr.entity.__name__, attr.name, reverse.entity.__name__, reverse.name, reverse.entity.__name__, reverse.name))
+                            elif reverse.columns: raise MappingError(
+                                "Both attributes %s.%s and %s.%s have parameter 'column'. "
+                                "Parameter 'column' cannot be specified at both sides of one-to-one relation"
+                                % (attr.entity.__name__, attr.name, reverse.entity.__name__, reverse.name))
                         pk_info = attr.reverse.entity._pk_info_
                         if len(attr.columns) != len(pk_info): raise MappingError(
                             'Invalid number of columns for %s.%s' % (attr.entity.__name__, attr.name))
