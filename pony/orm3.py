@@ -150,7 +150,10 @@ class Attribute(object):
         val = attr.check(val, obj)
         pkval = obj._pkval_
         if attr.pk_offset is not None:
-            if pkval is not None and val == pkval[attr.pk_offset]: return
+            if pkval is None: pass
+            elif obj._pk_is_composite_:
+                if val == pkval[attr.pk_offset]: return
+            elif val == pkval: return
             raise TypeError('Cannot change value of primary key')
         prev =  obj.__dict__.get(attr, NOT_LOADED)
         if prev is NOT_LOADED and reverse and not reverse.is_collection:
@@ -904,7 +907,7 @@ class Entity(object):
                 else: val = attr.py_type._get_by_raw_pkval_((val,))
             else:
                 if not attr.reverse: raise NotImplementedError
-                vals = pkval[i:i+len(attr.columns)]
+                vals = raw_pkval[i:i+len(attr.columns)]
                 val = attr.py_type._get_by_raw_pkval_(vals)
             pkval.append(val)
         if not entity._pk_is_composite_: pkval = pkval[0]
