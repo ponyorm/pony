@@ -447,7 +447,7 @@ class Set(Collection):
         if setdata.modified is None: return items
         for obj, item_status in setdata.modified.iteritems():
             if item_status == 'added': items.add(obj)
-            elif item_status == 'removed': items.discard(object)
+            elif item_status == 'removed': items.discard(obj)
             else: assert False
         return items
     def __get__(attr, obj, type=None):
