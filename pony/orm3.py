@@ -1366,6 +1366,18 @@ class Entity(object):
         if obj._status_ != 'loaded': return
         obj._status_ = 'locked'
         obj._trans_.to_be_checked.append(obj)
+    def _save_(obj):
+        status = obj._status_
+        if status in ('loaded', 'cancelled'): return
+        elif status == 'locked':
+            raise NotImplementedError
+        elif status == 'created':
+            raise NotImplementedError
+        elif status == 'updated':
+            raise NotImplementedError
+        elif status == 'deleted':
+            raise NotImplementedError
+        assert False
 
 class Diagram(object):
     def __init__(diagram):
