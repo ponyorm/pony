@@ -163,9 +163,12 @@ class Attribute(object):
         status = obj._status_
         wbits = obj._wbits_
         if wbits is not None:
-            obj._status_ = 'updated'
             obj._wbits_ = wbits | obj._bits_[attr]
-            trans.updated.add(obj)
+            if status != 'updated':
+                if status == 'loaded': trans.to_be_checked.append(obj)
+                else: assert status == 'locked'
+                obj._status_ = 'updated'
+                trans.updated.add(obj)
         if not attr.reverse and not attr.is_indexed:
             obj.__dict__[attr] = val
             return
@@ -178,6 +181,10 @@ class Attribute(object):
             obj._status_ = status
             obj._wbits_ = wbits
             if wbits == 0: trans.updated.remove(obj)
+            if status == 'loaded':
+                to_be_checked = trans.to_be_checked
+                if to_be_checked and to_be_checked[-1] is obj: to_be_checked.pop()
+                assert obj not in to_be_checked
             obj.__dict__[attr] = prev
             for index, old_key, new_key in undo:
                 if new_key is NO_UNDO_NEEDED: pass
@@ -891,9 +898,11 @@ class Entity(object):
         if status == 'created':
             obj._rbits_ = obj._wbits_ = None
         else: obj._rbits_ = obj._wbits_ = 0
-        if obj._pk_is_composite_:
-            for attr, val in zip(entity._pk_attrs_, pkval): obj.__dict__[attr] = val
-        else: obj.__dict__[entity._pk_] = pkval
+        if obj._pk_is_composite_: pairs = zip(entity._pk_attrs_, pkval)
+        else: pairs = ((entity._pk_, pkval),)
+        for attr, val in pairs:
+            obj.__dict__[attr] = val
+            if attr.reverse: attr.db_update_reverse(obj, NOT_LOADED, val)
         return obj
     @classmethod
     def _get_by_raw_pkval_(entity, raw_pkval):
@@ -1106,6 +1115,7 @@ class Entity(object):
         for key, vals in indexes.iteritems():
             trans.indexes[key][vals] = obj
         trans.created.add(obj)
+        trans.to_be_checked.append(obj)
         return obj
     def _db_set_(obj, avdict):
         assert obj._status_ not in ('created', 'deleted', 'cancelled')
@@ -1157,12 +1167,17 @@ class Entity(object):
     def _delete_(obj, undo_funcs=None):
         is_recursive_call = undo_funcs is not None
         if not is_recursive_call: undo_funcs = []
+        trans = obj._trans_
         status = obj._status_
         assert status not in ('deleted', 'cancelled')
         undo_list = []
         undo_dict = {}
         def undo_func():
             obj._status_ = status
+            if status == 'loaded':
+                to_be_checked = trans.to_be_checked
+                if to_be_checked and to_be_checked[-1] is obj: to_be_checked.pop()
+                assert obj not in to_be_checked
             obj.__dict__.update(undo_dict)
             for index, old_key in undo_list: index[old_key] = obj
         undo_funcs.append(undo_func)
@@ -1191,8 +1206,6 @@ class Entity(object):
                     attr.__set__(obj, (), undo_funcs)
                 else: raise NotImplementedError
 
-            trans = obj._trans_
-
             for attr in obj._simple_keys_:
                 val = obj.__dict__.get(attr, NOT_LOADED)
                 if val is NOT_LOADED: continue
@@ -1219,8 +1232,10 @@ class Entity(object):
                 assert obj in trans.created
                 trans.created.remove(obj)
             else:
+                if status == 'updated': trans.updated.remove(obj)
+                elif status == 'loaded': trans.to_be_checked.append(obj)
+                else: assert status == 'locked'
                 obj._status_ = 'deleted'
-                trans.updated.discard(obj)
                 trans.deleted.add(obj)
             for attr in obj._attrs_:
                 if attr.pk_offset is None:
@@ -1246,11 +1261,14 @@ class Entity(object):
                 if prev is NOT_LOADED and attr.reverse and not attr.reverse.is_collection:
                     attr.load(obj)
             if wbits is not None:
-                obj._status_ = 'updated'
                 new_wbits = wbits
                 for attr in avdict: new_wbits |= obj._bits_[attr]
                 obj._wbits_ = new_wbits
-                trans.updated.add(obj)
+                if status != 'updated':
+                    obj._status_ = 'updated'
+                    trans.updated.add(obj)
+                    if status == 'loaded': trans.to_be_checked.append(obj)
+                    else: assert status == 'locked'
             if not collection_avdict:
                 for attr in avdict:
                     if attr.reverse or attr.is_indexed: break
@@ -1262,7 +1280,11 @@ class Entity(object):
         def undo_func():
             obj._status_ = status
             obj._wbits_ = wbits
-            if wbits == 0: trans.updated.discard(obj)
+            if wbits == 0: trans.updated.remove(obj)
+            if status == 'loaded':
+                to_be_checked = trans.to_be_checked
+                if to_be_checked and to_be_checked[-1] is obj: to_be_checked.pop()
+                assert obj not in to_be_checked
             for index, old_key, new_key in undo:
                 if new_key is NO_UNDO_NEEDED: pass
                 else: del index[new_key]
@@ -1340,6 +1362,10 @@ class Entity(object):
                 else: avdict[attr] = val
             else: collection_avdict[attr] = val
         return avdict, collection_avdict
+    def check_on_commit(obj):
+        if obj._status_ != 'loaded': return
+        obj._status_ = 'locked'
+        obj._trans_.to_be_checked.append(obj)
 
 class Diagram(object):
     def __init__(diagram):
@@ -1486,6 +1512,7 @@ class Transaction(object):
         trans.deleted = set()
         trans.updated = set()
         trans.modified_collections = {}
+        trans.to_be_checked = []
     def update_simple_index(trans, obj, attr, prev, val, undo):
         index = trans.indexes.get(attr)
         if index is None: index = trans.indexes[attr] = {}
