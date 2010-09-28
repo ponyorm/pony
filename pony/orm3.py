@@ -282,6 +282,16 @@ class Attribute(object):
         else: raise NotImplementedError
     def __delete__(attr, obj):
         raise NotImplementedError
+    def append_criteria(attr, val, criteria_list, params):
+        if attr.reverse: val = val._raw_pkval_
+        if attr.column is not None: pairs = [ (attr.column, val) ]
+        else:
+            assert len(attr.columns) == len(val)
+            pairs = zip(attr.columns, val)
+        for column, val in pairs:
+            param_id = len(params) + 1
+            params[param_id] = val
+            criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, param_id ] ])
             
 class Optional(Attribute): pass
 class Required(Attribute): pass
@@ -955,13 +965,13 @@ class Entity(object):
                     break
         if obj is None:
             for attr, val in avdict.iteritems():
-                if isinstance(val, Entity) and val._raw_pkval_ is None:
+                if isinstance(val, Entity) and val._raw_pkval_ is None:  #############
                     reverse = attr.reverse
                     if not reverse.is_collection:
                         obj = reverse.__get__(val)
                         if obj is None: return None
                     elif isinstance(reverse, Set):
-                        objects = reverse.__get__(val).copy()
+                        objects = reverse.__get__(val).copy()  ##################
                         if not objects: return None
                         if len(objects) == 1: obj = objects[0]
                         else:
@@ -1370,14 +1380,36 @@ class Entity(object):
         status = obj._status_
         if status in ('loaded', 'cancelled'): return
         elif status == 'locked':
-            raise NotImplementedError
+            assert obj._wbits_ == 0
+            rbits = obj._rbits_
+            if not rbits: return
+            criteria_list = [ AND ]
+            params = {}
+            for attr in obj._pk_attrs_:
+                val = obj.__dict__[attr]
+                attr.append_criteria(val, criteria_list, params)
+            get_bit = obj._bits_.get
+            for attr in obj._attrs_:
+                bit = get_bit(attr)
+                if bit is None: continue
+                if not bit & rbits: continue
+                old = obj.__dict__.get(attr, NOT_LOADED)
+                assert old is not NOT_LOADED
+                attr.append_criteria(old, criteria_list, params)
+            assert len(criteria_list) > 2
+            ast = [ SELECT, [ ALL, [ VALUE, 1 ]], [ FROM, [ 'T1', TABLE, obj._table_ ] ], [ WHERE, criteria_list ] ]
+            database = obj._diagram_.database
+            cursor = database._exec_ast(ast, params)
+            row = cursor.fetchone()
+            if row is None: raise UnrepeatableReadError( # TODO: Detailed info about changed attrs
+                'Object %r was updated outside of current transaction' % obj)
         elif status == 'created':
             raise NotImplementedError
         elif status == 'updated':
             raise NotImplementedError
         elif status == 'deleted':
             raise NotImplementedError
-        assert False
+        else: assert False
 
 class Diagram(object):
     def __init__(diagram):
