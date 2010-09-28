@@ -74,6 +74,8 @@ class SQLBuilder(object):
         self.sql = u''.join(map(unicode, self.result))
         self.params = tuple(x.key for x in self.result if isinstance(x, self.param))
     def __call__(self, ast):
+        if isinstance(ast, basestring):
+            raise AstError('An SQL AST list was expected. Got string: %r' % ast)
         symbol = ast[0]
         if not isinstance(symbol, basestring):
             raise AstError('Invalid node name: %r' % symbol)
@@ -210,7 +212,7 @@ class SQLBuilder(object):
         expr_list = [ self(expr) for expr in x ]
         return self(expr1), ' NOT IN (', join(', ', expr_list), ')'
     def EXISTS(self, *sections):
-        return 'EXISTS (\nSELECT * ', self.SELECT(*sections), ')'
+        return 'EXISTS (\nSELECT 1 ', self.SELECT(*sections), ')'
     def NOT_EXISTS(self, *sections):
         return 'NOT EXISTS (\nSELECT * ', self.SELECT(*sections), ')'
     def COUNT(self, kind, expr=None):
