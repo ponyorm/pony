@@ -351,6 +351,6 @@ def db_decorator(func, *args, **keyargs):
     allowed_exceptions = web and [ web.HttpRedirect ] or []
     try: return with_transaction(func, args, keyargs, allowed_exceptions)
     except RowNotFound:
-        if web: raise web.HttpNotFound
+        if web: raise web.Http404NotFound
         raise
     
