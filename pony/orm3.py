@@ -23,6 +23,7 @@ class TransactionError(OrmError): pass
 class IntegrityError(TransactionError): pass
 class IsolationError(TransactionError): pass
 class UnrepeatableReadError(IsolationError): pass
+class UnresolvableCyclicDependency(TransactionError): pass
 
 class NotLoadedValueType(object):
     def __repr__(self): return 'NOT_LOADED'
@@ -1376,7 +1377,12 @@ class Entity(object):
         if obj._status_ != 'loaded': return
         obj._status_ = 'locked'
         obj._trans_.to_be_checked.append(obj)
-    def _save_(obj):
+    def _save_(obj, delayed_objects=None):
+        if delayed_objects is None: delayed_objects = []
+        elif obj in delayed_objects:
+            chain = ' -> '.join(obj2.__class__.__name__ for obj2 in delayed_objects)
+            raise UnresolvableCyclicDependency('Cannot save cyclic chain: ' + chain)
+        delayed_objects.append(obj)
         status = obj._status_
         if status in ('loaded', 'cancelled'): return
         elif status == 'locked':
@@ -1404,6 +1410,38 @@ class Entity(object):
             if row is None: raise UnrepeatableReadError( # TODO: Detailed info about changed attrs
                 'Object %r was updated outside of current transaction' % obj)
         elif status == 'created':
+            params = {}
+            columns = []
+            values = []
+            for attr in obj._attrs_:
+                if not attr.columns: continue
+                if attr.is_collection: continue
+                val = obj.__dict__[attr]
+                if not attr.reverse:
+                    assert attr.column is not None
+                    columns.append(attr.column)
+                    param_id = len(params)
+                    params[param_id] = val
+                    values.append([ PARAM, param_id ])
+                    continue
+                if val._status_ == 'created': val._save_(delayed_objects)
+                assert val._status_ != 'created'
+                if attr.column is not None: raw_vals = [ val._raw_pkval_ ]
+                else: raw_vals = val._raw_pkval_
+                for raw_val, column in zip(raw_vals, attr.columns):
+                    columns.append(column)
+                    param_id = len(params)
+                    params[param_id] = raw_val
+                    values.append([ PARAM, param_id ])
+            ast = [ INSERT, obj._table_, columns, values ]
+            database = obj._diagram_.database
+            cursor = database._exec_ast(ast, params)
+            if obj._raw_pkval_ is None:
+                rowid = cursor.lastrowid # TODO
+                obj._raw_pkval_ = rowid
+            obj._status_ = 'saved'
+            obj._wbits_ = 0
+        elif status == 'saved':
             raise NotImplementedError
         elif status == 'updated':
             raise NotImplementedError
