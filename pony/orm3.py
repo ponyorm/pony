@@ -166,7 +166,7 @@ class Attribute(object):
         if wbits is not None:
             obj._wbits_ = wbits | obj._bits_[attr]
             if status != 'updated':
-                if status == 'loaded': trans.to_be_checked.append(obj)
+                if status in ('loaded', 'saved'): trans.to_be_checked.append(obj)
                 else: assert status == 'locked'
                 obj._status_ = 'updated'
                 trans.updated.add(obj)
@@ -182,7 +182,7 @@ class Attribute(object):
             obj._status_ = status
             obj._wbits_ = wbits
             if wbits == 0: trans.updated.remove(obj)
-            if status == 'loaded':
+            if status in ('loaded', 'saved'):
                 to_be_checked = trans.to_be_checked
                 if to_be_checked and to_be_checked[-1] is obj: to_be_checked.pop()
                 assert obj not in to_be_checked
@@ -1185,7 +1185,7 @@ class Entity(object):
         undo_dict = {}
         def undo_func():
             obj._status_ = status
-            if status == 'loaded':
+            if status in ('loaded', 'saved'):
                 to_be_checked = trans.to_be_checked
                 if to_be_checked and to_be_checked[-1] is obj: to_be_checked.pop()
                 assert obj not in to_be_checked
@@ -1244,7 +1244,7 @@ class Entity(object):
                 trans.created.remove(obj)
             else:
                 if status == 'updated': trans.updated.remove(obj)
-                elif status == 'loaded': trans.to_be_checked.append(obj)
+                elif status in ('loaded', 'saved'): trans.to_be_checked.append(obj)
                 else: assert status == 'locked'
                 obj._status_ = 'deleted'
                 trans.deleted.add(obj)
@@ -1278,7 +1278,7 @@ class Entity(object):
                 if status != 'updated':
                     obj._status_ = 'updated'
                     trans.updated.add(obj)
-                    if status == 'loaded': trans.to_be_checked.append(obj)
+                    if status in ('loaded', 'saved'): trans.to_be_checked.append(obj)
                     else: assert status == 'locked'
             if not collection_avdict:
                 for attr in avdict:
@@ -1292,7 +1292,7 @@ class Entity(object):
             obj._status_ = status
             obj._wbits_ = wbits
             if wbits == 0: trans.updated.remove(obj)
-            if status == 'loaded':
+            if status in ('loaded', 'saved'):
                 to_be_checked = trans.to_be_checked
                 if to_be_checked and to_be_checked[-1] is obj: to_be_checked.pop()
                 assert obj not in to_be_checked
@@ -1374,7 +1374,7 @@ class Entity(object):
             else: collection_avdict[attr] = val
         return avdict, collection_avdict
     def check_on_commit(obj):
-        if obj._status_ != 'loaded': return
+        if obj._status_ not in ('loaded', 'saved'): return
         obj._status_ = 'locked'
         obj._trans_.to_be_checked.append(obj)
     def _save_(obj, delayed_objects=None):
@@ -1384,7 +1384,7 @@ class Entity(object):
             raise UnresolvableCyclicDependency('Cannot save cyclic chain: ' + chain)
         delayed_objects.append(obj)
         status = obj._status_
-        if status in ('loaded', 'cancelled'): return
+        if status in ('loaded', 'saved', 'cancelled'): return
         elif status == 'locked':
             assert obj._wbits_ == 0
             rbits = obj._rbits_
