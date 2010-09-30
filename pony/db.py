@@ -246,6 +246,16 @@ class Database(object):
         cursor = con.cursor()
         wrap_dbapi_exceptions(provider, cursor.execute, sql, values)
         return cursor
+Database.Warning = Warning
+Database.Error = Error
+Database.InterfaceError = InterfaceError
+Database.DatabaseError = DatabaseError
+Database.DataError = DataError
+Database.OperationalError = OperationalError
+Database.IntegrityError = IntegrityError
+Database.InternalError = InternalError
+Database.ProgrammingError = ProgrammingError
+Database.NotSupportedError = NotSupportedError
 
 def use_db(db):
     local.default_db = db
