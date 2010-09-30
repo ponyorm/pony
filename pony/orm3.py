@@ -1650,6 +1650,16 @@ class Transaction(object):
         trans.updated = set()
         trans.modified_collections = {}
         trans.to_be_checked = []
+    def flush(trans):
+        for obj in trans.to_be_checked: obj._save_()
+    def commit(trans):
+        databases = set()
+        for obj in trans.to_be_checked:
+            databases.add(obj._diagram_.database)
+        if len(databases) > 1: raise NotImplementedError
+        database = databases.pop()
+        for obj in trans.to_be_checked: obj._save_()
+        database.commit()
     def update_simple_index(trans, obj, attr, prev, val, undo):
         index = trans.indexes.get(attr)
         if index is None: index = trans.indexes[attr] = {}
