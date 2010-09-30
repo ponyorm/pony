@@ -362,8 +362,8 @@ class SetData(object):
         if modified:
             for item in setdata.loaded:
                 if modified.get(item) != 'removed': yield item
-            for item, status in modified.iteritems():
-                if status == 'added': yield item
+            for item, item_status in modified.iteritems():
+                if item_status == 'added': yield item
         else:
             for item in setdata.loaded: yield item
     
