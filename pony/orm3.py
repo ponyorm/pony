@@ -24,6 +24,7 @@ class IntegrityError(TransactionError): pass
 class IsolationError(TransactionError): pass
 class UnrepeatableReadError(IsolationError): pass
 class UnresolvableCyclicDependency(TransactionError): pass
+class UnexpectedError(TransactionError): pass
 
 class NotLoadedValueType(object):
     def __repr__(self): return 'NOT_LOADED'
@@ -283,7 +284,7 @@ class Attribute(object):
         else: raise NotImplementedError
     def __delete__(attr, obj):
         raise NotImplementedError
-    def append_criteria(attr, val, criteria_list, params):
+    def append_criteria(attr, val, criteria_list, params, table_alias=None):
         if attr.reverse: val = val._raw_pkval_
         if attr.column is not None: pairs = [ (attr.column, val) ]
         else:
@@ -292,7 +293,7 @@ class Attribute(object):
         for column, val in pairs:
             param_id = len(params) + 1
             params[param_id] = val
-            criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, param_id ] ])
+            criteria_list.append([EQ, [COLUMN, table_alias, column], [ PARAM, param_id ] ])
             
 class Optional(Attribute): pass
 class Required(Attribute): pass
@@ -408,9 +409,6 @@ class Set(Collection):
         else:
             sql_ast, params = attr.construct_sql_m2m(obj)
             builder = dbapiprovider.SQLBuilder(sql_ast)
-            print builder.sql
-            print [ params[i] for i in builder.params ]
-            print
             database = obj._diagram_.database
             cursor = database._exec_ast(sql_ast, params)
             items = []
@@ -1051,9 +1049,6 @@ class Entity(object):
     def _find_in_db_(entity, pkval, avdict=None, max_rows_count=None):
         sql_ast, params, attr_offsets = entity._construct_sql_(pkval, avdict)
         builder = dbapiprovider.SQLBuilder(sql_ast)
-        print builder.sql
-        print [ params[i] for i in builder.params ]
-        print
         database = entity._diagram_.database
         cursor = database._exec_ast(sql_ast, params)
         if max_rows_count is None: max_rows_count = options.MAX_ROWS_COUNT
@@ -1382,10 +1377,11 @@ class Entity(object):
         elif obj in delayed_objects:
             chain = ' -> '.join(obj2.__class__.__name__ for obj2 in delayed_objects)
             raise UnresolvableCyclicDependency('Cannot save cyclic chain: ' + chain)
-        delayed_objects.append(obj)
         status = obj._status_
         if status in ('loaded', 'saved', 'cancelled'): return
-        elif status == 'locked':
+        delayed_objects.append(obj)
+        database = obj._diagram_.database
+        if status == 'locked':
             assert obj._wbits_ == 0
             rbits = obj._rbits_
             if not rbits: return
@@ -1399,16 +1395,15 @@ class Entity(object):
                 bit = get_bit(attr)
                 if bit is None: continue
                 if not bit & rbits: continue
-                old = obj.__dict__.get(attr, NOT_LOADED)
+                old = obj.__dict__.get(attr.name, NOT_LOADED)
                 assert old is not NOT_LOADED
                 attr.append_criteria(old, criteria_list, params)
             assert len(criteria_list) > 2
             ast = [ SELECT, [ ALL, [ VALUE, 1 ]], [ FROM, [ 'T1', TABLE, obj._table_ ] ], [ WHERE, criteria_list ] ]
-            database = obj._diagram_.database
             cursor = database._exec_ast(ast, params)
             row = cursor.fetchone()
-            if row is None: raise UnrepeatableReadError( # TODO: Detailed info about changed attrs
-                'Object %r was updated outside of current transaction' % obj)
+            if row is None: raise UnrepeatableReadError('Object %r was updated outside of current transaction' % obj)
+            obj._status_ = 'loaded'
         elif status == 'created':
             params = {}
             columns = []
@@ -1434,19 +1429,79 @@ class Entity(object):
                     params[param_id] = raw_val
                     values.append([ PARAM, param_id ])
             ast = [ INSERT, obj._table_, columns, values ]
-            database = obj._diagram_.database
-            cursor = database._exec_ast(ast, params)
+            try:
+                cursor = database._exec_ast(ast, params)
+            except database.IntegrityError:
+                raise IntegrityError('Object %r already exists in the database' % obj)
+            except database.DatabaseError:
+                raise UnexpectedError('Object %r cannot be stored in the database' % obj)
             if obj._raw_pkval_ is None:
                 rowid = cursor.lastrowid # TODO
                 obj._raw_pkval_ = rowid
             obj._status_ = 'saved'
+            obj._rbits_ = 0
             obj._wbits_ = 0
-        elif status == 'saved':
-            raise NotImplementedError
+            for attr in obj._attrs_:
+                if attr not in obj._bits_: continue
+                obj.__dict__[attr.name] = obj.__dict__[attr]
         elif status == 'updated':
-            raise NotImplementedError
+            rbits = obj._rbits_
+            wbits = obj._wbits_
+            get_bit = obj._bits_.get
+            params = {}
+            columns = []
+            values = []
+            for attr in obj._attrs_:
+                if not attr.columns: continue
+                bit = get_bit(attr)
+                if bit is None: continue
+                if not bit & wbits: continue
+                val = obj.__dict__[attr]
+                if not attr.reverse:
+                    assert attr.column is not None
+                    columns.append(attr.column)
+                    param_id = len(params)
+                    params[param_id] = val
+                    values.append([ PARAM, param_id ])
+                    continue
+                if val._status_ == 'created': val._save_(delayed_objects)
+                assert val._status_ != 'created'
+                if attr.column is not None: raw_vals = [ val._raw_pkval_ ]
+                else: raw_vals = val._raw_pkval_
+                for raw_val, column in zip(raw_vals, attr.columns):
+                    columns.append(column)
+                    param_id = len(params)
+                    params[param_id] = raw_val
+                    values.append([ PARAM, param_id ])
+            criteria_list = [ AND ]
+            for attr in obj._pk_attrs_:
+                val = obj.__dict__[attr]
+                attr.append_criteria(val, criteria_list, params)
+            for attr in obj._attrs_:
+                bit = get_bit(attr)
+                if bit is None: continue
+                if not bit & rbits: continue
+                old = obj.__dict__.get(attr.name, NOT_LOADED)
+                assert old is not NOT_LOADED
+                attr.append_criteria(old, criteria_list, params)
+            ast = [ UPDATE, obj._table_, zip(columns, values), [ WHERE, criteria_list ] ]
+            cursor = database._exec_ast(ast, params)
+            if cursor.rowcount != 1:
+                raise UnrepeatableReadError('Object %r was updated outside of current transaction' % obj)
+            obj._status_ = 'saved'
+            obj._rbits_ = 0
+            obj._wbits_ = 0
+            for attr in obj._attrs_:
+                if attr not in obj._bits_: continue
+                obj.__dict__[attr.name] = obj.__dict__[attr]
         elif status == 'deleted':
-            raise NotImplementedError
+            params = {}
+            criteria_list = [ AND ]
+            for attr in obj._pk_attrs_:
+                val = obj.__dict__[attr]
+                attr.append_criteria(val, criteria_list, params)
+            ast = [ DELETE, obj._table_, [ WHERE, criteria_list ] ]
+            database._exec_ast(ast, params)
         else: assert False
 
 class Diagram(object):
