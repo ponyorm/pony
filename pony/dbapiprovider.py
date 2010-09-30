@@ -103,6 +103,10 @@ class SQLBuilder(object):
         return [ 'UPDATE ', self.quote_name(table_name), '\nSET ',
                  join(', ', [ (self.quote_name(name), '=', self(param)) for name, param in pairs]),
                  where and [ '\n', self(where) ] or [] ]
+    def DELETE(self, table_name, where=None):
+        result = [ 'DELETE FROM ', self.quote_name(table_name) ]
+        if where: result += [ '\n', self(where) ]
+        return result
     def SELECT(self, *sections):
         return [ self(s) for s in sections ]
     def ALL(self, *expr_list):
@@ -157,7 +161,8 @@ class SQLBuilder(object):
         if offset is None: return 'LIMIT ', self(limit), '\n'
         else: return 'LIMIT ', self(limit), ' OFFSET ', self(offset), '\n'
     def COLUMN(self, table_alias, col_name):
-        return [ '%s.%s' % (table_alias, self.quote_name(col_name)) ]
+        if table_alias: return [ '%s.%s' % (table_alias, self.quote_name(col_name)) ]
+        else: return [ '%s' % (self.quote_name(col_name)) ]
     def PARAM(self, key):
         return [ self.param(key) ]
     def VALUE(self, value):
