@@ -244,6 +244,9 @@ class Database(object):
             values = tuple(params[key] for key in params_mapping)
         else: values = dict((name, params[key]) for name, key in params_mapping.items())
         cursor = con.cursor()
+        print sql
+        print values
+        print
         wrap_dbapi_exceptions(provider, cursor.execute, sql, values)
         return cursor
 Database.Warning = Warning
