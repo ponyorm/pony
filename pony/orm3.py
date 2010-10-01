@@ -1381,53 +1381,35 @@ class Entity(object):
         if status in ('loaded', 'saved', 'cancelled'): return
         delayed_objects.append(obj)
         database = obj._diagram_.database
-        if status == 'locked':
-            assert obj._wbits_ == 0
-            rbits = obj._rbits_
-            if not rbits: return
-            criteria_list = [ AND ]
-            params = {}
-            for attr in obj._pk_attrs_:
-                val = obj.__dict__[attr]
-                attr.append_criteria(val, criteria_list, params)
-            get_bit = obj._bits_.get
-            for attr in obj._attrs_:
-                bit = get_bit(attr)
-                if bit is None: continue
-                if not bit & rbits: continue
-                old = obj.__dict__.get(attr.name, NOT_LOADED)
-                assert old is not NOT_LOADED
-                attr.append_criteria(old, criteria_list, params)
-            assert len(criteria_list) > 2
-            ast = [ SELECT, [ ALL, [ VALUE, 1 ]], [ FROM, [ 'T1', TABLE, obj._table_ ] ], [ WHERE, criteria_list ] ]
-            cursor = database._exec_ast(ast, params)
-            row = cursor.fetchone()
-            if row is None: raise UnrepeatableReadError('Object %r was updated outside of current transaction' % obj)
-            obj._status_ = 'loaded'
-        elif status == 'created':
-            params = {}
+        rbits = obj._rbits_
+        wbits = obj._wbits_
+        get_bit = obj._bits_.get
+        params = {}
+
+        if status in ('created', 'updated'):
             columns = []
             values = []
             for attr in obj._attrs_:
                 if not attr.columns: continue
-                if attr.is_collection: continue
+                if status == 'updated':
+                    bit = get_bit(attr)
+                    if bit is None: continue
+                    if not bit & wbits: continue
+                elif attr.is_collection: continue
                 val = obj.__dict__[attr]
-                if not attr.reverse:
-                    assert attr.column is not None
-                    columns.append(attr.column)
+                if not attr.reverse: pairs = [ (val, attr.column) ]
+                else:
+                    if val._status_ == 'created': val._save_(delayed_objects)
+                    assert val._status_ == 'saved'
+                    if attr.column is not None: pairs = [ (val._raw_pkval_, attr.column) ]
+                    else: pairs = zip(val._raw_pkval_, attr.columns)
+                for val, column in pairs:
+                    columns.append(column)
                     param_id = len(params)
                     params[param_id] = val
                     values.append([ PARAM, param_id ])
-                    continue
-                if val._status_ == 'created': val._save_(delayed_objects)
-                assert val._status_ != 'created'
-                if attr.column is not None: raw_vals = [ val._raw_pkval_ ]
-                else: raw_vals = val._raw_pkval_
-                for raw_val, column in zip(raw_vals, attr.columns):
-                    columns.append(column)
-                    param_id = len(params)
-                    params[param_id] = raw_val
-                    values.append([ PARAM, param_id ])
+        
+        if status == 'created':
             ast = [ INSERT, obj._table_, columns, values ]
             try:
                 cursor = database._exec_ast(ast, params)
@@ -1444,46 +1426,35 @@ class Entity(object):
             for attr in obj._attrs_:
                 if attr not in obj._bits_: continue
                 obj.__dict__[attr.name] = obj.__dict__[attr]
+            return
+
+        criteria_list = [ AND ]
+        for attr in obj._pk_attrs_:
+            val = obj.__dict__[attr]
+            attr.append_criteria(val, criteria_list, params)
+
+        if status == 'deleted':
+            ast = [ DELETE, obj._table_, [ WHERE, criteria_list ] ]
+            database._exec_ast(ast, params)
+            return
+
+        for attr in obj._attrs_:
+            if not attr.columns: continue
+            bit = get_bit(attr)
+            if bit is None: continue
+            if not bit & rbits: continue
+            old = obj.__dict__.get(attr.name, NOT_LOADED)
+            assert old is not NOT_LOADED
+            attr.append_criteria(old, criteria_list, params)
+
+        if status == 'locked':
+            assert obj._wbits_ == 0
+            ast = [ SELECT, [ ALL, [ VALUE, 1 ]], [ FROM, [ 'T1', TABLE, obj._table_ ] ], [ WHERE, criteria_list ] ]
+            cursor = database._exec_ast(ast, params)
+            row = cursor.fetchone()
+            if row is None: raise UnrepeatableReadError('Object %r was updated outside of current transaction' % obj)
+            obj._status_ = 'loaded'
         elif status == 'updated':
-            rbits = obj._rbits_
-            wbits = obj._wbits_
-            get_bit = obj._bits_.get
-            params = {}
-            columns = []
-            values = []
-            for attr in obj._attrs_:
-                if not attr.columns: continue
-                bit = get_bit(attr)
-                if bit is None: continue
-                if not bit & wbits: continue
-                val = obj.__dict__[attr]
-                if not attr.reverse:
-                    assert attr.column is not None
-                    columns.append(attr.column)
-                    param_id = len(params)
-                    params[param_id] = val
-                    values.append([ PARAM, param_id ])
-                    continue
-                if val._status_ == 'created': val._save_(delayed_objects)
-                assert val._status_ != 'created'
-                if attr.column is not None: raw_vals = [ val._raw_pkval_ ]
-                else: raw_vals = val._raw_pkval_
-                for raw_val, column in zip(raw_vals, attr.columns):
-                    columns.append(column)
-                    param_id = len(params)
-                    params[param_id] = raw_val
-                    values.append([ PARAM, param_id ])
-            criteria_list = [ AND ]
-            for attr in obj._pk_attrs_:
-                val = obj.__dict__[attr]
-                attr.append_criteria(val, criteria_list, params)
-            for attr in obj._attrs_:
-                bit = get_bit(attr)
-                if bit is None: continue
-                if not bit & rbits: continue
-                old = obj.__dict__.get(attr.name, NOT_LOADED)
-                assert old is not NOT_LOADED
-                attr.append_criteria(old, criteria_list, params)
             ast = [ UPDATE, obj._table_, zip(columns, values), [ WHERE, criteria_list ] ]
             cursor = database._exec_ast(ast, params)
             if cursor.rowcount != 1:
@@ -1494,16 +1465,8 @@ class Entity(object):
             for attr in obj._attrs_:
                 if attr not in obj._bits_: continue
                 obj.__dict__[attr.name] = obj.__dict__[attr]
-        elif status == 'deleted':
-            params = {}
-            criteria_list = [ AND ]
-            for attr in obj._pk_attrs_:
-                val = obj.__dict__[attr]
-                attr.append_criteria(val, criteria_list, params)
-            ast = [ DELETE, obj._table_, [ WHERE, criteria_list ] ]
-            database._exec_ast(ast, params)
         else: assert False
-
+        
 class Diagram(object):
     def __init__(diagram):
         diagram.entities = {}
