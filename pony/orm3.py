@@ -130,6 +130,12 @@ class Attribute(object):
         if trans is not val._trans_: raise TransactionError('An attempt to mix objects belongs to different transactions')
         return val
     def load(attr, obj):
+        if not attr.columns:
+            reverse = attr.reverse
+            assert reverse is not None and reverse.columns
+            objects = reverse.entity._find_in_db_(None, { reverse : obj }, 1)
+            assert len(objects) == 1
+            return objects[0]
         obj._load_()
         return obj.__dict__[attr]
     def __get__(attr, obj, cls=None):
@@ -403,7 +409,7 @@ class Set(Collection):
         assert issubclass(reverse.py_type, Entity)
         if setdata is NOT_LOADED: setdata = obj.__dict__[attr] = SetData()
         if not reverse.is_collection:
-            attr.py_type._find_(None, (), {reverse.name:obj})
+            reverse.entity._find_(None, (), {reverse.name:obj})
         else:
             sql_ast, params = attr.construct_sql_m2m(obj)
             builder = dbapiprovider.SQLBuilder(sql_ast)
