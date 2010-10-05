@@ -174,9 +174,6 @@ class Attribute(object):
         if not attr.reverse and not attr.is_indexed:
             obj.__dict__[attr] = val
             return
-        if prev == val:
-            assert not is_reverse_call
-            return
         if not is_reverse_call: undo_funcs = []
         undo = []
         def undo_func():
@@ -194,6 +191,7 @@ class Attribute(object):
                 if old_key is NO_UNDO_NEEDED: pass
                 else: index[old_key] = obj
         undo_funcs.append(undo_func)
+        if prev == val: return
         try:
             if attr.is_unique:
                 trans.update_simple_index(obj, attr, prev, val, undo)
@@ -461,6 +459,12 @@ class Set(Collection):
         if setdata is NOT_LOADED or not setdata.fully_loaded: setdata = attr.load(obj)
         items = setdata.loaded.copy()
         if setdata.modified is None: return items
+        reverse = attr.reverse
+        if not reverse.is_collection:
+            for item in items:
+                if item in setdata.modified: continue
+                obj2 = reverse.get(item)  # set rbit for item returned to user
+                assert obj2 is obj
         for obj, item_status in setdata.modified.iteritems():
             if item_status == 'added': items.add(obj)
             elif item_status == 'removed': items.discard(obj)
