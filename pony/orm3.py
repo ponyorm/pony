@@ -558,6 +558,8 @@ class Set(Collection):
             setdata = obj.__dict__.get(attr, NOT_LOADED)
             if setdata is NOT_LOADED:
                 setdata = obj.__dict__[attr] = SetData()
+            elif setdata.fully_loaded:
+                raise UnrepeatableReadError('Phantom object %r appeared in collection %r.%s' % (item, obj, attr.name))
             setdata.loaded.add(item)
     def reverse_remove(attr, objects, item, undo_funcs):
         undo = []
@@ -586,6 +588,8 @@ class Set(Collection):
             setdata = obj.__dict__.get(attr, NOT_LOADED)
             if setdata is NOT_LOADED:
                 setdata = obj.__dict__[attr] = SetData()
+            elif setdata.fully_loaded:
+                raise UnrepeatableReadError('Phantom object %r disappeared from collection %r.%s' % (item, obj, attr.name))
             setdata.loaded.remove(item)
 
 ##class List(Collection): pass
