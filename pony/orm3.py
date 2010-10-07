@@ -926,14 +926,24 @@ class Entity(object):
             if raw_pkval is None: obj._calculate_raw_pkval_()
             elif len(raw_pkval) > 1: obj._raw_pkval_ = raw_pkval
             else: obj._raw_pkval_ = raw_pkval[0]
-        if status == 'created':
-            obj._rbits_ = obj._wbits_ = None
-        else: obj._rbits_ = obj._wbits_ = 0
         if obj._pk_is_composite_: pairs = zip(entity._pk_attrs_, pkval)
         else: pairs = ((entity._pk_, pkval),)
-        for attr, val in pairs:
-            obj.__dict__[attr] = val
-            if attr.reverse: attr.db_update_reverse(obj, NOT_LOADED, val)
+        if status == 'created':
+            obj._rbits_ = obj._wbits_ = None
+            for attr, val in pairs:
+                obj.__dict__[attr] = val
+                if attr.reverse: attr.db_update_reverse(obj, NOT_LOADED, val)
+        elif status == 'loaded':
+            obj._rbits_ = obj._wbits_ = 0
+            undo_funcs = []
+            try:
+                for attr, val in pairs:
+                    obj.__dict__[attr] = val
+                    if attr.reverse: attr.update_reverse(obj, NOT_LOADED, val, undo_funcs)
+            except:  # will never be here in sane situation
+                for undo_func in reversed(undo_funcs): undo_func()
+                raise
+        else: assert False
         return obj
     @classmethod
     def _get_by_raw_pkval_(entity, raw_pkval):
