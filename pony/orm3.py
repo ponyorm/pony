@@ -459,6 +459,18 @@ class Set(Collection):
         setdata = attr.load(obj)
         for item in setdata: return False
         return True
+    def len(attr, obj):
+        print 111
+        setdata = obj.__dict__.get(attr, NOT_LOADED)
+        if setdata is NOT_LOADED or not setdata.fully_loaded: setdata = attr.load(obj)
+        loaded = setdata.loaded
+        size = len(loaded)
+        if setdata.modified is not None:
+            for item, item_status in setdata.modified.iteritems():
+                if item_status == 'added':
+                    if item not in loaded: size += 1
+                elif item in loaded: size -= 1        
+        return size
     def copy(attr, obj):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         setdata = obj.__dict__.get(attr, NOT_LOADED)
@@ -596,7 +608,7 @@ class SetWrapper(object):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         return not _attr_.is_empty()
     def __len__(wrapper):
-        return len(wrapper.copy())
+        return wrapper._attr_.len(wrapper._obj_)
     def __iter__(wrapper):
         return iter(wrapper.copy())
     def __eq__(wrapper, x):
