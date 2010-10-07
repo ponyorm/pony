@@ -460,7 +460,6 @@ class Set(Collection):
         for item in setdata: return False
         return True
     def len(attr, obj):
-        print 111
         setdata = obj.__dict__.get(attr, NOT_LOADED)
         if setdata is NOT_LOADED or not setdata.fully_loaded: setdata = attr.load(obj)
         loaded = setdata.loaded
