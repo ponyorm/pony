@@ -928,13 +928,13 @@ class Entity(object):
             else: obj._raw_pkval_ = raw_pkval[0]
         if obj._pk_is_composite_: pairs = zip(entity._pk_attrs_, pkval)
         else: pairs = ((entity._pk_, pkval),)
-        if status == 'created':
-            obj._rbits_ = obj._wbits_ = None
+        if status == 'loaded':
+            obj._rbits_ = obj._wbits_ = 0
             for attr, val in pairs:
                 obj.__dict__[attr] = val
                 if attr.reverse: attr.db_update_reverse(obj, NOT_LOADED, val)
-        elif status == 'loaded':
-            obj._rbits_ = obj._wbits_ = 0
+        elif status == 'created':
+            obj._rbits_ = obj._wbits_ = None
             undo_funcs = []
             try:
                 for attr, val in pairs:
