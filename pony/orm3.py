@@ -437,16 +437,6 @@ class Set(Collection):
             else: where_list.append([ AND ] + criteria_list)
             sql_ast.append(where_list)
         return sql_ast, params
-    def is_not_empty(attr, obj):
-        setdata = obj.__dict__.get(attr, NOT_LOADED)
-        if setdata is NOT_LOADED: setdata = attr.load(obj)
-        if setdata: return True
-        if not setdata.is_fully_loaded: setdata = attr.load(obj)
-        return bool(setdata)
-    def len(attr, obj):
-        setdata = obj.__dict__.get(attr, NOT_LOADED)
-        if setdata is NOT_LOADED or not setdata.is_fully_loaded: setdata = attr.load(obj)
-        return len(setdata)
     def copy(attr, obj):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         setdata = obj.__dict__.get(attr, NOT_LOADED)
@@ -581,10 +571,20 @@ class SetWrapper(object):
     def __str__(wrapper):
         return str(wrapper.copy())
     def __nonzero__(wrapper):
+        attr = wrapper._attr_
+        obj = wrapper._obj_
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
-        return _attr_.is_not_empty()
+        setdata = obj.__dict__.get(attr, NOT_LOADED)
+        if setdata is NOT_LOADED: setdata = attr.load(obj)
+        if setdata: return True
+        if not setdata.is_fully_loaded: setdata = attr.load(obj)
+        return bool(setdata)
     def __len__(wrapper):
-        return wrapper._attr_.len(wrapper._obj_)
+        attr = wrapper._attr_
+        obj = wrapper._obj_
+        setdata = obj.__dict__.get(attr, NOT_LOADED)
+        if setdata is NOT_LOADED or not setdata.is_fully_loaded: setdata = attr.load(obj)
+        return len(setdata)
     def __iter__(wrapper):
         return iter(wrapper.copy())
     def __eq__(wrapper, x):
