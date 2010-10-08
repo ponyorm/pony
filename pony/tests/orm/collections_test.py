@@ -17,10 +17,6 @@ class TestCollections(unittest.TestCase):
         self.assert_(bool(g.students) == True)
         self.assert_(len(g.students) == 3)
 
-    def test_(self):
-        operations = [t1, t2, t3]
-        for t in test:
-            t.perfo
 
 if __name__ == '__main__':
     unittest.main()    
