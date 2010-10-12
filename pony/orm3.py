@@ -402,7 +402,6 @@ class Set(Collection):
             reverse.entity._find_(None, (), {reverse.name:obj})
         else:
             sql_ast, params = attr.construct_sql_m2m(obj)
-            builder = dbapiprovider.SQLBuilder(sql_ast)
             database = obj._diagram_.database
             cursor = database._exec_ast(sql_ast, params)
             items = []
@@ -1049,7 +1048,6 @@ class Entity(object):
     @classmethod
     def _find_in_db_(entity, pkval, avdict=None, max_rows_count=None):
         sql_ast, params, attr_offsets = entity._construct_sql_(pkval, avdict)
-        builder = dbapiprovider.SQLBuilder(sql_ast)
         database = entity._diagram_.database
         cursor = database._exec_ast(sql_ast, params)
         if max_rows_count is None: max_rows_count = options.MAX_ROWS_COUNT
