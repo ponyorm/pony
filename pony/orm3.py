@@ -1506,6 +1506,8 @@ class Diagram(object):
                     if not reverse.is_collection:
                         if attr.table is not None: raise MappingError(
                             "Parameter 'table' is allowed for many to many relations only")
+                        elif attr.columns: raise NotImplementedError(
+                            "Parameter 'column' is not allowed at this side of one-to-many relation: %s" % attr)
                         continue
                     name1 = attr.entity.__name__
                     name2 = reverse.entity.__name__
@@ -1621,10 +1623,61 @@ class Transaction(object):
         databases = set()
         for obj in trans.to_be_checked:
             databases.add(obj._diagram_.database)
+        modified_m2m = {}
+        for attr, objects in trans.modified_collections.iteritems():
+            if not isinstance(attr, Set): raise NotImplementedError
+            reverse = attr.reverse
+            if not reverse.is_collection: continue
+            if not isinstance(reverse, Set): raise NotImplementedError
+            if reverse in modified_m2m: continue
+            added, removed = modified_m2m.setdefault(attr, (set(), set()))
+            for obj in objects:
+                databases.add(obj._diagram_.database)
+                setdata = obj.__dict__[attr]
+                for obj2 in setdata.added: added.add((obj, obj2))
+                for obj2 in setdata.removed: removed.add((obj, obj2))
         if len(databases) > 1: raise NotImplementedError
         database = databases.pop()
+        trans.remove_m2m(database, modified_m2m)
         for obj in trans.to_be_checked: obj._save_()
+        trans.add_m2m(database, modified_m2m)
         database.commit()
+    def remove_m2m(trans, database, modified_m2m):
+        for attr, (added, removed) in modified_m2m.iteritems():
+            reverse = attr.reverse
+            table = attr.table
+            assert table is not None
+            criteria_list = [ AND ]
+            for i, column in enumerate(reverse.columns + attr.columns):
+                criteria_list.append([ EQ, [COLUMN, None, column], [PARAM, i] ])
+            sql_ast = [ DELETE, table, [ WHERE, criteria_list ] ]
+            for obj, robj in removed:
+                params = []
+                if not obj._pk_is_composite_: params.append(obj._pkval_)
+                else: params.extend(obj._pkval_)
+                if not robj._pk_is_composite_: params.append(robj._pkval_)
+                else: params.extend(robj._pkval_)
+                params = dict((i, val) for i, val in enumerate(params))
+                database._exec_ast(sql_ast, params)
+    def add_m2m(trans, database, modified_m2m):
+        for attr, (added, removed) in modified_m2m.iteritems():
+            reverse = attr.reverse
+            table = attr.table
+            assert table is not None
+            columns = []
+            values = []
+            for i, column in enumerate(reverse.columns + attr.columns):
+                columns.append(column)
+                values.append([PARAM, i])
+            sql_ast = [ INSERT, table, columns, values ]
+            for obj, robj in added:
+                params = []
+                if not obj._pk_is_composite_: params.append(obj._pkval_)
+                else: params.extend(obj._pkval_)
+                if not robj._pk_is_composite_: params.append(robj._pkval_)
+                else: params.extend(robj._pkval_)
+                params = dict((i, val) for i, val in enumerate(params))
+                database._exec_ast(sql_ast, params)
     def update_simple_index(trans, obj, attr, prev, val, undo):
         index = trans.indexes.get(attr)
         if index is None: index = trans.indexes[attr] = {}
