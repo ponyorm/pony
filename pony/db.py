@@ -6,6 +6,8 @@ from pony import options
 from pony.utils import import_module, parse_expr, is_ident, localbase, simple_decorator
 from pony.sqlsymbols import *
 
+debug = False
+
 class DBException(Exception):
     def __init__(self, *args, **keyargs):
         exceptions = keyargs.pop('exceptions', [])
@@ -244,9 +246,10 @@ class Database(object):
             values = tuple(params[key] for key in params_mapping)
         else: values = dict((name, params[key]) for name, key in params_mapping.items())
         cursor = con.cursor()
-        print sql
-        print values
-        print
+        if debug:
+            print sql
+            print values
+            print
         wrap_dbapi_exceptions(provider, cursor.execute, sql, values)
         return cursor
 Database.Warning = Warning
