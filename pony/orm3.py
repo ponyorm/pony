@@ -405,10 +405,12 @@ class Set(Collection):
             builder = dbapiprovider.SQLBuilder(sql_ast)
             database = obj._diagram_.database
             cursor = database._exec_ast(sql_ast, params)
+            items = []
             for row in cursor.fetchall():
                 item = attr.py_type._get_by_raw_pkval_(row)
                 if item in setdata: continue
                 if item in setdata.removed: continue
+                items.append(item)
                 setdata.add(item)
             reverse.db_reverse_add(items, obj)
         setdata.is_fully_loaded = True
