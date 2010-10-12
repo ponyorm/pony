@@ -633,7 +633,7 @@ class SetWrapper(object):
         setdata.update(items)
         if setdata.added is EMPTY: setdata.added = items
         else: setdata.added.update(items)
-        if setdata.removed is not EMPTY: sedata.removed -= items
+        if setdata.removed is not EMPTY: setdata.removed -= items
         obj._trans_.modified_collections.setdefault(attr, set()).add(obj)
     def __iadd__(wrapper, x):
         wrapper.add(x)
