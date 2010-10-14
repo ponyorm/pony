@@ -126,14 +126,16 @@ class SQLBuilder(object):
             if len(source) == 3:   alias, kind, x = source; join_cond = None
             elif len(source) == 4: alias, kind, x, join_cond = source
             else: raise AstError('Invalid source in FROM section: %r' % source)
-            alias = self.quote_name(alias)
+            if alias is not None: alias = self.quote_name(alias)
             if i > 0:
                 if join_cond is None: result.append(', ')
                 else: result.append(' %s JOIN ' % join_type)
             if kind == TABLE:
-                if isinstance(x, basestring): result += self.quote_name(x), ' AS ', alias
-                else: result += self.compound_name(x), ' AS ', alias
+                if isinstance(x, basestring): result.append(self.quote_name(x))
+                else: result.append(self.compound_name(x))
+                if alias is not None: result += ' AS ', alias
             elif kind == SELECT:
+                if alias is None: raise AstError('Subquery in FROM section must have an alias')
                 result += '(', self.SELECT(*x), ') AS ', alias
             else: raise AstError('Invalid source kind in FROM section: %s',kind)
             if join_cond is not None: result += ' ON ', self(join_cond)
