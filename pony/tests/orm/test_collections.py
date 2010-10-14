@@ -4,7 +4,6 @@ from pony.db import Database
 from model1 import *
 
 class TestCollections(unittest.TestCase):
-
     def setUp(self):
         local.trans = Transaction()
 
@@ -16,6 +15,10 @@ class TestCollections(unittest.TestCase):
         g = Group.find_one(4145)
         self.assert_(bool(g.students) == True)
         self.assert_(len(g.students) == 3)
+
+    def test_many2many(self):
+        subjects = Subject.find_all()
+
 
 
 if __name__ == '__main__':
