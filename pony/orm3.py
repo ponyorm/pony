@@ -267,8 +267,8 @@ class Attribute(object):
     def update_reverse(attr, obj, prev, val, undo_funcs):
         reverse = attr.reverse
         if not reverse.is_collection:
-            assert prev is not NOT_LOADED
-            if prev is not None: reverse.__set__(prev, None, undo_funcs)
+            if prev is NOT_LOADED: pass
+            elif prev is not None: reverse.__set__(prev, None, undo_funcs)
             if val is not None: reverse.__set__(val, obj, undo_funcs)
         elif isinstance(reverse, Set):
             if prev is NOT_LOADED: pass
