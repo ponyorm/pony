@@ -126,6 +126,7 @@ class SQLBuilder(object):
             if len(source) == 3:   alias, kind, x = source; join_cond = None
             elif len(source) == 4: alias, kind, x, join_cond = source
             else: raise AstError('Invalid source in FROM section: %r' % source)
+            alias = self.quote_name(alias)
             if i > 0:
                 if join_cond is None: result.append(', ')
                 else: result.append(' %s JOIN ' % join_type)
@@ -161,7 +162,7 @@ class SQLBuilder(object):
         if offset is None: return 'LIMIT ', self(limit), '\n'
         else: return 'LIMIT ', self(limit), ' OFFSET ', self(offset), '\n'
     def COLUMN(self, table_alias, col_name):
-        if table_alias: return [ '%s.%s' % (table_alias, self.quote_name(col_name)) ]
+        if table_alias: return [ '%s.%s' % (self.quote_name(table_alias), self.quote_name(col_name)) ]
         else: return [ '%s' % (self.quote_name(col_name)) ]
     def PARAM(self, key):
         return [ self.param(key) ]
