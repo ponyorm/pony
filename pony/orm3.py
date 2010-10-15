@@ -295,9 +295,8 @@ class Attribute(object):
             assert len(attr.columns) == len(val)
             pairs = zip(attr.columns, val)
         for column, val in pairs:
-            param_id = len(params) + 1
-            params[param_id] = val
-            criteria_list.append([EQ, [COLUMN, table_alias, column], [ PARAM, param_id ] ])
+            criteria_list.append([EQ, [COLUMN, table_alias, column], [ PARAM, len(params) ] ])
+            params.append(val)
             
 class Optional(Attribute): pass
 class Required(Attribute): pass
@@ -424,13 +423,12 @@ class Set(Collection):
             select_list.append([COLUMN, 'T1', column ])
         from_list = [ FROM, [ 'T1', TABLE, table_name ]]
         criteria_list = []
-        params = {}
+        params = []
         raw_pkval = obj._calculate_raw_pkval_()
         if not obj._pk_is_composite_: raw_pkval = [ raw_pkval ]
         for column, val in zip(reverse.columns, raw_pkval):
-            param_id = len(params) + 1
-            params[param_id] = val
-            criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, param_id ]])
+            criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, len(params) ]])
+            params.append(val)
         sql_ast = [ SELECT, select_list, from_list ]
         if criteria_list:
             where_list = [ WHERE ]
@@ -1008,7 +1006,7 @@ class Entity(object):
         from_list = [ FROM, [ 'T1', TABLE, table_name ]]
 
         criteria_list = []
-        params = {}
+        params = []
         if avdict is not None: items = avdict.items()
         elif not entity._pk_is_composite_: items = [(entity._pk_, pkval)]
         else: items = zip(entity._pk_attrs_, pkval)
@@ -1019,9 +1017,8 @@ class Entity(object):
                 assert len(attr.columns) == len(val)
                 pairs = zip(attr.columns, val)
             for column, val in pairs:
-                param_id = len(params) + 1
-                params[param_id] = val
-                criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, param_id ] ])
+                criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, len(params) ] ])
+                params.append(val)
         sql_ast = [ SELECT, select_list, from_list ]
         if criteria_list:
             where_list = [ WHERE ]
@@ -1384,7 +1381,7 @@ class Entity(object):
         rbits = obj._rbits_
         wbits = obj._wbits_
         get_bit = obj._bits_.get
-        params = {}
+        params = []
 
         if status in ('created', 'updated'):
             columns = []
@@ -1405,9 +1402,8 @@ class Entity(object):
                     else: pairs = zip(val._raw_pkval_, attr.columns)
                 for val, column in pairs:
                     columns.append(column)
-                    param_id = len(params)
-                    params[param_id] = val
-                    values.append([ PARAM, param_id ])
+                    values.append([ PARAM, len(params) ])
+                    params.append(val)
         
         if status == 'created':
             ast = [ INSERT, obj._table_, columns, values ]
@@ -1655,7 +1651,6 @@ class Transaction(object):
                 else: params.extend(obj._pkval_)
                 if not robj._pk_is_composite_: params.append(robj._pkval_)
                 else: params.extend(robj._pkval_)
-                params = dict((i, val) for i, val in enumerate(params))
                 database._exec_ast(sql_ast, params)
     def add_m2m(trans, database, modified_m2m):
         for attr, (added, removed) in modified_m2m.iteritems():
@@ -1674,7 +1669,6 @@ class Transaction(object):
                 else: params.extend(obj._pkval_)
                 if not robj._pk_is_composite_: params.append(robj._pkval_)
                 else: params.extend(robj._pkval_)
-                params = dict((i, val) for i, val in enumerate(params))
                 database._exec_ast(sql_ast, params)
     def update_simple_index(trans, obj, attr, prev, val, undo):
         index = trans.indexes.get(attr)

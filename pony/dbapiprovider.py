@@ -11,18 +11,19 @@ def quote_name(name, quote_char='"'):
 class AstError(Exception): pass
 
 class Param(object):
-    __slots__ = 'key',
-    def __init__(self, key):
-        self.key = key
+    __slots__ = 'index',
+    def __init__(self, index):
+        assert type(index) is int
+        self.index = index
     def __hash__(self):
-        return hash(key)
+        return hash(index)
     def __cmp__(self, other):
         if other.__class__ is not Param: return NotImplemented
-        return cmp(self.key, other.key)
+        return cmp(self.index, other.index)
     def __unicode__(self):
         return u'?'
     def __repr__(self):
-        return '%s(%r)' % (self.__class__.__name__, self.key)
+        return '%s(%d)' % (self.__class__.__name__, self.index)
 
 class Value(object):
     __slots__ = 'value',
@@ -72,7 +73,7 @@ class SQLBuilder(object):
         self.quote_char = quote_char
         self.result = flat(self(ast))
         self.sql = u''.join(map(unicode, self.result))
-        self.params = tuple(x.key for x in self.result if isinstance(x, self.param))
+        self.params = tuple(x.index for x in self.result if isinstance(x, self.param))
     def __call__(self, ast):
         if isinstance(ast, basestring):
             raise AstError('An SQL AST list was expected. Got string: %r' % ast)
@@ -240,3 +241,17 @@ class SQLBuilder(object):
     def AVG(self, expr):
         return 'AVG(', self(expr), ')'
 
+
+def tuple_adapter_factory(params):
+    def tuple_adapter(values):
+        return tuple(map(values.__getitem__, params))
+    return tuple_adapter
+
+def dict_adapter_factory(params):
+    def dict_adapter(values):
+        return dict(zip(params, values))
+    return dict_adapter
+
+adapter_factory = tuple_adapter_factory
+
+        

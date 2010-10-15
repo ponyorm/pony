@@ -10,7 +10,7 @@ paramstyle = 'named'
 
 class Param(dbapiprovider.Param):
     def __unicode__(self):
-        return ':%s' % self.key
+        return ':p%d' % self.index
 
 class OracleBuilder(dbapiprovider.SQLBuilder):
     param = Param
@@ -26,5 +26,5 @@ def release(connection):
 
 def ast2sql(con, ast):
     b = OracleBuilder(ast)
-    return str(b.sql), b.params
-
+    params = [ 'p%d' % i for i in b.params ]
+    return str(b.sql), dbapiprovider.dict_adapter_factory(params)

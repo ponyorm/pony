@@ -29,5 +29,4 @@ def release(connection):
 
 def ast2sql(con, ast):
     b = dbapiprovider.SQLBuilder(ast)
-    return b.sql, b.params
-
+    return b.sql, dbapiprovider.adapter_factory(b.params)

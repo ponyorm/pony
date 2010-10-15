@@ -239,12 +239,10 @@ class Database(object):
         cursor = con.cursor()
         wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         return getattr(cursor, 'lastrowid', None)
-    def _exec_ast(self, ast, params={}):
+    def _exec_ast(self, ast, params=[]):
         con, provider = self._get_connection()
-        sql, params_mapping = provider.ast2sql(con, ast)
-        if not isinstance(params_mapping, dict):
-            values = tuple(params[key] for key in params_mapping)
-        else: values = dict((name, params[key]) for name, key in params_mapping.items())
+        sql, adapter = provider.ast2sql(con, ast)
+        values = adapter(params)
         cursor = con.cursor()
         if debug:
             print sql
