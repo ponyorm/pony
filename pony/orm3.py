@@ -64,6 +64,7 @@ class Attribute(object):
         attr.entity = attr.name = None
         attr.args = args
         attr.auto = keyargs.pop('auto', False)
+
         try: attr.default = keyargs.pop('default')
         except KeyError: attr.default = None
         else:
@@ -76,13 +77,9 @@ class Attribute(object):
             raise TypeError("Value of 'reverse' option must be name of reverse attribute). Got: %r" % attr.reverse)
         elif not isinstance(attr.py_type, (basestring, EntityMeta)):
             raise DiagramError('Reverse option cannot be set for this type %r' % attr.py_type)
+
         attr.column = keyargs.pop('column', None)
         attr.columns = keyargs.pop('columns', None)
-        for option in keyargs: raise TypeError('Unknown option %r' % option)
-        attr.composite_keys = []
-    def _init_(attr, entity, name):
-        attr.entity = entity
-        attr.name = name
         if attr.column is not None:
             if attr.columns is not None:
                 raise TypeError("Parameters 'column' and 'columns' cannot be specified simultaneously")
@@ -96,6 +93,14 @@ class Attribute(object):
             for column in attr.columns:
                 if not isinstance(column, basestring):
                     raise TypeError("Items of parameter 'columns' must be strings. Got: %r" % column)
+        else: attr.columns = []
+        attr._columns_checked = False
+
+        for option in keyargs: raise TypeError('Unknown option %r' % option)
+        attr.composite_keys = []
+    def _init_(attr, entity, name):
+        attr.entity = entity
+        attr.name = name
     def __repr__(attr):
         owner_name = not attr.entity and '?' or attr.entity.__name__
         return '%s.%s' % (owner_name, attr.name or '?')
@@ -297,6 +302,48 @@ class Attribute(object):
         for column, val in pairs:
             criteria_list.append([EQ, [COLUMN, table_alias, column], [ PARAM, len(params) ] ])
             params.append(val)
+    def get_columns(attr):
+        assert not attr.is_collection
+        assert not isinstance(attr.py_type, basestring)
+        if attr._columns_checked: return attr.columns
+
+        reverse = attr.reverse
+        if not reverse: # attr is not part of relationship
+            if not attr.columns: attr.columns = [ attr.name ]
+            elif len(attr.columns) > 1: raise MappingError("Too many columns were specified for %s" % attr)
+        else:
+            def generate_columns():
+                reverse_pk_columns = reverse.entity._get_pk_columns_()
+                if not attr.columns:
+                    if len(reverse_pk_columns) == 1: attr.columns = [ attr.name ]
+                    else:
+                        prefix = attr.name + '_'
+                        attr.columns = [ prefix + column for column in reverse_pk_columns ]
+                elif len(attr.columns) != len(reverse_pk_columns): raise MappingError(
+                    'Invalid number of columns specified for %s' % attr)
+               
+            if reverse.is_collection: # one-to-many:
+                generate_columns()
+            # one-to-one:
+            elif attr.is_required:
+                assert not reverse.is_required
+                generate_columns()
+            elif reverse.is_required:
+                if attr.columns: raise MappingError(
+                    "Parameter 'column' cannot be specified for attribute %s. "
+                    "Specify this parameter for reverse attribute %s or make %s optional"
+                    % (attr, reverse.entity.__name__, reverse, reverse))
+            elif reverse.columns:
+                if attr.columns: raise MappingError(
+                    "Both attributes %s and %s have parameter 'column'. "
+                    "Parameter 'column' cannot be specified at both sides of one-to-one relation"
+                    % (attr, reverse))
+            elif attr.entity.__name__ > reverse.entity.__name__: pass
+            else: generate_columns()
+        attr._columns_checked = True
+        if len(attr.columns) == 1: attr.column = attr.columns[0]
+        else: attr.column = None
+        return attr.columns
             
 class Optional(Attribute): pass
 class Required(Attribute): pass
@@ -335,7 +382,7 @@ class Collection(Attribute):
     __slots__ = 'table'
     def __init__(attr, py_type, *args, **keyargs):
         if attr.__class__ is Collection: raise TypeError("'Collection' is abstract type")
-        table = keyargs.pop('table', None)
+        table = keyargs.pop('table', None)  # TODO: rename table to link_table or m2m_table
         if table is not None and not isinstance(table, basestring):
             raise TypeError("Parameter 'table' must be a string. Got: %r" % table)
         attr.table = table
@@ -553,6 +600,21 @@ class Set(Collection):
         undo_funcs.append(undo_func)
     def db_reverse_remove(attr, objects, item):
         raise AssertionError
+    def get_m2m_columns(attr):
+        if attr._columns_checked: return reverse.columns
+        entity = attr.entity
+        reverse = attr.reverse
+        if reverse.columns:
+            if len(reverse.columns) != len(entity._get_pk_columns_()): raise MappingError(
+                'Invalid number of columns for %s' % reverse)
+        else:
+            columns = entity._get_pk_columns_()
+            if len(columns) == 1: reverse.columns = [ entity.__name__.lower() ]
+            else:
+                prefix = entity.__name__.lower() + '_'
+                reverse.columns = [ prefix + column for column in columns ]
+        attr._columns_checked = True
+        return reverse.columns
 
 ##class List(Collection): pass
 ##class Dict(Collection): pass
@@ -757,7 +819,7 @@ class Entity(object):
             pk_attrs = key
         else: pk_attrs = primary_keys.pop()
         for i, attr in enumerate(pk_attrs): attr.pk_offset = i
-        entity._pk_info_ = None
+        entity._pk_columns_ = None
         entity._pk_attrs_ = pk_attrs
         entity._pk_is_composite_ = len(pk_attrs) > 1
         entity._pk_ = len(pk_attrs) > 1 and pk_attrs or pk_attrs[0]
@@ -837,18 +899,12 @@ class Entity(object):
     def __init__(obj, *args, **keyargs):
         raise TypeError('Cannot create entity instances directly. Use Entity.create(...) or Entity.find(...) instead')
     @classmethod
-    def _calculate_pk_info_(entity):
-        if entity._pk_info_ is not None: return entity._pk_info_
-        pk_info = []
-        for attr in entity._pk_attrs_:
-            py_type = attr.py_type
-            assert not isinstance(py_type, basestring)
-            if attr.reverse:
-                for attr2, name in attr.py_type._calculate_pk_info_():
-                    pk_info.append((attr2, attr.name + '_' + name))
-            else: pk_info.append((attr, attr.name))
-        entity._pk_info_ = pk_info
-        return pk_info
+    def _get_pk_columns_(entity):
+        if entity._pk_columns_ is not None: return entity._pk_columns_
+        pk_columns = []
+        for attr in entity._pk_attrs_: pk_columns.extend(attr.get_columns())
+        entity._pk_columns_ = pk_columns
+        return pk_columns
     def _calculate_raw_pkval_(obj):
         if hasattr(obj, '_raw_pkval_'): return obj._raw_pkval_
         if len(obj._pk_attrs_) == 1:
@@ -1479,8 +1535,6 @@ class Diagram(object):
         mapping = diagram.mapping = Mapping()
         entities = list(sorted(diagram.entities.values(), key=attrgetter('_id_')))
         for entity in entities:
-            entity._calculate_pk_info_()
-        for entity in entities:
             table_name = entity.__dict__.get('_table_')
             if table_name is None:
                 table_name = entity._table_ = entity.__name__
@@ -1494,99 +1548,38 @@ class Diagram(object):
 
             if entity._base_attrs_: raise NotImplementedError
             for attr in entity._new_attrs_:
-                py_type = attr.py_type
                 if attr.is_collection:
                     reverse = attr.reverse
-                    if not reverse.is_collection:
+                    if not reverse.is_collection: # many-to-one:
                         if attr.table is not None: raise MappingError(
-                            "Parameter 'table' is allowed for many to many relations only")
+                            "Parameter 'table' is not allowed for many-to-one attribute %s" % attr)
                         elif attr.columns: raise NotImplementedError(
-                            "Parameter 'column' is not allowed at this side of one-to-many relation: %s" % attr)
+                            "Parameter 'column' is not allowed for many-to-one attribute %s" % attr)
                         continue
-                    name1 = attr.entity.__name__
-                    name2 = reverse.entity.__name__
-                    if name1 >= name2: continue
+                    # many-to-many:
+                    if attr.entity.__name__ >= reverse.entity.__name__: continue
                     if attr.table:
                         if reverse.table != attr.table: raise MappingError(
-                            "Parameter 'table' for %s.%s and %s.%s do not match"
-                            % (attr.entity.__name__, attr.name, reverse.entity.__name__, reverse.name))
+                            "Parameter 'table' for %s and %s do not match" % (attr, reverse))
                         table_name = attr.table
                     else:
-                        table_name = name1 + '_' + name2
+                        table_name = attr.entity.__name__ + '_' + reverse.entity.__name__
                         attr.table = reverse.table = table_name
                     m2m_table = mapping.tables.get(table_name)
-                    if m2m_table is None:
-                        m2m_table = mapping.tables[table_name] = Table(mapping, table_name)
-                        pk_info = entity._pk_info_
-                        if reverse.columns:
-                            if len(reverse.columns) != len(pk_info): raise MappingError(
-                                'Invalid number of columns for %s.%s' % (reverse.entity.__name__, reverse.name))
-                            for col_name, (attr2, name2) in zip(reverse.columns, pk_info):
-                                m2m_table.add_column(col_name, True, attr2)
-                        else:
-                            reverse.columns = []
-                            prefix = attr.entity.__name__.lower() + '_'
-                            for attr2, name in pk_info:
-                                col_name = prefix + name
-                                reverse.columns.append(col_name)
-                                m2m_table.add_column(col_name, True, attr2)
-                            if len(reverse.columns) == 1: reverse.column = reverse.columns[0]
-                        pk_info = reverse.entity._pk_info_
-                        if attr.columns:
-                            if len(attr.columns) != len(pk_info): raise MappingError(
-                                'Invalid number of columns for %s.%s' % (attr.entity.__name__, attr.name))
-                            for col_name, (attr2, name2) in zip(attr.columns, pk_info):
-                                m2m_table.add_column(col_name, True, attr2)
-                        else:
-                            attr.columns = []
-                            prefix = reverse.entity.__name__.lower() + '_'
-                            for attr2, name in pk_info:
-                                col_name = prefix + name
-                                attr.columns.append(col_name)
-                                m2m_table.add_column(col_name, True, attr2)
-                            if len(attr.columns) == 1: attr.column = attr.columns[0]
-                    else:
+                    if m2m_table is not None:
                         if m2m_table.entities or m2m_table.m2m: raise MappingError(
                             "Table name '%s' is already in use" % table_name)
                         raise NotImplementedError
+                    m2m_table = mapping.tables[table_name] = Table(mapping, table_name)
+                    for column in attr.get_m2m_columns():
+                        m2m_table.add_column(column, True)
+                    for column in reverse.get_m2m_columns():
+                        m2m_table.add_column(column, True)
                     m2m_table.m2m.add(attr)
                     m2m_table.m2m.add(reverse)
-                elif not attr.reverse:
-                    if attr.columns:
-                        if len(attr.columns) > 1: raise MappingError(
-                            'Invalid number of columns for %s.%s' % (attr.entity.__name__, attr.name))
-                        assert attr.column is not None
-                        table.add_column(attr.column, attr.pk_offset is not None, attr)
-                    else:
-                        col_name = attr.column = attr.name
-                        attr.columns = [ attr.name ]
-                        table.add_column(col_name, attr.pk_offset is not None, attr)
                 else:
-                    reverse = attr.reverse
-                    if attr.columns:
-                        if not attr.is_required:
-                            if reverse.is_required: raise MappingError(
-                                "Parameter 'column' cannot be specified for attribute %s.%s. "
-                                "Specify this parameter for reverse attribute %s.%s or make %s.%s optional"
-                                % (attr.entity.__name__, attr.name, reverse.entity.__name__, reverse.name, reverse.entity.__name__, reverse.name))
-                            elif reverse.columns: raise MappingError(
-                                "Both attributes %s.%s and %s.%s have parameter 'column'. "
-                                "Parameter 'column' cannot be specified at both sides of one-to-one relation"
-                                % (attr.entity.__name__, attr.name, reverse.entity.__name__, reverse.name))
-                        pk_info = attr.reverse.entity._pk_info_
-                        if len(attr.columns) != len(pk_info): raise MappingError(
-                            'Invalid number of columns for %s.%s' % (attr.entity.__name__, attr.name))
-                        for col_name, (attr2, name2) in zip(attr.columns, pk_info):
-                            table.add_column(col_name, attr.pk_offset is not None, attr2)
-                    elif not attr.is_required and (reverse.is_required or reverse.columns
-                                                   or attr.entity.__name__ > reverse.entity.__name__): pass
-                    else:
-                        attr.columns = []
-                        for attr2, name2 in py_type._pk_info_:
-                            col_name = attr.name + '_' + name2
-                            attr.columns.append(col_name)
-                            table.add_column(col_name, attr.pk_offset is not None, attr2)
-                        if len(attr.columns) == 1: attr.column = attr.columns[0]
+                    for column in attr.get_columns():
+                        table.add_column(column, attr.pk_offset is not None)
         if not check_tables: return
         for table in mapping.tables.values():
             sql_ast = [ SELECT,
@@ -1753,21 +1746,20 @@ class Table(object):
         table.m2m = set()
     def __repr__(table):
         return '<Table(%s)>' % table.name
-    def add_column(table, col_name, pk, attr):
+    def add_column(table, col_name, pk):
         if col_name in table.column_dict:
             raise MappingError('Column %s in table %s was already mapped' % (col_name, table.name))
-        column = Column(table, col_name, pk, attr)
+        column = Column(table, col_name, pk)
         table.column_list.append(column)
         table.column_dict[col_name] = column
         return column
 
 class Column(object):
-    def __init__(column, table, name, pk=False, attr=None):
+    def __init__(column, table, name, pk=False):
         column.table = table
         column.name = name
         column.pk = pk
-        column.attr = attr
-        column.sql_type = attr.sql_type
+        # column.sql_type = attr.sql_type
     def __repr__(column):
         if column.pk: return '<Column(%s.%s) PK>' % (column.table.name, column.name)
         return '<Column(%s.%s)>' % (column.table.name, column.name)
