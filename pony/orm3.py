@@ -891,6 +891,9 @@ class Entity(object):
             reverse2 = attr2.reverse
             if reverse2 not in (None, attr, attr.name): raise DiagramError(msg % (attr,attr2))
 
+            if attr.is_required and attr2.is_required: raise DiagramError(
+                "At least one attribute of one-to-one relationship %s - %s must be optional" % (attr, attr2))
+
             attr.reverse = attr2
             attr2.reverse = attr
             unmapped_attrs.discard(attr2)          
