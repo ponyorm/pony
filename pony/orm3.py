@@ -604,7 +604,7 @@ class Set(Collection):
     def db_reverse_remove(attr, objects, item):
         raise AssertionError
     def get_m2m_columns(attr):
-        if attr._columns_checked: return reverse.columns
+        if attr._columns_checked: return attr.reverse.columns
         entity = attr.entity
         reverse = attr.reverse
         if reverse.columns:
