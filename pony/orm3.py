@@ -794,7 +794,8 @@ class Entity(object):
             if not isinstance(attr, Attribute): continue
             if name.startswith('_') and name.endswith('_'): raise DiagramError(
                 'Attribute name cannot both starts and ends with underscore. Got: %s' % name)
-            if attr.entity is not None: raise DiagramError('Duplicate use of attribute %s' % name)
+            if attr.entity is not None: raise DiagramError(
+                'Duplicate use of attribute %s in entity %s' % (attr, entity.__name__))
             attr._init_(entity, name)
             new_attrs.append(attr)
         new_attrs.sort(key=attrgetter('id'))
