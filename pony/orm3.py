@@ -790,7 +790,7 @@ class Entity(object):
 
         new_attrs = []
         for name, attr in entity.__dict__.items():
-            if name in base_attrs_dict: raise DiagramError('Name %s hide base attribute %s' % (name,base_attrs_dict[name]))
+            if name in base_attrs_dict: raise DiagramError("Name '%s' hides base attribute %s" % (name,base_attrs_dict[name]))
             if not isinstance(attr, Attribute): continue
             if name.startswith('_') and name.endswith('_'): raise DiagramError(
                 'Attribute name cannot both starts and ends with underscore. Got: %s' % name)
@@ -840,8 +840,8 @@ class Entity(object):
             if attr.is_collection or attr.pk_offset is not None: continue
             entity._bits_[attr] = 1 << next_offset()
 
-        try: table_name = getattr(entity, '_table_')
-        except AttributeError: entity._table_ = None
+        try: table_name = entity.__dict__['_table_']
+        except KeyError: entity._table_ = None
         else:
             if not isinstance(table_name, basestring): raise TypeError(
                 '%s._table_ property must be a string. Got: %r' % (entity.__name__, table_name))
