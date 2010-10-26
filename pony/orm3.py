@@ -93,6 +93,7 @@ class Attribute(object):
             for column in attr.columns:
                 if not isinstance(column, basestring):
                     raise TypeError("Items of parameter 'columns' must be strings. Got: %r" % column)
+            if len(attr.columns) == 1: attr.column = attr.columns[0]
         else: attr.columns = []
         attr._columns_checked = False
 
@@ -332,7 +333,7 @@ class Attribute(object):
                 if attr.columns: raise MappingError(
                     "Parameter 'column' cannot be specified for attribute %s. "
                     "Specify this parameter for reverse attribute %s or make %s optional"
-                    % (attr, reverse.entity.__name__, reverse, reverse))
+                    % (attr, reverse, reverse))
             elif reverse.columns:
                 if attr.columns: raise MappingError(
                     "Both attributes %s and %s have parameter 'column'. "
