@@ -801,6 +801,11 @@ class Entity(object):
         new_attrs.sort(key=attrgetter('id'))
 
         keys = entity.__dict__.get('_keys_', {})
+        for key in keys:
+            for attr in key:
+                assert isinstance(attr, Attribute) and not attr.is_collection
+                if attr.entity is not entity: raise DiagramError(
+                    'Invalid use of attribute %s in entity %s' % (attr, entity.__name__))
         primary_keys = set(key for key, is_pk in keys.items() if is_pk)
         if direct_bases:
             if primary_keys: raise DiagramError('Primary key cannot be redefined in derived classes')
