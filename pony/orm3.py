@@ -16,6 +16,16 @@ class SchemaError(OrmError): pass
 class MappingError(OrmError): pass
 class ConstraintError(OrmError): pass
 class IndexError(OrmError): pass
+class ObjectNotFound(OrmError):
+    def __init__(exc, entity, pkval):
+        if len(pkval) == 1:
+            pkval = pkval[0]
+            msg = '%s(%r)' % (entity.__name__, pkval)
+        else: msg = '%s%r' % (entity.__name__, pkval)
+        OrmError.__init__(exc, msg)
+        exc.entity = entity
+        exc.pkval = pkval
+
 class MultipleObjectsFoundError(OrmError): pass
 class TooManyObjectsFoundError(OrmError): pass
 class OperationWithDeletedObjectError(OrmError): pass
@@ -914,8 +924,10 @@ class Entity(object):
             unmapped_attrs.discard(attr2)          
         for attr in unmapped_attrs:
             raise DiagramError('Reverse attribute for %s.%s was not found' % (attr.entity.__name__, attr.name))
-    def __init__(obj, *args, **keyargs):
-        raise TypeError('Cannot create entity instances directly. Use Entity.create(...) or Entity.find(...) instead')
+    def __new__(entity, *args):
+        obj = entity.find_one(*args)
+        if obj is None: raise ObjectNotFound(entity, args)
+        return obj
     @classmethod
     def _get_pk_columns_(entity):
         if entity._pk_columns_ is not None: return entity._pk_columns_
