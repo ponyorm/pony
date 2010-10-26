@@ -48,7 +48,7 @@ class Attribute(object):
                 'id', 'pk_offset', 'type', 'entity', 'name', 'oldname', \
                 'args', 'auto', 'default', 'reverse', 'composite_keys'
     def __init__(attr, py_type, *args, **keyargs):
-        if attr.__class__ is Attribute: raise TypeError("'Atrribute' is abstract type")
+        if attr.__class__ is Attribute: raise TypeError("'Attribute' is abstract type")
         attr.is_required = isinstance(attr, Required)
         attr.is_unique = isinstance(attr, Unique)  # Also can be set to True later
         attr.is_indexed = attr.is_unique  # Also can be set to True later
