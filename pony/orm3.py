@@ -840,6 +840,12 @@ class Entity(object):
             if attr.is_collection or attr.pk_offset is not None: continue
             entity._bits_[attr] = 1 << next_offset()
 
+        try: table_name = getattr(entity, '_table_')
+        except AttributeError: entity._table_ = None
+        else:
+            if not isinstance(table_name, basestring): raise TypeError(
+                '%s._table_ property must be a string. Got: %r' % (entity.__name__, table_name))
+
         entity._diagram_ = diagram
         diagram.entities[entity.__name__] = entity
         entity._link_reverse_attrs_()
@@ -1541,11 +1547,9 @@ class Diagram(object):
         mapping = diagram.mapping = Mapping()
         entities = list(sorted(diagram.entities.values(), key=attrgetter('_id_')))
         for entity in entities:
-            table_name = entity.__dict__.get('_table_')
-            if table_name is None:
-                table_name = entity._table_ = entity.__name__
-            elif not isinstance(table_name, basestring):
-                raise TypeError('%s._table_ property must be a string. Got: %r' % (entity.__name__, table_name))
+            table_name = entity._table_
+            if table_name is None: table_name = entity._table_ = entity.__name__
+            else: assert isinstance(table_name, basestring)
             table = mapping.tables.get(table_name)
             if table is None:
                 table = mapping.tables[table_name] = Table(mapping, table_name)
