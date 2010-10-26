@@ -880,7 +880,7 @@ class Entity(object):
                 if attr2 is None: raise DiagramError('Reverse attribute %s.%s not found' % (entity2.__name__, reverse))
             elif isinstance(reverse, Attribute):
                 attr2 = reverse
-                if attr2.entity is not entity2: raise DiagramError('Incorrect reverse attribute %s used in %s' % (attr2, attr))
+                if attr2.entity is not entity2: raise DiagramError('Incorrect reverse attribute %s used in %s' % (attr2, attr)) ###
             elif reverse is not None: raise DiagramError("Value of 'reverse' option must be string. Got: %r" % type(reverse))
             else:
                 candidates1 = []
@@ -1764,7 +1764,7 @@ class Table(object):
         return '<Table(%s)>' % table.name
     def add_column(table, col_name, pk):
         if col_name in table.column_dict:
-            raise MappingError('Column %s in table %s was already mapped' % (col_name, table.name))
+            raise MappingError("Column '%s' in table '%s' was already mapped" % (col_name, table.name))
         column = Column(table, col_name, pk)
         table.column_list.append(column)
         table.column_dict[col_name] = column
