@@ -57,6 +57,8 @@ class Attribute(object):
         if attr.is_pk: attr.pk_offset = 0
         else: attr.pk_offset = None
         attr.id = next_attr_id()
+        if not isinstance(py_type, basestring) and not isinstance(py_type, type):
+            raise TypeError('Incorrect type of attribute: %r' % py_type)
         if py_type == 'Entity' or py_type is Entity:
             raise TypeError('Cannot link attribute to Entity class. Must use Entity subclass instead')
         attr.py_type = py_type
@@ -76,7 +78,7 @@ class Attribute(object):
         elif not isinstance(attr.reverse, (basestring, Attribute)):
             raise TypeError("Value of 'reverse' option must be name of reverse attribute). Got: %r" % attr.reverse)
         elif not isinstance(attr.py_type, (basestring, EntityMeta)):
-            raise DiagramError('Reverse option cannot be set for this type %r' % attr.py_type)
+            raise TypeError('Reverse option cannot be set for this type: %r' % attr.py_type)
 
         attr.column = keyargs.pop('column', None)
         attr.columns = keyargs.pop('columns', None)
@@ -92,7 +94,7 @@ class Attribute(object):
             if not attr.columns: raise TypeError("Parameter 'columns' must not be empty list")
             for column in attr.columns:
                 if not isinstance(column, basestring):
-                    raise TypeError("Items of parameter 'columns' must be strings. Got: %r" % column)
+                    raise TypeError("Items of parameter 'columns' must be strings. Got: %r" % attr.columns)
             if len(attr.columns) == 1: attr.column = attr.columns[0]
         else: attr.columns = []
         attr._columns_checked = False
