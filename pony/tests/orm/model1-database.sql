@@ -8,7 +8,7 @@ drop table if exists Students;
 create table Students(
   record integer primary key,
   fio varchar(50) not null,
-  group_number varchar(6) not null references Groups(number),
+  [group] varchar(6) not null references Groups(number),
   scholarship integer not null default 0
 );
 
@@ -19,9 +19,9 @@ create table Subjects(
 
 drop table if exists Group_Subject;
 create table Group_Subject(
-  group_number varchar(6) not null references Groups(number),
-  subject_name varchar(50) not null references Subjects(name),
-  primary key (group_number, subject_name)
+  [group] varchar(6) not null references Groups(number),
+  subject varchar(50) not null references Subjects(name),
+  primary key ([group], subject)
 );
 
 drop table if exists Exams;
