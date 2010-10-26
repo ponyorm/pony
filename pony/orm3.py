@@ -69,7 +69,7 @@ class Attribute(object):
         except KeyError: attr.default = None
         else:
             if attr.default is None and attr.is_required:
-                raise TypeError('Default value for required attribute %s cannot be None' % attr)
+                raise TypeError('Default value for required attribute cannot be None' % attr)
 
         attr.reverse = keyargs.pop('reverse', None)
         if not attr.reverse: pass
