@@ -16,8 +16,9 @@ class Zach(Entity):
 
 class Group(Entity):
     _table_ = "Groups"
-    number = PrimaryKey(str)
+    number = Required(str, column='grnum')
     kaf = Required(int)
+    PrimaryKey(number, kaf)
     students = Set("Student")
     subjects = Set("Subject")
 
