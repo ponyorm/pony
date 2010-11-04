@@ -17,11 +17,24 @@ class Zach(Entity):
 class Group(Entity):
     _table_ = "Groups"
     number = Required(str, column='grnum')
-    kaf = Required(int)
+    kaf = Required("Kaf", column='dep')
     speciality = Required(str)
     PrimaryKey(number, kaf)
     students = Set("Student")
     subjects = Set("Subject")
+
+class Kaf(Entity):
+    _table_ = "Departments"
+    number = PrimaryKey(int)
+    name = Required(unicode)
+    faculty = Required("Faculty", column="fnum")
+    groups = Set(Group)
+
+class Faculty(Entity):
+    _table_ = "Faculties"
+    number = PrimaryKey(int, column="fnum")
+    name = Required(unicode, column="fname")
+    kafs = Set(Kaf)
 
 class Subject(Entity):
     _table_ = "Subjects"

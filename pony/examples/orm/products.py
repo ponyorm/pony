@@ -51,7 +51,7 @@ class Order(Entity):
     customer = Required(Customer)
     date = Required(datetime)
     total = Required(decimal)
-    items = Dict(Product, 'OrderItem')
+    products = Dict(Product, 'OrderItem')
 
 class OrderItem(Entity):
     order = Required(Order)
@@ -128,7 +128,7 @@ select(p for p in Product
 
 # 7. Заказы, состоящие из нескольких товаров
 
-select(o for o in Order if len(o.items) > 1)
+select(o for o in Order if len(o.products) > 1)
 
 # 8. Максимальная цена
 
@@ -147,5 +147,5 @@ select(p for p in Product
           == max(sum(i.price * i.quantity for p2 in Product
                                           for i in p2.orders.values()))
 
-select(p, sum(i.price * i.quantity for i in OrderItem if i.product == p) for p in Product
+select(p, sum(i.price * i.quantity for i in p.orders.values()) for p in Product
        ).orderby(lambda p, profit: -profit)[0]
