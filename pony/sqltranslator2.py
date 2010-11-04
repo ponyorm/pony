@@ -101,6 +101,7 @@ class SQLTranslator(ASTTranslator):
     def __init__(self, tree, globals, locals={}):
         assert isinstance(tree, ast.GenExprInner)
         ASTTranslator.__init__(self, tree)
+        self.diagram = None
         self.locals = locals
         self.globals = globals
         self.iterables = iterables = {}
@@ -126,6 +127,10 @@ class SQLTranslator(ASTTranslator):
             if isinstance(value, orm.EntityIter): entity = value.entity
             elif isinstance(value, orm.EntityMeta): entity = value
             else: raise NotImplementedError
+
+            if self.diagram is None: self.diagram = entity._diagram_
+            elif self.diagram is not entity._diagram_: raise TranslationError(
+                'All entities in a query must belong to the same diagram')
 
             table = entity._table_
             iterables[name] = entity
@@ -185,6 +190,8 @@ class SQLTranslator(ASTTranslator):
             elif value_type is NoneType:
                 node.monad = NoneMonad(self)
             elif isinstance(value_type, orm.EntityMeta):
+                if self.diagram is not value._diagram_: raise TranslationError(
+                    'All entities in a query must belong to the same diagram')
                 node.monad = ObjectParamMonad(self, name, value_type)
             else: assert False
     def postGetattr(self, node):
