@@ -73,7 +73,7 @@ class SQLBuilder(object):
         self.quote_char = quote_char
         self.result = flat(self(ast))
         self.sql = u''.join(map(unicode, self.result))
-        self.params = tuple(x.index for x in self.result if isinstance(x, self.param))
+        self.layout = tuple(x.index for x in self.result if isinstance(x, self.param))
     def __call__(self, ast):
         if isinstance(ast, basestring):
             raise AstError('An SQL AST list was expected. Got string: %r' % ast)
@@ -242,16 +242,16 @@ class SQLBuilder(object):
         return 'AVG(', self(expr), ')'
 
 
-def tuple_adapter_factory(params):
+def tuple_adapter_factory(layout):
     def tuple_adapter(values):
-        return tuple(map(values.__getitem__, params))
+        return tuple(map(values.__getitem__, layout))
     return tuple_adapter
 
-def dict_adapter_factory(params):
+def dict_adapter_factory(layout):
     def dict_adapter(values):
-        return dict(zip(params, values))
+        return dict(zip(layout, values))
     return dict_adapter
 
-adapter_factory = tuple_adapter_factory
+make_adapter = tuple_adapter_factory
 
         

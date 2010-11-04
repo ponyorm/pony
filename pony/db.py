@@ -72,6 +72,8 @@ local = Local()
 sql_cache = {}
 
 def adapt_sql(sql, paramstyle):
+    result = sql_cache.get((sql, paramstyle))
+    if result is not None: return result
     pos = 0
     result = []
     args = []
@@ -223,33 +225,21 @@ class Database(object):
         return bool(result)
     def insert(self, table_name, **keyargs):
         table_name = table_name[:]  # table_name = templating.plainstr(table_name)
-        items = keyargs.items()
-        items.sort()
-        con, provider = self._get_connection()
-        key = table_name, tuple(name for name, value in items)
-        x = self.sql_insert_cache.get(key)
-        if x is None:
-            ast = [ INSERT, table_name, [ name for name, value in items ], [ [PARAM, 'p%d' % i] for i in range(len(items)) ] ]
-            adapted_sql, params = provider.ast2sql(con, ast)
-        else: adapted_sql, params = x
-        if not isinstance(params, dict):
-            for i, param in enumerate(params): assert param == 'p%d' % i
-            values = tuple(value for name, value in items)
-        else: values = dict((key, items[i]) for key, i in params.items())
-        cursor = con.cursor()
-        wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
+        ast = [ INSERT, table_name, keyargs.keys(), [ [PARAM, i] for i in range(len(keyargs)) ] ]
+        cursor = self._exec_ast(ast, keyargs.values())
         return getattr(cursor, 'lastrowid', None)
-    def _exec_ast(self, ast, params=[]):
+    def _exec_ast(self, ast, values=[]):
         con, provider = self._get_connection()
         sql, adapter = provider.ast2sql(con, ast)
-        values = adapter(params)
+        arguments = adapter(values)
         cursor = con.cursor()
         if debug:
             print sql
             print values
             print
-        wrap_dbapi_exceptions(provider, cursor.execute, sql, values)
+        wrap_dbapi_exceptions(provider, cursor.execute, sql, arguments)
         return cursor
+
 Database.Warning = Warning
 Database.Error = Error
 Database.InterfaceError = InterfaceError

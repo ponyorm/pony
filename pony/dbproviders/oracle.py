@@ -26,5 +26,5 @@ def release(connection):
 
 def ast2sql(con, ast):
     b = OracleBuilder(ast)
-    params = [ 'p%d' % i for i in b.params ]
-    return str(b.sql), dbapiprovider.dict_adapter_factory(params)
+    param_names = [ 'p%d' % i for i in b.layout ]
+    return str(b.sql), dbapiprovider.dict_adapter_factory(param_names)

@@ -306,15 +306,15 @@ class Attribute(object):
         else: raise NotImplementedError
     def __delete__(attr, obj):
         raise NotImplementedError
-    def append_criteria(attr, val, criteria_list, params, table_alias=None):
+    def append_criteria(attr, val, criteria_list, values, table_alias=None):
         if attr.reverse: val = val._raw_pkval_
         if attr.column is not None: pairs = [ (attr.column, val) ]
         else:
             assert len(attr.columns) == len(val)
             pairs = zip(attr.columns, val)
         for column, val in pairs:
-            criteria_list.append([EQ, [COLUMN, table_alias, column], [ PARAM, len(params) ] ])
-            params.append(val)
+            criteria_list.append([EQ, [COLUMN, table_alias, column], [ PARAM, len(values) ] ])
+            values.append(val)
     def get_columns(attr):
         assert not attr.is_collection
         assert not isinstance(attr.py_type, basestring)
@@ -460,9 +460,9 @@ class Set(Collection):
         if not reverse.is_collection:
             reverse.entity._find_(None, (), {reverse.name:obj})
         else:
-            sql_ast, params = attr.construct_sql_m2m(obj)
+            sql_ast, values = attr.construct_sql_m2m(obj)
             database = obj._diagram_.database
-            cursor = database._exec_ast(sql_ast, params)
+            cursor = database._exec_ast(sql_ast, values)
             items = []
             for row in cursor.fetchall():
                 item = attr.py_type._get_by_raw_pkval_(row)
@@ -483,19 +483,19 @@ class Set(Collection):
             select_list.append([COLUMN, 'T1', column ])
         from_list = [ FROM, [ 'T1', TABLE, table_name ]]
         criteria_list = []
-        params = []
+        values = []
         raw_pkval = obj._calculate_raw_pkval_()
         if not obj._pk_is_composite_: raw_pkval = [ raw_pkval ]
         for column, val in zip(reverse.columns, raw_pkval):
-            criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, len(params) ]])
-            params.append(val)
+            criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, len(values) ]])
+            values.append(val)
         sql_ast = [ SELECT, select_list, from_list ]
         if criteria_list:
             where_list = [ WHERE ]
             if len(criteria_list) == 1: where_list.append(criteria_list[0])
             else: where_list.append([ AND ] + criteria_list)
             sql_ast.append(where_list)
-        return sql_ast, params
+        return sql_ast, values
     def copy(attr, obj):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         setdata = obj.__dict__.get(attr, NOT_LOADED)
@@ -1098,7 +1098,7 @@ class Entity(object):
         from_list = [ FROM, [ 'T1', TABLE, table_name ]]
 
         criteria_list = []
-        params = []
+        values = []
         if avdict is not None: items = avdict.items()
         elif not entity._pk_is_composite_: items = [(entity._pk_, pkval)]
         else: items = zip(entity._pk_attrs_, pkval)
@@ -1109,15 +1109,15 @@ class Entity(object):
                 assert len(attr.columns) == len(val)
                 pairs = zip(attr.columns, val)
             for column, val in pairs:
-                criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, len(params) ] ])
-                params.append(val)
+                criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, len(values) ] ])
+                values.append(val)
         sql_ast = [ SELECT, select_list, from_list ]
         if criteria_list:
             where_list = [ WHERE ]
             if len(criteria_list) == 1: where_list.append(criteria_list[0])
             else: where_list.append([ AND ] + criteria_list)
             sql_ast.append(where_list)
-        return sql_ast, params, attr_offsets
+        return sql_ast, values, attr_offsets
     @classmethod
     def _parse_row_(entity, row, attr_offsets):
         avdict = {}
@@ -1136,9 +1136,9 @@ class Entity(object):
         return pkval, avdict
     @classmethod
     def _find_in_db_(entity, pkval, avdict=None, max_rows_count=None):
-        sql_ast, params, attr_offsets = entity._construct_sql_(pkval, avdict)
+        sql_ast, values, attr_offsets = entity._construct_sql_(pkval, avdict)
         database = entity._diagram_.database
-        cursor = database._exec_ast(sql_ast, params)
+        cursor = database._exec_ast(sql_ast, values)
         if max_rows_count is None: max_rows_count = options.MAX_ROWS_COUNT
         rows = cursor.fetchmany(max_rows_count + 1)
         if len(rows) == max_rows_count + 1:
@@ -1473,11 +1473,11 @@ class Entity(object):
         rbits = obj._rbits_
         wbits = obj._wbits_
         get_bit = obj._bits_.get
-        params = []
+        values = []
 
         if status in ('created', 'updated'):
             columns = []
-            values = []
+            params = []
             for attr in obj._attrs_:
                 if not attr.columns: continue
                 if status == 'updated':
@@ -1494,13 +1494,13 @@ class Entity(object):
                     else: pairs = zip(val._raw_pkval_, attr.columns)
                 for val, column in pairs:
                     columns.append(column)
-                    values.append([ PARAM, len(params) ])
-                    params.append(val)
+                    params.append([ PARAM, len(values) ])
+                    values.append(val)
         
         if status == 'created':
-            ast = [ INSERT, obj._table_, columns, values ]
+            ast = [ INSERT, obj._table_, columns, params ]
             try:
-                cursor = database._exec_ast(ast, params)
+                cursor = database._exec_ast(ast, values)
             except database.IntegrityError:
                 raise IntegrityError('Object %r already exists in the database' % obj)
             except database.DatabaseError:
@@ -1519,11 +1519,11 @@ class Entity(object):
         criteria_list = [ AND ]
         for attr in obj._pk_attrs_:
             val = obj.__dict__[attr]
-            attr.append_criteria(val, criteria_list, params)
+            attr.append_criteria(val, criteria_list, values)
 
         if status == 'deleted':
             ast = [ DELETE, obj._table_, [ WHERE, criteria_list ] ]
-            database._exec_ast(ast, params)
+            database._exec_ast(ast, values)
             return
 
         for attr in obj._attrs_:
@@ -1533,18 +1533,18 @@ class Entity(object):
             if not bit & rbits: continue
             old = obj.__dict__.get(attr.name, NOT_LOADED)
             assert old is not NOT_LOADED
-            attr.append_criteria(old, criteria_list, params)
+            attr.append_criteria(old, criteria_list, values)
 
         if status == 'locked':
             assert obj._wbits_ == 0
             ast = [ SELECT, [ ALL, [ VALUE, 1 ]], [ FROM, [ 'T1', TABLE, obj._table_ ] ], [ WHERE, criteria_list ] ]
-            cursor = database._exec_ast(ast, params)
+            cursor = database._exec_ast(ast, values)
             row = cursor.fetchone()
             if row is None: raise UnrepeatableReadError('Object %r was updated outside of current transaction' % obj)
             obj._status_ = 'loaded'
         elif status == 'updated':
-            ast = [ UPDATE, obj._table_, zip(columns, values), [ WHERE, criteria_list ] ]
-            cursor = database._exec_ast(ast, params)
+            ast = [ UPDATE, obj._table_, zip(columns, params), [ WHERE, criteria_list ] ]
+            cursor = database._exec_ast(ast, values)
             if cursor.rowcount != 1:
                 raise UnrepeatableReadError('Object %r was updated outside of current transaction' % obj)
             obj._status_ = 'saved'
@@ -1673,12 +1673,12 @@ class Transaction(object):
                 criteria_list.append([ EQ, [COLUMN, None, column], [PARAM, i] ])
             sql_ast = [ DELETE, table, [ WHERE, criteria_list ] ]
             for obj, robj in removed:
-                params = []
-                if not obj._pk_is_composite_: params.append(obj._pkval_)
-                else: params.extend(obj._pkval_)
-                if not robj._pk_is_composite_: params.append(robj._pkval_)
-                else: params.extend(robj._pkval_)
-                database._exec_ast(sql_ast, params)
+                values = []
+                if not obj._pk_is_composite_: values.append(obj._pkval_)
+                else: values.extend(obj._pkval_)
+                if not robj._pk_is_composite_: values.append(robj._pkval_)
+                else: values.extend(robj._pkval_)
+                database._exec_ast(sql_ast, values)
     def add_m2m(trans, database, modified_m2m):
         for attr, (added, removed) in modified_m2m.iteritems():
             reverse = attr.reverse
@@ -1691,12 +1691,12 @@ class Transaction(object):
                 values.append([PARAM, i])
             sql_ast = [ INSERT, table, columns, values ]
             for obj, robj in added:
-                params = []
-                if not obj._pk_is_composite_: params.append(obj._pkval_)
-                else: params.extend(obj._pkval_)
-                if not robj._pk_is_composite_: params.append(robj._pkval_)
-                else: params.extend(robj._pkval_)
-                database._exec_ast(sql_ast, params)
+                values = []
+                if not obj._pk_is_composite_: values.append(obj._pkval_)
+                else: values.extend(obj._pkval_)
+                if not robj._pk_is_composite_: values.append(robj._pkval_)
+                else: values.extend(robj._pkval_)
+                database._exec_ast(sql_ast, values)
     def update_simple_index(trans, obj, attr, prev, val, undo):
         index = trans.indexes.get(attr)
         if index is None: index = trans.indexes[attr] = {}
