@@ -14,8 +14,15 @@ def select(gen):
     globals = gen.gi_frame.f_globals
     locals = gen.gi_frame.f_locals
     translator = SQLTranslator(tree, globals, locals)
-    builder = SQLBuilder(translator.sql_ast)
-    print builder.sql
+    values = {}
+    for name in translator.params:
+        try: value = locals[name]
+        except KeyError: value = globals[name]
+        values[name] = value
+    entity = translator.entity
+    sql_ast = translator.sql_ast
+    objects = entity._find_by_ast_(sql_ast, values, translator.attr_offsets)
+    return objects
 
 primitive_types = set([ int, unicode ])
 type_normalization_dict = { long : int, str : unicode, StrHtml : unicode, Html : unicode }
@@ -140,8 +147,13 @@ class SQLTranslator(ASTTranslator):
                 assert isinstance(if_, ast.GenExprIf)
                 self.dispatch(if_)
                 self.conditions.append(if_.monad.getsql('WHERE'))
+        assert isinstance(tree.expr, ast.Name)
+        alias = self.alias = tree.expr.name
         self.dispatch(tree.expr)
-        self.select = [ ALL ] + tree.expr.monad.getsql('SELECT')
+        monad = tree.expr.monad
+        entity = self.entity = monad.type
+        assert isinstance(entity, orm.EntityMeta)
+        self.select, self.attr_offsets = entity._construct_select_clause_(alias)         
         self.sql_ast = [ SELECT, self.select, self.from_ ]
         if self.conditions: self.sql_ast.append([ WHERE, sqland(self.conditions) ])
 
@@ -251,10 +263,7 @@ class ObjectIterMonad(Monad, ObjectMixin):
         return AttrMonad(monad.translator, attr, monad.alias)
     def getsql(monad, section):
         entity = monad.type
-        if section == 'SELECT': attrs = entity._attrs_
-        elif section == 'WHERE': attrs = entity._pk_attrs_
-        else: assert False
-        return [ [ COLUMN, monad.alias, column ] for attr in attrs if not attr.is_collection
+        return [ [ COLUMN, monad.alias, column ] for attr in entity._pk_attrs_ if not attr.is_collection
                                                  for column in attr.columns ]
 
 class AttrMonad(Monad):
