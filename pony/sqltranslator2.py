@@ -7,6 +7,8 @@ from pony.templating import Html, StrHtml
 from pony.dbapiprovider import SQLBuilder
 from pony.sqlsymbols import *
 
+class TranslationError(Exception): pass
+
 def select(gen):
     tree = decompile(gen).code
     globals = gen.gi_frame.f_globals
@@ -51,6 +53,14 @@ def is_comparable_types(op, type1, type2):
             else: return False
         else: return False
 
+def sqland(items):
+    if len(items) == 1: return items[0]
+    return [ AND ] + items
+
+def sqlor(items):
+    if len(items) == 1: return items[0]
+    return [ OR ] + items
+
 class ASTTranslator(object):
     def __init__(self, tree):
         self.tree = tree
@@ -64,10 +74,10 @@ class ASTTranslator(object):
             pre_method = getattr(self, 'pre' + cls.__name__, None)
             self.pre_methods[cls] = pre_method
         if pre_method is not None:
-            print 'PRE', node.__class__.__name__, '+'
+            # print 'PRE', node.__class__.__name__, '+'
             pre_method(node)
         else:            
-            print 'PRE', node.__class__.__name__, '-'
+            # print 'PRE', node.__class__.__name__, '-'
             self.default_pre(node)
         
         for child in node.getChildNodes(): self.dispatch(child)
@@ -77,10 +87,10 @@ class ASTTranslator(object):
             post_method = getattr(self, 'post' + cls.__name__, None)
             self.post_methods[cls] = post_method
         if post_method is not None:
-            print 'POST', node.__class__.__name__, '+'
+            # print 'POST', node.__class__.__name__, '+'
             post_method(node)
         else:            
-            print 'POST', node.__class__.__name__, '-'
+            # print 'POST', node.__class__.__name__, '-'
             self.default_post(node)
     def default_pre(self, node):
         pass
@@ -94,33 +104,46 @@ class SQLTranslator(ASTTranslator):
         self.locals = locals
         self.globals = globals
         self.iterables = iterables = {}
+        self.aliases = aliases = {}
         self.params = set()
         self.from_ = [ FROM ]
-        self.where = []
+        self.conditions = []
         
         for qual in tree.quals:
             assign = qual.assign
             if not isinstance(assign, ast.AssName): raise TypeError
             if assign.flags != 'OP_ASSIGN': raise TypeError
+
             name = assign.name
-            if name in iterables: raise SyntaxError
+            if name in iterables: raise TranslationError('Duplicate name: %s' % name)
+            if name.startswith('__'): raise TranslationError('Illegal name: %s' % name)
+            assert name not in aliases
+
             assert isinstance(qual.iter, ast.Name)
             iter_name = qual.iter.name
             try: value = locals[iter_name]
             except KeyError: value = globals[iter_name] # can raise KeyError
-            if not isinstance(value, orm.EntityIter): raise NotImplementedError
-            entity = value.entity
+            if isinstance(value, orm.EntityIter): entity = value.entity
+            elif isinstance(value, orm.EntityMeta): entity = value
+            else: raise NotImplementedError
+
             table = entity._table_
-            iterables[name] = [ entity ]
+            iterables[name] = entity
+            aliases[name] = entity
             self.from_.append([ name, TABLE, table ])
             for if_ in qual.ifs:
                 assert isinstance(if_, ast.GenExprIf)
                 self.dispatch(if_)
+                self.conditions.append(if_.monad.getsql('WHERE'))
         self.dispatch(tree.expr)
-        self.select = [ ALL ] + tree.expr.monad.getsql('WHERE')
+        self.select = [ ALL ] + tree.expr.monad.getsql('SELECT')
         self.sql_ast = [ SELECT, self.select, self.from_ ]
-        if self.where: self.sql_ast.append(self.where)
+        if self.conditions: self.sql_ast.append([ WHERE, sqland(self.conditions) ])
 
+    def postGenExprIf(self, node):
+        monad = node.test.monad
+        if monad.type is not bool: raise TypeError
+        node.monad = monad
     def postCompare(self, node):
         expr1 = node.expr
         ops = node.ops
@@ -135,21 +158,19 @@ class SQLTranslator(ASTTranslator):
         monads = []
         for item in items:
             item_type = normalize_type(type(item))
-            if value_type is unicode:
-                monads.append(StringMonad(self, item))
-            elif value_type is int:
-                monads.append(NumericMonad(self, item))
-            elif value_type is NoneType:
+            if item_type is unicode:
+                monads.append(StringConstMonad(self, item))
+            elif item_type is int:
+                monads.append(NumericConstMonad(self, item))
+            elif item_type is NoneType:
                 monads.append(NoneMonad(self))
-            elif isinstance(item_type, orm.EntityMeta):
-                monads.append(ObjectParamMonad(self, value))
             else: raise TypeError
         if type(value) is not tuple: node.monad = monads[0]
         else: node.monad = ListMonad(self, monads)
     def postName(self, node):
         name = node.name
         if name in self.iterables:
-            entity = self.iterables[name][0]
+            entity = self.iterables[name]
             node.monad = ObjectIterMonad(self, name, entity)
         else:
             try: value = self.locals[name]
@@ -168,13 +189,17 @@ class SQLTranslator(ASTTranslator):
             else: assert False
     def postGetattr(self, node):
         node.monad = node.expr.monad.getattr(node.attrname)
-        
+    def postAnd(self, node):
+        node.monad = AndMonad([ subnode.monad for subnode in node.nodes ])
+    def postOr(self, node):
+        node.monad = OrMonad([ subnode.monad for subnode in node.nodes ])
+    def postNot(self, node):
+        node.monad = NotMonad(node.expr.monad)
+
 class Monad(object):
     def __init__(monad, translator, type):
         monad.translator = translator
         monad.type = type
-    def getsql(monad, section):
-        raise NotImplementedError
     def cmp(monad, op, monad2):
         return CmpMonad(op, monad, monad2)
     def __contains__(monad, item): raise TypeError
@@ -205,94 +230,97 @@ class ListMonad(Monad):
         Monad.__init__(monad, translator, list)
         monad.items = items
 
-class StringMonad(Monad):
-    def __init__(monad, translator):
-        Monad.__init__(monad, translator, unicode)
+class NumericMixin(object): pass
+class StringMixin(object): pass
+class ObjectMixin(object): pass
 
-class StringParamMonad(Monad):
-    def __init__(monad, translator, name):
-        StringMonad.__init__(monad, translator)
-        monad.name = name
-        translator.params.add(name)
-    def getsql(monad, section):
-        return [ [ PARAM, monad.name ] ]
-
-class StringConstMonad(StringMonad):
-    def __init__(monad, translator, value):
-        StringMonad.__init__(monad, translator)
-        monad.value = value
-    def getsql(monad, section):
-        return [ [ VALUE, monad.value ] ]
-
-class StringAttrMonad(StringMonad):
-    def __init__(monad, parent, attr):
-        assert issubclass(attr.py_type, basestring)
-        StringMonad.__init__(monad, parent.translator)
-        monad.parent = parent
-        monad.attr = attr
-
-class NumericMonad(Monad):
-    pass
-
-class NumericParamMonad(NumericMonad):
-    def __init__(monad, translator, name):
-        NumericMonad.__init__(monad, translator, int)
-        monad.name = name
-        translator.params.add(name)
-    def getsql(monad, section):
-        return [ [ PARAM, monad.name ] ]
-
-class NumericConstMonad(NumericMonad):
-    def __init__(monad, translator, value):
-        NumericMonad.__init__(monad, translator, int)
-        monad.value = value
-    def getsql(monad, section):
-        return [ [ VALUE, monad.value ] ]
-
-class NumericAttrMonad(NumericMonad):
-    def __init__(monad, parent, attr):
-        assert attr.py_type is int
-        StringMonad.__init__(monad, parent.translator)
-        monad.parent = parent
-        monad.attr = attr
-
-class ObjectMonad(Monad):
-    def __init__(monad, translator, entity):
-        Monad.__init__(monad, translator, entity)
-
-class ObjectIterMonad(ObjectMonad):
+class ObjectIterMonad(Monad, ObjectMixin):
     def __init__(monad, translator, alias, entity):
-        ObjectMonad.__init__(monad, translator, entity)
+        Monad.__init__(monad, translator, entity)
         monad.alias = alias
     def getattr(monad, name):
         entity = monad.type
         attr = getattr(entity, name) # can raise AttributeError
-        attr_type = normalize_type(attr.py_type)
-        if attr_type is int:
-            return NumericAttrMonad(monad, attr)
-        elif attr_type is unicode:
-            return StringAttrMonad(monad, attr)
-        elif isinstance(attr_type, orm.EntityMeta):
-            return ObjectAttrMonad(monad, attr)
-        else: assert False
+        return AttrMonad(monad.translator, attr, monad.alias)
     def getsql(monad, section):
         entity = monad.type
-        alias = monad.alias
-        result = []
         if section == 'SELECT': attrs = entity._attrs_
         elif section == 'WHERE': attrs = entity._pk_attrs_
         else: assert False
-        for attr in entity._attrs_:
-            if attr.is_collection: continue
-            for column in attr.get_columns():
-                result.append([ COLUMN, alias, column ])
-        return result
-        
-class ObjectParamMonad(ObjectMonad):
-    def __init__(monad, translator, name, entity):
-        ObjectMonad.__init__(monad, translator, entity)
+        return [ [ COLUMN, monad.alias, column ] for attr in attrs if not attr.is_collection
+                                                 for column in attr.columns ]
+
+class AttrMonad(Monad):
+    def __new__(cls, translator, attr, *args, **keyargs):
+        assert cls is AttrMonad
+        type = normalize_type(attr.py_type)
+        if type is int: cls = NumericAttrMonad
+        elif type is unicode: cls = StringAttrMonad
+        elif isinstance(type, orm.EntityMeta): cls = ObjectAttrMonad
+        else: assert False
+        return object.__new__(cls)
+    def __init__(monad, translator, attr, base_alias, columns=None, alias=None):
+        type = normalize_type(attr.py_type)
+        Monad.__init__(monad, translator, type)
+        monad.attr = attr
+        monad.base_alias = base_alias
+        monad.columns = columns or attr.columns
+        monad.alias = alias or '-'.join((base_alias, attr.name))
+    def getsql(monad, section):
+        return [ [ COLUMN, monad.base_alias, column ] for column in monad.columns ]
+
+class ObjectAttrMonad(AttrMonad, ObjectMixin):
+    def getattr(monad, name):
+        translator = monad.translator
+        entity = monad.type
+        attr = getattr(entity, name) # can raise AttributeError
+        if attr.pk_offset is not None:
+            base_alias = monad.base_alias
+            columns = monad.columns
+            if entity._pk_is_composite_:
+                i = 0
+                for a in entity._pk_attrs_:
+                    if a is attr: break
+                    i += len(a.columns)
+                columns = columns[i:i+len(attr.columns)]
+        else:
+            alias = monad.translator.aliases.get(monad.alias)
+            if alias is None:
+                alias = monad.translator.aliases[monad.alias] = monad.alias
+                translator.from_.append([ monad.alias, TABLE, entity._table_ ])
+                conditions = monad.translator.conditions
+                assert len(monad.columns) == len(entity._pk_columns_)
+                for c1, c2 in zip(monad.columns, entity._pk_columns_):
+                    conditions.append([ EQ, [ COLUMN, monad.base_alias, c1 ], [ COLUMN, monad.alias, c2 ] ])
+            base_alias = monad.alias
+            columns = attr.columns
+        alias = '-'.join((monad.alias, name))
+        return AttrMonad(translator, attr, base_alias, columns, alias)
+
+class NumericAttrMonad(AttrMonad, NumericMixin): pass
+class StringAttrMonad(AttrMonad, StringMixin): pass
+
+class ParamMonad(Monad):
+    def __new__(cls, translator, type, name):
+        assert cls is ParamMonad
+        type = normalize_type(attr.py_type)
+        if type is int: cls = NumericParamMonad
+        elif type is unicode: cls = StringParamMonad
+        elif isinstance(type, orm.EntityMeta): cls = ObjectParamMonad
+        else: assert False
+        return object.__new__(cls)
+    def __init__(monad, translator, type, name):
+        type = normalize_type(attr.py_type)
+        Monad.__init__(monad, translator, type)
         monad.name = name
-        pk_columns = entity._get_pk_columns_()
+        translator.params.add(name)
+    def getsql(monad, section):
+        return [ [ PARAM, monad.name ] ]
+
+class ObjectParamMonad(ParamMonad, ObjectMixin):
+    def __init__(monad, translator, entity, name):
+        ParamMonad.__init__(monad, translator, entity, name)
+        pk_columns = entity._pk_columns_
         if len(pk_columns) == 1:
             translator.params.add(name)
         else:
@@ -303,31 +331,26 @@ class ObjectParamMonad(ObjectMonad):
     def getattr(monad, name):
         raise NotImplementedError
     def getsql(monad, section):
-        raise TypeError
-
-class ObjectAttrMonad(ObjectMonad):
-    def __init__(monad, parent, attr):
-        assert isinstance(attr.py_type, orm.EntityMeta)
-        if not attr.is_collection: type = attr.py_type
-        else: type = attr
-        ObjectMonad.__init__(monad, parent.translator, type)
-        monad.parent = parent
-        monad.attr = attr
-    def getsql(monad, section):
         raise NotImplementedError
+
+class StringParamMonad(ParamMonad, StringMixin): pass
+class NumericParamMonad(ParamMonad, StringMixin): pass
+
+class ConstMonad(Monad):
+    def __init__(monad, translator, value):
+        value_type = normalize_type(type(value))
+        Monad.__init__(monad, translator, value_type)
+        monad.value = value
+    def getsql(monad, section):
+        return [ [ VALUE, monad.value ] ]
+
+class StringConstMonad(ConstMonad, StringMixin): pass
+class NumericConstMonad(ConstMonad, NumericMixin): pass
         
 class BoolMonad(Monad):
     def __init__(monad, translator):
         monad.translator = translator
         monad.type = bool
-
-def sqland(items):
-    if len(items) == 1: return items[0]
-    return [ AND ] + items
-
-def sqlor(items):
-    if len(items) == 1: return items[0]
-    return [ OR ] + items
 
 cmpops = { '>=' : GE, '>' : GT, '<=' : LE, '<' : LT }        
 
@@ -348,50 +371,60 @@ class CmpMonad(BoolMonad):
         monad.left = left
         monad.right = right
     def getsql(monad, section):
+        op = monad.op
         sql = []
-        left_sql = monad.left.getsql()
+        left_sql = monad.left.getsql(section)
         if op == 'is':
-            return [ sqland([ [ IS_NULL, item ] for item in left_sql ]) ]
+            return sqland([ [ IS_NULL, item ] for item in left_sql ])
         if op == 'is not':
-            return [ sqland([ [ IS_NOT_NULL, item ] for item in left_sql ]) ]
-        right_sql = monad.right.get_sql()
+            return sqland([ [ IS_NOT_NULL, item ] for item in left_sql ])
+        right_sql = monad.right.getsql(section)
         assert len(left_sql) == len(right_sql)
         if op in ('<', '<=', '>', '>='):
-            return [ [ cmpops[op], left_sql, right_sql ] ]
+            return [ cmpops[op], left_sql, right_sql ]
         if op == '==':
-            return [ sqland([ [ EQ, a, b ] for (a, b) in zip(left_sql, right_sql) ]) ]
+            return sqland([ [ EQ, a, b ] for (a, b) in zip(left_sql, right_sql) ])
         if op == '!=':
-            return [ sqlor([ [ NE, a, b ] for (a, b) in zip(left_sql, right_sql) ]) ]
+            return sqlor([ [ NE, a, b ] for (a, b) in zip(left_sql, right_sql) ])
         
         if isinstance(monad.right, ListMonad):
             left_type = normalize_type(monad.left)
             for item in monad.right.items:
                 if not is_comparable_types(left_type, item.type): raise TypeError
             if len(left_sql) == 1:
-                if op == 'in': return [ [ IN, left_sql[0], right_sql ] ]
-                elif op == 'not in': return [ [ NOT_IN, left_sql[0], right_sql ] ]
+                if op == 'in': return [ IN, left_sql[0], right_sql ]
+                elif op == 'not in': return [ NOT_IN, left_sql[0], right_sql ]
                 else: assert False
             else:
                 if op == 'in':
-                    return [ sqlor([ sqland([ [ EQ, a, b ]  for a, b in zip(left_sql, item_sql) ]) for item_sql in right_sql ]) ]
+                    return sqlor([ sqland([ [ EQ, a, b ]  for a, b in zip(left_sql, item_sql) ]) for item_sql in right_sql ])
                 if op == 'not in':
-                    return [ sqland([ sqlor([ [ NE, a, b ]  for a, b in zip(left_sql, item_sql) ]) for item_sql in right_sql ]) ]
+                    return sqland([ sqlor([ [ NE, a, b ]  for a, b in zip(left_sql, item_sql) ]) for item_sql in right_sql ])
 
         raise NotImplementedError
 
-class AndMonad(BoolMonad):
+class LogicalBinOpMonad(BoolMonad):
     def __init__(monad, operands):
         assert len(operands) >= 2
+        for operand in operands:
+            if operand.type is not bool: raise TypeError
         BoolMonad.__init__(monad, operands[0].translator)
         monad.operands = operands
+    def getsql(monad, section):
+        if section != 'WHERE': raise TypeError
+        return [ monad.binop ] + [ operand.getsql(section) for operand in monad.operands ]
 
-class OrMonad(BoolMonad):
-    def __init__(monad, operands):
-        assert len(operands) >= 2
-        BoolMonad.__init__(monad, operands[0].translator)
-        monad.operands = operands
+class AndMonad(LogicalBinOpMonad):
+    binop = AND
+
+class OrMonad(LogicalBinOpMonad):
+    binop = OR
 
 class NotMonad(BoolMonad):
     def __init__(monad, operand):
+        if operand.type is not bool: raise TypeError
         BoolMonad.__init__(monad, operand.translator)
         monad.operand = operand
+    def getsql(monad, section):
+        if section != 'WHERE': raise TypeError
+        return [ NOT, monad.operand.getsql(section) ]
