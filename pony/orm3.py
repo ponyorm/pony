@@ -1099,7 +1099,7 @@ class Entity(object):
     @classmethod
     def _construct_sql_(entity, pkval, avdict=None):
         table_name = entity._table_
-        select_list, from_offsets = entity._construct_select_clause_('T1')
+        select_list, attr_offsets = entity._construct_select_clause_('T1')
         from_list = [ FROM, [ 'T1', TABLE, table_name ]]
 
         criteria_list = []
@@ -1142,7 +1142,7 @@ class Entity(object):
     @classmethod
     def _find_in_db_(entity, pkval, avdict=None, max_rows_count=None):
         sql_ast, values, attr_offsets = entity._construct_sql_(pkval, avdict)
-        return entity._find_by_ast_(sql_ast, values, attr_offsets, max_row_count)
+        return entity._find_by_ast_(sql_ast, values, attr_offsets, max_rows_count)
     @classmethod
     def _find_by_ast_(entity, sql_ast, values, attr_offsets, max_rows_count=None):
         database = entity._diagram_.database

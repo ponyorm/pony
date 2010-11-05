@@ -194,18 +194,8 @@ class SQLTranslator(ASTTranslator):
             except KeyError:
                 try: value = self.globals[name]
                 except KeyError: raise NameError(name)
-            value_type = normalize_type(type(value))
-            if value_type is unicode:
-                node.monad = StringParamMonad(self, name)
-            elif value_type is int:
-                node.monad = NumericParamMonad(self, name)
-            elif value_type is NoneType:
-                node.monad = NoneMonad(self)
-            elif isinstance(value_type, orm.EntityMeta):
-                if self.diagram is not value._diagram_: raise TranslationError(
-                    'All entities in a query must belong to the same diagram')
-                node.monad = ObjectParamMonad(self, name, value_type)
-            else: assert False
+            if value is None: node.monad = NoneMonad
+            else: node.monad = ParamMonad(self, type(value), name)
     def postGetattr(self, node):
         node.monad = node.expr.monad.getattr(node.attrname)
     def postAnd(self, node):
@@ -319,14 +309,14 @@ class StringAttrMonad(AttrMonad, StringMixin): pass
 class ParamMonad(Monad):
     def __new__(cls, translator, type, name):
         assert cls is ParamMonad
-        type = normalize_type(attr.py_type)
+        type = normalize_type(type)
         if type is int: cls = NumericParamMonad
         elif type is unicode: cls = StringParamMonad
         elif isinstance(type, orm.EntityMeta): cls = ObjectParamMonad
         else: assert False
         return object.__new__(cls)
     def __init__(monad, translator, type, name):
-        type = normalize_type(attr.py_type)
+        type = normalize_type(type)
         Monad.__init__(monad, translator, type)
         monad.name = name
         translator.params.add(name)
@@ -335,19 +325,17 @@ class ParamMonad(Monad):
 
 class ObjectParamMonad(ParamMonad, ObjectMixin):
     def __init__(monad, translator, entity, name):
+        if translator.diagram is not entity._diagram_: raise TranslationError(
+            'All entities in a query must belong to the same diagram')
         ParamMonad.__init__(monad, translator, entity, name)
-        pk_columns = entity._pk_columns_
-        if len(pk_columns) == 1:
-            translator.params.add(name)
-        else:
-            prefix = name + '$'
-            for column in pk_columns:
-                param_name = prefix + column
-                translator.params.add(param_name)
+        pk_len = len(entity._pk_columns_)
+        if pk_len == 1: monad.params = [ name ]
+        else: monad.params = [ '%s-%d' % (name, i+1) for i in range(pk_len) ]
+        translator.params.update(monad.params)
     def getattr(monad, name):
         raise NotImplementedError
     def getsql(monad, section):
-        raise NotImplementedError
+        return [ [ PARAM, param ] for param in monad.params ]
 
 class StringParamMonad(ParamMonad, StringMixin): pass
 class NumericParamMonad(ParamMonad, StringMixin): pass
