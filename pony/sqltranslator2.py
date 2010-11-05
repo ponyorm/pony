@@ -397,7 +397,8 @@ class CmpMonad(BoolMonad):
         right_sql = monad.right.getsql(section)
         assert len(left_sql) == len(right_sql)
         if op in ('<', '<=', '>', '>='):
-            return [ cmpops[op], left_sql, right_sql ]
+            assert len(left_sql) == len(right_sql) == 1
+            return [ cmpops[op], left_sql[0], right_sql[0] ]
         if op == '==':
             return sqland([ [ EQ, a, b ] for (a, b) in zip(left_sql, right_sql) ])
         if op == '!=':

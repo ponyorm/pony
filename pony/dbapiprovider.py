@@ -79,7 +79,7 @@ class SQLBuilder(object):
             raise AstError('An SQL AST list was expected. Got string: %r' % ast)
         symbol = ast[0]
         if not isinstance(symbol, basestring):
-            raise AstError('Invalid node name: %r' % symbol)
+            raise AstError('Invalid node name in AST: %r' % ast)
         method = getattr(self, symbol, None)
         if method is None: raise AstError('Method not found: %s' % symbol)
         try:

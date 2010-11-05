@@ -6,7 +6,7 @@ from pony import options
 from pony.utils import import_module, parse_expr, is_ident, localbase, simple_decorator
 from pony.sqlsymbols import *
 
-debug = False
+debug = True
 
 class DBException(Exception):
     def __init__(self, *args, **keyargs):
