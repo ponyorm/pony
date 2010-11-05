@@ -1,5 +1,5 @@
 import unittest
-from pony.orm3 import *
+from pony.orm import *
 from testutils import *
 
 class TestKeys(unittest.TestCase):

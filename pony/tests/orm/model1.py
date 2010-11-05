@@ -1,6 +1,6 @@
 import os.path
 from pony.db import Database
-from pony.orm3 import *
+from pony.orm import *
 
 class Student(Entity):
     _table_ = "Students"
