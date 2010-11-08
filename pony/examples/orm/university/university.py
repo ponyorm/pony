@@ -1,5 +1,4 @@
 import pony.db
-pony.db.debug = True
 
 from pony.db import Database
 from pony.orm import *
@@ -25,8 +24,8 @@ class Group(Entity):
     _table_ = 'Groups'
     number = PrimaryKey(int)
     grad_year = Required(int)
-    department = Required(Department)
-    lessons = Set('Lesson')
+    department = Required(Department, column='dep')
+    lessons = Set('Lesson', columns=['day_of_week', 'meeting_time', 'classroom_number', 'building'])
     students = Set('Student')
 
 class Student(Entity):
@@ -88,9 +87,17 @@ class Teacher(Entity):
     lessons = Set(Lesson)
     grades = Set(Grade)
 
+class Building(Entity):
+    _table_ = 'Buildings'
+    number = PrimaryKey(str)
+    description = Optional(str)
+    classrooms = Set('Classroom')
+    
 class Classroom(Entity):
     _table_ = 'Classrooms'
-    number = PrimaryKey(str)
+    building = Required(Building)
+    number = Required(str)
+    PrimaryKey(building, number)
     description = Optional(str)
     lessons = Set(Lesson)
 
