@@ -1568,7 +1568,9 @@ class Entity(object):
             obj._wbits_ = 0
             for attr in obj._attrs_:
                 if attr not in obj._bits_: continue
-                obj.__dict__[attr.name] = obj.__dict__[attr]
+                val = obj.__dict__.get(attr, NOT_LOADED)
+                if val is NOT_LOADED: assert attr.name not in obj.__dict__
+                else: obj.__dict__[attr.name] = val
         else: assert False
         
 class Diagram(object):
