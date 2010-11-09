@@ -1496,8 +1496,9 @@ class Entity(object):
                 val = obj.__dict__[attr]
                 if not attr.reverse: pairs = [ (val, attr.column) ]
                 else:
-                    if val._status_ == 'created': val._save_(delayed_objects)
-                    assert val._status_ == 'saved'
+                    if val._status_ == 'created':
+                        val._save_(delayed_objects)
+                        assert val._status_ == 'saved'
                     if attr.column is not None: pairs = [ (val._raw_pkval_, attr.column) ]
                     else: pairs = zip(val._raw_pkval_, attr.columns)
                 for val, column in pairs:
