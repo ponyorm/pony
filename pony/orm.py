@@ -1514,9 +1514,16 @@ class Entity(object):
                 raise IntegrityError('Object %r already exists in the database' % obj)
             except database.DatabaseError:
                 raise UnexpectedError('Object %r cannot be stored in the database' % obj)
-            if obj._raw_pkval_ is None:
+
+            if obj._pkval_ is None:
                 rowid = cursor.lastrowid # TODO
-                obj._raw_pkval_ = rowid
+                pk = obj.__class__._pk_
+                index = obj._trans_.indexes.setdefault(pk, {})
+                obj2 = index.setdefault(rowid, obj)
+                assert obj2 is obj
+                obj._pkval_ = obj._raw_pkval_ = obj.__dict__[pk] = rowid
+                obj._newid_ = None
+                
             obj._status_ = 'saved'
             obj._rbits_ = 0
             obj._wbits_ = 0
