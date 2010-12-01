@@ -146,7 +146,7 @@ class SQLTranslator(ASTTranslator):
             for if_ in qual.ifs:
                 assert isinstance(if_, ast.GenExprIf)
                 self.dispatch(if_)
-                self.conditions.append(if_.monad.getsql('WHERE'))
+                self.conditions.append(if_.monad.getsql())
         assert isinstance(tree.expr, ast.Name)
         alias = self.alias = tree.expr.name
         self.dispatch(tree.expr)
@@ -196,6 +196,18 @@ class SQLTranslator(ASTTranslator):
                 except KeyError: raise NameError(name)
             if value is None: node.monad = NoneMonad
             else: node.monad = ParamMonad(self, type(value), name)
+    def postAdd(self, node):
+        node.monad = node.left.monad + node.right.monad
+    def postSub(self, node):
+        node.monad = node.left.monad - node.right.monad
+    def postMul(self, node):
+        node.monad = node.left.monad * node.right.monad
+    def postDiv(self, node):
+        node.monad = node.left.monad / node.right.monad
+    def postPower(self, node):
+        node.monad = node.left.monad ** node.right.monad
+    def postUnarySub(self, node):
+        node.monad = -node.expr.monad
     def postGetattr(self, node):
         node.monad = node.expr.monad.getattr(node.attrname)
     def postAnd(self, node):
@@ -224,6 +236,7 @@ class Monad(object):
     def __sub__(monad, monad2): raise TypeError
     def __mul__(monad, monad2): raise TypeError
     def __div__(monad, monad2): raise TypeError
+    def __pow__(monad, monad2): raise TypeError
 
     def __neg__(monad): raise TypeError
     def __abs__(monad, monad2): raise TypeError
@@ -231,7 +244,7 @@ class Monad(object):
 class NoneMonad(Monad):
     def __init__(monad, translator):
         Monad.__init__(monad, translator, NoneType)
-    def getsql(monad, section):
+    def getsql(monad):
         return [[ VALUE, None ]]
 
 class ListMonad(Monad):
@@ -239,11 +252,31 @@ class ListMonad(Monad):
         Monad.__init__(monad, translator, list)
         monad.items = items
 
-class NumericMixin(object): pass
+def make_numeric_binop(sqlop):
+    def numeric_binop(monad, monad2):
+        if not isinstance(monad2, NumericMixin): raise TypeError
+        left_sql = monad.getsql()
+        right_sql = monad2.getsql()
+        assert len(left_sql) == len(right_sql) == 1
+        return ExprMonad(monad.translator, int, [ sqlop, left_sql[0], right_sql[0] ])
+    numeric_binop.__name__ = sqlop
+    return numeric_binop
+
+class NumericMixin(object):
+    __add__ = make_numeric_binop(ADD)
+    __sub__ = make_numeric_binop(SUB)
+    __mul__ = make_numeric_binop(MUL)
+    __div__ = make_numeric_binop(DIV)
+    __pow__ = make_numeric_binop(POW)
+    def __neg__(monad):
+        sql = monad.getsql()
+        assert len(sql) == 1
+        return ExprMonad(monad.translator, int, [ NEG, sql[0] ])
+
 class StringMixin(object): pass
 class ObjectMixin(object): pass
 
-class ObjectIterMonad(Monad, ObjectMixin):
+class ObjectIterMonad(ObjectMixin, Monad):
     def __init__(monad, translator, alias, entity):
         Monad.__init__(monad, translator, entity)
         monad.alias = alias
@@ -251,7 +284,7 @@ class ObjectIterMonad(Monad, ObjectMixin):
         entity = monad.type
         attr = getattr(entity, name) # can raise AttributeError
         return AttrMonad(monad.translator, attr, monad.alias)
-    def getsql(monad, section):
+    def getsql(monad):
         entity = monad.type
         return [ [ COLUMN, monad.alias, column ] for attr in entity._pk_attrs_ if not attr.is_collection
                                                  for column in attr.columns ]
@@ -272,10 +305,10 @@ class AttrMonad(Monad):
         monad.base_alias = base_alias
         monad.columns = columns or attr.columns
         monad.alias = alias or '-'.join((base_alias, attr.name))
-    def getsql(monad, section):
+    def getsql(monad):
         return [ [ COLUMN, monad.base_alias, column ] for column in monad.columns ]
 
-class ObjectAttrMonad(AttrMonad, ObjectMixin):
+class ObjectAttrMonad(ObjectMixin, AttrMonad):
     def getattr(monad, name):
         translator = monad.translator
         entity = monad.type
@@ -303,8 +336,8 @@ class ObjectAttrMonad(AttrMonad, ObjectMixin):
         alias = '-'.join((monad.alias, name))
         return AttrMonad(translator, attr, base_alias, columns, alias)
 
-class NumericAttrMonad(AttrMonad, NumericMixin): pass
-class StringAttrMonad(AttrMonad, StringMixin): pass
+class NumericAttrMonad(NumericMixin, AttrMonad): pass
+class StringAttrMonad(StringMixin, AttrMonad): pass
 
 class ParamMonad(Monad):
     def __new__(cls, translator, type, name):
@@ -320,10 +353,10 @@ class ParamMonad(Monad):
         Monad.__init__(monad, translator, type)
         monad.name = name
         translator.params.add(name)
-    def getsql(monad, section):
+    def getsql(monad):
         return [ [ PARAM, monad.name ] ]
 
-class ObjectParamMonad(ParamMonad, ObjectMixin):
+class ObjectParamMonad(ObjectMixin, ParamMonad):
     def __init__(monad, translator, entity, name):
         if translator.diagram is not entity._diagram_: raise TranslationError(
             'All entities in a query must belong to the same diagram')
@@ -334,23 +367,40 @@ class ObjectParamMonad(ParamMonad, ObjectMixin):
         translator.params.update(monad.params)
     def getattr(monad, name):
         raise NotImplementedError
-    def getsql(monad, section):
+    def getsql(monad):
         return [ [ PARAM, param ] for param in monad.params ]
 
-class StringParamMonad(ParamMonad, StringMixin): pass
-class NumericParamMonad(ParamMonad, StringMixin): pass
+class StringParamMonad(StringMixin, ParamMonad): pass
+class NumericParamMonad(NumericMixin, ParamMonad): pass
+
+class ExprMonad(Monad):
+    def __new__(cls, translator, type, sql):
+        assert cls is ExprMonad
+        type = normalize_type(type)
+        if type is int: cls = NumericExprMonad
+        elif type is unicode: cls = StringExprMonad
+        else: assert False
+        return object.__new__(cls)        
+    def __init__(monad, translator, type, sql):
+        Monad.__init__(monad, translator, type)
+        monad.sql = sql
+    def getsql(monad):
+        return [ monad.sql ]
+
+class StringExprMonad(StringMixin, ExprMonad): pass
+class NumericExprMonad(NumericMixin, ExprMonad): pass
 
 class ConstMonad(Monad):
     def __init__(monad, translator, value):
         value_type = normalize_type(type(value))
         Monad.__init__(monad, translator, value_type)
         monad.value = value
-    def getsql(monad, section):
+    def getsql(monad):
         return [ [ VALUE, monad.value ] ]
 
-class StringConstMonad(ConstMonad, StringMixin): pass
-class NumericConstMonad(ConstMonad, NumericMixin): pass
-        
+class StringConstMonad(StringMixin, ConstMonad): pass
+class NumericConstMonad(NumericMixin, ConstMonad): pass
+
 class BoolMonad(Monad):
     def __init__(monad, translator):
         monad.translator = translator
@@ -374,15 +424,15 @@ class CmpMonad(BoolMonad):
         monad.op = op
         monad.left = left
         monad.right = right
-    def getsql(monad, section):
+    def getsql(monad):
         op = monad.op
         sql = []
-        left_sql = monad.left.getsql(section)
+        left_sql = monad.left.getsql()
         if op == 'is':
             return sqland([ [ IS_NULL, item ] for item in left_sql ])
         if op == 'is not':
             return sqland([ [ IS_NOT_NULL, item ] for item in left_sql ])
-        right_sql = monad.right.getsql(section)
+        right_sql = monad.right.getsql()
         assert len(left_sql) == len(right_sql)
         if op in ('<', '<=', '>', '>='):
             assert len(left_sql) == len(right_sql) == 1
@@ -415,9 +465,8 @@ class LogicalBinOpMonad(BoolMonad):
             if operand.type is not bool: raise TypeError
         BoolMonad.__init__(monad, operands[0].translator)
         monad.operands = operands
-    def getsql(monad, section):
-        if section != 'WHERE': raise TypeError
-        return [ monad.binop ] + [ operand.getsql(section) for operand in monad.operands ]
+    def getsql(monad):
+        return [ monad.binop ] + [ operand.getsql() for operand in monad.operands ]
 
 class AndMonad(LogicalBinOpMonad):
     binop = AND
@@ -430,6 +479,5 @@ class NotMonad(BoolMonad):
         if operand.type is not bool: raise TypeError
         BoolMonad.__init__(monad, operand.translator)
         monad.operand = operand
-    def getsql(monad, section):
-        if section != 'WHERE': raise TypeError
-        return [ NOT, monad.operand.getsql(section) ]
+    def getsql(monad):
+        return [ NOT, monad.operand.getsql() ]

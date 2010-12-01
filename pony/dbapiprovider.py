@@ -190,8 +190,11 @@ class SQLBuilder(object):
     SUB = binary_op(' - ')
     MUL = binary_op(' * ')
     DIV = binary_op(' / ')
+    POW = binary_op(' ** ')
     CONCAT = binary_op(' || ')
 
+    def NEG(self, expr):
+        return '-(', self(expr), ')'
     def IS_NULL(self, expr):
         return self(expr), ' IS NULL'
     def IS_NOT_NULL(self, expr):
