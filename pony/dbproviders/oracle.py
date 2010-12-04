@@ -10,7 +10,7 @@ paramstyle = 'named'
 
 class Param(dbapiprovider.Param):
     def __unicode__(self):
-        return ':p%d' % self.index
+        return ':p%d' % self.param_key
 
 class OracleBuilder(dbapiprovider.SQLBuilder):
     param = Param
