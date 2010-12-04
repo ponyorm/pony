@@ -12,8 +12,16 @@ def binop(node_type, args_holder=tuple):
         return node_type(args_holder((oper1, oper2)))
     return method
 
+ast_cache = {}
+
 def decompile(gen):
-    return GeneratorDecompiler(gen.gi_frame.f_code).ast
+    codeobject = gen.gi_frame.f_code
+    result = ast_cache.get(codeobject)
+    if result is None:
+        decompiler = GeneratorDecompiler(codeobject)
+        result = decompiler.ast.code, decompiler.param_names
+        ast_cache[codeobject] = result
+    return result
 
 def simplify(clause):
     if isinstance(clause, ast.And):
@@ -38,8 +46,11 @@ class GeneratorDecompiler(object):
         self.stack = stack
         self.targets = {}
         self.ast = None
+        self.names = set()
+        self.assnames = set()
         self.decompile()
         self.ast = self.stack.pop()
+        self.param_names = frozenset(self.names - self.assnames)
         # assert not self.stack, self.stack
     def decompile(self):
         code = self.code
@@ -231,12 +242,15 @@ class GeneratorDecompiler(object):
         raise NotImplementedError
 
     def LOAD_FAST(self, varname):
+        self.names.add(varname)
         return ast.Name(varname)
 
     def LOAD_GLOBAL(self, varname):
+        self.names.add(varname)
         return ast.Name(varname)
 
     def LOAD_NAME(self, varname):
+        self.names.add(varname)
         return ast.Name(varname)
 
     def POP_TOP(self):
@@ -285,6 +299,7 @@ class GeneratorDecompiler(object):
         self.store(ast.AssAttr(self.stack.pop(), attrname, 'OP_ASSIGN'))
 
     def STORE_FAST(self, varname):
+        self.assnames.add(varname)
         self.store(ast.AssName(varname, 'OP_ASSIGN'))
 
     def STORE_SUBSCR(self):

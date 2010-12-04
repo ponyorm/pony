@@ -10,7 +10,7 @@ from pony.sqlsymbols import *
 class TranslationError(Exception): pass
 
 def select(gen):
-    tree = decompile(gen).code
+    tree, param_names = decompile(gen)
     globals = gen.gi_frame.f_globals
     locals = gen.gi_frame.f_locals
     translator = SQLTranslator(tree, globals, locals)
