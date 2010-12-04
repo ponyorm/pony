@@ -11,19 +11,18 @@ def quote_name(name, quote_char='"'):
 class AstError(Exception): pass
 
 class Param(object):
-    __slots__ = 'index',
-    def __init__(self, index):
-        assert type(index) is int
-        self.index = index
+    __slots__ = 'param_key',
+    def __init__(self, param_key):
+        self.param_key = param_key
     def __hash__(self):
-        return hash(index)
+        return hash(self.param_key)
     def __cmp__(self, other):
         if other.__class__ is not Param: return NotImplemented
-        return cmp(self.index, other.index)
+        return cmp(self.param_key, other.param_key)
     def __unicode__(self):
         return u'?'
     def __repr__(self):
-        return '%s(%d)' % (self.__class__.__name__, self.index)
+        return '%s(%d)' % (self.__class__.__name__, self.param_key)
 
 class Value(object):
     __slots__ = 'value',
@@ -73,7 +72,7 @@ class SQLBuilder(object):
         self.quote_char = quote_char
         self.result = flat(self(ast))
         self.sql = u''.join(map(unicode, self.result))
-        self.layout = tuple(x.index for x in self.result if isinstance(x, self.param))
+        self.layout = tuple(x.param_key for x in self.result if isinstance(x, self.param))
     def __call__(self, ast):
         if isinstance(ast, basestring):
             raise AstError('An SQL AST list was expected. Got string: %r' % ast)
