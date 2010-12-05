@@ -2,6 +2,7 @@ import pony.db
 
 from pony.db import Database
 from pony.orm import *
+from pony.sqltranslator import select
 
 _diagram_ = Diagram()
 
