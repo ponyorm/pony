@@ -1589,6 +1589,7 @@ class Diagram(object):
         mapping = diagram.mapping = Mapping()
         entities = list(sorted(diagram.entities.values(), key=attrgetter('_id_')))
         for entity in entities:
+            entity._get_pk_columns_()
             table_name = entity._table_
             if table_name is None: table_name = entity._table_ = entity.__name__
             else: assert isinstance(table_name, basestring)
