@@ -135,8 +135,6 @@ class Database(object):
         self.provider = provider
         self.args = args
         self.keyargs = keyargs
-        self.sql_insert_cache = {}
-        self.sql_update_cache = {}
         con = self.get_connection()
         self.release()
     def _get_connection(self):
@@ -236,6 +234,15 @@ class Database(object):
         if debug:
             print sql
             print values
+            print
+        wrap_dbapi_exceptions(provider, cursor.execute, sql, arguments)
+        return cursor
+    def _exec_sql(self, sql, arguments):
+        con, provider = self._get_connection()
+        cursor = con.cursor()
+        if debug:
+            print sql
+            print arguments
             print
         wrap_dbapi_exceptions(provider, cursor.execute, sql, arguments)
         return cursor

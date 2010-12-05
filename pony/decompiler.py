@@ -19,7 +19,7 @@ def decompile(gen):
     result = ast_cache.get(codeobject)
     if result is None:
         decompiler = GeneratorDecompiler(codeobject)
-        result = decompiler.ast.code, decompiler.param_names
+        result = decompiler.ast.code, decompiler.external_names
         ast_cache[codeobject] = result
     return result
 
@@ -50,7 +50,7 @@ class GeneratorDecompiler(object):
         self.assnames = set()
         self.decompile()
         self.ast = self.stack.pop()
-        self.param_names = frozenset(self.names - self.assnames)
+        self.external_names = set(self.names - self.assnames)
         # assert not self.stack, self.stack
     def decompile(self):
         code = self.code

@@ -55,8 +55,9 @@ next_attr_id = count(1).next
 
 class Attribute(object):
     __slots__ = 'is_required', 'is_unique', 'is_indexed', 'is_pk', 'is_collection', \
-                'id', 'pk_offset', 'type', 'entity', 'name', 'oldname', \
-                'args', 'auto', 'default', 'reverse', 'composite_keys'
+                'id', 'pk_offset', 'py_type', 'sql_type', 'entity', 'name', 'oldname', \
+                'args', 'auto', 'default', 'reverse', 'composite_keys', \
+                'column', 'columns', 'col_paths', '_columns_checked'
     def __init__(attr, py_type, *args, **keyargs):
         if attr.__class__ is Attribute: raise TypeError("'Attribute' is abstract type")
         attr.is_required = isinstance(attr, Required)
@@ -107,6 +108,7 @@ class Attribute(object):
                     raise TypeError("Items of parameter 'columns' must be strings. Got: %r" % attr.columns)
             if len(attr.columns) == 1: attr.column = attr.columns[0]
         else: attr.columns = []
+        attr.col_paths = []
         attr._columns_checked = False
 
         for option in keyargs: raise TypeError('Unknown option %r' % option)
@@ -318,15 +320,16 @@ class Attribute(object):
     def get_columns(attr):
         assert not attr.is_collection
         assert not isinstance(attr.py_type, basestring)
-        if attr._columns_checked: return attr.columns
+        if attr._columns_checked: return attr.columns, attr.col_paths
 
         reverse = attr.reverse
         if not reverse: # attr is not part of relationship
             if not attr.columns: attr.columns = [ attr.name ]
             elif len(attr.columns) > 1: raise MappingError("Too many columns were specified for %s" % attr)
+            attr.col_paths = [ attr.name ]
         else:
             def generate_columns():
-                reverse_pk_columns = reverse.entity._get_pk_columns_()
+                reverse_pk_columns, reverse_pk_col_paths = reverse.entity._get_pk_columns_()
                 if not attr.columns:
                     if len(reverse_pk_columns) == 1: attr.columns = [ attr.name ]
                     else:
@@ -334,7 +337,8 @@ class Attribute(object):
                         attr.columns = [ prefix + column for column in reverse_pk_columns ]
                 elif len(attr.columns) != len(reverse_pk_columns): raise MappingError(
                     'Invalid number of columns specified for %s' % attr)
-               
+                attr.col_paths = [ '-'.join((attr.name, paths)) for paths in reverse_pk_col_paths ]
+
             if reverse.is_collection: # one-to-many:
                 generate_columns()
             # one-to-one:
@@ -356,12 +360,16 @@ class Attribute(object):
         attr._columns_checked = True
         if len(attr.columns) == 1: attr.column = attr.columns[0]
         else: attr.column = None
-        return attr.columns
+        return attr.columns, attr.col_paths
             
-class Optional(Attribute): pass
-class Required(Attribute): pass
+class Optional(Attribute):
+    __slots__ = []
+    
+class Required(Attribute):
+    __slots__ = []
 
 class Unique(Required):
+    __slots__ = []
     def __new__(cls, *args, **keyargs):
         is_pk = issubclass(cls, PrimaryKey)
         if not args: raise TypeError('Invalid count of positional arguments')
@@ -389,7 +397,9 @@ class Unique(Required):
         keys[attrs] = is_pk
         return None
 
-class PrimaryKey(Unique): pass
+class PrimaryKey(Unique):
+    __slots__ = []
+
 
 class Collection(Attribute):
     __slots__ = 'table'
@@ -424,6 +434,7 @@ class SetData(set):
         setdata.added = setdata.removed = EMPTY
 
 class Set(Collection):
+    __slots__ = []
     def check(attr, val, obj=None, entity=None):
         assert val is not NOT_LOADED
         if val is None or val is DEFAULT: return set()
@@ -618,10 +629,10 @@ class Set(Collection):
         entity = attr.entity
         reverse = attr.reverse
         if reverse.columns:
-            if len(reverse.columns) != len(entity._get_pk_columns_()): raise MappingError(
+            if len(reverse.columns) != len(entity._get_pk_columns_()[0]): raise MappingError(
                 'Invalid number of columns for %s' % reverse)
         else:
-            columns = entity._get_pk_columns_()
+            columns = entity._get_pk_columns_()[0]
             if len(columns) == 1: reverse.columns = [ entity.__name__.lower() ]
             else:
                 prefix = entity.__name__.lower() + '_'
@@ -936,11 +947,16 @@ class Entity(object):
         return obj
     @classmethod
     def _get_pk_columns_(entity):
-        if entity._pk_columns_ is not None: return entity._pk_columns_
+        if entity._pk_columns_ is not None: return entity._pk_columns_, entity._pk_paths_
         pk_columns = []
-        for attr in entity._pk_attrs_: pk_columns.extend(attr.get_columns())
+        pk_paths = []
+        for attr in entity._pk_attrs_:
+            attr_columns, attr_col_paths = attr.get_columns()
+            pk_columns.extend(attr_columns)
+            pk_paths.extend(attr_col_paths)
         entity._pk_columns_ = pk_columns
-        return pk_columns
+        entity._pk_paths_ = pk_paths
+        return pk_columns, pk_paths
     def _calculate_raw_pkval_(obj):
         if hasattr(obj, '_raw_pkval_'): return obj._raw_pkval_
         if len(obj._pk_attrs_) == 1:
@@ -1163,6 +1179,26 @@ class Entity(object):
             obj._db_set_(avdict)
             objects.append(obj)
         return objects
+    
+    @classmethod
+    def _fetch_objects(entity, cursor, attr_offsets, max_rows_count=None):
+        if max_rows_count is None: max_rows_count = options.MAX_ROWS_COUNT
+        rows = cursor.fetchmany(max_rows_count + 1)
+        if len(rows) == max_rows_count + 1:
+            if max_rows_count == 1: raise MultipleObjectsFoundError(
+                'Multiple objects was found. Use %s.find_all(...) instead of %s.find_one(...) to retrieve them'
+                % (entity.__name__, entity.__name__))
+            raise TooManyObjectsFoundError(
+                'Found more then pony.options.MAX_ROWS_COUNT=%d objects' % options.MAX_ROWS_COUNT)
+        objects = []
+        for row in rows:
+            pkval, avdict = entity._parse_row_(row, attr_offsets)
+            obj = entity._new_(pkval, 'loaded')
+            if obj._status_ in ('deleted', 'cancelled'): continue
+            obj._db_set_(avdict)
+            objects.append(obj)
+        return objects
+
     @classmethod
     def _find_(entity, max_objects_count, args, keyargs):
         pkval, avdict = entity._normalize_args_(args, keyargs, False)
@@ -1631,7 +1667,7 @@ class Diagram(object):
                     m2m_table.m2m.add(attr)
                     m2m_table.m2m.add(reverse)
                 else:
-                    for column in attr.get_columns():
+                    for column in attr.get_columns()[0]:
                         table.add_column(column, attr.pk_offset is not None)
         if not check_tables: return
         for table in mapping.tables.values():

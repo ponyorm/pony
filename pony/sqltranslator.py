@@ -10,18 +10,31 @@ from pony.sqlsymbols import *
 class TranslationError(Exception): pass
 
 def select(gen):
-    tree, param_names = decompile(gen)
+    tree, external_names = decompile(gen)
     globals = gen.gi_frame.f_globals
     locals = gen.gi_frame.f_locals
-    translator = SQLTranslator(tree, globals, locals)
-    values = {}
-    for name in translator.params:
+    variables = {}
+    for name in external_names:
         try: value = locals[name]
         except KeyError: value = globals[name]
-        values[name] = value
+        variables[name] = value
+    
+    translator = SQLTranslator(tree, variables)  # TODO: variables -> types
     entity = translator.entity
+    database = entity._diagram_.database
+    con, provider = database._get_connection()
     sql_ast = translator.sql_ast
-    objects = entity._find_by_ast_(sql_ast, values, translator.attr_offsets)
+    sql, adapter = provider.ast2sql(con, sql_ast)
+    attr_offsets = translator.attr_offsets
+    extractors = translator.param_extractors
+
+    param_dict = {}
+    for param_name, extractor in extractors.items():
+        param_dict[param_name] = extractor(variables)
+
+    arguments = adapter(param_dict)
+    cursor = database._exec_sql(sql, arguments)
+    objects = entity._fetch_objects(cursor, attr_offsets)
     return objects
 
 primitive_types = set([ int, unicode ])
@@ -105,15 +118,14 @@ class ASTTranslator(object):
         pass
 
 class SQLTranslator(ASTTranslator):
-    def __init__(self, tree, globals, locals={}):
+    def __init__(self, tree, variables):
         assert isinstance(tree, ast.GenExprInner)
         ASTTranslator.__init__(self, tree)
         self.diagram = None
-        self.locals = locals
-        self.globals = globals
+        self.variables = variables
         self.iterables = iterables = {}
         self.aliases = aliases = {}
-        self.params = set()
+        self.param_extractors = {}
         self.from_ = [ FROM ]
         self.conditions = []
         
@@ -129,8 +141,7 @@ class SQLTranslator(ASTTranslator):
 
             assert isinstance(qual.iter, ast.Name)
             iter_name = qual.iter.name
-            try: value = locals[iter_name]
-            except KeyError: value = globals[iter_name] # can raise KeyError
+            value = variables[iter_name] # can raise KeyError
             if isinstance(value, orm.EntityIter): entity = value.entity
             elif isinstance(value, orm.EntityMeta): entity = value
             else: raise NotImplementedError
@@ -190,10 +201,8 @@ class SQLTranslator(ASTTranslator):
             entity = self.iterables[name]
             node.monad = ObjectIterMonad(self, name, entity)
         else:
-            try: value = self.locals[name]
-            except KeyError:
-                try: value = self.globals[name]
-                except KeyError: raise NameError(name)
+            try: value = self.variables[name]
+            except KeyError: raise NameError(name)
             if value is None: node.monad = NoneMonad
             else: node.monad = ParamMonad(self, type(value), name)
     def postAdd(self, node):
@@ -352,7 +361,11 @@ class ParamMonad(Monad):
         type = normalize_type(type)
         Monad.__init__(monad, translator, type)
         monad.name = name
-        translator.params.add(name)
+        monad.add_param_extractors()
+    def add_param_extractors(monad):
+        name = monad.name
+        extractors = monad.translator.param_extractors
+        extractors[name] = lambda variables : variables[name]
     def getsql(monad):
         return [ [ PARAM, monad.name ] ]
 
@@ -360,11 +373,19 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
     def __init__(monad, translator, entity, name):
         if translator.diagram is not entity._diagram_: raise TranslationError(
             'All entities in a query must belong to the same diagram')
+        monad.params = [ '-'.join((name, path)) for path in entity._pk_paths_ ]
         ParamMonad.__init__(monad, translator, entity, name)
+    def add_param_extractors(monad):
+        name = monad.name
+        entity = monad.type
+        # translator.param_extractors[name] = lambda variables : variables[name]
         pk_len = len(entity._pk_columns_)
-        if pk_len == 1: monad.params = [ name ]
-        else: monad.params = [ '%s-%d' % (name, i+1) for i in range(pk_len) ]
-        translator.params.update(monad.params)
+        extractors = monad.translator.param_extractors
+        if pk_len == 1:
+            extractors[monad.params[0]] = lambda variables : variables[name]._raw_pkval_
+        else:
+            for i, param in enumerate(monad.params):
+                extractors[param] = lambda variables, i=i : variables[name]._raw_pkval_[i]
     def getattr(monad, name):
         raise NotImplementedError
     def getsql(monad):

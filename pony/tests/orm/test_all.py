@@ -8,6 +8,7 @@ from test_m2m import *
 from test_mapping import *
 from test_sqlast import *
 from test_inheritance import *
+from test_sqltranslator import *
 
 if __name__ == '__main__':
     unittest.main()
