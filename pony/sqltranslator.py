@@ -9,6 +9,8 @@ from pony.sqlsymbols import *
 
 class TranslationError(Exception): pass
 
+sql_cache = {}
+
 def select(gen):
     tree, external_names = decompile(gen)
     globals = gen.gi_frame.f_globals
@@ -18,20 +20,28 @@ def select(gen):
         try: value = locals[name]
         except KeyError: value = globals[name]
         variables[name] = value
-    
-    translator = SQLTranslator(tree, variables)  # TODO: variables -> types
-    entity = translator.entity
-    database = entity._diagram_.database
-    con, provider = database._get_connection()
-    sql_ast = translator.sql_ast
-    sql, adapter = provider.ast2sql(con, sql_ast)
-    attr_offsets = translator.attr_offsets
-    extractors = translator.param_extractors
+    vartypes = dict((name, get_normalized_type(value)) for name, value in variables.iteritems())
 
+    query_key = gen.gi_frame.f_code, tuple(sorted(vartypes.iteritems()))
+    cache_entry = sql_cache.get(query_key)
+    if cache_entry is None:
+        translator = SQLTranslator(tree, vartypes)
+        entity = translator.entity
+        database = entity._diagram_.database
+        con, provider = database._get_connection()
+        sql_ast = translator.sql_ast
+        sql, adapter = provider.ast2sql(con, sql_ast)
+        attr_offsets = translator.attr_offsets
+        extractors = translator.param_extractors
+        cache_entry = sql, entity, extractors, adapter, attr_offsets
+        sql_cache[query_key] = cache_entry
+    else:
+        sql, entity, extractors, adapter, attr_offsets = cache_entry
+        database = entity._diagram_.database
+    
     param_dict = {}
     for param_name, extractor in extractors.items():
         param_dict[param_name] = extractor(variables)
-
     arguments = adapter(param_dict)
     cursor = database._exec_sql(sql, arguments)
     objects = entity._fetch_objects(cursor, attr_offsets)
@@ -39,6 +49,12 @@ def select(gen):
 
 primitive_types = set([ int, unicode ])
 type_normalization_dict = { long : int, str : unicode, StrHtml : unicode, Html : unicode }
+
+def get_normalized_type(value):
+    if isinstance(value, orm.EntityMeta): return value
+    value_type = type(value)
+    if value_type is orm.EntityIter: return value.entity
+    return normalize_type(value_type)
 
 def normalize_type(t):
     if t is NoneType: return t
@@ -118,11 +134,11 @@ class ASTTranslator(object):
         pass
 
 class SQLTranslator(ASTTranslator):
-    def __init__(self, tree, variables):
+    def __init__(self, tree, vartypes):
         assert isinstance(tree, ast.GenExprInner)
         ASTTranslator.__init__(self, tree)
         self.diagram = None
-        self.variables = variables
+        self.vartypes = vartypes
         self.iterables = iterables = {}
         self.aliases = aliases = {}
         self.param_extractors = {}
@@ -141,10 +157,8 @@ class SQLTranslator(ASTTranslator):
 
             assert isinstance(qual.iter, ast.Name)
             iter_name = qual.iter.name
-            value = variables[iter_name] # can raise KeyError
-            if isinstance(value, orm.EntityIter): entity = value.entity
-            elif isinstance(value, orm.EntityMeta): entity = value
-            else: raise NotImplementedError
+            entity = vartypes[iter_name] # can raise KeyError
+            if not isinstance(entity, orm.EntityMeta): raise NotImplementedError
 
             if self.diagram is None: self.diagram = entity._diagram_
             elif self.diagram is not entity._diagram_: raise TranslationError(
@@ -201,10 +215,10 @@ class SQLTranslator(ASTTranslator):
             entity = self.iterables[name]
             node.monad = ObjectIterMonad(self, name, entity)
         else:
-            try: value = self.variables[name]
+            try: value_type = self.vartypes[name]
             except KeyError: raise NameError(name)
-            if value is None: node.monad = NoneMonad
-            else: node.monad = ParamMonad(self, type(value), name)
+            if value_type is NoneType: node.monad = NoneMonad
+            else: node.monad = ParamMonad(self, value_type, name)
     def postAdd(self, node):
         node.monad = node.left.monad + node.right.monad
     def postSub(self, node):
