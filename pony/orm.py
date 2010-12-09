@@ -1138,22 +1138,6 @@ class Entity(object):
             sql_ast.append(where_list)
         return sql_ast, values, attr_offsets
     @classmethod
-    def _parse_row_(entity, row, attr_offsets):
-        avdict = {}
-        for attr, i in attr_offsets.iteritems():
-            if attr.column is not None:
-                val = row[i]
-                if not attr.reverse: val = attr.check(val, None, entity)
-                else: val = attr.py_type._get_by_raw_pkval_((val,))
-            else:
-                if not attr.reverse: raise NotImplementedError
-                vals = row[i:i+len(attr.columns)]
-                val = attr.py_type._get_by_raw_pkval_(vals)
-            avdict[attr] = val
-        if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_, None)            
-        else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
-        return pkval, avdict
-    @classmethod
     def _find_in_db_(entity, avdict, max_rows_count=None):
         sql_ast, values, attr_offsets = entity._construct_sql_(avdict)
         return entity._find_by_ast_(sql_ast, values, attr_offsets, max_rows_count)
@@ -1196,6 +1180,22 @@ class Entity(object):
             obj._db_set_(avdict)
             objects.append(obj)
         return objects
+    @classmethod
+    def _parse_row_(entity, row, attr_offsets):
+        avdict = {}
+        for attr, i in attr_offsets.iteritems():
+            if attr.column is not None:
+                val = row[i]
+                if not attr.reverse: val = attr.check(val, None, entity)
+                else: val = attr.py_type._get_by_raw_pkval_((val,))
+            else:
+                if not attr.reverse: raise NotImplementedError
+                vals = row[i:i+len(attr.columns)]
+                val = attr.py_type._get_by_raw_pkval_(vals)
+            avdict[attr] = val
+        if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_, None)            
+        else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
+        return pkval, avdict
 
     @classmethod
     def _find_(entity, max_objects_count, args, keyargs):
