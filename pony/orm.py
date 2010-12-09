@@ -1113,16 +1113,14 @@ class Entity(object):
                 select_list.append([ COLUMN, alias, column ])
         return select_list, attr_offsets
     @classmethod
-    def _construct_sql_(entity, pkval, avdict=None):
+    def _construct_sql_(entity, avdict):
         table_name = entity._table_
         select_list, attr_offsets = entity._construct_select_clause_('T1')
         from_list = [ FROM, [ 'T1', TABLE, table_name ]]
 
         criteria_list = []
         values = []
-        if avdict is not None: items = avdict.items()
-        elif not entity._pk_is_composite_: items = [(entity._pk_, pkval)]
-        else: items = zip(entity._pk_attrs_, pkval)
+        items = avdict.items()
         for attr, val in items:
             if attr.reverse: val = val._raw_pkval_
             if attr.column is not None: pairs = [ (attr.column, val) ]
@@ -1156,8 +1154,8 @@ class Entity(object):
         else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
         return pkval, avdict
     @classmethod
-    def _find_in_db_(entity, pkval, avdict=None, max_rows_count=None):
-        sql_ast, values, attr_offsets = entity._construct_sql_(pkval, avdict)
+    def _find_in_db_(entity, avdict, max_rows_count=None):
+        sql_ast, values, attr_offsets = entity._construct_sql_(avdict)
         return entity._find_by_ast_(sql_ast, values, attr_offsets, max_rows_count)
     @classmethod
     def _find_by_ast_(entity, sql_ast, values, attr_offsets, max_rows_count=None):
@@ -1208,7 +1206,7 @@ class Entity(object):
         try:
             objects = [ entity._find_in_cache_(pkval, avdict) ]
         except KeyError:
-            objects = entity._find_in_db_(pkval, avdict, max_objects_count)
+            objects = entity._find_in_db_(avdict, max_objects_count)
         return objects        
     @classmethod
     def find_one(entity, *args, **keyargs):
