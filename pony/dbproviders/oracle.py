@@ -8,13 +8,6 @@ from pony import dbapiprovider
 
 paramstyle = 'named'
 
-class Param(dbapiprovider.Param):
-    def __unicode__(self):
-        return ':p%d' % self.param_key
-
-class OracleBuilder(dbapiprovider.SQLBuilder):
-    param = Param
-    
 def quote_name(connection, name):
     return dbapiprovider.quote_name(name, "`")
 
@@ -25,6 +18,5 @@ def release(connection):
     connection.close()
 
 def ast2sql(con, ast):
-    b = OracleBuilder(ast)
-    param_names = [ 'p%d' % i for i in b.layout ]
-    return str(b.sql), dbapiprovider.dict_adapter_factory(param_names)
+    b = dbapiprovider.SQLBuilder(ast, paramstyle)
+    return str(b.sql), b.adapter

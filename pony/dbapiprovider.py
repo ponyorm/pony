@@ -1,4 +1,5 @@
 import sys, threading
+from operator import attrgetter
 
 from pony.sqlsymbols import *
 
@@ -11,18 +12,21 @@ def quote_name(name, quote_char='"'):
 class AstError(Exception): pass
 
 class Param(object):
-    __slots__ = 'param_key',
-    def __init__(self, param_key):
-        self.param_key = param_key
-    def __hash__(self):
-        return hash(self.param_key)
-    def __cmp__(self, other):
-        if other.__class__ is not Param: return NotImplemented
-        return cmp(self.param_key, other.param_key)
-    def __unicode__(self):
-        return u'?'
-    def __repr__(self):
-        return '%s(%d)' % (self.__class__.__name__, self.param_key)
+    __slots__ = 'style', 'id', 'key',
+    def __init__(param, paramstyle, id, key):
+        param.style = paramstyle
+        param.id = id
+        param.key = key
+    def __unicode__(param):
+        paramstyle = param.style
+        if paramstyle == 'qmark': return u'?'
+        elif paramstyle == 'format': return u'%s'
+        elif paramstyle == 'numeric': return u':%d' % param.id
+        elif paramstyle == 'named': return u':p%d' % param.id
+        elif paramstyle == 'pyformat': return u'%%(p%d)s' % param.id
+        else: raise NotImplementedError
+    def __repr__(param):
+        return '%s(%d)' % (param.__class__.__name__, param.key)
 
 class Value(object):
     __slots__ = 'value',
@@ -65,14 +69,30 @@ def binary_op(symbol):
     return _binary_op
 
 class SQLBuilder(object):
-    param = Param
+    make_param = Param
     value = Value
-    def __init__(self, ast, quote_char='"'):
+    def __init__(self, ast, paramstyle='qmark', quote_char='"'):
         self.ast = ast
+        self.paramstyle = paramstyle
         self.quote_char = quote_char
+        self.keys = {}
         self.result = flat(self(ast))
         self.sql = u''.join(map(unicode, self.result))
-        self.layout = tuple(x.param_key for x in self.result if isinstance(x, self.param))
+        if paramstyle in ('qmark', 'format'):
+            layout = tuple(x.key for x in self.result if isinstance(x, Param))
+            def adapter(values):
+                return tuple(map(values.__getitem__, layout))
+        elif paramstyle in ('named', 'pyformat'):
+            layout = tuple(param.key for param in sorted(self.keys.itervalues(), key=attrgetter('id')))
+            def adapter(values):
+                return dict(('p%d'%(i+1), values[key]) for i, key in enumerate(layout))
+        elif paramstyle == 'numeric':
+            layout = tuple(param.key for param in sorted(self.keys.itervalues(), key=attrgetter('id')))
+            def adapter(values):
+                return tuple(map(values.__getitem__, layout))
+        else: raise NotImplementedError
+        self.layout = layout
+        self.adapter = adapter 
     def __call__(self, ast):
         if isinstance(ast, basestring):
             raise AstError('An SQL AST list was expected. Got string: %r' % ast)
@@ -167,7 +187,12 @@ class SQLBuilder(object):
         if table_alias: return [ '%s.%s' % (self.quote_name(table_alias), self.quote_name(col_name)) ]
         else: return [ '%s' % (self.quote_name(col_name)) ]
     def PARAM(self, key):
-        return [ self.param(key) ]
+        keys = self.keys
+        param = keys.get(key)
+        if param is None:
+            param = Param(self.paramstyle, len(keys) + 1, key)
+            keys[key] = param
+        return [ param ]
     def VALUE(self, value):
         return [ self.value(value) ]
     def AND(self, *cond_list):
@@ -243,17 +268,5 @@ class SQLBuilder(object):
     def AVG(self, expr):
         return 'AVG(', self(expr), ')'
 
-
-def tuple_adapter_factory(layout):
-    def tuple_adapter(values):
-        return tuple(map(values.__getitem__, layout))
-    return tuple_adapter
-
-def dict_adapter_factory(layout):
-    def dict_adapter(values):
-        return dict(zip(layout, values))
-    return dict_adapter
-
-make_adapter = tuple_adapter_factory
 
         

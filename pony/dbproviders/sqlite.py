@@ -29,4 +29,4 @@ def release(connection):
 
 def ast2sql(con, ast):
     b = dbapiprovider.SQLBuilder(ast)
-    return b.sql, dbapiprovider.make_adapter(b.layout)
+    return b.sql, b.adapter

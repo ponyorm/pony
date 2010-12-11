@@ -105,11 +105,11 @@ def adapt_sql(sql, paramstyle):
                 args.append(expr)
                 result.append(':%d' % len(args))
             elif paramstyle == 'named':
-                key = 'param%d' % (len(keyargs) + 1)
+                key = 'p%d' % (len(keyargs) + 1)
                 keyargs[key] = expr
                 result.append(':' + key)
             elif paramstyle == 'pyformat':
-                key = 'param%d' % (len(keyargs) + 1)
+                key = 'p%d' % (len(keyargs) + 1)
                 keyargs[key] = expr
                 result.append('%%(%s)s' % key)
             else: raise NotImplementedError

@@ -20,5 +20,5 @@ def release(connection):
 
 def ast2sql(connection, ast):
     quote_char = connection.getinfo(pyodbc.SQL_IDENTIFIER_QUOTE_CHAR)
-    b = dbapiprovider.SQLBuilder(ast, quote_char)
-    return b.sql, dbapiprovider.make_adapter(b.layout)
+    b = dbapiprovider.SQLBuilder(ast, paramstyle, quote_char)
+    return b.sql, b.adapter

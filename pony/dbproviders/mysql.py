@@ -8,13 +8,6 @@ from pony import dbapiprovider
 
 paramstyle = 'format'
 
-class Param(dbapiprovider.Param):
-    def __unicode__(self):
-        return u'%s'
-
-class MySQLBuilder(dbapiprovider.SQLBuilder):
-    param = Param
-
 def quote_name(connection, name):
     return dbapiprovider.quote_name(name, "`")
 
@@ -25,6 +18,6 @@ def release(connection):
     connection.close()
 
 def ast2sql(con, ast):
-    b = MySQLBuilder(ast, "`")
-    return b.sql, dbapiprovider.make_adapter(b.layout)
+    b = dbapiprovider.SQLBuilder(ast, paramstyle, "`")
+    return b.sql, b.adapter
 
