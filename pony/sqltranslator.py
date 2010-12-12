@@ -68,7 +68,7 @@ def is_comparable_types(op, t1, t2):
 def is_comparable_types(op, type1, type2):
     # op: '<' | '>' | '=' | '>=' | '<=' | '<>' | '!=' | '=='
     #         | 'in' | 'not' 'in' | 'is' | 'is' 'not'
-    if op in ('is', 'is not'): return type1 is not NonType and type2 is NoneType
+    if op in ('is', 'is not'): return type1 is not NoneType and type2 is NoneType
     if op in ('<', '<=', '>', '>='): return type1 is type2 and type1 in primitive_types
     if op in ('==', '<>', '!='):
         if type1 is NoneType and type2 is NoneType: return False
