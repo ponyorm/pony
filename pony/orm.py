@@ -153,7 +153,7 @@ class Attribute(object):
         if not attr.columns:
             reverse = attr.reverse
             assert reverse is not None and reverse.columns
-            objects = reverse.entity._find_in_db_(None, { reverse : obj }, 1)
+            objects = reverse.entity._find_in_db_({reverse : obj}, 1)
             assert len(objects) == 1
             return objects[0]
         obj._load_()
@@ -1102,7 +1102,7 @@ class Entity(object):
             return obj
         raise KeyError
     def _load_(obj):
-        objects = obj._find_in_db_(obj._pkval_)
+        objects = obj._find_in_db_({obj.__class__._pk_ :obj._pkval_})
         if not objects: raise UnrepeatableReadError('%s disappeared' % obj)
         assert len(objects) == 1 and obj == objects[0]
     @classmethod
