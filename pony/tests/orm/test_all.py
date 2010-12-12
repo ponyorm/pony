@@ -10,6 +10,7 @@ from test_sqlast import *
 from test_inheritance import *
 from test_sqltranslator import *
 from test_crud import *
+from test_formatstyles import *
 
 if __name__ == '__main__':
     unittest.main()
