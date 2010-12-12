@@ -217,7 +217,7 @@ class SQLTranslator(ASTTranslator):
         else:
             try: value_type = self.vartypes[name]
             except KeyError: raise NameError(name)
-            if value_type is NoneType: node.monad = NoneMonad
+            if value_type is NoneType: node.monad = NoneMonad(self)
             else: node.monad = ParamMonad(self, value_type, name)
     def postAdd(self, node):
         node.monad = node.left.monad + node.right.monad
