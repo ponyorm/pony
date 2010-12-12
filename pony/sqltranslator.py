@@ -375,13 +375,13 @@ class ParamMonad(Monad):
         type = normalize_type(type)
         Monad.__init__(monad, translator, type)
         monad.name = name
+    def getsql(monad):
         monad.add_param_extractors()
+        return [ [ PARAM, monad.name ] ]
     def add_param_extractors(monad):
         name = monad.name
         extractors = monad.translator.param_extractors
         extractors[name] = lambda variables : variables[name]
-    def getsql(monad):
-        return [ [ PARAM, monad.name ] ]
 
 class ObjectParamMonad(ObjectMixin, ParamMonad):
     def __init__(monad, translator, entity, name):
@@ -389,10 +389,14 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
             'All entities in a query must belong to the same diagram')
         monad.params = [ '-'.join((name, path)) for path in entity._pk_paths_ ]
         ParamMonad.__init__(monad, translator, entity, name)
+    def getattr(monad, name):
+        raise NotImplementedError
+    def getsql(monad):
+        monad.add_param_extractors()
+        return [ [ PARAM, param ] for param in monad.params ]
     def add_param_extractors(monad):
         name = monad.name
         entity = monad.type
-        # translator.param_extractors[name] = lambda variables : variables[name]
         pk_len = len(entity._pk_columns_)
         extractors = monad.translator.param_extractors
         if pk_len == 1:
@@ -400,10 +404,6 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
         else:
             for i, param in enumerate(monad.params):
                 extractors[param] = lambda variables, i=i : variables[name]._raw_pkval_[i]
-    def getattr(monad, name):
-        raise NotImplementedError
-    def getsql(monad):
-        return [ [ PARAM, param ] for param in monad.params ]
 
 class StringParamMonad(StringMixin, ParamMonad): pass
 class NumericParamMonad(NumericMixin, ParamMonad): pass
