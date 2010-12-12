@@ -363,7 +363,7 @@ class NumericAttrMonad(NumericMixin, AttrMonad): pass
 class StringAttrMonad(StringMixin, AttrMonad): pass
 
 class ParamMonad(Monad):
-    def __new__(cls, translator, type, name):
+    def __new__(cls, translator, type, name, parent=None):
         assert cls is ParamMonad
         type = normalize_type(type)
         if type is int: cls = NumericParamMonad
@@ -371,39 +371,42 @@ class ParamMonad(Monad):
         elif isinstance(type, orm.EntityMeta): cls = ObjectParamMonad
         else: assert False
         return object.__new__(cls)
-    def __init__(monad, translator, type, name):
+    def __init__(monad, translator, type, name, parent=None):
         type = normalize_type(type)
         Monad.__init__(monad, translator, type)
         monad.name = name
+        monad.parent = parent
+        if parent is None: monad.extractor = lambda variables : variables[name]
+        else: monad.extractor = lambda variables : getattr(parent.extractor(variables), name)
     def getsql(monad):
         monad.add_param_extractors()
         return [ [ PARAM, monad.name ] ]
     def add_param_extractors(monad):
         name = monad.name
         extractors = monad.translator.param_extractors
-        extractors[name] = lambda variables : variables[name]
+        extractors[name] = monad.extractor
 
 class ObjectParamMonad(ObjectMixin, ParamMonad):
-    def __init__(monad, translator, entity, name):
+    def __init__(monad, translator, entity, name, parent=None):
         if translator.diagram is not entity._diagram_: raise TranslationError(
             'All entities in a query must belong to the same diagram')
         monad.params = [ '-'.join((name, path)) for path in entity._pk_paths_ ]
-        ParamMonad.__init__(monad, translator, entity, name)
+        ParamMonad.__init__(monad, translator, entity, name, parent)
     def getattr(monad, name):
-        raise NotImplementedError
+        entity = monad.type
+        attr = entity._adict_[name]
+        return ParamMonad(monad.translator, attr.py_type, name, monad)
     def getsql(monad):
         monad.add_param_extractors()
         return [ [ PARAM, param ] for param in monad.params ]
     def add_param_extractors(monad):
-        name = monad.name
         entity = monad.type
-        pk_len = len(entity._pk_columns_)
         extractors = monad.translator.param_extractors
-        if pk_len == 1:
-            extractors[monad.params[0]] = lambda variables : variables[name]._raw_pkval_
+        if not entity._raw_pk_is_composite_:
+            extractors[monad.params[0]] = lambda variables, extractor=monad.extractor : extractor(variables)._raw_pkval_
         else:
             for i, param in enumerate(monad.params):
-                extractors[param] = lambda variables, i=i : variables[name]._raw_pkval_[i]
+                extractors[param] = lambda variables, i=i, extractor=monad.extractor : extractor(variables)._raw_pkval_[i]
 
 class StringParamMonad(StringMixin, ParamMonad): pass
 class NumericParamMonad(NumericMixin, ParamMonad): pass
