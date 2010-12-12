@@ -1118,7 +1118,7 @@ class Entity(object):
                 select_list.append([ COLUMN, alias, column ])
         return select_list, attr_offsets
     @classmethod
-    def _construct_sql_(entity, attrs):
+    def _construct_sql_(entity, query_key):
         table_name = entity._table_
         select_list, attr_offsets = entity._construct_select_clause_()
         from_list = [ FROM, [ None, TABLE, table_name ]]
@@ -1126,22 +1126,29 @@ class Entity(object):
         criteria_list = [ AND ]
         values = []
         extractors = {}
-        for attr in attrs:
+        for attr, attr_is_none in query_key:
             if not attr.reverse:
-                criteria_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name ]])
-                extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]
+                if not attr_is_none:
+                    criteria_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name ]])
+                    extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]
+                else: criteria_list.append([IS_NULL, [COLUMN, None, attr.column]])
             elif not attr.columns: raise NotImplementedError
             else:
                 attr_entity = attr.py_type
                 assert attr_entity == attr.reverse.entity
                 if not attr_entity._raw_pk_is_composite_:
-                    criteria_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name ]])
-                    extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]._raw_pkval_
-                else:
+                    if not attr_is_none:
+                        criteria_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name ]])
+                        extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]._raw_pkval_
+                    else: criteria_list.append([IS_NULL, [COLUMN, None, attr.column]])
+                elif not attr_is_none:
                     for i, column in enumerate(attr_entity._pk_columns_):
                         param_name = '%s-%d' % (attr.name, i+1)
                         criteria_list.append([EQ, [COLUMN, None, column], [ PARAM, param_name ]])
                         extractors[param_name] = lambda avdict, attr=attr, i=i: avdict[attr]._raw_pkval_[i]
+                else:
+                    for column in attr_entity._pk_columns_:
+                        criteria_list.append([IS_NULL, [COLUMN, None, column]])
 
         sql_ast = [ SELECT, select_list, from_list ]
         if len(criteria_list) > 1:
@@ -1155,7 +1162,7 @@ class Entity(object):
     @classmethod
     def _find_in_db_(entity, avdict, max_rows_count=None):
         if avdict is None: query_key = None
-        else: query_key = frozenset(avdict)
+        else: query_key = tuple((attr, value is None) for attr, value in sorted(avdict.iteritems()))
         database = entity._diagram_.database
         cache = entity._find_cache_
         cache_entry = cache.get(query_key)
