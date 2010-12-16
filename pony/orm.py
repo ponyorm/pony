@@ -402,7 +402,7 @@ class PrimaryKey(Unique):
 
 
 class Collection(Attribute):
-    __slots__ = 'table'
+    __slots__ = 'table', 'cached_sql'
     def __init__(attr, py_type, *args, **keyargs):
         if attr.__class__ is Collection: raise TypeError("'Collection' is abstract type")
         table = keyargs.pop('table', None)  # TODO: rename table to link_table or m2m_table
@@ -412,6 +412,7 @@ class Collection(Attribute):
         Attribute.__init__(attr, py_type, *args, **keyargs)
         if attr.default is not None: raise TypeError('default value could not be set for collection attribute')
         if attr.auto: raise TypeError("'auto' option could not be set for collection attribute")
+        attr.cached_sql = None
     def load(attr, obj):
         assert False, 'Abstract method'
     def __get__(attr, obj, type=None):
@@ -466,14 +467,21 @@ class Set(Collection):
         if setdata is not NOT_LOADED and setdata.is_fully_loaded: return setdata
         reverse = attr.reverse
         if reverse is None: raise NotImplementedError
-        assert issubclass(reverse.py_type, Entity)
         if setdata is NOT_LOADED: setdata = obj.__dict__[attr] = SetData()
         if not reverse.is_collection:
             reverse.entity._find_(None, (), {reverse.name:obj})
         else:
-            sql_ast, values = attr.construct_sql_m2m(obj)
             database = obj._diagram_.database
-            cursor = database._exec_ast(sql_ast, values)
+            if attr.cached_sql is None:
+                sql_ast = attr.construct_sql_m2m()
+                con, provider = database._get_connection()
+                sql, adapter = provider.ast2sql(con, sql_ast)
+                attr.cached_sql = sql, adapter
+            else: sql, adapter = attr.cached_sql
+            if obj._raw_pk_is_composite_: values = obj._raw_pkval_
+            else: values = [ obj._raw_pkval_ ]
+            arguments = adapter(values)
+            cursor = database._exec_sql(sql, arguments)
             items = []
             for row in cursor.fetchall():
                 item = attr.py_type._get_by_raw_pkval_(row)
@@ -484,7 +492,7 @@ class Set(Collection):
             reverse.db_reverse_add(items, obj)
         setdata.is_fully_loaded = True
         return setdata
-    def construct_sql_m2m(attr, obj):
+    def construct_sql_m2m(attr):
         reverse = attr.reverse
         assert reverse is not None and reverse.is_collection and issubclass(reverse.py_type, Entity)
         table_name = attr.table
@@ -493,20 +501,11 @@ class Set(Collection):
         for column in attr.columns:
             select_list.append([COLUMN, 'T1', column ])
         from_list = [ FROM, [ 'T1', TABLE, table_name ]]
-        criteria_list = []
-        values = []
-        raw_pkval = obj._calculate_raw_pkval_()
-        if not obj._raw_pk_is_composite_: raw_pkval = [ raw_pkval ]
-        for column, val in zip(reverse.columns, raw_pkval):
-            criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, len(values) ]])
-            values.append(val)
-        sql_ast = [ SELECT, select_list, from_list ]
-        if criteria_list:
-            where_list = [ WHERE ]
-            if len(criteria_list) == 1: where_list.append(criteria_list[0])
-            else: where_list.append([ AND ] + criteria_list)
-            sql_ast.append(where_list)
-        return sql_ast, values
+        criteria_list = [ AND ]
+        for i, column in enumerate(reverse.columns):
+            criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, i ]])
+        sql_ast = [ SELECT, select_list, from_list, [ WHERE, criteria_list ] ]
+        return sql_ast
     def copy(attr, obj):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         setdata = obj.__dict__.get(attr, NOT_LOADED)
