@@ -1557,7 +1557,6 @@ class Entity(object):
         
         if status == 'created':
             entity = obj.__class__
-            database = entity._diagram_.database
             if entity._cached_create_sql_ is None:
                 sql_ast = [ INSERT, obj._table_, columns, params ]
                 sql, adapter = database._ast2sql(sql_ast)
