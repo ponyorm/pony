@@ -31,10 +31,14 @@ class Mark(Entity):
     PrimaryKey(student, subject)
 
 db = Database('sqlite', ':memory:')
-path = os.path.split(__file__)[0]
-script_filename = os.path.join(path, 'model1-database.sql')
-script_sql = file(script_filename).read()
-db.get_connection().executescript(script_sql)
-db.commit()
+
+def prepare_database():
+    path = os.path.split(__file__)[0]
+    script_filename = os.path.join(path, 'model1-database.sql')
+    script_sql = file(script_filename).read()
+    db.get_connection().executescript(script_sql)
+    db.commit()
+prepare_database()
+    
 generate_mapping(db, check_tables=True)
 

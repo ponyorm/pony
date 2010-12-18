@@ -474,8 +474,7 @@ class Set(Collection):
             database = obj._diagram_.database
             if attr.cached_sql is None:
                 sql_ast = attr.construct_sql_m2m()
-                con, provider = database._get_connection()
-                sql, adapter = provider.ast2sql(con, sql_ast)
+                sql, adapter = database._ast2sql(sql_ast)
                 attr.cached_sql = sql, adapter
             else: sql, adapter = attr.cached_sql
             if obj._raw_pk_is_composite_: values = obj._raw_pkval_
@@ -881,8 +880,9 @@ class Entity(object):
         entity._diagram_ = diagram
         diagram.entities[entity.__name__] = entity
         entity._link_reverse_attrs_()
+
+        entity._cached_create_sql_ = None
         entity._find_cache_ = {}
-        entity._insert_cache_ = {}
         entity._update_cache_ = {}
     @classmethod
     def _link_reverse_attrs_(entity):
@@ -1166,9 +1166,8 @@ class Entity(object):
         cache = entity._find_cache_
         cache_entry = cache.get(query_key)
         if cache_entry is None:
-            con, provider = database._get_connection()
             sql_ast, extractor, attr_offsets = entity._construct_sql_(query_key)
-            sql, adapter = provider.ast2sql(con, sql_ast)
+            sql, adapter = database._ast2sql(sql_ast)
             cache_entry = sql, extractor, adapter, attr_offsets
             cache[query_key] = cache_entry
         else:
@@ -1557,9 +1556,16 @@ class Entity(object):
                     values.append(val)
         
         if status == 'created':
-            ast = [ INSERT, obj._table_, columns, params ]
+            entity = obj.__class__
+            database = entity._diagram_.database
+            if entity._cached_create_sql_ is None:
+                sql_ast = [ INSERT, obj._table_, columns, params ]
+                sql, adapter = database._ast2sql(sql_ast)
+                entity._cached_create_sql_ = sql, adapter
+            else: sql, adapter = entity._cached_create_sql_
+            arguments = adapter(values)
             try:
-                cursor = database._exec_ast(ast, values)
+                cursor = database._exec_sql(sql, arguments)
             except database.IntegrityError:
                 raise IntegrityError('Object %r already exists in the database' % obj)
             except database.DatabaseError:

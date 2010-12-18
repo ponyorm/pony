@@ -226,6 +226,10 @@ class Database(object):
         ast = [ INSERT, table_name, keyargs.keys(), [ [PARAM, i] for i in range(len(keyargs)) ] ]
         cursor = self._exec_ast(ast, keyargs.values())
         return getattr(cursor, 'lastrowid', None)
+    def _ast2sql(self, sql_ast):
+        con, provider = self._get_connection()
+        sql, adapter = provider.ast2sql(con, sql_ast)
+        return sql, adapter
     def _exec_ast(self, ast, values=[]):
         con, provider = self._get_connection()
         sql, adapter = provider.ast2sql(con, ast)
