@@ -250,6 +250,15 @@ class Database(object):
             print
         wrap_dbapi_exceptions(provider, cursor.execute, sql, arguments)
         return cursor
+    def exec_sql_many(self, sql, arguments_list):
+        con, provider = self._get_connection()
+        cursor = con.cursor()
+        if debug:
+            print 'EXECUTEMANY', sql
+            print arguments_list
+            print
+        wrap_dbapi_exceptions(provider, cursor.executemany, sql, arguments_list)
+        return cursor
 
 Database.Warning = Warning
 Database.Error = Error
