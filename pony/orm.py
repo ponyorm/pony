@@ -402,7 +402,7 @@ class PrimaryKey(Unique):
 
 
 class Collection(Attribute):
-    __slots__ = 'table', 'cached_sql'
+    __slots__ = 'table', 'cached_load_sql', 'cached_add_m2m_sql', 'cached_remove_m2m_sql'
     def __init__(attr, py_type, *args, **keyargs):
         if attr.__class__ is Collection: raise TypeError("'Collection' is abstract type")
         table = keyargs.pop('table', None)  # TODO: rename table to link_table or m2m_table
@@ -412,7 +412,10 @@ class Collection(Attribute):
         Attribute.__init__(attr, py_type, *args, **keyargs)
         if attr.default is not None: raise TypeError('default value could not be set for collection attribute')
         if attr.auto: raise TypeError("'auto' option could not be set for collection attribute")
-        attr.cached_sql = None
+
+        attr.cached_load_sql = None
+        attr.cached_add_m2m_sql = None
+        attr.cached_remove_m2m_sql = None
     def load(attr, obj):
         assert False, 'Abstract method'
     def __get__(attr, obj, type=None):
@@ -472,11 +475,11 @@ class Set(Collection):
             reverse.entity._find_(None, (), {reverse.name:obj})
         else:
             database = obj._diagram_.database
-            if attr.cached_sql is None:
+            if attr.cached_load_sql is None:
                 sql_ast = attr.construct_sql_m2m()
                 sql, adapter = database._ast2sql(sql_ast)
-                attr.cached_sql = sql, adapter
-            else: sql, adapter = attr.cached_sql
+                attr.cached_load_sql = sql, adapter
+            else: sql, adapter = attr.cached_load_sql
             if obj._raw_pk_is_composite_: values = obj._raw_pkval_
             else: values = [ obj._raw_pkval_ ]
             arguments = adapter(values)
@@ -638,21 +641,41 @@ class Set(Collection):
         attr._columns_checked = True
         return reverse.columns
     def remove_m2m(attr, removed):
-        reverse = attr.reverse
-        table = attr.table
-        assert table is not None
-        criteria_list = [ AND ]
-        for i, column in enumerate(reverse.columns + attr.columns):
-            criteria_list.append([ EQ, [COLUMN, None, column], [PARAM, i] ])
-        sql_ast = [ DELETE, table, [ WHERE, criteria_list ] ]
-        database = attr.entity._diagram_.database
-        for obj, robj in removed:
-            values = []
-            if not obj._pk_is_composite_: values.append(obj._pkval_)
-            else: values.extend(obj._pkval_)
-            if not robj._pk_is_composite_: values.append(robj._pkval_)
-            else: values.extend(robj._pkval_)
-            database._exec_ast(sql_ast, values)
+        entity = attr.entity
+        database = entity._diagram_.database
+        cached_sql = attr.cached_remove_m2m_sql
+        if cached_sql is None:
+            reverse = attr.reverse
+            table = attr.table
+            assert table is not None
+            criteria_list = [ AND ]
+            for i, column in enumerate(reverse.columns + attr.columns):
+                criteria_list.append([ EQ, [COLUMN, None, column], [PARAM, i] ])
+            sql_ast = [ DELETE, table, [ WHERE, criteria_list ] ]
+            sql, adapter = database._ast2sql(sql_ast)
+            rentity = reverse.entity
+            if not entity._raw_pk_is_composite_ and not rentity._raw_pk_is_composite_:
+                def transformer(pairs, adapter=adapter):
+                    for obj, robj in pairs:
+                        yield adapter((obj._raw_pkval_, robj._raw_pkval_))
+            elif not entity._raw_pk_is_composite_ and rentity._raw_pk_is_composite_:
+                def transformer(pairs, adapter=adapter):
+                    for obj, robj in pairs:
+                        yield adapter((obj._raw_pkval_,)+robj._raw_pkval_)
+            elif entity._raw_pk_is_composite_ and not rentity._raw_pk_is_composite_:
+                def transformer(pairs, adapter=adapter):
+                    for obj, robj in pairs:
+                        yield adapter(obj._raw_pkval_+(robj._raw_pkval_,))
+            elif entity._raw_pk_is_composite_ and rentity._raw_pk_is_composite_:
+                def transformer(pairs, adapter=adapter):
+                    for obj, robj in pairs:
+                        yield adapter(obj._raw_pkval_+robj._raw_pkval_)
+            else: assert False
+            cached_sql = sql, transformer
+            attr.cached_remove_m2m_sql = cached_sql
+        else: sql, transformer = cached_sql
+        arguments_list = list(transformer(removed))
+        database.exec_sql_many(sql, arguments_list)
     def add_m2m(attr, added):
         reverse = attr.reverse
         table = attr.table
