@@ -637,6 +637,40 @@ class Set(Collection):
                 reverse.columns = [ prefix + column for column in columns ]
         attr._columns_checked = True
         return reverse.columns
+    def remove_m2m(attr, removed):
+        reverse = attr.reverse
+        table = attr.table
+        assert table is not None
+        criteria_list = [ AND ]
+        for i, column in enumerate(reverse.columns + attr.columns):
+            criteria_list.append([ EQ, [COLUMN, None, column], [PARAM, i] ])
+        sql_ast = [ DELETE, table, [ WHERE, criteria_list ] ]
+        database = attr.entity._diagram_.database
+        for obj, robj in removed:
+            values = []
+            if not obj._pk_is_composite_: values.append(obj._pkval_)
+            else: values.extend(obj._pkval_)
+            if not robj._pk_is_composite_: values.append(robj._pkval_)
+            else: values.extend(robj._pkval_)
+            database._exec_ast(sql_ast, values)
+    def add_m2m(attr, added):
+        reverse = attr.reverse
+        table = attr.table
+        assert table is not None
+        columns = []
+        values = []
+        for i, column in enumerate(reverse.columns + attr.columns):
+            columns.append(column)
+            values.append([PARAM, i])
+        sql_ast = [ INSERT, table, columns, values ]
+        database = attr.entity._diagram_.database
+        for obj, robj in added:
+            values = []
+            if not obj._pk_is_composite_: values.append(obj._pkval_)
+            else: values.extend(obj._pkval_)
+            if not robj._pk_is_composite_: values.append(robj._pkval_)
+            else: values.extend(robj._pkval_)
+            database._exec_ast(sql_ast, values)
 
 ##class List(Collection): pass
 ##class Dict(Collection): pass
@@ -1732,45 +1766,19 @@ class Transaction(object):
                 for obj2 in setdata.added: added.add((obj, obj2))
                 for obj2 in setdata.removed: removed.add((obj, obj2))
         if len(databases) > 1: raise NotImplementedError
-        database = databases.pop()
-        trans.remove_m2m(database, modified_m2m)
+        trans.remove_m2m(modified_m2m)
         for obj in trans.to_be_checked: obj._save_()
-        trans.add_m2m(database, modified_m2m)
+        trans.add_m2m(modified_m2m)
+        database = databases.pop()
         database.commit()
-    def remove_m2m(trans, database, modified_m2m):
+    def remove_m2m(trans, modified_m2m):
         for attr, (added, removed) in modified_m2m.iteritems():
-            reverse = attr.reverse
-            table = attr.table
-            assert table is not None
-            criteria_list = [ AND ]
-            for i, column in enumerate(reverse.columns + attr.columns):
-                criteria_list.append([ EQ, [COLUMN, None, column], [PARAM, i] ])
-            sql_ast = [ DELETE, table, [ WHERE, criteria_list ] ]
-            for obj, robj in removed:
-                values = []
-                if not obj._pk_is_composite_: values.append(obj._pkval_)
-                else: values.extend(obj._pkval_)
-                if not robj._pk_is_composite_: values.append(robj._pkval_)
-                else: values.extend(robj._pkval_)
-                database._exec_ast(sql_ast, values)
-    def add_m2m(trans, database, modified_m2m):
+            if not removed: continue
+            attr.remove_m2m(removed)
+    def add_m2m(trans, modified_m2m):
         for attr, (added, removed) in modified_m2m.iteritems():
-            reverse = attr.reverse
-            table = attr.table
-            assert table is not None
-            columns = []
-            values = []
-            for i, column in enumerate(reverse.columns + attr.columns):
-                columns.append(column)
-                values.append([PARAM, i])
-            sql_ast = [ INSERT, table, columns, values ]
-            for obj, robj in added:
-                values = []
-                if not obj._pk_is_composite_: values.append(obj._pkval_)
-                else: values.extend(obj._pkval_)
-                if not robj._pk_is_composite_: values.append(robj._pkval_)
-                else: values.extend(robj._pkval_)
-                database._exec_ast(sql_ast, values)
+            if not added: continue
+            attr.add_m2m(added)
     def update_simple_index(trans, obj, attr, prev, val, undo):
         index = trans.indexes.get(attr)
         if index is None: index = trans.indexes[attr] = {}
