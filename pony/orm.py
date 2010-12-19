@@ -1745,6 +1745,12 @@ class Diagram(object):
                 else:
                     for column in attr.get_columns()[0]:
                         table.add_column(column, attr.pk_offset is not None)
+            columns = []
+            for attr in entity._attrs_:
+                if attr.is_collection: continue
+                columns.extend(attr.columns)  # todo: inheritance
+            entity._columns_ = columns
+            
         if not check_tables: return
         for table in mapping.tables.values():
             sql_ast = [ SELECT,
