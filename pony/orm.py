@@ -1676,7 +1676,6 @@ class Entity(object):
             values.extend(attr.get_raw_values(old))
         query_key = (tuple(update_columns), tuple(optimistic_check_columns))
         database = entity._diagram_.database
-        print query_key
         cached_sql = entity._update_cache_.get(query_key)
         if cached_sql is None:
             update_params = [ [PARAM, i] for i in xrange(len(update_columns)) ]
@@ -1688,9 +1687,7 @@ class Entity(object):
             sql_ast = [ UPDATE, entity._table_, zip(update_columns, update_params), [ WHERE, criteria_list ] ]
             sql, adapter = database._ast2sql(sql_ast)
             entity._update_cache_[query_key] = sql, adapter
-        else:
-            print 'CACHED!!!'
-            sql, adapter = cached_sql
+        else: sql, adapter = cached_sql
         arguments = adapter(values)
         cursor = database._exec_sql(sql, arguments)
         if cursor.rowcount != 1:
