@@ -308,15 +308,15 @@ class Attribute(object):
         else: raise NotImplementedError
     def __delete__(attr, obj):
         raise NotImplementedError
-    def append_criteria(attr, val, criteria_list, values, table_alias=None):
-        if attr.reverse: val = val._raw_pkval_
-        if attr.column is not None: pairs = [ (attr.column, val) ]
-        else:
-            assert len(attr.columns) == len(val)
-            pairs = zip(attr.columns, val)
-        for column, val in pairs:
-            criteria_list.append([EQ, [COLUMN, table_alias, column], [ PARAM, len(values) ] ])
-            values.append(val)
+    def get_raw_values(attr, val):
+        reverse = attr.reverse
+        if not reverse: return (val,)
+        rentity = reverse.entity
+        if not rentity._raw_pk_is_composite_:
+            if val is None: return (None,)
+            return (val._raw_pkval_,)
+        if val is None: return rentity._pk_nones_
+        return val._raw_pkval_       
     def get_columns(attr):
         assert not attr.is_collection
         assert not isinstance(attr.py_type, basestring)
@@ -396,6 +396,12 @@ class Unique(Required):
             for i, attr in enumerate(attrs): attr.composite_keys.append((attrs, i))
         keys[attrs] = is_pk
         return None
+
+def populate_criteria_list(criteria_list, columns, params_count=0, table_alias=None):
+    for i in xrange(len(columns)):
+        criteria_list.append([EQ, [COLUMN, table_alias, columns[i]], [ PARAM, params_count ] ])
+        params_count += 1
+    return params_count
 
 class PrimaryKey(Unique):
     __slots__ = []
@@ -922,11 +928,6 @@ class Entity(object):
         entity._attrs_ = base_attrs + new_attrs
         entity._adict_ = dict((attr.name, attr) for attr in entity._attrs_)
         entity._required_attrs_ = [ attr for attr in entity._attrs_ if attr.is_required ]
-        entity._bits_ = {}
-        next_offset = count().next
-        for attr in entity._attrs_:
-            if attr.is_collection or attr.pk_offset is not None: continue
-            entity._bits_[attr] = 1 << next_offset()
 
         try: table_name = entity.__dict__['_table_']
         except KeyError: entity._table_ = None
@@ -1014,6 +1015,7 @@ class Entity(object):
             pk_columns.extend(attr_columns)
             pk_paths.extend(attr_col_paths)
         entity._pk_columns_ = pk_columns
+        entity._pk_nones_ = (None,) * len(pk_columns)
         entity._pk_paths_ = pk_paths
         entity._raw_pk_is_composite_ = len(pk_columns) > 1
         return pk_columns, pk_paths
@@ -1575,73 +1577,145 @@ class Entity(object):
         if obj._status_ not in ('loaded', 'saved'): return
         obj._status_ = 'locked'
         obj._trans_.to_be_checked.append(obj)
-    def _save_(obj, delayed_objects=None):
-        if delayed_objects is None: delayed_objects = []
-        elif obj in delayed_objects:
-            chain = ' -> '.join(obj2.__class__.__name__ for obj2 in delayed_objects)
-            raise UnresolvableCyclicDependency('Cannot save cyclic chain: ' + chain)
-        status = obj._status_
-        if status in ('loaded', 'saved', 'cancelled'): return
-        delayed_objects.append(obj)
-        database = obj._diagram_.database
+    @classmethod
+    def _attrs_with_bit_(entity):
+        get_bit = entity._bits_.get
+        for attr in entity._attrs_:
+            bit = get_bit(attr)
+            if bit is None: continue
+            yield attr
+    def _attrs_with_rbit_(obj):
         rbits = obj._rbits_
+        get_bit = obj._bits_.get
+        for attr in obj._attrs_:
+            bit = get_bit(attr)
+            if bit is None: continue
+            if not bit & rbits: continue
+            yield attr
+    def _attrs_with_wbit_(obj):
         wbits = obj._wbits_
         get_bit = obj._bits_.get
+        for attr in obj._attrs_:
+            bit = get_bit(attr)
+            if bit is None: continue
+            if not bit & wbits: continue
+            yield attr
+    def _save_principal_objects_(obj, dependent_objects):
+        if dependent_objects is None: dependent_objects = []
+        elif obj in dependent_objects:
+            chain = ' -> '.join(obj2.__class__.__name__ for obj2 in dependent_objects)
+            raise UnresolvableCyclicDependency('Cannot save cyclic chain: ' + chain)
+        dependent_objects.append(obj)
+        status = obj._status_
+        if status == 'created': attr_iter = obj._attrs_with_bit_()
+        elif status == 'updated': attr_iter = obj._attrs_with_wbit_()
+        else: assert False
+        for attr in attr_iter:
+            val = obj.__dict__[attr]
+            if not attr.reverse: continue
+            if val is None: continue
+            if val._status_ == 'created':
+                val._save_(dependent_objects)
+                assert val._status_ == 'saved'
+    def _save_created_(obj):
+        entity = obj.__class__
+        columns = entity._columns_
+        values = []
+        for attr in entity._attrs_:
+            if not attr.columns: continue
+            if attr.is_collection: continue
+            val = obj.__dict__[attr]
+            values.extend(attr.get_raw_values(val))
+        database = entity._diagram_.database
+        if entity._cached_create_sql_ is None:
+            params = [ [PARAM, i] for i in xrange(len(columns)) ]
+            sql_ast = [ INSERT, entity._table_, columns, params ]
+            sql, adapter = database._ast2sql(sql_ast)
+            entity._cached_create_sql_ = sql, adapter
+        else: sql, adapter = entity._cached_create_sql_
+        arguments = adapter(values)
+        try:
+            cursor = database._exec_sql(sql, arguments)
+        except database.IntegrityError, e:
+            raise IntegrityError('Object %r cannot be stored in the database (probably it already exists). DB message: %s' % (obj, e.args[0]))
+        except database.DatabaseError, e:
+            raise UnexpectedError('Object %r cannot be stored in the database. DB message: %s' % (obj, e.args[0]))
+
+        if obj._pkval_ is None:
+            rowid = cursor.lastrowid # TODO
+            pk = entity._pk_
+            index = obj._trans_.indexes.setdefault(pk, {})
+            obj2 = index.setdefault(rowid, obj)
+            assert obj2 is obj
+            obj._pkval_ = obj._raw_pkval_ = obj.__dict__[pk] = rowid
+            obj._newid_ = None
+            
+        obj._status_ = 'saved'
+        obj._rbits_ = 0
+        obj._wbits_ = 0
+        bits = entity._bits_
+        for attr in entity._attrs_:
+            if attr not in bits: continue
+            obj.__dict__[attr.name] = obj.__dict__[attr]
+    def _save_updated_(obj):
+        entity = obj.__class__
+        update_columns = []
+        values = []
+        for attr in obj._attrs_with_wbit_():
+            update_columns.extend(attr.columns)
+            val = obj.__dict__[attr]
+            values.extend(attr.get_raw_values(val))
+        for attr in entity._pk_attrs_:
+            val = obj.__dict__[attr]
+            values.extend(attr.get_raw_values(val))
+        optimistic_check_columns = []
+        for attr in obj._attrs_with_rbit_():
+            old = obj.__dict__.get(attr.name, NOT_LOADED)
+            assert old is not NOT_LOADED
+            optimistic_check_columns.extend(attr.columns)
+            values.extend(attr.get_raw_values(old))
+        query_key = (tuple(update_columns), tuple(optimistic_check_columns))
+        database = entity._diagram_.database
+        print query_key
+        cached_sql = entity._update_cache_.get(query_key)
+        if cached_sql is None:
+            update_params = [ [PARAM, i] for i in xrange(len(update_columns)) ]
+            params_count = len(update_params)
+            criteria_list = [ AND ]
+            pk_columns = entity._pk_columns_
+            params_count = populate_criteria_list(criteria_list, pk_columns, params_count)
+            populate_criteria_list(criteria_list, optimistic_check_columns, params_count)
+            sql_ast = [ UPDATE, entity._table_, zip(update_columns, update_params), [ WHERE, criteria_list ] ]
+            sql, adapter = database._ast2sql(sql_ast)
+            entity._update_cache_[query_key] = sql, adapter
+        else:
+            print 'CACHED!!!'
+            sql, adapter = cached_sql
+        arguments = adapter(values)
+        cursor = database._exec_sql(sql, arguments)
+        if cursor.rowcount != 1:
+            raise UnrepeatableReadError('Object %r was updated outside of current transaction' % obj)
+        obj._status_ = 'saved'
+        obj._rbits_ = 0
+        obj._wbits_ = 0
+        for attr in entity._attrs_with_bit_():
+            val = obj.__dict__.get(attr, NOT_LOADED)
+            if val is NOT_LOADED: assert attr.name not in obj.__dict__
+            else: obj.__dict__[attr.name] = val
+    def _save_(obj, dependent_objects=None):
+        status = obj._status_
+        if status in ('loaded', 'saved', 'cancelled'): return
+        obj._save_principal_objects_(dependent_objects)
+
+        database = obj._diagram_.database
         values = []
 
-        if status in ('created', 'updated'):
-            columns = []
-            params = []
-            for attr in obj._attrs_:
-                if not attr.columns: continue
-                if status == 'updated':
-                    bit = get_bit(attr)
-                    if bit is None: continue
-                    if not bit & wbits: continue
-                elif attr.is_collection: continue
-                val = obj.__dict__[attr]
-                if not attr.reverse: pairs = [ (val, attr.column) ]
-                else:
-                    if val._status_ == 'created':
-                        val._save_(delayed_objects)
-                        assert val._status_ == 'saved'
-                    if attr.column is not None: pairs = [ (val._raw_pkval_, attr.column) ]
-                    else: pairs = zip(val._raw_pkval_, attr.columns)
-                for val, column in pairs:
-                    columns.append(column)
-                    params.append([ PARAM, len(values) ])
-                    values.append(val)
-        
         if status == 'created':
-            entity = obj.__class__
-            if entity._cached_create_sql_ is None:
-                sql_ast = [ INSERT, obj._table_, columns, params ]
-                sql, adapter = database._ast2sql(sql_ast)
-                entity._cached_create_sql_ = sql, adapter
-            else: sql, adapter = entity._cached_create_sql_
-            arguments = adapter(values)
-            try:
-                cursor = database._exec_sql(sql, arguments)
-            except database.IntegrityError:
-                raise IntegrityError('Object %r already exists in the database' % obj)
-            except database.DatabaseError:
-                raise UnexpectedError('Object %r cannot be stored in the database' % obj)
+            obj._save_created_()
+            return
 
-            if obj._pkval_ is None:
-                rowid = cursor.lastrowid # TODO
-                pk = obj.__class__._pk_
-                index = obj._trans_.indexes.setdefault(pk, {})
-                obj2 = index.setdefault(rowid, obj)
-                assert obj2 is obj
-                obj._pkval_ = obj._raw_pkval_ = obj.__dict__[pk] = rowid
-                obj._newid_ = None
-                
-            obj._status_ = 'saved'
-            obj._rbits_ = 0
-            obj._wbits_ = 0
-            for attr in obj._attrs_:
-                if attr not in obj._bits_: continue
-                obj.__dict__[attr.name] = obj.__dict__[attr]
+        if status == 'updated':
+            obj._save_updated_()
             return
 
         criteria_list = [ AND ]
@@ -1654,37 +1728,19 @@ class Entity(object):
             database._exec_ast(ast, values)
             return
 
-        for attr in obj._attrs_:
-            if not attr.columns: continue
-            bit = get_bit(attr)
-            if bit is None: continue
-            if not bit & rbits: continue
+        assert status == 'locked'
+        for attr in obj._attrs_with_rbit_:
             old = obj.__dict__.get(attr.name, NOT_LOADED)
             assert old is not NOT_LOADED
             attr.append_criteria(old, criteria_list, values)
 
-        if status == 'locked':
-            assert obj._wbits_ == 0
-            ast = [ SELECT, [ ALL, [ VALUE, 1 ]], [ FROM, [ 'T1', TABLE, obj._table_ ] ], [ WHERE, criteria_list ] ]
-            cursor = database._exec_ast(ast, values)
-            row = cursor.fetchone()
-            if row is None: raise UnrepeatableReadError('Object %r was updated outside of current transaction' % obj)
-            obj._status_ = 'loaded'
-        elif status == 'updated':
-            ast = [ UPDATE, obj._table_, zip(columns, params), [ WHERE, criteria_list ] ]
-            cursor = database._exec_ast(ast, values)
-            if cursor.rowcount != 1:
-                raise UnrepeatableReadError('Object %r was updated outside of current transaction' % obj)
-            obj._status_ = 'saved'
-            obj._rbits_ = 0
-            obj._wbits_ = 0
-            for attr in obj._attrs_:
-                if attr not in obj._bits_: continue
-                val = obj.__dict__.get(attr, NOT_LOADED)
-                if val is NOT_LOADED: assert attr.name not in obj.__dict__
-                else: obj.__dict__[attr.name] = val
-        else: assert False
-        
+        assert obj._wbits_ == 0
+        ast = [ SELECT, [ ALL, [ VALUE, 1 ]], [ FROM, [ 'T1', TABLE, obj._table_ ] ], [ WHERE, criteria_list ] ]
+        cursor = database._exec_ast(ast, values)
+        row = cursor.fetchone()
+        if row is None: raise UnrepeatableReadError('Object %r was updated outside of current transaction' % obj)
+        obj._status_ = 'loaded'
+
 class Diagram(object):
     def __init__(diagram):
         diagram.entities = {}
@@ -1745,6 +1801,14 @@ class Diagram(object):
                 else:
                     for column in attr.get_columns()[0]:
                         table.add_column(column, attr.pk_offset is not None)
+
+            entity._bits_ = {}
+            next_offset = count().next
+            for attr in entity._attrs_:
+                if attr.is_collection or attr.pk_offset is not None: continue
+                if not attr.columns: continue
+                entity._bits_[attr] = 1 << next_offset()
+
             columns = []
             for attr in entity._attrs_:
                 if attr.is_collection: continue
