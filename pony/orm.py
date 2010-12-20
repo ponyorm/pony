@@ -940,6 +940,7 @@ class Entity(object):
         entity._link_reverse_attrs_()
 
         entity._cached_create_sql_ = None
+        entity._cached_delete_sql_ = None
         entity._find_cache_ = {}
         entity._update_cache_ = {}
     @classmethod
@@ -1411,7 +1412,7 @@ class Entity(object):
                         else: reverse.reverse_remove((val,), obj, undo_funcs)
                     else: raise NotImplementedError
                 elif isinstance(attr, Set):
-                    if reverse.is_required and not attr.is_empty(obj): raise ConstraintError(
+                    if reverse.is_required and attr.__get__(obj).__nonzero__(): raise ConstraintError(
                         'Cannot delete %s: Attribute %s.%s for associated objects cannot be set to None'
                         % (obj, reverse.entity.__name__, reverse.name))
                     attr.__set__(obj, (), undo_funcs)
@@ -1699,10 +1700,25 @@ class Entity(object):
             val = obj.__dict__.get(attr, NOT_LOADED)
             if val is NOT_LOADED: assert attr.name not in obj.__dict__
             else: obj.__dict__[attr.name] = val
+    def _save_deleted_(obj):
+        database = obj._diagram_.database
+        cached_sql = obj._cached_delete_sql_
+        if cached_sql is None:
+            criteria_list = [ AND ]
+            populate_criteria_list(criteria_list, obj._pk_columns_)
+            sql_ast = [ DELETE, obj._table_, [ WHERE, criteria_list ] ]
+            sql, adapter = database._ast2sql(sql_ast)
+            obj.__class__._cached_delete_sql_ = sql, adapter
+        else: sql, adapter = cached_sql
+        if obj._raw_pk_is_composite_: values = obj._raw_pkval_
+        else: values = (obj._raw_pkval_,)
+        arguments = adapter(values)
+        database._exec_sql(sql, arguments)
     def _save_(obj, dependent_objects=None):
         status = obj._status_
         if status in ('loaded', 'saved', 'cancelled'): return
-        obj._save_principal_objects_(dependent_objects)
+        if status in ('created', 'updated'):
+            obj._save_principal_objects_(dependent_objects)
 
         database = obj._diagram_.database
         values = []
@@ -1715,14 +1731,8 @@ class Entity(object):
             obj._save_updated_()
             return
 
-        criteria_list = [ AND ]
-        for attr in obj._pk_attrs_:
-            val = obj.__dict__[attr]
-            attr.append_criteria(val, criteria_list, values)
-
         if status == 'deleted':
-            ast = [ DELETE, obj._table_, [ WHERE, criteria_list ] ]
-            database._exec_ast(ast, values)
+            obj._save_deleted_()
             return
 
         assert status == 'locked'
