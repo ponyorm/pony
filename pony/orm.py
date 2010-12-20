@@ -1620,21 +1620,20 @@ class Entity(object):
                 val._save_(dependent_objects)
                 assert val._status_ == 'saved'
     def _save_created_(obj):
-        entity = obj.__class__
-        columns = entity._columns_
+        columns = obj._columns_
         values = []
-        for attr in entity._attrs_:
+        for attr in obj._attrs_:
             if not attr.columns: continue
             if attr.is_collection: continue
             val = obj.__dict__[attr]
             values.extend(attr.get_raw_values(val))
-        database = entity._diagram_.database
-        if entity._cached_create_sql_ is None:
+        database = obj._diagram_.database
+        if obj._cached_create_sql_ is None:
             params = [ [PARAM, i] for i in xrange(len(columns)) ]
-            sql_ast = [ INSERT, entity._table_, columns, params ]
+            sql_ast = [ INSERT, obj._table_, columns, params ]
             sql, adapter = database._ast2sql(sql_ast)
-            entity._cached_create_sql_ = sql, adapter
-        else: sql, adapter = entity._cached_create_sql_
+            obj.__class__._cached_create_sql_ = sql, adapter
+        else: sql, adapter = obj._cached_create_sql_
         arguments = adapter(values)
         try:
             cursor = database._exec_sql(sql, arguments)
@@ -1645,7 +1644,7 @@ class Entity(object):
 
         if obj._pkval_ is None:
             rowid = cursor.lastrowid # TODO
-            pk = entity._pk_
+            pk = obj.__class__._pk_
             index = obj._trans_.indexes.setdefault(pk, {})
             obj2 = index.setdefault(rowid, obj)
             assert obj2 is obj
@@ -1655,19 +1654,18 @@ class Entity(object):
         obj._status_ = 'saved'
         obj._rbits_ = 0
         obj._wbits_ = 0
-        bits = entity._bits_
-        for attr in entity._attrs_:
+        bits = obj._bits_
+        for attr in obj._attrs_:
             if attr not in bits: continue
             obj.__dict__[attr.name] = obj.__dict__[attr]
     def _save_updated_(obj):
-        entity = obj.__class__
         update_columns = []
         values = []
         for attr in obj._attrs_with_wbit_():
             update_columns.extend(attr.columns)
             val = obj.__dict__[attr]
             values.extend(attr.get_raw_values(val))
-        for attr in entity._pk_attrs_:
+        for attr in obj._pk_attrs_:
             val = obj.__dict__[attr]
             values.extend(attr.get_raw_values(val))
         optimistic_check_columns = []
@@ -1677,18 +1675,18 @@ class Entity(object):
             optimistic_check_columns.extend(attr.columns)
             values.extend(attr.get_raw_values(old))
         query_key = (tuple(update_columns), tuple(optimistic_check_columns))
-        database = entity._diagram_.database
-        cached_sql = entity._update_cache_.get(query_key)
+        database = obj._diagram_.database
+        cached_sql = obj._update_cache_.get(query_key)
         if cached_sql is None:
             update_params = [ [PARAM, i] for i in xrange(len(update_columns)) ]
             params_count = len(update_params)
             criteria_list = [ AND ]
-            pk_columns = entity._pk_columns_
+            pk_columns = obj._pk_columns_
             params_count = populate_criteria_list(criteria_list, pk_columns, params_count)
             populate_criteria_list(criteria_list, optimistic_check_columns, params_count)
-            sql_ast = [ UPDATE, entity._table_, zip(update_columns, update_params), [ WHERE, criteria_list ] ]
+            sql_ast = [ UPDATE, obj._table_, zip(update_columns, update_params), [ WHERE, criteria_list ] ]
             sql, adapter = database._ast2sql(sql_ast)
-            entity._update_cache_[query_key] = sql, adapter
+            obj._update_cache_[query_key] = sql, adapter
         else: sql, adapter = cached_sql
         arguments = adapter(values)
         cursor = database._exec_sql(sql, arguments)
@@ -1697,7 +1695,7 @@ class Entity(object):
         obj._status_ = 'saved'
         obj._rbits_ = 0
         obj._wbits_ = 0
-        for attr in entity._attrs_with_bit_():
+        for attr in obj._attrs_with_bit_():
             val = obj.__dict__.get(attr, NOT_LOADED)
             if val is NOT_LOADED: assert attr.name not in obj.__dict__
             else: obj.__dict__[attr.name] = val
