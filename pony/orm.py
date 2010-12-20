@@ -941,9 +941,9 @@ class Entity(object):
 
         entity._cached_create_sql_ = None
         entity._cached_delete_sql_ = None
-        entity._find_cache_ = {}
-        entity._update_cache_ = {}
-        entity._lock_cache_ = {}
+        entity._find_sql_cache_ = {}
+        entity._update_sql_cache_ = {}
+        entity._lock_sql_cache_ = {}
     @classmethod
     def _link_reverse_attrs_(entity):
         diagram = entity._diagram_
@@ -1224,15 +1224,13 @@ class Entity(object):
         if avdict is None: query_key = None
         else: query_key = tuple((attr, value is None) for attr, value in sorted(avdict.iteritems()))
         database = entity._diagram_.database
-        cache = entity._find_cache_
-        cache_entry = cache.get(query_key)
-        if cache_entry is None:
+        cached_sql = entity._find_sql_cache_.get(query_key)
+        if cached_sql is None:
             sql_ast, extractor, attr_offsets = entity._construct_sql_(query_key)
             sql, adapter = database._ast2sql(sql_ast)
-            cache_entry = sql, extractor, adapter, attr_offsets
-            cache[query_key] = cache_entry
-        else:
-            sql, extractor, adapter, attr_offsets = cache_entry
+            cached_sql = sql, extractor, adapter, attr_offsets
+            entity._find_sql_cache_[query_key] = cached_sql
+        else: sql, extractor, adapter, attr_offsets = cached_sql
         param_dict = extractor(avdict)
         values = adapter(param_dict)
         cursor = database._exec_sql(sql, values)
@@ -1676,7 +1674,7 @@ class Entity(object):
             values.extend(attr.get_raw_values(old))
         query_key = (tuple(update_columns), tuple(optimistic_check_columns))
         database = obj._diagram_.database
-        cached_sql = obj._update_cache_.get(query_key)
+        cached_sql = obj._update_sql_cache_.get(query_key)
         if cached_sql is None:
             update_params = [ [PARAM, i] for i in xrange(len(update_columns)) ]
             params_count = len(update_params)
@@ -1686,7 +1684,7 @@ class Entity(object):
             populate_criteria_list(criteria_list, optimistic_check_columns, params_count)
             sql_ast = [ UPDATE, obj._table_, zip(update_columns, update_params), [ WHERE, criteria_list ] ]
             sql, adapter = database._ast2sql(sql_ast)
-            obj._update_cache_[query_key] = sql, adapter
+            obj._update_sql_cache_[query_key] = sql, adapter
         else: sql, adapter = cached_sql
         arguments = adapter(values)
         cursor = database._exec_sql(sql, arguments)
@@ -1713,14 +1711,14 @@ class Entity(object):
             values.extend(attr.get_raw_values(old))
         query_key = tuple(optimistic_check_columns)
         database = obj._diagram_.database
-        cached_sql = obj._lock_cache_.get(query_key)        
+        cached_sql = obj._lock_sql_cache_.get(query_key)        
         if cached_sql is None:
             criteria_list = [ AND ]
             params_count = populate_criteria_list(criteria_list, obj._pk_columns_)
             populate_criteria_list(criteria_list, optimistic_check_columns, params_count)
             sql_ast = [ SELECT, [ ALL, [ VALUE, 1 ]], [ FROM, [ None, TABLE, obj._table_ ] ], [ WHERE, criteria_list ] ]
             sql, adapter = database._ast2sql(sql_ast)
-            obj._lock_cache_[query_key] = sql, adapter
+            obj._lock_sql_cache_[query_key] = sql, adapter
         else: sql, adapter = cached_sql
         arguments = adapter(values)
         cursor = database._exec_sql(sql, arguments)
