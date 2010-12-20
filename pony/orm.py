@@ -1837,7 +1837,8 @@ class Diagram(object):
                         [ FROM, [ table.name, TABLE, table.name ] ],
                         [ WHERE, [ EQ, [ VALUE, 0 ], [ VALUE, 1 ] ] ]
                       ]
-            database._exec_ast(sql_ast)
+            sql, adapter = database._ast2sql(sql_ast)
+            database._exec_sql(sql)
 
 def generate_mapping(*args, **keyargs):
     outer_dict = sys._getframe(1).f_locals

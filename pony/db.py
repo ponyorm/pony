@@ -230,34 +230,25 @@ class Database(object):
         con, provider = self._get_connection()
         sql, adapter = provider.ast2sql(con, sql_ast)
         return sql, adapter
-    def _exec_ast(self, ast, values=[]):
-        con, provider = self._get_connection()
-        sql, adapter = provider.ast2sql(con, ast)
-        arguments = adapter(values)
-        cursor = con.cursor()
-        if debug:
-            print sql
-            print values
-            print
-        wrap_dbapi_exceptions(provider, cursor.execute, sql, arguments)
-        return cursor
-    def _exec_sql(self, sql, arguments):
+    def _exec_sql(self, sql, arguments=None):
         con, provider = self._get_connection()
         cursor = con.cursor()
         if debug:
             print sql
             print arguments
             print
-        wrap_dbapi_exceptions(provider, cursor.execute, sql, arguments)
+        if arguments is None: wrap_dbapi_exceptions(provider, cursor.execute, sql)
+        else: wrap_dbapi_exceptions(provider, cursor.execute, sql, arguments)
         return cursor
-    def exec_sql_many(self, sql, arguments_list):
+    def exec_sql_many(self, sql, arguments_list=None):
         con, provider = self._get_connection()
         cursor = con.cursor()
         if debug:
             print 'EXECUTEMANY', sql
             print arguments_list
             print
-        wrap_dbapi_exceptions(provider, cursor.executemany, sql, arguments_list)
+        if arguments_list is None: wrap_dbapi_exceptions(provider, cursor.executemany, sql)
+        else: wrap_dbapi_exceptions(provider, cursor.executemany, sql, arguments_list)
         return cursor
 
 Database.Warning = Warning

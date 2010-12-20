@@ -18,11 +18,13 @@ class TestSQLAST(unittest.TestCase):
     def test_alias(self):
         sql_ast = [SELECT, [ALL, [COLUMN, "Group", "a"]],
                            [FROM, ["Group", TABLE, "T1" ]]]
-        cursor = self.db._exec_ast(sql_ast)
+        sql, adapter = self.db._ast2sql(sql_ast)
+        cursor = self.db._exec_sql(sql)
     def test_alias2(self):
         sql_ast = [SELECT, [ALL, [COLUMN, None, "a"]],
                             [FROM, [None, TABLE, "T1"]]]
-        cursor = self.db._exec_ast(sql_ast)
+        sql, adapter = self.db._ast2sql(sql_ast)
+        cursor = self.db._exec_sql(sql)
 
 if __name__ == "__main__":
     unittest.main()
