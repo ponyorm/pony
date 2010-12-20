@@ -943,6 +943,7 @@ class Entity(object):
         entity._cached_delete_sql_ = None
         entity._find_cache_ = {}
         entity._update_cache_ = {}
+        entity._lock_cache_ = {}
     @classmethod
     def _link_reverse_attrs_(entity):
         diagram = entity._diagram_
@@ -1700,6 +1701,34 @@ class Entity(object):
             val = obj.__dict__.get(attr, NOT_LOADED)
             if val is NOT_LOADED: assert attr.name not in obj.__dict__
             else: obj.__dict__[attr.name] = val
+    def _save_locked_(obj):
+        assert obj._wbits_ == 0
+        values = []
+        for attr in obj._pk_attrs_:
+            val = obj.__dict__[attr]
+            values.extend(attr.get_raw_values(val))
+        optimistic_check_columns = []
+        for attr in obj._attrs_with_rbit_():
+            old = obj.__dict__.get(attr.name, NOT_LOADED)
+            assert old is not NOT_LOADED
+            optimistic_check_columns.extend(attr.columns)
+            values.extend(attr.get_raw_values(old))
+        query_key = tuple(optimistic_check_columns)
+        database = obj._diagram_.database
+        cached_sql = obj._lock_cache_.get(query_key)        
+        if cached_sql is None:
+            criteria_list = [ AND ]
+            params_count = populate_criteria_list(criteria_list, obj._pk_columns_)
+            populate_criteria_list(criteria_list, optimistic_check_columns, params_count)
+            sql_ast = [ SELECT, [ ALL, [ VALUE, 1 ]], [ FROM, [ None, TABLE, obj._table_ ] ], [ WHERE, criteria_list ] ]
+            sql, adapter = database._ast2sql(sql_ast)
+            obj._lock_cache_[query_key] = sql, adapter
+        else: sql, adapter = cached_sql
+        arguments = adapter(values)
+        cursor = database._exec_sql(sql, arguments)
+        row = cursor.fetchone()
+        if row is None: raise UnrepeatableReadError('Object %r was updated outside of current transaction' % obj)
+        obj._status_ = 'loaded'
     def _save_deleted_(obj):
         database = obj._diagram_.database
         cached_sql = obj._cached_delete_sql_
@@ -1720,33 +1749,11 @@ class Entity(object):
         if status in ('created', 'updated'):
             obj._save_principal_objects_(dependent_objects)
 
-        database = obj._diagram_.database
-        values = []
-
-        if status == 'created':
-            obj._save_created_()
-            return
-
-        if status == 'updated':
-            obj._save_updated_()
-            return
-
-        if status == 'deleted':
-            obj._save_deleted_()
-            return
-
-        assert status == 'locked'
-        for attr in obj._attrs_with_rbit_:
-            old = obj.__dict__.get(attr.name, NOT_LOADED)
-            assert old is not NOT_LOADED
-            attr.append_criteria(old, criteria_list, values)
-
-        assert obj._wbits_ == 0
-        ast = [ SELECT, [ ALL, [ VALUE, 1 ]], [ FROM, [ 'T1', TABLE, obj._table_ ] ], [ WHERE, criteria_list ] ]
-        cursor = database._exec_ast(ast, values)
-        row = cursor.fetchone()
-        if row is None: raise UnrepeatableReadError('Object %r was updated outside of current transaction' % obj)
-        obj._status_ = 'loaded'
+        if status == 'created': obj._save_created_()
+        elif status == 'updated': obj._save_updated_()
+        elif status == 'deleted': obj._save_deleted_()
+        elif status == 'locked': obj._save_locked_()
+        else: assert False
 
 class Diagram(object):
     def __init__(diagram):
