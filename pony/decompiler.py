@@ -42,8 +42,7 @@ class GeneratorDecompiler(object):
         self.start = self.pos = start
         if end is None: end = len(code.co_code)
         self.end = end
-        stack = []
-        self.stack = stack
+        self.stack = []
         self.targets = {}
         self.ast = None
         self.names = set()
@@ -51,7 +50,7 @@ class GeneratorDecompiler(object):
         self.decompile()
         self.ast = self.stack.pop()
         self.external_names = set(self.names - self.assnames)
-        # assert not self.stack, self.stack
+        assert not self.stack, self.stack
     def decompile(self):
         code = self.code
         co_code = code.co_code
@@ -67,6 +66,7 @@ class GeneratorDecompiler(object):
                     i += 2
                     if op == EXTENDED_ARG:
                         op = ord(code.co_code[i])
+                        i += 1
                         oparg = ord(co_code[i]) + ord(co_code[i+1])*256 + oparg*65536
                         i += 2
                     if op in hasconst: arg = [code.co_consts[oparg]]
@@ -257,7 +257,7 @@ class GeneratorDecompiler(object):
         pass
 
     def RETURN_VALUE(self):
-        pass
+        raise NotImplementedError
 
     def ROT_TWO(self):
         tos = self.stack.pop()
