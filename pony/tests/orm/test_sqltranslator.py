@@ -79,12 +79,12 @@ class TestSQLTranslator(unittest.TestCase):
         names = [ stud.name for stud in result ]
         names.sort()
         self.assertEquals(names, ['S2', 'S3'])
-##    def test_select_deref(self):
-##        Student = self.diagram.entities["Student"]
-##        x = 'S1'
-##        result = select(s for s in Student if s.name == x)
-##        names = [ stud.name for stud in result ]        
-##        self.assertEquals(names, ['S1'])
+    def test_select_deref(self):
+        Student = self.diagram.entities["Student"]
+        x = 'S1'
+        result = select(s for s in Student if s.name == x)
+        names = [ stud.name for stud in result ]        
+        self.assertEquals(names, ['S1'])
     def test_select_composite_key(self):
         global grade1
         Grade = self.diagram.entities["Grade"]

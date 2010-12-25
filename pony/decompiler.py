@@ -239,7 +239,8 @@ class GeneratorDecompiler(object):
         return ast.Const(const_value)
 
     def LOAD_DEREF(self, freevar):
-        raise NotImplementedError
+        self.names.add(freevar)
+        return ast.Name(freevar)
 
     def LOAD_FAST(self, varname):
         self.names.add(varname)
