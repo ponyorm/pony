@@ -34,6 +34,8 @@ def simplify(clause):
     if getattr(result, 'endpos', 0) < clause.endpos: result.endpos = clause.endpos
     return result
 
+class InvalidQuery(Exception): pass
+
 class AstGenerated(Exception): pass
 
 class GeneratorDecompiler(object):
@@ -329,6 +331,8 @@ class GeneratorDecompiler(object):
         self.store(ast.AssName(freevar, 'OP_ASSIGN'))
 
     def STORE_FAST(self, varname):
+        if varname.startswith('_['):
+            raise InvalidQuery('Use generator expression (... for ... in ...) instead of list comprehension [... for ... in ...] inside query')
         self.assnames.add(varname)
         self.store(ast.AssName(varname, 'OP_ASSIGN'))
 
@@ -439,8 +443,16 @@ test_lines = """
 
     (a for a in T1 if a in (b for b in T2))
     (a for a in T1 if a in (b for b in T2 if b == a))
-"""
 
+    (a for a in T1 if a in (b for b in T2))
+    (a for a in T1 if a in select(b for b in T2))
+    (a for a in T1 if a in (b for b in T2 if b in (c for c in T3 if c == a)))
+    (a for a in T1 if a > x and a in (b for b in T1 if b < y) and a < z)
+"""
+##   should throw InvalidQuery due to using [] inside of a query
+##   (a for a in T1 if a in [b for b in T2 if b in [(c, d) for c in T3]])  
+
+##    examples of conditional expressions
 ##    (a if b else c for x in T)
 ##    (x for x in T if (d if e else f))
 ##    (a if b else c for x in T if (d if e else f))
