@@ -21,31 +21,39 @@ def select(gen):
         except KeyError: value = globals[name]
         variables[name] = value
     vartypes = dict((name, get_normalized_type(value)) for name, value in variables.iteritems())
+    return Query(gen, tree, vartypes, variables)
 
-    query_key = gen.gi_frame.f_code, tuple(sorted(vartypes.iteritems()))
-    cache_entry = sql_cache.get(query_key)
-    if cache_entry is None:
-        translator = SQLTranslator(tree, vartypes)
-        entity = translator.entity
-        database = entity._diagram_.database
-        con, provider = database._get_connection()
-        sql_ast = translator.sql_ast
-        sql, adapter = provider.ast2sql(con, sql_ast)
-        attr_offsets = translator.attr_offsets
-        extractors = translator.param_extractors
-        cache_entry = sql, entity, extractors, adapter, attr_offsets
-        sql_cache[query_key] = cache_entry
-    else:
-        sql, entity, extractors, adapter, attr_offsets = cache_entry
-        database = entity._diagram_.database
-    
-    param_dict = {}
-    for param_name, extractor in extractors.items():
-        param_dict[param_name] = extractor(variables)
-    arguments = adapter(param_dict)
-    cursor = database._exec_sql(sql, arguments)
-    objects = entity._fetch_objects(cursor, attr_offsets)
-    return objects
+class Query(object):
+    def __init__(self, gen, tree, vartypes, variables):
+        self.gen = gen
+        self.tree = tree
+        self.vartypes = vartypes
+        self.variables = variables
+        self.result = None
+    def __iter__(self):
+        query_key = self.gen.gi_frame.f_code, tuple(sorted(self.vartypes.iteritems()))
+        cache_entry = sql_cache.get(query_key)
+        if cache_entry is None:
+            translator = SQLTranslator(self.tree, self.vartypes)
+            entity = translator.entity
+            database = entity._diagram_.database
+            con, provider = database._get_connection()
+            sql_ast = translator.sql_ast
+            sql, adapter = provider.ast2sql(con, sql_ast)
+            attr_offsets = translator.attr_offsets
+            extractors = translator.param_extractors
+            cache_entry = sql, entity, extractors, adapter, attr_offsets
+            sql_cache[query_key] = cache_entry
+        else:
+            sql, entity, extractors, adapter, attr_offsets = cache_entry
+            database = entity._diagram_.database
+        param_dict = {}
+        for param_name, extractor in extractors.items():
+            param_dict[param_name] = extractor(self.variables)
+        arguments = adapter(param_dict)
+        cursor = database._exec_sql(sql, arguments)
+        objects = entity._fetch_objects(cursor, attr_offsets)
+        return iter(objects)
 
 primitive_types = set([ int, unicode ])
 type_normalization_dict = { long : int, str : unicode, StrHtml : unicode, Html : unicode }
