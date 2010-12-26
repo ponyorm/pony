@@ -145,7 +145,16 @@ class GeneratorDecompiler(object):
             args.append(ast.Keyword(key, arg))
         for i in range(posarg): args.append(pop())
         args.reverse()
-        return ast.CallFunc(pop(), args, star, star2)
+        tos = pop()
+        if isinstance(tos, ast.GenExpr):
+            assert len(args) == 1 and star is None and star2 is None
+            genexpr = tos
+            qual = genexpr.code.quals[0]
+            assert isinstance(qual.iter, ast.Name)
+            assert qual.iter.name in ('.0', '[outmost-iterable]')
+            qual.iter = args[0]
+            return genexpr
+        else: return ast.CallFunc(tos, args, star, star2)
 
     def CALL_FUNCTION_VAR(self, argc):
         return self.CALL_FUNCTION(argc, self.stack.pop())
@@ -253,6 +262,14 @@ class GeneratorDecompiler(object):
     def LOAD_NAME(self, varname):
         self.names.add(varname)
         return ast.Name(varname)
+
+    def MAKE_FUNCTION(self, argc):
+        if argc: raise NotImplementedError
+        tos = self.stack.pop()
+        codeobject = tos.value
+        decompiler = GeneratorDecompiler(codeobject)
+        self.names.update(decompiler.names)
+        return decompiler.ast
 
     def POP_TOP(self):
         pass
@@ -408,13 +425,15 @@ test_lines = """
     ((x or y) and (p or q) for a in T if (a or b) and (c or d))
     (x.y for x in T if (a and (b or (c and d))) or X)
 
-    (a if b else c for x in T)
-    (x for x in T if (d if e else f))
-    (a if b else c for x in T if (d if e else f))
-    (a and b or c and d if x and y or p and q else r and n or m and k for i in T)   
-    (i for i in T if (a and b or c and d if x and y or p and q else r and n or m and k))   
-    (a and b or c and d if x and y or p and q else r and n or m and k for i in T if (A and B or C and D if X and Y or P and Q else R and N or M and K))
+    (a for a in T1 if a in (b for b in T2))    
 """
+
+##    (a if b else c for x in T)
+##    (x for x in T if (d if e else f))
+##    (a if b else c for x in T if (d if e else f))
+##    (a and b or c and d if x and y or p and q else r and n or m and k for i in T)   
+##    (i for i in T if (a and b or c and d if x and y or p and q else r and n or m and k))   
+##    (a and b or c and d if x and y or p and q else r and n or m and k for i in T if (A and B or C and D if X and Y or P and Q else R and N or M and K))
 
 def test():
     import sys
