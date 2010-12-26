@@ -245,7 +245,8 @@ class GeneratorDecompiler(object):
         return ast.Getattr(self.stack.pop(), attr_name)
 
     def LOAD_CLOSURE(self, freevar):
-        raise NotImplementedError
+        self.names.add(freevar)
+        return ast.Name(freevar)
 
     def LOAD_CONST(self, const_value):
         return ast.Const(const_value)
@@ -265,6 +266,10 @@ class GeneratorDecompiler(object):
     def LOAD_NAME(self, varname):
         self.names.add(varname)
         return ast.Name(varname)
+
+    def MAKE_CLOSURE(self, argc):
+        self.stack[-2:-1] = [] # ignore freevars
+        return self.MAKE_FUNCTION(argc)
 
     def MAKE_FUNCTION(self, argc):
         if argc: raise NotImplementedError
@@ -318,6 +323,10 @@ class GeneratorDecompiler(object):
     
     def STORE_ATTR(self, attrname):
         self.store(ast.AssAttr(self.stack.pop(), attrname, 'OP_ASSIGN'))
+
+    def STORE_DEREF(self, freevar):
+        self.assnames.add(freevar)
+        self.store(ast.AssName(freevar, 'OP_ASSIGN'))
 
     def STORE_FAST(self, varname):
         self.assnames.add(varname)
@@ -429,6 +438,7 @@ test_lines = """
     (x.y for x in T if (a and (b or (c and d))) or X)
 
     (a for a in T1 if a in (b for b in T2))
+    (a for a in T1 if a in (b for b in T2 if b == a))
 """
 
 ##    (a if b else c for x in T)
