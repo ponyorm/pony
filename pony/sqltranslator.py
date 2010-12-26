@@ -25,42 +25,58 @@ def select(gen):
     return Query(gen, tree, vartypes, variables)
 
 class Query(object):
-    __slots__ = 'gen', 'tree', 'vartypes', 'variables', 'result', 'key', \
-                'entity', 'sql_ast', 'attr_offsets', 'extractors', 'database'
     def __init__(query, gen, tree, vartypes, variables):
-        query.gen = gen
-        query.tree = tree
-        query.vartypes = vartypes
-        query.variables = variables
-        query.result = None
-        query.key = gen.gi_frame.f_code, tuple(sorted(vartypes.iteritems()))
-        cache_entry = python_ast_cache.get(query.key)
-        if cache_entry is None:
+        query._gen = gen
+        query._tree = tree
+        query._vartypes = vartypes
+        query._variables = variables
+        query._result = None
+        query._python_ast_key = gen.gi_frame.f_code, tuple(sorted(vartypes.iteritems()))
+        translator = python_ast_cache.get(query._python_ast_key)
+        if translator is None:
             translator = SQLTranslator(tree, vartypes)
-            query.entity = translator.entity
-            query.sql_ast = translator.sql_ast
-            query.attr_offsets = translator.attr_offsets
-            query.extractors = translator.param_extractors
-            cache_entry = query.entity, query.sql_ast, query.attr_offsets, query.extractors
-            python_ast_cache[query.key] = cache_entry
-        else: query.entity, query.sql_ast, query.attr_offsets, query.extractors = cache_entry
-        query.database = query.entity._diagram_.database
+            python_ast_cache[query._python_ast_key] = translator
+        query._translator = translator
+        query._database = translator.entity._diagram_.database
+        query._order = None
     def __iter__(query):
-        cache_entry = sql_cache.get(query.key)
-        database = query.database
+        translator = query._translator
+        sql_key = query._python_ast_key + (query._order,)
+        cache_entry = sql_cache.get(sql_key)
+        database = query._database
         if cache_entry is None:
+            sql_ast = translator.sql_ast
+            if query._order:
+                alias = translator.alias
+                orderby_list = [ ORDER_BY ]
+                for attr in query._order:
+                    for column in attr.columns:
+                        orderby_list.append(([COLUMN, alias, column], ASC))
+                sql_ast = sql_ast + [ orderby_list ]
             con, provider = database._get_connection()
-            sql, adapter = provider.ast2sql(con, query.sql_ast)
+            sql, adapter = provider.ast2sql(con, sql_ast)
             cache_entry = sql, adapter
-            sql_cache[query.key] = cache_entry
+            sql_cache[sql_key] = cache_entry
         else: sql, adapter = cache_entry
         param_dict = {}
-        for param_name, extractor in query.extractors.items():
-            param_dict[param_name] = extractor(query.variables)
+        for param_name, extractor in translator.extractors.items():
+            param_dict[param_name] = extractor(query._variables)
         arguments = adapter(param_dict)
         cursor = database._exec_sql(sql, arguments)
-        objects = query.entity._fetch_objects(cursor, query.attr_offsets)
+        objects = translator.entity._fetch_objects(cursor, translator.attr_offsets)
         return iter(objects)
+    def orderby(query, *args):
+        if not args: raise TypeError('query.orderby() requires at least one argument')
+        entity = query._translator.entity
+        for arg in args:
+            if not isinstance(arg, orm.Attribute): raise TypeError(
+                'query.orderby() arguments must be attributes. Got: %r' % arg)
+            if entity._adict_.get(arg.name) is not arg: raise TypeError(
+                'Attribute %s does not belong to Entity %s' % (arg, entity.__name__))
+        new_query = object.__new__(Query)
+        new_query.__dict__.update(query.__dict__)
+        new_query._order = args
+        return new_query
 
 primitive_types = set([ int, unicode ])
 type_normalization_dict = { long : int, str : unicode, StrHtml : unicode, Html : unicode }
@@ -156,7 +172,7 @@ class SQLTranslator(ASTTranslator):
         self.vartypes = vartypes
         self.iterables = iterables = {}
         self.aliases = aliases = {}
-        self.param_extractors = {}
+        self.extractors = {}
         self.from_ = [ FROM ]
         self.conditions = []
         
@@ -394,11 +410,11 @@ class ParamMonad(Monad):
         if parent is None: monad.extractor = lambda variables : variables[name]
         else: monad.extractor = lambda variables : getattr(parent.extractor(variables), name)
     def getsql(monad):
-        monad.add_param_extractors()
+        monad.add_extractors()
         return [ [ PARAM, monad.name ] ]
-    def add_param_extractors(monad):
+    def add_extractors(monad):
         name = monad.name
-        extractors = monad.translator.param_extractors
+        extractors = monad.translator.extractors
         extractors[name] = monad.extractor
 
 class ObjectParamMonad(ObjectMixin, ParamMonad):
@@ -412,11 +428,11 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
         attr = entity._adict_[name]
         return ParamMonad(monad.translator, attr.py_type, name, monad)
     def getsql(monad):
-        monad.add_param_extractors()
+        monad.add_extractors()
         return [ [ PARAM, param ] for param in monad.params ]
-    def add_param_extractors(monad):
+    def add_extractors(monad):
         entity = monad.type
-        extractors = monad.translator.param_extractors
+        extractors = monad.translator.extractors
         if not entity._raw_pk_is_composite_:
             extractors[monad.params[0]] = lambda variables, extractor=monad.extractor : extractor(variables)._raw_pkval_
         else:
