@@ -9,6 +9,7 @@ from pony.sqlsymbols import *
 
 class TranslationError(Exception): pass
 
+python_ast_cache = {}
 sql_cache = {}
 
 def select(gen):
@@ -24,35 +25,41 @@ def select(gen):
     return Query(gen, tree, vartypes, variables)
 
 class Query(object):
-    def __init__(self, gen, tree, vartypes, variables):
-        self.gen = gen
-        self.tree = tree
-        self.vartypes = vartypes
-        self.variables = variables
-        self.result = None
-    def __iter__(self):
-        query_key = self.gen.gi_frame.f_code, tuple(sorted(self.vartypes.iteritems()))
-        cache_entry = sql_cache.get(query_key)
+    __slots__ = 'gen', 'tree', 'vartypes', 'variables', 'result', 'key', \
+                'entity', 'sql_ast', 'attr_offsets', 'extractors', 'database'
+    def __init__(query, gen, tree, vartypes, variables):
+        query.gen = gen
+        query.tree = tree
+        query.vartypes = vartypes
+        query.variables = variables
+        query.result = None
+        query.key = gen.gi_frame.f_code, tuple(sorted(vartypes.iteritems()))
+        cache_entry = python_ast_cache.get(query.key)
         if cache_entry is None:
-            translator = SQLTranslator(self.tree, self.vartypes)
-            entity = translator.entity
-            database = entity._diagram_.database
+            translator = SQLTranslator(tree, vartypes)
+            query.entity = translator.entity
+            query.sql_ast = translator.sql_ast
+            query.attr_offsets = translator.attr_offsets
+            query.extractors = translator.param_extractors
+            cache_entry = query.entity, query.sql_ast, query.attr_offsets, query.extractors
+            python_ast_cache[query.key] = cache_entry
+        else: query.entity, query.sql_ast, query.attr_offsets, query.extractors = cache_entry
+        query.database = query.entity._diagram_.database
+    def __iter__(query):
+        cache_entry = sql_cache.get(query.key)
+        database = query.database
+        if cache_entry is None:
             con, provider = database._get_connection()
-            sql_ast = translator.sql_ast
-            sql, adapter = provider.ast2sql(con, sql_ast)
-            attr_offsets = translator.attr_offsets
-            extractors = translator.param_extractors
-            cache_entry = sql, entity, extractors, adapter, attr_offsets
-            sql_cache[query_key] = cache_entry
-        else:
-            sql, entity, extractors, adapter, attr_offsets = cache_entry
-            database = entity._diagram_.database
+            sql, adapter = provider.ast2sql(con, query.sql_ast)
+            cache_entry = sql, adapter
+            sql_cache[query.key] = cache_entry
+        else: sql, adapter = cache_entry
         param_dict = {}
-        for param_name, extractor in extractors.items():
-            param_dict[param_name] = extractor(self.variables)
+        for param_name, extractor in query.extractors.items():
+            param_dict[param_name] = extractor(query.variables)
         arguments = adapter(param_dict)
         cursor = database._exec_sql(sql, arguments)
-        objects = entity._fetch_objects(cursor, attr_offsets)
+        objects = query.entity._fetch_objects(cursor, query.attr_offsets)
         return iter(objects)
 
 primitive_types = set([ int, unicode ])
