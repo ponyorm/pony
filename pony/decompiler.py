@@ -238,6 +238,9 @@ class GeneratorDecompiler(object):
         if self.targets.get(endpos) is then: self.targets[endpos] = if_exp
         return if_exp
 
+    def LIST_APPEND(self):
+        raise NotImplementedError
+
     def LOAD_ATTR(self, attr_name):
         return ast.Getattr(self.stack.pop(), attr_name)
 
@@ -425,7 +428,7 @@ test_lines = """
     ((x or y) and (p or q) for a in T if (a or b) and (c or d))
     (x.y for x in T if (a and (b or (c and d))) or X)
 
-    (a for a in T1 if a in (b for b in T2))    
+    (a for a in T1 if a in (b for b in T2))
 """
 
 ##    (a if b else c for x in T)
