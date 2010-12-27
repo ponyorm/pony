@@ -115,6 +115,10 @@ class Query(object):
         new_query.__dict__.update(query.__dict__)
         new_query._limit = start, stop
         return new_query
+    def limit(query, limit, offset=None):
+        start = offset or 0
+        stop = start + limit
+        return query[start:stop]
 
 primitive_types = set([ int, unicode ])
 type_normalization_dict = { long : int, str : unicode, StrHtml : unicode, Html : unicode }
