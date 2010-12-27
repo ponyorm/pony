@@ -181,7 +181,7 @@ class SQLBuilder(object):
         result.append('\n')
         return result
     def LIMIT(self, limit, offset=None):
-        if offset is None: return 'LIMIT ', self(limit), '\n'
+        if not offset: return 'LIMIT ', self(limit), '\n'
         else: return 'LIMIT ', self(limit), ' OFFSET ', self(offset), '\n'
     def COLUMN(self, table_alias, col_name):
         if table_alias: return [ '%s.%s' % (self.quote_name(table_alias), self.quote_name(col_name)) ]

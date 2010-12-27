@@ -39,20 +39,29 @@ class Query(object):
         query._translator = translator
         query._database = translator.entity._diagram_.database
         query._order = None
+        query._limit = None
     def __iter__(query):
         translator = query._translator
-        sql_key = query._python_ast_key + (query._order,)
+        sql_key = query._python_ast_key + (query._order, query._limit)
         cache_entry = sql_cache.get(sql_key)
         database = query._database
         if cache_entry is None:
             sql_ast = translator.sql_ast
             if query._order:
                 alias = translator.alias
-                orderby_list = [ ORDER_BY ]
+                orderby_section = [ ORDER_BY ]
                 for attr in query._order:
                     for column in attr.columns:
-                        orderby_list.append(([COLUMN, alias, column], ASC))
-                sql_ast = sql_ast + [ orderby_list ]
+                        orderby_section.append(([COLUMN, alias, column], ASC))
+                sql_ast = sql_ast + [ orderby_section ]
+            if query._limit:
+                start, stop = query._limit
+                limit = stop - start
+                offset = start
+                assert limit is not None
+                limit_section = [ LIMIT, [ VALUE, limit ]]
+                if offset: limit_section.append([ VALUE, offset ])
+                sql_ast = sql_ast + [ limit_section ]
             con, provider = database._get_connection()
             sql, adapter = provider.ast2sql(con, sql_ast)
             cache_entry = sql, adapter
@@ -76,6 +85,35 @@ class Query(object):
         new_query = object.__new__(Query)
         new_query.__dict__.update(query.__dict__)
         new_query._order = args
+        return new_query
+    def __getitem__(query, key):
+        if isinstance(key, slice):
+            step = key.step
+            if step is not None and step <> 1: raise TypeError("Parameter 'step' of slice object is not allowed here")
+            start = key.start
+            if start is None: start = 0
+            elif start < 0: raise TypeError("Parameter 'start' of slice object cannot be negative")
+            stop = key.stop
+            if stop is None:
+                if start is None: return query
+                elif not query._limit: raise TypeError("Parameter 'stop' of slice object should be specified")
+                else: stop = query._limit[1]
+        else:
+            try: i = key.__index__()
+            except AttributeError:
+                try: i = key.__int__()
+                except AttributeError:
+                    raise TypeError('Incorrect argument type: %r' % key)
+            start = i
+            stop = i + 1
+        if query._limit is not None:
+            prev_start, prev_stop = query._limit
+            start = prev_start + start
+            stop = min(prev_stop, prev_start + stop)
+        if start >= stop: start = stop = 0
+        new_query = object.__new__(Query)
+        new_query.__dict__.update(query.__dict__)
+        new_query._limit = start, stop
         return new_query
 
 primitive_types = set([ int, unicode ])
