@@ -63,10 +63,15 @@ def join(delimiter, items):
         result.append(item)
     return result
 
-def binary_op(symbol):
-    def _binary_op(self, expr1, expr2):
+def make_binary_op(symbol):
+    def binary_op(self, expr1, expr2):
         return '(', self(expr1), symbol, self(expr2), ')'
-    return _binary_op
+    return binary_op
+
+def make_unary_func(symbol):
+    def unary_func(self, expr):
+        return '%s(' % symbol, self(expr), ')'
+    return unary_func
 
 class SQLBuilder(object):
     make_param = Param
@@ -204,18 +209,18 @@ class SQLBuilder(object):
     def NOT(self, condition):
         return 'NOT (', self(condition), ')'
     
-    EQ  = binary_op(' = ')
-    NE  = binary_op(' <> ')
-    LT  = binary_op(' < ')
-    LE  = binary_op(' <= ')
-    GT  = binary_op(' > ')
-    GE  = binary_op(' >= ')
-    ADD = binary_op(' + ')
-    SUB = binary_op(' - ')
-    MUL = binary_op(' * ')
-    DIV = binary_op(' / ')
-    POW = binary_op(' ** ')
-    CONCAT = binary_op(' || ')
+    EQ  = make_binary_op(' = ')
+    NE  = make_binary_op(' <> ')
+    LT  = make_binary_op(' < ')
+    LE  = make_binary_op(' <= ')
+    GT  = make_binary_op(' > ')
+    GE  = make_binary_op(' >= ')
+    ADD = make_binary_op(' + ')
+    SUB = make_binary_op(' - ')
+    MUL = make_binary_op(' * ')
+    DIV = make_binary_op(' / ')
+    POW = make_binary_op(' ** ')
+    CONCAT = make_binary_op(' || ')
 
     def NEG(self, expr):
         return '-(', self(expr), ')'
@@ -259,14 +264,10 @@ class SQLBuilder(object):
             if expr is None: raise AstError('COUNT(DISTINCT) without argument')
             return 'COUNT(DISTINCT ', self(expr), ')'
         raise AstError('Invalid COUNT kind (must be ALL or DISTINCT)')
-    def SUM(self, expr):
-        return 'SUM(', self(expr), ')'
-    def MIN(self, expr):
-        return 'MIN(', self(expr), ')'
-    def MAX(self, expr):
-        return 'MAX(', self(expr), ')'
-    def AVG(self, expr):
-        return 'AVG(', self(expr), ')'
-
-
+    SUM = make_unary_func('SUM')
+    MIN = make_unary_func('MIN')
+    MAX = make_unary_func('MAX')
+    AVG = make_unary_func('AVG')
+    UPPER = make_unary_func('upper')
+    LOWER = make_unary_func('lower')
         

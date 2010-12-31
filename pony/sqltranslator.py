@@ -266,6 +266,7 @@ class SQLTranslator(ASTTranslator):
         op, expr2 = ops[0]
         # op: '<' | '>' | '=' | '>=' | '<=' | '<>' | '!=' | '=='
         #         | 'in' | 'not in' | 'is' | 'is not'
+
         node.monad = expr1.monad.cmp(op, expr2.monad)
     def postConst(self, node):
         value = node.value
@@ -312,6 +313,17 @@ class SQLTranslator(ASTTranslator):
         node.monad = OrMonad([ subnode.monad for subnode in node.nodes ])
     def postNot(self, node):
         node.monad = NotMonad(node.expr.monad)
+    def postCallFunc(self, node):
+        if node.star_args is not None: raise NotImplementedError
+        if node.dstar_args is not None: raise NotImplementedError
+        method_monad = node.node.monad
+        args = []
+        keyargs = {}
+        for arg in node.args:
+            if isinstance(arg, ast.Keyword):
+                keyargs[arg.name] = arg.expr.monad
+            else: args.append(arg.monad)
+        node.monad = node.node.monad(*args, **keyargs)
 
 class Monad(object):
     def __init__(monad, translator, type):
@@ -322,7 +334,7 @@ class Monad(object):
     def __contains__(monad, item): raise TypeError
     def __nonzero__(monad): raise TypeError
 
-    def getattr(monad): raise TypeError
+    def getattr(monad, attrname): raise TypeError
     def __call__(monad, *args, **keyargs): raise TypeError
     def __len__(monad): raise TypeError
     def __getitem__(monad, key): raise TypeError
@@ -369,7 +381,46 @@ class NumericMixin(object):
         assert len(sql) == 1
         return ExprMonad(monad.translator, int, [ NEG, sql[0] ])
 
-class StringMixin(object): pass
+def make_string_binop(sqlop):
+    def string_binop(monad, monad2):
+        if not isinstance(monad2, StringMixin): raise TypeError
+        left_sql = monad.getsql()
+        right_sql = monad2.getsql()
+        assert len(left_sql) == len(right_sql) == 1
+        return ExprMonad(monad.translator, unicode, [ sqlop, left_sql[0], right_sql[0] ])
+    string_binop.__name__ = sqlop
+    return string_binop
+
+class StringMixin(object):
+    def getattr(monad, attrname):
+        return StringMethodMonad(monad.translator, monad, attrname)
+    __add__ = make_string_binop(CONCAT)
+    def __contains__(monad, item):
+
+class MethodMonad(Monad):
+    def __init__(monad, translator, parent, attrname):
+        Monad.__init__(monad, translator, 'METHOD')
+        monad.parent = parent
+        monad.attrname = attrname
+        try: method = getattr(monad, 'call_' + monad.attrname)
+        except AttributeError:
+            raise AttributeError('%r object has no attribute %r' % (parent.type.__name__, attrname))
+    def __call__(monad, *args, **keyargs):
+        method = getattr(monad, 'call_' + monad.attrname)
+        return method(*args, **keyargs)
+
+def make_string_unary_op(sqlop):
+    def string_op(monad):
+        sql = monad.parent.getsql()
+        assert len(sql) == 1
+        return ExprMonad(monad.translator, unicode, [ sqlop, sql[0] ])
+    string_op.__name__ = sqlop
+    return string_op
+
+class StringMethodMonad(MethodMonad):
+    call_upper = make_string_unary_op(UPPER)
+    call_lower = make_string_unary_op(LOWER)
+    
 class ObjectMixin(object): pass
 
 class ObjectIterMonad(ObjectMixin, Monad):
