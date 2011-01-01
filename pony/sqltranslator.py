@@ -395,7 +395,6 @@ class StringMixin(object):
     def getattr(monad, attrname):
         return StringMethodMonad(monad.translator, monad, attrname)
     __add__ = make_string_binop(CONCAT)
-    def __contains__(monad, item):
 
 class MethodMonad(Monad):
     def __init__(monad, translator, parent, attrname):
