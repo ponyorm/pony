@@ -408,17 +408,45 @@ class MethodMonad(Monad):
         method = getattr(monad, 'call_' + monad.attrname)
         return method(*args, **keyargs)
 
-def make_string_unary_op(sqlop):
-    def string_op(monad):
+def make_string_func(sqlop):
+    def func(monad):
         sql = monad.parent.getsql()
         assert len(sql) == 1
         return ExprMonad(monad.translator, unicode, [ sqlop, sql[0] ])
-    string_op.__name__ = sqlop
-    return string_op
+    func.__name__ = sqlop
+    return func
 
 class StringMethodMonad(MethodMonad):
-    call_upper = make_string_unary_op(UPPER)
-    call_lower = make_string_unary_op(LOWER)
+    call_upper = make_string_func(UPPER)
+    call_lower = make_string_func(LOWER)
+    def call_startswith(monad, arg):
+        parent_sql = monad.parent.getsql()
+        assert len(parent_sql) == 1
+        if arg.type is not unicode:
+            raise TypeError("Argument of 'startswith' method must be a string")
+        if isinstance(arg, StringConstMonad):
+            assert isinstance(arg.value, basestring)
+            arg_sql = [ VALUE, arg.value + '%' ]
+        else:
+            arg_sql = arg.getsql()
+            assert len(arg_sql) == 1
+            arg_sql = [ CONCAT, arg_sql[0], [ VALUE, '%' ] ]
+        sql = [ LIKE, parent_sql[0], arg_sql ]
+        return BoolExprMonad(monad.translator, sql)
+    def call_endswith(monad, arg):
+        parent_sql = monad.parent.getsql()
+        assert len(parent_sql) == 1
+        if arg.type is not unicode:
+            raise TypeError("Argument of 'endswith' method must be a string")
+        if isinstance(arg, StringConstMonad):
+            assert isinstance(arg.value, basestring)
+            arg_sql = [ VALUE, '%' + arg.value ]
+        else:
+            arg_sql = arg.getsql()
+            assert len(arg_sql) == 1
+            arg_sql = [ CONCAT, [ VALUE, '%' ], arg_sql[0] ]
+        sql = [ LIKE, parent_sql[0], arg_sql ]
+        return BoolExprMonad(monad.translator, sql)
     
 class ObjectMixin(object): pass
 
@@ -566,6 +594,14 @@ class BoolMonad(Monad):
     def __init__(monad, translator):
         monad.translator = translator
         monad.type = bool
+
+class BoolExprMonad(BoolMonad):
+    def __init__(monad, translator, sql):
+        monad.translator = translator
+        monad.type = bool
+        monad.sql = sql
+    def getsql(monad):
+        return monad.sql
 
 cmpops = { '>=' : GE, '>' : GT, '<=' : LE, '<' : LT }        
 
