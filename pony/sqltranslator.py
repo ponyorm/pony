@@ -324,6 +324,20 @@ class SQLTranslator(ASTTranslator):
                 keyargs[arg.name] = arg.expr.monad
             else: args.append(arg.monad)
         node.monad = node.node.monad(*args, **keyargs)
+    def postSubscript(self, node):
+        assert node.flags == 'OP_APPLY'
+        assert isinstance(node.subs, list) and len(node.subs) == 1
+        expr_monad = node.expr.monad
+        index_monad = node.subs[0].monad
+        node.monad = expr_monad[index_monad]
+    def postSlice(self, node):
+        assert node.flags == 'OP_APPLY'
+        expr_monad = node.expr.monad
+        upper = node.upper
+        if upper is not None: upper = upper.monad
+        lower = node.lower
+        if lower is not None: lower = lower.monad
+        node.monad = expr_monad[lower:upper]
 
 class Monad(object):
     def __init__(monad, translator, type):
@@ -395,7 +409,64 @@ class StringMixin(object):
     def getattr(monad, attrname):
         return StringMethodMonad(monad.translator, monad, attrname)
     __add__ = make_string_binop(CONCAT)
+    def __getitem__(monad, index):
+        if isinstance(index, slice):
+            if index.step is not None: raise TypeError("Slice 'step' attribute is not supported")
+            start, stop = index.start, index.stop
+            if start is None and stop is None: return monad
+            if isinstance(monad, StringConstMonad) \
+               and (start is None or isinstance(start, NumericConstMonad)) \
+               and (stop is None or isinstance(stop, NumericConstMonad)):
+                if start is not None: start = start.value
+                if stop is not None: stop = stop.value
+                return StringConstMonad(monad.translator, monad.value[start:stop])
 
+            if start is not None and start.type is not int: raise TypeError('string indices must be integers')
+            if stop is not None and stop.type is not int: raise TypeError('string indices must be integers')
+            
+            expr_sql = monad.getsql()
+            assert len(expr_sql) == 1
+
+            if start is None:
+                start_sql = [ VALUE, 1 ]
+            elif isinstance(start, NumericConstMonad):
+                start_sql = [ VALUE, start.value + 1 ]
+            else:
+                start_sql = start.getsql()
+                assert len(start_sql) == 1
+                start_sql = [ ADD, start_sql[0], [ VALUE, 1 ] ]
+
+            if stop is None:
+                len_sql = None
+            elif isinstance(stop, NumericConstMonad):
+                if start is None:
+                    len_sql = [ VALUE, stop.value ]
+                elif isinstance(start, NumericConstMonad):
+                    len_sql = [ VALUE, stop.value - start.value ]
+                else:
+                    len_sql = [ SUB, [ VALUE, stop.value ], start_sql ]
+            else:
+                stop_sql = stop.getsql()
+                assert len(stop_sql) == 1
+                len_sql = [ SUB, stop_sql[0], start_sql ]
+
+            sql = [ SUBSTR, expr_sql[0], start_sql, len_sql ]
+            return ExprMonad(monad.translator, unicode, sql)
+        
+        if isinstance(monad, StringConstMonad) and isinstance(index, NumericConstMonad):
+            return StringConstMonad(monad.translator, monad.value[index.value])
+        if index.type is not int: raise TypeError('string indices must be integers')
+        expr_sql = monad.getsql()
+        assert len(expr_sql) == 1
+        if isinstance(index, NumericConstMonad):
+            index_sql = [ VALUE, index.value + 1 ]
+        else:
+            index_sql = index.getsql()
+            assert len(index_sql) == 1
+            index_sql = [ ADD, index_sql[0], [ VALUE, 1 ] ]
+        sql = [ SUBSTR, expr_sql[0], index_sql, [ VALUE, 1 ] ]
+        return ExprMonad(monad.translator, unicode, sql)
+        
 class MethodMonad(Monad):
     def __init__(monad, translator, parent, attrname):
         Monad.__init__(monad, translator, 'METHOD')
