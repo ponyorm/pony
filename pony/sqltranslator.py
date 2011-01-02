@@ -435,17 +435,15 @@ class StringMixin(object):
             if start is not None and start.type is not int: raise TypeError('string indices must be integers')
             if stop is not None and stop.type is not int: raise TypeError('string indices must be integers')
             
-            expr_sql = monad.getsql()
-            assert len(expr_sql) == 1
+            expr_sql = monad.getsql()[0]
 
             if start is None:
                 start_sql = [ VALUE, 1 ]
             elif isinstance(start, NumericConstMonad):
                 start_sql = [ VALUE, start.value + 1 ]
             else:
-                start_sql = start.getsql()
-                assert len(start_sql) == 1
-                start_sql = [ ADD, start_sql[0], [ VALUE, 1 ] ]
+                start_sql = start.getsql()[0]
+                start_sql = [ ADD, start_sql, [ VALUE, 1 ] ]
 
             if stop is None:
                 len_sql = None
@@ -457,30 +455,26 @@ class StringMixin(object):
                 else:
                     len_sql = [ SUB, [ VALUE, stop.value ], start_sql ]
             else:
-                stop_sql = stop.getsql()
-                assert len(stop_sql) == 1
-                len_sql = [ SUB, stop_sql[0], start_sql ]
+                stop_sql = stop.getsql()[0]
+                len_sql = [ SUB, stop_sql, start_sql ]
 
-            sql = [ SUBSTR, expr_sql[0], start_sql, len_sql ]
+            sql = [ SUBSTR, expr_sql, start_sql, len_sql ]
             return ExprMonad(monad.translator, unicode, sql)
         
         if isinstance(monad, StringConstMonad) and isinstance(index, NumericConstMonad):
             return StringConstMonad(monad.translator, monad.value[index.value])
         if index.type is not int: raise TypeError('string indices must be integers')
-        expr_sql = monad.getsql()
-        assert len(expr_sql) == 1
+        expr_sql = monad.getsql()[0]
         if isinstance(index, NumericConstMonad):
             index_sql = [ VALUE, index.value + 1 ]
         else:
-            index_sql = index.getsql()
-            assert len(index_sql) == 1
-            index_sql = [ ADD, index_sql[0], [ VALUE, 1 ] ]
-        sql = [ SUBSTR, expr_sql[0], index_sql, [ VALUE, 1 ] ]
+            index_sql = index.getsql()[0]
+            index_sql = [ ADD, index_sql, [ VALUE, 1 ] ]
+        sql = [ SUBSTR, expr_sql, index_sql, [ VALUE, 1 ] ]
         return ExprMonad(monad.translator, unicode, sql)
     def len(monad):
-        sql = monad.getsql()
-        assert len(sql) == 1
-        return ExprMonad(monad.translator, int, [ LENGTH, sql[0] ])
+        sql = monad.getsql()[0]
+        return ExprMonad(monad.translator, int, [ LENGTH, sql ])
         
 class MethodMonad(Monad):
     def __init__(monad, translator, parent, attrname):
