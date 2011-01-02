@@ -466,10 +466,12 @@ class StringMixin(object):
         if index.type is not int: raise TypeError('string indices must be integers')
         expr_sql = monad.getsql()[0]
         if isinstance(index, NumericConstMonad):
-            index_sql = [ VALUE, index.value + 1 ]
+            value = index.value
+            if value >= 0: value += 1
+            index_sql = [ VALUE, value ]
         else:
-            index_sql = index.getsql()[0]
-            index_sql = [ ADD, index_sql, [ VALUE, 1 ] ]
+            inner_sql = index.getsql()[0]
+            index_sql = [ ADD, inner_sql, [ CASE, None, [ ([GE, inner_sql, [ VALUE, 0 ]], [ VALUE, 1 ]) ], [ VALUE, 0 ] ] ]
         sql = [ SUBSTR, expr_sql, index_sql, [ VALUE, 1 ] ]
         return ExprMonad(monad.translator, unicode, sql)
     def len(monad):
