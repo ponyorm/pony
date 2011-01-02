@@ -26,7 +26,7 @@ class Param(object):
         elif paramstyle == 'pyformat': return u'%%(p%d)s' % param.id
         else: raise NotImplementedError
     def __repr__(param):
-        return '%s(%d)' % (param.__class__.__name__, param.key)
+        return '%s(%r)' % (param.__class__.__name__, param.key)
 
 class Value(object):
     __slots__ = 'value',
@@ -277,4 +277,15 @@ class SQLBuilder(object):
     def SUBSTR(self, expr, start, len=None):
         if len is None: return 'substr(', self(expr), ', ', self(start), ')'
         return 'substr(', self(expr), ', ', self(start), ', ', self(len), ')'
+    def CASE(self, expr, cases, default=None):
+        result = [ 'case' ]
+        if expr is not None:
+            result.append(' ')
+            result.extend(self(expr))
+        for condition, expr in cases:
+            result.extend((' when ', self(condition), ' then ', self(expr)))
+        if default is not None:
+            result.extend((' else ', self(default)))
+        result.append(' end')
+        return result
         
