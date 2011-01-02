@@ -273,6 +273,7 @@ class SQLBuilder(object):
     AVG = make_unary_func('AVG')
     UPPER = make_unary_func('upper')
     LOWER = make_unary_func('lower')
+    LENGTH = make_unary_func('length')
     def SUBSTR(self, expr, start, len=None):
         if len is None: return 'substr(', self(expr), ', ', self(start), ')'
         return 'substr(', self(expr), ', ', self(start), ', ', self(len), ')'

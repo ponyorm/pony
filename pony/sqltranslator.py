@@ -1,3 +1,4 @@
+import __builtin__
 from compiler import ast
 from types import NoneType
 
@@ -19,7 +20,11 @@ def select(gen):
     variables = {}
     for name in external_names:
         try: value = locals[name]
-        except KeyError: value = globals[name]
+        except KeyError:
+            try: value = globals[name]
+            except KeyError:
+                if hasattr(__builtin__, name): continue
+                else: raise KeyError, name
         variables[name] = value
     vartypes = dict((name, get_normalized_type(value)) for name, value in variables.iteritems())
     return Query(gen, tree, vartypes, variables)
@@ -290,9 +295,15 @@ class SQLTranslator(ASTTranslator):
             node.monad = ObjectIterMonad(self, name, entity)
         else:
             try: value_type = self.vartypes[name]
-            except KeyError: raise NameError(name)
-            if value_type is NoneType: node.monad = NoneMonad(self)
-            else: node.monad = ParamMonad(self, value_type, name)
+            except KeyError:
+                func = getattr(__builtin__, name, None)
+                if func is None: raise NameError(name)
+                func_monad_class = special_functions.get(func)
+                if func_monad_class is None: raise NotImlementedError
+                node.monad = func_monad_class(self)
+            else:
+                if value_type is NoneType: node.monad = NoneMonad(self)
+                else: node.monad = ParamMonad(self, value_type, name)
     def postAdd(self, node):
         node.monad = node.left.monad + node.right.monad
     def postSub(self, node):
@@ -316,14 +327,14 @@ class SQLTranslator(ASTTranslator):
     def postCallFunc(self, node):
         if node.star_args is not None: raise NotImplementedError
         if node.dstar_args is not None: raise NotImplementedError
-        method_monad = node.node.monad
         args = []
         keyargs = {}
         for arg in node.args:
             if isinstance(arg, ast.Keyword):
                 keyargs[arg.name] = arg.expr.monad
             else: args.append(arg.monad)
-        node.monad = node.node.monad(*args, **keyargs)
+        func_monad = node.node.monad
+        node.monad = func_monad(*args, **keyargs)
     def postSubscript(self, node):
         assert node.flags == 'OP_APPLY'
         assert isinstance(node.subs, list) and len(node.subs) == 1
@@ -350,7 +361,7 @@ class Monad(object):
 
     def getattr(monad, attrname): raise TypeError
     def __call__(monad, *args, **keyargs): raise TypeError
-    def __len__(monad): raise TypeError
+    def len(monad): raise TypeError
     def __getitem__(monad, key): raise TypeError
     def __iter__(monad): raise TypeError
 
@@ -466,6 +477,10 @@ class StringMixin(object):
             index_sql = [ ADD, index_sql[0], [ VALUE, 1 ] ]
         sql = [ SUBSTR, expr_sql[0], index_sql, [ VALUE, 1 ] ]
         return ExprMonad(monad.translator, unicode, sql)
+    def len(monad):
+        sql = monad.getsql()
+        assert len(sql) == 1
+        return ExprMonad(monad.translator, int, [ LENGTH, sql[0] ])
         
 class MethodMonad(Monad):
     def __init__(monad, translator, parent, attrname):
@@ -658,7 +673,10 @@ class ConstMonad(Monad):
     def getsql(monad):
         return [ [ VALUE, monad.value ] ]
 
-class StringConstMonad(StringMixin, ConstMonad): pass
+class StringConstMonad(StringMixin, ConstMonad):
+    def len(monad):
+        return ExprMonad(monad.translator, int, [ VALUE, len(monad.value) ])
+    
 class NumericConstMonad(NumericMixin, ConstMonad): pass
 
 class BoolMonad(Monad):
@@ -749,3 +767,18 @@ class NotMonad(BoolMonad):
         monad.operand = operand
     def getsql(monad):
         return [ NOT, monad.operand.getsql() ]
+
+class FuncMonad(Monad):
+    type = None
+    def __init__(monad, translator):
+        monad.translator = translator
+
+class FuncLenMonad(FuncMonad):
+    type = int
+    def __call__(monad, x):
+        assert isinstance(x, Monad)
+        return x.len()
+
+special_functions = {
+    len : FuncLenMonad
+}
