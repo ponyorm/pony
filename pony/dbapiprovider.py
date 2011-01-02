@@ -46,12 +46,15 @@ class Value(object):
 def flat(tree):
     stack = [ tree ]
     result = []
+    stack_pop = stack.pop
+    stack_extend = stack.extend
+    result_append = result.append
     while stack:
-        x = stack.pop()
-        if isinstance(x, basestring): result.append(x)
+        x = stack_pop()
+        if isinstance(x, basestring): result_append(x)
         else:
-            try: stack += reversed(x)
-            except TypeError: result.append(x)
+            try: stack_extend(reversed(x))
+            except TypeError: result_append(x)
     return result
 
 def join(delimiter, items):
