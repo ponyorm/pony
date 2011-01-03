@@ -440,6 +440,7 @@ class StringMixin(object):
             if start is None:
                 start_sql = [ VALUE, 1 ]
             elif isinstance(start, NumericConstMonad):
+                if start.value < 0: raise NotImplementedError('Negative slice indices not supported')
                 start_sql = [ VALUE, start.value + 1 ]
             else:
                 start_sql = start.getsql()[0]
@@ -448,6 +449,7 @@ class StringMixin(object):
             if stop is None:
                 len_sql = None
             elif isinstance(stop, NumericConstMonad):
+                if stop.value < 0: raise NotImplementedError('Negative slice indices not supported')
                 if start is None:
                     len_sql = [ VALUE, stop.value ]
                 elif isinstance(start, NumericConstMonad):
