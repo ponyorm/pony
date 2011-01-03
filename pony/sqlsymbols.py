@@ -9,7 +9,7 @@ symbols = [ 'SELECT', 'INSERT', 'UPDATE', 'DELETE',
             'LIKE', 'NOT_LIKE', 'BETWEEN', 'NOT_BETWEEN',
             'IN', 'NOT_IN', 'EXISTS', 'NOT_EXISTS',
             'ADD', 'SUB', 'MUL', 'DIV', 'POW', 'NEG',
-            'UPPER', 'LOWER', 'CONCAT', 'STRIN', 'LIKE', 'SUBSTR', 'LENGTH',
+            'UPPER', 'LOWER', 'CONCAT', 'STRIN', 'LIKE', 'SUBSTR', 'LENGTH', 'TRIM', 'LTRIM', 'RTRIM',
             'CASE' ]
 
 globals().update((s, s) for s in symbols)

@@ -504,33 +504,44 @@ class StringMethodMonad(MethodMonad):
     call_upper = make_string_func(UPPER)
     call_lower = make_string_func(LOWER)
     def call_startswith(monad, arg):
-        parent_sql = monad.parent.getsql()
-        assert len(parent_sql) == 1
+        parent_sql = monad.parent.getsql()[0]
         if arg.type is not unicode:
             raise TypeError("Argument of 'startswith' method must be a string")
         if isinstance(arg, StringConstMonad):
             assert isinstance(arg.value, basestring)
             arg_sql = [ VALUE, arg.value + '%' ]
         else:
-            arg_sql = arg.getsql()
-            assert len(arg_sql) == 1
-            arg_sql = [ CONCAT, arg_sql[0], [ VALUE, '%' ] ]
-        sql = [ LIKE, parent_sql[0], arg_sql ]
+            arg_sql = arg.getsql()[0]
+            arg_sql = [ CONCAT, arg_sql, [ VALUE, '%' ] ]
+        sql = [ LIKE, parent_sql, arg_sql ]
         return BoolExprMonad(monad.translator, sql)
     def call_endswith(monad, arg):
-        parent_sql = monad.parent.getsql()
-        assert len(parent_sql) == 1
+        parent_sql = monad.parent.getsql()[0]
         if arg.type is not unicode:
             raise TypeError("Argument of 'endswith' method must be a string")
         if isinstance(arg, StringConstMonad):
             assert isinstance(arg.value, basestring)
             arg_sql = [ VALUE, '%' + arg.value ]
         else:
-            arg_sql = arg.getsql()
-            assert len(arg_sql) == 1
-            arg_sql = [ CONCAT, [ VALUE, '%' ], arg_sql[0] ]
-        sql = [ LIKE, parent_sql[0], arg_sql ]
+            arg_sql = arg.getsql()[0]
+            arg_sql = [ CONCAT, [ VALUE, '%' ], arg_sql ]
+        sql = [ LIKE, parent_sql, arg_sql ]
         return BoolExprMonad(monad.translator, sql)
+    def strip(monad, chars, strip_type):
+        parent_sql = monad.parent.getsql()[0]
+        if chars is not None and chars.type is not unicode:
+            raise TypeError("'chars' argument must be a string")
+        if chars is None:
+            return ExprMonad(monad.translator, unicode, [ strip_type, parent_sql ])
+        else:
+            chars_sql = chars.getsql()[0]
+            return ExprMonad(monad.translator, unicode, [ strip_type, parent_sql, chars_sql ])
+    def call_strip(monad, chars=None):
+        return monad.strip(chars, TRIM)
+    def call_lstrip(monad, chars=None):
+        return monad.strip(chars, LTRIM)
+    def call_rstrip(monad, chars=None):
+        return monad.strip(chars, RTRIM)
     
 class ObjectMixin(object): pass
 

@@ -288,4 +288,13 @@ class SQLBuilder(object):
             result.extend((' else ', self(default)))
         result.append(' end')
         return result
-        
+    def TRIM(self, expr, chars=None):
+        if chars is None: return 'trim(', self(expr), ')'
+        return 'trim(', self(expr), ', ', self(chars), ')'
+    def LTRIM(self, expr, chars=None):
+        if chars is None: return 'ltrim(', self(expr), ')'
+        return 'ltrim(', self(expr), ', ', self(chars), ')'
+    def RTRIM(self, expr, chars=None):
+        if chars is None: return 'rtrim(', self(expr), ')'
+        return 'rtrim(', self(expr), ', ', self(chars), ')'
+    
