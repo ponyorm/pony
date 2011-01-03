@@ -140,10 +140,7 @@ def normalize_type(t):
     if t not in primitive_types and not isinstance(t, orm.EntityMeta): raise TypeError, t
     return t
 
-def is_comparable_types(op, t1, t2):
-    return normalize_type(t1) == normalize_type(t2)
-
-def is_comparable_types(op, type1, type2):
+def are_comparable_types(op, type1, type2):
     # op: '<' | '>' | '=' | '>=' | '<=' | '<>' | '!=' | '=='
     #         | 'in' | 'not' 'in' | 'is' | 'is' 'not'
     if op in ('is', 'is not'): return type1 is not NoneType and type2 is NoneType
@@ -154,18 +151,7 @@ def is_comparable_types(op, type1, type2):
         elif type1 in primitive_types: return type1 is type2
         elif isinstance(type1, orm.EntityMeta): return type1._root_ is type2._root_
         else: return False
-    if op in ['in', 'not in']:
-        if type1 in primitive_types:            
-            if type2 is list: return True
-            elif isinstance(type2, orm.Set): raise NotImplementedError
-            else: return False
-        elif isinstance(type1, orm.EntityMeta):
-            if type2 is list: return True
-            elif isinstance(type2, orm.Set):
-                t = type2.py_type
-                return isinstance(t, orm.EntityMeta) and type1._root_ is t._root_
-            else: return False
-        else: return False
+    else: assert False
 
 def sqland(items):
     if len(items) == 1: return items[0]
@@ -259,7 +245,6 @@ class SQLTranslator(ASTTranslator):
         self.select, self.attr_offsets = entity._construct_select_clause_(alias)         
         self.sql_ast = [ SELECT, self.select, self.from_ ]
         if self.conditions: self.sql_ast.append([ WHERE, sqland(self.conditions) ])
-
     def postGenExprIf(self, node):
         monad = node.test.monad
         if monad.type is not bool: raise TypeError
@@ -271,23 +256,20 @@ class SQLTranslator(ASTTranslator):
         op, expr2 = ops[0]
         # op: '<' | '>' | '=' | '>=' | '<=' | '<>' | '!=' | '=='
         #         | 'in' | 'not in' | 'is' | 'is not'
-
-        node.monad = expr1.monad.cmp(op, expr2.monad)
+        if op.endswith('in'):
+            node.monad = expr2.monad.contains(expr1.monad, op == 'not in')
+        else:
+            node.monad = expr1.monad.cmp(op, expr2.monad)
     def postConst(self, node):
         value = node.value
-        if type(value) is not tuple: items = (value,)
-        monads = []
-        for item in items:
-            item_type = normalize_type(type(item))
-            if item_type is unicode:
-                monads.append(StringConstMonad(self, item))
-            elif item_type is int:
-                monads.append(NumericConstMonad(self, item))
-            elif item_type is NoneType:
-                monads.append(NoneMonad(self))
-            else: raise TypeError
-        if type(value) is not tuple: node.monad = monads[0]
-        else: node.monad = ListMonad(self, monads)
+        if type(value) is not tuple:
+            node.monad = ConstMonad(self, value)
+        else:
+            node.monad = ListMonad(self, [ ConstMonad(self, item) for item in value ])
+    def postList(self, node):
+        node.monad = ListMonad(self, [ item.monad for item in node.nodes ])
+    def postTuple(self, node):
+        node.monad = ListMonad(self, [ item.monad for item in node.nodes ])
     def postName(self, node):
         name = node.name
         if name in self.iterables:
@@ -356,7 +338,7 @@ class Monad(object):
         monad.type = type
     def cmp(monad, op, monad2):
         return CmpMonad(op, monad, monad2)
-    def __contains__(monad, item): raise TypeError
+    def contains(monad, item, not_in=False): raise TypeError
     def __nonzero__(monad): raise TypeError
 
     def getattr(monad, attrname): raise TypeError
@@ -374,16 +356,22 @@ class Monad(object):
     def __neg__(monad): raise TypeError
     def __abs__(monad, monad2): raise TypeError
 
-class NoneMonad(Monad):
-    def __init__(monad, translator):
-        Monad.__init__(monad, translator, NoneType)
-    def getsql(monad):
-        return [[ VALUE, None ]]
-
 class ListMonad(Monad):
     def __init__(monad, translator, items):
         Monad.__init__(monad, translator, list)
         monad.items = items
+    def contains(monad, x, not_in=False):
+        for item in monad.items:
+            if not are_comparable_types('==', x.type, item.type): raise TypeError
+        left_sql = x.getsql()
+        if len(left_sql) == 1:
+            if not_in: sql = [ NOT_IN, left_sql[0], [ item.getsql()[0] for item in monad.items ] ]
+            else: sql = [ IN, left_sql[0], [ item.getsql()[0] for item in monad.items ] ]
+        elif not_in:
+            sql = sqland([ sqlor([ [ NE, a, b ]  for a, b in zip(left_sql, item.getsql()) ]) for item in monad.items ])
+        else:
+            sql = sqlor([ sqland([ [ EQ, a, b ]  for a, b in zip(left_sql, item.getsql()) ]) for item in monad.items ])
+        return BoolExprMonad(monad.translator, sql)
 
 def make_numeric_binop(sqlop):
     def numeric_binop(monad, monad2):
@@ -675,12 +663,25 @@ class StringExprMonad(StringMixin, ExprMonad): pass
 class NumericExprMonad(NumericMixin, ExprMonad): pass
 
 class ConstMonad(Monad):
+    def __new__(cls, translator, value):
+        assert cls is ConstMonad
+        value_type = normalize_type(type(value))
+        if value_type is int: cls = NumericConstMonad
+        elif value_type is unicode: cls = StringConstMonad
+        elif value_type is NoneType: cls = NoneMonad
+        else: raise TypeError
+        return object.__new__(cls)
     def __init__(monad, translator, value):
         value_type = normalize_type(type(value))
         Monad.__init__(monad, translator, value_type)
         monad.value = value
     def getsql(monad):
         return [ [ VALUE, monad.value ] ]
+
+class NoneMonad(Monad):
+    def __init__(monad, translator, value=None):
+        assert value is None
+        ConstMonad.__init__(monad, translator, value)
 
 class StringConstMonad(StringMixin, ConstMonad):
     def len(monad):
@@ -705,7 +706,7 @@ cmpops = { '>=' : GE, '>' : GT, '<=' : LE, '<' : LT }
 
 class CmpMonad(BoolMonad):
     def __init__(monad, op, left, right):
-        if not is_comparable_types(op, left.type, right.type): raise TypeError, [left.type, right.type]
+        if not are_comparable_types(op, left.type, right.type): raise TypeError, [left.type, right.type]
         if op == '<>': op = '!='
         if left.type is NoneType:
             assert right.type is not NoneType
@@ -736,22 +737,7 @@ class CmpMonad(BoolMonad):
             return sqland([ [ EQ, a, b ] for (a, b) in zip(left_sql, right_sql) ])
         if op == '!=':
             return sqlor([ [ NE, a, b ] for (a, b) in zip(left_sql, right_sql) ])
-        
-        if isinstance(monad.right, ListMonad):
-            left_type = normalize_type(monad.left)
-            for item in monad.right.items:
-                if not is_comparable_types(left_type, item.type): raise TypeError
-            if len(left_sql) == 1:
-                if op == 'in': return [ IN, left_sql[0], right_sql ]
-                elif op == 'not in': return [ NOT_IN, left_sql[0], right_sql ]
-                else: assert False
-            else:
-                if op == 'in':
-                    return sqlor([ sqland([ [ EQ, a, b ]  for a, b in zip(left_sql, item_sql) ]) for item_sql in right_sql ])
-                if op == 'not in':
-                    return sqland([ sqlor([ [ NE, a, b ]  for a, b in zip(left_sql, item_sql) ]) for item_sql in right_sql ])
-
-        raise NotImplementedError
+        assert False
 
 class LogicalBinOpMonad(BoolMonad):
     def __init__(monad, operands):
