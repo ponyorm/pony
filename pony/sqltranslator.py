@@ -162,52 +162,52 @@ def sqlor(items):
     return [ OR ] + items
 
 class ASTTranslator(object):
-    def __init__(self, tree):
-        self.tree = tree
-        self.pre_methods = {}
-        self.post_methods = {}
-    def dispatch(self, node):
+    def __init__(translator, tree):
+        translator.tree = tree
+        translator.pre_methods = {}
+        translator.post_methods = {}
+    def dispatch(translator, node):
         cls = node.__class__
 
-        try: pre_method = self.pre_methods[cls]
+        try: pre_method = translator.pre_methods[cls]
         except KeyError:
-            pre_method = getattr(self, 'pre' + cls.__name__, None)
-            self.pre_methods[cls] = pre_method
+            pre_method = getattr(translator, 'pre' + cls.__name__, None)
+            translator.pre_methods[cls] = pre_method
         if pre_method is not None:
             # print 'PRE', node.__class__.__name__, '+'
             pre_method(node)
         else:            
             # print 'PRE', node.__class__.__name__, '-'
-            self.default_pre(node)
+            translator.default_pre(node)
         
-        for child in node.getChildNodes(): self.dispatch(child)
+        for child in node.getChildNodes(): translator.dispatch(child)
 
-        try: post_method = self.post_methods[cls]
+        try: post_method = translator.post_methods[cls]
         except KeyError:
-            post_method = getattr(self, 'post' + cls.__name__, None)
-            self.post_methods[cls] = post_method
+            post_method = getattr(translator, 'post' + cls.__name__, None)
+            translator.post_methods[cls] = post_method
         if post_method is not None:
             # print 'POST', node.__class__.__name__, '+'
             post_method(node)
         else:            
             # print 'POST', node.__class__.__name__, '-'
-            self.default_post(node)
-    def default_pre(self, node):
+            translator.default_post(node)
+    def default_pre(translator, node):
         pass
-    def default_post(self, node):
+    def default_post(translator, node):
         pass
 
 class SQLTranslator(ASTTranslator):
-    def __init__(self, tree, vartypes):
+    def __init__(translator, tree, vartypes):
         assert isinstance(tree, ast.GenExprInner)
-        ASTTranslator.__init__(self, tree)
-        self.diagram = None
-        self.vartypes = vartypes
-        self.iterables = iterables = {}
-        self.aliases = aliases = {}
-        self.extractors = {}
-        self.from_ = [ FROM ]
-        self.conditions = []
+        ASTTranslator.__init__(translator, tree)
+        translator.diagram = None
+        translator.vartypes = vartypes
+        translator.iterables = iterables = {}
+        translator.aliases = aliases = {}
+        translator.extractors = {}
+        translator.from_ = [ FROM ]
+        translator.conditions = []
         
         for qual in tree.quals:
             assign = qual.assign
@@ -224,32 +224,32 @@ class SQLTranslator(ASTTranslator):
             entity = vartypes[iter_name] # can raise KeyError
             if not isinstance(entity, orm.EntityMeta): raise NotImplementedError
 
-            if self.diagram is None: self.diagram = entity._diagram_
-            elif self.diagram is not entity._diagram_: raise TranslationError(
+            if translator.diagram is None: translator.diagram = entity._diagram_
+            elif translator.diagram is not entity._diagram_: raise TranslationError(
                 'All entities in a query must belong to the same diagram')
 
             table = entity._table_
             iterables[name] = entity
             aliases[name] = entity
-            self.from_.append([ name, TABLE, table ])
+            translator.from_.append([ name, TABLE, table ])
             for if_ in qual.ifs:
                 assert isinstance(if_, ast.GenExprIf)
-                self.dispatch(if_)
-                self.conditions.append(if_.monad.getsql())
+                translator.dispatch(if_)
+                translator.conditions.append(if_.monad.getsql())
         assert isinstance(tree.expr, ast.Name)
-        alias = self.alias = tree.expr.name
-        self.dispatch(tree.expr)
+        alias = translator.alias = tree.expr.name
+        translator.dispatch(tree.expr)
         monad = tree.expr.monad
-        entity = self.entity = monad.type
+        entity = translator.entity = monad.type
         assert isinstance(entity, orm.EntityMeta)
-        self.select, self.attr_offsets = entity._construct_select_clause_(alias)         
-        self.sql_ast = [ SELECT, self.select, self.from_ ]
-        if self.conditions: self.sql_ast.append([ WHERE, sqland(self.conditions) ])
-    def postGenExprIf(self, node):
+        translator.select, translator.attr_offsets = entity._construct_select_clause_(alias)         
+        translator.sql_ast = [ SELECT, translator.select, translator.from_ ]
+        if translator.conditions: translator.sql_ast.append([ WHERE, sqland(translator.conditions) ])
+    def postGenExprIf(translator, node):
         monad = node.test.monad
         if monad.type is not bool: raise TypeError
         node.monad = monad
-    def postCompare(self, node):
+    def postCompare(translator, node):
         expr1 = node.expr
         ops = node.ops
         if len(ops) > 1: raise NotImplementedError
@@ -260,53 +260,53 @@ class SQLTranslator(ASTTranslator):
             node.monad = expr2.monad.contains(expr1.monad, op == 'not in')
         else:
             node.monad = expr1.monad.cmp(op, expr2.monad)
-    def postConst(self, node):
+    def postConst(translator, node):
         value = node.value
         if type(value) is not tuple:
-            node.monad = ConstMonad(self, value)
+            node.monad = ConstMonad(translator, value)
         else:
-            node.monad = ListMonad(self, [ ConstMonad(self, item) for item in value ])
-    def postList(self, node):
-        node.monad = ListMonad(self, [ item.monad for item in node.nodes ])
-    def postTuple(self, node):
-        node.monad = ListMonad(self, [ item.monad for item in node.nodes ])
-    def postName(self, node):
+            node.monad = ListMonad(translator, [ ConstMonad(translator, item) for item in value ])
+    def postList(translator, node):
+        node.monad = ListMonad(translator, [ item.monad for item in node.nodes ])
+    def postTuple(translator, node):
+        node.monad = ListMonad(translator, [ item.monad for item in node.nodes ])
+    def postName(translator, node):
         name = node.name
-        if name in self.iterables:
-            entity = self.iterables[name]
-            node.monad = ObjectIterMonad(self, name, entity)
+        if name in translator.iterables:
+            entity = translator.iterables[name]
+            node.monad = ObjectIterMonad(translator, name, entity)
         else:
-            try: value_type = self.vartypes[name]
+            try: value_type = translator.vartypes[name]
             except KeyError:
                 func = getattr(__builtin__, name, None)
                 if func is None: raise NameError(name)
                 func_monad_class = special_functions.get(func)
                 if func_monad_class is None: raise NotImlementedError
-                node.monad = func_monad_class(self)
+                node.monad = func_monad_class(translator)
             else:
-                if value_type is NoneType: node.monad = NoneMonad(self)
-                else: node.monad = ParamMonad(self, value_type, name)
-    def postAdd(self, node):
+                if value_type is NoneType: node.monad = NoneMonad(translator)
+                else: node.monad = ParamMonad(translator, value_type, name)
+    def postAdd(translator, node):
         node.monad = node.left.monad + node.right.monad
-    def postSub(self, node):
+    def postSub(translator, node):
         node.monad = node.left.monad - node.right.monad
-    def postMul(self, node):
+    def postMul(translator, node):
         node.monad = node.left.monad * node.right.monad
-    def postDiv(self, node):
+    def postDiv(translator, node):
         node.monad = node.left.monad / node.right.monad
-    def postPower(self, node):
+    def postPower(translator, node):
         node.monad = node.left.monad ** node.right.monad
-    def postUnarySub(self, node):
+    def postUnarySub(translator, node):
         node.monad = -node.expr.monad
-    def postGetattr(self, node):
+    def postGetattr(translator, node):
         node.monad = node.expr.monad.getattr(node.attrname)
-    def postAnd(self, node):
+    def postAnd(translator, node):
         node.monad = AndMonad([ subnode.monad for subnode in node.nodes ])
-    def postOr(self, node):
+    def postOr(translator, node):
         node.monad = OrMonad([ subnode.monad for subnode in node.nodes ])
-    def postNot(self, node):
+    def postNot(translator, node):
         node.monad = NotMonad(node.expr.monad)
-    def postCallFunc(self, node):
+    def postCallFunc(translator, node):
         if node.star_args is not None: raise NotImplementedError
         if node.dstar_args is not None: raise NotImplementedError
         args = []
@@ -317,13 +317,13 @@ class SQLTranslator(ASTTranslator):
             else: args.append(arg.monad)
         func_monad = node.node.monad
         node.monad = func_monad(*args, **keyargs)
-    def postSubscript(self, node):
+    def postSubscript(translator, node):
         assert node.flags == 'OP_APPLY'
         assert isinstance(node.subs, list) and len(node.subs) == 1
         expr_monad = node.expr.monad
         index_monad = node.subs[0].monad
         node.monad = expr_monad[index_monad]
-    def postSlice(self, node):
+    def postSlice(translator, node):
         assert node.flags == 'OP_APPLY'
         expr_monad = node.expr.monad
         upper = node.upper
