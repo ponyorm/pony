@@ -3,7 +3,7 @@ from compiler import ast
 from types import NoneType
 
 from pony import orm
-from pony.decompiler import decompile
+from pony.decompiling import decompile
 from pony.templating import Html, StrHtml
 from pony.dbapiprovider import SQLBuilder
 from pony.sqlsymbols import *
