@@ -221,15 +221,40 @@ class SQLTranslator(ASTTranslator):
             if name.startswith('__'): raise TranslationError('Illegal name: %s' % name)
             assert name not in aliases
 
-            assert isinstance(qual.iter, ast.Name)
-            iter_name = qual.iter.name
-            entity = vartypes[iter_name] # can raise KeyError
-            if not isinstance(entity, orm.EntityMeta): raise NotImplementedError
+            node = qual.iter
+            attr_names = []
+            while isinstance(node, ast.Getattr):
+                attr_names.append(node.attrname)
+                node = node.expr
+            if not isinstance(node, ast.Name): raise TypeError
 
-            if translator.diagram is None: translator.diagram = entity._diagram_
-            elif translator.diagram is not entity._diagram_: raise TranslationError(
-                'All entities in a query must belong to the same diagram')
+            if not attr_names:
+                iter_name = node.name
+                entity = vartypes[iter_name] # can raise KeyError
+                if not isinstance(entity, orm.EntityMeta): raise NotImplementedError
 
+                if translator.diagram is None: translator.diagram = entity._diagram_
+                elif translator.diagram is not entity._diagram_: raise TranslationError(
+                    'All entities in a query must belong to the same diagram')
+            else:
+                if len(attr_names) > 1: raise NotImplementedError
+                attr_name = attr_names[0]
+                parent_entity = iterables.get(node.name)
+                if parent_entity is None: raise TranslationError("Name %r must be defined in query")
+                attr = parent_entity._adict_.get(attr_name)
+                if attr is None: raise AttributeError, attr_name
+                if not attr.is_collection: raise TypeError
+                if not isinstance(attr, orm.Set): raise NotImplementedError
+                entity = attr.py_type
+                if not isinstance(entity, orm.EntityMeta): raise NotImplementedError
+                conditions = []
+                reverse = attr.reverse
+                if not reverse.is_collection:
+                    for c1, c2 in zip(parent_entity._pk_columns_, attr.reverse.columns):
+                        conditions.append([ EQ, [ COLUMN, node.name, c1 ], [ COLUMN, name, c2 ] ])
+                else:
+                    raise NotImplementedError
+                translator.conditions.extend(conditions)
             table = entity._table_
             iterables[name] = entity
             aliases[name] = entity
