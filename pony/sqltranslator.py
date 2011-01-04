@@ -124,6 +124,8 @@ class Query(object):
         start = offset or 0
         stop = start + limit
         return query[start:stop]
+    def fetch(query):
+        return list(query)
 
 primitive_types = set([ int, unicode ])
 type_normalization_dict = { long : int, str : unicode, StrHtml : unicode, Html : unicode }
