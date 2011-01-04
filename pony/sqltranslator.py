@@ -10,6 +10,8 @@ from pony.templating import Html, StrHtml
 from pony.dbapiprovider import SQLBuilder
 from pony.sqlsymbols import *
 
+MAX_ALIAS_LENGTH = 30
+
 class TranslationError(Exception): pass
 
 python_ast_cache = {}
@@ -216,6 +218,7 @@ class SQLTranslator(ASTTranslator):
         translator.from_ = [ FROM ]
         conditions = translator.conditions = []
         translator.inside_expr = False
+        translator.alias_counters = {}
         for i, qual in enumerate(tree.quals):
             assign = qual.assign
             if not isinstance(assign, ast.AssName): raise TypeError
@@ -262,16 +265,15 @@ class SQLTranslator(ASTTranslator):
                     translator.distinct = True
                     m2m_table = attr.table
                     m2m_alias = '%s--%s' % (node.name, name)
-                    aliases[m2m_alias] = m2m_table
+                    aliases[m2m_alias] = m2m_alias
                     translator.from_.append([ m2m_alias, TABLE, m2m_table ])
                     for c1, c2 in zip(parent_entity._pk_columns_, reverse.columns):
                         conditions.append([ EQ, [ COLUMN, node.name, c1 ], [ COLUMN, m2m_alias, c2 ] ])
                     for c1, c2 in zip(attr.columns, entity._pk_columns_):
                         conditions.append([ EQ, [ COLUMN, m2m_alias, c1 ], [ COLUMN, name, c2 ] ])
-            table = entity._table_
             iterables[name] = entity
-            aliases[name] = table
-            translator.from_.append([ name, TABLE, table ])
+            aliases[name] = name
+            translator.from_.append([ name, TABLE, entity._table_ ])
             for if_ in qual.ifs:
                 assert isinstance(if_, ast.GenExprIf)
                 translator.dispatch(if_)
@@ -292,13 +294,15 @@ class SQLTranslator(ASTTranslator):
                 translator.distinct = True
         elif isinstance(monad, ObjectAttrMonad):
             translator.distinct = True
-            table = aliases.get(alias)
-            if table is None:
-                table = aliases[alias] = entity._table_
-                translator.from_.append([ alias, TABLE, table ])
+            short_alias = aliases.get(alias)
+            if short_alias is None:
+                short_alias = translator.get_short_alias(alias, entity)
+                aliases[alias] = short_alias
+                translator.from_.append([ short_alias, TABLE, entity._table_ ])
                 assert len(monad.columns) == len(entity._pk_columns_)
                 for c1, c2 in zip(monad.columns, entity._pk_columns_):
-                    conditions.append([ EQ, [ COLUMN, monad.base_alias, c1 ], [ COLUMN, monad.alias, c2 ] ])
+                    conditions.append([ EQ, [ COLUMN, monad.base_alias, c1 ], [ COLUMN, short_alias, c2 ] ])
+            alias = short_alias
         else: assert False
         translator.select, translator.attr_offsets = entity._construct_select_clause_(alias, translator.distinct)
         translator.sql_ast = [ SELECT, translator.select, translator.from_ ]
@@ -389,6 +393,13 @@ class SQLTranslator(ASTTranslator):
         lower = node.lower
         if lower is not None: lower = lower.monad
         node.monad = expr_monad[lower:upper]
+    def get_short_alias(translator, alias, entity):
+        if len(alias) <= MAX_ALIAS_LENGTH: return alias
+        name = entity.__name__[:MAX_ALIAS_LENGTH-3].lower()
+        i = translator.alias_counters.setdefault(name, 1)
+        short_alias = '%s-%d' % (name, i)
+        translator.alias_counters[name] = i + 1
+        return short_alias
 
 class Monad(object):
     def __init__(monad, translator, type):
@@ -654,15 +665,16 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
                     i += len(a.columns)
                 columns = columns[i:i+len(attr.columns)]
         else:
-            table = translator.aliases.get(alias)
-            if table is None:
-                table = monad.translator.aliases[alias] = entity._table_
-                translator.from_.append([ monad.alias, TABLE, table ])
+            short_alias = translator.aliases.get(alias)
+            if short_alias is None:
+                short_alias = translator.get_short_alias(alias, entity)
+                translator.aliases[alias] = short_alias
+                translator.from_.append([ short_alias, TABLE, entity._table_ ])
                 conditions = translator.conditions
                 assert len(monad.columns) == len(entity._pk_columns_)
                 for c1, c2 in zip(monad.columns, entity._pk_columns_):
-                    conditions.append([ EQ, [ COLUMN, monad.base_alias, c1 ], [ COLUMN, alias, c2 ] ])
-            base_alias = alias
+                    conditions.append([ EQ, [ COLUMN, monad.base_alias, c1 ], [ COLUMN, short_alias, c2 ] ])
+            base_alias = short_alias
             columns = attr.columns
         attr_alias = '-'.join((alias, name))
         return AttrMonad(monad, attr, base_alias, columns, attr_alias)
