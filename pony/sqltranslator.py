@@ -250,14 +250,22 @@ class SQLTranslator(ASTTranslator):
                 conditions = []
                 reverse = attr.reverse
                 if not reverse.is_collection:
-                    for c1, c2 in zip(parent_entity._pk_columns_, attr.reverse.columns):
+                    for c1, c2 in zip(parent_entity._pk_columns_, reverse.columns):
                         conditions.append([ EQ, [ COLUMN, node.name, c1 ], [ COLUMN, name, c2 ] ])
                 else:
-                    raise NotImplementedError
+                    if not isinstance(reverse, orm.Set): raise NotImplementedError
+                    m2m_table = attr.table
+                    m2m_alias = '%s--%s' % (node.name, name)
+                    aliases[m2m_alias] = m2m_table
+                    translator.from_.append([ m2m_alias, TABLE, m2m_table ])
+                    for c1, c2 in zip(parent_entity._pk_columns_, reverse.columns):
+                        conditions.append([ EQ, [ COLUMN, node.name, c1 ], [ COLUMN, m2m_alias, c2 ] ])
+                    for c1, c2 in zip(attr.columns, entity._pk_columns_):
+                        conditions.append([ EQ, [ COLUMN, m2m_alias, c1 ], [ COLUMN, name, c2 ] ])
                 translator.conditions.extend(conditions)
             table = entity._table_
             iterables[name] = entity
-            aliases[name] = entity
+            aliases[name] = table
             translator.from_.append([ name, TABLE, table ])
             for if_ in qual.ifs:
                 assert isinstance(if_, ast.GenExprIf)
@@ -619,7 +627,7 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
         else:
             alias = monad.translator.aliases.get(monad.alias)
             if alias is None:
-                alias = monad.translator.aliases[monad.alias] = monad.alias
+                alias = monad.translator.aliases[monad.alias] = entity._table_
                 translator.from_.append([ monad.alias, TABLE, entity._table_ ])
                 conditions = monad.translator.conditions
                 assert len(monad.columns) == len(entity._pk_columns_)
