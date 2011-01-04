@@ -1,6 +1,8 @@
 import __builtin__
 from compiler import ast
 from types import NoneType
+from operator import attrgetter
+from itertools import imap
 
 from pony import orm
 from pony.decompiling import decompile
@@ -77,8 +79,10 @@ class Query(object):
             param_dict[param_name] = extractor(query._variables)
         arguments = adapter(param_dict)
         cursor = database._exec_sql(sql, arguments)
-        objects = translator.entity._fetch_objects(cursor, translator.attr_offsets)
-        return iter(objects)
+        result = translator.entity._fetch_objects(cursor, translator.attr_offsets)
+        if translator.attrname is not None:
+            return imap(attrgetter(translator.attrname), result)
+        return iter(result)
     def orderby(query, *args):
         if not args: raise TypeError('query.orderby() requires at least one argument')
         entity = query._translator.entity
@@ -275,6 +279,10 @@ class SQLTranslator(ASTTranslator):
         translator.inside_expr = True
         translator.dispatch(tree.expr)
         monad = tree.expr.monad
+        translator.attrname = None
+        if isinstance(monad, (StringAttrMonad, NumericAttrMonad)):
+            translator.attrname = monad.attr.name
+            monad = monad.parent
         if not isinstance(monad, (ObjectIterMonad, ObjectAttrMonad)):
             raise TranslationError, monad
         alias = translator.alias = monad.alias
@@ -602,7 +610,7 @@ class ObjectIterMonad(ObjectMixin, Monad):
         attr = getattr(entity, name) # can raise AttributeError
         if monad.translator.inside_expr and attr.is_collection:
             raise TranslationError('Collection attributes cannot be used inside expression part of select')
-        return AttrMonad(monad.translator, attr, monad.alias)
+        return AttrMonad(monad, attr, monad.alias)
     def getsql(monad):
         entity = monad.type
         return [ [ COLUMN, monad.alias, column ] for attr in entity._pk_attrs_ if not attr.is_collection
@@ -617,9 +625,10 @@ class AttrMonad(Monad):
         elif isinstance(type, orm.EntityMeta): cls = ObjectAttrMonad
         else: assert False
         return object.__new__(cls)
-    def __init__(monad, translator, attr, base_alias, columns=None, alias=None):
+    def __init__(monad, parent, attr, base_alias, columns=None, alias=None):
         type = normalize_type(attr.py_type)
-        Monad.__init__(monad, translator, type)
+        Monad.__init__(monad, parent.translator, type)
+        monad.parent = parent
         monad.attr = attr
         monad.base_alias = base_alias
         monad.columns = columns or attr.columns
@@ -656,7 +665,7 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
             base_alias = alias
             columns = attr.columns
         attr_alias = '-'.join((alias, name))
-        return AttrMonad(translator, attr, base_alias, columns, attr_alias)
+        return AttrMonad(monad, attr, base_alias, columns, attr_alias)
 
 class NumericAttrMonad(NumericMixin, AttrMonad): pass
 class StringAttrMonad(StringMixin, AttrMonad): pass
