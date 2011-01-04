@@ -448,7 +448,7 @@ def make_numeric_binop(sqlop):
         left_sql = monad.getsql()
         right_sql = monad2.getsql()
         assert len(left_sql) == len(right_sql) == 1
-        return ExprMonad(monad.translator, int, [ sqlop, left_sql[0], right_sql[0] ])
+        return NumericExprMonad(monad.translator, [ sqlop, left_sql[0], right_sql[0] ])
     numeric_binop.__name__ = sqlop
     return numeric_binop
 
@@ -460,10 +460,10 @@ class NumericMixin(object):
     __pow__ = make_numeric_binop(POW)
     def __neg__(monad):
         sql = monad.getsql()[0]
-        return ExprMonad(monad.translator, int, [ NEG, sql ])
+        return NumericExprMonad(monad.translator, [ NEG, sql ])
     def __abs__(monad):
         sql = monad.getsql()[0]
-        return ExprMonad(monad.translator, int, [ ABS, sql ])
+        return NumericExprMonad(monad.translator, [ ABS, sql ])
 
 def make_string_binop(sqlop):
     def string_binop(monad, monad2):
@@ -471,7 +471,7 @@ def make_string_binop(sqlop):
         left_sql = monad.getsql()
         right_sql = monad2.getsql()
         assert len(left_sql) == len(right_sql) == 1
-        return ExprMonad(monad.translator, unicode, [ sqlop, left_sql[0], right_sql[0] ])
+        return StringExprMonad(monad.translator, [ sqlop, left_sql[0], right_sql[0] ])
     string_binop.__name__ = sqlop
     return string_binop
 
@@ -520,7 +520,7 @@ class StringMixin(object):
                 len_sql = [ SUB, stop_sql, start_sql ]
 
             sql = [ SUBSTR, expr_sql, start_sql, len_sql ]
-            return ExprMonad(monad.translator, unicode, sql)
+            return StringExprMonad(monad.translator, sql)
         
         if isinstance(monad, StringConstMonad) and isinstance(index, NumericConstMonad):
             return StringConstMonad(monad.translator, monad.value[index.value])
@@ -534,10 +534,10 @@ class StringMixin(object):
             inner_sql = index.getsql()[0]
             index_sql = [ ADD, inner_sql, [ CASE, None, [ ([GE, inner_sql, [ VALUE, 0 ]], [ VALUE, 1 ]) ], [ VALUE, 0 ] ] ]
         sql = [ SUBSTR, expr_sql, index_sql, [ VALUE, 1 ] ]
-        return ExprMonad(monad.translator, unicode, sql)
+        return StringExprMonad(monad.translator, sql)
     def len(monad):
         sql = monad.getsql()[0]
-        return ExprMonad(monad.translator, int, [ LENGTH, sql ])
+        return NumericExprMonad(monad.translator, [ LENGTH, sql ])
     def contains(monad, item, not_in=False):
         if item.type is not unicode: raise TypeError
         if isinstance(item, StringConstMonad):
@@ -563,7 +563,7 @@ def make_string_func(sqlop):
     def func(monad):
         sql = monad.parent.getsql()
         assert len(sql) == 1
-        return ExprMonad(monad.translator, unicode, [ sqlop, sql[0] ])
+        return StringExprMonad(monad.translator, [ sqlop, sql[0] ])
     func.__name__ = sqlop
     return func
 
@@ -599,10 +599,10 @@ class StringMethodMonad(MethodMonad):
         if chars is not None and chars.type is not unicode:
             raise TypeError("'chars' argument must be a string")
         if chars is None:
-            return ExprMonad(monad.translator, unicode, [ strip_type, parent_sql ])
+            return StringExprMonad(monad.translator, [ strip_type, parent_sql ])
         else:
             chars_sql = chars.getsql()[0]
-            return ExprMonad(monad.translator, unicode, [ strip_type, parent_sql, chars_sql ])
+            return StringExprMonad(monad.translator, [ strip_type, parent_sql, chars_sql ])
     def call_strip(monad, chars=None):
         return monad.strip(chars, TRIM)
     def call_lstrip(monad, chars=None):
@@ -732,13 +732,6 @@ class StringParamMonad(StringMixin, ParamMonad): pass
 class NumericParamMonad(NumericMixin, ParamMonad): pass
 
 class ExprMonad(Monad):
-    def __new__(cls, translator, type, sql):
-        assert cls is ExprMonad
-        type = normalize_type(type)
-        if type is int: cls = NumericExprMonad
-        elif type is unicode: cls = StringExprMonad
-        else: assert False
-        return object.__new__(cls)        
     def __init__(monad, translator, type, sql):
         Monad.__init__(monad, translator, type)
         monad.sql = sql
@@ -771,7 +764,7 @@ class NoneMonad(Monad):
 
 class StringConstMonad(StringMixin, ConstMonad):
     def len(monad):
-        return ExprMonad(monad.translator, int, [ VALUE, len(monad.value) ])
+        return NumericExprMonad(monad.translator, [ VALUE, len(monad.value) ])
     
 class NumericConstMonad(NumericMixin, ConstMonad): pass
 
@@ -887,11 +880,15 @@ def FuncMaxMonad(monad, *args):
 def minmax(sqlop, monad, *args):
     if len(args) == 0: raise TypeError
     elif len(args) == 1: raise NotImplementedError
+    sql = [ sqlop ] + [ arg.getsql()[0] for arg in args ]
     arg_types = set(arg.type for arg in args)
     if len(arg_types) > 1: raise TypeError
     result_type = arg_types.pop()
-    sql = [ sqlop ] + [ arg.getsql()[0] for arg in args ]
-    return ExprMonad(monad.translator, result_type, sql)
+    if result_type is int:
+        return NumericExprMonad(monad.translator, sql)
+    elif result_type is unicode:
+        return StringExprMonad(monad.translator, sql)
+    else: raise TypeError
 
 special_functions = {
     len : FuncLenMonad,
