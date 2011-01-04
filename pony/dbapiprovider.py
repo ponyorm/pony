@@ -269,13 +269,21 @@ class SQLBuilder(object):
             return 'COUNT(DISTINCT ', builder(expr), ')'
         raise AstError('Invalid COUNT kind (must be ALL or DISTINCT)')
     SUM = make_unary_func('SUM')
-    MIN = make_unary_func('MIN')
-    MAX = make_unary_func('MAX')
     AVG = make_unary_func('AVG')
     UPPER = make_unary_func('upper')
     LOWER = make_unary_func('lower')
     LENGTH = make_unary_func('length')
     ABS = make_unary_func('abs')
+    def MIN(builder, *args):
+        if len(args) == 0: assert False
+        elif len(args) == 1: fname = 'MIN'
+        else: fname = 'min'
+        return fname, '(',  join(', ', map(builder, args)), ')'
+    def MAX(builder, *args):
+        if len(args) == 0: assert False
+        elif len(args) == 1: fname = 'MAX'
+        else: fname = 'max'
+        return fname, '(',  join(', ', map(builder, args)), ')'
     def SUBSTR(builder, expr, start, len=None):
         if len is None: return 'substr(', builder(expr), ', ', builder(start), ')'
         return 'substr(', builder(expr), ', ', builder(start), ', ', builder(len), ')'

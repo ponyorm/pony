@@ -778,19 +778,48 @@ class FuncMonad(Monad):
     def __init__(monad, translator):
         monad.translator = translator
 
-class FuncLenMonad(FuncMonad):
-    type = int
-    def __call__(monad, x):
-        assert isinstance(x, Monad)
-        return x.len()
+def func_monad(type):
+    def decorator(monad_func):
+        class SpecificFuncMonad(FuncMonad):
+            def __call__(monad, *args, **keyargs):
+                for arg in args:
+                    assert isinstance(arg, Monad)
+                for value in keyargs.values():
+                    assert isinstance(value, Monad)
+                return monad_func(monad, *args, **keyargs)
+        SpecificFuncMonad.type = type
+        SpecificFuncMonad.__name__ = monad_func.__name__
+        return SpecificFuncMonad
+    return decorator
 
-class FuncAbsMonad(FuncMonad):
-    type = int
-    def __call__(monad, x):
-        assert isinstance(x, Monad)
-        return abs(x)
+@func_monad(type=int)
+def FuncLenMonad(monad, x):
+    return x.len()
+
+@func_monad(type=int)
+def FuncAbsMonad(monad, x):
+    return abs(x)
+
+@func_monad(type=None)
+def FuncMinMonad(monad, *args):
+    return minmax(MIN, monad, *args)
+
+@func_monad(type=None)
+def FuncMaxMonad(monad, *args):
+    return minmax(MAX, monad, *args)
+
+def minmax(sqlop, monad, *args):
+    if len(args) == 0: raise TypeError
+    elif len(args) == 1: raise NotImplementedError
+    arg_types = set(arg.type for arg in args)
+    if len(arg_types) > 1: raise TypeError
+    result_type = arg_types.pop()
+    sql = [ sqlop ] + [ arg.getsql()[0] for arg in args ]
+    return ExprMonad(monad.translator, result_type, sql)
 
 special_functions = {
     len : FuncLenMonad,
-    abs : FuncAbsMonad
+    abs : FuncAbsMonad,
+    min : FuncMinMonad,
+    max : FuncMaxMonad
 }
