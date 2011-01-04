@@ -5,7 +5,7 @@ from Tkinter import *
 
 import pony
 from pony import utils
-from pony.logging import search_log
+from pony.logging2 import search_log
 
 UI_UPDATE_INTERVAL = 1000   # in ms
 MAX_RECORD_DISPLAY_COUNT = 1000

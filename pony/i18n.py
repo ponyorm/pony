@@ -6,7 +6,7 @@ from os.path import join, exists
 
 import pony
 from pony import options
-from pony.logging import log, log_exc, ERROR, DEBUG
+from pony.logging2 import log, log_exc, ERROR, DEBUG
 from pony.utils import read_text_file, get_mtime, shortened_filename
 
 class I18nParseError(Exception): pass

@@ -147,7 +147,7 @@ def mainloop():
             if shutdown: break
             time.sleep(1)
     except:
-        try: log_exc = logging.log_exc
+        try: log_exc = logging2.log_exc
         except NameError: pass
         else: log_exc()
 

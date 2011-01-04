@@ -11,7 +11,7 @@ from pony import routing, autoreload, auth, httputils, options, middleware
 from pony.utils import simple_decorator, decorator_with_params, tostring, localbase
 from pony.templating import html, Html, StrHtml
 from pony.postprocessing import postprocess
-from pony.logging import log, log_exc, DEBUG, INFO, WARNING
+from pony.logging2 import log, log_exc, DEBUG, INFO, WARNING
 from pony.debugging import format_exc
 
 class HttpException(Exception):

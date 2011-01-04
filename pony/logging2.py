@@ -1,7 +1,7 @@
 import cPickle, os, os.path, Queue, random, re, sys, traceback, thread, threading, time, warnings
 from itertools import count
 
-from python import logging
+import logging
 NOTSET = logging.NOTSET
 DEBUG = logging.DEBUG
 INFO = logging.INFO

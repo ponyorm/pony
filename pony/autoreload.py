@@ -6,7 +6,7 @@ from os.path import abspath, basename, dirname, exists, splitext
 
 import pony
 from pony.utils import get_mtime, shortened_filename
-from pony.logging import log, log_exc, ERROR, DEBUG
+from pony.logging2 import log, log_exc, ERROR, DEBUG
 
 USE_AUTORELOAD = True
 

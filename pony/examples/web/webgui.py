@@ -2,7 +2,7 @@
 
 from pony.main import *
 from pony import utils
-from pony.logging import search_log
+from pony.logging2 import search_log
 
 import pprint, threading, time
 from datetime import timedelta
