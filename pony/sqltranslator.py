@@ -24,7 +24,7 @@ def select(gen):
             try: value = globals[name]
             except KeyError:
                 if hasattr(__builtin__, name): continue
-                else: raise KeyError, name
+                else: raise NameError, name
         variables[name] = value
     vartypes = dict((name, get_normalized_type(value)) for name, value in variables.iteritems())
     return Query(gen, tree, vartypes, variables)
@@ -211,7 +211,7 @@ class SQLTranslator(ASTTranslator):
         translator.distinct = False
         translator.from_ = [ FROM ]
         conditions = translator.conditions = []
-        
+        translator.inside_expr = False
         for i, qual in enumerate(tree.quals):
             assign = qual.assign
             if not isinstance(assign, ast.AssName): raise TypeError
@@ -272,6 +272,7 @@ class SQLTranslator(ASTTranslator):
                 assert isinstance(if_, ast.GenExprIf)
                 translator.dispatch(if_)
                 translator.conditions.append(if_.monad.getsql())
+        translator.inside_expr = True
         translator.dispatch(tree.expr)
         monad = tree.expr.monad
         if not isinstance(monad, (ObjectIterMonad, ObjectAttrMonad)):
@@ -282,7 +283,7 @@ class SQLTranslator(ASTTranslator):
             if alias != translator.tree.quals[-1].assign.name:
                 translator.distinct = True
         elif isinstance(monad, ObjectAttrMonad):
-            # translator.distinct = True # ?????
+            translator.distinct = True
             table = aliases.get(alias)
             if table is None:
                 table = aliases[alias] = entity._table_
@@ -599,6 +600,8 @@ class ObjectIterMonad(ObjectMixin, Monad):
     def getattr(monad, name):
         entity = monad.type
         attr = getattr(entity, name) # can raise AttributeError
+        if monad.translator.inside_expr and attr.is_collection:
+            raise TranslationError('Collection attributes cannot be used inside expression part of select')
         return AttrMonad(monad.translator, attr, monad.alias)
     def getsql(monad):
         entity = monad.type
@@ -630,6 +633,8 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
         translator = monad.translator
         entity = monad.type
         attr = getattr(entity, name) # can raise AttributeError
+        if translator.inside_expr and attr.is_collection:
+            raise TranslationError('Collection attributes cannot be used inside expression part of select')
         if attr.pk_offset is not None:
             base_alias = monad.base_alias
             columns = monad.columns
