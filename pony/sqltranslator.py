@@ -467,6 +467,14 @@ class StringMixin(object):
     def len(monad):
         sql = monad.getsql()[0]
         return ExprMonad(monad.translator, int, [ LENGTH, sql ])
+    def contains(monad, item, not_in=False):
+        if item.type is not unicode: raise TypeError
+        if isinstance(item, StringConstMonad):
+            item_sql = [ VALUE, '%%%s%%' % item.value ]
+        else:
+            item_sql = [ CONCAT, [ VALUE, '%' ], item.getsql()[0], [ VALUE, '%' ] ]
+        sql = [ LIKE, monad.getsql()[0], item_sql ]
+        return BoolExprMonad(monad.translator, sql)
         
 class MethodMonad(Monad):
     def __init__(monad, translator, parent, attrname):

@@ -223,8 +223,9 @@ class SQLBuilder(object):
     MUL = make_binary_op(' * ')
     DIV = make_binary_op(' / ')
     POW = make_binary_op(' ** ')
-    CONCAT = make_binary_op(' || ')
 
+    def CONCAT(builder, *args):        
+        return '(',  join(' || ', map(builder, args)), ')'
     def NEG(builder, expr):
         return '-(', builder(expr), ')'
     def IS_NULL(builder, expr):
