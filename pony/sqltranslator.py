@@ -210,7 +210,7 @@ class SQLTranslator(ASTTranslator):
         translator.extractors = {}
         translator.distinct = False
         translator.from_ = [ FROM ]
-        translator.conditions = []
+        conditions = translator.conditions = []
         
         for i, qual in enumerate(tree.quals):
             assign = qual.assign
@@ -249,7 +249,6 @@ class SQLTranslator(ASTTranslator):
                 if not isinstance(attr, orm.Set): raise NotImplementedError
                 entity = attr.py_type
                 if not isinstance(entity, orm.EntityMeta): raise NotImplementedError
-                conditions = []
                 reverse = attr.reverse
                 if not reverse.is_collection:
                     for c1, c2 in zip(parent_entity._pk_columns_, reverse.columns):
@@ -265,7 +264,6 @@ class SQLTranslator(ASTTranslator):
                         conditions.append([ EQ, [ COLUMN, node.name, c1 ], [ COLUMN, m2m_alias, c2 ] ])
                     for c1, c2 in zip(attr.columns, entity._pk_columns_):
                         conditions.append([ EQ, [ COLUMN, m2m_alias, c1 ], [ COLUMN, name, c2 ] ])
-                translator.conditions.extend(conditions)
             table = entity._table_
             iterables[name] = entity
             aliases[name] = table
@@ -274,13 +272,25 @@ class SQLTranslator(ASTTranslator):
                 assert isinstance(if_, ast.GenExprIf)
                 translator.dispatch(if_)
                 translator.conditions.append(if_.monad.getsql())
-        if not isinstance(tree.expr, ast.Name): raise NotImplementedError
-        alias = translator.alias = tree.expr.name
-        if alias != name: translator.distinct = True
         translator.dispatch(tree.expr)
         monad = tree.expr.monad
+        if not isinstance(monad, (ObjectIterMonad, ObjectAttrMonad)):
+            raise TranslationError, monad
+        alias = translator.alias = monad.alias
         entity = translator.entity = monad.type
-        if not isinstance(entity, orm.EntityMeta): raise TranslationError
+        if isinstance(monad, ObjectIterMonad):
+            if alias != translator.tree.quals[-1].assign.name:
+                translator.distinct = True
+        elif isinstance(monad, ObjectAttrMonad):
+            # translator.distinct = True # ?????
+            table = aliases.get(alias)
+            if table is None:
+                table = aliases[alias] = entity._table_
+                translator.from_.append([ alias, TABLE, table ])
+                assert len(monad.columns) == len(entity._pk_columns_)
+                for c1, c2 in zip(monad.columns, entity._pk_columns_):
+                    conditions.append([ EQ, [ COLUMN, monad.base_alias, c1 ], [ COLUMN, monad.alias, c2 ] ])
+        else: assert False
         translator.select, translator.attr_offsets = entity._construct_select_clause_(alias, translator.distinct)
         translator.sql_ast = [ SELECT, translator.select, translator.from_ ]
         if translator.conditions: translator.sql_ast.append([ WHERE, sqland(translator.conditions) ])
@@ -616,6 +626,7 @@ class AttrMonad(Monad):
 
 class ObjectAttrMonad(ObjectMixin, AttrMonad):
     def getattr(monad, name):
+        alias = monad.alias
         translator = monad.translator
         entity = monad.type
         attr = getattr(entity, name) # can raise AttributeError
@@ -629,18 +640,18 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
                     i += len(a.columns)
                 columns = columns[i:i+len(attr.columns)]
         else:
-            alias = monad.translator.aliases.get(monad.alias)
-            if alias is None:
-                alias = monad.translator.aliases[monad.alias] = entity._table_
-                translator.from_.append([ monad.alias, TABLE, entity._table_ ])
-                conditions = monad.translator.conditions
+            table = translator.aliases.get(alias)
+            if table is None:
+                table = monad.translator.aliases[alias] = entity._table_
+                translator.from_.append([ monad.alias, TABLE, table ])
+                conditions = translator.conditions
                 assert len(monad.columns) == len(entity._pk_columns_)
                 for c1, c2 in zip(monad.columns, entity._pk_columns_):
-                    conditions.append([ EQ, [ COLUMN, monad.base_alias, c1 ], [ COLUMN, monad.alias, c2 ] ])
-            base_alias = monad.alias
+                    conditions.append([ EQ, [ COLUMN, monad.base_alias, c1 ], [ COLUMN, alias, c2 ] ])
+            base_alias = alias
             columns = attr.columns
-        alias = '-'.join((monad.alias, name))
-        return AttrMonad(translator, attr, base_alias, columns, alias)
+        attr_alias = '-'.join((alias, name))
+        return AttrMonad(translator, attr, base_alias, columns, attr_alias)
 
 class NumericAttrMonad(NumericMixin, AttrMonad): pass
 class StringAttrMonad(StringMixin, AttrMonad): pass
