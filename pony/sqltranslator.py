@@ -354,7 +354,7 @@ class Monad(object):
     def __pow__(monad, monad2): raise TypeError
 
     def __neg__(monad): raise TypeError
-    def __abs__(monad, monad2): raise TypeError
+    def __abs__(monad): raise TypeError
 
 class ListMonad(Monad):
     def __init__(monad, translator, items):
@@ -390,9 +390,11 @@ class NumericMixin(object):
     __div__ = make_numeric_binop(DIV)
     __pow__ = make_numeric_binop(POW)
     def __neg__(monad):
-        sql = monad.getsql()
-        assert len(sql) == 1
-        return ExprMonad(monad.translator, int, [ NEG, sql[0] ])
+        sql = monad.getsql()[0]
+        return ExprMonad(monad.translator, int, [ NEG, sql ])
+    def __abs__(monad):
+        sql = monad.getsql()[0]
+        return ExprMonad(monad.translator, int, [ ABS, sql ])
 
 def make_string_binop(sqlop):
     def string_binop(monad, monad2):
@@ -782,6 +784,13 @@ class FuncLenMonad(FuncMonad):
         assert isinstance(x, Monad)
         return x.len()
 
+class FuncAbsMonad(FuncMonad):
+    type = int
+    def __call__(monad, x):
+        assert isinstance(x, Monad)
+        return abs(x)
+
 special_functions = {
-    len : FuncLenMonad
+    len : FuncLenMonad,
+    abs : FuncAbsMonad
 }

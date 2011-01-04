@@ -275,6 +275,7 @@ class SQLBuilder(object):
     UPPER = make_unary_func('upper')
     LOWER = make_unary_func('lower')
     LENGTH = make_unary_func('length')
+    ABS = make_unary_func('abs')
     def SUBSTR(builder, expr, start, len=None):
         if len is None: return 'substr(', builder(expr), ', ', builder(start), ')'
         return 'substr(', builder(expr), ', ', builder(start), ', ', builder(len), ')'
@@ -298,4 +299,3 @@ class SQLBuilder(object):
     def RTRIM(builder, expr, chars=None):
         if chars is None: return 'rtrim(', builder(expr), ')'
         return 'rtrim(', builder(expr), ', ', builder(chars), ')'
-    

@@ -8,7 +8,7 @@ symbols = [ 'SELECT', 'INSERT', 'UPDATE', 'DELETE',
             'EQ', 'NE', 'LT', 'LE', 'GT', 'GE', 'IS_NULL', 'IS_NOT_NULL',
             'LIKE', 'NOT_LIKE', 'BETWEEN', 'NOT_BETWEEN',
             'IN', 'NOT_IN', 'EXISTS', 'NOT_EXISTS',
-            'ADD', 'SUB', 'MUL', 'DIV', 'POW', 'NEG',
+            'ADD', 'SUB', 'MUL', 'DIV', 'POW', 'NEG', 'ABS',
             'UPPER', 'LOWER', 'CONCAT', 'STRIN', 'LIKE', 'SUBSTR', 'LENGTH', 'TRIM', 'LTRIM', 'RTRIM',
             'CASE' ]
 
