@@ -1171,10 +1171,11 @@ class Entity(object):
         if not objects: raise UnrepeatableReadError('%s disappeared' % obj)
         assert len(objects) == 1 and obj == objects[0]
     @classmethod
-    def _construct_select_clause_(entity, alias=None):
+    def _construct_select_clause_(entity, alias=None, distinct=False):
         table_name = entity._table_
-        attr_offsets = {} 
-        select_list = [ ALL ]
+        attr_offsets = {}
+        if distinct: select_list = [ DISTINCT ]
+        else: select_list = [ ALL ]
         for attr in entity._attrs_:
             if attr.is_collection: continue
             if not attr.columns: continue

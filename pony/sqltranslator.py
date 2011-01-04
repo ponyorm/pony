@@ -208,10 +208,11 @@ class SQLTranslator(ASTTranslator):
         translator.iterables = iterables = {}
         translator.aliases = aliases = {}
         translator.extractors = {}
+        translator.distinct = False
         translator.from_ = [ FROM ]
         translator.conditions = []
         
-        for qual in tree.quals:
+        for i, qual in enumerate(tree.quals):
             assign = qual.assign
             if not isinstance(assign, ast.AssName): raise TypeError
             if assign.flags != 'OP_ASSIGN': raise TypeError
@@ -229,6 +230,7 @@ class SQLTranslator(ASTTranslator):
             if not isinstance(node, ast.Name): raise TypeError
 
             if not attr_names:
+                if i > 0: translator.distinct = True
                 iter_name = node.name
                 entity = vartypes[iter_name] # can raise KeyError
                 if not isinstance(entity, orm.EntityMeta): raise NotImplementedError
@@ -254,6 +256,7 @@ class SQLTranslator(ASTTranslator):
                         conditions.append([ EQ, [ COLUMN, node.name, c1 ], [ COLUMN, name, c2 ] ])
                 else:
                     if not isinstance(reverse, orm.Set): raise NotImplementedError
+                    translator.distinct = True
                     m2m_table = attr.table
                     m2m_alias = '%s--%s' % (node.name, name)
                     aliases[m2m_alias] = m2m_table
@@ -271,13 +274,14 @@ class SQLTranslator(ASTTranslator):
                 assert isinstance(if_, ast.GenExprIf)
                 translator.dispatch(if_)
                 translator.conditions.append(if_.monad.getsql())
-        assert isinstance(tree.expr, ast.Name)
+        if not isinstance(tree.expr, ast.Name): raise NotImplementedError
         alias = translator.alias = tree.expr.name
+        if alias != name: translator.distinct = True
         translator.dispatch(tree.expr)
         monad = tree.expr.monad
         entity = translator.entity = monad.type
-        assert isinstance(entity, orm.EntityMeta)
-        translator.select, translator.attr_offsets = entity._construct_select_clause_(alias)         
+        if not isinstance(entity, orm.EntityMeta): raise TranslationError
+        translator.select, translator.attr_offsets = entity._construct_select_clause_(alias, translator.distinct)
         translator.sql_ast = [ SELECT, translator.select, translator.from_ ]
         if translator.conditions: translator.sql_ast.append([ WHERE, sqland(translator.conditions) ])
     def postGenExprIf(translator, node):
