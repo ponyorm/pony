@@ -408,7 +408,7 @@ class PrimaryKey(Unique):
 
 
 class Collection(Attribute):
-    __slots__ = 'table', 'cached_load_sql', 'cached_add_m2m_sql', 'cached_remove_m2m_sql'
+    __slots__ = 'table', 'cached_load_sql', 'cached_add_m2m_sql', 'cached_remove_m2m_sql', 'wrapper_class'
     def __init__(attr, py_type, *args, **keyargs):
         if attr.__class__ is Collection: raise TypeError("'Collection' is abstract type")
         table = keyargs.pop('table', None)  # TODO: rename table to link_table or m2m_table
@@ -422,9 +422,11 @@ class Collection(Attribute):
         attr.cached_load_sql = None
         attr.cached_add_m2m_sql = None
         attr.cached_remove_m2m_sql = None
+
+        attr.wrapper_class = None        
     def load(attr, obj):
         assert False, 'Abstract method'
-    def __get__(attr, obj, type=None):
+    def __get__(attr, obj, cls=None):
         assert False, 'Abstract method'
     def __set__(attr, obj, val):
         assert False, 'Abstract method'
@@ -525,10 +527,36 @@ class Set(Collection):
             wbits = item._wbits_
             if wbits is not None and not wbits & bit: item._rbits_ |= bit
         return setdata.copy()
-    def __get__(attr, obj, type=None):
+    def get_wrapper_class(attr):
+        if attr.wrapper_class is not None:
+            return attr.wrapper_class
+        print 'NOT CACHED!!!'
+        item_class = attr.py_type
+        method_dict = {}
+        for item_attr in item_class._attrs_:
+            try: getattr(SetWrapper, item_attr.name)
+            except AttributeError:
+                if item_attr.is_collection:
+                    def lift(wrapper, item_attr=item_attr):
+                        result = set()
+                        for item in wrapper:
+                            result.update(item_attr.copy(item))
+                        return result
+                else:
+                    def lift(wrapper, item_attr=item_attr):
+                        result = set()
+                        for item in wrapper:
+                            result.add(item_attr.__get__(item))
+                        return result
+                method_dict[item_attr.name] = property(lift)
+        wrapper_class_name = item_class.__name__ + 'SetWrapper'
+        attr.wrapper_class = type(wrapper_class_name, (SetWrapper,), method_dict)
+        return attr.wrapper_class
+    def __get__(attr, obj, cls=None):
         if obj is None: return attr
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
-        return SetWrapper(obj, attr)
+        wrapper_class = attr.wrapper_class or attr.get_wrapper_class()
+        return wrapper_class(obj, attr)
     def __set__(attr, obj, val, undo_funcs=None):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         items = attr.check(val, obj)
