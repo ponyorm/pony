@@ -157,7 +157,9 @@ def are_comparable_types(op, type1, type2):
         if type1 is NoneType and type2 is NoneType: return False
         if type1 is NoneType or type2 is NoneType: return True
         elif type1 in primitive_types: return type1 is type2
-        elif isinstance(type1, orm.EntityMeta): return type1._root_ is type2._root_
+        elif isinstance(type1, orm.EntityMeta):
+            if not isinstance(type2, orm.EntityMeta): return False
+            return type1._root_ is type2._root_
         else: return False
     else: assert False
 
