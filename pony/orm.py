@@ -568,8 +568,8 @@ class Set(Collection):
                 setdata = obj.__dict__[attr] = SetData()
                 setdata.is_fully_loaded = True
                 if not items: return
-            else: setdata = attr.load()
-        elif not setdata.is_fully_loaded: setdata = attr.load()
+            else: setdata = attr.load(obj)
+        elif not setdata.is_fully_loaded: setdata = attr.load(obj)
         to_add = set(ifilterfalse(setdata.__contains__, items))
         to_remove = setdata - items
         if undo_funcs is None: undo_funcs = []
