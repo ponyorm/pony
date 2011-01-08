@@ -422,8 +422,6 @@ class Collection(Attribute):
         attr.cached_load_sql = None
         attr.cached_add_m2m_sql = None
         attr.cached_remove_m2m_sql = None
-
-        attr.wrapper_class = None        
     def load(attr, obj):
         assert False, 'Abstract method'
     def __get__(attr, obj, cls=None):
@@ -527,35 +525,11 @@ class Set(Collection):
             wbits = item._wbits_
             if wbits is not None and not wbits & bit: item._rbits_ |= bit
         return setdata.copy()
-    def get_wrapper_class(attr):
-        if attr.wrapper_class is not None:
-            return attr.wrapper_class
-        print 'NOT CACHED!!!'
-        item_class = attr.py_type
-        method_dict = {}
-        for item_attr in item_class._attrs_:
-            try: getattr(SetWrapper, item_attr.name)
-            except AttributeError:
-                if item_attr.is_collection:
-                    def lift(wrapper, item_attr=item_attr):
-                        result = set()
-                        for item in wrapper:
-                            result.update(item_attr.copy(item))
-                        return result
-                else:
-                    def lift(wrapper, item_attr=item_attr):
-                        result = set()
-                        for item in wrapper:
-                            result.add(item_attr.__get__(item))
-                        return result
-                method_dict[item_attr.name] = property(lift)
-        wrapper_class_name = item_class.__name__ + 'SetWrapper'
-        attr.wrapper_class = type(wrapper_class_name, (SetWrapper,), method_dict)
-        return attr.wrapper_class
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
-        wrapper_class = attr.wrapper_class or attr.get_wrapper_class()
+        rentity = attr.py_type
+        wrapper_class = rentity._get_set_wrapper_subclass_()
         return wrapper_class(obj, attr)
     def __set__(attr, obj, val, undo_funcs=None):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
@@ -734,10 +708,6 @@ class Set(Collection):
         arguments_list = list(transformer(added))
         database.exec_sql_many(sql, arguments_list)
 
-##class List(Collection): pass
-##class Dict(Collection): pass
-##class Relation(Collection): pass
-
 class SetWrapper(object):
     __slots__ = '_obj_', '_attr_'
     def __init__(wrapper, obj, attr):
@@ -768,7 +738,7 @@ class SetWrapper(object):
         return iter(wrapper.copy())
     def __eq__(wrapper, x):
         if isinstance(x, SetWrapper):
-            if wrapper._obj_ is x._obj_ and _attr_ is x._attr_: return True
+            if wrapper._obj_ is x._obj_ and wrapper._attr_ is x._attr_: return True
             else: x = x.copy()
         elif not isinstance(x, set): x = set(x)
         items = wrapper.copy()
@@ -842,6 +812,34 @@ class SetWrapper(object):
     def __isub__(wrapper, x):
         wrapper.remove(x)
         return wrapper
+
+class PropagatedSet(object):
+    __slots__ = [ '_items_' ]
+    def __init__(pset, items):
+        pset._items_ = frozenset(items)
+    def __repr__(pset):
+        s = ', '.join(map(repr, sorted(pset._items_)))
+        return '%s([%s])' % (pset.__class__.__name__, s)
+    def __nonzero__(pset):
+        return bool(pset._items_)
+    def __len__(pset):
+        return len(pset._items_)
+    def __iter__(pset):
+        return iter(pset._items_)
+    def __eq__(pset, x):
+        if isinstance(x, PropagatedSet):
+            return pset._items_ == x._items_
+        if isinstance(x, (set, frozenset)):
+            return pset._items_ == x
+        return pset._items_ == frozenset(x)
+    def __ne__(pset, x):
+        return not pset.__eq__(x)
+    def __contains__(pset, item):
+        return item in pset._items_
+
+##class List(Collection): pass
+##class Dict(Collection): pass
+##class Relation(Collection): pass
 
 class EntityMeta(type):
     def __new__(meta, name, bases, dict):
@@ -977,6 +975,10 @@ class Entity(object):
         entity._find_sql_cache_ = {}
         entity._update_sql_cache_ = {}
         entity._lock_sql_cache_ = {}
+
+        entity._propagation_mixin_ = None
+        entity._set_wrapper_subclass_ = None
+        entity._propagated_set_subclass_ = None
     @classmethod
     def _link_reverse_attrs_(entity):
         diagram = entity._diagram_
@@ -1784,6 +1786,52 @@ class Entity(object):
         elif status == 'deleted': obj._save_deleted_()
         elif status == 'locked': obj._save_locked_()
         else: assert False
+    @classmethod
+    def _get_propagation_mixin_(entity):
+        mixin = entity._propagation_mixin_
+        if mixin is not None: return mixin
+        cls_dict = { '_entity_' : entity }
+        for attr in entity._attrs_:
+            if not attr.reverse:
+                def fget(wrapper, attr=attr):
+                    return set(attr.__get__(item) for item in wrapper)
+            elif not attr.is_collection:
+                def fget(wrapper, attr=attr):
+                    rentity = attr.py_type
+                    cls = rentity._get_propagated_set_subclass_()
+                    print cls
+                    return cls(attr.__get__(item) for item in wrapper)
+            else:
+                def fget(wrapper, attr=attr):
+                    rentity = attr.py_type
+                    cls = rentity._get_propagated_set_subclass_()
+                    result_items = set()
+                    for item in wrapper:
+                        result_items.update(attr.__get__(item))
+                    return cls(result_items)
+            cls_dict[attr.name] = property(fget)
+        result_cls_name = entity.__name__ + 'SetMixin'
+        result_cls = type(result_cls_name, (object,), cls_dict)
+        entity._propagation_mixin_ = result_cls
+        return result_cls
+    @classmethod
+    def _get_propagated_set_subclass_(entity):
+        result_cls = entity._propagated_set_subclass_
+        if result_cls is None:
+            mixin = entity._get_propagation_mixin_()
+            cls_name = entity.__name__ + 'PropagatedSet'
+            result_cls = type(cls_name, (PropagatedSet, mixin), {})
+            entity._propagated_set_subclass_ = result_cls
+        return result_cls
+    @classmethod
+    def _get_set_wrapper_subclass_(entity):
+        result_cls = entity._set_wrapper_subclass_
+        if result_cls is None:
+            mixin = entity._get_propagation_mixin_()
+            cls_name = entity.__name__ + 'SetWrapper'
+            result_cls = type(cls_name, (SetWrapper, mixin), {})
+            entity._set_wrapper_subclass_ = result_cls
+        return result_cls
 
 class Diagram(object):
     def __init__(diagram):
