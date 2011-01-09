@@ -640,7 +640,11 @@ class SetMonad(Monad):
         for attr in monad.path:
             reverse = attr.reverse
             if not reverse:
-                raise NotImplementedError
+                if aggregate_ast[0] == COUNT:
+                    assert aggregate_ast[1] == ALL
+                    aggregate_ast[1] = DISTINCT
+                assert len(attr.columns) == 1
+                aggregate_ast.append([ COLUMN, alias, attr.column ])
             elif not attr.is_collection:
                 raise NotImplementedError
             elif reverse.is_collection:
