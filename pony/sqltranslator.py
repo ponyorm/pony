@@ -630,7 +630,9 @@ class SetMonad(Monad):
         if attr is None: raise AttributeError, name
         return SetMonad(monad.root, monad.path + [ attr ])
     def len(monad):
-        select_ast = [ AGGREGATES, [ COUNT, ALL ] ]
+        return monad._subselect([ COUNT, ALL ])
+    def _subselect(monad, aggregate_ast):
+        select_ast = [ AGGREGATES, aggregate_ast ]
         from_ast = [ FROM ]
         conditions = []
         prev_alias = monad.root.alias
@@ -929,15 +931,18 @@ def FuncAbsMonad(monad, x):
 
 @func_monad(type=None)
 def FuncMinMonad(monad, *args):
-    return minmax(MIN, monad, *args)
+    if not args: raise TypeError
+    if len(args) == 1: return args[0].min()
+    return minmax(monad, MIN, *args)
 
 @func_monad(type=None)
 def FuncMaxMonad(monad, *args):
-    return minmax(MAX, monad, *args)
+    if not args: raise TypeError
+    if len(args) == 1: return args[0].max()
+    return minmax(monad, MAX, *args)
 
-def minmax(sqlop, monad, *args):
-    if len(args) == 0: raise TypeError
-    elif len(args) == 1: raise NotImplementedError
+def minmax(monad, sqlop, *args):
+    assert len(args) > 1
     sql = [ sqlop ] + [ arg.getsql()[0] for arg in args ]
     arg_types = set(arg.type for arg in args)
     if len(arg_types) > 1: raise TypeError
