@@ -410,13 +410,12 @@ class Monad(object):
     def cmp(monad, op, monad2):
         return CmpMonad(op, monad, monad2)
     def contains(monad, item, not_in=False): raise TypeError
-    def __nonzero__(monad): raise TypeError
+    def nonzero(monad): raise TypeError
 
     def getattr(monad, attrname): raise TypeError
     def __call__(monad, *args, **keyargs): raise TypeError
     def len(monad): raise TypeError
     def __getitem__(monad, key): raise TypeError
-    def __iter__(monad): raise TypeError
 
     def __add__(monad, monad2): raise TypeError
     def __sub__(monad, monad2): raise TypeError
@@ -612,6 +611,56 @@ class StringMethodMonad(MethodMonad):
     def call_rstrip(monad, chars=None):
         return monad.strip(chars, RTRIM)
     
+class SetMonad(Monad):
+    def __init__(monad, root, path):
+        item_type = normalize_type(path[-1].py_type)
+        Monad.__init__(monad, root.translator, (item_type,))
+        monad.root = root
+        monad.path = path
+    def cmp(monad, op, monad2):
+        raise NotImplementedError
+    def contains(monad, item, not_in=False):
+        raise NotImplementedError
+    def getattr(monad, name):
+        item_type = monad.type[0]
+        if not isinstance(item_type, orm.EntityMeta):
+            raise AttributeError, name
+        entity = item_type
+        attr = entity._adict_.get(name)
+        if attr is None: raise AttributeError, name
+        return SetMonad(monad.root, monad.path + [ attr ])
+    def len(monad):
+        select_ast = [ AGGREGATES, [ COUNT, ALL ] ]
+        from_ast = [ FROM ]
+        conditions = []
+        prev_alias = monad.root.alias
+        prev_columns = monad.root.getsql()
+        for attr in monad.path:
+            reverse = attr.reverse
+            if not reverse:
+                raise NotImplementedError
+            elif not attr.is_collection:
+                raise NotImplementedError
+            elif reverse.is_collection:
+                raise NotImplementedError
+            else:
+                entity = attr.py_type
+                assert isinstance(entity, orm.EntityMeta)
+                alias = '-'.join((prev_alias, attr.name))
+                alias = monad.translator.get_short_alias(alias, entity)
+                from_ast.append([ alias, TABLE, entity._table_ ])
+                assert len(prev_columns) == len(reverse.columns)
+                for c1_ast, c2 in zip(prev_columns, reverse.columns):
+                    conditions.append([ EQ, c1_ast, [ COLUMN, alias, c2 ] ])
+                prev_alias = alias
+                prev_columns = [ [ COLUMN, alias, column ] for column in entity._pk_columns_ ]
+        sql_ast = [ SELECT, select_ast, from_ast, [ WHERE, sqland(conditions) ] ]
+        return NumericExprMonad(monad.translator, sql_ast)
+    def nonzero(monad):
+        raise NotImplementedError
+    def getsql(monad):
+        raise TranslationError
+
 class ObjectMixin(object): pass
 
 class ObjectIterMonad(ObjectMixin, Monad):
@@ -621,8 +670,10 @@ class ObjectIterMonad(ObjectMixin, Monad):
     def getattr(monad, name):
         entity = monad.type
         attr = getattr(entity, name) # can raise AttributeError
-        if monad.translator.inside_expr and attr.is_collection:
-            raise TranslationError('Collection attributes cannot be used inside expression part of select')
+        if attr.is_collection:
+            if monad.translator.inside_expr:
+                raise TranslationError('Collection attributes cannot be used inside expression part of select')
+            return SetMonad(monad, [ attr ])
         return AttrMonad(monad, attr, monad.alias)
     def getsql(monad):
         entity = monad.type
@@ -639,8 +690,8 @@ class AttrMonad(Monad):
         else: assert False
         return object.__new__(cls)
     def __init__(monad, parent, attr, alias, columns=None, next_alias=None):
-        type = normalize_type(attr.py_type)
-        Monad.__init__(monad, parent.translator, type)
+        attr_type = normalize_type(attr.py_type)
+        Monad.__init__(monad, parent.translator, attr_type)
         monad.parent = parent
         monad.attr = attr
         monad.alias = alias
@@ -740,8 +791,13 @@ class ExprMonad(Monad):
     def getsql(monad):
         return [ monad.sql ]
 
-class StringExprMonad(StringMixin, ExprMonad): pass
-class NumericExprMonad(NumericMixin, ExprMonad): pass
+class StringExprMonad(StringMixin, ExprMonad):
+    def __init__(monad, translator, sql):
+        ExprMonad.__init__(monad, translator, unicode, sql)
+        
+class NumericExprMonad(NumericMixin, ExprMonad):
+    def __init__(monad, translator, sql):
+        ExprMonad.__init__(monad, translator, int, sql)
 
 class ConstMonad(Monad):
     def __new__(cls, translator, value):
