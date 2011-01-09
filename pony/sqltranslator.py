@@ -303,7 +303,7 @@ class SQLTranslator(ASTTranslator):
                 translator.from_.append([ short_alias, TABLE, entity._table_ ])
                 assert len(monad.columns) == len(entity._pk_columns_)
                 for c1, c2 in zip(monad.columns, entity._pk_columns_):
-                    conditions.append([ EQ, [ COLUMN, monad.base_alias, c1 ], [ COLUMN, short_alias, c2 ] ])
+                    conditions.append([ EQ, [ COLUMN, monad.alias, c1 ], [ COLUMN, short_alias, c2 ] ])
             alias = short_alias
         else: assert False
         translator.select, translator.attr_offsets = entity._construct_select_clause_(alias, translator.distinct)
@@ -638,27 +638,27 @@ class AttrMonad(Monad):
         elif isinstance(type, orm.EntityMeta): cls = ObjectAttrMonad
         else: assert False
         return object.__new__(cls)
-    def __init__(monad, parent, attr, base_alias, columns=None, alias=None):
+    def __init__(monad, parent, attr, alias, columns=None, next_alias=None):
         type = normalize_type(attr.py_type)
         Monad.__init__(monad, parent.translator, type)
         monad.parent = parent
         monad.attr = attr
-        monad.base_alias = base_alias
+        monad.alias = alias
         monad.columns = columns or attr.columns
-        monad.alias = alias or '-'.join((base_alias, attr.name))
+        monad.next_alias = next_alias or '-'.join((alias, attr.name))
     def getsql(monad):
-        return [ [ COLUMN, monad.base_alias, column ] for column in monad.columns ]
+        return [ [ COLUMN, monad.alias, column ] for column in monad.columns ]
 
 class ObjectAttrMonad(ObjectMixin, AttrMonad):
     def getattr(monad, name):
-        alias = monad.alias
+        next_alias = monad.next_alias
         translator = monad.translator
         entity = monad.type
         attr = getattr(entity, name) # can raise AttributeError
         if translator.inside_expr and attr.is_collection:
             raise TranslationError('Collection attributes cannot be used inside expression part of select')
         if attr.pk_offset is not None:
-            base_alias = monad.base_alias
+            alias = monad.alias
             columns = monad.columns
             if entity._pk_is_composite_:
                 i = 0
@@ -667,19 +667,19 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
                     i += len(a.columns)
                 columns = columns[i:i+len(attr.columns)]
         else:
-            short_alias = translator.aliases.get(alias)
+            short_alias = translator.aliases.get(next_alias)
             if short_alias is None:
-                short_alias = translator.get_short_alias(alias, entity)
-                translator.aliases[alias] = short_alias
+                short_alias = translator.get_short_alias(next_alias, entity)
+                translator.aliases[next_alias] = short_alias
                 translator.from_.append([ short_alias, TABLE, entity._table_ ])
                 conditions = translator.conditions
                 assert len(monad.columns) == len(entity._pk_columns_)
                 for c1, c2 in zip(monad.columns, entity._pk_columns_):
-                    conditions.append([ EQ, [ COLUMN, monad.base_alias, c1 ], [ COLUMN, short_alias, c2 ] ])
-            base_alias = short_alias
+                    conditions.append([ EQ, [ COLUMN, monad.alias, c1 ], [ COLUMN, short_alias, c2 ] ])
+            alias = short_alias
             columns = attr.columns
-        attr_alias = '-'.join((alias, name))
-        return AttrMonad(monad, attr, base_alias, columns, attr_alias)
+        attr_alias = '-'.join((next_alias, name))
+        return AttrMonad(monad, attr, alias, columns, attr_alias)
 
 class NumericAttrMonad(NumericMixin, AttrMonad): pass
 class StringAttrMonad(StringMixin, AttrMonad): pass
