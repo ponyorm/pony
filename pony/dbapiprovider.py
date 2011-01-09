@@ -293,10 +293,10 @@ class SQLBuilder(object):
     def NOT_EXISTS(builder, *sections):
         return 'NOT EXISTS (\nSELECT * ', builder.SELECT(*sections), ')'
     def COUNT(builder, kind, expr=None):
-        if kind == 'ALL':
+        if kind == ALL:
             if expr is None: return ['COUNT(*)']
             return 'COUNT(', builder(expr), ')'
-        elif kind == 'DISTINCT':
+        elif kind == DISTINCT:
             if expr is None: raise AstError('COUNT(DISTINCT) without argument')
             return 'COUNT(DISTINCT ', builder(expr), ')'
         raise AstError('Invalid COUNT kind (must be ALL or DISTINCT)')
