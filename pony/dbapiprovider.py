@@ -76,10 +76,20 @@ def make_unary_func(symbol):
         return '%s(' % symbol, builder(expr), ')'
     return unary_func
 
+def indentable(method):
+    def new_method(builder, *args, **keyargs):
+        result = method(builder, *args, **keyargs)
+        if builder.indent <= 1: return result
+        return builder.indent_spaces * (builder.indent-1), result
+    new_method.__name__ = method.__name__
+    return new_method
+
 class SQLBuilder(object):
     make_param = Param
     value = Value
+    indent_spaces = " " * 4
     def __init__(builder, ast, paramstyle='qmark', quote_char='"'):
+        builder.indent = 0
         builder.ast = ast
         builder.paramstyle = paramstyle
         builder.quote_char = quote_char
@@ -136,13 +146,20 @@ class SQLBuilder(object):
         if where: result += [ '\n', builder(where) ]
         return result
     def SELECT(builder, *sections):
-        return [ builder(s) for s in sections ]
+        builder.indent += 1
+        result = [ builder(s) for s in sections ]
+        builder.indent -= 1
+        if builder.indent : result = ['(\n', result, ')']
+        return result
+    @indentable
     def ALL(builder, *expr_list):
         exprs = [ builder(e) for e in expr_list ]
         return 'SELECT ', join(', ', exprs), '\n'
+    @indentable
     def DISTINCT(builder, *expr_list):
         exprs = [ builder(e) for e in expr_list ]
         return 'SELECT DISTINCT ', join(', ', exprs), '\n'
+    @indentable
     def AGGREGATES(builder, *expr_list):
         exprs = [ builder(e) for e in expr_list ]
         return 'SELECT ', join(', ', exprs), '\n'
@@ -169,18 +186,32 @@ class SQLBuilder(object):
             if join_cond is not None: result += ' ON ', builder(join_cond)
         result.append('\n')
         return result
+    @indentable
     def FROM(builder, *sources):
         return builder.sql_join('INNER', sources)
+    @indentable
     def LEFT_JOIN(builder, *sources):
         return builder.sql_join('LEFT', sources)
     def WHERE(builder, condition):
-        return 'WHERE ', builder(condition), '\n'
+        indent = builder.indent_spaces * (builder.indent-1)
+        result = [ indent, 'WHERE ' ]
+        if condition[0] != AND:
+            result.extend((builder(condition), '\n'))
+        else:
+            result.extend((builder(condition[1]), '\n'))
+            for item in condition[2:]:
+                result.extend((indent, '  AND ', builder(item), '\n'))
+        return result
+    @indentable
     def UNION(builder, kind, *sections):
         return 'UNION ', kind, '\n', builder.SELECT(*sections)
+    @indentable
     def INTERSECT(builder, *sections):
         return 'INTERSECT\n', builder.SELECT(*sections)
+    @indentable
     def EXCEPT(builder, *sections):
         return 'EXCEPT\n', builder.SELECT(*sections)
+    @indentable
     def ORDER_BY(builder, *order_list):
         result = ['ORDER BY ']
         for i, (expr, dir) in enumerate(order_list):
@@ -188,6 +219,7 @@ class SQLBuilder(object):
             result += builder(expr), ' ', dir
         result.append('\n')
         return result
+    @indentable
     def LIMIT(builder, limit, offset=None):
         if not offset: return 'LIMIT ', builder(limit), '\n'
         else: return 'LIMIT ', builder(limit), ' OFFSET ', builder(offset), '\n'
