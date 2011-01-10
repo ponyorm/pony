@@ -415,6 +415,7 @@ class Monad(object):
     def getattr(monad, attrname): raise TypeError
     def __call__(monad, *args, **keyargs): raise TypeError
     def len(monad): raise TypeError
+    def sum(monad): raise TypeError
     def min(monad): raise TypeError
     def max(monad): raise TypeError
     def __getitem__(monad, key): raise TypeError
@@ -426,7 +427,7 @@ class Monad(object):
     def __pow__(monad, monad2): raise TypeError
 
     def __neg__(monad): raise TypeError
-    def __abs__(monad): raise TypeError
+    def abs(monad): raise TypeError
 
 class ListMonad(Monad):
     def __init__(monad, translator, items):
@@ -464,7 +465,7 @@ class NumericMixin(object):
     def __neg__(monad):
         sql = monad.getsql()[0]
         return NumericExprMonad(monad.translator, [ NEG, sql ])
-    def __abs__(monad):
+    def abs(monad):
         sql = monad.getsql()[0]
         return NumericExprMonad(monad.translator, [ ABS, sql ])
 
@@ -632,16 +633,25 @@ class SetMonad(Monad):
         if attr is None: raise AttributeError, name
         return SetMonad(monad.root, monad.path + [ attr ])
     def len(monad):
-        return monad._subselect([ COUNT, ALL ])
+        if not monad.path[-1].reverse: kind = DISTINCT
+        else: kind = ALL
+        sql_ast = monad._subselect([ COUNT, kind ])
+        return NumericExprMonad(monad.translator, sql_ast)
+    def sum(monad):
+        if monad.type[0] is not int: raise TypeError
+        sql_ast = monad._subselect([ SUM ])
+        return NumericExprMonad(monad.translator, sql_ast)
     def min(monad):
-        if monad.type[0] not in (int, unicode): raise TypeError
-        return monad._subselect([ MIN ])
-    def max(monad):
-        if monad.type[0] not in (int, unicode): raise TypeError
-        return monad._subselect([ MAX ])
-    def _subselect(monad, aggregate_ast):
-        aggr_func = aggregate_ast[0]
         item_type = monad.type[0]
+        if item_type not in (int, unicode): raise TypeError
+        sql_ast = monad._subselect([ MIN ])
+        return ExprMonad.new(monad.translator, sql_ast, item_type)
+    def max(monad):
+        item_type = monad.type[0]
+        if item_type not in (int, unicode): raise TypeError
+        sql_ast = monad._subselect([ MAX ])
+        return ExprMonad.new(monad.translator, sql_ast, item_type)
+    def _subselect(monad, aggregate_ast):
         select_ast = [ AGGREGATES, aggregate_ast ]
         from_ast = [ FROM ]
         conditions = []
@@ -650,9 +660,6 @@ class SetMonad(Monad):
         for attr in monad.path:
             reverse = attr.reverse
             if not reverse:
-                if aggr_func == COUNT:
-                    assert aggregate_ast[1] == ALL
-                    aggregate_ast[1] = DISTINCT
                 assert len(attr.columns) == 1
                 aggregate_ast.append([ COLUMN, alias, attr.column ])
             elif not attr.is_collection:
@@ -670,16 +677,7 @@ class SetMonad(Monad):
                     conditions.append([ EQ, c1_ast, [ COLUMN, alias, c2 ] ])
                 prev_alias = alias
                 prev_columns = [ [ COLUMN, alias, column ] for column in entity._pk_columns_ ]
-        sql_ast = [ SELECT, select_ast, from_ast, [ WHERE, sqland(conditions) ] ]
-        if aggr_func == COUNT:
-            result_type = int
-        elif aggr_func in (MIN, MAX):
-            result_type = item_type
-        else: raise NotImplementedError
-        if result_type is int: monad_class = NumericExprMonad
-        elif result_type is unicode: monad_class = StringExprMonad
-        else: raise NotImplementedError
-        return monad_class(monad.translator, sql_ast)
+        return [ SELECT, select_ast, from_ast, [ WHERE, sqland(conditions) ] ]
     def nonzero(monad):
         raise NotImplementedError
     def getsql(monad):
@@ -711,7 +709,7 @@ class AttrMonad(Monad):
         if type is int: cls = NumericAttrMonad
         elif type is unicode: cls = StringAttrMonad
         elif isinstance(type, orm.EntityMeta): cls = ObjectAttrMonad
-        else: assert False
+        else: raise NotImplementedError
         return object.__new__(cls)
     def __init__(monad, parent, attr, alias, columns=None, next_alias=None):
         attr_type = normalize_type(attr.py_type)
@@ -809,7 +807,13 @@ class StringParamMonad(StringMixin, ParamMonad): pass
 class NumericParamMonad(NumericMixin, ParamMonad): pass
 
 class ExprMonad(Monad):
-    def __init__(monad, translator, type, sql):
+    @staticmethod
+    def new(translator, sql, type):
+        if type is int: cls = NumericExprMonad
+        elif type is unicode: cls = StringExprMonad
+        else: raise NotImplementedError
+        return cls(translator, sql)
+    def __init__(monad, translator, sql, type):
         Monad.__init__(monad, translator, type)
         monad.sql = sql
     def getsql(monad):
@@ -817,11 +821,11 @@ class ExprMonad(Monad):
 
 class StringExprMonad(StringMixin, ExprMonad):
     def __init__(monad, translator, sql):
-        ExprMonad.__init__(monad, translator, unicode, sql)
+        ExprMonad.__init__(monad, translator, sql, unicode)
         
 class NumericExprMonad(NumericMixin, ExprMonad):
     def __init__(monad, translator, sql):
-        ExprMonad.__init__(monad, translator, int, sql)
+        ExprMonad.__init__(monad, translator, sql, int)
 
 class ConstMonad(Monad):
     def __new__(cls, translator, value):
@@ -949,7 +953,11 @@ def FuncLenMonad(monad, x):
 
 @func_monad(type=int)
 def FuncAbsMonad(monad, x):
-    return abs(x)
+    return x.abs()
+
+@func_monad(type=int)
+def FuncSumMonad(monad, x):
+    return x.sum()
 
 @func_monad(type=None)
 def FuncMinMonad(monad, *args):
@@ -979,5 +987,6 @@ special_functions = {
     len : FuncLenMonad,
     abs : FuncAbsMonad,
     min : FuncMinMonad,
-    max : FuncMaxMonad
+    max : FuncMaxMonad,
+    sum : FuncSumMonad,
 }
