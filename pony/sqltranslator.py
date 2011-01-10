@@ -696,22 +696,23 @@ class ObjectIterMonad(ObjectMixin, Monad):
             if monad.translator.inside_expr:
                 raise TranslationError('Collection attributes cannot be used inside expression part of select')
             return SetMonad(monad, [ attr ])
-        return AttrMonad(monad, attr, monad.alias)
+        return AttrMonad.new(monad, attr, monad.alias)
     def getsql(monad):
         entity = monad.type
         return [ [ COLUMN, monad.alias, column ] for attr in entity._pk_attrs_ if not attr.is_collection
                                                  for column in attr.columns ]
 
 class AttrMonad(Monad):
-    def __new__(cls, translator, attr, *args, **keyargs):
-        assert cls is AttrMonad
+    @staticmethod
+    def new(parent, attr, *args, **keyargs):
         type = normalize_type(attr.py_type)
         if type is int: cls = NumericAttrMonad
         elif type is unicode: cls = StringAttrMonad
         elif isinstance(type, orm.EntityMeta): cls = ObjectAttrMonad
         else: raise NotImplementedError
-        return object.__new__(cls)
+        return cls(parent, attr, *args, **keyargs)
     def __init__(monad, parent, attr, alias, columns=None, next_alias=None):
+        assert monad.__class__ is not AttrMonad
         attr_type = normalize_type(attr.py_type)
         Monad.__init__(monad, parent.translator, attr_type)
         monad.parent = parent
@@ -728,8 +729,10 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
         translator = monad.translator
         entity = monad.type
         attr = getattr(entity, name) # can raise AttributeError
-        if translator.inside_expr and attr.is_collection:
-            raise TranslationError('Collection attributes cannot be used inside expression part of select')
+        if attr.is_collection:
+            if translator.inside_expr:
+                raise TranslationError('Collection attributes cannot be used inside expression part of select')
+            return SetMonad(monad, [ attr ])
         if attr.pk_offset is not None:
             alias = monad.alias
             columns = monad.columns
@@ -752,7 +755,7 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
             alias = short_alias
             columns = attr.columns
         attr_alias = '-'.join((next_alias, name))
-        return AttrMonad(monad, attr, alias, columns, attr_alias)
+        return AttrMonad.new(monad, attr, alias, columns, attr_alias)
 
 class NumericAttrMonad(NumericMixin, AttrMonad): pass
 class StringAttrMonad(StringMixin, AttrMonad): pass
@@ -949,6 +952,7 @@ def func_monad(type):
 
 @func_monad(type=int)
 def FuncLenMonad(monad, x):
+    print x
     return x.len()
 
 @func_monad(type=int)
