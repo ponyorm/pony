@@ -415,6 +415,8 @@ class Monad(object):
     def getattr(monad, attrname): raise TypeError
     def __call__(monad, *args, **keyargs): raise TypeError
     def len(monad): raise TypeError
+    def min(monad): raise TypeError
+    def max(monad): raise TypeError
     def __getitem__(monad, key): raise TypeError
 
     def __add__(monad, monad2): raise TypeError
@@ -631,7 +633,15 @@ class SetMonad(Monad):
         return SetMonad(monad.root, monad.path + [ attr ])
     def len(monad):
         return monad._subselect([ COUNT, ALL ])
+    def min(monad):
+        if monad.type[0] not in (int, unicode): raise TypeError
+        return monad._subselect([ MIN ])
+    def max(monad):
+        if monad.type[0] not in (int, unicode): raise TypeError
+        return monad._subselect([ MAX ])
     def _subselect(monad, aggregate_ast):
+        aggr_func = aggregate_ast[0]
+        item_type = monad.type[0]
         select_ast = [ AGGREGATES, aggregate_ast ]
         from_ast = [ FROM ]
         conditions = []
@@ -640,7 +650,7 @@ class SetMonad(Monad):
         for attr in monad.path:
             reverse = attr.reverse
             if not reverse:
-                if aggregate_ast[0] == COUNT:
+                if aggr_func == COUNT:
                     assert aggregate_ast[1] == ALL
                     aggregate_ast[1] = DISTINCT
                 assert len(attr.columns) == 1
@@ -661,7 +671,15 @@ class SetMonad(Monad):
                 prev_alias = alias
                 prev_columns = [ [ COLUMN, alias, column ] for column in entity._pk_columns_ ]
         sql_ast = [ SELECT, select_ast, from_ast, [ WHERE, sqland(conditions) ] ]
-        return NumericExprMonad(monad.translator, sql_ast)
+        if aggr_func == COUNT:
+            result_type = int
+        elif aggr_func in (MIN, MAX):
+            result_type = item_type
+        else: raise NotImplementedError
+        if result_type is int: monad_class = NumericExprMonad
+        elif result_type is unicode: monad_class = StringExprMonad
+        else: raise NotImplementedError
+        return monad_class(monad.translator, sql_ast)
     def nonzero(monad):
         raise NotImplementedError
     def getsql(monad):
