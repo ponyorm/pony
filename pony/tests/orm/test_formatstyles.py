@@ -16,31 +16,31 @@ class TestFormatStyles(unittest.TestCase):
         b = SQLBuilder(self.ast, 'qmark')
         self.assertEqual(b.sql, 'SELECT "A"\n'
                                 'FROM "T1"\n'
-                                'WHERE (("B" = ?) AND ("C" = ?) AND ("D" = ?) AND ("E" = ?))\n')
+                                'WHERE ("B" = ?)\n  AND ("C" = ?)\n  AND ("D" = ?)\n  AND ("E" = ?)\n')
         self.assertEqual(b.layout, (self.key1, self.key2, self.key2, self.key1))
     def test_numeric(self):
         b = SQLBuilder(self.ast, 'numeric')
         self.assertEqual(b.sql, 'SELECT "A"\n'
                                 'FROM "T1"\n'
-                                'WHERE (("B" = :1) AND ("C" = :2) AND ("D" = :2) AND ("E" = :1))\n')
+                                'WHERE ("B" = :1)\n  AND ("C" = :2)\n  AND ("D" = :2)\n  AND ("E" = :1)\n')
         self.assertEqual(b.layout, (self.key1, self.key2))
     def test_named(self):
         b = SQLBuilder(self.ast, 'named')
         self.assertEqual(b.sql, 'SELECT "A"\n'
                                 'FROM "T1"\n'
-                                'WHERE (("B" = :p1) AND ("C" = :p2) AND ("D" = :p2) AND ("E" = :p1))\n')
+                                'WHERE ("B" = :p1)\n  AND ("C" = :p2)\n  AND ("D" = :p2)\n  AND ("E" = :p1)\n')
         self.assertEqual(b.layout, (self.key1, self.key2))
     def test_format(self):
         b = SQLBuilder(self.ast, 'format')
         self.assertEqual(b.sql, 'SELECT "A"\n'
                                 'FROM "T1"\n'
-                                'WHERE (("B" = %s) AND ("C" = %s) AND ("D" = %s) AND ("E" = %s))\n')
+                                'WHERE ("B" = %s)\n  AND ("C" = %s)\n  AND ("D" = %s)\n  AND ("E" = %s)\n')
         self.assertEqual(b.layout, (self.key1, self.key2, self.key2, self.key1))
     def test_pyformat(self):
         b = SQLBuilder(self.ast, 'pyformat')
         self.assertEqual(b.sql, 'SELECT "A"\n'
                                 'FROM "T1"\n'
-                                'WHERE (("B" = %(p1)s) AND ("C" = %(p2)s) AND ("D" = %(p2)s) AND ("E" = %(p1)s))\n')
+                                'WHERE ("B" = %(p1)s)\n  AND ("C" = %(p2)s)\n  AND ("D" = %(p2)s)\n  AND ("E" = %(p1)s)\n')
         self.assertEqual(b.layout, (self.key1, self.key2))
                          
 
