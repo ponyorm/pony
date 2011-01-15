@@ -306,6 +306,9 @@ class SQLBuilder(object):
     LOWER = make_unary_func('lower')
     LENGTH = make_unary_func('length')
     ABS = make_unary_func('abs')
+    def COALESCE(builder, *args):
+        if len(args) < 2: assert False
+        return 'coalesce(', join(', ', map(builder, args)), ')'
     def MIN(builder, *args):
         if len(args) == 0: assert False
         elif len(args) == 1: fname = 'MIN'

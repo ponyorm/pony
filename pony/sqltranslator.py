@@ -635,33 +635,33 @@ class SetMonad(Monad):
     def len(monad):
         if not monad.path[-1].reverse: kind = DISTINCT
         else: kind = ALL
-        sql_ast = monad._subselect([ COUNT, kind ])
+        sql_ast = monad._subselect(lambda expr: [ COUNT, kind, expr ])
         return NumericExprMonad(monad.translator, sql_ast)
     def sum(monad):
         if monad.type[0] is not int: raise TypeError
-        sql_ast = monad._subselect([ SUM ])
+        sql_ast = monad._subselect(lambda expr: [COALESCE, [ SUM, expr ], [ VALUE, 0 ]])
         return NumericExprMonad(monad.translator, sql_ast)
     def min(monad):
         item_type = monad.type[0]
         if item_type not in (int, unicode): raise TypeError
-        sql_ast = monad._subselect([ MIN ])
+        sql_ast = monad._subselect(lambda expr: [ MIN, expr ])
         return ExprMonad.new(monad.translator, sql_ast, item_type)
     def max(monad):
         item_type = monad.type[0]
         if item_type not in (int, unicode): raise TypeError
-        sql_ast = monad._subselect([ MAX ])
+        sql_ast = monad._subselect(lambda expr: [ MAX, expr ])
         return ExprMonad.new(monad.translator, sql_ast, item_type)
-    def _subselect(monad, aggregate_ast):
-        select_ast = [ AGGREGATES, aggregate_ast ]
+    def _subselect(monad, expr_func):
         from_ast = [ FROM ]
         conditions = []
         prev_alias = monad.root.alias
         prev_columns = monad.root.getsql()
+        expr = None 
         for attr in monad.path:
             reverse = attr.reverse
             if not reverse:
                 assert len(attr.columns) == 1
-                aggregate_ast.append([ COLUMN, alias, attr.column ])
+                expr = [ COLUMN, alias, attr.column ]
             elif not attr.is_collection:
                 raise NotImplementedError
             elif reverse.is_collection:
@@ -677,6 +677,7 @@ class SetMonad(Monad):
                     conditions.append([ EQ, c1_ast, [ COLUMN, alias, c2 ] ])
                 prev_alias = alias
                 prev_columns = [ [ COLUMN, alias, column ] for column in entity._pk_columns_ ]
+        select_ast = [ AGGREGATES, expr_func(expr) ]
         return [ SELECT, select_ast, from_ast, [ WHERE, sqland(conditions) ] ]
     def nonzero(monad):
         raise NotImplementedError
@@ -847,6 +848,7 @@ class ConstMonad(Monad):
         return [ [ VALUE, monad.value ] ]
 
 class NoneMonad(Monad):
+    type = NoneType
     def __init__(monad, translator, value=None):
         assert value is None
         ConstMonad.__init__(monad, translator, value)
@@ -952,7 +954,6 @@ def func_monad(type):
 
 @func_monad(type=int)
 def FuncLenMonad(monad, x):
-    print x
     return x.len()
 
 @func_monad(type=int)
