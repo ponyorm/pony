@@ -224,7 +224,7 @@ class Database(object):
         return bool(result)
     def insert(self, table_name, **keyargs):
         table_name = table_name[:]  # table_name = templating.plainstr(table_name)
-        query_key = (table_name,) + tuple(sorted(keyargs))
+        query_key = (table_name,) + tuple(keyargs)  # keys are not sorted deliberately!!
         cached_sql = insert_cache.get(query_key)
         if cached_sql is None:
             ast = [ INSERT, table_name, keyargs.keys(), [ [PARAM, i] for i in range(len(keyargs)) ] ]
@@ -232,7 +232,7 @@ class Database(object):
             cached_sql = sql, adapter
             insert_cache[query_key] = cached_sql
         else: sql, adapter = cached_sql
-        arguments = adapter(keyargs.values())
+        arguments = adapter(keyargs.values())  # order of values same as order of keys
         cursor = self._exec_sql(sql, arguments)
         return getattr(cursor, 'lastrowid', None)
     def _ast2sql(self, sql_ast):
