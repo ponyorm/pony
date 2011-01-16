@@ -22,29 +22,35 @@ def select(gen):
     globals = gen.gi_frame.f_globals
     locals = gen.gi_frame.f_locals
     variables = {}
+    functions = {}
     for name in external_names:
         try: value = locals[name]
         except KeyError:
             try: value = globals[name]
             except KeyError:
-                if hasattr(__builtin__, name): continue
-                else: raise NameError, name
-        variables[name] = value
+                try: value = getattr(__builtin__, name)
+                except AttributeError: raise NameError, name
+                if value not in special_functions: raise TypeError, name
+                functions[name] = value
+                continue
+        if value in special_functions: functions[name] = value
+        else: variables[name] = value
     vartypes = dict((name, get_normalized_type(value)) for name, value in variables.iteritems())
-    return Query(gen, tree, vartypes, variables)
+    return Query(gen, tree, vartypes, functions, variables)
 
 class Query(object):
-    def __init__(query, gen, tree, vartypes, variables):
+    def __init__(query, gen, tree, vartypes, functions, variables):
         query._gen = gen
         query._tree = tree
         query._vartypes = vartypes
         query._variables = variables
         query._result = None
-        query._python_ast_key = gen.gi_frame.f_code, tuple(sorted(vartypes.iteritems()))
-        translator = python_ast_cache.get(query._python_ast_key)
+        key = gen.gi_frame.f_code, tuple(sorted(vartypes.iteritems())), tuple(sorted(functions.iteritems()))
+        query._python_ast_key = key
+        translator = python_ast_cache.get(key)
         if translator is None:
-            translator = SQLTranslator(tree, vartypes)
-            python_ast_cache[query._python_ast_key] = translator
+            translator = SQLTranslator(tree, vartypes, functions)
+            python_ast_cache[key] = translator
         query._translator = translator
         query._database = translator.entity._diagram_.database
         query._order = None
@@ -208,11 +214,12 @@ class ASTTranslator(object):
         pass
 
 class SQLTranslator(ASTTranslator):
-    def __init__(translator, tree, vartypes):
+    def __init__(translator, tree, vartypes, functions):
         assert isinstance(tree, ast.GenExprInner)
         ASTTranslator.__init__(translator, tree)
         translator.diagram = None
         translator.vartypes = vartypes
+        translator.functions = functions
         translator.iterables = iterables = {}
         translator.aliases = aliases = {}
         translator.extractors = {}
@@ -342,10 +349,9 @@ class SQLTranslator(ASTTranslator):
         else:
             try: value_type = translator.vartypes[name]
             except KeyError:
-                func = getattr(__builtin__, name, None)
+                func = translator.functions.get(name)
                 if func is None: raise NameError(name)
-                func_monad_class = special_functions.get(func)
-                if func_monad_class is None: raise NotImlementedError
+                func_monad_class = special_functions[func]
                 node.monad = func_monad_class(translator)
             else:
                 if value_type is NoneType: node.monad = NoneMonad(translator)
