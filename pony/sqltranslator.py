@@ -1029,12 +1029,41 @@ class QuerySetMonad(Monad):
         Monad.__init__(monad, translator, (item_type,))
         monad.item_type = item_type
         monad.subtranslator = subtranslator
-    def len(monad):
-        select_ast = [ AGGREGATES, [ COUNT, ALL ] ]
+    def _get_attr_info(monad):
+        attrname = monad.subtranslator.attrname
+        if attrname is None: return None, None
+        entity = monad.subtranslator.entity
+        attr = entity._adict_[attrname]
+        attr_type = normalize_type(attr.py_type)
+        return attr, attr_type
+    def _subselect(monad, select_ast, item_type):
         from_ast = monad.subtranslator.from_
         where_ast = [ WHERE, sqland(monad.subtranslator.conditions) ]
         sql_ast = [ SELECT, select_ast, from_ast, where_ast ]
-        return NumericExprMonad(monad.translator, sql_ast)
+        return ExprMonad.new(monad.translator, sql_ast, item_type)
+    def len(monad):
+        attr, attr_type = monad._get_attr_info()
+        if attr is None:
+            select_ast = [ AGGREGATES, [ COUNT, ALL ] ]
+        else:            
+            if len(attr.columns) > 1: raise NotImplementedError
+            select_ast = [ AGGREGATES, [ COUNT, DISTINCT, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
+        return monad._subselect(select_ast, int)
+    def sum(monad):
+        attr, attr_type = monad._get_attr_info()
+        if attr_type is not int: raise TypeError
+        select_ast = [ AGGREGATES, [ COALESCE, [ SUM, [ COLUMN, monad.subtranslator.alias, attr.column ] ], [ VALUE, 0 ] ] ]
+        return monad._subselect(select_ast, int)
+    def min(monad):
+        attr, attr_type = monad._get_attr_info()
+        if attr_type not in (int, unicode): raise TypeError
+        select_ast = [ AGGREGATES, [ MIN, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
+        return monad._subselect(select_ast, attr_type)
+    def max(monad):
+        attr, attr_type = monad._get_attr_info()
+        if attr_type not in (int, unicode): raise TypeError
+        select_ast = [ AGGREGATES, [ MAX, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
+        return monad._subselect(select_ast, attr_type)
 
 special_functions = {
     len : FuncLenMonad,
