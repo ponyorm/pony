@@ -1,4 +1,4 @@
-import __builtin__
+import __builtin__, types
 from compiler import ast
 from types import NoneType
 from operator import attrgetter
@@ -30,10 +30,11 @@ def select(gen):
             except KeyError:
                 try: value = getattr(__builtin__, name)
                 except AttributeError: raise NameError, name
-                if value not in special_functions: raise TypeError, name
-                functions[name] = value
-                continue
         if value in special_functions: functions[name] = value
+        elif type(value) in (types.FunctionType, types.BuiltinFunctionType):
+            raise TypeError('Function %r cannot be used inside query' % value.__name__)
+        elif type(value) is types.MethodType:
+            raise TypeError('Method %r cannot be used inside query' % value.__name__)
         else: variables[name] = value
     vartypes = dict((name, get_normalized_type(value)) for name, value in variables.iteritems())
     return Query(gen, tree, vartypes, functions, variables)
