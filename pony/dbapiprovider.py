@@ -278,14 +278,14 @@ class SQLBuilder(object):
         return builder(expr1), ' NOT BETWEEN ', builder(expr2), ' AND ', builder(expr3)
     def IN(builder, expr1, x):
         if not x: raise AstError('Empty IN clause')
-        if len(x) == 1 and x[0] == SELECT:
-            return builder(expr1), ' IN (', builder.SELECT(x), ')'
+        if len(x) >= 1 and x[0] == SELECT:
+            return builder(expr1), ' IN ', builder(x)
         expr_list = [ builder(expr) for expr in x ]
         return builder(expr1), ' IN (', join(', ', expr_list), ')'
     def NOT_IN(builder, expr1, x):
         if not x: raise AstError('Empty IN clause')
-        if len(x) == 1 and x[0] == SELECT:
-            return builder(expr1), ' NOT IN (', builder.SELECT(x), ')'
+        if len(x) >= 1 and x[0] == SELECT:
+            return builder(expr1), ' NOT IN ', builder(x)
         expr_list = [ builder(expr) for expr in x ]
         return builder(expr1), ' NOT IN (', join(', ', expr_list), ')'
     def EXISTS(builder, *sections):
