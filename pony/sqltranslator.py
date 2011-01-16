@@ -192,12 +192,15 @@ class ASTTranslator(object):
             translator.pre_methods[cls] = pre_method
         if pre_method is not None:
             # print 'PRE', node.__class__.__name__, '+'
-            pre_method(node)
+            stop = pre_method(node)
         else:            
             # print 'PRE', node.__class__.__name__, '-'
-            translator.default_pre(node)
-        
-        for child in node.getChildNodes(): translator.dispatch(child)
+            stop = translator.default_pre(node)
+
+        if stop: return
+            
+        for child in node.getChildNodes():
+            translator.dispatch(child)
 
         try: post_method = translator.post_methods[cls]
         except KeyError:
@@ -215,12 +218,13 @@ class ASTTranslator(object):
         pass
 
 class SQLTranslator(ASTTranslator):
-    def __init__(translator, tree, vartypes, functions):
+    def __init__(translator, tree, vartypes, functions, outer_iterables={}):
         assert isinstance(tree, ast.GenExprInner)
         ASTTranslator.__init__(translator, tree)
         translator.diagram = None
         translator.vartypes = vartypes
         translator.functions = functions
+        translator.outer_iterables = outer_iterables
         translator.iterables = iterables = {}
         translator.aliases = aliases = {}
         translator.extractors = {}
@@ -317,6 +321,8 @@ class SQLTranslator(ASTTranslator):
         translator.select, translator.attr_offsets = entity._construct_select_clause_(alias, translator.distinct)
         translator.sql_ast = [ SELECT, translator.select, translator.from_ ]
         if translator.conditions: translator.sql_ast.append([ WHERE, sqland(translator.conditions) ])
+    def preGenExpr(translator, node):
+        raise TypeError
     def postGenExprIf(translator, node):
         monad = node.test.monad
         if monad.type is not bool: raise TypeError
@@ -344,8 +350,10 @@ class SQLTranslator(ASTTranslator):
         node.monad = ListMonad(translator, [ item.monad for item in node.nodes ])
     def postName(translator, node):
         name = node.name
-        if name in translator.iterables:
-            entity = translator.iterables[name]
+        entity = translator.iterables.get(name)
+        if entity is None:
+            entity = translator.outer_iterables.get(name)
+        if entity is not None:
             node.monad = ObjectIterMonad(translator, name, entity)
         else:
             try: value_type = translator.vartypes[name]
@@ -377,9 +385,24 @@ class SQLTranslator(ASTTranslator):
         node.monad = OrMonad([ subnode.monad for subnode in node.nodes ])
     def postNot(translator, node):
         node.monad = NotMonad(node.expr.monad)
-    def postCallFunc(translator, node):
+    def preCallFunc(translator, node):
         if node.star_args is not None: raise NotImplementedError
         if node.dstar_args is not None: raise NotImplementedError
+        if len(node.args) > 1: return False
+        if not isinstance(node.args[0], ast.GenExpr): return False
+        translator.dispatch(node.node)
+        func_monad = node.node.monad
+        inner_tree = node.args[0].code
+        assert isinstance(inner_tree, ast.GenExprInner)
+        outer_iterables = {}
+        outer_iterables.update(translator.outer_iterables)
+        outer_iterables.update(translator.iterables)
+        subtranslator = SQLTranslator(inner_tree, translator.vartypes, translator.functions, outer_iterables)
+        query_set_monad = QuerySetMonad(translator, subtranslator)
+        node.args[0].monad = query_set_monad
+        node.monad = func_monad(query_set_monad)
+        return True
+    def postCallFunc(translator, node):
         args = []
         keyargs = {}
         for arg in node.args:
@@ -621,76 +644,6 @@ class StringMethodMonad(MethodMonad):
     def call_rstrip(monad, chars=None):
         return monad.strip(chars, RTRIM)
     
-class SetMonad(Monad):
-    def __init__(monad, root, path):
-        item_type = normalize_type(path[-1].py_type)
-        Monad.__init__(monad, root.translator, (item_type,))
-        monad.root = root
-        monad.path = path
-    def cmp(monad, op, monad2):
-        raise NotImplementedError
-    def contains(monad, item, not_in=False):
-        raise NotImplementedError
-    def getattr(monad, name):
-        item_type = monad.type[0]
-        if not isinstance(item_type, orm.EntityMeta):
-            raise AttributeError, name
-        entity = item_type
-        attr = entity._adict_.get(name)
-        if attr is None: raise AttributeError, name
-        return SetMonad(monad.root, monad.path + [ attr ])
-    def len(monad):
-        if not monad.path[-1].reverse: kind = DISTINCT
-        else: kind = ALL
-        sql_ast = monad._subselect(lambda expr: [ COUNT, kind, expr ])
-        return NumericExprMonad(monad.translator, sql_ast)
-    def sum(monad):
-        if monad.type[0] is not int: raise TypeError
-        sql_ast = monad._subselect(lambda expr: [COALESCE, [ SUM, expr ], [ VALUE, 0 ]])
-        return NumericExprMonad(monad.translator, sql_ast)
-    def min(monad):
-        item_type = monad.type[0]
-        if item_type not in (int, unicode): raise TypeError
-        sql_ast = monad._subselect(lambda expr: [ MIN, expr ])
-        return ExprMonad.new(monad.translator, sql_ast, item_type)
-    def max(monad):
-        item_type = monad.type[0]
-        if item_type not in (int, unicode): raise TypeError
-        sql_ast = monad._subselect(lambda expr: [ MAX, expr ])
-        return ExprMonad.new(monad.translator, sql_ast, item_type)
-    def _subselect(monad, expr_func):
-        from_ast = [ FROM ]
-        conditions = []
-        prev_alias = monad.root.alias
-        prev_columns = monad.root.getsql()
-        expr = None 
-        for attr in monad.path:
-            reverse = attr.reverse
-            if not reverse:
-                assert len(attr.columns) == 1
-                expr = [ COLUMN, alias, attr.column ]
-            elif not attr.is_collection:
-                raise NotImplementedError
-            elif reverse.is_collection:
-                raise NotImplementedError
-            else:
-                entity = attr.py_type
-                assert isinstance(entity, orm.EntityMeta)
-                alias = '-'.join((prev_alias, attr.name))
-                alias = monad.translator.get_short_alias(alias, entity)
-                from_ast.append([ alias, TABLE, entity._table_ ])
-                assert len(prev_columns) == len(reverse.columns)
-                for c1_ast, c2 in zip(prev_columns, reverse.columns):
-                    conditions.append([ EQ, c1_ast, [ COLUMN, alias, c2 ] ])
-                prev_alias = alias
-                prev_columns = [ [ COLUMN, alias, column ] for column in entity._pk_columns_ ]
-        select_ast = [ AGGREGATES, expr_func(expr) ]
-        return [ SELECT, select_ast, from_ast, [ WHERE, sqland(conditions) ] ]
-    def nonzero(monad):
-        raise NotImplementedError
-    def getsql(monad):
-        raise TranslationError
-
 class ObjectMixin(object): pass
 
 class ObjectIterMonad(ObjectMixin, Monad):
@@ -703,7 +656,7 @@ class ObjectIterMonad(ObjectMixin, Monad):
         if attr.is_collection:
             if monad.translator.inside_expr:
                 raise TranslationError('Collection attributes cannot be used inside expression part of select')
-            return SetMonad(monad, [ attr ])
+            return AttrSetMonad(monad, [ attr ])
         return AttrMonad.new(monad, attr, monad.alias)
     def getsql(monad):
         entity = monad.type
@@ -740,7 +693,7 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
         if attr.is_collection:
             if translator.inside_expr:
                 raise TranslationError('Collection attributes cannot be used inside expression part of select')
-            return SetMonad(monad, [ attr ])
+            return AttrSetMonad(monad, [ attr ])
         if attr.pk_offset is not None:
             alias = monad.alias
             columns = monad.columns
@@ -995,10 +948,99 @@ def minmax(monad, sqlop, *args):
         return StringExprMonad(monad.translator, sql)
     else: raise TypeError
 
+class AttrSetMonad(Monad):
+    def __init__(monad, root, path):
+        item_type = normalize_type(path[-1].py_type)
+        Monad.__init__(monad, root.translator, (item_type,))
+        monad.root = root
+        monad.path = path
+    def cmp(monad, op, monad2):
+        raise NotImplementedError
+    def contains(monad, item, not_in=False):
+        raise NotImplementedError
+    def getattr(monad, name):
+        item_type = monad.type[0]
+        if not isinstance(item_type, orm.EntityMeta):
+            raise AttributeError, name
+        entity = item_type
+        attr = entity._adict_.get(name)
+        if attr is None: raise AttributeError, name
+        return AttrSetMonad(monad.root, monad.path + [ attr ])
+    def len(monad):
+        if not monad.path[-1].reverse: kind = DISTINCT
+        else: kind = ALL
+        sql_ast = monad._subselect(lambda expr: [ COUNT, kind, expr ])
+        return NumericExprMonad(monad.translator, sql_ast)
+    def sum(monad):
+        if monad.type[0] is not int: raise TypeError
+        sql_ast = monad._subselect(lambda expr: [COALESCE, [ SUM, expr ], [ VALUE, 0 ]])
+        return NumericExprMonad(monad.translator, sql_ast)
+    def min(monad):
+        item_type = monad.type[0]
+        if item_type not in (int, unicode): raise TypeError
+        sql_ast = monad._subselect(lambda expr: [ MIN, expr ])
+        return ExprMonad.new(monad.translator, sql_ast, item_type)
+    def max(monad):
+        item_type = monad.type[0]
+        if item_type not in (int, unicode): raise TypeError
+        sql_ast = monad._subselect(lambda expr: [ MAX, expr ])
+        return ExprMonad.new(monad.translator, sql_ast, item_type)
+    def _subselect(monad, expr_func):
+        from_ast = [ FROM ]
+        conditions = []
+        prev_alias = monad.root.alias
+        prev_columns = monad.root.getsql()
+        expr = None 
+        for attr in monad.path:
+            reverse = attr.reverse
+            if not reverse:
+                assert len(attr.columns) == 1
+                expr = [ COLUMN, alias, attr.column ]
+            elif not attr.is_collection:
+                raise NotImplementedError
+            elif reverse.is_collection:
+                raise NotImplementedError
+            else:
+                entity = attr.py_type
+                assert isinstance(entity, orm.EntityMeta)
+                alias = '-'.join((prev_alias, attr.name))
+                alias = monad.translator.get_short_alias(alias, entity)
+                from_ast.append([ alias, TABLE, entity._table_ ])
+                assert len(prev_columns) == len(reverse.columns)
+                for c1_ast, c2 in zip(prev_columns, reverse.columns):
+                    conditions.append([ EQ, c1_ast, [ COLUMN, alias, c2 ] ])
+                prev_alias = alias
+                prev_columns = [ [ COLUMN, alias, column ] for column in entity._pk_columns_ ]
+        select_ast = [ AGGREGATES, expr_func(expr) ]
+        return [ SELECT, select_ast, from_ast, [ WHERE, sqland(conditions) ] ]
+    def nonzero(monad):
+        raise NotImplementedError
+    def getsql(monad):
+        raise TranslationError
+
+@func_monad(type=None)
+def FuncSelectMonad(monad, subquery):
+    if not isinstance(subquery, QuerySetMonad): raise TypeError
+    return subquery
+
+class QuerySetMonad(Monad):
+    def __init__(monad, translator, subtranslator):
+        item_type = subtranslator.entity
+        Monad.__init__(monad, translator, (item_type,))
+        monad.item_type = item_type
+        monad.subtranslator = subtranslator
+    def len(monad):
+        select_ast = [ AGGREGATES, [ COUNT, ALL ] ]
+        from_ast = monad.subtranslator.from_
+        where_ast = [ WHERE, sqland(monad.subtranslator.conditions) ]
+        sql_ast = [ SELECT, select_ast, from_ast, where_ast ]
+        return NumericExprMonad(monad.translator, sql_ast)
+
 special_functions = {
     len : FuncLenMonad,
     abs : FuncAbsMonad,
     min : FuncMinMonad,
     max : FuncMaxMonad,
     sum : FuncSumMonad,
+    select : FuncSelectMonad,
 }
