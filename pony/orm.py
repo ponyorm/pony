@@ -960,6 +960,12 @@ class Entity(object):
         entity._adict_ = dict((attr.name, attr) for attr in entity._attrs_)
         entity._required_attrs_ = [ attr for attr in entity._attrs_ if attr.is_required ]
 
+        entity._bits_ = {}
+        next_offset = count().next
+        for attr in entity._attrs_:
+            if attr.is_collection or attr.pk_offset is not None: continue
+            entity._bits_[attr] = 1 << next_offset()
+
         try: table_name = entity.__dict__['_table_']
         except KeyError: entity._table_ = None
         else:
@@ -1681,6 +1687,7 @@ class Entity(object):
         update_columns = []
         values = []
         for attr in obj._attrs_with_bit_(obj._wbits_):
+            if not attr.columns: continue
             update_columns.extend(attr.columns)
             val = obj.__dict__[attr]
             values.extend(attr.get_raw_values(val))
@@ -1689,6 +1696,7 @@ class Entity(object):
             values.extend(attr.get_raw_values(val))
         optimistic_check_columns = []
         for attr in obj._attrs_with_bit_(obj._rbits_):
+            if not attr.columns: continue
             old = obj.__dict__.get(attr.name, NOT_LOADED)
             assert old is not NOT_LOADED
             optimistic_check_columns.extend(attr.columns)
@@ -1726,6 +1734,7 @@ class Entity(object):
             values.extend(attr.get_raw_values(val))
         optimistic_check_columns = []
         for attr in obj._attrs_with_bit_(obj._rbits_):
+            if not attr.columns: continue
             old = obj.__dict__.get(attr.name, NOT_LOADED)
             assert old is not NOT_LOADED
             optimistic_check_columns.extend(attr.columns)
@@ -1878,13 +1887,6 @@ class Diagram(object):
                 else:
                     for column in attr.get_columns()[0]:
                         table.add_column(column, attr.pk_offset is not None)
-
-            entity._bits_ = {}
-            next_offset = count().next
-            for attr in entity._attrs_:
-                if attr.is_collection or attr.pk_offset is not None: continue
-                if not attr.columns: continue
-                entity._bits_[attr] = 1 << next_offset()
 
             columns = []
             for attr in entity._attrs_:
