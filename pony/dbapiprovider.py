@@ -151,6 +151,14 @@ class SQLBuilder(object):
         builder.indent -= 1
         if builder.indent : result = ['(\n', result, ')']
         return result
+    def EXISTS(builder, *sections):
+        builder.indent += 1
+        indent = builder.indent_spaces * (builder.indent-1)
+        result = [ builder(s) for s in sections ]
+        builder.indent -= 1
+        return 'EXISTS (\n', indent, 'SELECT 1\n', result, indent, ')\n'
+    def NOT_EXISTS(builder, *sections):
+        return 'NOT ', builder.EXISTS(*sections)
     @indentable
     def ALL(builder, *expr_list):
         exprs = [ builder(e) for e in expr_list ]
@@ -288,10 +296,6 @@ class SQLBuilder(object):
             return builder(expr1), ' NOT IN ', builder(x)
         expr_list = [ builder(expr) for expr in x ]
         return builder(expr1), ' NOT IN (', join(', ', expr_list), ')'
-    def EXISTS(builder, *sections):
-        return 'EXISTS (\nSELECT 1 ', builder.SELECT(*sections), ')'
-    def NOT_EXISTS(builder, *sections):
-        return 'NOT EXISTS (\nSELECT * ', builder.SELECT(*sections), ')'
     def COUNT(builder, kind, expr=None):
         if kind == ALL:
             if expr is None: return ['COUNT(*)']

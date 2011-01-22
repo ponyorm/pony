@@ -325,7 +325,7 @@ class SQLTranslator(ASTTranslator):
         raise TypeError
     def postGenExprIf(translator, node):
         monad = node.test.monad
-        if monad.type is not bool: raise TypeError
+        if monad.type is not bool: monad = monad.nonzero()
         node.monad = monad
     def postCompare(translator, node):
         expr1 = node.expr
@@ -384,7 +384,7 @@ class SQLTranslator(ASTTranslator):
     def postOr(translator, node):
         node.monad = OrMonad([ subnode.monad for subnode in node.nodes ])
     def postNot(translator, node):
-        node.monad = NotMonad(node.expr.monad)
+        node.monad = node.expr.monad.negate()
     def preCallFunc(translator, node):
         if node.star_args is not None: raise NotImplementedError
         if node.dstar_args is not None: raise NotImplementedError
@@ -441,6 +441,8 @@ class Monad(object):
         return CmpMonad(op, monad, monad2)
     def contains(monad, item, not_in=False): raise TypeError
     def nonzero(monad): raise TypeError
+    def negate(monad):
+        return NotMonad(monad)
 
     def getattr(monad, attrname): raise TypeError
     def __call__(monad, *args, **keyargs): raise TypeError
@@ -884,9 +886,11 @@ class OrMonad(LogicalBinOpMonad):
 
 class NotMonad(BoolMonad):
     def __init__(monad, operand):
-        if operand.type is not bool: raise TypeError
+        if operand.type is not bool: operand = operand.nonzero()
         BoolMonad.__init__(monad, operand.translator)
         monad.operand = operand
+    def negate(monad):
+        return monad.operand
     def getsql(monad):
         return [ NOT, monad.operand.getsql() ]
 
@@ -979,23 +983,35 @@ class AttrSetMonad(Monad):
     def len(monad):
         if not monad.path[-1].reverse: kind = DISTINCT
         else: kind = ALL
-        sql_ast = monad._subselect(lambda expr, alias: [ AGGREGATES, [ COUNT, kind, expr ] ])
+        expr, from_ast, conditions = monad._subselect()
+        sql_ast = [ SELECT, [ AGGREGATES, [ COUNT, kind, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
         return NumericExprMonad(monad.translator, sql_ast)
     def sum(monad):
         if monad.type[0] is not int: raise TypeError
-        sql_ast = monad._subselect(lambda expr, alias: [ AGGREGATES, [COALESCE, [ SUM, expr ], [ VALUE, 0 ]] ])
+        expr, from_ast, conditions = monad._subselect()
+        sql_ast = [ SELECT, [ AGGREGATES, [COALESCE, [ SUM, expr ], [ VALUE, 0 ]]], from_ast, [ WHERE, sqland(conditions) ] ]
         return NumericExprMonad(monad.translator, sql_ast)
     def min(monad):
         item_type = monad.type[0]
         if item_type not in (int, unicode): raise TypeError
-        sql_ast = monad._subselect(lambda expr, alias: [ AGGREGATES, [ MIN, expr ] ])
+        expr, from_ast, conditions = monad._subselect()
+        sql_ast = [ SELECT, [ AGGREGATES, [ MIN, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
         return ExprMonad.new(monad.translator, sql_ast, item_type)
     def max(monad):
         item_type = monad.type[0]
         if item_type not in (int, unicode): raise TypeError
-        sql_ast = monad._subselect(lambda expr, alias: [ AGGREGATES, [ MAX, expr ] ])
+        expr, from_ast, conditions = monad._subselect()
+        sql_ast = [ SELECT, [ AGGREGATES, [ MAX, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
         return ExprMonad.new(monad.translator, sql_ast, item_type)
-    def _subselect(monad, select_ast_func):
+    def nonzero(monad):
+        expr, from_ast, conditions = monad._subselect()
+        sql_ast = [ EXISTS, from_ast, [ WHERE, sqland(conditions) ] ]
+        return BoolExprMonad(monad.translator, sql_ast)
+    def negate(monad):
+        expr, from_ast, conditions = monad._subselect()
+        sql_ast = [ NOT_EXISTS, from_ast, [ WHERE, sqland(conditions) ] ]
+        return BoolExprMonad(monad.translator, sql_ast)
+    def _subselect(monad):
         from_ast = [ FROM ]
         conditions = []
         alias = None
@@ -1033,10 +1049,7 @@ class AttrSetMonad(Monad):
                 join_tables(conditions, prev_alias, alias, prev_entity._pk_columns_, reverse.columns)
             prev_alias = alias
         assert alias is not None
-        select_ast = select_ast_func(expr, alias)
-        return [ SELECT, select_ast, from_ast, [ WHERE, sqland(conditions) ] ]
-    def nonzero(monad):
-        raise NotImplementedError
+        return expr, from_ast, conditions
     def getsql(monad):
         raise TranslationError
 
