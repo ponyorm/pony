@@ -2,7 +2,7 @@ import __builtin__, types
 from compiler import ast
 from types import NoneType
 from operator import attrgetter
-from itertools import imap
+from itertools import imap, izip
 
 from pony import orm
 from pony.decompiling import decompile
@@ -178,6 +178,11 @@ def sqlor(items):
     if len(items) == 1: return items[0]
     return [ OR ] + items
 
+def join_tables(conditions, alias1, alias2, columns1, columns2):
+    assert len(columns1) == len(columns2)
+    conditions.extend([ EQ, [ COLUMN, alias1, c1 ], [ COLUMN, alias2, c2 ] ]
+                     for c1, c2 in izip(columns1, columns2))
+
 class ASTTranslator(object):
     def __init__(translator, tree):
         translator.tree = tree
@@ -310,7 +315,7 @@ class SQLTranslator(ASTTranslator):
             translator.distinct = True
             short_alias = aliases.get(alias)
             if short_alias is None:
-                short_alias = translator.get_short_alias(alias, entity)
+                short_alias = translator.get_short_alias(alias, entity.__name__)
                 aliases[alias] = short_alias
                 translator.from_.append([ short_alias, TABLE, entity._table_ ])
                 assert len(monad.columns) == len(entity._pk_columns_)
@@ -425,12 +430,12 @@ class SQLTranslator(ASTTranslator):
         lower = node.lower
         if lower is not None: lower = lower.monad
         node.monad = expr_monad[lower:upper]
-    def get_short_alias(translator, alias, entity):
-        if len(alias) <= MAX_ALIAS_LENGTH: return alias
-        name = entity.__name__[:MAX_ALIAS_LENGTH-3].lower()
-        i = translator.alias_counters.setdefault(name, 1)
+    def get_short_alias(translator, alias, entity_name):
+        if alias and len(alias) <= MAX_ALIAS_LENGTH: return alias
+        name = entity_name[:MAX_ALIAS_LENGTH-3].lower()
+        i = translator.alias_counters.setdefault(name, 0) + 1
         short_alias = '%s-%d' % (name, i)
-        translator.alias_counters[name] = i + 1
+        translator.alias_counters[name] = i
         return short_alias
 
 class Monad(object):
@@ -706,7 +711,7 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
         else:
             short_alias = translator.aliases.get(next_alias)
             if short_alias is None:
-                short_alias = translator.get_short_alias(next_alias, entity)
+                short_alias = translator.get_short_alias(next_alias, entity.__name__)
                 translator.aliases[next_alias] = short_alias
                 translator.from_.append([ short_alias, TABLE, entity._table_ ])
                 conditions = translator.conditions
@@ -1003,28 +1008,38 @@ class AttrSetMonad(Monad):
         conditions = []
         alias = None
         prev_alias = monad.root.alias
-        prev_columns = monad.root.getsql()
         expr = None 
         for attr in monad.path:
+            prev_entity = attr.entity
             reverse = attr.reverse
             if not reverse:
                 assert len(attr.columns) == 1
                 expr = [ COLUMN, alias, attr.column ]
-            elif not attr.is_collection:
-                raise NotImplementedError
+                assert attr is monad.path[-1]
+                break
+            
+            next_entity = attr.py_type
+            assert isinstance(next_entity, orm.EntityMeta)
+            alias = '-'.join((prev_alias, attr.name))
+            alias = monad.translator.get_short_alias(alias, next_entity.__name__)
+            if not attr.is_collection:
+                from_ast.append([ alias, TABLE, next_entity._table_ ])
+                if attr.columns:                    
+                    join_tables(conditions, prev_alias, alias, attr.columns, next_entity._pk_columns_)
+                else:
+                    assert not reverse.is_collection and reverse.columns
+                    join_tables(conditions, prev_alias, alias, prev_entity._pk_columns_, reverse.columns)
             elif reverse.is_collection:
-                raise NotImplementedError
+                m2m_table = attr.table
+                m2m_alias = monad.translator.get_short_alias(None, 'm2m-')
+                from_ast.append([ m2m_alias, TABLE, m2m_table ])
+                join_tables(conditions, prev_alias, m2m_alias, prev_entity._pk_columns_, reverse.columns)
+                from_ast.append([ alias, TABLE, next_entity._table_ ])
+                join_tables(conditions, m2m_alias, alias, attr.columns, next_entity._pk_columns_)
             else:
-                entity = attr.py_type
-                assert isinstance(entity, orm.EntityMeta)
-                alias = '-'.join((prev_alias, attr.name))
-                alias = monad.translator.get_short_alias(alias, entity)
-                from_ast.append([ alias, TABLE, entity._table_ ])
-                assert len(prev_columns) == len(reverse.columns)
-                for c1_ast, c2 in zip(prev_columns, reverse.columns):
-                    conditions.append([ EQ, c1_ast, [ COLUMN, alias, c2 ] ])
-                prev_alias = alias
-                prev_columns = [ [ COLUMN, alias, column ] for column in entity._pk_columns_ ]
+                from_ast.append([ alias, TABLE, next_entity._table_ ])
+                join_tables(conditions, prev_alias, alias, prev_entity._pk_columns_, reverse.columns)
+            prev_alias = alias
         assert alias is not None
         select_ast = select_ast_func(expr, alias)
         return [ SELECT, select_ast, from_ast, [ WHERE, sqland(conditions) ] ]
