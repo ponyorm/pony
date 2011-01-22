@@ -277,8 +277,7 @@ class SQLTranslator(ASTTranslator):
                 if not isinstance(entity, orm.EntityMeta): raise NotImplementedError
                 reverse = attr.reverse
                 if not reverse.is_collection:
-                    for c1, c2 in zip(parent_entity._pk_columns_, reverse.columns):
-                        conditions.append([ EQ, [ COLUMN, node.name, c1 ], [ COLUMN, name, c2 ] ])
+                    join_tables(conditions, node.name, name, parent_entity._pk_columns_, reverse.columns)
                 else:
                     if not isinstance(reverse, orm.Set): raise NotImplementedError
                     translator.distinct = True
@@ -286,10 +285,8 @@ class SQLTranslator(ASTTranslator):
                     m2m_alias = '%s--%s' % (node.name, name)
                     aliases[m2m_alias] = m2m_alias
                     translator.from_.append([ m2m_alias, TABLE, m2m_table ])
-                    for c1, c2 in zip(parent_entity._pk_columns_, reverse.columns):
-                        conditions.append([ EQ, [ COLUMN, node.name, c1 ], [ COLUMN, m2m_alias, c2 ] ])
-                    for c1, c2 in zip(attr.columns, entity._pk_columns_):
-                        conditions.append([ EQ, [ COLUMN, m2m_alias, c1 ], [ COLUMN, name, c2 ] ])
+                    join_tables(conditions, node.name, m2m_alias, parent_entity._pk_columns_, reverse.columns)
+                    join_tables(conditions, m2m_alias, name, attr.columns, entity._pk_columns_)
             iterables[name] = entity
             aliases[name] = name
             translator.from_.append([ name, TABLE, entity._table_ ])
@@ -318,9 +315,7 @@ class SQLTranslator(ASTTranslator):
                 short_alias = translator.get_short_alias(alias, entity.__name__)
                 aliases[alias] = short_alias
                 translator.from_.append([ short_alias, TABLE, entity._table_ ])
-                assert len(monad.columns) == len(entity._pk_columns_)
-                for c1, c2 in zip(monad.columns, entity._pk_columns_):
-                    conditions.append([ EQ, [ COLUMN, monad.alias, c1 ], [ COLUMN, short_alias, c2 ] ])
+                join_tables(conditions, monad.alias, short_alias, monad.columns, entity._pk_columns_)
             alias = short_alias
         else: assert False
         translator.select, translator.attr_offsets = entity._construct_select_clause_(alias, translator.distinct)
@@ -714,10 +709,7 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
                 short_alias = translator.get_short_alias(next_alias, entity.__name__)
                 translator.aliases[next_alias] = short_alias
                 translator.from_.append([ short_alias, TABLE, entity._table_ ])
-                conditions = translator.conditions
-                assert len(monad.columns) == len(entity._pk_columns_)
-                for c1, c2 in zip(monad.columns, entity._pk_columns_):
-                    conditions.append([ EQ, [ COLUMN, monad.alias, c1 ], [ COLUMN, short_alias, c2 ] ])
+                join_tables(translator.conditions, monad.alias, short_alias, monad.columns, entity._pk_columns_)
             alias = short_alias
             columns = attr.columns
         attr_alias = '-'.join((next_alias, name))
