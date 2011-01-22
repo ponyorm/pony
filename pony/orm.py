@@ -1614,27 +1614,12 @@ class Entity(object):
         obj._status_ = 'locked'
         obj._trans_.to_be_checked.append(obj)
     @classmethod
-    def _attrs_with_bit_(entity):
+    def _attrs_with_bit_(entity, mask=-1):
         get_bit = entity._bits_.get
         for attr in entity._attrs_:
             bit = get_bit(attr)
             if bit is None: continue
-            yield attr
-    def _attrs_with_rbit_(obj):
-        rbits = obj._rbits_
-        get_bit = obj._bits_.get
-        for attr in obj._attrs_:
-            bit = get_bit(attr)
-            if bit is None: continue
-            if not bit & rbits: continue
-            yield attr
-    def _attrs_with_wbit_(obj):
-        wbits = obj._wbits_
-        get_bit = obj._bits_.get
-        for attr in obj._attrs_:
-            bit = get_bit(attr)
-            if bit is None: continue
-            if not bit & wbits: continue
+            if not bit & mask: continue
             yield attr
     def _save_principal_objects_(obj, dependent_objects):
         if dependent_objects is None: dependent_objects = []
@@ -1644,7 +1629,7 @@ class Entity(object):
         dependent_objects.append(obj)
         status = obj._status_
         if status == 'created': attr_iter = obj._attrs_with_bit_()
-        elif status == 'updated': attr_iter = obj._attrs_with_wbit_()
+        elif status == 'updated': attr_iter = obj._attrs_with_bit_(obj._wbits_)
         else: assert False
         for attr in attr_iter:
             val = obj.__dict__[attr]
@@ -1695,7 +1680,7 @@ class Entity(object):
     def _save_updated_(obj):
         update_columns = []
         values = []
-        for attr in obj._attrs_with_wbit_():
+        for attr in obj._attrs_with_bit_(obj._wbits_):
             update_columns.extend(attr.columns)
             val = obj.__dict__[attr]
             values.extend(attr.get_raw_values(val))
@@ -1703,7 +1688,7 @@ class Entity(object):
             val = obj.__dict__[attr]
             values.extend(attr.get_raw_values(val))
         optimistic_check_columns = []
-        for attr in obj._attrs_with_rbit_():
+        for attr in obj._attrs_with_bit_(obj._rbits_):
             old = obj.__dict__.get(attr.name, NOT_LOADED)
             assert old is not NOT_LOADED
             optimistic_check_columns.extend(attr.columns)
@@ -1740,7 +1725,7 @@ class Entity(object):
             val = obj.__dict__[attr]
             values.extend(attr.get_raw_values(val))
         optimistic_check_columns = []
-        for attr in obj._attrs_with_rbit_():
+        for attr in obj._attrs_with_bit_(obj._rbits_):
             old = obj.__dict__.get(attr.name, NOT_LOADED)
             assert old is not NOT_LOADED
             optimistic_check_columns.extend(attr.columns)
