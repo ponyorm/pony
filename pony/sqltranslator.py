@@ -325,7 +325,13 @@ class SQLTranslator(ASTTranslator):
         translator.sql_ast = [ SELECT, translator.select, translator.from_ ]
         if translator.conditions: translator.sql_ast.append([ WHERE, sqland(translator.conditions) ])
     def preGenExpr(translator, node):
-        raise TypeError
+        inner_tree = node.code
+        outer_iterables = {}
+        outer_iterables.update(translator.outer_iterables)
+        outer_iterables.update(translator.iterables)
+        subtranslator = SQLTranslator(inner_tree, translator.vartypes, translator.functions, outer_iterables)
+        node.monad = QuerySetMonad(translator, subtranslator)
+        return True
     def postGenExprIf(translator, node):
         monad = node.test.monad
         if monad.type is not bool: monad = monad.nonzero()
@@ -392,17 +398,12 @@ class SQLTranslator(ASTTranslator):
         if node.star_args is not None: raise NotImplementedError
         if node.dstar_args is not None: raise NotImplementedError
         if len(node.args) > 1: return False
-        if not isinstance(node.args[0], ast.GenExpr): return False
+        arg = node.args[0]
+        if not isinstance(arg, ast.GenExpr): return False
         translator.dispatch(node.node)
         func_monad = node.node.monad
-        inner_tree = node.args[0].code
-        assert isinstance(inner_tree, ast.GenExprInner)
-        outer_iterables = {}
-        outer_iterables.update(translator.outer_iterables)
-        outer_iterables.update(translator.iterables)
-        subtranslator = SQLTranslator(inner_tree, translator.vartypes, translator.functions, outer_iterables)
-        query_set_monad = QuerySetMonad(translator, subtranslator)
-        node.args[0].monad = query_set_monad
+        translator.dispatch(arg)
+        query_set_monad = arg.monad
         node.monad = func_monad(query_set_monad)
         return True
     def postCallFunc(translator, node):
@@ -1078,15 +1079,17 @@ def FuncSelectMonad(monad, subquery):
     return subquery
 
 class QuerySetMonad(SetMixin, Monad):
-    def __init__(monad, translator, subtranslator):
-        item_type = subtranslator.entity
-        Monad.__init__(monad, translator, (item_type,))
-        monad.item_type = item_type
+    def __init__(monad, translator, subtranslator):        
         monad.subtranslator = subtranslator
+        attr, attr_type = monad._get_attr_info()
+        item_type = attr_type or subtranslator.entity
+        monad.item_type = item_type
+        Monad.__init__(monad, translator, (item_type,))
     def _get_attr_info(monad):
-        attrname = monad.subtranslator.attrname
+        subtranslator = monad.subtranslator
+        attrname = subtranslator.attrname
         if attrname is None: return None, None
-        entity = monad.subtranslator.entity
+        entity = subtranslator.entity
         attr = entity._adict_[attrname]
         attr_type = normalize_type(attr.py_type)
         return attr, attr_type
@@ -1095,6 +1098,18 @@ class QuerySetMonad(SetMixin, Monad):
         where_ast = [ WHERE, sqland(monad.subtranslator.conditions) ]
         sql_ast = [ SELECT, select_ast, from_ast, where_ast ]
         return ExprMonad.new(monad.translator, sql_ast, item_type)
+    def contains(monad, item, not_in=False):
+        item_type = monad.type[0]
+        if not are_comparable_types('==', item_type, item.type): raise TypeError, [ item_type, item.type ]
+        attr, attr_type = monad._get_attr_info()
+        sub = monad.subtranslator
+        if attr is None: columns = item_type._pk_columns_
+        else: columns = attr.columns
+        if len(columns) > 1: raise NotImplementedError
+        select_ast = [ ALL, [ COLUMN, sub.alias, columns[0] ] ]
+        subquery_ast = [ SELECT, select_ast, sub.from_, [ WHERE, sqland(sub.conditions) ] ]
+        sqlop = not_in and NOT_IN or IN
+        return BoolExprMonad(monad.translator, [ sqlop, item.getsql()[0], subquery_ast ])
     def len(monad):
         attr, attr_type = monad._get_attr_info()
         if attr is None:
