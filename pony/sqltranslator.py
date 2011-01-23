@@ -39,6 +39,9 @@ def select(gen):
     vartypes = dict((name, get_normalized_type(value)) for name, value in variables.iteritems())
     return Query(gen, tree, vartypes, functions, variables)
 
+def exists(subquery):
+    raise TypeError('Function exists() can be used inside query only')
+
 class Query(object):
     def __init__(query, gen, tree, vartypes, functions, variables):
         query._gen = gen
@@ -823,6 +826,9 @@ class BoolMonad(Monad):
         monad.translator = translator
         monad.type = bool
 
+sql_negation = { IN : NOT_IN, EXISTS : NOT_EXISTS, LIKE : NOT_LIKE, BETWEEN : NOT_BETWEEN, IS_NULL : IS_NOT_NULL }
+sql_negation.update((value, key) for key, value in sql_negation.items())
+
 class BoolExprMonad(BoolMonad):
     def __init__(monad, translator, sql):
         monad.translator = translator
@@ -830,6 +836,18 @@ class BoolExprMonad(BoolMonad):
         monad.sql = sql
     def getsql(monad):
         return monad.sql
+    def negate(monad):
+        sql = monad.sql
+        sqlop = sql[0]
+        negated_op = sql_negation.get(sqlop)
+        if negated_op is not None:
+            negated_sql = [ negated_op ] + sql[1:]
+        elif negated_op == NOT:
+            assert len(sql) == 2
+            negated_sql = sql[1]
+        else:
+            return NotMonad(monad.translator, sql)
+        return BoolExprMonad(monad.translator, negated_sql)
 
 cmpops = { '>=' : GE, '>' : GT, '<=' : LE, '<' : LT }        
 
@@ -949,7 +967,10 @@ def minmax(monad, sqlop, *args):
         return StringExprMonad(monad.translator, sql)
     else: raise TypeError
 
-class AttrSetMonad(Monad):
+class SetMixin(object):
+    pass
+
+class AttrSetMonad(SetMixin, Monad):
     def __init__(monad, root, path):
         item_type = normalize_type(path[-1].py_type)
         Monad.__init__(monad, root.translator, (item_type,))
@@ -963,13 +984,11 @@ class AttrSetMonad(Monad):
         if isinstance(item_type, orm.EntityMeta) and len(item_type._pk_columns_) > 1:
             raise NotImplementedError
 
-        def make_select_ast(expr, alias):
-            if not isinstance(item_type, orm.EntityMeta):
-                assert expr is not None
-                return [ ALL, expr ]
-            assert expr is None
-            return [ ALL, [ COLUMN, alias, item_type._pk_columns_[0] ] ]
-        subquery_ast = monad._subselect(make_select_ast)
+        expr, from_ast, conditions = monad._subselect()
+        if expr is None:
+            assert isinstance(item_type, orm.EntityMeta)
+            expr = [ COLUMN, alias, item_type._pk_columns_[0] ]
+        subquery_ast = [ SELECT, [ ALL, expr ], from_ast, [ WHERE, sqland(conditions) ] ]
         sqlop = not_in and NOT_IN or IN
         return BoolExprMonad(monad.translator, [ sqlop, item.getsql()[0], subquery_ast ])
     def getattr(monad, name):
@@ -1058,7 +1077,7 @@ def FuncSelectMonad(monad, subquery):
     if not isinstance(subquery, QuerySetMonad): raise TypeError
     return subquery
 
-class QuerySetMonad(Monad):
+class QuerySetMonad(SetMixin, Monad):
     def __init__(monad, translator, subtranslator):
         item_type = subtranslator.entity
         Monad.__init__(monad, translator, (item_type,))
@@ -1099,6 +1118,21 @@ class QuerySetMonad(Monad):
         if attr_type not in (int, unicode): raise TypeError
         select_ast = [ AGGREGATES, [ MAX, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
         return monad._subselect(select_ast, attr_type)
+    def nonzero(monad):        
+        from_ast = monad.subtranslator.from_
+        where_ast = [ WHERE, sqland(monad.subtranslator.conditions) ]
+        sql_ast = [ EXISTS, from_ast, where_ast ]
+        return BoolExprMonad(monad.translator, sql_ast)
+    def negate(monad):
+        from_ast = monad.subtranslator.from_
+        where_ast = [ WHERE, sqland(monad.subtranslator.conditions) ]
+        sql_ast = [ NOT_EXISTS, from_ast, where_ast ]
+        return BoolExprMonad(monad.translator, sql_ast)
+
+@func_monad(type=None)
+def FuncExistsMonad(monad, subquery):
+    if not isinstance(subquery, SetMixin): raise TypeError
+    return subquery.nonzero()
 
 special_functions = {
     len : FuncLenMonad,
@@ -1107,4 +1141,5 @@ special_functions = {
     max : FuncMaxMonad,
     sum : FuncSumMonad,
     select : FuncSelectMonad,
+    exists : FuncExistsMonad,
 }
