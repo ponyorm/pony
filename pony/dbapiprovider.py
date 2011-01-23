@@ -156,7 +156,7 @@ class SQLBuilder(object):
         indent = builder.indent_spaces * (builder.indent-1)
         result = [ builder(s) for s in sections ]
         builder.indent -= 1
-        return 'EXISTS (\n', indent, 'SELECT 1\n', result, indent, ')\n'
+        return 'EXISTS (\n', indent, 'SELECT 1\n', result, indent, ')'
     def NOT_EXISTS(builder, *sections):
         return 'NOT ', builder.EXISTS(*sections)
     @indentable
@@ -277,7 +277,7 @@ class SQLBuilder(object):
         if escape: result = result + (' ESCAPE ', builder(escape))
         return result
     def NOT_LIKE(builder, expr, template, escape=None):
-        result = builder(expr), ' NOT LIKE ', builder.template
+        result = builder(expr), ' NOT LIKE ', builder(template)
         if escape: result = result + (' ESCAPE ', builder(escape))
         return result
     def BETWEEN(builder, expr1, expr2, expr3):
