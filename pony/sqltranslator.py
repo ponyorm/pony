@@ -313,13 +313,7 @@ class SQLTranslator(ASTTranslator):
                 translator.distinct = True
         elif isinstance(monad, ObjectAttrMonad):
             translator.distinct = True
-            short_alias = aliases.get(alias)
-            if short_alias is None:
-                short_alias = translator.get_short_alias(alias, entity.__name__)
-                aliases[alias] = short_alias
-                translator.from_.append([ short_alias, TABLE, entity._table_ ])
-                join_tables(conditions, monad.alias, short_alias, monad.columns, entity._pk_columns_)
-            alias = short_alias
+            assert alias in aliases
         else: assert False
         translator.select, translator.attr_offsets = entity._construct_select_clause_(alias, translator.distinct)
         translator.sql_ast = [ SELECT, translator.select, translator.from_ ]
@@ -656,18 +650,19 @@ class ObjectIterMonad(ObjectMixin, Monad):
     def __init__(monad, translator, alias, entity):
         Monad.__init__(monad, translator, entity)
         monad.alias = alias
-    def getattr(monad, name):
-        entity = monad.type
-        attr = getattr(entity, name) # can raise AttributeError
-        if attr.is_collection:
-            if monad.translator.inside_expr:
-                raise TranslationError('Collection attributes cannot be used inside expression part of select')
-            return AttrSetMonad(monad, [ attr ])
-        return AttrMonad.new(monad, attr, monad.alias)
     def getsql(monad):
         entity = monad.type
         return [ [ COLUMN, monad.alias, column ] for attr in entity._pk_attrs_ if not attr.is_collection
                                                  for column in attr.columns ]
+    def getattr(monad, name):
+        translator = monad.translator
+        entity = monad.type
+        attr = getattr(entity, name) # can raise AttributeError
+
+        if attr.is_collection:
+            return AttrSetMonad(monad, [ attr ])
+        else:
+            return AttrMonad.new(monad, attr)
 
 class AttrMonad(Monad):
     @staticmethod
@@ -678,49 +673,43 @@ class AttrMonad(Monad):
         elif isinstance(type, orm.EntityMeta): cls = ObjectAttrMonad
         else: raise NotImplementedError
         return cls(parent, attr, *args, **keyargs)
-    def __init__(monad, parent, attr, alias, columns=None, next_alias=None):
+    def getsql(monad):
+        return [ [ COLUMN, monad.parent.alias, column ] for column in monad.attr.columns ]
+    def __init__(monad, parent, attr):
         assert monad.__class__ is not AttrMonad
         attr_type = normalize_type(attr.py_type)
         Monad.__init__(monad, parent.translator, attr_type)
         monad.parent = parent
         monad.attr = attr
-        monad.alias = alias
-        monad.columns = columns or attr.columns
-        monad.next_alias = next_alias or '-'.join((alias, attr.name))
-    def getsql(monad):
-        return [ [ COLUMN, monad.alias, column ] for column in monad.columns ]
-
+        monad.alias = None
+        
 class ObjectAttrMonad(ObjectMixin, AttrMonad):
+    def __init__(monad, parent, attr):
+        AttrMonad.__init__(monad, parent, attr)
+        monad.alias = '-'.join((parent.alias, attr.name))
+        monad._make_join()
+    def _make_join(monad):
+        translator = monad.translator
+        parent = monad.parent
+        attr = monad.attr
+        alias = monad.alias
+        entity = monad.type
+
+        short_alias = translator.aliases.get(alias)
+        if short_alias is not None: return
+        short_alias = translator.get_short_alias(alias, entity.__name__)
+        translator.aliases[alias] = short_alias
+        translator.from_.append([ short_alias, TABLE, entity._table_ ])
+        join_tables(translator.conditions, parent.alias, short_alias, attr.columns, entity._pk_columns_)
     def getattr(monad, name):
-        next_alias = monad.next_alias
         translator = monad.translator
         entity = monad.type
         attr = getattr(entity, name) # can raise AttributeError
         if attr.is_collection:
-            if translator.inside_expr:
-                raise TranslationError('Collection attributes cannot be used inside expression part of select')
             return AttrSetMonad(monad, [ attr ])
-        if attr.pk_offset is not None:
-            alias = monad.alias
-            columns = monad.columns
-            if entity._pk_is_composite_:
-                i = 0
-                for a in entity._pk_attrs_:
-                    if a is attr: break
-                    i += len(a.columns)
-                columns = columns[i:i+len(attr.columns)]
         else:
-            short_alias = translator.aliases.get(next_alias)
-            if short_alias is None:
-                short_alias = translator.get_short_alias(next_alias, entity.__name__)
-                translator.aliases[next_alias] = short_alias
-                translator.from_.append([ short_alias, TABLE, entity._table_ ])
-                join_tables(translator.conditions, monad.alias, short_alias, monad.columns, entity._pk_columns_)
-            alias = short_alias
-            columns = attr.columns
-        attr_alias = '-'.join((next_alias, name))
-        return AttrMonad.new(monad, attr, alias, columns, attr_alias)
-
+            return AttrMonad.new(monad, attr)
+        
 class NumericAttrMonad(NumericMixin, AttrMonad): pass
 class StringAttrMonad(StringMixin, AttrMonad): pass
 
@@ -973,6 +962,7 @@ class SetMixin(object):
 
 class AttrSetMonad(SetMixin, Monad):
     def __init__(monad, root, path):
+        if root.translator.inside_expr: raise NotImplementedError
         item_type = normalize_type(path[-1].py_type)
         Monad.__init__(monad, root.translator, (item_type,))
         monad.root = root
