@@ -306,7 +306,7 @@ class SQLTranslator(ASTTranslator):
             monad = monad.parent
         if not isinstance(monad, (ObjectIterMonad, ObjectAttrMonad)):
             raise TranslationError, monad
-        alias = translator.alias = monad.alias
+        alias = monad.alias
         entity = translator.entity = monad.type
         if isinstance(monad, ObjectIterMonad):
             if alias != translator.tree.quals[-1].assign.name:
@@ -315,7 +315,8 @@ class SQLTranslator(ASTTranslator):
             translator.distinct = True
             assert alias in aliases
         else: assert False
-        translator.select, translator.attr_offsets = entity._construct_select_clause_(alias, translator.distinct)
+        short_alias = translator.alias = aliases[alias]
+        translator.select, translator.attr_offsets = entity._construct_select_clause_(short_alias, translator.distinct)
         translator.sql_ast = [ SELECT, translator.select, translator.from_ ]
         if translator.conditions: translator.sql_ast.append([ WHERE, sqland(translator.conditions) ])
     def preGenExpr(translator, node):
