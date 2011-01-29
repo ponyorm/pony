@@ -51,6 +51,12 @@ class NoUndoNeededValueType(object):
 
 NO_UNDO_NEEDED = NoUndoNeededValueType()
 
+class DescWrapper(object):
+    def __init__(self, attr):
+        self.attr = attr
+    def __repr__(self):
+        return '<DescWrapper(%s)>' % self.attr
+
 next_attr_id = count(1).next
 
 class Attribute(object):
@@ -361,7 +367,13 @@ class Attribute(object):
         if len(attr.columns) == 1: attr.column = attr.columns[0]
         else: attr.column = None
         return attr.columns, attr.col_paths
-            
+    @property
+    def asc(attr):
+        return attr
+    @property
+    def desc(attr):
+        return DescWrapper(attr)
+
 class Optional(Attribute):
     __slots__ = []
     

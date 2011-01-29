@@ -69,9 +69,9 @@ class Query(object):
             if query._order:
                 alias = translator.alias
                 orderby_section = [ ORDER_BY ]
-                for attr in query._order:
+                for attr, asc in query._order:
                     for column in attr.columns:
-                        orderby_section.append(([COLUMN, alias, column], ASC))
+                        orderby_section.append(([COLUMN, alias, column], asc and ASC or DESC))
                 sql_ast = sql_ast + [ orderby_section ]
             if query._limit:
                 start, stop = query._limit
@@ -98,14 +98,17 @@ class Query(object):
     def orderby(query, *args):
         if not args: raise TypeError('query.orderby() requires at least one argument')
         entity = query._translator.entity
+        order = []
         for arg in args:
-            if not isinstance(arg, orm.Attribute): raise TypeError(
-                'query.orderby() arguments must be attributes. Got: %r' % arg)
-            if entity._adict_.get(arg.name) is not arg: raise TypeError(
-                'Attribute %s does not belong to Entity %s' % (arg, entity.__name__))
+            if isinstance(arg, orm.Attribute): order.append((arg, True))
+            elif isinstance(arg, orm.DescWrapper): order.append((arg.attr, False))
+            else: raise TypeError('query.orderby() arguments must be attributes. Got: %r' % arg)
+            attr = order[-1][0]
+            if entity._adict_.get(attr.name) is not attr: raise TypeError(
+                'Attribute %s does not belong to Entity %s' % (attr, entity.__name__))
         new_query = object.__new__(Query)
         new_query.__dict__.update(query.__dict__)
-        new_query._order = args
+        new_query._order = tuple(order)
         return new_query
     def __getitem__(query, key):
         if isinstance(key, slice):
