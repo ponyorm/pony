@@ -6,6 +6,7 @@ from pony.thirdparty.sqlite import (Warning, Error, InterfaceError, DatabaseErro
 
 from pony import dbapiprovider
 from pony.utils import localbase
+from os import path
 
 paramstyle = 'qmark'
 
@@ -18,9 +19,11 @@ local = Local()
 def quote_name(connection, name):
     return dbapiprovider.quote_name(name)
 
-def connect(filename):
+def connect(filename, create=False):
     conn = local.db_to_conn.get(filename)
     if conn is None:
+        if not create and filename != ':memory:' and not path.exists(filename):
+            raise IOError("Database file is not found: %r" % filename)
         local.db_to_conn[filename] = conn = sqlite.connect(filename)
     return conn
 
