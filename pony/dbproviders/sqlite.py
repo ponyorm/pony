@@ -12,7 +12,7 @@ paramstyle = 'qmark'
 
 class Local(localbase):
     def __init__(self):
-        self.db_to_conn = {}
+        self.connections = {}
 
 local = Local()
 
@@ -20,11 +20,11 @@ def quote_name(connection, name):
     return dbapiprovider.quote_name(name)
 
 def connect(filename, create=False):
-    conn = local.db_to_conn.get(filename)
+    conn = local.connections.get(filename)
     if conn is None:
         if not create and filename != ':memory:' and not path.exists(filename):
             raise IOError("Database file is not found: %r" % filename)
-        local.db_to_conn[filename] = conn = sqlite.connect(filename)
+        local.connections[filename] = conn = sqlite.connect(filename)
     return conn
 
 def release(connection):
