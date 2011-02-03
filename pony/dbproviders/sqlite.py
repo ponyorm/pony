@@ -16,13 +16,24 @@ class Local(localbase):
 
 local = Local()
 
+memory_db_conn = None
+
 def quote_name(connection, name):
     return dbapiprovider.quote_name(name)
 
 def connect(filename, create=False):
+    if filename == ':memory:':
+        global memory_db_conn
+        if memory_db_conn is None:
+            try: memory_db_conn = sqlite.connect(':memory:', check_same_thread=False)
+            except TypeError, e:
+                if 'check_same_thread' in e.args[0]:
+                    raise TypeError("Please upgrade sqlite or use file database instead of :memory:")
+        return memory_db_conn
+
     conn = local.connections.get(filename)
     if conn is None:
-        if not create and filename != ':memory:' and not path.exists(filename):
+        if not create and not path.exists(filename):
             raise IOError("Database file is not found: %r" % filename)
         local.connections[filename] = conn = sqlite.connect(filename)
     return conn
