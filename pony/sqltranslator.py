@@ -648,7 +648,15 @@ class StringMethodMonad(MethodMonad):
     def call_rstrip(monad, chars=None):
         return monad.strip(chars, RTRIM)
     
-class ObjectMixin(object): pass
+class ObjectMixin(object):
+    def getattr(monad, name):
+        translator = monad.translator
+        entity = monad.type
+        attr = getattr(entity, name) # can raise AttributeError
+        if attr.is_collection:
+            return AttrSetMonad(monad, [ attr ])
+        else:
+            return AttrMonad.new(monad, attr)
 
 class ObjectIterMonad(ObjectMixin, Monad):
     def __init__(monad, translator, alias, entity):
@@ -658,15 +666,6 @@ class ObjectIterMonad(ObjectMixin, Monad):
         entity = monad.type
         return [ [ COLUMN, monad.alias, column ] for attr in entity._pk_attrs_ if not attr.is_collection
                                                  for column in attr.columns ]
-    def getattr(monad, name):
-        translator = monad.translator
-        entity = monad.type
-        attr = getattr(entity, name) # can raise AttributeError
-
-        if attr.is_collection:
-            return AttrSetMonad(monad, [ attr ])
-        else:
-            return AttrMonad.new(monad, attr)
 
 class AttrMonad(Monad):
     @staticmethod
@@ -705,14 +704,6 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
         translator.aliases[alias] = short_alias
         translator.from_.append([ short_alias, TABLE, entity._table_ ])
         join_tables(translator.conditions, parent.alias, short_alias, attr.columns, entity._pk_columns_)
-    def getattr(monad, name):
-        translator = monad.translator
-        entity = monad.type
-        attr = getattr(entity, name) # can raise AttributeError
-        if attr.is_collection:
-            return AttrSetMonad(monad, [ attr ])
-        else:
-            return AttrMonad.new(monad, attr)
         
 class NumericAttrMonad(NumericMixin, AttrMonad): pass
 class StringAttrMonad(StringMixin, AttrMonad): pass
