@@ -711,7 +711,6 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
 class ObjectFlatMonad(ObjectMixin, Monad):
     def __init__(monad, parent, attr):
         assert parent.translator.inside_expr
-        if attr.reverse.is_collection: raise NotImplementedError
         type = normalize_type(attr.py_type)
         Monad.__init__(monad, parent.translator, type)
         monad.parent = parent
@@ -720,8 +719,10 @@ class ObjectFlatMonad(ObjectMixin, Monad):
         monad._make_join()
     def _make_join(monad):
         translator = monad.translator
+        conditions = translator.conditions
         parent = monad.parent
         attr = monad.attr
+        reverse = attr.reverse
         alias = monad.alias
         entity = monad.type
         parent_entity = monad.parent.type
@@ -730,8 +731,16 @@ class ObjectFlatMonad(ObjectMixin, Monad):
         assert short_alias is None
         short_alias = translator.get_short_alias(alias, entity.__name__)
         translator.aliases[alias] = short_alias
-        translator.from_.append([ short_alias, TABLE, entity._table_ ])
-        join_tables(translator.conditions, parent.alias, short_alias, parent_entity._pk_columns_, attr.reverse.columns)
+        if not reverse.is_collection:           
+            translator.from_.append([ short_alias, TABLE, entity._table_ ])
+            join_tables(conditions, parent.alias, short_alias, parent_entity._pk_columns_, reverse.columns)
+        else:
+            m2m_table = attr.table
+            m2m_alias = monad.translator.get_short_alias(None, 'm2m-')
+            translator.from_.append([ m2m_alias, TABLE, m2m_table ])
+            join_tables(conditions, parent.alias, m2m_alias, parent_entity._pk_columns_, reverse.columns)
+            translator.from_.append([ short_alias, TABLE, entity._table_ ])
+            join_tables(conditions, m2m_alias, alias, attr.columns, entity._pk_columns_)
         
 class NumericAttrMonad(NumericMixin, AttrMonad): pass
 class StringAttrMonad(StringMixin, AttrMonad): pass
