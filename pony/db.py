@@ -63,9 +63,9 @@ def wrap_dbapi_exceptions(provider, func, *args, **keyargs):
     except provider.Warning, e: raise Warning(exceptions=[e])
 
 class Local(localbase):
-    def __init__(self):
-        self.default_db = None
-        self.connections = {}
+    def __init__(local):
+        local.default_db = None
+        local.connections = {}
 
 local = Local()        
 
@@ -131,55 +131,55 @@ def adapt_sql(sql, paramstyle):
 select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class Database(object):
-    def __init__(self, provider, *args, **keyargs):
+    def __init__(database, provider, *args, **keyargs):
         if isinstance(provider, basestring): provider = import_module('pony.dbproviders.' + provider)
-        self.provider = provider
-        self.args = args
-        self.keyargs = keyargs
-        con = self.get_connection()
-        self.release()
-    def _get_connection(self):
-        x = local.connections.get(self)
+        database.provider = provider
+        database.args = args
+        database.keyargs = keyargs
+        con = database.get_connection()
+        database.release()
+    def _get_connection(database):
+        x = local.connections.get(database)
         if x is not None: return x[:2]
-        provider = self.provider
-        con = wrap_dbapi_exceptions(provider, provider.connect, *self.args, **self.keyargs)
-        local.connections[self] = con, provider, len(local.connections)
+        provider = database.provider
+        con = wrap_dbapi_exceptions(provider, provider.connect, *database.args, **database.keyargs)
+        local.connections[database] = con, provider, len(local.connections)
         return con, provider
-    def get_connection(self):
-        con, provider = self._get_connection()
+    def get_connection(database):
+        con, provider = database._get_connection()
         return con
-    def release(self):
-        x = local.connections.pop(self, None)
+    def release(database):
+        x = local.connections.pop(database, None)
         if x is None: return
         connection, provider, _ = x
         provider.release(connection)
-    def commit(self):
-        con, provider = self._get_connection()
+    def commit(database):
+        con, provider = database._get_connection()
         wrap_dbapi_exceptions(provider, con.commit)
-    def rollback(self):
-        con, provider = self._get_connection()
+    def rollback(database):
+        con, provider = database._get_connection()
         wrap_dbapi_exceptions(provider, con.rollback)
-    def execute(self, sql, globals=None, locals=None):
+    def execute(database, sql, globals=None, locals=None):
         sql = sql[:]  # sql = templating.plainstr(sql)
         if globals is None:
             assert locals is None
             globals = sys._getframe(1).f_globals
             locals = sys._getframe(1).f_locals
-        con, provider = self._get_connection()
+        con, provider = database._get_connection()
         adapted_sql, code = adapt_sql(sql, provider.paramstyle)
         values = eval(code, globals, locals)
         cursor = con.cursor()
         if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
         else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         return cursor
-    def select(self, sql, globals=None, locals=None):
+    def select(database, sql, globals=None, locals=None):
         sql = sql[:]  # sql = templating.plainstr(sql)
         if not select_re.match(sql): sql = 'select ' + sql
         if globals is None:
             assert locals is None
             globals = sys._getframe(1).f_globals
             locals = sys._getframe(1).f_locals
-        con, provider = self._get_connection()
+        con, provider = database._get_connection()
         adapted_sql, code = adapt_sql(sql, provider.paramstyle)
         values = eval(code, globals, locals)
         cursor = con.cursor()
@@ -197,24 +197,24 @@ class Database(object):
                 setattr(row_class, column_name, property(itemgetter(i)))
             result = [ row_class(row) for row in result ]
         return result
-    def get(self, sql, globals=None, locals=None):
+    def get(database, sql, globals=None, locals=None):
         if globals is None:
             assert locals is None
             globals = sys._getframe(1).f_globals
             locals = sys._getframe(1).f_locals
-        rows = self.select(sql, globals, locals)
+        rows = database.select(sql, globals, locals)
         if not rows: raise RowNotFound
         if len(rows) > 1: raise MultipleRowsFound
         row = rows[0]
         return row
-    def exists(self, sql, globals=None, locals=None):
+    def exists(database, sql, globals=None, locals=None):
         sql = sql[:]  # sql = templating.plainstr(sql)
         if not select_re.match(sql): sql = 'select ' + sql
         if globals is None:
             assert locals is None
             globals = sys._getframe(1).f_globals
             locals = sys._getframe(1).f_locals
-        con, provider = self._get_connection()
+        con, provider = database._get_connection()
         adapted_sql, code = adapt_sql(sql, provider.paramstyle)
         values = eval(code, globals, locals)
         cursor = con.cursor()
@@ -222,25 +222,25 @@ class Database(object):
         else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         result = cursor.fetchone()
         return bool(result)
-    def insert(self, table_name, **keyargs):
+    def insert(database, table_name, **keyargs):
         table_name = table_name[:]  # table_name = templating.plainstr(table_name)
         query_key = (table_name,) + tuple(keyargs)  # keys are not sorted deliberately!!
         cached_sql = insert_cache.get(query_key)
         if cached_sql is None:
             ast = [ INSERT, table_name, keyargs.keys(), [ [PARAM, i] for i in range(len(keyargs)) ] ]
-            sql, adapter = self._ast2sql(ast)
+            sql, adapter = database._ast2sql(ast)
             cached_sql = sql, adapter
             insert_cache[query_key] = cached_sql
         else: sql, adapter = cached_sql
         arguments = adapter(keyargs.values())  # order of values same as order of keys
-        cursor = self._exec_sql(sql, arguments)
+        cursor = database._exec_sql(sql, arguments)
         return getattr(cursor, 'lastrowid', None)
-    def _ast2sql(self, sql_ast):
-        con, provider = self._get_connection()
+    def _ast2sql(database, sql_ast):
+        con, provider = database._get_connection()
         sql, adapter = provider.ast2sql(con, sql_ast)
         return sql, adapter
-    def _exec_sql(self, sql, arguments=None):
-        con, provider = self._get_connection()
+    def _exec_sql(database, sql, arguments=None):
+        con, provider = database._get_connection()
         cursor = con.cursor()
         if debug:
             print sql
@@ -249,8 +249,8 @@ class Database(object):
         if arguments is None: wrap_dbapi_exceptions(provider, cursor.execute, sql)
         else: wrap_dbapi_exceptions(provider, cursor.execute, sql, arguments)
         return cursor
-    def exec_sql_many(self, sql, arguments_list=None):
-        con, provider = self._get_connection()
+    def exec_sql_many(database, sql, arguments_list=None):
+        con, provider = database._get_connection()
         cursor = con.cursor()
         if debug:
             print 'EXECUTEMANY', sql
