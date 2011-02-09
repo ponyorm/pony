@@ -13,9 +13,9 @@ def test():
     <h1>Content of request headers</h1>
     <table class="border">
       <tr><th>Header</th><th>Value</th></tr>
-      $for(key, value in sorted(http.request.environ.items()))
+      @for(key, value in sorted(http.request.environ.items()))
       {
-        <tr><td>$key</td><td>&nbsp;$value</td></tr>
+        <tr><td>@key</td><td>&nbsp;@value</td></tr>
       }
     </table>''')
 
@@ -36,8 +36,8 @@ def docs(page='MainPage', lang=None):
     text = read_text_file(filename)
     content = markdown(Html(text))
     return html('''
-    $link('/pony/static/css/doc.css')
+    @link('/pony/static/css/doc.css')
     <body><div class="container">
-    <div class="span-20">$content</div>
+    <div class="span-20">@content</div>
     </div></body>
     ''')

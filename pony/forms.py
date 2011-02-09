@@ -199,8 +199,8 @@ class Form(object):
         if self._error_text is not None: return self._error_text
         self._validate()
         for f in self.fields:
-            if f.error_text: return html('${Some fields below contain errors}')
-        if self.is_valid is None: return html('${The form has already been submitted}')
+            if f.error_text: return html('@{Some fields below contain errors}')
+        if self.is_valid is None: return html('@{The form has already been submitted}')
     def _set_error_text(self, text):
         object.__setattr__(self, '_error_text', text)
     error_text = property(_get_error_text, _set_error_text)
@@ -382,7 +382,7 @@ class BaseWidget(HtmlField):
     def _check_error(self):
         value = self.value
         if self._auto_error_text: return self._auto_error_text
-        if self.required and not value: return html('${This field is required}')
+        if self.required and not value: return html('@{This field is required}')
     @property
     def error(self):
         error_text = self.error_text
@@ -460,7 +460,7 @@ class Text(BaseWidget):
         if self.regex is not None:
             match = self.regex.match(value)
             if match is None:
-                self._auto_error_text = html('${Invalid data}')
+                self._auto_error_text = html('@{Invalid data}')
                 return None
         try: return str2py(value, self.type)
         except ValidationError, e:
@@ -495,7 +495,7 @@ class DatePicker(Text):
         value = BaseWidget._get_value(self)
         if not value: return None
         try: return str2date(value)
-        except: self._auto_error_text = html('${Incorrect date}')
+        except: self._auto_error_text = html('@{Incorrect date}')
         return None
     value = property(_get_value, Text._set_value)
     @property

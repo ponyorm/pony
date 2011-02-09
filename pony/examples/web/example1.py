@@ -108,18 +108,18 @@ def page9():
     
     <h1>Example of tabs</h1>
     
-    $tabs()
-    $.tab("One") {
+    @tabs()
+    @.tab("One") {
             <h2>Nested tabs:</h2>
-            $tabs(class_="span-12 prepend-1 append-1 last")
-            $.tab("Nested tab 1"){<h2>Nested tab ONE</h2>}
-            $.tab("Nested tab 2"){<h2>Nested tab TWO</h2>}
-            $.tab("Tab with very very long name"){<h2>Nested tab THREE</h2>}
+            @tabs(class_="span-12 prepend-1 append-1 last")
+            @.tab("Nested tab 1"){<h2>Nested tab ONE</h2>}
+            @.tab("Nested tab 2"){<h2>Nested tab TWO</h2>}
+            @.tab("Tab with very very long name"){<h2>Nested tab THREE</h2>}
     }
-    $.tab("Two") {
+    @.tab("Two") {
             <h2>Content of second tab</h2>
     }
-    $.tab("Three") {
+    @.tab("Three") {
             <h2>Tab three</h2>
             <ul>
             <li>One

@@ -13,9 +13,9 @@ def index():
       <p><input type="text" name="b">
       <p><input type="submit" value="send">
     </form>
-    <p>a = $a
-    <p>b = $b
-    <p>c = $c
+    <p>a = @a
+    <p>b = @b
+    <p>c = @c
     """)
 
 http.start()

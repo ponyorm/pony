@@ -11,16 +11,16 @@ def index():
     return html('''
     <h1>Hello, world!!!</h1>
     <p><a href="/test/100/200">test page</a></p>
-    <p>$([ getattr(x, '__name__', '?') for x in middleware.decorator_list ])
-    <p>$([ getattr(x, '__name__', '?') for x in middleware.pony_middleware_list ])
+    <p>@([ getattr(x, '__name__', '?') for x in middleware.decorator_list ])
+    <p>@([ getattr(x, '__name__', '?') for x in middleware.pony_middleware_list ])
     ''')
 
 @http('/TEST/$a/$b')
 def test(a, b):
     return html('''
     <h1>Test:</h1>
-    <h2>a = $a</h2>
-    <h2>b = $b</h2>
+    <h2>a = @a</h2>
+    <h2>b = @b</h2>
     ''')
 
 def uppercase_decorator(func):

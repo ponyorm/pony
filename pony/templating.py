@@ -283,14 +283,14 @@ main_re = re.compile(r"""
 
         ([{])                            # open brace (group 1)
     |   ([}])                            # close brace (group 2)
-    |   [$](?:
-            ([$])                        # double $ (group 3)
+    |   @(?:
+            (@)                        # double @ (group 3)
         |   (                            # comments (group 4)
-                //.*?(?:\n|\Z)           #     $// comment
-            |   /\*.*?(?:\*/|\Z)         #     $/* comment */
+                //.*?(?:\n|\Z)           #     @// comment
+            |   /\*.*?(?:\*/|\Z)         #     @/* comment */
             )
-        |   ([(])                        # start of $(expression) (group 5)
-        |   ([{])                        # start of ${markup} (group 6)
+        |   ([(])                        # start of @(expression) (group 5)
+        |   ([{])                        # start of @{markup} (group 6)
         |   ( \.?[A-Za-z_]\w*               # multi-part name (group 7)
               (?:\s*\.\s*[A-Za-z_]\w*)*
             )
@@ -346,24 +346,24 @@ def parse_markup(source, start_pos=0, nested=False):
                 raise ParseError("Unexpected symbol '}'", source, end)
             brace_counter -= 1
             result.append('}')
-        elif i == 3: # $$
-            result.append('$')
-        elif i == 4: # $/* comment */ or $// comment
+        elif i == 3: # @@
+            result.append('@')
+        elif i == 4: # @/* comment */ or @// comment
             pass
-        elif i in (5, 6): # $(expression) or ${i18n markup}
+        elif i in (5, 6): # @(expression) or @{i18n markup}
             command, end = parse_command(source, start, end-1, None)
             result.append(command)
         elif i >= 7:
             cmd_name = match.group(7)
             if cmd_name is not None and cmd_name.startswith('.'):
                 if not is_ident(cmd_name[1:]): raise ParseError('Invalid method call', source, start)
-            if i == 7: # $expression
+            if i == 7: # @expression
                 try: expr, _ = utils.parse_expr(text, start+1)
                 except ValueError: raise ParseError('Invalid Python expression', source, start+1)
                 end = start+1 + len(expr)
                 if expr.endswith(';'): expr = expr[:-1]
                 result.append((start, end, None, expr, None))
-            elif i == 8: # $function.call(...)
+            elif i == 8: # @function.call(...)
                 command, end = parse_command(source, match.start(), end-1, cmd_name)
                 result.append(command)
         pos = end
@@ -402,12 +402,12 @@ exprlist_re = re.compile(r"""
 
         (                         # comments (group 1):
             \#.*?(?:\n|\Z)        # - Python-style comment inside expressions
-        |   [$]?//.*?(?:\n|\Z)     # - $// comment
-        |   [$]?/\*.*?(?:\*/|\Z)   # - $/* comment */
+        |   @?//.*?(?:\n|\Z)     # - @// comment
+        |   @?/\*.*?(?:\*/|\Z)   # - @/* comment */
         )
     |   ([(])                     # open parenthesis (group 2)
     |   ([)])                     # close parenthesis (group 3)
-    |   ([$])?[A-Za-z_]\w*        # Python identifier with optional $ ($ is group 4)
+    |   (@)?[A-Za-z_]\w*        # Python identifier with optional @ (@ is group 4)
     |   '''(?:[^\\]|\\.)*?'''     # '''triple-quoted string'''
     |   \"""(?:[^\\]|\\.)*?\"""   # \"""triple-quoted string\"""
     |   '(?:[^'\\]|\\.)*?'        # 'string'
@@ -805,7 +805,7 @@ def _cycle_check(args):
             raise TypeError('Incorrect type of argument: %s' % str(type(arg)))
     locals = args[-1].locals
     if locals is None or 'for' not in locals: raise TypeError(
-        '$cycle() function may only be called inside a $for loop')
+        '@cycle() function may only be called inside a @for loop')
     return locals['for']
 
 @lazy
@@ -816,7 +816,7 @@ def cycle(*args):
         return args[current % len(args)]()
     elif isinstance(args[0], basestring):
         if len(args) != 2: raise TypeError(
-            'When first argument is string, $cycle() function '
+            'When first argument is string, @cycle() function '
             'takes exactly 2 arguments (%d given)' % len(args))
         current, total = _cycle_check(args[1:])
         s, markup = args
@@ -828,21 +828,21 @@ def cycle(*args):
         elif s == 'not last': flag = (current != total - 1)
         return flag and markup() or ''
     elif not isinstance(args[0], (int, long)):
-        raise TypeError('First argument of $cycle() function must be int, '
+        raise TypeError('First argument of @cycle() function must be int, '
                         'string or markup. Got: %s' % str(type(args[0])))
     elif isinstance(args[1], (int, long)):
         if len(args) == 2: raise TypeError('Markup expected')
-        if len(args) > 3: raise TypeError('$cycle() function got too many arguments')
+        if len(args) > 3: raise TypeError('@cycle() function got too many arguments')
         current, total = _cycle_check(args[2:])
         i, j, markup = args
         return (current % j == i - 1) and markup() or ''
     else:
-        if len(args) > 2: raise TypeError('$cycle() function got too many arguments')
+        if len(args) > 2: raise TypeError('@cycle() function got too many arguments')
         current, total = _cycle_check(args[1:])
         i, markup = args
         if i > 0: return (current == i - 1) and markup() or ''
         elif i < 0: return (i == current - total) and markup() or ''
-        else: raise TypeError('$cycle first argument cannot be 0')
+        else: raise TypeError('@cycle first argument cannot be 0')
 
 try: __builtins__['cycle'] = cycle
 except:  # Just in case... I'm not sure is it needed

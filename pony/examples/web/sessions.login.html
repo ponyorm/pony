@@ -1,4 +1,4 @@
-$if (not http.user)
+@if (not http.user)
 {
     <h1>Input your login:</h1>
     <form>
@@ -6,8 +6,8 @@ $if (not http.user)
       <input type="submit" value="Log in!">
     </form>
 }
-$else
+@else
 {
     <h1>You logged in succesfully!</h1>
-    <p>$link("Go to main page", index)
+    <p>@link("Go to main page", index)
 }

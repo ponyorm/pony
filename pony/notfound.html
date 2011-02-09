@@ -4,7 +4,7 @@
 <h2>В программе определены следующие шаблоны url:</h2>
 <p>(введенный адрес не соответствует ни одному из них)</p>
 <ul>
-$for(route in sorted((route for route in routing.user_routes), key=attrgetter('url'))){
-  <li>$route.url
+@for(route in sorted((route for route in routing.user_routes), key=attrgetter('url'))){
+  <li>@route.url
 }
 </ul>

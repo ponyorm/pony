@@ -19,18 +19,18 @@ def feed1():
     return template("""
     <html><head>
     <style type="text/css">
-      @import url("pony/static/css/webadmin.css");
+      @@import url("pony/static/css/webadmin.css");
     </style>
     </head><body>
     <h2>pony web admin</h2>
     <table border="0">
         <tr><th>id</th><th>timestamp</th><th>type</th></tr>
-        $for(r in data) {
+        @for(r in data) {
         
         <tr class="row">
-            <td class="pad"><a href="details?id=$(r['id'])">$(r['id'])</a></td>
-            <td class="pad"><a href="details?id=$(r['id'])">$(r['timestamp'][:-7])</a></td>
-            <td class="pad"><a href="details?id=$(r['id'])">$(r['text'])</a></td>
+            <td class="pad"><a href="details?id=@(r['id'])">@(r['id'])</a></td>
+            <td class="pad"><a href="details?id=@(r['id'])">@(r['timestamp'][:-7])</a></td>
+            <td class="pad"><a href="details?id=@(r['id'])">@(r['text'])</a></td>
         </tr>
         }
     </table></body></html>
@@ -42,22 +42,22 @@ def show_details(rec_id=None):
     return template("""
     <html><head>
     <style type="text/css">
-      @import url("pony/static/css/webadmin.css");
+      @@import url("pony/static/css/webadmin.css");
     </style>
     </head><body>
-    <h4>details for the record id=$rec_id</h4>
+    <h4>details for the record id=@rec_id</h4>
     
     <table>
 
       <tr class="delimeter"><td>status:</td></tr>
-      <tr><td> $status_text </td></tr>
+      <tr><td> @status_text </td></tr>
 
       <tr class="delimeter"><td>request:</td></tr> 
       <tr><td> 
         <table class="t2">
           <tr><th class="t2-header">HTTP request header</th><th>value</th></tr>
-          $for(k, v in sorted(req_headers)) { <tr>
-              <td>$k</td><td class="bordered">$v</td>
+          @for(k, v in sorted(req_headers)) { <tr>
+              <td>@k</td><td class="bordered">@v</td>
           </tr>
           }
         </table>
@@ -67,19 +67,19 @@ def show_details(rec_id=None):
       <tr><td>
       <table class="t2">
         <tr><th class="t2-header">HTTP response header</th><th>value</th></tr>
-        $for(k, v in sorted(resp_headers)) { <tr>
-            <td>$k</td><td>$v</td>
+        @for(k, v in sorted(resp_headers)) { <tr>
+            <td>@k</td><td>@v</td>
         </tr>
         }
       </table>
       </td></tr>
 
       <tr class="delimeter"><td>exceptions:</td></tr>  
-      <tr><td class="del"> $exc_text
+      <tr><td class="del"> @exc_text
       </td></tr>
 
       <tr class="delimeter"><td>session</td></tr>  
-      <tr><td> $session_text </td></tr>
+      <tr><td> @session_text </td></tr>
     
     </table>
     </body></html>
@@ -162,30 +162,30 @@ def show_details2(rec_id=None):
     <table id='nested'>
      <tbody>
       <tr><td colspan='2'><div class="delimeter">status:</div></td></tr>
-      <tr><td colspan='2'> $status_text </td></tr>
+      <tr><td colspan='2'> @status_text </td></tr>
 
       <tr><td colspan='2'><div class="delimeter">request:</div></td></tr> 
         
           <tr><td>HTTP request header</td><td>value</td></tr>
-          $for(k, v in sorted(req_headers)) { <tr>
-              <td>$k</td><td>$v</td>
+          @for(k, v in sorted(req_headers)) { <tr>
+              <td>@k</td><td>@v</td>
           </tr>
           }
 
       <tr><td colspan='2'><div class="delimeter">response:</div></td></tr>
       
         <tr><td>HTTP response header</td><td>value</td></tr>
-        $for(k, v in sorted(resp_headers)) { <tr>
-            <td>$k</td><td>$v</td>
+        @for(k, v in sorted(resp_headers)) { <tr>
+            <td>@k</td><td>@v</td>
         </tr>
         }
 
       <tr><td colspan='2'><div class="delimeter">exceptions:</div></td></tr>  
-      <tr><td colspan='2'> $exc_text
+      <tr><td colspan='2'> @exc_text
       </td></tr>
 
       <tr><td colspan='2'><div class="delimeter">session</div></td></tr>  
-      <tr><td colspan='2'> $session_text </td></tr>
+      <tr><td colspan='2'> @session_text </td></tr>
      </tbody>
     </table>    
         """)
@@ -195,9 +195,9 @@ def get_updates(last_id=None):
     data = search_log(-1000, last_id, "type like 'HTTP:%' and type <> 'HTTP:response'")    
     return template("""
     {[
-     $for(r in data) {
-       {"col1":"$(r['id'])", "col2":"$(r['timestamp'][:-7])", "col3":"$(r['text'])"} }
-       $separator{,}     
+     @for(r in data) {
+       {"col1":"@(r['id'])", "col2":"@(r['timestamp'][:-7])", "col3":"@(r['text'])"} }
+       @separator{,}     
     ]}
     """)
 
@@ -226,7 +226,7 @@ def feed2(frm=None, to=None):
     return template("""
     <html><head>
     <style type="text/css">
-      @import url("pony/static/css/webadmin.css");
+      @@import url("pony/static/css/webadmin.css");
     </style>
      <script type="text/javascript" src="pony/static/js/webgui.js">
      </script> 
@@ -248,9 +248,9 @@ def feed2(frm=None, to=None):
  var keepUpdating = true;
  var lastRecId = 0;
  var recordsCount;
- var MAX_ROW_COUNT = $MAX_ROW_COUNT;
- var hasNext=$has_next;
- var hasPrev=$has_prev;
+ var MAX_ROW_COUNT = @MAX_ROW_COUNT;
+ var hasNext=@has_next;
+ var hasPrev=@has_prev;
 
  function coll() {
     el = document.getElementById(oldId);
@@ -410,13 +410,13 @@ function test() {
       </td></tr>     
      </thead>
      <tbody> 
-        $for( r in data ) { 
+        @for( r in data ) { 
         
         <tr><td class="row">
-          <div id=$(r['id'])> 
-            <span class="col1">$(r['id'])</span>
-            <span class="col2">$(r['timestamp'][:-7])</span>
-            <span class="col3">$(r['text'])</span>
+          <div id=@(r['id'])> 
+            <span class="col1">@(r['id'])</span>
+            <span class="col2">@(r['timestamp'][:-7])</span>
+            <span class="col3">@(r['text'])</span>
           </div>
         </td></tr>
         }
