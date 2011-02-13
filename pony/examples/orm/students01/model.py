@@ -1,12 +1,17 @@
+import datetime
+from decimal import Decimal
+
+import pony.db
 from pony.db import Database
 from pony.orm import *
+from pony.sqltranslator import select, exists
 
 class Student(Entity):
     _table_ = "Students"
     zach = PrimaryKey(int)
     name = Required(unicode, column="fio")
     group = Required("Group")
-    stipendy = Required(int, default=0)
+    stipendy = Required(Decimal, 10, 2, default=0)
     marks = Set("Mark")
 
 class Group(Entity):
@@ -27,10 +32,13 @@ class Mark(Entity):
     student = Required(Student, column="student")
     subject = Required(Subject, column="subject")
     value = Required(int)
+    date = Required(datetime.date)
     PrimaryKey(student, subject)
 
 db = Database('sqlite', 'C:\\Data\\Docs\\Dev\\GAE\\alexander-kozlovsky\\pony\\examples\\orm\\students01\\students.db3')
+pony.db.debug = False
 generate_mapping(db, check_tables=True)
+pony.db.debug = True
 
 ##g1 = Group.create(number='4142', kaf=44)
 ##g2 = Group.create(number='3137', kaf=33)

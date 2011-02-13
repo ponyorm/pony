@@ -63,7 +63,7 @@ class Attribute(object):
     __slots__ = 'is_required', 'is_unique', 'is_indexed', 'is_pk', 'is_collection', \
                 'id', 'pk_offset', 'py_type', 'sql_type', 'entity', 'name', 'oldname', \
                 'args', 'auto', 'default', 'reverse', 'composite_keys', \
-                'column', 'columns', 'col_paths', '_columns_checked'
+                'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'keyargs'
     def __init__(attr, py_type, *args, **keyargs):
         if attr.__class__ is Attribute: raise TypeError("'Attribute' is abstract type")
         attr.is_required = isinstance(attr, Required)
@@ -116,24 +116,26 @@ class Attribute(object):
         else: attr.columns = []
         attr.col_paths = []
         attr._columns_checked = False
-
-        for option in keyargs: raise TypeError('Unknown option %r' % option)
         attr.composite_keys = []
+        attr.keyargs = keyargs
+        attr.converters = []
     def _init_(attr, entity, name):
         attr.entity = entity
         attr.name = name
     def __repr__(attr):
         owner_name = not attr.entity and '?' or attr.entity.__name__
         return '%s.%s' % (owner_name, attr.name or '?')
-    def check(attr, val, obj=None, entity=None):
+    def check(attr, val, obj=None, entity=None, from_db=False):
         assert val is not NOT_LOADED
         if entity is not None: pass
         elif obj is not None: entity = obj.__class__
         else: entity = attr.entity
         if val is DEFAULT:
             val = attr.default
-            if val is None and attr.is_required and not attr.auto: raise ConstraintError(
-                'Required attribute %s.%s does not specified' % (entity.__name__, attr.name))
+            if val is None:
+                if attr.is_required and not attr.auto: raise ConstraintError(
+                    'Required attribute %s.%s does not specified' % (entity.__name__, attr.name))
+                return val
         elif val is None:
             if attr.is_required:
                 if obj is None: raise ConstraintError(
@@ -141,13 +143,18 @@ class Attribute(object):
                 else: raise ConstraintError(
                     'Required attribute %s.%s for %r cannot be set to None' % (entity.__name__, attr.name, obj))
             return val
-        if val is None: return val
         reverse = attr.reverse
         if not reverse:
             if isinstance(val, attr.py_type): return val
             elif isinstance(val, Entity): raise TypeError(
                 'Attribute %s.%s must be of %s type. Got: %s'
                 % (attr.entity.__name__, attr.name, attr.py_type.__name__, val))
+            if attr.converters:
+                assert len(attr.converters) == 1
+                converter = attr.converters[0]
+                if converter is not None:
+                    if from_db: return converter.sql2py(val)
+                    else: return converter.validate(val)
             return attr.py_type(val)
         if not isinstance(val, reverse.entity): raise ConstraintError(
             'Value of attribute %s.%s must be an instance of %s. Got: %s' % (entity.__name__, attr.name, reverse.entity.__name__, val))
@@ -181,7 +188,7 @@ class Attribute(object):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         is_reverse_call = undo_funcs is not None
         reverse = attr.reverse
-        val = attr.check(val, obj)
+        val = attr.check(val, obj, from_db=False)
         pkval = obj._pkval_
         if attr.pk_offset is not None:
             if pkval is None: pass
@@ -255,7 +262,7 @@ class Attribute(object):
         assert obj._status_ not in ('created', 'deleted', 'cancelled')
         assert attr.pk_offset is None
         reverse = attr.reverse
-        old = attr.check(old, obj)
+        old = attr.check(old, obj, from_db=True)
         prev_old = obj.__dict__.get(attr.name, NOT_LOADED)
         if prev_old == old: return
         bit = obj._bits_[attr]
@@ -326,16 +333,19 @@ class Attribute(object):
     def get_columns(attr):
         assert not attr.is_collection
         assert not isinstance(attr.py_type, basestring)
-        if attr._columns_checked: return attr.columns, attr.col_paths
+        if attr._columns_checked: return attr.columns
 
+        provider = attr.entity._diagram_.database.provider
         reverse = attr.reverse
         if not reverse: # attr is not part of relationship
             if not attr.columns: attr.columns = [ attr.name ]
             elif len(attr.columns) > 1: raise MappingError("Too many columns were specified for %s" % attr)
             attr.col_paths = [ attr.name ]
+            attr.converters = [ provider.get_converter_by_attr(attr) ]
         else:
             def generate_columns():
-                reverse_pk_columns, reverse_pk_col_paths = reverse.entity._get_pk_columns_()
+                reverse_pk_columns = reverse.entity._get_pk_columns_()
+                reverse_pk_col_paths = reverse.entity._pk_paths_
                 if not attr.columns:
                     if len(reverse_pk_columns) == 1: attr.columns = [ attr.name ]
                     else:
@@ -344,6 +354,9 @@ class Attribute(object):
                 elif len(attr.columns) != len(reverse_pk_columns): raise MappingError(
                     'Invalid number of columns specified for %s' % attr)
                 attr.col_paths = [ '-'.join((attr.name, paths)) for paths in reverse_pk_col_paths ]
+                attr.converters = []
+                for a in reverse.entity._pk_attrs_:
+                    attr.converters.extend(a.converters)
 
             if reverse.is_collection: # one-to-many:
                 generate_columns()
@@ -366,7 +379,7 @@ class Attribute(object):
         attr._columns_checked = True
         if len(attr.columns) == 1: attr.column = attr.columns[0]
         else: attr.column = None
-        return attr.columns, attr.col_paths
+        return attr.columns
     @property
     def asc(attr):
         return attr
@@ -409,9 +422,10 @@ class Unique(Required):
         keys[attrs] = is_pk
         return None
 
-def populate_criteria_list(criteria_list, columns, params_count=0, table_alias=None):
-    for i in xrange(len(columns)):
-        criteria_list.append([EQ, [COLUMN, table_alias, columns[i]], [ PARAM, params_count ] ])
+def populate_criteria_list(criteria_list, columns, converters, params_count=0, table_alias=None):
+    assert len(columns) == len(converters)
+    for column, converter in zip(columns, converters):
+        criteria_list.append([EQ, [ COLUMN, table_alias, column ], [ PARAM, params_count, converter ] ])
         params_count += 1
     return params_count
 
@@ -457,7 +471,7 @@ class SetData(set):
 
 class Set(Collection):
     __slots__ = []
-    def check(attr, val, obj=None, entity=None):
+    def check(attr, val, obj=None, entity=None, from_db=False):
         assert val is not NOT_LOADED
         if val is None or val is DEFAULT: return set()
         if entity is not None: pass
@@ -522,8 +536,9 @@ class Set(Collection):
             select_list.append([COLUMN, 'T1', column ])
         from_list = [ FROM, [ 'T1', TABLE, table_name ]]
         criteria_list = [ AND ]
-        for i, column in enumerate(reverse.columns):
-            criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, i ]])
+        assert len(reverse.columns) == len(reverse.converters)
+        for i, (column, converter) in enumerate(zip(reverse.columns, reverse.converters)):
+            criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, i, converter ]])
         sql_ast = [ SELECT, select_list, from_list, [ WHERE, criteria_list ] ]
         return sql_ast
     def copy(attr, obj):
@@ -650,14 +665,15 @@ class Set(Collection):
         entity = attr.entity
         reverse = attr.reverse
         if reverse.columns:
-            if len(reverse.columns) != len(entity._get_pk_columns_()[0]): raise MappingError(
+            if len(reverse.columns) != len(entity._get_pk_columns_()): raise MappingError(
                 'Invalid number of columns for %s' % reverse)
         else:
-            columns = entity._get_pk_columns_()[0]
+            columns = entity._get_pk_columns_()
             if len(columns) == 1: reverse.columns = [ entity.__name__.lower() ]
             else:
                 prefix = entity.__name__.lower() + '_'
                 reverse.columns = [ prefix + column for column in columns ]
+        reverse.converters = entity._pk_converters_
         attr._columns_checked = True
         return reverse.columns
     def make_m2m_transformer(attr, adapter):
@@ -690,8 +706,8 @@ class Set(Collection):
             table = attr.table
             assert table is not None
             criteria_list = [ AND ]
-            for i, column in enumerate(reverse.columns + attr.columns):
-                criteria_list.append([ EQ, [COLUMN, None, column], [PARAM, i] ])
+            for i, (column, converter) in enumerate(zip(reverse.columns + attr.columns, reverse.converters + attr.converters)):
+                criteria_list.append([ EQ, [COLUMN, None, column], [ PARAM, i, converter ] ])
             sql_ast = [ DELETE, table, [ WHERE, criteria_list ] ]
             sql, adapter = database._ast2sql(sql_ast)
             transformer = attr.make_m2m_transformer(adapter)
@@ -709,9 +725,9 @@ class Set(Collection):
             assert table is not None
             columns = []
             params = []
-            for i, column in enumerate(reverse.columns + attr.columns):
+            for i, (column, converter) in enumerate(zip(reverse.columns + attr.columns, reverse.converters + attr.converters)):
                 columns.append(column)
-                params.append([PARAM, i])
+                params.append([PARAM, i, converter])
             sql_ast = [ INSERT, table, columns, params ]
             sql, adapter = database._ast2sql(sql_ast)
             transformer = attr.make_m2m_transformer(adapter)
@@ -1062,18 +1078,22 @@ class Entity(object):
         return obj
     @classmethod
     def _get_pk_columns_(entity):
-        if entity._pk_columns_ is not None: return entity._pk_columns_, entity._pk_paths_
+        if entity._pk_columns_ is not None: return entity._pk_columns_
         pk_columns = []
+        pk_converters = []
         pk_paths = []
         for attr in entity._pk_attrs_:
-            attr_columns, attr_col_paths = attr.get_columns()
+            attr_columns = attr.get_columns()
+            attr_col_paths = attr.col_paths
             pk_columns.extend(attr_columns)
+            pk_converters.extend(attr.converters)
             pk_paths.extend(attr_col_paths)
         entity._pk_columns_ = pk_columns
+        entity._pk_converters_ = pk_converters
         entity._pk_nones_ = (None,) * len(pk_columns)
         entity._pk_paths_ = pk_paths
         entity._raw_pk_is_composite_ = len(pk_columns) > 1
-        return pk_columns, pk_paths
+        return pk_columns
     def _calculate_raw_pkval_(obj):
         if hasattr(obj, '_raw_pkval_'): return obj._raw_pkval_
         if len(obj._pk_attrs_) == 1:
@@ -1144,7 +1164,7 @@ class Entity(object):
             if attr.column is not None:
                 val = raw_pkval[i]
                 i += 1
-                if not attr.reverse: val = attr.check(val, None, entity)
+                if not attr.reverse: val = attr.check(val, None, entity, from_db=True)
                 else: val = attr.py_type._get_by_raw_pkval_((val,))
             else:
                 if not attr.reverse: raise NotImplementedError
@@ -1243,7 +1263,8 @@ class Entity(object):
         for attr, attr_is_none in query_key:
             if not attr.reverse:
                 if not attr_is_none:
-                    criteria_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name ]])
+                    assert len(attr.converters) == 1
+                    criteria_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name, attr.converters[0] ]])
                     extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]
                 else: criteria_list.append([IS_NULL, [COLUMN, None, attr.column]])
             elif not attr.columns: raise NotImplementedError
@@ -1252,13 +1273,14 @@ class Entity(object):
                 assert attr_entity == attr.reverse.entity
                 if not attr_entity._raw_pk_is_composite_:
                     if not attr_is_none:
-                        criteria_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name ]])
+                        assert len(attr.converters) == 1
+                        criteria_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name, attr.converters[0] ]])
                         extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]._raw_pkval_
                     else: criteria_list.append([IS_NULL, [COLUMN, None, attr.column]])
                 elif not attr_is_none:
-                    for i, column in enumerate(attr_entity._pk_columns_):
+                    for i, (column, converter) in enumerate(zip(attr_entity._pk_columns_, attr_entity._pk_converters_)):
                         param_name = '%s-%d' % (attr.name, i+1)
-                        criteria_list.append([EQ, [COLUMN, None, column], [ PARAM, param_name ]])
+                        criteria_list.append([EQ, [COLUMN, None, column], [ PARAM, param_name, converter ]])
                         extractors[param_name] = lambda avdict, attr=attr, i=i: avdict[attr]._raw_pkval_[i]
                 else:
                     for column in attr_entity._pk_columns_:
@@ -1285,9 +1307,9 @@ class Entity(object):
             cached_sql = sql, extractor, adapter, attr_offsets
             entity._find_sql_cache_[query_key] = cached_sql
         else: sql, extractor, adapter, attr_offsets = cached_sql
-        param_dict = extractor(avdict)
-        values = adapter(param_dict)
-        cursor = database._exec_sql(sql, values)
+        value_dict = extractor(avdict)
+        arguments = adapter(value_dict)
+        cursor = database._exec_sql(sql, arguments)
         objects = entity._fetch_objects(cursor, attr_offsets)
         return objects
     @classmethod
@@ -1314,7 +1336,7 @@ class Entity(object):
         for attr, i in attr_offsets.iteritems():
             if attr.column is not None:
                 val = row[i]
-                if not attr.reverse: val = attr.check(val, None, entity)
+                if not attr.reverse:  val = attr.check(val, None, entity, from_db=True)
                 else: val = attr.py_type._get_by_raw_pkval_((val,))
             else:
                 if not attr.reverse: raise NotImplementedError
@@ -1324,7 +1346,6 @@ class Entity(object):
         if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_, None)            
         else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
         return pkval, avdict
-
     @classmethod
     def _find_(entity, max_objects_count, args, keyargs):
         pkval, avdict = entity._normalize_args_(args, keyargs, False)
@@ -1600,13 +1621,13 @@ class Entity(object):
                 raise TypeError('Unknown attribute %r' % name)
             for attr in entity._attrs_:
                 val = keyargs.get(attr.name, DEFAULT)
-                avdict[attr] = attr.check(val, None, entity)
+                avdict[attr] = attr.check(val, None, entity, from_db=False)
         else:
             get = entity._adict_.get 
             for name, val in keyargs.items():
                 attr = get(name)
                 if attr is None: raise TypeError('Unknown attribute %r' % name)
-                avdict[attr] = attr.check(val, None, entity)
+                avdict[attr] = attr.check(val, None, entity, from_db=False)
         if entity._pk_is_composite_:
             pkval = map(avdict.get, entity._pk_attrs_)
             if None in pkval: pkval = None
@@ -1619,7 +1640,7 @@ class Entity(object):
         for name, val in keyargs.items():
             attr = get(name)
             if attr is None: raise TypeError('Unknown attribute %r' % name)
-            val = attr.check(val, obj)
+            val = attr.check(val, obj, from_db=False)
             if not attr.is_collection:
                 if attr.pk_offset is not None:
                     prev = obj.__dict__.get(attr, NOT_LOADED)
@@ -1657,7 +1678,6 @@ class Entity(object):
                 val._save_(dependent_objects)
                 assert val._status_ == 'saved'
     def _save_created_(obj):
-        columns = obj._columns_
         values = []
         for attr in obj._attrs_:
             if not attr.columns: continue
@@ -1666,7 +1686,10 @@ class Entity(object):
             values.extend(attr.get_raw_values(val))
         database = obj._diagram_.database
         if obj._cached_create_sql_ is None:
-            params = [ [PARAM, i] for i in xrange(len(columns)) ]
+            columns = obj._columns_
+            converters = obj._converters_
+            assert len(columns) == len(converters)
+            params = [ [ PARAM, i,  converter ] for i, converter in enumerate(converters) ]
             sql_ast = [ INSERT, obj._table_, columns, params ]
             sql, adapter = database._ast2sql(sql_ast)
             obj.__class__._cached_create_sql_ = sql, adapter
@@ -1707,22 +1730,30 @@ class Entity(object):
             val = obj.__dict__[attr]
             values.extend(attr.get_raw_values(val))
         optimistic_check_columns = []
+        optimistic_check_converters = []
         for attr in obj._attrs_with_bit_(obj._rbits_):
             if not attr.columns: continue
             old = obj.__dict__.get(attr.name, NOT_LOADED)
             assert old is not NOT_LOADED
             optimistic_check_columns.extend(attr.columns)
+            optimistic_check_converters.extend(attr.converters)
             values.extend(attr.get_raw_values(old))
         query_key = (tuple(update_columns), tuple(optimistic_check_columns))
         database = obj._diagram_.database
         cached_sql = obj._update_sql_cache_.get(query_key)
         if cached_sql is None:
-            update_params = [ [PARAM, i] for i in xrange(len(update_columns)) ]
+            update_converters = []
+            for attr in obj._attrs_with_bit_(obj._wbits_):
+                if not attr.columns: continue
+                update_converters.extend(attr.converters)
+            assert len(update_columns) == len(update_converters)
+            update_params = [ [ PARAM, i, converter ] for i, converter in enumerate(update_converters) ]
             params_count = len(update_params)
             criteria_list = [ AND ]
             pk_columns = obj._pk_columns_
-            params_count = populate_criteria_list(criteria_list, pk_columns, params_count)
-            populate_criteria_list(criteria_list, optimistic_check_columns, params_count)
+            pk_converters = obj._pk_converters_
+            params_count = populate_criteria_list(criteria_list, pk_columns, pk_converters, params_count)
+            populate_criteria_list(criteria_list, optimistic_check_columns, optimistic_check_converters, params_count)
             sql_ast = [ UPDATE, obj._table_, zip(update_columns, update_params), [ WHERE, criteria_list ] ]
             sql, adapter = database._ast2sql(sql_ast)
             obj._update_sql_cache_[query_key] = sql, adapter
@@ -1745,19 +1776,21 @@ class Entity(object):
             val = obj.__dict__[attr]
             values.extend(attr.get_raw_values(val))
         optimistic_check_columns = []
+        optimistic_check_converters = []
         for attr in obj._attrs_with_bit_(obj._rbits_):
             if not attr.columns: continue
             old = obj.__dict__.get(attr.name, NOT_LOADED)
             assert old is not NOT_LOADED
             optimistic_check_columns.extend(attr.columns)
+            optimistic_check_converters.extend(attr.converters)
             values.extend(attr.get_raw_values(old))
         query_key = tuple(optimistic_check_columns)
         database = obj._diagram_.database
         cached_sql = obj._lock_sql_cache_.get(query_key)        
         if cached_sql is None:
             criteria_list = [ AND ]
-            params_count = populate_criteria_list(criteria_list, obj._pk_columns_)
-            populate_criteria_list(criteria_list, optimistic_check_columns, params_count)
+            params_count = populate_criteria_list(criteria_list, obj._pk_columns_, obj._pk_converters_)
+            populate_criteria_list(criteria_list, optimistic_check_columns, optimistic_check_converters, params_count)
             sql_ast = [ SELECT, [ ALL, [ VALUE, 1 ]], [ FROM, [ None, TABLE, obj._table_ ] ], [ WHERE, criteria_list ] ]
             sql, adapter = database._ast2sql(sql_ast)
             obj._lock_sql_cache_[query_key] = sql, adapter
@@ -1772,7 +1805,7 @@ class Entity(object):
         cached_sql = obj._cached_delete_sql_
         if cached_sql is None:
             criteria_list = [ AND ]
-            populate_criteria_list(criteria_list, obj._pk_columns_)
+            populate_criteria_list(criteria_list, obj._pk_columns_, obj._pk_converters_)
             sql_ast = [ DELETE, obj._table_, [ WHERE, criteria_list ] ]
             sql, adapter = database._ast2sql(sql_ast)
             obj.__class__._cached_delete_sql_ = sql, adapter
@@ -1897,14 +1930,22 @@ class Diagram(object):
                     m2m_table.m2m.add(attr)
                     m2m_table.m2m.add(reverse)
                 else:
-                    for column in attr.get_columns()[0]:
+                    columns = attr.get_columns()
+                    if not attr.reverse and attr.default is not None:
+                        assert len(attr.converters) == 1
+                        attr.converters[0].validate(attr.default)
+                    for column in columns:
                         table.add_column(column, attr.pk_offset is not None)
+                    
 
             columns = []
+            converters = []
             for attr in entity._attrs_:
                 if attr.is_collection: continue
                 columns.extend(attr.columns)  # todo: inheritance
+                converters.extend(attr.converters)
             entity._columns_ = columns
+            entity._converters_ = converters
             
         if not check_tables: return
         for table in mapping.tables.values():

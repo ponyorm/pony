@@ -12,11 +12,12 @@ def quote_name(name, quote_char='"'):
 class AstError(Exception): pass
 
 class Param(object):
-    __slots__ = 'style', 'id', 'key',
-    def __init__(param, paramstyle, id, key):
+    __slots__ = 'style', 'id', 'key', 'py2sql'
+    def __init__(param, paramstyle, id, key, converter=None):
         param.style = paramstyle
         param.id = id
         param.key = key
+        param.py2sql = converter and converter.py2sql or (lambda val: val)
     def __unicode__(param):
         paramstyle = param.style
         if paramstyle == 'qmark': return u'?'
@@ -97,19 +98,20 @@ class SQLBuilder(object):
         builder.result = flat(builder(ast))
         builder.sql = u''.join(map(unicode, builder.result))
         if paramstyle in ('qmark', 'format'):
-            layout = tuple(x.key for x in builder.result if isinstance(x, Param))
+            params = tuple(x for x in builder.result if isinstance(x, Param))
             def adapter(values):
-                return tuple(map(values.__getitem__, layout))
-        elif paramstyle in ('named', 'pyformat'):
-            layout = tuple(param.key for param in sorted(builder.keys.itervalues(), key=attrgetter('id')))
-            def adapter(values):
-                return dict(('p%d'%(i+1), values[key]) for i, key in enumerate(layout))
+                return tuple(param.py2sql(values[param.key]) for param in params)
         elif paramstyle == 'numeric':
-            layout = tuple(param.key for param in sorted(builder.keys.itervalues(), key=attrgetter('id')))
+            params = tuple(param for param in sorted(builder.keys.itervalues(), key=attrgetter('id')))
             def adapter(values):
-                return tuple(map(values.__getitem__, layout))
+                return tuple(param.py2sql(values[param.key]) for param in params)
+        elif paramstyle in ('named', 'pyformat'):
+            params = tuple(param for param in sorted(builder.keys.itervalues(), key=attrgetter('id')))
+            def adapter(values):
+                return dict(('p%d' % param.id, param.py2sql(values[param.key])) for param in params)
         else: raise NotImplementedError
-        builder.layout = layout
+        builder.params = params
+        builder.layout = tuple(param.key for param in params)
         builder.adapter = adapter 
     def __call__(builder, ast):
         if isinstance(ast, basestring):
@@ -234,11 +236,11 @@ class SQLBuilder(object):
     def COLUMN(builder, table_alias, col_name):
         if table_alias: return [ '%s.%s' % (builder.quote_name(table_alias), builder.quote_name(col_name)) ]
         else: return [ '%s' % (builder.quote_name(col_name)) ]
-    def PARAM(builder, key):
+    def PARAM(builder, key, converter=None):
         keys = builder.keys
         param = keys.get(key)
         if param is None:
-            param = Param(builder.paramstyle, len(keys) + 1, key)
+            param = Param(builder.paramstyle, len(keys) + 1, key, converter)
             keys[key] = param
         return [ param ]
     def VALUE(builder, value):
