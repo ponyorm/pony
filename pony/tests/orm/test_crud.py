@@ -9,7 +9,7 @@ class TestCRUD(unittest.TestCase):
         local.trans = Transaction()
 
     def test_create(self):
-        g1 = Group.create(number=1, department=2)
+        g1 = Group.create(number='1', department=2)
 
         self.assertEqual(Student._cached_create_sql_, None)
         s1 = Student.create(record=3, name='A', group=g1)
