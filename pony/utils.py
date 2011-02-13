@@ -148,13 +148,12 @@ def restore_escapes(s, console_encoding=None, source_encoding=None):
     return escape_re.sub(f, s)
 
 def current_timestamp():
-    result = datetime.datetime.now().isoformat(' ')
-    if len(result) == 19: return result + '.000000'
-    return result
+    return datetime2timestamp(datetime.datetime.now())
 
 def datetime2timestamp(d):
     result = d.isoformat(' ')
-    if len(result) == 19: return result + '.000000'
+    if len(result) == 19: return result + '.000'
+    elif len(result) > 23: return result[:23]
     return result
 
 def timestamp2datetime(t):
