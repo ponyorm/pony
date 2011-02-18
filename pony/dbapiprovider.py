@@ -1,5 +1,6 @@
 import sys, threading
 from operator import attrgetter
+from decimal import Decimal
 
 from pony.sqlsymbols import *
 
@@ -36,7 +37,7 @@ class Value(object):
     def __unicode__(self):
         value = self.value
         if value is None: return 'null'
-        if isinstance(value, (int, long)): return str(value)
+        if isinstance(value, (int, long, float, Decimal)): return str(value)
         if isinstance(value, basestring): return self.quote_str(value)
         assert False
     def __repr__(self):

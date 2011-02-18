@@ -983,6 +983,11 @@ def func_monad(type):
         return SpecificFuncMonad
     return decorator
 
+@func_monad(type=Decimal)
+def FuncDecimalMonad(monad, x):
+    if not isinstance(x, StringConstMonad): raise TypeError
+    return ConstMonad(monad.translator, Decimal(x.value))
+  
 @func_monad(type=int)
 def FuncLenMonad(monad, x):
     return x.len()
@@ -1210,4 +1215,5 @@ special_functions = {
     sum : FuncSumMonad,
     select : FuncSelectMonad,
     exists : FuncExistsMonad,
+    Decimal : FuncDecimalMonad,
 }
