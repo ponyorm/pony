@@ -3,6 +3,7 @@ from compiler import ast
 from types import NoneType
 from operator import attrgetter
 from itertools import imap, izip
+from decimal import Decimal
 
 from pony import orm
 from pony.decompiling import decompile
@@ -146,7 +147,7 @@ class Query(object):
     def fetch(query):
         return list(query)
 
-primitive_types = set([ int, unicode ])
+primitive_types = set([ int, float, Decimal, unicode ])
 type_normalization_dict = { long : int, str : unicode, StrHtml : unicode, Html : unicode }
 
 def get_normalized_type(value):
@@ -161,15 +162,21 @@ def normalize_type(t):
     if t not in primitive_types and not isinstance(t, orm.EntityMeta): raise TypeError, t
     return t
 
+some_comparables = set([ (int, float), (int, Decimal) ])
+some_comparables.update([ (t2, t1) for (t1, t2) in some_comparables ])
+
 def are_comparable_types(op, type1, type2):
     # op: '<' | '>' | '=' | '>=' | '<=' | '<>' | '!=' | '=='
     #         | 'in' | 'not' 'in' | 'is' | 'is' 'not'
     if op in ('is', 'is not'): return type1 is not NoneType and type2 is NoneType
-    if op in ('<', '<=', '>', '>='): return type1 is type2 and type1 in primitive_types
+    if op in ('<', '<=', '>', '>='):
+        return (type1 is type2 and type1 in primitive_types) \
+            or (type1, type2) in some_comparables
     if op in ('==', '<>', '!='):
         if type1 is NoneType and type2 is NoneType: return False
         if type1 is NoneType or type2 is NoneType: return True
-        elif type1 in primitive_types: return type1 is type2
+        elif type1 in primitive_types:
+            return type1 is type2 or (type1, type2) in some_comparables
         elif isinstance(type1, orm.EntityMeta):
             if not isinstance(type2, orm.EntityMeta): return False
             return type1._root_ is type2._root_
@@ -481,13 +488,25 @@ class ListMonad(Monad):
             sql = sqlor([ sqland([ [ EQ, a, b ]  for a, b in zip(left_sql, item.getsql()) ]) for item in monad.items ])
         return BoolExprMonad(monad.translator, sql)
 
+numeric_conversions = {
+    (int, int) : int,
+    (int, float): float,
+    (float, int): float,
+    (float, float): float,
+    (int, Decimal): Decimal,
+    (Decimal, int): Decimal,
+    (Decimal, Decimal): Decimal
+    }
+
 def make_numeric_binop(sqlop):
     def numeric_binop(monad, monad2):
         if not isinstance(monad2, NumericMixin): raise TypeError
+        result_type = numeric_conversions.get((monad.type, monad2.type))
+        if result_type is None: raise TypeError('Unsupported combination of %s and %s' % (monad.type, monad2.type))
         left_sql = monad.getsql()
         right_sql = monad2.getsql()
         assert len(left_sql) == len(right_sql) == 1
-        return NumericExprMonad(monad.translator, [ sqlop, left_sql[0], right_sql[0] ])
+        return NumericExprMonad(monad.translator, result_type, [ sqlop, left_sql[0], right_sql[0] ])
     numeric_binop.__name__ = sqlop
     return numeric_binop
 
@@ -496,13 +515,18 @@ class NumericMixin(object):
     __sub__ = make_numeric_binop(SUB)
     __mul__ = make_numeric_binop(MUL)
     __div__ = make_numeric_binop(DIV)
-    __pow__ = make_numeric_binop(POW)
+    def __pow__(monad, monad2):
+        if not isinstance(monad2, NumericMixin): raise TypeError
+        left_sql = monad.getsql()
+        right_sql = monad2.getsql()
+        assert len(left_sql) == len(right_sql) == 1
+        return NumericExprMonad(monad.translator, float, [ sqlop, left_sql[0], right_sql[0] ])
     def __neg__(monad):
         sql = monad.getsql()[0]
-        return NumericExprMonad(monad.translator, [ NEG, sql ])
+        return NumericExprMonad(monad.translator, monad.type, [ NEG, sql ])
     def abs(monad):
         sql = monad.getsql()[0]
-        return NumericExprMonad(monad.translator, [ ABS, sql ])
+        return NumericExprMonad(monad.translator, monad.type, [ ABS, sql ])
 
 def make_string_binop(sqlop):
     def string_binop(monad, monad2):
@@ -576,7 +600,7 @@ class StringMixin(object):
         return StringExprMonad(monad.translator, sql)
     def len(monad):
         sql = monad.getsql()[0]
-        return NumericExprMonad(monad.translator, [ LENGTH, sql ])
+        return NumericExprMonad(monad.translator, int, [ LENGTH, sql ])
     def contains(monad, item, not_in=False):
         if item.type is not unicode: raise TypeError
         if isinstance(item, StringConstMonad):
@@ -674,7 +698,7 @@ class AttrMonad(Monad):
     @staticmethod
     def new(parent, attr, *args, **keyargs):
         type = normalize_type(attr.py_type)
-        if type is int: cls = NumericAttrMonad
+        if type in (int, float, Decimal): cls = NumericAttrMonad
         elif type is unicode: cls = StringAttrMonad
         elif isinstance(type, orm.EntityMeta): cls = ObjectAttrMonad
         else: raise NotImplementedError
@@ -749,7 +773,7 @@ class ParamMonad(Monad):
     def __new__(cls, translator, type, name, parent=None):
         assert cls is ParamMonad
         type = normalize_type(type)
-        if type is int: cls = NumericParamMonad
+        if type in (int, float, Decimal): cls = NumericParamMonad
         elif type is unicode: cls = StringParamMonad
         elif isinstance(type, orm.EntityMeta): cls = ObjectParamMonad
         else: assert False
@@ -797,11 +821,11 @@ class NumericParamMonad(NumericMixin, ParamMonad): pass
 class ExprMonad(Monad):
     @staticmethod
     def new(translator, sql, type):
-        if type is int: cls = NumericExprMonad
+        if type in (int, float, Decimal): cls = NumericExprMonad
         elif type is unicode: cls = StringExprMonad
         else: raise NotImplementedError
-        return cls(translator, sql)
-    def __init__(monad, translator, sql, type):
+        return cls(translator, type, sql)
+    def __init__(monad, translator, type, sql):
         Monad.__init__(monad, translator, type)
         monad.sql = sql
     def getsql(monad):
@@ -809,17 +833,17 @@ class ExprMonad(Monad):
 
 class StringExprMonad(StringMixin, ExprMonad):
     def __init__(monad, translator, sql):
-        ExprMonad.__init__(monad, translator, sql, unicode)
+        ExprMonad.__init__(monad, translator, unicode, sql)
         
 class NumericExprMonad(NumericMixin, ExprMonad):
-    def __init__(monad, translator, sql):
-        ExprMonad.__init__(monad, translator, sql, int)
+    def __init__(monad, translator, type, sql):
+        ExprMonad.__init__(monad, translator, type, sql)
 
 class ConstMonad(Monad):
     def __new__(cls, translator, value):
         assert cls is ConstMonad
         value_type = normalize_type(type(value))
-        if value_type is int: cls = NumericConstMonad
+        if value_type in (int, float, Decimal): cls = NumericConstMonad
         elif value_type is unicode: cls = StringConstMonad
         elif value_type is NoneType: cls = NoneMonad
         else: raise TypeError
@@ -875,7 +899,8 @@ cmpops = { '>=' : GE, '>' : GT, '<=' : LE, '<' : LT }
 
 class CmpMonad(BoolMonad):
     def __init__(monad, op, left, right):
-        if not are_comparable_types(op, left.type, right.type): raise TypeError, [left.type, right.type]
+        if not are_comparable_types(op, left.type, right.type): raise TypeError(
+            'Incomparable types: %r and %r' % (left.type, right.type))
         if op == '<>': op = '!='
         if left.type is NoneType:
             assert right.type is not NoneType
@@ -983,8 +1008,8 @@ def minmax(monad, sqlop, *args):
     arg_types = set(arg.type for arg in args)
     if len(arg_types) > 1: raise TypeError
     result_type = arg_types.pop()
-    if result_type is int:
-        return NumericExprMonad(monad.translator, sql)
+    if result_type in (int, float, Decimal):
+        return NumericExprMonad(monad.translator, result_type, sql)
     elif result_type is unicode:
         return StringExprMonad(monad.translator, sql)
     else: raise TypeError
@@ -1027,24 +1052,25 @@ class AttrSetMonad(SetMixin, Monad):
         else: kind = ALL
         expr, from_ast, conditions = monad._subselect()
         sql_ast = [ SELECT, [ AGGREGATES, [ COUNT, kind, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
-        return NumericExprMonad(monad.translator, sql_ast)
+        return NumericExprMonad(monad.translator, int, sql_ast)
     def sum(monad):
-        if monad.type[0] is not int: raise TypeError
+        item_type = monad.type[0]
+        if item_type not in (int, float, Decimal): raise TypeError
         expr, from_ast, conditions = monad._subselect()
         sql_ast = [ SELECT, [ AGGREGATES, [COALESCE, [ SUM, expr ], [ VALUE, 0 ]]], from_ast, [ WHERE, sqland(conditions) ] ]
-        return NumericExprMonad(monad.translator, sql_ast)
+        return NumericExprMonad(monad.translator, item_type, sql_ast)
     def min(monad):
         item_type = monad.type[0]
-        if item_type not in (int, unicode): raise TypeError
+        if item_type not in (int, float, Decimal, unicode): raise TypeError
         expr, from_ast, conditions = monad._subselect()
         sql_ast = [ SELECT, [ AGGREGATES, [ MIN, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
-        return ExprMonad.new(monad.translator, sql_ast, item_type)
+        return ExprMonad.new(monad.translator, item_type, sql_ast)
     def max(monad):
         item_type = monad.type[0]
-        if item_type not in (int, unicode): raise TypeError
+        if item_type not in (int, float, Decimal, unicode): raise TypeError
         expr, from_ast, conditions = monad._subselect()
         sql_ast = [ SELECT, [ AGGREGATES, [ MAX, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
-        return ExprMonad.new(monad.translator, sql_ast, item_type)
+        return ExprMonad.new(monad.translator, item_type, sql_ast)
     def nonzero(monad):
         expr, from_ast, conditions = monad._subselect()
         sql_ast = [ EXISTS, from_ast, [ WHERE, sqland(conditions) ] ]
@@ -1119,7 +1145,7 @@ class QuerySetMonad(SetMixin, Monad):
         from_ast = monad.subtranslator.from_
         where_ast = [ WHERE, sqland(monad.subtranslator.conditions) ]
         sql_ast = [ SELECT, select_ast, from_ast, where_ast ]
-        return ExprMonad.new(monad.translator, sql_ast, item_type)
+        return ExprMonad.new(monad.translator, item_type, sql_ast)
     def contains(monad, item, not_in=False):
         item_type = monad.type[0]
         if not are_comparable_types('==', item_type, item.type): raise TypeError, [ item_type, item.type ]
@@ -1142,17 +1168,17 @@ class QuerySetMonad(SetMixin, Monad):
         return monad._subselect(select_ast, int)
     def sum(monad):
         attr, attr_type = monad._get_attr_info()
-        if attr_type is not int: raise TypeError
+        if attr_type not in (int, float, Decimal): raise TypeError
         select_ast = [ AGGREGATES, [ COALESCE, [ SUM, [ COLUMN, monad.subtranslator.alias, attr.column ] ], [ VALUE, 0 ] ] ]
-        return monad._subselect(select_ast, int)
+        return monad._subselect(select_ast, attr_type)
     def min(monad):
         attr, attr_type = monad._get_attr_info()
-        if attr_type not in (int, unicode): raise TypeError
+        if attr_type not in (int, float, Decimal, unicode): raise TypeError
         select_ast = [ AGGREGATES, [ MIN, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
         return monad._subselect(select_ast, attr_type)
     def max(monad):
         attr, attr_type = monad._get_attr_info()
-        if attr_type not in (int, unicode): raise TypeError
+        if attr_type not in (int, float, Decimal, unicode): raise TypeError
         select_ast = [ AGGREGATES, [ MAX, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
         return monad._subselect(select_ast, attr_type)
     def nonzero(monad):        
