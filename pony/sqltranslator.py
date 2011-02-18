@@ -776,15 +776,20 @@ class ParamMonad(Monad):
         if type in (int, float, Decimal): cls = NumericParamMonad
         elif type is unicode: cls = StringParamMonad
         elif isinstance(type, orm.EntityMeta): cls = ObjectParamMonad
-        else: assert False
+        else: raise TypeError
         return object.__new__(cls)
     def __init__(monad, translator, type, name, parent=None):
         type = normalize_type(type)
         Monad.__init__(monad, translator, type)
         monad.name = name
         monad.parent = parent
-        if parent is None: monad.extractor = lambda variables : variables[name]
-        else: monad.extractor = lambda variables : getattr(parent.extractor(variables), name)
+        if not isinstance(type, orm.EntityMeta):
+            provider = translator.diagram.database.provider
+            converter = provider.get_converter_by_py_type(type)
+            py2sql = converter.py2sql
+        else: py2sql = lambda obj: obj
+        if parent is None: monad.extractor = lambda variables : py2sql(variables[name])
+        else: monad.extractor = lambda variables : py2sql(getattr(parent.extractor(variables), name))
     def getsql(monad):
         monad.add_extractors()
         return [ [ PARAM, monad.name ] ]
