@@ -839,7 +839,7 @@ class NoneMonad(Monad):
 
 class StringConstMonad(StringMixin, ConstMonad):
     def len(monad):
-        return NumericExprMonad(monad.translator, [ VALUE, len(monad.value) ])
+        return ConstMonad(monad.translator, len(monad.value))
     
 class NumericConstMonad(NumericMixin, ConstMonad): pass
 
