@@ -449,8 +449,8 @@ class Monad(object):
     def __init__(monad, translator, type):
         monad.translator = translator
         monad.type = type
-        monad.init_mixin()
-    def init_mixin(monad): pass
+        monad.mixin_init()
+    def mixin_init(monad): pass
     def cmp(monad, op, monad2):
         return CmpMonad(op, monad, monad2)
     def contains(monad, item, not_in=False): raise TypeError
@@ -513,6 +513,8 @@ def make_numeric_binop(sqlop):
     return numeric_binop
 
 class NumericMixin(object):
+    def mixin_init(monad):
+        assert monad.type in (int, float, Decimal)
     __add__ = make_numeric_binop(ADD)
     __sub__ = make_numeric_binop(SUB)
     __mul__ = make_numeric_binop(MUL)
@@ -531,10 +533,12 @@ class NumericMixin(object):
         return NumericExprMonad(monad.translator, monad.type, [ ABS, sql ])
 
 class DateMixin(object):
-    pass
+    def mixin_init(monad):
+        assert monad.type is date
 
 class DatetimeMixin(object):
-    pass
+    def mixin_init(monad):
+        assert monad.type is datetime
 
 def make_string_binop(sqlop):
     def string_binop(monad, monad2):
@@ -547,7 +551,8 @@ def make_string_binop(sqlop):
     return string_binop
 
 class StringMixin(object):
-    def init_mixin(monad):
+    def mixin_init(monad):
+        assert issubclass(monad.type, basestring)
         monad.type = unicode
     def getattr(monad, attrname):
         return StringMethodMonad(monad.translator, monad, attrname)
@@ -684,6 +689,8 @@ class StringMethodMonad(MethodMonad):
         return monad.strip(chars, RTRIM)
     
 class ObjectMixin(object):
+    def mixin_init(monad):
+        assert isinstance(monad.type, orm.EntityMeta)
     def getattr(monad, name):
         translator = monad.translator
         entity = monad.type
