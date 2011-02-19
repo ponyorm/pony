@@ -14,13 +14,17 @@ def binop(node_type, args_holder=tuple):
 
 ast_cache = {}
 
+codeobjects = {}
+
 def decompile(gen):
     codeobject = gen.gi_frame.f_code
-    result = ast_cache.get(codeobject)
+    key = id(codeobject)
+    result = ast_cache.get(key)
     if result is None:
+        codeobjects[key] = codeobject
         decompiler = GeneratorDecompiler(codeobject)
         result = decompiler.ast.code, decompiler.external_names
-        ast_cache[codeobject] = result
+        ast_cache[key] = result
     return result
 
 def simplify(clause):

@@ -50,7 +50,8 @@ class Query(object):
         query._vartypes = vartypes
         query._variables = variables
         query._result = None
-        key = gen.gi_frame.f_code, tuple(sorted(vartypes.iteritems())), tuple(sorted(functions.iteritems()))
+        code = gen.gi_frame.f_code
+        key = id(code), tuple(sorted(vartypes.iteritems())), tuple(sorted(functions.iteritems()))
         query._python_ast_key = key
         translator = python_ast_cache.get(key)
         if translator is None:
