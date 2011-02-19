@@ -1,8 +1,10 @@
 import sys, threading
 from operator import attrgetter
 from decimal import Decimal
+from datetime import date, datetime
 
 from pony.sqlsymbols import *
+from pony.utils import datetime2timestamp
 
 def quote_name(name, quote_char='"'):
     if isinstance(name, basestring):
@@ -39,6 +41,8 @@ class Value(object):
         if value is None: return 'null'
         if isinstance(value, (int, long, float, Decimal)): return str(value)
         if isinstance(value, basestring): return self.quote_str(value)
+        if isinstance(value, datetime): return self.quote_str(datetime2timestamp(value))
+        if isinstance(value, date): return self.quote_str(str(value))
         assert False
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self.value)

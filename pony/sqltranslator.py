@@ -4,6 +4,7 @@ from types import NoneType
 from operator import attrgetter
 from itertools import imap, izip
 from decimal import Decimal
+from datetime import date, datetime
 
 from pony import orm
 from pony.decompiling import decompile
@@ -148,7 +149,7 @@ class Query(object):
     def fetch(query):
         return list(query)
 
-primitive_types = set([ int, float, Decimal, str, unicode ])
+primitive_types = set([ int, float, Decimal, str, unicode, date, datetime ])
 type_normalization_dict = { long : int, StrHtml : str, Html : unicode }
 
 def get_normalized_type(value):
@@ -163,7 +164,7 @@ def normalize_type(t):
     if t not in primitive_types and not isinstance(t, orm.EntityMeta): raise TypeError, t
     return t
 
-some_comparables = set([ (int, float), (int, Decimal) ])
+some_comparables = set([ (int, float), (int, Decimal), (date, datetime) ])
 some_comparables.update([ (t2, t1) for (t1, t2) in some_comparables ])
 
 def are_comparable_types(op, type1, type2):
@@ -529,6 +530,12 @@ class NumericMixin(object):
         sql = monad.getsql()[0]
         return NumericExprMonad(monad.translator, monad.type, [ ABS, sql ])
 
+class DateMixin(object):
+    pass
+
+class DatetimeMixin(object):
+    pass
+
 def make_string_binop(sqlop):
     def string_binop(monad, monad2):
         if monad.type is not monad2.type: raise TypeError
@@ -703,6 +710,8 @@ class AttrMonad(Monad):
         type = normalize_type(attr.py_type)
         if type in (int, float, Decimal): cls = NumericAttrMonad
         elif type in (str, unicode): cls = StringAttrMonad
+        elif type is date: cls = DateAttrMonad
+        elif type is datetime: cls = DatetimeAttrMonad
         elif isinstance(type, orm.EntityMeta): cls = ObjectAttrMonad
         else: raise NotImplementedError
         return cls(parent, attr, *args, **keyargs)
@@ -771,6 +780,8 @@ class ObjectFlatMonad(ObjectMixin, Monad):
         
 class NumericAttrMonad(NumericMixin, AttrMonad): pass
 class StringAttrMonad(StringMixin, AttrMonad): pass
+class DateAttrMonad(DateMixin, AttrMonad): pass
+class DatetimeAttrMonad(DatetimeMixin, AttrMonad): pass
 
 class ParamMonad(Monad):
     def __new__(cls, translator, type, name, parent=None):
@@ -778,8 +789,10 @@ class ParamMonad(Monad):
         type = normalize_type(type)
         if type in (int, float, Decimal): cls = NumericParamMonad
         elif type in (str, unicode): cls = StringParamMonad
+        elif type is date: cls = DateParamMonad
+        elif type is datetime: cls = DatetimeParamMonad
         elif isinstance(type, orm.EntityMeta): cls = ObjectParamMonad
-        else: raise TypeError
+        else: raise TypeError, type
         return object.__new__(cls)
     def __init__(monad, translator, type, name, parent=None):
         type = normalize_type(type)
@@ -825,12 +838,16 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
 
 class StringParamMonad(StringMixin, ParamMonad): pass
 class NumericParamMonad(NumericMixin, ParamMonad): pass
+class DateParamMonad(DateMixin, ParamMonad): pass
+class DatetimeParamMonad(DatetimeMixin, ParamMonad): pass
 
 class ExprMonad(Monad):
     @staticmethod
     def new(translator, type, sql):
         if type in (int, float, Decimal): cls = NumericExprMonad
         elif type in (str, unicode): cls = StringExprMonad
+        elif type is date: cls = DateExprMonad
+        elif type is datetime: cls = DatetimeExprMonad
         else: raise NotImplementedError, type
         return cls(translator, type, sql)
     def __init__(monad, translator, type, sql):
@@ -841,15 +858,19 @@ class ExprMonad(Monad):
 
 class StringExprMonad(StringMixin, ExprMonad): pass
 class NumericExprMonad(NumericMixin, ExprMonad): pass
+class DateExprMonad(DateMixin, ExprMonad): pass
+class DatetimeExprMonad(DatetimeMixin, ExprMonad): pass
 
 class ConstMonad(Monad):
     def __new__(cls, translator, value):
         assert cls is ConstMonad
-        value_type = normalize_type(type(value))
-        if value_type in (int, float, Decimal): cls = NumericConstMonad
-        elif value_type in (str, unicode): cls = StringConstMonad
-        elif value_type is NoneType: cls = NoneMonad
-        else: raise TypeError
+        type = get_normalized_type(value)
+        if type in (int, float, Decimal): cls = NumericConstMonad
+        elif type in (str, unicode): cls = StringConstMonad
+        elif type is date: cls = DateConstMonad
+        elif type is datetime: cls = DatetimeConstMonad
+        elif type is NoneType: cls = NoneMonad
+        else: raise TypeError, type
         return object.__new__(cls)
     def __init__(monad, translator, value):
         value_type = normalize_type(type(value))
@@ -869,6 +890,8 @@ class StringConstMonad(StringMixin, ConstMonad):
         return ConstMonad(monad.translator, len(monad.value))
     
 class NumericConstMonad(NumericMixin, ConstMonad): pass
+class DateConstMonad(DateMixin, ConstMonad): pass
+class DatetimeConstMonad(DatetimeMixin, ConstMonad): pass
 
 class BoolMonad(Monad):
     def __init__(monad, translator):
@@ -985,7 +1008,23 @@ def func_monad(type):
 def FuncDecimalMonad(monad, x):
     if not isinstance(x, StringConstMonad): raise TypeError
     return ConstMonad(monad.translator, Decimal(x.value))
-  
+
+@func_monad(type=date)
+def FuncDateMonad(monad, year, month, day):
+    for x, name in zip((year, month, day), ('year', 'month', 'day')):
+        if not isinstance(x, NumericMixin) or x.type is not int: raise TypeError(
+            "'%s' argument of date(year, month, day) function must be int" % name)
+        if not isinstance(x, ConstMonad): raise NotImplementedError
+    return ConstMonad(monad.translator, date(year.value, month.value, day.value))
+
+@func_monad(type=datetime)
+def FuncDatetimeMonad(monad, *args):
+    for x, name in zip(args, ('year', 'month', 'day', 'hour', 'minute', 'second', 'microsecond')):
+        if not isinstance(x, NumericMixin) or x.type is not int: raise TypeError(
+            "'%s' argument of datetime(...) function must be int" % name)
+        if not isinstance(x, ConstMonad): raise NotImplementedError
+    return ConstMonad(monad.translator, datetime(*tuple(arg.value for arg in args)))
+
 @func_monad(type=int)
 def FuncLenMonad(monad, x):
     return x.len()
@@ -1214,4 +1253,6 @@ special_functions = {
     select : FuncSelectMonad,
     exists : FuncExistsMonad,
     Decimal : FuncDecimalMonad,
+    date : FuncDateMonad,
+    datetime : FuncDatetimeMonad,
 }
