@@ -147,8 +147,8 @@ class Query(object):
     def fetch(query):
         return list(query)
 
-primitive_types = set([ int, float, Decimal, unicode ])
-type_normalization_dict = { long : int, str : unicode, StrHtml : unicode, Html : unicode }
+primitive_types = set([ int, float, Decimal, str, unicode ])
+type_normalization_dict = { long : int, StrHtml : str, Html : unicode }
 
 def get_normalized_type(value):
     if isinstance(value, orm.EntityMeta): return value
@@ -447,6 +447,8 @@ class Monad(object):
     def __init__(monad, translator, type):
         monad.translator = translator
         monad.type = type
+        monad.init_mixin()
+    def init_mixin(monad): pass
     def cmp(monad, op, monad2):
         return CmpMonad(op, monad, monad2)
     def contains(monad, item, not_in=False): raise TypeError
@@ -528,15 +530,17 @@ class NumericMixin(object):
 
 def make_string_binop(sqlop):
     def string_binop(monad, monad2):
-        if not isinstance(monad2, StringMixin): raise TypeError
+        if monad.type is not monad2.type: raise TypeError
         left_sql = monad.getsql()
         right_sql = monad2.getsql()
         assert len(left_sql) == len(right_sql) == 1
-        return StringExprMonad(monad.translator, [ sqlop, left_sql[0], right_sql[0] ])
+        return StringExprMonad(monad.translator, monad.type, [ sqlop, left_sql[0], right_sql[0] ])
     string_binop.__name__ = sqlop
     return string_binop
 
 class StringMixin(object):
+    def init_mixin(monad):
+        monad.type = unicode
     def getattr(monad, attrname):
         return StringMethodMonad(monad.translator, monad, attrname)
     __add__ = make_string_binop(CONCAT)
@@ -581,7 +585,7 @@ class StringMixin(object):
                 len_sql = [ SUB, stop_sql, start_sql ]
 
             sql = [ SUBSTR, expr_sql, start_sql, len_sql ]
-            return StringExprMonad(monad.translator, sql)
+            return StringExprMonad(monad.translator, monad.type, sql)
         
         if isinstance(monad, StringConstMonad) and isinstance(index, NumericConstMonad):
             return ConstMonad(monad.translator, monad.value[index.value])
@@ -595,12 +599,12 @@ class StringMixin(object):
             inner_sql = index.getsql()[0]
             index_sql = [ ADD, inner_sql, [ CASE, None, [ ([GE, inner_sql, [ VALUE, 0 ]], [ VALUE, 1 ]) ], [ VALUE, 0 ] ] ]
         sql = [ SUBSTR, expr_sql, index_sql, [ VALUE, 1 ] ]
-        return StringExprMonad(monad.translator, sql)
+        return StringExprMonad(monad.translator, monad.type, sql)
     def len(monad):
         sql = monad.getsql()[0]
         return NumericExprMonad(monad.translator, int, [ LENGTH, sql ])
     def contains(monad, item, not_in=False):
-        if item.type is not unicode: raise TypeError
+        if item.type is not monad.type: raise TypeError
         if isinstance(item, StringConstMonad):
             item_sql = [ VALUE, '%%%s%%' % item.value ]
         else:
@@ -624,7 +628,7 @@ def make_string_func(sqlop):
     def func(monad):
         sql = monad.parent.getsql()
         assert len(sql) == 1
-        return StringExprMonad(monad.translator, [ sqlop, sql[0] ])
+        return StringExprMonad(monad.translator, monad.type, [ sqlop, sql[0] ])
     func.__name__ = sqlop
     return func
 
@@ -633,7 +637,7 @@ class StringMethodMonad(MethodMonad):
     call_lower = make_string_func(LOWER)
     def call_startswith(monad, arg):
         parent_sql = monad.parent.getsql()[0]
-        if arg.type is not unicode:
+        if arg.type is not monad.type:
             raise TypeError("Argument of 'startswith' method must be a string")
         if isinstance(arg, StringConstMonad):
             assert isinstance(arg.value, basestring)
@@ -645,7 +649,7 @@ class StringMethodMonad(MethodMonad):
         return BoolExprMonad(monad.translator, sql)
     def call_endswith(monad, arg):
         parent_sql = monad.parent.getsql()[0]
-        if arg.type is not unicode:
+        if arg.type is not monad.type:
             raise TypeError("Argument of 'endswith' method must be a string")
         if isinstance(arg, StringConstMonad):
             assert isinstance(arg.value, basestring)
@@ -657,13 +661,13 @@ class StringMethodMonad(MethodMonad):
         return BoolExprMonad(monad.translator, sql)
     def strip(monad, chars, strip_type):
         parent_sql = monad.parent.getsql()[0]
-        if chars is not None and chars.type is not unicode:
-            raise TypeError("'chars' argument must be a string")
+        if chars is not None and chars.type is not monad.type:
+            raise TypeError("'chars' argument must be a %s" % monad.type.__name__)
         if chars is None:
-            return StringExprMonad(monad.translator, [ strip_type, parent_sql ])
+            return StringExprMonad(monad.translator, monad.parent.type, [ strip_type, parent_sql ])
         else:
             chars_sql = chars.getsql()[0]
-            return StringExprMonad(monad.translator, [ strip_type, parent_sql, chars_sql ])
+            return StringExprMonad(monad.translator, monad.parent.type, [ strip_type, parent_sql, chars_sql ])
     def call_strip(monad, chars=None):
         return monad.strip(chars, TRIM)
     def call_lstrip(monad, chars=None):
@@ -697,12 +701,10 @@ class AttrMonad(Monad):
     def new(parent, attr, *args, **keyargs):
         type = normalize_type(attr.py_type)
         if type in (int, float, Decimal): cls = NumericAttrMonad
-        elif type is unicode: cls = StringAttrMonad
+        elif type in (str, unicode): cls = StringAttrMonad
         elif isinstance(type, orm.EntityMeta): cls = ObjectAttrMonad
         else: raise NotImplementedError
         return cls(parent, attr, *args, **keyargs)
-    def getsql(monad):
-        return [ [ COLUMN, monad.parent.alias, column ] for column in monad.attr.columns ]
     def __init__(monad, parent, attr):
         assert monad.__class__ is not AttrMonad
         attr_type = normalize_type(attr.py_type)
@@ -710,6 +712,8 @@ class AttrMonad(Monad):
         monad.parent = parent
         monad.attr = attr
         monad.alias = None
+    def getsql(monad):
+        return [ [ COLUMN, monad.parent.alias, column ] for column in monad.attr.columns ]
         
 class ObjectAttrMonad(ObjectMixin, AttrMonad):
     def __init__(monad, parent, attr):
@@ -772,7 +776,7 @@ class ParamMonad(Monad):
         assert cls is ParamMonad
         type = normalize_type(type)
         if type in (int, float, Decimal): cls = NumericParamMonad
-        elif type is unicode: cls = StringParamMonad
+        elif type in (str, unicode): cls = StringParamMonad
         elif isinstance(type, orm.EntityMeta): cls = ObjectParamMonad
         else: raise TypeError
         return object.__new__(cls)
@@ -823,10 +827,10 @@ class NumericParamMonad(NumericMixin, ParamMonad): pass
 
 class ExprMonad(Monad):
     @staticmethod
-    def new(translator, sql, type):
+    def new(translator, type, sql):
         if type in (int, float, Decimal): cls = NumericExprMonad
-        elif type is unicode: cls = StringExprMonad
-        else: raise NotImplementedError
+        elif type in (str, unicode): cls = StringExprMonad
+        else: raise NotImplementedError, type
         return cls(translator, type, sql)
     def __init__(monad, translator, type, sql):
         Monad.__init__(monad, translator, type)
@@ -834,20 +838,15 @@ class ExprMonad(Monad):
     def getsql(monad):
         return [ monad.sql ]
 
-class StringExprMonad(StringMixin, ExprMonad):
-    def __init__(monad, translator, sql):
-        ExprMonad.__init__(monad, translator, unicode, sql)
-        
-class NumericExprMonad(NumericMixin, ExprMonad):
-    def __init__(monad, translator, type, sql):
-        ExprMonad.__init__(monad, translator, type, sql)
+class StringExprMonad(StringMixin, ExprMonad): pass
+class NumericExprMonad(NumericMixin, ExprMonad): pass
 
 class ConstMonad(Monad):
     def __new__(cls, translator, value):
         assert cls is ConstMonad
         value_type = normalize_type(type(value))
         if value_type in (int, float, Decimal): cls = NumericConstMonad
-        elif value_type is unicode: cls = StringConstMonad
+        elif value_type in (str, unicode): cls = StringConstMonad
         elif value_type is NoneType: cls = NoneMonad
         else: raise TypeError
         return object.__new__(cls)
@@ -1018,8 +1017,8 @@ def minmax(monad, sqlop, *args):
     result_type = arg_types.pop()
     if result_type in (int, float, Decimal):
         return NumericExprMonad(monad.translator, result_type, sql)
-    elif result_type is unicode:
-        return StringExprMonad(monad.translator, sql)
+    elif result_type in (str, unicode):
+        return StringExprMonad(monad.translator, result_type, sql)
     else: raise TypeError
 
 class SetMixin(object):
@@ -1069,13 +1068,13 @@ class AttrSetMonad(SetMixin, Monad):
         return NumericExprMonad(monad.translator, item_type, sql_ast)
     def min(monad):
         item_type = monad.type[0]
-        if item_type not in (int, float, Decimal, unicode): raise TypeError
+        if item_type not in (int, float, Decimal, str, unicode): raise TypeError
         expr, from_ast, conditions = monad._subselect()
         sql_ast = [ SELECT, [ AGGREGATES, [ MIN, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
         return ExprMonad.new(monad.translator, item_type, sql_ast)
     def max(monad):
         item_type = monad.type[0]
-        if item_type not in (int, float, Decimal, unicode): raise TypeError
+        if item_type not in (int, float, Decimal, str, unicode): raise TypeError
         expr, from_ast, conditions = monad._subselect()
         sql_ast = [ SELECT, [ AGGREGATES, [ MAX, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
         return ExprMonad.new(monad.translator, item_type, sql_ast)
@@ -1181,12 +1180,12 @@ class QuerySetMonad(SetMixin, Monad):
         return monad._subselect(select_ast, attr_type)
     def min(monad):
         attr, attr_type = monad._get_attr_info()
-        if attr_type not in (int, float, Decimal, unicode): raise TypeError
+        if attr_type not in (int, float, Decimal, str, unicode): raise TypeError
         select_ast = [ AGGREGATES, [ MIN, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
         return monad._subselect(select_ast, attr_type)
     def max(monad):
         attr, attr_type = monad._get_attr_info()
-        if attr_type not in (int, float, Decimal, unicode): raise TypeError
+        if attr_type not in (int, float, Decimal, str, unicode): raise TypeError
         select_ast = [ AGGREGATES, [ MAX, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
         return monad._subselect(select_ast, attr_type)
     def nonzero(monad):        
