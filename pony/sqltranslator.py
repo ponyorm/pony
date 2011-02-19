@@ -489,19 +489,17 @@ class ListMonad(Monad):
         return BoolExprMonad(monad.translator, sql)
 
 numeric_conversions = {
-    (int, int) : int,
     (int, float): float,
-    (float, int): float,
-    (float, float): float,
     (int, Decimal): Decimal,
-    (Decimal, int): Decimal,
-    (Decimal, Decimal): Decimal
     }
+numeric_conversions.update(((t2, t1), t3) for (t1, t2), t3 in numeric_conversions.items())
 
 def make_numeric_binop(sqlop):
     def numeric_binop(monad, monad2):
         if not isinstance(monad2, NumericMixin): raise TypeError
-        result_type = numeric_conversions.get((monad.type, monad2.type))
+        t1, t2 = monad.type, monad2.type
+        if t1 is t2: result_type = t1
+        else: result_type = numeric_conversions.get((t1, t2))
         if result_type is None: raise TypeError('Unsupported combination of %s and %s' % (monad.type, monad2.type))
         left_sql = monad.getsql()
         right_sql = monad2.getsql()
