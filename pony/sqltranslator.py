@@ -550,7 +550,7 @@ class StringMixin(object):
                and (stop is None or isinstance(stop, NumericConstMonad)):
                 if start is not None: start = start.value
                 if stop is not None: stop = stop.value
-                return StringConstMonad(monad.translator, monad.value[start:stop])
+                return ConstMonad(monad.translator, monad.value[start:stop])
 
             if start is not None and start.type is not int: raise TypeError('string indices must be integers')
             if stop is not None and stop.type is not int: raise TypeError('string indices must be integers')
@@ -584,7 +584,7 @@ class StringMixin(object):
             return StringExprMonad(monad.translator, sql)
         
         if isinstance(monad, StringConstMonad) and isinstance(index, NumericConstMonad):
-            return StringConstMonad(monad.translator, monad.value[index.value])
+            return ConstMonad(monad.translator, monad.value[index.value])
         if index.type is not int: raise TypeError('string indices must be integers')
         expr_sql = monad.getsql()[0]
         if isinstance(index, NumericConstMonad):
