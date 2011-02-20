@@ -136,7 +136,7 @@ class UnicodeConverter(BasestringConverter):
 
 class StrConverter(BasestringConverter):
     def __init__(converter, attr=None):
-        converter.encoding = None  # for the case when attr is None
+        converter.encoding = 'ascii'  # for the case when attr is None
         BasestringConverter.__init__(converter, attr)
     def init(converter, keyargs):
         BasestringConverter.init(converter, keyargs)
