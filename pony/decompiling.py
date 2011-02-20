@@ -193,8 +193,12 @@ class GeneratorDecompiler(object):
     def JUMP_IF_FALSE(decompiler, endpos):
         return decompiler.conditional_jump(endpos, ast.And)
 
+    JUMP_IF_FALSE_OR_POP = JUMP_IF_FALSE
+
     def JUMP_IF_TRUE(decompiler, endpos):
         return decompiler.conditional_jump(endpos, ast.Or)
+
+    JUMP_IF_TRUE_OR_POP = JUMP_IF_TRUE
 
     def conditional_jump(decompiler, endpos, clausetype):
         i = decompiler.pos  # next instruction
@@ -285,6 +289,9 @@ class GeneratorDecompiler(object):
         decompiler.names.update(decompiler.names)
         return decompiler.ast
 
+    POP_JUMP_IF_FALSE = JUMP_IF_FALSE
+    POP_JUMP_IF_TRUE = JUMP_IF_TRUE
+
     def POP_TOP(decompiler):
         pass
 
@@ -340,17 +347,21 @@ class GeneratorDecompiler(object):
         decompiler.assnames.add(varname)
         decompiler.store(ast.AssName(varname, 'OP_ASSIGN'))
 
+    def STORE_MAP(decompiler):
+        tos = decompiler.stack.pop()
+        tos1 = decompiler.stack.pop()
+        tos2 = decompiler.stack[-1]
+        if not isinstance(tos2, ast.Dict): assert False
+        if tos2.items == (): tos2.items = []
+        tos2.items.append((tos, tos1))
+
     def STORE_SUBSCR(decompiler):
         tos = decompiler.stack.pop()
         tos1 = decompiler.stack.pop()
         tos2 = decompiler.stack.pop()
-        if isinstance(tos2, ast.GenExprFor):
-            assert False
-            decompiler.assign.append(Subscript(tos1, 'OP_ASSIGN', [tos]))
-        elif isinstance(tos1, ast.Dict):
-            if tos1.items == (): tos1.items = []
-            tos1.items.append((tos, tos2))
-        else: assert False
+        if not isinstance(tos1, ast.Dict): assert False
+        if tos1.items == (): tos1.items = []
+        tos1.items.append((tos, tos2))
 
     def UNARY_POSITIVE(decompiler):
         return ast.UnaryAdd(decompiler.stack.pop())
