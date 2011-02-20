@@ -1,5 +1,7 @@
 
-class Schema(object):
+class DBSchemaError(Exception): pass
+
+class DBSchema(object):
     def __init__(schema, database):
         schema.database = database
         schema.tables = {}
@@ -13,8 +15,9 @@ class Schema(object):
         return '(%s)' % ', '.join(schema.quote_name(column.name) for column in columns)
 
 class Table(object):
-    def __init__(table, schema, name):
-        assert name not in schema.tables
+    def __init__(table, name, schema):
+        if name in schema.tables:
+            raise DBSchemaError("Table %r already exists in database schema" % name)
         schema.tables[name] = table
         table.schema = schema
         table.name = name
@@ -54,16 +57,21 @@ class Table(object):
         return '\n'.join(result)
 
 class Column(object):
-    def __init__(column, table, name, sql_type, is_pk=False, is_unique=None, is_not_null=None):
-        assert name not in table.column_dict
+    def __init__(column, name, table, sql_type, is_pk=False, is_unique=None, is_not_null=None):
+        if name in table.column_dict:
+            raise DBSchemaError("Column %r already exists in table %r" % (name, table.name))
 
         if is_unique is None:
             is_unique = is_pk
-        elif not is_unique: assert not is_pk
+        elif not is_unique:
+            if is_pk: raise DBSchemaError(
+                "Incompatible combination of is_unique=False and is_pk=True for column %s" % name)
 
         if is_not_null is None:
             is_not_null = is_pk
-        elif not is_not_null: assert not is_pk
+        elif not is_not_null:
+            if is_pk: raise DBSchemaError(
+                "Incompatible combination of is_not_null=False and is_pk=True for column %s" % name)
 
         table.column_dict[name] = column
         table.column_list.append(column)
@@ -95,25 +103,35 @@ class Column(object):
         return ' '.join(result)
 
 class Constraint(object):
-    def __init__(constraint, schema, name):
+    def __init__(constraint, name, schema):
         if name is not None:
-            assert name not in schema.constraints
+            if name in schema.constraints: raise DBSchemaError(
+                "Constraint with name %s already exists" % name)
             schema.constraints[name] = constraint
         constraint.schema = schema
         constraint.name = name
 
 class Index(Constraint):
     def __init__(index, name, table, columns, is_pk=False, is_unique=None):
-        if is_pk:
-            assert table.pk_index is None
-            table.pk_index = index
-
-            if is_unique is None: is_unique = True
-            else: assert is_unique
+        assert len(columns) > 0
         for column in columns:
-            assert column.table is table
-        assert columns not in table.indexes
-        Constraint.__init__(index, table.schema, name)
+            if column.table is not table: raise DBSchemaError(
+                "Column %s does not belong to table %s and cannot be part of its index"
+                % (column.name, table.name))
+        if columns in table.indexes:
+            if len(columns) == 1: raise DBSchemaError("Index for column %s already exists" % columns[0].name)
+            else: raise DBSchemaError("Index for columns (%s) already exists" % ', '.join(column.name for column in columns))
+        if is_pk:
+            if table.pk_index is not None: raise DBSchemaError(
+                'Primary key for table %s is already defined' % table.name)
+            table.pk_index = index
+            if is_unique is None: is_unique = True
+            elif not is_unique: raise DBSchemaError(
+                "Incompatible combination of is_unique=False and is_pk=True for index %s" % name)
+            if len(columns) == 1:
+                column = columns[0]
+                column.is_pk = column.is_unique = True
+        Constraint.__init__(index, name, table.schema)
         table.indexes[columns] = index
         index.table = table
         index.columns = columns
@@ -125,7 +143,8 @@ class Index(Constraint):
         result = []
         append = result.append
         if not inside_table:
-            assert not index.is_pk
+            if index.is_pk: raise DBSchemaError(
+                'Primary key index cannot be defined outside of table definition')
             append('CREATE')
             if index.is_unique: append('UNIQUE')
             append('INDEX')
@@ -146,17 +165,23 @@ class Index(Constraint):
 class Reference(Constraint):
     def __init__(reference, name, parent_table, parent_columns, child_table, child_columns):
         schema = parent_table.schema
-        assert schema is child_table.schema
+        if schema is not child_table.schema: raise DBSchemaError(
+            'Parent and child tables of reference cannot belong to different schemata')
         for column in parent_columns:
-            assert column.table is parent_table
+            if column.table is not parent_table: raise DBSchemaError(
+                'Column %s does not belong to table %s' % (column.name, parent_table.name))
         for column in child_columns:
-            assert column.table is child_table
-        assert len(parent_columns) == len(child_columns)
-        assert child_columns not in child_table.references
+            if column.table is not child_table: raise DBSchemaError(
+                'Column %s does not belong to table %s' % (column.name, child_table.name))
+        if len(parent_columns) != len(child_columns): raise DBSchemaError(
+            'Foreign key columns count do not match')
+        if child_columns in child_table.references: 
+            if len(child_columns) == 1: raise DBSchemaError('Foreign key for column %s already defined' % child_columns[0].name)
+            else: raise DBSchemaError('Foreign key for columns (%s) already defined' % ', '.join(column.name for column in child_columns))
         child_table.references[child_columns] = reference
         child_table.parent_tables.add(parent_table)
         parent_table.child_tables.add(child_table)
-        Constraint.__init__(reference, schema, name)
+        Constraint.__init__(reference, name, schema)
         reference.parent_table = parent_table
         reference.parent_columns = parent_columns
         reference.child_table = child_table
