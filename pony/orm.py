@@ -5,8 +5,7 @@ from itertools import count, ifilter, ifilterfalse, izip
 try: from pony.thirdparty import etree
 except ImportError: etree = None
 
-import dbapiprovider
-from pony import options
+from pony import options, dbschema, dbapiprovider
 from pony.sqlsymbols import *
 
 class OrmError(Exception): pass
@@ -1876,31 +1875,38 @@ class Diagram(object):
     def __init__(diagram):
         diagram.entities = {}
         diagram.unmapped_attrs = {}
-        diagram.mapping = None
+        diagram.schema = None
         diagram.database = None
-    def generate_mapping(diagram, database, filename=None, check_tables=False):
+    def generate_mapping(diagram, database, filename=None, check_tables=False, create_tables=False):
+        if create_tables and check_tables: raise TypeError(
+            "Parameters 'check_tables' and 'create_tables' cannot be set to True at the same time")
+
+        def get_columns(table, column_names):
+            return tuple(map(table.column_dict.__getitem__, column_names))
+
         diagram.database = database
-        if diagram.mapping: raise MappingError('Mapping was already generated')
+        if diagram.schema: raise MappingError('Mapping was already generated')
         if filename is not None: raise NotImplementedError
         for entity_name in diagram.unmapped_attrs:
             raise DiagramError('Entity definition %s was not found' % entity_name)
 
-        mapping = diagram.mapping = Mapping()
+        schema = diagram.schema = dbschema.DBSchema(database)
+        foreign_keys = []
         entities = list(sorted(diagram.entities.values(), key=attrgetter('_id_')))
         for entity in entities:
             entity._get_pk_columns_()
             table_name = entity._table_
             if table_name is None: table_name = entity._table_ = entity.__name__
             else: assert isinstance(table_name, basestring)
-            table = mapping.tables.get(table_name)
-            if table is None:
-                table = mapping.tables[table_name] = Table(mapping, table_name)
+            table = schema.tables.get(table_name)
+            if table is None: table = dbschema.Table(table_name, schema)
             elif table.entities: raise NotImplementedError
             table.entities.add(entity)
 
             if entity._base_attrs_: raise NotImplementedError
             for attr in entity._new_attrs_:
                 if attr.is_collection:
+                    if not isinstance(attr, Set): raise NotImplementedError
                     reverse = attr.reverse
                     if not reverse.is_collection: # many-to-one:
                         if attr.table is not None: raise MappingError(
@@ -1909,6 +1915,7 @@ class Diagram(object):
                             "Parameter 'column' is not allowed for many-to-one attribute %s" % attr)
                         continue
                     # many-to-many:
+                    if not isinstance(reverse, Set): raise NotImplementedError
                     if attr.entity.__name__ >= reverse.entity.__name__: continue
                     if attr.table:
                         if reverse.table != attr.table: raise MappingError(
@@ -1917,16 +1924,19 @@ class Diagram(object):
                     else:
                         table_name = attr.entity.__name__ + '_' + reverse.entity.__name__
                         attr.table = reverse.table = table_name
-                    m2m_table = mapping.tables.get(table_name)
+                    m2m_table = schema.tables.get(table_name)
                     if m2m_table is not None:
                         if m2m_table.entities or m2m_table.m2m: raise MappingError(
                             "Table name '%s' is already in use" % table_name)
                         raise NotImplementedError
-                    m2m_table = mapping.tables[table_name] = Table(mapping, table_name)
-                    for column in attr.get_m2m_columns():
-                        m2m_table.add_column(column, True)
-                    for column in reverse.get_m2m_columns():
-                        m2m_table.add_column(column, True)
+                    m2m_table = dbschema.Table(table_name, schema)
+                    m2m_columns_1 = attr.get_m2m_columns()
+                    m2m_columns_2 = reverse.get_m2m_columns()
+                    assert len(m2m_columns_1) == len(reverse.converters)
+                    assert len(m2m_columns_2) == len(attr.converters)
+                    for column_name, converter in zip(m2m_columns_1 + m2m_columns_2, reverse.converters + attr.converters):
+                        dbschema.Column(column_name, m2m_table, converter.sql_type(), True)
+                    dbschema.Index(None, m2m_table, tuple(m2m_table.column_list), is_pk=True)
                     m2m_table.m2m.add(attr)
                     m2m_table.m2m.add(reverse)
                 else:
@@ -1934,10 +1944,14 @@ class Diagram(object):
                     if not attr.reverse and attr.default is not None:
                         assert len(attr.converters) == 1
                         attr.converters[0].validate(attr.default)
-                    for column in columns:
-                        table.add_column(column, attr.pk_offset is not None)
-                    
-
+                    assert len(columns) == len(attr.converters)
+                    for (column_name, converter) in zip(columns, attr.converters):
+                        dbschema.Column(column_name, table, converter.sql_type(), attr.is_required)
+            dbschema.Index(None, table, get_columns(table, entity._pk_columns_), is_pk=True)
+            for key in entity._keys_:
+                column_names = []
+                for attr in key: column_names.extend(attr.columns)
+                dbschema.Index(None, table, get_columns(table, column_names), is_unique=True)
             columns = []
             converters = []
             for attr in entity._attrs_:
@@ -1946,9 +1960,29 @@ class Diagram(object):
                 converters.extend(attr.converters)
             entity._columns_ = columns
             entity._converters_ = converters
+        for entity in entities:
+            table = schema.tables[entity._table_]
+            for attr in entity._new_attrs_:
+                if attr.is_collection:
+                    reverse = attr.reverse
+                    if not reverse.is_collection: continue
+                    if not isinstance(attr, Set): raise NotImplementedError
+                    if not isinstance(reverse, Set): raise NotImplementedError
+                    m2m_table = schema.tables[attr.table]
+                    parent_columns = get_columns(table, entity._pk_columns_)
+                    child_columns = get_columns(m2m_table, reverse.columns)
+                    dbschema.ForeignKey(None, table, parent_columns, m2m_table, child_columns)
+                elif attr.reverse and attr.columns:
+                    rentity = attr.reverse.entity
+                    parent_table = schema.tables[rentity._table_]
+                    parent_columns = get_columns(parent_table, rentity._pk_columns_)
+                    child_columns = get_columns(table, attr.columns)
+                    dbschema.ForeignKey(None, parent_table, parent_columns, table, child_columns)        
+
+        if create_tables: schema.create_tables()
             
         if not check_tables: return
-        for table in mapping.tables.values():
+        for table in schema.tables.values():
             sql_ast = [ SELECT,
                         [ ALL, ] + [ [ COLUMN, table.name, column.name ] for column in table.column_list ],
                         [ FROM, [ table.name, TABLE, table.name ] ],
@@ -2073,35 +2107,3 @@ def get_trans():
     trans = local.trans
     if trans is None: trans = local.trans = Transaction()
     return trans
-
-class Mapping(object):
-    def __init__(mapping):
-        mapping.tables = {}
-
-class Table(object):
-    def __init__(table, mapping, name):
-        table.mapping = mapping
-        table.name = name
-        table.column_list = []
-        table.column_dict = {}
-        table.entities = set()
-        table.m2m = set()
-    def __repr__(table):
-        return '<Table(%s)>' % table.name
-    def add_column(table, col_name, pk):
-        if col_name in table.column_dict:
-            raise MappingError("Column '%s' in table '%s' was already mapped" % (col_name, table.name))
-        column = Column(table, col_name, pk)
-        table.column_list.append(column)
-        table.column_dict[col_name] = column
-        return column
-
-class Column(object):
-    def __init__(column, table, name, pk=False):
-        column.table = table
-        column.name = name
-        column.pk = pk
-        # column.sql_type = attr.sql_type
-    def __repr__(column):
-        if column.pk: return '<Column(%s.%s) PK>' % (column.table.name, column.name)
-        return '<Column(%s.%s)>' % (column.table.name, column.name)

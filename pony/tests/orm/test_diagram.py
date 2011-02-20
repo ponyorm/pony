@@ -96,7 +96,7 @@ class TestDiag(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Set(Entity1)
         generate_mapping(self.db, check_tables=False)
-        m2m_table = _diagram_.mapping.tables['Entity1_Entity2']
+        m2m_table = _diagram_.schema.tables['Entity1_Entity2']
         col_names = set([ col.name for col in m2m_table.column_list ])
         self.assertEquals(col_names, set(['entity1', 'entity2']))
         self.assertEquals(Entity1.attr1.get_m2m_columns(), ['entity1'])
@@ -112,7 +112,7 @@ class TestDiag(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Set(Entity1)
         generate_mapping(self.db, check_tables=False)
-        m2m_table = _diagram_.mapping.tables['Entity1_Entity2']
+        m2m_table = _diagram_.schema.tables['Entity1_Entity2']
         col_names = set([ col.name for col in m2m_table.column_list ])
         self.assertEquals(col_names, set(['entity1_a', 'entity1_b', 'entity2']))
 

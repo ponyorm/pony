@@ -1,6 +1,7 @@
 import unittest
 from pony.orm import *
 from pony.db import *
+from pony.dbschema import DBSchemaError
 from testutils import *
 
 class TestColumnsMapping(unittest.TestCase):
@@ -30,7 +31,7 @@ class TestColumnsMapping(unittest.TestCase):
         """
         self.db.get_connection().executescript(sql)
         generate_mapping(self.db, check_tables=True)
-        self.assertEqual(_diagram_.mapping.tables['Student'].column_list[0].name, 'name')
+        self.assertEqual(_diagram_.schema.tables['Student'].column_list[0].name, 'name')
 
     # raise exception if specified mapping table is not found
     @raises_exception(OperationalError, 'no such table: Table1')
@@ -55,7 +56,7 @@ class TestColumnsMapping(unittest.TestCase):
         """
         self.db.get_connection().executescript(sql)
         generate_mapping(self.db, check_tables=True)
-        self.assertEqual(_diagram_.mapping.tables['Table1'].column_list[0].name, 'name')
+        self.assertEqual(_diagram_.schema.tables['Table1'].column_list[0].name, 'name')
 
     # 'id' field created if primary key is not defined
     @raises_exception(OperationalError, 'no such column: Student.id')
@@ -86,9 +87,9 @@ class TestColumnsMapping(unittest.TestCase):
         """
         self.db.get_connection().executescript(sql)
         generate_mapping(self.db, check_tables=True)
-        self.assertEqual(_diagram_.mapping.tables['Student'].column_list[0].name, 'id')
+        self.assertEqual(_diagram_.schema.tables['Student'].column_list[0].name, 'id')
 
-    @raises_exception(MappingError, "Column 'name' in table 'Student' was already mapped")
+    @raises_exception(DBSchemaError, "Column 'name' already exists in table 'Student'")
     def test_table_check7(self):
         _diagram_ = Diagram()
         class Student(Entity):
@@ -118,7 +119,7 @@ class TestColumnsMapping(unittest.TestCase):
         """
         self.db.get_connection().executescript(sql)
         generate_mapping(self.db, check_tables=True)
-        self.assertEqual(_diagram_.mapping.tables['Student'].column_list[0].name, 'name1')
+        self.assertEqual(_diagram_.schema.tables['Student'].column_list[0].name, 'name1')
 
     # Required-Required raises exception
     @raises_exception(DiagramError,
@@ -213,7 +214,7 @@ class TestColumnsMapping(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
         generate_mapping(self.db, check_tables=False)
-        column_list = _diagram_.mapping.tables['Entity2'].column_list
+        column_list = _diagram_.schema.tables['Entity2'].column_list
         self.assertEqual(len(column_list), 2)
         self.assertEqual(column_list[0].name, 'id')
         self.assertEqual(column_list[1].name, 'attr2')
@@ -229,7 +230,7 @@ class TestColumnsMapping(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
         generate_mapping(self.db, check_tables=False)
-        column_list = _diagram_.mapping.tables['Entity2'].column_list
+        column_list = _diagram_.schema.tables['Entity2'].column_list
         self.assertEqual(len(column_list), 3)
         self.assertEqual(column_list[0].name, 'id')
         self.assertEqual(column_list[1].name, 'attr2_a')
