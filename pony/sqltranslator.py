@@ -997,26 +997,30 @@ class FuncMonad(Monad):
     def __init__(monad, translator):
         monad.translator = translator
 
-def func_monad(type):
-    def decorator(monad_func):
+special_functions = {}
+
+def func_monad(func, type):
+    def decorator(monad_method):
         class SpecificFuncMonad(FuncMonad):
             def __call__(monad, *args, **keyargs):
                 for arg in args:
                     assert isinstance(arg, Monad)
                 for value in keyargs.values():
                     assert isinstance(value, Monad)
-                return monad_func(monad, *args, **keyargs)
+                return monad_method(monad, *args, **keyargs)
         SpecificFuncMonad.type = type
-        SpecificFuncMonad.__name__ = monad_func.__name__
+        SpecificFuncMonad.__name__ = monad_method.__name__
+        assert func not in special_functions
+        special_functions[func] = SpecificFuncMonad
         return SpecificFuncMonad
     return decorator
 
-@func_monad(type=Decimal)
+@func_monad(Decimal, type=Decimal)
 def FuncDecimalMonad(monad, x):
     if not isinstance(x, StringConstMonad): raise TypeError
     return ConstMonad(monad.translator, Decimal(x.value))
 
-@func_monad(type=date)
+@func_monad(date, type=date)
 def FuncDateMonad(monad, year, month, day):
     for x, name in zip((year, month, day), ('year', 'month', 'day')):
         if not isinstance(x, NumericMixin) or x.type is not int: raise TypeError(
@@ -1024,7 +1028,7 @@ def FuncDateMonad(monad, year, month, day):
         if not isinstance(x, ConstMonad): raise NotImplementedError
     return ConstMonad(monad.translator, date(year.value, month.value, day.value))
 
-@func_monad(type=datetime)
+@func_monad(datetime, type=datetime)
 def FuncDatetimeMonad(monad, *args):
     for x, name in zip(args, ('year', 'month', 'day', 'hour', 'minute', 'second', 'microsecond')):
         if not isinstance(x, NumericMixin) or x.type is not int: raise TypeError(
@@ -1032,25 +1036,25 @@ def FuncDatetimeMonad(monad, *args):
         if not isinstance(x, ConstMonad): raise NotImplementedError
     return ConstMonad(monad.translator, datetime(*tuple(arg.value for arg in args)))
 
-@func_monad(type=int)
+@func_monad(len, type=int)
 def FuncLenMonad(monad, x):
     return x.len()
 
-@func_monad(type=int)
+@func_monad(abs, type=int)
 def FuncAbsMonad(monad, x):
     return x.abs()
 
-@func_monad(type=int)
+@func_monad(sum, type=int)
 def FuncSumMonad(monad, x):
     return x.sum()
 
-@func_monad(type=None)
+@func_monad(min, type=None)
 def FuncMinMonad(monad, *args):
     if not args: raise TypeError
     if len(args) == 1: return args[0].min()
     return minmax(monad, MIN, *args)
 
-@func_monad(type=None)
+@func_monad(max, type=None)
 def FuncMaxMonad(monad, *args):
     if not args: raise TypeError
     if len(args) == 1: return args[0].max()
@@ -1067,6 +1071,16 @@ def minmax(monad, sqlop, *args):
     elif result_type in (str, unicode):
         return StringExprMonad(monad.translator, result_type, sql)
     else: raise TypeError
+
+@func_monad(select, type=None)
+def FuncSelectMonad(monad, subquery):
+    if not isinstance(subquery, QuerySetMonad): raise TypeError
+    return subquery
+
+@func_monad(exists, type=None)
+def FuncExistsMonad(monad, subquery):
+    if not isinstance(subquery, SetMixin): raise TypeError
+    return subquery.nonzero()
 
 class SetMixin(object):
     pass
@@ -1175,11 +1189,6 @@ class AttrSetMonad(SetMixin, Monad):
     def getsql(monad):
         raise TranslationError
 
-@func_monad(type=None)
-def FuncSelectMonad(monad, subquery):
-    if not isinstance(subquery, QuerySetMonad): raise TypeError
-    return subquery
-
 class QuerySetMonad(SetMixin, Monad):
     def __init__(monad, translator, subtranslator):        
         monad.subtranslator = subtranslator
@@ -1245,21 +1254,3 @@ class QuerySetMonad(SetMixin, Monad):
         where_ast = [ WHERE, sqland(monad.subtranslator.conditions) ]
         sql_ast = [ NOT_EXISTS, from_ast, where_ast ]
         return BoolExprMonad(monad.translator, sql_ast)
-
-@func_monad(type=None)
-def FuncExistsMonad(monad, subquery):
-    if not isinstance(subquery, SetMixin): raise TypeError
-    return subquery.nonzero()
-
-special_functions = {
-    len : FuncLenMonad,
-    abs : FuncAbsMonad,
-    min : FuncMinMonad,
-    max : FuncMaxMonad,
-    sum : FuncSumMonad,
-    select : FuncSelectMonad,
-    exists : FuncExistsMonad,
-    Decimal : FuncDecimalMonad,
-    date : FuncDateMonad,
-    datetime : FuncDatetimeMonad,
-}
