@@ -1709,6 +1709,7 @@ class Entity(object):
             assert obj2 is obj
             obj._pkval_ = obj._raw_pkval_ = obj.__dict__[pk] = rowid
             obj._newid_ = None
+            raise NotImplementedError
             
         obj._status_ = 'saved'
         obj._rbits_ = 0
