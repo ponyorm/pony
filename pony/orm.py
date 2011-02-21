@@ -985,7 +985,6 @@ class Entity(object):
         entity._new_attrs_ = new_attrs
         entity._attrs_ = base_attrs + new_attrs
         entity._adict_ = dict((attr.name, attr) for attr in entity._attrs_)
-        entity._required_attrs_ = [ attr for attr in entity._attrs_ if attr.is_required ]
 
         entity._bits_ = {}
         next_offset = count().next
