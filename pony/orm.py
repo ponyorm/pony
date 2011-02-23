@@ -1702,11 +1702,12 @@ class Entity(object):
 
         if obj._pkval_ is None:
             rowid = cursor.lastrowid # TODO
-            pk = obj.__class__._pk_
-            index = obj._trans_.indexes.setdefault(pk, {})
+            pk_attr = obj.__class__._pk_
+            index = obj._trans_.indexes.setdefault(pk_attr, {})
             obj2 = index.setdefault(rowid, obj)
-            assert obj2 is obj
-            obj._pkval_ = obj._raw_pkval_ = obj.__dict__[pk] = rowid
+            if obj2 is not obj: raise IntegrityError(
+                'Newly auto-generated rowid value %s was already used in transaction cache for another object' % rowid)
+            obj._pkval_ = obj._raw_pkval_ = obj.__dict__[pk_attr] = rowid
             obj._newid_ = None
             raise NotImplementedError
             
