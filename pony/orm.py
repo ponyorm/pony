@@ -1185,6 +1185,7 @@ class Entity(object):
                             for attr, val in avdict.iteritems():
                                 if val != attr.get(obj): break
                             else: filtered_objects.append(obj)
+                        filtered_objects.sort(key=entity._get_raw_pkval_)
                         return filtered_objects
                     else: raise NotImplementedError
         if obj is not None:
@@ -1247,6 +1248,7 @@ class Entity(object):
         sql_ast = [ SELECT, select_list, from_list ]
         if len(criteria_list) > 1:
             sql_ast.append([ WHERE, criteria_list  ])
+        sql_ast.append([ ORDER_BY ] + [ ([COLUMN, None, column], ASC) for column in entity._pk_columns_ ])
         def extractor(avdict):
             param_dict = {}
             for param, extractor in extractors.iteritems():
