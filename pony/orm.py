@@ -324,11 +324,8 @@ class Attribute(object):
         reverse = attr.reverse
         if not reverse: return (val,)
         rentity = reverse.entity
-        if not rentity._raw_pk_is_composite_:
-            if val is None: return (None,)
-            return (val._raw_pkval_,)
         if val is None: return rentity._pk_nones_
-        return val._raw_pkval_       
+        return val._get_raw_pkval_()
     def get_columns(attr):
         assert not attr.is_collection
         assert not isinstance(attr.py_type, basestring)
@@ -511,8 +508,7 @@ class Set(Collection):
                 sql, adapter = database._ast2sql(sql_ast)
                 attr.cached_load_sql = sql, adapter
             else: sql, adapter = attr.cached_load_sql
-            if obj._raw_pk_is_composite_: values = obj._raw_pkval_
-            else: values = [ obj._raw_pkval_ ]
+            values = obj._get_raw_pkval_()
             arguments = adapter(values)
             cursor = database._exec_sql(sql, arguments)
             items = []
@@ -675,27 +671,6 @@ class Set(Collection):
         reverse.converters = entity._pk_converters_
         attr._columns_checked = True
         return reverse.columns
-    def make_m2m_transformer(attr, adapter):
-        entity = attr.entity
-        rentity = attr.reverse.entity
-        if not entity._raw_pk_is_composite_ and not rentity._raw_pk_is_composite_:
-            def transformer(pairs, adapter=adapter):
-                for obj, robj in pairs:
-                    yield adapter((obj._raw_pkval_, robj._raw_pkval_))
-        elif not entity._raw_pk_is_composite_ and rentity._raw_pk_is_composite_:
-            def transformer(pairs, adapter=adapter):
-                for obj, robj in pairs:
-                    yield adapter((obj._raw_pkval_,)+robj._raw_pkval_)
-        elif entity._raw_pk_is_composite_ and not rentity._raw_pk_is_composite_:
-            def transformer(pairs, adapter=adapter):
-                for obj, robj in pairs:
-                    yield adapter(obj._raw_pkval_+(robj._raw_pkval_,))
-        elif entity._raw_pk_is_composite_ and rentity._raw_pk_is_composite_:
-            def transformer(pairs, adapter=adapter):
-                for obj, robj in pairs:
-                    yield adapter(obj._raw_pkval_+robj._raw_pkval_)
-        else: assert False
-        return transformer
     def remove_m2m(attr, removed):
         entity = attr.entity
         database = entity._diagram_.database
@@ -709,10 +684,10 @@ class Set(Collection):
                 criteria_list.append([ EQ, [COLUMN, None, column], [ PARAM, i, converter ] ])
             sql_ast = [ DELETE, table, [ WHERE, criteria_list ] ]
             sql, adapter = database._ast2sql(sql_ast)
-            transformer = attr.make_m2m_transformer(adapter)
-            attr.cached_remove_m2m_sql = sql, transformer
-        else: sql, transformer = cached_sql
-        arguments_list = list(transformer(removed))
+            attr.cached_remove_m2m_sql = sql, adapter
+        else: sql, adapter = cached_sql
+        arguments_list = [ adapter(obj._get_raw_pkval_() + robj._get_raw_pkval_())
+                           for obj, robj in removed ]
         database.exec_sql_many(sql, arguments_list)
     def add_m2m(attr, added):
         entity = attr.entity
@@ -729,10 +704,10 @@ class Set(Collection):
                 params.append([PARAM, i, converter])
             sql_ast = [ INSERT, table, columns, params ]
             sql, adapter = database._ast2sql(sql_ast)
-            transformer = attr.make_m2m_transformer(adapter)
-            attr.cached_add_m2m_sql = sql, transformer
-        else: sql, transformer = cached_sql
-        arguments_list = list(transformer(added))
+            attr.cached_add_m2m_sql = sql, adapter
+        else: sql, adapter = cached_sql
+        arguments_list = [ adapter(obj._get_raw_pkval_() + robj._get_raw_pkval_())
+                           for obj, robj in added ]
         database.exec_sql_many(sql, arguments_list)
 
 class SetWrapper(object):
@@ -901,7 +876,7 @@ next_new_instance_id = count(1).next
 
 class Entity(object):
     __metaclass__ = EntityMeta
-    __slots__ = '__dict__', '__weakref__', '_pkval_', '_raw_pkval_', '_newid_', '_trans_', '_status_', '_rbits_', '_wbits_'
+    __slots__ = '__dict__', '__weakref__', '_pkval_', '_newid_', '_trans_', '_status_', '_rbits_', '_wbits_'
     @classmethod
     def _cls_setattr_(entity, name, val):
         if name.startswith('_') and name.endswith('_'):
@@ -1090,20 +1065,18 @@ class Entity(object):
         entity._pk_converters_ = pk_converters
         entity._pk_nones_ = (None,) * len(pk_columns)
         entity._pk_paths_ = pk_paths
-        entity._raw_pk_is_composite_ = len(pk_columns) > 1
         return pk_columns
-    def _calculate_raw_pkval_(obj):
-        if hasattr(obj, '_raw_pkval_'): return obj._raw_pkval_
-        if len(obj._pk_attrs_) == 1:
-              pk_pairs = [ (obj.__class__._pk_, obj._pkval_) ]
-        else: pk_pairs = zip(obj._pk_attrs_, obj._pkval_)
+    def _get_raw_pkval_(obj):
+        pkval = obj._pkval_
+        if not obj._pk_is_composite_:
+            if not obj.__class__._pk_.reverse: return (pkval,)
+            else: return pkval._get_raw_pkval_()
         raw_pkval = []
-        for attr, val in pk_pairs:
-            if not attr.reverse: raw_pkval.append(val)
-            elif len(attr.py_type._pk_attrs_) == 1: raw_pkval.append(val._raw_pkval_)
-            else: raw_pkval.extend(val._raw_pkval_)
-        if len(raw_pkval) > 1: obj._raw_pkval_ = tuple(raw_pkval)
-        else: obj._raw_pkval_ = raw_pkval[0]
+        append = raw_pkval.append
+        for attr, val in zip(obj._pk_attrs_, pkval):
+            if not attr.reverse: append(val)
+            else: raw_pkval += val._get_raw_pkval_()
+        return tuple(raw_pkval)
     def __repr__(obj):
         pkval = obj._pkval_
         if pkval is None: return '%s(new:%d)' % (obj.__class__.__name__, obj._newid_)
@@ -1126,15 +1099,10 @@ class Entity(object):
         obj._trans_ = trans
         obj._status_ = status
         obj._pkval_ = pkval
-        if pkval is None:
-            obj._newid_ = next_new_instance_id()
-            obj._raw_pkval_ = None
-        else:
+        if pkval is not None:
             index[pkval] = obj
             obj._newid_ = None
-            if raw_pkval is None: obj._calculate_raw_pkval_()
-            elif len(raw_pkval) > 1: obj._raw_pkval_ = raw_pkval
-            else: obj._raw_pkval_ = raw_pkval[0]
+        else: obj._newid_ = next_new_instance_id()
         if obj._pk_is_composite_: pairs = zip(entity._pk_attrs_, pkval)
         else: pairs = ((entity._pk_, pkval),)
         if status == 'loaded':
@@ -1206,31 +1174,23 @@ class Entity(object):
                     break
         if obj is None:
             for attr, val in avdict.iteritems():
-                if isinstance(val, Entity) and val._raw_pkval_ is None:  #############
+                if isinstance(val, Entity) and val._pkval_ is None:
                     reverse = attr.reverse
                     if not reverse.is_collection:
                         obj = reverse.__get__(val)
-                        if obj is None: return None
+                        if obj is None: return []
                     elif isinstance(reverse, Set):
-                        objects = reverse.__get__(val).copy()  ##################
-                        if not objects: return None
-                        if len(objects) == 1: obj = objects[0]
-                        else:
-                            filtered_objects = []
-                            for obj in objects:
-                                for attr, val in avdict.iteritems():
-                                    if val != attr.get(obj): break
-                                else: filtered_objects.append(obj)
-                            if not filtered_objects: return None
-                            elif len(filtered_objects) == 1: return filtered_objects[0]
-                            else: raise MultipleObjectsFoundError(
-                                'Multiple objects was found. Use %s.find_all(...) instead of %s.find(...) to retrieve them'
-                                % (entity.__name__, entity.__name__))
+                        filtered_objects = []
+                        for obj in reverse.__get__(val):
+                            for attr, val in avdict.iteritems():
+                                if val != attr.get(obj): break
+                            else: filtered_objects.append(obj)
+                        return filtered_objects
                     else: raise NotImplementedError
         if obj is not None:
             for attr, val in avdict.iteritems():
-                if val != attr.__get__(obj): return None
-            return obj
+                if val != attr.__get__(obj): return []
+            return [ obj ]
         raise KeyError
     def _load_(obj):
         objects = obj._find_in_db_({obj.__class__._pk_ :obj._pkval_})
@@ -1269,17 +1229,17 @@ class Entity(object):
             else:
                 attr_entity = attr.py_type
                 assert attr_entity == attr.reverse.entity
-                if not attr_entity._raw_pk_is_composite_:
+                if len(attr_entity._pk_columns_) == 1:
                     if not attr_is_none:
                         assert len(attr.converters) == 1
                         criteria_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name, attr.converters[0] ]])
-                        extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]._raw_pkval_
+                        extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]._get_raw_pkval_()[0]
                     else: criteria_list.append([IS_NULL, [COLUMN, None, attr.column]])
                 elif not attr_is_none:
                     for i, (column, converter) in enumerate(zip(attr_entity._pk_columns_, attr_entity._pk_converters_)):
                         param_name = '%s-%d' % (attr.name, i+1)
                         criteria_list.append([EQ, [COLUMN, None, column], [ PARAM, param_name, converter ]])
-                        extractors[param_name] = lambda avdict, attr=attr, i=i: avdict[attr]._raw_pkval_[i]
+                        extractors[param_name] = lambda avdict, attr=attr, i=i: avdict[attr]._get_raw_pkval_()[i]
                 else:
                     for column in attr_entity._pk_columns_:
                         criteria_list.append([IS_NULL, [COLUMN, None, column]])
@@ -1351,7 +1311,7 @@ class Entity(object):
             if attr.is_collection: raise TypeError(
                 'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
         try:
-            objects = [ entity._find_in_cache_(pkval, avdict) ]
+            objects = entity._find_in_cache_(pkval, avdict)
         except KeyError:
             objects = entity._find_in_db_(avdict, max_objects_count)
         return objects        
@@ -1359,7 +1319,9 @@ class Entity(object):
     def find_one(entity, *args, **keyargs):
         objects = entity._find_(1, args, keyargs)
         if not objects: return None
-        assert len(objects) == 1
+        if len(objects) > 1: raise MultipleObjectsFoundError(
+            'Multiple objects was found. Use %s.find_all(...) instead of %s.find(...) to retrieve them'
+            % (entity.__name__, entity.__name__))
         return objects[0]
     @classmethod
     def find_all(entity, *args, **keyargs):
@@ -1707,9 +1669,8 @@ class Entity(object):
             obj2 = index.setdefault(rowid, obj)
             if obj2 is not obj: raise IntegrityError(
                 'Newly auto-generated rowid value %s was already used in transaction cache for another object' % rowid)
-            obj._pkval_ = obj._raw_pkval_ = obj.__dict__[pk_attr] = rowid
+            obj._pkval_ = obj.__dict__[pk_attr] = rowid
             obj._newid_ = None
-            raise NotImplementedError
             
         obj._status_ = 'saved'
         obj._rbits_ = 0
@@ -1810,8 +1771,7 @@ class Entity(object):
             sql, adapter = database._ast2sql(sql_ast)
             obj.__class__._cached_delete_sql_ = sql, adapter
         else: sql, adapter = cached_sql
-        if obj._raw_pk_is_composite_: values = obj._raw_pkval_
-        else: values = (obj._raw_pkval_,)
+        values = obj._get_raw_pkval_()
         arguments = adapter(values)
         database._exec_sql(sql, arguments)
     def _save_(obj, dependent_objects=None):

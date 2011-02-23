@@ -837,11 +837,11 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
     def add_extractors(monad):
         entity = monad.type
         extractors = monad.translator.extractors
-        if not entity._raw_pk_is_composite_:
-            extractors[monad.params[0]] = lambda variables, extractor=monad.extractor : extractor(variables)._raw_pkval_
+        if len(entity._pk_columns_) == 1:
+            extractors[monad.params[0]] = lambda vars, e=monad.extractor : e(vars)._get_raw_pkval_()[0]
         else:
             for i, param in enumerate(monad.params):
-                extractors[param] = lambda variables, i=i, extractor=monad.extractor : extractor(variables)._raw_pkval_[i]
+                extractors[param] = lambda vars, i=i, e=monad.extractor : e(vars)._get_raw_pkval_()[i]
 
 class StringParamMonad(StringMixin, ParamMonad): pass
 class NumericParamMonad(NumericMixin, ParamMonad): pass
