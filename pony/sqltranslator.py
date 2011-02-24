@@ -406,6 +406,7 @@ class SQLTranslator(ASTTranslator):
         if node.star_args is not None: raise NotImplementedError
         if node.dstar_args is not None: raise NotImplementedError
         if len(node.args) > 1: return False
+        if not node.args: return False
         arg = node.args[0]
         if not isinstance(arg, ast.GenExpr): return False
         translator.dispatch(node.node)
@@ -650,7 +651,7 @@ class StringMethodMonad(MethodMonad):
     call_lower = make_string_func(LOWER)
     def call_startswith(monad, arg):
         parent_sql = monad.parent.getsql()[0]
-        if arg.type is not monad.type:
+        if arg.type is not monad.parent.type:
             raise TypeError("Argument of 'startswith' method must be a string")
         if isinstance(arg, StringConstMonad):
             assert isinstance(arg.value, basestring)
@@ -662,7 +663,7 @@ class StringMethodMonad(MethodMonad):
         return BoolExprMonad(monad.translator, sql)
     def call_endswith(monad, arg):
         parent_sql = monad.parent.getsql()[0]
-        if arg.type is not monad.type:
+        if arg.type is not monad.parent.type:
             raise TypeError("Argument of 'endswith' method must be a string")
         if isinstance(arg, StringConstMonad):
             assert isinstance(arg.value, basestring)
@@ -674,8 +675,8 @@ class StringMethodMonad(MethodMonad):
         return BoolExprMonad(monad.translator, sql)
     def strip(monad, chars, strip_type):
         parent_sql = monad.parent.getsql()[0]
-        if chars is not None and chars.type is not monad.type:
-            raise TypeError("'chars' argument must be a %s" % monad.type.__name__)
+        if chars is not None and chars.type is not monad.parent.type:
+            raise TypeError("'chars' argument must be a %s" % monad.parent.type.__name__)
         if chars is None:
             return StringExprMonad(monad.translator, monad.parent.type, [ strip_type, parent_sql ])
         else:
