@@ -13,44 +13,47 @@ from pony.utils import localbase, datetime2timestamp, timestamp2datetime
 
 paramstyle = 'qmark'
 
-class Local(localbase):
-    def __init__(self):
-        self.connections = {}
-
-local = Local()
-
-memory_db_conn = None
-
 def quote_name(connection, name):
     return dbapiprovider.quote_name(name)
 
 def _text_factory(s):
     return s.decode('utf8', 'replace')
 
+class Local(localbase):
+    def __init__(self):
+        self.connections = {}
+
+local = Local()
+
+memory_db = None
+
 def connect(filename, create=False):
     if filename == ':memory:':
-        global memory_db_conn
-        if memory_db_conn is None:
-            try: memory_db_conn = sqlite.connect(':memory:', check_same_thread=False)
-            except TypeError, e:
-                if 'check_same_thread' in e.args[0]:
-                    raise TypeError("Please upgrade sqlite or use file database instead of :memory:")
-            memory_db_conn.text_factory = _text_factory
-        return memory_db_conn
-
-    con = local.connections.get(filename)
-    if con is None:
+        global memory_db
+        if memory_db is not None: return memory_db
+        try: con = memory_db = sqlite.connect(':memory:', check_same_thread=False)
+        except TypeError, e:
+            if 'check_same_thread' in e.args[0]: raise TypeError(
+                "Please upgrade sqlite or use file database instead of :memory:")
+    else:
+        con = local.connections.get(filename)
+        if con is not None: return con
         if not create and not path.exists(filename):
             raise IOError("Database file is not found: %r" % filename)
         local.connections[filename] = con = sqlite.connect(filename)
-        con.text_factory = _text_factory
+    con.text_factory = _text_factory
+    con.create_function("pow", 2, pow)
     return con
 
 def release(connection):
     pass
 
+class SQLiteBuilder(dbapiprovider.SQLBuilder):
+    def POW(builder, expr1, expr2):
+        return 'pow(', builder(expr1), ', ', builder(expr2), ')'
+
 def ast2sql(con, ast):
-    b = dbapiprovider.SQLBuilder(ast)
+    b = SQLiteBuilder(ast)
     return b.sql, b.adapter
 
 def _get_converter_type_by_py_type(py_type):
