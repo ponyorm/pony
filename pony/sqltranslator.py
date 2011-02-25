@@ -283,7 +283,7 @@ class SQLTranslator(ASTTranslator):
                 if len(attr_names) > 1: raise NotImplementedError
                 attr_name = attr_names[0]
                 parent_entity = iterables.get(node.name)
-                if parent_entity is None: raise TranslationError("Name %r must be defined in query")
+                if parent_entity is None: raise TranslationError("Name %r must be defined in query" % node.name)
                 attr = parent_entity._adict_.get(attr_name)
                 if attr is None: raise AttributeError, attr_name
                 if not attr.is_collection: raise TypeError
@@ -525,7 +525,7 @@ class NumericMixin(object):
         left_sql = monad.getsql()
         right_sql = monad2.getsql()
         assert len(left_sql) == len(right_sql) == 1
-        return NumericExprMonad(monad.translator, float, [ sqlop, left_sql[0], right_sql[0] ])
+        return NumericExprMonad(monad.translator, float, [ POW, left_sql[0], right_sql[0] ])
     def __neg__(monad):
         sql = monad.getsql()[0]
         return NumericExprMonad(monad.translator, monad.type, [ NEG, sql ])
