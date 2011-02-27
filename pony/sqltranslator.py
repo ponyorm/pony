@@ -1208,7 +1208,9 @@ class QuerySetMonad(SetMixin, Monad):
     def _subselect(monad, select_ast, item_type):
         from_ast = monad.subtranslator.from_
         where_ast = [ WHERE, sqland(monad.subtranslator.conditions) ]
-        sql_ast = [ SELECT, select_ast, from_ast, where_ast ]
+        sql_ast = [ SELECT, select_ast, from_ast ]
+        conditions = monad.subtranslator.conditions
+        if conditions: sql_ast.append([ WHERE, sqland(conditions) ])
         return ExprMonad.new(monad.translator, item_type, sql_ast)
     def contains(monad, item, not_in=False):
         item_type = monad.type[0]
