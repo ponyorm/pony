@@ -1101,7 +1101,7 @@ class AttrSetMonad(SetMixin, Monad):
         if isinstance(item_type, orm.EntityMeta) and len(item_type._pk_columns_) > 1:
             raise NotImplementedError
 
-        expr, from_ast, conditions = monad._subselect()
+        alias, expr, from_ast, conditions = monad._subselect()
         if expr is None:
             assert isinstance(item_type, orm.EntityMeta)
             expr = [ COLUMN, alias, item_type._pk_columns_[0] ]
@@ -1119,33 +1119,33 @@ class AttrSetMonad(SetMixin, Monad):
     def len(monad):
         if not monad.path[-1].reverse: kind = DISTINCT
         else: kind = ALL
-        expr, from_ast, conditions = monad._subselect()
+        alias, expr, from_ast, conditions = monad._subselect()
         sql_ast = [ SELECT, [ AGGREGATES, [ COUNT, kind, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
         return NumericExprMonad(monad.translator, int, sql_ast)
     def sum(monad):
         item_type = monad.type[0]
         if item_type not in (int, float, Decimal): raise TypeError
-        expr, from_ast, conditions = monad._subselect()
+        alias, expr, from_ast, conditions = monad._subselect()
         sql_ast = [ SELECT, [ AGGREGATES, [COALESCE, [ SUM, expr ], [ VALUE, 0 ]]], from_ast, [ WHERE, sqland(conditions) ] ]
         return NumericExprMonad(monad.translator, item_type, sql_ast)
     def min(monad):
         item_type = monad.type[0]
         if item_type not in (int, float, Decimal, str, unicode): raise TypeError
-        expr, from_ast, conditions = monad._subselect()
+        alias, expr, from_ast, conditions = monad._subselect()
         sql_ast = [ SELECT, [ AGGREGATES, [ MIN, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
         return ExprMonad.new(monad.translator, item_type, sql_ast)
     def max(monad):
         item_type = monad.type[0]
         if item_type not in (int, float, Decimal, str, unicode): raise TypeError
-        expr, from_ast, conditions = monad._subselect()
+        alias, expr, from_ast, conditions = monad._subselect()
         sql_ast = [ SELECT, [ AGGREGATES, [ MAX, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
         return ExprMonad.new(monad.translator, item_type, sql_ast)
     def nonzero(monad):
-        expr, from_ast, conditions = monad._subselect()
+        alias, expr, from_ast, conditions = monad._subselect()
         sql_ast = [ EXISTS, from_ast, [ WHERE, sqland(conditions) ] ]
         return BoolExprMonad(monad.translator, sql_ast)
     def negate(monad):
-        expr, from_ast, conditions = monad._subselect()
+        alias, expr, from_ast, conditions = monad._subselect()
         sql_ast = [ NOT_EXISTS, from_ast, [ WHERE, sqland(conditions) ] ]
         return BoolExprMonad(monad.translator, sql_ast)
     def _subselect(monad):
@@ -1186,7 +1186,7 @@ class AttrSetMonad(SetMixin, Monad):
                 join_tables(conditions, prev_alias, alias, prev_entity._pk_columns_, reverse.columns)
             prev_alias = alias
         assert alias is not None
-        return expr, from_ast, conditions
+        return alias, expr, from_ast, conditions
     def getsql(monad):
         raise TranslationError
 
