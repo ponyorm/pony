@@ -1944,7 +1944,7 @@ class Diagram(object):
 
         if create_tables: schema.create_tables()
             
-        if not check_tables: return
+        if not check_tables and not create_tables: return
         for table in schema.tables.values():
             sql_ast = [ SELECT,
                         [ ALL, ] + [ [ COLUMN, table.name, column.name ] for column in table.column_list ],
