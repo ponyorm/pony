@@ -64,7 +64,7 @@ class Table(object):
         schema = table.schema
         case = schema.case
         result = []
-        result.append(case('CREATE TABLE %s (') % schema.quote_name(table.name))
+        result.append(case('CREATE TABLE IF NOT EXISTS %s (') % schema.quote_name(table.name))
         for column in table.column_list:
             result.append(schema.indent + column.get_create_sql(created_tables) + ',')
         if len(table.pk_index.columns) > 1:
