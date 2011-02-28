@@ -1,104 +1,114 @@
 import unittest
 from pony.orm import *
-from pony.sqltranslator import select
+from pony.sqltranslator import select, TranslationError
 from pony.db import Database
+from testutils import *
 
 name1 = 'S1'
-#TODO move inside test after LOAD_DEREF is implemented
-stud1 = None
-grade1 = None
 
 class TestSQLTranslator(unittest.TestCase):
     def setUp(self):
         _diagram_ = Diagram()
         self.diagram = _diagram_
+        self.db = Database('sqlite', ':memory:')
         class Student(Entity):
-            _table_ = 'Students'
             name = Required(unicode)
             group = Required('Group')
             scholarship = Required(int, default=0)
             grades = Set('Grade')
         class Group(Entity):
-            _table_ = 'Groups'
             id = PrimaryKey(int)
             students = Set(Student)
+            dep = Required(unicode)
+            rooms = Set('Room')
         class Course(Entity):
-            _table_ = 'Courses'
             name = Required(unicode)
             grades = Set('Grade')
         class Grade(Entity):
-            _table_ = 'Grades'
             student = Required(Student)
             course = Required(Course)
             PrimaryKey(student, course)
-            value = Required(str)        
-        self.db = Database('sqlite', ':memory:')
+            value = Required(str)
+        class Room(Entity):
+            name = PrimaryKey(unicode)
+            groups = Set(Group)
         conn = self.db.get_connection()
         conn.executescript("""
-            drop table if exists Students;
-            create table Students(
+            drop table if exists Student;
+            create table Student(
               id integer primary key,
               name varchar(50) not null,
               "group" integer not null,
               scholarship integer not null default 0
             );
-            drop table if exists Groups;
-            create table Groups(
-              id integer primary key
+            drop table if exists "Group";
+            create table "Group"(
+              id integer primary key,
+              dep varchar(20)
             );
-            drop table if exists Courses;
-            create table Courses(
+            drop table if exists Course;
+            create table Course(
               id integer primary key,
               name varchar(50) not null
             );
-            drop table if exists Grades;
-            create table Grades(
+            drop table if exists Grade;
+            create table Grade(
               student integer not null references Students(id),
               course integer not null references Courses(id),
               value varchar(2) not null,
               primary key(student, course)
             );
-            insert into Students values (1, 'S1', 1, 0);
-            insert into Students values (2, 'S2', 1, 100);
-            insert into Students values (3, 'S3', 2, 500);
-            insert into Groups values (1);
-            insert into Groups values (2);
-            insert into Courses values (10, 'Math');
-            insert into Courses values (11, 'Economics');
-            insert into Courses values (12, 'Physics');
-            insert into Grades values (1, 10, 'C');
-            insert into Grades values (1, 12, 'A');
-            insert into Grades values (2, 11, 'B');            
+            drop table if exists Room;
+            create table Room(
+              name varchar(20) primary key
+            );
+            drop table if exists Group_Room;
+            create table Group_Room (
+              "group" integer,
+              room varchar(20),
+              primary key("group", room)
+            );
+            insert into Student values (1, 'S1', 1, 0);
+            insert into Student values (2, 'S2', 1, 100);
+            insert into Student values (3, 'S3', 2, 500);
+            insert into "Group" values (1, 'dep1');
+            insert into "Group" values (2, 'dep2');
+            insert into Course values (10, 'Math');
+            insert into Course values (11, 'Economics');
+            insert into Course values (12, 'Physics');
+            insert into Grade values (1, 10, 'C');
+            insert into Grade values (1, 12, 'A');
+            insert into Grade values (2, 11, 'B');
+            insert into Room values ('Room1');
+            insert into Room values ('Room2');
+            insert into Room values ('Room3');
+            insert into Group_Room values (1, 'Room1');
+            insert into Group_Room values (1, 'Room2');
+            insert into Group_Room values (2, 'Room2');
+            insert into Group_Room values (2, 'Room3');
         """)
         generate_mapping(self.db, check_tables=True)
-        local.trans = Transaction()
     def test_select1(self):
         Student = self.diagram.entities["Student"]
         result = select(s for s in Student)
         names = [ stud.name for stud in result ]
         names.sort()
         self.assertEquals(names, ['S1', 'S2', 'S3'])
-    def test_select_numeric_param(self):
+    def test_select_param(self):        
         Student = self.diagram.entities["Student"]
-        result = select(s for s in Student if s.name == name1)
-        names = [ stud.name for stud in result ]        
-        self.assertEquals(names, ['S1'])
+        result = select(s for s in Student if s.name == name1).fetch()
+        self.assertEquals(result, [Student(1)])
     def test_select_object_param(self):
-        global stud1
         Student = self.diagram.entities["Student"]
         stud1 = Student(1)
-        result = select(s for s in Student if s != stud1)
-        names = [ stud.name for stud in result ]
-        names.sort()
-        self.assertEquals(names, ['S2', 'S3'])
+        result = set(select(s for s in Student if s != stud1))
+        self.assertEquals(result, set([Student(2), Student(3)]))
     def test_select_deref(self):
         Student = self.diagram.entities["Student"]
         x = 'S1'
-        result = select(s for s in Student if s.name == x)
-        names = [ stud.name for stud in result ]        
-        self.assertEquals(names, ['S1'])
+        result = select(s for s in Student if s.name == x).fetch()
+        self.assertEquals(result, [Student(1)])
     def test_select_composite_key(self):
-        global grade1
         Grade = self.diagram.entities["Grade"]
         Student = self.diagram.entities["Student"]
         Course = self.diagram.entities["Course"]
@@ -109,79 +119,129 @@ class TestSQLTranslator(unittest.TestCase):
         self.assertEquals(grades, ['B', 'C'])
     def test_function_max1(self):
         Student = self.diagram.entities["Student"]
-        result = select(s for s in Student if max(s.grades.value) == 'C')
-        names = [ stud.name for stud in result ]
-        self.assertEquals(names, ['S1'])
+        result = select(s for s in Student if max(s.grades.value) == 'C').fetch()
+        self.assertEquals(result, [Student(1)])
+    @raises_exception(TypeError)
     def test_function_max2(self):
         Grade = self.diagram.entities["Grade"]
         Student = self.diagram.entities["Student"]
         Course = self.diagram.entities["Course"]
         grade1 = Grade(Student(1), Course(12))
-        try:
-            result = select(s for s in Student if max(s.grades) == grade1)
-            self.assert_(False)
-        except TypeError:
-            self.assert_(True)
+        select(s for s in Student if max(s.grades) == grade1)
     def test_function_min(self):
         Student = self.diagram.entities["Student"]
-        result = select(s for s in Student if min(s.grades.value) == 'B')
-        names = [ stud.name for stud in result ]
-        self.assertEquals(names, ['S2'])
+        result = select(s for s in Student if min(s.grades.value) == 'B').fetch()
+        self.assertEquals(result, [Student(2)])
+    @raises_exception(TypeError)
     def test_function_min2(self):
         Grade = self.diagram.entities["Grade"]
         Student = self.diagram.entities["Student"]
         Course = self.diagram.entities["Course"]
         grade1 = Grade(Student(1), Course(12))
-        try:
-            result = select(s for s in Student if min(s.grades) == grade1)
-            self.assert_(False)
-        except TypeError:
-            self.assert_(True)
+        select(s for s in Student if min(s.grades) == grade1).fetch()
     def test_function_len1(self):
         Student = self.diagram.entities["Student"]
-        result = select(s for s in Student if len(s.grades) == 1)
-        names = [ stud.name for stud in result ]
-        self.assertEquals(names, ['S2'])
+        result = select(s for s in Student if len(s.grades) == 1).fetch()
+        self.assertEquals(result, [Student(2)])
     def test_function_len2(self):
         Student = self.diagram.entities["Student"]
-        result = select(s for s in Student if max(s.grades.value) == 'C')
-        names = [ stud.name for stud in result ]
-        self.assertEquals(names, ['S1'])
+        result = select(s for s in Student if max(s.grades.value) == 'C').fetch()
+        self.assertEquals(result, [Student(1)])
     def test_function_sum1(self):
         Group = self.diagram.entities["Group"]
-        result = select(g for g in Group if sum(g.students.scholarship) == 100)
-        group_ids = [ group.id for group in result ]
-        self.assertEquals(group_ids, [1])
+        result = select(g for g in Group if sum(g.students.scholarship) == 100).fetch()
+        self.assertEquals(result, [Group(1)])
+    @raises_exception(TypeError)
     def test_function_sum2(self):
         Group = self.diagram.entities["Group"]
-        try:
-            result = select(g for g in Group if sum(g.students) == 100)
-            self.assert_(False)
-        except TypeError:
-            self.assert_(True)
+        select(g for g in Group if sum(g.students) == 100).fetch()
+    @raises_exception(TypeError)
     def test_function_sum3(self):
         Group = self.diagram.entities["Group"]
-        try:
-            result = select(g for g in Group if sum(g.students.name) == 100)
-            self.assert_(False)
-        except TypeError:
-            self.assert_(True)
+        select(g for g in Group if sum(g.students.name) == 100).fetch()
     def test_function_abs(self):
         Student = self.diagram.entities["Student"]
-        result = select(s for s in Student if abs(s.scholarship) == 100)
-        names = [ stud.name for stud in result ]
-        self.assertEquals(names, ['S2'])
+        result = select(s for s in Student if abs(s.scholarship) == 100).fetch()
+        self.assertEquals(result, [Student(2)])
     def test_builtin_in_locals(self):
         x = max
         Student = self.diagram.entities["Student"]
         gen = (s for s in Student if x(s.grades.value) == 'C')
-        result = select(gen)
-        names = [ stud.name for stud in result ]
-        self.assertEquals(names, ['S1'])
+        result = select(gen).fetch()
+        self.assertEquals(result, [Student(1)])
         x = min
-        result = select(gen)
-        names = [ stud.name for stud in result ]
-        self.assertEquals(names, [])
+        result = select(gen).fetch()
+        self.assertEquals(result, [])
+    @raises_exception(TranslationError, "Name 'g' must be defined in query")
+    def test_name(self):
+        Student = self.diagram.entities["Student"]
+        select(s for s in Student for g in g.subjects).fetch()
+    def test_chain1(self):
+        Group = self.diagram.entities["Group"]
+        result = set(select(g for g in Group for s in g.students if s.name.endswith('3')))
+        self.assertEquals(result, set([Group(2)]))
+    def test_chain_m2m(self):
+        Group = self.diagram.entities["Group"]
+        result = set(select(g for g in Group for r in g.rooms if r.name == 'Room2'))
+        self.assertEquals(result, set([Group(1), Group(2)]))
+    @raises_exception(TranslationError, 'All entities in a query must belong to the same diagram')
+    def test_two_diagrams(self):
+        Group = self.diagram.entities["Group"]
+        _diagram_ = Diagram()
+        class Room(Entity):
+            name = PrimaryKey(unicode)
+        select(g for g in Group for r in Room if r.name == 'Room2').fetch()
+    def test_add_sub_mul_etc(self):
+        Student = self.diagram.entities["Student"]
+        result = select(s for s in Student if ((-s.scholarship + 200) * 10 / 5 - 100) ** 2 == 10000 or 5 == 2).fetch()
+        self.assertEquals(result, [Student(2)])
+    def test_subscript(self):
+        Student = self.diagram.entities["Student"]
+        result = set(select(s for s in Student if s.name[1] == '2'))
+        self.assertEquals(result, set([Student(2)]))
+    def test_slice(self):
+        Student = self.diagram.entities["Student"]
+        result = set(select(s for s in Student if s.name[:1] == 'S'))
+        self.assertEquals(result, set([Student(3), Student(2), Student(1)]))        
+    def test_attr_chain(self):
+        Student = self.diagram.entities["Student"]
+        s1 = Student(1)
+        result = select(s for s in Student if s == s1).fetch()
+        self.assertEquals(result, [Student(1)])
+        result = select(s for s in Student if not s == s1).fetch()
+        self.assertEquals(result, [Student(2), Student(3)])        
+        result = select(s for s in Student if s.group == s1.group).fetch()
+        self.assertEquals(result, [Student(1), Student(2)])
+        result = select(s for s in Student if s.group.dep == s1.group.dep).fetch()
+        self.assertEquals(result, [Student(1), Student(2)])
+    def test_list_monad1(self):
+        Student = self.diagram.entities["Student"]
+        result = select(s for s in Student if s.name in ['S1']).fetch()
+        self.assertEquals(result, [Student(1)])
+    def test_list_monad2(self):
+        Student = self.diagram.entities["Student"]
+        result = select(s for s in Student if s.name not in ['S1', 'S2']).fetch()
+        self.assertEquals(result, [Student(3)])
+    def test_list_monad3(self):
+        Grade = self.diagram.entities["Grade"]
+        Student = self.diagram.entities["Student"]
+        Course = self.diagram.entities["Course"]
+        Group = self.diagram.entities["Group"]
+        grade1 = Grade(Student(1), Course(12))
+        grade2 = Grade(Student(1), Course(10))
+        result = set(select(g for g in Grade if g in [grade1, grade2]))
+        self.assertEquals(result, set([grade1, grade2]))
+        result = set(select(g for g in Grade if g not in [grade1, grade2]))
+        self.assertEquals(result, set([Grade(Student(2), Course(11))]))
+    def test_tuple_monad1(self):
+        Student = self.diagram.entities["Student"]
+        result = select(s for s in Student if s.name in ('S1', 'S2')).fetch()
+        self.assertEquals(result, [Student(1), Student(2)])
+    def test_None_value(self):
+        Student = self.diagram.entities["Student"]
+        result = select(s for s in Student if s.name is None).fetch()
+        self.assertEquals(result, [])
+
        
 if __name__ == "__main__":
     unittest.main()

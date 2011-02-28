@@ -17,6 +17,11 @@ from test_formatstyles import *
 from test_attr_set_monad import *
 from test_method_monad import *
 from test_orderby_limit import *
+from test_query_set_monad import *
+from test_object_flat_monad import *
+from test_converters import *
+from test_string_mixin import *
+from test_func_monad import *
 
 if __name__ == '__main__':
     unittest.main()

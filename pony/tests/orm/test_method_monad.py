@@ -70,7 +70,19 @@ class TestMethodMonad(unittest.TestCase):
     def test7(self):
         Student = self.diagram.entities.get("Student")
         students = set(select(s for s in Student if not s.name.endswith(5)))
-    
+    def test8(self):
+        Student = self.diagram.entities.get("Student")
+        result = set(select(s for s in Student if s.name.upper() == "JOE"))
+        self.assertEquals(result, set([Student(1)]))
+    def test9(self):
+        Student = self.diagram.entities.get("Student")
+        result = set(select(s for s in Student if s.name.lower() == "joe"))
+        self.assertEquals(result, set([Student(1)]))
+    @raises_exception(AttributeError, "'unicode' object has no attribute 'unknown'")
+    def test10(self):
+        Student = self.diagram.entities.get("Student")
+        result = set(select(s for s in Student if s.name.unknown() == "joe"))
+        
 
 if __name__ == "__main__":
     unittest.main()

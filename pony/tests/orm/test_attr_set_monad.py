@@ -181,7 +181,6 @@ class TestAttrSetMonad(unittest.TestCase):
         groups = set(select(g for g in Group if 700 not in select(s.scholarship for s in Student if s.group == g)))
         self.assertEqual(groups, set([Group(43)]))
 
-
 if __name__ == "__main__":
     unittest.main()
 
