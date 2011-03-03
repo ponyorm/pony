@@ -313,7 +313,7 @@ class SQLTranslator(ASTTranslator):
         translator.dispatch(tree.expr)
         monad = tree.expr.monad
         translator.attrname = None
-        if isinstance(monad, (StringAttrMonad, NumericAttrMonad)):
+        if isinstance(monad, AttrMonad) and not isinstance(monad, ObjectMixin):
             translator.attrname = monad.attr.name
             monad = monad.parent
         if not isinstance(monad, ObjectMixin):
