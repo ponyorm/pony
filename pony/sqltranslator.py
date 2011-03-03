@@ -575,9 +575,9 @@ class StringMixin(object):
             
             expr_sql = monad.getsql()[0]
 
-            if start is None:
-                start_sql = [ VALUE, 1 ]
-            elif isinstance(start, NumericConstMonad):
+            if start is None: start = ConstMonad(monad.translator, 0)
+            
+            if isinstance(start, NumericConstMonad):
                 if start.value < 0: raise NotImplementedError('Negative slice indices not supported')
                 start_sql = [ VALUE, start.value + 1 ]
             else:
@@ -588,15 +588,16 @@ class StringMixin(object):
                 len_sql = None
             elif isinstance(stop, NumericConstMonad):
                 if stop.value < 0: raise NotImplementedError('Negative slice indices not supported')
-                if start is None:
-                    len_sql = [ VALUE, stop.value ]
-                elif isinstance(start, NumericConstMonad):
+                if isinstance(start, NumericConstMonad):
                     len_sql = [ VALUE, stop.value - start.value ]
                 else:
-                    len_sql = [ SUB, [ VALUE, stop.value ], start_sql ]
+                    len_sql = [ SUB, [ VALUE, stop.value ], start.getsql()[0] ]
             else:
                 stop_sql = stop.getsql()[0]
-                len_sql = [ SUB, stop_sql, start_sql ]
+                if isinstance(start, NumericConstMonad):
+                    len_sql = [ SUB, stop_sql, [ VALUE, start.value ] ]
+                else:
+                    len_sql = [ SUB, stop_sql, start.getsql()[0] ]
 
             sql = [ SUBSTR, expr_sql, start_sql, len_sql ]
             return StringExprMonad(monad.translator, monad.type, sql)
@@ -642,7 +643,7 @@ def make_string_func(sqlop):
     def func(monad):
         sql = monad.parent.getsql()
         assert len(sql) == 1
-        return StringExprMonad(monad.translator, monad.type, [ sqlop, sql[0] ])
+        return StringExprMonad(monad.translator, monad.parent.type, [ sqlop, sql[0] ])
     func.__name__ = sqlop
     return func
 
@@ -1221,7 +1222,8 @@ class QuerySetMonad(SetMixin, Monad):
         else: columns = attr.columns
         if len(columns) > 1: raise NotImplementedError
         select_ast = [ ALL, [ COLUMN, sub.alias, columns[0] ] ]
-        subquery_ast = [ SELECT, select_ast, sub.from_, [ WHERE, sqland(sub.conditions) ] ]
+        subquery_ast = [ SELECT, select_ast, sub.from_]
+        if sub.conditions: subquery_ast.append([ WHERE, sqland(sub.conditions) ])
         sqlop = not_in and NOT_IN or IN
         return BoolExprMonad(monad.translator, [ sqlop, item.getsql()[0], subquery_ast ])
     def len(monad):
