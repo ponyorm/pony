@@ -37,6 +37,14 @@ class TestMethodMonad(unittest.TestCase):
         x = "Pe"
         students = set(select(s for s in Student if s.name.startswith(x)))
         self.assertEqual(students, set([Student(5)]))            
+    def test1b(self):
+        Student = self.diagram.entities.get("Student")
+        students = set(select(s for s in Student if not not s.name.startswith('J')))
+        self.assertEqual(students, set([Student(1), Student(4)]))
+    def test1c(self):
+        Student = self.diagram.entities.get("Student")
+        students = set(select(s for s in Student if not not not s.name.startswith('J')))
+        self.assertEqual(students, set([Student(2), Student(3), Student(5)]))
     def test2(self):
         Student = self.diagram.entities.get("Student")
         students = set(select(s for s in Student if s.name.endswith('e')))

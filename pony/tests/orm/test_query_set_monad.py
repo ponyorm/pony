@@ -91,7 +91,11 @@ class TestQuerySetMonad(unittest.TestCase):
         Student = self.diagram.entities["Student"]
         result = set(select(g for g in Group if not(s.scholarship for s in Student if s.group == g)))
         self.assertEquals(result, set([]))
-
+    def test_no_conditions(self):
+        Group = self.diagram.entities["Group"]
+        Student = self.diagram.entities["Student"]
+        students = set(select(s for s in Student if s.group in (g for g in Group)))
+        self.assertEqual(students, set([Student(1), Student(2), Student(3)]))    
 if __name__ == "__main__":
     unittest.main()
         

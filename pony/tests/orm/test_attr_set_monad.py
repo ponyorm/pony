@@ -2,6 +2,7 @@ import unittest
 from pony.orm import *
 from pony.db import Database
 from pony.sqltranslator import select, exists
+from testutils import *
 
 class TestAttrSetMonad(unittest.TestCase):
     def setUp(self):
@@ -27,6 +28,10 @@ class TestAttrSetMonad(unittest.TestCase):
             student = Required(Student)
             subject = Required(Subject)
             PrimaryKey(student, subject)
+        self.Student = Student
+        self.Group = Group
+        self.Subject = Subject
+        self.Mark = Mark
         self.db = Database('sqlite', ':memory:')
         con = self.db.get_connection()
         con.executescript("""
@@ -59,6 +64,7 @@ class TestAttrSetMonad(unittest.TestCase):
             subject varchar(20),
             primary key (student, subject)
         );
+        drop table if exists OneToOne;
         insert into Student values (1, "Joe", null, 41);
         insert into Student values (2, "Bob", 100, 41);
         insert into Student values (3, "Beth", 500, 41);
@@ -87,99 +93,129 @@ class TestAttrSetMonad(unittest.TestCase):
         generate_mapping(self.db,  check_tables=True)
 
     def test1(self):
-        Group = self.diagram.entities.get("Group")
+        Group = self.Group
         groups = select(g for g in Group if len(g.students) > 2).fetch()
         self.assertEqual(groups, [Group(41)])
     def test2(self):
-        Group = self.diagram.entities.get("Group")
+        Group = self.Group
         groups = set(select(g for g in Group if len(g.students.name) >= 2))
         self.assertEqual(groups, set([Group(41), Group(42)]))
     def test3(self):
-        Group = self.diagram.entities.get("Group")
+        Group = self.Group
         groups = select(g for g in Group if len(g.students.marks) > 2).fetch()
         self.assertEqual(groups, [Group(41)])
     def test4(self):
-        Group = self.diagram.entities.get("Group")
+        Group = self.Group
         groups = select(g for g in Group if max(g.students.marks.value) <= 2).fetch()
         self.assertEqual(groups, [Group(42)])
     def test5(self):
-        Student = self.diagram.entities.get("Student")
+        Student = self.Student
         students= select(s for s in Student if len(s.marks.subject.name) > 5).fetch()
         self.assertEqual(students, [])
     def test6(self):
-        Student = self.diagram.entities.get("Student")
+        Student = self.Student
         students = set(select(s for s in Student if len(s.marks.subject) >= 2))
         self.assertEqual(students, set([Student(2), Student(3)]))
     def test8(self):
-        Student = self.diagram.entities.get("Student")
-        Group = self.diagram.entities.get("Group")
+        Student = self.Student
+        Group = self.Group
         students = set(select(s for s in Student if s.group in select(g for g in Group if g.department == 101)))
         self.assertEqual(students, set([Student(1), Student(2), Student(3)]))
     def test9(self):
-        Student = self.diagram.entities.get("Student")
-        Group = self.diagram.entities.get("Group")
+        Student = self.Student
+        Group = self.Group
         students = set(select(s for s in Student if s.group not in select(g for g in Group if g.department == 101)))
         self.assertEqual(students, set([Student(4), Student(5)]))
     def test10(self):
-        Student = self.diagram.entities.get("Student")
-        Group = self.diagram.entities.get("Group")
+        Student = self.Student
+        Group = self.Group
         students = set(select(s for s in Student if s.group in (g for g in Group if g.department == 101)))
         self.assertEqual(students, set([Student(1), Student(2), Student(3)]))
     def test11(self):
-        Group = self.diagram.entities.get("Group")
+        Group = self.Group
         students = set(select(g for g in Group if len(g.subjects.groups.subjects) > 1))
         self.assertEqual(students, set([Group(41), Group(42), Group(43)]))
     def test12(self):
-        Group = self.diagram.entities.get("Group")
+        Group = self.Group
         groups = set(select(g for g in Group if len(g.subjects) >= 2))
         self.assertEqual(groups, set([Group(41), Group(42)]))
     def test13(self):
-        Group = self.diagram.entities.get("Group")
+        Group = self.Group
         groups = set(select(g for g in Group if g.students))
         self.assertEqual(groups, set([Group(41), Group(42)]))
     def test14(self):
-        Group = self.diagram.entities.get("Group")
+        Group = self.Group
         groups = set(select(g for g in Group if not g.students))
         self.assertEqual(groups, set([Group(43)]))
     def test15(self):
-        Group = self.diagram.entities.get("Group")
+        Group = self.Group
         groups = set(select(g for g in Group if exists(g.students)))
         self.assertEqual(groups, set([Group(41), Group(42)]))
+    def test15a(self):
+        Group = self.Group
+        groups = set(select(g for g in Group if not not exists(g.students)))
+        self.assertEqual(groups, set([Group(41), Group(42)]))
     def test16(self):
-        Group = self.diagram.entities.get("Group")
+        Group = self.Group
         groups = select(g for g in Group if not exists(g.students)).fetch()
         self.assertEqual(groups, [Group(43)])
     def test17(self):
-        Group = self.diagram.entities.get("Group")
+        Group = self.Group
         groups = set(select(g for g in Group if 100 in g.students.scholarship))
         self.assertEqual(groups, set([Group(41)]))        
     def test18(self):
-        Group = self.diagram.entities.get("Group")
+        Group = self.Group
         groups = set(select(g for g in Group if 100 not in g.students.scholarship))
         self.assertEqual(groups, set([Group(42), Group(43)]))
     def test19(self):
-        Group = self.diagram.entities.get("Group")
+        Group = self.Group
         groups = set(select(g for g in Group if not not not 100 not in g.students.scholarship))
         self.assertEqual(groups, set([Group(41)]))
     def test20(self):
-        Group = self.diagram.entities.get("Group")
-        Student = self.diagram.entities.get("Student")
+        Group = self.Group
+        Student = self.Student
         groups = set(select(g for g in Group if exists(s for s in Student if s.group == g and s.scholarship == 500)))
         self.assertEqual(groups, set([Group(41), Group(42)]))
     def test21(self):
-        Group = self.diagram.entities.get("Group")
+        Group = self.Group
         groups = set(select(g for g in Group if g.department is not None))
         self.assertEqual(groups, set([Group(41), Group(42), Group(43)]))
+    def test21a(self):
+        Group = self.Group
+        groups = set(select(g for g in Group if not g.department is not None))
+        self.assertEqual(groups, set([]))
+    def test21b(self):
+        Group = self.Group
+        groups = set(select(g for g in Group if not not not g.department is None))
+        self.assertEqual(groups, set([Group(41), Group(42), Group(43)]))   
     def test22(self):
-        Group = self.diagram.entities.get("Group")
-        Student = self.diagram.entities.get("Student")
+        Group = self.Group
+        Student = self.Student
         groups = set(select(g for g in Group if 700 in select(s.scholarship for s in Student if s.group == g)))
         self.assertEqual(groups, set([Group(42)]))
     def test23(self):
-        Group = self.diagram.entities.get("Group")
-        Student = self.diagram.entities.get("Student")
+        Group = self.Group
+        Student = self.Student
         groups = set(select(g for g in Group if 700 not in select(s.scholarship for s in Student if s.group == g)))
         self.assertEqual(groups, set([Group(43)]))
+    @raises_exception(NotImplementedError)
+    def test24(self):
+        Group = self.Group
+        groups = set(select(g for g in Group for g2 in Group if g.students == g2.students))
+    @raises_exception(NotImplementedError)
+    def test25(self):
+        Student = self.Student
+        Mark = self.Mark
+        Subject = self.Subject
+        m1 = Mark(Student(1), Subject("Math"))
+        marks = select(s for s in Student if m1 in s.marks)
+    def test26(self):
+        Group = self.Group
+        Student = self.Student
+        s1 = Student(1)
+        groups = set(select(g for g in Group if s1 in g.students))
+        self.assertEqual(groups, set([Group(41)]))            
+    
 
 if __name__ == "__main__":
     unittest.main()
