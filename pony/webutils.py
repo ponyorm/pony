@@ -1,7 +1,7 @@
 import pony
 
 from pony.utils import decorator_with_params, tostring
-from pony.templating import htmltag, Html, printhtml, htmljoin
+from pony.templating import htmltag, Html, printhtml, htmljoin, lazy, BoundMarkup
 from pony.web import local, http, url
 from pony.postprocessing import css_link, script_link
 
@@ -35,9 +35,16 @@ link_funcs = dict(
     jquery=jquery_link
     )
 
+@lazy
 def link(*args, **keyargs):
     if not args: raise TypeError('link() function requires at least one positional argument')
     attrs = None
+    
+    last = args[-1]
+    if isinstance(last, BoundMarkup):
+        description = last()
+        args = (description,) + args[:-1]
+
     first = args[0]
     if hasattr(first, 'routes'):
         func = first
