@@ -53,9 +53,12 @@ class TestManyToManyNonComposite(unittest.TestCase):
         g.subjects.remove(subjects[:2])
         g.subjects.add(subjects[-2:])
         get_trans().commit()
-        self.assertEqual(g.subjects, set([Subject.find_one('Subj3'), Subject.find_one('Subj4')]))
+        self.assertEqual(Group(101).subjects, set([Subject('Subj3'), Subject('Subj4')]))
         db_subjects = self.db.select("subject from Group_Subject where [group] = 101")
         self.assertEqual(db_subjects , ['Subj3', 'Subj4'])
+#    def test_set_load(self):
+#        # TODO
+#        pass
 
 
 #class TestManyToManyComposite(unittest.TestCase):
