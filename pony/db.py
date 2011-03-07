@@ -64,7 +64,6 @@ def wrap_dbapi_exceptions(provider, func, *args, **keyargs):
 
 class Local(localbase):
     def __init__(local):
-        local.default_db = None
         local.connections = {}
 
 local = Local()        
@@ -271,50 +270,10 @@ Database.InternalError = InternalError
 Database.ProgrammingError = ProgrammingError
 Database.NotSupportedError = NotSupportedError
 
-def use_db(db):
-    local.default_db = db
-
-def _get_database():
-    db = local.default_db
-    if db is None: raise NoDefaultDbException('There is no default database defined')
-    return db
-
-def get_connection():
-    db = _get_database()
-    return db.get_connection()
-
 def release():
     for con, provider, _ in local.connections.values():
         provider.release(con)
     local.connections.clear()
-
-def execute(sql):
-    db = _get_database()
-    return db.execute(sql, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
-
-def select(sql):
-    db = _get_database()
-    return db.select(sql, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
-    
-def get(sql):
-    db = _get_database()
-    return db.get(sql, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
-
-def exists(sql):
-    db = _get_database()
-    return db.exists(sql, sys._getframe(1).f_globals, sys._getframe(1).f_locals)
-
-def insert(table_name, **keyargs):
-    db = _get_database()
-    return db.insert(table_name, **keyargs)
-
-def commit():
-    db = _get_database()
-    return db.commit()
-
-def rollback():
-    db = _get_database()
-    return db.rollback()
 
 def auto_commit():
     default_db = local.default_db
