@@ -232,14 +232,14 @@ class Attribute(object):
         if prev == val: return
         try:
             if attr.is_unique:
-                trans.update_simple_index(obj, attr, prev, val, undo)
+                trans._update_simple_index(obj, attr, prev, val, undo)
             for attrs, i in attr.composite_keys:
                 get = obj.__dict__.get
                 vals = [ get(a, NOT_LOADED) for a in attrs ]
                 prevs = tuple(vals)
                 vals[i] = val
                 vals = tuple(vals)
-                trans.update_composite_index(obj, attrs, prevs, vals, undo)
+                trans._update_composite_index(obj, attrs, prevs, vals, undo)
 
             obj.__dict__[attr] = val
                 
@@ -277,14 +277,14 @@ class Attribute(object):
 
         if not attr.reverse and not attr.is_indexed: return
         trans = obj._trans_
-        if attr.is_unique: trans.db_update_simple_index(obj, attr, prev, val)
+        if attr.is_unique: trans._db_update_simple_index(obj, attr, prev, val)
         for attrs, i in attr.composite_keys:
             get = obj.__dict__.get
             vals = [ get(a, NOT_LOADED) for a in attrs ]
             prevs = tuple(vals)
             vals[i] = val
             vals = tuple(vals)
-            trans.db_update_composite_index(obj, attrs, prevs, vals)
+            trans._db_update_composite_index(obj, attrs, prevs, vals)
         if not reverse: pass
         elif not is_reverse_call: attr.db_update_reverse(obj, prev, val)
         elif prev is not None:
@@ -1393,7 +1393,7 @@ class Entity(object):
             if val is NOT_FOUND: continue
             prev = obj.__dict__.get(attr, NOT_LOADED)
             if prev == val: continue
-            trans.db_update_simple_index(obj, attr, prev, val)
+            trans._db_update_simple_index(obj, attr, prev, val)
         for attrs in obj._composite_keys_:
             for attr in attrs:
                 if attr in avdict: break
@@ -1406,7 +1406,7 @@ class Entity(object):
                 if val is NOT_FOUND: continue
                 vals[i] = val
             vals = tuple(vals)
-            trans.db_update_composite_index(obj, attrs, prevs, vals)
+            trans._db_update_composite_index(obj, attrs, prevs, vals)
         for attr, val in avdict.iteritems():
             if not attr.reverse: continue
             prev = obj.__dict__.get(attr, NOT_LOADED)
@@ -1545,7 +1545,7 @@ class Entity(object):
                 if val is NOT_FOUND: continue
                 prev = obj.__dict__.get(attr, NOT_LOADED)
                 if prev == val: continue
-                trans.update_simple_index(obj, attr, prev, val, undo)
+                trans._update_simple_index(obj, attr, prev, val, undo)
             for attrs in obj._composite_keys_:
                 for attr in attrs:
                     if attr in avdict: break
@@ -1558,7 +1558,7 @@ class Entity(object):
                     if val is NOT_FOUND: continue
                     vals[i] = val
                 vals = tuple(vals)
-                trans.update_composite_index(obj, attrs, prevs, vals, undo)
+                trans._update_composite_index(obj, attrs, prevs, vals, undo)
             for attr, val in avdict.iteritems():
                 if not attr.reverse: continue
                 prev = obj.__dict__.get(attr, NOT_LOADED)
@@ -1962,6 +1962,7 @@ def generate_mapping(*args, **keyargs):
 
 class Transaction(object):
     def __init__(trans):
+        trans.is_active = True
         trans.ignore_none = True
         trans.indexes = {}
         trans.created = set()
@@ -1969,9 +1970,7 @@ class Transaction(object):
         trans.updated = set()
         trans.modified_collections = {}
         trans.to_be_checked = []
-    def flush(trans):
-        for obj in trans.to_be_checked: obj._save_()
-    def commit(trans):
+    def _prepare(trans):
         databases = set()
         for obj in trans.to_be_checked:
             databases.add(obj._diagram_.database)
@@ -1988,21 +1987,34 @@ class Transaction(object):
                 setdata = obj.__dict__[attr]
                 for obj2 in setdata.added: added.add((obj, obj2))
                 for obj2 in setdata.removed: removed.add((obj, obj2))
+        return databases, modified_m2m
+    def commit(trans):
+        if not trans.is_active: raise TransactionError('Transaction is not active')
+        databases, modified_m2m = trans._prepare()
         if len(databases) > 1: raise NotImplementedError
-        trans.remove_m2m(modified_m2m)
-        for obj in trans.to_be_checked: obj._save_()
-        trans.add_m2m(modified_m2m)
         database = databases.pop()
-        database.commit()
-    def remove_m2m(trans, modified_m2m):
+        try:
+            database.rollback()
+            try:
+                trans._remove_m2m(modified_m2m)
+                for obj in trans.to_be_checked: obj._save_()
+                trans._add_m2m(modified_m2m)
+                database.commit()
+            except:
+                database.rollback()
+                raise
+        finally:
+            trans.is_active = False
+            local.trans = None
+    def _remove_m2m(trans, modified_m2m):
         for attr, (added, removed) in modified_m2m.iteritems():
             if not removed: continue
             attr.remove_m2m(removed)
-    def add_m2m(trans, modified_m2m):
+    def _add_m2m(trans, modified_m2m):
         for attr, (added, removed) in modified_m2m.iteritems():
             if not added: continue
             attr.add_m2m(added)
-    def update_simple_index(trans, obj, attr, prev, val, undo):
+    def _update_simple_index(trans, obj, attr, prev, val, undo):
         index = trans.indexes.get(attr)
         if index is None: index = trans.indexes[attr] = {}
         if val is None and trans.ignore_none: val = NO_UNDO_NEEDED
@@ -2015,7 +2027,7 @@ class Transaction(object):
         elif prev is None and trans.ignore_none: prev = NO_UNDO_NEEDED
         else: del index[prev]
         undo.append((index, prev, val))
-    def db_update_simple_index(trans, obj, attr, prev, val):
+    def _db_update_simple_index(trans, obj, attr, prev, val):
         index = trans.indexes.get(attr)
         if index is None: index = trans.indexes[attr] = {}
         if val is None or trans.ignore_none: pass
@@ -2026,7 +2038,7 @@ class Transaction(object):
                 % (obj2.__class__.__name__, obj.__class__.__name__, attr.name, new_keyval))
                 # attribute which was created or updated lately clashes with one stored in database
         index.pop(prev, None)
-    def update_composite_index(trans, obj, attrs, prevs, vals, undo):
+    def _update_composite_index(trans, obj, attrs, prevs, vals, undo):
         if trans.ignore_none:
             if None in prevs: prevs = NO_UNDO_NEEDED
             if None in vals: vals = NO_UNDO_NEEDED
@@ -2047,7 +2059,7 @@ class Transaction(object):
         if prevs is NO_UNDO_NEEDED: pass
         else: del index[prevs]
         undo.append((index, prevs, vals))
-    def db_update_composite_index(trans, obj, attrs, prevs, vals):
+    def _db_update_composite_index(trans, obj, attrs, prevs, vals):
         index = trans.indexes.get(attrs)
         if index is None: index = trans.indexes[attrs] = {}
         if NOT_LOADED in vals: pass
@@ -2061,8 +2073,8 @@ class Transaction(object):
         index.pop(prevs, None)
 
 class Local(threading.local):
-    def __init__(self):
-        self.trans = None
+    def __init__(local):
+        local.trans = None
 
 local = Local()
 
