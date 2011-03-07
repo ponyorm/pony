@@ -135,13 +135,14 @@ class Database(object):
         database.provider = provider
         database.args = args
         database.keyargs = keyargs
+        database._pool = provider.get_pool(*args, **keyargs)
         con = database.get_connection()
         database.release()
     def _get_connection(database):
         x = local.connections.get(database)
         if x is not None: return x[:2]
         provider = database.provider
-        con = wrap_dbapi_exceptions(provider, provider.connect, *database.args, **database.keyargs)
+        con = wrap_dbapi_exceptions(provider, provider.connect, database._pool, *database.args, **database.keyargs)
         local.connections[database] = con, provider, len(local.connections)
         return con, provider
     def get_connection(database):

@@ -20,27 +20,34 @@ def _text_factory(s):
     return s.decode('utf8', 'replace')
 
 class Local(localbase):
-    def __init__(self):
-        self.connections = {}
+    def __init__(local):
+        local.con = None
 
-local = Local()
-
-memory_db = None
-
-def connect(filename, create=False):
+def get_pool(filename, create=False):
     if filename == ':memory:':
-        global memory_db
-        if memory_db is not None: return memory_db
-        try: con = memory_db = sqlite.connect(':memory:', check_same_thread=False)
+        return []
+    else:
+        return Local()
+
+# todo: synchronized
+def connect(pool, filename, create=False):
+    if filename == ':memory:':
+        assert type(pool) is list
+        if pool:
+            assert len(pool) == 1
+            return pool[0]
+        try: con = sqlite.connect(':memory:', check_same_thread=False)
         except TypeError, e:
             if 'check_same_thread' in e.args[0]: raise TypeError(
                 "Please upgrade sqlite or use file database instead of :memory:")
+        pool.append(con)
     else:
-        con = local.connections.get(filename)
+        assert isinstance(pool, Local)
+        con = pool.con
         if con is not None: return con
         if not create and not path.exists(filename):
             raise IOError("Database file is not found: %r" % filename)
-        local.connections[filename] = con = sqlite.connect(filename)
+        pool.con = con = sqlite.connect(filename)
     con.text_factory = _text_factory
     con.create_function("pow", 2, pow)
     return con
