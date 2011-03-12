@@ -281,7 +281,22 @@ class TestSQLTranslator(unittest.TestCase):
         Student = self.Student
         result = select(s for s in Student if len(s.name) > len('ABC')).fetch()
         self.assertEquals(result, [])
-    
+    def test_numeric_to_bool1(self):
+        Student = self.Student
+        result = set(select(s for s in Student if s.name != 'John' or s.scholarship))
+        self.assertEquals(result, set([Student(1), Student(2), Student(3)]))
+    def test_numeric_to_bool2(self):
+        Student = self.Student
+        result = set(select(s for s in Student if not s.scholarship))
+        self.assertEquals(result, set([Student(1)]))
+    def test_not_monad1(self):
+        Student = self.Student
+        result = set(select(s for s in Student if not (s.scholarship > 0 and s.name != 'S1')))
+        self.assertEquals(result, set([Student(1)]))
+    def test_not_monad2(self):
+        Student = self.Student
+        result = set(select(s for s in Student if not not (s.scholarship > 0 and s.name != 'S1')))
+        self.assertEquals(result, set([Student(2), Student(3)]))
        
 if __name__ == "__main__":
     unittest.main()
