@@ -387,7 +387,6 @@ class SQLTranslator(ASTTranslator):
                 func_monad_class = special_functions[func]
                 node.monad = func_monad_class(translator)
             else:
-                print name, value_type
                 if name in ('True', 'False') and issubclass(value_type, int):
                     node.monad = ConstMonad(translator, name == 'True' and 1 or 0)
                 elif value_type is NoneType: node.monad = ConstMonad(translator, None)
