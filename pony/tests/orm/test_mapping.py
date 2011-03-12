@@ -2,6 +2,7 @@ import unittest
 from pony.orm import *
 from pony.db import *
 from pony.dbschema import DBSchemaError
+from pony.sqltranslator import select, TranslationError
 from testutils import *
 
 class TestColumnsMapping(unittest.TestCase):
@@ -259,6 +260,13 @@ class TestColumnsMapping(unittest.TestCase):
         generate_mapping(self.db, check_tables=False)
         self.assertEqual(Entity1.attr1.columns, ['attr1'])
         self.assertEqual(Entity2.attr2.columns, [])
+
+class TestGenerateMapping(unittest.TestCase):
+    @raises_exception(TranslationError, 'Entity E1 is not mapped to a database')
+    def test1(self):
+        class E1(Entity):
+            a1 = Required(int)
+        select(e for e in E1).fetch()            
                 
 if __name__ == '__main__':
     unittest.main()

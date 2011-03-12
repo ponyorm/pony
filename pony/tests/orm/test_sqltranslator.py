@@ -32,6 +32,11 @@ class TestSQLTranslator(unittest.TestCase):
         class Room(Entity):
             name = PrimaryKey(unicode)
             groups = Set(Group)
+        self.Student = Student
+        self.Group = Group
+        self.Course = Course
+        self.Grade = Grade
+        self.Room = Room
         conn = self.db.get_connection()
         conn.executescript("""
             drop table if exists Student;
@@ -89,83 +94,81 @@ class TestSQLTranslator(unittest.TestCase):
         """)
         generate_mapping(self.db, check_tables=True)
     def test_select1(self):
-        Student = self.diagram.entities["Student"]
-        result = select(s for s in Student)
-        names = [ stud.name for stud in result ]
-        names.sort()
-        self.assertEquals(names, ['S1', 'S2', 'S3'])
+        Student = self.Student
+        result = set(select(s for s in Student))
+        self.assertEquals(result, set([Student(1), Student(2), Student(3)]))
     def test_select_param(self):        
-        Student = self.diagram.entities["Student"]
+        Student = self.Student
         result = select(s for s in Student if s.name == name1).fetch()
         self.assertEquals(result, [Student(1)])
     def test_select_object_param(self):
-        Student = self.diagram.entities["Student"]
+        Student = self.Student
         stud1 = Student(1)
         result = set(select(s for s in Student if s != stud1))
         self.assertEquals(result, set([Student(2), Student(3)]))
     def test_select_deref(self):
-        Student = self.diagram.entities["Student"]
+        Student = self.Student
         x = 'S1'
         result = select(s for s in Student if s.name == x).fetch()
         self.assertEquals(result, [Student(1)])
     def test_select_composite_key(self):
-        Grade = self.diagram.entities["Grade"]
-        Student = self.diagram.entities["Student"]
-        Course = self.diagram.entities["Course"]
+        Grade = self.Grade
+        Student = self.Student
+        Course = self.Course
         grade1 = Grade(Student(1), Course(12))
         result = select(g for g in Grade if g != grade1)
         grades = [ grade.value for grade in result ]
         grades.sort()
         self.assertEquals(grades, ['B', 'C'])
     def test_function_max1(self):
-        Student = self.diagram.entities["Student"]
+        Student = self.Student
         result = select(s for s in Student if max(s.grades.value) == 'C').fetch()
         self.assertEquals(result, [Student(1)])
     @raises_exception(TypeError)
     def test_function_max2(self):
-        Grade = self.diagram.entities["Grade"]
-        Student = self.diagram.entities["Student"]
-        Course = self.diagram.entities["Course"]
+        Grade = self.Grade
+        Student = self.Student
+        Course = self.Course
         grade1 = Grade(Student(1), Course(12))
         select(s for s in Student if max(s.grades) == grade1)
     def test_function_min(self):
-        Student = self.diagram.entities["Student"]
+        Student = self.Student
         result = select(s for s in Student if min(s.grades.value) == 'B').fetch()
         self.assertEquals(result, [Student(2)])
     @raises_exception(TypeError)
     def test_function_min2(self):
-        Grade = self.diagram.entities["Grade"]
-        Student = self.diagram.entities["Student"]
-        Course = self.diagram.entities["Course"]
+        Grade = self.Grade
+        Student = self.Student
+        Course = self.Course
         grade1 = Grade(Student(1), Course(12))
         select(s for s in Student if min(s.grades) == grade1).fetch()
     def test_function_len1(self):
-        Student = self.diagram.entities["Student"]
+        Student = self.Student
         result = select(s for s in Student if len(s.grades) == 1).fetch()
         self.assertEquals(result, [Student(2)])
     def test_function_len2(self):
-        Student = self.diagram.entities["Student"]
+        Student = self.Student
         result = select(s for s in Student if max(s.grades.value) == 'C').fetch()
         self.assertEquals(result, [Student(1)])
     def test_function_sum1(self):
-        Group = self.diagram.entities["Group"]
+        Group = self.Group
         result = select(g for g in Group if sum(g.students.scholarship) == 100).fetch()
         self.assertEquals(result, [Group(1)])
     @raises_exception(TypeError)
     def test_function_sum2(self):
-        Group = self.diagram.entities["Group"]
+        Group = self.Group
         select(g for g in Group if sum(g.students) == 100).fetch()
     @raises_exception(TypeError)
     def test_function_sum3(self):
-        Group = self.diagram.entities["Group"]
+        Group = self.Group
         select(g for g in Group if sum(g.students.name) == 100).fetch()
     def test_function_abs(self):
-        Student = self.diagram.entities["Student"]
+        Student = self.Student
         result = select(s for s in Student if abs(s.scholarship) == 100).fetch()
         self.assertEquals(result, [Student(2)])
     def test_builtin_in_locals(self):
         x = max
-        Student = self.diagram.entities["Student"]
+        Student = self.Student
         gen = (s for s in Student if x(s.grades.value) == 'C')
         result = select(gen).fetch()
         self.assertEquals(result, [Student(1)])
@@ -174,37 +177,38 @@ class TestSQLTranslator(unittest.TestCase):
         self.assertEquals(result, [])
     @raises_exception(TranslationError, "Name 'g' must be defined in query")
     def test_name(self):
-        Student = self.diagram.entities["Student"]
+        Student = self.Student
         select(s for s in Student for g in g.subjects).fetch()
     def test_chain1(self):
-        Group = self.diagram.entities["Group"]
+        Group = self.Group
         result = set(select(g for g in Group for s in g.students if s.name.endswith('3')))
         self.assertEquals(result, set([Group(2)]))
     def test_chain_m2m(self):
-        Group = self.diagram.entities["Group"]
+        Group = self.Group
         result = set(select(g for g in Group for r in g.rooms if r.name == 'Room2'))
         self.assertEquals(result, set([Group(1), Group(2)]))
     @raises_exception(TranslationError, 'All entities in a query must belong to the same diagram')
     def test_two_diagrams(self):
-        Group = self.diagram.entities["Group"]
+        Group = self.Group
         _diagram_ = Diagram()
         class Room(Entity):
             name = PrimaryKey(unicode)
+        generate_mapping(self.db, check_tables=True)
         select(g for g in Group for r in Room if r.name == 'Room2').fetch()
     def test_add_sub_mul_etc(self):
-        Student = self.diagram.entities["Student"]
+        Student = self.Student
         result = select(s for s in Student if ((-s.scholarship + 200) * 10 / 5 - 100) ** 2 == 10000 or 5 == 2).fetch()
         self.assertEquals(result, [Student(2)])
     def test_subscript(self):
-        Student = self.diagram.entities["Student"]
+        Student = self.Student
         result = set(select(s for s in Student if s.name[1] == '2'))
         self.assertEquals(result, set([Student(2)]))
     def test_slice(self):
-        Student = self.diagram.entities["Student"]
+        Student = self.Student
         result = set(select(s for s in Student if s.name[:1] == 'S'))
         self.assertEquals(result, set([Student(3), Student(2), Student(1)]))        
     def test_attr_chain(self):
-        Student = self.diagram.entities["Student"]
+        Student = self.Student
         s1 = Student(1)
         result = select(s for s in Student if s == s1).fetch()
         self.assertEquals(result, [Student(1)])
@@ -215,18 +219,18 @@ class TestSQLTranslator(unittest.TestCase):
         result = select(s for s in Student if s.group.dep == s1.group.dep).fetch()
         self.assertEquals(result, [Student(1), Student(2)])
     def test_list_monad1(self):
-        Student = self.diagram.entities["Student"]
+        Student = self.Student
         result = select(s for s in Student if s.name in ['S1']).fetch()
         self.assertEquals(result, [Student(1)])
     def test_list_monad2(self):
-        Student = self.diagram.entities["Student"]
+        Student = self.Student
         result = select(s for s in Student if s.name not in ['S1', 'S2']).fetch()
         self.assertEquals(result, [Student(3)])
     def test_list_monad3(self):
-        Grade = self.diagram.entities["Grade"]
-        Student = self.diagram.entities["Student"]
-        Course = self.diagram.entities["Course"]
-        Group = self.diagram.entities["Group"]
+        Grade = self.Grade
+        Student = self.Student
+        Course = self.Course
+        Group = self.Group
         grade1 = Grade(Student(1), Course(12))
         grade2 = Grade(Student(1), Course(10))
         result = set(select(g for g in Grade if g in [grade1, grade2]))
@@ -234,14 +238,50 @@ class TestSQLTranslator(unittest.TestCase):
         result = set(select(g for g in Grade if g not in [grade1, grade2]))
         self.assertEquals(result, set([Grade(Student(2), Course(11))]))
     def test_tuple_monad1(self):
-        Student = self.diagram.entities["Student"]
-        result = select(s for s in Student if s.name in ('S1', 'S2')).fetch()
+        Student = self.Student
+        n1 = 'S1'
+        n2 = 'S2'
+        result = select(s for s in Student if s.name in (n1, n2)).fetch()
         self.assertEquals(result, [Student(1), Student(2)])
     def test_None_value(self):
-        Student = self.diagram.entities["Student"]
+        Student = self.Student
         result = select(s for s in Student if s.name is None).fetch()
         self.assertEquals(result, [])
-
+    def test_None_value2(self):
+        Student = self.Student
+        result = select(s for s in Student if None == s.name).fetch()
+        self.assertEquals(result, [])
+    def test_None_value3(self):
+        Student = self.Student
+        n = None
+        result = select(s for s in Student if s.name == n).fetch()
+        self.assertEquals(result, [])        
+    def test_None_value4(self):
+        Student = self.Student
+        n = None
+        result = select(s for s in Student if n == s.name).fetch()
+        self.assertEquals(result, [])   
+    @raises_exception(NotImplementedError)        
+    def test_expr1(self):
+        Student = self.Student
+        a = 100
+        result = select(a for s in Student).fetch()
+    def test_expr2(self):
+        Student = self.Student
+        Group = self.Group
+        result = set(select(s.group for s in Student))
+        self.assertEquals(result, set([Group(1), Group(2)]))
+    def test_numeric_binop(self):
+        Student = self.Student
+        i = 100
+        f = 2.0
+        result = select(s for s in Student if s.scholarship > i + f).fetch()
+        self.assertEquals(result, [Student(3)])
+    def test_string_const_monad(self):
+        Student = self.Student
+        result = select(s for s in Student if len(s.name) > len('ABC')).fetch()
+        self.assertEquals(result, [])
+    
        
 if __name__ == "__main__":
     unittest.main()

@@ -122,7 +122,7 @@ class Query(object):
             elif start < 0: raise TypeError("Parameter 'start' of slice object cannot be negative")
             stop = key.stop
             if stop is None:
-                if start is None: return query
+                if not start: return query
                 elif not query._limit: raise TypeError("Parameter 'stop' of slice object should be specified")
                 else: stop = query._limit[1]
         else:
@@ -276,8 +276,11 @@ class SQLTranslator(ASTTranslator):
                 entity = vartypes[iter_name] # can raise KeyError
                 if not isinstance(entity, orm.EntityMeta): raise NotImplementedError
 
-                if translator.diagram is None: translator.diagram = entity._diagram_
-                elif translator.diagram is not entity._diagram_: raise TranslationError(
+                diagram = entity._diagram_
+                if diagram.database is None: raise TranslationError(
+                    'Entity %s is not mapped to a database' % entity.__name__)
+                if translator.diagram is None: translator.diagram = diagram
+                elif translator.diagram is not diagram: raise TranslationError(
                     'All entities in a query must belong to the same diagram')
             else:
                 if len(attr_names) > 1: raise NotImplementedError
@@ -317,7 +320,7 @@ class SQLTranslator(ASTTranslator):
             translator.attrname = monad.attr.name
             monad = monad.parent
         if not isinstance(monad, ObjectMixin):
-            raise TranslationError, monad
+            raise NotImplementedError
         alias = monad.alias
         entity = translator.entity = monad.type
         if isinstance(monad, ObjectIterMonad):
@@ -380,7 +383,7 @@ class SQLTranslator(ASTTranslator):
                 func_monad_class = special_functions[func]
                 node.monad = func_monad_class(translator)
             else:
-                if value_type is NoneType: node.monad = NoneMonad(translator)
+                if value_type is NoneType: node.monad = ConstMonad(translator, None)
                 else: node.monad = ParamMonad(translator, value_type, name)
     def postAdd(translator, node):
         node.monad = node.left.monad + node.right.monad
@@ -888,7 +891,7 @@ class ConstMonad(Monad):
     def getsql(monad):
         return [ [ VALUE, monad.value ] ]
 
-class NoneMonad(Monad):
+class NoneMonad(ConstMonad):
     type = NoneType
     def __init__(monad, translator, value=None):
         assert value is None
