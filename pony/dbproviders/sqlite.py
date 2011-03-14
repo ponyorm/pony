@@ -51,7 +51,7 @@ def connect(pool, filename, create=False):
             pool.append(con)
         finally: memdb_connect_lock.release()
     else:
-        assert isinstance(pool, Local)
+        assert isinstance(pool, Pool)
         con = pool.con
         if con is not None: return con
         if not create and not path.exists(filename):
