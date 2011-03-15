@@ -158,7 +158,7 @@ class StrConverter(BasestringConverter):
         BasestringConverter.__init__(converter, attr)
     def init(converter, keyargs):
         BasestringConverter.init(converter, keyargs)
-        converter.encoding = keyargs.pop('encoding', 'ascii')
+        converter.encoding = keyargs.pop('encoding', 'latin1')
     def validate(converter, val):
         if val is not None:
             if isinstance(val, str): pass
@@ -234,22 +234,22 @@ class DecimalConverter(Converter):
     def init(converter, keyargs):
         attr = converter.attr
         if len(attr.args) != 2: raise TypeError(
-            'Decimal attribute %s receives exactly two positional parameters: scale and precision. Got: %s'
+            'Decimal attribute %s receives exactly two positional parameters: precision and scale. Got: %s'
             % (attr, attr.args or 'None'))
 
-        scale, precision = attr.args
-        if not isinstance(scale, (int, long)):
-            raise TypeError("'scale' positional argument for attribute %s must be int. Got: %r" % (attr, scale))
-        if scale <= 0: raise TypeError(
-            "'scale' positional argument for attribute %s must be positive. Got: %r" % (attr, scale))
+        precision, scale = attr.args
         if not isinstance(precision, (int, long)):
             raise TypeError("'precision' positional argument for attribute %s must be int. Got: %r" % (attr, precision))
         if precision <= 0: raise TypeError(
             "'precision' positional argument for attribute %s must be positive. Got: %r" % (attr, precision))
-        if precision > scale: raise ValueError("'precision' must be less or equal 'scale'")
-        converter.scale = scale
+        if not isinstance(scale, (int, long)):
+            raise TypeError("'scale' positional argument for attribute %s must be int. Got: %r" % (attr, scale))
+        if scale <= 0: raise TypeError(
+            "'scale' positional argument for attribute %s must be positive. Got: %r" % (attr, scale))
+        if scale > precision: raise ValueError("'scale' must be less or equal 'precision'")
         converter.precision = precision
-        converter.exp = Decimal(10) ** -precision
+        converter.scale = scale
+        converter.exp = Decimal(10) ** -scale
 
         min_val = keyargs.pop('min', None)
         if min_val is not None:
@@ -268,6 +268,12 @@ class DecimalConverter(Converter):
         try: return Decimal(val)
         except InvalidOperation, exc:
             raise TypeError('Invalid value for attribute %s: %r' % (converter.attr, val))
+        if converter.min_val and val < converter.min_val:
+            raise ValueError('Value %r of attr %s is less than the minimum allowed value %r'
+                             % (val, converter.attr, converter.min_val))
+        if converter.max_val and val > converter.max_val:
+            raise ValueError('Value %r of attr %s is greater than the maximum allowed value %r'
+                             % (val, converter.attr, converter.max_val))
     def sql2py(converter, val):
         try: val = Decimal(str(val))
         except: return val
@@ -280,7 +286,7 @@ class DecimalConverter(Converter):
         if exp is not None: val = val.quantize(exp)
         return str(val)
     def sql_type(converter):
-        return 'DECIMAL(%d, %d)' % (converter.scale, converter.precision)
+        return 'DECIMAL(%d, %d)' % (converter.precision, converter.scale)
 
 class BlobConverter(Converter):
     def init(converter, keyargs):
