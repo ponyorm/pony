@@ -277,11 +277,9 @@ def release():
     local.connections.clear()
 
 def auto_commit():
-    default_db = local.default_db
-    databases = [ (num, db) for db, (con, provider, num) in local.connections.items() if db != default_db ]
+    databases = [ (num, db) for db, (con, provider, num) in local.connections.items() ]
     databases.sort()
     databases = [ db for num, db in databases ]
-    if default_db is not None: databases.insert(0, default_db)
     if not databases: return
     # ...
     exceptions = []
