@@ -6,6 +6,7 @@ try: from pony.thirdparty import etree
 except ImportError: etree = None
 
 from pony import options, dbschema, dbapiprovider
+from pony.db import LongStr, LongUnicode
 from pony.sqlsymbols import *
 
 class OrmError(Exception): pass
@@ -1942,7 +1943,9 @@ class Diagram(object):
                     child_columns = get_columns(table, attr.columns)
                     dbschema.ForeignKey(None, parent_table, parent_columns, table, child_columns)        
 
-        if create_tables: schema.create_tables()
+        if create_tables:
+            commands = schema.get_create_commands()
+            database._exec_commands(commands)
             
         if not check_tables and not create_tables: return
         for table in schema.tables.values():

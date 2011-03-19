@@ -17,7 +17,7 @@ class DBSchema(object):
     def case(schema, s):
         if schema.uppercase: return s.upper().replace('%S', '%s').replace('%R', '%r')
         else: return s.lower()
-    def get_create_sql(schema, uppercase=None):
+    def get_create_commands(schema, uppercase=None):
         prev_uppercase = schema.uppercase
         try:
             if uppercase is not None: schema.uppercase = uppercase
@@ -30,15 +30,13 @@ class DBSchema(object):
                         tables_to_create.remove(table)
                         break
                 else: table = tables_to_create.pop()
-                result.append(table.get_create_sql(created_tables))
-            return '\n'.join(result)
+                result.extend(table.get_create_commands(created_tables))
+            return result
         finally:
             if uppercase is not None: schema.uppercase = prev_uppercase
-    def create_tables(schema):
-        sql = schema.get_create_sql()
-        con = schema.database.get_connection()
-        con.executescript(sql)
-        con.commit()
+    def get_create_script(schema, uppercase=None):
+        commands = schema.get_create_commands(uppercase)
+        return schema.command_separator.join(commands)
 
 class Table(object):
     def __init__(table, name, schema):
@@ -59,34 +57,36 @@ class Table(object):
         table.m2m = set()
     def __repr__(table):
         return '<Table(%s)>' % table.name
-    def get_create_sql(table, created_tables=None):
+    def get_create_commands(table, created_tables=None):
         if created_tables is None: created_tables = set()
         schema = table.schema
         case = schema.case
-        result = []
-        result.append(case('CREATE TABLE IF NOT EXISTS %s (') % schema.quote_name(table.name))
+        cmd = []
+        cmd.append(case('CREATE TABLE IF NOT EXISTS %s (') % schema.quote_name(table.name))
         for column in table.column_list:
-            result.append(schema.indent + column.get_create_sql(created_tables) + ',')
+            cmd.append(schema.indent + column.get_sql(created_tables) + ',')
         if len(table.pk_index.columns) > 1:
-            result.append(schema.indent + table.pk_index.get_create_sql(inside_table=True) + ',')
+            cmd.append(schema.indent + table.pk_index.get_sql() + ',')
         for index in table.indexes.values():
             if index.is_pk: continue
             if not index.is_unique: continue
             if len(index.columns) == 1: continue
-            result.append(index.get_create_sql(inside_table=True) + ',')
+            cmd.append(index.get_sql() + ',')
         for foreign_key in table.foreign_keys.values():
             if len(foreign_key.child_columns) == 1: continue
             if not foreign_key.parent_table in created_tables: continue
-            result.append(foreign_key.get_create_sql(inside_table=True) + ',')
-        result[-1] = result[-1][:-1]
-        result.append(')' + schema.command_separator)
+            cmd.append(foreign_key.get_sql() + ',')
+        cmd[-1] = cmd[-1][:-1]
+        cmd.append(')')
+        cmd = '\n'.join(cmd)
+        result = [ cmd ]
         for child_table in table.child_tables:
             if child_table not in created_tables: continue
             for foreign_key in child_table.foreign_keys.values():
                 if foreign_key.parent_table is not table: continue
-                result.append(foreign_key.get_create_sql(inside_table=False))
+                result.append(foreign_key.get_create_command())
         created_tables.add(table)
-        return '\n'.join(result)
+        return result
 
 class Column(object):
     def __init__(column, name, table, sql_type, is_not_null=None):
@@ -103,7 +103,7 @@ class Column(object):
         column.is_unique = False
     def __repr__(column):
         return '<Column(%s.%s)>' % (column.table.name, column.name)
-    def get_create_sql(column, created_tables=None):
+    def get_sql(column, created_tables=None):
         if created_tables is None: created_tables = set()
         table = column.table
         schema = table.schema
@@ -161,12 +161,16 @@ class Index(Constraint):
         index.columns = columns
         index.is_pk = is_pk
         index.is_unique = is_unique
-    def get_create_sql(index, inside_table):
+    def get_sql(index):
+        return index._get_create_sql(inside_table=True)
+    def get_create_command(index):
+        return index._get_create_sql(inside_table=False)
+    def _get_create_sql(index, inside_table):
         schema = index.schema
         case = schema.case
         quote_name = schema.quote_name
-        result = []
-        append = result.append
+        cmd = []
+        append = cmd.append
         if not inside_table:
             if index.is_pk: raise DBSchemaError(
                 'Primary key index cannot be defined outside of table definition')
@@ -184,8 +188,7 @@ class Index(Constraint):
             elif index.is_unique: append(case('UNIQUE'))
             else: append(case('INDEX'))
         append(schema.column_list(index.columns))
-        if not inside_table: append(schema.command_separator)
-        return ' '.join(result)
+        return ' '.join(cmd)
 
 class ForeignKey(Constraint):
     def __init__(foreign_key, name, parent_table, parent_columns, child_table, child_columns):
@@ -211,12 +214,16 @@ class ForeignKey(Constraint):
         foreign_key.parent_columns = parent_columns
         foreign_key.child_table = child_table
         foreign_key.child_columns = child_columns
-    def get_create_sql(foreign_key, inside_table):
+    def get_sql(foreign_key):
+        return foreign_key._get_create_sql(inside_table=True)
+    def get_create_command(foreign_key):
+        return foreign_key._get_create_sql(inside_table=False)
+    def _get_create_sql(foreign_key, inside_table):
         schema = foreign_key.schema
         case = schema.case
         quote_name = schema.quote_name
-        result = []
-        append = result.append
+        cmd = []
+        append = cmd.append
         if not inside_table:
             append(case('ALTER TABLE'))
             append(quote_name(foreign_key.child_table.name))
@@ -229,5 +236,4 @@ class ForeignKey(Constraint):
         append(case('REFERENCES'))
         append(quote_name(foreign_key.parent_table.name))
         append(schema.column_list(foreign_key.parent_columns))
-        if not inside_table: append(schema.command_separator)
-        return ' '.join(result)
+        return ' '.join(cmd)

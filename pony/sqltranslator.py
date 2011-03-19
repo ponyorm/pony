@@ -9,6 +9,7 @@ from datetime import date, datetime
 from pony import orm
 from pony.decompiling import decompile
 from pony.templating import Html, StrHtml
+from pony.db import LongStr, LongUnicode
 from pony.dbapiprovider import SQLBuilder
 from pony.sqlsymbols import *
 
@@ -154,7 +155,9 @@ string_types = set([ str, unicode ])
 comparable_types = set([ int, float, Decimal, str, unicode, date, datetime, bool ])
 primitive_types = set([ int, float, Decimal, str, unicode, date, datetime, bool, buffer ])
 
-type_normalization_dict = { long : int, bool : int, StrHtml : str, Html : unicode }
+type_normalization_dict = { long : int, bool : int,
+                            LongStr : str, LongUnicode : unicode,
+                            StrHtml : str, Html : unicode }
 
 def get_normalized_type(value):
     if isinstance(value, orm.EntityMeta): return value

@@ -62,6 +62,9 @@ def wrap_dbapi_exceptions(provider, func, *args, **keyargs):
     except provider.Error, e: raise Error(exceptions=[e])
     except provider.Warning, e: raise Warning(exceptions=[e])
 
+class LongStr(str): pass
+class LongUnicode(unicode): pass
+
 class Local(localbase):
     def __init__(local):
         local.connections = {}
@@ -259,6 +262,13 @@ class Database(object):
         if arguments_list is None: wrap_dbapi_exceptions(provider, cursor.executemany, sql)
         else: wrap_dbapi_exceptions(provider, cursor.executemany, sql, arguments_list)
         return cursor
+    def _exec_commands(database, commands):
+        con, provider = database._get_connection()
+        cursor = con.cursor()
+        for command in commands:
+            if debug: print 'DDLCOMMAND', command
+            wrap_dbapi_exceptions(provider, cursor.execute, command)
+        wrap_dbapi_exceptions(provider, con.commit)
 
 Database.Warning = Warning
 Database.Error = Error
