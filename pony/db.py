@@ -67,7 +67,7 @@ class LongUnicode(unicode): pass
 
 class Local(localbase):
     def __init__(local):
-        local.connections = {}
+        local.db2con = {}
 
 local = Local()        
 
@@ -142,23 +142,25 @@ class Database(object):
         con, provider = database._get_connection()
         provider.release(con)
     def _get_connection(database):
-        x = local.connections.get(database)
-        if x is not None: return x[:2]
+        x = local.db2con.get(database)
+        if x is not None:
+            con, provider, nn = x
+            return con, provider
         provider = database.provider
         con = wrap_dbapi_exceptions(provider, provider.connect, database._pool, *database.args, **database.keyargs)
-        local.connections[database] = con, provider, len(local.connections)
+        local.db2con[database] = con, provider, len(local.db2con)
         return con, provider
     def get_connection(database):
         con, provider = database._get_connection()
         return con
     def commit(database):
-        x = local.connections.pop(database, None)
+        x = local.db2con.pop(database, None)
         if x is None: return
         con, provider, _ = x
         wrap_dbapi_exceptions(provider, con.commit)
         provider.release(con)
     def rollback(database):
-        x = local.connections.pop(database, None)
+        x = local.db2con.pop(database, None)
         if x is None: return
         con, provider, _ = x
         wrap_dbapi_exceptions(provider, con.rollback)
@@ -283,7 +285,7 @@ Database.ProgrammingError = ProgrammingError
 Database.NotSupportedError = NotSupportedError
 
 def auto_commit():
-    databases = [ (num, db) for db, (con, provider, num) in local.connections.items() ]
+    databases = [ (num, db) for db, (con, provider, num) in local.db2con.items() ]
     databases.sort()
     databases = [ db for num, db in databases ]
     if not databases: return
@@ -303,18 +305,18 @@ def auto_commit():
         # write exceptions to log
     finally:
         del exceptions
-        local.connections.clear()
+        local.db2con.clear()
 
 def auto_rollback():
     exceptions = []
     try:
-        for db in local.connections:
+        for db in local.db2con:
             try: db.rollback()
             except: exceptions.append(sys.sys.exc_info())
         if exceptions: raise RollbackException(exceptions)
     finally:
         del exceptions
-        local.connections.clear()
+        local.db2con.clear()
 
 def with_transaction(func, args, keyargs, allowed_exceptions=[]):
     try: result = func(*args, **keyargs)
