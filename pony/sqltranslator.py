@@ -85,8 +85,8 @@ class Query(object):
                 limit_section = [ LIMIT, [ VALUE, limit ]]
                 if offset: limit_section.append([ VALUE, offset ])
                 sql_ast = sql_ast + [ limit_section ]
-            con, provider = database._get_connection()
-            sql, adapter = provider.ast2sql(con, sql_ast)
+            info = database._get_connection()
+            sql, adapter = database.provider.ast2sql(info.con, sql_ast)
             cache_entry = sql, adapter
             sql_cache[sql_key] = cache_entry
         else: sql, adapter = cache_entry

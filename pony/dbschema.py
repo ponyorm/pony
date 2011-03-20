@@ -10,8 +10,8 @@ class DBSchema(object):
         schema.command_separator = ';\n'
         schema.uppercase = uppercase
     def quote_name(schema, name):
-        con, provider = schema.database._get_connection()
-        return provider.quote_name(con, name)
+        info = schema.database._get_connection()
+        return schema.database.provider.quote_name(info.con, name)
     def column_list(schema, columns):
         return '(%s)' % ', '.join(schema.quote_name(column.name) for column in columns)
     def case(schema, s):

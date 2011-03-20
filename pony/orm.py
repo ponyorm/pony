@@ -5,8 +5,10 @@ from itertools import count, ifilter, ifilterfalse, izip
 try: from pony.thirdparty import etree
 except ImportError: etree = None
 
+import pony.db
 from pony import options, dbschema, dbapiprovider
 from pony.db import LongStr, LongUnicode
+from pony.utils import localbase, simple_decorator
 from pony.sqlsymbols import *
 
 class OrmError(Exception): pass
@@ -32,6 +34,8 @@ class OperationWithDeletedObjectError(OrmError): pass
 class TransactionError(OrmError): pass
 class IntegrityError(TransactionError): pass
 class IsolationError(TransactionError): pass
+class CommitException(TransactionError): pass
+class RollbackException(TransactionError): pass
 class UnrepeatableReadError(IsolationError): pass
 class UnresolvableCyclicDependency(TransactionError): pass
 class UnexpectedError(TransactionError): pass
@@ -158,9 +162,10 @@ class Attribute(object):
             return attr.py_type(val)
         if not isinstance(val, reverse.entity): raise ConstraintError(
             'Value of attribute %s.%s must be an instance of %s. Got: %s' % (entity.__name__, attr.name, reverse.entity.__name__, val))
-        if obj is not None: trans = obj._trans_
+        if obj is not None: trans = obj._cache_.trans
         else: trans = get_trans()
-        if trans is not val._trans_: raise TransactionError('An attempt to mix objects belongs to different transactions')
+        if trans is not val._cache_.trans: raise TransactionError(
+            'An attempt to mix objects belongs to different transactions')
         return val
     def load(attr, obj):
         if not attr.columns:
@@ -200,16 +205,16 @@ class Attribute(object):
         if prev is NOT_LOADED and reverse and not reverse.is_collection:
             assert not is_reverse_call
             prev = attr.load(obj)
-        trans = obj._trans_
+        cache = obj._cache_
         status = obj._status_
         wbits = obj._wbits_
         if wbits is not None:
             obj._wbits_ = wbits | obj._bits_[attr]
             if status != 'updated':
-                if status in ('loaded', 'saved'): trans.to_be_checked.append(obj)
+                if status in ('loaded', 'saved'): cache.to_be_checked.append(obj)
                 else: assert status == 'locked'
                 obj._status_ = 'updated'
-                trans.updated.add(obj)
+                cache.updated.add(obj)
         if not attr.reverse and not attr.is_indexed:
             obj.__dict__[attr] = val
             return
@@ -218,9 +223,9 @@ class Attribute(object):
         def undo_func():
             obj._status_ = status
             obj._wbits_ = wbits
-            if wbits == 0: trans.updated.remove(obj)
+            if wbits == 0: cache.updated.remove(obj)
             if status in ('loaded', 'saved'):
-                to_be_checked = trans.to_be_checked
+                to_be_checked = cache.to_be_checked
                 if to_be_checked and to_be_checked[-1] is obj: to_be_checked.pop()
                 assert obj not in to_be_checked
             obj.__dict__[attr] = prev
@@ -233,14 +238,14 @@ class Attribute(object):
         if prev == val: return
         try:
             if attr.is_unique:
-                trans._update_simple_index(obj, attr, prev, val, undo)
+                cache.update_simple_index(obj, attr, prev, val, undo)
             for attrs, i in attr.composite_keys:
                 get = obj.__dict__.get
                 vals = [ get(a, NOT_LOADED) for a in attrs ]
                 prevs = tuple(vals)
                 vals[i] = val
                 vals = tuple(vals)
-                trans._update_composite_index(obj, attrs, prevs, vals, undo)
+                cache.update_composite_index(obj, attrs, prevs, vals, undo)
 
             obj.__dict__[attr] = val
                 
@@ -277,15 +282,15 @@ class Attribute(object):
         assert prev == prev_old
 
         if not attr.reverse and not attr.is_indexed: return
-        trans = obj._trans_
-        if attr.is_unique: trans._db_update_simple_index(obj, attr, prev, val)
+        cache = obj._cache_
+        if attr.is_unique: cache.db_update_simple_index(obj, attr, prev, val)
         for attrs, i in attr.composite_keys:
             get = obj.__dict__.get
             vals = [ get(a, NOT_LOADED) for a in attrs ]
             prevs = tuple(vals)
             vals[i] = val
             vals = tuple(vals)
-            trans._db_update_composite_index(obj, attrs, prevs, vals)
+            cache.db_update_composite_index(obj, attrs, prevs, vals)
         if not reverse: pass
         elif not is_reverse_call: attr.db_update_reverse(obj, prev, val)
         elif prev is not None:
@@ -487,10 +492,10 @@ class Set(Collection):
                 if not isinstance(item, rentity): raise TypeError(
                     'Item of collection %s.%s must be an instance of %s. Got: %r'
                     % (entity.__name__, attr.name, rentity.__name__, item))
-        if obj is not None: trans = obj._trans_
+        if obj is not None: trans = obj._cache_.trans
         else: trans = get_trans()
         for item in items:
-            if item._trans_ is not trans:
+            if item._cache_.trans is not trans:
                 raise TransactionError('An attempt to mix objects belongs to different transactions')
         return items
     def load(attr, obj):
@@ -590,14 +595,14 @@ class Set(Collection):
             if setdata.removed is EMPTY: setdata.removed = to_remove
             else: setdata.removed.update(to_remove)
             if setdata.added is not EMPTY: setdata.added -= to_remove
-        trans = obj._trans_
-        trans.modified_collections.setdefault(attr, set()).add(obj)
+        cache = obj._cache_
+        cache.modified_collections.setdefault(attr, set()).add(obj)
     def __delete__(attr, obj):
         raise NotImplementedError
     def reverse_add(attr, objects, item, undo_funcs):
         undo = []
-        trans = item._trans_
-        objects_with_modified_collections = trans.modified_collections.setdefault(attr, set())
+        cache = item._cache_
+        objects_with_modified_collections = cache.modified_collections.setdefault(attr, set())
         for obj in objects:
             setdata = obj.__dict__.get(attr, NOT_LOADED)
             if setdata is NOT_LOADED:
@@ -630,8 +635,8 @@ class Set(Collection):
             setdata.add(item)
     def reverse_remove(attr, objects, item, undo_funcs):
         undo = []
-        trans = item._trans_
-        objects_with_modified_collections = trans.modified_collections.setdefault(attr, set())
+        cache = item._cache_
+        objects_with_modified_collections = cache.modified_collections.setdefault(attr, set())
         for obj in objects:
             setdata = obj.__dict__.get(attr, NOT_LOADED)
             if setdata is NOT_LOADED:
@@ -784,7 +789,7 @@ class SetWrapper(object):
         if setdata.added is EMPTY: setdata.added = items
         else: setdata.added.update(items)
         if setdata.removed is not EMPTY: setdata.removed -= items
-        obj._trans_.modified_collections.setdefault(attr, set()).add(obj)
+        obj._cache_.modified_collections.setdefault(attr, set()).add(obj)
     def __iadd__(wrapper, x):
         wrapper.add(x)
         return wrapper
@@ -811,7 +816,7 @@ class SetWrapper(object):
         if setdata.added is not EMPTY: setdata.added -= items
         if setdata.removed is EMPTY: setdata.removed = items
         else: setdata.removed.update(items)
-        obj._trans_.modified_collections.setdefault(attr, set()).add(obj)
+        obj._cache_.modified_collections.setdefault(attr, set()).add(obj)
     def __isub__(wrapper, x):
         wrapper.remove(x)
         return wrapper
@@ -877,7 +882,7 @@ next_new_instance_id = count(1).next
 
 class Entity(object):
     __metaclass__ = EntityMeta
-    __slots__ = '__dict__', '__weakref__', '_pkval_', '_newid_', '_trans_', '_status_', '_rbits_', '_wbits_'
+    __slots__ = '__dict__', '__weakref__', '_pkval_', '_newid_', '_cache_', '_status_', '_rbits_', '_wbits_'
     @classmethod
     def _cls_setattr_(entity, name, val):
         if name.startswith('_') and name.endswith('_'):
@@ -1086,8 +1091,8 @@ class Entity(object):
     @classmethod
     def _new_(entity, pkval, status, raw_pkval=None):
         assert status in ('loaded', 'created')
-        trans = get_trans()
-        index = trans.indexes.setdefault(entity._pk_, {})
+        cache = get_trans()._get_cache(entity)
+        index = cache.indexes.setdefault(entity._pk_, {})
         if pkval is None: obj = None
         else: obj = index.get(pkval)
         if obj is None: pass
@@ -1097,7 +1102,7 @@ class Entity(object):
                              % (obj.__class__.__name__, pkval))                
         else: return obj
         obj = object.__new__(entity)
-        obj._trans_ = trans
+        obj._cache_ = cache
         obj._status_ = status
         obj._pkval_ = pkval
         if pkval is not None:
@@ -1145,14 +1150,14 @@ class Entity(object):
         return obj
     @classmethod
     def _find_in_cache_(entity, pkval, avdict):
-        trans = get_trans()
+        cache = get_trans()._get_cache(entity)
         obj = None
         if pkval is not None:
-            index = trans.indexes.get(entity._pk_)
+            index = cache.indexes.get(entity._pk_)
             if index is not None: obj = index.get(pkval)
         if obj is None:
             for attr in ifilter(avdict.__contains__, entity._simple_keys_):
-                index = trans.indexes.get(attr)
+                index = cache.indexes.get(attr)
                 if index is None: continue
                 val = avdict[attr]
                 obj = index.get(val)
@@ -1162,7 +1167,7 @@ class Entity(object):
             for attrs in entity._composite_keys_:
                 vals = tuple(avdict.get(attr, NOT_FOUND) for attr in attrs)
                 if NOT_FOUND in vals: continue
-                index = trans.indexes.get(attrs)
+                index = cache.indexes.get(attrs)
                 if index is None: continue
                 obj = index.get(vals)
                 if obj is not None: break
@@ -1331,19 +1336,20 @@ class Entity(object):
         return entity._find_(None, args, keyargs)
     @classmethod
     def create(entity, *args, **keyargs):
+        entity._diagram_.database._get_connection()
         pkval, avdict = entity._normalize_args_(args, keyargs, True)
         obj = entity._new_(pkval, 'created')
-        trans = get_trans()
+        cache = get_trans()._get_cache(entity)
         indexes = {}
         for attr in entity._simple_keys_:
             val = avdict[attr]
-            if val in trans.indexes.setdefault(attr, {}): raise IndexError(
+            if val in cache.indexes.setdefault(attr, {}): raise IndexError(
                 'Cannot create %s: value %s for key %s already exists'
                 % (obj.__class__.__name__, val, attr.name))
             indexes[attr] = val
         for attrs in entity._composite_keys_:
             vals = tuple(map(avdict.__getitem__, attrs))
-            if vals in trans.indexes.setdefault(attrs, {}):
+            if vals in cache.indexes.setdefault(attrs, {}):
                 attr_names = ', '.join(attr.name for attr in attrs)
                 raise IndexError('Cannot create %s: value %s for composite key (%s) already exists'
                                  % (obj.__class__.__name__, vals, attr_names))
@@ -1360,11 +1366,11 @@ class Entity(object):
             for undo_func in undo_funcs: undo_func()
             raise
         if pkval is not None:
-            trans.indexes[entity._pk_][pkval] = obj
+            cache.indexes[entity._pk_][pkval] = obj
         for key, vals in indexes.iteritems():
-            trans.indexes[key][vals] = obj
-        trans.created.add(obj)
-        trans.to_be_checked.append(obj)
+            cache.indexes[key][vals] = obj
+        cache.created.add(obj)
+        cache.to_be_checked.append(obj)
         return obj
     def _db_set_(obj, avdict):
         assert obj._status_ not in ('created', 'deleted', 'cancelled')
@@ -1388,13 +1394,13 @@ class Entity(object):
             assert prev == prev_old
         if not avdict: return
         NOT_FOUND = object()
-        trans = obj._trans_
+        cache = obj._cache_
         for attr in obj._simple_keys_:
             val = avdict.get(attr, NOT_FOUND)
             if val is NOT_FOUND: continue
             prev = obj.__dict__.get(attr, NOT_LOADED)
             if prev == val: continue
-            trans._db_update_simple_index(obj, attr, prev, val)
+            cache.db_update_simple_index(obj, attr, prev, val)
         for attrs in obj._composite_keys_:
             for attr in attrs:
                 if attr in avdict: break
@@ -1407,7 +1413,7 @@ class Entity(object):
                 if val is NOT_FOUND: continue
                 vals[i] = val
             vals = tuple(vals)
-            trans._db_update_composite_index(obj, attrs, prevs, vals)
+            cache.db_update_composite_index(obj, attrs, prevs, vals)
         for attr, val in avdict.iteritems():
             if not attr.reverse: continue
             prev = obj.__dict__.get(attr, NOT_LOADED)
@@ -1416,7 +1422,7 @@ class Entity(object):
     def _delete_(obj, undo_funcs=None):
         is_recursive_call = undo_funcs is not None
         if not is_recursive_call: undo_funcs = []
-        trans = obj._trans_
+        cache = obj._cache_
         status = obj._status_
         assert status not in ('deleted', 'cancelled')
         undo_list = []
@@ -1424,7 +1430,7 @@ class Entity(object):
         def undo_func():
             obj._status_ = status
             if status in ('loaded', 'saved'):
-                to_be_checked = trans.to_be_checked
+                to_be_checked = cache.to_be_checked
                 if to_be_checked and to_be_checked[-1] is obj: to_be_checked.pop()
                 assert obj not in to_be_checked
             obj.__dict__.update(undo_dict)
@@ -1458,8 +1464,8 @@ class Entity(object):
             for attr in obj._simple_keys_:
                 val = obj.__dict__.get(attr, NOT_LOADED)
                 if val is NOT_LOADED: continue
-                if val is None and trans.ignore_none: continue
-                index = trans.indexes.get(attr)
+                if val is None and cache.ignore_none: continue
+                index = cache.indexes.get(attr)
                 if index is None: continue
                 obj2 = index.pop(val)
                 assert obj2 is obj
@@ -1469,8 +1475,8 @@ class Entity(object):
                 get = obj.__dict__.get
                 vals = tuple(get(a, NOT_LOADED) for a in attrs)
                 if NOT_LOADED in vals: continue
-                if trans.ignore_none and None in vals: continue
-                index = trans.indexes.get(attrs)
+                if cache.ignore_none and None in vals: continue
+                index = cache.indexes.get(attrs)
                 if index is None: continue
                 obj2 = index.pop(vals)
                 assert obj2 is obj
@@ -1478,14 +1484,14 @@ class Entity(object):
 
             if status == 'created':
                 obj._status_ = 'cancelled'
-                assert obj in trans.created
-                trans.created.remove(obj)
+                assert obj in cache.created
+                cache.created.remove(obj)
             else:
-                if status == 'updated': trans.updated.remove(obj)
-                elif status in ('loaded', 'saved'): trans.to_be_checked.append(obj)
+                if status == 'updated': cache.updated.remove(obj)
+                elif status in ('loaded', 'saved'): cache.to_be_checked.append(obj)
                 else: assert status == 'locked'
                 obj._status_ = 'deleted'
-                trans.deleted.add(obj)
+                cache.deleted.add(obj)
             for attr in obj._attrs_:
                 if attr.pk_offset is None:
                     val = obj.__dict__.pop(attr, NOT_LOADED)
@@ -1501,7 +1507,7 @@ class Entity(object):
     def set(obj, **keyargs):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         avdict, collection_avdict = obj._keyargs_to_avdicts_(keyargs)
-        trans = obj._trans_
+        cache = obj._cache_
         status = obj._status_
         wbits = obj._wbits_
         if avdict:
@@ -1515,8 +1521,8 @@ class Entity(object):
                 obj._wbits_ = new_wbits
                 if status != 'updated':
                     obj._status_ = 'updated'
-                    trans.updated.add(obj)
-                    if status in ('loaded', 'saved'): trans.to_be_checked.append(obj)
+                    cache.updated.add(obj)
+                    if status in ('loaded', 'saved'): cache.to_be_checked.append(obj)
                     else: assert status == 'locked'
             if not collection_avdict:
                 for attr in avdict:
@@ -1529,9 +1535,9 @@ class Entity(object):
         def undo_func():
             obj._status_ = status
             obj._wbits_ = wbits
-            if wbits == 0: trans.updated.remove(obj)
+            if wbits == 0: cache.updated.remove(obj)
             if status in ('loaded', 'saved'):
-                to_be_checked = trans.to_be_checked
+                to_be_checked = cache.to_be_checked
                 if to_be_checked and to_be_checked[-1] is obj: to_be_checked.pop()
                 assert obj not in to_be_checked
             for index, old_key, new_key in undo:
@@ -1546,7 +1552,7 @@ class Entity(object):
                 if val is NOT_FOUND: continue
                 prev = obj.__dict__.get(attr, NOT_LOADED)
                 if prev == val: continue
-                trans._update_simple_index(obj, attr, prev, val, undo)
+                cache.update_simple_index(obj, attr, prev, val, undo)
             for attrs in obj._composite_keys_:
                 for attr in attrs:
                     if attr in avdict: break
@@ -1559,7 +1565,7 @@ class Entity(object):
                     if val is NOT_FOUND: continue
                     vals[i] = val
                 vals = tuple(vals)
-                trans._update_composite_index(obj, attrs, prevs, vals, undo)
+                cache.update_composite_index(obj, attrs, prevs, vals, undo)
             for attr, val in avdict.iteritems():
                 if not attr.reverse: continue
                 prev = obj.__dict__.get(attr, NOT_LOADED)
@@ -1614,7 +1620,7 @@ class Entity(object):
     def check_on_commit(obj):
         if obj._status_ not in ('loaded', 'saved'): return
         obj._status_ = 'locked'
-        obj._trans_.to_be_checked.append(obj)
+        obj._cache_.to_be_checked.append(obj)
     @classmethod
     def _attrs_with_bit_(entity, mask=-1):
         get_bit = entity._bits_.get
@@ -1668,7 +1674,7 @@ class Entity(object):
         if obj._pkval_ is None:
             rowid = cursor.lastrowid # TODO
             pk_attr = obj.__class__._pk_
-            index = obj._trans_.indexes.setdefault(pk_attr, {})
+            index = obj._cache_.indexes.setdefault(pk_attr, {})
             obj2 = index.setdefault(rowid, obj)
             if obj2 is not obj: raise IntegrityError(
                 'Newly auto-generated rowid value %s was already used in transaction cache for another object' % rowid)
@@ -1695,13 +1701,14 @@ class Entity(object):
             values.extend(attr.get_raw_values(val))
         optimistic_check_columns = []
         optimistic_check_converters = []
-        for attr in obj._attrs_with_bit_(obj._rbits_):
-            if not attr.columns: continue
-            old = obj.__dict__.get(attr.name, NOT_LOADED)
-            assert old is not NOT_LOADED
-            optimistic_check_columns.extend(attr.columns)
-            optimistic_check_converters.extend(attr.converters)
-            values.extend(attr.get_raw_values(old))
+        if obj._cache_.optimistic:
+            for attr in obj._attrs_with_bit_(obj._rbits_):
+                if not attr.columns: continue
+                old = obj.__dict__.get(attr.name, NOT_LOADED)
+                assert old is not NOT_LOADED
+                optimistic_check_columns.extend(attr.columns)
+                optimistic_check_converters.extend(attr.converters)
+                values.extend(attr.get_raw_values(old))
         query_key = (tuple(update_columns), tuple(optimistic_check_columns))
         database = obj._diagram_.database
         cached_sql = obj._update_sql_cache_.get(query_key)
@@ -1735,6 +1742,9 @@ class Entity(object):
             else: obj.__dict__[attr.name] = val
     def _save_locked_(obj):
         assert obj._wbits_ == 0
+        if obj._cache_.optimistic:
+            obj._status_ = 'loaded'
+            return
         values = []
         for attr in obj._pk_attrs_:
             val = obj.__dict__[attr]
@@ -1945,7 +1955,7 @@ class Diagram(object):
 
         if create_tables:
             commands = schema.get_create_commands()
-            database._exec_commands(commands)
+            database._commit_commands(commands)
             
         if not check_tables and not create_tables: return
         for table in schema.tables.values():
@@ -1963,22 +1973,35 @@ def generate_mapping(*args, **keyargs):
     if diagram is None: raise MappingError('No default diagram found')
     diagram.generate_mapping(*args, **keyargs)
 
-class Transaction(object):
-    def __init__(trans):
-        trans.is_active = True
-        trans.ignore_none = True
-        trans.indexes = {}
-        trans.created = set()
-        trans.deleted = set()
-        trans.updated = set()
-        trans.modified_collections = {}
-        trans.to_be_checked = []
-    def _prepare(trans):
-        databases = set()
-        for obj in trans.to_be_checked:
-            databases.add(obj._diagram_.database)
+class Cache(object):
+    def __init__(cache, trans, database):
+        cache.trans = trans
+        cache.database = database
+        cache.ignore_none = True
+        cache.indexes = {}
+        cache.created = set()
+        cache.deleted = set()
+        cache.updated = set()
+        cache.modified_collections = {}
+        cache.to_be_checked = []
+        cache.optimistic = None
+    def has_anything_to_save(cache):
+        return bool(cache.created or cache.updated or cache.deleted or cache.modified_collections)                    
+    def save(cache, optimistic=True):
+        if not cache.has_anything_to_save(): return
+        cache.optimistic = optimistic
+        modified_m2m = cache.calc_modified_m2m()
+        for attr, (added, removed) in modified_m2m.iteritems():
+            if not removed: continue
+            attr.remove_m2m(removed)
+        for obj in cache.to_be_checked:
+            obj._save_()
+        for attr, (added, removed) in modified_m2m.iteritems():
+            if not added: continue
+            attr.add_m2m(added)
+    def calc_modified_m2m(cache):
         modified_m2m = {}
-        for attr, objects in trans.modified_collections.iteritems():
+        for attr, objects in cache.modified_collections.iteritems():
             if not isinstance(attr, Set): raise NotImplementedError
             reverse = attr.reverse
             if not reverse.is_collection: continue
@@ -1986,54 +2009,27 @@ class Transaction(object):
             if reverse in modified_m2m: continue
             added, removed = modified_m2m.setdefault(attr, (set(), set()))
             for obj in objects:
-                databases.add(obj._diagram_.database)
                 setdata = obj.__dict__[attr]
                 for obj2 in setdata.added: added.add((obj, obj2))
                 for obj2 in setdata.removed: removed.add((obj, obj2))
-        return databases, modified_m2m
-    def commit(trans):
-        if not trans.is_active: raise TransactionError('Transaction is not active')
-        databases, modified_m2m = trans._prepare()
-        if len(databases) > 1: raise NotImplementedError
-        database = databases.pop()
-        try:
-            database.rollback()
-            try:
-                trans._remove_m2m(modified_m2m)
-                for obj in trans.to_be_checked: obj._save_()
-                trans._add_m2m(modified_m2m)
-                database.commit()
-            except:
-                database.rollback()
-                raise
-        finally:
-            trans.is_active = False
-            local.trans = None
-    def _remove_m2m(trans, modified_m2m):
-        for attr, (added, removed) in modified_m2m.iteritems():
-            if not removed: continue
-            attr.remove_m2m(removed)
-    def _add_m2m(trans, modified_m2m):
-        for attr, (added, removed) in modified_m2m.iteritems():
-            if not added: continue
-            attr.add_m2m(added)
-    def _update_simple_index(trans, obj, attr, prev, val, undo):
-        index = trans.indexes.get(attr)
-        if index is None: index = trans.indexes[attr] = {}
-        if val is None and trans.ignore_none: val = NO_UNDO_NEEDED
+        return modified_m2m
+    def update_simple_index(cache, obj, attr, prev, val, undo):
+        index = cache.indexes.get(attr)
+        if index is None: index = cache.indexes[attr] = {}
+        if val is None and cache.ignore_none: val = NO_UNDO_NEEDED
         else:
             obj2 = index.setdefault(val, obj)
             if obj2 is not obj: raise IndexError(
                 'Cannot update %s.%s: %s with key %s already exists'
                 % (obj.__class__.__name__, attr.name, obj2, val))
         if prev is NOT_LOADED: prev = NO_UNDO_NEEDED
-        elif prev is None and trans.ignore_none: prev = NO_UNDO_NEEDED
+        elif prev is None and cache.ignore_none: prev = NO_UNDO_NEEDED
         else: del index[prev]
         undo.append((index, prev, val))
-    def _db_update_simple_index(trans, obj, attr, prev, val):
-        index = trans.indexes.get(attr)
-        if index is None: index = trans.indexes[attr] = {}
-        if val is None or trans.ignore_none: pass
+    def db_update_simple_index(cache, obj, attr, prev, val):
+        index = cache.indexes.get(attr)
+        if index is None: index = cache.indexes[attr] = {}
+        if val is None or cache.ignore_none: pass
         else:
             obj2 = index.setdefault(val, obj)
             if obj2 is not obj: raise IntegrityError(
@@ -2041,8 +2037,8 @@ class Transaction(object):
                 % (obj2.__class__.__name__, obj.__class__.__name__, attr.name, new_keyval))
                 # attribute which was created or updated lately clashes with one stored in database
         index.pop(prev, None)
-    def _update_composite_index(trans, obj, attrs, prevs, vals, undo):
-        if trans.ignore_none:
+    def update_composite_index(cache, obj, attrs, prevs, vals, undo):
+        if cache.ignore_none:
             if None in prevs: prevs = NO_UNDO_NEEDED
             if None in vals: vals = NO_UNDO_NEEDED
         if prevs is NO_UNDO_NEEDED: pass
@@ -2050,8 +2046,8 @@ class Transaction(object):
         if vals is NO_UNDO_NEEDED: pass
         elif NOT_LOADED in vals: vals = NO_UNDO_NEEDED
         if prevs is NO_UNDO_NEEDED and vals is NO_UNDO_NEEDED: return
-        index = trans.indexes.get(attrs)
-        if index is None: index = trans.indexes[attrs] = {}
+        index = cache.indexes.get(attrs)
+        if index is None: index = cache.indexes[attrs] = {}
         if vals is NO_UNDO_NEEDED: pass
         else:
             obj2 = index.setdefault(vals, obj)
@@ -2062,11 +2058,11 @@ class Transaction(object):
         if prevs is NO_UNDO_NEEDED: pass
         else: del index[prevs]
         undo.append((index, prevs, vals))
-    def _db_update_composite_index(trans, obj, attrs, prevs, vals):
-        index = trans.indexes.get(attrs)
-        if index is None: index = trans.indexes[attrs] = {}
+    def db_update_composite_index(cache, obj, attrs, prevs, vals):
+        index = cache.indexes.get(attrs)
+        if index is None: index = cache.indexes[attrs] = {}
         if NOT_LOADED in vals: pass
-        elif None in vals and trans.ignore_none: pass
+        elif None in vals and cache.ignore_none: pass
         else:
             obj2 = index.setdefault(vals, obj)
             if obj2 is not obj:
@@ -2075,13 +2071,131 @@ class Transaction(object):
                                      % (obj2.__class__.__name__, obj.__class__.__name__, attr.name, key_str))
         index.pop(prevs, None)
 
-class Local(threading.local):
+class Local(localbase):
     def __init__(local):
         local.trans = None
 
 local = Local()
 
-def get_trans():
+def get_trans(create_trans_if_not_exists=True):
     trans = local.trans
-    if trans is None: trans = local.trans = Transaction()
+    if trans is None and create_trans_if_not_exists:
+        trans = local.trans = Transaction()
     return trans
+
+pony.db.get_trans = get_trans
+
+class Transaction(object):
+    def __init__(trans):
+        trans.is_active = True
+        trans._db2cache = {}
+    def _get_cache(trans, entity):
+        database = entity._diagram_.database
+        if database is None: raise TransactionError
+        cache = trans._db2cache.get(database)
+        if cache is None: cache = trans._db2cache[database] = Cache(trans, database)
+        return cache
+    def commit(trans):
+        if not trans.is_active: raise TransactionError('Transaction is not active')
+        databases = [ db for priority, num, db in sorted(
+            ((db.priority, info.num, db) for db, info in pony.db.local.db2coninfo.items()), reverse=True) ]
+        if not databases: return
+        primary_db = databases[0]
+        other_databases = databases[1:]
+        exceptions = []
+        try:
+            try: trans._commit(primary_db)
+            except:
+                exceptions.append(sys.exc_info())
+                for database in other_databases:
+                    try: trans._rollback(database)
+                    except: exceptions.append(sys.sys.exc_info())
+                raise CommitException(exceptions)
+            for database in other_databases:
+                try: trans._commit(database)
+                except: exceptions.append(sys.sys.exc_info())
+            # write exceptions to log
+        finally:
+            del exceptions
+            assert not trans.is_active
+            assert not trans._db2cache
+            assert not pony.db.local.db2coninfo
+    def rollback(trans):
+        databases = pony.db.local.db2coninfo.keys()
+        exceptions = []
+        try:
+            for database in databases:
+                try: trans._rollback(database)
+                except: exceptions.append(sys.sys.exc_info())
+            if exceptions: raise RollbackException(exceptions)
+        finally:
+            del exceptions
+            assert not trans.is_active
+            assert not trans._db2cache
+            assert not pony.db.local.db2coninfo
+    def _commit(trans, database):
+        info = pony.db.local.db2coninfo.get(database)  # May be None if objects were just created
+        optimistic = info and info.optimistic or False
+        cache = trans._db2cache.pop(database, None)
+        if cache is None:
+            database._commit()
+            return
+        try:
+            if cache.has_anything_to_save():
+                if optimistic: database._rollback()
+                try:
+                    cache.save(optimistic)
+                    database._commit()
+                except:
+                    database._rollback()
+                    raise
+            else: database._rollback()
+        finally:
+            cache.trans = None
+            if not trans._db2cache:
+                trans.is_active = False
+                local.trans = None
+    def _rollback(trans, database):
+        cache = trans._db2cache.pop(database, None)
+        if cache is None:
+            database._rollback()
+            return
+        try:
+            database._rollback()
+        finally:
+            cache.trans = None
+            if not trans._db2cache:
+                trans.is_active = False
+                local.trans = None
+
+def commit():
+    get_trans().commit()
+
+def rollback():
+    get_trans().rollback()
+
+def with_transaction(func, args, keyargs, allowed_exceptions=[]):
+    try: result = func(*args, **keyargs)
+    except Exception, e:
+        exc_info = sys.exc_info()
+        try:
+            # write to log
+            for exc_class in allowed_exceptions:
+                if isinstance(e, exc_class):
+                    commit()
+                    break
+            else: rollback()
+        finally:
+            try: raise exc_info[0], exc_info[1], exc_info[2]
+            finally: del exc_info
+    commit()
+    return result
+
+@simple_decorator
+def db_decorator(func, *args, **keyargs):
+    web = sys.modules.get('pony.web')
+    allowed_exceptions = web and [ web.HttpRedirect ] or []
+    try: return with_transaction(func, args, keyargs, allowed_exceptions)
+    except RowNotFound:
+        if web: raise web.Http404NotFound
+        raise

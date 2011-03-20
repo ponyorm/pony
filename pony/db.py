@@ -1,9 +1,9 @@
 import re, sys, threading
-
+from itertools import count
 from operator import itemgetter
 
 from pony import options
-from pony.utils import import_module, parse_expr, is_ident, localbase, simple_decorator
+from pony.utils import import_module, parse_expr, is_ident, localbase
 from pony.sqlsymbols import *
 
 debug = True
@@ -17,10 +17,6 @@ class DBException(Exception):
             else: args = ('Multiple exceptions have occured',)
         Exception.__init__(self, *args)
         self.exceptions = exceptions
-
-class NoDefaultDbException(DBException): pass
-class CommitException(DBException): pass
-class RollbackException(DBException): pass
 
 class RowNotFound(DBException): pass
 class MultipleRowsFound(DBException): pass
@@ -64,12 +60,6 @@ def wrap_dbapi_exceptions(provider, func, *args, **keyargs):
 
 class LongStr(str): pass
 class LongUnicode(unicode): pass
-
-class Local(localbase):
-    def __init__(local):
-        local.db2con = {}
-
-local = Local()        
 
 sql_cache = {}
 insert_cache = {}
@@ -130,6 +120,25 @@ def adapt_sql(sql, paramstyle):
     sql_cache[(sql, paramstyle)] = result
     return result
 
+def get_trans(create_trans_if_not_exists=True):
+    assert not create
+    return None
+
+next_num = count().next
+
+class ConnectionInfo(object):
+    __slots__ = 'con', 'num', 'optimistic'
+    def __init__(info, con, optimistic):
+        info.con = con
+        info.num = next_num()
+        info.optimistic = optimistic
+
+class Local(localbase):
+    def __init__(local):
+        local.db2coninfo = {}
+
+local = Local()        
+
 select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class Database(object):
@@ -139,56 +148,70 @@ class Database(object):
         database.args = args
         database.keyargs = keyargs
         database._pool = provider.get_pool(*args, **keyargs)
-        con, provider = database._get_connection()
-        provider.release(con)
+        database.priority = 0
+        database.optimistic = True
+        info = database._get_connection()
+        provider.release(info.con)
     def _get_connection(database):
-        x = local.db2con.get(database)
-        if x is not None:
-            con, provider, nn = x
-            return con, provider
+        info = local.db2coninfo.get(database)
+        if info is not None: return info
         provider = database.provider
         con = wrap_dbapi_exceptions(provider, provider.connect, database._pool, *database.args, **database.keyargs)
-        local.db2con[database] = con, provider, len(local.db2con)
-        return con, provider
+        info = local.db2coninfo[database] = ConnectionInfo(con, database.optimistic)
+        return info
     def get_connection(database):
-        con, provider = database._get_connection()
-        return con
+        info = database._get_connection()
+        info.optimistic = False
+        return info.con
     def commit(database):
-        x = local.db2con.pop(database, None)
-        if x is None: return
-        con, provider, _ = x
-        wrap_dbapi_exceptions(provider, con.commit)
-        provider.release(con)
+        trans = get_trans(create_trans_if_not_exists=False)
+        if trans is not None: trans._commit(database)
+        else: database._commit()
     def rollback(database):
-        x = local.db2con.pop(database, None)
-        if x is None: return
-        con, provider, _ = x
-        wrap_dbapi_exceptions(provider, con.rollback)
-        provider.release(con)
+        trans = get_trans(create_trans_if_not_exists=False)
+        if trans is not None: trans._rollback(database)
+        else: database._rollback()
+    def _commit(database):
+        info = local.db2coninfo.pop(database, None)
+        if info is None: return
+        if debug: print 'COMMIT'
+        provider = database.provider
+        wrap_dbapi_exceptions(provider, info.con.commit)
+        provider.release(info.con)
+    def _rollback(database):
+        info = local.db2coninfo.pop(database, None)
+        if info is None: return
+        if debug: print 'ROLLBACK'
+        provider = database.provider
+        wrap_dbapi_exceptions(provider, info.con.rollback)
+        provider.release(info.con)
     def execute(database, sql, globals=None, locals=None):
+        info = database._get_connection()
+        info.optimistic = False
         sql = sql[:]  # sql = templating.plainstr(sql)
         if globals is None:
             assert locals is None
             globals = sys._getframe(1).f_globals
             locals = sys._getframe(1).f_locals
-        con, provider = database._get_connection()
+        provider = database.provider
         adapted_sql, code = adapt_sql(sql, provider.paramstyle)
         values = eval(code, globals, locals)
-        cursor = con.cursor()
+        cursor = info.con.cursor()
         if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
         else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         return cursor
     def select(database, sql, globals=None, locals=None):
+        info = database._get_connection()
         sql = sql[:]  # sql = templating.plainstr(sql)
         if not select_re.match(sql): sql = 'select ' + sql
         if globals is None:
             assert locals is None
             globals = sys._getframe(1).f_globals
             locals = sys._getframe(1).f_locals
-        con, provider = database._get_connection()
+        provider = database.provider
         adapted_sql, code = adapt_sql(sql, provider.paramstyle)
         values = eval(code, globals, locals)
-        cursor = con.cursor()
+        cursor = info.con.cursor()
         if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
         else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         result = cursor.fetchmany(options.MAX_ROWS_COUNT)
@@ -214,21 +237,24 @@ class Database(object):
         row = rows[0]
         return row
     def exists(database, sql, globals=None, locals=None):
+        info = database._get_connection()
         sql = sql[:]  # sql = templating.plainstr(sql)
         if not select_re.match(sql): sql = 'select ' + sql
         if globals is None:
             assert locals is None
             globals = sys._getframe(1).f_globals
             locals = sys._getframe(1).f_locals
-        con, provider = database._get_connection()
+        provider = database.provider
         adapted_sql, code = adapt_sql(sql, provider.paramstyle)
         values = eval(code, globals, locals)
-        cursor = con.cursor()
+        cursor = info.con.cursor()
         if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
         else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         result = cursor.fetchone()
         return bool(result)
     def insert(database, table_name, **keyargs):
+        info = database._get_connection()
+        info.optimistic = False
         table_name = table_name[:]  # table_name = templating.plainstr(table_name)
         query_key = (table_name,) + tuple(keyargs)  # keys are not sorted deliberately!!
         cached_sql = insert_cache.get(query_key)
@@ -242,36 +268,41 @@ class Database(object):
         cursor = database._exec_sql(sql, arguments)
         return getattr(cursor, 'lastrowid', None)
     def _ast2sql(database, sql_ast):
-        con, provider = database._get_connection()
-        sql, adapter = provider.ast2sql(con, sql_ast)
+        info = database._get_connection()
+        sql, adapter = database.provider.ast2sql(info.con, sql_ast)
         return sql, adapter
     def _exec_sql(database, sql, arguments=None):
-        con, provider = database._get_connection()
-        cursor = con.cursor()
+        info = database._get_connection()
+        cursor = info.con.cursor()
         if debug:
             print sql
             print arguments
             print
+        provider = database.provider
         if arguments is None: wrap_dbapi_exceptions(provider, cursor.execute, sql)
         else: wrap_dbapi_exceptions(provider, cursor.execute, sql, arguments)
         return cursor
     def exec_sql_many(database, sql, arguments_list=None):
-        con, provider = database._get_connection()
-        cursor = con.cursor()
+        info = database._get_connection()
+        info.optimistic = False
+        cursor = info.con.cursor()
         if debug:
             print 'EXECUTEMANY', sql
             print arguments_list
             print
+        provider = database.provider
         if arguments_list is None: wrap_dbapi_exceptions(provider, cursor.executemany, sql)
         else: wrap_dbapi_exceptions(provider, cursor.executemany, sql, arguments_list)
         return cursor
-    def _exec_commands(database, commands):
-        con, provider = database._get_connection()
-        cursor = con.cursor()
+    def _commit_commands(database, commands):
+        info = database._get_connection()
+        cursor = info.con.cursor()
+        provider = database.provider
         for command in commands:
             if debug: print 'DDLCOMMAND', command
             wrap_dbapi_exceptions(provider, cursor.execute, command)
-        wrap_dbapi_exceptions(provider, con.commit)
+        if debug: print 'COMMIT'
+        wrap_dbapi_exceptions(provider, info.con.commit)
 
 Database.Warning = Warning
 Database.Error = Error
@@ -283,64 +314,3 @@ Database.IntegrityError = IntegrityError
 Database.InternalError = InternalError
 Database.ProgrammingError = ProgrammingError
 Database.NotSupportedError = NotSupportedError
-
-def auto_commit():
-    databases = [ (num, db) for db, (con, provider, num) in local.db2con.items() ]
-    databases.sort()
-    databases = [ db for num, db in databases ]
-    if not databases: return
-    # ...
-    exceptions = []
-    try:
-        try: databases[0].commit()
-        except:
-            exceptions.append(sys.exc_info())
-            for db in databases[1:]:
-                try: db.rollback()
-                except: exceptions.append(sys.sys.exc_info())
-            raise CommitException(exceptions)
-        for db in databases[1:]:
-            try: db.commit()
-            except: exceptions.append(sys.sys.exc_info())
-        # write exceptions to log
-    finally:
-        del exceptions
-        local.db2con.clear()
-
-def auto_rollback():
-    exceptions = []
-    try:
-        for db in local.db2con:
-            try: db.rollback()
-            except: exceptions.append(sys.sys.exc_info())
-        if exceptions: raise RollbackException(exceptions)
-    finally:
-        del exceptions
-        local.db2con.clear()
-
-def with_transaction(func, args, keyargs, allowed_exceptions=[]):
-    try: result = func(*args, **keyargs)
-    except Exception, e:
-        exc_info = sys.exc_info()
-        try:
-            # write to log
-            for exc_class in allowed_exceptions:
-                if isinstance(e, exc_class):
-                    auto_commit()
-                    break
-            else: auto_rollback()
-        finally:
-            try: raise exc_info[0], exc_info[1], exc_info[2]
-            finally: del exc_info
-    auto_commit()
-    return result
-
-@simple_decorator
-def db_decorator(func, *args, **keyargs):
-    web = sys.modules.get('pony.web')
-    allowed_exceptions = web and [ web.HttpRedirect ] or []
-    try: return with_transaction(func, args, keyargs, allowed_exceptions)
-    except RowNotFound:
-        if web: raise web.Http404NotFound
-        raise
-    

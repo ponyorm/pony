@@ -1,7 +1,7 @@
 from pony.autoreload import on_reload
 from pony.compression import compression_middleware
 from pony.debugging import debugging_middleware, debugging_decorator
-from pony.db import db_decorator
+from pony.orm import db_decorator
 
 wsgi_middleware = []
 pony_middleware = []

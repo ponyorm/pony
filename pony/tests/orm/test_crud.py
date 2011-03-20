@@ -6,7 +6,6 @@ from model1 import *
 class TestCRUD(unittest.TestCase):
     def setUp(self):
         prepare_database()
-        local.trans = Transaction()
 
     def test_create(self):
         g1 = Group.create(number='1', department=2)
