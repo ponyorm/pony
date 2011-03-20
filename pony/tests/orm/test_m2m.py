@@ -42,8 +42,6 @@ class TestManyToManyNonComposite(unittest.TestCase):
         """)
         generate_mapping(self.db, check_tables=True)
         local.trans = Transaction()
-    def tearDown(self):
-        self.db.release()
     def test_add_remove(self):
         #db.debug = True
         Group = self.diagram.entities.get("Group")

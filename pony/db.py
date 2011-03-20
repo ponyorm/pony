@@ -139,8 +139,8 @@ class Database(object):
         database.args = args
         database.keyargs = keyargs
         database._pool = provider.get_pool(*args, **keyargs)
-        con = database.get_connection()
-        database.release()
+        con, provider = database._get_connection()
+        provider.release(con)
     def _get_connection(database):
         x = local.connections.get(database)
         if x is not None: return x[:2]
@@ -151,17 +151,18 @@ class Database(object):
     def get_connection(database):
         con, provider = database._get_connection()
         return con
-    def release(database):
+    def commit(database):
         x = local.connections.pop(database, None)
         if x is None: return
-        connection, provider, _ = x
-        provider.release(connection)
-    def commit(database):
-        con, provider = database._get_connection()
+        con, provider, _ = x
         wrap_dbapi_exceptions(provider, con.commit)
+        provider.release(con)
     def rollback(database):
-        con, provider = database._get_connection()
+        x = local.connections.pop(database, None)
+        if x is None: return
+        con, provider, _ = x
         wrap_dbapi_exceptions(provider, con.rollback)
+        provider.release(con)
     def execute(database, sql, globals=None, locals=None):
         sql = sql[:]  # sql = templating.plainstr(sql)
         if globals is None:
@@ -280,11 +281,6 @@ Database.IntegrityError = IntegrityError
 Database.InternalError = InternalError
 Database.ProgrammingError = ProgrammingError
 Database.NotSupportedError = NotSupportedError
-
-def release():
-    for con, provider, _ in local.connections.values():
-        provider.release(con)
-    local.connections.clear()
 
 def auto_commit():
     databases = [ (num, db) for db, (con, provider, num) in local.connections.items() ]

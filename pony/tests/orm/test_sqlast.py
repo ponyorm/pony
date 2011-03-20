@@ -13,8 +13,6 @@ class TestSQLAST(unittest.TestCase):
             );
         insert or ignore into T1 values(1, 'abc');
         """)
-    def tearDown(self):
-        self.db.release()
     def test_alias(self):
         sql_ast = [SELECT, [ALL, [COLUMN, "Group", "a"]],
                            [FROM, ["Group", TABLE, "T1" ]]]
