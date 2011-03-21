@@ -8,7 +8,7 @@ from pony.sqltranslator import select, exists
 
 class Student(Entity):
     _table_ = "Students"
-    zach = PrimaryKey(int)
+    zach = PrimaryKey(int, auto=True)
     name = Required(unicode, column="fio")
     group = Required("Group")
     stipendy = Required(Decimal, 10, 2, default=0)
@@ -29,13 +29,13 @@ class Subject(Entity):
 
 class Mark(Entity):
     _table_ = "Exams"
-    student = Required(Student, column="student")
-    subject = Required(Subject, column="subject")
+    student = Required(Student)
+    subject = Required(Subject)
     value = Required(int)
     date = Required(datetime.date)
     PrimaryKey(student, subject)
 
-db = Database('sqlite', 'C:\\Data\\Docs\\Dev\\GAE\\alexander-kozlovsky\\pony\\examples\\orm\\students01\\students.db3')
+db = Database('sqlite', 'students.db3')
 pony.db.debug = False
 generate_mapping(db, check_tables=True)
 pony.db.debug = True
@@ -51,6 +51,4 @@ pony.db.debug = True
 ##m1 = Mark.create(student=s1, subject=subj1, value=4)
 ##m2 = Mark.create(student=s2, subject=subj1, value=5)
 ##m3 = Mark.create(student=s1, subject=subj2, value=3)
-
-trans = get_trans()
 

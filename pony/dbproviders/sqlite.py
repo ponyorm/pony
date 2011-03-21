@@ -13,7 +13,7 @@ from pony.thirdparty.sqlite import (Warning, Error, InterfaceError, DatabaseErro
                                     ProgrammingError, NotSupportedError)
 
 from pony import dbapiprovider
-from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple_decorator
+from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple_decorator, absolutize_path
 
 paramstyle = 'qmark'
 
@@ -54,6 +54,7 @@ def connect(pool, filename, create=False):
         assert isinstance(pool, Pool)
         con = pool.con
         if con is not None: return con
+        filename = absolutize_path(filename, frame_depth=5)
         if not create and not path.exists(filename):
             raise IOError("Database file is not found: %r" % filename)
         pool.con = con = sqlite.connect(filename)

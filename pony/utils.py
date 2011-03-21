@@ -86,8 +86,20 @@ def import_module(name):
     for comp in components[1:]: mod = getattr(mod, comp)
     return mod
 
+if sys.platform == 'win32':
+      _absolute_re = re.compile(r'^(?:[A-Za-z]:)?[\\/]')
+else: _absolure_re = re.compile(r'^/')
+
+def is_absolute_path(filename):
+    return bool(_absolute_re.match(filename))
+
 def absolutize_path(filename, frame_depth=2):
+    if is_absolute_path(filename): return filename
     code_filename = sys._getframe(frame_depth).f_code.co_filename
+    if not is_absolute_path(code_filename):
+        if pony.MODE == 'INTERACTIVE': raise ValueError(
+            'When in interactive mode, please provide absolute file path. Got: %r' % filename)
+        raise EnvironmentError('Unexpected module filename, which is not absolute file path: %r' % code_filename)
     code_path = os.path.dirname(code_filename)
     return os.path.join(code_path, filename)
 

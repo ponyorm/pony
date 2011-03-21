@@ -102,5 +102,5 @@ class Classroom(Entity):
     description = Optional(str)
     lessons = Set(Lesson)
 
-db = Database('sqlite', r'C:\Data\Docs\Dev\GAE\alexander-kozlovsky\pony\examples\orm\university\university.db3')
+db = Database('sqlite', 'university.db3')
 generate_mapping(db, check_tables=True)
