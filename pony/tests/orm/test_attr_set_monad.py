@@ -1,5 +1,6 @@
 import unittest
 from pony.orm import *
+import pony.db
 from pony.db import Database
 from pony.sqltranslator import select, exists
 from testutils import *
@@ -193,11 +194,16 @@ class TestAttrSetMonad(unittest.TestCase):
         Student = self.Student
         groups = set(select(g for g in Group if 700 in select(s.scholarship for s in Student if s.group == g)))
         self.assertEqual(groups, set([Group(42)]))
-    def test23(self):
+    def test23a(self):
+        Group = self.Group
+        Student = self.Student
+        groups = set(select(g for g in Group if 700 not in g.students.scholarship))
+        self.assertEqual(groups, set([Group(41), Group(43)]))
+    def test23b(self):
         Group = self.Group
         Student = self.Student
         groups = set(select(g for g in Group if 700 not in select(s.scholarship for s in Student if s.group == g)))
-        self.assertEqual(groups, set([Group(43)]))
+        self.assertEqual(groups, set([Group(41), Group(43)]))
     @raises_exception(NotImplementedError)
     def test24(self):
         Group = self.Group

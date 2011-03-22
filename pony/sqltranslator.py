@@ -193,10 +193,12 @@ def are_comparable_types(op, type1, type2):
     else: assert False
 
 def sqland(items):
+    if not items: return []
     if len(items) == 1: return items[0]
     return [ AND ] + items
 
 def sqlor(items):
+    if not items: return []
     if len(items) == 1: return items[0]
     return [ OR ] + items
 
@@ -1121,7 +1123,7 @@ class AttrSetMonad(SetMixin, Monad):
         raise NotImplementedError
     def contains(monad, item, not_in=False):
         item_type = monad.type[0]
-        if not are_comparable_types('==', item_type, item.type): raise TypeError
+        if not are_comparable_types('==', item_type, item.type): raise TypeError, [item_type, item.type ]
         if isinstance(item_type, orm.EntityMeta) and len(item_type._pk_columns_) > 1:
             raise NotImplementedError
 
@@ -1182,9 +1184,10 @@ class AttrSetMonad(SetMixin, Monad):
             prev_entity = attr.entity
             reverse = attr.reverse
             if not reverse:
-                assert len(attr.columns) == 1
+                assert attr is monad.path[-1] and len(attr.columns) == 1
                 expr = [ COLUMN, alias, attr.column ]
-                assert attr is monad.path[-1]
+                if not attr.is_required:
+                    conditions.append([ IS_NOT_NULL, [ COLUMN, alias, attr.column ] ])
                 break
             
             next_entity = attr.py_type
@@ -1220,65 +1223,63 @@ class QuerySetMonad(SetMixin, Monad):
         attr, attr_type = monad._get_attr_info()
         item_type = attr_type or subtranslator.entity
         monad.item_type = item_type
-        Monad.__init__(monad, translator, (item_type,))
+        monad_type = (item_type,)  # todo: better way to represent type "Set of item_type"
+        Monad.__init__(monad, translator, monad_type)
     def _get_attr_info(monad):
-        subtranslator = monad.subtranslator
-        attrname = subtranslator.attrname
-        if attrname is None: return None, None
-        entity = subtranslator.entity
-        attr = entity._adict_[attrname]
-        attr_type = normalize_type(attr.py_type)
-        return attr, attr_type
-    def _subselect(monad, select_ast, item_type):
-        from_ast = monad.subtranslator.from_
-        where_ast = [ WHERE, sqland(monad.subtranslator.conditions) ]
-        sql_ast = [ SELECT, select_ast, from_ast ]
-        conditions = monad.subtranslator.conditions
-        if conditions: sql_ast.append([ WHERE, sqland(conditions) ])
-        return ExprMonad.new(monad.translator, item_type, sql_ast)
+        sub = monad.subtranslator
+        if sub.attrname is None: return None, None
+        attr = sub.entity._adict_[sub.attrname]
+        return attr, normalize_type(attr.py_type)
     def contains(monad, item, not_in=False):
         item_type = monad.type[0]
-        if not are_comparable_types('==', item_type, item.type): raise TypeError, [ item_type, item.type ]
+        if not are_comparable_types('==', item_type, item.type): raise TypeError, [item_type, item.type ]
+        if isinstance(item_type, orm.EntityMeta) and len(item_type._pk_columns_) > 1:
+            raise NotImplementedError
+
         attr, attr_type = monad._get_attr_info()
-        sub = monad.subtranslator
         if attr is None: columns = item_type._pk_columns_
         else: columns = attr.columns
         if len(columns) > 1: raise NotImplementedError
+
+        sub = monad.subtranslator
         select_ast = [ ALL, [ COLUMN, sub.alias, columns[0] ] ]
-        subquery_ast = [ SELECT, select_ast, sub.from_]
-        if sub.conditions: subquery_ast.append([ WHERE, sqland(sub.conditions) ])
+        conditions = sub.conditions[:]
+        if attr is not None and not attr.is_required:
+            conditions.append([ IS_NOT_NULL, [ COLUMN, sub.alias, columns[0] ]])
+        subquery_ast = [ SELECT, select_ast, sub.from_, [ WHERE, sqland(conditions) ] ]
         sqlop = not_in and NOT_IN or IN
         return BoolExprMonad(monad.translator, [ sqlop, item.getsql()[0], subquery_ast ])
+    def nonzero(monad):        
+        sub = monad.subtranslator
+        sql_ast = [ EXISTS, sub.from_, [ WHERE, sqland(sub.conditions) ] ]
+        return BoolExprMonad(monad.translator, sql_ast)
+    def negate(monad):
+        sub = monad.subtranslator
+        sql_ast = [ NOT_EXISTS, sub.from_, [ WHERE, sqland(sub.conditions) ] ]
+        return BoolExprMonad(monad.translator, sql_ast)
+    def _subselect(monad, item_type, select_ast):
+        sub = monad.subtranslator
+        sql_ast = [ SELECT, select_ast, sub.from_, [ WHERE, sqland(sub.conditions) ] ]
+        return ExprMonad.new(monad.translator, item_type, sql_ast)
     def len(monad):
         attr, attr_type = monad._get_attr_info()
-        if attr is None:
-            select_ast = [ AGGREGATES, [ COUNT, ALL ] ]
-        else:            
+        if attr is not None:
             if len(attr.columns) > 1: raise NotImplementedError
             select_ast = [ AGGREGATES, [ COUNT, DISTINCT, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
-        return monad._subselect(select_ast, int)
+        else: select_ast = [ AGGREGATES, [ COUNT, ALL ] ]
+        return monad._subselect(int, select_ast)
     def sum(monad):
         attr, attr_type = monad._get_attr_info()
         if attr_type not in numeric_types: raise TypeError
         select_ast = [ AGGREGATES, [ COALESCE, [ SUM, [ COLUMN, monad.subtranslator.alias, attr.column ] ], [ VALUE, 0 ] ] ]
-        return monad._subselect(select_ast, attr_type)
+        return monad._subselect(attr_type, select_ast)
     def min(monad):
         attr, attr_type = monad._get_attr_info()
         if attr_type not in comparable_types: raise TypeError
         select_ast = [ AGGREGATES, [ MIN, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
-        return monad._subselect(select_ast, attr_type)
+        return monad._subselect(attr_type, select_ast)
     def max(monad):
         attr, attr_type = monad._get_attr_info()
         if attr_type not in comparable_types: raise TypeError
         select_ast = [ AGGREGATES, [ MAX, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
-        return monad._subselect(select_ast, attr_type)
-    def nonzero(monad):        
-        from_ast = monad.subtranslator.from_
-        where_ast = [ WHERE, sqland(monad.subtranslator.conditions) ]
-        sql_ast = [ EXISTS, from_ast, where_ast ]
-        return BoolExprMonad(monad.translator, sql_ast)
-    def negate(monad):
-        from_ast = monad.subtranslator.from_
-        where_ast = [ WHERE, sqland(monad.subtranslator.conditions) ]
-        sql_ast = [ NOT_EXISTS, from_ast, where_ast ]
-        return BoolExprMonad(monad.translator, sql_ast)
+        return monad._subselect(attr_type, select_ast)
