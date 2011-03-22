@@ -2147,10 +2147,10 @@ class DBSession(object):
                 if optimistic: database._rollback()
                 try:
                     cache.save(optimistic)
-                    database._commit()
                 except:
                     database._rollback()
                     raise
+                database._commit()
             else: database._rollback()
         finally:
             cache.session = None
