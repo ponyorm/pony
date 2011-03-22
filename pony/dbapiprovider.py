@@ -208,14 +208,14 @@ class SQLBuilder(object):
     def LEFT_JOIN(builder, *sources):
         return builder.sql_join('LEFT', sources)
     def WHERE(builder, condition):
+        if not condition: return ''
         indent = builder.indent_spaces * (builder.indent-1)
         result = [ indent, 'WHERE ' ]
-        if condition[0] != AND:
-            result.extend((builder(condition), '\n'))
+        extend = result.extend
+        if condition[0] != AND: extend((builder(condition), '\n'))
         else:
-            result.extend((builder(condition[1]), '\n'))
-            for item in condition[2:]:
-                result.extend((indent, '  AND ', builder(item), '\n'))
+            extend((builder(condition[1]), '\n'))
+            for item in condition[2:]: extend((indent, '  AND ', builder(item), '\n'))
         return result
     @indentable
     def UNION(builder, kind, *sections):
