@@ -11,13 +11,13 @@ from MySQLdb import (Warning, Error, InterfaceError, DatabaseError,
 from MySQLdb.constants import FIELD_TYPE, FLAG
 import MySQLdb.converters
 
-from pony import dbapiprovider
+from pony import sqlbuilding
 from pony.db import LongStr, LongUnicode
 
 paramstyle = 'format'
 
 def quote_name(connection, name):
-    return dbapiprovider.quote_name(name, "`")
+    return sqlbuilding.quote_name(name, "`")
 
 def get_pool(*args, **keyargs):
     return None
@@ -35,7 +35,7 @@ def release(connection):
     connection.close()
 
 def ast2sql(con, ast):
-    b = dbapiprovider.SQLBuilder(ast, paramstyle, "`")
+    b = sqlbuilding.SQLBuilder(ast, paramstyle, "`")
     return b.sql, b.adapter
 
 def _get_converter_type_by_py_type(py_type):

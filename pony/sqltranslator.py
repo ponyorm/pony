@@ -10,7 +10,7 @@ from pony import orm
 from pony.decompiling import decompile
 from pony.templating import Html, StrHtml
 from pony.db import LongStr, LongUnicode
-from pony.dbapiprovider import SQLBuilder
+from pony.sqlbuilding import SQLBuilder
 from pony.sqlsymbols import *
 
 MAX_ALIAS_LENGTH = 30

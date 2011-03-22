@@ -12,13 +12,13 @@ from pony.thirdparty.sqlite import (Warning, Error, InterfaceError, DatabaseErro
                                     DataError, OperationalError, IntegrityError, InternalError,
                                     ProgrammingError, NotSupportedError)
 
-from pony import dbapiprovider
+from pony import sqlbuilding
 from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple_decorator, absolutize_path
 
 paramstyle = 'qmark'
 
 def quote_name(connection, name):
-    return dbapiprovider.quote_name(name)
+    return sqlbuilding.quote_name(name)
 
 def _text_factory(s):
     return s.decode('utf8', 'replace')
@@ -64,7 +64,7 @@ def connect(pool, filename, create=False):
 def release(connection):
     pass
 
-class SQLiteBuilder(dbapiprovider.SQLBuilder):
+class SQLiteBuilder(sqlbuilding.SQLBuilder):
     def POW(builder, expr1, expr2):
         return 'pow(', builder(expr1), ', ', builder(expr2), ')'
 
