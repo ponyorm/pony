@@ -162,9 +162,9 @@ class Attribute(object):
             return attr.py_type(val)
         if not isinstance(val, reverse.entity): raise ConstraintError(
             'Value of attribute %s.%s must be an instance of %s. Got: %s' % (entity.__name__, attr.name, reverse.entity.__name__, val))
-        if obj is not None: trans = obj._cache_.trans
-        else: trans = get_trans()
-        if trans is not val._cache_.trans: raise TransactionError(
+        if obj is not None: session = obj._cache_.session
+        else: session = get_session()
+        if session is not val._cache_.session: raise TransactionError(
             'An attempt to mix objects belongs to different transactions')
         return val
     def load(attr, obj):
@@ -492,10 +492,10 @@ class Set(Collection):
                 if not isinstance(item, rentity): raise TypeError(
                     'Item of collection %s.%s must be an instance of %s. Got: %r'
                     % (entity.__name__, attr.name, rentity.__name__, item))
-        if obj is not None: trans = obj._cache_.trans
-        else: trans = get_trans()
+        if obj is not None: session = obj._cache_.session
+        else: session = get_session()
         for item in items:
-            if item._cache_.trans is not trans:
+            if item._cache_.session is not session:
                 raise TransactionError('An attempt to mix objects belongs to different transactions')
         return items
     def load(attr, obj):
@@ -1091,7 +1091,7 @@ class Entity(object):
     @classmethod
     def _new_(entity, pkval, status, raw_pkval=None):
         assert status in ('loaded', 'created')
-        cache = get_trans()._get_cache(entity)
+        cache = get_session()._get_cache(entity)
         index = cache.indexes.setdefault(entity._pk_, {})
         if pkval is None: obj = None
         else: obj = index.get(pkval)
@@ -1150,7 +1150,7 @@ class Entity(object):
         return obj
     @classmethod
     def _find_in_cache_(entity, pkval, avdict):
-        cache = get_trans()._get_cache(entity)
+        cache = get_session()._get_cache(entity)
         obj = None
         if pkval is not None:
             index = cache.indexes.get(entity._pk_)
@@ -1339,7 +1339,7 @@ class Entity(object):
         entity._diagram_.database._get_connection()
         pkval, avdict = entity._normalize_args_(args, keyargs, True)
         obj = entity._new_(pkval, 'created')
-        cache = get_trans()._get_cache(entity)
+        cache = get_session()._get_cache(entity)
         indexes = {}
         for attr in entity._simple_keys_:
             val = avdict[attr]
@@ -1974,8 +1974,8 @@ def generate_mapping(*args, **keyargs):
     diagram.generate_mapping(*args, **keyargs)
 
 class Cache(object):
-    def __init__(cache, trans, database):
-        cache.trans = trans
+    def __init__(cache, session, database):
+        cache.session = session
         cache.database = database
         cache.ignore_none = True
         cache.indexes = {}
@@ -2073,30 +2073,30 @@ class Cache(object):
 
 class Local(localbase):
     def __init__(local):
-        local.trans = None
+        local.session = None
 
 local = Local()
 
-def get_trans(create_trans_if_not_exists=True):
-    trans = local.trans
-    if trans is None and create_trans_if_not_exists:
-        trans = local.trans = Transaction()
-    return trans
+def get_session(create_session_if_not_exists=True):
+    session = local.session
+    if session is None and create_session_if_not_exists:
+        session = local.session = DBSession()
+    return session
 
-pony.db.get_trans = get_trans
+pony.db.get_session = get_session
 
-class Transaction(object):
-    def __init__(trans):
-        trans.is_active = True
-        trans._db2cache = {}
-    def _get_cache(trans, entity):
+class DBSession(object):
+    def __init__(session):
+        session.is_active = True
+        session._db2cache = {}
+    def _get_cache(session, entity):
         database = entity._diagram_.database
         if database is None: raise TransactionError
-        cache = trans._db2cache.get(database)
-        if cache is None: cache = trans._db2cache[database] = Cache(trans, database)
+        cache = session._db2cache.get(database)
+        if cache is None: cache = session._db2cache[database] = Cache(session, database)
         return cache
-    def commit(trans):
-        if not trans.is_active: raise TransactionError('Transaction is not active')
+    def commit(session):
+        if not session.is_active: raise TransactionError('Transaction is not active')
         databases = [ db for priority, num, db in sorted(
             ((db.priority, info.num, db) for db, info in pony.db.local.db2coninfo.items()), reverse=True) ]
         if not databases: return
@@ -2104,39 +2104,39 @@ class Transaction(object):
         other_databases = databases[1:]
         exceptions = []
         try:
-            try: trans._commit(primary_db)
+            try: session._commit(primary_db)
             except:
                 exceptions.append(sys.exc_info())
                 for database in other_databases:
-                    try: trans._rollback(database)
+                    try: session._rollback(database)
                     except: exceptions.append(sys.sys.exc_info())
                 raise CommitException(exceptions)
             for database in other_databases:
-                try: trans._commit(database)
+                try: session._commit(database)
                 except: exceptions.append(sys.sys.exc_info())
             # write exceptions to log
         finally:
             del exceptions
-            assert not trans.is_active
-            assert not trans._db2cache
+            assert not session.is_active
+            assert not session._db2cache
             assert not pony.db.local.db2coninfo
-    def rollback(trans):
+    def rollback(session):
         databases = pony.db.local.db2coninfo.keys()
         exceptions = []
         try:
             for database in databases:
-                try: trans._rollback(database)
+                try: session._rollback(database)
                 except: exceptions.append(sys.sys.exc_info())
             if exceptions: raise RollbackException(exceptions)
         finally:
             del exceptions
-            assert not trans.is_active
-            assert not trans._db2cache
+            assert not session.is_active
+            assert not session._db2cache
             assert not pony.db.local.db2coninfo
-    def _commit(trans, database):
+    def _commit(session, database):
         info = pony.db.local.db2coninfo.get(database)  # May be None if objects were just created
         optimistic = info and info.optimistic or False
-        cache = trans._db2cache.pop(database, None)
+        cache = session._db2cache.pop(database, None)
         if cache is None:
             database._commit()
             return
@@ -2151,28 +2151,28 @@ class Transaction(object):
                     raise
             else: database._rollback()
         finally:
-            cache.trans = None
-            if not trans._db2cache:
-                trans.is_active = False
-                local.trans = None
-    def _rollback(trans, database):
-        cache = trans._db2cache.pop(database, None)
+            cache.session = None
+            if not session._db2cache:
+                session.is_active = False
+                local.session = None
+    def _rollback(session, database):
+        cache = session._db2cache.pop(database, None)
         if cache is None:
             database._rollback()
             return
         try:
             database._rollback()
         finally:
-            cache.trans = None
-            if not trans._db2cache:
-                trans.is_active = False
-                local.trans = None
+            cache.session = None
+            if not session._db2cache:
+                session.is_active = False
+                local.session = None
 
 def commit():
-    get_trans().commit()
+    get_session().commit()
 
 def rollback():
-    get_trans().rollback()
+    get_session().rollback()
 
 def with_transaction(func, args, keyargs, allowed_exceptions=[]):
     try: result = func(*args, **keyargs)

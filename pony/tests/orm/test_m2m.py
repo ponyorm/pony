@@ -41,7 +41,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         insert into Group_Subject values (101, 'Subj2');
         """)
         generate_mapping(self.db, check_tables=True)
-        local.trans = Transaction()
+        local.session = DBSession()
     def test_add_remove(self):
         #db.debug = True
         Group = self.diagram.entities.get("Group")
@@ -50,7 +50,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         subjects = Subject.find_all()
         g.subjects.remove(subjects[:2])
         g.subjects.add(subjects[-2:])
-        get_trans().commit()
+        commit()
         self.assertEqual(Group(101).subjects, set([Subject('Subj3'), Subject('Subj4')]))
         db_subjects = self.db.select("subject from Group_Subject where [group] = 101")
         self.assertEqual(db_subjects , ['Subj3', 'Subj4'])
@@ -109,7 +109,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
 #        insert into Group_Subject values (1, 101, 'Subj1');
 #        """)
 #        generate_mapping(self.db, check_tables=True)
-#        local.trans = Transaction()
+#        local.session = DBSession()
 #    def tearDown(self):
 #        self.db.release()
 #    def test_add(self):
@@ -119,14 +119,14 @@ class TestManyToManyNonComposite(unittest.TestCase):
 #        g = Group.find_one(number=101)
 #        s2 = Subject.find_one('Subj2')
 #        g.subjects.add(s2)
-#        #get_trans().commit()
+#        #commit()
 #    def test_remove(self):
 #        Group = self.diagram.entities.get("Group")
 #        Subject = self.diagram.entities.get("Subject")
 #        g = Group.find_one(number=101)
 #        s1 = Subject.find_one('Subj1')
 #        g.subjects.add(s1)
-#        #get_trans().commit()
+#        #commit()
 
 if __name__ == "__main__":
     unittest.main()

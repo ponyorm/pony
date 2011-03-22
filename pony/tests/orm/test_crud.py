@@ -14,7 +14,7 @@ class TestCRUD(unittest.TestCase):
         s1 = Student.create(record=3, name='A', group=g1)
         s2 = Student.create(record=4, name='B', group=g1, scholarship=500)
 
-        get_trans().commit()
+        commit()
         sql = 'INSERT INTO "Students" ("record", "fio", "group", "scholarship") VALUES (?, ?, ?, ?)'
         self.assertEqual(Student._cached_create_sql_[0], sql)
 

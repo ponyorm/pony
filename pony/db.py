@@ -120,7 +120,7 @@ def adapt_sql(sql, paramstyle):
     sql_cache[(sql, paramstyle)] = result
     return result
 
-def get_trans(create_trans_if_not_exists=True):
+def get_session(create_session_if_not_exists=True):
     assert not create
     return None
 
@@ -164,12 +164,12 @@ class Database(object):
         info.optimistic = False
         return info.con
     def commit(database):
-        trans = get_trans(create_trans_if_not_exists=False)
-        if trans is not None: trans._commit(database)
+        session = get_session(create_session_if_not_exists=False)
+        if session is not None: session._commit(database)
         else: database._commit()
     def rollback(database):
-        trans = get_trans(create_trans_if_not_exists=False)
-        if trans is not None: trans._rollback(database)
+        session = get_session(create_session_if_not_exists=False)
+        if session is not None: session._rollback(database)
         else: database._rollback()
     def _commit(database):
         info = local.db2coninfo.pop(database, None)
