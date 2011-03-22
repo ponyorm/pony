@@ -2111,11 +2111,11 @@ class DBSession(object):
                 exceptions.append(sys.exc_info())
                 for database in other_databases:
                     try: session._rollback(database)
-                    except: exceptions.append(sys.sys.exc_info())
+                    except: exceptions.append(sys.exc_info())
                 raise CommitException(exceptions)
             for database in other_databases:
                 try: session._commit(database)
-                except: exceptions.append(sys.sys.exc_info())
+                except: exceptions.append(sys.exc_info())
             # write exceptions to log
             assert not session.is_active
             assert not session._db2cache
@@ -2128,7 +2128,7 @@ class DBSession(object):
         try:
             for database in databases:
                 try: session._rollback(database)
-                except: exceptions.append(sys.sys.exc_info())
+                except: exceptions.append(sys.exc_info())
             if exceptions: raise RollbackException(exceptions)
             assert not session.is_active
             assert not session._db2cache
