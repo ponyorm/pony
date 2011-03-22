@@ -2117,11 +2117,11 @@ class DBSession(object):
                 try: session._commit(database)
                 except: exceptions.append(sys.sys.exc_info())
             # write exceptions to log
-        finally:
-            del exceptions
             assert not session.is_active
             assert not session._db2cache
             assert not pony.db.local.db2coninfo
+        finally:
+            del exceptions
     def rollback(session):
         databases = pony.db.local.db2coninfo.keys()
         exceptions = []
@@ -2130,11 +2130,11 @@ class DBSession(object):
                 try: session._rollback(database)
                 except: exceptions.append(sys.sys.exc_info())
             if exceptions: raise RollbackException(exceptions)
-        finally:
-            del exceptions
             assert not session.is_active
             assert not session._db2cache
             assert not pony.db.local.db2coninfo
+        finally:
+            del exceptions
     def _commit(session, database):
         info = pony.db.local.db2coninfo.get(database)  # May be None if objects were just created
         optimistic = info and info.optimistic or False
