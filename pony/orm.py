@@ -150,9 +150,9 @@ class Attribute(object):
         reverse = attr.reverse
         if not reverse:
             if isinstance(val, attr.py_type): return val
-            elif isinstance(val, Entity): raise TypeError(
-                'Attribute %s.%s must be of %s type. Got: %s'
-                % (attr.entity.__name__, attr.name, attr.py_type.__name__, val))
+            elif isinstance(val, Entity):
+                raise TypeError('Attribute %s.%s must be of %s type. Got: %s'
+                                % (attr.entity.__name__, attr.name, attr.py_type.__name__, val))
             if attr.converters:
                 assert len(attr.converters) == 1
                 converter = attr.converters[0]
@@ -160,12 +160,13 @@ class Attribute(object):
                     if from_db: return converter.sql2py(val)
                     else: return converter.validate(val)
             return attr.py_type(val)
-        if not isinstance(val, reverse.entity): raise ConstraintError(
-            'Value of attribute %s.%s must be an instance of %s. Got: %s' % (entity.__name__, attr.name, reverse.entity.__name__, val))
+        if not isinstance(val, reverse.entity):
+            raise ConstraintError('Value of attribute %s.%s must be an instance of %s. Got: %s'
+                                  % (entity.__name__, attr.name, reverse.entity.__name__, val))
         if obj is not None: session = obj._cache_.session
         else: session = get_session()
-        if session is not val._cache_.session: raise TransactionError(
-            'An attempt to mix objects belongs to different transactions')
+        if session is not val._cache_.session:
+            raise TransactionError('An attempt to mix objects belongs to different transactions')
         return val
     def load(attr, obj):
         if not attr.columns:
@@ -485,13 +486,12 @@ class Set(Collection):
         else:
             rentity = reverse.entity
             try: items = set(val)
-            except TypeError: raise TypeError(
-                'Item of collection %s.%s must be an instance of %s. Got: %r'
-                % (entity.__name__, attr.name, rentity.__name__, val))
-            for item  in items:
-                if not isinstance(item, rentity): raise TypeError(
-                    'Item of collection %s.%s must be an instance of %s. Got: %r'
-                    % (entity.__name__, attr.name, rentity.__name__, item))
+            except TypeError: raise TypeError('Item of collection %s.%s must be an instance of %s. Got: %r'
+                                              % (entity.__name__, attr.name, rentity.__name__, val))
+            for item in items:
+                if not isinstance(item, rentity):
+                    raise TypeError('Item of collection %s.%s must be an instance of %s. Got: %r'
+                                    % (entity.__name__, attr.name, rentity.__name__, item))
         if obj is not None: session = obj._cache_.session
         else: session = get_session()
         for item in items:
@@ -1007,10 +1007,10 @@ class Entity(object):
             elif not issubclass(py_type, Entity): continue
             
             entity2 = py_type
-            if entity2._diagram_ is not diagram: raise DiagramError(
-                'Interrelated entities must belong to same diagram. Entities %s and %s belongs to different diagrams'
-                % (entity.__name__, entity2.__name__))
-            
+            if entity2._diagram_ is not diagram:
+                raise DiagramError('Interrelated entities must belong to same diagram. '
+                                   'Entities %s and %s belongs to different diagrams'
+                                   % (entity.__name__, entity2.__name__))
             reverse = attr.reverse
             if isinstance(reverse, basestring):
                 attr2 = getattr(entity2, reverse, None)
@@ -1669,7 +1669,8 @@ class Entity(object):
         try:
             cursor = database._exec_sql(sql, arguments)
         except database.IntegrityError, e:
-            raise IntegrityError('Object %r cannot be stored in the database (probably it already exists). DB message: %s' % (obj, e.args[0]))
+            raise IntegrityError('Object %r cannot be stored in the database (probably it already exists). DB message: %s'
+                                 % (obj, e.args[0]))
         except database.DatabaseError, e:
             raise UnexpectedError('Object %r cannot be stored in the database. DB message: %s' % (obj, e.args[0]))
 
@@ -2021,9 +2022,8 @@ class Cache(object):
         if val is None and cache.ignore_none: val = NO_UNDO_NEEDED
         else:
             obj2 = index.setdefault(val, obj)
-            if obj2 is not obj: raise IndexError(
-                'Cannot update %s.%s: %s with key %s already exists'
-                % (obj.__class__.__name__, attr.name, obj2, val))
+            if obj2 is not obj: raise IndexError('Cannot update %s.%s: %s with key %s already exists'
+                                                 % (obj.__class__.__name__, attr.name, obj2, val))
         if curr is NOT_LOADED: curr = NO_UNDO_NEEDED
         elif curr is None and cache.ignore_none: curr = NO_UNDO_NEEDED
         else: del index[curr]
