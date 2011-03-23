@@ -65,7 +65,7 @@ next_attr_id = count(1).next
 
 class Attribute(object):
     __slots__ = 'is_required', 'is_unique', 'is_indexed', 'is_pk', 'is_collection', \
-                'id', 'pk_offset', 'py_type', 'sql_type', 'entity', 'name', 'oldname', \
+                'id', 'pk_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'keyargs'
     def __init__(attr, py_type, *args, **keyargs):
@@ -176,7 +176,7 @@ class Attribute(object):
             assert len(objects) == 1
             return objects[0]
         obj._load_()
-        return obj._curr_[attr]
+        return obj._curr_[attr.name]
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
         result = attr.get(obj)
@@ -187,7 +187,7 @@ class Attribute(object):
         return result
     def get(attr, obj):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
-        val = obj._curr_.get(attr, NOT_LOADED)
+        val = obj._curr_.get(attr.name, NOT_LOADED)
         if val is NOT_LOADED: val = attr.load(obj)
         return val
     def __set__(attr, obj, val, undo_funcs=None):
@@ -202,7 +202,7 @@ class Attribute(object):
                 if val == pkval[attr.pk_offset]: return
             elif val == pkval: return
             raise TypeError('Cannot change value of primary key')
-        curr =  obj._curr_.get(attr, NOT_LOADED)
+        curr =  obj._curr_.get(attr.name, NOT_LOADED)
         if curr is NOT_LOADED and reverse and not reverse.is_collection:
             assert not is_reverse_call
             curr = attr.load(obj)
@@ -217,7 +217,7 @@ class Attribute(object):
                 obj._status_ = 'updated'
                 cache.updated.add(obj)
         if not attr.reverse and not attr.is_indexed:
-            obj._curr_[attr] = val
+            obj._curr_[attr.name] = val
             return
         if not is_reverse_call: undo_funcs = []
         undo = []
@@ -229,7 +229,7 @@ class Attribute(object):
                 to_be_checked = cache.to_be_checked
                 if to_be_checked and to_be_checked[-1] is obj: to_be_checked.pop()
                 assert obj not in to_be_checked
-            obj._curr_[attr] = curr
+            obj._curr_[attr.name] = curr
             for index, old_key, new_key in undo:
                 if new_key is NO_UNDO_NEEDED: pass
                 else: del index[new_key]
@@ -242,13 +242,13 @@ class Attribute(object):
                 cache.update_simple_index(obj, attr, curr, val, undo)
             for attrs, i in attr.composite_keys:
                 get = obj._curr_.get
-                vals = [ get(a, NOT_LOADED) for a in attrs ]
+                vals = [ get(a.name, NOT_LOADED) for a in attrs ]
                 currents = tuple(vals)
                 vals[i] = val
                 vals = tuple(vals)
                 cache.update_composite_index(obj, attrs, currents, vals, undo)
 
-            obj._curr_[attr] = val
+            obj._curr_[attr.name] = val
                 
             if not reverse: pass
             elif not is_reverse_call: attr.update_reverse(obj, curr, val, undo_funcs)
@@ -268,6 +268,7 @@ class Attribute(object):
         assert obj._status_ not in ('created', 'deleted', 'cancelled')
         assert attr.pk_offset is None
         reverse = attr.reverse
+        get_curr = obj._curr_.get
         prev = attr.check(prev, obj, from_db=True)
         old_prev = obj._prev_.get(attr.name, NOT_LOADED)
         if old_prev == prev: return
@@ -279,15 +280,14 @@ class Attribute(object):
         obj._prev_[attr.name] = prev
         if obj._wbits_ & bit: return
         val = prev
-        curr = obj._curr_.get(attr, NOT_LOADED)
+        curr = get_curr(attr.name, NOT_LOADED)
         assert curr == old_prev
 
         if not attr.reverse and not attr.is_indexed: return
         cache = obj._cache_
         if attr.is_unique: cache.db_update_simple_index(obj, attr, curr, val)
         for attrs, i in attr.composite_keys:
-            get = obj._curr_.get
-            vals = [ get(a, NOT_LOADED) for a in attrs ]
+            vals = [ get_curr(a.name, NOT_LOADED) for a in attrs ]
             currents = tuple(vals)
             vals[i] = val
             vals = tuple(vals)
@@ -302,7 +302,7 @@ class Attribute(object):
                 if curr is NOT_LOADED: pass
                 else: reverse.db_reverse_remove((curr,), obj)
             else: raise NotImplementedError
-        obj._curr_[attr] = val
+        obj._curr_[attr.name] = val
     def update_reverse(attr, obj, curr, val, undo_funcs):
         reverse = attr.reverse
         if not reverse.is_collection:
@@ -500,11 +500,11 @@ class Set(Collection):
         return items
     def load(attr, obj):
         assert obj._status_ not in ('deleted', 'cancelled')
-        setdata = obj._curr_.get(attr, NOT_LOADED)
+        setdata = obj._curr_.get(attr.name, NOT_LOADED)
         if setdata is not NOT_LOADED and setdata.is_fully_loaded: return setdata
         reverse = attr.reverse
         if reverse is None: raise NotImplementedError
-        if setdata is NOT_LOADED: setdata = obj._curr_[attr] = SetData()
+        if setdata is NOT_LOADED: setdata = obj._curr_[attr.name] = SetData()
         if not reverse.is_collection:
             reverse.entity._find_(None, (), {reverse.name:obj})
         else:
@@ -544,7 +544,7 @@ class Set(Collection):
         return sql_ast
     def copy(attr, obj):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
-        setdata = obj._curr_.get(attr, NOT_LOADED)
+        setdata = obj._curr_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED or not setdata.is_fully_loaded: setdata = attr.load(obj)
         reverse = attr.reverse
         if reverse.is_collection or reverse.pk_offset is not None: return setdata.copy()
@@ -564,10 +564,10 @@ class Set(Collection):
         items = attr.check(val, obj)
         reverse = attr.reverse
         if not reverse: raise NotImplementedError
-        setdata = obj._curr_.get(attr, NOT_LOADED)
+        setdata = obj._curr_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED:
             if obj._status_ == 'created':
-                setdata = obj._curr_[attr] = SetData()
+                setdata = obj._curr_[attr.name] = SetData()
                 setdata.is_fully_loaded = True
                 if not items: return
             else: setdata = attr.load(obj)
@@ -604,9 +604,9 @@ class Set(Collection):
         cache = item._cache_
         objects_with_modified_collections = cache.modified_collections.setdefault(attr, set())
         for obj in objects:
-            setdata = obj._curr_.get(attr, NOT_LOADED)
+            setdata = obj._curr_.get(attr.name, NOT_LOADED)
             if setdata is NOT_LOADED:
-                setdata = obj._curr_[attr] = SetData()
+                setdata = obj._curr_[attr.name] = SetData()
             if setdata.added is EMPTY: setdata.added = set()  
             elif item in setdata.added: raise AssertionError
             in_setdata = item in setdata
@@ -619,7 +619,7 @@ class Set(Collection):
             objects_with_modified_collections.add(obj)
         def undo_func():
             for obj, in_setdata, in_removed, was_modified_earlier in undo:
-                setdata = obj._curr_[attr]
+                setdata = obj._curr_[attr.name]
                 setdata.added.remove(item)
                 if not in_setdata: setdata.remove(item)
                 if in_removed: setdata.removed.add(item)
@@ -627,9 +627,9 @@ class Set(Collection):
         undo_funcs.append(undo_func)
     def db_reverse_add(attr, objects, item):
         for obj in objects:
-            setdata = obj._curr_.get(attr, NOT_LOADED)
+            setdata = obj._curr_.get(attr.name, NOT_LOADED)
             if setdata is NOT_LOADED:
-                setdata = obj._curr_[attr] = SetData()
+                setdata = obj._curr_[attr.name] = SetData()
             elif setdata.is_fully_loaded:
                 raise UnrepeatableReadError('Phantom object %r appeared in collection %r.%s' % (item, obj, attr.name))
             setdata.add(item)
@@ -638,9 +638,9 @@ class Set(Collection):
         cache = item._cache_
         objects_with_modified_collections = cache.modified_collections.setdefault(attr, set())
         for obj in objects:
-            setdata = obj._curr_.get(attr, NOT_LOADED)
+            setdata = obj._curr_.get(attr.name, NOT_LOADED)
             if setdata is NOT_LOADED:
-                setdata = obj._curr_[attr] = SetData()
+                setdata = obj._curr_[attr.name] = SetData()
             if setdata.removed is EMPTY: setdata.removed = set()
             elif item in setdata.removed: raise AssertionError
             in_setdata = item in setdata
@@ -653,7 +653,7 @@ class Set(Collection):
             objects_with_modified_collections.add(obj)
         def undo_func():
             for obj, in_setdata, in_removed, was_modified_earlier in undo:
-                setdata = obj._curr_[attr]
+                setdata = obj._curr_[attr.name]
                 if in_added: setdata.added.add(item)
                 if in_setdata: setdata.add(item)
                 setdata.removed.remove(item)
@@ -731,7 +731,7 @@ class SetWrapper(object):
         attr = wrapper._attr_
         obj = wrapper._obj_
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
-        setdata = obj._curr_.get(attr, NOT_LOADED)
+        setdata = obj._curr_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED: setdata = attr.load(obj)
         if setdata: return True
         if not setdata.is_fully_loaded: setdata = attr.load(obj)
@@ -739,7 +739,7 @@ class SetWrapper(object):
     def __len__(wrapper):
         attr = wrapper._attr_
         obj = wrapper._obj_
-        setdata = obj._curr_.get(attr, NOT_LOADED)
+        setdata = obj._curr_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED or not setdata.is_fully_loaded: setdata = attr.load(obj)
         return len(setdata)
     def __iter__(wrapper):
@@ -761,7 +761,7 @@ class SetWrapper(object):
         obj = wrapper._obj_
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         attr = wrapper._attr_
-        setdata = obj._curr_.get(attr, NOT_LOADED)
+        setdata = obj._curr_.get(attr.name, NOT_LOADED)
         if setdata is not NOT_LOADED:
             if item in setdata: return True
             if setdata.is_fully_loaded: return False
@@ -774,8 +774,8 @@ class SetWrapper(object):
         reverse = attr.reverse
         if not reverse: raise NotImplementedError
         items = attr.check(x, obj)
-        setdata = obj._curr_.get(attr, NOT_LOADED)
-        if setdata is NOT_LOADED: setdata = obj._curr_[attr] = SetData()
+        setdata = obj._curr_.get(attr.name, NOT_LOADED)
+        if setdata is NOT_LOADED: setdata = obj._curr_[attr.name] = SetData()
         items.difference_update(setdata.added)
         undo_funcs = []
         try:
@@ -800,7 +800,7 @@ class SetWrapper(object):
         reverse = attr.reverse
         if not reverse: raise NotImplementedError
         items = attr.check(x, obj)
-        setdata = obj._curr_.get(attr, NOT_LOADED)
+        setdata = obj._curr_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED or not setdata.is_fully_loaded:
             setdata = attr.load(obj) # TODO: Load only the necessary objects
         items.difference_update(setdata.removed)
@@ -1116,14 +1116,14 @@ class Entity(object):
         if status == 'loaded':
             obj._rbits_ = obj._wbits_ = 0
             for attr, val in pairs:
-                obj._curr_[attr] = val
+                obj._curr_[attr.name] = val
                 if attr.reverse: attr.db_update_reverse(obj, NOT_LOADED, val)
         elif status == 'created':
             obj._rbits_ = obj._wbits_ = None
             undo_funcs = []
             try:
                 for attr, val in pairs:
-                    obj._curr_[attr] = val
+                    obj._curr_[attr.name] = val
                     if attr.reverse: attr.update_reverse(obj, NOT_LOADED, val, undo_funcs)
             except:  # will never be here in sane situation
                 for undo_func in reversed(undo_funcs): undo_func()
@@ -1361,7 +1361,7 @@ class Entity(object):
             for attr, val in avdict.iteritems():
                 if attr.pk_offset is not None: continue
                 elif not attr.is_collection:
-                    obj._curr_[attr] = val
+                    obj._curr_[attr.name] = val
                     if attr.reverse: attr.update_reverse(obj, None, val, undo_funcs)
                 else: attr.__set__(obj, val, undo_funcs)
         except:
@@ -1376,11 +1376,14 @@ class Entity(object):
         return obj
     def _db_set_(obj, avdict):
         assert obj._status_ not in ('created', 'deleted', 'cancelled')
+        get_curr = obj._curr_.get
+        get_prev = obj._prev_.get
+        set_prev = obj._prev_.__setitem__
         rbits = obj._rbits_
         wbits = obj._wbits_
         for attr, prev in avdict.items():
             assert attr.pk_offset is None
-            old_prev = obj._prev_.get(attr.name, NOT_LOADED)
+            old_prev = get_prev(attr.name, NOT_LOADED)
             if old_prev == prev:
                 del avdict[attr]
                 continue
@@ -1388,11 +1391,11 @@ class Entity(object):
             if rbits & bit: raise UnrepeatableReadError(
                 'Value of %s.%s for %s was updated outside of current transaction (was: %s, now: %s)'
                 % (obj.__class__.__name__, attr.name, obj, old_prev, prev))
-            obj._prev_[attr.name] = prev
+            set_prev(attr.name, prev)
             if wbits & bit:
                 del avdict[attr]
                 continue
-            curr = obj._curr_.get(attr, NOT_LOADED)
+            curr = get_curr(attr.name, NOT_LOADED)
             assert curr == old_prev
         if not avdict: return
         NOT_FOUND = object()
@@ -1400,15 +1403,14 @@ class Entity(object):
         for attr in obj._simple_keys_:
             val = avdict.get(attr, NOT_FOUND)
             if val is NOT_FOUND: continue
-            curr = obj._curr_.get(attr, NOT_LOADED)
+            curr = get_curr(attr.name, NOT_LOADED)
             if curr == val: continue
             cache.db_update_simple_index(obj, attr, curr, val)
         for attrs in obj._composite_keys_:
             for attr in attrs:
                 if attr in avdict: break
             else: continue
-            get = obj._curr_.get
-            vals = [ get(a, NOT_LOADED) for a in attrs ]
+            vals = [ get_curr(a.name, NOT_LOADED) for a in attrs ]
             currents = tuple(vals)
             for i, attr in enumerate(attrs):
                 val = avdict.get(attr, NOT_FOUND)
@@ -1416,17 +1418,19 @@ class Entity(object):
                 vals[i] = val
             vals = tuple(vals)
             cache.db_update_composite_index(obj, attrs, currents, vals)
+        set_curr = obj._curr_.__setitem__
         for attr, val in avdict.iteritems():
-            if not attr.reverse: continue
-            curr = obj._curr_.get(attr, NOT_LOADED)
-            attr.db_update_reverse(obj, curr, val)
-        obj._curr_.update(avdict)
+            if attr.reverse:
+                curr = get_curr(attr.name, NOT_LOADED)
+                attr.db_update_reverse(obj, curr, val)
+            set_curr(attr.name, val)
     def _delete_(obj, undo_funcs=None):
         is_recursive_call = undo_funcs is not None
         if not is_recursive_call: undo_funcs = []
         cache = obj._cache_
         status = obj._status_
         assert status not in ('deleted', 'cancelled')
+        get_curr = obj._curr_.get
         undo_list = []
         undo_dict = {}
         def undo_func():
@@ -1435,7 +1439,7 @@ class Entity(object):
                 to_be_checked = cache.to_be_checked
                 if to_be_checked and to_be_checked[-1] is obj: to_be_checked.pop()
                 assert obj not in to_be_checked
-            obj._curr_.update(undo_dict)
+            obj._curr_.update((attr.name, val) for attr, val in undo_dict.iteritems())
             for index, old_key in undo_list: index[old_key] = obj
         undo_funcs.append(undo_func)
         try:
@@ -1443,7 +1447,7 @@ class Entity(object):
                 reverse = attr.reverse
                 if not reverse: continue
                 if not attr.is_collection:
-                    val = obj._curr_.get(attr, NOT_LOADED)
+                    val = get_curr(attr.name, NOT_LOADED)
                     if val is None: continue
                     if not reverse.is_collection:
                         if val is NOT_LOADED: val = attr.load(obj)
@@ -1464,7 +1468,7 @@ class Entity(object):
                 else: raise NotImplementedError
 
             for attr in obj._simple_keys_:
-                val = obj._curr_.get(attr, NOT_LOADED)
+                val = get_curr(attr.name, NOT_LOADED)
                 if val is NOT_LOADED: continue
                 if val is None and cache.ignore_none: continue
                 index = cache.indexes.get(attr)
@@ -1474,8 +1478,7 @@ class Entity(object):
                 undo_list.append((index, val))
                 
             for attrs in obj._composite_keys_:
-                get = obj._curr_.get
-                vals = tuple(get(a, NOT_LOADED) for a in attrs)
+                vals = tuple(get_curr(a.name, NOT_LOADED) for a in attrs)
                 if NOT_LOADED in vals: continue
                 if cache.ignore_none and None in vals: continue
                 index = cache.indexes.get(attrs)
@@ -1496,7 +1499,7 @@ class Entity(object):
                 cache.deleted.add(obj)
             for attr in obj._attrs_:
                 if attr.pk_offset is None:
-                    val = obj._curr_.pop(attr, NOT_LOADED)
+                    val = obj._curr_.pop(attr.name, NOT_LOADED)
                     if val is NOT_LOADED: continue
                     undo_dict[attr] = val
         except:
@@ -1512,9 +1515,10 @@ class Entity(object):
         cache = obj._cache_
         status = obj._status_
         wbits = obj._wbits_
+        get_curr = obj._curr_.get
         if avdict:
             for attr in avdict:
-                curr = obj._curr_.get(attr, NOT_LOADED)
+                curr = get_curr(attr.name, NOT_LOADED)
                 if curr is NOT_LOADED and attr.reverse and not attr.reverse.is_collection:
                     attr.load(obj)
             if wbits is not None:
@@ -1530,7 +1534,7 @@ class Entity(object):
                 for attr in avdict:
                     if attr.reverse or attr.is_indexed: break
                 else:
-                    obj._curr_.update(avdict)
+                    obj._curr_.update((attr.name, val) for attr, val in avdict.iteritems())
                     return
         undo_funcs = []
         undo = []
@@ -1552,15 +1556,14 @@ class Entity(object):
             for attr in obj._simple_keys_:
                 val = avdict.get(attr, NOT_FOUND)
                 if val is NOT_FOUND: continue
-                curr = obj._curr_.get(attr, NOT_LOADED)
+                curr = get_curr(attr.name, NOT_LOADED)
                 if curr == val: continue
                 cache.update_simple_index(obj, attr, curr, val, undo)
             for attrs in obj._composite_keys_:
                 for attr in attrs:
                     if attr in avdict: break
                 else: continue
-                get = obj._curr_.get
-                vals = [ get(a, NOT_LOADED) for a in attrs ]
+                vals = [ get_curr(a.name, NOT_LOADED) for a in attrs ]
                 currents = tuple(vals)
                 for i, attr in enumerate(attrs):
                     val = avdict.get(attr, NOT_FOUND)
@@ -1570,14 +1573,14 @@ class Entity(object):
                 cache.update_composite_index(obj, attrs, currents, vals, undo)
             for attr, val in avdict.iteritems():
                 if not attr.reverse: continue
-                curr = obj._curr_.get(attr, NOT_LOADED)
+                curr = get_curr(attr.name, NOT_LOADED)
                 attr.update_reverse(obj, curr, val, undo_funcs)
             for attr, val in collection_avdict.iteritems():
                 attr.__set__(obj, val, undo_funcs)
         except:
             for undo_func in undo_funcs: undo_func()
             raise
-        obj._curr_.update(avdict)
+        obj._curr_.update((attr.name, val) for attr, val in avdict.iteritems())
     @classmethod
     def _normalize_args_(entity, args, keyargs, setdefault=False):
         if not args: pass
@@ -1614,7 +1617,7 @@ class Entity(object):
             val = attr.check(val, obj, from_db=False)
             if not attr.is_collection:
                 if attr.pk_offset is not None:
-                    curr = obj._curr_.get(attr, NOT_LOADED)
+                    curr = obj._curr_.get(attr.name, NOT_LOADED)
                     if curr != val: raise TypeError('Cannot change value of primary key attribute %s' % attr.name)
                 else: avdict[attr] = val
             else: collection_avdict[attr] = val
@@ -1642,7 +1645,7 @@ class Entity(object):
         elif status == 'updated': attr_iter = obj._attrs_with_bit_(obj._wbits_)
         else: assert False
         for attr in attr_iter:
-            val = obj._curr_[attr]
+            val = obj._curr_[attr.name]
             if not attr.reverse: continue
             if val is None: continue
             if val._status_ == 'created':
@@ -1653,7 +1656,7 @@ class Entity(object):
         for attr in obj._attrs_:
             if not attr.columns: continue
             if attr.is_collection: continue
-            val = obj._curr_[attr]
+            val = obj._curr_[attr.name]
             values.extend(attr.get_raw_values(val))
         database = obj._diagram_.database
         if obj._cached_create_sql_ is None:
@@ -1681,7 +1684,7 @@ class Entity(object):
             obj2 = index.setdefault(rowid, obj)
             if obj2 is not obj: raise IntegrityError(
                 'Newly auto-generated rowid value %s was already used in transaction cache for another object' % rowid)
-            obj._pkval_ = obj._curr_[pk_attr] = rowid
+            obj._pkval_ = obj._curr_[pk_attr.name] = rowid
             obj._newid_ = None
             
         obj._status_ = 'saved'
@@ -1690,17 +1693,17 @@ class Entity(object):
         bits = obj._bits_
         for attr in obj._attrs_:
             if attr not in bits: continue
-            obj._prev_[attr.name] = obj._curr_[attr]
+            obj._prev_[attr.name] = obj._curr_[attr.name]
     def _save_updated_(obj):
         update_columns = []
         values = []
         for attr in obj._attrs_with_bit_(obj._wbits_):
             if not attr.columns: continue
             update_columns.extend(attr.columns)
-            val = obj._curr_[attr]
+            val = obj._curr_[attr.name]
             values.extend(attr.get_raw_values(val))
         for attr in obj._pk_attrs_:
-            val = obj._curr_[attr]
+            val = obj._curr_[attr.name]
             values.extend(attr.get_raw_values(val))
         optimistic_check_columns = []
         optimistic_check_converters = []
@@ -1740,7 +1743,7 @@ class Entity(object):
         obj._rbits_ = 0
         obj._wbits_ = 0
         for attr in obj._attrs_with_bit_():
-            val = obj._curr_.get(attr, NOT_LOADED)
+            val = obj._curr_.get(attr.name, NOT_LOADED)
             if val is NOT_LOADED: assert attr.name not in obj._prev_
             else: obj._prev_[attr.name] = val
     def _save_locked_(obj):
@@ -1750,7 +1753,7 @@ class Entity(object):
             return
         values = []
         for attr in obj._pk_attrs_:
-            val = obj._curr_[attr]
+            val = obj._curr_[attr.name]
             values.extend(attr.get_raw_values(val))
         optimistic_check_columns = []
         optimistic_check_converters = []
@@ -1814,7 +1817,6 @@ class Entity(object):
                 def fget(wrapper, attr=attr):
                     rentity = attr.py_type
                     cls = rentity._get_propagated_set_subclass_()
-                    print cls
                     return cls(attr.__get__(item) for item in wrapper)
             else:
                 def fget(wrapper, attr=attr):
@@ -2012,7 +2014,7 @@ class Cache(object):
             if reverse in modified_m2m: continue
             added, removed = modified_m2m.setdefault(attr, (set(), set()))
             for obj in objects:
-                setdata = obj._curr_[attr]
+                setdata = obj._curr_[attr.name]
                 for obj2 in setdata.added: added.add((obj, obj2))
                 for obj2 in setdata.removed: removed.add((obj, obj2))
         return modified_m2m
