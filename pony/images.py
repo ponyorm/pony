@@ -9,6 +9,7 @@ from pony.web import http, no_cookies
 from pony.utils import cached
 
 def _decode_color(color):
+    if not PIL: raise ValueError
     try: color = ImageColor.colormap[color][1:]
     except KeyError: pass
     size = len(color)
@@ -18,6 +19,7 @@ def _decode_color(color):
     except: raise ValueError
 
 def _decode_png_colors(color1, color2):
+    if not PIL: raise ValueError
     if color1 is not None:
         color1 = _decode_color(color1)
         if color2 is not None: color2 = _decode_color(color2)
