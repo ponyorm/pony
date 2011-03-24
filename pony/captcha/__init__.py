@@ -168,10 +168,10 @@ def generate_map():
     return ''.join(map)
 
 class CaptchaThread(threading.Thread):
-    def __init__(self):
-        threading.Thread.__init__(self, name="CaptchaThread")
-        self.setDaemon(True)
-    def run(self):
+    def __init__(captcha_thread):
+        threading.Thread.__init__(captcha_thread, name="CaptchaThread")
+        captcha_thread.setDaemon(True)
+    def run(captcha_thread):
         if not main: time.sleep(5)
         for i in range(10):
             map = generate_map()
