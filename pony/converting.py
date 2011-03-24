@@ -180,10 +180,10 @@ converters = {
     }
 
 class ValidationError(ValueError):
-    def __init__(self, err_msg=None, translated_msg=None):
-        ValueError.__init__(self, err_msg)
-        self.err_msg = err_msg
-        self.translated_msg = translated_msg or err_msg
+    def __init__(exc, err_msg=None, translated_msg=None):
+        ValueError.__init__(exc, err_msg)
+        exc.err_msg = err_msg
+        exc.translated_msg = translated_msg or err_msg
 
 def str2py(value, type):
     if type is None or not isinstance(value, unicode): return value
