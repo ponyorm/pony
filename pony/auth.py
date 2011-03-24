@@ -383,10 +383,10 @@ if not pony.MODE.startswith('GAE-'):
     """
 
     class AuthThread(threading.Thread):
-        def __init__(self):
-            threading.Thread.__init__(self, name="AuthThread")
-            self.setDaemon(True)
-        def run(self):
+        def __init__(auth_thread):
+            threading.Thread.__init__(auth_thread, name="AuthThread")
+            auth_thread.setDaemon(True)
+        def run(auth_thread):
             from pony.thirdparty import sqlite
             global connection
             connection = sqlite.connect(get_sessiondb_name())
