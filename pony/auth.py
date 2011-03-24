@@ -22,33 +22,33 @@ if storage is None:
     from pony.sessionstorage import memcachedstorage as storage
 
 class Session(object):
-    def __init__(self, dict=None, **keyargs):
-        if dict: self.__dict__.update(dict)
-        self.__dict__.update(keyargs)
-    def __call__(self, key, default):
-        return self.__dict__.get(key, default)
-    def __getitem__(self, key):
-        return self.__dict__[key]
-    def __setitem__(self, key, value):
-        self.__dict__[key] = value
-    def __delitem__(self, key):
-        del self.__dict__[key]
-    def __getattr__(self, attr):
-        return self.__dict__.get(attr)
-    def __setattr__(self, attr, value):
-        if value is None: self.__dict__.pop(attr, None)
-        else: self.__dict__[attr] = value
-    def __delattr__(self, attr):
-        try: del self.__dict__[attr]
+    def __init__(session, dict=None, **keyargs):
+        if dict: session.__dict__.update(dict)
+        session.__dict__.update(keyargs)
+    def __call__(session, key, default):
+        return session.__dict__.get(key, default)
+    def __getitem__(session, key):
+        return session.__dict__[key]
+    def __setitem__(session, key, value):
+        session.__dict__[key] = value
+    def __delitem__(session, key):
+        del session.__dict__[key]
+    def __getattr__(session, attr):
+        return session.__dict__.get(attr)
+    def __setattr__(session, attr, value):
+        if value is None: session.__dict__.pop(attr, None)
+        else: session.__dict__[attr] = value
+    def __delattr__(session, attr):
+        try: del session.__dict__[attr]
         except KeyError: raise AttributeError, attr
-    def __contains__(self, key):
-        return key in self.__dict__
-    def __iter__(self):
-        return iter(self.__dict__.keys())
-    def __len__(self):
-        return len(self.__dict__)
-    def clear(self):
-        self.__dict__.clear()
+    def __contains__(session, key):
+        return key in session.__dict__
+    def __iter__(session):
+        return iter(session.__dict__.keys())
+    def __len__(session):
+        return len(session.__dict__)
+    def clear(session):
+        session.__dict__.clear()
 
 class Local(localbase):
     def __init__(local):
