@@ -9,14 +9,14 @@ from pony.sqlsymbols import *
 debug = True
 
 class DBException(Exception):
-    def __init__(self, *args, **keyargs):
+    def __init__(exc, *args, **keyargs):
         exceptions = keyargs.pop('exceptions', [])
         assert not keyargs
         if not args and exceptions:
             if len(exceptions) == 1: args = getattr(exceptions[0], 'args', ())
             else: args = ('Multiple exceptions have occured',)
-        Exception.__init__(self, *args)
-        self.exceptions = exceptions
+        Exception.__init__(exc, *args)
+        exc.exceptions = exceptions
 
 class RowNotFound(DBException): pass
 class MultipleRowsFound(DBException): pass
