@@ -58,77 +58,77 @@ def set_rss2_text(element, text):
     elif isinstance(text, basestring): element.text = text[:]
 
 class Feed(object):
-    def __init__(self, title, link, updated,
+    def __init__(feed, title, link, updated,
                  id=None, subtitle=None, feed_link=None, author=None, rights=None,
                  base=None, language=None, icon=None, logo=None):
-        self.link = link
-        self.title = title
-        self.updated = updated
-        self.id = id or self.link
-        self.subtitle = subtitle
-        self.feed_link = feed_link
-        self.author = author
-        self.rights = rights
-        self.base = base
-        self.language = language
-        self.icon = icon
-        self.logo = logo
-        self.entries = []
-    def add(self, entry):
-        self.entries.append(entry)
-    def __str__(self):
-        return tostring(self.atom())
-    def atom(self, pretty_print=True):
+        feed.link = link
+        feed.title = title
+        feed.updated = updated
+        feed.id = id or feed.link
+        feed.subtitle = subtitle
+        feed.feed_link = feed_link
+        feed.author = author
+        feed.rights = rights
+        feed.base = base
+        feed.language = language
+        feed.icon = icon
+        feed.logo = logo
+        feed.entries = []
+    def add(feed, entry):
+        feed.entries.append(entry)
+    def __str__(feed):
+        return tostring(feed.atom())
+    def atom(feed, pretty_print=True):
         indent = pretty_print and '\n  ' or ''
 
-        feed = Element('{http://www.w3.org/2005/Atom}feed', **nsmap_keyargs)
-        feed.text = indent
-        if self.base: feed.set('{http://www.w3.org/XML/1998/namespace}base', self.base)
-        if self.language: feed.set('{http://www.w3.org/XML/1998/namespace}lang', self.language)
+        xml = Element('{http://www.w3.org/2005/Atom}feed', **nsmap_keyargs)
+        xml.text = indent
+        if feed.base: xml.set('{http://www.w3.org/XML/1998/namespace}base', feed.base)
+        if feed.language: xml.set('{http://www.w3.org/XML/1998/namespace}lang', feed.language)
 
-        title = SubElement(feed, '{http://www.w3.org/2005/Atom}title')
-        set_atom_text(title, self.title)
+        title = SubElement(xml, '{http://www.w3.org/2005/Atom}title')
+        set_atom_text(title, feed.title)
 
-        if self.subtitle:
-            subtitle = SubElement(feed, '{http://www.w3.org/2005/Atom}summary')
-            set_atom_text(subtitle, self.subtitle)
+        if feed.subtitle:
+            subtitle = SubElement(xml, '{http://www.w3.org/2005/Atom}summary')
+            set_atom_text(subtitle, feed.subtitle)
 
-        link = SubElement(feed, '{http://www.w3.org/2005/Atom}link', href=self.link)
+        link = SubElement(xml, '{http://www.w3.org/2005/Atom}link', href=feed.link)
 
-        if self.feed_link:
-            feed_link = SubElement(feed, '{http://www.w3.org/2005/Atom}link', rel='self', href=self.feed_link)
+        if feed.feed_link:
+            feed_link = SubElement(xml, '{http://www.w3.org/2005/Atom}link', rel='self', href=feed.feed_link)
 
-        updated = SubElement(feed, '{http://www.w3.org/2005/Atom}updated')
-        updated.text = atom_date(self.updated)
+        updated = SubElement(xml, '{http://www.w3.org/2005/Atom}updated')
+        updated.text = atom_date(feed.updated)
 
-        id = SubElement(feed, '{http://www.w3.org/2005/Atom}id')
-        id.text = self.id
+        id = SubElement(xml, '{http://www.w3.org/2005/Atom}id')
+        id.text = feed.id
 
-        if self.author:
-            author = atom_author(self.author)
-            feed.append(author)
+        if feed.author:
+            author = atom_author(feed.author)
+            xml.append(author)
 
-        if self.rights:
-            rights = SubElement(feed, '{http://www.w3.org/2005/Atom}rights')
-            set_atom_text(rights, self.rights)
+        if feed.rights:
+            rights = SubElement(xml, '{http://www.w3.org/2005/Atom}rights')
+            set_atom_text(rights, feed.rights)
 
-        if self.icon:
-            icon = SubElement(feed, '{http://www.w3.org/2005/Atom}icon')
-            icon.text = self.icon
+        if feed.icon:
+            icon = SubElement(xml, '{http://www.w3.org/2005/Atom}icon')
+            icon.text = feed.icon
 
-        if self.logo:
-            logo = SubElement(feed, '{http://www.w3.org/2005/Atom}logo')
-            logo.text = self.logo
+        if feed.logo:
+            logo = SubElement(xml, '{http://www.w3.org/2005/Atom}logo')
+            logo.text = feed.logo
 
-        for entry in self.entries:
-            entry = entry.atom(pretty_print)
-            entry[-1].tail = indent
-            feed.append(entry)
+        for entry in feed.entries:
+            entry_xml = entry.atom(pretty_print)
+            entry_xml[-1].tail = indent
+            xml.append(entry_xml)
 
-        for child in feed: child.tail = indent   
-        feed[-1].tail = pretty_print and '\n' or ''
-        return feed
-    def rss2(self, pretty_print=True):
+        for child in xml: child.tail = indent   
+        xml[-1].tail = pretty_print and '\n' or ''
+        return xml
+    def rss2(feed, pretty_print=True):
         indent = pretty_print and '\n    ' or ''
         indent2 = pretty_print and '\n      ' or ''
 
@@ -139,22 +139,22 @@ class Feed(object):
         channel.text = indent
         channel.tail = pretty_print and '\n' or ''
 
-        set_rss2_text(SubElement(channel, 'title'), self.title)
-        set_rss2_text(SubElement(channel, 'description'), self.subtitle or '')
-        SubElement(channel, 'link').text = self.link
-        SubElement(channel, 'lastBuildDate').text = rss2_date(self.updated)
-        if self.language: SubElement(channel, 'language').text = self.language
-        if self.rights: SubElement(channel, 'copyright').text = self.rights
-        if self.logo:
+        set_rss2_text(SubElement(channel, 'title'), feed.title)
+        set_rss2_text(SubElement(channel, 'description'), feed.subtitle or '')
+        SubElement(channel, 'link').text = feed.link
+        SubElement(channel, 'lastBuildDate').text = rss2_date(feed.updated)
+        if feed.language: SubElement(channel, 'language').text = feed.language
+        if feed.rights: SubElement(channel, 'copyright').text = feed.rights
+        if feed.logo:
             image = SubElement(channel, 'image')
             image.text = indent2
-            SubElement(image, 'url').text = self.logo
+            SubElement(image, 'url').text = feed.logo
             SubElement(image, 'title').text = ''
-            SubElement(image, 'link').text = self.link
+            SubElement(image, 'link').text = feed.link
             for child in image: child.tail = indent2
             image[-1].tail = pretty_print and '\n    ' or ''
 
-        for entry in self.entries:
+        for entry in feed.entries:
             item = entry.rss2(pretty_print)
             item[-1].tail = indent
             channel.append(item)
@@ -164,83 +164,83 @@ class Feed(object):
         return rss
 
 class Entry(object):
-    def __init__(self, title, link, updated,
+    def __init__(entry, title, link, updated,
                  id=None, summary=None, content=None, published=None,
                  enclosure=None, author=None, rights=None, base=None, language=None):
-        self.link = link
-        self.title = title
-        self.updated = updated
-        self.id = id or self.link
-        self.summary = summary
-        self.content = content
-        self.published = published
-        self.enclosure = enclosure
-        self.author = author
-        self.rights = rights
-        self.base = base
-        self.language = language
-    def __str__(self):
-        return tostring(self.atom())
-    def atom(self, pretty_print=True):
+        entry.link = link
+        entry.title = title
+        entry.updated = updated
+        entry.id = id or entry.link
+        entry.summary = summary
+        entry.content = content
+        entry.published = published
+        entry.enclosure = enclosure
+        entry.author = author
+        entry.rights = rights
+        entry.base = base
+        entry.language = language
+    def __str__(entry):
+        return tostring(entry.atom())
+    def atom(entry, pretty_print=True):
         indent = pretty_print and '\n    ' or ''
 
-        entry = Element('{http://www.w3.org/2005/Atom}entry', **nsmap_keyargs)
-        entry.text = indent
-        if self.base: entry.set('{http://www.w3.org/XML/1998/namespace}base', self.base)
-        if self.language: entry.set('{http://www.w3.org/XML/1998/namespace}lang', self.language)
+        xml = Element('{http://www.w3.org/2005/Atom}entry', **nsmap_keyargs)
+        xml.text = indent
+        if entry.base: xml.set('{http://www.w3.org/XML/1998/namespace}base', entry.base)
+        if entry.language: xml.set('{http://www.w3.org/XML/1998/namespace}lang', entry.language)
 
-        link = SubElement(entry, '{http://www.w3.org/2005/Atom}link', href=self.link)
+        link = SubElement(xml, '{http://www.w3.org/2005/Atom}link', href=entry.link)
 
-        title = SubElement(entry, '{http://www.w3.org/2005/Atom}title')
-        set_atom_text(title, self.title)
+        title = SubElement(xml, '{http://www.w3.org/2005/Atom}title')
+        set_atom_text(title, entry.title)
 
-        updated = SubElement(entry, '{http://www.w3.org/2005/Atom}updated')
-        updated.text = atom_date(self.updated)
+        updated = SubElement(xml, '{http://www.w3.org/2005/Atom}updated')
+        updated.text = atom_date(entry.updated)
 
-        id = SubElement(entry, '{http://www.w3.org/2005/Atom}id')
-        id.text = self.id
+        id = SubElement(xml, '{http://www.w3.org/2005/Atom}id')
+        id.text = entry.id
 
-        if self.summary:
-            summary = SubElement(entry, '{http://www.w3.org/2005/Atom}summary')
-            set_atom_text(summary, self.summary)
+        if entry.summary:
+            summary = SubElement(xml, '{http://www.w3.org/2005/Atom}summary')
+            set_atom_text(summary, entry.summary)
 
-        if self.content:
-            content = SubElement(entry, '{http://www.w3.org/2005/Atom}content')
-            set_atom_text(content, self.content)
+        if entry.content:
+            content = SubElement(xml, '{http://www.w3.org/2005/Atom}content')
+            set_atom_text(content, entry.content)
 
-        if self.enclosure:
-            href, media_type, length = self.enclosure
-            enclosure = SubElement(entry, '{http://www.w3.org/2005/Atom}link',
+        if entry.enclosure:
+            href, media_type, length = entry.enclosure
+            enclosure = SubElement(xml, '{http://www.w3.org/2005/Atom}link',
                                    rel='enclosure', href=href, type=media_type, length=length)
 
-        if self.author:
-            author = atom_author(self.author)
-            entry.append(author)
+        if entry.author:
+            author = atom_author(entry.author)
+            xml.append(author)
 
-        if self.rights:
-            rights = SubElement(entry, '{http://www.w3.org/2005/Atom}rights')
-            set_atom_text(rights, self.rights)
+        if entry.rights:
+            rights = SubElement(xml, '{http://www.w3.org/2005/Atom}rights')
+            set_atom_text(rights, entry.rights)
 
-        if self.published:
-            published = SubElement(entry, '{http://www.w3.org/2005/Atom}published')
-            published.text = atom_date(self.published)
+        if entry.published:
+            published = SubElement(xml, '{http://www.w3.org/2005/Atom}published')
+            published.text = atom_date(entry.published)
 
-        for child in entry: child.tail = indent
-        entry[-1].tail = pretty_print and '\n' or ''
-        return entry
-    def rss2(self, pretty_print=True):
+        for child in xml: child.tail = indent
+        xml[-1].tail = pretty_print and '\n' or ''
+        return xml
+    def rss2(entry, pretty_print=True):
         indent = pretty_print and '\n      ' or ''
         item = Element('item')
         item.text = indent
-        set_rss2_text(SubElement(item, 'title'), self.title)
-        set_rss2_text(SubElement(item, 'description'), self.summary or self.content)
-        SubElement(item, 'link').text = self.link
-        SubElement(item, 'guid', isPermaLink=(self.id == self.link and 'true' or 'false')).text = self.id
-        if self.enclosure:
-            href, media_type, length = self.enclosure
+        set_rss2_text(SubElement(item, 'title'), entry.title)
+        set_rss2_text(SubElement(item, 'description'), entry.summary or entry.content)
+        SubElement(item, 'link').text = entry.link
+        SubElement(item, 'guid', isPermaLink=(entry.id == entry.link and 'true' or 'false')).text = entry.id
+        if entry.enclosure:
+            href, media_type, length = entry.enclosure
             SubElement(item, 'enclosure', url=href, type=media_type, length=length)
-        if self.author: SubElement(item, 'author').text = rss2_author(self.author)
-        if self.published: SubElement(item, 'pubDate').text = rss2_date(self.published)
+        if entry.author: SubElement(item, 'author').text = rss2_author(entry.author)
+        if entry.published: SubElement(item, 'pubDate').text = rss2_date(entry.published)
         for child in item: child.tail = indent
         item[-1].tail = pretty_print and '\n' or ''
         return item
