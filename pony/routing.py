@@ -20,50 +20,50 @@ user_routes = []
 url_cache = {}
 
 class Route(object):
-    def __init__(self, func, url, method, host, port, redirect, headers):
+    def __init__(route, func, url, method, host, port, redirect, headers):
         url_cache.clear()
-        self.func = func
+        route.func = func
         module = func.__module__
-        self.system = module.startswith('pony.') and not module.startswith('pony.examples.')
+        route.system = module.startswith('pony.') and not module.startswith('pony.examples.')
         argspec = getattr(func, 'argspec', None)
         if argspec is None:
-            argspec = func.argspec = self.getargspec(func)
-            func.dummy_func = self.create_dummy_func(func)
-        if url is not None: self.url = url
+            argspec = func.argspec = route.getargspec(func)
+            func.dummy_func = route.create_dummy_func(func)
+        if url is not None: route.url = url
         elif argspec[1] is not None: raise TypeError('Not supported: *%s' % argspec[1])
         elif argspec[2] is not None: raise TypeError('Not supported: **%s' % argspec[2])
         else:
             url = func.__name__
             if argspec[0]: url = '?'.join((url, '&'.join('=$'.join((argname, argname)) for argname in argspec[0])))
-            self.url = url
+            route.url = url
         if method is not None and method not in ('HEAD', 'GET', 'POST', 'PUT', 'DELETE'):
             raise TypeError('Invalid HTTP method: %r' % method)
-        self.method = method
+        route.method = method
         if host is not None:
             if not isinstance(host, basestring): raise TypeError('Host must be string')
             if ':' in host:
                 if port is not None: raise TypeError('Duplicate port specification')
                 host, port = host.split(':')
-        self.host = host
-        self.port = port and int(port) or None
-        self.path, self.qlist = split_url(url, strict_parsing=True)
-        self.redirect = redirect
-        self.headers = dict([ (name.replace('_', '-').title(), value) for name, value in headers.items() ])        
-        self.args = set()
-        self.keyargs = set()
-        self.parsed_path = []
-        self.star = False
-        for component in self.path:
-            if self.star: raise TypeError("'$*' must be last element in url path")
-            elif component != '$*': self.parsed_path.append(self.parse_component(component))
-            else: self.star = True
-        self.parsed_query = []
-        for name, value in self.qlist:
+        route.host = host
+        route.port = port and int(port) or None
+        route.path, route.qlist = split_url(url, strict_parsing=True)
+        route.redirect = redirect
+        route.headers = dict([ (name.replace('_', '-').title(), value) for name, value in headers.items() ])        
+        route.args = set()
+        route.keyargs = set()
+        route.parsed_path = []
+        route.star = False
+        for component in route.path:
+            if route.star: raise TypeError("'$*' must be last element in url path")
+            elif component != '$*': route.parsed_path.append(route.parse_component(component))
+            else: route.star = True
+        route.parsed_query = []
+        for name, value in route.qlist:
             if value == '$*': raise TypeError("'$*' does not allowed in query part of url")
-            is_param, x = self.parse_component(value)
-            self.parsed_query.append((name, is_param, x))
-        self.check()
-        self.register()
+            is_param, x = route.parse_component(value)
+            route.parsed_query.append((name, is_param, x))
+        route.check()
+        route.register()
     @staticmethod
     def getargspec(func):
         original_func = getattr(func, 'original_func', func)
@@ -97,8 +97,8 @@ class Route(object):
                 (?:[$][$] | [^$])+
             )
         """, re.VERBOSE)
-    def parse_component(self, component):
-        items = list(self.split_component(component))
+    def parse_component(route, component):
+        items = list(route.split_component(component))
         if not items: return False, ''
         if len(items) == 1: return items[0]
         pattern = []
@@ -117,18 +117,18 @@ class Route(object):
         pattern = ''.join(pattern)
         regexp = ''.join(regexp)
         return True, [ pattern, re.compile(regexp) ] + items
-    def split_component(self, component):
+    def split_component(route, component):
         pos = 0
         is_param = False
-        for match in self.component_re.finditer(component):
+        for match in route.component_re.finditer(component):
             if match.start() != pos:
                 raise ValueError('Invalid url component: %r' % component)
             i = match.lastindex
             if 1 <= i <= 2:
                 if is_param: raise ValueError('Invalid url component: %r' % component)
                 is_param = True
-                if i == 1: yield is_param, self.adjust(int(match.group(i)) - 1)
-                elif i == 2: yield is_param, self.adjust(match.group(i))
+                if i == 1: yield is_param, route.adjust(int(match.group(i)) - 1)
+                elif i == 2: yield is_param, route.adjust(match.group(i))
             elif i == 3:
                 is_param = False
                 yield is_param, match.group(i).replace('$$', '$')
@@ -136,9 +136,9 @@ class Route(object):
             pos = match.end()
         if pos != len(component):
             raise ValueError('Invalid url component: %r' % component)
-    def adjust(self, x):
-        names, argsname, keyargsname, defaults, converters = self.func.argspec
-        args, keyargs = self.args, self.keyargs
+    def adjust(route, x):
+        names, argsname, keyargsname, defaults, converters = route.func.argspec
+        args, keyargs = route.args, route.keyargs
         if isinstance(x, int):
             if x < 0 or x >= len(names) and argsname is None: raise TypeError('Invalid parameter index: %d' % (x+1))
             if x in args: raise TypeError('Parameter index %d already in use' % (x+1))
@@ -155,11 +155,11 @@ class Route(object):
                 args.add(i)
                 return i
         assert False
-    def check(self):
-        names, argsname, keyargsname, defaults, converters = self.func.argspec
-        if self.star and not argsname: raise TypeError(
-            "Function %s does not accept arbitrary argument list" % self.func.__name__)
-        args, keyargs = self.args, self.keyargs
+    def check(route):
+        names, argsname, keyargsname, defaults, converters = route.func.argspec
+        if route.star and not argsname: raise TypeError(
+            "Function %s does not accept arbitrary argument list" % route.func.__name__)
+        args, keyargs = route.args, route.keyargs
         diff = len(names) - len(defaults)
         for i, name in enumerate(names[:diff]):
             if i not in args: raise TypeError('Undefined path parameter: %s' % name)
@@ -181,26 +181,26 @@ class Route(object):
         if route.host: result[('host',)] = route.host
         if route.port: result[('port',)] = route.port
         return result
-    def register(self):
-        url_map = self._get_url_map()
-        qdict = dict(self.qlist)
+    def register(route):
+        url_map = route._get_url_map()
+        qdict = dict(route.qlist)
         registry_lock.acquire()
         try:
-            for route, _, _ in get_routes(self.path, qdict, self.method, self.host, self.port):
-                if url_map != route._get_url_map() or self.method != route.method: continue
+            for route, _, _ in get_routes(route.path, qdict, route.method, route.host, route.port):
+                if url_map != route._get_url_map() or route.method != route.method: continue
                 if pony.MODE != 'INTERACTIVE':
                     warnings.warn('Url path already in use (old route was removed): %s' % route.url)
                 _remove(route)
             d, list1, list2 = registry
-            for is_param, x in self.parsed_path:
+            for is_param, x in route.parsed_path:
                 if is_param: d, list1, list2 = d.setdefault(None, ({}, [], []))
                 else: d, list1, list2 = d.setdefault(x, ({}, [], []))
-            if not self.star: self.list = list1
-            else: self.list = list2
-            self.func.__dict__.setdefault('routes', []).insert(0, self)
-            self.list.insert(0, self)
-            if self.system and self not in system_routes: system_routes.append(self)
-            else: user_routes.append(self)
+            if not route.star: route.list = list1
+            else: route.list = list2
+            route.func.__dict__.setdefault('routes', []).insert(0, route)
+            route.list.insert(0, route)
+            if route.system and route not in system_routes: system_routes.append(route)
+            else: user_routes.append(route)
         finally: registry_lock.release()
 
 def get_routes(path, qdict, method, host, port):
