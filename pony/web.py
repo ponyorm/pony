@@ -23,29 +23,29 @@ class Http4xxException(HttpException):
 
 class Http400BadRequest(Http4xxException):
     status = '400 Bad Request'
-    def __init__(self, content='Bad Request'):
-        Exception.__init__(self, 'Bad Request')
-        self.content = content
+    def __init__(exc, content='Bad Request'):
+        Exception.__init__(exc, 'Bad Request')
+        exc.content = content
 
 welcome_template_filename = os.path.join(pony.PONY_DIR, 'welcome.html')
 notfound_template_filename = os.path.join(pony.PONY_DIR, 'notfound.html')
 
 class Http404NotFound(Http4xxException):
     status = '404 Not Found'
-    def __init__(self, msg='Page not found', content=None):
-        Exception.__init__(self, msg)
+    def __init__(exc, msg='Page not found', content=None):
+        Exception.__init__(exc, msg)
         if content: pass
         elif not routing.user_routes:
               content = html(filename=welcome_template_filename)
         else: content = html(filename=notfound_template_filename)
-        self.content = content or msg
+        exc.content = content or msg
 
 class Http405MethodNotAllowed(Http4xxException):
     status = '405 Method Not Allowed'
     headers = {'Allow' : 'GET, HEAD'}
-    def __init__(self, msg='Method not allowed', content=None):
-        Exception.__init__(self, msg)
-        self.content = content or msg
+    def __init__(exc, msg='Method not allowed', content=None):
+        Exception.__init__(exc, msg)
+        exc.content = content or msg
 
 class HttpRedirect(HttpException):
     status_dict = {'301' : '301 Moved Permanently',
@@ -53,21 +53,21 @@ class HttpRedirect(HttpException):
                    '303' : '303 See Other',
                    '305' : '305 Use Proxy',
                    '307' : '307 Temporary Redirect'}
-    def __init__(self, location=None, status='302 Found'):
+    def __init__(exc, location=None, status='302 Found'):
         if location and not isinstance(location, basestring):
             raise TypeError('Redirect location must be string. Got: %r' % location)
-        Exception.__init__(self, location)
-        self.location = location or local.request.full_url
+        Exception.__init__(exc, location)
+        exc.location = location or local.request.full_url
         status = str(status)
-        self.status = self.status_dict.get(status, status)
-        self.headers = {'Location' : location}
+        exc.status = exc.status_dict.get(status, status)
+        exc.headers = {'Location' : location}
 
 class HttpRequest(object):
-    def __init__(self, environ):
-        self.environ = environ
-        self.method = environ.get('REQUEST_METHOD', 'GET')
-        self.cookies = Cookie.SimpleCookie()
-        if 'HTTP_COOKIE' in environ: self.cookies.load(environ['HTTP_COOKIE'])
+    def __init__(request, environ):
+        request.environ = environ
+        request.method = environ.get('REQUEST_METHOD', 'GET')
+        request.cookies = Cookie.SimpleCookie()
+        if 'HTTP_COOKIE' in environ: request.cookies.load(environ['HTTP_COOKIE'])
         if environ:
             http_host = environ.get('HTTP_HOST')
             if http_host:
@@ -76,27 +76,27 @@ class HttpRequest(object):
             else:
                 host = environ['SERVER_NAME']
                 port = environ['SERVER_PORT']
-            self.host, self.port = host, int(port)
+            request.host, request.port = host, int(port)
 
-            self.url = urllib.quote(environ['PATH_INFO'])
+            request.url = urllib.quote(environ['PATH_INFO'])
             query = environ['QUERY_STRING']
-            if query: self.url += '?' + query
-            self.script_url = httputils.reconstruct_script_url(environ)
-            self.full_url = self.script_url + self.url
+            if query: request.url += '?' + query
+            request.script_url = httputils.reconstruct_script_url(environ)
+            request.full_url = request.script_url + request.url
         else:
-            self.script_url = ''
-            self.url = '/'
-            self.full_url = 'http://localhost/'
-            self.host = 'localhost'
-            self.port = 80
-        self.languages = self._get_languages()
-        self.params = {}
+            request.script_url = ''
+            request.url = '/'
+            request.full_url = 'http://localhost/'
+            request.host = 'localhost'
+            request.port = 80
+        request.languages = request._get_languages()
+        request.params = {}
         input_stream = environ.get('wsgi.input') or StringIO()
-        self.fields = cgi.FieldStorage(fp=input_stream, environ=environ, keep_blank_values=True)
-        self.form_processed = None
-        self.submitted_form = self.fields.getfirst('_f')
-    def _get_languages(self):
-        languages = httputils.parse_accept_language(self.environ.get('HTTP_ACCEPT_LANGUAGE'))
+        request.fields = cgi.FieldStorage(fp=input_stream, environ=environ, keep_blank_values=True)
+        request.form_processed = None
+        request.submitted_form = request.fields.getfirst('_f')
+    def _get_languages(request):
+        languages = httputils.parse_accept_language(request.environ.get('HTTP_ACCEPT_LANGUAGE'))
         try: languages.insert(0, auth.local.session['lang'])
         except KeyError: pass
         result = []
@@ -112,27 +112,27 @@ class HttpRequest(object):
         return result
 
 class HttpResponse(object):
-    def __init__(self):
-        self.status = '200 OK'
-        self.headers = {}
-        self.cookies = Cookie.SimpleCookie()
-        self.postprocessing = True
-        self.base_stylesheets = []
-        self.component_stylesheets = []
-        self.scripts = []
-        self.next_id = imap('id_%d'.__mod__, count()).next
-    def add_base_stylesheets(self, links):
-        stylesheets = self.base_stylesheets
+    def __init__(response):
+        response.status = '200 OK'
+        response.headers = {}
+        response.cookies = Cookie.SimpleCookie()
+        response.postprocessing = True
+        response.base_stylesheets = []
+        response.component_stylesheets = []
+        response.scripts = []
+        response.next_id = imap('id_%d'.__mod__, count()).next
+    def add_base_stylesheets(response, links):
+        stylesheets = response.base_stylesheets
         for link in links:
             if not isinstance(link, (basestring, tuple)): raise TypeError('Reference to CSS stylesheet must be string or tuple. Got: %r' % link)
             if link not in stylesheets: stylesheets.append(link)
-    def add_component_stylesheets(self, links):
-        stylesheets = self.component_stylesheets
+    def add_component_stylesheets(response, links):
+        stylesheets = response.component_stylesheets
         for link in links:
             if not isinstance(link, (basestring, tuple)): raise TypeError('Reference to CSS stylesheet must be string or tuple. Got: %r' % link)
             if link not in stylesheets: stylesheets.append(link)
-    def add_scripts(self, links):
-        scripts = self.scripts
+    def add_scripts(response, links):
+        scripts = response.scripts
         for link in links:
             if not isinstance(link, basestring): raise TypeError('Reference to script must be string. Got: %r' % link)
             if link not in scripts: scripts.append(link)
@@ -175,10 +175,10 @@ def url(func, *args, **keyargs):
 make_url = url
 
 class Local(localbase):
-    def __init__(self):
-        self.request = HttpRequest({})
-        self.response = HttpResponse()
-        self.no_cookies = False
+    def __init__(local):
+        local.request = HttpRequest({})
+        local.response = HttpResponse()
+        local.no_cookies = False
 
 local = Local()        
 
@@ -448,24 +448,24 @@ class   ServerStopException(ServerException): pass
 class     ServerNotStarted(ServerStopException): pass
 
 class ServerThread(threading.Thread):
-    def __init__(self, host, port, application):
-        server = server_threads.setdefault((host, port), self)
-        if server != self: raise ServerAlreadyStarted('HTTP server already started: %s:%s' % (host, port))
-        threading.Thread.__init__(self)
-        self.host = host
-        self.port = port
+    def __init__(thread, host, port, application):
+        server_thread = server_threads.setdefault((host, port), thread)
+        if server_thread != thread: raise ServerAlreadyStarted('HTTP server already started: %s:%s' % (host, port))
+        threading.Thread.__init__(thread)
+        thread.host = host
+        thread.port = port
         from pony.thirdparty.cherrypy.wsgiserver import CherryPyWSGIServer
-        self.server = CherryPyWSGIServer((host, port), application, server_name=host)
-        self.setDaemon(True)
-    def run(self):
-        message = 'Starting HTTP server at %s:%s' % (self.host, self.port)
+        thread.server = CherryPyWSGIServer((host, port), application, server_name=host)
+        thread.setDaemon(True)
+    def run(thread):
+        message = 'Starting HTTP server at %s:%s' % (thread.host, thread.port)
         print>>pony.real_stderr, message
-        # log(type='HTTP:start', text=message, severity=WARNING, host=self.host, port=self.port, uid=pony.uid)
-        self.server.start()
-        message = 'HTTP server at %s:%s stopped successfully' % (self.host, self.port)
+        # log(type='HTTP:start', text=message, severity=WARNING, host=thread.host, port=thread.port, uid=pony.uid)
+        thread.server.start()
+        message = 'HTTP server at %s:%s stopped successfully' % (thread.host, thread.port)
         print>>pony.real_stderr, message
-        # log(type='HTTP:stop', text=message, severity=WARNING, host=self.host, port=self.port)
-        server_threads.pop((self.host, self.port), None)
+        # log(type='HTTP:stop', text=message, severity=WARNING, host=thread.host, port=thread.port)
+        server_threads.pop((thread.host, thread.port), None)
 
 def start_http_server(address='localhost:8080'):
     if pony.MODE.startswith('GAE-'): main(); return
