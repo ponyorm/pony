@@ -422,10 +422,10 @@ for p in sqlite_cur_properties:
 memdb_connections = set()
 
 class SqliteMemoryDbThread(Thread):
-    def __init__(self):
-        Thread.__init__(self, name="SqliteMemoryDbThread")
-        self.setDaemon(True)
-    def run(self):
+    def __init__(memdb_thread):
+        Thread.__init__(memdb_thread, name="SqliteMemoryDbThread")
+        memdb_thread.setDaemon(True)
+    def run(memdb_thread):
         try:
             while True:
                 x = memdb_queue.get()
@@ -443,5 +443,5 @@ class SqliteMemoryDbThread(Thread):
                 if holder is not None: holder.obj.close()
             memdb_connections.clear()
 
-memory_db_thread = SqliteMemoryDbThread()
-memory_db_thread.start()
+memdb_thread = SqliteMemoryDbThread()
+memdb_thread.start()
