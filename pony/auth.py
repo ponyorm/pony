@@ -51,26 +51,26 @@ class Session(object):
         self.__dict__.clear()
 
 class Local(localbase):
-    def __init__(self):
-        self.lock = threading.Lock()
-        self.lock.acquire()
-        self.clear()
-    def clear(self):
+    def __init__(local):
+        local.lock = threading.Lock()
+        local.lock.acquire()
+        local.clear()
+    def clear(local):
         now = int(time()) // 60
-        lock = self.lock
-        self.__dict__.clear()
-        self.__dict__.update(lock=lock, user=None, environ={}, session=Session(), ctime=now, mtime=now,
-                             session_id=None,
-                             cookie_value=None, remember_ip=False, longlife_session=False, longlife_key=None,
-                             ip=None, user_agent=None, ticket=False, ticket_payload=None)
-    def set_user(self, user, longlife_session=False, remember_ip=False):
-        if self.user is not None or user is None: self.session.clear()
-        self.user = user
+        lock = local.lock
+        local.__dict__.clear()
+        local.__dict__.update(lock=lock, user=None, environ={}, session=Session(), ctime=now, mtime=now,
+                              session_id=None,
+                              cookie_value=None, remember_ip=False, longlife_session=False, longlife_key=None,
+                              ip=None, user_agent=None, ticket=False, ticket_payload=None)
+    def set_user(local, user, longlife_session=False, remember_ip=False):
+        if local.user is not None or user is None: local.session.clear()
+        local.user = user
         if user:
-            self.longlife_session = longlife_session
-            self.remember_ip = remember_ip
-        elif self.longlife_key: remove_longlife_session()
-        else: self.longlife_session = self.remember_ip = False
+            local.longlife_session = longlife_session
+            local.remember_ip = remember_ip
+        elif local.longlife_key: remove_longlife_session()
+        else: local.longlife_session = local.remember_ip = False
 
 local = Local()
 
