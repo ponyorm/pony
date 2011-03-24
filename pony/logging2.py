@@ -1,4 +1,5 @@
-import cPickle, os, os.path, Queue, random, re, sys, traceback, thread, threading, time, warnings
+import cPickle, os, os.path, Queue, random, re, sys, traceback, threading, time, warnings
+from thread import get_ident
 from itertools import count
 
 import logging
@@ -121,7 +122,7 @@ def decompress_record(record):
 
 if LOG_TO_SQLITE:
     class PonyHandler(logging.Handler):
-        def emit(self, record):
+        def emit(handler, record):
             if record.name == 'pony': return
             if record.exc_info:
                 if not record.exc_text: record.exc_text = logging._defaultFormatter.formatException(record.exc_info)
@@ -135,10 +136,10 @@ if LOG_TO_SQLITE:
     queue = Queue.Queue()
 
     class Local(localbase):
-        def __init__(self):
-            self.thread_id = thread.get_ident()
-            self.lock = threading.Lock()
-            self.lock.acquire()
+        def __init__(local):
+            local.thread_id = get_ident()
+            local.lock = threading.Lock()
+            local.lock.acquire()
 
     local = Local()
 
@@ -191,14 +192,14 @@ if LOG_TO_SQLITE:
     sql_insert = 'insert into log values (%s)' % question_marks
 
     class LoggerThread(threading.Thread):
-        def __init__(self):
-            threading.Thread.__init__(self, name="LoggerThread")
-            self.setDaemon(True)
-        def run(self):
+        def __init__(thread):
+            threading.Thread.__init__(thread, name="LoggerThread")
+            thread.setDaemon(True)
+        def run(thread):
             from pony.thirdparty import sqlite
             global OperationalError
             OperationalError = sqlite.OperationalError
-            con = self.connection = sqlite.connect(get_logfile_name())
+            con = thread.connection = sqlite.connect(get_logfile_name())
             try:
                 con.execute("PRAGMA synchronous = OFF;")
                 con.executescript(sql_create)
@@ -206,7 +207,7 @@ if LOG_TO_SQLITE:
                 while True:
                     x = queue.get()
                     if x is None: break
-                    elif not isinstance(x, dict): self.execute_query(*x)
+                    elif not isinstance(x, dict): thread.execute_query(*x)
                     else:
                         records = [ x ]
                         while True:
@@ -214,14 +215,14 @@ if LOG_TO_SQLITE:
                             except Queue.Empty: break
                             if not isinstance(x, dict): break
                             records.append(x)
-                        self.save_records(records)
+                        thread.save_records(records)
                         if x is None: break
-                        elif not isinstance(x, dict): self.execute_query(*x)
+                        elif not isinstance(x, dict): thread.execute_query(*x)
             finally:
                 con.close()
-        def execute_query(self, sql, params, result, lock):
+        def execute_query(thread, sql, params, result, lock):
             try:
-                try: cursor = self.connection.execute(sql, params)
+                try: cursor = thread.connection.execute(sql, params)
                 except Exception, e:
                     result.append(e); return
                 for row in cursor:
@@ -231,8 +232,8 @@ if LOG_TO_SQLITE:
                     result.append(record)
             finally:
                 lock.release()
-                self.connection.rollback()
-        def save_records(self, records):
+                thread.connection.rollback()
+        def save_records(thread, records):
             rows = []
             for record in records:
                 record.pop('prefix', None)
@@ -240,7 +241,7 @@ if LOG_TO_SQLITE:
                 row = [ record.pop(name, None) for name in sql_columns ]
                 row.append(buffer(cPickle.dumps(record, 2).encode('zip')))
                 rows.append(row)
-            con = self.connection
+            con = thread.connection
             while True:
                 try:
                     con.executemany(sql_insert, rows)
