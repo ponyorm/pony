@@ -169,25 +169,25 @@ class Route(object):
         if args:
             for i in range(len(names), max(args)):
                 if i not in args: raise TypeError('Undefined path parameter: %d' % (i+1))
+    def _get_url_map(route):
+        result = {}
+        for i, (is_param, x) in enumerate(route.parsed_path):
+            if is_param: result[i] = isinstance(x, list) and x[0] or '/'
+            else: result[i] = ''
+        for name, is_param, x in route.parsed_query:
+            if is_param: result[name] = isinstance(x, list) and x[0] or '/'
+            else: result[name] = ''
+        if route.star: result['$*'] = len(route.parsed_path)
+        if route.host: result[('host',)] = route.host
+        if route.port: result[('port',)] = route.port
+        return result
     def register(self):
-        def get_url_map(route):
-            result = {}
-            for i, (is_param, x) in enumerate(route.parsed_path):
-                if is_param: result[i] = isinstance(x, list) and x[0] or '/'
-                else: result[i] = ''
-            for name, is_param, x in route.parsed_query:
-                if is_param: result[name] = isinstance(x, list) and x[0] or '/'
-                else: result[name] = ''
-            if route.star: result['$*'] = len(route.parsed_path)
-            if route.host: result[('host',)] = route.host
-            if route.port: result[('port',)] = route.port
-            return result
-        url_map = get_url_map(self)
+        url_map = self._get_url_map()
         qdict = dict(self.qlist)
         registry_lock.acquire()
         try:
             for route, _, _ in get_routes(self.path, qdict, self.method, self.host, self.port):
-                if url_map != get_url_map(route) or self.method != route.method: continue
+                if url_map != route._get_url_map() or self.method != route.method: continue
                 if pony.MODE != 'INTERACTIVE':
                     warnings.warn('Url path already in use (old route was removed): %s' % route.url)
                 _remove(route)
