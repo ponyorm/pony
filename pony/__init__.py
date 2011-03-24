@@ -50,10 +50,10 @@ except NameError:
     real_stderr = sys.stderr
 
 class Local(localbase):
-    def __init__(self):
-        self.output_streams = [ real_stdout ]
-        self.error_streams = [ real_stderr ]
-        self.error_stream_nested = 0  # nested calls counter to prevent infinite recursion with flup.fcgi
+    def __init__(local):
+        local.output_streams = [ real_stdout ]
+        local.error_streams = [ real_stderr ]
+        local.error_stream_nested = 0  # nested calls counter to prevent infinite recursion with flup.fcgi
 
 local = Local()
 
