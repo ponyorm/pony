@@ -69,21 +69,21 @@ def truncate(s, maxlen):
     return s
 
 class Record(object):
-    def __init__(self, module, filename, lineno, lines, index, func=None):
-        self.func = None
+    def __init__(record, module, filename, lineno, lines, index, func=None):
+        record.func = None
         
-        self.module = module
-        if module == '<template>': self.moduletype = 'template'
-        elif module == 'pony' or module.startswith('pony.'): self.moduletype = 'module-system'
-        else: self.moduletype = 'module-user'
+        record.module = module
+        if module == '<template>': record.moduletype = 'template'
+        elif module == 'pony' or module.startswith('pony.'): record.moduletype = 'module-system'
+        else: record.moduletype = 'module-user'
 
-        self.filename = filename
-        if filename and filename != '<?>': self.fname = os.path.split(filename)[1]
-        else: self.fname = None
-        self.lineno = lineno
-        self.lines = lines
-        self.index = index
-        self.func = func
+        record.filename = filename
+        if filename and filename != '<?>': record.fname = os.path.split(filename)[1]
+        else: record.fname = None
+        record.lineno = lineno
+        record.lines = lines
+        record.index = index
+        record.func = func
     @staticmethod
     def from_frame(frame, context=5):
         module = frame.f_globals.get('__name__') or '?'
@@ -258,9 +258,9 @@ else:
         return func(*args, **keyargs)
 
     class Local(threading.local):
-        def __init__(self):
-            self.lock = threading.Lock()
-            self.lock.acquire()
+        def __init__(local):
+            local.lock = threading.Lock()
+            local.lock.acquire()
 
     local = Local()
 
@@ -311,10 +311,10 @@ else:
     last = None
 
     class DebugThread(threading.Thread):
-        def __init__(self):
-            threading.Thread.__init__(self, name="DebugThread")
-            self.setDaemon(True)
-        def run(self):
+        def __init__(thread):
+            threading.Thread.__init__(thread, name="DebugThread")
+            thread.setDaemon(True)
+        def run(thread):
             global last
             last = queue.get()
             while last is not None:
@@ -331,41 +331,41 @@ else:
                     last = queue.get()
 
     class Debugger(bdb.Bdb):
-        def __init__(self, url):
-            self.url = url
-            bdb.Bdb.__init__(self)
-            self.__state = 0
-            self.__top_user_frame = None
-        def process_queue(self, frame):
+        def __init__(debugger, url):
+            debugger.url = url
+            bdb.Bdb.__init__(debugger)
+            debugger.__state = 0
+            debugger.__top_user_frame = None
+        def process_queue(debugger, frame):
             from pony.webutils import button  
             result = None
-            if self.__state == 0:
-                self.__state = 1
-                self.set_continue()
+            if debugger.__state == 0:
+                debugger.__state = 1
+                debugger.set_continue()
                 return
             global last
-            if last is None: self.set_quit(); return
+            if last is None: debugger.set_quit(); return
             lock, app, environ, result_holder, url, command, expr = last
-            if url != self.url: self.set_quit(); return
-            if self.__state == 1:
+            if url != debugger.url: debugger.set_quit(); return
+            if debugger.__state == 1:
                 module = frame.f_globals.get('__name__') or '?'
-                if module == 'pony' or module.startswith('pony.'): self.set_step(); return
-                self.__top_user_frame = frame
-                self.__state = 2
+                if module == 'pony' or module.startswith('pony.'): debugger.set_step(); return
+                debugger.__top_user_frame = frame
+                debugger.__state = 2
             headers = [('Content-Type', 'text/html; charset=UTF-8'), ('X-Debug', 'Step')]
             if not url.endswith('?'): url += '&'
             record = Record.from_frame(frame, context=9)
-            if record.index is None: self.set_step(); return
+            if record.index is None: debugger.set_step(); return
             result_holder.append(('200 OK', headers, html().encode('utf8')))
             lock.release()
             while True:
                 last = queue.get()
                 lock, app, environ, result_holder, url, command, expr = last
-                environ['debugger'] = weakref.ref(self)
-                if command == 'step': self.set_step()
-                elif command == 'next': self.set_next(frame)
-                elif command == 'return': self.set_return(frame)
-                elif command == 'cont': self.set_continue()
+                environ['debugger'] = weakref.ref(debugger)
+                if command == 'step': debugger.set_step()
+                elif command == 'next': debugger.set_next(frame)
+                elif command == 'return': debugger.set_return(frame)
+                elif command == 'cont': debugger.set_continue()
                 elif expr:
                     try:
                         result = repr1(eval(expr, frame.f_globals, frame.f_locals))
@@ -374,15 +374,15 @@ else:
                     lock.release()
                     continue
                 break
-        def user_line(self, frame):
-           self.process_queue(frame)
-        def user_return(self, frame, value):
-            if frame is self.__top_user_frame:
-                self.__top_user_frame = None
-                self.set_continue()
-        # def user_exception(self, frame, exception):
+        def user_line(debugger, frame):
+           debugger.process_queue(frame)
+        def user_return(debugger, frame, value):
+            if frame is debugger.__top_user_frame:
+                debugger.__top_user_frame = None
+                debugger.set_continue()
+        # def user_exception(debugger, frame, exception):
         #   name = frame.f_code.co_name or "<unknown>"
-        #   self.process_queue('exception in %s %s' % (name, exception), frame)
+        #   debugger.process_queue('exception in %s %s' % (name, exception), frame)
 
     @pony.on_shutdown
     def do_shutdown():
