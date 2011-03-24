@@ -2200,6 +2200,6 @@ def db_decorator(func, *args, **keyargs):
     web = sys.modules.get('pony.web')
     allowed_exceptions = web and [ web.HttpRedirect ] or []
     try: return with_transaction(func, args, keyargs, allowed_exceptions)
-    except RowNotFound:
+    except (ObjectNotFound, pony.db.RowNotFound):
         if web: raise web.Http404NotFound
         raise
