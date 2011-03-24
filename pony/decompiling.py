@@ -5,13 +5,6 @@ from opcode import hasconst, hasname, hasjrel, haslocal, hascompare, hasfree
 ##ast.And.__repr__ = lambda self: "And(%s: %s)" % (getattr(self, 'endpos', '?'), repr(self.nodes),)
 ##ast.Or.__repr__ = lambda self: "Or(%s: %s)" % (getattr(self, 'endpos', '?'), repr(self.nodes),)
 
-def binop(node_type, args_holder=tuple):
-    def method(self):
-        oper2 = self.stack.pop()
-        oper1 = self.stack.pop()
-        return node_type(args_holder((oper1, oper2)))
-    return method
-
 ast_cache = {}
 
 codeobjects = {}
@@ -41,6 +34,13 @@ def simplify(clause):
 class InvalidQuery(Exception): pass
 
 class AstGenerated(Exception): pass
+
+def binop(node_type, args_holder=tuple):
+    def method(decompiler):
+        oper2 = decompiler.stack.pop()
+        oper1 = decompiler.stack.pop()
+        return node_type(args_holder((oper1, oper2)))
+    return method
 
 class GeneratorDecompiler(object):
     def __init__(decompiler, code, start=0, end=None):
