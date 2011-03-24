@@ -151,12 +151,11 @@ class Database(object):
         database.priority = 0
         database.optimistic = True
         info = database._get_connection()
-        provider.release(info.con)
+        wrap_dbapi_exceptions(provider, database._pool.release, info.con)
     def _get_connection(database):
         info = local.db2coninfo.get(database)
         if info is not None: return info
-        provider = database.provider
-        con = wrap_dbapi_exceptions(provider, provider.connect, database._pool, *database.args, **database.keyargs)
+        con = wrap_dbapi_exceptions(database.provider, database._pool.connect)
         info = local.db2coninfo[database] = ConnectionInfo(con, database.optimistic)
         return info
     def get_connection(database):
@@ -177,14 +176,13 @@ class Database(object):
         if debug: print 'COMMIT'
         provider = database.provider
         wrap_dbapi_exceptions(provider, info.con.commit)
-        provider.release(info.con)
+        wrap_dbapi_exceptions(provider, database._pool.release, info.con)
     def _rollback(database):
         info = local.db2coninfo.pop(database, None)
         if info is None: return
         if debug: print 'ROLLBACK'
         provider = database.provider
-        wrap_dbapi_exceptions(provider, info.con.rollback)
-        provider.release(info.con)
+        wrap_dbapi_exceptions(provider, database._pool.release, info.con)
     def execute(database, sql, globals=None, locals=None):
         info = database._get_connection()
         info.optimistic = False

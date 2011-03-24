@@ -5,7 +5,7 @@ import weakref
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time
 from time import strptime
-from os import path
+import os.path
 
 from pony.thirdparty import sqlite
 from pony.thirdparty.sqlite import (Warning, Error, InterfaceError, DatabaseError,
@@ -20,49 +20,64 @@ paramstyle = 'qmark'
 def quote_name(connection, name):
     return sqlbuilding.quote_name(name)
 
-def _text_factory(s):
-    return s.decode('utf8', 'replace')
+def get_pool(filename, create=False):
+    if filename == ':memory:': return MemPool()
+    else: return Pool(filename, create)
 
 class Pool(localbase):
-    def __init__(pool):
+    def __init__(pool, filename, create):
+        pool.filename = absolutize_path(filename, frame_depth=4)
+        pool.create = create
         pool.con = None
+    def connect(pool):
+        con = pool.con
+        if con is not None: return con
+        filename = pool.filename
+        if not pool.create and not os.path.exists(filename):
+            raise IOError("Database file is not found: %r" % filename)
+        pool.con = con = sqlite.connect(filename)
+        _init_connection(con)
+        return con
+    def release(pool, con):
+        assert con is pool.con
+        try: con.rollback()
+        except:
+            pool.close(con)
+            raise
+    def close(pool, con):
+        assert con is pool.con
+        pool.con = None
+        con.close()
 
-def get_pool(filename, create=False):
-    if filename == ':memory:':
-        return []
-    else:
-        return Pool()
+mem_connect_lock = Lock()
+
+class MemPool(object):
+    def __init__(mempool):
+        mempool.con = MemoryConnectionWrapper()
+        mem_connect_lock.acquire()
+        try:
+            if mempool.con is None:
+                mempool.con = MemoryConnectionWrapper()
+        finally: mem_connect_lock.release()
+        return mempool.con
+    def connect(mem_pool):
+        return mempool.con
+    def release(mempool, con):
+        assert con is mempool.con
+        con.rollback()
+    def close(mempool, con):
+        assert con is mempool.con
+        con.rollback()
+    def __del__(mempool):
+        con = mempool.con
+        if con is None: con.close()
+
+def _text_factory(s):
+    return s.decode('utf8', 'replace')
 
 def _init_connection(con):
     con.text_factory = _text_factory
     con.create_function("pow", 2, pow)
-
-memdb_connect_lock = Lock()
-
-def connect(pool, filename, create=False):
-    if filename == ':memory:':
-        assert type(pool) is list
-        memdb_connect_lock.acquire()
-        try:
-            if pool:
-                assert len(pool) == 1
-                return pool[0]
-            con = MemoryConnectionWrapper()
-            pool.append(con)
-        finally: memdb_connect_lock.release()
-    else:
-        assert isinstance(pool, Pool)
-        con = pool.con
-        if con is not None: return con
-        filename = absolutize_path(filename, frame_depth=5)
-        if not create and not path.exists(filename):
-            raise IOError("Database file is not found: %r" % filename)
-        pool.con = con = sqlite.connect(filename)
-        _init_connection(con)
-    return con
-
-def release(connection):
-    pass
 
 class SQLiteBuilder(sqlbuilding.SQLBuilder):
     def POW(builder, expr1, expr2):
@@ -335,7 +350,7 @@ class DateConverter(Converter):
     def sql_type(converter):
         return 'DATE'
 
-memdb_queue = Queue()
+mem_queue = Queue()
 
 class Local(localbase):
     def __init__(local):
@@ -347,7 +362,7 @@ local = Local()
 @simple_decorator
 def in_dedicated_thread(func, *args, **keyargs):
     result_holder = []
-    memdb_queue.put((local.lock, func, args, keyargs, result_holder))
+    mem_queue.put((local.lock, func, args, keyargs, result_holder))
     local.lock.acquire()
     result = result_holder[0]
     if isinstance(result, Exception):
@@ -356,14 +371,10 @@ def in_dedicated_thread(func, *args, **keyargs):
     if isinstance(result, sqlite.Cursor): result = MemoryCursorWrapper(result)
     return result
 
-class Holder(object): # because sqlite3.Connection does not support weak refs
-    def __init__(holder, obj):
-        holder.obj = obj
-
 def make_wrapper_method(method_name):
     @in_dedicated_thread
     def wrapper_method(wrapper, *args, **keyargs):
-        method = getattr(wrapper._holder.obj, method_name)
+        method = getattr(wrapper.obj, method_name)
         return method(*args, **keyargs)
     wrapper_method.__name__ = method_name
     return wrapper_method
@@ -371,10 +382,10 @@ def make_wrapper_method(method_name):
 def make_wrapper_property(attr):
     @in_dedicated_thread
     def getter(wrapper):
-        return getattr(wrapper._holder.obj, attr)
+        return getattr(wrapper.obj, attr)
     @in_dedicated_thread
     def setter(wrapper, value):
-        setattr(wrapper._holder.obj, attr, value)
+        setattr(wrapper.obj, attr, value)
     return property(getter, setter)
 
 class MemoryConnectionWrapper(object):
@@ -382,13 +393,12 @@ class MemoryConnectionWrapper(object):
     def __init__(wrapper):
         con = sqlite.connect(':memory:')
         _init_connection(con)
-        wrapper._holder = Holder(con)
-        memdb_connections.add(weakref.ref(wrapper._holder))
+        wrapper.obj = con
     def interrupt(wrapper):
-        wrapper._holder.obj.interrupt()
+        wrapper.obj.interrupt()
     @in_dedicated_thread
     def iterdump(wrapper, *args, **keyargs):
-        return iter(list(wrapper._holder.obj.iterdump()))
+        return iter(list(wrapper.obj.iterdump()))
 
 sqlite_con_methods = '''cursor commit rollback close execute executemany executescript
                         create_function create_aggregate create_collation
@@ -404,7 +414,7 @@ for p in sqlite_con_properties:
 
 class MemoryCursorWrapper(object):
     def __init__(wrapper, cur):
-        wrapper._holder = Holder(cur)
+        wrapper.obj = cur
     def __iter__(wrapper):
         return wrapper
     
@@ -419,29 +429,21 @@ sqlite_cur_properties = 'rowcount lastrowid description arraysize'.split()
 for p in sqlite_cur_properties:
     setattr(MemoryCursorWrapper, p, make_wrapper_property(p))
     
-memdb_connections = set()
-
 class SqliteMemoryDbThread(Thread):
-    def __init__(memdb_thread):
-        Thread.__init__(memdb_thread, name="SqliteMemoryDbThread")
-        memdb_thread.setDaemon(True)
-    def run(memdb_thread):
-        try:
-            while True:
-                x = memdb_queue.get()
-                if x is None: break
-                lock, func, args, keyargs, result_holder = x
-                try: result = func(*args, **keyargs)
-                except Exception, e:
-                    result_holder.append(e)
-                    del e
-                else: result_holder.append(result)
-                if lock is not None: lock.release()
-        finally:
-            for ref in memdb_connections:
-                holder = ref()
-                if holder is not None: holder.obj.close()
-            memdb_connections.clear()
+    def __init__(mem_thread):
+        Thread.__init__(mem_thread, name="SqliteMemoryDbThread")
+        mem_thread.setDaemon(True)
+    def run(mem_thread):
+        while True:
+            x = mem_queue.get()
+            if x is None: break
+            lock, func, args, keyargs, result_holder = x
+            try: result = func(*args, **keyargs)
+            except Exception, e:
+                result_holder.append(e)
+                del e
+            else: result_holder.append(result)
+            if lock is not None: lock.release()
 
-memdb_thread = SqliteMemoryDbThread()
-memdb_thread.start()
+mem_thread = SqliteMemoryDbThread()
+mem_thread.start()
