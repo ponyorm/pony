@@ -439,104 +439,104 @@ def parse_exprlist(source, pos):
         pos = end
 
 class SyntaxElement(object):
-    def _raise_unexpected_statement(self, item):
+    def _raise_unexpected_statement(elem, item):
         pos = item[0]
         name = item[2]
-        errpos = self.source[0].index(name, pos) + len(name)
-        raise ParseError("Unexpected '%s' statement" % name, self.source, errpos)
-    def _check_statement(self, item):
+        errpos = elem.source[0].index(name, pos) + len(name)
+        raise ParseError("Unexpected '%s' statement" % name, elem.source, errpos)
+    def _check_statement(elem, item):
         cmd_name, expr, markup_args = item[2:]
-        end_of_expr = markup_args and markup_args[0][0] or self.end
+        end_of_expr = markup_args and markup_args[0][0] or elem.end
         if cmd_name in ('if', 'elif', 'for'):
-            if not expr: raise ParseError("'%s' statement must contain expression" % cmd_name, self.source, end_of_expr)
+            if not expr: raise ParseError("'%s' statement must contain expression" % cmd_name, elem.source, end_of_expr)
         elif cmd_name in ('else', 'sep', 'separator', 'try'):
             if expr is not None: raise ParseError(
-                "'%s' statement must not contains expression" % cmd_name, self.source, end_of_expr)
+                "'%s' statement must not contains expression" % cmd_name, elem.source, end_of_expr)
         if not markup_args: raise ParseError(
-            "'%s' statement must contain markup block" % cmd_name, self.source, self.end)
+            "'%s' statement must contain markup block" % cmd_name, elem.source, elem.end)
         if len(markup_args) > 1: raise ParseError(
-            "'%s' statement must contain exactly one markup block" % cmd_name, self.source, markup_args[1][0])
+            "'%s' statement must contain exactly one markup block" % cmd_name, elem.source, markup_args[1][0])
 
 class Markup(SyntaxElement):
-    def __init__(self, source, tree):
+    def __init__(markup, source, tree):
         assert isinstance(tree, list)
         text = source[0]
-        self.source = source
-        self.empty = text.__class__()
-        self.start, self.end = tree[:2]
-        self.content = []
+        markup.source = source
+        markup.empty = text.__class__()
+        markup.start, markup.end = tree[:2]
+        markup.content = []
         for item in tree[2:]:
             if isinstance(item, basestring):
-                self.content.append(text.__class__(item))
+                markup.content.append(text.__class__(item))
             elif isinstance(item, tuple):
-                if self.content: prev = self.content[-1]
+                if markup.content: prev = markup.content[-1]
                 else: prev = None
                 cmd_name = item[2]
                 if cmd_name is not None and cmd_name.startswith('+') \
                    or cmd_name in ('elif', 'else', 'sep', 'separator', 'except'):
                     if isinstance(prev, basestring) and (not prev or prev.isspace()):
-                        self.content.pop()
-                        if self.content: prev = self.content[-1]
+                        markup.content.pop()
+                        if markup.content: prev = markup.content[-1]
                         else: prev = None
                 if cmd_name is None:
-                    if item[3]: self.content.append(ExprElement(source, item))
-                    else: self.content.append(I18nElement(source, item))
+                    if item[3]: markup.content.append(ExprElement(source, item))
+                    else: markup.content.append(I18nElement(source, item))
                 elif cmd_name == 'if':
-                    self.content.append(IfElement(source, item))
+                    markup.content.append(IfElement(source, item))
                 elif cmd_name == 'elif':
                     if not isinstance(prev, IfElement):
-                        self._raise_unexpected_statement(item)
+                        markup._raise_unexpected_statement(item)
                     prev.append_elif(item)
                 elif cmd_name == 'else':
                     if not isinstance(prev, (IfElement, ForElement)):
-                        self._raise_unexpected_statement(item)
+                        markup._raise_unexpected_statement(item)
                     prev.append_else(item)
                 elif cmd_name == 'for':
-                    self.content.append(ForElement(source, item))
+                    markup.content.append(ForElement(source, item))
                 elif cmd_name in ('sep', 'separator'):
                     if not isinstance(prev, ForElement):
-                        self._raise_unexpected_statement(item)
+                        markup._raise_unexpected_statement(item)
                     prev.append_separator(item)
                 elif cmd_name == 'try':
-                    self.content.append(TryElement(source, item))
+                    markup.content.append(TryElement(source, item))
                 elif cmd_name == 'except':
                     if not isinstance(prev, TryElement):
-                        self._raise_unexpected_statement(item)
+                        markup._raise_unexpected_statement(item)
                     prev.append_except(item)
                 elif cmd_name.startswith('+'):
                     if not isinstance(prev, FunctionElement):
-                        self._raise_unexpected_statement(item)
+                        markup._raise_unexpected_statement(item)
                     prev.append_method(item)
-                else: self.content.append(FunctionElement(source, item))
+                else: markup.content.append(FunctionElement(source, item))
             else: assert False
-    def eval(self, globals, locals=None):
+    def eval(markup, globals, locals=None):
         result = []
-        for element in self.content:
+        for element in markup.content:
             if isinstance(element, basestring): result.append(element)
             else: result.append(element.eval(globals, locals))
-        return self.empty.join(result)
+        return markup.empty.join(result)
 
 class IfElement(SyntaxElement):
-    def __init__(self, source, item):
-        self.source = source
-        self.start, self.end = item[:2]
-        self.chain = []
-        self._append(item)
-    def append_elif(self, item):
-        if self.chain[-1][0] is None: self._raise_unexpected_statement(item)
-        self._append(item)
-    def append_else(self, item):
-        if self.chain[-1][0] is None: self._raise_unexpected_statement(item)
-        self._append(item)
-    def _append(self, item):
-        self._check_statement(item)
+    def __init__(elem, source, item):
+        elem.source = source
+        elem.start, elem.end = item[:2]
+        elem.chain = []
+        elem._append(item)
+    def append_elif(elem, item):
+        if elem.chain[-1][0] is None: elem._raise_unexpected_statement(item)
+        elem._append(item)
+    def append_else(elem, item):
+        if elem.chain[-1][0] is None: elem._raise_unexpected_statement(item)
+        elem._append(item)
+    def _append(elem, item):
+        elem._check_statement(item)
         end, expr, markup_args = item[1], item[3], item[4]
-        self.end = end
+        elem.end = end
         if expr is None: expr_code = None
         else: expr_code = _compile(expr.lstrip())
-        self.chain.append((expr, expr_code, Markup(self.source, markup_args[0])))
-    def eval(self, globals, locals=None):
-        for expr, expr_code, markup in self.chain:
+        elem.chain.append((expr, expr_code, Markup(elem.source, markup_args[0])))
+    def eval(elem, globals, locals=None):
+        for expr, expr_code, markup in elem.chain:
             if expr is None or _eval(expr_code, globals, locals):
                 return markup.eval(globals, locals)
         return ''
@@ -607,20 +607,20 @@ for_re = re.compile(r"""
 ident_re = re.compile(r'[A-Za-z_]\w*')
 
 class ForElement(SyntaxElement):
-    def __init__(self, source, item):
+    def __init__(elem, source, item):
         text = source[0]
-        self.source = source
-        self.empty = text.__class__()
-        self.start, self.end = item[:2]
-        self._check_statement(item)
-        self.expr, self.assignments = self._parse_for(item[3])
-        self.markup = Markup(source, item[4][0])
-        self.var_names = parse_var_list(self.source, self.start, self.expr, 0)
-        self.separator = self.else_ = None
-        var_list = ', '.join(self.var_names)
-        list_expr = '[ (%s,) for %s ]' % (var_list, self.expr)
-        self.code = _compile(list_expr)
-    def _parse_for(self, expr):
+        elem.source = source
+        elem.empty = text.__class__()
+        elem.start, elem.end = item[:2]
+        elem._check_statement(item)
+        elem.expr, elem.assignments = elem._parse_for(item[3])
+        elem.markup = Markup(source, item[4][0])
+        elem.var_names = parse_var_list(elem.source, elem.start, elem.expr, 0)
+        elem.separator = elem.else_ = None
+        var_list = ', '.join(elem.var_names)
+        list_expr = '[ (%s,) for %s ]' % (var_list, elem.expr)
+        elem.code = _compile(list_expr)
+    def _parse_for(elem, expr):
         elements = []
         while True:
             for match in for_re.finditer(expr):
@@ -632,69 +632,69 @@ class ForElement(SyntaxElement):
         expr = elements[0]
         assignments = []
         for s in elements[1:]:
-            if '=' not in s: raise ParseError('Invalid assignment: %r' % s, self.source, self.start)
+            if '=' not in s: raise ParseError('Invalid assignment: %r' % s, elem.source, elem.start)
             a, b = s.split('=', 1)
             var_names = ident_re.findall(a)
             _compile(b.lstrip()) # check; can raise exception
             code = compile(s.lstrip(), '<?>', 'single')
             assignments.append((var_names, code))
         return expr, assignments
-    def append_separator(self, item):
-        if self.separator or self.else_: self._raise_unexpected_statement(item)
-        self._check_statement(item)
-        self.end = item[1]
-        self.separator = Markup(self.source, item[4][0])
-    def append_else(self, item):
-        if self.else_: self._raise_unexpected_statement(item)
-        self._check_statement(item)
-        self.end = item[1]
-        self.else_ = Markup(self.source, item[4][0])
-    def eval(self, globals, locals=None):
+    def append_separator(elem, item):
+        if elem.separator or elem.else_: elem._raise_unexpected_statement(item)
+        elem._check_statement(item)
+        elem.end = item[1]
+        elem.separator = Markup(elem.source, item[4][0])
+    def append_else(elem, item):
+        if elem.else_: elem._raise_unexpected_statement(item)
+        elem._check_statement(item)
+        elem.end = item[1]
+        elem.else_ = Markup(elem.source, item[4][0])
+    def eval(elem, globals, locals=None):
         if locals is None: locals = {}
         not_found = object()
         old_values = []
-        all_var_names = self.var_names + [ 'for' ]
-        for ass_names, _ in self.assignments: all_var_names.extend(ass_names)
+        all_var_names = elem.var_names + [ 'for' ]
+        for ass_names, _ in elem.assignments: all_var_names.extend(ass_names)
         for name in all_var_names:
             old_values.append(locals.get(name, not_found))
         result = []
-        list = _eval(self.code, globals, locals)
+        list = _eval(elem.code, globals, locals)
         if not list:
-            if self.else_: return self.else_.eval(globals, locals)
+            if elem.else_: return elem.else_.eval(globals, locals)
             return ''
         for i, item in enumerate(list):
-            if i and self.separator:
-                result.append(self.separator.eval(globals, locals))
-            for name, value in zip(self.var_names, item): locals[name] = value
+            if i and elem.separator:
+                result.append(elem.separator.eval(globals, locals))
+            for name, value in zip(elem.var_names, item): locals[name] = value
             locals['for'] = i, len(list)
-            for _, code in self.assignments: exec code in globals, locals
-            result.append(self.markup.eval(globals, locals))
+            for _, code in elem.assignments: exec code in globals, locals
+            result.append(elem.markup.eval(globals, locals))
         for name, old_value in zip(all_var_names, old_values):
             if old_value is not_found: del locals[name]
             else: locals[name] = old_value
-        return self.empty.join(result)
+        return elem.empty.join(result)
 
 class TryElement(SyntaxElement):
-    def __init__(self, source, item):
-        self.source = source
-        self.start, self.end = item[:2]
-        self._check_statement(item)
-        self.markup = Markup(source, item[4][0])
-        self.except_list = []
-        self.else_ = None
-    def append_except(self, item):
-        self._check_statement(item)
-        self.end = item[1]
+    def __init__(elem, source, item):
+        elem.source = source
+        elem.start, elem.end = item[:2]
+        elem._check_statement(item)
+        elem.markup = Markup(source, item[4][0])
+        elem.except_list = []
+        elem.else_ = None
+    def append_except(elem, item):
+        elem._check_statement(item)
+        elem.end = item[1]
         expr, markup_args = item[3:5]
         if expr is None: code = None
         else: code = _compile(expr.lstrip())
-        self.except_list.append((code, Markup(self.source, markup_args[0])))
-    def eval(self, globals, locals=None):
-        try: return self.markup.eval(globals, locals)
+        elem.except_list.append((code, Markup(elem.source, markup_args[0])))
+    def eval(elem, globals, locals=None):
+        try: return elem.markup.eval(globals, locals)
         except Exception:
             exc_type, exc_value, traceback = sys.exc_info()
             try:
-                for code, markup in self.except_list:
+                for code, markup in elem.except_list:
                     if code is None: return markup.eval(globals, locals)
                     exc = _eval(code, globals, locals)
                     if issubclass(exc_type, exc): return markup.eval(globals, locals)
@@ -702,19 +702,19 @@ class TryElement(SyntaxElement):
             finally: del traceback
                 
 class ExprElement(SyntaxElement):
-    def __init__(self, source, item):
-        self.source = source
-        self.start, self.end, cmd_name, self.expr, markup_args = item
+    def __init__(elem, source, item):
+        elem.source = source
+        elem.start, elem.end, cmd_name, elem.expr, markup_args = item
         assert cmd_name is None
-        self.expr_code = _compile(self.expr)
-        if not markup_args: self.markup = None
+        elem.expr_code = _compile(elem.expr)
+        if not markup_args: elem.markup = None
         elif len(markup_args) > 1: raise ParseError('Unexpected markup block', source, markup_args[0][0])
-        else: self.markup = Markup(source, markup_args[0])
-    def eval(self, globals, locals=None):
-        try: result = _eval(self.expr_code, globals, locals)
+        else: elem.markup = Markup(source, markup_args[0])
+    def eval(elem, globals, locals=None):
+        try: result = _eval(elem.expr_code, globals, locals)
         except:
-            if not self.markup: raise
-            return self.markup.eval(globals, locals)
+            if not elem.markup: raise
+            return elem.markup.eval(globals, locals)
         if inspect.isroutine(result): result = result()
         if isinstance(result, basestring): return result
         return unicode(result)
@@ -722,65 +722,65 @@ class ExprElement(SyntaxElement):
 space_re = re.compile(r'\s+')
 
 class I18nElement(SyntaxElement):
-    def __init__(self, source, item):
-        self.source = source
-        self.start, self.end, cmd_name, expr, markup_args = item
+    def __init__(elem, source, item):
+        elem.source = source
+        elem.start, elem.end, cmd_name, expr, markup_args = item
         assert cmd_name is None and expr is None
-        self.markup = Markup(source, markup_args[0])
+        elem.markup = Markup(source, markup_args[0])
         if len(markup_args) > 1: raise ParseError('Unexpected markup block', source, markup_args[1][0])
-        self.items = [ item for item in self.markup.content if not isinstance(item, basestring) ]
+        elem.items = [ item for item in elem.markup.content if not isinstance(item, basestring) ]
         key_list = [ not isinstance(item, basestring) and '$#' or item.replace('$', '$$')
-                     for item in self.markup.content ]
-        self.key = ' '.join(''.join(key_list).split())
-    def eval(self, globals, locals=None):
-        params = [ item.eval(globals, locals) for item in self.items ]
+                     for item in elem.markup.content ]
+        elem.key = ' '.join(''.join(key_list).split())
+    def eval(elem, globals, locals=None):
+        params = [ item.eval(globals, locals) for item in elem.items ]
         if 'pony.web' in sys.modules:
             from pony.web import http
             languages = http.request.languages
         else: languages = []
-        result = i18n.translate(self.key, params, languages)
+        result = i18n.translate(elem.key, params, languages)
         if result is not None: return result
         params.reverse()
         result = []
-        for element in self.markup.content:
+        for element in elem.markup.content:
             if isinstance(element, basestring): result.append(element)
             else: result.append(params.pop())
-        return self.markup.empty.join(result)
+        return elem.markup.empty.join(result)
 
 _func_code = compile('__pony_func__(*__pony_args__, **__pony_keyargs__)', '<?>', 'eval')
 
 class FunctionElement(SyntaxElement):
-    def __init__(self, source, item):
-        self.source = source
-        self.start, self.end, self.expr, self.params, markup_args = item
-        self.params = self.params or ''
-        self.markup_args = [ Markup(source, item) for item in markup_args ]
-        self.func_code = _compile(self.expr)
-        s = '(lambda *args, **keyargs: (list(args), keyargs))(%s)' % self.params
-        self.params_code = _compile(s)
-        self.methods = []
-    def append_method(self, item):
+    def __init__(elem, source, item):
+        elem.source = source
+        elem.start, elem.end, elem.expr, elem.params, markup_args = item
+        elem.params = elem.params or ''
+        elem.markup_args = [ Markup(source, item) for item in markup_args ]
+        elem.func_code = _compile(elem.expr)
+        s = '(lambda *args, **keyargs: (list(args), keyargs))(%s)' % elem.params
+        elem.params_code = _compile(s)
+        elem.methods = []
+    def append_method(elem, item):
         start, end, expr, params, markup_args = item
         assert expr.startswith('+')
         method_name = expr[1:]
         params = params or ''
-        markup_args = [ Markup(self.source, item) for item in markup_args ]
+        markup_args = [ Markup(elem.source, item) for item in markup_args ]
         s = '(lambda *args, **keyargs: (list(args), keyargs))(%s)' % params
         params_code = _compile(s)
-        self.methods.append((method_name, params_code, markup_args))
-    def eval(self, globals, locals=None):
-        func = _eval(self.func_code, globals, locals)
-        args, keyargs = _eval(self.params_code, globals, locals)
+        elem.methods.append((method_name, params_code, markup_args))
+    def eval(elem, globals, locals=None):
+        func = _eval(elem.func_code, globals, locals)
+        args, keyargs = _eval(elem.params_code, globals, locals)
         if getattr(func, '__lazy__', False):
-            args.extend([BoundMarkup(m, globals, locals) for m in self.markup_args])
+            args.extend([BoundMarkup(m, globals, locals) for m in elem.markup_args])
         else:
-            for arg in self.markup_args: args.append(arg.eval(globals, locals))
+            for arg in elem.markup_args: args.append(arg.eval(globals, locals))
         if locals is None: locals = {}
         locals['__pony_func__'] = func
         locals['__pony_args__'] = args
         locals['__pony_keyargs__'] = keyargs
         result = _eval(_func_code, globals, locals)
-        for method_name, params_code, markup_args in self.methods:
+        for method_name, params_code, markup_args in elem.methods:
             method = getattr(result, method_name)
             args, keyargs = _eval(params_code, globals, locals)
             if getattr(method, '__lazy__', False):
@@ -792,12 +792,12 @@ class FunctionElement(SyntaxElement):
         return unicode(result)
         
 class BoundMarkup(object):
-    def __init__(self, markup, globals, locals=None):
-        self.markup = markup
-        self.globals = globals
-        self.locals = locals
-    def __call__(self):
-        return self.markup.eval(self.globals, self.locals)
+    def __init__(elem, markup, globals, locals=None):
+        elem.markup = markup
+        elem.globals = globals
+        elem.locals = locals
+    def __call__(elem):
+        return elem.markup.eval(elem.globals, elem.locals)
 
 def _cycle_check(args):
     for arg in args:
