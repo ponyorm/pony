@@ -33,6 +33,7 @@ class Pool(localbase):
             keyargs['charset'] = 'utf8'
         pool.args = args
         pool.keyargs = keyargs
+        pool.con = None
     def connect(pool):
         if pool.con is None:
             pool.con = MySQLdb.connect(*pool.args, **pool.keyargs)
