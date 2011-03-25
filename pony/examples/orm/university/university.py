@@ -3,6 +3,8 @@ import pony.db
 from pony.db import Database
 from pony.orm import *
 from pony.sqltranslator import select
+from decimal import Decimal
+from datetime import date
 
 _diagram_ = Diagram()
 
@@ -32,7 +34,7 @@ class Group(Entity):
 class Student(Entity):
     _table_ = 'Students'
     name = Required(unicode)
-    scholarship = Required(int, default=0)
+    scholarship = Required(Decimal, 10, 2, default=Decimal('0.0'))
     group = Required(Group)
     grades = Set('Grade')
 
@@ -76,7 +78,7 @@ class Grade(Entity):
     course = Required(Course)
     PrimaryKey(student, course)
     teacher = Required('Teacher')
-    date = Required(str)
+    date = Required(date)
     value = Required(str)
     
 class Teacher(Entity):
@@ -103,4 +105,5 @@ class Classroom(Entity):
     lessons = Set(Lesson)
 
 db = Database('sqlite', 'university.db3')
-generate_mapping(db, check_tables=True)
+# db = Database('mysql', host='localhost', user='root', passwd='root', db='university')
+generate_mapping(db, create_tables=True)
