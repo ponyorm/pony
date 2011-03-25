@@ -13,6 +13,7 @@ import MySQLdb.converters
 
 from pony import sqlbuilding
 from pony.db import LongStr, LongUnicode
+from pony.utils import localbase
 
 paramstyle = 'format'
 
@@ -20,19 +21,32 @@ def quote_name(connection, name):
     return sqlbuilding.quote_name(name, "`")
 
 def get_pool(*args, **keyargs):
-    return None
+    return Pool(*args, **keyargs)
 
-def connect(pool, *args, **keyargs):
-    if 'conv' not in keyargs:
-        conv = MySQLdb.converters.conversions.copy()
-        conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]
-        keyargs['conv'] = conv
-    if 'charset' not in keyargs:
-        keyargs['charset'] = 'utf8'
-    return MySQLdb.connect(*args, **keyargs)
-
-def release(connection):
-    connection.close()
+class Pool(localbase):
+    def __init__(pool, *args, **keyargs):
+        if 'conv' not in keyargs:
+            conv = MySQLdb.converters.conversions.copy()
+            conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]
+            keyargs['conv'] = conv
+        if 'charset' not in keyargs:
+            keyargs['charset'] = 'utf8'
+        pool.args = args
+        pool.keyargs = keyargs
+    def connect(pool):
+        if pool.con is None:
+            pool.con = MySQLdb.connect(*pool.args, **pool.keyargs)
+        return pool.con
+    def release(pool, con):
+        assert con is pool.con
+        try: con.rollback()
+        except:
+            pool.close(con)
+            raise
+    def close(pool, con):
+        assert con is pool.con
+        pool.con = None
+        con.close()
 
 def ast2sql(con, ast):
     b = sqlbuilding.SQLBuilder(ast, paramstyle, "`")
