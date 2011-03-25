@@ -1202,7 +1202,10 @@ class Entity(object):
             return [ obj ]
         raise KeyError
     def _load_(obj):
-        objects = obj._find_in_db_({obj.__class__._pk_ :obj._pkval_})
+        if obj._pk_is_composite_:
+            avdict = dict((attr, val) for attr, val in zip(obj._pk_attrs_, obj._pkval_))
+        else: avdict = { obj.__class__._pk_ : obj._pkval_ }
+        objects = obj._find_in_db_(avdict)        
         if not objects: raise UnrepeatableReadError('%s disappeared' % obj)
         assert len(objects) == 1 and obj == objects[0]
     @classmethod
