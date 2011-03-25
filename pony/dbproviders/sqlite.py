@@ -59,8 +59,7 @@ class MemPool(object):
             if mempool.con is None:
                 mempool.con = MemoryConnectionWrapper()
         finally: mem_connect_lock.release()
-        return mempool.con
-    def connect(mem_pool):
+    def connect(mempool):
         return mempool.con
     def release(mempool, con):
         assert con is mempool.con
