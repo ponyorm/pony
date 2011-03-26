@@ -81,6 +81,8 @@ def is_ident(string):
 
 def import_module(name):
     "import_module('a.b.c') -> <module a.b.c>"
+    mod = sys.modules.get(name)
+    if mod is not None: return mod
     mod = __import__(name)
     components = name.split('.')
     for comp in components[1:]: mod = getattr(mod, comp)
