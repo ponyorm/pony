@@ -9,7 +9,7 @@ from datetime import date, datetime
 from pony import ormcore
 from pony.decompiling import decompile
 from pony.templating import Html, StrHtml
-from pony.db import LongStr, LongUnicode
+from pony.clobtypes import LongStr, LongUnicode
 from pony.sqlbuilding import SQLBuilder
 from pony.sqlsymbols import *
 

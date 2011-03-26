@@ -61,9 +61,6 @@ def wrap_dbapi_exceptions(provider, func, *args, **keyargs):
     except provider.Error, e: raise Error(exceptions=[e])
     except provider.Warning, e: raise Warning(exceptions=[e])
 
-class LongStr(str): pass
-class LongUnicode(unicode): pass
-
 sql_cache = {}
 insert_cache = {}
 

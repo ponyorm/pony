@@ -12,7 +12,7 @@ from MySQLdb.constants import FIELD_TYPE, FLAG
 import MySQLdb.converters
 
 from pony import sqlbuilding
-from pony.db import LongStr, LongUnicode
+from pony.clobtypes import LongStr, LongUnicode
 from pony.utils import localbase
 
 paramstyle = 'format'

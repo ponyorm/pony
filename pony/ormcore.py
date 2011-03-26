@@ -7,7 +7,7 @@ except ImportError: etree = None
 
 import pony.db
 from pony import options, dbschema, sqlbuilding
-from pony.db import LongStr, LongUnicode
+from pony.clobtypes import LongStr, LongUnicode
 from pony.utils import localbase, simple_decorator
 from pony.sqlsymbols import *
 
