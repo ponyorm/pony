@@ -64,7 +64,7 @@ class DescWrapper(object):
 next_attr_id = count(1).next
 
 class Attribute(object):
-    __slots__ = 'is_required', 'is_unique', 'is_indexed', 'is_pk', 'is_collection', \
+    __slots__ = 'is_required', 'is_unique', 'is_indexed', 'is_pk', 'is_collection', 'is_ref', 'is_basic', \
                 'id', 'pk_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'keyargs'
@@ -73,7 +73,6 @@ class Attribute(object):
         attr.is_required = isinstance(attr, Required)
         attr.is_unique = isinstance(attr, Unique)  # Also can be set to True later
         attr.is_indexed = attr.is_unique  # Also can be set to True later
-        attr.is_collection = isinstance(attr, Collection)
         attr.is_pk = isinstance(attr, PrimaryKey)
         if attr.is_pk: attr.pk_offset = 0
         else: attr.pk_offset = None
@@ -83,6 +82,9 @@ class Attribute(object):
         if py_type == 'Entity' or py_type is Entity:
             raise TypeError('Cannot link attribute to Entity class. Must use Entity subclass instead')
         attr.py_type = py_type
+        attr.is_collection = isinstance(attr, Collection)
+        attr.is_ref = not attr.is_collection and isinstance(attr.py_type, (EntityMeta, basestring))
+        attr.is_basic = not attr.is_collection and not attr.is_ref
         attr.sql_type = keyargs.pop('sql_type', None)
         attr.entity = attr.name = None
         attr.args = args
