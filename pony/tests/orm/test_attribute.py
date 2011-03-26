@@ -1,6 +1,6 @@
 import unittest
 from pony.orm import *
-from pony.db import *
+from pony.ormcore import Attribute
 from testutils import *
 
 class TestAttribute(unittest.TestCase):

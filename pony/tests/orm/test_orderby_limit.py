@@ -1,7 +1,5 @@
 import unittest
 from pony.orm import *
-from pony.db import Database
-from pony.sqltranslator import select, exists
 from testutils import *
 
 class TestOrderbyLimit(unittest.TestCase):

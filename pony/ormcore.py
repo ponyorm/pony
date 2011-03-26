@@ -11,6 +11,16 @@ from pony.clobtypes import LongStr, LongUnicode
 from pony.utils import localbase, simple_decorator
 from pony.sqlsymbols import *
 
+__all__ = '''
+    OrmError DiagramError SchemaError MappingError ConstraintError IndexError ObjectNotFound
+    MultipleObjectsFoundError TooManyObjectsFoundError OperationWithDeletedObjectError
+    TransactionError IntegrityError IsolationError CommitException RollbackException
+    UnrepeatableReadError UnresolvableCyclicDependency UnexpectedError
+
+    Optional Required Unique PrimaryKey Set Entity Diagram generate_mapping
+    commit rollback with_transaction
+    '''.split()
+
 class OrmError(Exception): pass
 
 class DiagramError(OrmError): pass

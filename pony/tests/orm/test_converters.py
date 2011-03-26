@@ -1,9 +1,7 @@
 import unittest
 from pony.orm import *
-from pony.db import Database
-from pony.sqltranslator import select
-from datetime import datetime, date
 from decimal import Decimal
+from datetime import date
 
 class TestConverters(unittest.TestCase):
     def setUp(self):

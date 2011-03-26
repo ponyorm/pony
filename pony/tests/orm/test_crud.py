@@ -1,6 +1,5 @@
 import unittest
 from pony.orm import *
-from pony.db import Database
 from model1 import *
 
 class TestCRUD(unittest.TestCase):

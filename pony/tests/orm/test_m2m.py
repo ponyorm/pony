@@ -1,6 +1,6 @@
 import unittest
 from pony.orm import *
-from pony.db import Database
+from pony.ormcore import local, DBSession
 from pony import db
 
 class TestManyToManyNonComposite(unittest.TestCase):

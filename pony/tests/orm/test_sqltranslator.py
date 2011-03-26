@@ -1,7 +1,5 @@
 import unittest
 from pony.orm import *
-from pony.sqltranslator import select, TranslationError
-from pony.db import Database
 from testutils import *
 
 name1 = 'S1'

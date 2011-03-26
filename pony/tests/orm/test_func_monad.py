@@ -1,11 +1,8 @@
 import unittest
 from pony.orm import *
-from pony.db import Database
-from pony.sqltranslator import select
 from testutils import *
 from datetime import date, datetime
 from decimal import Decimal
-import pony.db
 
 class TestFuncMonad(unittest.TestCase):
     def setUp(self):

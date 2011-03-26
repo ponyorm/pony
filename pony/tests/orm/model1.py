@@ -1,5 +1,4 @@
 import os.path
-from pony.db import Database
 from pony.orm import *
 
 class Student(Entity):

@@ -1,6 +1,6 @@
 import unittest
 from pony.orm import *
-from pony.db import Database
+from pony.ormcore import local, DBSession
 from model1 import *
 
 class TestCollections(unittest.TestCase):
@@ -18,6 +18,25 @@ class TestCollections(unittest.TestCase):
 
     def test_many2many(self):
         subjects = Subject.find_all()
+
+# replace collection items when the old ones are not fully loaded
+##>>> from pony.examples.orm.students01.model import *
+##>>> s1 = Student(101)
+##>>> g = s1.group
+##>>> g.__dict__[Group.students].is_fully_loaded
+##False
+##>>> s2 = Student(104)
+##>>> g.students = [s2]
+##>>> 
+
+# replace collection items when the old ones are not loaded
+##>>> from pony.examples.orm.students01.model import *
+##>>> g = Group(4145)
+##>>> Group.students not in g.__dict__
+##True
+##>>> s2 = Student(104)
+##>>> g.students = [s2]
+
 
 if __name__ == '__main__':
     unittest.main()    

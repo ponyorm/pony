@@ -1,8 +1,5 @@
 import unittest
 from pony.orm import *
-from pony.db import Database
-from pony.sqltranslator import select
-import pony.db
 
 class TestObjectFlatMonad(unittest.TestCase):
     def setUp(self):
