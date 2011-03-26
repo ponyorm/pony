@@ -54,7 +54,10 @@ def wrap_dbapi_exceptions(provider, func, *args, **keyargs):
     except provider.OperationalError, e: raise OperationalError(exceptions=[e])
     except provider.DataError, e: raise DataError(exceptions=[e])
     except provider.DatabaseError, e: raise DatabaseError(exceptions=[e])
-    except provider.InterfaceError, e: raise InterfaceError(exceptions=[e])
+    except provider.InterfaceError, e:
+        if e.args == (0, '') and getattr(provider, '__name__', None) == 'pony.dbproviders.mysql':
+            raise InterfaceError('MySQL server misconfiguration', exceptions=[e])
+        raise InterfaceError(exceptions=[e])
     except provider.Error, e: raise Error(exceptions=[e])
     except provider.Warning, e: raise Warning(exceptions=[e])
 
