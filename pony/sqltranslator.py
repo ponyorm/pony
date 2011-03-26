@@ -6,7 +6,7 @@ from itertools import imap, izip
 from decimal import Decimal
 from datetime import date, datetime
 
-from pony import orm
+from pony import ormcore
 from pony.decompiling import decompile
 from pony.templating import Html, StrHtml
 from pony.db import LongStr, LongUnicode
@@ -104,8 +104,8 @@ class Query(object):
         entity = query._translator.entity
         order = []
         for arg in args:
-            if isinstance(arg, orm.Attribute): order.append((arg, True))
-            elif isinstance(arg, orm.DescWrapper): order.append((arg.attr, False))
+            if isinstance(arg, ormcore.Attribute): order.append((arg, True))
+            elif isinstance(arg, ormcore.DescWrapper): order.append((arg.attr, False))
             else: raise TypeError('query.orderby() arguments must be attributes. Got: %r' % arg)
             attr = order[-1][0]
             if entity._adict_.get(attr.name) is not attr: raise TypeError(
@@ -160,15 +160,15 @@ type_normalization_dict = { long : int, bool : int,
                             StrHtml : str, Html : unicode }
 
 def get_normalized_type(value):
-    if isinstance(value, orm.EntityMeta): return value
+    if isinstance(value, ormcore.EntityMeta): return value
     value_type = type(value)
-    if value_type is orm.EntityIter: return value.entity
+    if value_type is ormcore.EntityIter: return value.entity
     return normalize_type(value_type)
 
 def normalize_type(t):
     if t is NoneType: return t
     t = type_normalization_dict.get(t, t)
-    if t not in primitive_types and not isinstance(t, orm.EntityMeta): raise TypeError, t
+    if t not in primitive_types and not isinstance(t, ormcore.EntityMeta): raise TypeError, t
     return t
 
 some_comparables = set([ (int, float), (int, Decimal), (date, datetime) ])
@@ -186,8 +186,8 @@ def are_comparable_types(op, type1, type2):
         if type1 is NoneType or type2 is NoneType: return True
         elif type1 in primitive_types:
             return type1 is type2 or (type1, type2) in some_comparables
-        elif isinstance(type1, orm.EntityMeta):
-            if not isinstance(type2, orm.EntityMeta): return False
+        elif isinstance(type1, ormcore.EntityMeta):
+            if not isinstance(type2, ormcore.EntityMeta): return False
             return type1._root_ is type2._root_
         else: return False
     else: assert False
@@ -283,7 +283,7 @@ class SQLTranslator(ASTTranslator):
                 if i > 0: translator.distinct = True
                 iter_name = node.name
                 entity = vartypes[iter_name] # can raise KeyError
-                if not isinstance(entity, orm.EntityMeta): raise NotImplementedError
+                if not isinstance(entity, ormcore.EntityMeta): raise NotImplementedError
 
                 diagram = entity._diagram_
                 if diagram.database is None: raise TranslationError(
@@ -299,14 +299,14 @@ class SQLTranslator(ASTTranslator):
                 attr = parent_entity._adict_.get(attr_name)
                 if attr is None: raise AttributeError, attr_name
                 if not attr.is_collection: raise TypeError
-                if not isinstance(attr, orm.Set): raise NotImplementedError
+                if not isinstance(attr, ormcore.Set): raise NotImplementedError
                 entity = attr.py_type
-                if not isinstance(entity, orm.EntityMeta): raise NotImplementedError
+                if not isinstance(entity, ormcore.EntityMeta): raise NotImplementedError
                 reverse = attr.reverse
                 if not reverse.is_collection:
                     join_tables(conditions, node.name, name, parent_entity._pk_columns_, reverse.columns)
                 else:
-                    if not isinstance(reverse, orm.Set): raise NotImplementedError
+                    if not isinstance(reverse, ormcore.Set): raise NotImplementedError
                     translator.distinct = True
                     m2m_table = attr.table
                     m2m_alias = '%s--%s' % (node.name, name)
@@ -710,7 +710,7 @@ class StringMethodMonad(MethodMonad):
     
 class ObjectMixin(object):
     def mixin_init(monad):
-        assert isinstance(monad.type, orm.EntityMeta)
+        assert isinstance(monad.type, ormcore.EntityMeta)
     def getattr(monad, name):
         translator = monad.translator
         entity = monad.type
@@ -740,7 +740,7 @@ class AttrMonad(Monad):
         elif type is date: cls = DateAttrMonad
         elif type is datetime: cls = DatetimeAttrMonad
         elif type is buffer: cls = BufferAttrMonad
-        elif isinstance(type, orm.EntityMeta): cls = ObjectAttrMonad
+        elif isinstance(type, ormcore.EntityMeta): cls = ObjectAttrMonad
         else: raise NotImplementedError, type
         return cls(parent, attr, *args, **keyargs)
     def __init__(monad, parent, attr):
@@ -821,7 +821,7 @@ class ParamMonad(Monad):
         elif type is date: cls = DateParamMonad
         elif type is datetime: cls = DatetimeParamMonad
         elif type is buffer: cls = BufferParamMonad
-        elif isinstance(type, orm.EntityMeta): cls = ObjectParamMonad
+        elif isinstance(type, ormcore.EntityMeta): cls = ObjectParamMonad
         else: raise TypeError, type
         return object.__new__(cls)
     def __init__(monad, translator, type, name, parent=None):
@@ -829,7 +829,7 @@ class ParamMonad(Monad):
         Monad.__init__(monad, translator, type)
         monad.name = name
         monad.parent = parent
-        if not isinstance(type, orm.EntityMeta):
+        if not isinstance(type, ormcore.EntityMeta):
             provider = translator.diagram.database.provider
             converter = provider.get_converter_by_py_type(type)
             py2sql = converter.py2sql
@@ -1124,19 +1124,19 @@ class AttrSetMonad(SetMixin, Monad):
     def contains(monad, item, not_in=False):
         item_type = monad.type[0]
         if not are_comparable_types('==', item_type, item.type): raise TypeError, [item_type, item.type ]
-        if isinstance(item_type, orm.EntityMeta) and len(item_type._pk_columns_) > 1:
+        if isinstance(item_type, ormcore.EntityMeta) and len(item_type._pk_columns_) > 1:
             raise NotImplementedError
 
         alias, expr, from_ast, conditions = monad._subselect()
         if expr is None:
-            assert isinstance(item_type, orm.EntityMeta)
+            assert isinstance(item_type, ormcore.EntityMeta)
             expr = [ COLUMN, alias, item_type._pk_columns_[0] ]
         subquery_ast = [ SELECT, [ ALL, expr ], from_ast, [ WHERE, sqland(conditions) ] ]
         sqlop = not_in and NOT_IN or IN
         return BoolExprMonad(monad.translator, [ sqlop, item.getsql()[0], subquery_ast ])
     def getattr(monad, name):
         item_type = monad.type[0]
-        if not isinstance(item_type, orm.EntityMeta):
+        if not isinstance(item_type, ormcore.EntityMeta):
             raise AttributeError, name
         entity = item_type
         attr = entity._adict_.get(name)
@@ -1191,7 +1191,7 @@ class AttrSetMonad(SetMixin, Monad):
                 break
             
             next_entity = attr.py_type
-            assert isinstance(next_entity, orm.EntityMeta)
+            assert isinstance(next_entity, ormcore.EntityMeta)
             alias = '-'.join((prev_alias, attr.name))
             alias = monad.translator.get_short_alias(alias, next_entity.__name__)
             if not attr.is_collection:
@@ -1233,7 +1233,7 @@ class QuerySetMonad(SetMixin, Monad):
     def contains(monad, item, not_in=False):
         item_type = monad.type[0]
         if not are_comparable_types('==', item_type, item.type): raise TypeError, [item_type, item.type ]
-        if isinstance(item_type, orm.EntityMeta) and len(item_type._pk_columns_) > 1:
+        if isinstance(item_type, ormcore.EntityMeta) and len(item_type._pk_columns_) > 1:
             raise NotImplementedError
 
         attr, attr_type = monad._get_attr_info()
