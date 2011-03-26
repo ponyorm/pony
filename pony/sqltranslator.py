@@ -13,6 +13,8 @@ from pony.clobtypes import LongStr, LongUnicode
 from pony.sqlbuilding import SQLBuilder
 from pony.sqlsymbols import *
 
+__all__ = 'TranslationError', 'select', 'exists'
+
 MAX_ALIAS_LENGTH = 30
 
 class TranslationError(Exception): pass
