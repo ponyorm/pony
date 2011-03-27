@@ -90,6 +90,13 @@ def indentable(method):
     new_method.__name__ = method.__name__
     return new_method
 
+def convert(values, params):
+    getitem = values.__getitem__
+    for param in params:
+        value = getitem(param.key)
+        if value is not None: value = param.py2sql(value)
+        yield value
+
 class SQLBuilder(object):
     make_param = Param
     value = Value
@@ -105,15 +112,15 @@ class SQLBuilder(object):
         if paramstyle in ('qmark', 'format'):
             params = tuple(x for x in builder.result if isinstance(x, Param))
             def adapter(values):
-                return tuple(param.py2sql(values[param.key]) for param in params)
+                return tuple(convert(values, params))
         elif paramstyle == 'numeric':
             params = tuple(param for param in sorted(builder.keys.itervalues(), key=attrgetter('id')))
             def adapter(values):
-                return tuple(param.py2sql(values[param.key]) for param in params)
+                return tuple(convert(values, params))
         elif paramstyle in ('named', 'pyformat'):
             params = tuple(param for param in sorted(builder.keys.itervalues(), key=attrgetter('id')))
             def adapter(values):
-                return dict(('p%d' % param.id, param.py2sql(values[param.key])) for param in params)
+                return dict(('p%d' % param.id, value) for param, value in zip(params, convert(values, params)))
         else: raise NotImplementedError
         builder.params = params
         builder.layout = tuple(param.key for param in params)
