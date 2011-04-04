@@ -832,6 +832,10 @@ class SetWrapper(object):
     def __isub__(wrapper, x):
         wrapper.remove(x)
         return wrapper
+    def clear(wrapper):
+        obj = wrapper._obj_
+        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        wrapper._attr_.__set__(obj, None)
 
 class PropagatedSet(object):
     __slots__ = [ '_items_' ]
