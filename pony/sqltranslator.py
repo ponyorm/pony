@@ -833,14 +833,13 @@ class ParamMonad(Monad):
         monad.parent = parent
         if not isinstance(type, ormcore.EntityMeta):
             provider = translator.diagram.database.provider
-            converter = provider.get_converter_by_py_type(type)
-            py2sql = converter.py2sql
-        else: py2sql = lambda obj: obj
-        if parent is None: monad.extractor = lambda variables : py2sql(variables[name])
-        else: monad.extractor = lambda variables : py2sql(getattr(parent.extractor(variables), name))
+            monad.converter = provider.get_converter_by_py_type(type)
+        else: monad.converter = None
+        if parent is None: monad.extractor = lambda variables : variables[name]
+        else: monad.extractor = lambda variables : getattr(parent.extractor(variables), name)
     def getsql(monad):
         monad.add_extractors()
-        return [ [ PARAM, monad.name ] ]
+        return [ [ PARAM, monad.name, monad.converter ] ]
     def add_extractors(monad):
         name = monad.name
         extractors = monad.translator.extractors
@@ -858,7 +857,9 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
         return ParamMonad(monad.translator, attr.py_type, name, monad)
     def getsql(monad):
         monad.add_extractors()
-        return [ [ PARAM, param ] for param in monad.params ]
+        entity = monad.type
+        assert len(monad.params) == len(entity._pk_converters_)
+        return [ [ PARAM, param, converter ] for param, converter in zip(monad.params, entity._pk_converters_) ]
     def add_extractors(monad):
         entity = monad.type
         extractors = monad.translator.extractors
