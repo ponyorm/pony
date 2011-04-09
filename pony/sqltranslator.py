@@ -13,7 +13,7 @@ from pony.clobtypes import LongStr, LongUnicode
 from pony.sqlbuilding import SQLBuilder
 from pony.sqlsymbols import *
 
-__all__ = 'TranslationError', 'select', 'exists'
+__all__ = 'TranslationError', 'fetch', 'select', 'exists'
 
 MAX_ALIAS_LENGTH = 30
 
@@ -21,6 +21,9 @@ class TranslationError(Exception): pass
 
 python_ast_cache = {}
 sql_cache = {}
+
+def fetch(gen):
+    return select(gen).fetch()
 
 def select(gen):
     tree, external_names = decompile(gen)
