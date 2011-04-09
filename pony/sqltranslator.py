@@ -66,11 +66,11 @@ class Query(object):
             python_ast_cache[key] = translator
         query._translator = translator
         query._database = translator.entity._diagram_.database
-        query._order = query._limit = None
+        query._order = query.range = None
         query._aggr_func = query._aggr_select = None
-    def _construct_sql(query):
+    def _construct_sql(query, range):
         translator = query._translator
-        sql_key = query._python_ast_key + (query._order, query._limit, query._aggr_func)
+        sql_key = query._python_ast_key + (query._order, range, query._aggr_func)
         cache_entry = sql_cache.get(sql_key)
         database = query._database
         if cache_entry is None:
@@ -86,8 +86,8 @@ class Query(object):
                     for column in attr.columns:
                         orderby_section.append(([COLUMN, alias, column], asc and ASC or DESC))
                 sql_ast = sql_ast + [ orderby_section ]
-            if query._limit:
-                start, stop = query._limit
+            if range:
+                start, stop = range
                 limit = stop - start
                 offset = start
                 assert limit is not None
@@ -100,21 +100,24 @@ class Query(object):
             sql_cache[sql_key] = cache_entry
         else: sql, adapter = cache_entry
         return sql, adapter
-    def _exec_sql(query):
-        sql, adapter = query._construct_sql()
+    def _exec_sql(query, range):
+        sql, adapter = query._construct_sql(range)
         param_dict = {}
         for param_name, extractor in query._translator.extractors.items():
             param_dict[param_name] = extractor(query._variables)
         arguments = adapter(param_dict)
         cursor = query._database._exec_sql(sql, arguments)
         return cursor
-    def __iter__(query):
+    def _fetch(query, range):
         translator = query._translator
-        cursor = query._exec_sql()
+        cursor = query._exec_sql(range)
         result = translator.entity._fetch_objects(cursor, translator.attr_offsets)
-        if translator.attrname is not None:
-            return imap(attrgetter(translator.attrname), result)
-        return iter(result)
+        if translator.attrname is None: return result
+        return map(attrgetter(translator.attrname), result)
+    def fetch(query):
+        return query._fetch(None)
+    def __iter__(query):
+        return iter(query._fetch(None))
     def orderby(query, *args):
         if not args: raise TypeError('query.orderby() requires at least one argument')
         entity = query._translator.entity
@@ -139,9 +142,9 @@ class Query(object):
             elif start < 0: raise TypeError("Parameter 'start' of slice object cannot be negative")
             stop = key.stop
             if stop is None:
-                if not start: return list(query)
-                elif not query._limit: raise TypeError("Parameter 'stop' of slice object should be specified")
-                else: stop = query._limit[1]
+                if not start: return query._fetch(None)
+                elif not query.range: raise TypeError("Parameter 'stop' of slice object should be specified")
+                else: stop = query.range[1]
         else:
             try: i = key.__index__()
             except AttributeError:
@@ -150,21 +153,12 @@ class Query(object):
                     raise TypeError('Incorrect argument type: %r' % key)
             start = i
             stop = i + 1
-        if query._limit is not None:
-            prev_start, prev_stop = query._limit
-            start = prev_start + start
-            stop = min(prev_stop, prev_start + stop)
-        if start >= stop: start = stop = 0
-        new_query = object.__new__(Query)
-        new_query.__dict__.update(query.__dict__)
-        new_query._limit = start, stop
-        return list(new_query)
+        if start >= stop: return []
+        return query._fetch((start, stop))
     def limit(query, limit, offset=None):
         start = offset or 0
         stop = start + limit
         return query[start:stop]
-    def fetch(query):
-        return list(query)
     def _aggregate(query, funcsymbol):
         translator = query._translator
         attrname = translator.attrname
