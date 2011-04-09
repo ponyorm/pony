@@ -147,11 +147,13 @@ class Attribute(object):
         elif obj is not None: entity = obj.__class__
         else: entity = attr.entity
         if val is DEFAULT:
-            val = attr.default
-            if val is None:
+            default = attr.default
+            if default is None:
                 if attr.is_required and not attr.auto: raise ConstraintError(
                     'Required attribute %s.%s does not specified' % (entity.__name__, attr.name))
-                return val
+                return None
+            if callable(default): val = default()
+            else: val = default
         elif val is None:
             if attr.is_required:
                 if obj is None: raise ConstraintError(
@@ -1939,7 +1941,8 @@ class Diagram(object):
                     columns = attr.get_columns()
                     if not attr.reverse and attr.default is not None:
                         assert len(attr.converters) == 1
-                        attr.converters[0].validate(attr.default)
+                        if not callable(attr.default):
+                            attr.converters[0].validate(attr.default)
                     assert len(columns) == len(attr.converters)
                     for (column_name, converter) in zip(columns, attr.converters):
                         dbschema.Column(column_name, table, converter.sql_type(), attr.is_required)
