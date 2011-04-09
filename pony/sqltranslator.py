@@ -71,7 +71,8 @@ class Query(object):
         cache_entry = sql_cache.get(sql_key)
         database = query._database
         if cache_entry is None:
-            sql_ast = translator.sql_ast
+            sql_ast = [ SELECT, translator.select, translator.from_ ]
+            if translator.where: sql_ast.append(translator.where)
             if query._order:
                 alias = translator.alias
                 orderby_section = [ ORDER_BY ]
@@ -344,8 +345,8 @@ class SQLTranslator(ASTTranslator):
         else: assert False
         short_alias = translator.alias = aliases[alias]
         translator.select, translator.attr_offsets = entity._construct_select_clause_(short_alias, translator.distinct)
-        translator.sql_ast = [ SELECT, translator.select, translator.from_ ]
-        if translator.conditions: translator.sql_ast.append([ WHERE, sqland(translator.conditions) ])
+        if not translator.conditions: translator.where = None
+        else: translator.where = [ WHERE, sqland(translator.conditions) ]
     def preGenExpr(translator, node):
         inner_tree = node.code
         outer_iterables = {}
