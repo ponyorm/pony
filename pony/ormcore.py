@@ -1067,9 +1067,9 @@ class Entity(object):
             unmapped_attrs.discard(attr2)          
         for attr in unmapped_attrs:
             raise DiagramError('Reverse attribute for %s.%s was not found' % (attr.entity.__name__, attr.name))
-    def __new__(entity, *args):
-        obj = entity.find_one(*args)
-        if obj is None: raise ObjectNotFound(entity, args)
+    def __new__(entity, *args, **keyargs):
+        obj = entity.find_one(*args, **keyargs)
+        if obj is None: raise ObjectNotFound(entity, (args, keyargs))
         return obj
     @classmethod
     def _get_pk_columns_(entity):
@@ -1305,8 +1305,7 @@ class Entity(object):
         rows = cursor.fetchmany(max_rows_count + 1)
         if len(rows) == max_rows_count + 1:
             if max_rows_count == 1: raise MultipleObjectsFoundError(
-                'Multiple objects was found. Use %s.find_all(...) instead of %s.find_one(...) to retrieve them'
-                % (entity.__name__, entity.__name__))
+                'Multiple objects was found. Use %s.find_all(...) to retrieve them' % entity.__name__)
             raise TooManyObjectsFoundError(
                 'Found more then pony.options.MAX_ROWS_COUNT=%d objects' % options.MAX_ROWS_COUNT)
         objects = []
@@ -1349,8 +1348,7 @@ class Entity(object):
         objects = entity._find_(1, args, keyargs)
         if not objects: return None
         if len(objects) > 1: raise MultipleObjectsFoundError(
-            'Multiple objects was found. Use %s.find_all(...) instead of %s.find(...) to retrieve them'
-            % (entity.__name__, entity.__name__))
+            'Multiple objects was found. Use %s.find_all(...) to retrieve them' % entity.__name__)
         return objects[0]
     @classmethod
     def find_all(entity, *args, **keyargs):
