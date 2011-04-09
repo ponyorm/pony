@@ -162,23 +162,39 @@ class Query(object):
         return query[start:stop]
     def fetch(query):
         return list(query)
-    def sum(query):
+    def _aggregate(query, funcsymbol):
         translator = query._translator
         attrname = translator.attrname
-        if attrname is None: raise TranslationError('Sum is valid for numeric attributes only')
-        attr = translator.entity._adict_[attrname]
-        attr_type = normalize_type(attr.py_type)
-        if attr_type not in numeric_types: raise TranslationError('Sum is valid for numeric attributes only')
-        query._aggr_func = SUM
-        query._aggr_select = [ AGGREGATES, [ SUM, [ COLUMN, translator.alias, attr.column ] ] ]
+        if attrname is not None:
+            attr = translator.entity._adict_[attrname]
+            attr_type = normalize_type(attr.py_type)
+            if funcsymbol is SUM and attr_type not in numeric_types:
+                raise TranslationError('sum is valid for numeric attributes only')
+        elif funcsymbol is not COUNT: raise TranslationError(
+            'Attribute should be specified for "%s" aggregate function' % funcsymbol.lower())
+        query._aggr_func = funcsymbol
+        if funcsymbol is COUNT:
+            if attrname is None: query._aggr_select = [ AGGREGATES, [ COUNT, ALL ] ]
+            else: query._aggr_select = [ AGGREGATES, [ COUNT, DISTINCT, [ COLUMN, translator.alias, attr.column ] ] ]
+        else: query._aggr_select = [ AGGREGATES, [ funcsymbol, [ COLUMN, translator.alias, attr.column ] ] ]
         cursor = query._exec_sql()
         row = cursor.fetchone()
-        if row is not None:
-            result = row[0]
-            if result is None: result = 0
-        else: result = 0
+        if row is not None: result = row[0]
+        else: result = None
+        if result is None:
+            if funcsymbol in (SUM, COUNT): result = 0
+            else: return None
+        if funcsymbol is COUNT: return result
         converter = attr.converters[0]
         return converter.sql2py(result)
+    def sum(query):
+        return query._aggregate(SUM)
+    def min(query):
+        return query._aggregate(MIN)
+    def max(query):
+        return query._aggregate(MAX)
+    def count(query):
+        return query._aggregate(COUNT)
 
 numeric_types = set([ int, float, Decimal ])
 string_types = set([ str, unicode ])
