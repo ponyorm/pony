@@ -139,7 +139,7 @@ class Query(object):
             elif start < 0: raise TypeError("Parameter 'start' of slice object cannot be negative")
             stop = key.stop
             if stop is None:
-                if not start: return query
+                if not start: return list(query)
                 elif not query._limit: raise TypeError("Parameter 'stop' of slice object should be specified")
                 else: stop = query._limit[1]
         else:
@@ -158,7 +158,7 @@ class Query(object):
         new_query = object.__new__(Query)
         new_query.__dict__.update(query.__dict__)
         new_query._limit = start, stop
-        return new_query
+        return list(new_query)
     def limit(query, limit, offset=None):
         start = offset or 0
         stop = start + limit
