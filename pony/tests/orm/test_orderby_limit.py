@@ -75,19 +75,19 @@ class TestOrderbyLimit(unittest.TestCase):
     @raises_exception(TypeError, "Parameter 'stop' of slice object should be specified")
     def test11(self):
         Student = self.Student
-        students = select(s for s in Student).orderby(Student.id)[4:].fetch()
+        students = select(s for s in Student).orderby(Student.id)[4:]
     @raises_exception(TypeError, "Parameter 'start' of slice object cannot be negative")
     def test12(self):
         Student = self.Student
-        students = select(s for s in Student).orderby(Student.id)[-3:2].fetch()
+        students = select(s for s in Student).orderby(Student.id)[-3:2]
     def test13(self):
         Student = self.Student
-        students = select(s for s in Student).orderby(Student.id)[3].fetch()
+        students = select(s for s in Student).orderby(Student.id)[3]
         self.assertEqual(students, [Student(4)])
     @raises_exception(TypeError, "Incorrect argument type: 'a'")
     def test14(self):
         Student = self.Student
-        students = select(s for s in Student).orderby(Student.id)["a"].fetch()        
+        students = select(s for s in Student).orderby(Student.id)["a"]
     def test15(self):
         Student = self.Student
         students = set(select(s for s in Student).orderby(Student.id)[0:4][1:3])
