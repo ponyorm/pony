@@ -63,15 +63,18 @@ class Query(object):
             python_ast_cache[key] = translator
         query._translator = translator
         query._database = translator.entity._diagram_.database
-        query._order = None
-        query._limit = None
-    def __iter__(query):
+        query._order = query._limit = None
+        query._aggr_func = query._aggr_select = None
+    def _construct_sql(query):
         translator = query._translator
-        sql_key = query._python_ast_key + (query._order, query._limit)
+        sql_key = query._python_ast_key + (query._order, query._limit, query._aggr_func)
         cache_entry = sql_cache.get(sql_key)
         database = query._database
         if cache_entry is None:
-            sql_ast = [ SELECT, translator.select, translator.from_ ]
+            sql_ast = [ SELECT ]
+            if query._aggr_func: sql_ast.append(query._aggr_select)
+            else: sql_ast.append(translator.select)
+            sql_ast.append(translator.from_)
             if translator.where: sql_ast.append(translator.where)
             if query._order:
                 alias = translator.alias
@@ -93,11 +96,18 @@ class Query(object):
             cache_entry = sql, adapter
             sql_cache[sql_key] = cache_entry
         else: sql, adapter = cache_entry
+        return sql, adapter
+    def _exec_sql(query):
+        sql, adapter = query._construct_sql()
         param_dict = {}
-        for param_name, extractor in translator.extractors.items():
+        for param_name, extractor in query._translator.extractors.items():
             param_dict[param_name] = extractor(query._variables)
         arguments = adapter(param_dict)
-        cursor = database._exec_sql(sql, arguments)
+        cursor = query._database._exec_sql(sql, arguments)
+        return cursor
+    def __iter__(query):
+        translator = query._translator
+        cursor = query._exec_sql()
         result = translator.entity._fetch_objects(cursor, translator.attr_offsets)
         if translator.attrname is not None:
             return imap(attrgetter(translator.attrname), result)
@@ -152,6 +162,23 @@ class Query(object):
         return query[start:stop]
     def fetch(query):
         return list(query)
+    def sum(query):
+        translator = query._translator
+        attrname = translator.attrname
+        if attrname is None: raise TranslationError('Sum is valid for numeric attributes only')
+        attr = translator.entity._adict_[attrname]
+        attr_type = normalize_type(attr.py_type)
+        if attr_type not in numeric_types: raise TranslationError('Sum is valid for numeric attributes only')
+        query._aggr_func = SUM
+        query._aggr_select = [ AGGREGATES, [ SUM, [ COLUMN, translator.alias, attr.column ] ] ]
+        cursor = query._exec_sql()
+        row = cursor.fetchone()
+        if row is not None:
+            result = row[0]
+            if result is None: result = 0
+        else: result = 0
+        converter = attr.converters[0]
+        return converter.sql2py(result)
 
 numeric_types = set([ int, float, Decimal ])
 string_types = set([ str, unicode ])
@@ -296,11 +323,11 @@ class SQLTranslator(ASTTranslator):
                     'All entities in a query must belong to the same diagram')
             else:
                 if len(attr_names) > 1: raise NotImplementedError
-                attr_name = attr_names[0]
+                attrname = attr_names[0]
                 parent_entity = iterables.get(node.name)
                 if parent_entity is None: raise TranslationError("Name %r must be defined in query" % node.name)
-                attr = parent_entity._adict_.get(attr_name)
-                if attr is None: raise AttributeError, attr_name
+                attr = parent_entity._adict_.get(attrname)
+                if attr is None: raise AttributeError, attrname
                 if not attr.is_collection: raise TypeError
                 if not isinstance(attr, ormcore.Set): raise NotImplementedError
                 entity = attr.py_type
