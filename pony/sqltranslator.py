@@ -149,10 +149,9 @@ class Query(object):
             try: i = key.__index__()
             except AttributeError:
                 try: i = key.__int__()
-                except AttributeError:
-                    raise TypeError('Incorrect argument type: %r' % key)
-            start = i
-            stop = i + 1
+                except AttributeError: raise TypeError('Incorrect argument type: %r' % key)
+            result = query._fetch((i, i+1))
+            return result[0]
         if start >= stop: return []
         return query._fetch((start, stop))
     def limit(query, limit, offset=None):

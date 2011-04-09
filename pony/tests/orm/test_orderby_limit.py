@@ -83,7 +83,7 @@ class TestOrderbyLimit(unittest.TestCase):
     def test13(self):
         Student = self.Student
         students = select(s for s in Student).orderby(Student.id)[3]
-        self.assertEqual(students, [Student(4)])
+        self.assertEqual(students, Student(4))
     @raises_exception(TypeError, "Incorrect argument type: 'a'")
     def test14(self):
         Student = self.Student
