@@ -8,6 +8,10 @@ from pony.sqlsymbols import *
 
 debug = True
 
+def sql_debug(value):
+    global debug
+    debug = value
+
 class DBException(Exception):
     def __init__(exc, *args, **keyargs):
         exceptions = keyargs.pop('exceptions', [])
