@@ -29,7 +29,9 @@ def select(gen):
     tree, external_names = decompile(gen)
     globals = gen.gi_frame.f_globals
     locals = gen.gi_frame.f_locals
+    entities = {}
     variables = {}
+    vartypes = {}
     functions = {}
     for name in external_names:
         try: value = locals[name]
@@ -43,26 +45,33 @@ def select(gen):
             raise TypeError('Function %r cannot be used inside query' % value.__name__)
         elif type(value) is types.MethodType:
             raise TypeError('Method %r cannot be used inside query' % value.__name__)
-        else: variables[name] = value
-    vartypes = dict((name, get_normalized_type(value)) for name, value in variables.iteritems())
-    return Query(gen, tree, vartypes, functions, variables)
+        elif isinstance(value, ormcore.EntityMeta):
+            entities[name] = value
+        elif isinstance(value, ormcore.EntityIter):
+            entities[name] = value.entity
+        else:
+            variables[name] = value
+            vartypes[name] = normalize_type(type(value))
+    return Query(gen, tree, entities, vartypes, functions, variables)
 
 def exists(subquery):
     raise TypeError('Function exists() can be used inside query only')
 
 class Query(object):
-    def __init__(query, gen, tree, vartypes, functions, variables):
+    def __init__(query, gen, tree, entities, vartypes, functions, variables):
         query._gen = gen
         query._tree = tree
+        query._entities = entities
         query._vartypes = vartypes
         query._variables = variables
         query._result = None
         code = gen.gi_frame.f_code
-        key = id(code), tuple(sorted(vartypes.iteritems())), tuple(sorted(functions.iteritems()))
+        key = id(code), tuple(sorted(entities.iteritems())), \
+              tuple(sorted(vartypes.iteritems())), tuple(sorted(functions.iteritems()))
         query._python_ast_key = key
         translator = python_ast_cache.get(key)
         if translator is None:
-            translator = SQLTranslator(tree, vartypes, functions)
+            translator = SQLTranslator(tree, entities, vartypes, functions)
             python_ast_cache[key] = translator
         query._translator = translator
         query._database = translator.entity._diagram_.database
@@ -201,12 +210,6 @@ type_normalization_dict = { long : int, bool : int,
                             LongStr : str, LongUnicode : unicode,
                             StrHtml : str, Html : unicode }
 
-def get_normalized_type(value):
-    if isinstance(value, ormcore.EntityMeta): return value
-    value_type = type(value)
-    if value_type is ormcore.EntityIter: return value.entity
-    return normalize_type(value_type)
-
 def normalize_type(t):
     if t is NoneType: return t
     t = type_normalization_dict.get(t, t)
@@ -289,10 +292,11 @@ class ASTTranslator(object):
         pass
 
 class SQLTranslator(ASTTranslator):
-    def __init__(translator, tree, vartypes, functions, outer_iterables={}):
+    def __init__(translator, tree, entities, vartypes, functions, outer_iterables={}):
         assert isinstance(tree, ast.GenExprInner)
         ASTTranslator.__init__(translator, tree)
         translator.diagram = None
+        translator.entities = entities
         translator.vartypes = vartypes
         translator.functions = functions
         translator.outer_iterables = outer_iterables
@@ -324,9 +328,10 @@ class SQLTranslator(ASTTranslator):
             if not attr_names:
                 if i > 0: translator.distinct = True
                 iter_name = node.name
-                entity = vartypes[iter_name] # can raise KeyError
-                if not isinstance(entity, ormcore.EntityMeta): raise NotImplementedError
-
+                entity = entities.get(iter_name)
+                if entity is None:
+                    if iter_name in vartypes: raise NotImplementedError
+                    else: raise NameError, iter_name
                 diagram = entity._diagram_
                 if diagram.database is None: raise TranslationError(
                     'Entity %s is not mapped to a database' % entity.__name__)
@@ -391,7 +396,7 @@ class SQLTranslator(ASTTranslator):
         outer_iterables = {}
         outer_iterables.update(translator.outer_iterables)
         outer_iterables.update(translator.iterables)
-        subtranslator = SQLTranslator(inner_tree, translator.vartypes, translator.functions, outer_iterables)
+        subtranslator = SQLTranslator(inner_tree, translator.entities, translator.vartypes, translator.functions, outer_iterables)
         node.monad = QuerySetMonad(translator, subtranslator)
         return True
     def postGenExprIf(translator, node):
@@ -422,22 +427,27 @@ class SQLTranslator(ASTTranslator):
     def postName(translator, node):
         name = node.name
         entity = translator.iterables.get(name)
-        if entity is None:
-            entity = translator.outer_iterables.get(name)
+        if entity is None: entity = translator.outer_iterables.get(name)
         if entity is not None:
             node.monad = ObjectIterMonad(translator, name, entity)
+            return
+
+        value_type = translator.entities.get(name)
+        if value_type is not None:
+            node.monad = EntityMonad(translator, value_type)
+            return
+            
+        try: value_type = translator.vartypes[name]
+        except KeyError:
+            func = translator.functions.get(name)
+            if func is None: raise NameError(name)
+            func_monad_class = special_functions[func]
+            node.monad = func_monad_class(translator)
         else:
-            try: value_type = translator.vartypes[name]
-            except KeyError:
-                func = translator.functions.get(name)
-                if func is None: raise NameError(name)
-                func_monad_class = special_functions[func]
-                node.monad = func_monad_class(translator)
-            else:
-                if name in ('True', 'False') and issubclass(value_type, int):
-                    node.monad = ConstMonad(translator, name == 'True' and 1 or 0)
-                elif value_type is NoneType: node.monad = ConstMonad(translator, None)
-                else: node.monad = ParamMonad(translator, value_type, name)
+            if name in ('True', 'False') and issubclass(value_type, int):
+                node.monad = ConstMonad(translator, name == 'True' and 1 or 0)
+            elif value_type is NoneType: node.monad = ConstMonad(translator, None)
+            else: node.monad = ParamMonad(translator, value_type, name)
     def postAdd(translator, node):
         node.monad = node.left.monad + node.right.monad
     def postSub(translator, node):
@@ -461,6 +471,9 @@ class SQLTranslator(ASTTranslator):
     def preCallFunc(translator, node):
         if node.star_args is not None: raise NotImplementedError
         if node.dstar_args is not None: raise NotImplementedError
+        if isinstance(node.node, ast.Name):
+            pass
+
         if len(node.args) > 1: return False
         if not node.args: return False
         arg = node.args[0]
@@ -531,6 +544,39 @@ class Monad(object):
 
     def __neg__(monad): raise TypeError
     def abs(monad): raise TypeError
+
+class EntityMonad(Monad):
+    def __call__(monad, *args, **keyargs):
+        pkval, avdict = monad.normalize_args(args, keyargs)
+        if pkval is None or len(avdict) > len(pkval): raise NotImplementedError
+        return ObjectConstMonad(monad.translator, monad.type, pkval)
+    def normalize_args(monad, args, keyargs):
+        entity = monad.type
+        if not args: pass
+        elif len(args) != len(entity._pk_attrs_): raise TypeError('Invalid count of attrs in primary key')
+        else:
+            for attr, val_monad in izip(entity._pk_attrs_, args):
+                if keyargs.setdefault(attr.name, val_monad) is not val_monad:
+                    raise TypeError('Ambiguos value of attribute %s' % attr.name)
+        avdict = {}
+        get = entity._adict_.get 
+        for name, val_monad in keyargs.items():
+            val_type = val_monad.type
+            attr = get(name)
+            if attr is None: raise TypeError('Unknown attribute %r' % name)
+            if attr.is_collection: raise NotImplementedError
+            if attr.is_ref:
+                if not issubclass(val_type, attr.py_type): raise TypeError
+                if not isinstance(val_monad, ObjectConstMonad):
+                    raise TypeError('Entity constructor arguments in declarative query should be consts')
+                avdict[attr] = val_monad
+            elif isinstance(val_monad, ConstMonad):
+                val = val_monad.value
+                avdict[attr] = attr.check(val, None, entity, from_db=False)
+            else: raise TypeError('Entity constructor arguments in declarative query should be consts')
+        pkval = map(avdict.get, entity._pk_attrs_)
+        if None in pkval: pkval = None
+        return pkval, avdict
 
 class ListMonad(Monad):
     def __init__(monad, translator, items):
@@ -938,13 +984,13 @@ class DatetimeExprMonad(DatetimeMixin, ExprMonad): pass
 class ConstMonad(Monad):
     def __new__(cls, translator, value):
         assert cls is ConstMonad
-        type = get_normalized_type(value)
-        if type in numeric_types: cls = NumericConstMonad
-        elif type in string_types: cls = StringConstMonad
-        elif type is date: cls = DateConstMonad
-        elif type is datetime: cls = DatetimeConstMonad
-        elif type is NoneType: cls = NoneMonad
-        else: raise TypeError, type
+        value_type = normalize_type(type(value))
+        if value_type in numeric_types: cls = NumericConstMonad
+        elif value_type in string_types: cls = StringConstMonad
+        elif value_type is date: cls = DateConstMonad
+        elif value_type is datetime: cls = DatetimeConstMonad
+        elif value_type is NoneType: cls = NoneMonad
+        else: raise TypeError, value_type
         return object.__new__(cls)
     def __init__(monad, translator, value):
         value_type = normalize_type(type(value))
@@ -966,6 +1012,22 @@ class StringConstMonad(StringMixin, ConstMonad):
 class NumericConstMonad(NumericMixin, ConstMonad): pass
 class DateConstMonad(DateMixin, ConstMonad): pass
 class DatetimeConstMonad(DatetimeMixin, ConstMonad): pass
+
+class ObjectConstMonad(Monad):
+    def __init__(monad, translator, entity, pkval):
+        Monad.__init__(monad, translator, entity)
+        monad.pkval = pkval
+        rawpkval = monad.rawpkval = []
+        for attr, val in izip(entity._pk_attrs_, pkval):
+            if attr.is_ref:
+                assert isinstance(val, ObjectConstMonad)
+                rawpkval.extend(val.rawpkval)
+            else:
+                assert not isinstance(val, Monad)
+                rawpkval.append(val)
+    def getsql(monad):
+        entity = monad.type
+        return [ [ VALUE, value ] for value in monad.rawpkval ]
 
 class BoolMonad(Monad):
     def __init__(monad, translator):

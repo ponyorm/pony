@@ -43,7 +43,7 @@ class Value(object):
         if isinstance(value, basestring): return self.quote_str(value)
         if isinstance(value, datetime): return self.quote_str(datetime2timestamp(value))
         if isinstance(value, date): return self.quote_str(str(value))
-        assert False
+        assert False, value
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self.value)
     def quote_str(self, s):
