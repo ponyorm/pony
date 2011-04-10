@@ -349,3 +349,10 @@ def getlines2(filename, lineno, context=1):
     lines = lines[start:start+context]
     index = lineno - 1 - start
     return lines, index
+
+def reraise(exc_class, exceptions):
+    try:
+        first = exceptions[0]
+        msg = '%s: %s' % (first[0].__name__, first[1])
+        raise exc_class, exc_class(msg, exceptions), first[2]
+    finally: del first

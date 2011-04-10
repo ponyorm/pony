@@ -8,7 +8,7 @@ except ImportError: etree = None
 import pony.db
 from pony import options, dbschema, sqlbuilding
 from pony.clobtypes import LongStr, LongUnicode
-from pony.utils import localbase, simple_decorator
+from pony.utils import localbase, simple_decorator, reraise
 from pony.sqlsymbols import *
 
 __all__ = '''
@@ -44,7 +44,14 @@ class OperationWithDeletedObjectError(OrmError): pass
 class TransactionError(OrmError): pass
 class IntegrityError(TransactionError): pass
 class IsolationError(TransactionError): pass
-class CommitException(TransactionError): pass
+class CommitException(TransactionError):
+    def __init__(exc, msg, exceptions):
+        Exception.__init__(exc, msg)
+        exc.exceptions = exceptions
+class PartialCommitException(TransactionError):
+    def __init__(exc, msg, exceptions):
+        Exception.__init__(exc, msg)
+        exc.exceptions = exceptions
 class RollbackException(TransactionError): pass
 class UnrepeatableReadError(IsolationError): pass
 class UnresolvableCyclicDependency(TransactionError): pass
@@ -2134,11 +2141,12 @@ class DBSession(object):
                 for database in other_databases:
                     try: session._rollback(database)
                     except: exceptions.append(sys.exc_info())
-                raise CommitException(exceptions)
+                reraise(CommitException, exceptions)
             for database in other_databases:
                 try: session._commit(database)
                 except: exceptions.append(sys.exc_info())
-            # write exceptions to log
+            if exceptions:
+                reraise(PartialCommitException, exceptions)
             assert not session.is_active
             assert not session._db2cache
             assert not pony.db.local.db2coninfo
@@ -2151,7 +2159,8 @@ class DBSession(object):
             for database in databases:
                 try: session._rollback(database)
                 except: exceptions.append(sys.exc_info())
-            if exceptions: raise RollbackException(exceptions)
+            if exceptions:
+                reraise(RollbackException, exceptions)
             assert not session.is_active
             assert not session._db2cache
             assert not pony.db.local.db2coninfo
