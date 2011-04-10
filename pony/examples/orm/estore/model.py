@@ -1,3 +1,6 @@
+from datetime import date
+from decimal import Decimal
+
 from pony.orm import *
 from pony.db import Database
 
@@ -8,48 +11,38 @@ class Customer(Entity):
     password = Required(unicode)
     name = Required(unicode)
     address = Required(unicode)
-    cart_items = Set("CartItem")
+    products = Set("Product")
     orders = Set("Order")
-    reviews = Set("Review")
 
 class Product(Entity):
     id = PrimaryKey(int)
     name = Required(unicode)
-    desc = Optional(unicode)
-    price = Required(unicode)
-    count = Required(int)
-    cart_items = Set("CartItem")
+    description = Required(unicode)
+    picture = Optional(buffer)
+    price = Required(Decimal, 7, 2)
+    category = Required(unicode)
+    quantity = Required(int)
+    customers = Set("Customer")
     order_items = Set("OrderItem")
-    reviews = Set("Review")
-
-class CartItem(Entity):
-    customer = Required(Customer)
-    product = Required(Product)
-    count = Required(int)
-    PrimaryKey(customer, product)
 
 class Order(Entity):
-    id = PrimaryKey(int)
-    customer = Required(Customer)
+    id = PrimaryKey(int, auto=True)
+    date_created = Required(date, default=date.today)
+    date_delivered = Optional(date)
+    date_received = Optional(date)
+    state = Required(unicode, default="CREATED")
+    total_price = Required(Decimal, 7, 2, default=Decimal("0.0"))
+    customer = Required("Customer")
     order_items = Set("OrderItem")
-    price = Required(unicode)
-    state = Required(unicode)
-    date_created = Required(unicode)
-    date_shipped = Optional(unicode)
-    date_received = Optional(unicode)
 
 class OrderItem(Entity):
-    order = Required(Order)
-    product = Required(Product)
-    count = Required(int)
-    price_per_item = Required(unicode)
-
-class Review(Entity):
-    customer = Required(Customer)
-    product = Required(Product)
-    text = Optional(unicode)
-    rating = Required(int)
-    date = Required(unicode)
+    item_price = Required(Decimal, 7, 2)
+    quantity = Required(int)
+    order = Required("Order")
+    product = Required("Product")
+    PrimaryKey(order, product)
 
 db = Database('sqlite', ':memory:')
-generate_mapping(db, check_tables = False)    
+sql_debug(False)
+generate_mapping(db, create_tables=True)
+sql_debug(True)
