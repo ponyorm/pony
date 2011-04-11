@@ -90,7 +90,7 @@ def import_module(name):
 
 if sys.platform == 'win32':
       _absolute_re = re.compile(r'^(?:[A-Za-z]:)?[\\/]')
-else: _absolure_re = re.compile(r'^/')
+else: _absolute_re = re.compile(r'^/')
 
 def is_absolute_path(filename):
     return bool(_absolute_re.match(filename))
