@@ -127,7 +127,7 @@ def format_exc(info=None, context=5):
                 records.append(record)
                 if module != 'pony.templating': pass
                 elif func in ('_eval', '_compile'):
-                    element = prev_frame.f_locals['self']  # instance of SyntaxElement subclass
+                    element = prev_frame.f_locals['elem']  # instance of SyntaxElement subclass
                     text, offsets, filename = (element.source + (None,))[:3]
                     lineno, offset = pos2lineno(element.start, offsets)
                     lines, index = getlines(text, offsets, lineno, context=5)

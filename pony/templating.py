@@ -458,63 +458,64 @@ class SyntaxElement(object):
             "'%s' statement must contain exactly one markup block" % cmd_name, elem.source, markup_args[1][0])
 
 class Markup(SyntaxElement):
-    def __init__(markup, source, tree):
+    def __init__(elem, source, tree):
+        # do not rename 'elem' to 'markup'! It is important for pony.debugging.format_exc() function
         assert isinstance(tree, list)
         text = source[0]
-        markup.source = source
-        markup.empty = text.__class__()
-        markup.start, markup.end = tree[:2]
-        markup.content = []
+        elem.source = source
+        elem.empty = text.__class__()
+        elem.start, elem.end = tree[:2]
+        elem.content = []
         for item in tree[2:]:
             if isinstance(item, basestring):
-                markup.content.append(text.__class__(item))
+                elem.content.append(text.__class__(item))
             elif isinstance(item, tuple):
-                if markup.content: prev = markup.content[-1]
+                if elem.content: prev = elem.content[-1]
                 else: prev = None
                 cmd_name = item[2]
                 if cmd_name is not None and cmd_name.startswith('+') \
                    or cmd_name in ('elif', 'else', 'sep', 'separator', 'except'):
                     if isinstance(prev, basestring) and (not prev or prev.isspace()):
-                        markup.content.pop()
-                        if markup.content: prev = markup.content[-1]
+                        elem.content.pop()
+                        if elem.content: prev = elem.content[-1]
                         else: prev = None
                 if cmd_name is None:
-                    if item[3]: markup.content.append(ExprElement(source, item))
-                    else: markup.content.append(I18nElement(source, item))
+                    if item[3]: elem.content.append(ExprElement(source, item))
+                    else: elem.content.append(I18nElement(source, item))
                 elif cmd_name == 'if':
-                    markup.content.append(IfElement(source, item))
+                    elem.content.append(IfElement(source, item))
                 elif cmd_name == 'elif':
                     if not isinstance(prev, IfElement):
-                        markup._raise_unexpected_statement(item)
+                        elem._raise_unexpected_statement(item)
                     prev.append_elif(item)
                 elif cmd_name == 'else':
                     if not isinstance(prev, (IfElement, ForElement)):
-                        markup._raise_unexpected_statement(item)
+                        elem._raise_unexpected_statement(item)
                     prev.append_else(item)
                 elif cmd_name == 'for':
-                    markup.content.append(ForElement(source, item))
+                    elem.content.append(ForElement(source, item))
                 elif cmd_name in ('sep', 'separator'):
                     if not isinstance(prev, ForElement):
-                        markup._raise_unexpected_statement(item)
+                        elem._raise_unexpected_statement(item)
                     prev.append_separator(item)
                 elif cmd_name == 'try':
-                    markup.content.append(TryElement(source, item))
+                    elem.content.append(TryElement(source, item))
                 elif cmd_name == 'except':
                     if not isinstance(prev, TryElement):
-                        markup._raise_unexpected_statement(item)
+                        elem._raise_unexpected_statement(item)
                     prev.append_except(item)
                 elif cmd_name.startswith('+'):
                     if not isinstance(prev, FunctionElement):
-                        markup._raise_unexpected_statement(item)
+                        elem._raise_unexpected_statement(item)
                     prev.append_method(item)
-                else: markup.content.append(FunctionElement(source, item))
+                else: elem.content.append(FunctionElement(source, item))
             else: assert False
-    def eval(markup, globals, locals=None):
+    def eval(elem, globals, locals=None):
         result = []
-        for element in markup.content:
+        for element in elem.content:
             if isinstance(element, basestring): result.append(element)
             else: result.append(element.eval(globals, locals))
-        return markup.empty.join(result)
+        return elem.empty.join(result)
 
 class IfElement(SyntaxElement):
     def __init__(elem, source, item):
