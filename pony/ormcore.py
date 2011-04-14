@@ -2170,33 +2170,26 @@ class DBSession(object):
         info = pony.db.local.db2coninfo.get(database)  # May be None if objects were just created
         optimistic = info and info.optimistic or False
         cache = session._db2cache.pop(database, None)
-        if cache is None:
-            database._commit()
-            return
         try:
-            if cache.has_anything_to_save():
+            if cache is None: database._commit()
+            elif cache.has_anything_to_save():
                 if optimistic: database._rollback()
-                try:
-                    cache.save(optimistic)
+                try: cache.save(optimistic)
                 except:
                     database._rollback()
                     raise
                 database._commit()
             else: database._rollback()
         finally:
-            cache.session = None
+            if cache is not None: cache.session = None
             if not session._db2cache:
                 session.is_active = False
                 local.session = None
     def _rollback(session, database):
         cache = session._db2cache.pop(database, None)
-        if cache is None:
-            database._rollback()
-            return
-        try:
-            database._rollback()
+        try: database._rollback()
         finally:
-            cache.session = None
+            if cache is not None: cache.session = None
             if not session._db2cache:
                 session.is_active = False
                 local.session = None
