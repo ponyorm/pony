@@ -22,11 +22,13 @@ def quote_name(connection, name):
 
 def get_pool(filename, create=False):
     if filename == ':memory:': return MemPool()
-    else: return Pool(filename, create)
+    else:
+        filename = absolutize_path(filename, frame_depth=3)
+        return Pool(filename, create)
 
 class Pool(localbase):
-    def __init__(pool, filename, create):
-        pool.filename = absolutize_path(filename, frame_depth=4)
+    def __init__(pool, filename, create): # called separately in each thread
+        pool.filename = filename
         pool.create = create
         pool.con = None
     def connect(pool):
