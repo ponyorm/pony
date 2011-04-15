@@ -21,16 +21,16 @@ def quote_name(connection, name):
     return sqlbuilding.quote_name(name, "`")
 
 def get_pool(*args, **keyargs):
+    if 'conv' not in keyargs:
+        conv = MySQLdb.converters.conversions.copy()
+        conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]
+        keyargs['conv'] = conv
+    if 'charset' not in keyargs:
+        keyargs['charset'] = 'utf8'
     return Pool(*args, **keyargs)
 
 class Pool(localbase):
-    def __init__(pool, *args, **keyargs):
-        if 'conv' not in keyargs:
-            conv = MySQLdb.converters.conversions.copy()
-            conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]
-            keyargs['conv'] = conv
-        if 'charset' not in keyargs:
-            keyargs['charset'] = 'utf8'
+    def __init__(pool, *args, **keyargs): # called separately in each thread
         pool.args = args
         pool.keyargs = keyargs
         pool.con = None
