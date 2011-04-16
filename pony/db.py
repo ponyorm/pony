@@ -166,6 +166,9 @@ class Database(object):
         info = database._get_connection()
         info.optimistic = False
         return info.con
+    def flush(database):
+        session = get_session(create_session_if_not_exists=True)
+        session._flush(database)
     def commit(database):
         session = get_session(create_session_if_not_exists=False)
         if session is not None: session._commit(database)

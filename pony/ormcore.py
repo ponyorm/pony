@@ -18,7 +18,7 @@ __all__ = '''
     UnrepeatableReadError UnresolvableCyclicDependency UnexpectedError
 
     Optional Required Unique PrimaryKey Set Entity Diagram generate_mapping
-    commit rollback with_transaction
+    flush commit rollback with_transaction
     '''.split()
 
 class OrmError(Exception): pass
@@ -994,9 +994,13 @@ class Entity(object):
 
         entity._bits_ = {}
         next_offset = count().next
+        all_bits = 0
         for attr in entity._attrs_:
             if attr.is_collection or attr.pk_offset is not None: continue
-            entity._bits_[attr] = 1 << next_offset()
+            next_bit = 1 << next_offset()
+            entity._bits_[attr] = next_bit
+            all_bits |= next_bit
+        entity._all_bits_ = all_bits
 
         try: table_name = entity.__dict__['_table_']
         except KeyError: entity._table_ = None
@@ -1714,7 +1718,7 @@ class Entity(object):
             obj._newid_ = None
             
         obj._status_ = 'saved'
-        obj._rbits_ = 0
+        obj._rbits_ = obj._all_bits_
         obj._wbits_ = 0
         bits = obj._bits_
         for attr in obj._attrs_:
@@ -1766,7 +1770,7 @@ class Entity(object):
         if cursor.rowcount != 1:
             raise UnrepeatableReadError('Object %r was updated outside of current transaction' % obj)
         obj._status_ = 'saved'
-        obj._rbits_ = 0
+        obj._rbits_ |= obj._wbits_
         obj._wbits_ = 0
         for attr in obj._attrs_with_bit_():
             val = obj._curr_.get(attr.name, NOT_LOADED)
@@ -2031,6 +2035,12 @@ class Cache(object):
         for attr, (added, removed) in modified_m2m.iteritems():
             if not added: continue
             attr.add_m2m(added)
+
+        cache.created.clear()
+        cache.updated.clear()
+        cache.deleted.clear()
+        cache.modified_collections.clear()
+        cache.to_be_checked[:] = []
     def calc_modified_m2m(cache):
         modified_m2m = {}
         for attr, objects in cache.modified_collections.iteritems():
@@ -2126,10 +2136,21 @@ class DBSession(object):
         cache = session._db2cache.get(database)
         if cache is None: cache = session._db2cache[database] = Cache(session, database)
         return cache
-    def commit(session):
-        if not session.is_alive: raise TransactionError('Transaction is not active')
-        databases = [ db for priority, num, db in sorted(
+    def _check(session):
+        if not session.is_alive:
+            raise TransactionError('Database session is not alive')
+        if session is not local.session:
+            raise TransactionError("Database session doesn't belong to the current thread")
+    def _get_databases(session):
+        return [ db for priority, num, db in sorted(
             ((db.priority, info.num, db) for db, info in pony.db.local.db2coninfo.items()), reverse=True) ]
+    def flush(session):
+        session._check()
+        for database in session._get_databases():
+            session._flush(database)
+    def commit(session):
+        session._check()
+        databases = session._get_databases()
         if not databases: return
         primary_db = databases[0]
         other_databases = databases[1:]
@@ -2147,16 +2168,13 @@ class DBSession(object):
                 except: exceptions.append(sys.exc_info())
             if exceptions:
                 reraise(PartialCommitException, exceptions)
-            assert not session.is_alive
-            assert not session._db2cache
-            assert not pony.db.local.db2coninfo
         finally:
             del exceptions
     def rollback(session):
-        databases = pony.db.local.db2coninfo.keys()
+        session._check()
         exceptions = []
         try:
-            for database in databases:
+            for database in session._get_databases():
                 try: session._rollback(database)
                 except: exceptions.append(sys.exc_info())
             if exceptions:
@@ -2166,25 +2184,26 @@ class DBSession(object):
             assert not pony.db.local.db2coninfo
         finally:
             del exceptions
+    def _flush(session, database):
+        info = pony.db.local.db2coninfo.get(database)  # May be None if objects were just created
+        assert info is not None
+        info.optimistic = False
+        cache = session._db2cache.get(database, None)
+        if cache is not None: cache.save(False)
     def _commit(session, database):
         info = pony.db.local.db2coninfo.get(database)  # May be None if objects were just created
         optimistic = info and info.optimistic or False
-        cache = session._db2cache.pop(database, None)
-        try:
-            if cache is None: database._commit()
-            elif cache.has_anything_to_save():
-                if optimistic: database._rollback()
-                try: cache.save(optimistic)
-                except:
-                    database._rollback()
-                    raise
-                database._commit()
-            else: database._rollback()
-        finally:
-            if cache is not None: cache.session = None
-            if not session._db2cache:
-                session.is_alive = False
-                local.session = None
+        cache = session._db2cache.get(database, None)
+        if cache is None: database._commit()
+        elif cache.has_anything_to_save():
+            if optimistic: database._rollback()
+            try: cache.save(optimistic)
+            except:
+                session._rollback(database)
+                raise
+            database._commit()
+        elif cache.optimistic: database._rollback()
+        else: database._commit()
     def _rollback(session, database):
         cache = session._db2cache.pop(database, None)
         try: database._rollback()
@@ -2193,6 +2212,9 @@ class DBSession(object):
             if not session._db2cache:
                 session.is_alive = False
                 local.session = None
+
+def flush():
+    get_session().flush()
 
 def commit():
     get_session().commit()
