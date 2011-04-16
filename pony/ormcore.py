@@ -8,7 +8,7 @@ except ImportError: etree = None
 import pony.db
 from pony import options, dbschema, sqlbuilding
 from pony.clobtypes import LongStr, LongUnicode
-from pony.utils import localbase, simple_decorator, reraise
+from pony.utils import localbase, simple_decorator, decorator_with_params, reraise
 from pony.sqlsymbols import *
 
 __all__ = '''
@@ -2200,7 +2200,7 @@ def commit():
 def rollback():
     get_session().rollback()
 
-def with_transaction(func, args, keyargs, allowed_exceptions=[]):
+def _with_transaction(func, args, keyargs, allowed_exceptions=[]):
     try: result = func(*args, **keyargs)
     except Exception, e:
         exc_info = sys.exc_info()
@@ -2217,11 +2217,17 @@ def with_transaction(func, args, keyargs, allowed_exceptions=[]):
     commit()
     return result
 
+@decorator_with_params
+def with_transaction(func, allowed_exceptions=[]):
+    def new_func(*args, **keyargs):
+        return _with_transaction(func, args, keyargs, allowed_exceptions)
+    return new_func
+
 @simple_decorator
 def db_decorator(func, *args, **keyargs):
     web = sys.modules.get('pony.web')
     allowed_exceptions = web and [ web.HttpRedirect ] or []
-    try: return with_transaction(func, args, keyargs, allowed_exceptions)
+    try: return _with_transaction(func, args, keyargs, allowed_exceptions)
     except (ObjectNotFound, pony.db.RowNotFound):
         if web: raise web.Http404NotFound
         raise
