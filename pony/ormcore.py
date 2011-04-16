@@ -26,8 +26,10 @@ __all__ = '''
 
     Database sql_debug
 
-    Optional Required Unique PrimaryKey Set Entity Diagram generate_mapping
-    flush commit rollback with_transaction
+    Entity Diagram Optional Required Unique PrimaryKey Set
+    generate_mapping flush commit rollback with_transaction
+
+    LongStr LongUnicode
     '''.split()
 
 debug = True
