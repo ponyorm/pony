@@ -85,7 +85,7 @@ class TestObjectFlatMonad(unittest.TestCase):
         insert into Mark values (2, 3, "Math");
         insert into Mark values (2, 4, "Math");
         """)
-        generate_mapping(self.db,  check_tables=True)
+        self.db.generate_mapping(check_tables=True)
     def test1(self):
         Group = self.Group
         Subject = self.Subject

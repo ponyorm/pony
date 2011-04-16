@@ -24,7 +24,7 @@ class TestMethodMonad(unittest.TestCase):
         insert into Student values (4, "Jon", 500);
         insert into Student values (5, "Pete", 700);
         """)
-        generate_mapping(self.db,  check_tables=True)
+        self.db.generate_mapping(check_tables=True)
 
     def test1(self):
         Student = self.diagram.entities.get("Student")

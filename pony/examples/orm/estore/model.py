@@ -43,5 +43,5 @@ class OrderItem(Entity):
 
 db = Database('sqlite', ':memory:')
 sql_debug(False)
-generate_mapping(db, create_tables=True)
+db.generate_mapping(create_tables=True)
 sql_debug(True)

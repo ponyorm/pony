@@ -40,7 +40,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         insert into Group_Subject values (101, 'Subj1');
         insert into Group_Subject values (101, 'Subj2');
         """)
-        generate_mapping(self.db, check_tables=True)
+        self.db.generate_mapping(check_tables=True)
         local.session = DBSession()
     def test_add_remove(self):
         Group = self.diagram.entities.get("Group")
@@ -107,7 +107,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
 #        insert into Subject values ('Subj2');
 #        insert into Group_Subject values (1, 101, 'Subj1');
 #        """)
-#        generate_mapping(self.db, check_tables=True)
+#        self.db.generate_mapping(check_tables=True)
 #        local.session = DBSession()
 #    def tearDown(self):
 #        self.db.release()

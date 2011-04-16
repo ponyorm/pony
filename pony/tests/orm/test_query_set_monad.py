@@ -33,7 +33,7 @@ class TestQuerySetMonad(unittest.TestCase):
             insert into "Group" values (1);
             insert into "Group" values (2);
         """)
-        generate_mapping(self.db, check_tables=True)
+        self.db.generate_mapping(check_tables=True)
     def test_len(self):
         Group = self.diagram.entities["Group"]
         result = set(select(g for g in Group if len(g.students) > 1))

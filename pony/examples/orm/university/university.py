@@ -103,4 +103,4 @@ class Classroom(Entity):
 
 # db = Database('sqlite', 'university.db3')
 db = Database('mysql', host='localhost', user='root', passwd='root', db='university')
-generate_mapping(db, create_tables=True)
+db.generate_mapping(create_tables=True)

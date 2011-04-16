@@ -22,7 +22,7 @@ class TestStringMixin(unittest.TestCase):
         insert into Student values (4, "Jon");
         insert into Student values (5, "Pete");
         """)
-        generate_mapping(self.db,  check_tables=True)
+        self.db.generate_mapping(check_tables=True)
     def test1(self):
         Student = self.Student
         name = "ABCDEF5"

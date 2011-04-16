@@ -33,7 +33,7 @@ class TestDiag(unittest.TestCase):
         class Entity1(Entity):
             id = PrimaryKey(int)
             attr1 = Required('Entity2')
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
 
     @raises_exception(TypeError, 'Entity1._table_ property must be a string. Got: 123')
     def test_diagram3(self):
@@ -41,7 +41,7 @@ class TestDiag(unittest.TestCase):
         class Entity1(Entity):
             _table_ = 123
             id = PrimaryKey(int)
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
 
     def test_diagram4(self):
         _diagram_ = Diagram()
@@ -51,7 +51,7 @@ class TestDiag(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
             attr2 = Set(Entity1, table='Table1')
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
 
     def test_diagram5(self):
         _diagram_ = Diagram()
@@ -61,7 +61,7 @@ class TestDiag(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
             attr2 = Required(Entity1)
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
 
     @raises_exception(MappingError, "Parameter 'table' for Entity1.attr1 and Entity2.attr2 do not match")
     def test_diagram6(self):
@@ -72,7 +72,7 @@ class TestDiag(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
             attr2 = Set(Entity1, table='Table2')
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
 
     @raises_exception(MappingError, "Table name 'Table1' is already in use")
     def test_diagram7(self):
@@ -84,7 +84,7 @@ class TestDiag(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
             attr2 = Set(Entity1, table='Table1')
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
 
     def test_diagram8(self):
         _diagram_ = Diagram()
@@ -94,7 +94,7 @@ class TestDiag(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
             attr2 = Set(Entity1)
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
         m2m_table = _diagram_.schema.tables['Entity1_Entity2']
         col_names = set([ col.name for col in m2m_table.column_list ])
         self.assertEquals(col_names, set(['entity1', 'entity2']))
@@ -110,7 +110,7 @@ class TestDiag(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
             attr2 = Set(Entity1)
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
         m2m_table = _diagram_.schema.tables['Entity1_Entity2']
         col_names = set([ col.name for col in m2m_table.column_list ])
         self.assertEquals(col_names, set(['entity1_a', 'entity1_b', 'entity2']))
@@ -125,7 +125,7 @@ class TestDiag(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
             attr2 = Set(Entity1, columns=['x', 'y'])
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
 
     @raises_exception(MappingError, 'Invalid number of columns for Entity2.attr2')
     def test_diagram11(self):
@@ -138,7 +138,7 @@ class TestDiag(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
             attr2 = Set(Entity1, columns=['x'])
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
 
 
 if __name__ == '__main__':

@@ -35,7 +35,7 @@ class Mark(Entity):
 
 db = Database('sqlite', 'students.db3')
 sql_debug(False)
-generate_mapping(db, check_tables=True)
+db.generate_mapping(check_tables=True)
 sql_debug(True)
 
 ##g1 = Group.create(number='4142', kaf=44)

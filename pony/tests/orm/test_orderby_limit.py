@@ -27,7 +27,7 @@ class TestOrderbyLimit(unittest.TestCase):
         insert into Student values (4, "D", 500, 43);
         insert into Student values (5, "E", 700, 42);
         """)
-        generate_mapping(self.db,  check_tables=True)
+        self.db.generate_mapping(check_tables=True)
 
     def test1(self):
         Student = self.Student

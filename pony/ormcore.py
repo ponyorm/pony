@@ -27,7 +27,7 @@ __all__ = '''
     Database sql_debug
 
     Entity Diagram Optional Required Unique PrimaryKey Set
-    generate_mapping flush commit rollback with_transaction
+    flush commit rollback with_transaction
 
     LongStr LongUnicode
     '''.split()
@@ -369,6 +369,12 @@ class Database(object):
             wrap_dbapi_exceptions(provider, cursor.execute, command)
         if debug: print 'COMMIT'
         wrap_dbapi_exceptions(provider, info.con.commit)
+    def generate_mapping(database, *args, **keyargs):
+        outer_dict = sys._getframe(1).f_locals
+        diagram = outer_dict.get('_diagram_')
+        if diagram is None: raise MappingError('No default diagram found')
+        diagram.generate_mapping(database, *args, **keyargs)
+
 
 ###############################################################################
 
@@ -2317,12 +2323,6 @@ class Diagram(object):
                       ]
             sql, adapter = database._ast2sql(sql_ast)
             database._exec_sql(sql)
-
-def generate_mapping(*args, **keyargs):
-    outer_dict = sys._getframe(1).f_locals
-    diagram = outer_dict.get('_diagram_')
-    if diagram is None: raise MappingError('No default diagram found')
-    diagram.generate_mapping(*args, **keyargs)
 
 class Cache(object):
     def __init__(cache, session, database):

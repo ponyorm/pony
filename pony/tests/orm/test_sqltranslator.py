@@ -90,7 +90,7 @@ class TestSQLTranslator(unittest.TestCase):
             insert into Group_Room values (2, 'Room2');
             insert into Group_Room values (2, 'Room3');
         """)
-        generate_mapping(self.db, check_tables=True)
+        self.db.generate_mapping(check_tables=True)
     def test_select1(self):
         Student = self.Student
         result = set(select(s for s in Student))
@@ -191,7 +191,7 @@ class TestSQLTranslator(unittest.TestCase):
         _diagram_ = Diagram()
         class Room(Entity):
             name = PrimaryKey(unicode)
-        generate_mapping(self.db, check_tables=True)
+        self.db.generate_mapping(check_tables=True)
         select(g for g in Group for r in Room if r.name == 'Room2').fetch()
     def test_add_sub_mul_etc(self):
         Student = self.Student

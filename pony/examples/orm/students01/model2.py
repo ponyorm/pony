@@ -52,7 +52,7 @@ class Mark(Entity):
 db = Database('sqlite', 'C:\\Data\\Docs\\Dev\\GAE\\alexander-kozlovsky\\pony\\examples\\orm\\students01\\students2.db3')
 
 sql_debug(False)
-generate_mapping(db, check_tables=True)
+db.generate_mapping(check_tables=True)
 sql_debug(True)
 
 ##g1 = Group.create(number='4142', kaf=44, speciality='230001')

@@ -39,5 +39,5 @@ def prepare_database():
     db.commit()
 prepare_database()
     
-generate_mapping(db, check_tables=True)
+db.generate_mapping(check_tables=True)
 

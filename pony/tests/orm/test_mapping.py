@@ -16,7 +16,7 @@ class TestColumnsMapping(unittest.TestCase):
             name = PrimaryKey(str)
         sql = "drop table if exists Student;"
         self.db.get_connection().executescript(sql)
-        generate_mapping(self.db, check_tables=True)
+        self.db.generate_mapping(check_tables=True)
 
     # no exception if table was specified
     def test_table_check2(self):
@@ -30,7 +30,7 @@ class TestColumnsMapping(unittest.TestCase):
             );
         """
         self.db.get_connection().executescript(sql)
-        generate_mapping(self.db, check_tables=True)
+        self.db.generate_mapping(check_tables=True)
         self.assertEqual(_diagram_.schema.tables['Student'].column_list[0].name, 'name')
 
     # raise exception if specified mapping table is not found
@@ -40,7 +40,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Student(Entity):
             _table_ = 'Table1'
             name = PrimaryKey(str)
-        generate_mapping(self.db, check_tables=True)
+        self.db.generate_mapping(check_tables=True)
 
     # no exception if table was specified
     def test_table_check4(self):
@@ -55,7 +55,7 @@ class TestColumnsMapping(unittest.TestCase):
             );
         """
         self.db.get_connection().executescript(sql)
-        generate_mapping(self.db, check_tables=True)
+        self.db.generate_mapping(check_tables=True)
         self.assertEqual(_diagram_.schema.tables['Table1'].column_list[0].name, 'name')
 
     # 'id' field created if primary key is not defined
@@ -71,7 +71,7 @@ class TestColumnsMapping(unittest.TestCase):
             );
         """
         self.db.get_connection().executescript(sql)
-        generate_mapping(self.db, check_tables=True)
+        self.db.generate_mapping(check_tables=True)
 
     # 'id' field created if primary key is not defined
     def test_table_check6(self):
@@ -86,7 +86,7 @@ class TestColumnsMapping(unittest.TestCase):
             );
         """
         self.db.get_connection().executescript(sql)
-        generate_mapping(self.db, check_tables=True)
+        self.db.generate_mapping(check_tables=True)
         self.assertEqual(_diagram_.schema.tables['Student'].column_list[0].name, 'id')
 
     @raises_exception(DBSchemaError, "Column 'name' already exists in table 'Student'")
@@ -103,7 +103,7 @@ class TestColumnsMapping(unittest.TestCase):
             );
         """
         self.db.get_connection().executescript(sql)
-        generate_mapping(self.db, check_tables=True)
+        self.db.generate_mapping(check_tables=True)
         self.assert_(False)
 
     # user can specify column name for an attribute
@@ -118,7 +118,7 @@ class TestColumnsMapping(unittest.TestCase):
             );
         """
         self.db.get_connection().executescript(sql)
-        generate_mapping(self.db, check_tables=True)
+        self.db.generate_mapping(check_tables=True)
         self.assertEqual(_diagram_.schema.tables['Student'].column_list[0].name, 'name1')
 
     # Required-Required raises exception
@@ -132,7 +132,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
             attr2 = Required(Entity1)
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
 
     # no exception Optional-Required
     def test_relations2(self):
@@ -143,7 +143,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
             attr2 = Required(Entity1)
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
         
     # no exception Optional-Required(column)
     def test_relations3(self):
@@ -154,7 +154,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
         
     # exception Optional(column)-Required
     @raises_exception(MappingError,
@@ -168,7 +168,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1, column='a')
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
         
     # no exception Optional-Optional
     def test_relations5(self):
@@ -179,7 +179,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
         
     # no exception Optional-Optional(column)
     def test_relations6(self):
@@ -190,7 +190,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
         
     # exception Optional(column)-Optional(column)
     @raises_exception(MappingError, "Both attributes Entity1.attr1 and Entity2.attr2 have parameter 'column'. "
@@ -203,7 +203,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1, column='a1')
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
 
     def test_columns1(self):
         _diagram_ = Diagram()
@@ -213,7 +213,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
         column_list = _diagram_.schema.tables['Entity2'].column_list
         self.assertEqual(len(column_list), 2)
         self.assertEqual(column_list[0].name, 'id')
@@ -229,7 +229,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
         column_list = _diagram_.schema.tables['Entity2'].column_list
         self.assertEqual(len(column_list), 3)
         self.assertEqual(column_list[0].name, 'id')
@@ -244,7 +244,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
         self.assertEqual(Entity1.attr1.columns, ['attr1'])
         self.assertEqual(Entity2.attr2.columns, [])
 
@@ -256,7 +256,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity1(Entity):
             id = PrimaryKey(int)
             attr1 = Optional(Entity2)
-        generate_mapping(self.db, check_tables=False)
+        self.db.generate_mapping(check_tables=False)
         self.assertEqual(Entity1.attr1.columns, ['attr1'])
         self.assertEqual(Entity2.attr2.columns, [])
 

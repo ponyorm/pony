@@ -46,7 +46,7 @@ class TestFuncMonad(unittest.TestCase):
         insert into [Group] values (1);
         insert into [Group] values (2);
         """)
-        generate_mapping(self.db,  check_tables=True)
+        self.db.generate_mapping(check_tables=True)
     def test_minmax1(self):
         Student = self.Student
         result = set(select(s for s in Student if max(s.id, 3) == 3 ))
