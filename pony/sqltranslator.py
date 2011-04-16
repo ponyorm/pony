@@ -57,6 +57,10 @@ def select(gen):
 def exists(subquery):
     raise TypeError('Function exists() can be used inside query only')
 
+class QueryResult(list):
+    def fetch(self):
+        return self
+
 class Query(object):
     def __init__(query, gen, tree, entities, vartypes, functions, variables):
         query._gen = gen
@@ -121,8 +125,8 @@ class Query(object):
         translator = query._translator
         cursor = query._exec_sql(range)
         result = translator.entity._fetch_objects(cursor, translator.attr_offsets)
-        if translator.attrname is None: return result
-        return map(attrgetter(translator.attrname), result)
+        if translator.attrname is None: return QueryResult(result)
+        return QueryResult(map(attrgetter(translator.attrname), result))
     def fetch(query):
         return query._fetch(None)
     def __iter__(query):
