@@ -1774,7 +1774,7 @@ class Entity(object):
             else: obj._prev_[attr.name] = val
     def _save_locked_(obj):
         assert obj._wbits_ == 0
-        if obj._cache_.optimistic:
+        if not obj._cache_.optimistic:
             obj._status_ = 'loaded'
             return
         values = []
@@ -2118,7 +2118,7 @@ pony.db.get_session = get_session
 
 class DBSession(object):
     def __init__(session):
-        session.is_active = True
+        session.is_alive = True
         session._db2cache = {}
     def _get_cache(session, entity):
         database = entity._diagram_.database
@@ -2127,7 +2127,7 @@ class DBSession(object):
         if cache is None: cache = session._db2cache[database] = Cache(session, database)
         return cache
     def commit(session):
-        if not session.is_active: raise TransactionError('Transaction is not active')
+        if not session.is_alive: raise TransactionError('Transaction is not active')
         databases = [ db for priority, num, db in sorted(
             ((db.priority, info.num, db) for db, info in pony.db.local.db2coninfo.items()), reverse=True) ]
         if not databases: return
@@ -2147,7 +2147,7 @@ class DBSession(object):
                 except: exceptions.append(sys.exc_info())
             if exceptions:
                 reraise(PartialCommitException, exceptions)
-            assert not session.is_active
+            assert not session.is_alive
             assert not session._db2cache
             assert not pony.db.local.db2coninfo
         finally:
@@ -2161,7 +2161,7 @@ class DBSession(object):
                 except: exceptions.append(sys.exc_info())
             if exceptions:
                 reraise(RollbackException, exceptions)
-            assert not session.is_active
+            assert not session.is_alive
             assert not session._db2cache
             assert not pony.db.local.db2coninfo
         finally:
@@ -2183,7 +2183,7 @@ class DBSession(object):
         finally:
             if cache is not None: cache.session = None
             if not session._db2cache:
-                session.is_active = False
+                session.is_alive = False
                 local.session = None
     def _rollback(session, database):
         cache = session._db2cache.pop(database, None)
@@ -2191,7 +2191,7 @@ class DBSession(object):
         finally:
             if cache is not None: cache.session = None
             if not session._db2cache:
-                session.is_active = False
+                session.is_alive = False
                 local.session = None
 
 def commit():
