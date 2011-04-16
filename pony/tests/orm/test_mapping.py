@@ -1,6 +1,5 @@
 import unittest
 from pony.orm import *
-from pony.db import *
 from pony.dbschema import DBSchemaError
 from pony.sqltranslator import select, TranslationError
 from testutils import *

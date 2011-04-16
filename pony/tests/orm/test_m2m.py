@@ -43,7 +43,6 @@ class TestManyToManyNonComposite(unittest.TestCase):
         generate_mapping(self.db, check_tables=True)
         local.session = DBSession()
     def test_add_remove(self):
-        #db.debug = True
         Group = self.diagram.entities.get("Group")
         Subject = self.diagram.entities.get("Subject")
         g = Group.find_one(101)
@@ -113,7 +112,6 @@ class TestManyToManyNonComposite(unittest.TestCase):
 #    def tearDown(self):
 #        self.db.release()
 #    def test_add(self):
-#        #db.debug = True
 #        Group = self.diagram.entities.get("Group")
 #        Subject = self.diagram.entities.get("Subject")
 #        g = Group.find_one(number=101)

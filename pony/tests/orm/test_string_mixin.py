@@ -105,6 +105,6 @@ class TestStringMixin(unittest.TestCase):
      
         
 if __name__ == '__main__':
-    pony.db.debug = False
+    sql_debug(False)
     unittest.main()
         

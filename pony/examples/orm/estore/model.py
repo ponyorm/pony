@@ -2,7 +2,6 @@ from datetime import date
 from decimal import Decimal
 
 from pony.orm import *
-from pony.db import Database
 
 _diagram_ = Diagram()
 

@@ -1,7 +1,7 @@
 import unittest
-import pony.db
+import pony.ormcore
 
-pony.db.debug=False
+pony.ormcore.sql_debug(False)
 
 from test_attribute import *
 from test_keys import *

@@ -1,5 +1,5 @@
-from pony.db import Database
 from pony.orm import *
+from pony.sqltranslator import select
 
 class Student(Entity):
     _table_ = "Students"
@@ -50,7 +50,10 @@ class Mark(Entity):
     Unique(student, subject)
 
 db = Database('sqlite', 'C:\\Data\\Docs\\Dev\\GAE\\alexander-kozlovsky\\pony\\examples\\orm\\students01\\students2.db3')
+
+sql_debug(False)
 generate_mapping(db, check_tables=True)
+sql_debug(True)
 
 ##g1 = Group.create(number='4142', kaf=44, speciality='230001')
 ##g2 = Group.create(number='3137', kaf=33, speciality='220102')

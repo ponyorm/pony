@@ -1,6 +1,3 @@
-import pony.db
-
-from pony.db import Database
 from pony.orm import *
 from pony.sqltranslator import select
 from decimal import Decimal
@@ -104,6 +101,6 @@ class Classroom(Entity):
     description = Optional(str)
     lessons = Set(Lesson)
 
-db = Database('sqlite', 'university.db3')
-# db = Database('mysql', host='localhost', user='root', passwd='root', db='university')
+# db = Database('sqlite', 'university.db3')
+db = Database('mysql', host='localhost', user='root', passwd='root', db='university')
 generate_mapping(db, create_tables=True)

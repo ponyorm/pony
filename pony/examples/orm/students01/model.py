@@ -1,8 +1,6 @@
 import datetime
 from decimal import Decimal
 
-import pony.db
-from pony.db import Database
 from pony.orm import *
 from pony.sqltranslator import select, exists
 
@@ -36,9 +34,9 @@ class Mark(Entity):
     PrimaryKey(student, subject)
 
 db = Database('sqlite', 'students.db3')
-pony.db.debug = False
+sql_debug(False)
 generate_mapping(db, check_tables=True)
-pony.db.debug = True
+sql_debug(True)
 
 ##g1 = Group.create(number='4142', kaf=44)
 ##g2 = Group.create(number='3137', kaf=33)

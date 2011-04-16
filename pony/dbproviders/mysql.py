@@ -2,7 +2,7 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time
 
 import warnings
-warnings.filterwarnings('ignore', '^Table.+already exists$', Warning, '^pony\\.db$')
+warnings.filterwarnings('ignore', '^Table.+already exists$', Warning, '^pony\\.ormcore$')
 
 import MySQLdb
 from MySQLdb import (Warning, Error, InterfaceError, DatabaseError,

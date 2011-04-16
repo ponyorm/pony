@@ -1,7 +1,6 @@
-import pony.db
-pony.db.debug = False
-
-from pony.examples.orm.university.university import *
 from pony.sqltranslator import select
+from pony.orm import sql_debug
 
-pony.db.debug = True
+sql_debug(False)
+from pony.examples.orm.university.university import *
+sql_debug(True)

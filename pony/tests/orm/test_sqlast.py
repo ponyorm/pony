@@ -1,5 +1,5 @@
 import unittest
-from pony.db import Database
+from pony.ormcore import Database
 from pony.sqlsymbols import *
 
 class TestSQLAST(unittest.TestCase):
