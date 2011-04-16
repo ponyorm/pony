@@ -23,7 +23,7 @@ python_ast_cache = {}
 sql_cache = {}
 
 def fetch(gen):
-    return select(gen).fetch()
+    return select(gen)._fetch(None)
 
 def select(gen):
     tree, external_names = decompile(gen)
