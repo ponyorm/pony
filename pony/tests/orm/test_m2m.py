@@ -1,6 +1,5 @@
 import unittest
 from pony.orm import *
-from pony.ormcore import local, DBSession
 from pony import db
 
 class TestManyToManyNonComposite(unittest.TestCase):
@@ -41,7 +40,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         insert into Group_Subject values (101, 'Subj2');
         """)
         self.db.generate_mapping(check_tables=True)
-        local.session = DBSession()
+        # local.session = DBSession()
     def test_add_remove(self):
         Group = self.diagram.entities.get("Group")
         Subject = self.diagram.entities.get("Subject")

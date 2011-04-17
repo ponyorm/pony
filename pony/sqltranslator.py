@@ -107,8 +107,8 @@ class Query(object):
                 limit_section = [ LIMIT, [ VALUE, limit ]]
                 if offset: limit_section.append([ VALUE, offset ])
                 sql_ast = sql_ast + [ limit_section ]
-            info = database._get_connection()
-            sql, adapter = database.provider.ast2sql(info.con, sql_ast)
+            cache = database._get_cache()
+            sql, adapter = database.provider.ast2sql(cache.connection, sql_ast)
             cache_entry = sql, adapter
             sql_cache[sql_key] = cache_entry
         else: sql, adapter = cache_entry
@@ -186,7 +186,7 @@ class Query(object):
             if attrname is None: query._aggr_select = [ AGGREGATES, [ COUNT, ALL ] ]
             else: query._aggr_select = [ AGGREGATES, [ COUNT, DISTINCT, [ COLUMN, translator.alias, attr.column ] ] ]
         else: query._aggr_select = [ AGGREGATES, [ funcsymbol, [ COLUMN, translator.alias, attr.column ] ] ]
-        cursor = query._exec_sql()
+        cursor = query._exec_sql(None)
         row = cursor.fetchone()
         if row is not None: result = row[0]
         else: result = None

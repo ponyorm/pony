@@ -190,17 +190,9 @@ def adapt_sql(sql, paramstyle):
 
 next_num = count().next
 
-class ConnectionInfo(object):
-    __slots__ = 'con', 'num', 'optimistic'
-    def __init__(info, con, optimistic):
-        info.con = con
-        info.num = next_num()
-        info.optimistic = optimistic
-
 class Local(localbase):
     def __init__(local):
-        local.db2coninfo = {}
-        local.session = None
+        local.db2cache = {}
 
 local = Local()        
 
@@ -215,45 +207,29 @@ class Database(object):
         database._pool = provider.get_pool(*args, **keyargs)
         database.priority = 0
         database.optimistic = True
-        info = database._get_connection()
-        wrap_dbapi_exceptions(provider, database._pool.release, info.con)
-    def _get_connection(database):
-        info = local.db2coninfo.get(database)
-        if info is not None: return info
-        con = wrap_dbapi_exceptions(database.provider, database._pool.connect)
-        info = local.db2coninfo[database] = ConnectionInfo(con, database.optimistic)
-        return info
+        # connection test with imediate release:
+        connection = wrap_dbapi_exceptions(database.provider, database._pool.connect)
+        wrap_dbapi_exceptions(provider, database._pool.release, connection)
     def get_connection(database):
-        info = database._get_connection()
-        info.optimistic = False
-        return info.con
+        cache = database._get_cache()
+        cache.optimistic = False
+        return cache.connection
+    def _get_cache(database):
+        cache = local.db2cache.get(database)
+        if cache is not None: return cache
+        connection = wrap_dbapi_exceptions(database.provider, database._pool.connect)
+        cache = local.db2cache[database] = Cache(database, connection)
+        return cache
     def flush(database):
-        session = get_session(create_session_if_not_exists=True)
-        session._flush(database)
+        cache = database._get_cache()
+        cache.flush()
     def commit(database):
-        session = get_session(create_session_if_not_exists=False)
-        if session is not None: session._commit(database)
-        else: database._commit()
+        cache = local.db2cache.get(database)
+        if cache is not None: cache.commit()
     def rollback(database):
-        session = get_session(create_session_if_not_exists=False)
-        if session is not None: session._rollback(database)
-        else: database._rollback()
-    def _commit(database):
-        info = local.db2coninfo.pop(database, None)
-        if info is None: return
-        if debug: print 'COMMIT'
-        provider = database.provider
-        wrap_dbapi_exceptions(provider, info.con.commit)
-        wrap_dbapi_exceptions(provider, database._pool.release, info.con)
-    def _rollback(database):
-        info = local.db2coninfo.pop(database, None)
-        if info is None: return
-        if debug: print 'ROLLBACK'
-        provider = database.provider
-        wrap_dbapi_exceptions(provider, database._pool.release, info.con)
+        cache = local.db2cache.get(database)
+        if cache is not None: cache.rollback()
     def execute(database, sql, globals=None, locals=None):
-        info = database._get_connection()
-        info.optimistic = False
         sql = sql[:]  # sql = templating.plainstr(sql)
         if globals is None:
             assert locals is None
@@ -262,12 +238,13 @@ class Database(object):
         provider = database.provider
         adapted_sql, code = adapt_sql(sql, provider.paramstyle)
         values = eval(code, globals, locals)
-        cursor = info.con.cursor()
+        cache = database._get_cache()
+        cache.optimistic = False
+        cursor = cache.connection.cursor()
         if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
         else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         return cursor
     def select(database, sql, globals=None, locals=None):
-        info = database._get_connection()
         sql = sql[:]  # sql = templating.plainstr(sql)
         if not select_re.match(sql): sql = 'select ' + sql
         if globals is None:
@@ -277,7 +254,8 @@ class Database(object):
         provider = database.provider
         adapted_sql, code = adapt_sql(sql, provider.paramstyle)
         values = eval(code, globals, locals)
-        cursor = info.con.cursor()
+        cache = database._get_cache()
+        cursor = cache.connection.cursor()
         if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
         else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         result = cursor.fetchmany(options.MAX_ROWS_COUNT)
@@ -303,7 +281,6 @@ class Database(object):
         row = rows[0]
         return row
     def exists(database, sql, globals=None, locals=None):
-        info = database._get_connection()
         sql = sql[:]  # sql = templating.plainstr(sql)
         if not select_re.match(sql): sql = 'select ' + sql
         if globals is None:
@@ -313,15 +290,16 @@ class Database(object):
         provider = database.provider
         adapted_sql, code = adapt_sql(sql, provider.paramstyle)
         values = eval(code, globals, locals)
-        cursor = info.con.cursor()
+        cache = database._get_cache()
+        cursor = cache.connection.cursor()
         if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
         else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         result = cursor.fetchone()
         return bool(result)
     def insert(database, table_name, **keyargs):
-        info = database._get_connection()
-        info.optimistic = False
         table_name = table_name[:]  # table_name = templating.plainstr(table_name)
+        cache = database._get_cache()
+        cache.optimistic = False
         query_key = (table_name,) + tuple(keyargs)  # keys are not sorted deliberately!!
         cached_sql = insert_cache.get(query_key)
         if cached_sql is None:
@@ -334,12 +312,12 @@ class Database(object):
         cursor = database._exec_sql(sql, arguments)
         return getattr(cursor, 'lastrowid', None)
     def _ast2sql(database, sql_ast):
-        info = database._get_connection()
-        sql, adapter = database.provider.ast2sql(info.con, sql_ast)
+        cache = database._get_cache()
+        sql, adapter = database.provider.ast2sql(cache.connection, sql_ast)
         return sql, adapter
     def _exec_sql(database, sql, arguments=None):
-        info = database._get_connection()
-        cursor = info.con.cursor()
+        cache = database._get_cache()
+        cursor = cache.connection.cursor()
         if debug:
             print sql
             print arguments
@@ -348,10 +326,10 @@ class Database(object):
         if arguments is None: wrap_dbapi_exceptions(provider, cursor.execute, sql)
         else: wrap_dbapi_exceptions(provider, cursor.execute, sql, arguments)
         return cursor
-    def exec_sql_many(database, sql, arguments_list=None):
-        info = database._get_connection()
-        info.optimistic = False
-        cursor = info.con.cursor()
+    def _exec_sql_many(database, sql, arguments_list=None):
+        cache = database._get_cache()
+        cache.optimistic = False
+        cursor = cache.connection.cursor()
         if debug:
             print 'EXECUTEMANY', sql
             print arguments_list
@@ -361,20 +339,20 @@ class Database(object):
         else: wrap_dbapi_exceptions(provider, cursor.executemany, sql, arguments_list)
         return cursor
     def _commit_commands(database, commands):
-        info = database._get_connection()
-        cursor = info.con.cursor()
+        cache = database._get_cache()
+        assert not cache.has_anything_to_save()
+        cursor = cache.connection.cursor()
         provider = database.provider
         for command in commands:
             if debug: print 'DDLCOMMAND', command
             wrap_dbapi_exceptions(provider, cursor.execute, command)
         if debug: print 'COMMIT'
-        wrap_dbapi_exceptions(provider, info.con.commit)
+        wrap_dbapi_exceptions(provider, cache.connection.commit)
     def generate_mapping(database, *args, **keyargs):
         outer_dict = sys._getframe(1).f_locals
         diagram = outer_dict.get('_diagram_')
         if diagram is None: raise MappingError('No default diagram found')
         diagram.generate_mapping(database, *args, **keyargs)
-
 
 ###############################################################################
 
@@ -505,10 +483,10 @@ class Attribute(object):
         if not isinstance(val, reverse.entity):
             raise ConstraintError('Value of attribute %s.%s must be an instance of %s. Got: %s'
                                   % (entity.__name__, attr.name, reverse.entity.__name__, val))
-        if obj is not None: session = obj._cache_.session
-        else: session = get_session()
-        if session is not val._cache_.session:
-            raise TransactionError('An attempt to mix objects belongs to different transactions')
+        if obj is not None: cache = obj._cache_
+        else: cache = entity._get_cache_()
+        if cache is not val._cache_:
+            raise TransactionError('An attempt to mix objects belongs to different caches')
         return val
     def load(attr, obj):
         if not attr.columns:
@@ -834,11 +812,11 @@ class Set(Collection):
                 if not isinstance(item, rentity):
                     raise TypeError('Item of collection %s.%s must be an instance of %s. Got: %r'
                                     % (entity.__name__, attr.name, rentity.__name__, item))
-        if obj is not None: session = obj._cache_.session
-        else: session = get_session()
+        if obj is not None: cache = obj._cache_
+        else: cache = entity._get_cache_()
         for item in items:
-            if item._cache_.session is not session:
-                raise TransactionError('An attempt to mix objects belongs to different transactions')
+            if item._cache_ is not cache:
+                raise TransactionError('An attempt to mix objects belongs to different caches')
         return items
     def load(attr, obj):
         assert obj._status_ not in ('deleted', 'cancelled')
@@ -1036,7 +1014,7 @@ class Set(Collection):
         else: sql, adapter = cached_sql
         arguments_list = [ adapter(obj._get_raw_pkval_() + robj._get_raw_pkval_())
                            for obj, robj in removed ]
-        database.exec_sql_many(sql, arguments_list)
+        database._exec_sql_many(sql, arguments_list)
     def add_m2m(attr, added):
         entity = attr.entity
         database = entity._diagram_.database
@@ -1056,7 +1034,7 @@ class Set(Collection):
         else: sql, adapter = cached_sql
         arguments_list = [ adapter(obj._get_raw_pkval_() + robj._get_raw_pkval_())
                            for obj, robj in added ]
-        database.exec_sql_many(sql, arguments_list)
+        database._exec_sql_many(sql, arguments_list)
 
 class SetWrapper(object):
     __slots__ = '_obj_', '_attr_'
@@ -1401,6 +1379,11 @@ class Entity(object):
             unmapped_attrs.discard(attr2)          
         for attr in unmapped_attrs:
             raise DiagramError('Reverse attribute for %s.%s was not found' % (attr.entity.__name__, attr.name))
+    @classmethod
+    def _get_cache_(entity):
+        database = entity._diagram_.database
+        if database is None: raise TransactionError
+        return database._get_cache()
     def __new__(entity, *args, **keyargs):
         obj = entity.find_one(*args, **keyargs)
         if obj is None: raise ObjectNotFound(entity, (args, keyargs))
@@ -1441,7 +1424,7 @@ class Entity(object):
     @classmethod
     def _new_(entity, pkval, status, raw_pkval=None):
         assert status in ('loaded', 'created')
-        cache = get_session()._get_cache(entity)
+        cache = entity._get_cache_()
         index = cache.indexes.setdefault(entity._pk_, {})
         if pkval is None: obj = None
         else: obj = index.get(pkval)
@@ -1502,7 +1485,7 @@ class Entity(object):
         return obj
     @classmethod
     def _find_in_cache_(entity, pkval, avdict):
-        cache = get_session()._get_cache(entity)
+        cache = entity._get_cache_()
         obj = None
         if pkval is not None:
             index = cache.indexes.get(entity._pk_)
@@ -1689,10 +1672,9 @@ class Entity(object):
         return entity._find_(None, args, keyargs)
     @classmethod
     def create(entity, *args, **keyargs):
-        entity._diagram_.database._get_connection()
         pkval, avdict = entity._normalize_args_(args, keyargs, True)
         obj = entity._new_(pkval, 'created')
-        cache = get_session()._get_cache(entity)
+        cache = entity._get_cache_()
         indexes = {}
         for attr in entity._simple_keys_:
             val = avdict[attr]
@@ -2325,17 +2307,78 @@ class Diagram(object):
             database._exec_sql(sql)
 
 class Cache(object):
-    def __init__(cache, session, database):
-        cache.session = session
+    def __init__(cache, database, connection):
+        cache.is_alive = True
         cache.database = database
-        cache.ignore_none = True
+        cache.connection = connection
+        cache.num = next_num()
+        cache.optimistic = database.optimistic
+        cache.ignore_none = True  # todo : get from provider
         cache.indexes = {}
         cache.created = set()
         cache.deleted = set()
         cache.updated = set()
         cache.modified_collections = {}
         cache.to_be_checked = []
-        cache.optimistic = None
+    def flush(cache):
+        assert cache.is_alive
+        cache.optimistic = False
+        cache.save(False)
+    def commit(cache):
+        assert cache.is_alive
+        database = cache.database
+        provider = database.provider
+        connection = cache.connection
+        try:
+            if cache.optimistic:
+                if debug: print 'OPTIMISTIC ROLLBACK'
+                wrap_dbapi_exceptions(provider, connection.rollback)
+        except:
+            cache.is_alive = False
+            cache.connection = None
+            x = local.db2cache.pop(database); assert x is cache
+            wrap_dbapi_exceptions(provider, database._pool.close, connection)
+            raise
+        save_is_needed = cache.has_anything_to_save()
+        try:
+            if save_is_needed: cache.save()
+            if save_is_needed or not cache.optimistic:
+                if debug: print 'COMMIT'
+                wrap_dbapi_exceptions(provider, connection.commit)
+        except:
+            cache.rollback()
+            raise
+    def rollback(cache, close_connection=False):
+        assert cache.is_alive
+        database = cache.database
+        x = local.db2cache.pop(database); assert x is cache
+        cache.is_alive = False
+        provider = database.provider
+        connection = cache.connection
+        cache.connection = None
+        try:
+            if debug: print 'ROLLBACK'    
+            wrap_dbapi_exceptions(provider, connection.rollback)
+            if not close_connection:
+                if debug: print 'RELEASE_CONNECTION'    
+                wrap_dbapi_exceptions(provider, database._pool.release, connection)
+        except:
+            if debug: print 'CLOSE_CONNECTION'    
+            wrap_dbapi_exceptions(provider, database._pool.close, connection)
+            raise
+        if close_connection:
+            if debug: print 'CLOSE_CONNECTION'    
+            wrap_dbapi_exceptions(provider, database._pool.close, connection)
+    def release(cache):
+        assert cache.is_alive
+        database = cache.database
+        x = local.db2cache.pop(database); assert x is cache
+        cache.is_alive = False
+        provider = database.provider
+        connection = cache.connection
+        cache.connection = None
+        if debug: print 'RELEASE_CONNECTION'    
+        wrap_dbapi_exceptions(provider, database._pool.release, connection)
     def has_anything_to_save(cache):
         return bool(cache.created or cache.updated or cache.deleted or cache.modified_collections)                    
     def save(cache, optimistic=True):
@@ -2427,124 +2470,69 @@ class Cache(object):
                                      % (obj2.__class__.__name__, obj.__class__.__name__, attr.name, key_str))
         index.pop(currents, None)
 
-def get_session(create_session_if_not_exists=True):
-    session = local.session
-    if session is None and create_session_if_not_exists:
-        session = local.session = DBSession()
-    return session
-
-class DBSession(object):
-    def __init__(session):
-        session.is_alive = True
-        session._db2cache = {}
-    def _get_cache(session, entity):
-        database = entity._diagram_.database
-        if database is None: raise TransactionError
-        cache = session._db2cache.get(database)
-        if cache is None: cache = session._db2cache[database] = Cache(session, database)
-        return cache
-    def _check(session):
-        if not session.is_alive:
-            raise TransactionError('Database session is not alive')
-        if session is not local.session:
-            raise TransactionError("Database session doesn't belong to the current thread")
-    def _get_databases(session):
-        return [ db for priority, num, db in sorted(
-            ((db.priority, info.num, db) for db, info in local.db2coninfo.items()), reverse=True) ]
-    def flush(session):
-        session._check()
-        for database in session._get_databases():
-            session._flush(database)
-    def commit(session):
-        session._check()
-        databases = session._get_databases()
-        if not databases: return
-        primary_db = databases[0]
-        other_databases = databases[1:]
-        exceptions = []
-        try:
-            try: session._commit(primary_db)
-            except:
-                exceptions.append(sys.exc_info())
-                for database in other_databases:
-                    try: session._rollback(database)
-                    except: exceptions.append(sys.exc_info())
-                reraise(CommitException, exceptions)
-            for database in other_databases:
-                try: session._commit(database)
-                except: exceptions.append(sys.exc_info())
-            if exceptions:
-                reraise(PartialCommitException, exceptions)
-        finally:
-            del exceptions
-    def rollback(session):
-        session._check()
-        exceptions = []
-        try:
-            for database in session._get_databases():
-                try: session._rollback(database)
-                except: exceptions.append(sys.exc_info())
-            if exceptions:
-                reraise(RollbackException, exceptions)
-            assert not session.is_alive
-            assert not session._db2cache
-            assert not local.db2coninfo
-        finally:
-            del exceptions
-    def _flush(session, database):
-        info = local.db2coninfo.get(database)  # May be None if objects were just created
-        assert info is not None
-        info.optimistic = False
-        cache = session._db2cache.get(database, None)
-        if cache is not None: cache.save(False)
-    def _commit(session, database):
-        info = local.db2coninfo.get(database)  # May be None if objects were just created
-        optimistic = info and info.optimistic or False
-        cache = session._db2cache.get(database, None)
-        if cache is None: database._commit()
-        elif cache.has_anything_to_save():
-            if optimistic: database._rollback()
-            try: cache.save(optimistic)
-            except:
-                session._rollback(database)
-                raise
-            database._commit()
-        elif cache.optimistic: database._rollback()
-        else: database._commit()
-    def _rollback(session, database):
-        cache = session._db2cache.pop(database, None)
-        try: database._rollback()
-        finally:
-            if cache is not None: cache.session = None
-            if not session._db2cache:
-                session.is_alive = False
-                local.session = None
+def _get_caches():
+    return list(sorted((cache for cache in local.db2cache.values()),
+                       reverse=True, key=lambda cache : (cache.database.priority, cache.num)))
 
 def flush():
-    get_session().flush()
-
+    for cache in _get_caches(): cache.flush()
+        
 def commit():
-    get_session().commit()
-
+    caches = _get_caches()
+    if not caches: return
+    primary_cache = caches[0]
+    other_caches = caches[1:]
+    exceptions = []
+    try:
+        try: primary_cache.commit()
+        except:
+            exceptions.append(sys.exc_info())
+            for cache in other_caches:
+                try: cache.rollback()
+                except: exceptions.append(sys.exc_info())
+            reraise(CommitException, exceptions)
+        for cache in other_caches:
+            try: cache.commit()
+            except: exceptions.append(sys.exc_info())
+        if exceptions:
+            reraise(PartialCommitException, exceptions)
+    finally:
+        del exceptions
+        
 def rollback():
-    get_session().rollback()
+    exceptions = []
+    try:
+        for cache in _get_caches():
+            try: cache.rollback()
+            except: exceptions.append(sys.exc_info())
+        if exceptions:
+            reraise(RollbackException, exceptions)
+        assert not local.db2cache
+    finally:
+        del exceptions
+
+def _release():
+    for cache in _get_caches(): cache.release()
 
 def _with_transaction(func, args, keyargs, allowed_exceptions=[]):
-    try: result = func(*args, **keyargs)
-    except Exception, e:
-        exc_info = sys.exc_info()
-        try:
-            # write to log
-            for exc_class in allowed_exceptions:
-                if isinstance(e, exc_class):
-                    commit()
-                    break
-            else: rollback()
-        finally:
-            try: raise exc_info[0], exc_info[1], exc_info[2]
-            finally: del exc_info
-    commit()
-    return result
+    try:
+        try: result = func(*args, **keyargs)
+        except Exception, e:
+            exc_info = sys.exc_info()
+            try:
+                # write to log
+                for exc_class in allowed_exceptions:
+                    if isinstance(e, exc_class):
+                        commit()
+                        break
+                else: rollback()
+            finally:
+                try:
+                    raise exc_info[0], exc_info[1], exc_info[2]
+                finally: del exc_info
+        commit()
+        return result
+    finally: _release()
 
 @decorator_with_params
 def with_transaction(func, allowed_exceptions=[]):

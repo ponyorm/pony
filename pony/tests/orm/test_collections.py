@@ -1,11 +1,10 @@
 import unittest
 from pony.orm import *
-from pony.ormcore import local, DBSession
 from model1 import *
 
 class TestCollections(unittest.TestCase):
     def setUp(self):
-        local.session = DBSession()
+        rollback()
 
     def test_setwrapper_len(self):
         g = Group.find_one('4145')
