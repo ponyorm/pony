@@ -4,94 +4,82 @@ from testutils import *
 from datetime import date, datetime
 from decimal import Decimal
 
+class Student(Entity):
+    id = PrimaryKey(int)
+    name = Required(unicode)
+    dob = Required(date)
+    last_visit = Required(datetime)
+    scholarship = Required(Decimal, 6, 2)
+    phd = Required(bool)
+    group = Required('Group')
+
+class Group(Entity):
+    number = PrimaryKey(int)
+    students = Set(Student)
+
+db = Database('sqlite', ':memory:')
+db.generate_mapping(create_tables=True)
+
+@with_transaction
+def populate_db():
+    g1 = Group.create(1);
+    g2 = Group.create(2);
+
+    Student.create(1, name="AA", dob=date(1981, 01, 01), last_visit=datetime(2011, 01, 01, 11, 11, 11),
+                   scholarship=Decimal("0"), phd=True, group=g1)
+
+    Student.create(2, name="BB", dob=date(1982, 02, 02), last_visit=datetime(2011, 02, 02, 12, 12, 12),
+                   scholarship=Decimal("202.2"), phd=True, group=g1)
+
+    Student.create(3, name="CC", dob=date(1983, 03, 03), last_visit=datetime(2011, 03, 03, 13, 13, 13),
+                   scholarship=Decimal("303.3"), phd=False, group=g1)
+
+    Student.create(4, name="DD", dob=date(1984, 04, 04), last_visit=datetime(2011, 04, 04, 14, 14, 14),
+                   scholarship=Decimal("404.4"), phd=False, group=g2)
+
+    Student.create(5, name="EE", dob=date(1985, 05, 05), last_visit=datetime(2011, 05, 05, 15, 15, 15),
+                   scholarship=Decimal("505.5"), phd=False, group=g2)
+
+populate_db()
+
+
 class TestFuncMonad(unittest.TestCase):
     def setUp(self):
-        _diagram_ = Diagram()
-        self.diagram = _diagram_        
-        class Student(Entity):
-            id = PrimaryKey(int)
-            name = Required(unicode)
-            dob = Required(date)
-            last_visit = Required(datetime)
-            scholarship = Required(Decimal, 6, 2)
-            phd = Required(bool)
-            group = Required('Group')
-        class Group(Entity):
-            number = PrimaryKey(int)
-            students = Set(Student)
-        self.Student = Student
-        self.Group = Group
-        self.db = Database('sqlite', ':memory:')
-        con = self.db.get_connection()
-        con.executescript("""
-        drop table if exists Student;
-        create table Student(
-            id integer primary key,
-            name varchar(20),
-            dob date,
-            last_visit datetime,
-            scholarship decimal,
-            phd boolean,
-            [group] integer
-        );
-        drop table if exists [Group];
-        create table [Group](
-            number integer primary key
-        );
-        insert into Student values (1, "AA", '1981-01-01', '2011-01-01 11:11:11.000', 0    , 1, 1);
-        insert into Student values (2, "BB", '1982-02-02', '2011-02-02 12:12:12.000', 202.2, 1, 1);
-        insert into Student values (3, "CC", '1983-03-03', '2011-03-03 13:13:13.000', 303.3, 0, 1);
-        insert into Student values (4, "DD", '1984-04-04', '2011-04-04 14:14:14.000', 404.4, 0, 2);
-        insert into Student values (5, "EE", '1985-05-05', '2011-05-05 15:15:15.000', 505.5, 0, 2);
-        insert into [Group] values (1);
-        insert into [Group] values (2);
-        """)
-        self.db.generate_mapping(check_tables=True)
+        rollback()
+    def tearDown(self):
+        rollback()
     def test_minmax1(self):
-        Student = self.Student
         result = set(select(s for s in Student if max(s.id, 3) == 3 ))
         self.assertEquals(result, set([Student(1), Student(2), Student(3)]))
     def test_minmax2(self):
-        Student = self.Student
         result = set(select(s for s in Student if min(s.id, 3) == 3 ))
         self.assertEquals(result, set([Student(4), Student(5), Student(3)]))
     def test_minmax3(self):
-        Student = self.Student
         result = set(select(s for s in Student if max(s.name, "CC") == "CC" ))
         self.assertEquals(result, set([Student(1), Student(2), Student(3)]))
     def test_minmax4(self):
-        Student = self.Student
         result = set(select(s for s in Student if min(s.name, "CC") == "CC" ))
         self.assertEquals(result, set([Student(4), Student(5), Student(3)]))
 ##    @raises_exception(TypeError)
 ##    def test_minmax5(self):
-##        Student = self.Student
-##        Group = self.Group
 ##        result = set(select(s for s in Student if min(s.phd, 2) == 2 ))
     def test_date_func1(self):
-        Student = self.Student
         result = set(select(s for s in Student if s.dob >= date(1983, 3, 3)))
         self.assertEquals(result, set([Student(3), Student(4), Student(5)]))
     @raises_exception(TypeError, "'month' argument of date(year, month, day) function must be int")
     def test_date_func2(self):
-        Student = self.Student
         result = set(select(s for s in Student if s.dob >= date(1983, 'three', 3)))        
     @raises_exception(NotImplementedError)
     def test_date_func3(self):
-        Student = self.Student
         d = 3
         result = set(select(s for s in Student if s.dob >= date(1983, d, 3)))
-
     def test_datetime_func1(self):
-        Student = self.Student
         result = set(select(s for s in Student if s.last_visit >= date(2011, 3, 3)))
         self.assertEquals(result, set([Student(3), Student(4), Student(5)]))
     def test_datetime_func2(self):
-        Student = self.Student
         result = set(select(s for s in Student if s.last_visit >= datetime(2011, 3, 3)))
         self.assertEquals(result, set([Student(3), Student(4), Student(5)]))        
     def test_datetime_func3(self):
-        Student = self.Student
         result = set(select(s for s in Student if s.last_visit >= datetime(2011, 3, 3, 13, 13, 13)))
         self.assertEquals(result, set([Student(3), Student(4), Student(5)]))        
 ##    @raises_exception(TypeError, "'month' argument of date(year, month, day) function must be int")
@@ -100,15 +88,11 @@ class TestFuncMonad(unittest.TestCase):
 ##        result = set(select(s for s in Student if s.last_visit >= date(1983, 'three', 3)))        
     @raises_exception(NotImplementedError)
     def test_datetime_func5(self):
-        Student = self.Student
         d = 3
         result = set(select(s for s in Student if s.last_visit >= date(1983, d, 3)))
-
     def test_decimal_func(self):
-        Student = self.Student
         result = set(select(s for s in Student if s.scholarship >= Decimal("303.3")))
         self.assertEquals(result, set([Student(3), Student(4), Student(5)]))
-
 ##    def test_bool(self):
 ##        Student = self.Student
 ##        result = set(select(s for s in Student if s.phd == True))
@@ -116,4 +100,3 @@ class TestFuncMonad(unittest.TestCase):
         
 if __name__ == '__main__':
     unittest.main()
-        
