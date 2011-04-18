@@ -130,7 +130,6 @@ class UnexpectedError(TransactionError): pass
 ###############################################################################
 
 sql_cache = {}
-insert_cache = {}
 
 def adapt_sql(sql, paramstyle):
     result = sql_cache.get((sql, paramstyle))
@@ -207,6 +206,7 @@ class Database(object):
         database._pool = provider.get_pool(*args, **keyargs)
         database.priority = 0
         database.optimistic = True
+        database._insert_cache = {}
         # connection test with imediate release:
         connection = wrap_dbapi_exceptions(database.provider, database._pool.connect)
         wrap_dbapi_exceptions(provider, database._pool.release, connection)
@@ -301,12 +301,12 @@ class Database(object):
         cache = database._get_cache()
         cache.optimistic = False
         query_key = (table_name,) + tuple(keyargs)  # keys are not sorted deliberately!!
-        cached_sql = insert_cache.get(query_key)
+        cached_sql = database._insert_cache.get(query_key)
         if cached_sql is None:
             ast = [ INSERT, table_name, keyargs.keys(), [ [PARAM, i] for i in range(len(keyargs)) ] ]
             sql, adapter = database._ast2sql(ast)
             cached_sql = sql, adapter
-            insert_cache[query_key] = cached_sql
+            database._insert_cache[query_key] = cached_sql
         else: sql, adapter = cached_sql
         arguments = adapter(keyargs.values())  # order of values same as order of keys
         cursor = database._exec_sql(sql, arguments)
