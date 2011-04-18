@@ -2513,6 +2513,7 @@ def rollback():
 
 def _release():
     for cache in _get_caches(): cache.release()
+    assert not local.db2cache
 
 def _with_transaction(func, args, keyargs, allowed_exceptions=[]):
     try:
