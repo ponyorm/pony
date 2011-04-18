@@ -1,6 +1,5 @@
 import unittest
 from pony.orm import *
-from pony import db
 
 class TestManyToManyNonComposite(unittest.TestCase):
     def setUp(self):
