@@ -5,6 +5,8 @@ from model1 import *
 class TestCollections(unittest.TestCase):
     def setUp(self):
         rollback()
+    def tearDown(self):
+        rollback()
 
     def test_setwrapper_len(self):
         g = Group.find_one('4145')

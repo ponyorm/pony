@@ -22,8 +22,8 @@ db.generate_mapping(create_tables=True)
 
 @with_transaction
 def populate_db():
-    g1 = Group.create(1);
-    g2 = Group.create(2);
+    g1 = Group.create(1)
+    g2 = Group.create(2)
 
     Student.create(1, name="AA", dob=date(1981, 01, 01), last_visit=datetime(2011, 01, 01, 11, 11, 11),
                    scholarship=Decimal("0"), phd=True, group=g1)

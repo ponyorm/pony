@@ -1,4 +1,3 @@
-import os.path
 from pony.orm import *
 
 class Student(Entity):
@@ -31,13 +30,27 @@ class Mark(Entity):
 
 db = Database('sqlite', ':memory:')
 
-def prepare_database():
-    path = os.path.split(__file__)[0]
-    script_filename = os.path.join(path, 'model1-database.sql')
-    script_sql = file(script_filename).read()
-    db.get_connection().executescript(script_sql)
-    db.commit()
-prepare_database()
-    
-db.generate_mapping(check_tables=True)
+db.generate_mapping(create_tables=True)
 
+@with_transaction
+def populate_db():
+    Physics = Subject.create('Physics')
+    Chemistry = Subject.create('Chemistry')
+    Math = Subject.create('Math')
+
+    g3132 = Group.create('3132', department=33, subjects=[ Physics, Math ])
+    g4145 = Group.create('4145', department=44, subjects=[ Physics, Chemistry, Math ])
+    g4146 = Group.create('4146', department=44)
+
+    s101 = Student.create(101, name='Bob', group=g4145, scholarship=0)
+    s102 = Student.create(102, name='Joe', group=g4145, scholarship=800)
+    s103 = Student.create(103, name='Alex', group=g4145, scholarship=0)
+    s104 = Student.create(104, name='Brad', group=g3132, scholarship=500)
+    s105 = Student.create(105, name='John', group=g3132, scholarship=1000)
+
+    Mark.create(s101, Physics, value=4)
+    Mark.create(s101, Math, value=3)
+    Mark.create(s102, Chemistry, value=5)
+    Mark.create(s103, Physics, value=2)
+    Mark.create(s103, Chemistry, value=4)
+populate_db()
