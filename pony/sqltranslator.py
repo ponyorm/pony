@@ -345,7 +345,7 @@ class SQLTranslator(ASTTranslator):
             else:
                 if len(attr_names) > 1: raise NotImplementedError
                 attrname = attr_names[0]
-                parent_entity = iterables.get(node.name)
+                parent_entity = iterables.get(node.name) or outer_iterables.get(node.name)
                 if parent_entity is None: raise TranslationError("Name %r must be defined in query" % node.name)
                 attr = parent_entity._adict_.get(attrname)
                 if attr is None: raise AttributeError, attrname
