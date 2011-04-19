@@ -3,16 +3,20 @@ from pony.orm import *
 from pony.ormcore import Attribute
 from testutils import *
 
+db = Database('sqlite', ':memory:')
+
 class TestAttribute(unittest.TestCase):
     def setUp(self):
-        self.db = Database('sqlite', ':memory:')
+        rollback()
+    def tearDown(self):
+        rollback()
 
     @raises_exception(TypeError, "Unknown option 'another_option'")
     def test_attribute1(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
             id = PrimaryKey(int, another_option=3)
-        self.db.generate_mapping(check_tables=False)
+        _diagram_.generate_mapping(db, check_tables=False)
 
     @raises_exception(TypeError, 'Cannot link attribute to Entity class. Must use Entity subclass instead')
     def test_attribute2(self):
@@ -231,7 +235,7 @@ class TestAttribute(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
-        self.db.generate_mapping(check_tables=False)
+        db.generate_mapping(check_tables=False)
 
     def test_columns2(self):
         _diagram_ = Diagram()
@@ -250,28 +254,28 @@ class TestAttribute(unittest.TestCase):
         _diagram_ = Diagram()
         class Entity1(Entity):
             id = PrimaryKey(int, columns=[])
-        self.db.generate_mapping(check_tables=False)
+        db.generate_mapping(check_tables=False)
 
     @raises_exception(MappingError, "Too many columns were specified for Entity1.id")
     def test_columns5(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
             id = PrimaryKey(int, columns=['a', 'b'])
-        self.db.generate_mapping(check_tables=False)
+        db.generate_mapping(check_tables=False)
 
     @raises_exception(TypeError, "Parameter 'columns' must be a list. Got: set(['a'])'")
     def test_columns6(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
             id = PrimaryKey(int, columns=set(['a']))
-        self.db.generate_mapping(check_tables=False)
+        db.generate_mapping(check_tables=False)
         
     @raises_exception(TypeError, "Parameter 'column' must be a string. Got: 4")
     def test_columns7(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
             id = PrimaryKey(int, column=4)
-        self.db.generate_mapping(check_tables=False)
+        db.generate_mapping(check_tables=False)
 
     def test_columns8(self):
         _diagram_ = Diagram()
@@ -295,7 +299,7 @@ class TestAttribute(unittest.TestCase):
             PrimaryKey(a, b)
         class Entity2(Entity):
             attr2 = Required(Entity1, columns=['x', 'y', 'z'])
-        self.db.generate_mapping(check_tables=False)
+        db.generate_mapping(check_tables=False)
 
     @raises_exception(MappingError, 'Invalid number of columns specified for Entity2.attr2')        
     def test_columns10(self):
@@ -307,7 +311,7 @@ class TestAttribute(unittest.TestCase):
             PrimaryKey(a, b)
         class Entity2(Entity):
             attr2 = Required(Entity1, column='x')
-        self.db.generate_mapping(check_tables=False)
+        db.generate_mapping(check_tables=False)
 
     @raises_exception(TypeError, "Items of parameter 'columns' must be strings. Got: [1, 2]")        
     def test_columns11(self):
