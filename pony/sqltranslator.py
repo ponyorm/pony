@@ -25,6 +25,11 @@ sql_cache = {}
 def fetch(gen):
     return select(gen)._fetch(None)
 
+fetch.sum = lambda gen : select(gen).sum()
+fetch.min = lambda gen : select(gen).min()
+fetch.max = lambda gen : select(gen).max()
+fetch.count = lambda gen : select(gen).count()
+
 def select(gen):
     tree, external_names = decompile(gen)
     globals = gen.gi_frame.f_globals
@@ -53,6 +58,11 @@ def select(gen):
             variables[name] = value
             vartypes[name] = normalize_type(type(value))
     return Query(gen, tree, entities, vartypes, functions, variables)
+
+select.sum = lambda gen : select(gen).sum()
+select.min = lambda gen : select(gen).min()
+select.max = lambda gen : select(gen).max()
+select.count = lambda gen : select(gen).count()
 
 def exists(subquery):
     raise TypeError('Function exists() can be used inside query only')
