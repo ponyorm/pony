@@ -192,10 +192,13 @@ class Query(object):
         elif funcsymbol is not COUNT: raise TranslationError(
             'Attribute should be specified for "%s" aggregate function' % funcsymbol.lower())
         query._aggr_func = funcsymbol
+        column_ast = [ COLUMN, translator.alias, attr.column ]
         if funcsymbol is COUNT:
-            if attrname is None: query._aggr_select = [ AGGREGATES, [ COUNT, ALL ] ]
-            else: query._aggr_select = [ AGGREGATES, [ COUNT, DISTINCT, [ COLUMN, translator.alias, attr.column ] ] ]
-        else: query._aggr_select = [ AGGREGATES, [ funcsymbol, [ COLUMN, translator.alias, attr.column ] ] ]
+            if attrname is None: aggr_ast = [ COUNT, ALL ]
+            else: aggr_ast = [ COUNT, DISTINCT, column_ast ]
+        elif funcsymbol is SUM: aggr_ast = [ COALESCE, [ SUM, column_ast ], [ VALUE, 0 ] ]
+        else: aggr_ast = [ funcsymbol, column_ast ]
+        query._aggr_select = [ AGGREGATES, aggr_ast ]
         cursor = query._exec_sql(None)
         row = cursor.fetchone()
         if row is not None: result = row[0]
