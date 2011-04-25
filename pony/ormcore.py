@@ -2535,9 +2535,16 @@ def _with_transaction(func, args, keyargs, allowed_exceptions=[]):
     finally: _release()
 
 @decorator_with_params
-def with_transaction(func, allowed_exceptions=[]):
+def with_transaction(func, retry=1, retry_exceptions=[ TransactionError ], allowed_exceptions=[]):
     def new_func(*args, **keyargs):
-        return _with_transaction(func, args, keyargs, allowed_exceptions)
+        counter = retry
+        while counter > 0:
+            try: return _with_transaction(func, args, keyargs, allowed_exceptions)
+            except Exception, e:
+                for exc_class in retry_exceptions:
+                    if isinstance(e, exc_class): break # for
+                else: raise                    
+            counter -= 1
     return new_func
 
 @simple_decorator
