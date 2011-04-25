@@ -50,22 +50,22 @@ class TestFuncMonad(unittest.TestCase):
         rollback()
     def test_minmax1(self):
         result = set(select(s for s in Student if max(s.id, 3) == 3 ))
-        self.assertEquals(result, set([Student(1), Student(2), Student(3)]))
+        self.assertEquals(result, set([Student[1], Student[2], Student[3]]))
     def test_minmax2(self):
         result = set(select(s for s in Student if min(s.id, 3) == 3 ))
-        self.assertEquals(result, set([Student(4), Student(5), Student(3)]))
+        self.assertEquals(result, set([Student[4], Student[5], Student[3]]))
     def test_minmax3(self):
         result = set(select(s for s in Student if max(s.name, "CC") == "CC" ))
-        self.assertEquals(result, set([Student(1), Student(2), Student(3)]))
+        self.assertEquals(result, set([Student[1], Student[2], Student[3]]))
     def test_minmax4(self):
         result = set(select(s for s in Student if min(s.name, "CC") == "CC" ))
-        self.assertEquals(result, set([Student(4), Student(5), Student(3)]))
+        self.assertEquals(result, set([Student[4], Student[5], Student[3]]))
 ##    @raises_exception(TypeError)
 ##    def test_minmax5(self):
 ##        result = set(select(s for s in Student if min(s.phd, 2) == 2 ))
     def test_date_func1(self):
         result = set(select(s for s in Student if s.dob >= date(1983, 3, 3)))
-        self.assertEquals(result, set([Student(3), Student(4), Student(5)]))
+        self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
     @raises_exception(TypeError, "'month' argument of date(year, month, day) function must be int")
     def test_date_func2(self):
         result = set(select(s for s in Student if s.dob >= date(1983, 'three', 3)))        
@@ -75,13 +75,13 @@ class TestFuncMonad(unittest.TestCase):
         result = set(select(s for s in Student if s.dob >= date(1983, d, 3)))
     def test_datetime_func1(self):
         result = set(select(s for s in Student if s.last_visit >= date(2011, 3, 3)))
-        self.assertEquals(result, set([Student(3), Student(4), Student(5)]))
+        self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
     def test_datetime_func2(self):
         result = set(select(s for s in Student if s.last_visit >= datetime(2011, 3, 3)))
-        self.assertEquals(result, set([Student(3), Student(4), Student(5)]))        
+        self.assertEquals(result, set([Student[3], Student[4], Student[5]]))        
     def test_datetime_func3(self):
         result = set(select(s for s in Student if s.last_visit >= datetime(2011, 3, 3, 13, 13, 13)))
-        self.assertEquals(result, set([Student(3), Student(4), Student(5)]))        
+        self.assertEquals(result, set([Student[3], Student[4], Student[5]]))        
 ##    @raises_exception(TypeError, "'month' argument of date(year, month, day) function must be int")
 ##    def test_datetime_func4(self):
 ##        Student = self.Student
@@ -92,11 +92,11 @@ class TestFuncMonad(unittest.TestCase):
         result = set(select(s for s in Student if s.last_visit >= date(1983, d, 3)))
     def test_decimal_func(self):
         result = set(select(s for s in Student if s.scholarship >= Decimal("303.3")))
-        self.assertEquals(result, set([Student(3), Student(4), Student(5)]))
+        self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
 ##    def test_bool(self):
 ##        Student = self.Student
 ##        result = set(select(s for s in Student if s.phd == True))
-##        self.assertEquals(result, set([Student(3), Student(4), Student(5)]))
+##        self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
         
 if __name__ == '__main__':
     unittest.main()

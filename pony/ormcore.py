@@ -100,10 +100,9 @@ class ConstraintError(OrmError): pass
 class IndexError(OrmError): pass
 class ObjectNotFound(OrmError):
     def __init__(exc, entity, pkval):
-        if len(pkval) == 1:
-            pkval = pkval[0]
-            msg = '%s(%r)' % (entity.__name__, pkval)
-        else: msg = '%s%r' % (entity.__name__, pkval)
+        if type(pkval) is tuple:
+            msg = '%s%r' % (entity.__name__, pkval)
+        else: msg = '%s(%r)' % (entity.__name__, pkval)
         OrmError.__init__(exc, msg)
         exc.entity = entity
         exc.pkval = pkval
@@ -755,7 +754,6 @@ def populate_criteria_list(criteria_list, columns, converters, params_count=0, t
 class PrimaryKey(Unique):
     __slots__ = []
 
-
 class Collection(Attribute):
     __slots__ = 'table', 'cached_load_sql', 'cached_add_m2m_sql', 'cached_remove_m2m_sql', 'wrapper_class'
     def __init__(attr, py_type, *args, **keyargs):
@@ -1194,6 +1192,19 @@ class EntityMeta(type):
         entity._cls_setattr_(name, val)
     def __iter__(entity):
         return EntityIter(entity)
+    def all(entity, *args, **keyargs):
+        return entity._find_(None, args, keyargs)
+    def get(entity, *args, **keyargs):
+        objects = entity._find_(1, args, keyargs)
+        if not objects: return None
+        if len(objects) > 1: raise MultipleObjectsFoundError(
+            'Multiple objects was found. Use %s.all(...) to retrieve them' % entity.__name__)
+        return objects[0]
+    def __getitem__(entity, key):
+        if type(key) is tuple: obj = entity.get(*key)
+        else: obj = entity.get(key)
+        if obj is None: raise ObjectNotFound(entity, key)
+        return obj
 
 class EntityIter(object):
     def __init__(self, entity):
@@ -1385,9 +1396,7 @@ class Entity(object):
         if database is None: raise TransactionError
         return database._get_cache()
     def __new__(entity, *args, **keyargs):
-        obj = entity.find_one(*args, **keyargs)
-        if obj is None: raise ObjectNotFound(entity, (args, keyargs))
-        return obj
+        raise TypeError('Use %(name)s.create(...) or %(name)s.get(...) instead of %(name)s(...)' % dict(name=entity.__name__))
     @classmethod
     def _get_pk_columns_(entity):
         if entity._pk_columns_ is not None: return entity._pk_columns_
@@ -1622,7 +1631,7 @@ class Entity(object):
         rows = cursor.fetchmany(max_rows_count + 1)
         if len(rows) == max_rows_count + 1:
             if max_rows_count == 1: raise MultipleObjectsFoundError(
-                'Multiple objects was found. Use %s.find_all(...) to retrieve them' % entity.__name__)
+                'Multiple objects was found. Use %s.all(...) to retrieve them' % entity.__name__)
             raise TooManyObjectsFoundError(
                 'Found more then pony.options.MAX_ROWS_COUNT=%d objects' % options.MAX_ROWS_COUNT)
         objects = []
@@ -1660,16 +1669,6 @@ class Entity(object):
         except KeyError:
             objects = entity._find_in_db_(avdict, max_objects_count)
         return objects        
-    @classmethod
-    def find_one(entity, *args, **keyargs):
-        objects = entity._find_(1, args, keyargs)
-        if not objects: return None
-        if len(objects) > 1: raise MultipleObjectsFoundError(
-            'Multiple objects was found. Use %s.find_all(...) to retrieve them' % entity.__name__)
-        return objects[0]
-    @classmethod
-    def find_all(entity, *args, **keyargs):
-        return entity._find_(None, args, keyargs)
     @classmethod
     def create(entity, *args, **keyargs):
         pkval, avdict = entity._normalize_args_(args, keyargs, True)

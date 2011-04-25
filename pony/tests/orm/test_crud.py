@@ -28,8 +28,8 @@ class TestCRUD(unittest.TestCase):
         s2_row = db.get('* from Students where record = 4')
         self.assertEqual(s2_row, (4, 'B', '1', 500))
         
-    def test_read_find_all(self):
-        students = Student.find_all()
+    def test_read_all(self):
+        students = Student.all()
         self.assertEqual(len(students), 5)
 
 if __name__ == '__main__':
