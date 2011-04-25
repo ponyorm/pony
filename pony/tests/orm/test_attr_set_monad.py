@@ -65,19 +65,19 @@ class TestAttrSetMonad(unittest.TestCase):
         rollback()
 
     def test1(self):
-        groups = select(g for g in Group if len(g.students) > 2).fetch()
+        groups = select(g for g in Group if len(g.students) > 2).all()
         self.assertEqual(groups, [Group[41]])
     def test2(self):
         groups = set(select(g for g in Group if len(g.students.name) >= 2))
         self.assertEqual(groups, set([Group[41], Group[42]]))
     def test3(self):
-        groups = select(g for g in Group if len(g.students.marks) > 2).fetch()
+        groups = select(g for g in Group if len(g.students.marks) > 2).all()
         self.assertEqual(groups, [Group[41]])
     def test4(self):
-        groups = select(g for g in Group if max(g.students.marks.value) <= 2).fetch()
+        groups = select(g for g in Group if max(g.students.marks.value) <= 2).all()
         self.assertEqual(groups, [Group[42]])
     def test5(self):
-        students= select(s for s in Student if len(s.marks.subject.name) > 5).fetch()
+        students= select(s for s in Student if len(s.marks.subject.name) > 5).all()
         self.assertEqual(students, [])
     def test6(self):
         students = set(select(s for s in Student if len(s.marks.subject) >= 2))
@@ -110,7 +110,7 @@ class TestAttrSetMonad(unittest.TestCase):
         groups = set(select(g for g in Group if not not exists(g.students)))
         self.assertEqual(groups, set([Group[41], Group[42]]))
     def test16(self):
-        groups = select(g for g in Group if not exists(g.students)).fetch()
+        groups = select(g for g in Group if not exists(g.students)).all()
         self.assertEqual(groups, [Group[43]])
     def test17(self):
         groups = set(select(g for g in Group if 100 in g.students.scholarship))
@@ -155,7 +155,7 @@ class TestAttrSetMonad(unittest.TestCase):
         self.assertEqual(groups, set([Group[41]]))
     @raises_exception(AttributeError, 'foo')
     def test27(self):
-        select(g for g in Group if g.students.name.foo == 1).fetch()        
+        select(g for g in Group if g.students.name.foo == 1).all()        
 
 if __name__ == "__main__":
     unittest.main()

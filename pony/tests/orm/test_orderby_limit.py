@@ -58,7 +58,7 @@ class TestOrderbyLimit(unittest.TestCase):
         
     @raises_exception(TypeError, "query.orderby() arguments must be attributes. Got: 'name'")
     def test8(self):
-        students = select(s for s in Student).orderby("name").fetch()
+        students = select(s for s in Student).orderby("name").all()
         
     def test9(self):
         students = set(select(s for s in Student).orderby(Student.id)[1:4])

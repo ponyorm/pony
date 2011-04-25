@@ -40,13 +40,13 @@ db.generate_mapping(create_tables=True)
 
 sql_debug(True)
 
-students = select(s for s in Student).fetch()
+students = select(s for s in Student).all()
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."passport", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
 
 students = select(s for s in Student
-                    if s.scholarship > 0).fetch()
+                    if s.scholarship > 0).all()
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."passport", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
@@ -54,7 +54,7 @@ students = select(s for s in Student
 
 students = select(s for s in Student
                     if s.scholarship > 0
-                    and s.dob > date(1995, 1, 1)).fetch()
+                    and s.dob > date(1995, 1, 1)).all()
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."passport", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
@@ -62,13 +62,13 @@ students = select(s for s in Student
 ##      AND ("s"."dob" > '1995-01-01')
 
 students = select(s for s in Student
-                    if s.picture is None).fetch()
+                    if s.picture is None).all()
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."passport", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
 ##    WHERE "s"."picture" IS NOT NULL
 
-students = select(s for s in Student if len(s.courses) > 5).fetch() # todo
+students = select(s for s in Student if len(s.courses) > 5).all() # todo
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."passport", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
@@ -78,32 +78,32 @@ students = select(s for s in Student if len(s.courses) > 5).fetch() # todo
 ##        WHERE ("s"."id" = "m2m--1"."student")
 ##    ) > 5)
 
-students = select(s for s in Student if s.name.startswith('A')).fetch()
+students = select(s for s in Student if s.name.startswith('A')).all()
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."passport", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
 ##    WHERE "s"."name" LIKE 'A%'
 
-courses = select(c for c in Course if 'Economics' in c.name).fetch()
+courses = select(c for c in Course if 'Economics' in c.name).all()
 
 ##    SELECT "c"."name", "c"."semester", "c"."lect_hours", "c"."lab_hours", "c"."credits", "c"."dept"
 ##    FROM "Course" AS "c"
 ##    WHERE "c"."name" LIKE '%Economics%'
 
-courses = select(c for c in Course if 'Economics'.upper() in c.name.upper()).fetch()
+courses = select(c for c in Course if 'Economics'.upper() in c.name.upper()).all()
 
 ##    SELECT "c"."name", "c"."semester", "c"."lect_hours", "c"."lab_hours", "c"."credits", "c"."dept"
 ##    FROM "Course" AS "c"
 ##    WHERE upper("c"."name") LIKE ('%' || upper('Economics') || '%')
 
-select(s for s in Student if s.group.major == 'Computer Science').fetch()
+select(s for s in Student if s.group.major == 'Computer Science').all()
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."passport", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s", "Group" AS "s-group"
 ##    WHERE ("s"."group" = "s-group"."number")
 ##      AND ("s-group"."major" = 'Computer Science')
 
-select(s for s in Student if s.group.dept.name == 'Digital Arts').fetch()
+select(s for s in Student if s.group.dept.name == 'Digital Arts').all()
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."passport", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s", "Group" AS "s-group", "Department" AS "s-group-dept"
@@ -111,7 +111,7 @@ select(s for s in Student if s.group.dept.name == 'Digital Arts').fetch()
 ##      AND ("s-group"."dept" = "s-group-dept"."id")
 ##      AND ("s-group-dept"."name" = 'Digital Arts')
 
-select(s for s in Student if s.group.dept.number == 33).fetch()
+select(s for s in Student if s.group.dept.number == 33).all()
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s", "Group" AS "s-group"
@@ -119,7 +119,7 @@ select(s for s in Student if s.group.dept.number == 33).fetch()
 ##      AND ("s-group"."dept" = 33)
 
 dept_name = 'Biology'
-select(s for s in Student if s.group.dept.name == dept_name).fetch()
+select(s for s in Student if s.group.dept.name == dept_name).all()
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s", "Group" AS "s-group", "Department" AS "s-group-dept"
@@ -127,10 +127,10 @@ select(s for s in Student if s.group.dept.name == dept_name).fetch()
 ##      AND ("s-group"."dept" = "s-group-dept"."number")
 ##      AND ("s-group-dept"."name" = ?)
 
-select(s for s in Student if exists(c for c in s.courses if c.name == 'Math')).fetch()
+select(s for s in Student if exists(c for c in s.courses if c.name == 'Math')).all()
 
-select(s for s in Student if 'Math' in (c.name for c in s.courses)).fetch()
-select(s for s in Student if 'Math' in s.courses.name).fetch()
+select(s for s in Student if 'Math' in (c.name for c in s.courses)).all()
+select(s for s in Student if 'Math' in s.courses.name).all()
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
@@ -151,8 +151,8 @@ select.sum(s.scholarship for s in Student if s.group.number == 123)
 ##    FROM "Student" AS "s"
 ##    WHERE ("s"."group" = 123)
 
-select(g for g in Group if sum(s.scholarship for s in g.students) > 10000).fetch()
-select(g for g in Group if sum(g.students.scholarship) > 10000).fetch()
+select(g for g in Group if sum(s.scholarship for s in g.students) > 10000).all()
+select(g for g in Group if sum(g.students.scholarship) > 10000).all()
 
 ##    SELECT "g"."number", "g"."major", "g"."dept"
 ##    FROM "Group" AS "g"
@@ -168,8 +168,8 @@ select.sum(c.lab_hours for c in Course if c.dept.number == 123)
 ##    FROM "Course" AS "c"
 ##    WHERE ("c"."dept" = 123)
 
-select(d for d in Department if sum(c.lab_hours for c in d.courses) > 100).fetch()
-select(d for d in Department if sum(d.courses.lab_hours) > 100).fetch()
+select(d for d in Department if sum(c.lab_hours for c in d.courses) > 100).all()
+select(d for d in Department if sum(d.courses.lab_hours) > 100).all()
 
 ##    SELECT "d"."number", "d"."name"
 ##    FROM "Department" AS "d"
@@ -179,19 +179,19 @@ select(d for d in Department if sum(d.courses.lab_hours) > 100).fetch()
 ##        WHERE ("d"."number" = "c"."dept")
 ##    ) > 100)
 
-select(s for s in Student).orderby(Student.name).fetch()
+select(s for s in Student).orderby(Student.name).all()
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
 ##    ORDER BY "s"."name" ASC
 
-select(s for s in Student).orderby(Student.name.desc).fetch()
+select(s for s in Student).orderby(Student.name.desc).all()
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
 ##    ORDER BY "s"."name" DESC
 
-select(s for s in Student).orderby(Student.group, Student.name).fetch()
+select(s for s in Student).orderby(Student.group, Student.name).all()
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"

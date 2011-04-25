@@ -265,7 +265,7 @@ class TestGenerateMapping(unittest.TestCase):
     def test1(self):
         class E1(Entity):
             a1 = Required(int)
-        select(e for e in E1).fetch()            
+        select(e for e in E1).all()            
                 
 if __name__ == '__main__':
     unittest.main()

@@ -13,7 +13,7 @@ from pony.clobtypes import LongStr, LongUnicode
 from pony.sqlbuilding import SQLBuilder
 from pony.sqlsymbols import *
 
-__all__ = 'TranslationError', 'fetch', 'select', 'exists'
+__all__ = 'TranslationError', 'select', 'exists'
 
 MAX_ALIAS_LENGTH = 30
 
@@ -21,14 +21,6 @@ class TranslationError(Exception): pass
 
 python_ast_cache = {}
 sql_cache = {}
-
-def fetch(gen):
-    return select(gen)._fetch(None)
-
-fetch.sum = lambda gen : select(gen).sum()
-fetch.min = lambda gen : select(gen).min()
-fetch.max = lambda gen : select(gen).max()
-fetch.count = lambda gen : select(gen).count()
 
 def select(gen):
     tree, external_names = decompile(gen)
@@ -68,7 +60,7 @@ def exists(subquery):
     raise TypeError('Function exists() can be used inside query only')
 
 class QueryResult(list):
-    def fetch(self):
+    def all(self):
         return self
 
 class Query(object):
@@ -138,7 +130,7 @@ class Query(object):
         result = translator.entity._fetch_objects(cursor, translator.attr_offsets)
         if translator.attrname is None: return QueryResult(result)
         return QueryResult(map(attrgetter(translator.attrname), result))
-    def fetch(query):
+    def all(query):
         return query._fetch(None)
     def __iter__(query):
         return iter(query._fetch(None))
