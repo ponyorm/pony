@@ -132,6 +132,12 @@ class Query(object):
         return QueryResult(map(attrgetter(translator.attrname), result))
     def all(query):
         return query._fetch(None)
+    def get(query):
+        objects = query[:2]
+        if not objects: return None
+        if len(objects) > 1: raise ormcore.MultipleObjectsFoundError(
+            'Multiple objects was found. Use select(..).all() to retrieve them')
+        return objects[0]
     def __iter__(query):
         return iter(query._fetch(None))
     def orderby(query, *args):
