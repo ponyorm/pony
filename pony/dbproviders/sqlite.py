@@ -20,22 +20,22 @@ paramstyle = 'qmark'
 def quote_name(connection, name):
     return sqlbuilding.quote_name(name)
 
-def get_pool(filename, create=False):
+def get_pool(filename, create_db=False):
     if filename == ':memory:': return MemPool()
     else:
         filename = absolutize_path(filename, frame_depth=3)
-        return Pool(filename, create)
+        return Pool(filename, create_db)
 
 class Pool(localbase):
-    def __init__(pool, filename, create): # called separately in each thread
+    def __init__(pool, filename, create_db): # called separately in each thread
         pool.filename = filename
-        pool.create = create
+        pool.create_db = create_db
         pool.con = None
     def connect(pool):
         con = pool.con
         if con is not None: return con
         filename = pool.filename
-        if not pool.create and not os.path.exists(filename):
+        if not pool.create_db and not os.path.exists(filename):
             raise IOError("Database file is not found: %r" % filename)
         pool.con = con = sqlite.connect(filename)
         _init_connection(con)
