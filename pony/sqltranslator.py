@@ -57,7 +57,7 @@ def select(gen):
         else:
             variables[name] = value
             vartypes[name] = normalize_type(type(value))
-    return Query(gen, tree, entities, vartypes, functions, variables)
+    return Query(gen, tree.code, entities, vartypes, functions, variables)
 
 select.sum = lambda gen : select(gen).sum()
 select.min = lambda gen : select(gen).min()
@@ -73,6 +73,7 @@ class QueryResult(list):
 
 class Query(object):
     def __init__(query, gen, tree, entities, vartypes, functions, variables):
+        assert isinstance(tree, ast.GenExprInner)
         query._gen = gen
         query._tree = tree
         query._entities = entities
@@ -310,7 +311,7 @@ class ASTTranslator(object):
 
 class SQLTranslator(ASTTranslator):
     def __init__(translator, tree, entities, vartypes, functions, outer_iterables={}):
-        assert isinstance(tree, ast.GenExprInner)
+        assert isinstance(tree, ast.GenExprInner), tree
         ASTTranslator.__init__(translator, tree)
         translator.diagram = None
         translator.entities = entities

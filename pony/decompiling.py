@@ -1,3 +1,4 @@
+import types
 from compiler import ast
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
 from opcode import hasconst, hasname, hasjrel, haslocal, hascompare, hasfree
@@ -9,14 +10,16 @@ ast_cache = {}
 
 codeobjects = {}
 
-def decompile(gen):
-    codeobject = gen.gi_frame.f_code
+def decompile(x):
+    if isinstance(x, types.GeneratorType): codeobject = x.gi_frame.f_code
+    elif isinstance(x, types.FunctionType): codeobject = x.func_code
+    else: raise TypeError
     key = id(codeobject)
     result = ast_cache.get(key)
     if result is None:
         codeobjects[key] = codeobject
-        decompiler = GeneratorDecompiler(codeobject)
-        result = decompiler.ast.code, decompiler.external_names
+        decompiler = Decompiler(codeobject)
+        result = decompiler.ast, decompiler.external_names
         ast_cache[key] = result
     return result
 
@@ -42,7 +45,7 @@ def binop(node_type, args_holder=tuple):
         return node_type(args_holder((oper1, oper2)))
     return method
 
-class GeneratorDecompiler(object):
+class Decompiler(object):
     def __init__(decompiler, code, start=0, end=None):
         decompiler.code = code
         decompiler.start = decompiler.pos = start
@@ -285,7 +288,7 @@ class GeneratorDecompiler(object):
         if argc: raise NotImplementedError
         tos = decompiler.stack.pop()
         codeobject = tos.value
-        decompiler = GeneratorDecompiler(codeobject)
+        decompiler = Decompiler(codeobject)
         decompiler.names.update(decompiler.names)
         return decompiler.ast
 
@@ -296,7 +299,10 @@ class GeneratorDecompiler(object):
         pass
 
     def RETURN_VALUE(decompiler):
-        raise NotImplementedError
+        if decompiler.pos != decompiler.end: raise NotImplementedError
+        expr = decompiler.stack.pop()
+        decompiler.stack.append(simplify(expr))
+        raise AstGenerated
 
     def ROT_TWO(decompiler):
         tos = decompiler.stack.pop()
@@ -487,7 +493,7 @@ def test():
         code = compile(line, '<?>', 'eval').co_consts[0]
         ast1 = compiler.parse(line).node.nodes[0].expr
         ast1.code.quals[0].iter.name = outmost_iterable_name
-        try: ast2 = GeneratorDecompiler(code).ast
+        try: ast2 = Decompiler(code).ast
         except Exception, e:
             print
             print line
