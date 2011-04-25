@@ -5,7 +5,7 @@ from pony.orm import *
 
 class Group(Entity):
     number = PrimaryKey(int)
-    grad_year = Required(int)
+    major = Required(unicode)
     dept = Required("Department")
     students = Set("Student")
     
@@ -96,12 +96,12 @@ courses = select(c for c in Course if 'Economics'.upper() in c.name.upper()).fet
 ##    FROM "Course" AS "c"
 ##    WHERE upper("c"."name") LIKE ('%' || upper('Economics') || '%')
 
-select(s for s in Student if s.group.grad_year == 2011).fetch()
+select(s for s in Student if s.group.major == 'Computer Science').fetch()
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."passport", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s", "Group" AS "s-group"
 ##    WHERE ("s"."group" = "s-group"."number")
-##      AND ("s-group"."grad_year" = 2011)
+##      AND ("s-group"."major" = 'Computer Science')
 
 select(s for s in Student if s.group.dept.name == 'Digital Arts').fetch()
 
@@ -154,7 +154,7 @@ select.sum(s.scholarship for s in Student if s.group.number == 123)
 select(g for g in Group if sum(s.scholarship for s in g.students) > 10000).fetch()
 select(g for g in Group if sum(g.students.scholarship) > 10000).fetch()
 
-##    SELECT "g"."number", "g"."grad_year", "g"."dept"
+##    SELECT "g"."number", "g"."major", "g"."dept"
 ##    FROM "Group" AS "g"
 ##    WHERE ((
 ##        SELECT coalesce(SUM("s"."scholarship"), 0)
