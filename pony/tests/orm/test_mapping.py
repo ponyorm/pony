@@ -1,7 +1,6 @@
 import unittest
 from pony.orm import *
 from pony.dbschema import DBSchemaError
-from pony.sqltranslator import select, TranslationError
 from testutils import *
 
 class TestColumnsMapping(unittest.TestCase):

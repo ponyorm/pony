@@ -1,5 +1,4 @@
 from pony.orm import *
-from pony.sqltranslator import select
 
 class Student(Entity):
     _table_ = "Students"

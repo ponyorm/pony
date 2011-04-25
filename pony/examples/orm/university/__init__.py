@@ -1,4 +1,3 @@
-from pony.sqltranslator import select
 from pony.orm import sql_debug
 
 sql_debug(False)

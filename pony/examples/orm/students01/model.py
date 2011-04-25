@@ -2,7 +2,6 @@ import datetime
 from decimal import Decimal
 
 from pony.orm import *
-from pony.sqltranslator import select, exists
 
 class Student(Entity):
     _table_ = "Students"

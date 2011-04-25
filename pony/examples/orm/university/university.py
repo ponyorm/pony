@@ -1,5 +1,4 @@
 from pony.orm import *
-from pony.sqltranslator import select
 from decimal import Decimal
 from datetime import date
 
