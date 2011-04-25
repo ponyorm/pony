@@ -21,7 +21,7 @@ __all__ = '''
 
     OrmError DiagramError SchemaError MappingError ConstraintError IndexError ObjectNotFound
     MultipleObjectsFoundError TooManyObjectsFoundError OperationWithDeletedObjectError
-    TransactionError IntegrityError IsolationError CommitException RollbackException
+    TransactionError TransactionIntegrityError IsolationError CommitException RollbackException
     UnrepeatableReadError UnresolvableCyclicDependency UnexpectedError
 
     Database sql_debug
@@ -112,7 +112,7 @@ class MultipleObjectsFoundError(OrmError): pass
 class TooManyObjectsFoundError(OrmError): pass
 class OperationWithDeletedObjectError(OrmError): pass
 class TransactionError(OrmError): pass
-class IntegrityError(TransactionError): pass
+class TransactionIntegrityError(TransactionError): pass
 class IsolationError(TransactionError): pass
 class CommitException(TransactionError):
     def __init__(exc, msg, exceptions):
@@ -2004,9 +2004,9 @@ class Entity(object):
         arguments = adapter(values)
         try:
             cursor = database._exec_sql(sql, arguments)
-        except database.IntegrityError, e:
-            raise IntegrityError('Object %r cannot be stored in the database (probably it already exists). DB message: %s'
-                                 % (obj, e.args[0]))
+        except IntegrityError, e:
+            raise TransactionIntegrityError(
+                'Object %r cannot be stored in the database (probably it already exists). DB message: %s' % (obj, e.args[0]))
         except database.DatabaseError, e:
             raise UnexpectedError('Object %r cannot be stored in the database. DB message: %s' % (obj, e.args[0]))
 
@@ -2015,7 +2015,7 @@ class Entity(object):
             pk_attr = obj.__class__._pk_
             index = obj._cache_.indexes.setdefault(pk_attr, {})
             obj2 = index.setdefault(rowid, obj)
-            if obj2 is not obj: raise IntegrityError(
+            if obj2 is not obj: raise TransactionIntegrityError(
                 'Newly auto-generated rowid value %s was already used in transaction cache for another object' % rowid)
             obj._pkval_ = obj._curr_[pk_attr.name] = rowid
             obj._newid_ = None
@@ -2431,7 +2431,7 @@ class Cache(object):
         if val is None or cache.ignore_none: pass
         else:
             obj2 = index.setdefault(val, obj)
-            if obj2 is not obj: raise IntegrityError(
+            if obj2 is not obj: raise TransactionIntegrityError(
                 '%s with unique index %s.%s already exists: %s'
                 % (obj2.__class__.__name__, obj.__class__.__name__, attr.name, new_keyval))
                 # attribute which was created or updated lately clashes with one stored in database
@@ -2466,8 +2466,8 @@ class Cache(object):
             obj2 = index.setdefault(vals, obj)
             if obj2 is not obj:
                 key_str = ', '.join(repr(item) for item in new_keyval)
-                raise IntegrityError('%s with unique index %s.%s already exists: %s'
-                                     % (obj2.__class__.__name__, obj.__class__.__name__, attr.name, key_str))
+                raise TransactionIntegrityError('%s with unique index %s.%s already exists: %s'
+                                                % (obj2.__class__.__name__, obj.__class__.__name__, attr.name, key_str))
         index.pop(currents, None)
 
 def _get_caches():
