@@ -29,7 +29,7 @@ class Course(Entity):
     semester = Required(int)
     lect_hours = Required(int)
     lab_hours = Required(int)
-    credit = Required(int)
+    credits = Required(int)
     dept = Required(Department)
     students = Set(Student)
     PrimaryKey(name, semester)
@@ -86,13 +86,13 @@ students = select(s for s in Student if s.name.startswith('A')).fetch()
 
 courses = select(c for c in Course if 'Economics' in c.name).fetch()
 
-##    SELECT "c"."name", "c"."semester", "c"."lect_hours", "c"."lab_hours", "c"."credit", "c"."dept"
+##    SELECT "c"."name", "c"."semester", "c"."lect_hours", "c"."lab_hours", "c"."credits", "c"."dept"
 ##    FROM "Course" AS "c"
 ##    WHERE "c"."name" LIKE '%Economics%'
 
 courses = select(c for c in Course if 'Economics'.upper() in c.name.upper()).fetch()
 
-##    SELECT "c"."name", "c"."semester", "c"."lect_hours", "c"."lab_hours", "c"."credit", "c"."dept"
+##    SELECT "c"."name", "c"."semester", "c"."lect_hours", "c"."lab_hours", "c"."credits", "c"."dept"
 ##    FROM "Course" AS "c"
 ##    WHERE upper("c"."name") LIKE ('%' || upper('Economics') || '%')
 
