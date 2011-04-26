@@ -1570,7 +1570,7 @@ class Entity(object):
         if obj._pk_is_composite_:
             avdict = dict((attr, val) for attr, val in zip(obj._pk_attrs_, obj._pkval_))
         else: avdict = { obj.__class__._pk_ : obj._pkval_ }
-        objects = obj._find_in_db_(avdict)        
+        objects = obj._find_in_db_(avdict, 1)        
         if not objects: raise UnrepeatableReadError('%s disappeared' % obj)
         assert len(objects) == 1 and obj == objects[0]
     @classmethod
@@ -1587,7 +1587,7 @@ class Entity(object):
                 select_list.append([ COLUMN, alias, column ])
         return select_list, attr_offsets
     @classmethod
-    def _construct_sql_(entity, query_key):
+    def _construct_sql_(entity, query_attrs, max_rows_count=None):
         table_name = entity._table_
         select_list, attr_offsets = entity._construct_select_clause_()
         from_list = [ FROM, [ None, TABLE, table_name ]]
@@ -1595,7 +1595,7 @@ class Entity(object):
         criteria_list = [ AND ]
         values = []
         extractors = {}
-        for attr, attr_is_none in query_key:
+        for attr, attr_is_none in query_attrs:
             if not attr.reverse:
                 if not attr_is_none:
                     assert len(attr.converters) == 1
@@ -1622,9 +1622,11 @@ class Entity(object):
                         criteria_list.append([IS_NULL, [COLUMN, None, column]])
 
         sql_ast = [ SELECT, select_list, from_list ]
-        if len(criteria_list) > 1:
-            sql_ast.append([ WHERE, criteria_list  ])
-        sql_ast.append([ ORDER_BY ] + [ ([COLUMN, None, column], ASC) for column in entity._pk_columns_ ])
+        if len(criteria_list) > 1: sql_ast.append([ WHERE, criteria_list  ])
+        if max_rows_count <> 1:
+            sql_ast.append([ ORDER_BY ] + [ ([COLUMN, None, column], ASC) for column in entity._pk_columns_ ])
+        if max_rows_count is not None:
+            sql_ast.append([ LIMIT, [ VALUE, max_rows_count + 1 ] ])
         def extractor(avdict):
             param_dict = {}
             for param, extractor in extractors.iteritems():
@@ -1633,12 +1635,13 @@ class Entity(object):
         return sql_ast, extractor, attr_offsets
     @classmethod
     def _find_in_db_(entity, avdict, max_rows_count=None):
-        if avdict is None: query_key = None
-        else: query_key = tuple((attr, value is None) for attr, value in sorted(avdict.iteritems()))
+        if max_rows_count is None: max_rows_count = options.MAX_ROWS_COUNT
         database = entity._diagram_.database
+        query_attrs = tuple((attr, value is None) for attr, value in sorted(avdict.iteritems()))
+        query_key = query_attrs, max_rows_count
         cached_sql = entity._find_sql_cache_.get(query_key)
         if cached_sql is None:
-            sql_ast, extractor, attr_offsets = entity._construct_sql_(query_key)
+            sql_ast, extractor, attr_offsets = entity._construct_sql_(query_attrs, max_rows_count)
             sql, adapter = database._ast2sql(sql_ast)
             cached_sql = sql, extractor, adapter, attr_offsets
             entity._find_sql_cache_[query_key] = cached_sql
@@ -1646,17 +1649,18 @@ class Entity(object):
         value_dict = extractor(avdict)
         arguments = adapter(value_dict)
         cursor = database._exec_sql(sql, arguments)
-        objects = entity._fetch_objects(cursor, attr_offsets)
+        objects = entity._fetch_objects(cursor, attr_offsets, max_rows_count)
         return objects
     @classmethod
     def _fetch_objects(entity, cursor, attr_offsets, max_rows_count=None):
-        if max_rows_count is None: max_rows_count = options.MAX_ROWS_COUNT
-        rows = cursor.fetchmany(max_rows_count + 1)
-        if len(rows) == max_rows_count + 1:
-            if max_rows_count == 1: raise MultipleObjectsFoundError(
-                'Multiple objects was found. Use %s.all(...) to retrieve them' % entity.__name__)
-            raise TooManyObjectsFoundError(
-                'Found more then pony.options.MAX_ROWS_COUNT=%d objects' % options.MAX_ROWS_COUNT)
+        if max_rows_count is not None:
+            rows = cursor.fetchmany(max_rows_count + 1)
+            if len(rows) == max_rows_count + 1:
+                if max_rows_count == 1: raise MultipleObjectsFoundError(
+                    'Multiple objects was found. Use %s.all(...) to retrieve them' % entity.__name__)
+                raise TooManyObjectsFoundError(
+                    'Found more then pony.options.MAX_ROWS_COUNT=%d objects' % options.MAX_ROWS_COUNT)
+        else: rows = cursor.fetchall()
         objects = []
         for row in rows:
             pkval, avdict = entity._parse_row_(row, attr_offsets)
