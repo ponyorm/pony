@@ -2626,6 +2626,10 @@ def exists(subquery):
 class QueryResult(list):
     def all(self):
         return self
+    def get(self):
+        if not self: return None
+        if len(self) > 1: raise MultipleObjectsFoundError('Multiple objects was found. Use .all(...) to retrieve them')
+        return self[0]
 
 class Query(object):
     def __init__(query, gen, tree, entities, vartypes, functions, variables):
