@@ -1454,8 +1454,7 @@ class Entity(object):
         elif obj._pk_is_composite_: return '%s%r' % (obj.__class__.__name__, pkval)
         else: return '%s(%r)' % (obj.__class__.__name__, pkval)
     @classmethod
-    def _new_(entity, pkval, status, raw_pkval=None):
-        assert status in ('loaded', 'created')
+    def _new_(entity, pkval, status, raw_pkval=None, undo_funcs=None):
         cache = entity._get_cache_()
         index = cache.indexes.setdefault(entity._pk_, {})
         if pkval is None: obj = None
@@ -1479,20 +1478,17 @@ class Entity(object):
         if obj._pk_is_composite_: pairs = zip(entity._pk_attrs_, pkval)
         else: pairs = ((entity._pk_, pkval),)
         if status == 'loaded':
+            assert undo_funcs is None
             obj._rbits_ = obj._wbits_ = 0
             for attr, val in pairs:
                 obj._curr_[attr.name] = val
                 if attr.reverse: attr.db_update_reverse(obj, NOT_LOADED, val)
         elif status == 'created':
+            assert undo_funcs is not None
             obj._rbits_ = obj._wbits_ = None
-            undo_funcs = []
-            try:
-                for attr, val in pairs:
-                    obj._curr_[attr.name] = val
-                    if attr.reverse: attr.update_reverse(obj, NOT_LOADED, val, undo_funcs)
-            except:  # will never be here in sane situation
-                for undo_func in reversed(undo_funcs): undo_func()
-                raise
+            for attr, val in pairs:
+                obj._curr_[attr.name] = val
+                if attr.reverse: attr.update_reverse(obj, NOT_LOADED, val, undo_funcs)
         else: assert False
         return obj
     @classmethod
@@ -1699,14 +1695,13 @@ class Entity(object):
     @classmethod
     def create(entity, *args, **keyargs):
         pkval, avdict = entity._normalize_args_(args, keyargs, True)
-        obj = entity._new_(pkval, 'created')
+        undo_funcs = []
         cache = entity._get_cache_()
         indexes = {}
         for attr in entity._simple_keys_:
             val = avdict[attr]
             if val in cache.indexes.setdefault(attr, {}): raise IndexError(
-                'Cannot create %s: value %s for key %s already exists'
-                % (obj.__class__.__name__, val, attr.name))
+                'Cannot create %s: value %s for key %s already exists' % (entity.__name__, val, attr.name))
             indexes[attr] = val
         for attrs in entity._composite_keys_:
             vals = tuple(map(avdict.__getitem__, attrs))
@@ -1715,8 +1710,8 @@ class Entity(object):
                 raise IndexError('Cannot create %s: value %s for composite key (%s) already exists'
                                  % (obj.__class__.__name__, vals, attr_names))
             indexes[attrs] = vals
-        undo_funcs = []
         try:
+            obj = entity._new_(pkval, 'created', None, undo_funcs)
             for attr, val in avdict.iteritems():
                 if attr.pk_offset is not None: continue
                 elif not attr.is_collection:
@@ -1724,7 +1719,7 @@ class Entity(object):
                     if attr.reverse: attr.update_reverse(obj, None, val, undo_funcs)
                 else: attr.__set__(obj, val, undo_funcs)
         except:
-            for undo_func in undo_funcs: undo_func()
+            for undo_func in reversed(undo_funcs): undo_func()
             raise
         if pkval is not None:
             cache.indexes[entity._pk_][pkval] = obj
