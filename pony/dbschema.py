@@ -37,6 +37,8 @@ class DBSchema(object):
     def get_create_script(schema, uppercase=None):
         commands = schema.get_create_commands(uppercase)
         return schema.command_separator.join(commands)
+    def add_table(schema, table_name):
+        return Table(table_name, schema)
 
 class Table(object):
     def __init__(table, name, schema):
@@ -87,6 +89,12 @@ class Table(object):
                 result.append(foreign_key.get_create_command())
         created_tables.add(table)
         return result
+    def add_column(table, column_name, sql_type, is_not_null=None):
+        return Column(column_name, table, sql_type, is_not_null)
+    def add_index(table, index_name, columns, is_pk=False, is_unique=None):
+        return Index(index_name, table, columns, is_pk, is_unique)
+    def add_foreign_key(table, fk_name, child_columns, parent_table, parent_columns):
+        return ForeignKey(fk_name, table, child_columns, parent_table, parent_columns)
 
 class Column(object):
     def __init__(column, name, table, sql_type, is_not_null=None):
@@ -191,7 +199,7 @@ class Index(Constraint):
         return ' '.join(cmd)
 
 class ForeignKey(Constraint):
-    def __init__(foreign_key, name, parent_table, parent_columns, child_table, child_columns):
+    def __init__(foreign_key, name, child_table, child_columns, parent_table, parent_columns):
         schema = parent_table.schema
         if schema is not child_table.schema: raise DBSchemaError(
             'Parent and child tables of foreign_key cannot belong to different schemata')

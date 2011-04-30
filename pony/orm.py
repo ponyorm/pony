@@ -15,7 +15,7 @@ from datetime import date, datetime
 try: from pony.thirdparty import etree
 except ImportError: etree = None
 
-from pony import options, dbschema, sqlbuilding
+from pony import options, sqlbuilding
 from pony.clobtypes import LongStr, LongUnicode
 from pony.sqlsymbols import *
 from pony.utils import (
@@ -2223,7 +2223,7 @@ class Diagram(object):
         for entity_name in diagram.unmapped_attrs:
             raise DiagramError('Entity definition %s was not found' % entity_name)
 
-        schema = diagram.schema = dbschema.DBSchema(database)
+        schema = diagram.schema = database.provider.create_schema(database)
         foreign_keys = []
         entities = list(sorted(diagram.entities.values(), key=attrgetter('_id_')))
         for entity in entities:
@@ -2232,7 +2232,7 @@ class Diagram(object):
             if table_name is None: table_name = entity._table_ = entity.__name__
             else: assert isinstance(table_name, basestring)
             table = schema.tables.get(table_name)
-            if table is None: table = dbschema.Table(table_name, schema)
+            if table is None: table = schema.add_table(table_name)
             elif table.entities: raise NotImplementedError
             table.entities.add(entity)
 
@@ -2262,14 +2262,14 @@ class Diagram(object):
                         if m2m_table.entities or m2m_table.m2m: raise MappingError(
                             "Table name '%s' is already in use" % table_name)
                         raise NotImplementedError
-                    m2m_table = dbschema.Table(table_name, schema)
+                    m2m_table = schema.add_table(table_name)
                     m2m_columns_1 = attr.get_m2m_columns()
                     m2m_columns_2 = reverse.get_m2m_columns()
                     assert len(m2m_columns_1) == len(reverse.converters)
                     assert len(m2m_columns_2) == len(attr.converters)
                     for column_name, converter in zip(m2m_columns_1 + m2m_columns_2, reverse.converters + attr.converters):
-                        dbschema.Column(column_name, m2m_table, converter.sql_type(), True)
-                    dbschema.Index(None, m2m_table, tuple(m2m_table.column_list), is_pk=True)
+                        m2m_table.add_column(column_name, converter.sql_type(), True)
+                    m2m_table.add_index(None, tuple(m2m_table.column_list), is_pk=True)
                     m2m_table.m2m.add(attr)
                     m2m_table.m2m.add(reverse)
                 else:
@@ -2280,12 +2280,12 @@ class Diagram(object):
                             attr.converters[0].validate(attr.default)
                     assert len(columns) == len(attr.converters)
                     for (column_name, converter) in zip(columns, attr.converters):
-                        dbschema.Column(column_name, table, converter.sql_type(), attr.is_required)
-            dbschema.Index(None, table, get_columns(table, entity._pk_columns_), is_pk=True)
+                        table.add_column(column_name, converter.sql_type(), attr.is_required)
+            table.add_index(None, get_columns(table, entity._pk_columns_), is_pk=True)
             for key in entity._keys_:
                 column_names = []
                 for attr in key: column_names.extend(attr.columns)
-                dbschema.Index(None, table, get_columns(table, column_names), is_unique=True)
+                table.add_index(None, get_columns(table, column_names), is_unique=True)
             columns = []
             converters = []
             for attr in entity._attrs_:
@@ -2305,13 +2305,13 @@ class Diagram(object):
                     m2m_table = schema.tables[attr.table]
                     parent_columns = get_columns(table, entity._pk_columns_)
                     child_columns = get_columns(m2m_table, reverse.columns)
-                    dbschema.ForeignKey(None, table, parent_columns, m2m_table, child_columns)
+                    m2m_table.add_foreign_key(None, child_columns, table, parent_columns)
                 elif attr.reverse and attr.columns:
                     rentity = attr.reverse.entity
                     parent_table = schema.tables[rentity._table_]
                     parent_columns = get_columns(parent_table, rentity._pk_columns_)
                     child_columns = get_columns(table, attr.columns)
-                    dbschema.ForeignKey(None, parent_table, parent_columns, table, child_columns)        
+                    table.add_foreign_key(None, child_columns, parent_table, parent_columns)
 
         if create_tables:
             commands = schema.get_create_commands()

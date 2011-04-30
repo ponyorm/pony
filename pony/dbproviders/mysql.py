@@ -11,11 +11,15 @@ from MySQLdb import (Warning, Error, InterfaceError, DatabaseError,
 from MySQLdb.constants import FIELD_TYPE, FLAG
 import MySQLdb.converters
 
+from pony import dbschema
 from pony import sqlbuilding
 from pony.clobtypes import LongStr, LongUnicode
 from pony.utils import localbase
 
 paramstyle = 'format'
+
+def create_schema(database):
+    return dbschema.DBSchema(database)
 
 def quote_name(connection, name):
     return sqlbuilding.quote_name(name, "`")

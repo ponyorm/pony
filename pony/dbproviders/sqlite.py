@@ -12,10 +12,14 @@ from pony.thirdparty.sqlite import (Warning, Error, InterfaceError, DatabaseErro
                                     DataError, OperationalError, IntegrityError, InternalError,
                                     ProgrammingError, NotSupportedError)
 
+from pony import dbschema
 from pony import sqlbuilding
 from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple_decorator, absolutize_path
 
 paramstyle = 'qmark'
+
+def create_schema(database):
+    return dbschema.DBSchema(database)
 
 def quote_name(connection, name):
     return sqlbuilding.quote_name(name)
