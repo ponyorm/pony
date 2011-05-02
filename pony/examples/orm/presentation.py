@@ -42,11 +42,17 @@ sql_debug(True)
 
 students = select(s for s in Student).all()
 
+Student.all()
+
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."passport", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
 
 students = select(s for s in Student
                     if s.scholarship > 0).all()
+
+students = Student.all(lambda s: s.scholarship > 0)
+
+students = Student.where(lambda s: s.scholarship > 0).all()
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."passport", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
@@ -56,6 +62,12 @@ students = select(s for s in Student
                     if s.scholarship > 0
                     and s.dob > date(1995, 1, 1)).all()
 
+students = Student.all(lambda s: s.scholarship > 0
+                                 and s.dob > date(1995, 1, 1))
+
+students = Student.where(lambda s: s.scholarship > 0
+                                   and s.dob > date(1995, 1, 1)).all()
+
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."passport", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
 ##    WHERE ("s"."scholarship" > 0)
@@ -64,11 +76,17 @@ students = select(s for s in Student
 students = select(s for s in Student
                     if s.picture is None).all()
 
+students = Student.all(lambda s: s.picture is None)
+
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."passport", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
 ##    WHERE "s"."picture" IS NOT NULL
 
 students = select(s for s in Student if len(s.courses) > 5).all() # todo
+
+students = Student.all(lambda s: len(s.courses) > 5)
+
+students = Student.where(lambda s: len(s.courses) > 5).all()
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."passport", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
@@ -80,23 +98,23 @@ students = select(s for s in Student if len(s.courses) > 5).all() # todo
 
 students = select(s for s in Student if s.name.startswith('A')).all()
 
+students = Student.all(lambda s: s.name.startswith('A'))
+
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."passport", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
 ##    WHERE "s"."name" LIKE 'A%'
 
 courses = select(c for c in Course if 'Economics' in c.name).all()
 
+courses = Course.all(lambda c: 'Economics' in c.name)
+
 ##    SELECT "c"."name", "c"."semester", "c"."lect_hours", "c"."lab_hours", "c"."credits", "c"."dept"
 ##    FROM "Course" AS "c"
 ##    WHERE "c"."name" LIKE '%Economics%'
 
-courses = select(c for c in Course if 'Economics'.upper() in c.name.upper()).all()
-
-##    SELECT "c"."name", "c"."semester", "c"."lect_hours", "c"."lab_hours", "c"."credits", "c"."dept"
-##    FROM "Course" AS "c"
-##    WHERE upper("c"."name") LIKE ('%' || upper('Economics') || '%')
-
 select(s for s in Student if s.group.major == 'Computer Science').all()
+
+Student.all(lambda s: s.group.major == 'Computer Science')
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."passport", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s", "Group" AS "s-group"
@@ -104,6 +122,8 @@ select(s for s in Student if s.group.major == 'Computer Science').all()
 ##      AND ("s-group"."major" = 'Computer Science')
 
 select(s for s in Student if s.group.dept.name == 'Digital Arts').all()
+
+Student.all(lambda s: s.group.dept.name == 'Digital Arts')
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."passport", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s", "Group" AS "s-group", "Department" AS "s-group-dept"
@@ -113,6 +133,8 @@ select(s for s in Student if s.group.dept.name == 'Digital Arts').all()
 
 select(s for s in Student if s.group.dept.number == 33).all()
 
+Student.all(lambda s: s.group.dept.number == 33)
+
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s", "Group" AS "s-group"
 ##    WHERE ("s"."group" = "s-group"."number")
@@ -121,6 +143,8 @@ select(s for s in Student if s.group.dept.number == 33).all()
 dept_name = 'Biology'
 select(s for s in Student if s.group.dept.name == dept_name).all()
 
+Student.all(lambda s: s.group.dept.name == dept_name)
+
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s", "Group" AS "s-group", "Department" AS "s-group-dept"
 ##    WHERE ("s"."group" = "s-group"."number")
@@ -128,9 +152,12 @@ select(s for s in Student if s.group.dept.name == dept_name).all()
 ##      AND ("s-group-dept"."name" = ?)
 
 select(s for s in Student if exists(c for c in s.courses if c.name == 'Math')).all()
-
 select(s for s in Student if 'Math' in (c.name for c in s.courses)).all()
 select(s for s in Student if 'Math' in s.courses.name).all()
+
+Student.all(lambda s: exists(c for c in s.courses if c.name == 'Math'))
+Student.all(lambda s: 'Math' in (c.name for c in s.courses))
+Student.all(lambda s: 'Math' in s.courses.name)
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
@@ -154,6 +181,9 @@ select.sum(s.scholarship for s in Student if s.group.number == 123)
 select(g for g in Group if sum(s.scholarship for s in g.students) > 10000).all()
 select(g for g in Group if sum(g.students.scholarship) > 10000).all()
 
+Group.all(lambda g: sum(s.scholarship for s in g.students) > 10000)
+Group.all(lambda g: sum(g.students.scholarship) > 10000)
+
 ##    SELECT "g"."number", "g"."major", "g"."dept"
 ##    FROM "Group" AS "g"
 ##    WHERE ((
@@ -171,6 +201,9 @@ select.sum(c.lab_hours for c in Course if c.dept.number == 123)
 select(d for d in Department if sum(c.lab_hours for c in d.courses) > 100).all()
 select(d for d in Department if sum(d.courses.lab_hours) > 100).all()
 
+Department.all(lambda d: sum(c.lab_hours for c in d.courses) > 100)
+Department.all(lambda d: sum(d.courses.lab_hours) > 100)
+
 ##    SELECT "d"."number", "d"."name"
 ##    FROM "Department" AS "d"
 ##    WHERE ((
@@ -181,11 +214,15 @@ select(d for d in Department if sum(d.courses.lab_hours) > 100).all()
 
 select(s for s in Student).orderby(Student.name).all()
 
+Student.orderby(Student.name).all()
+
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
 ##    ORDER BY "s"."name" ASC
 
 select(s for s in Student).orderby(Student.name.desc).all()
+
+Student.orderby(Student.name.desc).all()
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
@@ -193,28 +230,26 @@ select(s for s in Student).orderby(Student.name.desc).all()
 
 select(s for s in Student).orderby(Student.group, Student.name).all()
 
+Student.orderby(Student.group, Student.name).all()
+
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
 ##    ORDER BY "s"."group" ASC, "s"."name" ASC
 
-select(s for s in Student).orderby(Student.name)[20:30]
+select(s for s in Student if s.scholarship > 0).orderby(Student.name).all()
+
+Student.where(lambda s: s.scholarship > 0).orderby(Student.name).all()
+
+##    SELECT "s"."id", "s"."name", "s"."dob", "s"."picture", "s"."scholarship", "s"."group"
+##    FROM "Student" AS "s"
+##    WHERE ("s"."scholarship" > 0)
+##    ORDER BY "s"."name" ASC
 
 select(s for s in Student).orderby(Student.name)[20:30]
+
+Student.orderby(Student.name)[20:30]
 
 ##    SELECT "s"."id", "s"."name", "s"."dob", "s"."picture", "s"."scholarship", "s"."group"
 ##    FROM "Student" AS "s"
 ##    ORDER BY "s"."name" ASC
 ##    LIMIT 10 OFFSET 20
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -4,7 +4,7 @@ from operator import attrgetter, itemgetter
 from itertools import count, ifilter, ifilterfalse, izip
 
 # for SQL translator:
-import __builtin__, types
+import __builtin__, types, inspect
 from types import NoneType
 from compiler import ast
 from decimal import Decimal
@@ -1224,10 +1224,63 @@ class EntityMeta(type):
             'Multiple objects was found. Use %s.all(...) to retrieve them' % entity.__name__)
         return objects[0]
     def __getitem__(entity, key):
-        if type(key) is tuple: obj = entity.get(*key)
-        else: obj = entity.get(key)
-        if obj is None: raise ObjectNotFound(entity, key)
-        return obj
+        if type(key) is tuple: args = key
+        else: args = (key,)
+        objects = entity._find_(1, args, {})
+        if not objects: raise ObjectNotFound(entity, key)
+        if len(objects) > 1: raise MultipleObjectsFoundError(
+            'Multiple objects was found. Use %s.all(...) to retrieve them' % entity.__name__)
+        return objects[0]
+    def where(entity, func):
+        if not isinstance(func, types.FunctionType): raise TypeError
+        globals = sys._getframe(1).f_globals
+        locals = sys._getframe(1).f_locals
+        return entity._query_from_lambda_(func, globals, locals)
+    def orderby(entity, *args):
+        name = (''.join(letter for letter in entity.__name__ if letter.isupper())).lower() or entity.__name__[0]
+        for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name('.0'), [])
+        inner_expr = ast.GenExprInner(ast.Name(name), [ for_expr ])
+        query = Query(None, inner_expr, set(['.0']), {}, { '.0' : entity })
+        return query.orderby(*args)
+    def _find_(entity, max_objects_count, args, keyargs):
+        if args and isinstance(args[0], types.FunctionType):
+            if len(args) > 1: raise TypeError
+            if keyargs: raise TypeError
+            func = args[0]
+            globals = sys._getframe(2).f_globals
+            locals = sys._getframe(2).f_locals
+            query = entity._query_from_lambda_(func, globals, locals)
+            return query.all()
+
+        pkval, avdict = entity._normalize_args_(args, keyargs, False)
+        for attr in avdict:
+            if attr.is_collection: raise TypeError(
+                'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
+        try:
+            objects = entity._find_in_cache_(pkval, avdict)
+        except KeyError:
+            objects = entity._find_in_db_(avdict, max_objects_count)
+        return objects
+    def _query_from_lambda_(entity, func, globals, locals):
+        names, argsname, keyargsname, defaults = inspect.getargspec(func)
+        if len(names) > 1: raise TypeError
+        if argsname or keyargsname: raise TypeError
+        if defaults: raise TypeError
+        name = names[0]
+
+        cond_expr, external_names = decompile(func)
+        external_names.discard(name)
+        external_names.add('.0')
+
+        if_expr = ast.GenExprIf(cond_expr)
+        for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name('.0'), [ if_expr ])
+        inner_expr = ast.GenExprInner(ast.Name(name), [ for_expr ])
+
+        locals = locals.copy()
+        assert '.0' not in locals
+        locals['.0'] = entity
+
+        return Query(func.func_code, inner_expr, external_names, globals, locals)
 
 class EntityIter(object):
     def __init__(self, entity):
@@ -1681,17 +1734,6 @@ class Entity(object):
         if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_, None)            
         else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
         return pkval, avdict
-    @classmethod
-    def _find_(entity, max_objects_count, args, keyargs):
-        pkval, avdict = entity._normalize_args_(args, keyargs, False)
-        for attr in avdict:
-            if attr.is_collection: raise TypeError(
-                'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
-        try:
-            objects = entity._find_in_cache_(pkval, avdict)
-        except KeyError:
-            objects = entity._find_in_db_(avdict, max_objects_count)
-        return objects        
     @classmethod
     def create(entity, *args, **keyargs):
         pkval, avdict = entity._normalize_args_(args, keyargs, True)
@@ -2591,30 +2633,8 @@ def select(gen):
     tree, external_names = decompile(gen)
     globals = gen.gi_frame.f_globals
     locals = gen.gi_frame.f_locals
-    entities = {}
-    variables = {}
-    vartypes = {}
-    functions = {}
-    for name in external_names:
-        try: value = locals[name]
-        except KeyError:
-            try: value = globals[name]
-            except KeyError:
-                try: value = getattr(__builtin__, name)
-                except AttributeError: raise NameError, name
-        if value in special_functions: functions[name] = value
-        elif type(value) in (types.FunctionType, types.BuiltinFunctionType):
-            raise TypeError('Function %r cannot be used inside query' % value.__name__)
-        elif type(value) is types.MethodType:
-            raise TypeError('Method %r cannot be used inside query' % value.__name__)
-        elif isinstance(value, EntityMeta):
-            entities[name] = value
-        elif isinstance(value, EntityIter):
-            entities[name] = value.entity
-        else:
-            variables[name] = value
-            vartypes[name] = normalize_type(type(value))
-    return Query(gen, tree.code, entities, vartypes, functions, variables)
+    code = gen.gi_frame.f_code
+    return Query(code, tree.code, external_names, globals, locals)
 
 select.sum = lambda gen : select(gen).sum()
 select.min = lambda gen : select(gen).min()
@@ -2633,17 +2653,40 @@ class QueryResult(list):
         return self[0]
 
 class Query(object):
-    def __init__(query, gen, tree, entities, vartypes, functions, variables):
+    def __init__(query, code, tree, external_names, globals, locals):
         assert isinstance(tree, ast.GenExprInner)
-        query._gen = gen
         query._tree = tree
-        query._entities = entities
-        query._vartypes = vartypes
-        query._variables = variables
+        query._external_names = external_names
+
+        query._entities = entities = {}
+        query._variables = variables = {}
+        query._vartypes = vartypes = {}
+        query._functions = functions = {}
+
+        for name in external_names:
+            try: value = locals[name]
+            except KeyError:
+                try: value = globals[name]
+                except KeyError:
+                    try: value = getattr(__builtin__, name)
+                    except AttributeError: raise NameError, name
+            if value in special_functions: functions[name] = value
+            elif type(value) in (types.FunctionType, types.BuiltinFunctionType):
+                raise TypeError('Function %r cannot be used inside query' % value.__name__)
+            elif type(value) is types.MethodType:
+                raise TypeError('Method %r cannot be used inside query' % value.__name__)
+            elif isinstance(value, EntityMeta):
+                entities[name] = value
+            elif isinstance(value, EntityIter):
+                entities[name] = value.entity
+            else:
+                variables[name] = value
+                vartypes[name] = normalize_type(type(value))
+
         query._result = None
-        code = gen.gi_frame.f_code
         key = id(code), tuple(sorted(entities.iteritems())), \
-              tuple(sorted(vartypes.iteritems())), tuple(sorted(functions.iteritems()))
+                        tuple(sorted(vartypes.iteritems())), \
+                        tuple(sorted(functions.iteritems()))
         query._python_ast_key = key
         translator = python_ast_cache.get(key)
         if translator is None:
@@ -2733,7 +2776,7 @@ class Query(object):
             elif start < 0: raise TypeError("Parameter 'start' of slice object cannot be negative")
             stop = key.stop
             if stop is None:
-                if not start: return query._fetch(None)
+                if not start: return query.all()
                 elif not query.range: raise TypeError("Parameter 'stop' of slice object should be specified")
                 else: stop = query.range[1]
         else:
