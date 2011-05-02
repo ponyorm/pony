@@ -38,7 +38,7 @@ class DBSchema(object):
         commands = schema.get_create_commands(uppercase)
         return schema.command_separator.join(commands)
     def add_table(schema, table_name):
-        return Table(table_name, schema)
+        return schema.table_class(table_name, schema)
 
 class Table(object):
     def __init__(table, name, schema):
@@ -90,13 +90,14 @@ class Table(object):
         created_tables.add(table)
         return result
     def add_column(table, column_name, sql_type, is_not_null=None):
-        return Column(column_name, table, sql_type, is_not_null)
+        return table.schema.column_class(column_name, table, sql_type, is_not_null)
     def add_index(table, index_name, columns, is_pk=False, is_unique=None):
-        return Index(index_name, table, columns, is_pk, is_unique)
+        return table.schema.index_class(index_name, table, columns, is_pk, is_unique)
     def add_foreign_key(table, fk_name, child_columns, parent_table, parent_columns):
-        return ForeignKey(fk_name, table, child_columns, parent_table, parent_columns)
+        return table.schema.fk_class(fk_name, table, child_columns, parent_table, parent_columns)
 
 class Column(object):
+    autoincrement = 'AUTOINCREMENT'
     def __init__(column, name, table, sql_type, is_not_null=None):
         if name in table.column_dict:
             raise DBSchemaError("Column %r already exists in table %r" % (name, table.name))
@@ -115,21 +116,25 @@ class Column(object):
         if created_tables is None: created_tables = set()
         table = column.table
         schema = table.schema
+        quote = schema.quote_name
         case = schema.case
         result = []
-        result.append(schema.quote_name(column.name))
-        result.append(case(column.sql_type))
-        if column.is_pk: result.append(case('PRIMARY KEY'))
+        append = result.append
+        append(quote(column.name))
+        append(case(column.sql_type))
+        if column.is_pk:
+            append(case('PRIMARY KEY'))
+            if column.is_pk == 'auto' and column.autoincrement: append(case(column.autoincrement))
         else:
-            if column.is_unique: result.append(case('UNIQUE'))
-            if column.is_not_null: result.append(case('NOT NULL'))
+            if column.is_unique: append(case('UNIQUE'))
+            if column.is_not_null: append(case('NOT NULL'))
         foreign_key = table.foreign_keys.get((column,))
         if foreign_key is not None:
             parent_table = foreign_key.parent_table
             if parent_table in created_tables or parent_table is table:
-                result.append(case('REFERENCES'))
-                result.append(schema.quote_name(parent_table.name))
-                result.append(schema.column_list(foreign_key.parent_columns)) 
+                append(case('REFERENCES'))
+                append(quote(parent_table.name))
+                append(schema.column_list(foreign_key.parent_columns)) 
         return ' '.join(result)
 
 class Constraint(object):
@@ -160,8 +165,8 @@ class Index(Constraint):
                 "Incompatible combination of is_unique=False and is_pk=True")
         elif is_unique is None: is_unique = False
         for column in columns:
-            column.is_pk = is_pk and len(columns) == 1
-            column.is_pk_part = is_pk
+            column.is_pk = len(columns) == 1 and is_pk  # is_pk may be "auto"
+            column.is_pk_part = bool(is_pk)
             column.is_unique = is_unique and len(columns) == 1
         Constraint.__init__(index, name, table.schema)
         table.indexes[columns] = index
@@ -245,3 +250,8 @@ class ForeignKey(Constraint):
         append(quote_name(foreign_key.parent_table.name))
         append(schema.column_list(foreign_key.parent_columns))
         return ' '.join(cmd)
+
+DBSchema.table_class = Table
+DBSchema.column_class = Column
+DBSchema.index_class = Index
+DBSchema.fk_class = ForeignKey

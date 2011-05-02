@@ -18,8 +18,14 @@ from pony.utils import localbase
 
 paramstyle = 'format'
 
+class MySQLColumn(dbschema.Column):
+    autoincrement = 'AUTO_INCREMENT'
+
+class MySQLSchema(dbschema.DBSchema):
+    column_class = MySQLColumn
+
 def create_schema(database):
-    return dbschema.DBSchema(database)
+    return MySQLSchema(database)
 
 def quote_name(connection, name):
     return sqlbuilding.quote_name(name, "`")
@@ -114,7 +120,7 @@ class BasestringConverter(Converter):
             else: max_len = attr.args[0]
             if issubclass(attr.py_type, (LongStr, LongUnicode)):
                 if max_len is not None: raise TypeError('Max length is not supported for CLOBs')
-            elif max_len is None: max_len = 100
+            elif max_len is None: max_len = 200
             elif not isinstance(max_len, (int, long)):
                 raise TypeError('Max length argument must be int. Got: %r' % max_len)
             converter.max_len = max_len

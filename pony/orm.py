@@ -2281,7 +2281,9 @@ class Diagram(object):
                     assert len(columns) == len(attr.converters)
                     for (column_name, converter) in zip(columns, attr.converters):
                         table.add_column(column_name, converter.sql_type(), attr.is_required)
-            table.add_index(None, get_columns(table, entity._pk_columns_), is_pk=True)
+            if len(entity._pk_columns_) == 1 and entity._pk_.auto: is_pk = "auto"
+            else: is_pk = True
+            table.add_index(None, get_columns(table, entity._pk_columns_), is_pk)
             for key in entity._keys_:
                 column_names = []
                 for attr in key: column_names.extend(attr.columns)
