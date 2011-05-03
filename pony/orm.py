@@ -1454,6 +1454,43 @@ class EntityMeta(type):
         locals['.0'] = entity
 
         return Query(func.func_code, inner_expr, external_names, globals, locals)
+    def _new_(entity, pkval, status, raw_pkval=None, undo_funcs=None):
+        cache = entity._get_cache_()
+        index = cache.indexes.setdefault(entity._pk_, {})
+        if pkval is None: obj = None
+        else: obj = index.get(pkval)
+        if obj is None: pass
+        elif status == 'created':
+            if entity._pk_is_composite_: pkval = ', '.join(str(item) for item in pkval)
+            raise IndexError('Cannot create %s: instance with primary key %s already exists'
+                             % (obj.__class__.__name__, pkval))                
+        else: return obj
+        obj = object.__new__(entity)
+        obj._prev_ = {}
+        obj._curr_ = {}
+        obj._cache_ = cache
+        obj._status_ = status
+        obj._pkval_ = pkval
+        if pkval is not None:
+            index[pkval] = obj
+            obj._newid_ = None
+        else: obj._newid_ = next_new_instance_id()
+        if obj._pk_is_composite_: pairs = zip(entity._pk_attrs_, pkval)
+        else: pairs = ((entity._pk_, pkval),)
+        if status == 'loaded':
+            assert undo_funcs is None
+            obj._rbits_ = obj._wbits_ = 0
+            for attr, val in pairs:
+                obj._curr_[attr.name] = val
+                if attr.reverse: attr.db_update_reverse(obj, NOT_LOADED, val)
+        elif status == 'created':
+            assert undo_funcs is not None
+            obj._rbits_ = obj._wbits_ = None
+            for attr, val in pairs:
+                obj._curr_[attr.name] = val
+                if attr.reverse: attr.update_reverse(obj, NOT_LOADED, val, undo_funcs)
+        else: assert False
+        return obj
     def create(entity, *args, **keyargs):
         pkval, avdict = entity._normalize_args_(args, keyargs, True)
         undo_funcs = []
@@ -1552,44 +1589,6 @@ class Entity(object):
         if pkval is None: return '%s(new:%d)' % (obj.__class__.__name__, obj._newid_)
         elif obj._pk_is_composite_: return '%s%r' % (obj.__class__.__name__, pkval)
         else: return '%s(%r)' % (obj.__class__.__name__, pkval)
-    @classmethod
-    def _new_(entity, pkval, status, raw_pkval=None, undo_funcs=None):
-        cache = entity._get_cache_()
-        index = cache.indexes.setdefault(entity._pk_, {})
-        if pkval is None: obj = None
-        else: obj = index.get(pkval)
-        if obj is None: pass
-        elif status == 'created':
-            if entity._pk_is_composite_: pkval = ', '.join(str(item) for item in pkval)
-            raise IndexError('Cannot create %s: instance with primary key %s already exists'
-                             % (obj.__class__.__name__, pkval))                
-        else: return obj
-        obj = object.__new__(entity)
-        obj._prev_ = {}
-        obj._curr_ = {}
-        obj._cache_ = cache
-        obj._status_ = status
-        obj._pkval_ = pkval
-        if pkval is not None:
-            index[pkval] = obj
-            obj._newid_ = None
-        else: obj._newid_ = next_new_instance_id()
-        if obj._pk_is_composite_: pairs = zip(entity._pk_attrs_, pkval)
-        else: pairs = ((entity._pk_, pkval),)
-        if status == 'loaded':
-            assert undo_funcs is None
-            obj._rbits_ = obj._wbits_ = 0
-            for attr, val in pairs:
-                obj._curr_[attr.name] = val
-                if attr.reverse: attr.db_update_reverse(obj, NOT_LOADED, val)
-        elif status == 'created':
-            assert undo_funcs is not None
-            obj._rbits_ = obj._wbits_ = None
-            for attr, val in pairs:
-                obj._curr_[attr.name] = val
-                if attr.reverse: attr.update_reverse(obj, NOT_LOADED, val, undo_funcs)
-        else: assert False
-        return obj
     @classmethod
     def _find_in_cache_(entity, pkval, avdict):
         cache = entity._get_cache_()
