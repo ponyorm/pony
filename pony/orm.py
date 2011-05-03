@@ -26,7 +26,6 @@ from pony.utils import (
 # for SQL translator:
 
 from pony.decompiling import decompile
-from pony.templating import Html, StrHtml  # can we avoid this?
 from pony.clobtypes import LongStr, LongUnicode
 from pony.sqlbuilding import SQLBuilder
 from pony.sqlsymbols import *
@@ -2834,12 +2833,15 @@ string_types = set([ str, unicode ])
 comparable_types = set([ int, float, Decimal, str, unicode, date, datetime, bool ])
 primitive_types = set([ int, float, Decimal, str, unicode, date, datetime, bool, buffer ])
 
-type_normalization_dict = { long : int, bool : int,
-                            LongStr : str, LongUnicode : unicode,
-                            StrHtml : str, Html : unicode }
+type_normalization_dict = { long : int, bool : int, LongStr : str, LongUnicode : unicode }
 
 def normalize_type(t):
     if t is NoneType: return t
+    if issubclass(t, basestring):  # Mainly for Html -> unicode & StrHtml -> str conversion
+        if t in (str, unicode): return t
+        if issubclass(t, str): return str
+        if issubclass(t, unicode): return unicode
+        assert False
     t = type_normalization_dict.get(t, t)
     if t not in primitive_types and not isinstance(t, EntityMeta): raise TypeError, t
     return t
