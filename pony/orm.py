@@ -1203,17 +1203,17 @@ next_entity_id = count(1).next
 next_new_instance_id = count(1).next
 
 class EntityMeta(type):
-    def __new__(meta, name, bases, dict):
+    def __new__(meta, name, bases, cls_dict):
         if 'Entity' in globals():
-            if '__slots__' in dict: raise TypeError('Entity classes cannot contain __slots__ variable')
-            dict['__slots__'] = ()
-        return super(EntityMeta, meta).__new__(meta, name, bases, dict)
-    def __init__(entity, name, bases, dict):
-        super(EntityMeta, entity).__init__(name, bases, dict)
+            if '__slots__' in cls_dict: raise TypeError('Entity classes cannot contain __slots__ variable')
+            cls_dict['__slots__'] = ()
+        return super(EntityMeta, meta).__new__(meta, name, bases, cls_dict)
+    def __init__(entity, name, bases, cls_dict):
+        super(EntityMeta, entity).__init__(name, bases, cls_dict)
         if 'Entity' not in globals(): return
         outer_dict = sys._getframe(1).f_locals
 
-        diagram = dict.pop('_diagram_', None) or outer_dict.get('_diagram_')
+        diagram = cls_dict.pop('_diagram_', None) or outer_dict.get('_diagram_')
         if diagram is None:
             diagram = Diagram()
             outer_dict['_diagram_'] = diagram
