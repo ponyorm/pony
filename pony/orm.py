@@ -1476,6 +1476,163 @@ class EntityMeta(type):
         except KeyError:
             objects = entity._find_in_db_(avdict, max_objects_count)
         return objects
+    def _find_in_cache_(entity, pkval, avdict):
+        cache = entity._get_cache_()
+        obj = None
+        if pkval is not None:
+            index = cache.indexes.get(entity._pk_)
+            if index is not None: obj = index.get(pkval)
+        if obj is None:
+            for attr in ifilter(avdict.__contains__, entity._simple_keys_):
+                index = cache.indexes.get(attr)
+                if index is None: continue
+                val = avdict[attr]
+                obj = index.get(val)
+                if obj is not None: break
+        if obj is None:
+            NOT_FOUND = object()
+            for attrs in entity._composite_keys_:
+                vals = tuple(avdict.get(attr, NOT_FOUND) for attr in attrs)
+                if NOT_FOUND in vals: continue
+                index = cache.indexes.get(attrs)
+                if index is None: continue
+                obj = index.get(vals)
+                if obj is not None: break
+        if obj is None:
+            for attr, val in avdict.iteritems():
+                if val is None: continue
+                reverse = attr.reverse
+                if reverse and not reverse.is_collection:
+                    obj = reverse.__get__(val)
+                    break
+        if obj is None:
+            for attr, val in avdict.iteritems():
+                if isinstance(val, Entity) and val._pkval_ is None:
+                    reverse = attr.reverse
+                    if not reverse.is_collection:
+                        obj = reverse.__get__(val)
+                        if obj is None: return []
+                    elif isinstance(reverse, Set):
+                        filtered_objects = []
+                        for obj in reverse.__get__(val):
+                            for attr, val in avdict.iteritems():
+                                if val != attr.get(obj): break
+                            else: filtered_objects.append(obj)
+                        filtered_objects.sort(key=entity._get_raw_pkval_)
+                        return filtered_objects
+                    else: raise NotImplementedError
+        if obj is not None:
+            for attr, val in avdict.iteritems():
+                if val != attr.__get__(obj): return []
+            return [ obj ]
+        raise KeyError
+    def _find_in_db_(entity, avdict, max_rows_count=None):
+        if max_rows_count is None: max_rows_count = options.MAX_ROWS_COUNT
+        database = entity._diagram_.database
+        query_attrs = tuple((attr, value is None) for attr, value in sorted(avdict.iteritems()))
+        query_key = query_attrs, max_rows_count
+        cached_sql = entity._find_sql_cache_.get(query_key)
+        if cached_sql is None:
+            sql_ast, extractor, attr_offsets = entity._construct_sql_(query_attrs, max_rows_count)
+            sql, adapter = database._ast2sql(sql_ast)
+            cached_sql = sql, extractor, adapter, attr_offsets
+            entity._find_sql_cache_[query_key] = cached_sql
+        else: sql, extractor, adapter, attr_offsets = cached_sql
+        value_dict = extractor(avdict)
+        arguments = adapter(value_dict)
+        cursor = database._exec_sql(sql, arguments)
+        objects = entity._fetch_objects(cursor, attr_offsets, max_rows_count)
+        return objects
+    def _construct_select_clause_(entity, alias=None, distinct=False):
+        table_name = entity._table_
+        attr_offsets = {}
+        if distinct: select_list = [ DISTINCT ]
+        else: select_list = [ ALL ]
+        for attr in entity._attrs_:
+            if attr.is_collection: continue
+            if not attr.columns: continue
+            attr_offsets[attr] = len(select_list) - 1
+            for column in attr.columns:
+                select_list.append([ COLUMN, alias, column ])
+        return select_list, attr_offsets
+    def _construct_sql_(entity, query_attrs, max_rows_count=None):
+        table_name = entity._table_
+        select_list, attr_offsets = entity._construct_select_clause_()
+        from_list = [ FROM, [ None, TABLE, table_name ]]
+
+        criteria_list = [ AND ]
+        values = []
+        extractors = {}
+        for attr, attr_is_none in query_attrs:
+            if not attr.reverse:
+                if not attr_is_none:
+                    assert len(attr.converters) == 1
+                    criteria_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name, attr.converters[0] ]])
+                    extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]
+                else: criteria_list.append([IS_NULL, [COLUMN, None, attr.column]])
+            elif not attr.columns: raise NotImplementedError
+            else:
+                attr_entity = attr.py_type
+                assert attr_entity == attr.reverse.entity
+                if len(attr_entity._pk_columns_) == 1:
+                    if not attr_is_none:
+                        assert len(attr.converters) == 1
+                        criteria_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name, attr.converters[0] ]])
+                        extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]._get_raw_pkval_()[0]
+                    else: criteria_list.append([IS_NULL, [COLUMN, None, attr.column]])
+                elif not attr_is_none:
+                    for i, (column, converter) in enumerate(zip(attr_entity._pk_columns_, attr_entity._pk_converters_)):
+                        param_name = '%s-%d' % (attr.name, i+1)
+                        criteria_list.append([EQ, [COLUMN, None, column], [ PARAM, param_name, converter ]])
+                        extractors[param_name] = lambda avdict, attr=attr, i=i: avdict[attr]._get_raw_pkval_()[i]
+                else:
+                    for column in attr_entity._pk_columns_:
+                        criteria_list.append([IS_NULL, [COLUMN, None, column]])
+
+        sql_ast = [ SELECT, select_list, from_list ]
+        if len(criteria_list) > 1: sql_ast.append([ WHERE, criteria_list  ])
+        if max_rows_count <> 1:
+            sql_ast.append([ ORDER_BY ] + [ ([COLUMN, None, column], ASC) for column in entity._pk_columns_ ])
+        if max_rows_count is not None:
+            sql_ast.append([ LIMIT, [ VALUE, max_rows_count + 1 ] ])
+        def extractor(avdict):
+            param_dict = {}
+            for param, extractor in extractors.iteritems():
+                param_dict[param] = extractor(avdict)
+            return param_dict
+        return sql_ast, extractor, attr_offsets
+    def _fetch_objects(entity, cursor, attr_offsets, max_rows_count=None):
+        if max_rows_count is not None:
+            rows = cursor.fetchmany(max_rows_count + 1)
+            if len(rows) == max_rows_count + 1:
+                if max_rows_count == 1: raise MultipleObjectsFoundError(
+                    'Multiple objects was found. Use %s.all(...) to retrieve them' % entity.__name__)
+                raise TooManyObjectsFoundError(
+                    'Found more then pony.options.MAX_ROWS_COUNT=%d objects' % options.MAX_ROWS_COUNT)
+        else: rows = cursor.fetchall()
+        objects = []
+        for row in rows:
+            pkval, avdict = entity._parse_row_(row, attr_offsets)
+            obj = entity._new_(pkval, 'loaded')
+            if obj._status_ in ('deleted', 'cancelled'): continue
+            obj._db_set_(avdict)
+            objects.append(obj)
+        return objects
+    def _parse_row_(entity, row, attr_offsets):
+        avdict = {}
+        for attr, i in attr_offsets.iteritems():
+            if attr.column is not None:
+                val = row[i]
+                if not attr.reverse:  val = attr.check(val, None, entity, from_db=True)
+                else: val = attr.py_type._get_by_raw_pkval_((val,))
+            else:
+                if not attr.reverse: raise NotImplementedError
+                vals = row[i:i+len(attr.columns)]
+                val = attr.py_type._get_by_raw_pkval_(vals)
+            avdict[attr] = val
+        if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_, None)            
+        else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
+        return pkval, avdict
     def _query_from_lambda_(entity, func, globals, locals):
         names, argsname, keyargsname, defaults = inspect.getargspec(func)
         if len(names) > 1: raise TypeError
@@ -1655,176 +1812,13 @@ class Entity(object):
         if pkval is None: return '%s(new:%d)' % (obj.__class__.__name__, obj._newid_)
         elif obj._pk_is_composite_: return '%s%r' % (obj.__class__.__name__, pkval)
         else: return '%s(%r)' % (obj.__class__.__name__, pkval)
-    @classmethod
-    def _find_in_cache_(entity, pkval, avdict):
-        cache = entity._get_cache_()
-        obj = None
-        if pkval is not None:
-            index = cache.indexes.get(entity._pk_)
-            if index is not None: obj = index.get(pkval)
-        if obj is None:
-            for attr in ifilter(avdict.__contains__, entity._simple_keys_):
-                index = cache.indexes.get(attr)
-                if index is None: continue
-                val = avdict[attr]
-                obj = index.get(val)
-                if obj is not None: break
-        if obj is None:
-            NOT_FOUND = object()
-            for attrs in entity._composite_keys_:
-                vals = tuple(avdict.get(attr, NOT_FOUND) for attr in attrs)
-                if NOT_FOUND in vals: continue
-                index = cache.indexes.get(attrs)
-                if index is None: continue
-                obj = index.get(vals)
-                if obj is not None: break
-        if obj is None:
-            for attr, val in avdict.iteritems():
-                if val is None: continue
-                reverse = attr.reverse
-                if reverse and not reverse.is_collection:
-                    obj = reverse.__get__(val)
-                    break
-        if obj is None:
-            for attr, val in avdict.iteritems():
-                if isinstance(val, Entity) and val._pkval_ is None:
-                    reverse = attr.reverse
-                    if not reverse.is_collection:
-                        obj = reverse.__get__(val)
-                        if obj is None: return []
-                    elif isinstance(reverse, Set):
-                        filtered_objects = []
-                        for obj in reverse.__get__(val):
-                            for attr, val in avdict.iteritems():
-                                if val != attr.get(obj): break
-                            else: filtered_objects.append(obj)
-                        filtered_objects.sort(key=entity._get_raw_pkval_)
-                        return filtered_objects
-                    else: raise NotImplementedError
-        if obj is not None:
-            for attr, val in avdict.iteritems():
-                if val != attr.__get__(obj): return []
-            return [ obj ]
-        raise KeyError
     def _load_(obj):
         if obj._pk_is_composite_:
             avdict = dict((attr, val) for attr, val in zip(obj._pk_attrs_, obj._pkval_))
         else: avdict = { obj.__class__._pk_ : obj._pkval_ }
-        objects = obj._find_in_db_(avdict, 1)        
+        objects = obj.__class__._find_in_db_(avdict, 1)        
         if not objects: raise UnrepeatableReadError('%s disappeared' % obj)
         assert len(objects) == 1 and obj == objects[0]
-    @classmethod
-    def _construct_select_clause_(entity, alias=None, distinct=False):
-        table_name = entity._table_
-        attr_offsets = {}
-        if distinct: select_list = [ DISTINCT ]
-        else: select_list = [ ALL ]
-        for attr in entity._attrs_:
-            if attr.is_collection: continue
-            if not attr.columns: continue
-            attr_offsets[attr] = len(select_list) - 1
-            for column in attr.columns:
-                select_list.append([ COLUMN, alias, column ])
-        return select_list, attr_offsets
-    @classmethod
-    def _construct_sql_(entity, query_attrs, max_rows_count=None):
-        table_name = entity._table_
-        select_list, attr_offsets = entity._construct_select_clause_()
-        from_list = [ FROM, [ None, TABLE, table_name ]]
-
-        criteria_list = [ AND ]
-        values = []
-        extractors = {}
-        for attr, attr_is_none in query_attrs:
-            if not attr.reverse:
-                if not attr_is_none:
-                    assert len(attr.converters) == 1
-                    criteria_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name, attr.converters[0] ]])
-                    extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]
-                else: criteria_list.append([IS_NULL, [COLUMN, None, attr.column]])
-            elif not attr.columns: raise NotImplementedError
-            else:
-                attr_entity = attr.py_type
-                assert attr_entity == attr.reverse.entity
-                if len(attr_entity._pk_columns_) == 1:
-                    if not attr_is_none:
-                        assert len(attr.converters) == 1
-                        criteria_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name, attr.converters[0] ]])
-                        extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]._get_raw_pkval_()[0]
-                    else: criteria_list.append([IS_NULL, [COLUMN, None, attr.column]])
-                elif not attr_is_none:
-                    for i, (column, converter) in enumerate(zip(attr_entity._pk_columns_, attr_entity._pk_converters_)):
-                        param_name = '%s-%d' % (attr.name, i+1)
-                        criteria_list.append([EQ, [COLUMN, None, column], [ PARAM, param_name, converter ]])
-                        extractors[param_name] = lambda avdict, attr=attr, i=i: avdict[attr]._get_raw_pkval_()[i]
-                else:
-                    for column in attr_entity._pk_columns_:
-                        criteria_list.append([IS_NULL, [COLUMN, None, column]])
-
-        sql_ast = [ SELECT, select_list, from_list ]
-        if len(criteria_list) > 1: sql_ast.append([ WHERE, criteria_list  ])
-        if max_rows_count <> 1:
-            sql_ast.append([ ORDER_BY ] + [ ([COLUMN, None, column], ASC) for column in entity._pk_columns_ ])
-        if max_rows_count is not None:
-            sql_ast.append([ LIMIT, [ VALUE, max_rows_count + 1 ] ])
-        def extractor(avdict):
-            param_dict = {}
-            for param, extractor in extractors.iteritems():
-                param_dict[param] = extractor(avdict)
-            return param_dict
-        return sql_ast, extractor, attr_offsets
-    @classmethod
-    def _find_in_db_(entity, avdict, max_rows_count=None):
-        if max_rows_count is None: max_rows_count = options.MAX_ROWS_COUNT
-        database = entity._diagram_.database
-        query_attrs = tuple((attr, value is None) for attr, value in sorted(avdict.iteritems()))
-        query_key = query_attrs, max_rows_count
-        cached_sql = entity._find_sql_cache_.get(query_key)
-        if cached_sql is None:
-            sql_ast, extractor, attr_offsets = entity._construct_sql_(query_attrs, max_rows_count)
-            sql, adapter = database._ast2sql(sql_ast)
-            cached_sql = sql, extractor, adapter, attr_offsets
-            entity._find_sql_cache_[query_key] = cached_sql
-        else: sql, extractor, adapter, attr_offsets = cached_sql
-        value_dict = extractor(avdict)
-        arguments = adapter(value_dict)
-        cursor = database._exec_sql(sql, arguments)
-        objects = entity._fetch_objects(cursor, attr_offsets, max_rows_count)
-        return objects
-    @classmethod
-    def _fetch_objects(entity, cursor, attr_offsets, max_rows_count=None):
-        if max_rows_count is not None:
-            rows = cursor.fetchmany(max_rows_count + 1)
-            if len(rows) == max_rows_count + 1:
-                if max_rows_count == 1: raise MultipleObjectsFoundError(
-                    'Multiple objects was found. Use %s.all(...) to retrieve them' % entity.__name__)
-                raise TooManyObjectsFoundError(
-                    'Found more then pony.options.MAX_ROWS_COUNT=%d objects' % options.MAX_ROWS_COUNT)
-        else: rows = cursor.fetchall()
-        objects = []
-        for row in rows:
-            pkval, avdict = entity._parse_row_(row, attr_offsets)
-            obj = entity._new_(pkval, 'loaded')
-            if obj._status_ in ('deleted', 'cancelled'): continue
-            obj._db_set_(avdict)
-            objects.append(obj)
-        return objects
-    @classmethod
-    def _parse_row_(entity, row, attr_offsets):
-        avdict = {}
-        for attr, i in attr_offsets.iteritems():
-            if attr.column is not None:
-                val = row[i]
-                if not attr.reverse:  val = attr.check(val, None, entity, from_db=True)
-                else: val = attr.py_type._get_by_raw_pkval_((val,))
-            else:
-                if not attr.reverse: raise NotImplementedError
-                vals = row[i:i+len(attr.columns)]
-                val = attr.py_type._get_by_raw_pkval_(vals)
-            avdict[attr] = val
-        if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_, None)            
-        else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
-        return pkval, avdict
     def _db_set_(obj, avdict):
         assert obj._status_ not in ('created', 'deleted', 'cancelled')
         get_curr = obj._curr_.get
