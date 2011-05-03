@@ -1203,6 +1203,10 @@ next_entity_id = count(1).next
 next_new_instance_id = count(1).next
 
 class EntityMeta(type):
+    def __setattr__(entity, name, val):
+        if name.startswith('_') and name.endswith('_'):
+            type.__setattr__(entity, name, val)
+        else: raise NotImplementedError
     def __new__(meta, name, bases, cls_dict):
         if 'Entity' in globals():
             if '__slots__' in cls_dict: raise TypeError('Entity classes cannot contain __slots__ variable')
@@ -1219,8 +1223,6 @@ class EntityMeta(type):
             outer_dict['_diagram_'] = diagram
 
         entity._cls_init_(diagram)
-    def __setattr__(entity, name, val):
-        entity._cls_setattr_(name, val)
     def __iter__(entity):
         return EntityIter(entity)
     def all(entity, *args, **keyargs):
@@ -1293,11 +1295,6 @@ class EntityMeta(type):
 class Entity(object):
     __metaclass__ = EntityMeta
     __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_prev_', '_curr_', '_rbits_', '_wbits_', '__weakref__'
-    @classmethod
-    def _cls_setattr_(entity, name, val):
-        if name.startswith('_') and name.endswith('_'):
-            type.__setattr__(entity, name, val)
-        else: raise NotImplementedError
     @classmethod
     def _cls_init_(entity, diagram):
         if entity.__name__ in diagram.entities:
