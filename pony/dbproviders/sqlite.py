@@ -254,19 +254,23 @@ class DecimalConverter(Converter):
         Converter.__init__(converter, attr)
     def init(converter, keyargs):
         attr = converter.attr
-        if len(attr.args) != 2: raise TypeError(
-            'Decimal attribute %s receives exactly two positional parameters: precision and scale. Got: %s'
-            % (attr, attr.args or 'None'))
+        args = attr.args
+        if len(args) > 2: raise TypeError('Too many positional parameters for Decimal (expected: precision and scale)')
 
-        precision, scale = attr.args
+        if args: precision = args[0]
+        else: precision = keyargs.pop('precision', 12)
         if not isinstance(precision, (int, long)):
             raise TypeError("'precision' positional argument for attribute %s must be int. Got: %r" % (attr, precision))
         if precision <= 0: raise TypeError(
             "'precision' positional argument for attribute %s must be positive. Got: %r" % (attr, precision))
+
+        if len(args) == 2: scale = args[1]
+        else: scale = keyargs.pop('scale', 2)
         if not isinstance(scale, (int, long)):
             raise TypeError("'scale' positional argument for attribute %s must be int. Got: %r" % (attr, scale))
         if scale <= 0: raise TypeError(
             "'scale' positional argument for attribute %s must be positive. Got: %r" % (attr, scale))
+
         if scale > precision: raise ValueError("'scale' must be less or equal 'precision'")
         converter.precision = precision
         converter.scale = scale
@@ -277,11 +281,13 @@ class DecimalConverter(Converter):
             try: min_val = Decimal(min_val)
             except TypeError: raise TypeError(
                 "Invalid value for 'min' argument for attribute %s: %r" % (attr, min_val))
+
         max_val = keyargs.pop('max', None)
         if max_val is not None:
             try: max_val = Decimal(max_val)
             except TypeError: raise TypeError(
                 "Invalid value for 'max' argument for attribute %s: %r" % (attr, max_val))
+            
         converter.min_val = min_val
         converter.max_val = max_val
     def validate(converter, val):
@@ -289,10 +295,10 @@ class DecimalConverter(Converter):
         try: return Decimal(val)
         except InvalidOperation, exc:
             raise TypeError('Invalid value for attribute %s: %r' % (converter.attr, val))
-        if converter.min_val and val < converter.min_val:
+        if converter.min_val is not None and val < converter.min_val:
             raise ValueError('Value %r of attr %s is less than the minimum allowed value %r'
                              % (val, converter.attr, converter.min_val))
-        if converter.max_val and val > converter.max_val:
+        if converter.max_val is not None and val > converter.max_val:
             raise ValueError('Value %r of attr %s is greater than the maximum allowed value %r'
                              % (val, converter.attr, converter.max_val))
     def sql2py(converter, val):

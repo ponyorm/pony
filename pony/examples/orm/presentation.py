@@ -14,7 +14,7 @@ class Student(Entity):
     name = Required(unicode)
     dob = Required(date)
     picture = Optional(buffer)
-    scholarship = Required(Decimal, 7, 2, default=Decimal(0))
+    scholarship = Required(Decimal, default=0)
     group = Required(Group)
     courses = Set("Course")
 
