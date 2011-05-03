@@ -1454,7 +1454,42 @@ class EntityMeta(type):
         locals['.0'] = entity
 
         return Query(func.func_code, inner_expr, external_names, globals, locals)
-
+    def create(entity, *args, **keyargs):
+        pkval, avdict = entity._normalize_args_(args, keyargs, True)
+        undo_funcs = []
+        cache = entity._get_cache_()
+        indexes = {}
+        for attr in entity._simple_keys_:
+            val = avdict[attr]
+            if val in cache.indexes.setdefault(attr, {}): raise IndexError(
+                'Cannot create %s: value %s for key %s already exists' % (entity.__name__, val, attr.name))
+            indexes[attr] = val
+        for attrs in entity._composite_keys_:
+            vals = tuple(map(avdict.__getitem__, attrs))
+            if vals in cache.indexes.setdefault(attrs, {}):
+                attr_names = ', '.join(attr.name for attr in attrs)
+                raise IndexError('Cannot create %s: value %s for composite key (%s) already exists'
+                                 % (obj.__class__.__name__, vals, attr_names))
+            indexes[attrs] = vals
+        try:
+            obj = entity._new_(pkval, 'created', None, undo_funcs)
+            for attr, val in avdict.iteritems():
+                if attr.pk_offset is not None: continue
+                elif not attr.is_collection:
+                    obj._curr_[attr.name] = val
+                    if attr.reverse: attr.update_reverse(obj, None, val, undo_funcs)
+                else: attr.__set__(obj, val, undo_funcs)
+        except:
+            for undo_func in reversed(undo_funcs): undo_func()
+            raise
+        if pkval is not None:
+            cache.indexes[entity._pk_][pkval] = obj
+        for key, vals in indexes.iteritems():
+            cache.indexes[key][vals] = obj
+        cache.created.add(obj)
+        cache.to_be_checked.append(obj)
+        return obj
+    
 class Entity(object):
     __metaclass__ = EntityMeta
     __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_prev_', '_curr_', '_rbits_', '_wbits_', '__weakref__'
@@ -1726,42 +1761,6 @@ class Entity(object):
         if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_, None)            
         else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
         return pkval, avdict
-    @classmethod
-    def create(entity, *args, **keyargs):
-        pkval, avdict = entity._normalize_args_(args, keyargs, True)
-        undo_funcs = []
-        cache = entity._get_cache_()
-        indexes = {}
-        for attr in entity._simple_keys_:
-            val = avdict[attr]
-            if val in cache.indexes.setdefault(attr, {}): raise IndexError(
-                'Cannot create %s: value %s for key %s already exists' % (entity.__name__, val, attr.name))
-            indexes[attr] = val
-        for attrs in entity._composite_keys_:
-            vals = tuple(map(avdict.__getitem__, attrs))
-            if vals in cache.indexes.setdefault(attrs, {}):
-                attr_names = ', '.join(attr.name for attr in attrs)
-                raise IndexError('Cannot create %s: value %s for composite key (%s) already exists'
-                                 % (obj.__class__.__name__, vals, attr_names))
-            indexes[attrs] = vals
-        try:
-            obj = entity._new_(pkval, 'created', None, undo_funcs)
-            for attr, val in avdict.iteritems():
-                if attr.pk_offset is not None: continue
-                elif not attr.is_collection:
-                    obj._curr_[attr.name] = val
-                    if attr.reverse: attr.update_reverse(obj, None, val, undo_funcs)
-                else: attr.__set__(obj, val, undo_funcs)
-        except:
-            for undo_func in reversed(undo_funcs): undo_func()
-            raise
-        if pkval is not None:
-            cache.indexes[entity._pk_][pkval] = obj
-        for key, vals in indexes.iteritems():
-            cache.indexes[key][vals] = obj
-        cache.created.add(obj)
-        cache.to_be_checked.append(obj)
-        return obj
     def _db_set_(obj, avdict):
         assert obj._status_ not in ('created', 'deleted', 'cancelled')
         get_curr = obj._curr_.get
