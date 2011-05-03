@@ -1545,6 +1545,48 @@ class EntityMeta(type):
         obj = entity._new_(pkval, 'loaded', raw_pkval)
         assert obj._status_ not in ('deleted', 'cancelled')
         return obj
+    def _get_propagation_mixin_(entity):
+        mixin = entity._propagation_mixin_
+        if mixin is not None: return mixin
+        cls_dict = { '_entity_' : entity }
+        for attr in entity._attrs_:
+            if not attr.reverse:
+                def fget(wrapper, attr=attr):
+                    return set(attr.__get__(item) for item in wrapper)
+            elif not attr.is_collection:
+                def fget(wrapper, attr=attr):
+                    rentity = attr.py_type
+                    cls = rentity._get_propagated_set_subclass_()
+                    return cls(attr.__get__(item) for item in wrapper)
+            else:
+                def fget(wrapper, attr=attr):
+                    rentity = attr.py_type
+                    cls = rentity._get_propagated_set_subclass_()
+                    result_items = set()
+                    for item in wrapper:
+                        result_items.update(attr.__get__(item))
+                    return cls(result_items)
+            cls_dict[attr.name] = property(fget)
+        result_cls_name = entity.__name__ + 'SetMixin'
+        result_cls = type(result_cls_name, (object,), cls_dict)
+        entity._propagation_mixin_ = result_cls
+        return result_cls
+    def _get_propagated_set_subclass_(entity):
+        result_cls = entity._propagated_set_subclass_
+        if result_cls is None:
+            mixin = entity._get_propagation_mixin_()
+            cls_name = entity.__name__ + 'PropagatedSet'
+            result_cls = type(cls_name, (PropagatedSet, mixin), {})
+            entity._propagated_set_subclass_ = result_cls
+        return result_cls
+    def _get_set_wrapper_subclass_(entity):
+        result_cls = entity._set_wrapper_subclass_
+        if result_cls is None:
+            mixin = entity._get_propagation_mixin_()
+            cls_name = entity.__name__ + 'SetWrapper'
+            result_cls = type(cls_name, (SetWrapper, mixin), {})
+            entity._set_wrapper_subclass_ = result_cls
+        return result_cls
     
 class Entity(object):
     __metaclass__ = EntityMeta
@@ -2189,51 +2231,6 @@ class Entity(object):
         elif status == 'deleted': obj._save_deleted_()
         elif status == 'locked': obj._save_locked_()
         else: assert False
-    @classmethod
-    def _get_propagation_mixin_(entity):
-        mixin = entity._propagation_mixin_
-        if mixin is not None: return mixin
-        cls_dict = { '_entity_' : entity }
-        for attr in entity._attrs_:
-            if not attr.reverse:
-                def fget(wrapper, attr=attr):
-                    return set(attr.__get__(item) for item in wrapper)
-            elif not attr.is_collection:
-                def fget(wrapper, attr=attr):
-                    rentity = attr.py_type
-                    cls = rentity._get_propagated_set_subclass_()
-                    return cls(attr.__get__(item) for item in wrapper)
-            else:
-                def fget(wrapper, attr=attr):
-                    rentity = attr.py_type
-                    cls = rentity._get_propagated_set_subclass_()
-                    result_items = set()
-                    for item in wrapper:
-                        result_items.update(attr.__get__(item))
-                    return cls(result_items)
-            cls_dict[attr.name] = property(fget)
-        result_cls_name = entity.__name__ + 'SetMixin'
-        result_cls = type(result_cls_name, (object,), cls_dict)
-        entity._propagation_mixin_ = result_cls
-        return result_cls
-    @classmethod
-    def _get_propagated_set_subclass_(entity):
-        result_cls = entity._propagated_set_subclass_
-        if result_cls is None:
-            mixin = entity._get_propagation_mixin_()
-            cls_name = entity.__name__ + 'PropagatedSet'
-            result_cls = type(cls_name, (PropagatedSet, mixin), {})
-            entity._propagated_set_subclass_ = result_cls
-        return result_cls
-    @classmethod
-    def _get_set_wrapper_subclass_(entity):
-        result_cls = entity._set_wrapper_subclass_
-        if result_cls is None:
-            mixin = entity._get_propagation_mixin_()
-            cls_name = entity.__name__ + 'SetWrapper'
-            result_cls = type(cls_name, (SetWrapper, mixin), {})
-            entity._set_wrapper_subclass_ = result_cls
-        return result_cls
 
 class Diagram(object):
     def __init__(diagram):
