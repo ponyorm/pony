@@ -1222,81 +1222,6 @@ class EntityMeta(type):
             diagram = Diagram()
             outer_dict['_diagram_'] = diagram
 
-        entity._cls_init_(diagram)
-    def __iter__(entity):
-        return EntityIter(entity)
-    def all(entity, *args, **keyargs):
-        return entity._find_(None, args, keyargs)
-    def get(entity, *args, **keyargs):
-        objects = entity._find_(1, args, keyargs)
-        if not objects: return None
-        if len(objects) > 1: raise MultipleObjectsFoundError(
-            'Multiple objects was found. Use %s.all(...) to retrieve them' % entity.__name__)
-        return objects[0]
-    def __getitem__(entity, key):
-        if type(key) is tuple: args = key
-        else: args = (key,)
-        objects = entity._find_(1, args, {})
-        if not objects: raise ObjectNotFound(entity, key)
-        if len(objects) > 1: raise MultipleObjectsFoundError(
-            'Multiple objects was found. Use %s.all(...) to retrieve them' % entity.__name__)
-        return objects[0]
-    def where(entity, func):
-        if not isinstance(func, types.FunctionType): raise TypeError
-        globals = sys._getframe(1).f_globals
-        locals = sys._getframe(1).f_locals
-        return entity._query_from_lambda_(func, globals, locals)
-    def orderby(entity, *args):
-        name = (''.join(letter for letter in entity.__name__ if letter.isupper())).lower() or entity.__name__[0]
-        for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name('.0'), [])
-        inner_expr = ast.GenExprInner(ast.Name(name), [ for_expr ])
-        query = Query(None, inner_expr, set(['.0']), {}, { '.0' : entity })
-        return query.orderby(*args)
-    def _find_(entity, max_objects_count, args, keyargs):
-        if args and isinstance(args[0], types.FunctionType):
-            if len(args) > 1: raise TypeError
-            if keyargs: raise TypeError
-            func = args[0]
-            globals = sys._getframe(2).f_globals
-            locals = sys._getframe(2).f_locals
-            query = entity._query_from_lambda_(func, globals, locals)
-            return query.all()
-
-        pkval, avdict = entity._normalize_args_(args, keyargs, False)
-        for attr in avdict:
-            if attr.is_collection: raise TypeError(
-                'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
-        try:
-            objects = entity._find_in_cache_(pkval, avdict)
-        except KeyError:
-            objects = entity._find_in_db_(avdict, max_objects_count)
-        return objects
-    def _query_from_lambda_(entity, func, globals, locals):
-        names, argsname, keyargsname, defaults = inspect.getargspec(func)
-        if len(names) > 1: raise TypeError
-        if argsname or keyargsname: raise TypeError
-        if defaults: raise TypeError
-        name = names[0]
-
-        cond_expr, external_names = decompile(func)
-        external_names.discard(name)
-        external_names.add('.0')
-
-        if_expr = ast.GenExprIf(cond_expr)
-        for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name('.0'), [ if_expr ])
-        inner_expr = ast.GenExprInner(ast.Name(name), [ for_expr ])
-
-        locals = locals.copy()
-        assert '.0' not in locals
-        locals['.0'] = entity
-
-        return Query(func.func_code, inner_expr, external_names, globals, locals)
-
-class Entity(object):
-    __metaclass__ = EntityMeta
-    __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_prev_', '_curr_', '_rbits_', '_wbits_', '__weakref__'
-    @classmethod
-    def _cls_init_(entity, diagram):
         if entity.__name__ in diagram.entities:
             raise DiagramError('Entity %s already exists' % entity.__name__)
         entity._id_ = next_entity_id()
@@ -1403,7 +1328,6 @@ class Entity(object):
         entity._propagation_mixin_ = None
         entity._set_wrapper_subclass_ = None
         entity._propagated_set_subclass_ = None
-    @classmethod
     def _link_reverse_attrs_(entity):
         diagram = entity._diagram_
         unmapped_attrs = diagram.unmapped_attrs.pop(entity.__name__, set())
@@ -1461,7 +1385,79 @@ class Entity(object):
             attr2.reverse = attr
             unmapped_attrs.discard(attr2)          
         for attr in unmapped_attrs:
-            raise DiagramError('Reverse attribute for %s.%s was not found' % (attr.entity.__name__, attr.name))
+            raise DiagramError('Reverse attribute for %s.%s was not found' % (attr.entity.__name__, attr.name))        
+    def __iter__(entity):
+        return EntityIter(entity)
+    def all(entity, *args, **keyargs):
+        return entity._find_(None, args, keyargs)
+    def get(entity, *args, **keyargs):
+        objects = entity._find_(1, args, keyargs)
+        if not objects: return None
+        if len(objects) > 1: raise MultipleObjectsFoundError(
+            'Multiple objects was found. Use %s.all(...) to retrieve them' % entity.__name__)
+        return objects[0]
+    def __getitem__(entity, key):
+        if type(key) is tuple: args = key
+        else: args = (key,)
+        objects = entity._find_(1, args, {})
+        if not objects: raise ObjectNotFound(entity, key)
+        if len(objects) > 1: raise MultipleObjectsFoundError(
+            'Multiple objects was found. Use %s.all(...) to retrieve them' % entity.__name__)
+        return objects[0]
+    def where(entity, func):
+        if not isinstance(func, types.FunctionType): raise TypeError
+        globals = sys._getframe(1).f_globals
+        locals = sys._getframe(1).f_locals
+        return entity._query_from_lambda_(func, globals, locals)
+    def orderby(entity, *args):
+        name = (''.join(letter for letter in entity.__name__ if letter.isupper())).lower() or entity.__name__[0]
+        for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name('.0'), [])
+        inner_expr = ast.GenExprInner(ast.Name(name), [ for_expr ])
+        query = Query(None, inner_expr, set(['.0']), {}, { '.0' : entity })
+        return query.orderby(*args)
+    def _find_(entity, max_objects_count, args, keyargs):
+        if args and isinstance(args[0], types.FunctionType):
+            if len(args) > 1: raise TypeError
+            if keyargs: raise TypeError
+            func = args[0]
+            globals = sys._getframe(2).f_globals
+            locals = sys._getframe(2).f_locals
+            query = entity._query_from_lambda_(func, globals, locals)
+            return query.all()
+
+        pkval, avdict = entity._normalize_args_(args, keyargs, False)
+        for attr in avdict:
+            if attr.is_collection: raise TypeError(
+                'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
+        try:
+            objects = entity._find_in_cache_(pkval, avdict)
+        except KeyError:
+            objects = entity._find_in_db_(avdict, max_objects_count)
+        return objects
+    def _query_from_lambda_(entity, func, globals, locals):
+        names, argsname, keyargsname, defaults = inspect.getargspec(func)
+        if len(names) > 1: raise TypeError
+        if argsname or keyargsname: raise TypeError
+        if defaults: raise TypeError
+        name = names[0]
+
+        cond_expr, external_names = decompile(func)
+        external_names.discard(name)
+        external_names.add('.0')
+
+        if_expr = ast.GenExprIf(cond_expr)
+        for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name('.0'), [ if_expr ])
+        inner_expr = ast.GenExprInner(ast.Name(name), [ for_expr ])
+
+        locals = locals.copy()
+        assert '.0' not in locals
+        locals['.0'] = entity
+
+        return Query(func.func_code, inner_expr, external_names, globals, locals)
+
+class Entity(object):
+    __metaclass__ = EntityMeta
+    __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_prev_', '_curr_', '_rbits_', '_wbits_', '__weakref__'
     @classmethod
     def _get_cache_(entity):
         database = entity._diagram_.database
