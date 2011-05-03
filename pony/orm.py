@@ -1386,6 +1386,22 @@ class EntityMeta(type):
             unmapped_attrs.discard(attr2)          
         for attr in unmapped_attrs:
             raise DiagramError('Reverse attribute for %s.%s was not found' % (attr.entity.__name__, attr.name))        
+    def _get_pk_columns_(entity):
+        if entity._pk_columns_ is not None: return entity._pk_columns_
+        pk_columns = []
+        pk_converters = []
+        pk_paths = []
+        for attr in entity._pk_attrs_:
+            attr_columns = attr.get_columns()
+            attr_col_paths = attr.col_paths
+            pk_columns.extend(attr_columns)
+            pk_converters.extend(attr.converters)
+            pk_paths.extend(attr_col_paths)
+        entity._pk_columns_ = pk_columns
+        entity._pk_converters_ = pk_converters
+        entity._pk_nones_ = (None,) * len(pk_columns)
+        entity._pk_paths_ = pk_paths
+        return pk_columns
     def __iter__(entity):
         return EntityIter(entity)
     def _normalize_args_(entity, args, keyargs, setdefault=False):
@@ -1623,23 +1639,6 @@ class Entity(object):
     __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_prev_', '_curr_', '_rbits_', '_wbits_', '__weakref__'
     def __new__(entity, *args, **keyargs):
         raise TypeError('Use %(name)s.create(...) or %(name)s.get(...) instead of %(name)s(...)' % dict(name=entity.__name__))
-    @classmethod
-    def _get_pk_columns_(entity):
-        if entity._pk_columns_ is not None: return entity._pk_columns_
-        pk_columns = []
-        pk_converters = []
-        pk_paths = []
-        for attr in entity._pk_attrs_:
-            attr_columns = attr.get_columns()
-            attr_col_paths = attr.col_paths
-            pk_columns.extend(attr_columns)
-            pk_converters.extend(attr.converters)
-            pk_paths.extend(attr_col_paths)
-        entity._pk_columns_ = pk_columns
-        entity._pk_converters_ = pk_converters
-        entity._pk_nones_ = (None,) * len(pk_columns)
-        entity._pk_paths_ = pk_paths
-        return pk_columns
     def _get_raw_pkval_(obj):
         pkval = obj._pkval_
         if not obj._pk_is_composite_:
