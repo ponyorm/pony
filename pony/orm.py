@@ -1193,6 +1193,15 @@ class PropagatedSet(object):
 ##class Dict(Collection): pass
 ##class Relation(Collection): pass
 
+class EntityIter(object):
+    def __init__(self, entity):
+        self.entity = entity
+    def next(self):
+        raise StopIteration
+    
+next_entity_id = count(1).next
+next_new_instance_id = count(1).next
+
 class EntityMeta(type):
     def __new__(meta, name, bases, dict):
         if 'Entity' in globals():
@@ -1280,15 +1289,6 @@ class EntityMeta(type):
         locals['.0'] = entity
 
         return Query(func.func_code, inner_expr, external_names, globals, locals)
-
-class EntityIter(object):
-    def __init__(self, entity):
-        self.entity = entity
-    def next(self):
-        raise StopIteration
-    
-next_entity_id = count(1).next
-next_new_instance_id = count(1).next
 
 class Entity(object):
     __metaclass__ = EntityMeta
