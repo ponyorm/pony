@@ -1489,6 +1489,25 @@ class EntityMeta(type):
         cache.created.add(obj)
         cache.to_be_checked.append(obj)
         return obj
+    def _get_by_raw_pkval_(entity, raw_pkval):
+        i = 0
+        pkval = []
+        for attr in entity._pk_attrs_:
+            if attr.column is not None:
+                val = raw_pkval[i]
+                i += 1
+                if not attr.reverse: val = attr.check(val, None, entity, from_db=True)
+                else: val = attr.py_type._get_by_raw_pkval_((val,))
+            else:
+                if not attr.reverse: raise NotImplementedError
+                vals = raw_pkval[i:i+len(attr.columns)]
+                val = attr.py_type._get_by_raw_pkval_(vals)
+            pkval.append(val)
+        if not entity._pk_is_composite_: pkval = pkval[0]
+        else: pkval = tuple(pkval)
+        obj = entity._new_(pkval, 'loaded', raw_pkval)
+        assert obj._status_ not in ('deleted', 'cancelled')
+        return obj
     
 class Entity(object):
     __metaclass__ = EntityMeta
@@ -1570,26 +1589,6 @@ class Entity(object):
                 obj._curr_[attr.name] = val
                 if attr.reverse: attr.update_reverse(obj, NOT_LOADED, val, undo_funcs)
         else: assert False
-        return obj
-    @classmethod
-    def _get_by_raw_pkval_(entity, raw_pkval):
-        i = 0
-        pkval = []
-        for attr in entity._pk_attrs_:
-            if attr.column is not None:
-                val = raw_pkval[i]
-                i += 1
-                if not attr.reverse: val = attr.check(val, None, entity, from_db=True)
-                else: val = attr.py_type._get_by_raw_pkval_((val,))
-            else:
-                if not attr.reverse: raise NotImplementedError
-                vals = raw_pkval[i:i+len(attr.columns)]
-                val = attr.py_type._get_by_raw_pkval_(vals)
-            pkval.append(val)
-        if not entity._pk_is_composite_: pkval = pkval[0]
-        else: pkval = tuple(pkval)
-        obj = entity._new_(pkval, 'loaded', raw_pkval)
-        assert obj._status_ not in ('deleted', 'cancelled')
         return obj
     @classmethod
     def _find_in_cache_(entity, pkval, avdict):
