@@ -1480,6 +1480,10 @@ class EntityMeta(type):
         locals['.0'] = entity
 
         return Query(func.func_code, inner_expr, external_names, globals, locals)
+    def _get_cache_(entity):
+        database = entity._diagram_.database
+        if database is None: raise TransactionError
+        return database._get_cache()
     def _new_(entity, pkval, status, raw_pkval=None, undo_funcs=None):
         cache = entity._get_cache_()
         index = cache.indexes.setdefault(entity._pk_, {})
@@ -1617,11 +1621,6 @@ class EntityMeta(type):
 class Entity(object):
     __metaclass__ = EntityMeta
     __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_prev_', '_curr_', '_rbits_', '_wbits_', '__weakref__'
-    @classmethod
-    def _get_cache_(entity):
-        database = entity._diagram_.database
-        if database is None: raise TransactionError
-        return database._get_cache()
     def __new__(entity, *args, **keyargs):
         raise TypeError('Use %(name)s.create(...) or %(name)s.get(...) instead of %(name)s(...)' % dict(name=entity.__name__))
     @classmethod
