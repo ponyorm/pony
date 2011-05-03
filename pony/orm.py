@@ -1388,6 +1388,32 @@ class EntityMeta(type):
             raise DiagramError('Reverse attribute for %s.%s was not found' % (attr.entity.__name__, attr.name))        
     def __iter__(entity):
         return EntityIter(entity)
+    def _normalize_args_(entity, args, keyargs, setdefault=False):
+        if not args: pass
+        elif len(args) != len(entity._pk_attrs_): raise TypeError('Invalid count of attrs in primary key')
+        else:
+            for attr, val in izip(entity._pk_attrs_, args):
+                if keyargs.setdefault(attr.name, val) is not val:
+                    raise TypeError('Ambiguos value of attribute %s' % attr.name)
+        avdict = {}
+        if setdefault:
+            for name in ifilterfalse(entity._adict_.__contains__, keyargs):
+                raise TypeError('Unknown attribute %r' % name)
+            for attr in entity._attrs_:
+                val = keyargs.get(attr.name, DEFAULT)
+                avdict[attr] = attr.check(val, None, entity, from_db=False)
+        else:
+            get = entity._adict_.get 
+            for name, val in keyargs.items():
+                attr = get(name)
+                if attr is None: raise TypeError('Unknown attribute %r' % name)
+                avdict[attr] = attr.check(val, None, entity, from_db=False)
+        if entity._pk_is_composite_:
+            pkval = map(avdict.get, entity._pk_attrs_)
+            if None in pkval: pkval = None
+            else: pkval = tuple(pkval)
+        else: pkval = avdict.get(entity._pk_)
+        return pkval, avdict        
     def all(entity, *args, **keyargs):
         return entity._find_(None, args, keyargs)
     def get(entity, *args, **keyargs):
@@ -2008,33 +2034,6 @@ class Entity(object):
             for undo_func in undo_funcs: undo_func()
             raise
         obj._curr_.update((attr.name, val) for attr, val in avdict.iteritems())
-    @classmethod
-    def _normalize_args_(entity, args, keyargs, setdefault=False):
-        if not args: pass
-        elif len(args) != len(entity._pk_attrs_): raise TypeError('Invalid count of attrs in primary key')
-        else:
-            for attr, val in izip(entity._pk_attrs_, args):
-                if keyargs.setdefault(attr.name, val) is not val:
-                    raise TypeError('Ambiguos value of attribute %s' % attr.name)
-        avdict = {}
-        if setdefault:
-            for name in ifilterfalse(entity._adict_.__contains__, keyargs):
-                raise TypeError('Unknown attribute %r' % name)
-            for attr in entity._attrs_:
-                val = keyargs.get(attr.name, DEFAULT)
-                avdict[attr] = attr.check(val, None, entity, from_db=False)
-        else:
-            get = entity._adict_.get 
-            for name, val in keyargs.items():
-                attr = get(name)
-                if attr is None: raise TypeError('Unknown attribute %r' % name)
-                avdict[attr] = attr.check(val, None, entity, from_db=False)
-        if entity._pk_is_composite_:
-            pkval = map(avdict.get, entity._pk_attrs_)
-            if None in pkval: pkval = None
-            else: pkval = tuple(pkval)
-        else: pkval = avdict.get(entity._pk_)
-        return pkval, avdict        
     def _keyargs_to_avdicts_(obj, keyargs):
         avdict, collection_avdict = {}, {}
         get = obj._adict_.get
