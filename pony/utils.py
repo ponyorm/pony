@@ -356,3 +356,14 @@ def reraise(exc_class, exceptions):
         msg = '%s: %s' % (first[0].__name__, first[1])
         raise exc_class, exc_class(msg, exceptions), first[2]
     finally: del first
+
+def avg(iter):
+    count = 0
+    sum = 0.0
+    for elem in iter:
+        if elem is None: continue
+        sum += elem
+        count += 1
+    if not count: return None
+    return sum / count
+    
