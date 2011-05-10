@@ -3265,12 +3265,20 @@ def make_string_binop(sqlop):
     string_binop.__name__ = sqlop
     return string_binop
 
+def make_string_func(sqlop):
+    def func(monad):
+        sql = monad.getsql()
+        assert len(sql) == 1
+        return StringExprMonad(monad.translator, monad.type, [ sqlop, sql[0] ])
+    func.__name__ = sqlop
+    return func
+
 class StringMixin(object):
     def mixin_init(monad):
-        assert issubclass(monad.type, basestring)
+        assert issubclass(monad.type, basestring), monad.type
         monad.type = unicode
     def getattr(monad, attrname):
-        return StringMethodMonad(monad.translator, monad, attrname)
+        return MethodMonad(monad.translator, monad, attrname)
     __add__ = make_string_binop(CONCAT)
     def __getitem__(monad, index):
         if isinstance(index, slice):
@@ -3340,33 +3348,11 @@ class StringMixin(object):
             item_sql = [ CONCAT, [ VALUE, '%' ], item.getsql()[0], [ VALUE, '%' ] ]
         sql = [ LIKE, monad.getsql()[0], item_sql ]
         return BoolExprMonad(monad.translator, sql)
-        
-class MethodMonad(Monad):
-    def __init__(monad, translator, parent, attrname):
-        Monad.__init__(monad, translator, 'METHOD')
-        monad.parent = parent
-        monad.attrname = attrname
-        try: method = getattr(monad, 'call_' + monad.attrname)
-        except AttributeError:
-            raise AttributeError('%r object has no attribute %r' % (parent.type.__name__, attrname))
-    def __call__(monad, *args, **keyargs):
-        method = getattr(monad, 'call_' + monad.attrname)
-        return method(*args, **keyargs)
-
-def make_string_func(sqlop):
-    def func(monad):
-        sql = monad.parent.getsql()
-        assert len(sql) == 1
-        return StringExprMonad(monad.translator, monad.parent.type, [ sqlop, sql[0] ])
-    func.__name__ = sqlop
-    return func
-
-class StringMethodMonad(MethodMonad):
     call_upper = make_string_func(UPPER)
     call_lower = make_string_func(LOWER)
     def call_startswith(monad, arg):
-        parent_sql = monad.parent.getsql()[0]
-        if arg.type is not monad.parent.type:
+        parent_sql = monad.getsql()[0]
+        if arg.type is not monad.type:
             raise TypeError("Argument of 'startswith' method must be a string")
         if isinstance(arg, StringConstMonad):
             assert isinstance(arg.value, basestring)
@@ -3377,8 +3363,8 @@ class StringMethodMonad(MethodMonad):
         sql = [ LIKE, parent_sql, arg_sql ]
         return BoolExprMonad(monad.translator, sql)
     def call_endswith(monad, arg):
-        parent_sql = monad.parent.getsql()[0]
-        if arg.type is not monad.parent.type:
+        parent_sql = monad.getsql()[0]
+        if arg.type is not monad.type:
             raise TypeError("Argument of 'endswith' method must be a string")
         if isinstance(arg, StringConstMonad):
             assert isinstance(arg.value, basestring)
@@ -3389,14 +3375,14 @@ class StringMethodMonad(MethodMonad):
         sql = [ LIKE, parent_sql, arg_sql ]
         return BoolExprMonad(monad.translator, sql)
     def strip(monad, chars, strip_type):
-        parent_sql = monad.parent.getsql()[0]
-        if chars is not None and chars.type is not monad.parent.type:
-            raise TypeError("'chars' argument must be a %s" % monad.parent.type.__name__)
+        parent_sql = monad.getsql()[0]
+        if chars is not None and chars.type is not monad.type:
+            raise TypeError("'chars' argument must be a %s" % monad.type.__name__)
         if chars is None:
-            return StringExprMonad(monad.translator, monad.parent.type, [ strip_type, parent_sql ])
+            return StringExprMonad(monad.translator, monad.type, [ strip_type, parent_sql ])
         else:
             chars_sql = chars.getsql()[0]
-            return StringExprMonad(monad.translator, monad.parent.type, [ strip_type, parent_sql, chars_sql ])
+            return StringExprMonad(monad.translator, monad.type, [ strip_type, parent_sql, chars_sql ])
     def call_strip(monad, chars=None):
         return monad.strip(chars, TRIM)
     def call_lstrip(monad, chars=None):
@@ -3404,6 +3390,17 @@ class StringMethodMonad(MethodMonad):
     def call_rstrip(monad, chars=None):
         return monad.strip(chars, RTRIM)
     
+class MethodMonad(Monad):
+    def __init__(monad, translator, parent, attrname):
+        Monad.__init__(monad, translator, 'METHOD')
+        monad.parent = parent
+        monad.attrname = attrname
+        if not hasattr(monad.parent, 'call_' + monad.attrname):
+            raise AttributeError('%r object has no attribute %r' % (parent.type.__name__, attrname))
+    def __call__(monad, *args, **keyargs):
+        method = getattr(monad.parent, 'call_' + monad.attrname)
+        return method(*args, **keyargs)
+
 class ObjectMixin(object):
     def mixin_init(monad):
         assert isinstance(monad.type, EntityMeta)
