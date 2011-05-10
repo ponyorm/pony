@@ -3136,7 +3136,13 @@ class Monad(object):
     def negate(monad):
         return NotMonad(monad)
 
-    def getattr(monad, attrname): raise TypeError
+    def getattr(monad, attrname):
+        try: property_method = getattr(monad, 'attr_' + attrname)
+        except AttributeError:
+            if not hasattr(monad, 'call_' + attrname):
+                raise AttributeError('%r object has no attribute %r' % (monad.type.__name__, attrname))
+            return MethodMonad(monad.translator, monad, attrname)
+        return property_method()
     def __call__(monad, *args, **keyargs): raise TypeError
     def len(monad): raise TypeError
     def sum(monad): raise TypeError
@@ -3152,6 +3158,15 @@ class Monad(object):
 
     def __neg__(monad): raise TypeError
     def abs(monad): raise TypeError
+
+class MethodMonad(Monad):
+    def __init__(monad, translator, parent, attrname):
+        Monad.__init__(monad, translator, 'METHOD')
+        monad.parent = parent
+        monad.attrname = attrname
+    def __call__(monad, *args, **keyargs):
+        method = getattr(monad.parent, 'call_' + monad.attrname)
+        return method(*args, **keyargs)
 
 class EntityMonad(Monad):
     def __call__(monad, *args, **keyargs):
@@ -3277,8 +3292,6 @@ class StringMixin(object):
     def mixin_init(monad):
         assert issubclass(monad.type, basestring), monad.type
         monad.type = unicode
-    def getattr(monad, attrname):
-        return MethodMonad(monad.translator, monad, attrname)
     __add__ = make_string_binop(CONCAT)
     def __getitem__(monad, index):
         if isinstance(index, slice):
@@ -3390,17 +3403,6 @@ class StringMixin(object):
     def call_rstrip(monad, chars=None):
         return monad.strip(chars, RTRIM)
     
-class MethodMonad(Monad):
-    def __init__(monad, translator, parent, attrname):
-        Monad.__init__(monad, translator, 'METHOD')
-        monad.parent = parent
-        monad.attrname = attrname
-        if not hasattr(monad.parent, 'call_' + monad.attrname):
-            raise AttributeError('%r object has no attribute %r' % (parent.type.__name__, attrname))
-    def __call__(monad, *args, **keyargs):
-        method = getattr(monad.parent, 'call_' + monad.attrname)
-        return method(*args, **keyargs)
-
 class ObjectMixin(object):
     def mixin_init(monad):
         assert isinstance(monad.type, EntityMeta)
