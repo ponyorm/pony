@@ -12,7 +12,6 @@ from test_mapping import *
 from test_sqlast import *
 from test_inheritance import *
 from test_sqltranslator import *
-from test_crud import *
 from test_formatstyles import *
 from test_attr_set_monad import *
 from test_method_monad import *
