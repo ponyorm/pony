@@ -20,7 +20,7 @@ from pony.clobtypes import LongStr, LongUnicode
 from pony.sqlsymbols import *
 from pony.utils import (
     localbase, simple_decorator, decorator_with_params,
-    import_module, parse_expr, is_ident, reraise
+    import_module, parse_expr, is_ident, reraise, avg
     )
 
 # for SQL translator:
@@ -48,7 +48,7 @@ __all__ = '''
 
     LongStr LongUnicode
 
-    TranslationError select exists   
+    TranslationError select exists avg
     '''.split()
 
 debug = True
@@ -2614,6 +2614,7 @@ def select(gen):
     return Query(code, tree.code, external_names, globals, locals)
 
 select.sum = lambda gen : select(gen).sum()
+select.avg = lambda gen : select(gen).avg()
 select.min = lambda gen : select(gen).min()
 select.max = lambda gen : select(gen).max()
 select.count = lambda gen : select(gen).count()
@@ -2775,8 +2776,8 @@ class Query(object):
         if attrname is not None:
             attr = translator.entity._adict_[attrname]
             attr_type = normalize_type(attr.py_type)
-            if funcsymbol is SUM and attr_type not in numeric_types:
-                raise TranslationError('sum is valid for numeric attributes only')
+            if funcsymbol in (SUM, AVG) and attr_type not in numeric_types:
+                raise TranslationError('%s is valid for numeric attributes only' % funcsymbol.lower())
         elif funcsymbol is not COUNT: raise TranslationError(
             'Attribute should be specified for "%s" aggregate function' % funcsymbol.lower())
         query._aggr_func = funcsymbol
@@ -2799,6 +2800,8 @@ class Query(object):
         return converter.sql2py(result)
     def sum(query):
         return query._aggregate(SUM)
+    def avg(query):
+        return query._aggregate(AVG)
     def min(query):
         return query._aggregate(MIN)
     def max(query):
@@ -3793,6 +3796,10 @@ def FuncAbsMonad(monad, x):
 def FuncSumMonad(monad, x):
     return x.sum()
 
+@func_monad(avg, type=float)
+def FuncAvgMonad(monad, x):
+    return x.avg()
+
 @func_monad(min, type=None)
 def FuncMinMonad(monad, *args):
     if not args: raise TypeError
@@ -3865,13 +3872,19 @@ class AttrSetMonad(SetMixin, Monad):
         return NumericExprMonad(monad.translator, int, sql_ast)
     def sum(monad):
         item_type = monad.type[0]
-        if item_type not in numeric_types: raise TypeError
+        if item_type not in numeric_types: raise TypeError, item_type
         alias, expr, from_ast, conditions = monad._subselect()
         sql_ast = [ SELECT, [ AGGREGATES, [COALESCE, [ SUM, expr ], [ VALUE, 0 ]]], from_ast, [ WHERE, sqland(conditions) ] ]
         return NumericExprMonad(monad.translator, item_type, sql_ast)
+    def avg(monad):
+        item_type = monad.type[0]
+        if item_type not in numeric_types: raise TypeError, item_type
+        alias, expr, from_ast, conditions = monad._subselect()
+        sql_ast = [ SELECT, [ AGGREGATES, [ AVG, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
+        return NumericExprMonad(monad.translator, float, sql_ast)
     def min(monad):
         item_type = monad.type[0]
-        if item_type not in comparable_types: raise TypeError
+        if item_type not in comparable_types: raise TypeError, item_type
         alias, expr, from_ast, conditions = monad._subselect()
         sql_ast = [ SELECT, [ AGGREGATES, [ MIN, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
         return ExprMonad.new(monad.translator, item_type, sql_ast)
@@ -3985,12 +3998,17 @@ class QuerySetMonad(SetMixin, Monad):
         return monad._subselect(int, select_ast)
     def sum(monad):
         attr, attr_type = monad._get_attr_info()
-        if attr_type not in numeric_types: raise TypeError
+        if attr_type not in numeric_types: raise TypeError, item_type
         select_ast = [ AGGREGATES, [ COALESCE, [ SUM, [ COLUMN, monad.subtranslator.alias, attr.column ] ], [ VALUE, 0 ] ] ]
         return monad._subselect(attr_type, select_ast)
+    def avg(monad):
+        attr, attr_type = monad._get_attr_info()
+        if attr_type not in numeric_types: raise TypeError, item_type
+        select_ast = [ AGGREGATES, [ AVG, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
+        return monad._subselect(float, select_ast)
     def min(monad):
         attr, attr_type = monad._get_attr_info()
-        if attr_type not in comparable_types: raise TypeError
+        if attr_type not in comparable_types: raise TypeError, item_type
         select_ast = [ AGGREGATES, [ MIN, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
         return monad._subselect(attr_type, select_ast)
     def max(monad):
