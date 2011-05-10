@@ -360,3 +360,5 @@ class SQLBuilder(object):
     def RTRIM(builder, expr, chars=None):
         if chars is None: return 'rtrim(', builder(expr), ')'
         return 'rtrim(', builder(expr), ', ', builder(chars), ')'
+    def TO_INT(builder, expr):
+        return 'CAST(', builder(expr), ' AS integer)'

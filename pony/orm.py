@@ -3265,8 +3265,11 @@ class NumericMixin(object):
 class DateMixin(object):
     def mixin_init(monad):
         assert monad.type is date
-
-class DatetimeMixin(object):
+    def attr_year(monad):
+        sql = [ TO_INT, [ SUBSTR, monad.getsql()[0], [ VALUE, 1 ], [ VALUE, 4 ] ] ]
+        return NumericExprMonad(monad.translator, int, sql)
+    
+class DatetimeMixin(DateMixin):
     def mixin_init(monad):
         assert monad.type is datetime
 
