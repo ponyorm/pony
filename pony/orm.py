@@ -3998,17 +3998,17 @@ class QuerySetMonad(SetMixin, Monad):
         return monad._subselect(int, select_ast)
     def sum(monad):
         attr, attr_type = monad._get_attr_info()
-        if attr_type not in numeric_types: raise TypeError, item_type
+        if attr_type not in numeric_types: raise TypeError, attr_type
         select_ast = [ AGGREGATES, [ COALESCE, [ SUM, [ COLUMN, monad.subtranslator.alias, attr.column ] ], [ VALUE, 0 ] ] ]
         return monad._subselect(attr_type, select_ast)
     def avg(monad):
         attr, attr_type = monad._get_attr_info()
-        if attr_type not in numeric_types: raise TypeError, item_type
+        if attr_type not in numeric_types: raise TypeError, attr_type
         select_ast = [ AGGREGATES, [ AVG, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
         return monad._subselect(float, select_ast)
     def min(monad):
         attr, attr_type = monad._get_attr_info()
-        if attr_type not in comparable_types: raise TypeError, item_type
+        if attr_type not in comparable_types: raise TypeError, attr_type
         select_ast = [ AGGREGATES, [ MIN, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
         return monad._subselect(attr_type, select_ast)
     def max(monad):
