@@ -1,4 +1,4 @@
-import __builtin__, types, inspect
+import __builtin__, types
 from itertools import izip
 from types import NoneType
 from compiler import ast
@@ -10,45 +10,6 @@ from pony.sqlbuilding import SQLBuilder
 from pony.sqlsymbols import *
 from pony.utils import avg
 from pony.orm import select, exists, TranslationError, EntityMeta, Set
-
-numeric_types = set([ int, float, Decimal ])
-string_types = set([ str, unicode ])
-comparable_types = set([ int, float, Decimal, str, unicode, date, datetime, bool ])
-primitive_types = set([ int, float, Decimal, str, unicode, date, datetime, bool, buffer ])
-
-type_normalization_dict = { long : int, bool : int, LongStr : str, LongUnicode : unicode }
-
-def normalize_type(type):
-    if type is NoneType: return type
-    if issubclass(type, basestring):  # Mainly for Html -> unicode & StrHtml -> str conversion
-        if type in (str, unicode): return type
-        if issubclass(type, str): return str
-        if issubclass(type, unicode): return unicode
-        assert False
-    type = type_normalization_dict.get(type, type)
-    if type not in primitive_types and not isinstance(type, EntityMeta): raise TypeError, type
-    return type
-
-some_comparables = set([ (int, float), (int, Decimal), (date, datetime) ])
-some_comparables.update([ (t2, t1) for (t1, t2) in some_comparables ])
-
-def are_comparable_types(op, type1, type2):
-    # op: '<' | '>' | '=' | '>=' | '<=' | '<>' | '!=' | '=='
-    #         | 'in' | 'not' 'in' | 'is' | 'is' 'not'
-    if op in ('is', 'is not'): return type1 is not NoneType and type2 is NoneType
-    if op in ('<', '<=', '>', '>='):
-        return (type1 is type2 and type1 in comparable_types) \
-            or (type1, type2) in some_comparables
-    if op in ('==', '<>', '!='):
-        if type1 is NoneType and type2 is NoneType: return False
-        if type1 is NoneType or type2 is NoneType: return True
-        elif type1 in primitive_types:
-            return type1 is type2 or (type1, type2) in some_comparables
-        elif isinstance(type1, EntityMeta):
-            if not isinstance(type2, EntityMeta): return False
-            return type1._root_ is type2._root_
-        else: return False
-    else: assert False
 
 def sqland(items):
     if not items: return []
@@ -104,9 +65,50 @@ class ASTTranslator(object):
     def default_post(translator, node):
         pass
 
+
+type_normalization_dict = { long : int, bool : int, LongStr : str, LongUnicode : unicode }
+
 class SQLTranslator(ASTTranslator):
     MAX_ALIAS_LENGTH = 30
-    normalize_type = staticmethod(normalize_type)
+    numeric_types = set([ int, float, Decimal ])
+    string_types = set([ str, unicode ])
+    comparable_types = set([ int, float, Decimal, str, unicode, date, datetime, bool ])
+    primitive_types = set([ int, float, Decimal, str, unicode, date, datetime, bool, buffer ])
+
+    @classmethod
+    def normalize_type(translator, type):
+        if type is NoneType: return type
+        if issubclass(type, basestring):  # Mainly for Html -> unicode & StrHtml -> str conversion
+            if type in (str, unicode): return type
+            if issubclass(type, str): return str
+            if issubclass(type, unicode): return unicode
+            assert False
+        type = type_normalization_dict.get(type, type)
+        if type not in translator.primitive_types and not isinstance(type, EntityMeta): raise TypeError, type
+        return type
+
+    some_comparables = set([ (int, float), (int, Decimal), (date, datetime) ])
+    some_comparables.update([ (t2, t1) for (t1, t2) in some_comparables ])
+
+    @classmethod
+    def are_comparable_types(translator, op, type1, type2):
+        # op: '<' | '>' | '=' | '>=' | '<=' | '<>' | '!=' | '=='
+        #         | 'in' | 'not' 'in' | 'is' | 'is' 'not'
+        if op in ('is', 'is not'): return type1 is not NoneType and type2 is NoneType
+        if op in ('<', '<=', '>', '>='):
+            return (type1 is type2 and type1 in translator.comparable_types) \
+                or (type1, type2) in translator.some_comparables
+        if op in ('==', '<>', '!='):
+            if type1 is NoneType and type2 is NoneType: return False
+            if type1 is NoneType or type2 is NoneType: return True
+            elif type1 in translator.primitive_types:
+                return type1 is type2 or (type1, type2) in translator.some_comparables
+            elif isinstance(type1, EntityMeta):
+                if not isinstance(type2, EntityMeta): return False
+                return type1._root_ is type2._root_
+            else: return False
+        else: assert False
+
     def __init__(translator, tree, entities, vartypes, functions, outer_iterables={}):
         assert isinstance(tree, ast.GenExprInner), tree
         ASTTranslator.__init__(translator, tree)
@@ -417,8 +419,9 @@ class ListMonad(Monad):
         Monad.__init__(monad, translator, list)
         monad.items = items
     def contains(monad, x, not_in=False):
+        translator = monad.translator
         for item in monad.items:
-            if not are_comparable_types('==', x.type, item.type): raise TypeError
+            if not translator.are_comparable_types('==', x.type, item.type): raise TypeError
         left_sql = x.getsql()
         if len(left_sql) == 1:
             if not_in: sql = [ NOT_IN, left_sql[0], [ item.getsql()[0] for item in monad.items ] ]
@@ -427,7 +430,6 @@ class ListMonad(Monad):
             sql = sqland([ sqlor([ [ NE, a, b ]  for a, b in zip(left_sql, item.getsql()) ]) for item in monad.items ])
         else:
             sql = sqlor([ sqland([ [ EQ, a, b ]  for a, b in zip(left_sql, item.getsql()) ]) for item in monad.items ])
-        translator = monad.translator
         return translator.BoolExprMonad(translator, sql)
 
 numeric_conversions = {
@@ -453,7 +455,7 @@ def make_numeric_binop(sqlop):
 
 class NumericMixin(object):
     def mixin_init(monad):
-        assert monad.type in numeric_types
+        assert monad.type in monad.translator.numeric_types
     __add__ = make_numeric_binop(ADD)
     __sub__ = make_numeric_binop(SUB)
     __mul__ = make_numeric_binop(MUL)
@@ -658,9 +660,9 @@ class AttrMonad(Monad):
     @staticmethod
     def new(parent, attr, *args, **keyargs):
         translator = parent.translator
-        type = normalize_type(attr.py_type)
-        if type in numeric_types: cls = translator.NumericAttrMonad
-        elif type in string_types: cls = translator.StringAttrMonad
+        type = translator.normalize_type(attr.py_type)
+        if type in translator.numeric_types: cls = translator.NumericAttrMonad
+        elif type in translator.string_types: cls = translator.StringAttrMonad
         elif type is date: cls = translator.DateAttrMonad
         elif type is datetime: cls = translator.DatetimeAttrMonad
         elif type is buffer: cls = translator.BufferAttrMonad
@@ -669,7 +671,8 @@ class AttrMonad(Monad):
         return cls(parent, attr, *args, **keyargs)
     def __init__(monad, parent, attr):
         assert monad.__class__ is not AttrMonad
-        attr_type = normalize_type(attr.py_type)
+        translator = parent.translator
+        attr_type = translator.normalize_type(attr.py_type)
         Monad.__init__(monad, parent.translator, attr_type)
         monad.parent = parent
         monad.attr = attr
@@ -698,9 +701,10 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
 
 class ObjectFlatMonad(ObjectMixin, Monad):
     def __init__(monad, parent, attr):
-        assert parent.translator.inside_expr
-        type = normalize_type(attr.py_type)
-        Monad.__init__(monad, parent.translator, type)
+        translator = parent.translator
+        assert translator.inside_expr
+        type = translator.normalize_type(attr.py_type)
+        Monad.__init__(monad, translator, type)
         monad.parent = parent
         monad.attr = attr
         monad.alias = '-'.join((parent.alias, attr.name))
@@ -739,9 +743,9 @@ class BufferAttrMonad(AttrMonad): pass
 class ParamMonad(Monad):
     def __new__(cls, translator, type, name, parent=None):
         assert cls is ParamMonad
-        type = normalize_type(type)
-        if type in numeric_types: cls = translator.NumericParamMonad
-        elif type in string_types: cls = translator.StringParamMonad
+        type = translator.normalize_type(type)
+        if type in translator.numeric_types: cls = translator.NumericParamMonad
+        elif type in translator.string_types: cls = translator.StringParamMonad
         elif type is date: cls = translator.DateParamMonad
         elif type is datetime: cls = translator.DatetimeParamMonad
         elif type is buffer: cls = translator.BufferParamMonad
@@ -749,7 +753,7 @@ class ParamMonad(Monad):
         else: raise TypeError, type
         return object.__new__(cls)
     def __init__(monad, translator, type, name, parent=None):
-        type = normalize_type(type)
+        type = translator.normalize_type(type)
         Monad.__init__(monad, translator, type)
         monad.name = name
         monad.parent = parent
@@ -801,8 +805,8 @@ class BufferParamMonad(ParamMonad): pass
 class ExprMonad(Monad):
     @staticmethod
     def new(translator, type, sql):
-        if type in numeric_types: cls = translator.NumericExprMonad
-        elif type in string_types: cls = translator.StringExprMonad
+        if type in translator.numeric_types: cls = translator.NumericExprMonad
+        elif type in translator.string_types: cls = translator.StringExprMonad
         elif type is date: cls = translator.DateExprMonad
         elif type is datetime: cls = translator.DatetimeExprMonad
         else: raise NotImplementedError, type
@@ -821,16 +825,16 @@ class DatetimeExprMonad(DatetimeMixin, ExprMonad): pass
 class ConstMonad(Monad):
     def __new__(cls, translator, value):
         assert cls is translator.ConstMonad
-        value_type = normalize_type(type(value))
-        if value_type in numeric_types: cls = translator.NumericConstMonad
-        elif value_type in string_types: cls = translator.StringConstMonad
+        value_type = translator.normalize_type(type(value))
+        if value_type in translator.numeric_types: cls = translator.NumericConstMonad
+        elif value_type in translator.string_types: cls = translator.StringConstMonad
         elif value_type is date: cls = translator.DateConstMonad
         elif value_type is datetime: cls = translator.DatetimeConstMonad
         elif value_type is NoneType: cls = translator.NoneMonad
         else: raise TypeError, value_type
         return object.__new__(cls)
     def __init__(monad, translator, value):
-        value_type = normalize_type(type(value))
+        value_type = translator.normalize_type(type(value))
         Monad.__init__(monad, translator, value_type)
         monad.value = value
     def getsql(monad):
@@ -901,7 +905,8 @@ cmp_negate.update((b, a) for a, b in cmp_negate.items())
 
 class CmpMonad(BoolMonad):
     def __init__(monad, op, left, right):
-        if not are_comparable_types(op, left.type, right.type): raise TypeError(
+        translator = left.translator
+        if not translator.are_comparable_types(op, left.type, right.type): raise TypeError(
             'Incomparable types: %r and %r' % (left.type, right.type))
         if op == '<>': op = '!='
         if left.type is NoneType:
@@ -912,7 +917,7 @@ class CmpMonad(BoolMonad):
             elif op == '!=': op = 'is not'
         elif op == 'is': op = '=='
         elif op == 'is not': op = '!='
-        BoolMonad.__init__(monad, left.translator)
+        BoolMonad.__init__(monad, translator)
         monad.op = op
         monad.left = left
         monad.right = right
@@ -1041,12 +1046,12 @@ def FuncMaxMonad(monad, *args):
 
 def minmax(monad, sqlop, *args):
     assert len(args) > 1
+    translator = monad.translator
     sql = [ sqlop ] + [ arg.getsql()[0] for arg in args ]
     arg_types = set(arg.type for arg in args)
     if len(arg_types) > 1: raise TypeError
     result_type = arg_types.pop()
-    if result_type not in comparable_types: raise TypeError
-    translator = monad.translator
+    if result_type not in translator.comparable_types: raise TypeError
     return translator.ExprMonad(translator, result_type, sql)
 
 @func_monad(select, type=None)
@@ -1066,15 +1071,17 @@ class SetMixin(object):
 class AttrSetMonad(SetMixin, Monad):
     def __init__(monad, root, path):
         if root.translator.inside_expr: raise NotImplementedError
-        item_type = normalize_type(path[-1].py_type)
-        Monad.__init__(monad, root.translator, (item_type,))
+        translator = root.translator
+        item_type = translator.normalize_type(path[-1].py_type)
+        Monad.__init__(monad, translator, (item_type,))
         monad.root = root
         monad.path = path
     def cmp(monad, op, monad2):
         raise NotImplementedError
     def contains(monad, item, not_in=False):
+        translator = monad.translator
         item_type = monad.type[0]
-        if not are_comparable_types('==', item_type, item.type): raise TypeError, [item_type, item.type ]
+        if not translator.are_comparable_types('==', item_type, item.type): raise TypeError, [item_type, item.type ]
         if isinstance(item_type, EntityMeta) and len(item_type._pk_columns_) > 1:
             raise NotImplementedError
 
@@ -1084,7 +1091,6 @@ class AttrSetMonad(SetMixin, Monad):
             expr = [ COLUMN, alias, item_type._pk_columns_[0] ]
         subquery_ast = [ SELECT, [ ALL, expr ], from_ast, [ WHERE, sqland(conditions) ] ]
         sqlop = not_in and NOT_IN or IN
-        translator = monad.translator
         return translator.BoolExprMonad(translator, [ sqlop, item.getsql()[0], subquery_ast ])
     def getattr(monad, name):
         item_type = monad.type[0]
@@ -1102,32 +1108,32 @@ class AttrSetMonad(SetMixin, Monad):
         translator = monad.translator
         return translator.NumericExprMonad(translator, int, sql_ast)
     def sum(monad):
+        translator = monad.translator
         item_type = monad.type[0]
-        if item_type not in numeric_types: raise TypeError, item_type
+        if item_type not in translator.numeric_types: raise TypeError, item_type
         alias, expr, from_ast, conditions = monad._subselect()
         sql_ast = [ SELECT, [ AGGREGATES, [COALESCE, [ SUM, expr ], [ VALUE, 0 ]]], from_ast, [ WHERE, sqland(conditions) ] ]
-        translator = monad.translator
         return translator.NumericExprMonad(translator, item_type, sql_ast)
     def avg(monad):
         item_type = monad.type[0]
-        if item_type not in numeric_types: raise TypeError, item_type
+        if item_type not in translator.numeric_types: raise TypeError, item_type
         alias, expr, from_ast, conditions = monad._subselect()
         sql_ast = [ SELECT, [ AGGREGATES, [ AVG, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
         translator = monad.translator
         return translator.NumericExprMonad(translator, float, sql_ast)
     def min(monad):
+        translator = monad.translator
         item_type = monad.type[0]
-        if item_type not in comparable_types: raise TypeError, item_type
+        if item_type not in translator.comparable_types: raise TypeError, item_type
         alias, expr, from_ast, conditions = monad._subselect()
         sql_ast = [ SELECT, [ AGGREGATES, [ MIN, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
-        translator = monad.translator
         return translator.ExprMonad.new(translator, item_type, sql_ast)
     def max(monad):
+        translator = monad.translator
         item_type = monad.type[0]
-        if item_type not in comparable_types: raise TypeError
+        if item_type not in translator.comparable_types: raise TypeError
         alias, expr, from_ast, conditions = monad._subselect()
         sql_ast = [ SELECT, [ AGGREGATES, [ MAX, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
-        translator = monad.translator
         return translator.ExprMonad.new(monad.translator, item_type, sql_ast)
     def nonzero(monad):
         alias, expr, from_ast, conditions = monad._subselect()
@@ -1194,10 +1200,11 @@ class QuerySetMonad(SetMixin, Monad):
         sub = monad.subtranslator
         if sub.attrname is None: return None, None
         attr = sub.entity._adict_[sub.attrname]
-        return attr, normalize_type(attr.py_type)
+        return attr, sub.normalize_type(attr.py_type)
     def contains(monad, item, not_in=False):
+        translator = monad.translator
         item_type = monad.type[0]
-        if not are_comparable_types('==', item_type, item.type): raise TypeError, [item_type, item.type ]
+        if not translator.are_comparable_types('==', item_type, item.type): raise TypeError, [item_type, item.type ]
         if isinstance(item_type, EntityMeta) and len(item_type._pk_columns_) > 1:
             raise NotImplementedError
 
@@ -1213,7 +1220,6 @@ class QuerySetMonad(SetMixin, Monad):
             conditions.append([ IS_NOT_NULL, [ COLUMN, sub.alias, columns[0] ]])
         subquery_ast = [ SELECT, select_ast, sub.from_, [ WHERE, sqland(conditions) ] ]
         sqlop = not_in and NOT_IN or IN
-        translator = monad.translator
         return translator.BoolExprMonad(translator, [ sqlop, item.getsql()[0], subquery_ast ])
     def nonzero(monad):        
         sub = monad.subtranslator
@@ -1238,23 +1244,26 @@ class QuerySetMonad(SetMixin, Monad):
         else: select_ast = [ AGGREGATES, [ COUNT, ALL ] ]
         return monad._subselect(int, select_ast)
     def sum(monad):
+        translator = monad.translator
         attr, attr_type = monad._get_attr_info()
-        if attr_type not in numeric_types: raise TypeError, attr_type
+        if attr_type not in translator.numeric_types: raise TypeError, attr_type
         select_ast = [ AGGREGATES, [ COALESCE, [ SUM, [ COLUMN, monad.subtranslator.alias, attr.column ] ], [ VALUE, 0 ] ] ]
         return monad._subselect(attr_type, select_ast)
     def avg(monad):
         attr, attr_type = monad._get_attr_info()
-        if attr_type not in numeric_types: raise TypeError, attr_type
+        if attr_type not in translator.numeric_types: raise TypeError, attr_type
         select_ast = [ AGGREGATES, [ AVG, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
         return monad._subselect(float, select_ast)
     def min(monad):
+        translator = monad.translator
         attr, attr_type = monad._get_attr_info()
-        if attr_type not in comparable_types: raise TypeError, attr_type
+        if attr_type not in translator.comparable_types: raise TypeError, attr_type
         select_ast = [ AGGREGATES, [ MIN, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
         return monad._subselect(attr_type, select_ast)
     def max(monad):
+        translator = monad.translator
         attr, attr_type = monad._get_attr_info()
-        if attr_type not in comparable_types: raise TypeError
+        if attr_type not in translator.comparable_types: raise TypeError
         select_ast = [ AGGREGATES, [ MAX, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
         return monad._subselect(attr_type, select_ast)
 

@@ -1,4 +1,4 @@
-import __builtin__, re, sys, threading, types
+import __builtin__, re, sys, threading, types, inspect
 from compiler import ast
 from operator import attrgetter, itemgetter
 from itertools import count, ifilter, ifilterfalse, izip
@@ -2782,8 +2782,8 @@ class Query(object):
         attrname = translator.attrname
         if attrname is not None:
             attr = translator.entity._adict_[attrname]
-            attr_type = normalize_type(attr.py_type)
-            if funcsymbol in (SUM, AVG) and attr_type not in numeric_types:
+            attr_type = translator.normalize_type(attr.py_type)
+            if funcsymbol in (SUM, AVG) and attr_type not in translator.numeric_types:
                 raise TranslationError('%s is valid for numeric attributes only' % funcsymbol.lower())
         elif funcsymbol is not COUNT: raise TranslationError(
             'Attribute should be specified for "%s" aggregate function' % funcsymbol.lower())
