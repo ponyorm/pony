@@ -1,11 +1,10 @@
+import os.path, weakref
 from thread import get_ident
 from threading import Lock, Thread
 from Queue import Queue
-import weakref
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time
 from time import strptime
-import os.path
 
 from pony.thirdparty import sqlite
 from pony.thirdparty.sqlite import (Warning, Error, InterfaceError, DatabaseError,
@@ -14,6 +13,7 @@ from pony.thirdparty.sqlite import (Warning, Error, InterfaceError, DatabaseErro
 
 from pony import dbschema
 from pony import sqlbuilding
+from pony.sqltranslation import SQLTranslator as translator_cls
 from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple_decorator, absolutize_path
 
 paramstyle = 'qmark'
