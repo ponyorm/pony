@@ -2822,16 +2822,16 @@ primitive_types = set([ int, float, Decimal, str, unicode, date, datetime, bool,
 
 type_normalization_dict = { long : int, bool : int, LongStr : str, LongUnicode : unicode }
 
-def normalize_type(t):
-    if t is NoneType: return t
-    if issubclass(t, basestring):  # Mainly for Html -> unicode & StrHtml -> str conversion
-        if t in (str, unicode): return t
-        if issubclass(t, str): return str
-        if issubclass(t, unicode): return unicode
+def normalize_type(type):
+    if type is NoneType: return type
+    if issubclass(type, basestring):  # Mainly for Html -> unicode & StrHtml -> str conversion
+        if type in (str, unicode): return type
+        if issubclass(type, str): return str
+        if issubclass(type, unicode): return unicode
         assert False
-    t = type_normalization_dict.get(t, t)
-    if t not in primitive_types and not isinstance(t, EntityMeta): raise TypeError, t
-    return t
+    type = type_normalization_dict.get(type, type)
+    if type not in primitive_types and not isinstance(type, EntityMeta): raise TypeError, type
+    return type
 
 some_comparables = set([ (int, float), (int, Decimal), (date, datetime) ])
 some_comparables.update([ (t2, t1) for (t1, t2) in some_comparables ])
