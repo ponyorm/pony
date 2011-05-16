@@ -51,7 +51,7 @@ __all__ = '''
     TranslationError select exists avg
     '''.split()
 
-debug = True
+debug = False
 
 def sql_debug(value):
     global debug
@@ -341,7 +341,7 @@ class Database(object):
         cursor = cache.connection.cursor()
         if debug:
             print sql
-            print arguments
+            print args2str(arguments)
             print
         provider = database.provider
         if arguments is None: wrap_dbapi_exceptions(provider, cursor.execute, sql)
@@ -352,8 +352,8 @@ class Database(object):
         cache.optimistic = False
         cursor = cache.connection.cursor()
         if debug:
-            print 'EXECUTEMANY', sql
-            print arguments_list
+            print 'EXECUTEMANY\n', sql
+            print [ args2str(args) for args in arguments_list ]
             print
         provider = database.provider
         if arguments_list is None: wrap_dbapi_exceptions(provider, cursor.executemany, sql)
@@ -365,7 +365,7 @@ class Database(object):
         cursor = cache.connection.cursor()
         provider = database.provider
         for command in commands:
-            if debug: print 'DDLCOMMAND', command
+            if debug: print 'DDLCOMMAND\n', command
             wrap_dbapi_exceptions(provider, cursor.execute, command)
         if debug: print 'COMMIT'
         wrap_dbapi_exceptions(provider, cache.connection.commit)
@@ -374,6 +374,12 @@ class Database(object):
         diagram = outer_dict.get('_diagram_')
         if diagram is None: raise MappingError('No default diagram found')
         diagram.generate_mapping(database, *args, **keyargs)
+
+def args2str(args):
+    if isinstance(args, (tuple, list)):
+        return '[%s]' % ', '.join(map(repr, args))
+    elif isinstance(args, dict):
+        return '{%s}' % ', '.join('%s:%s' % (repr(key), repr(val)) for key, val in sorted(args.iteritems()))
 
 ###############################################################################
 
