@@ -8,7 +8,7 @@ from datetime import date, datetime
 from pony.clobtypes import LongStr, LongUnicode
 from pony.sqlbuilding import SQLBuilder
 from pony.sqlsymbols import *
-from pony.utils import avg
+from pony.utils import avg, copy_func_attrs
 from pony.orm import select, exists, TranslationError, EntityMeta, Set
 
 def sqland(items):
@@ -64,7 +64,6 @@ class ASTTranslator(object):
         pass
     def default_post(translator, node):
         pass
-
 
 type_normalization_dict = { long : int, bool : int, LongStr : str, LongUnicode : unicode }
 
@@ -332,7 +331,27 @@ class SQLTranslator(ASTTranslator):
         translator.alias_counters[name] = i
         return short_alias
 
+def wrap_monad_method(cls_name, func):
+    overrider_name = '%s_%s' % (cls_name, func.__name__)
+    def wrapper(monad, *args, **keyargs):
+        overrider = getattr(monad.translator, overrider_name, None)
+        if overrider is None: return func(monad, *args, **keyargs)
+        return overrider(monad, *args, **keyargs)
+    return copy_func_attrs(wrapper, func)
+
+class MonadMeta(type):
+    def __new__(meta, cls_name, bases, dict):
+        for name, func in dict.items():
+            if not isinstance(func, types.FunctionType): continue
+            if name in ('__new__', '__init__'): continue
+            dict[name] = wrap_monad_method(cls_name, func)
+        return super(MonadMeta, meta).__new__(meta, cls_name, bases, dict)
+
+class MonadMixin(object):
+    __metaclass__ = MonadMeta
+
 class Monad(object):
+    __metaclass__ = MonadMeta
     def __init__(monad, translator, type):
         monad.translator = translator
         monad.type = type
@@ -453,7 +472,7 @@ def make_numeric_binop(sqlop):
     numeric_binop.__name__ = sqlop
     return numeric_binop
 
-class NumericMixin(object):
+class NumericMixin(MonadMixin):
     def mixin_init(monad):
         assert monad.type in monad.translator.numeric_types
     __add__ = make_numeric_binop(ADD)
@@ -482,7 +501,7 @@ class NumericMixin(object):
         translator = monad.translator
         return translator.CmpMonad('==', monad, translator.ConstMonad(translator, 0))
 
-class DateMixin(object):
+class DateMixin(MonadMixin):
     def mixin_init(monad):
         assert monad.type is date
     def attr_year(monad):
@@ -514,7 +533,7 @@ def make_string_func(sqlop):
     func.__name__ = sqlop
     return func
 
-class StringMixin(object):
+class StringMixin(MonadMixin):
     def mixin_init(monad):
         assert issubclass(monad.type, basestring), monad.type
         monad.type = unicode
@@ -633,7 +652,7 @@ class StringMixin(object):
     def call_rstrip(monad, chars=None):
         return monad.strip(chars, RTRIM)
     
-class ObjectMixin(object):
+class ObjectMixin(MonadMixin):
     def mixin_init(monad):
         assert isinstance(monad.type, EntityMeta)
     def getattr(monad, name):
@@ -1065,7 +1084,7 @@ def FuncExistsMonad(monad, subquery):
     if not isinstance(subquery, monad.translator.SetMixin): raise TypeError
     return subquery.nonzero()
 
-class SetMixin(object):
+class SetMixin(MonadMixin):
     pass
 
 class AttrSetMonad(SetMixin, Monad):
