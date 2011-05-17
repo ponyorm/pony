@@ -13,6 +13,7 @@ import MySQLdb.converters
 
 from pony import dbschema
 from pony import sqlbuilding
+from pony.sqltranslation import SQLTranslator as translator_cls
 from pony.clobtypes import LongStr, LongUnicode
 from pony.utils import localbase
 
