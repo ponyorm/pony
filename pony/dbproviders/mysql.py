@@ -13,7 +13,7 @@ import MySQLdb.converters
 
 from pony import dbschema
 from pony import sqlbuilding
-from pony.sqltranslation import SQLTranslator as translator_cls
+from pony.sqltranslation import SQLTranslator
 from pony.clobtypes import LongStr, LongUnicode
 from pony.utils import localbase
 
@@ -60,6 +60,14 @@ class Pool(localbase):
         pool.con = None
         con.close()
 
+class MySQLTranslator(SQLTranslator):
+    def DateMixin_attr_year(translator, monad):
+        sql = [ 'YEAR', monad.getsql()[0] ]
+        translator = monad.translator
+        return translator.NumericExprMonad(translator, int, sql)        
+
+translator_cls = MySQLTranslator
+
 class MyValue(sqlbuilding.Value):
     def quote_str(self, s):
         s = s.replace('%', '%%')
@@ -67,6 +75,8 @@ class MyValue(sqlbuilding.Value):
 
 class MySQLBuilder(sqlbuilding.SQLBuilder):
     make_value = MyValue
+    def YEAR(builder, expr):
+        return 'year(', builder(expr), ')'
 
 def ast2sql(con, ast):
     b = MySQLBuilder(ast, paramstyle, "`")
