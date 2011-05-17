@@ -99,7 +99,7 @@ def convert(values, params):
 
 class SQLBuilder(object):
     make_param = Param
-    value = Value
+    make_value = Value
     indent_spaces = " " * 4
     def __init__(builder, ast, paramstyle='qmark', quote_char='"'):
         builder.indent = 0
@@ -256,7 +256,7 @@ class SQLBuilder(object):
             keys[key] = param
         return [ param ]
     def VALUE(builder, value):
-        return [ builder.value(value) ]
+        return [ builder.make_value(value) ]
     def AND(builder, *cond_list):
         cond_list = [ builder(condition) for condition in cond_list ]
         return '(', join(' AND ', cond_list), ')'
