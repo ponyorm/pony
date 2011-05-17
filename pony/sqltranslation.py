@@ -1208,7 +1208,8 @@ class AttrSetMonad(SetMixin, Monad):
         raise TranslationError
 
 class QuerySetMonad(SetMixin, Monad):
-    def __init__(monad, translator, subtranslator):        
+    def __init__(monad, translator, subtranslator):
+        monad.translator = translator
         monad.subtranslator = subtranslator
         attr, attr_type = monad._get_attr_info()
         item_type = attr_type or subtranslator.entity
