@@ -60,8 +60,16 @@ class Pool(localbase):
         pool.con = None
         con.close()
 
+class MyValue(sqlbuilding.Value):
+    def quote_str(self, s):
+        s = s.replace('%', '%%')
+        return sqlbuilding.Value.quote_str(self, s)
+
+class MySQLBuilder(sqlbuilding.SQLBuilder):
+    make_value = MyValue
+
 def ast2sql(con, ast):
-    b = sqlbuilding.SQLBuilder(ast, paramstyle, "`")
+    b = MySQLBuilder(ast, paramstyle, "`")
     return b.sql, b.adapter
 
 def _get_converter_type_by_py_type(py_type):
