@@ -72,9 +72,11 @@ def join(delimiter, items):
         result.append(item)
     return result
 
-def make_binary_op(symbol):
-    def binary_op(builder, expr1, expr2):
-        return '(', builder(expr1), symbol, builder(expr2), ')'
+def make_binary_op(symbol, default_parentheses=False):
+    def binary_op(builder, expr1, expr2, parentheses=None):
+        if parentheses is None: parentheses = default_parentheses
+        if parentheses: return '(', builder(expr1), symbol, builder(expr2), ')'
+        return builder(expr1), symbol, builder(expr2)
     return binary_op
 
 def make_unary_func(symbol):
@@ -259,7 +261,7 @@ class SQLBuilder(object):
         return [ builder.make_value(value) ]
     def AND(builder, *cond_list):
         cond_list = [ builder(condition) for condition in cond_list ]
-        return '(', join(' AND ', cond_list), ')'
+        return join(' AND ', cond_list)
     def OR(builder, *cond_list):
         cond_list = [ builder(condition) for condition in cond_list ]
         return '(', join(' OR ', cond_list), ')'
@@ -272,10 +274,10 @@ class SQLBuilder(object):
     LE  = make_binary_op(' <= ')
     GT  = make_binary_op(' > ')
     GE  = make_binary_op(' >= ')
-    ADD = make_binary_op(' + ')
-    SUB = make_binary_op(' - ')
-    MUL = make_binary_op(' * ')
-    DIV = make_binary_op(' / ')
+    ADD = make_binary_op(' + ', True)
+    SUB = make_binary_op(' - ', True)
+    MUL = make_binary_op(' * ', True)
+    DIV = make_binary_op(' / ', True)
     POW = make_binary_op(' ** ')
 
     def CONCAT(builder, *args):        
