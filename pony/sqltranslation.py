@@ -93,6 +93,7 @@ class SQLTranslator(ASTTranslator):
     def are_comparable_types(translator, op, type1, type2):
         # op: '<' | '>' | '=' | '>=' | '<=' | '<>' | '!=' | '=='
         #         | 'in' | 'not' 'in' | 'is' | 'is' 'not'
+        # types must be normalized already! 
         if op in ('is', 'is not'): return type1 is not NoneType and type2 is NoneType
         if op in ('<', '<=', '>', '>='):
             return (type1 is type2 and type1 in translator.comparable_types) \
@@ -399,6 +400,24 @@ class MethodMonad(Monad):
         return method(*args, **keyargs)
 
 class EntityMonad(Monad):
+    def __getitem__(monad, key):
+        if isinstance(key, ListMonad):
+            for item in key.items:
+                if not isinstance(item, ConstMonad): raise NotImplementedError, key
+            pkval = tuple(item.value for item in key.items)
+        elif isinstance(key, ConstMonad):
+            pkval = key.value
+        else: raise NotImplementedError, key
+        if not isinstance(pkval, tuple): pkval = (pkval,)
+        entity = monad.type
+        if len(pkval) != len(entity._pk_attrs_): raise TypeError('Invalid count of attrs in primary key')
+        translator = monad.translator
+        for attr, val in izip(entity._pk_attrs_, pkval):
+            type1 = translator.normalize_type(attr.py_type)
+            type2 = translator.normalize_type(type(val))
+            if not translator.are_comparable_types('==', type1, type2): raise TypeError(
+                'Incomparable types: %r and %r' % (attr.py_type, type(val)))
+        return translator.ObjectConstMonad(translator, monad.type, pkval)
     def __call__(monad, *args, **keyargs):
         pkval, avdict = monad.normalize_args(args, keyargs)
         if pkval is None or len(avdict) > len(pkval): raise NotImplementedError
