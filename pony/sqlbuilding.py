@@ -110,7 +110,7 @@ class SQLBuilder(object):
         builder.quote_char = quote_char
         builder.keys = {}
         builder.result = flat(builder(ast))
-        builder.sql = u''.join(map(unicode, builder.result))
+        builder.sql = u''.join(map(unicode, builder.result)).rstrip('\n')
         if paramstyle in ('qmark', 'format'):
             params = tuple(x for x in builder.result if isinstance(x, Param))
             def adapter(values):

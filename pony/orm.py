@@ -337,7 +337,7 @@ class Database(object):
         cursor = cache.connection.cursor()
         if debug:
             print 'EXECUTEMANY\n', sql
-            print [ args2str(args) for args in arguments_list ]
+            for args in arguments_list: print args2str(args)
             print
         provider = database.provider
         if arguments_list is None: wrap_dbapi_exceptions(provider, cursor.executemany, sql)
@@ -351,7 +351,7 @@ class Database(object):
         for command in commands:
             if debug: print 'DDLCOMMAND\n', command
             wrap_dbapi_exceptions(provider, cursor.execute, command)
-        if debug: print 'COMMIT'
+        if debug: print 'COMMIT\n'
         wrap_dbapi_exceptions(provider, cache.connection.commit)
     def generate_mapping(database, *args, **keyargs):
         outer_dict = sys._getframe(1).f_locals
@@ -2363,7 +2363,7 @@ class Cache(object):
         connection = cache.connection
         try:
             if cache.optimistic:
-                if debug: print 'OPTIMISTIC ROLLBACK'
+                if debug: print 'OPTIMISTIC ROLLBACK\n'
                 wrap_dbapi_exceptions(provider, connection.rollback)
         except:
             cache.is_alive = False
@@ -2375,7 +2375,7 @@ class Cache(object):
         try:
             if save_is_needed: cache.save()
             if save_is_needed or not cache.optimistic:
-                if debug: print 'COMMIT'
+                if debug: print 'COMMIT\n'
                 wrap_dbapi_exceptions(provider, connection.commit)
         except:
             cache.rollback()
@@ -2389,17 +2389,17 @@ class Cache(object):
         connection = cache.connection
         cache.connection = None
         try:
-            if debug: print 'ROLLBACK'    
+            if debug: print 'ROLLBACK\n'
             wrap_dbapi_exceptions(provider, connection.rollback)
             if not close_connection:
-                if debug: print 'RELEASE_CONNECTION'    
+                if debug: print 'RELEASE_CONNECTION\n'
                 wrap_dbapi_exceptions(provider, database._pool.release, connection)
         except:
-            if debug: print 'CLOSE_CONNECTION'    
+            if debug: print 'CLOSE_CONNECTION\n'
             wrap_dbapi_exceptions(provider, database._pool.close, connection)
             raise
         if close_connection:
-            if debug: print 'CLOSE_CONNECTION'    
+            if debug: print 'CLOSE_CONNECTION\n'
             wrap_dbapi_exceptions(provider, database._pool.close, connection)
     def release(cache):
         assert cache.is_alive
@@ -2409,7 +2409,7 @@ class Cache(object):
         provider = database.provider
         connection = cache.connection
         cache.connection = None
-        if debug: print 'RELEASE_CONNECTION'    
+        if debug: print 'RELEASE_CONNECTION\n'
         wrap_dbapi_exceptions(provider, database._pool.release, connection)
     def has_anything_to_save(cache):
         return bool(cache.created or cache.updated or cache.deleted or cache.modified_collections)                    
