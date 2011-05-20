@@ -2785,15 +2785,15 @@ class Query(object):
             attr_type = translator.normalize_type(attr.py_type)
             if funcsymbol in (SUM, AVG) and attr_type not in translator.numeric_types:
                 raise TranslationError('%s is valid for numeric attributes only' % funcsymbol.lower())
+            column_ast = [ COLUMN, translator.alias, attr.column ]
         elif funcsymbol is not COUNT: raise TranslationError(
             'Attribute should be specified for "%s" aggregate function' % funcsymbol.lower())
-        query._aggr_func = funcsymbol
-        column_ast = [ COLUMN, translator.alias, attr.column ]
         if funcsymbol is COUNT:
             if attrname is None: aggr_ast = [ COUNT, ALL ]
             else: aggr_ast = [ COUNT, DISTINCT, column_ast ]
         elif funcsymbol is SUM: aggr_ast = [ COALESCE, [ SUM, column_ast ], [ VALUE, 0 ] ]
         else: aggr_ast = [ funcsymbol, column_ast ]
+        query._aggr_func = funcsymbol
         query._aggr_select = [ AGGREGATES, aggr_ast ]
         cursor = query._exec_sql(None)
         row = cursor.fetchone()
