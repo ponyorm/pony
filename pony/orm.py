@@ -2431,6 +2431,13 @@ class Cache(object):
 
         cache.created.clear()
         cache.updated.clear()
+
+        indexes = cache.indexes
+        for obj in cache.deleted:
+            pkval = obj._pkval_
+            index = indexes[obj.__class__._pk_]
+            index.pop(pkval)
+            
         cache.deleted.clear()
         cache.modified_collections.clear()
         cache.to_be_checked[:] = []
