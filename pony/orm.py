@@ -2,6 +2,7 @@ import __builtin__, re, sys, threading, types, inspect
 from compiler import ast
 from operator import attrgetter, itemgetter
 from itertools import count, ifilter, ifilterfalse, izip
+import datetime
 
 try: from pony.thirdparty import etree
 except ImportError: etree = None
@@ -405,6 +406,8 @@ class Attribute(object):
         else: attr.pk_offset = None
         attr.id = next_attr_id()
         if not isinstance(py_type, basestring) and not isinstance(py_type, type):
+            if py_type is datetime: raise TypeError(
+                'datetime is the module and cannot be used as attribute type. Use datetime.datetime instead')
             raise TypeError('Incorrect type of attribute: %r' % py_type)
         if py_type == 'Entity' or py_type is Entity:
             raise TypeError('Cannot link attribute to Entity class. Must use Entity subclass instead')
