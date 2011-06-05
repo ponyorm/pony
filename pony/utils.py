@@ -99,9 +99,10 @@ def absolutize_path(filename, frame_depth=2):
     if is_absolute_path(filename): return filename
     code_filename = sys._getframe(frame_depth).f_code.co_filename
     if not is_absolute_path(code_filename):
-        if pony.MODE == 'INTERACTIVE': raise ValueError(
-            'When in interactive mode, please provide absolute file path. Got: %r' % filename)
-        raise EnvironmentError('Unexpected module filename, which is not absolute file path: %r' % code_filename)
+        if code_filename.startswith('<') and code_filename.endswith('>'):
+            if pony.MODE == 'INTERACTIVE': raise ValueError(
+                'When in interactive mode, please provide absolute file path. Got: %r' % filename)
+            raise EnvironmentError('Unexpected module filename, which is not absolute file path: %r' % code_filename)
     code_path = os.path.dirname(code_filename)
     return os.path.join(code_path, filename)
 
