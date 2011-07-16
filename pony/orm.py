@@ -2652,7 +2652,7 @@ class Query(object):
             except KeyError: raise NameError, name
 
         if isinstance(origin, EntityIter): origin = origin.entity
-        elif not isinstance(origin, EntityMeta): raise TypeError, entity
+        elif not isinstance(origin, EntityMeta): raise TypeError, origin
         database = origin._diagram_.database
         if database is None: raise TranslationError('Entity %s is not mapped to a database' % origin.__name__)
         
