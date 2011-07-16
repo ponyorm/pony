@@ -22,7 +22,7 @@ __all__ = '''
     Warning Error InterfaceError DatabaseError DataError OperationalError
     IntegrityError InternalError ProgrammingError NotSupportedError
 
-    OrmError DiagramError SchemaError MappingError ConstraintError IndexError ObjectNotFound
+    OrmError DiagramError SchemaError MappingError ConstraintError CacheIndexError ObjectNotFound
     MultipleObjectsFoundError TooManyObjectsFoundError OperationWithDeletedObjectError
     TransactionError TransactionIntegrityError IsolationError CommitException RollbackException
     UnrepeatableReadError UnresolvableCyclicDependency UnexpectedError
@@ -102,7 +102,7 @@ class DiagramError(OrmError): pass
 class SchemaError(OrmError): pass
 class MappingError(OrmError): pass
 class ConstraintError(OrmError): pass
-class IndexError(OrmError): pass
+class CacheIndexError(OrmError): pass
 class ObjectNotFound(OrmError):
     def __init__(exc, entity, pkval):
         if type(pkval) is tuple:
@@ -1660,7 +1660,7 @@ class EntityMeta(type):
         if obj is None: pass
         elif status == 'created':
             if entity._pk_is_composite_: pkval = ', '.join(str(item) for item in pkval)
-            raise IndexError('Cannot create %s: instance with primary key %s already exists'
+            raise CacheIndexError('Cannot create %s: instance with primary key %s already exists'
                              % (obj.__class__.__name__, pkval))                
         else: return obj
         obj = object.__new__(entity)
@@ -1696,14 +1696,14 @@ class EntityMeta(type):
         indexes = {}
         for attr in entity._simple_keys_:
             val = avdict[attr]
-            if val in cache.indexes.setdefault(attr, {}): raise IndexError(
+            if val in cache.indexes.setdefault(attr, {}): raise CacheIndexError(
                 'Cannot create %s: value %s for key %s already exists' % (entity.__name__, val, attr.name))
             indexes[attr] = val
         for attrs in entity._composite_keys_:
             vals = tuple(map(avdict.__getitem__, attrs))
             if vals in cache.indexes.setdefault(attrs, {}):
                 attr_names = ', '.join(attr.name for attr in attrs)
-                raise IndexError('Cannot create %s: value %s for composite key (%s) already exists'
+                raise CacheIndexError('Cannot create %s: value %s for composite key (%s) already exists'
                                  % (obj.__class__.__name__, vals, attr_names))
             indexes[attrs] = vals
         try:
@@ -2463,7 +2463,7 @@ class Cache(object):
         if val is None and cache.ignore_none: val = NO_UNDO_NEEDED
         else:
             obj2 = index.setdefault(val, obj)
-            if obj2 is not obj: raise IndexError('Cannot update %s.%s: %s with key %s already exists'
+            if obj2 is not obj: raise CacheIndexError('Cannot update %s.%s: %s with key %s already exists'
                                                  % (obj.__class__.__name__, attr.name, obj2, val))
         if curr is NOT_LOADED: curr = NO_UNDO_NEEDED
         elif curr is None and cache.ignore_none: curr = NO_UNDO_NEEDED
@@ -2496,7 +2496,7 @@ class Cache(object):
             obj2 = index.setdefault(vals, obj)
             if obj2 is not obj:
                 attr_names = ', '.join(attr.name for attr in attrs)
-                raise IndexError('Cannot update %r: composite key (%s) with value %s already exists for %r'
+                raise CacheIndexError('Cannot update %r: composite key (%s) with value %s already exists for %r'
                                  % (obj, attr_names, vals, obj2))
         if currents is NO_UNDO_NEEDED: pass
         else: del index[currents]
