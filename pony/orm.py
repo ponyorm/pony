@@ -1466,7 +1466,7 @@ class EntityMeta(type):
                 'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
         try:
             objects = entity._find_in_cache_(pkval, avdict)
-        except KeyError:
+        except KeyError:  # not found in cache, can exist in db
             objects = entity._find_in_db_(avdict, max_objects_count)
         return objects
     def _find_in_cache_(entity, pkval, avdict):
@@ -1515,10 +1515,12 @@ class EntityMeta(type):
                         return filtered_objects
                     else: raise NotImplementedError
         if obj is not None:
+            if obj._status_ == 'deleted': return []
             for attr, val in avdict.iteritems():
-                if val != attr.__get__(obj): return []
+                if val != attr.__get__(obj):
+                    return []
             return [ obj ]
-        raise KeyError
+        raise KeyError  # not found in cache, can exist in db
     def _find_in_db_(entity, avdict, max_rows_count=None):
         if max_rows_count is None: max_rows_count = options.MAX_ROWS_COUNT
         database = entity._diagram_.database
