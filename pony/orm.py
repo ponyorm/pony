@@ -1408,6 +1408,40 @@ class EntityMeta(type):
         if len(objects) > 1: raise MultipleObjectsFoundError(
             'Multiple objects were found. Use %s.all(...) to retrieve them' % entity.__name__)
         return objects[0]
+    def all_by_sql(entity, sql, globals=None, locals=None):
+        return entity._find_by_sql_(sql, globals, locals, 1)
+    def get_by_sql(entity, sql, globals=None, locals=None):
+        objects = entity._find_by_sql_(sql, globals, locals, 1, 1)
+        if not objects: return None
+        return objects[0]
+    def _find_by_sql_(entity, sql, globals, locals, frame_depth, max_rows_count=None):
+        if not isinstance(sql, basestring): raise TypeError
+        database = entity._diagram_.database
+        cursor = database._execute(sql, globals, locals, frame_depth+1)
+
+        col_names = [ column_info[0].upper() for column_info in cursor.description ]
+        attr_offsets = {}
+        used_columns = set()
+        for attr in entity._attrs_:
+            if attr.is_collection: continue
+            if not attr.columns: continue
+            offsets = []
+            for column in attr.columns:
+                try: offset = col_names.index(column.upper())
+                except ValueError: break
+                offsets.append(offset)
+                used_columns.add(offset)
+            else: attr_offsets[attr] = offsets
+        if len(used_columns) < len(col_names):
+            for i in range(len(col_names)):
+                if i not in used_columns: raise NameError(
+                    'Column %s does not belong to entity %s' % (cursor.description[i][0], entity.__name__))
+        for attr in entity._pk_attrs_:
+            if attr not in attr_offsets: raise ValueError(
+                'Primary key attribue %s was not found in query result set' % attr)
+        
+        objects = entity._fetch_objects(cursor, attr_offsets, max_rows_count)
+        return objects
     def __getitem__(entity, key):
         if type(key) is tuple: args = key
         else: args = (key,)
