@@ -1190,8 +1190,8 @@ class EntityIter(object):
     def __init__(self, entity):
         self.entity = entity
     def next(self):
-        raise StopIteration
-    
+        raise TranslationError('Use select(...) function to iterate over entity')
+
 next_entity_id = count(1).next
 next_new_instance_id = count(1).next
 
