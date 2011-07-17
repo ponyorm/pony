@@ -1413,6 +1413,7 @@ class EntityMeta(type):
     def get_by_sql(entity, sql, globals=None, locals=None):
         objects = entity._find_by_sql_(sql, globals, locals, 1, 1)
         if not objects: return None
+        assert len(objects) == 1
         return objects[0]
     def _find_by_sql_(entity, sql, globals, locals, frame_depth, max_rows_count=None):
         if not isinstance(sql, basestring): raise TypeError
