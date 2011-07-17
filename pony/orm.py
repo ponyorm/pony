@@ -1406,7 +1406,7 @@ class EntityMeta(type):
         objects = entity._find_(1, args, keyargs)
         if not objects: return None
         if len(objects) > 1: raise MultipleObjectsFoundError(
-            'Multiple objects was found. Use %s.all(...) to retrieve them' % entity.__name__)
+            'Multiple objects were found. Use %s.all(...) to retrieve them' % entity.__name__)
         return objects[0]
     def __getitem__(entity, key):
         if type(key) is tuple: args = key
@@ -1578,7 +1578,7 @@ class EntityMeta(type):
             rows = cursor.fetchmany(max_rows_count + 1)
             if len(rows) == max_rows_count + 1:
                 if max_rows_count == 1: raise MultipleObjectsFoundError(
-                    'Multiple objects was found. Use %s.all(...) to retrieve them' % entity.__name__)
+                    'Multiple objects were found. Use %s.all(...) to retrieve them' % entity.__name__)
                 raise TooManyObjectsFoundError(
                     'Found more then pony.options.MAX_ROWS_COUNT=%d objects' % options.MAX_ROWS_COUNT)
         else: rows = cursor.fetchall()
