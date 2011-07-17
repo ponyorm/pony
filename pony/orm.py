@@ -2690,7 +2690,7 @@ class Query(object):
             translator = translator_cls(tree, entities, vartypes, functions)
             python_ast_cache[key] = translator
         query._translator = translator
-        query._order = query.range = None
+        query._order = None
         query._aggr_func = query._aggr_select = None
     def _construct_sql(query, range):
         translator = query._translator
@@ -2783,8 +2783,7 @@ class Query(object):
             stop = key.stop
             if stop is None:
                 if not start: return query.all()
-                elif not query.range: raise TypeError("Parameter 'stop' of slice object should be specified")
-                else: stop = query.range[1]
+                else: raise TypeError("Parameter 'stop' of slice object should be specified")
         else:
             try: i = key.__index__()
             except AttributeError:
