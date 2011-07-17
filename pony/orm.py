@@ -2359,7 +2359,6 @@ class Cache(object):
         cache.to_be_checked = []
     def flush(cache):
         assert cache.is_alive
-        cache.optimistic = False
         cache.save(False)
     def commit(cache):
         assert cache.is_alive
@@ -2419,8 +2418,8 @@ class Cache(object):
     def has_anything_to_save(cache):
         return bool(cache.created or cache.updated or cache.deleted or cache.modified_collections)                    
     def save(cache, optimistic=True):
-        if not cache.has_anything_to_save(): return
         cache.optimistic = optimistic
+        if not cache.has_anything_to_save(): return
         modified_m2m = cache.calc_modified_m2m()
         for attr, (added, removed) in modified_m2m.iteritems():
             if not removed: continue
