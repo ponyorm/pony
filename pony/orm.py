@@ -1428,21 +1428,14 @@ class EntityMeta(type):
         query = Query(None, inner_expr, set(['.0']), {}, { '.0' : entity })
         return query.orderby(*args)
     def _find_(entity, max_objects_count, args, keyargs):
-
-        if args:
-            if isinstance(args[0], basestring):
-                if len(args) > 1: raise TypeError
-                if keyargs: raise TypeError
-                
-        
-            if isinstance(args[0], types.FunctionType):
-                if len(args) > 1: raise TypeError
-                if keyargs: raise TypeError
-                func = args[0]
-                globals = sys._getframe(2).f_globals
-                locals = sys._getframe(2).f_locals
-                query = entity._query_from_lambda_(func, globals, locals)
-                return query.all()
+        if args and isinstance(args[0], types.FunctionType):
+            if len(args) > 1: raise TypeError
+            if keyargs: raise TypeError
+            func = args[0]
+            globals = sys._getframe(2).f_globals
+            locals = sys._getframe(2).f_locals
+            query = entity._query_from_lambda_(func, globals, locals)
+            return query.all()
 
         pkval, avdict = entity._normalize_args_(args, keyargs, False)
         for attr in avdict:
