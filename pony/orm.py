@@ -1523,8 +1523,9 @@ class EntityMeta(type):
         for attr in entity._attrs_:
             if attr.is_collection: continue
             if not attr.columns: continue
-            attr_offsets[attr] = len(select_list) - 1
+            attr_offsets[attr] = offsets = []
             for column in attr.columns:
+                offsets.append(len(select_list) - 1)
                 select_list.append([ COLUMN, alias, column ])
         return select_list, attr_offsets
     def _construct_sql_(entity, query_attrs, max_rows_count=None):
@@ -1592,14 +1593,14 @@ class EntityMeta(type):
         return objects
     def _parse_row_(entity, row, attr_offsets):
         avdict = {}
-        for attr, i in attr_offsets.iteritems():
-            if attr.column is not None:
-                val = row[i]
-                if not attr.reverse:  val = attr.check(val, None, entity, from_db=True)
-                else: val = attr.py_type._get_by_raw_pkval_((val,))
+        for attr, offsets in attr_offsets.iteritems():
+            assert len(attr.columns) == len(offsets)
+            if not attr.reverse:
+                if len(offsets) > 1: raise NotImplementedError
+                offset = offsets[0]
+                val = attr.check(row[offset], None, entity, from_db=True)
             else:
-                if not attr.reverse: raise NotImplementedError
-                vals = row[i:i+len(attr.columns)]
+                vals = map(row.__getitem__, offsets)
                 val = attr.py_type._get_by_raw_pkval_(vals)
             avdict[attr] = val
         if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_, None)            
