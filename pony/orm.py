@@ -236,34 +236,26 @@ class Database(object):
         cache = local.db2cache.get(database)
         if cache is not None: cache.rollback()
     def execute(database, sql, globals=None, locals=None):
+        database._get_cache().optimistic = False
+        return database._execute(sql, globals, locals, 1)
+    def _execute(database, sql, globals, locals, frame_depth):
         sql = sql[:]  # sql = templating.plainstr(sql)
         if globals is None:
             assert locals is None
-            globals = sys._getframe(1).f_globals
-            locals = sys._getframe(1).f_locals
+            frame_depth += 1
+            globals = sys._getframe(frame_depth).f_globals
+            locals = sys._getframe(frame_depth).f_locals
         provider = database.provider
         adapted_sql, code = adapt_sql(sql, provider.paramstyle)
         values = eval(code, globals, locals)
         cache = database._get_cache()
-        cache.optimistic = False
         cursor = cache.connection.cursor()
         if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
         else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
         return cursor
-    def select(database, sql, globals=None, locals=None):
-        sql = sql[:]  # sql = templating.plainstr(sql)
+    def select(database, sql, globals=None, locals=None, frame_depth=0):
         if not select_re.match(sql): sql = 'select ' + sql
-        if globals is None:
-            assert locals is None
-            globals = sys._getframe(1).f_globals
-            locals = sys._getframe(1).f_locals
-        provider = database.provider
-        adapted_sql, code = adapt_sql(sql, provider.paramstyle)
-        values = eval(code, globals, locals)
-        cache = database._get_cache()
-        cursor = cache.connection.cursor()
-        if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
-        else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
+        cursor = database._execute(sql, globals, locals, frame_depth+1)
         result = cursor.fetchmany(options.MAX_ROWS_COUNT)
         if cursor.fetchone() is not None: raise TooManyRowsFound
         if len(cursor.description) == 1: result = [ row[0] for row in result ]
@@ -277,29 +269,14 @@ class Database(object):
             result = [ row_class(row) for row in result ]
         return result
     def get(database, sql, globals=None, locals=None):
-        if globals is None:
-            assert locals is None
-            globals = sys._getframe(1).f_globals
-            locals = sys._getframe(1).f_locals
-        rows = database.select(sql, globals, locals)
+        rows = database.select(sql, globals, locals, 1)
         if not rows: raise RowNotFound
         if len(rows) > 1: raise MultipleRowsFound
         row = rows[0]
         return row
     def exists(database, sql, globals=None, locals=None):
-        sql = sql[:]  # sql = templating.plainstr(sql)
         if not select_re.match(sql): sql = 'select ' + sql
-        if globals is None:
-            assert locals is None
-            globals = sys._getframe(1).f_globals
-            locals = sys._getframe(1).f_locals
-        provider = database.provider
-        adapted_sql, code = adapt_sql(sql, provider.paramstyle)
-        values = eval(code, globals, locals)
-        cache = database._get_cache()
-        cursor = cache.connection.cursor()
-        if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
-        else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
+        cursor = database._execute(sql, globals, locals, 1)
         result = cursor.fetchone()
         return bool(result)
     def insert(database, table_name, **keyargs):
@@ -1451,14 +1428,21 @@ class EntityMeta(type):
         query = Query(None, inner_expr, set(['.0']), {}, { '.0' : entity })
         return query.orderby(*args)
     def _find_(entity, max_objects_count, args, keyargs):
-        if args and isinstance(args[0], types.FunctionType):
-            if len(args) > 1: raise TypeError
-            if keyargs: raise TypeError
-            func = args[0]
-            globals = sys._getframe(2).f_globals
-            locals = sys._getframe(2).f_locals
-            query = entity._query_from_lambda_(func, globals, locals)
-            return query.all()
+
+        if args:
+            if isinstance(args[0], basestring):
+                if len(args) > 1: raise TypeError
+                if keyargs: raise TypeError
+                
+        
+            if isinstance(args[0], types.FunctionType):
+                if len(args) > 1: raise TypeError
+                if keyargs: raise TypeError
+                func = args[0]
+                globals = sys._getframe(2).f_globals
+                locals = sys._getframe(2).f_locals
+                query = entity._query_from_lambda_(func, globals, locals)
+                return query.all()
 
         pkval, avdict = entity._normalize_args_(args, keyargs, False)
         for attr in avdict:
