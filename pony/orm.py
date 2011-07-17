@@ -2618,8 +2618,8 @@ select.min = lambda gen : select(gen).min()
 select.max = lambda gen : select(gen).max()
 select.count = lambda gen : select(gen).count()
 
-def exists(subquery):
-    raise TypeError('Function exists() can be used inside query only')
+def exists(gen):
+    return select(gen).exists()    
 
 class QueryResult(list):
     def all(self):
@@ -2746,6 +2746,13 @@ class Query(object):
         if len(objects) > 1: raise MultipleObjectsFoundError(
             'Multiple objects was found. Use select(..).all() to retrieve them')
         return objects[0]
+    def exists(query):
+        new_query = query._clone()
+        new_query._aggr_func = EXISTS
+        new_query._aggr_select = [ ALL, [ VALUE, 1 ] ]
+        cursor = new_query._exec_sql((0, 1))
+        row = cursor.fetchone()
+        return row is not None
     def __iter__(query):
         return iter(query._fetch(None))
     def orderby(query, *args):
@@ -2759,9 +2766,12 @@ class Query(object):
             attr = order[-1][0]
             if entity._adict_.get(attr.name) is not attr: raise TypeError(
                 'Attribute %s does not belong to Entity %s' % (attr, entity.__name__))
+        new_query = query._clone()
+        new_query._order = tuple(order)
+        return new_query
+    def _clone(query):
         new_query = object.__new__(Query)
         new_query.__dict__.update(query.__dict__)
-        new_query._order = tuple(order)
         return new_query
     def __getitem__(query, key):
         if isinstance(key, slice):
