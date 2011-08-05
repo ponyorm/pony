@@ -1290,6 +1290,7 @@ class EntityMeta(type):
         entity._link_reverse_attrs_()
 
         entity._cached_create_sql_ = None
+        entity._cached_create_sql_no_pk_ = None
         entity._cached_delete_sql_ = None
         entity._find_sql_cache_ = {}
         entity._update_sql_cache_ = {}
@@ -2079,21 +2080,32 @@ class Entity(object):
                 assert val._status_ == 'saved'
     def _save_created_(obj):
         values = []
+        no_pk = False
         for attr in obj._attrs_:
             if not attr.columns: continue
             if attr.is_collection: continue
             val = obj._curr_[attr.name]
+            if attr.is_pk and val is None:
+                no_pk = True
+                continue
             values.extend(attr.get_raw_values(val))
         database = obj._diagram_.database
-        if obj._cached_create_sql_ is None:
-            columns = obj._columns_
-            converters = obj._converters_
+        if no_pk: cached_sql = obj._cached_create_sql_no_pk_
+        else: cached_sql = obj._cached_create_sql_
+        if cached_sql is None:
+            if no_pk:
+                columns = obj._columns_no_pk_
+                converters = obj._converters_no_pk_
+            else:
+                columns = obj._columns_
+                converters = obj._converters_
             assert len(columns) == len(converters)
             params = [ [ PARAM, i,  converter ] for i, converter in enumerate(converters) ]
             sql_ast = [ INSERT, obj._table_, columns, params ]
             sql, adapter = database._ast2sql(sql_ast)
-            obj.__class__._cached_create_sql_ = sql, adapter
-        else: sql, adapter = obj._cached_create_sql_
+            if no_pk: obj.__class__._cached_create_sql_no_pk_ = sql, adapter
+            else: obj.__class__._cached_create_sql_ = sql, adapter
+        else: sql, adapter = cached_sql
         arguments = adapter(values)
         try:
             cursor = database._exec_sql(sql, arguments)
@@ -2316,13 +2328,20 @@ class Diagram(object):
                 for attr in key: column_names.extend(attr.columns)
                 table.add_index(None, get_columns(table, column_names), is_unique=True)
             columns = []
+            columns_no_pk = []
             converters = []
+            converters_no_pk = []
             for attr in entity._attrs_:
                 if attr.is_collection: continue
                 columns.extend(attr.columns)  # todo: inheritance
                 converters.extend(attr.converters)
+                if not attr.is_pk:
+                    columns_no_pk.extend(attr.columns)
+                    converters_no_pk.extend(attr.converters)
             entity._columns_ = columns
+            entity._columns_no_pk_ = columns_no_pk
             entity._converters_ = converters
+            entity._converters_no_pk_ = converters_no_pk
         for entity in entities:
             table = schema.tables[entity._table_]
             for attr in entity._new_attrs_:
