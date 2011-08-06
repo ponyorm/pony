@@ -1014,7 +1014,7 @@ class FuncMonad(Monad):
 
 special_functions = SQLTranslator.special_functions = {}
 
-def func_monad(func, type):
+def func_monad(func, type=None):
     def decorator(monad_method):
         class SpecificFuncMonad(FuncMonad):
             def __call__(monad, *args, **keyargs):
@@ -1070,13 +1070,13 @@ def FuncSumMonad(monad, x):
 def FuncAvgMonad(monad, x):
     return x.avg()
 
-@func_monad(min, type=None)
+@func_monad(min)
 def FuncMinMonad(monad, *args):
     if not args: raise TypeError
     if len(args) == 1: return args[0].min()
     return minmax(monad, MIN, *args)
 
-@func_monad(max, type=None)
+@func_monad(max)
 def FuncMaxMonad(monad, *args):
     if not args: raise TypeError
     if len(args) == 1: return args[0].max()
@@ -1092,13 +1092,13 @@ def minmax(monad, sqlop, *args):
     if result_type not in translator.comparable_types: raise TypeError
     return translator.ExprMonad(translator, result_type, sql)
 
-@func_monad(select, type=None)
+@func_monad(select)
 def FuncSelectMonad(monad, subquery):
     translator = monad.translator
     if not isinstance(subquery, translator.QuerySetMonad): raise TypeError
     return subquery
 
-@func_monad(exists, type=None)
+@func_monad(exists)
 def FuncExistsMonad(monad, subquery):
     if not isinstance(subquery, monad.translator.SetMixin): raise TypeError
     return subquery.nonzero()
