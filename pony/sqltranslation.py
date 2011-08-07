@@ -5,6 +5,7 @@ from compiler import ast
 from decimal import Decimal
 from datetime import date, datetime
 
+from pony import options
 from pony.clobtypes import LongStr, LongUnicode
 from pony.sqlbuilding import SQLBuilder
 from pony.sqlsymbols import *
@@ -323,7 +324,8 @@ class SQLTranslator(ASTTranslator):
         if lower is not None: lower = lower.monad
         node.monad = expr_monad[lower:upper]
     def get_short_alias(translator, alias, entity_name):
-        if alias and len(alias) <= translator.MAX_ALIAS_LENGTH: return alias
+        if alias and not options.SIMPLE_ALIASES \
+                 and len(alias) <= translator.MAX_ALIAS_LENGTH: return alias
         name = entity_name[:translator.MAX_ALIAS_LENGTH-3].lower()
         i = translator.alias_counters.setdefault(name, 0) + 1
         short_alias = '%s-%d' % (name, i)
@@ -714,7 +716,9 @@ class AttrMonad(Monad):
         monad.attr = attr
         monad.alias = None
     def getsql(monad):
-        return [ [ COLUMN, monad.parent.alias, column ] for column in monad.attr.columns ]
+        alias = monad.parent.alias
+        short_alias = monad.translator.aliases.get(alias)
+        return [ [ COLUMN, short_alias, column ] for column in monad.attr.columns ]
         
 class ObjectAttrMonad(ObjectMixin, AttrMonad):
     def __init__(monad, parent, attr):
@@ -768,7 +772,7 @@ class ObjectFlatMonad(ObjectMixin, Monad):
             translator.from_.append([ m2m_alias, TABLE, m2m_table ])
             join_tables(conditions, parent.alias, m2m_alias, parent_entity._pk_columns_, reverse.columns)
             translator.from_.append([ short_alias, TABLE, entity._table_ ])
-            join_tables(conditions, m2m_alias, alias, attr.columns, entity._pk_columns_)
+            join_tables(conditions, m2m_alias, short_alias, attr.columns, entity._pk_columns_)
         
 class NumericAttrMonad(NumericMixin, AttrMonad): pass
 class StringAttrMonad(StringMixin, AttrMonad): pass
