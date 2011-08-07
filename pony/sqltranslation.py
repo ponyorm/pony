@@ -110,23 +110,31 @@ class SQLTranslator(ASTTranslator):
             else: return False
         else: assert False
 
-    def __init__(translator, tree, entities, vartypes, functions, outer_iterables={}):
+    def __init__(translator, tree, entities, vartypes, functions, outer_iterables=None, aliases=None, alias_counters=None):
         assert isinstance(tree, ast.GenExprInner), tree
         ASTTranslator.__init__(translator, tree)
         translator.diagram = None
         translator.entities = entities
         translator.vartypes = vartypes
         translator.functions = functions
-        translator.outer_iterables = outer_iterables
+
+        if outer_iterables is None: translator.outer_iterables = outer_iterables = {}
+        else: translator.outer_iterables = outer_iterables
+
         translator.iterables = iterables = {}
-        translator.aliases = aliases = {}
+
+        if aliases is None: translator.aliases = aliases = {}
+        else: translator.aliases = aliases
+
+        if alias_counters is None: translator.alias_counters = {}
+        else: translator.alias_counters = alias_counters
+        
         translator.extractors = {}
         translator.distinct = False
         translator.from_ = [ FROM ]
         conditions = translator.conditions = []
         translator.inside_expr = False
         translator.inside_not = False
-        translator.alias_counters = {}
         translator.hint_join = False
         for i, qual in enumerate(tree.quals):
             assign = qual.assign
@@ -218,7 +226,8 @@ class SQLTranslator(ASTTranslator):
         outer_iterables = {}
         outer_iterables.update(translator.outer_iterables)
         outer_iterables.update(translator.iterables)
-        subtranslator = SQLTranslator(inner_tree, translator.entities, translator.vartypes, translator.functions, outer_iterables)
+        subtranslator = SQLTranslator(inner_tree, translator.entities, translator.vartypes, translator.functions, outer_iterables,
+                                      translator.aliases.copy(), translator.alias_counters)
         node.monad = translator.QuerySetMonad(translator, subtranslator)
         return True
     def postGenExprIf(translator, node):
