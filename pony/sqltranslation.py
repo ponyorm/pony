@@ -126,6 +126,7 @@ class SQLTranslator(ASTTranslator):
         conditions = translator.conditions = []
         translator.inside_expr = False
         translator.alias_counters = {}
+        translator.hint_join = False
         for i, qual in enumerate(tree.quals):
             assign = qual.assign
             if not isinstance(assign, ast.AssName): raise TypeError
@@ -1105,9 +1106,16 @@ def FuncExistsMonad(monad, subquery):
     if not isinstance(subquery, monad.translator.SetMixin): raise TypeError
     return subquery.nonzero()
 
-@func_monad(JOIN)
-def JoinMonad(monad, x):
-    return x
+class JoinMonad(Monad):
+    def __init__(monad, translator):
+        monad.translator = translator
+        monad.hint_join_prev = translator.hint_join
+        translator.hint_join = True
+    def __call__(monad, x):
+        monad.translator.hint_join = monad.hint_join_prev
+        return x
+    
+special_functions[JOIN] = JoinMonad
 
 class SetMixin(MonadMixin):
     pass
@@ -1129,13 +1137,15 @@ class AttrSetMonad(SetMixin, Monad):
         if isinstance(item_type, EntityMeta) and len(item_type._pk_columns_) > 1:
             raise NotImplementedError
 
-        alias, expr, from_ast, conditions = monad._subselect()
-        if expr is None:
-            assert isinstance(item_type, EntityMeta)
-            expr = [ COLUMN, alias, item_type._pk_columns_[0] ]
-        subquery_ast = [ SELECT, [ ALL, expr ], from_ast, [ WHERE, sqland(conditions) ] ]
-        sqlop = not_in and NOT_IN or IN
-        return translator.BoolExprMonad(translator, [ sqlop, item.getsql()[0], subquery_ast ])
+        if not translator.hint_join:
+            alias, expr, from_ast, conditions = monad._subselect()
+            if expr is None:
+                assert isinstance(item_type, EntityMeta)
+                expr = [ COLUMN, alias, item_type._pk_columns_[0] ]
+            subquery_ast = [ SELECT, [ ALL, expr ], from_ast, [ WHERE, sqland(conditions) ] ]
+            sqlop = not_in and NOT_IN or IN
+            return translator.BoolExprMonad(translator, [ sqlop, item.getsql()[0], subquery_ast ])
+        else: raise NotImplementedError
     def getattr(monad, name):
         item_type = monad.type[0]
         if not isinstance(item_type, EntityMeta):
