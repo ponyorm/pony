@@ -110,24 +110,21 @@ class SQLTranslator(ASTTranslator):
             else: return False
         else: assert False
 
-    def __init__(translator, tree, entities, vartypes, functions, outer_iterables=None, aliases=None, alias_counters=None):
+    def __init__(translator, tree, entities, vartypes, functions, outer_iterables, parent_translator=None):
         assert isinstance(tree, ast.GenExprInner), tree
         ASTTranslator.__init__(translator, tree)
         translator.diagram = None
         translator.entities = entities
         translator.vartypes = vartypes
         translator.functions = functions
-
-        if outer_iterables is None: translator.outer_iterables = outer_iterables = {}
-        else: translator.outer_iterables = outer_iterables
-
+        translator.outer_iterables = outer_iterables
         translator.iterables = iterables = {}
-
-        if aliases is None: translator.aliases = aliases = {}
-        else: translator.aliases = aliases
-
-        if alias_counters is None: translator.alias_counters = {}
-        else: translator.alias_counters = alias_counters
+        if parent_translator is None:
+            translator.aliases = aliases = {}
+            translator.alias_counters = {}
+        else:
+            translator.aliases = aliases = parent_translator.aliases.copy()
+            translator.alias_counters = alias_counters = parent_translator.alias_counters
         
         translator.extractors = {}
         translator.distinct = False
@@ -226,8 +223,7 @@ class SQLTranslator(ASTTranslator):
         outer_iterables = {}
         outer_iterables.update(translator.outer_iterables)
         outer_iterables.update(translator.iterables)
-        subtranslator = SQLTranslator(inner_tree, translator.entities, translator.vartypes, translator.functions, outer_iterables,
-                                      translator.aliases.copy(), translator.alias_counters)
+        subtranslator = SQLTranslator(inner_tree, translator.entities, translator.vartypes, translator.functions, outer_iterables, translator)
         node.monad = translator.QuerySetMonad(translator, subtranslator)
         return True
     def postGenExprIf(translator, node):
