@@ -35,6 +35,8 @@ __all__ = '''
     LongStr LongUnicode
 
     TranslationError select exists avg
+
+    JOIN
     '''.split()
 
 debug = False
@@ -2651,7 +2653,10 @@ select.max = lambda gen : select(gen).max()
 select.count = lambda gen : select(gen).count()
 
 def exists(gen):
-    return select(gen).exists()    
+    return select(gen).exists()
+
+def JOIN(expr):
+    return expr
 
 class QueryResult(list):
     def all(self):

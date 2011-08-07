@@ -9,7 +9,7 @@ from pony.clobtypes import LongStr, LongUnicode
 from pony.sqlbuilding import SQLBuilder
 from pony.sqlsymbols import *
 from pony.utils import avg, copy_func_attrs
-from pony.orm import select, exists, TranslationError, EntityMeta, Set
+from pony.orm import select, exists, TranslationError, EntityMeta, Set, JOIN
 
 def sqland(items):
     if not items: return []
@@ -1102,6 +1102,10 @@ def FuncSelectMonad(monad, subquery):
 def FuncExistsMonad(monad, subquery):
     if not isinstance(subquery, monad.translator.SetMixin): raise TypeError
     return subquery.nonzero()
+
+@func_monad(JOIN)
+def JoinMonad(monad, x):
+    return x
 
 class SetMixin(MonadMixin):
     pass
