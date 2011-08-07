@@ -125,6 +125,7 @@ class SQLTranslator(ASTTranslator):
         translator.from_ = [ FROM ]
         conditions = translator.conditions = []
         translator.inside_expr = False
+        translator.inside_not = False
         translator.alias_counters = {}
         translator.hint_join = False
         for i, qual in enumerate(tree.quals):
@@ -189,6 +190,8 @@ class SQLTranslator(ASTTranslator):
                 translator.conditions.append(if_.monad.getsql())
         translator.inside_expr = True
         translator.dispatch(tree.expr)
+        assert not translator.hint_join
+        assert not translator.inside_not
         monad = tree.expr.monad
         translator.attrname = None
         if isinstance(monad, translator.AttrMonad) and not isinstance(monad, translator.ObjectMixin):
@@ -222,15 +225,20 @@ class SQLTranslator(ASTTranslator):
         monad = node.test.monad
         if monad.type is not bool: monad = monad.nonzero()
         node.monad = monad
+    def preCompare(translator, node):
+        ops = node.ops
+        if len(ops) > 1: raise NotImplementedError
+        op, expr2 = ops[0]
+        if op == 'not in': translator.inside_not = not translator.inside_not
     def postCompare(translator, node):
         expr1 = node.expr
         ops = node.ops
-        if len(ops) > 1: raise NotImplementedError
         op, expr2 = ops[0]
         # op: '<' | '>' | '=' | '>=' | '<=' | '<>' | '!=' | '=='
         #         | 'in' | 'not in' | 'is' | 'is not'
         if op.endswith('in'):
             node.monad = expr2.monad.contains(expr1.monad, op == 'not in')
+            if op == 'not in': translator.inside_not = not translator.inside_not
         else:
             node.monad = expr1.monad.cmp(op, expr2.monad)
     def postConst(translator, node):
@@ -285,8 +293,11 @@ class SQLTranslator(ASTTranslator):
         node.monad = translator.AndMonad([ subnode.monad for subnode in node.nodes ])
     def postOr(translator, node):
         node.monad = translator.OrMonad([ subnode.monad for subnode in node.nodes ])
+    def preNot(translator, node):
+        translator.inside_not = not translator.inside_not
     def postNot(translator, node):
         node.monad = node.expr.monad.negate()
+        translator.inside_not = not translator.inside_not
     def preCallFunc(translator, node):
         if node.star_args is not None: raise NotImplementedError
         if node.dstar_args is not None: raise NotImplementedError
