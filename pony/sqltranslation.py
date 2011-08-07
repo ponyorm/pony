@@ -288,9 +288,7 @@ class SQLTranslator(ASTTranslator):
     def preCallFunc(translator, node):
         if node.star_args is not None: raise NotImplementedError
         if node.dstar_args is not None: raise NotImplementedError
-        if isinstance(node.node, ast.Name):
-            pass
-
+        if not isinstance(node.node, ast.Name): raise NotImplementedError
         if len(node.args) > 1: return False
         if not node.args: return False
         arg = node.args[0]
