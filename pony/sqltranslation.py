@@ -184,7 +184,7 @@ class SQLTranslator(ASTTranslator):
                     if not isinstance(reverse, Set): raise NotImplementedError
                     translator.distinct = True
                     m2m_table = attr.table
-                    m2m_alias = '%s--%s' % (node.name, name)
+                    m2m_alias = translator.get_short_alias(None, 't') # m2m_alias = '%s--%s' % (node.name, name)
                     aliases[m2m_alias] = m2m_alias
                     translator.from_.append([ m2m_alias, TABLE, m2m_table ])
                     join_tables(conditions, node.name, m2m_alias, parent_entity._pk_columns_, reverse.columns)
@@ -789,7 +789,7 @@ class ObjectFlatMonad(ObjectMixin, Monad):
             join_tables(conditions, parent.alias, short_alias, parent_entity._pk_columns_, reverse.columns)
         else:
             m2m_table = attr.table
-            m2m_alias = monad.translator.get_short_alias(None, 'm2m-')
+            m2m_alias = monad.translator.get_short_alias(None, 't')
             translator.from_.append([ m2m_alias, TABLE, m2m_table ])
             join_tables(conditions, parent.alias, m2m_alias, parent_entity._pk_columns_, reverse.columns)
             translator.from_.append([ short_alias, TABLE, entity._table_ ])
@@ -1248,7 +1248,7 @@ class AttrSetMonad(SetMixin, Monad):
                     join_tables(conditions, prev_alias, alias, prev_entity._pk_columns_, reverse.columns)
             elif reverse.is_collection:
                 m2m_table = attr.table
-                m2m_alias = monad.translator.get_short_alias(None, 'm2m-')
+                m2m_alias = monad.translator.get_short_alias(None, 't')
                 from_ast.append([ m2m_alias, TABLE, m2m_table ])
                 join_tables(conditions, prev_alias, m2m_alias, prev_entity._pk_columns_, reverse.columns)
                 from_ast.append([ alias, TABLE, next_entity._table_ ])
