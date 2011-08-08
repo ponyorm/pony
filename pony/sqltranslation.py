@@ -705,7 +705,7 @@ class ObjectMixin(MonadMixin):
 class ObjectIterMonad(ObjectMixin, Monad):
     def __init__(monad, translator, alias, entity):
         Monad.__init__(monad, translator, entity)
-        monad.alias = alias
+        monad.alias = monad.short_alias = alias
     def getsql(monad):
         entity = monad.type
         return [ [ COLUMN, monad.alias, column ] for attr in entity._pk_attrs_ if not attr.is_collection
@@ -733,28 +733,23 @@ class AttrMonad(Monad):
         monad.attr = attr
         monad.alias = None
     def getsql(monad):
-        alias = monad.parent.alias
-        short_alias = monad.translator.aliases.get(alias)
+        short_alias = monad.parent.short_alias
         return [ [ COLUMN, short_alias, column ] for column in monad.attr.columns ]
         
 class ObjectAttrMonad(ObjectMixin, AttrMonad):
     def __init__(monad, parent, attr):
         AttrMonad.__init__(monad, parent, attr)
-        monad.alias = '-'.join((parent.alias, attr.name))
-        monad._make_join()
-    def _make_join(monad):
         translator = monad.translator
         parent = monad.parent
-        attr = monad.attr
-        alias = monad.alias
         entity = monad.type
-
+        alias = monad.alias = '-'.join((parent.alias, attr.name))
         short_alias = translator.aliases.get(alias)
         if short_alias is not None: return
         short_alias = translator.get_short_alias(alias, entity.__name__)
+        monad.short_alias = short_alias
         translator.aliases[alias] = short_alias
         translator.from_.append([ short_alias, TABLE, entity._table_ ])
-        join_tables(translator.conditions, parent.alias, short_alias, attr.columns, entity._pk_columns_)
+        join_tables(translator.conditions, parent.short_alias, short_alias, attr.columns, entity._pk_columns_)
 
 class ObjectFlatMonad(ObjectMixin, Monad):
     def __init__(monad, parent, attr):
@@ -764,30 +759,27 @@ class ObjectFlatMonad(ObjectMixin, Monad):
         Monad.__init__(monad, translator, type)
         monad.parent = parent
         monad.attr = attr
-        monad.alias = '-'.join((parent.alias, attr.name))
-        monad._make_join()
-    def _make_join(monad):
+
         translator = monad.translator
         conditions = translator.conditions
-        parent = monad.parent
-        attr = monad.attr
         reverse = attr.reverse
-        alias = monad.alias
         entity = monad.type
         parent_entity = monad.parent.type
 
+        alias = monad.alias = '-'.join((parent.alias, attr.name))
         short_alias = translator.aliases.get(alias)
         assert short_alias is None
         short_alias = translator.get_short_alias(alias, entity.__name__)
+        monad.short_alias = alias        
         translator.aliases[alias] = short_alias
         if not reverse.is_collection:           
             translator.from_.append([ short_alias, TABLE, entity._table_ ])
-            join_tables(conditions, parent.alias, short_alias, parent_entity._pk_columns_, reverse.columns)
+            join_tables(conditions, parent.short_alias, short_alias, parent_entity._pk_columns_, reverse.columns)
         else:
             m2m_table = attr.table
             m2m_alias = monad.translator.get_short_alias(None, 't')
             translator.from_.append([ m2m_alias, TABLE, m2m_table ])
-            join_tables(conditions, parent.alias, m2m_alias, parent_entity._pk_columns_, reverse.columns)
+            join_tables(conditions, parent.short_alias, m2m_alias, parent_entity._pk_columns_, reverse.columns)
             translator.from_.append([ short_alias, TABLE, entity._table_ ])
             join_tables(conditions, m2m_alias, short_alias, attr.columns, entity._pk_columns_)
         
@@ -1219,7 +1211,7 @@ class AttrSetMonad(SetMixin, Monad):
         from_ast = [ FROM ]
         conditions = []
         alias = None
-        prev_alias = monad.root.alias
+        prev_alias = monad.root.short_alias
         expr = None 
         for attr in monad.path:
             prev_entity = attr.entity
@@ -1233,8 +1225,7 @@ class AttrSetMonad(SetMixin, Monad):
             
             next_entity = attr.py_type
             assert isinstance(next_entity, EntityMeta)
-            alias = '-'.join((prev_alias, attr.name))
-            alias = monad.translator.get_short_alias(alias, next_entity.__name__)
+            alias = monad.translator.get_short_alias(None, next_entity.__name__)
             if not attr.is_collection:
                 from_ast.append([ alias, TABLE, next_entity._table_ ])
                 if attr.columns:                    
