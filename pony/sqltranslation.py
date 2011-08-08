@@ -1146,10 +1146,10 @@ class AttrSetMonad(SetMixin, Monad):
             raise NotImplementedError
 
         if not translator.hint_join:
-            expr_list, from_ast, conditions = monad._subselect()
+            expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
             if len(expr_list) > 1: raise NotImplementedError
             expr = expr_list[0]
-            subquery_ast = [ SELECT, [ ALL, expr ], from_ast, [ WHERE, sqland(conditions) ] ]
+            subquery_ast = [ SELECT, [ ALL, expr ], from_ast, [ WHERE, sqland(inner_conditions+outer_conditions) ] ]
             sqlop = not_in and NOT_IN or IN
             return translator.BoolExprMonad(translator, [ sqlop, item.getsql()[0], subquery_ast ])
         else: raise NotImplementedError
@@ -1162,7 +1162,7 @@ class AttrSetMonad(SetMixin, Monad):
         if attr is None: raise AttributeError, name
         return monad.translator.AttrSetMonad(monad.root, monad.path + [ attr ])
     def len(monad):
-        expr_list, from_ast, conditions = monad._subselect()
+        expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
         if monad.path[-1].reverse:
             kind = ALL
             expr = None
@@ -1170,62 +1170,66 @@ class AttrSetMonad(SetMixin, Monad):
             kind = DISTINCT
             assert len(expr_list) == 1
             expr = expr_list[0]
-        sql_ast = [ SELECT, [ AGGREGATES, [ COUNT, kind, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
+        sql_ast = [ SELECT, [ AGGREGATES, [ COUNT, kind, expr ] ], from_ast, [ WHERE, sqland(inner_conditions+outer_conditions) ] ]
         translator = monad.translator
         return translator.NumericExprMonad(translator, int, sql_ast)
     def sum(monad):
         translator = monad.translator
         item_type = monad.type[0]
         if item_type not in translator.numeric_types: raise TypeError, item_type
-        expr_list, from_ast, conditions = monad._subselect()
+        expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
         assert len(expr_list) == 1
         expr = expr_list[0]
-        sql_ast = [ SELECT, [ AGGREGATES, [COALESCE, [ SUM, expr ], [ VALUE, 0 ]]], from_ast, [ WHERE, sqland(conditions) ] ]
+        sql_ast = [ SELECT, [ AGGREGATES, [COALESCE, [ SUM, expr ], [ VALUE, 0 ]]], from_ast, [ WHERE, sqland(inner_conditions+outer_conditions) ] ]
         return translator.NumericExprMonad(translator, item_type, sql_ast)
     def avg(monad):
         item_type = monad.type[0]
         if item_type not in translator.numeric_types: raise TypeError, item_type
-        expr_list, from_ast, conditions = monad._subselect()
+        expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
         assert len(expr_list) == 1
         expr = expr_list[0]
-        sql_ast = [ SELECT, [ AGGREGATES, [ AVG, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
+        sql_ast = [ SELECT, [ AGGREGATES, [ AVG, expr ] ], from_ast, [ WHERE, sqland(inner_conditions+outer_conditions) ] ]
         translator = monad.translator
         return translator.NumericExprMonad(translator, float, sql_ast)
     def min(monad):
         translator = monad.translator
         item_type = monad.type[0]
         if item_type not in translator.comparable_types: raise TypeError, item_type
-        expr_list, from_ast, conditions = monad._subselect()
+        expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
         assert len(expr_list) == 1
         expr = expr_list[0]
-        sql_ast = [ SELECT, [ AGGREGATES, [ MIN, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
+        sql_ast = [ SELECT, [ AGGREGATES, [ MIN, expr ] ], from_ast, [ WHERE, sqland(inner_conditions+outer_conditions) ] ]
         return translator.ExprMonad.new(translator, item_type, sql_ast)
     def max(monad):
         translator = monad.translator
         item_type = monad.type[0]
         if item_type not in translator.comparable_types: raise TypeError
-        expr_list, from_ast, conditions = monad._subselect()
+        expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
         assert len(expr_list) == 1
         expr = expr_list[0]
-        sql_ast = [ SELECT, [ AGGREGATES, [ MAX, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
+        sql_ast = [ SELECT, [ AGGREGATES, [ MAX, expr ] ], from_ast, [ WHERE, sqland(inner_conditions+outer_conditions) ] ]
         return translator.ExprMonad.new(monad.translator, item_type, sql_ast)
     def nonzero(monad):
-        expr_list, from_ast, conditions = monad._subselect()
-        sql_ast = [ EXISTS, from_ast, [ WHERE, sqland(conditions) ] ]
+        expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
+        sql_ast = [ EXISTS, from_ast, [ WHERE, sqland(inner_conditions+outer_conditions) ] ]
         translator = monad.translator
         return translator.BoolExprMonad(translator, sql_ast)
     def negate(monad):
-        expr_list, from_ast, conditions = monad._subselect()
-        sql_ast = [ NOT_EXISTS, from_ast, [ WHERE, sqland(conditions) ] ]
+        expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
+        sql_ast = [ NOT_EXISTS, from_ast, [ WHERE, sqland(inner_conditions+outer_conditions) ] ]
         translator = monad.translator
         return translator.BoolExprMonad(translator, sql_ast)
     def _subselect(monad):
         from_ast = [ FROM ]
-        conditions = []
+        inner_conditions = []
+        outer_conditions = []
         long_alias = None
         prev_alias = monad.root.alias
         expr = None 
         for i, attr in enumerate(monad.path):
+            if not i: conditions = outer_conditions
+            else: conditions = inner_conditions
+            
             prev_entity = attr.entity
             reverse = attr.reverse
             if not reverse:
@@ -1249,7 +1253,7 @@ class AttrSetMonad(SetMixin, Monad):
                 from_ast.append([ m2m_alias, TABLE, m2m_table ])
                 join_tables(conditions, prev_alias, m2m_alias, prev_entity._pk_columns_, reverse.columns)
                 from_ast.append([ alias, TABLE, next_entity._table_ ])
-                join_tables(conditions, m2m_alias, alias, attr.columns, next_entity._pk_columns_)
+                join_tables(inner_conditions, m2m_alias, alias, attr.columns, next_entity._pk_columns_)
             else:
                 from_ast.append([ alias, TABLE, next_entity._table_ ])
                 join_tables(conditions, prev_alias, alias, prev_entity._pk_columns_, reverse.columns)
@@ -1258,11 +1262,11 @@ class AttrSetMonad(SetMixin, Monad):
         if not attr.reverse:
             expr_list = [[ COLUMN, alias, attr.column ]]
             if not attr.is_required:
-                conditions.append([ IS_NOT_NULL, [ COLUMN, alias, attr.column ] ])
+                inner_conditions.append([ IS_NOT_NULL, [ COLUMN, alias, attr.column ] ])
         else:
             assert isinstance(attr.py_type, EntityMeta)
             expr_list = [[ COLUMN, alias, column ] for column in attr.py_type._pk_columns_ ]
-        return expr_list, from_ast, conditions
+        return expr_list, from_ast, inner_conditions, outer_conditions
     def getsql(monad):
         raise TranslationError
 
