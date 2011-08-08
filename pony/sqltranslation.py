@@ -205,18 +205,18 @@ class SQLTranslator(ASTTranslator):
             monad = monad.parent
         if not isinstance(monad, translator.ObjectMixin):
             raise NotImplementedError
-        alias = monad.alias
+        long_alias = monad.long_alias
         entity = translator.entity = monad.type
         if isinstance(monad, translator.ObjectIterMonad):
-            if alias != translator.tree.quals[-1].assign.name:
+            if long_alias != translator.tree.quals[-1].assign.name:
                 translator.distinct = True
         elif isinstance(monad, translator.ObjectAttrMonad):
             translator.distinct = True
-            assert alias in aliases
+            assert long_alias in aliases
         elif isinstance(monad, translator.ObjectFlatMonad): pass
         else: assert False
-        short_alias = translator.alias = aliases[alias]
-        translator.select, translator.attr_offsets = entity._construct_select_clause_(short_alias, translator.distinct)
+        alias = translator.alias = aliases[long_alias]
+        translator.select, translator.attr_offsets = entity._construct_select_clause_(alias, translator.distinct)
         if not translator.conditions: translator.where = None
         else: translator.where = [ WHERE, sqland(translator.conditions) ]
     def preGenExpr(translator, node):
@@ -341,14 +341,14 @@ class SQLTranslator(ASTTranslator):
         lower = node.lower
         if lower is not None: lower = lower.monad
         node.monad = expr_monad[lower:upper]
-    def get_short_alias(translator, alias, entity_name):
-        if alias and not options.SIMPLE_ALIASES \
-                 and len(alias) <= translator.MAX_ALIAS_LENGTH: return alias
+    def get_short_alias(translator, long_alias, entity_name):
+        if long_alias and not options.SIMPLE_ALIASES \
+                 and len(long_alias) <= translator.MAX_ALIAS_LENGTH: return long_alias
         name = entity_name[:translator.MAX_ALIAS_LENGTH-3].lower()
         i = translator.alias_counters.setdefault(name, 0) + 1
-        short_alias = '%s-%d' % (name, i)
+        alias = '%s-%d' % (name, i)
         translator.alias_counters[name] = i
-        return short_alias
+        return alias
 
 def wrap_monad_method(cls_name, func):
     overrider_name = '%s_%s' % (cls_name, func.__name__)
@@ -706,11 +706,11 @@ class ObjectMixin(MonadMixin):
 class ObjectIterMonad(ObjectMixin, Monad):
     def __init__(monad, translator, alias, entity):
         Monad.__init__(monad, translator, entity)
-        monad.alias = monad.short_alias = alias
+        monad.long_alias = monad.alias = alias
     def getsql(monad):
         entity = monad.type
         return [ [ COLUMN, monad.alias, column ] for attr in entity._pk_attrs_ if not attr.is_collection
-                                                 for column in attr.columns ]
+                                                        for column in attr.columns ]
 
 class AttrMonad(Monad):
     @staticmethod
@@ -732,10 +732,10 @@ class AttrMonad(Monad):
         Monad.__init__(monad, parent.translator, attr_type)
         monad.parent = parent
         monad.attr = attr
-        monad.alias = None
+        monad.long_alias = monad.alias = None
     def getsql(monad):
-        short_alias = monad.parent.short_alias
-        return [ [ COLUMN, short_alias, column ] for column in monad.attr.columns ]
+        alias = monad.parent.alias
+        return [ [ COLUMN, alias, column ] for column in monad.attr.columns ]
         
 class ObjectAttrMonad(ObjectMixin, AttrMonad):
     def __init__(monad, parent, attr):
@@ -743,14 +743,14 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
         translator = monad.translator
         parent = monad.parent
         entity = monad.type
-        alias = monad.alias = '-'.join((parent.alias, attr.name))
-        short_alias = translator.aliases.get(alias)
-        if short_alias is not None: return
-        short_alias = translator.get_short_alias(alias, entity.__name__)
-        monad.short_alias = short_alias
-        translator.aliases[alias] = short_alias
-        translator.from_.append([ short_alias, TABLE, entity._table_ ])
-        join_tables(translator.conditions, parent.short_alias, short_alias, attr.columns, entity._pk_columns_)
+        long_alias = monad.long_alias = '-'.join((parent.long_alias, attr.name))
+        alias = translator.aliases.get(long_alias)
+        if alias is not None: return
+        alias = translator.get_short_alias(long_alias, entity.__name__)
+        monad.alias = alias
+        translator.aliases[long_alias] = alias
+        translator.from_.append([ alias, TABLE, entity._table_ ])
+        join_tables(translator.conditions, parent.alias, alias, attr.columns, entity._pk_columns_)
 
 class ObjectFlatMonad(ObjectMixin, Monad):
     def __init__(monad, parent, attr):
@@ -767,22 +767,21 @@ class ObjectFlatMonad(ObjectMixin, Monad):
         entity = monad.type
         parent_entity = monad.parent.type
 
-        alias = monad.alias = '-'.join((parent.alias, attr.name))
-        short_alias = translator.aliases.get(alias)
-        assert short_alias is None
-        short_alias = translator.get_short_alias(alias, entity.__name__)
-        monad.short_alias = alias
-        translator.aliases[alias] = short_alias
+        long_alias = monad.long_alias = '-'.join((parent.long_alias, attr.name))
+        assert long_alias not in translator.aliases
+        alias = translator.get_short_alias(long_alias, entity.__name__)
+        monad.alias = alias
+        translator.aliases[long_alias] = alias
         if not reverse.is_collection:           
-            translator.from_.append([ short_alias, TABLE, entity._table_ ])
-            join_tables(conditions, parent.short_alias, short_alias, parent_entity._pk_columns_, reverse.columns)
+            translator.from_.append([ alias, TABLE, entity._table_ ])
+            join_tables(conditions, parent.alias, alias, parent_entity._pk_columns_, reverse.columns)
         else:
             m2m_table = attr.table
             m2m_alias = monad.translator.get_short_alias(None, 't')
             translator.from_.append([ m2m_alias, TABLE, m2m_table ])
-            join_tables(conditions, parent.short_alias, m2m_alias, parent_entity._pk_columns_, reverse.columns)
-            translator.from_.append([ short_alias, TABLE, entity._table_ ])
-            join_tables(conditions, m2m_alias, short_alias, attr.columns, entity._pk_columns_)
+            join_tables(conditions, parent.alias, m2m_alias, parent_entity._pk_columns_, reverse.columns)
+            translator.from_.append([ alias, TABLE, entity._table_ ])
+            join_tables(conditions, m2m_alias, alias, attr.columns, entity._pk_columns_)
         
 class NumericAttrMonad(NumericMixin, AttrMonad): pass
 class StringAttrMonad(StringMixin, AttrMonad): pass
@@ -1223,8 +1222,8 @@ class AttrSetMonad(SetMixin, Monad):
     def _subselect(monad):
         from_ast = [ FROM ]
         conditions = []
-        alias = None
-        prev_alias = monad.root.short_alias
+        long_alias = None
+        prev_alias = monad.root.alias
         expr = None 
         for i, attr in enumerate(monad.path):
             prev_entity = attr.entity
