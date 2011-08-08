@@ -1,5 +1,5 @@
 import __builtin__, types
-from itertools import izip
+from itertools import izip, count
 from types import NoneType
 from compiler import ast
 from decimal import Decimal
@@ -122,10 +122,11 @@ class SQLTranslator(ASTTranslator):
         if parent_translator is None:
             translator.aliases = aliases = {}
             translator.alias_counters = {}
+            translator.expr_counter = count(1).next
         else:
             translator.aliases = aliases = parent_translator.aliases.copy()
-            translator.alias_counters = alias_counters = parent_translator.alias_counters
-        
+            translator.alias_counters = parent_translator.alias_counters
+            translator.expr_counter = parent_translator.expr_counter
         translator.extractors = {}
         translator.distinct = False
         translator.from_ = [ FROM ]
@@ -770,7 +771,7 @@ class ObjectFlatMonad(ObjectMixin, Monad):
         short_alias = translator.aliases.get(alias)
         assert short_alias is None
         short_alias = translator.get_short_alias(alias, entity.__name__)
-        monad.short_alias = alias        
+        monad.short_alias = alias
         translator.aliases[alias] = short_alias
         if not reverse.is_collection:           
             translator.from_.append([ short_alias, TABLE, entity._table_ ])
@@ -1146,10 +1147,9 @@ class AttrSetMonad(SetMixin, Monad):
             raise NotImplementedError
 
         if not translator.hint_join:
-            alias, expr, from_ast, conditions = monad._subselect()
-            if expr is None:
-                assert isinstance(item_type, EntityMeta)
-                expr = [ COLUMN, alias, item_type._pk_columns_[0] ]
+            expr_list, from_ast, conditions = monad._subselect()
+            if len(expr_list) > 1: raise NotImplementedError
+            expr = expr_list[0]
             subquery_ast = [ SELECT, [ ALL, expr ], from_ast, [ WHERE, sqland(conditions) ] ]
             sqlop = not_in and NOT_IN or IN
             return translator.BoolExprMonad(translator, [ sqlop, item.getsql()[0], subquery_ast ])
@@ -1163,9 +1163,14 @@ class AttrSetMonad(SetMixin, Monad):
         if attr is None: raise AttributeError, name
         return monad.translator.AttrSetMonad(monad.root, monad.path + [ attr ])
     def len(monad):
-        if not monad.path[-1].reverse: kind = DISTINCT
-        else: kind = ALL
-        alias, expr, from_ast, conditions = monad._subselect()
+        expr_list, from_ast, conditions = monad._subselect()
+        if monad.path[-1].reverse:
+            kind = ALL
+            expr = None
+        else:
+            kind = DISTINCT
+            assert len(expr_list) == 1
+            expr = expr_list[0]
         sql_ast = [ SELECT, [ AGGREGATES, [ COUNT, kind, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
         translator = monad.translator
         return translator.NumericExprMonad(translator, int, sql_ast)
@@ -1173,13 +1178,17 @@ class AttrSetMonad(SetMixin, Monad):
         translator = monad.translator
         item_type = monad.type[0]
         if item_type not in translator.numeric_types: raise TypeError, item_type
-        alias, expr, from_ast, conditions = monad._subselect()
+        expr_list, from_ast, conditions = monad._subselect()
+        assert len(expr_list) == 1
+        expr = expr_list[0]
         sql_ast = [ SELECT, [ AGGREGATES, [COALESCE, [ SUM, expr ], [ VALUE, 0 ]]], from_ast, [ WHERE, sqland(conditions) ] ]
         return translator.NumericExprMonad(translator, item_type, sql_ast)
     def avg(monad):
         item_type = monad.type[0]
         if item_type not in translator.numeric_types: raise TypeError, item_type
-        alias, expr, from_ast, conditions = monad._subselect()
+        expr_list, from_ast, conditions = monad._subselect()
+        assert len(expr_list) == 1
+        expr = expr_list[0]
         sql_ast = [ SELECT, [ AGGREGATES, [ AVG, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
         translator = monad.translator
         return translator.NumericExprMonad(translator, float, sql_ast)
@@ -1187,23 +1196,27 @@ class AttrSetMonad(SetMixin, Monad):
         translator = monad.translator
         item_type = monad.type[0]
         if item_type not in translator.comparable_types: raise TypeError, item_type
-        alias, expr, from_ast, conditions = monad._subselect()
+        expr_list, from_ast, conditions = monad._subselect()
+        assert len(expr_list) == 1
+        expr = expr_list[0]
         sql_ast = [ SELECT, [ AGGREGATES, [ MIN, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
         return translator.ExprMonad.new(translator, item_type, sql_ast)
     def max(monad):
         translator = monad.translator
         item_type = monad.type[0]
         if item_type not in translator.comparable_types: raise TypeError
-        alias, expr, from_ast, conditions = monad._subselect()
+        expr_list, from_ast, conditions = monad._subselect()
+        assert len(expr_list) == 1
+        expr = expr_list[0]
         sql_ast = [ SELECT, [ AGGREGATES, [ MAX, expr ] ], from_ast, [ WHERE, sqland(conditions) ] ]
         return translator.ExprMonad.new(monad.translator, item_type, sql_ast)
     def nonzero(monad):
-        alias, expr, from_ast, conditions = monad._subselect()
+        expr_list, from_ast, conditions = monad._subselect()
         sql_ast = [ EXISTS, from_ast, [ WHERE, sqland(conditions) ] ]
         translator = monad.translator
         return translator.BoolExprMonad(translator, sql_ast)
     def negate(monad):
-        alias, expr, from_ast, conditions = monad._subselect()
+        expr_list, from_ast, conditions = monad._subselect()
         sql_ast = [ NOT_EXISTS, from_ast, [ WHERE, sqland(conditions) ] ]
         translator = monad.translator
         return translator.BoolExprMonad(translator, sql_ast)
@@ -1213,14 +1226,12 @@ class AttrSetMonad(SetMixin, Monad):
         alias = None
         prev_alias = monad.root.short_alias
         expr = None 
-        for attr in monad.path:
+        for i, attr in enumerate(monad.path):
             prev_entity = attr.entity
             reverse = attr.reverse
             if not reverse:
-                assert attr is monad.path[-1] and len(attr.columns) == 1
-                expr = [ COLUMN, alias, attr.column ]
-                if not attr.is_required:
-                    conditions.append([ IS_NOT_NULL, [ COLUMN, alias, attr.column ] ])
+                assert attr is monad.path[-1]
+                if len(attr.columns) > 1: raise NotImplementedError
                 break
             
             next_entity = attr.py_type
@@ -1244,8 +1255,15 @@ class AttrSetMonad(SetMixin, Monad):
                 from_ast.append([ alias, TABLE, next_entity._table_ ])
                 join_tables(conditions, prev_alias, alias, prev_entity._pk_columns_, reverse.columns)
             prev_alias = alias
-        assert alias is not None
-        return alias, expr, from_ast, conditions
+
+        if not attr.reverse:
+            expr_list = [[ COLUMN, alias, attr.column ]]
+            if not attr.is_required:
+                conditions.append([ IS_NOT_NULL, [ COLUMN, alias, attr.column ] ])
+        else:
+            assert isinstance(attr.py_type, EntityMeta)
+            expr_list = [[ COLUMN, alias, column ] for column in attr.py_type._pk_columns_ ]
+        return expr_list, from_ast, conditions
     def getsql(monad):
         raise TranslationError
 
