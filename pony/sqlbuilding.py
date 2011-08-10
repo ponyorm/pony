@@ -149,7 +149,9 @@ class SQLBuilder(object):
 ##                raise
     def quote_name(builder, name):
         return quote_name(name, builder.quote_char)
-    def INSERT(builder, table_name, columns, values):
+    def INSERT(builder, table_name, columns, values, returning=None):
+        if returning is not None:
+            raise NotImplementedError("Default SQLBuilder doesn't support parameter 'returning'")
         return [ 'INSERT INTO ', builder.quote_name(table_name), ' (',
                  join(', ', [builder.quote_name(column) for column in columns ]),
                  ') VALUES (', join(', ', [builder(value) for value in values]), ')' ]

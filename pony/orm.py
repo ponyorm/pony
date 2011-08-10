@@ -206,18 +206,18 @@ local = Local()
 select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class Database(object):
-    def __init__(database, provider, *args, **keyargs):
+    def __init__(self, provider, *args, **keyargs):
         if isinstance(provider, basestring): provider = import_module('pony.dbproviders.' + provider)
-        database.provider = provider
-        database.args = args
-        database.keyargs = keyargs
-        database._pool = provider.get_pool(*args, **keyargs)
-        database.priority = 0
-        database.optimistic = True
-        database._insert_cache = {}
+        self.provider = provider
+        self.args = args
+        self.keyargs = keyargs
+        self._pool = provider.get_pool(*args, **keyargs)
+        self.priority = 0
+        self.optimistic = True
+        self._insert_cache = {}
         # connection test with imediate release:
-        connection = wrap_dbapi_exceptions(database.provider, database._pool.connect)
-        wrap_dbapi_exceptions(provider, database._pool.release, connection)
+        connection = wrap_dbapi_exceptions(self.provider, self._pool.connect)
+        wrap_dbapi_exceptions(provider, self._pool.release, connection)
     def get_connection(database):
         cache = database._get_cache()
         cache.optimistic = False
@@ -281,21 +281,25 @@ class Database(object):
         cursor = database._execute(sql, globals, locals, 1)
         result = cursor.fetchone()
         return bool(result)
-    def insert(database, table_name, **keyargs):
+    def insert(database, table_name, returning=None, **keyargs):
         table_name = table_name[:]  # table_name = templating.plainstr(table_name)
         cache = database._get_cache()
         cache.optimistic = False
         query_key = (table_name,) + tuple(keyargs)  # keys are not sorted deliberately!!
+        if returning is not None: query_key = query_key + (returning,)
         cached_sql = database._insert_cache.get(query_key)
         if cached_sql is None:
-            ast = [ INSERT, table_name, keyargs.keys(), [ [PARAM, i] for i in range(len(keyargs)) ] ]
+            ast = [ INSERT, table_name, keyargs.keys(), [ [PARAM, i] for i in range(len(keyargs)) ], returning ]
             sql, adapter = database._ast2sql(ast)
             cached_sql = sql, adapter
             database._insert_cache[query_key] = cached_sql
         else: sql, adapter = cached_sql
         arguments = adapter(keyargs.values())  # order of values same as order of keys
         cursor = database._exec_sql(sql, arguments)
-        return getattr(cursor, 'lastrowid', None)
+        if returning is None:
+            return getattr(cursor, 'lastrowid', None)
+        else:
+            return cursor.fetchone()[0]
     def _ast2sql(database, sql_ast):
         cache = database._get_cache()
         sql, adapter = database.provider.ast2sql(cache.connection, sql_ast)
