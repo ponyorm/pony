@@ -309,11 +309,11 @@ class Database(object):
         cursor = cache.connection.cursor()
         if debug:
             print sql
-            print args2str(arguments)
+            if arguments: print args2str(arguments)
             print
         provider = database.provider
-        if arguments is None: wrap_dbapi_exceptions(provider, cursor.execute, sql)
-        else: wrap_dbapi_exceptions(provider, cursor.execute, sql, arguments)
+        if arguments: wrap_dbapi_exceptions(provider, cursor.execute, sql, arguments)
+        else: wrap_dbapi_exceptions(provider, cursor.execute, sql)
         return cursor
     def _exec_sql_many(database, sql, arguments_list=None):
         cache = database._get_cache()
@@ -327,16 +327,6 @@ class Database(object):
         if arguments_list is None: wrap_dbapi_exceptions(provider, cursor.executemany, sql)
         else: wrap_dbapi_exceptions(provider, cursor.executemany, sql, arguments_list)
         return cursor
-    def _commit_commands(database, commands):
-        cache = database._get_cache()
-        assert not cache.has_anything_to_save()
-        cursor = cache.connection.cursor()
-        provider = database.provider
-        for command in commands:
-            if debug: print 'DDLCOMMAND\n', command
-            wrap_dbapi_exceptions(provider, cursor.execute, command)
-        if debug: print 'COMMIT\n'
-        wrap_dbapi_exceptions(provider, cache.connection.commit)
     def generate_mapping(database, *args, **keyargs):
         outer_dict = sys._getframe(1).f_locals
         diagram = outer_dict.get('_diagram_')
@@ -2371,9 +2361,7 @@ class Diagram(object):
                     child_columns = get_columns(table, attr.columns)
                     table.add_foreign_key(None, child_columns, parent_table, parent_columns)
 
-        if create_tables:
-            commands = schema.get_create_commands()
-            database._commit_commands(commands)
+        if create_tables: schema.create_tables(database)
             
         if not check_tables and not create_tables: return
         for table in schema.tables.values():

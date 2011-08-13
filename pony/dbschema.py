@@ -2,7 +2,7 @@
 class DBSchemaError(Exception): pass
 
 class DBSchema(object):
-    def __init__(schema, database, uppercase=False):
+    def __init__(schema, database, uppercase=True):
         schema.database = database
         schema.tables = {}
         schema.constraints = {}
@@ -17,28 +17,33 @@ class DBSchema(object):
     def case(schema, s):
         if schema.uppercase: return s.upper().replace('%S', '%s').replace('%R', '%r')
         else: return s.lower()
-    def get_create_commands(schema, uppercase=None):
-        prev_uppercase = schema.uppercase
-        try:
-            if uppercase is not None: schema.uppercase = uppercase
-            created_tables = set()
-            result = []
-            tables_to_create = set(schema.tables.values())
-            while tables_to_create:
-                for table in tables_to_create:
-                    if table.parent_tables.issubset(created_tables):
-                        tables_to_create.remove(table)
-                        break
-                else: table = tables_to_create.pop()
-                result.extend(table.get_create_commands(created_tables))
-            return result
-        finally:
-            if uppercase is not None: schema.uppercase = prev_uppercase
-    def get_create_script(schema, uppercase=None):
-        commands = schema.get_create_commands(uppercase)
-        return schema.command_separator.join(commands)
     def add_table(schema, table_name):
         return schema.table_class(table_name, schema)
+    def order_tables_to_create(schema):
+        tables = []
+        created_tables = set()
+        tables_to_create = set(schema.tables.values())
+        while tables_to_create:
+            for table in tables_to_create:
+                if table.parent_tables.issubset(created_tables):
+                    created_tables.add(table)
+                    tables_to_create.remove(table)
+                    break
+            else: table = tables_to_create.pop()
+            tables.append(table)
+        return tables
+    def generate_create_script(schema):
+        commands = []
+        for table in schema.order_tables_to_create():
+            commands.extend(table.get_create_commands)
+        return schema.command_separator.join(commands)
+    def create_tables(schema, database):
+        cache = database._get_cache()
+        assert not cache.has_anything_to_save()
+        created_tables = set()
+        for table in schema.order_tables_to_create():
+            table.create(database, created_tables)
+        database.commit()
 
 class Table(object):
     def __init__(table, name, schema):
@@ -54,11 +59,13 @@ class Table(object):
         table.foreign_keys = {}
         table.parent_tables = set()
         table.child_tables = set()
-        
         table.entities = set()
         table.m2m = set()
     def __repr__(table):
         return '<Table(%s)>' % table.name
+    def create(table, database, created_tables=None):
+        commands = table.get_create_commands(created_tables)
+        for command in commands: database._exec_sql(command)
     def get_create_commands(table, created_tables=None):
         if created_tables is None: created_tables = set()
         schema = table.schema
