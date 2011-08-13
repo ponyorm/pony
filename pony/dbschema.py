@@ -97,6 +97,7 @@ class Table(object):
         return table.schema.fk_class(fk_name, table, child_columns, parent_table, parent_columns)
 
 class Column(object):
+    auto_sql_types = frozenset([ 'INTEGER' ])
     autoincrement = 'AUTOINCREMENT'
     def __init__(column, name, table, sql_type, is_not_null=None):
         if name in table.column_dict:
@@ -165,7 +166,9 @@ class Index(Constraint):
                 "Incompatible combination of is_unique=False and is_pk=True")
         elif is_unique is None: is_unique = False
         for column in columns:
-            column.is_pk = len(columns) == 1 and is_pk  # is_pk may be "auto"
+            if is_pk == 'auto' and column.sql_type not in column.auto_sql_types:
+                raise DBSchemaError("Column %s of type %s cannot be declared as 'auto'" % (column.name, column.sql_type))
+            column.is_pk = len(columns) == 1 and is_pk
             column.is_pk_part = bool(is_pk)
             column.is_unique = is_unique and len(columns) == 1
         Constraint.__init__(index, name, table.schema)

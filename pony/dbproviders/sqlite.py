@@ -92,6 +92,9 @@ def ast2sql(con, ast):
     b = SQLiteBuilder(ast)
     return b.sql, b.adapter
 
+def get_last_rowid(cursor):
+    return cursor.lastrowid
+
 def _get_converter_type_by_py_type(py_type):
     if issubclass(py_type, bool): return BoolConverter
     elif issubclass(py_type, unicode): return UnicodeConverter

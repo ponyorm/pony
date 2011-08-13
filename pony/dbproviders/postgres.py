@@ -1,15 +1,7 @@
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time
 
-import warnings
-warnings.filterwarnings('ignore', '^Table.+already exists$', Warning, '^pony\\.orm$')
-
-import MySQLdb
-from MySQLdb import (Warning, Error, InterfaceError, DatabaseError,
-                     DataError, OperationalError, IntegrityError, InternalError,
-                     ProgrammingError, NotSupportedError)
-from MySQLdb.constants import FIELD_TYPE, FLAG
-import MySQLdb.converters
+import pgdb
 
 from pony import dbschema
 from pony import sqlbuilding
@@ -17,37 +9,107 @@ from pony.sqltranslation import SQLTranslator
 from pony.clobtypes import LongStr, LongUnicode
 from pony.utils import localbase
 
-paramstyle = 'format'
+from pgdb import (Warning, Error, InterfaceError, DatabaseError,
+                  DataError, OperationalError, IntegrityError, InternalError,
+                  ProgrammingError, NotSupportedError)
 
-class MySQLColumn(dbschema.Column):
-    autoincrement = 'AUTO_INCREMENT'
+paramstyle = 'pyformat'
 
-class MySQLSchema(dbschema.DBSchema):
-    column_class = MySQLColumn
+class PGTable(dbschema.Table):
+    def get_create_commands(table, created_tables=None):
+        if created_tables is None: created_tables = set()
+        schema = table.schema
+        case = schema.case
+        cmd = []
+        cmd.append(case('CREATE TABLE %s (') % schema.quote_name(table.name))
+        for column in table.column_list:
+            cmd.append(schema.indent + column.get_sql(created_tables) + ',')
+        if len(table.pk_index.columns) > 1:
+            cmd.append(schema.indent + table.pk_index.get_sql() + ',')
+        for index in table.indexes.values():
+            if index.is_pk: continue
+            if not index.is_unique: continue
+            if len(index.columns) == 1: continue
+            cmd.append(index.get_sql() + ',')
+        for foreign_key in table.foreign_keys.values():
+            if len(foreign_key.child_columns) == 1: continue
+            if not foreign_key.parent_table in created_tables: continue
+            cmd.append(foreign_key.get_sql() + ',')
+        cmd[-1] = cmd[-1][:-1]
+        cmd.append(')')
+        cmd = '\n'.join(cmd)
+        result = [ cmd ]
+        for child_table in table.child_tables:
+            if child_table not in created_tables: continue
+            for foreign_key in child_table.foreign_keys.values():
+                if foreign_key.parent_table is not table: continue
+                result.append(foreign_key.get_create_command())
+        created_tables.add(table)
+        return result
+
+class PGColumn(dbschema.Column):
+    autoincrement = None
+    def get_sql(column, created_tables=None):
+        if created_tables is None: created_tables = set()
+        table = column.table
+        schema = table.schema
+        quote = schema.quote_name
+        case = schema.case
+        result = []
+        append = result.append
+        append(quote(column.name))
+        if column.is_pk == 'auto': append(case('SERIAL'))
+        else: append(case(column.sql_type))
+        if column.is_pk:            
+            append(case('PRIMARY KEY'))
+        else:            
+            if column.is_unique: append(case('UNIQUE'))
+            if column.is_not_null: append(case('NOT NULL'))
+        foreign_key = table.foreign_keys.get((column,))
+        if foreign_key is not None:
+            parent_table = foreign_key.parent_table
+            if parent_table in created_tables or parent_table is table:
+                append(case('REFERENCES'))
+                append(quote(parent_table.name))
+                append(schema.column_list(foreign_key.parent_columns)) 
+        return ' '.join(result)    
+
+dbschema.DBSchema.table_class = PGTable
+dbschema.DBSchema.column_class = PGColumn
+
+translator_cls = SQLTranslator
 
 def create_schema(database):
-    return MySQLSchema(database)
+    return dbschema.DBSchema(database)
 
 def quote_name(connection, name):
-    return sqlbuilding.quote_name(name, "`")
+    return sqlbuilding.quote_name(name, '"')
+
+class PGSQLBuilder(sqlbuilding.SQLBuilder):
+    def INSERT(builder, table_name, columns, values, returning=None):
+        result = sqlbuilding.SQLBuilder.INSERT(builder, table_name, columns, values)
+        if returning is not None:
+            result.extend(['RETURNING ', builder.quote_name(returning) ])
+        return result
+
+def ast2sql(con, ast):
+    b = PGSQLBuilder(ast, paramstyle)
+    return str(b.sql), b.adapter
+
+def get_last_rowid(cursor):
+    return cursor.fetchone()[0]
 
 def get_pool(*args, **keyargs):
-    if 'conv' not in keyargs:
-        conv = MySQLdb.converters.conversions.copy()
-        conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]
-        keyargs['conv'] = conv
-    if 'charset' not in keyargs:
-        keyargs['charset'] = 'utf8'
     return Pool(*args, **keyargs)
 
 class Pool(localbase):
-    def __init__(pool, *args, **keyargs): # called separately in each thread
+    def __init__(pool, *args, **keyargs):
         pool.args = args
         pool.keyargs = keyargs
         pool.con = None
     def connect(pool):
         if pool.con is None:
-            pool.con = MySQLdb.connect(*pool.args, **pool.keyargs)
+            pool.con = pgdb.connect(*pool.args, **pool.keyargs)
         return pool.con
     def release(pool, con):
         assert con is pool.con
@@ -59,31 +121,6 @@ class Pool(localbase):
         assert con is pool.con
         pool.con = None
         con.close()
-
-class MySQLTranslator(SQLTranslator):
-    def DateMixin_attr_year(translator, monad):
-        sql = [ 'YEAR', monad.getsql()[0] ]
-        translator = monad.translator
-        return translator.NumericExprMonad(translator, int, sql)        
-
-translator_cls = MySQLTranslator
-
-class MyValue(sqlbuilding.Value):
-    def quote_str(self, s):
-        s = s.replace('%', '%%')
-        return sqlbuilding.Value.quote_str(self, s)
-
-class MySQLBuilder(sqlbuilding.SQLBuilder):
-    make_value = MyValue
-    def YEAR(builder, expr):
-        return 'year(', builder(expr), ')'
-
-def ast2sql(con, ast):
-    b = MySQLBuilder(ast, paramstyle, "`")
-    return b.sql, b.adapter
-
-def get_last_rowid(cursor):
-    return cursor.lastrowid
 
 def _get_converter_type_by_py_type(py_type):
     if issubclass(py_type, bool): return BoolConverter
@@ -158,7 +195,8 @@ class BasestringConverter(Converter):
         return val
     def sql_type(converter):
         if converter.max_len:
-            return 'VARCHAR(%d) CHARACTER SET %s' % (converter.max_len, converter.db_encoding)
+            #return 'VARCHAR(%d) CHARACTER SET %s' % (converter.max_len, converter.db_encoding)
+            return 'VARCHAR(%d)' % (converter.max_len)
         return 'TEXT CHARACTER SET %s' % converter.db_encoding
 
 class UnicodeConverter(BasestringConverter):
@@ -241,7 +279,7 @@ class RealConverter(Converter):
                              % (val, converter.attr, converter.max_val))
         return val
     def sql_type(converter):
-        return 'DOUBLE'
+        return 'DOUBLE PRECISION'
 
 class DecimalConverter(Converter):
     def __init__(converter, attr=None):
@@ -307,7 +345,7 @@ class BlobConverter(Converter):
         if isinstance(val, str): return buffer(val)
         raise TypeError("Attribute %r: expected type is 'buffer'. Got: %r" % (converter.attr, type(val)))
     def sql_type(converter):
-        return 'BLOB'
+        return 'BYTEA'
 
 class DatetimeConverter(Converter):
     def init(converter, keyargs):
@@ -331,3 +369,7 @@ class DateConverter(Converter):
         return val
     def sql_type(converter):
         return 'DATE'
+    def py2sql(converter, val):
+        return datetime(val.year, val.month, val.day)
+    def sql2py(converter, val):
+        return datetime.strptime(val, '%Y-%m-%d').date()

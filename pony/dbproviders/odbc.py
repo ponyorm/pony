@@ -22,3 +22,7 @@ def ast2sql(connection, ast):
     quote_char = connection.getinfo(pyodbc.SQL_IDENTIFIER_QUOTE_CHAR)
     b = sqlbuilding.SQLBuilder(ast, paramstyle, quote_char)
     return b.sql, b.adapter
+
+def get_last_rowid(cursor):
+    return cursor.lastrowid
+

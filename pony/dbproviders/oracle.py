@@ -20,3 +20,7 @@ def release(connection):
 def ast2sql(con, ast):
     b = sqlbuilding.SQLBuilder(ast, paramstyle)
     return str(b.sql), b.adapter
+
+def get_last_rowid(cursor):
+    return cursor.lastrowid
+

@@ -1849,7 +1849,7 @@ class Entity(object):
                 continue
             bit = obj._bits_[attr]
             if rbits & bit: raise UnrepeatableReadError(
-                'Value of %s.%s for %s was updated outside of current transaction (was: %s, now: %s)'
+                'Value of %s.%s for %s was updated outside of current transaction (was: %r, now: %r)'
                 % (obj.__class__.__name__, attr.name, obj, old_prev, prev))
             set_prev(attr.name, prev)
             if wbits & bit:
@@ -2108,6 +2108,10 @@ class Entity(object):
             assert len(columns) == len(converters)
             params = [ [ PARAM, i,  converter ] for i, converter in enumerate(converters) ]
             sql_ast = [ INSERT, obj._table_, columns, params ]
+            if no_pk:
+                assert len(obj._pk_columns_) == 1
+                assert obj.__class__._pk_.auto
+                sql_ast.append(obj._pk_columns_[0])
             sql, adapter = database._ast2sql(sql_ast)
             if no_pk: obj.__class__._cached_create_sql_no_pk_ = sql, adapter
             else: obj.__class__._cached_create_sql_ = sql, adapter
@@ -2118,11 +2122,11 @@ class Entity(object):
         except IntegrityError, e:
             raise TransactionIntegrityError(
                 'Object %r cannot be stored in the database (probably it already exists). DB message: %s' % (obj, e.args[0]))
-        except database.DatabaseError, e:
+        except DatabaseError, e:
             raise UnexpectedError('Object %r cannot be stored in the database. DB message: %s' % (obj, e.args[0]))
 
         if obj._pkval_ is None:
-            rowid = cursor.lastrowid # TODO
+            rowid = database.provider.get_last_rowid(cursor)
             pk_attr = obj.__class__._pk_
             index = obj._cache_.indexes.setdefault(pk_attr, {})
             obj2 = index.setdefault(rowid, obj)

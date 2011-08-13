@@ -35,7 +35,8 @@ class Student(Entity):
     courses = Set(Course)
 
 db = Database('sqlite', 'presentation.sqlite', create_db=True)
-# db = Database('mysql', host="localhost", user="root", passwd="root", db="university")
+#db = Database('mysql', host="localhost", user="root", passwd="root", db="university")
+#db = Database('postgres', user='pony', password='magic', host='localhost', database='presentation')    
 
 db.generate_mapping(create_tables=True)
 
