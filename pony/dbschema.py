@@ -1,3 +1,4 @@
+from pony import orm
 
 class DBSchemaError(Exception): pass
 
@@ -43,8 +44,9 @@ class DBSchema(object):
         created_tables = set()
         for table in schema.order_tables_to_create():
             table.create(database, created_tables)
-        database.commit()
-
+        if orm.debug: print 'COMMIT\n'
+        orm.wrap_dbapi_exceptions(database.provider, cache.connection.commit)
+                
 class Table(object):
     def __init__(table, name, schema):
         if name in schema.tables:
