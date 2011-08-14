@@ -748,7 +748,12 @@ class Collection(Attribute):
         if attr.__class__ is Collection: raise TypeError("'Collection' is abstract type")
         table = keyargs.pop('table', None)  # TODO: rename table to link_table or m2m_table
         if table is not None and not isinstance(table, basestring):
-            raise TypeError("Parameter 'table' must be a string. Got: %r" % table)
+            if not isinstance(table, (list, tuple)): raise TypeError(
+                "Parameter 'table' must be a string. Got: %r" % table)
+            for name_part in table:
+                if not isinstance(name_part, basestring): raise TypeError(
+                    'Each part of table name must be a string. Got: %r' % name_part)
+            table = tuple(table)
         attr.table = table
         Attribute.__init__(attr, py_type, *args, **keyargs)
         if attr.default is not None: raise TypeError('default value could not be set for collection attribute')
@@ -989,12 +994,12 @@ class Set(Collection):
         cached_sql = attr.cached_remove_m2m_sql
         if cached_sql is None:
             reverse = attr.reverse
-            table = attr.table
-            assert table is not None
+            table_name = attr.table
+            assert table_name is not None
             criteria_list = [ AND ]
             for i, (column, converter) in enumerate(zip(reverse.columns + attr.columns, reverse.converters + attr.converters)):
                 criteria_list.append([ EQ, [COLUMN, None, column], [ PARAM, i, converter ] ])
-            sql_ast = [ DELETE, table, [ WHERE, criteria_list ] ]
+            sql_ast = [ DELETE, table_name, [ WHERE, criteria_list ] ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_remove_m2m_sql = sql, adapter
         else: sql, adapter = cached_sql
@@ -1007,14 +1012,14 @@ class Set(Collection):
         cached_sql = attr.cached_add_m2m_sql
         if cached_sql is None:
             reverse = attr.reverse
-            table = attr.table
-            assert table is not None
+            table_name = attr.table
+            assert table_name is not None
             columns = []
             params = []
             for i, (column, converter) in enumerate(zip(reverse.columns + attr.columns, reverse.converters + attr.converters)):
                 columns.append(column)
                 params.append([PARAM, i, converter])
-            sql_ast = [ INSERT, table, columns, params ]
+            sql_ast = [ INSERT, table_name, columns, params ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_add_m2m_sql = sql, adapter
         else: sql, adapter = cached_sql
@@ -1278,8 +1283,13 @@ class EntityMeta(type):
         try: table_name = entity.__dict__['_table_']
         except KeyError: entity._table_ = None
         else:
-            if not isinstance(table_name, basestring): raise TypeError(
-                '%s._table_ property must be a string. Got: %r' % (entity.__name__, table_name))
+            if not isinstance(table_name, basestring):
+                if not isinstance(table_name, (list, tuple)): raise TypeError(
+                    '%s._table_ property must be a string. Got: %r' % (entity.__name__, table_name))
+                for name_part in table_name:
+                    if not isinstance(name_part, basestring):raise TypeError(
+                        'Each part of table name must be a string. Got: %r' % name_part)
+                entity._table_ = table_name = tuple(table_name)
 
         entity._diagram_ = diagram
         diagram.entities[entity.__name__] = entity
@@ -1548,7 +1558,6 @@ class EntityMeta(type):
         objects = entity._fetch_objects(cursor, attr_offsets, max_rows_count)
         return objects
     def _construct_select_clause_(entity, alias=None, distinct=False):
-        table_name = entity._table_
         attr_offsets = {}
         if distinct: select_list = [ DISTINCT ]
         else: select_list = [ ALL ]
@@ -2269,7 +2278,7 @@ class Diagram(object):
             entity._get_pk_columns_()
             table_name = entity._table_
             if table_name is None: table_name = entity._table_ = entity.__name__
-            else: assert isinstance(table_name, basestring)
+            else: assert isinstance(table_name, (basestring, tuple))
             table = schema.tables.get(table_name)
             if table is None: table = schema.add_table(table_name)
             elif table.entities: raise NotImplementedError
@@ -2298,8 +2307,9 @@ class Diagram(object):
                         attr.table = reverse.table = table_name
                     m2m_table = schema.tables.get(table_name)
                     if m2m_table is not None:
-                        if m2m_table.entities or m2m_table.m2m: raise MappingError(
-                            "Table name '%s' is already in use" % table_name)
+                        if m2m_table.entities or m2m_table.m2m:
+                            if isinstance(table_name, tuple): table_name = '.'.join(table_name)
+                            raise MappingError("Table name '%s' is already in use" % table_name)
                         raise NotImplementedError
                     m2m_table = schema.add_table(table_name)
                     m2m_columns_1 = attr.get_m2m_columns()
@@ -2365,9 +2375,12 @@ class Diagram(object):
             
         if not check_tables and not create_tables: return
         for table in schema.tables.values():
+            if isinstance(table.name, tuple): alias = table.name[-1]
+            elif isinstance(table.name, basestring): alias = table.name
+            else: assert False
             sql_ast = [ SELECT,
-                        [ ALL, ] + [ [ COLUMN, table.name, column.name ] for column in table.column_list ],
-                        [ FROM, [ table.name, TABLE, table.name ] ],
+                        [ ALL, ] + [ [ COLUMN, alias, column.name ] for column in table.column_list ],
+                        [ FROM, [ alias, TABLE, table.name ] ],
                         [ WHERE, [ EQ, [ VALUE, 0 ], [ VALUE, 1 ] ] ]
                       ]
             sql, adapter = database._ast2sql(sql_ast)
