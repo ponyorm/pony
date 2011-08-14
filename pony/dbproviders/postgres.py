@@ -74,13 +74,14 @@ class PGColumn(dbschema.Column):
                 append(schema.column_list(foreign_key.parent_columns)) 
         return ' '.join(result)    
 
-dbschema.DBSchema.table_class = PGTable
-dbschema.DBSchema.column_class = PGColumn
+class PGSchema(dbschema.DBSchema):
+    table_class = PGTable
+    column_class = PGColumn
 
 translator_cls = SQLTranslator
 
 def create_schema(database):
-    return dbschema.DBSchema(database)
+    return PGSchema(database)
 
 def quote_name(connection, name):
     return sqlbuilding.quote_name(name, '"')
