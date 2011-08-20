@@ -1,3 +1,5 @@
+import re
+from itertools import imap
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time
 from binascii import unhexlify
@@ -363,6 +365,16 @@ class DecimalConverter(Converter):
     def sql_type(converter):
         return 'DECIMAL(%d, %d)' % (converter.precision, converter.scale)
 
+char2oct = {}
+for i in range(256):
+    ch = chr(i)    
+    if 31 < i < 127:
+        char2oct[ch] = ch
+    else: char2oct[ch] = '\\' + ('00'+oct(i))[-3:]
+char2oct['\\'] = '\\\\'
+
+oct_re = re.compile(r'\\[0-7]{3}')
+
 class BlobConverter(Converter):
     def init(converter, keyargs):
         attr = converter.attr
@@ -374,17 +386,12 @@ class BlobConverter(Converter):
     def sql_type(converter):
         return 'BYTEA'
     def py2sql(converter, val):
-        result = []
-        for s in val:
-            result.append('\\')
-            x = oct(ord(s))
-            while len(x) < 4: x = '0' + x
-            else: result.append(x[1:])
-        db_val = "".join(result)
+        db_val = "".join(imap(char2oct.__getitem__, val))
         return db_val
     def sql2py(converter, val):
-        py_val = unhexlify(val[2:])
-        return buffer(py_val)
+        if val.startswith('\\x'): val = unhexlify(val[2:])
+        else: val = oct_re.sub(lambda match: chr(int(match.group(0)[-3:], 8)), val.replace('\\\\', '\\'))
+        return buffer(val)
 
 class DatetimeConverter(Converter):
     def init(converter, keyargs):
