@@ -353,10 +353,10 @@ def getlines2(filename, lineno, context=1):
 
 def reraise(exc_class, exceptions):
     try:
-        first = exceptions[0]
-        msg = '%s: %s' % (first[0].__name__, first[1])
-        raise exc_class, exc_class(msg, exceptions), first[2]
-    finally: del first
+        cls, exc, tb = exceptions[0]
+        msg = '%s: %s' % (cls.__name__, " ".join(tostring(arg) for arg in exc.args))
+        raise exc_class, exc_class(msg, exceptions), tb
+    finally: del tb
 
 def avg(iter):
     count = 0

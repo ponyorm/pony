@@ -13,7 +13,7 @@ from pony.clobtypes import LongStr, LongUnicode
 from pony.sqlsymbols import *
 from pony.utils import (
     localbase, simple_decorator, decorator_with_params,
-    import_module, parse_expr, is_ident, reraise, avg
+    import_module, parse_expr, is_ident, reraise, avg, tostring
     )
 
 __all__ = '''
@@ -105,6 +105,7 @@ class SchemaError(OrmError): pass
 class MappingError(OrmError): pass
 class ConstraintError(OrmError): pass
 class CacheIndexError(OrmError): pass
+
 class ObjectNotFound(OrmError):
     def __init__(exc, entity, pkval):
         if type(pkval) is tuple:
@@ -118,20 +119,36 @@ class MultipleObjectsFoundError(OrmError): pass
 class TooManyObjectsFoundError(OrmError): pass
 class OperationWithDeletedObjectError(OrmError): pass
 class TransactionError(OrmError): pass
-class TransactionIntegrityError(TransactionError): pass
+
+class TransactionIntegrityError(TransactionError):
+    def __init__(exc, msg, original_exc=None):
+        Exception.__init__(exc, msg)
+        exc.original_exc = original_exc
+        
 class IsolationError(TransactionError): pass
+
 class CommitException(TransactionError):
     def __init__(exc, msg, exceptions):
         Exception.__init__(exc, msg)
         exc.exceptions = exceptions
+
 class PartialCommitException(TransactionError):
     def __init__(exc, msg, exceptions):
         Exception.__init__(exc, msg)
         exc.exceptions = exceptions
-class RollbackException(TransactionError): pass
+
+class RollbackException(TransactionError):
+    def __init__(exc, msg, exceptions):
+        Exception.__init__(exc, msg)
+        exc.exceptions = exceptions
+
 class UnrepeatableReadError(IsolationError): pass
 class UnresolvableCyclicDependency(TransactionError): pass
-class UnexpectedError(TransactionError): pass
+
+class UnexpectedError(TransactionError):
+    def __init__(exc, msg, original_exc):
+        Exception.__init__(exc, msg)
+        exc.original_exc = original_exc
 
 class TranslationError(Exception): pass
 
@@ -2117,10 +2134,12 @@ class Entity(object):
         try:
             cursor = database._exec_sql(sql, arguments)
         except IntegrityError, e:
+            msg = " ".join(tostring(arg) for arg in e.args)
             raise TransactionIntegrityError(
-                'Object %r cannot be stored in the database (probably it already exists). DB message: %s' % (obj, e.args[0]))
+                'Object %r cannot be stored in the database (probably it already exists). DB message: %s' % (obj, msg), e)
         except DatabaseError, e:
-            raise UnexpectedError('Object %r cannot be stored in the database. DB message: %s' % (obj, e.args[0]))
+            msg = " ".join(tostring(arg) for arg in e.args)
+            raise UnexpectedError('Object %r cannot be stored in the database. DB message: %s' % (obj, msg), e)
 
         if obj._pkval_ is None:
             rowid = database.provider.get_last_rowid(cursor)
