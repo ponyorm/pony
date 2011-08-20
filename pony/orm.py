@@ -456,10 +456,8 @@ class Attribute(object):
             return val
         reverse = attr.reverse
         if not reverse:
-            if isinstance(val, attr.py_type): return val
-            elif isinstance(val, Entity):
-                raise TypeError('Attribute %s.%s must be of %s type. Got: %s'
-                                % (attr.entity.__name__, attr.name, attr.py_type.__name__, val))
+            if isinstance(val, Entity): raise TypeError('Attribute %s.%s must be of %s type. Got: %s'
+                % (attr.entity.__name__, attr.name, attr.py_type.__name__, val))
             if attr.converters:
                 assert len(attr.converters) == 1
                 converter = attr.converters[0]
