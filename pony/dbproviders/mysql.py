@@ -89,7 +89,8 @@ def _get_converter_type_by_py_type(py_type):
     if issubclass(py_type, bool): return BoolConverter
     elif issubclass(py_type, unicode): return UnicodeConverter
     elif issubclass(py_type, str): return StrConverter
-    elif issubclass(py_type, (int, long)): return IntConverter
+    elif issubclass(py_type, int): return IntConverter
+    elif issubclass(py_type, long): return LongConverter
     elif issubclass(py_type, float): return RealConverter
     elif issubclass(py_type, Decimal): return DecimalConverter
     elif issubclass(py_type, buffer): return BlobConverter
@@ -213,6 +214,10 @@ class IntConverter(Converter):
     def sql_type(converter):
         return 'INTEGER'
 
+class LongConverter(IntConverter):
+    def sql_type(converter):
+        return 'BIGINT'
+
 class RealConverter(Converter):
     def init(converter, keyargs):
         attr = converter.attr
@@ -307,7 +312,7 @@ class BlobConverter(Converter):
         if isinstance(val, str): return buffer(val)
         raise TypeError("Attribute %r: expected type is 'buffer'. Got: %r" % (converter.attr, type(val)))
     def sql_type(converter):
-        return 'BLOB'
+        return 'LONGBLOB'
 
 class DatetimeConverter(Converter):
     def init(converter, keyargs):
