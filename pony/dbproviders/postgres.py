@@ -1,12 +1,13 @@
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time
+from binascii import unhexlify
 
 import pgdb
 
 from pony import orm, dbschema, sqlbuilding
 from pony.sqltranslation import SQLTranslator
 from pony.clobtypes import LongStr, LongUnicode
-from pony.utils import localbase
+from pony.utils import localbase, timestamp2datetime
 
 from pgdb import (Warning, Error, InterfaceError, DatabaseError,
                   DataError, OperationalError, IntegrityError, InternalError,
@@ -106,7 +107,7 @@ class PGSQLBuilder(sqlbuilding.SQLBuilder):
     def INSERT(builder, table_name, columns, values, returning=None):
         result = sqlbuilding.SQLBuilder.INSERT(builder, table_name, columns, values)
         if returning is not None:
-            result.extend(['RETURNING ', builder.quote_name(returning) ])
+            result.extend([' RETURNING ', builder.quote_name(returning) ])
         return result
 
 def ast2sql(con, ast):
@@ -143,7 +144,8 @@ def _get_converter_type_by_py_type(py_type):
     if issubclass(py_type, bool): return BoolConverter
     elif issubclass(py_type, unicode): return UnicodeConverter
     elif issubclass(py_type, str): return StrConverter
-    elif issubclass(py_type, (int, long)): return IntConverter
+    elif issubclass(py_type, long): return LongConverter
+    elif issubclass(py_type, int): return IntConverter
     elif issubclass(py_type, float): return RealConverter
     elif issubclass(py_type, Decimal): return DecimalConverter
     elif issubclass(py_type, buffer): return BlobConverter
@@ -223,6 +225,10 @@ class UnicodeConverter(BasestringConverter):
         elif not isinstance(val, unicode): raise TypeError(
             'Value type for attribute %s must be unicode. Got: %r' % (converter.attr, type(val)))
         return BasestringConverter.validate(converter, val)
+    def py2sql(converter, val):
+        return val.encode('utf-8')
+    def sql2py(converter, val):
+        return val.decode('utf-8')
 
 class StrConverter(BasestringConverter):
     def __init__(converter, attr=None):
@@ -239,9 +245,9 @@ class StrConverter(BasestringConverter):
                                   % (converter.attr, converter.encoding, type(val)))
         return BasestringConverter.validate(converter, val)
     def py2sql(converter, val):
-        return val.decode(converter.encoding)
+        return val.decode(converter.encoding).encode('utf-8')
     def sql2py(converter, val):
-        return val.encode(converter.encoding, 'replace')
+        return val.decode('utf-8').encode('cp1251', 'replace')
 
 class IntConverter(Converter):
     def init(converter, keyargs):
@@ -267,6 +273,10 @@ class IntConverter(Converter):
         return val
     def sql_type(converter):
         return 'INTEGER'
+
+class LongConverter(IntConverter):
+    def sql_type(converter):
+        return 'BIGINT'
 
 class RealConverter(Converter):
     def init(converter, keyargs):
@@ -363,6 +373,18 @@ class BlobConverter(Converter):
         raise TypeError("Attribute %r: expected type is 'buffer'. Got: %r" % (converter.attr, type(val)))
     def sql_type(converter):
         return 'BYTEA'
+    def py2sql(converter, val):
+        result = []
+        for s in val:
+            result.append('\\')
+            x = oct(ord(s))
+            while len(x) < 4: x = '0' + x
+            else: result.append(x[1:])
+        db_val = "".join(result)
+        return db_val
+    def sql2py(converter, val):
+        py_val = unhexlify(val[2:])
+        return buffer(py_val)
 
 class DatetimeConverter(Converter):
     def init(converter, keyargs):
@@ -373,7 +395,9 @@ class DatetimeConverter(Converter):
             raise TypeError("Attribute %r: expected type is 'datetime'. Got: %r" % (converter.attr, val))
         return val
     def sql_type(converter):
-        return 'DATETIME'
+        return 'TIMESTAMP'
+    def sql2py(converter, val):
+        return timestamp2datetime(val)
 
 class DateConverter(Converter):
     def init(converter, keyargs):
