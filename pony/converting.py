@@ -193,4 +193,4 @@ def str2py(value, type):
     except ValidationError: raise
     except:
         if value == '': return None
-        raise ValidationError(err_msg, html('${%s}' % (err_msg or 'Incorrect data')))
+        raise ValidationError(err_msg, html('@{%s}' % (err_msg or 'Incorrect data')))
