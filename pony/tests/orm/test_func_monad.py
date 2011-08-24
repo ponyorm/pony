@@ -60,6 +60,14 @@ class TestFuncMonad(unittest.TestCase):
     def test_minmax4(self):
         result = set(select(s for s in Student if min(s.name, "CC") == "CC" ))
         self.assertEquals(result, set([Student[4], Student[5], Student[3]]))
+    @raises_exception(TypeError)
+    def test_minmax5(self):
+        x = chr(128)
+        result = set(select(s for s in Student if min(s.name, x) == "CC" ))
+    @raises_exception(TypeError)
+    def test_minmax6(self):
+        x = chr(128)
+        result = set(select(s for s in Student if min(s.name, x, "CC") == "CC" ))        
 ##    @raises_exception(TypeError)
 ##    def test_minmax5(self):
 ##        result = set(select(s for s in Student if min(s.phd, 2) == 2 ))
