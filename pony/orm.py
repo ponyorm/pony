@@ -2692,6 +2692,8 @@ class QueryResult(list):
         if len(self) > 1: raise MultipleObjectsFoundError('Multiple objects was found. Use .all(...) to retrieve them')
         return self[0]
 
+class AsciiStr(str): pass
+
 class Query(object):
     def __init__(query, code, tree, external_names, globals, locals):
         assert isinstance(tree, ast.GenExprInner)
@@ -2739,7 +2741,7 @@ class Query(object):
                 entities[name] = value.entity
             else:
                 variables[name] = value
-                vartypes[name] = translator_cls.normalize_type(type(value))
+                vartypes[name] = translator_cls.get_normalized_type_of(value)
 
         query._result = None
         key = id(code), tuple(sorted(entities.iteritems())), \

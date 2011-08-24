@@ -10,7 +10,7 @@ from pony.clobtypes import LongStr, LongUnicode
 from pony.sqlbuilding import SQLBuilder
 from pony.sqlsymbols import *
 from pony.utils import avg, copy_func_attrs
-from pony.orm import select, exists, TranslationError, EntityMeta, Set, JOIN
+from pony.orm import select, exists, TranslationError, EntityMeta, Set, JOIN, AsciiStr
 
 def sqland(items):
     if not items: return []
@@ -71,15 +71,23 @@ type_normalization_dict = { long : int, bool : int, LongStr : str, LongUnicode :
 class SQLTranslator(ASTTranslator):
     MAX_ALIAS_LENGTH = 30
     numeric_types = set([ int, float, Decimal ])
-    string_types = set([ str, unicode ])
-    comparable_types = set([ int, float, Decimal, str, unicode, date, datetime, bool ])
-    primitive_types = set([ int, float, Decimal, str, unicode, date, datetime, bool, buffer ])
+    string_types = set([ str, AsciiStr, unicode ])
+    comparable_types = set([ int, float, Decimal, str, AsciiStr, unicode, date, datetime, bool ])
+    primitive_types = set([ int, float, Decimal, str, AsciiStr, unicode, date, datetime, bool, buffer ])
+
+    @classmethod
+    def get_normalized_type_of(translator, value):
+        if isinstance(value, str):
+            try: value.decode('ascii')
+            except UnicodeDecodeError: pass
+            else: return AsciiStr
+        return translator.normalize_type(type(value))
 
     @classmethod
     def normalize_type(translator, type):
         if type is NoneType: return type
         if issubclass(type, basestring):  # Mainly for Html -> unicode & StrHtml -> str conversion
-            if type in (str, unicode): return type
+            if type in (str, AsciiStr, unicode): return type
             if issubclass(type, str): return str
             if issubclass(type, unicode): return unicode
             assert False
@@ -87,28 +95,38 @@ class SQLTranslator(ASTTranslator):
         if type not in translator.primitive_types and not isinstance(type, EntityMeta): raise TypeError, type
         return type
 
-    some_comparables = set([ (int, float), (int, Decimal), (date, datetime) ])
-    some_comparables.update([ (t2, t1) for (t1, t2) in some_comparables ])
+    coercions = {
+        (int, float) : float,
+        (int, Decimal) : Decimal,
+        (date, datetime) : datetime,
+        (AsciiStr, str) : str,
+        (AsciiStr, unicode) : unicode
+        }
+    coercions.update(((t2, t1), t3) for ((t1, t2), t3) in coercions.items())
 
     @classmethod
-    def are_comparable_types(translator, op, type1, type2):
-        # op: '<' | '>' | '=' | '>=' | '<=' | '<>' | '!=' | '=='
-        #         | 'in' | 'not' 'in' | 'is' | 'is' 'not'
+    def are_comparable_types(translator, type1, type2, op='=='):
         # types must be normalized already! 
-        if op in ('is', 'is not'): return type1 is not NoneType and type2 is NoneType
+        if op in ('is', 'is not'):
+            return type1 is not NoneType and type2 is NoneType
         if op in ('<', '<=', '>', '>='):
-            return (type1 is type2 and type1 in translator.comparable_types) \
-                or (type1, type2) in translator.some_comparables
+            if type1 is type2 and type1 in translator.comparable_types: return True
+            return (type1, type2) in translator.coercions
         if op in ('==', '<>', '!='):
             if type1 is NoneType and type2 is NoneType: return False
             if type1 is NoneType or type2 is NoneType: return True
-            elif type1 in translator.primitive_types:
-                return type1 is type2 or (type1, type2) in translator.some_comparables
-            elif isinstance(type1, EntityMeta):
+            if type1 in translator.primitive_types:
+                return type1 is type2 or (type1, type2) in translator.coercions
+            if isinstance(type1, EntityMeta):
                 if not isinstance(type2, EntityMeta): return False
                 return type1._root_ is type2._root_
-            else: return False
-        else: assert False
+            return False
+        assert False
+
+    @classmethod
+    def coerce_types(translator, type1, type2):
+        if type1 is type2: return type1
+        return translator.coercions.get((type1, type2))
 
     def __init__(translator, tree, entities, vartypes, functions, outer_iterables, parent_translator=None):
         assert isinstance(tree, ast.GenExprInner), tree
@@ -423,18 +441,18 @@ class EntityMonad(Monad):
             for item in key.items:
                 if not isinstance(item, ConstMonad): raise NotImplementedError, key
             pkval = tuple(item.value for item in key.items)
+            pktypes = tuple(item.type for item in key.items)
         elif isinstance(key, ConstMonad):
-            pkval = key.value
+            pkval = (key.value,)
+            pktypes = (key.type,)
         else: raise NotImplementedError, key
-        if not isinstance(pkval, tuple): pkval = (pkval,)
         entity = monad.type
         if len(pkval) != len(entity._pk_attrs_): raise TypeError('Invalid count of attrs in primary key')
         translator = monad.translator
-        for attr, val in izip(entity._pk_attrs_, pkval):
-            type1 = translator.normalize_type(attr.py_type)
-            type2 = translator.normalize_type(type(val))
-            if not translator.are_comparable_types('==', type1, type2): raise TypeError(
-                'Incomparable types: %r and %r' % (attr.py_type, type(val)))
+        for attr, val, val_type in izip(entity._pk_attrs_, pkval, pktypes):
+            attr_type = translator.normalize_type(attr.py_type)
+            if not translator.are_comparable_types(attr_type, val_type): raise TypeError(
+                'Incomparable types: %r and %r' % (attr_type, val_type))
         return translator.ObjectConstMonad(translator, monad.type, pkval)
     def __call__(monad, *args, **keyargs):
         pkval, avdict = monad.normalize_args(args, keyargs)
@@ -477,7 +495,7 @@ class ListMonad(Monad):
     def contains(monad, x, not_in=False):
         translator = monad.translator
         for item in monad.items:
-            if not translator.are_comparable_types('==', x.type, item.type): raise TypeError
+            if not translator.are_comparable_types(item.type, x.type): raise TypeError((item.type, x.type))
         left_sql = x.getsql()
         if len(left_sql) == 1:
             if not_in: sql = [ NOT_IN, left_sql[0], [ item.getsql()[0] for item in monad.items ] ]
@@ -552,11 +570,12 @@ class DatetimeMixin(DateMixin):
 
 def make_string_binop(sqlop):
     def string_binop(monad, monad2):
-        if monad.type is not monad2.type: raise TypeError
+        translator = monad.translator
+        if not translator.are_comparable_types(monad.type, monad2.type):
+            raise TypeError((monad.type, monad2.type))
         left_sql = monad.getsql()
         right_sql = monad2.getsql()
         assert len(left_sql) == len(right_sql) == 1
-        translator = monad.translator
         return translator.StringExprMonad(translator, monad.type, [ sqlop, left_sql[0], right_sql[0] ])
     string_binop.__name__ = sqlop
     return string_binop
@@ -573,7 +592,6 @@ def make_string_func(sqlop):
 class StringMixin(MonadMixin):
     def mixin_init(monad):
         assert issubclass(monad.type, basestring), monad.type
-        monad.type = unicode
     __add__ = make_string_binop(CONCAT)
     def __getitem__(monad, index):
         translator = monad.translator
@@ -638,8 +656,9 @@ class StringMixin(MonadMixin):
         translator = monad.translator
         return translator.NumericExprMonad(translator, int, [ LENGTH, sql ])
     def contains(monad, item, not_in=False):
-        if item.type is not monad.type: raise TypeError
         translator = monad.translator
+        if not translator.are_comparable_types(item.type, monad.type):
+            raise TypeError((item.type, monad.type))
         if isinstance(item, translator.StringConstMonad):
             item_sql = [ VALUE, '%%%s%%' % item.value ]
         else:
@@ -649,9 +668,9 @@ class StringMixin(MonadMixin):
     call_upper = make_string_func(UPPER)
     call_lower = make_string_func(LOWER)
     def call_startswith(monad, arg):
-        if arg.type is not monad.type:  # ???
-            raise TypeError("Argument of 'startswith' method must be a string")
         translator = monad.translator
+        if not translator.are_comparable_types(monad.type, arg.type):
+            raise TypeError("Argument of 'startswith' method must be a string")
         if isinstance(arg, translator.StringConstMonad):
             assert isinstance(arg.value, basestring)
             arg_sql = [ VALUE, arg.value + '%' ]
@@ -663,7 +682,7 @@ class StringMixin(MonadMixin):
         return translator.BoolExprMonad(translator, sql)
     def call_endswith(monad, arg):
         translator = monad.translator
-        if arg.type is not monad.type:
+        if not translator.are_comparable_types(monad.type, arg.type):
             raise TypeError("Argument of 'endswith' method must be a string")
         if isinstance(arg, translator.StringConstMonad):
             assert isinstance(arg.value, basestring)
@@ -675,12 +694,12 @@ class StringMixin(MonadMixin):
         sql = [ LIKE, parent_sql, arg_sql ]
         return translator.BoolExprMonad(translator, sql)
     def strip(monad, chars, strip_type):
-        if chars is not None and chars.type is not monad.type:
+        translator = monad.translator
+        if chars is not None and not translator.are_comparable_types(monad.type, chars.type):
             raise TypeError("'chars' argument must be a %s" % monad.type.__name__)
         parent_sql = monad.getsql()[0]
         sql = [ strip_type, parent_sql ]
         if chars is not None: sql.append(chars.getsql()[0])
-        translator = monad.translator
         return translator.StringExprMonad(translator, monad.type, sql)
     def call_strip(monad, chars=None):
         return monad.strip(chars, TRIM)
@@ -874,7 +893,7 @@ class DatetimeExprMonad(DatetimeMixin, ExprMonad): pass
 class ConstMonad(Monad):
     def __new__(cls, translator, value):
         assert cls is translator.ConstMonad
-        value_type = translator.normalize_type(type(value))
+        value_type = translator.get_normalized_type_of(value)
         if value_type in translator.numeric_types: cls = translator.NumericConstMonad
         elif value_type in translator.string_types: cls = translator.StringConstMonad
         elif value_type is date: cls = translator.DateConstMonad
@@ -883,7 +902,7 @@ class ConstMonad(Monad):
         else: raise TypeError, value_type
         return object.__new__(cls)
     def __init__(monad, translator, value):
-        value_type = translator.normalize_type(type(value))
+        value_type = translator.get_normalized_type_of(value)
         Monad.__init__(monad, translator, value_type)
         monad.value = value
     def getsql(monad):
@@ -955,7 +974,7 @@ cmp_negate.update((b, a) for a, b in cmp_negate.items())
 class CmpMonad(BoolMonad):
     def __init__(monad, op, left, right):
         translator = left.translator
-        if not translator.are_comparable_types(op, left.type, right.type): raise TypeError(
+        if not translator.are_comparable_types(left.type, right.type, op): raise TypeError(
             'Incomparable types: %r and %r' % (left.type, right.type))
         if op == '<>': op = '!='
         if left.type is NoneType:
@@ -1098,10 +1117,12 @@ def minmax(monad, sqlop, *args):
     translator = monad.translator
     sql = [ sqlop ] + [ arg.getsql()[0] for arg in args ]
     arg_types = set(arg.type for arg in args)
-    if len(arg_types) > 1: raise TypeError
-    result_type = arg_types.pop()
-    if result_type not in translator.comparable_types: raise TypeError
-    return translator.ExprMonad(translator, result_type, sql)
+    t = arg_types.pop()
+    if t not in translator.comparable_types: raise TypeError(t)
+    for t2 in arg_types:
+        t = translator.coerce_types(t, t2)
+        if t is None: raise TypeError((t, t2))
+    return translator.ExprMonad(translator, t, sql)
 
 @func_monad(select)
 def FuncSelectMonad(monad, subquery):
@@ -1141,7 +1162,7 @@ class AttrSetMonad(SetMixin, Monad):
     def contains(monad, item, not_in=False):
         translator = monad.translator
         item_type = monad.type[0]
-        if not translator.are_comparable_types('==', item_type, item.type): raise TypeError, [item_type, item.type ]
+        if not translator.are_comparable_types(item.type, item_type): raise TypeError, [ item.type, item_type ]
         if isinstance(item_type, EntityMeta) and len(item_type._pk_columns_) > 1:
             raise NotImplementedError
 
@@ -1207,7 +1228,7 @@ class AttrSetMonad(SetMixin, Monad):
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
         assert len(expr_list) == 1
         expr = expr_list[0]
-        sql_ast = [ SELECT, [ AGGREGATES, [ MAX, expr ] ], from_ast, [ WHERE, sqland(inner_conditions+outer_conditions) ] ]
+        sql_ast = [ SELECT, [ AGGREGATES, [ MAX, expr ] ], from_ast, [ WHERE, sqland(inner_conditions+outer_conditions) ] ]        
         return translator.ExprMonad.new(monad.translator, item_type, sql_ast)
     def nonzero(monad):
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
@@ -1287,7 +1308,7 @@ class QuerySetMonad(SetMixin, Monad):
     def contains(monad, item, not_in=False):
         translator = monad.translator
         item_type = monad.type[0]
-        if not translator.are_comparable_types('==', item_type, item.type): raise TypeError, [item_type, item.type ]
+        if not translator.are_comparable_types(item.type, item_type): raise TypeError, [ item.type, item_type ]
         if isinstance(item_type, EntityMeta) and len(item_type._pk_columns_) > 1:
             raise NotImplementedError
 
