@@ -187,6 +187,8 @@ class SQLBuilder(object):
     def AGGREGATES(builder, *expr_list):
         exprs = [ builder(e) for e in expr_list ]
         return 'SELECT ', join(', ', exprs), '\n'
+    def AS(builder, expr, alias):
+        return builder(expr), ' AS ', builder.quote_name(alias)
     def compound_name(builder, name_parts):
         return '.'.join(p and builder.quote_name(p) or '' for p in name_parts)
     def sql_join(builder, join_type, sources):
@@ -227,6 +229,10 @@ class SQLBuilder(object):
             for item in condition[2:]: extend((indent, '  AND ', builder(item), '\n'))
         return result
     @indentable
+    def GROUP_BY(builder, *expr_list):
+        exprs = [ builder(e) for e in expr_list ]
+        return 'GROUP BY ', join(', ', exprs), '\n'
+    @indentable
     def UNION(builder, kind, *sections):
         return 'UNION ', kind, '\n', builder.SELECT(*sections)
     @indentable
@@ -237,7 +243,7 @@ class SQLBuilder(object):
         return 'EXCEPT\n', builder.SELECT(*sections)
     @indentable
     def ORDER_BY(builder, *order_list):
-        result = ['ORDER BY ']
+        result = [ 'ORDER BY ' ]
         for i, (expr, dir) in enumerate(order_list):
             if i > 0: result.append(', ')
             result += builder(expr), ' ', dir

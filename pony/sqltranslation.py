@@ -1228,7 +1228,31 @@ class AttrSetMonad(SetMixin, Monad):
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
         assert len(expr_list) == 1
         expr = expr_list[0]
-        sql_ast = [ SELECT, [ AGGREGATES, [ MAX, expr ] ], from_ast, [ WHERE, sqland(inner_conditions+outer_conditions) ] ]        
+        if translator.hint_join:
+            alias = translator.get_short_alias(None, 't')
+            groupby_columns = [ inner_column[:] for cond, outer_column, inner_column in outer_conditions ]
+            assert len(set(alias for _, alias, column in groupby_columns)) == 1
+            groupby_names = set(column for _, alias, column in groupby_columns)
+            while True:            
+                expr_name = 'column-%d' % translator.expr_counter()
+                if expr_name not in groupby_names: break
+
+            subquery_columns = [ ALL ]
+            subquery_columns.extend(groupby_columns)
+            subquery_columns.append([ AS, [ MAX, expr ], expr_name ])
+
+            subquery_ast = [ subquery_columns, from_ast ]
+            if inner_conditions: subquery_ast.append([ WHERE, sqland(inner_conditions) ])
+            subquery_ast.append([ GROUP_BY ] + groupby_columns)
+
+            for cond in outer_conditions: cond[2][1] = alias
+
+            translator.from_.append([ alias, SELECT, subquery_ast, sqland(outer_conditions) ])
+            sql_ast = [ COLUMN, alias, expr_name ]
+        else:
+            sql_ast = [ SELECT, [ AGGREGATES, [ MAX, expr ] ],
+                                from_ast,
+                                [ WHERE, sqland(inner_conditions+outer_conditions) ] ]
         return translator.ExprMonad.new(monad.translator, item_type, sql_ast)
     def nonzero(monad):
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
