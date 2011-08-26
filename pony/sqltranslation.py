@@ -763,10 +763,9 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
         parent = monad.parent
         entity = monad.type
         long_alias = monad.long_alias = '-'.join((parent.long_alias, attr.name))
-        alias = translator.aliases.get(long_alias)
+        monad.alias = alias = translator.aliases.get(long_alias)
         if alias is not None: return
-        alias = translator.get_short_alias(long_alias, entity.__name__)
-        monad.alias = alias
+        monad.alias = alias = translator.get_short_alias(long_alias, entity.__name__)
         translator.aliases[long_alias] = alias
         translator.from_.append([ alias, TABLE, entity._table_ ])
         join_tables(translator.conditions, parent.alias, alias, attr.columns, entity._pk_columns_)
