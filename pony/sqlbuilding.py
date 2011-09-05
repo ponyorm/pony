@@ -192,7 +192,10 @@ class SQLBuilder(object):
     def compound_name(builder, name_parts):
         return '.'.join(p and builder.quote_name(p) or '' for p in name_parts)
     def sql_join(builder, join_type, sources):
-        result = ['FROM ']
+        indent = builder.indent_spaces * (builder.indent-1)
+        indent2 = indent + builder.indent_spaces
+        indent3 = indent2 + builder.indent_spaces
+        result = [ indent, 'FROM ']
         for i, source in enumerate(sources):
             if len(source) == 3:   alias, kind, x = source; join_cond = None
             elif len(source) == 4: alias, kind, x, join_cond = source
@@ -200,7 +203,7 @@ class SQLBuilder(object):
             if alias is not None: alias = builder.quote_name(alias)
             if i > 0:
                 if join_cond is None: result.append(', ')
-                else: result.append(' %s JOIN ' % join_type)
+                else: result += [ '\n', indent2, '%s JOIN ' % join_type ]
             if kind == TABLE:
                 if isinstance(x, basestring): result.append(builder.quote_name(x))
                 else: result.append(builder.compound_name(x))
@@ -209,10 +212,9 @@ class SQLBuilder(object):
                 if alias is None: raise AstError('Subquery in FROM section must have an alias')
                 result += '(', builder.SELECT(*x), ') AS ', alias
             else: raise AstError('Invalid source kind in FROM section: %s',kind)
-            if join_cond is not None: result += ' ON ', builder(join_cond)
+            if join_cond is not None: result += [ '\n', indent3, 'ON ', builder(join_cond) ]
         result.append('\n')
         return result
-    @indentable
     def FROM(builder, *sources):
         return builder.sql_join('INNER', sources)
     @indentable

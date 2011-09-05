@@ -22,10 +22,9 @@ def sqlor(items):
     if len(items) == 1: return items[0]
     return [ OR ] + items
 
-def join_tables(conditions, alias1, alias2, columns1, columns2):
+def join_tables(alias1, alias2, columns1, columns2):
     assert len(columns1) == len(columns2)
-    conditions.extend([ EQ, [ COLUMN, alias1, c1 ], [ COLUMN, alias2, c2 ] ]
-                     for c1, c2 in izip(columns1, columns2))
+    return [ [ EQ, [ COLUMN, alias1, c1 ], [ COLUMN, alias2, c2 ] ] for c1, c2 in izip(columns1, columns2) ]
 
 class ASTTranslator(object):
     def __init__(translator, tree):
@@ -148,7 +147,7 @@ class SQLTranslator(ASTTranslator):
         translator.extractors = {}
         translator.distinct = False
         translator.from_ = [ FROM ]
-        conditions = translator.conditions = []
+        translator.conditions = []
         translator.inside_expr = False
         translator.inside_not = False
         translator.hint_join = False
@@ -182,6 +181,7 @@ class SQLTranslator(ASTTranslator):
                 if translator.diagram is None: translator.diagram = diagram
                 elif translator.diagram is not diagram: raise TranslationError(
                     'All entities in a query must belong to the same diagram')
+                translator.from_.append([ name, TABLE, entity._table_ ])
             else:
                 if len(attr_names) > 1: raise NotImplementedError
                 attrname = attr_names[0]
@@ -195,19 +195,19 @@ class SQLTranslator(ASTTranslator):
                 if not isinstance(entity, EntityMeta): raise NotImplementedError
                 reverse = attr.reverse
                 if not reverse.is_collection:
-                    join_tables(conditions, node.name, name, parent_entity._pk_columns_, reverse.columns)
+                    join_cond = join_tables(node.name, name, parent_entity._pk_columns_, reverse.columns)
                 else:
                     if not isinstance(reverse, Set): raise NotImplementedError
                     translator.distinct = True
                     m2m_table = attr.table
                     m2m_alias = translator.get_short_alias(None, 't') # m2m_alias = '%s--%s' % (node.name, name)
                     aliases[m2m_alias] = m2m_alias
-                    translator.from_.append([ m2m_alias, TABLE, m2m_table ])
-                    join_tables(conditions, node.name, m2m_alias, parent_entity._pk_columns_, reverse.columns)
-                    join_tables(conditions, m2m_alias, name, attr.columns, entity._pk_columns_)
+                    m2m_join_cond = join_tables(node.name, m2m_alias, parent_entity._pk_columns_, reverse.columns)
+                    translator.from_.append([ m2m_alias, TABLE, m2m_table, sqland(m2m_join_cond) ])
+                    join_cond = join_tables(m2m_alias, name, attr.columns, entity._pk_columns_)
+                translator.from_.append([ name, TABLE, entity._table_, sqland(join_cond) ])
             iterables[name] = entity
             aliases[name] = name
-            translator.from_.append([ name, TABLE, entity._table_ ])
             for if_ in qual.ifs:
                 assert isinstance(if_, ast.GenExprIf)
                 translator.dispatch(if_)
@@ -767,8 +767,8 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
         if alias is not None: return
         monad.alias = alias = translator.get_short_alias(long_alias, entity.__name__)
         translator.aliases[long_alias] = alias
-        translator.from_.append([ alias, TABLE, entity._table_ ])
-        join_tables(translator.conditions, parent.alias, alias, attr.columns, entity._pk_columns_)
+        join_cond = join_tables(parent.alias, alias, attr.columns, entity._pk_columns_)
+        translator.from_.append([ alias, TABLE, entity._table_, sqland(join_cond) ])
 
 class ObjectFlatMonad(ObjectMixin, Monad):
     def __init__(monad, parent, attr):
@@ -791,15 +791,15 @@ class ObjectFlatMonad(ObjectMixin, Monad):
         monad.alias = alias
         translator.aliases[long_alias] = alias
         if not reverse.is_collection:           
-            translator.from_.append([ alias, TABLE, entity._table_ ])
-            join_tables(conditions, parent.alias, alias, parent_entity._pk_columns_, reverse.columns)
+            join_cond = join_tables(parent.alias, alias, parent_entity._pk_columns_, reverse.columns)
+            translator.from_.append([ alias, TABLE, entity._table_, sqland(join_cond) ])
         else:
             m2m_table = attr.table
             m2m_alias = monad.translator.get_short_alias(None, 't')
-            translator.from_.append([ m2m_alias, TABLE, m2m_table ])
-            join_tables(conditions, parent.alias, m2m_alias, parent_entity._pk_columns_, reverse.columns)
-            translator.from_.append([ alias, TABLE, entity._table_ ])
-            join_tables(conditions, m2m_alias, alias, attr.columns, entity._pk_columns_)
+            m2m_join_cond = join_tables(parent.alias, m2m_alias, parent_entity._pk_columns_, reverse.columns)
+            translator.from_.append([ m2m_alias, TABLE, m2m_table, sqland(m2m_join_cond) ])
+            join_cond = join_tables(m2m_alias, alias, attr.columns, entity._pk_columns_)
+            translator.from_.append([ alias, TABLE, entity._table_, sqland(join_cond) ])
         
 class NumericAttrMonad(NumericMixin, AttrMonad): pass
 class StringAttrMonad(StringMixin, AttrMonad): pass
@@ -1271,42 +1271,44 @@ class AttrSetMonad(SetMixin, Monad):
         prev_alias = monad.root.alias
         expr = None 
         for i, attr in enumerate(monad.path):
-            if not i: conditions = outer_conditions
-            else: conditions = inner_conditions
-            
             prev_entity = attr.entity
             reverse = attr.reverse
             if not reverse:
                 assert attr is monad.path[-1]
                 if len(attr.columns) > 1: raise NotImplementedError
                 break
-            
             next_entity = attr.py_type
             assert isinstance(next_entity, EntityMeta)
             alias = monad.translator.get_short_alias(None, next_entity.__name__)
+
+            def make_join(prev_alias, next_alias, table_name, columns1, columns2):
+                join_cond = join_tables(prev_alias, next_alias, columns1, columns2)
+                if not i: # first loop
+                    from_ast.append([ next_alias, TABLE, table_name ])
+                    outer_conditions.extend(join_cond)
+                else: from_ast.append([ next_alias, TABLE, table_name, sqland(join_cond) ])
+
             if not attr.is_collection:
-                from_ast.append([ alias, TABLE, next_entity._table_ ])
-                if attr.columns:                    
-                    join_tables(conditions, prev_alias, alias, attr.columns, next_entity._pk_columns_)
+                if attr.columns:
+                    make_join(prev_alias, alias, next_entity._table_, attr.columns, next_entity._pk_columns_)
                 else:
                     assert not reverse.is_collection and reverse.columns
-                    join_tables(conditions, prev_alias, alias, prev_entity._pk_columns_, reverse.columns)
+                    make_join(prev_alias, alias, next_entity._table_, prev_entity._pk_columns_, reverse.columns)
             elif reverse.is_collection:
                 m2m_table = attr.table
                 m2m_alias = monad.translator.get_short_alias(None, 't')
-                from_ast.append([ m2m_alias, TABLE, m2m_table ])
-                join_tables(conditions, prev_alias, m2m_alias, prev_entity._pk_columns_, reverse.columns)
-                from_ast.append([ alias, TABLE, next_entity._table_ ])
-                join_tables(inner_conditions, m2m_alias, alias, attr.columns, next_entity._pk_columns_)
+                make_join(prev_alias, m2m_alias, m2m_table, prev_entity._pk_columns_, reverse.columns)
+                join_cond = join_tables(m2m_alias, alias, attr.columns, next_entity._pk_columns_)
+                from_ast.append([ alias, TABLE, next_entity._table_, sqland(join_cond) ])
             else:
-                from_ast.append([ alias, TABLE, next_entity._table_ ])
-                join_tables(conditions, prev_alias, alias, prev_entity._pk_columns_, reverse.columns)
+                make_join(prev_alias, alias, next_entity._table_, prev_entity._pk_columns_, reverse.columns)
             prev_alias = alias
 
         if not attr.reverse:
             expr_list = [[ COLUMN, alias, attr.column ]]
             if not attr.is_required:
-                inner_conditions.append([ IS_NOT_NULL, [ COLUMN, alias, attr.column ] ])
+                for column in attr.columns:
+                    inner_conditions.append([ IS_NOT_NULL, [ COLUMN, alias, column ] ])
         else:
             assert isinstance(attr.py_type, EntityMeta)
             expr_list = [[ COLUMN, alias, column ] for column in attr.py_type._pk_columns_ ]
