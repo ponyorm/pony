@@ -63,6 +63,8 @@ MAX_ROWS_COUNT = 1000
 SIMPLE_ALIASES = True  # if True just use entity name like "Course-1"
                        # if False use attribute names chain as an alias like "student-grades-course" 
 
+INNER_JOIN_SYNTAX = False # put conditions to INNER JOIN ... ON ... or to WHERE ...
+
 # debugging options
 DEBUGGING_REMOVE_ADDR = True
 DEBUGGING_RESTORE_ESCAPES = True

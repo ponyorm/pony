@@ -2759,7 +2759,7 @@ class Query(object):
         query._aggr_func = query._aggr_select = None
     def _construct_sql(query, range):
         translator = query._translator
-        sql_key = query._python_ast_key + (query._order, range, query._aggr_func)
+        sql_key = query._python_ast_key + (query._order, range, query._aggr_func, options.INNER_JOIN_SYNTAX)
         cache_entry = sql_cache.get(sql_key)
         database = query._database
         if cache_entry is None:

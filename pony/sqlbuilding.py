@@ -3,6 +3,7 @@ from operator import attrgetter
 from decimal import Decimal
 from datetime import date, datetime
 
+from pony import options
 from pony.sqlsymbols import *
 from pony.utils import datetime2timestamp
 
@@ -71,6 +72,34 @@ def join(delimiter, items):
         result.append(delimiter)
         result.append(item)
     return result
+
+def move_conditions_from_inner_join_to_where(sections):
+    conditions = []
+    new_sections = []
+    for section in sections:
+        if section[0] == FROM:
+            new_from = section[:2]
+            for join in section[2:]:
+                if join[1] != TABLE or len(join) < 4: new_from.append(join)
+                else:
+                    assert len(join) == 4
+                    new_from.append(join[:3])
+                    conditions.append(join[3])
+            new_sections.append(new_from)
+        elif section[0] == WHERE and conditions:
+            assert len(section) == 2
+            conditions.append(section[1])
+            new_sections.append([ WHERE, combine_conditions(conditions) ])
+        else: new_sections.append(section)
+    return new_sections                    
+
+def combine_conditions(conditions):
+    cond_list = []
+    for cond in conditions:
+        if cond[0] == AND: cond_list.extend(cond[1:])
+        else: cond_list.append(cond)
+    if len(cond_list) == 1: return cond_list[0]
+    return [ AND ] + cond_list
 
 def make_binary_op(symbol, default_parentheses=False):
     def binary_op(builder, expr1, expr2, parentheses=None):
@@ -163,6 +192,8 @@ class SQLBuilder(object):
         return result
     def SELECT(builder, *sections):
         builder.indent += 1
+        if not options.INNER_JOIN_SYNTAX:
+            sections = move_conditions_from_inner_join_to_where(sections)
         result = [ builder(s) for s in sections ]
         builder.indent -= 1
         if builder.indent : result = ['(\n', result, ')']
