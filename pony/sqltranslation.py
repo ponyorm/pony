@@ -727,8 +727,7 @@ class ObjectIterMonad(ObjectMixin, Monad):
         monad.long_alias = monad.alias = alias
     def getsql(monad):
         entity = monad.type
-        return [ [ COLUMN, monad.alias, column ] for attr in entity._pk_attrs_ if not attr.is_collection
-                                                        for column in attr.columns ]
+        return [ [ COLUMN, monad.alias, column ] for column in entity._pk_columns_ ]
 
 class AttrMonad(Monad):
     @staticmethod
