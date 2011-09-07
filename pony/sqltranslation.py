@@ -751,6 +751,15 @@ class AttrMonad(Monad):
         monad.attr = attr
         monad.long_alias = monad.alias = None
     def getsql(monad):
+        parent = monad.parent
+        attr = monad.attr
+        if isinstance(parent, ObjectAttrMonad) and attr.pk_offset is not None:
+            parent_columns = parent.getsql()
+            entity = attr.entity
+            if len(entity._pk_attrs_) == 1: return parent_columns
+            start = sum(len(prev_attr.columns) for prev_attr in entity._pk_attrs_[:attr.pk_offset])
+            end = start + len(attr.columns)
+            return parent_columns[start:end]
         alias = monad.parent.alias
         return [ [ COLUMN, alias, column ] for column in monad.attr.columns ]
         
