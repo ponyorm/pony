@@ -2752,7 +2752,7 @@ class Query(object):
         query._database = database
         translator = python_ast_cache.get(key)
         if translator is None:
-            translator = translator_cls(tree, entities, vartypes, functions, {})
+            translator = translator_cls(tree, entities, vartypes, functions)
             python_ast_cache[key] = translator
         query._translator = translator
         query._order = None

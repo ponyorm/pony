@@ -5,6 +5,7 @@ from datetime import date, datetime
 
 from pony import options
 from pony.sqlsymbols import *
+from pony.sqltranslation import sqland
 from pony.utils import datetime2timestamp
 
 def quote_name(name, quote_char='"'):
@@ -89,17 +90,9 @@ def move_conditions_from_inner_join_to_where(sections):
         elif section[0] == WHERE and conditions:
             assert len(section) == 2
             conditions.append(section[1])
-            new_sections.append([ WHERE, combine_conditions(conditions) ])
+            new_sections.append([ WHERE, sqland(conditions) ])
         else: new_sections.append(section)
     return new_sections                    
-
-def combine_conditions(conditions):
-    cond_list = []
-    for cond in conditions:
-        if cond[0] == AND: cond_list.extend(cond[1:])
-        else: cond_list.append(cond)
-    if len(cond_list) == 1: return cond_list[0]
-    return [ AND ] + cond_list
 
 def make_binary_op(symbol, default_parentheses=False):
     def binary_op(builder, expr1, expr2, parentheses=None):
@@ -256,10 +249,10 @@ class SQLBuilder(object):
         indent = builder.indent_spaces * (builder.indent-1)
         result = [ indent, 'WHERE ' ]
         extend = result.extend
-        if condition[0] != AND: extend((builder(condition), '\n'))
-        else:
+        if condition[0] == AND:
             extend((builder(condition[1]), '\n'))
             for item in condition[2:]: extend((indent, '  AND ', builder(item), '\n'))
+        else: extend((builder(condition), '\n'))
         return result
     @indentable
     def GROUP_BY(builder, *expr_list):
