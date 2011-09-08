@@ -7,7 +7,7 @@ import datetime
 try: from pony.thirdparty import etree
 except ImportError: etree = None
 
-from pony import options, sqlbuilding
+from pony import options
 from pony.decompiling import decompile
 from pony.clobtypes import LongStr, LongUnicode
 from pony.sqlsymbols import *
