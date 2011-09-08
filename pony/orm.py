@@ -1,7 +1,7 @@
 import __builtin__, re, sys, threading, types, inspect
 from compiler import ast
 from operator import attrgetter, itemgetter
-from itertools import count, ifilter, ifilterfalse, izip
+from itertools import count, ifilter, ifilterfalse, imap, izip, chain
 import datetime
 
 try: from pony.thirdparty import etree
@@ -1050,7 +1050,7 @@ class SetWrapper(object):
     def copy(wrapper):
         return wrapper._attr_.copy(wrapper._obj_)
     def __repr__(wrapper):
-        return '%r.%s => %r' % (wrapper._obj_, wrapper._attr_.name, wrapper.copy())
+        return '%r.%s => {%s}' % (wrapper._obj_, wrapper._attr_.name, str(wrapper.copy())[1:-1])
     def __str__(wrapper):
         return str(wrapper.copy())
     def __nonzero__(wrapper):
@@ -1151,25 +1151,35 @@ class SetWrapper(object):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         wrapper._attr_.__set__(obj, None)
 
-class PropagatedSet(object):
+def iter2dict(iter):
+    d = {}
+    for item in iter:
+        d[item] = d.get(item, 0) + 1
+    return d
+
+class PropagatedMultiset(object):
     __slots__ = [ '_items_' ]
     def __init__(pset, items):
-        pset._items_ = frozenset(items)
+        pset._items_ = iter2dict(items)
+    def distinct(pset):
+        return frozenset(d)
     def __repr__(pset):
-        s = ', '.join(map(repr, sorted(pset._items_)))
-        return '%s([%s])' % (pset.__class__.__name__, s)
+        return '%s(%s)' % (pset.__class__.__name__, pset._items_)
     def __nonzero__(pset):
         return bool(pset._items_)
     def __len__(pset):
-        return len(pset._items_)
+        return sum(pset._items_.values())
     def __iter__(pset):
-        return iter(pset._items_)
+        for item, count in pset._items_.iteritems():
+            for i in range(count): yield item
     def __eq__(pset, x):
-        if isinstance(x, PropagatedSet):
+        if isinstance(x, PropagatedMultiset):
             return pset._items_ == x._items_
-        if isinstance(x, (set, frozenset)):
+        if isinstance(x, dict):
             return pset._items_ == x
-        return pset._items_ == frozenset(x)
+        if hasattr(x, 'keys'):
+            return pset._items_ == dict(x)
+        return pset._items_ == iter2dict(x)
     def __ne__(pset, x):
         return not pset.__eq__(x)
     def __contains__(pset, item):
@@ -1794,10 +1804,8 @@ class EntityMeta(type):
                 def fget(wrapper, attr=attr):
                     rentity = attr.py_type
                     cls = rentity._get_propagated_set_subclass_()
-                    result_items = set()
-                    for item in wrapper:
-                        result_items.update(attr.__get__(item))
-                    return cls(result_items)
+                    return cls(subitem for item in wrapper
+                                        for subitem in attr.__get__(item))
             cls_dict[attr.name] = property(fget)
         result_cls_name = entity.__name__ + 'SetMixin'
         result_cls = type(result_cls_name, (object,), cls_dict)
@@ -1807,8 +1815,8 @@ class EntityMeta(type):
         result_cls = entity._propagated_set_subclass_
         if result_cls is None:
             mixin = entity._get_propagation_mixin_()
-            cls_name = entity.__name__ + 'PropagatedSet'
-            result_cls = type(cls_name, (PropagatedSet, mixin), {})
+            cls_name = entity.__name__ + 'PropagatedMultiset'
+            result_cls = type(cls_name, (PropagatedMultiset, mixin), {})
             entity._propagated_set_subclass_ = result_cls
         return result_cls
     def _get_set_wrapper_subclass_(entity):
