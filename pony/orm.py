@@ -1162,7 +1162,7 @@ class PropagatedMultiset(object):
     def __init__(pset, items):
         pset._items_ = iter2dict(items)
     def distinct(pset):
-        return frozenset(d)
+        return d.copy()
     def __repr__(pset):
         return '%s(%s)' % (pset.__class__.__name__, pset._items_)
     def __nonzero__(pset):
