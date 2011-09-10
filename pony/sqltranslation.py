@@ -800,9 +800,7 @@ class AttrMonad(Monad):
             parent_columns = parent.getsql()
             entity = attr.entity
             if len(entity._pk_attrs_) == 1: return parent_columns
-            start = sum(len(prev_attr.columns) for prev_attr in entity._pk_attrs_[:attr.pk_offset])
-            end = start + len(attr.columns)
-            return parent_columns[start:end]
+            return parent_columns[attr.pk_columns_offset:attr.pk_columns_offset+len(attr.columns)]
         alias = monad.parent.tableref.make_join()
         return [ [ COLUMN, alias, column ] for column in monad.attr.columns ]
         
@@ -1310,9 +1308,7 @@ class AttrSetMonad(SetMixin, Monad):
         outer_conditions = [ from_ast[1].pop() ]
         if last_attr is not None: columns = last_attr.columns
         elif tail:
-            offset = 0
-            for attr in tail:
-                offset += sum(len(prev_attr.columns) for prev_attr in attr.entity._pk_attrs_[:attr.pk_offset])
+            offset = sum(attr.pk_columns_offset for attr in tail)
             columns = path[-1].py_type._pk_columns_[offset:offset+len(tail[0].columns)]
         else: columns = path[-1].py_type._pk_columns_
         expr_list = [[ COLUMN, alias, column ] for column in columns ]

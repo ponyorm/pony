@@ -383,7 +383,7 @@ next_attr_id = count(1).next
 
 class Attribute(object):
     __slots__ = 'is_required', 'is_unique', 'is_indexed', 'is_pk', 'is_collection', 'is_ref', 'is_basic', \
-                'id', 'pk_offset', 'py_type', 'sql_type', 'entity', 'name', \
+                'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'keyargs'
     def __init__(attr, py_type, *args, **keyargs):
@@ -1396,6 +1396,7 @@ class EntityMeta(type):
         for attr in entity._pk_attrs_:
             attr_columns = attr.get_columns()
             attr_col_paths = attr.col_paths
+            attr.pk_columns_offset = len(pk_columns)
             pk_columns.extend(attr_columns)
             pk_converters.extend(attr.converters)
             pk_paths.extend(attr_col_paths)
