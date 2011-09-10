@@ -225,7 +225,8 @@ class SQLTranslator(ASTTranslator):
             assert name_path in tablerefs
         elif isinstance(monad, translator.ObjectFlatMonad): pass
         else: assert False
-        alias = translator.alias = tablerefs[name_path].make_join()
+        alias, _ = tablerefs[name_path].make_join()
+        translator.alias = alias
         translator.select, translator.attr_offsets = entity._construct_select_clause_(alias, translator.distinct)
         if not translator.conditions: translator.where = None
         else: translator.where = [ WHERE, sqland(translator.conditions) ]
@@ -366,10 +367,10 @@ class TableRef(object):
         tableref.entity = entity
         tableref.joined = False
     def make_join(tableref):
-        if tableref.joined: return tableref.alias
-        tableref.translator.from_.append([ tableref.alias, TABLE, tableref.entity._table_ ])
-        tableref.joined = True
-        return tableref.alias
+        if not tableref.joined:
+            tableref.translator.from_.append([ tableref.alias, TABLE, tableref.entity._table_ ])
+            tableref.joined = True
+        return tableref.alias, tableref.entity._pk_columns_
 
 class JoinedTableRef(object):
     def __init__(tableref, translator, name_path, parent_alias, attr, from_ast=None):
@@ -384,31 +385,33 @@ class JoinedTableRef(object):
         assert isinstance(tableref.entity, EntityMeta)
         tableref.joined = False
     def make_join(tableref):
-        if tableref.joined: return tableref.alias
-        parent_alias_name = tableref.parent_alias.make_join()
+        if tableref.joined: return tableref.alias, tableref.pk_columns
+        parent_alias_name, left_pk_columns = tableref.parent_alias.make_join()
         attr = tableref.attr
         left_entity = attr.entity
         right_entity = attr.py_type
         tableref.alias = alias = tableref.translator.get_short_alias(tableref.name_path, right_entity.__name__)
+        pk_columns = right_entity._pk_columns_
         if not attr.is_collection:
             if not attr.columns:
                 reverse = attr.reverse
                 assert reverse.columns and not reverse.is_collection
-                join_cond = join_tables(parent_alias_name, alias, left_entity._pk_columns_, reverse.columns)
-            else: join_cond = join_tables(parent_alias_name, alias, attr.columns, right_entity._pk_columns_)
+                join_cond = join_tables(parent_alias_name, alias, left_pk_columns, reverse.columns)
+            else: join_cond = join_tables(parent_alias_name, alias, attr.columns, pk_columns)
             tableref.from_ast.append([ tableref.alias, TABLE, right_entity._table_, join_cond ])
         elif not attr.reverse.is_collection:
-            join_cond = join_tables(parent_alias_name, alias, left_entity._pk_columns_, attr.reverse.columns)
+            join_cond = join_tables(parent_alias_name, alias, left_pk_columns, attr.reverse.columns)
             tableref.from_ast.append([ tableref.alias, TABLE, right_entity._table_, join_cond ])
         else:
             m2m_table = attr.table
             m2m_alias = tableref.translator.get_short_alias(None, 't')
-            m2m_join_cond = join_tables(parent_alias_name, m2m_alias, left_entity._pk_columns_, attr.reverse.columns)
+            m2m_join_cond = join_tables(parent_alias_name, m2m_alias, left_pk_columns, attr.reverse.columns)
             tableref.from_ast.append([ m2m_alias, TABLE, m2m_table, m2m_join_cond ])
-            join_cond = join_tables(m2m_alias, alias, attr.columns, right_entity._pk_columns_)
-            tableref.from_ast.append([ alias, TABLE, right_entity._table_, join_cond ])            
+            join_cond = join_tables(m2m_alias, alias, attr.columns, pk_columns)
+            tableref.from_ast.append([ alias, TABLE, right_entity._table_, join_cond ])
+        tableref.pk_columns = pk_columns
         tableref.joined = True
-        return tableref.alias
+        return tableref.alias, pk_columns
 
 def wrap_monad_method(cls_name, func):
     overrider_name = '%s_%s' % (cls_name, func.__name__)
@@ -770,8 +773,8 @@ class ObjectIterMonad(ObjectMixin, Monad):
         monad.tableref = tableref
     def getsql(monad):
         entity = monad.type
-        alias = monad.tableref.make_join()
-        return [ [ COLUMN, alias, column ] for column in entity._pk_columns_ ]
+        alias, pk_columns = monad.tableref.make_join()
+        return [ [ COLUMN, alias, column ] for column in pk_columns ]
 
 class AttrMonad(Monad):
     @staticmethod
@@ -801,7 +804,7 @@ class AttrMonad(Monad):
             entity = attr.entity
             if len(entity._pk_attrs_) == 1: return parent_columns
             return parent_columns[attr.pk_columns_offset:attr.pk_columns_offset+len(attr.columns)]
-        alias = monad.parent.tableref.make_join()
+        alias, _ = monad.parent.tableref.make_join()
         return [ [ COLUMN, alias, column ] for column in monad.attr.columns ]
         
 class ObjectAttrMonad(ObjectMixin, AttrMonad):
@@ -1304,7 +1307,7 @@ class AttrSetMonad(SetMixin, Monad):
         from_ast = [ FROM ]
         tableref = monad.root.tableref
         for attr in path: tableref = JoinedTableRef(monad.translator, None, tableref, attr, from_ast)
-        alias = tableref.make_join()
+        alias, _ = tableref.make_join()
         outer_conditions = [ from_ast[1].pop() ]
         if last_attr is not None: columns = last_attr.columns
         elif tail:
