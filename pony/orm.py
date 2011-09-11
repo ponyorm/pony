@@ -1595,14 +1595,15 @@ class EntityMeta(type):
                 offsets.append(len(select_list) - 1)
                 select_list.append([ COLUMN, alias, column ])
         return select_list, attr_offsets
-    def _construct_batchload_sql_(entity, pkval_list):
+    def _construct_batchload_sql_(entity, batch_size):
         table_name = entity._table_
         select_list, attr_offsets = entity._construct_select_clause_()
         from_list = [ FROM, [ None, TABLE, table_name ]]
         if len(entity._pk_columns_) > 1: raise NotImplementedError
         attr = entity._pk_attrs_[0]
-        converter = attr.converters[0]
-        where = [ WHERE, [ IN, [ COLUMN, None, entity._pk_columns_[0] ], [ [ VALUE, pkval[0] ] for pkval in pkval_list] ] ]
+        where = [ WHERE, [ IN, [ COLUMN, None, entity._pk_columns_[0] ],
+                               [ [ PARAM, (i, j), converter ] for i in xrange(batch_size)
+                                                              for j, converter in enumerate(entity._pk_converters_) ] ] ]
         sql_ast = [ SELECT, select_list, from_list, where ]
         return sql_ast, attr_offsets        
     def _construct_sql_(entity, query_attrs, max_rows_count=None):
@@ -1869,14 +1870,16 @@ class Entity(object):
         database = entity._diagram_.database
         cached_sql = None # entity._find_batchload_cache_.get(len(pkval_list))
         if cached_sql is None:
-            sql_ast, attr_offsets = entity._construct_batchload_sql_(pkval_list)
+            sql_ast, attr_offsets = entity._construct_batchload_sql_(len(pkval_list))
             sql, adapter = database._ast2sql(sql_ast)
             cached_sql = sql, adapter, attr_offsets
             entity._find_sql_cache_[len(pkval_list)] = cached_sql
         else: sql, extractor, adapter, attr_offsets = cached_sql
-        # value_dict = extractor(avdict)
-        # arguments = adapter(value_dict)
-        cursor = database._exec_sql(sql)
+        value_dict = {}
+        for i, pkval in enumerate(pkval_list):
+            for j, val in enumerate(pkval): value_dict[i, j] = val
+        arguments = adapter(value_dict)
+        cursor = database._exec_sql(sql, arguments)
         objects = entity._fetch_objects(cursor, attr_offsets)
         if obj not in objects: raise UnrepeatableReadError('%s disappeared' % obj)
     def _db_set_(obj, avdict):
