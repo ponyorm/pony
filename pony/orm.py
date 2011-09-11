@@ -1595,6 +1595,16 @@ class EntityMeta(type):
                 offsets.append(len(select_list) - 1)
                 select_list.append([ COLUMN, alias, column ])
         return select_list, attr_offsets
+    def _construct_batchload_sql_(entity, pkval_list):
+        table_name = entity._table_
+        select_list, attr_offsets = entity._construct_select_clause_()
+        from_list = [ FROM, [ None, TABLE, table_name ]]
+        if len(entity._pk_columns_) > 1: raise NotImplementedError
+        attr = entity._pk_attrs_[0]
+        converter = attr.converters[0]
+        where = [ WHERE, [ IN, [ COLUMN, None, entity._pk_columns_[0] ], [ [ VALUE, pkval[0] ] for pkval in pkval_list] ] ]
+        sql_ast = [ SELECT, select_list, from_list, where ]
+        return sql_ast, attr_offsets        
     def _construct_sql_(entity, query_attrs, max_rows_count=None):
         table_name = entity._table_
         select_list, attr_offsets = entity._construct_select_clause_()
@@ -1697,7 +1707,7 @@ class EntityMeta(type):
         database = entity._diagram_.database
         if database is None: raise TransactionError
         return database._get_cache()
-    def _new_(entity, pkval, status, raw_pkval=None, undo_funcs=None):
+    def _new_(entity, pkval, status, undo_funcs=None):
         cache = entity._get_cache_()
         index = cache.indexes.setdefault(entity._pk_, {})
         if pkval is None: obj = None
@@ -1726,6 +1736,8 @@ class EntityMeta(type):
             for attr, val in pairs:
                 obj._curr_[attr.name] = val
                 if attr.reverse: attr.db_update_reverse(obj, NOT_LOADED, val)
+            seeds = cache.seeds.setdefault(entity._pk_, set())
+            seeds.add(obj)
         elif status == 'created':
             assert undo_funcs is not None
             obj._rbits_ = obj._wbits_ = None
@@ -1752,7 +1764,7 @@ class EntityMeta(type):
                                  % (obj.__class__.__name__, vals, attr_names))
             indexes[attrs] = vals
         try:
-            obj = entity._new_(pkval, 'created', None, undo_funcs)
+            obj = entity._new_(pkval, 'created', undo_funcs)
             for attr, val in avdict.iteritems():
                 if attr.pk_offset is not None: continue
                 elif not attr.is_collection:
@@ -1785,7 +1797,7 @@ class EntityMeta(type):
             pkval.append(val)
         if not entity._pk_is_composite_: pkval = pkval[0]
         else: pkval = tuple(pkval)
-        obj = entity._new_(pkval, 'loaded', raw_pkval)
+        obj = entity._new_(pkval, 'loaded')
         assert obj._status_ not in ('deleted', 'cancelled')
         return obj
     def _get_propagation_mixin_(entity):
@@ -1851,12 +1863,22 @@ class Entity(object):
         elif obj._pk_is_composite_: return '%s%r' % (obj.__class__.__name__, pkval)
         else: return '%s(%r)' % (obj.__class__.__name__, pkval)
     def _load_(obj):
-        if obj._pk_is_composite_:
-            avdict = dict((attr, val) for attr, val in zip(obj._pk_attrs_, obj._pkval_))
-        else: avdict = { obj.__class__._pk_ : obj._pkval_ }
-        objects = obj.__class__._find_in_db_(avdict, 1)        
-        if not objects: raise UnrepeatableReadError('%s disappeared' % obj)
-        assert len(objects) == 1 and obj == objects[0]
+        entity = obj.__class__
+        seeds = obj._cache_.seeds[entity._pk_]
+        pkval_list = [ seed._get_raw_pkval_() for seed in seeds ]
+        database = entity._diagram_.database
+        cached_sql = None # entity._find_batchload_cache_.get(len(pkval_list))
+        if cached_sql is None:
+            sql_ast, attr_offsets = entity._construct_batchload_sql_(pkval_list)
+            sql, adapter = database._ast2sql(sql_ast)
+            cached_sql = sql, adapter, attr_offsets
+            entity._find_sql_cache_[len(pkval_list)] = cached_sql
+        else: sql, extractor, adapter, attr_offsets = cached_sql
+        # value_dict = extractor(avdict)
+        # arguments = adapter(value_dict)
+        cursor = database._exec_sql(sql)
+        objects = entity._fetch_objects(cursor, attr_offsets)
+        if obj not in objects: raise UnrepeatableReadError('%s disappeared' % obj)
     def _db_set_(obj, avdict):
         assert obj._status_ not in ('created', 'deleted', 'cancelled')
         get_curr = obj._curr_.get
@@ -1883,6 +1905,8 @@ class Entity(object):
         if not avdict: return
         NOT_FOUND = object()
         cache = obj._cache_
+        seeds = cache.seeds.setdefault(obj.__class__._pk_, set())
+        seeds.discard(obj)
         for attr in obj._simple_keys_:
             val = avdict.get(attr, NOT_FOUND)
             if val is NOT_FOUND: continue
@@ -2421,6 +2445,7 @@ class Cache(object):
         cache.optimistic = database.optimistic
         cache.ignore_none = True  # todo : get from provider
         cache.indexes = {}
+        cache.seeds = {}
         cache.created = set()
         cache.deleted = set()
         cache.updated = set()
