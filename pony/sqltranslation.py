@@ -1296,28 +1296,22 @@ class AttrSetMonad(SetMixin, Monad):
         return translator.BoolExprMonad(translator, sql_ast)
     def _subselect(monad):
         path = monad.path[:]
-        start = 0
-        end = -1
-        tail = []
-        while len(path) > 1 and path[-1].pk_offset is not None:
-            tail.append(path.pop())
-        last_attr = None
-        if not tail and len(path) > 1 and not path[-1].is_collection and path[-1].columns:
-            last_attr = path.pop()
         from_ast = [ FROM ]
         tableref = monad.root.tableref
-        for attr in path: tableref = JoinedTableRef(monad.translator, None, tableref, attr, from_ast)
-        alias, _ = tableref.make_join()
-        outer_conditions = [ from_ast[1].pop() ]
+        if not path[-1].reverse:
+            last_attr = path.pop()
+            assert path
+        else: last_attr = None
+        for attr in path:
+            tableref = JoinedTableRef(monad.translator, None, tableref, attr, from_ast)
+            alias, pk_columns = tableref.make_join()
+        inner_conditions = []
         if last_attr is not None: columns = last_attr.columns
-        elif tail:
-            offset = sum(attr.pk_columns_offset for attr in tail)
-            columns = path[-1].py_type._pk_columns_[offset:offset+len(tail[0].columns)]
         else: columns = path[-1].py_type._pk_columns_
         expr_list = [[ COLUMN, alias, column ] for column in columns ]
-        inner_conditions = []
         if last_attr is not None and not last_attr.is_required:
             inner_conditions = [ [ IS_NOT_NULL, expr ] for expr in expr_list ]
+        outer_conditions = [ from_ast[1].pop() ]
         return expr_list, from_ast, inner_conditions, outer_conditions
     def getsql(monad):
         raise TranslationError
