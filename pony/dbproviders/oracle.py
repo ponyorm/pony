@@ -8,6 +8,8 @@ from pony import sqlbuilding
 
 paramstyle = 'named'
 
+MAX_PARAMS_COUNT = 200
+
 def quote_name(connection, name):
     return sqlbuilding.quote_name(name, "`")
 

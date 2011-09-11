@@ -8,6 +8,8 @@ from pony import sqlbuilding
 
 paramstyle = 'qmark'
 
+MAX_PARAMS_COUNT = 200
+
 def quote_name(connection, name):
     quote_char = connection.getinfo(pyodbc.SQL_IDENTIFIER_QUOTE_CHAR)
     return sqlbuilding.quote_name(name, quote_char)
