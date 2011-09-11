@@ -366,7 +366,7 @@ class TableRef(object):
         tableref.alias = tableref.name_path = name
         tableref.entity = entity
         tableref.joined = False
-    def make_join(tableref):
+    def make_join(tableref, pk_only=False):
         if not tableref.joined:
             tableref.translator.from_.append([ tableref.alias, TABLE, tableref.entity._table_ ])
             tableref.joined = True
@@ -384,33 +384,40 @@ class JoinedTableRef(object):
         tableref.entity = attr.py_type
         assert isinstance(tableref.entity, EntityMeta)
         tableref.joined = False
-    def make_join(tableref):
+    def make_join(tableref, pk_only=False):
         if tableref.joined: return tableref.alias, tableref.pk_columns
-        parent_alias_name, left_pk_columns = tableref.parent_alias.make_join()
+        tableref.joined = True
         attr = tableref.attr
+        parent_alias_name, left_pk_columns = tableref.parent_alias.make_join(attr.pk_offset is not None)
         left_entity = attr.entity
         right_entity = attr.py_type
-        tableref.alias = alias = tableref.translator.get_short_alias(tableref.name_path, right_entity.__name__)
         pk_columns = right_entity._pk_columns_
         if not attr.is_collection:
+            alias = tableref.translator.get_short_alias(tableref.name_path, right_entity.__name__)
             if not attr.columns:
                 reverse = attr.reverse
                 assert reverse.columns and not reverse.is_collection
                 join_cond = join_tables(parent_alias_name, alias, left_pk_columns, reverse.columns)
             else: join_cond = join_tables(parent_alias_name, alias, attr.columns, pk_columns)
-            tableref.from_ast.append([ tableref.alias, TABLE, right_entity._table_, join_cond ])
+            tableref.from_ast.append([ alias, TABLE, right_entity._table_, join_cond ])
         elif not attr.reverse.is_collection:
+            alias = tableref.translator.get_short_alias(tableref.name_path, right_entity.__name__)
             join_cond = join_tables(parent_alias_name, alias, left_pk_columns, attr.reverse.columns)
-            tableref.from_ast.append([ tableref.alias, TABLE, right_entity._table_, join_cond ])
+            tableref.from_ast.append([ alias, TABLE, right_entity._table_, join_cond ])
         else:
             m2m_table = attr.table
             m2m_alias = tableref.translator.get_short_alias(None, 't')
             m2m_join_cond = join_tables(parent_alias_name, m2m_alias, left_pk_columns, attr.reverse.columns)
             tableref.from_ast.append([ m2m_alias, TABLE, m2m_table, m2m_join_cond ])
+            if pk_only:
+                tableref.alias = m2m_alias
+                tableref.pk_columns = attr.columns
+                return m2m_alias, tableref.pk_columns
+            alias = tableref.translator.get_short_alias(tableref.name_path, right_entity.__name__)
             join_cond = join_tables(m2m_alias, alias, attr.columns, pk_columns)
             tableref.from_ast.append([ alias, TABLE, right_entity._table_, join_cond ])
+        tableref.alias = alias 
         tableref.pk_columns = pk_columns
-        tableref.joined = True
         return tableref.alias, pk_columns
 
 def wrap_monad_method(cls_name, func):
@@ -1299,17 +1306,21 @@ class AttrSetMonad(SetMixin, Monad):
         from_ast = [ FROM ]
         tableref = monad.root.tableref
         if not path[-1].reverse:
-            last_attr = path.pop()
+            nonlink_attr = path.pop()
             assert path
-        else: last_attr = None
+        else: nonlink_attr = None
         for attr in path:
             tableref = JoinedTableRef(monad.translator, None, tableref, attr, from_ast)
-            alias, pk_columns = tableref.make_join()
+        pk_only = not nonlink_attr or nonlink_attr.pk_offset is not None
+        alias, columns = tableref.make_join(pk_only)
         inner_conditions = []
-        if last_attr is not None: columns = last_attr.columns
-        else: columns = path[-1].py_type._pk_columns_
+        if nonlink_attr:
+            if pk_only:
+                offset = nonlink_attr.pk_columns_offset
+                columns = columns[offset:offset+len(nonlink_attr.columns)]
+            else: columns = nonlink_attr.columns
         expr_list = [[ COLUMN, alias, column ] for column in columns ]
-        if last_attr is not None and not last_attr.is_required:
+        if nonlink_attr is not None and not nonlink_attr.is_required:
             inner_conditions = [ [ IS_NOT_NULL, expr ] for expr in expr_list ]
         outer_conditions = [ from_ast[1].pop() ]
         return expr_list, from_ast, inner_conditions, outer_conditions
