@@ -20,6 +20,7 @@ from pony.utils import localbase
 paramstyle = 'format'
 
 MAX_PARAMS_COUNT = 200
+ROW_VALUE_SYNTAX = True
 
 class MySQLColumn(dbschema.Column):
     autoincrement = 'AUTO_INCREMENT'

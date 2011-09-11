@@ -18,6 +18,7 @@ from pgdb import (Warning, Error, InterfaceError, DatabaseError,
 paramstyle = 'pyformat'
 
 MAX_PARAMS_COUNT = 200
+ROW_VALUE_SYNTAX = True
 
 class PGTable(dbschema.Table):
     def get_create_commands(table, created_tables=None):

@@ -1600,11 +1600,21 @@ class EntityMeta(type):
         table_name = entity._table_
         select_list, attr_offsets = entity._construct_select_clause_()
         from_list = [ FROM, [ None, TABLE, table_name ]]
-        if len(entity._pk_columns_) > 1: raise NotImplementedError
-        attr = entity._pk_attrs_[0]
-        where = [ WHERE, [ IN, [ COLUMN, None, entity._pk_columns_[0] ],
-                               [ [ PARAM, (i, j), converter ] for i in xrange(batch_size)
-                                                              for j, converter in enumerate(entity._pk_converters_) ] ] ]
+        if len(entity._pk_columns_) == 1:
+            attr = entity._pk_attrs_[0]
+            converter = entity._pk_converters_[0]
+            where = [ WHERE, [ IN, [ COLUMN, None, entity._pk_columns_[0] ],
+                                   [ [ PARAM, (i, 0), converter ] for i in xrange(batch_size) ] ] ]
+        elif entity._diagram_.database.provider.ROW_VALUE_SYNTAX:
+            where = [ WHERE, [ IN, [ ROW ] + [ [ COLUMN, None, column ] for column in entity._pk_columns_ ],
+                                   [ [ ROW ] + [ [ PARAM, (i, j), converter ] for j, converter in enumerate(entity._pk_converters_) ]
+                                     for i in xrange(batch_size) ] ] ]
+        else:
+            pk_columns = entity._pk_columns_
+            pk_converters = entity._pk_converters_
+            where = [ WHERE, [ OR ] + [ [ AND ] + [ [ EQ, [ COLUMN, None, column ], [ PARAM, (i, j), converter ] ]
+                                                    for j, (column, converter) in enumerate(izip(pk_columns, pk_converters)) ]
+                                        for i in xrange(batch_size) ] ]
         sql_ast = [ SELECT, select_list, from_list, where ]
         return sql_ast, attr_offsets        
     def _construct_sql_(entity, query_attrs, max_rows_count=None):

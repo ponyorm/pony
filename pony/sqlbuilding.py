@@ -289,6 +289,8 @@ class SQLBuilder(object):
             param = Param(builder.paramstyle, len(keys) + 1, key, converter)
             keys[key] = param
         return [ param ]
+    def ROW(builder, *items):
+        return '(', join(', ', map(builder, items)), ')'
     def VALUE(builder, value):
         return [ builder.make_value(value) ]
     def AND(builder, *cond_list):

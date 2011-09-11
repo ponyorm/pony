@@ -18,7 +18,8 @@ from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple
 
 paramstyle = 'qmark'
 
-MAX_PARAMS_COUNT = 100
+MAX_PARAMS_COUNT = 200
+ROW_VALUE_SYNTAX = False
 
 def create_schema(database):
     return dbschema.DBSchema(database)
