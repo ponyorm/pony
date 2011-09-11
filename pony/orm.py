@@ -1324,6 +1324,7 @@ class EntityMeta(type):
         entity._cached_create_sql_no_pk_ = None
         entity._cached_delete_sql_ = None
         entity._find_sql_cache_ = {}
+        entity._batchload_sql_cache_ = {}
         entity._update_sql_cache_ = {}
         entity._lock_sql_cache_ = {}
 
@@ -1865,16 +1866,20 @@ class Entity(object):
         else: return '%s(%r)' % (obj.__class__.__name__, pkval)
     def _load_(obj):
         entity = obj.__class__
-        seeds = obj._cache_.seeds[entity._pk_]
-        pkval_list = [ seed._get_raw_pkval_() for seed in seeds ]
         database = entity._diagram_.database
-        cached_sql = None # entity._find_batchload_cache_.get(len(pkval_list))
+        seeds = obj._cache_.seeds[entity._pk_]
+        max_batch_size = database.provider.MAX_PARAMS_COUNT // len(entity._pk_columns_)
+        pkval_list = [ obj._get_raw_pkval_() ]
+        for seed in seeds:
+            if len(pkval_list) >= max_batch_size: break
+            if seed is not obj: pkval_list.append(seed._get_raw_pkval_())
+        cached_sql = entity._batchload_sql_cache_.get(len(pkval_list))
         if cached_sql is None:
             sql_ast, attr_offsets = entity._construct_batchload_sql_(len(pkval_list))
             sql, adapter = database._ast2sql(sql_ast)
             cached_sql = sql, adapter, attr_offsets
-            entity._find_sql_cache_[len(pkval_list)] = cached_sql
-        else: sql, extractor, adapter, attr_offsets = cached_sql
+            entity._batchload_sql_cache_[len(pkval_list)] = cached_sql
+        else: sql, adapter, attr_offsets = cached_sql
         value_dict = {}
         for i, pkval in enumerate(pkval_list):
             for j, val in enumerate(pkval): value_dict[i, j] = val
