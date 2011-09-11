@@ -1614,19 +1614,19 @@ class EntityMeta(type):
             else:
                 attr_entity = attr.py_type
                 assert attr_entity == attr.reverse.entity
-                if len(attr_entity._pk_columns_) == 1:
+                if len(attr.columns) == 1:
                     if not attr_is_none:
                         assert len(attr.converters) == 1
                         criteria_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name, attr.converters[0] ]])
                         extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]._get_raw_pkval_()[0]
                     else: criteria_list.append([IS_NULL, [COLUMN, None, attr.column]])
                 elif not attr_is_none:
-                    for i, (column, converter) in enumerate(zip(attr_entity._pk_columns_, attr_entity._pk_converters_)):
+                    for i, (column, converter) in enumerate(zip(attr.columns, attr_entity._pk_converters_)):
                         param_name = '%s-%d' % (attr.name, i+1)
                         criteria_list.append([EQ, [COLUMN, None, column], [ PARAM, param_name, converter ]])
                         extractors[param_name] = lambda avdict, attr=attr, i=i: avdict[attr]._get_raw_pkval_()[i]
                 else:
-                    for column in attr_entity._pk_columns_:
+                    for column in attr.columns:
                         criteria_list.append([IS_NULL, [COLUMN, None, column]])
 
         sql_ast = [ SELECT, select_list, from_list ]
