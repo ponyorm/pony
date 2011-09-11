@@ -398,7 +398,12 @@ class JoinedTableRef(object):
                 reverse = attr.reverse
                 assert reverse.columns and not reverse.is_collection
                 join_cond = join_tables(parent_alias_name, alias, left_pk_columns, reverse.columns)
-            else: join_cond = join_tables(parent_alias_name, alias, attr.columns, pk_columns)
+            else:
+                if attr.pk_offset is not None:
+                    offset = attr.pk_columns_offset
+                    left_columns = left_pk_columns[offset:offset+len(attr.columns)]
+                else: left_columns = attr.columns
+                join_cond = join_tables(parent_alias_name, alias, left_columns, pk_columns)
             tableref.from_ast.append([ alias, TABLE, right_entity._table_, join_cond ])
         elif not attr.reverse.is_collection:
             alias = tableref.translator.get_short_alias(tableref.name_path, right_entity.__name__)
