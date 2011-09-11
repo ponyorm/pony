@@ -379,30 +379,40 @@ class JoinedTableRef(object):
         else: tableref.from_ast = translator.from_            
         tableref.name_path = name_path
         tableref.alias = None
+        tableref.optimized = None
         tableref.parent_alias = parent_alias
         tableref.attr = attr
         tableref.entity = attr.py_type
         assert isinstance(tableref.entity, EntityMeta)
         tableref.joined = False
     def make_join(tableref, pk_only=False):
-        if tableref.joined: return tableref.alias, tableref.pk_columns
-        tableref.joined = True
+        if tableref.joined:
+            if pk_only or not tableref.optimized:
+                return tableref.alias, tableref.pk_columns
         attr = tableref.attr
-        parent_alias_name, left_pk_columns = tableref.parent_alias.make_join(attr.pk_offset is not None)
+        parent_pk_only = attr.pk_offset is not None or attr.is_collection
+        parent_alias_name, left_pk_columns = tableref.parent_alias.make_join(parent_pk_only)
         left_entity = attr.entity
         right_entity = attr.py_type
         pk_columns = right_entity._pk_columns_
         if not attr.is_collection:
-            alias = tableref.translator.get_short_alias(tableref.name_path, right_entity.__name__)
             if not attr.columns:
                 reverse = attr.reverse
                 assert reverse.columns and not reverse.is_collection
+                alias = tableref.translator.get_short_alias(tableref.name_path, right_entity.__name__)
                 join_cond = join_tables(parent_alias_name, alias, left_pk_columns, reverse.columns)
             else:
                 if attr.pk_offset is not None:
                     offset = attr.pk_columns_offset
                     left_columns = left_pk_columns[offset:offset+len(attr.columns)]
                 else: left_columns = attr.columns
+                if pk_only:
+                    tableref.alias = parent_alias_name
+                    tableref.pk_columns = left_columns
+                    tableref.optimized = True
+                    tableref.joined = True
+                    return parent_alias_name, left_columns
+                alias = tableref.translator.get_short_alias(tableref.name_path, right_entity.__name__)
                 join_cond = join_tables(parent_alias_name, alias, left_columns, pk_columns)
             tableref.from_ast.append([ alias, TABLE, right_entity._table_, join_cond ])
         elif not attr.reverse.is_collection:
@@ -410,19 +420,24 @@ class JoinedTableRef(object):
             join_cond = join_tables(parent_alias_name, alias, left_pk_columns, attr.reverse.columns)
             tableref.from_ast.append([ alias, TABLE, right_entity._table_, join_cond ])
         else:
-            m2m_table = attr.table
-            m2m_alias = tableref.translator.get_short_alias(None, 't')
-            m2m_join_cond = join_tables(parent_alias_name, m2m_alias, left_pk_columns, attr.reverse.columns)
-            tableref.from_ast.append([ m2m_alias, TABLE, m2m_table, m2m_join_cond ])
+            if not tableref.joined:
+                m2m_table = attr.table
+                m2m_alias = tableref.translator.get_short_alias(None, 't')
+                m2m_join_cond = join_tables(parent_alias_name, m2m_alias, left_pk_columns, attr.reverse.columns)
+                tableref.from_ast.append([ m2m_alias, TABLE, m2m_table, m2m_join_cond ])
             if pk_only:
                 tableref.alias = m2m_alias
                 tableref.pk_columns = attr.columns
+                tableref.optimized = True
+                tableref.joined = True
                 return m2m_alias, tableref.pk_columns
             alias = tableref.translator.get_short_alias(tableref.name_path, right_entity.__name__)
             join_cond = join_tables(m2m_alias, alias, attr.columns, pk_columns)
             tableref.from_ast.append([ alias, TABLE, right_entity._table_, join_cond ])
         tableref.alias = alias 
         tableref.pk_columns = pk_columns
+        tableref.optimized = False
+        tableref.joined = True
         return tableref.alias, pk_columns
 
 def wrap_monad_method(cls_name, func):
@@ -1246,13 +1261,13 @@ class AttrSetMonad(SetMixin, Monad):
         sql_ast = [ SELECT, [ AGGREGATES, [COALESCE, [ SUM, expr ], [ VALUE, 0 ]]], from_ast, [ WHERE, sqland(outer_conditions+inner_conditions) ] ]
         return translator.NumericExprMonad(translator, item_type, sql_ast)
     def avg(monad):
+        translator = monad.translator
         item_type = monad.type[0]
         if item_type not in translator.numeric_types: raise TypeError, item_type
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
         assert len(expr_list) == 1
         expr = expr_list[0]
         sql_ast = [ SELECT, [ AGGREGATES, [ AVG, expr ] ], from_ast, [ WHERE, sqland(outer_conditions+inner_conditions) ] ]
-        translator = monad.translator
         return translator.NumericExprMonad(translator, float, sql_ast)
     def min(monad):
         translator = monad.translator
