@@ -125,8 +125,6 @@ class TransactionIntegrityError(TransactionError):
         Exception.__init__(exc, msg)
         exc.original_exc = original_exc
         
-class IsolationError(TransactionError): pass
-
 class CommitException(TransactionError):
     def __init__(exc, msg, exceptions):
         Exception.__init__(exc, msg)
@@ -142,7 +140,9 @@ class RollbackException(TransactionError):
         Exception.__init__(exc, msg)
         exc.exceptions = exceptions
 
-class UnrepeatableReadError(IsolationError): pass
+class TransactionRolledBack(TransactionError): pass
+class IsolationError(TransactionError): pass
+class   UnrepeatableReadError(IsolationError): pass
 class UnresolvableCyclicDependency(TransactionError): pass
 
 class UnexpectedError(TransactionError):
@@ -501,6 +501,7 @@ class Attribute(object):
         return obj._curr_[attr.name]
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
+        if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         result = attr.get(obj)
         if attr.pk_offset is not None: return result
         bit = obj._bits_[attr]
@@ -513,6 +514,8 @@ class Attribute(object):
         if val is NOT_LOADED: val = attr.load(obj)
         return val
     def __set__(attr, obj, val, undo_funcs=None):
+        cache = obj._cache_
+        if not cache.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         is_reverse_call = undo_funcs is not None
         reverse = attr.reverse
@@ -528,7 +531,6 @@ class Attribute(object):
         if curr is NOT_LOADED and reverse and not reverse.is_collection:
             assert not is_reverse_call
             curr = attr.load(obj)
-        cache = obj._cache_
         status = obj._status_
         wbits = obj._wbits_
         if wbits is not None:
@@ -587,6 +589,8 @@ class Attribute(object):
                 for undo_func in reversed(undo_funcs): undo_func()
             raise
     def db_set(attr, obj, prev, is_reverse_call=False):
+        cache = obj._cache_
+        assert cache.is_alive
         assert obj._status_ not in ('created', 'deleted', 'cancelled')
         assert attr.pk_offset is None
         reverse = attr.reverse
@@ -881,11 +885,14 @@ class Set(Collection):
         return setdata.copy()
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
+        if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         rentity = attr.py_type
         wrapper_class = rentity._get_set_wrapper_subclass_()
         return wrapper_class(obj, attr)
     def __set__(attr, obj, val, undo_funcs=None):
+        cache = obj._cache_
+        if not cache.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         items = attr.check(val, obj)
         reverse = attr.reverse
@@ -921,7 +928,6 @@ class Set(Collection):
             if setdata.removed is EMPTY: setdata.removed = to_remove
             else: setdata.removed.update(to_remove)
             if setdata.added is not EMPTY: setdata.added -= to_remove
-        cache = obj._cache_
         cache.modified_collections.setdefault(attr, set()).add(obj)
     def __delete__(attr, obj):
         raise NotImplementedError
@@ -1044,18 +1050,26 @@ class Set(Collection):
 
 class SetWrapper(object):
     __slots__ = '_obj_', '_attr_'
+    _parent_ = None
     def __init__(wrapper, obj, attr):
         wrapper._obj_ = obj
         wrapper._attr_ = attr
     def copy(wrapper):
+        if not wrapper._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         return wrapper._attr_.copy(wrapper._obj_)
     def __repr__(wrapper):
-        return '%r.%s => {%s}' % (wrapper._obj_, wrapper._attr_.name, str(wrapper.copy())[1:-1])
+        if wrapper._obj_._cache_.is_alive:
+            size = len(wrapper)
+            if size == 1: size_str = ' (1 item)'
+            else: size_str = ' (%d items)' % size
+        else: size_str = ''
+        return '<%r.%s%s>' % (wrapper._obj_, wrapper._attr_.name, size_str)
     def __str__(wrapper):
         return str(wrapper.copy())
     def __nonzero__(wrapper):
         attr = wrapper._attr_
         obj = wrapper._obj_
+        if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         setdata = obj._curr_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED: setdata = attr.load(obj)
@@ -1065,6 +1079,7 @@ class SetWrapper(object):
     def __len__(wrapper):
         attr = wrapper._attr_
         obj = wrapper._obj_
+        if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         setdata = obj._curr_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED or not setdata.is_fully_loaded: setdata = attr.load(obj)
         return len(setdata)
@@ -1085,6 +1100,7 @@ class SetWrapper(object):
         return wrapper.copy().difference(x)
     def __contains__(wrapper, item):
         obj = wrapper._obj_
+        if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         attr = wrapper._attr_
         setdata = obj._curr_.get(attr.name, NOT_LOADED)
@@ -1095,6 +1111,7 @@ class SetWrapper(object):
         return item in setdata
     def add(wrapper, x):
         obj = wrapper._obj_
+        if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         attr = wrapper._attr_
         reverse = attr.reverse
@@ -1121,6 +1138,7 @@ class SetWrapper(object):
         return wrapper
     def remove(wrapper, x):
         obj = wrapper._obj_
+        if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         attr = wrapper._attr_
         reverse = attr.reverse
@@ -1148,6 +1166,7 @@ class SetWrapper(object):
         return wrapper
     def clear(wrapper):
         obj = wrapper._obj_
+        if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         wrapper._attr_.__set__(obj, None)
 
@@ -1158,21 +1177,42 @@ def iter2dict(iter):
     return d
 
 class PropagatedMultiset(object):
-    __slots__ = [ '_items_' ]
-    def __init__(pset, items):
+    __slots__ = [ '_obj_', '_parent_', '_attr_', '_items_' ]
+    def __init__(pset, parent, attr, items):
+        pset._obj_ = parent._obj_
+        pset._parent_ = parent
+        pset._attr_ = attr
         pset._items_ = iter2dict(items)
     def distinct(pset):
-        return d.copy()
+        if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
+        return pset._items_.copy()
     def __repr__(pset):
-        return '%s(%s)' % (pset.__class__.__name__, pset._items_)
+        if pset._obj_._cache_.is_alive:
+            size = sum(pset._items_.itervalues())
+            if size == 1: size_str = ' (1 item)'
+            else: size_str = ' (%d items)' % size
+        else: size_str = ''
+        path = []
+        wrapper = pset
+        while wrapper is not None:
+            path.append(wrapper._attr_.name)
+            wrapper = wrapper._parent_
+        return '<%s.%s%s>' % (pset._obj_, '.'.join(reversed(path)), size_str)
+    def __str__(pset):
+        if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
+        return str(pset._items_)
     def __nonzero__(pset):
+        if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         return bool(pset._items_)
     def __len__(pset):
+        if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         return sum(pset._items_.values())
     def __iter__(pset):
+        if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         for item, count in pset._items_.iteritems():
             for i in range(count): yield item
     def __eq__(pset, x):
+        if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         if isinstance(x, PropagatedMultiset):
             return pset._items_ == x._items_
         if isinstance(x, dict):
@@ -1183,6 +1223,7 @@ class PropagatedMultiset(object):
     def __ne__(pset, x):
         return not pset.__eq__(x)
     def __contains__(pset, item):
+        if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         return item in pset._items_
 
 ##class List(Collection): pass
@@ -1819,18 +1860,21 @@ class EntityMeta(type):
         for attr in entity._attrs_:
             if not attr.reverse:
                 def fget(wrapper, attr=attr):
-                    return set(attr.__get__(item) for item in wrapper)
+                    items = [ attr.__get__(item) for item in wrapper ]
+                    return PropagatedMultiset(wrapper, attr, items)
             elif not attr.is_collection:
                 def fget(wrapper, attr=attr):
+                    items = [ attr.__get__(item) for item in wrapper ]
                     rentity = attr.py_type
                     cls = rentity._get_propagated_set_subclass_()
-                    return cls(attr.__get__(item) for item in wrapper)
+                    return cls(wrapper, attr, items)
             else:
                 def fget(wrapper, attr=attr):
+                    items = [ subitem for item in wrapper
+                                      for subitem in attr.__get__(item) ]
                     rentity = attr.py_type
                     cls = rentity._get_propagated_set_subclass_()
-                    return cls(subitem for item in wrapper
-                                        for subitem in attr.__get__(item))
+                    return cls(wrapper, attr, items)
             cls_dict[attr.name] = property(fget)
         result_cls_name = entity.__name__ + 'SetMixin'
         result_cls = type(result_cls_name, (object,), cls_dict)
@@ -1875,9 +1919,11 @@ class Entity(object):
         elif obj._pk_is_composite_: return '%s%r' % (obj.__class__.__name__, pkval)
         else: return '%s(%r)' % (obj.__class__.__name__, pkval)
     def _load_(obj):
+        cache = obj._cache_
+        if not cache.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         entity = obj.__class__
         database = entity._diagram_.database
-        seeds = obj._cache_.seeds[entity._pk_]
+        seeds = cache.seeds[entity._pk_]
         max_batch_size = database.provider.MAX_PARAMS_COUNT // len(entity._pk_columns_)
         pkval_list = [ obj._get_raw_pkval_() ]
         for seed in seeds:
@@ -1923,6 +1969,7 @@ class Entity(object):
         if not avdict: return
         NOT_FOUND = object()
         cache = obj._cache_
+        assert cache.is_alive
         seeds = cache.seeds.setdefault(obj.__class__._pk_, set())
         seeds.discard(obj)
         for attr in obj._simple_keys_:
@@ -2032,12 +2079,14 @@ class Entity(object):
                 for undo_func in reversed(undo_funcs): undo_func()
             raise
     def delete(obj):
+        if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         obj._delete_()
     def set(obj, **keyargs):
+        cache = obj._cache_
+        if not cache.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         avdict, collection_avdict = obj._keyargs_to_avdicts_(keyargs)
-        cache = obj._cache_
         status = obj._status_
         wbits = obj._wbits_
         get_curr = obj._curr_.get
@@ -2121,9 +2170,11 @@ class Entity(object):
             else: collection_avdict[attr] = val
         return avdict, collection_avdict
     def check_on_commit(obj):
+        cache = obj._cache_
+        if not cache.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         if obj._status_ not in ('loaded', 'saved'): return
         obj._status_ = 'locked'
-        obj._cache_.to_be_checked.append(obj)
+        cache.to_be_checked.append(obj)
     @classmethod
     def _attrs_with_bit_(entity, mask=-1):
         get_bit = entity._bits_.get
@@ -2309,6 +2360,7 @@ class Entity(object):
         arguments = adapter(values)
         database._exec_sql(sql, arguments)
     def _save_(obj, dependent_objects=None):
+        assert obj._cache_.is_alive
         status = obj._status_
         if status in ('loaded', 'saved', 'cancelled'): return
         if status in ('created', 'updated'):
