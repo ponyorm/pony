@@ -1612,10 +1612,11 @@ class EntityMeta(type):
         if max_rows_count is None: max_rows_count = options.MAX_ROWS_COUNT
         database = entity._diagram_.database
         query_attrs = tuple((attr, value is None) for attr, value in sorted(avdict.iteritems()))
-        query_key = query_attrs, max_rows_count
+        single_row = max_rows_count == 1
+        query_key = query_attrs, single_row
         cached_sql = entity._find_sql_cache_.get(query_key)
         if cached_sql is None:
-            sql_ast, extractor, attr_offsets = entity._construct_sql_(query_attrs, max_rows_count)
+            sql_ast, extractor, attr_offsets = entity._construct_sql_(query_attrs, not single_row)
             sql, adapter = database._ast2sql(sql_ast)
             cached_sql = sql, extractor, adapter, attr_offsets
             entity._find_sql_cache_[query_key] = cached_sql
@@ -1658,7 +1659,7 @@ class EntityMeta(type):
                                         for i in xrange(batch_size) ] ]
         sql_ast = [ SELECT, select_list, from_list, where ]
         return sql_ast, attr_offsets        
-    def _construct_sql_(entity, query_attrs, max_rows_count=None):
+    def _construct_sql_(entity, query_attrs, order_by_pk=False):
         table_name = entity._table_
         select_list, attr_offsets = entity._construct_select_clause_()
         from_list = [ FROM, [ None, TABLE, table_name ]]
@@ -1694,10 +1695,7 @@ class EntityMeta(type):
 
         sql_ast = [ SELECT, select_list, from_list ]
         if len(criteria_list) > 1: sql_ast.append([ WHERE, criteria_list  ])
-        if max_rows_count <> 1:
-            sql_ast.append([ ORDER_BY ] + [ ([COLUMN, None, column], ASC) for column in entity._pk_columns_ ])
-        if max_rows_count is not None:
-            sql_ast.append([ LIMIT, [ VALUE, max_rows_count + 1 ] ])
+        if order_by_pk: sql_ast.append([ ORDER_BY ] + [ ([COLUMN, None, column], ASC) for column in entity._pk_columns_ ])
         def extractor(avdict):
             param_dict = {}
             for param, extractor in extractors.iteritems():
