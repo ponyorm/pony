@@ -2902,7 +2902,7 @@ class Query(object):
     def _fetch(query, range):
         translator = query._translator
         cursor = query._exec_sql(range)
-        result = translator.entity._fetch_objects(cursor, translator.attr_offsets)
+        result = translator.entity._fetch_objects(cursor, translator.attr_offsets, options.MAX_ROWS_COUNT)
         if translator.attrname is None: return QueryResult(result)
         return QueryResult(map(attrgetter(translator.attrname), result))
     def all(query):
