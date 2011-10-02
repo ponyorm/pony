@@ -2921,7 +2921,7 @@ class Query(object):
         row = cursor.fetchone()
         return row is not None
     def __iter__(query):
-        return iter(query._fetch(None))
+        return iter(query.all())
     def orderby(query, *args):
         if not args: raise TypeError('query.orderby() requires at least one argument')
         entity = query._translator.entity
