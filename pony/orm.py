@@ -2857,7 +2857,7 @@ class Query(object):
             translator = translator_cls(tree, entities, vartypes, functions)
             python_ast_cache[key] = translator
         query._translator = translator
-        query._order = None
+        query._order = tuple((attr, True) for attr in translator.entity._pk_attrs_)
         query._aggr_func = query._aggr_select = None
     def _construct_sql(query, range):
         translator = query._translator
@@ -2926,13 +2926,15 @@ class Query(object):
         if not args: raise TypeError('query.orderby() requires at least one argument')
         entity = query._translator.entity
         order = []
-        for arg in args:
-            if isinstance(arg, Attribute): order.append((arg, True))
-            elif isinstance(arg, DescWrapper): order.append((arg.attr, False))
-            else: raise TypeError('query.orderby() arguments must be attributes. Got: %r' % arg)
-            attr = order[-1][0]
-            if entity._adict_.get(attr.name) is not attr: raise TypeError(
-                'Attribute %s does not belong to Entity %s' % (attr, entity.__name__))
+        if args == (None,): pass
+        else:
+            for arg in args:
+                if isinstance(arg, Attribute): order.append((arg, True))
+                elif isinstance(arg, DescWrapper): order.append((arg.attr, False))
+                else: raise TypeError('query.orderby() arguments must be attributes. Got: %r' % arg)
+                attr = order[-1][0]
+                if entity._adict_.get(attr.name) is not attr: raise TypeError(
+                    'Attribute %s does not belong to Entity %s' % (attr, entity.__name__))
         new_query = query._clone()
         new_query._order = tuple(order)
         return new_query
