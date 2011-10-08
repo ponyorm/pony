@@ -275,7 +275,7 @@ class Database(object):
     def select(database, sql, globals=None, locals=None, frame_depth=0):
         if not select_re.match(sql): sql = 'select ' + sql
         cursor = database._execute(sql, globals, locals, frame_depth+1)
-        result = cursor.fetchmany(options.MAX_ROWS_COUNT)
+        result = cursor.fetchmany(options.MAX_FETCH_COUNT)
         if cursor.fetchone() is not None: raise TooManyRowsFound
         if len(cursor.description) == 1: result = [ row[0] for row in result ]
         else:
@@ -1490,7 +1490,7 @@ class EntityMeta(type):
         if not objects: return None
         assert len(objects) == 1
         return objects[0]
-    def _find_by_sql_(entity, sql, globals, locals, frame_depth, max_rows_count=None):
+    def _find_by_sql_(entity, sql, globals, locals, frame_depth, max_fetch_count=None):
         if not isinstance(sql, basestring): raise TypeError
         database = entity._diagram_.database
         cursor = database._execute(sql, globals, locals, frame_depth+1)
@@ -1516,7 +1516,7 @@ class EntityMeta(type):
             if attr not in attr_offsets: raise ValueError(
                 'Primary key attribue %s was not found in query result set' % attr)
         
-        objects = entity._fetch_objects(cursor, attr_offsets, max_rows_count)
+        objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count)
         return objects
     def __getitem__(entity, key):
         if type(key) is tuple: args = key
@@ -1537,7 +1537,7 @@ class EntityMeta(type):
         inner_expr = ast.GenExprInner(ast.Name(name), [ for_expr ])
         query = Query(None, inner_expr, set(['.0']), {}, { '.0' : entity })
         return query.orderby(*args)
-    def _find_(entity, max_objects_count, args, keyargs):
+    def _find_(entity, max_fetch_count, args, keyargs):
         if args and isinstance(args[0], types.FunctionType):
             if len(args) > 1: raise TypeError
             if keyargs: raise TypeError
@@ -1554,7 +1554,7 @@ class EntityMeta(type):
         try:
             objects = entity._find_in_cache_(pkval, avdict)
         except KeyError:  # not found in cache, can exist in db
-            objects = entity._find_in_db_(avdict, max_objects_count)
+            objects = entity._find_in_db_(avdict, max_fetch_count)
         return objects
     def _find_in_cache_(entity, pkval, avdict):
         cache = entity._get_cache_()
@@ -1608,15 +1608,15 @@ class EntityMeta(type):
                     return []
             return [ obj ]
         raise KeyError  # not found in cache, can exist in db
-    def _find_in_db_(entity, avdict, max_rows_count=None):
-        if max_rows_count is None: max_rows_count = options.MAX_ROWS_COUNT
+    def _find_in_db_(entity, avdict, max_fetch_count=None):
+        if max_fetch_count is None: max_fetch_count = options.MAX_FETCH_COUNT
         database = entity._diagram_.database
         query_attrs = tuple((attr, value is None) for attr, value in sorted(avdict.iteritems()))
-        single_row = max_rows_count == 1
+        single_row = (max_fetch_count == 1)
         query_key = query_attrs, single_row
         cached_sql = entity._find_sql_cache_.get(query_key)
         if cached_sql is None:
-            sql_ast, extractor, attr_offsets = entity._construct_sql_(query_attrs, not single_row)
+            sql_ast, extractor, attr_offsets = entity._construct_sql_(query_attrs, order_by_pk=not single_row)
             sql, adapter = database._ast2sql(sql_ast)
             cached_sql = sql, extractor, adapter, attr_offsets
             entity._find_sql_cache_[query_key] = cached_sql
@@ -1624,7 +1624,7 @@ class EntityMeta(type):
         value_dict = extractor(avdict)
         arguments = adapter(value_dict)
         cursor = database._exec_sql(sql, arguments)
-        objects = entity._fetch_objects(cursor, attr_offsets, max_rows_count)
+        objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count)
         return objects
     def _construct_select_clause_(entity, alias=None, distinct=False):
         attr_offsets = {}
@@ -1702,14 +1702,15 @@ class EntityMeta(type):
                 param_dict[param] = extractor(avdict)
             return param_dict
         return sql_ast, extractor, attr_offsets
-    def _fetch_objects(entity, cursor, attr_offsets, max_rows_count=None):
-        if max_rows_count is not None:
-            rows = cursor.fetchmany(max_rows_count + 1)
-            if len(rows) == max_rows_count + 1:
-                if max_rows_count == 1: raise MultipleObjectsFoundError(
+    def _fetch_objects(entity, cursor, attr_offsets, max_fetch_count=None):
+        if max_fetch_count is None: max_fetch_count = options.MAX_FETCH_COUNT
+        if max_fetch_count is not None:
+            rows = cursor.fetchmany(max_fetch_count + 1)
+            if len(rows) == max_fetch_count + 1:
+                if max_fetch_count == 1: raise MultipleObjectsFoundError(
                     'Multiple objects were found. Use %s.all(...) to retrieve them' % entity.__name__)
                 raise TooManyObjectsFoundError(
-                    'Found more then pony.options.MAX_ROWS_COUNT=%d objects' % options.MAX_ROWS_COUNT)
+                    'Found more then pony.options.MAX_FETCH_COUNT=%d objects' % options.MAX_FETCH_COUNT)
         else: rows = cursor.fetchall()
         objects = []
         for row in rows:
@@ -2902,7 +2903,7 @@ class Query(object):
     def _fetch(query, range):
         translator = query._translator
         cursor = query._exec_sql(range)
-        result = translator.entity._fetch_objects(cursor, translator.attr_offsets, options.MAX_ROWS_COUNT)
+        result = translator.entity._fetch_objects(cursor, translator.attr_offsets)
         if translator.attrname is None: return QueryResult(result)
         return QueryResult(map(attrgetter(translator.attrname), result))
     def all(query):

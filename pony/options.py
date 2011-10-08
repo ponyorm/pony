@@ -57,7 +57,7 @@ SOURCE_ENCODING = None
 CONSOLE_ENCODING = None
 
 # db options
-MAX_ROWS_COUNT = 1000
+MAX_FETCH_COUNT = 1000
 
 # sql translator options
 SIMPLE_ALIASES = True  # if True just use entity name like "Course-1"
