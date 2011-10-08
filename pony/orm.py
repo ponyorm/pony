@@ -275,8 +275,11 @@ class Database(object):
     def select(database, sql, globals=None, locals=None, frame_depth=0):
         if not select_re.match(sql): sql = 'select ' + sql
         cursor = database._execute(sql, globals, locals, frame_depth+1)
-        result = cursor.fetchmany(options.MAX_FETCH_COUNT)
-        if cursor.fetchone() is not None: raise TooManyRowsFound
+        max_fetch_count = options.MAX_FETCH_COUNT
+        if max_fetch_count is not None:
+            result = cursor.fetchmany(max_fetch_count)
+            if cursor.fetchone() is not None: raise TooManyRowsFound
+        else: result = cursor.fetchall()
         if len(cursor.description) == 1: result = [ row[0] for row in result ]
         else:
             row_class = type("row", (tuple,), {})
