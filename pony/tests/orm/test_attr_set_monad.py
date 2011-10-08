@@ -31,31 +31,31 @@ db.generate_mapping(create_tables=True)
 
 @with_transaction
 def populate_db():
-    g41 = Group.create(number=41, department=101)
-    g42 = Group.create(number=42, department=102)
-    g43 = Group.create(number=43, department=102)
+    g41 = Group(number=41, department=101)
+    g42 = Group(number=42, department=102)
+    g43 = Group(number=43, department=102)
 
-    s1 = Student.create(id=1, name="Joe", scholarship=None, group=g41)
-    s2 = Student.create(id=2, name="Bob", scholarship=100, group=g41)
-    s3 = Student.create(id=3, name="Beth", scholarship=500, group=g41)
-    s4 = Student.create(id=4, name="Jon", scholarship=500, group=g42)
-    s5 = Student.create(id=5, name="Pete", scholarship=700, group=g42)
+    s1 = Student(id=1, name="Joe", scholarship=None, group=g41)
+    s2 = Student(id=2, name="Bob", scholarship=100, group=g41)
+    s3 = Student(id=3, name="Beth", scholarship=500, group=g41)
+    s4 = Student(id=4, name="Jon", scholarship=500, group=g42)
+    s5 = Student(id=5, name="Pete", scholarship=700, group=g42)
 
-    Math = Subject.create(name="Math")
-    Physics = Subject.create(name="Physics")
-    History = Subject.create(name="History")
+    Math = Subject(name="Math")
+    Physics = Subject(name="Physics")
+    History = Subject(name="History")
 
     g41.subjects = [ Math, Physics, History ]
     g42.subjects = [ Math, Physics ]
     g43.subjects = [ Physics ]
 
-    Mark.create(value=5, student=s1, subject=Math)
-    Mark.create(value=4, student=s2, subject=Physics)
-    Mark.create(value=3, student=s2, subject=Math)
-    Mark.create(value=2, student=s2, subject=History)
-    Mark.create(value=1, student=s3, subject=History)
-    Mark.create(value=2, student=s3, subject=Math)
-    Mark.create(value=2, student=s4, subject=Math)
+    Mark(value=5, student=s1, subject=Math)
+    Mark(value=4, student=s2, subject=Physics)
+    Mark(value=3, student=s2, subject=Math)
+    Mark(value=2, student=s2, subject=History)
+    Mark(value=1, student=s3, subject=History)
+    Mark(value=2, student=s3, subject=Math)
+    Mark(value=2, student=s4, subject=Math)
 populate_db()
 
 class TestAttrSetMonad(unittest.TestCase):

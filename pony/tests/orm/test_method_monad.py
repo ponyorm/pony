@@ -11,11 +11,11 @@ db.generate_mapping(create_tables=True)
 
 @with_transaction
 def populate_db():
-    Student.create(id=1, name="Joe", scholarship=None);
-    Student.create(id=2, name=" Bob ", scholarship=100);
-    Student.create(id=3, name=" Beth ", scholarship=500);
-    Student.create(id=4, name="Jon", scholarship=500);
-    Student.create(id=5, name="Pete", scholarship=700);
+    Student(id=1, name="Joe", scholarship=None);
+    Student(id=2, name=" Bob ", scholarship=100);
+    Student(id=3, name=" Beth ", scholarship=500);
+    Student(id=4, name="Jon", scholarship=500);
+    Student(id=5, name="Pete", scholarship=700);
 populate_db()
 
 class TestMethodMonad(unittest.TestCase):

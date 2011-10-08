@@ -14,12 +14,12 @@ db.generate_mapping(create_tables=True)
 
 @with_transaction
 def populate_db():
-   g1 = Group.create(number=101)
-   g2 = Group.create(number=102)
-   s1 = Subject.create(name='Subj1')
-   s2 = Subject.create(name='Subj2')
-   s3 = Subject.create(name='Subj3')
-   s4 = Subject.create(name='Subj4')
+   g1 = Group(number=101)
+   g2 = Group(number=102)
+   s1 = Subject(name='Subj1')
+   s2 = Subject(name='Subj2')
+   s3 = Subject(name='Subj3')
+   s4 = Subject(name='Subj4')
    g1.subjects = [ s1, s2 ]
 populate_db()    
 

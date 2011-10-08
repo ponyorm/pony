@@ -9,11 +9,11 @@ db.generate_mapping(create_tables=True)
 
 @with_transaction()
 def populate_db():
-    Student.create(id=1, name="ABCDEF")
-    Student.create(id=2, name="Bob")
-    Student.create(id=3, name="Beth")
-    Student.create(id=4, name="Jon")
-    Student.create(id=5, name="Pete")
+    Student(id=1, name="ABCDEF")
+    Student(id=2, name="Bob")
+    Student(id=3, name="Beth")
+    Student(id=4, name="Jon")
+    Student(id=5, name="Pete")
 populate_db()
 
 class TestStringMixin(unittest.TestCase):

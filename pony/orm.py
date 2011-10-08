@@ -1798,41 +1798,6 @@ class EntityMeta(type):
                 if attr.reverse: attr.update_reverse(obj, NOT_LOADED, val, undo_funcs)
         else: assert False
         return obj
-    def create(entity, **keyargs):
-        pkval, avdict = entity._normalize_args_(keyargs, True)
-        undo_funcs = []
-        cache = entity._get_cache_()
-        indexes = {}
-        for attr in entity._simple_keys_:
-            val = avdict[attr]
-            if val in cache.indexes.setdefault(attr, {}): raise CacheIndexError(
-                'Cannot create %s: value %s for key %s already exists' % (entity.__name__, val, attr.name))
-            indexes[attr] = val
-        for attrs in entity._composite_keys_:
-            vals = tuple(map(avdict.__getitem__, attrs))
-            if vals in cache.indexes.setdefault(attrs, {}):
-                attr_names = ', '.join(attr.name for attr in attrs)
-                raise CacheIndexError('Cannot create %s: value %s for composite key (%s) already exists'
-                                 % (obj.__class__.__name__, vals, attr_names))
-            indexes[attrs] = vals
-        try:
-            obj = entity._new_(pkval, 'created', undo_funcs)
-            for attr, val in avdict.iteritems():
-                if attr.pk_offset is not None: continue
-                elif not attr.is_collection:
-                    obj._curr_[attr.name] = val
-                    if attr.reverse: attr.update_reverse(obj, None, val, undo_funcs)
-                else: attr.__set__(obj, val, undo_funcs)
-        except:
-            for undo_func in reversed(undo_funcs): undo_func()
-            raise
-        if pkval is not None:
-            cache.indexes[entity._pk_][pkval] = obj
-        for key, vals in indexes.iteritems():
-            cache.indexes[key][vals] = obj
-        cache.created.add(obj)
-        cache.to_be_checked.append(obj)
-        return obj
     def _get_by_raw_pkval_(entity, raw_pkval):
         i = 0
         pkval = []
@@ -1900,7 +1865,40 @@ class Entity(object):
     __metaclass__ = EntityMeta
     __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_prev_', '_curr_', '_rbits_', '_wbits_', '__weakref__'
     def __new__(entity, **keyargs):
-        raise TypeError('Use %(name)s.create(...) or %(name)s.get(...) instead of %(name)s(...)' % dict(name=entity.__name__))
+        pkval, avdict = entity._normalize_args_(keyargs, True)
+        undo_funcs = []
+        cache = entity._get_cache_()
+        indexes = {}
+        for attr in entity._simple_keys_:
+            val = avdict[attr]
+            if val in cache.indexes.setdefault(attr, {}): raise CacheIndexError(
+                'Cannot create %s: value %s for key %s already exists' % (entity.__name__, val, attr.name))
+            indexes[attr] = val
+        for attrs in entity._composite_keys_:
+            vals = tuple(map(avdict.__getitem__, attrs))
+            if vals in cache.indexes.setdefault(attrs, {}):
+                attr_names = ', '.join(attr.name for attr in attrs)
+                raise CacheIndexError('Cannot create %s: value %s for composite key (%s) already exists'
+                                 % (obj.__class__.__name__, vals, attr_names))
+            indexes[attrs] = vals
+        try:
+            obj = entity._new_(pkval, 'created', undo_funcs)
+            for attr, val in avdict.iteritems():
+                if attr.pk_offset is not None: continue
+                elif not attr.is_collection:
+                    obj._curr_[attr.name] = val
+                    if attr.reverse: attr.update_reverse(obj, None, val, undo_funcs)
+                else: attr.__set__(obj, val, undo_funcs)
+        except:
+            for undo_func in reversed(undo_funcs): undo_func()
+            raise
+        if pkval is not None:
+            cache.indexes[entity._pk_][pkval] = obj
+        for key, vals in indexes.iteritems():
+            cache.indexes[key][vals] = obj
+        cache.created.add(obj)
+        cache.to_be_checked.append(obj)
+        return obj
     def _get_raw_pkval_(obj):
         pkval = obj._pkval_
         if not obj._pk_is_composite_:
