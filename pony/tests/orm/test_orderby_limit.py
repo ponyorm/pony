@@ -12,11 +12,11 @@ db.generate_mapping(create_tables=True)
 
 @with_transaction
 def populate_db():
-    Student.create(1, name="B", scholarship=None, group=41)
-    Student.create(2, name="C", scholarship=700, group=41)
-    Student.create(3, name="A", scholarship=500, group=42)
-    Student.create(4, name="D", scholarship=500, group=43)
-    Student.create(5, name="E", scholarship=700, group=42)
+    Student.create(id=1, name="B", scholarship=None, group=41)
+    Student.create(id=2, name="C", scholarship=700, group=41)
+    Student.create(id=3, name="A", scholarship=500, group=42)
+    Student.create(id=4, name="D", scholarship=500, group=43)
+    Student.create(id=5, name="E", scholarship=700, group=42)
 populate_db()
 
 class TestOrderbyLimit(unittest.TestCase):

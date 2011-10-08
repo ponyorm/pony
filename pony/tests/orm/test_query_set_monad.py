@@ -16,11 +16,11 @@ db.generate_mapping(create_tables=True)
 
 @with_transaction
 def populate_db():
-    g1 = Group.create(1)
-    g2 = Group.create(2)
-    s1 = Student.create(1, name='S1', group=g1, scholarship=0)
-    s2 = Student.create(2, name='S2', group=g1, scholarship=100)
-    s3 = Student.create(3, name='S3', group=g2, scholarship=500)
+    g1 = Group.create(id=1)
+    g2 = Group.create(id=2)
+    s1 = Student.create(id=1, name='S1', group=g1, scholarship=0)
+    s2 = Student.create(id=2, name='S2', group=g1, scholarship=100)
+    s3 = Student.create(id=3, name='S3', group=g2, scholarship=500)
 populate_db()
 
 class TestQuerySetMonad(unittest.TestCase):

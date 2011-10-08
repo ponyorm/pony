@@ -14,12 +14,12 @@ db.generate_mapping(create_tables=True)
 
 @with_transaction
 def populate_db():
-   g1 = Group.create(101)
-   g2 = Group.create(102)
-   s1 = Subject.create('Subj1')
-   s2 = Subject.create('Subj2')
-   s3 = Subject.create('Subj3')
-   s4 = Subject.create('Subj4')
+   g1 = Group.create(number=101)
+   g2 = Group.create(number=102)
+   s1 = Subject.create(name='Subj1')
+   s2 = Subject.create(name='Subj2')
+   s3 = Subject.create(name='Subj3')
+   s4 = Subject.create(name='Subj4')
    g1.subjects = [ s1, s2 ]
 populate_db()    
 
@@ -29,7 +29,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
     def tearDown(self):
         rollback()
     def test_add_remove(self):
-        g = Group.get(101)
+        g = Group.get(number=101)
         subjects = Subject.all()
         g.subjects.remove(subjects[:2])
         g.subjects.add(subjects[-2:])

@@ -29,19 +29,19 @@ db.generate_mapping(create_tables=True)
 
 @with_transaction
 def populate_db():
-    Math = Subject.create("Math")
-    Physics = Subject.create("Physics")
-    History = Subject.create("History")
+    Math = Subject.create(name="Math")
+    Physics = Subject.create(name="Physics")
+    History = Subject.create(name="History")
 
-    g41 = Group.create(41, department=101, subjects=[ Math, Physics, History ])
-    g42 = Group.create(42, department=102, subjects=[ Math, Physics ])
-    g43 = Group.create(43, department=102, subjects=[ Physics ])
+    g41 = Group.create(number=41, department=101, subjects=[ Math, Physics, History ])
+    g42 = Group.create(number=42, department=102, subjects=[ Math, Physics ])
+    g43 = Group.create(number=43, department=102, subjects=[ Physics ])
 
-    s1 = Student.create(1, name="Joe", scholarship=None, group=g41)
-    s2 = Student.create(2, name="Bob", scholarship=100, group=g41)
-    s3 = Student.create(3, name="Beth", scholarship=500, group=g41)
-    s4 = Student.create(4, name="Jon", scholarship=500, group=g42)
-    s5 = Student.create(5, name="Pete", scholarship=700, group=g42)
+    s1 = Student.create(id=1, name="Joe", scholarship=None, group=g41)
+    s2 = Student.create(id=2, name="Bob", scholarship=100, group=g41)
+    s3 = Student.create(id=3, name="Beth", scholarship=500, group=g41)
+    s4 = Student.create(id=4, name="Jon", scholarship=500, group=g42)
+    s5 = Student.create(id=5, name="Pete", scholarship=700, group=g42)
 
     Mark.create(value=5, student=s1, subject=Math)
     Mark.create(value=4, student=s2, subject=Physics)

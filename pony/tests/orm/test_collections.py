@@ -9,11 +9,11 @@ class TestCollections(unittest.TestCase):
         rollback()
 
     def test_setwrapper_len(self):
-        g = Group.get('4145')
+        g = Group.get(number='4145')
         self.assert_(len(g.students) == 3)
 
     def test_setwrapper_nonzero(self):
-        g = Group.get('4145')
+        g = Group.get(number='4145')
         self.assert_(bool(g.students) == True)
         self.assert_(len(g.students) == 3)
 

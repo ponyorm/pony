@@ -1452,13 +1452,7 @@ class EntityMeta(type):
         return pk_columns
     def __iter__(entity):
         return EntityIter(entity)
-    def _normalize_args_(entity, args, keyargs, setdefault=False):
-        if not args: pass
-        elif len(args) != len(entity._pk_attrs_): raise TypeError('Invalid count of attrs in primary key')
-        else:
-            for attr, val in izip(entity._pk_attrs_, args):
-                if keyargs.setdefault(attr.name, val) is not val:
-                    raise TypeError('Ambiguos value of attribute %s' % attr.name)
+    def _normalize_args_(entity, keyargs, setdefault=False):
         avdict = {}
         if setdefault:
             for name in ifilterfalse(entity._adict_.__contains__, keyargs):
@@ -1522,9 +1516,10 @@ class EntityMeta(type):
         objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count)
         return objects
     def __getitem__(entity, key):
-        if type(key) is tuple: args = key
-        else: args = (key,)
-        objects = entity._find_(1, args, {})
+        if type(key) is not tuple: key = (key,)
+        if len(key) != len(entity._pk_attrs_): raise TypeError('Invalid count of attrs in primary key')
+        keyargs = dict(izip(imap(attrgetter('name'), entity._pk_attrs_), key))
+        objects = entity._find_(1, (), keyargs)
         if not objects: raise ObjectNotFound(entity, key)
         if len(objects) > 1: raise MultipleObjectsFoundError(
             'Multiple objects was found. Use %s.all(...) to retrieve them' % entity.__name__)
@@ -1541,7 +1536,8 @@ class EntityMeta(type):
         query = Query(None, inner_expr, set(['.0']), {}, { '.0' : entity })
         return query.orderby(*args)
     def _find_(entity, max_fetch_count, args, keyargs):
-        if args and isinstance(args[0], types.FunctionType):
+        if not args: pass
+        elif isinstance(args[0], types.FunctionType):
             if len(args) > 1: raise TypeError
             if keyargs: raise TypeError
             func = args[0]
@@ -1549,8 +1545,9 @@ class EntityMeta(type):
             locals = sys._getframe(2).f_locals
             query = entity._query_from_lambda_(func, globals, locals)
             return query.all()
+        else: raise TypeError('SQL expected')
 
-        pkval, avdict = entity._normalize_args_(args, keyargs, False)
+        pkval, avdict = entity._normalize_args_(keyargs, False)
         for attr in avdict:
             if attr.is_collection: raise TypeError(
                 'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
@@ -1801,8 +1798,8 @@ class EntityMeta(type):
                 if attr.reverse: attr.update_reverse(obj, NOT_LOADED, val, undo_funcs)
         else: assert False
         return obj
-    def create(entity, *args, **keyargs):
-        pkval, avdict = entity._normalize_args_(args, keyargs, True)
+    def create(entity, **keyargs):
+        pkval, avdict = entity._normalize_args_(keyargs, True)
         undo_funcs = []
         cache = entity._get_cache_()
         indexes = {}
@@ -1902,7 +1899,7 @@ class EntityMeta(type):
 class Entity(object):
     __metaclass__ = EntityMeta
     __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_prev_', '_curr_', '_rbits_', '_wbits_', '__weakref__'
-    def __new__(entity, *args, **keyargs):
+    def __new__(entity, **keyargs):
         raise TypeError('Use %(name)s.create(...) or %(name)s.get(...) instead of %(name)s(...)' % dict(name=entity.__name__))
     def _get_raw_pkval_(obj):
         pkval = obj._pkval_
