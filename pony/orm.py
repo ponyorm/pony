@@ -1480,17 +1480,10 @@ class EntityMeta(type):
         if len(objects) > 1: raise MultipleObjectsFoundError(
             'Multiple objects were found. Use %s.all(...) to retrieve them' % entity.__name__)
         return objects[0]
-    def all_by_sql(entity, sql, globals=None, locals=None):
-        return entity._find_by_sql_(sql, globals, locals, 1)
-    def get_by_sql(entity, sql, globals=None, locals=None):
-        objects = entity._find_by_sql_(sql, globals, locals, 1, 1)
-        if not objects: return None
-        assert len(objects) == 1
-        return objects[0]
-    def _find_by_sql_(entity, sql, globals, locals, frame_depth, max_fetch_count=None):
+    def _find_by_sql_(entity, max_fetch_count, sql, globals=None, locals=None, frame_depth=1):
         if not isinstance(sql, basestring): raise TypeError
         database = entity._diagram_.database
-        cursor = database._execute(sql, globals, locals, frame_depth+1)
+        cursor = database._execute(sql, globals, locals, frame_depth+2)
 
         col_names = [ column_info[0].upper() for column_info in cursor.description ]
         attr_offsets = {}
@@ -1544,8 +1537,11 @@ class EntityMeta(type):
             globals = sys._getframe(2).f_globals
             locals = sys._getframe(2).f_locals
             query = entity._query_from_lambda_(func, globals, locals)
+            if max_fetch_count == 1: return query.get()
             return query.all()
-        else: raise TypeError('SQL expected')
+        elif isinstance(args[0], basestring):
+            return entity._find_by_sql_(max_fetch_count, *args, **keyargs)
+        else: raise TypeError('Unknown positional argument: %s' % args[0])
 
         pkval, avdict = entity._normalize_args_(keyargs, False)
         for attr in avdict:
