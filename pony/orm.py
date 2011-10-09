@@ -857,8 +857,8 @@ class Set(Collection):
         setdata.is_fully_loaded = True
         return setdata
     def construct_sql_m2m(attr):
-        result = attr.cached_load_sql
-        if result is not None: return result
+        cached_sql = attr.cached_load_sql
+        if cached_sql is not None: return cached_sql
         reverse = attr.reverse
         assert reverse is not None and reverse.is_collection and issubclass(reverse.py_type, Entity)
         table_name = attr.table
@@ -1609,14 +1609,7 @@ class EntityMeta(type):
         database = entity._diagram_.database
         query_attrs = tuple((attr, value is None) for attr, value in sorted(avdict.iteritems()))
         single_row = (max_fetch_count == 1)
-        query_key = query_attrs, single_row
-        cached_sql = entity._find_sql_cache_.get(query_key)
-        if cached_sql is None:
-            sql_ast, extractor, attr_offsets = entity._construct_sql_(query_attrs, order_by_pk=not single_row)
-            sql, adapter = database._ast2sql(sql_ast)
-            cached_sql = sql, extractor, adapter, attr_offsets
-            entity._find_sql_cache_[query_key] = cached_sql
-        else: sql, extractor, adapter, attr_offsets = cached_sql
+        sql, extractor, adapter, attr_offsets = entity._construct_sql_(query_attrs, order_by_pk=not single_row)
         value_dict = extractor(avdict)
         arguments = adapter(value_dict)
         cursor = database._exec_sql(sql, arguments)
@@ -1660,10 +1653,12 @@ class EntityMeta(type):
         sql_ast = [ SELECT, select_list, from_list, where ]
         return sql_ast, attr_offsets        
     def _construct_sql_(entity, query_attrs, order_by_pk=False):
+        query_key = query_attrs, order_by_pk
+        cached_sql = entity._find_sql_cache_.get(query_key)
+        if cached_sql is not None: return cached_sql
         table_name = entity._table_
         select_list, attr_offsets = entity._construct_select_clause_()
         from_list = [ FROM, [ None, TABLE, table_name ]]
-
         criteria_list = [ AND ]
         values = []
         extractors = {}
@@ -1696,12 +1691,16 @@ class EntityMeta(type):
         sql_ast = [ SELECT, select_list, from_list ]
         if len(criteria_list) > 1: sql_ast.append([ WHERE, criteria_list  ])
         if order_by_pk: sql_ast.append([ ORDER_BY ] + [ ([COLUMN, None, column], ASC) for column in entity._pk_columns_ ])
+        database = entity._diagram_.database
+        sql, adapter = database._ast2sql(sql_ast)
         def extractor(avdict):
             param_dict = {}
             for param, extractor in extractors.iteritems():
                 param_dict[param] = extractor(avdict)
             return param_dict
-        return sql_ast, extractor, attr_offsets
+        cached_sql = sql, extractor, adapter, attr_offsets
+        entity._find_sql_cache_[query_key] = cached_sql
+        return cached_sql
     def _fetch_objects(entity, cursor, attr_offsets, max_fetch_count=None):
         if max_fetch_count is None: max_fetch_count = options.MAX_FETCH_COUNT
         if max_fetch_count is not None:
