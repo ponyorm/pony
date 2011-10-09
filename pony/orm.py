@@ -1628,6 +1628,9 @@ class EntityMeta(type):
                 select_list.append([ COLUMN, alias, column ])
         return select_list, attr_offsets
     def _construct_batchload_sql_(entity, batch_size, attr=None):
+        query_key = batch_size, attr
+        cached_sql = entity._batchload_sql_cache_.get(query_key)
+        if cached_sql is not None: return cached_sql
         table_name = entity._table_
         select_list, attr_offsets = entity._construct_select_clause_()
         from_list = [ FROM, [ None, TABLE, table_name ]]
@@ -1651,7 +1654,11 @@ class EntityMeta(type):
                                                     for j, (column, converter) in enumerate(pairs) ]
                                         for i in xrange(batch_size) ] ]
         sql_ast = [ SELECT, select_list, from_list, where ]
-        return sql_ast, attr_offsets        
+        database = entity._diagram_.database
+        sql, adapter = database._ast2sql(sql_ast)
+        cached_sql = sql, adapter, attr_offsets
+        entity._batchload_sql_cache_[query_key] = cached_sql
+        return cached_sql
     def _construct_sql_(entity, query_attrs, order_by_pk=False):
         query_key = query_attrs, order_by_pk
         cached_sql = entity._find_sql_cache_.get(query_key)
@@ -1925,13 +1932,7 @@ class Entity(object):
         for seed in seeds:
             if len(pkval_list) >= max_batch_size: break
             if seed is not obj: pkval_list.append(seed._get_raw_pkval_())
-        cached_sql = entity._batchload_sql_cache_.get(len(pkval_list))
-        if cached_sql is None:
-            sql_ast, attr_offsets = entity._construct_batchload_sql_(len(pkval_list))
-            sql, adapter = database._ast2sql(sql_ast)
-            cached_sql = sql, adapter, attr_offsets
-            entity._batchload_sql_cache_[len(pkval_list)] = cached_sql
-        else: sql, adapter, attr_offsets = cached_sql
+        sql, adapter, attr_offsets = entity._construct_batchload_sql_(len(pkval_list))
         value_dict = {}
         for i, pkval in enumerate(pkval_list):
             for j, val in enumerate(pkval): value_dict[i, j] = val
