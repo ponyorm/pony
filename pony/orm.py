@@ -781,7 +781,7 @@ class Collection(Attribute):
         if attr.default is not None: raise TypeError('default value could not be set for collection attribute')
         if attr.auto: raise TypeError("'auto' option could not be set for collection attribute")
 
-        attr.cached_load_sql = None
+        attr.cached_load_sql = {}
         attr.cached_add_m2m_sql = None
         attr.cached_remove_m2m_sql = None
     def load(attr, obj):
@@ -836,44 +836,114 @@ class Set(Collection):
         setdata = obj._curr_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED: setdata = obj._curr_[attr.name] = SetData()
         elif setdata.is_fully_loaded: return setdata
+        entity = attr.entity
         reverse = attr.reverse
+        rentity = reverse.entity
         if reverse is None: raise NotImplementedError
+        database = obj._diagram_.database
+        objects = [ obj ]
+        setdata_list = [ setdata ]
+        cache = obj._cache_
+        assert cache.is_alive
+        counter = cache.collection_statistics.setdefault(attr, 0)
+        if counter:
+            pk_index = cache.indexes.get(entity._pk_)
+            max_batch_size = database.provider.MAX_PARAMS_COUNT // len(entity._pk_columns_)
+            for obj2 in pk_index.itervalues():
+                if obj2 is obj: continue
+                if obj2._status_ in ('created', 'deleted', 'cancelled'): continue
+                setdata2 = obj2._curr_.get(attr.name, NOT_LOADED)
+                if setdata2 is NOT_LOADED: setdata2 = obj2._curr_[attr.name] = SetData()
+                elif setdata2.is_fully_loaded: continue
+                objects.append(obj2)
+                setdata_list.append(setdata2)
+                if len(objects) >= max_batch_size: break
+
+        value_dict = {}
+        for i, obj2 in enumerate(objects):
+            for j, val in enumerate(obj2._get_raw_pkval_()): value_dict[i, j] = val
+            
         if not reverse.is_collection:
-            reverse.entity._find_in_db_({reverse:obj}, None)
-        else:
-            sql, adapter = attr.construct_sql_m2m()
-            values = obj._get_raw_pkval_()
-            arguments = adapter(values)
-            database = obj._diagram_.database
+            sql, adapter, attr_offsets = rentity._construct_batchload_sql_(len(objects), reverse)
+            arguments = adapter(value_dict)
             cursor = database._exec_sql(sql, arguments)
-            items = []
-            for row in cursor.fetchall():
-                item = attr.py_type._get_by_raw_pkval_(row)
-                if item in setdata: continue
-                if item in setdata.removed: continue
-                items.append(item)
-                setdata.add(item)
-            reverse.db_reverse_add(items, obj)
-        setdata.is_fully_loaded = True
+            items = rentity._fetch_objects(cursor, attr_offsets)
+        else:
+            rentity = reverse.entity
+            sql, adapter = attr.construct_sql_m2m(len(objects))
+            arguments = adapter(value_dict)
+            cursor = database._exec_sql(sql, arguments)
+            if len(objects) == 1:
+                items = []
+                for row in cursor.fetchall():
+                    item = rentity._get_by_raw_pkval_(row)
+                    if item in setdata: continue
+                    if item in setdata.removed: continue
+                    items.append(item)
+                    setdata.add(item)
+                reverse.db_reverse_add(items, obj)
+            else:
+                pk_len = len(entity._pk_columns_)
+                d = {}
+                for row in cursor.fetchall():
+                    obj2 = entity._get_by_raw_pkval_(row[:pk_len])
+                    item = rentity._get_by_raw_pkval_(row[pk_len:])
+                    items = d.get(obj2)
+                    if items is None: items = d[obj2] = []
+                    items.append(item)
+                for obj2, items in d.iteritems():
+                    setdata2 = obj2._curr_.get(attr.name, NOT_LOADED)
+                    if setdata2 is NOT_LOADED: setdata2 = obj._curr_[attr.name] = SetData()
+                    items2 = []
+                    for item in items:
+                        if item in setdata2: continue
+                        if item in setdata2.removed: continue
+                        items2.append(item)
+                        setdata2.add(item)
+                    reverse.db_reverse_add(items2, obj2)
+
+        for setdata2 in setdata_list: setdata2.is_fully_loaded = True
+        cache.collection_statistics[attr] = counter + 1
         return setdata
-    def construct_sql_m2m(attr):
-        cached_sql = attr.cached_load_sql
+    def construct_sql_m2m(attr, batch_size=1):
+        cached_sql = attr.cached_load_sql.get(batch_size)
         if cached_sql is not None: return cached_sql
         reverse = attr.reverse
         assert reverse is not None and reverse.is_collection and issubclass(reverse.py_type, Entity)
         table_name = attr.table
         assert table_name is not None
         select_list = [ ALL ]
+        if batch_size > 1:
+            for column in reverse.columns:
+                select_list.append([ COLUMN, 'T1', column ])
         for column in attr.columns:
-            select_list.append([COLUMN, 'T1', column ])
+            select_list.append([ COLUMN, 'T1', column ])
         from_list = [ FROM, [ 'T1', TABLE, table_name ]]
-        criteria_list = [ AND ]
-        assert len(reverse.columns) == len(reverse.converters)
-        for i, (column, converter) in enumerate(zip(reverse.columns, reverse.converters)):
-            criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, i, converter ]])
-        sql_ast = [ SELECT, select_list, from_list, [ WHERE, criteria_list ] ]
+        rcolumns = reverse.columns
+        rconverters = reverse.converters
+        assert len(rcolumns) == len(rconverters)
         database = attr.entity._diagram_.database
-        sql, adapter = attr.cached_load_sql = database._ast2sql(sql_ast)
+        
+        if batch_size == 1:
+            criteria_list = [ AND ]
+            for i, (column, converter) in enumerate(zip(rcolumns, rconverters)):
+                criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, (0, i), converter ]])
+        elif len(rcolumns) == 1:
+            converter = rconverters[0]
+            criteria_list = [ IN, [ COLUMN, None, rcolumns[0] ],
+                                  [ [ PARAM, (i, 0), converter ] for i in xrange(batch_size) ] ]
+        elif database.provider.ROW_VALUE_SYNTAX:
+            criteria_list = [ IN, [ ROW ] + [ [ COLUMN, None, column ] for column in rcolumns ],
+                                  [ [ ROW ] + [ [ PARAM, (i, j), converter ] for j, converter in enumerate(rconverters) ]
+                                    for i in xrange(batch_size) ] ]
+        else:
+            pairs = zip(rcolumns, rconverters)
+            criteria_list = [ OR ] + [ [ AND ] + [ [ EQ, [ COLUMN, None, column ], [ PARAM, (i, j), converter ] ]
+                                                   for j, (column, converter) in enumerate(pairs) ]
+                                       for i in xrange(batch_size) ]
+
+        sql_ast = [ SELECT, select_list, from_list, [ WHERE, criteria_list ] ]
+        sql, adapter = attr.cached_load_sql[batch_size] = database._ast2sql(sql_ast)
         return sql, adapter
     def copy(attr, obj):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
@@ -1640,20 +1710,23 @@ class EntityMeta(type):
         else:
             columns = attr.columns
             converters = attr.converters
-        if len(columns) == 1:
+        if batch_size == 1:
+            criteria_list = [ AND ] + [ [ EQ, [ COLUMN, None, column ], [ PARAM, (0, i), converter ] ]
+                                        for i, (column, converter) in enumerate(izip(columns, converters)) ]
+        elif len(columns) == 1:
             converter = converters[0]
-            where = [ WHERE, [ IN, [ COLUMN, None, columns[0] ],
-                                   [ [ PARAM, (i, 0), converter ] for i in xrange(batch_size) ] ] ]
+            criteria_list = [ IN, [ COLUMN, None, columns[0] ],
+                                   [ [ PARAM, (i, 0), converter ] for i in xrange(batch_size) ] ] 
         elif entity._diagram_.database.provider.ROW_VALUE_SYNTAX:
-            where = [ WHERE, [ IN, [ ROW ] + [ [ COLUMN, None, column ] for column in columns ],
+            criteria_list = [ IN, [ ROW ] + [ [ COLUMN, None, column ] for column in columns ],
                                    [ [ ROW ] + [ [ PARAM, (i, j), converter ] for j, converter in enumerate(converters) ]
-                                     for i in xrange(batch_size) ] ] ]
+                                     for i in xrange(batch_size) ] ]
         else:
             pairs = zip(columns, converters)
-            where = [ WHERE, [ OR ] + [ [ AND ] + [ [ EQ, [ COLUMN, None, column ], [ PARAM, (i, j), converter ] ]
+            criteria_list = [ OR ] + [ [ AND ] + [ [ EQ, [ COLUMN, None, column ], [ PARAM, (i, j), converter ] ]
                                                     for j, (column, converter) in enumerate(pairs) ]
-                                        for i in xrange(batch_size) ] ]
-        sql_ast = [ SELECT, select_list, from_list, where ]
+                                        for i in xrange(batch_size) ]
+        sql_ast = [ SELECT, select_list, from_list, [ WHERE, criteria_list ] ]
         database = entity._diagram_.database
         sql, adapter = database._ast2sql(sql_ast)
         cached_sql = sql, adapter, attr_offsets
@@ -1928,20 +2001,21 @@ class Entity(object):
         database = entity._diagram_.database
         seeds = cache.seeds[entity._pk_]
         max_batch_size = database.provider.MAX_PARAMS_COUNT // len(entity._pk_columns_)
-        pkval_list = [ obj._get_raw_pkval_() ]
+        objects = [ obj ]
         for seed in seeds:
-            if len(pkval_list) >= max_batch_size: break
-            if seed is not obj: pkval_list.append(seed._get_raw_pkval_())
-        sql, adapter, attr_offsets = entity._construct_batchload_sql_(len(pkval_list))
+            if len(objects) >= max_batch_size: break
+            if seed is not obj: objects.append(seed)
+        sql, adapter, attr_offsets = entity._construct_batchload_sql_(len(objects))
         value_dict = {}
-        for i, pkval in enumerate(pkval_list):
-            for j, val in enumerate(pkval): value_dict[i, j] = val
+        for i, obj in enumerate(objects):
+            for j, val in enumerate(obj._get_raw_pkval_()): value_dict[i, j] = val
         arguments = adapter(value_dict)
         cursor = database._exec_sql(sql, arguments)
         objects = entity._fetch_objects(cursor, attr_offsets)
         if obj not in objects: raise UnrepeatableReadError('%s disappeared' % obj)
     def _db_set_(obj, avdict):
         assert obj._status_ not in ('created', 'deleted', 'cancelled')
+        if not avdict: return
         get_curr = obj._curr_.get
         get_prev = obj._prev_.get
         set_prev = obj._prev_.__setitem__
@@ -1963,7 +2037,6 @@ class Entity(object):
                 continue
             curr = get_curr(attr.name, NOT_LOADED)
             assert curr == old_prev
-        if not avdict: return
         NOT_FOUND = object()
         cache = obj._cache_
         assert cache.is_alive
