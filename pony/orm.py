@@ -841,14 +841,10 @@ class Set(Collection):
         if not reverse.is_collection:
             reverse.entity._find_in_db_({reverse:obj}, None)
         else:
-            database = obj._diagram_.database
-            if attr.cached_load_sql is None:
-                sql_ast = attr.construct_sql_m2m()
-                sql, adapter = database._ast2sql(sql_ast)
-                attr.cached_load_sql = sql, adapter
-            else: sql, adapter = attr.cached_load_sql
+            sql, adapter = attr.construct_sql_m2m()
             values = obj._get_raw_pkval_()
             arguments = adapter(values)
+            database = obj._diagram_.database
             cursor = database._exec_sql(sql, arguments)
             items = []
             for row in cursor.fetchall():
@@ -861,6 +857,8 @@ class Set(Collection):
         setdata.is_fully_loaded = True
         return setdata
     def construct_sql_m2m(attr):
+        result = attr.cached_load_sql
+        if result is not None: return result
         reverse = attr.reverse
         assert reverse is not None and reverse.is_collection and issubclass(reverse.py_type, Entity)
         table_name = attr.table
@@ -874,7 +872,9 @@ class Set(Collection):
         for i, (column, converter) in enumerate(zip(reverse.columns, reverse.converters)):
             criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, i, converter ]])
         sql_ast = [ SELECT, select_list, from_list, [ WHERE, criteria_list ] ]
-        return sql_ast
+        database = attr.entity._diagram_.database
+        sql, adapter = attr.cached_load_sql = database._ast2sql(sql_ast)
+        return sql, adapter
     def copy(attr, obj):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         setdata = obj._curr_.get(attr.name, NOT_LOADED)
