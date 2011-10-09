@@ -834,12 +834,12 @@ class Set(Collection):
     def load(attr, obj):
         assert obj._status_ not in ('deleted', 'cancelled')
         setdata = obj._curr_.get(attr.name, NOT_LOADED)
-        if setdata is not NOT_LOADED and setdata.is_fully_loaded: return setdata
+        if setdata is NOT_LOADED: setdata = obj._curr_[attr.name] = SetData()
+        elif setdata.is_fully_loaded: return setdata
         reverse = attr.reverse
         if reverse is None: raise NotImplementedError
-        if setdata is NOT_LOADED: setdata = obj._curr_[attr.name] = SetData()
         if not reverse.is_collection:
-            reverse.entity._find_(None, (), {reverse.name:obj})
+            reverse.entity._find_in_db_({reverse:obj}, None)
         else:
             database = obj._diagram_.database
             if attr.cached_load_sql is None:
@@ -1634,24 +1634,28 @@ class EntityMeta(type):
                 offsets.append(len(select_list) - 1)
                 select_list.append([ COLUMN, alias, column ])
         return select_list, attr_offsets
-    def _construct_batchload_sql_(entity, batch_size):
+    def _construct_batchload_sql_(entity, batch_size, attr=None):
         table_name = entity._table_
         select_list, attr_offsets = entity._construct_select_clause_()
         from_list = [ FROM, [ None, TABLE, table_name ]]
-        if len(entity._pk_columns_) == 1:
-            attr = entity._pk_attrs_[0]
-            converter = entity._pk_converters_[0]
-            where = [ WHERE, [ IN, [ COLUMN, None, entity._pk_columns_[0] ],
+        if attr is None:
+            columns = entity._pk_columns_
+            converters = entity._pk_converters_
+        else:
+            columns = attr.columns
+            converters = attr.converters
+        if len(columns) == 1:
+            converter = converters[0]
+            where = [ WHERE, [ IN, [ COLUMN, None, columns[0] ],
                                    [ [ PARAM, (i, 0), converter ] for i in xrange(batch_size) ] ] ]
         elif entity._diagram_.database.provider.ROW_VALUE_SYNTAX:
-            where = [ WHERE, [ IN, [ ROW ] + [ [ COLUMN, None, column ] for column in entity._pk_columns_ ],
-                                   [ [ ROW ] + [ [ PARAM, (i, j), converter ] for j, converter in enumerate(entity._pk_converters_) ]
+            where = [ WHERE, [ IN, [ ROW ] + [ [ COLUMN, None, column ] for column in columns ],
+                                   [ [ ROW ] + [ [ PARAM, (i, j), converter ] for j, converter in enumerate(converters) ]
                                      for i in xrange(batch_size) ] ] ]
         else:
-            pk_columns = entity._pk_columns_
-            pk_converters = entity._pk_converters_
+            pairs = zip(columns, converters)
             where = [ WHERE, [ OR ] + [ [ AND ] + [ [ EQ, [ COLUMN, None, column ], [ PARAM, (i, j), converter ] ]
-                                                    for j, (column, converter) in enumerate(izip(pk_columns, pk_converters)) ]
+                                                    for j, (column, converter) in enumerate(pairs) ]
                                         for i in xrange(batch_size) ] ]
         sql_ast = [ SELECT, select_list, from_list, where ]
         return sql_ast, attr_offsets        
@@ -2509,6 +2513,7 @@ class Cache(object):
         cache.ignore_none = True  # todo : get from provider
         cache.indexes = {}
         cache.seeds = {}
+        cache.collection_statistics = {}
         cache.created = set()
         cache.deleted = set()
         cache.updated = set()
