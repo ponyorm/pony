@@ -172,9 +172,7 @@ class SQLTranslator(ASTTranslator):
             if not attr_names:
                 if i > 0: translator.distinct = True
                 entity = entities.get(node.name)
-                if entity is None:
-                    if node.name in vartypes: raise NotImplementedError
-                    else: raise NameError, node.name
+                if entity is None: raise TranslationError
                 diagram = entity._diagram_
                 if diagram.database is None: raise TranslationError(
                     'Entity %s is not mapped to a database' % entity.__name__)
@@ -337,7 +335,7 @@ class SQLTranslator(ASTTranslator):
         node.monad = func_monad(*args, **keyargs)
     def postSubscript(translator, node):
         assert node.flags == 'OP_APPLY'
-        assert isinstance(node.subs, list) and len(node.subs) == 1
+        assert isinstance(node.subs, list) and len(node.subs) == 1, node.subs
         expr_monad = node.expr.monad
         index_monad = node.subs[0].monad
         node.monad = expr_monad[index_monad]
