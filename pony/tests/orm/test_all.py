@@ -21,6 +21,7 @@ from test_object_flat_monad import *
 from test_converters import *
 from test_string_mixin import *
 from test_func_monad import *
+from test_join_optimization import *
 
 if __name__ == '__main__':
     unittest.main()
