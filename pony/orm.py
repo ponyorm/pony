@@ -757,7 +757,10 @@ class Unique(Required):
 def populate_criteria_list(criteria_list, columns, converters, params_count=0, table_alias=None):
     assert len(columns) == len(converters)
     for column, converter in zip(columns, converters):
-        criteria_list.append([EQ, [ COLUMN, table_alias, column ], [ PARAM, params_count, converter ] ])
+        if converter is not None:
+            criteria_list.append([EQ, [ COLUMN, table_alias, column ], [ PARAM, params_count, converter ] ])
+        else:
+            criteria_list.append([IS_NULL, [COLUMN, None, column]])
         params_count += 1
     return params_count
 
@@ -2350,9 +2353,12 @@ class Entity(object):
                     prev = obj._prev_.get(attr.name, NOT_LOADED)
                     assert prev is not NOT_LOADED
                     optimistic_check_columns.extend(attr.columns)
-                    optimistic_check_converters.extend(attr.converters)
+                    if prev is not None:
+                        optimistic_check_converters.extend(attr.converters)
+                    else:
+                        optimistic_check_converters.extend(None for converter in attr.converters)
                     values.extend(attr.get_raw_values(prev))
-            query_key = (tuple(update_columns), tuple(optimistic_check_columns))
+            query_key = (tuple(update_columns), tuple(optimistic_check_columns), tuple(converter is not None for converter in optimistic_check_converters))
             database = obj._diagram_.database
             cached_sql = obj._update_sql_cache_.get(query_key)
             if cached_sql is None:
