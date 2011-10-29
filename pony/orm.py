@@ -2338,43 +2338,44 @@ class Entity(object):
             update_columns.extend(attr.columns)
             val = obj._curr_[attr.name]
             values.extend(attr.get_raw_values(val))
-        for attr in obj._pk_attrs_:
-            val = obj._curr_[attr.name]
-            values.extend(attr.get_raw_values(val))
-        optimistic_check_columns = []
-        optimistic_check_converters = []
-        if obj._cache_.optimistic:
-            for attr in obj._attrs_with_bit_(obj._rbits_):
-                if not attr.columns: continue
-                prev = obj._prev_.get(attr.name, NOT_LOADED)
-                assert prev is not NOT_LOADED
-                optimistic_check_columns.extend(attr.columns)
-                optimistic_check_converters.extend(attr.converters)
-                values.extend(attr.get_raw_values(prev))
-        query_key = (tuple(update_columns), tuple(optimistic_check_columns))
-        database = obj._diagram_.database
-        cached_sql = obj._update_sql_cache_.get(query_key)
-        if cached_sql is None:
-            update_converters = []
-            for attr in obj._attrs_with_bit_(obj._wbits_):
-                if not attr.columns: continue
-                update_converters.extend(attr.converters)
-            assert len(update_columns) == len(update_converters)
-            update_params = [ [ PARAM, i, converter ] for i, converter in enumerate(update_converters) ]
-            params_count = len(update_params)
-            criteria_list = [ AND ]
-            pk_columns = obj._pk_columns_
-            pk_converters = obj._pk_converters_
-            params_count = populate_criteria_list(criteria_list, pk_columns, pk_converters, params_count)
-            populate_criteria_list(criteria_list, optimistic_check_columns, optimistic_check_converters, params_count)
-            sql_ast = [ UPDATE, obj._table_, zip(update_columns, update_params), [ WHERE, criteria_list ] ]
-            sql, adapter = database._ast2sql(sql_ast)
-            obj._update_sql_cache_[query_key] = sql, adapter
-        else: sql, adapter = cached_sql
-        arguments = adapter(values)
-        cursor = database._exec_sql(sql, arguments)
-        if cursor.rowcount != 1:
-            raise UnrepeatableReadError('Object %r was updated outside of current transaction' % obj)
+        if update_columns:
+            for attr in obj._pk_attrs_:
+                val = obj._curr_[attr.name]
+                values.extend(attr.get_raw_values(val))
+            optimistic_check_columns = []
+            optimistic_check_converters = []
+            if obj._cache_.optimistic:
+                for attr in obj._attrs_with_bit_(obj._rbits_):
+                    if not attr.columns: continue
+                    prev = obj._prev_.get(attr.name, NOT_LOADED)
+                    assert prev is not NOT_LOADED
+                    optimistic_check_columns.extend(attr.columns)
+                    optimistic_check_converters.extend(attr.converters)
+                    values.extend(attr.get_raw_values(prev))
+            query_key = (tuple(update_columns), tuple(optimistic_check_columns))
+            database = obj._diagram_.database
+            cached_sql = obj._update_sql_cache_.get(query_key)
+            if cached_sql is None:
+                update_converters = []
+                for attr in obj._attrs_with_bit_(obj._wbits_):
+                    if not attr.columns: continue
+                    update_converters.extend(attr.converters)
+                assert len(update_columns) == len(update_converters)
+                update_params = [ [ PARAM, i, converter ] for i, converter in enumerate(update_converters) ]
+                params_count = len(update_params)
+                criteria_list = [ AND ]
+                pk_columns = obj._pk_columns_
+                pk_converters = obj._pk_converters_
+                params_count = populate_criteria_list(criteria_list, pk_columns, pk_converters, params_count)
+                populate_criteria_list(criteria_list, optimistic_check_columns, optimistic_check_converters, params_count)
+                sql_ast = [ UPDATE, obj._table_, zip(update_columns, update_params), [ WHERE, criteria_list ] ]
+                sql, adapter = database._ast2sql(sql_ast)
+                obj._update_sql_cache_[query_key] = sql, adapter
+            else: sql, adapter = cached_sql
+            arguments = adapter(values)
+            cursor = database._exec_sql(sql, arguments)
+            if cursor.rowcount != 1:
+                raise UnrepeatableReadError('Object %r was updated outside of current transaction' % obj)
         obj._status_ = 'saved'
         obj._rbits_ |= obj._wbits_
         obj._wbits_ = 0
