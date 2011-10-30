@@ -33,31 +33,7 @@ class PGTable(dbschema.Table):
         return dbschema.Table.get_create_commands(table, created_tables, False)
 
 class PGColumn(dbschema.Column):
-    autoincrement = None
-    def get_sql(column, created_tables=None):
-        if created_tables is None: created_tables = set()
-        table = column.table
-        schema = table.schema
-        quote = schema.quote_name
-        case = schema.case
-        result = []
-        append = result.append
-        append(quote(column.name))
-        if column.is_pk == 'auto': append(case('SERIAL'))
-        else: append(case(column.sql_type))
-        if column.is_pk:            
-            append(case('PRIMARY KEY'))
-        else:            
-            if column.is_unique: append(case('UNIQUE'))
-            if column.is_not_null: append(case('NOT NULL'))
-        foreign_key = table.foreign_keys.get((column,))
-        if foreign_key is not None:
-            parent_table = foreign_key.parent_table
-            if parent_table in created_tables or parent_table is table:
-                append(case('REFERENCES'))
-                append(quote(parent_table.name))
-                append(schema.column_list(foreign_key.parent_columns)) 
-        return ' '.join(result)    
+    auto_template = 'SERIAL PRIMARY KEY'
 
 class PGSchema(dbschema.DBSchema):
     table_class = PGTable

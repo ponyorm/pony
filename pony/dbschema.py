@@ -115,7 +115,7 @@ class Table(object):
 
 class Column(object):
     auto_sql_types = frozenset([ 'INTEGER' ])
-    autoincrement = 'AUTOINCREMENT'
+    auto_template = '%(type)s PRIMARY KEY AUTOINCREMENT'
     def __init__(column, name, table, sql_type, is_not_null=None):
         if name in table.column_dict:
             raise DBSchemaError("Column %r already exists in table %r" % (name, table.name))
@@ -139,13 +139,14 @@ class Column(object):
         result = []
         append = result.append
         append(quote(column.name))
-        append(case(column.sql_type))
-        if column.is_pk:
-            append(case('PRIMARY KEY'))
-            if column.is_pk == 'auto' and column.autoincrement: append(case(column.autoincrement))
+        if column.is_pk == 'auto' and column.auto_template:
+            append(case(column.auto_template % dict(type=column.sql_type)))
         else:
-            if column.is_unique: append(case('UNIQUE'))
-            if column.is_not_null: append(case('NOT NULL'))
+            append(case(column.sql_type))
+            if column.is_pk: append(case('PRIMARY KEY'))
+            else:
+                if column.is_unique: append(case('UNIQUE'))
+                if column.is_not_null: append(case('NOT NULL'))
         foreign_key = table.foreign_keys.get((column,))
         if foreign_key is not None:
             parent_table = foreign_key.parent_table
