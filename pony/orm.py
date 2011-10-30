@@ -2938,22 +2938,36 @@ class Query(object):
             python_ast_cache[key] = translator
         query._translator = translator
         query._order = tuple((attr, True) for attr in translator.entity._pk_attrs_)
-        query._aggr_func = query._aggr_select = None
-    def _construct_sql(query, range):
+    def _construct_sql(query, order=None, range=None, aggr_func_name=None):
         translator = query._translator
-        sql_key = query._python_ast_key + (query._order, range, query._aggr_func, options.INNER_JOIN_SYNTAX)
+        sql_key = query._python_ast_key + (order, range, aggr_func_name, options.INNER_JOIN_SYNTAX)
         cache_entry = sql_cache.get(sql_key)
         database = query._database
         if cache_entry is None:
             sql_ast = [ SELECT ]
-            if query._aggr_func: sql_ast.append(query._aggr_select)
+            if aggr_func_name:
+                attrname = translator.attrname
+                if attrname is not None:
+                    attr = translator.entity._adict_[attrname]
+                    attr_type = translator.normalize_type(attr.py_type)
+                    if aggr_func_name in (SUM, AVG) and attr_type not in translator.numeric_types:
+                        raise TranslationError('%s is valid for numeric attributes only' % aggr_func_name.lower())
+                    column_ast = [ COLUMN, translator.alias, attr.column ]
+                elif aggr_func_name is not COUNT: raise TranslationError(
+                    'Attribute should be specified for "%s" aggregate function' % aggr_func_name.lower())
+                if aggr_func_name is COUNT:
+                    if attrname is None: aggr_ast = [ COUNT, ALL ]
+                    else: aggr_ast = [ COUNT, DISTINCT, column_ast ]
+                elif aggr_func_name is SUM: aggr_ast = [ COALESCE, [ SUM, column_ast ], [ VALUE, 0 ] ]
+                else: aggr_ast = [ aggr_func_name, column_ast ]
+                sql_ast.append([ AGGREGATES, aggr_ast ])
             else: sql_ast.append(translator.select)
             sql_ast.append(translator.from_)
             if translator.where: sql_ast.append(translator.where)
-            if query._order:
+            if order:
                 alias = translator.alias
                 orderby_section = [ ORDER_BY ]
-                for attr, asc in query._order:
+                for attr, asc in order:
                     for column in attr.columns:
                         orderby_section.append(([COLUMN, alias, column], asc and ASC or DESC))
                 sql_ast = sql_ast + [ orderby_section ]
@@ -2971,22 +2985,22 @@ class Query(object):
             sql_cache[sql_key] = cache_entry
         else: sql, adapter = cache_entry
         return sql, adapter
-    def _exec_sql(query, range):
-        sql, adapter = query._construct_sql(range)
+    def _exec_sql(query, order=None, range=None, aggr_func_name=None):
+        sql, adapter = query._construct_sql(order, range, aggr_func_name)
         param_dict = {}
         for param_name, extractor in query._translator.extractors.items():
             param_dict[param_name] = extractor(query._variables)
         arguments = adapter(param_dict)
         cursor = query._database._exec_sql(sql, arguments)
         return cursor
-    def _fetch(query, range):
+    def _fetch(query, range=None):
         translator = query._translator
-        cursor = query._exec_sql(range)
+        cursor = query._exec_sql(query._order, range)
         result = translator.entity._fetch_objects(cursor, translator.attr_offsets)
         if translator.attrname is None: return QueryResult(result)
         return QueryResult(map(attrgetter(translator.attrname), result))
     def all(query):
-        return query._fetch(None)
+        return query._fetch()
     def get(query):
         objects = query[:2]
         if not objects: return None
@@ -2995,7 +3009,7 @@ class Query(object):
         return objects[0]
     def exists(query):
         new_query = query._clone()
-        new_query._aggr_func = EXISTS
+        new_query._aggr_func_name = EXISTS
         new_query._aggr_select = [ ALL, [ VALUE, 1 ] ]
         cursor = new_query._exec_sql((0, 1))
         row = cursor.fetchone()
@@ -3046,32 +3060,16 @@ class Query(object):
         start = offset or 0
         stop = start + limit
         return query[start:stop]
-    def _aggregate(query, funcsymbol):
+    def _aggregate(query, aggr_func_name):
         translator = query._translator
-        attrname = translator.attrname
-        if attrname is not None:
-            attr = translator.entity._adict_[attrname]
-            attr_type = translator.normalize_type(attr.py_type)
-            if funcsymbol in (SUM, AVG) and attr_type not in translator.numeric_types:
-                raise TranslationError('%s is valid for numeric attributes only' % funcsymbol.lower())
-            column_ast = [ COLUMN, translator.alias, attr.column ]
-        elif funcsymbol is not COUNT: raise TranslationError(
-            'Attribute should be specified for "%s" aggregate function' % funcsymbol.lower())
-        if funcsymbol is COUNT:
-            if attrname is None: aggr_ast = [ COUNT, ALL ]
-            else: aggr_ast = [ COUNT, DISTINCT, column_ast ]
-        elif funcsymbol is SUM: aggr_ast = [ COALESCE, [ SUM, column_ast ], [ VALUE, 0 ] ]
-        else: aggr_ast = [ funcsymbol, column_ast ]
-        query._aggr_func = funcsymbol
-        query._aggr_select = [ AGGREGATES, aggr_ast ]
-        cursor = query._exec_sql(None)
+        cursor = query._exec_sql(None, None, aggr_func_name)
         row = cursor.fetchone()
         if row is not None: result = row[0]
         else: result = None
         if result is None:
-            if funcsymbol in (SUM, COUNT): result = 0
+            if aggr_func_name in (SUM, COUNT): result = 0
             else: return None
-        if funcsymbol is COUNT: return result
+        if aggr_func_name is COUNT: return result
         converter = attr.converters[0]
         return converter.sql2py(result)
     def sum(query):
