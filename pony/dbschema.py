@@ -68,12 +68,13 @@ class Table(object):
     def create(table, database, created_tables=None):
         commands = table.get_create_commands(created_tables)
         for command in commands: database._exec_sql(command)
-    def get_create_commands(table, created_tables=None):
+    def get_create_commands(table, created_tables=None, if_not_exists=True):
         if created_tables is None: created_tables = set()
         schema = table.schema
         case = schema.case
         cmd = []
-        cmd.append(case('CREATE TABLE IF NOT EXISTS %s (') % schema.quote_name(table.name))
+        if not if_not_exists: cmd.append(case('CREATE TABLE %s (') % schema.quote_name(table.name))
+        else: cmd.append(case('CREATE TABLE IF NOT EXISTS %s (') % schema.quote_name(table.name))
         for column in table.column_list:
             cmd.append(schema.indent + column.get_sql(created_tables) + ',')
         if len(table.pk_index.columns) > 1:

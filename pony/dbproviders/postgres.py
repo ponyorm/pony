@@ -22,35 +22,7 @@ ROW_VALUE_SYNTAX = True
 
 class PGTable(dbschema.Table):
     def get_create_commands(table, created_tables=None):
-        if created_tables is None: created_tables = set()
-        schema = table.schema
-        case = schema.case
-        cmd = []
-        cmd.append(case('CREATE TABLE %s (') % schema.quote_name(table.name))
-        for column in table.column_list:
-            cmd.append(schema.indent + column.get_sql(created_tables) + ',')
-        if len(table.pk_index.columns) > 1:
-            cmd.append(schema.indent + table.pk_index.get_sql() + ',')
-        for index in table.indexes.values():
-            if index.is_pk: continue
-            if not index.is_unique: continue
-            if len(index.columns) == 1: continue
-            cmd.append(index.get_sql() + ',')
-        for foreign_key in table.foreign_keys.values():
-            if len(foreign_key.child_columns) == 1: continue
-            if not foreign_key.parent_table in created_tables: continue
-            cmd.append(foreign_key.get_sql() + ',')
-        cmd[-1] = cmd[-1][:-1]
-        cmd.append(')')
-        cmd = '\n'.join(cmd)
-        result = [ cmd ]
-        for child_table in table.child_tables:
-            if child_table not in created_tables: continue
-            for foreign_key in child_table.foreign_keys.values():
-                if foreign_key.parent_table is not table: continue
-                result.append(foreign_key.get_create_command())
-        created_tables.add(table)
-        return result
+        return dbschema.Table.get_create_commands(table, created_tables, False)
 
 class PGColumn(dbschema.Column):
     autoincrement = None
