@@ -21,6 +21,14 @@ MAX_PARAMS_COUNT = 200
 ROW_VALUE_SYNTAX = True
 
 class PGTable(dbschema.Table):
+    def create(table, provider, connection, created_tables=None):
+        try: dbschema.Table.create(table, provider, connection, created_tables)
+        except orm.DatabaseError, e:
+            if 'already exists' not in e.args[0]: raise
+            if orm.debug:
+                print 'ALREADY EXISTS:', e.args[0]
+                print 'ROLLBACK\n'
+            orm.wrap_dbapi_exceptions(provider, connection.rollback)
     def get_create_commands(table, created_tables=None):
         return dbschema.Table.get_create_commands(table, created_tables, False)
 
@@ -54,23 +62,6 @@ class PGColumn(dbschema.Column):
 class PGSchema(dbschema.DBSchema):
     table_class = PGTable
     column_class = PGColumn
-    def create_tables(schema, database):
-        cache = database._get_cache()
-        assert not cache.has_anything_to_save()
-        created_tables = set()
-        for table in schema.order_tables_to_create():
-            try: table.create(database, created_tables)
-            except orm.DatabaseError, e:
-                if 'already exists' in e.args[0]:
-                    if orm.debug:
-                        print 'ALREADY EXISTS:', e.args[0]
-                        print 'ROLLBACK\n'
-                    orm.wrap_dbapi_exceptions(database.provider, cache.connection.rollback)
-                    continue
-                raise
-            else:
-                if orm.debug: print 'COMMIT\n'
-                orm.wrap_dbapi_exceptions(database.provider, cache.connection.commit)
 
 translator_cls = SQLTranslator
 

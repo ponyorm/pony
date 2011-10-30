@@ -40,12 +40,14 @@ class DBSchema(object):
         return schema.command_separator.join(commands)
     def create_tables(schema, database):
         cache = database._get_cache()
-        assert not cache.has_anything_to_save()
+        if cache.has_anything_to_save(): cache.commit()
+        connection = database.get_connection()
         created_tables = set()
         for table in schema.order_tables_to_create():
-            table.create(database, created_tables)
-        if orm.debug: print 'COMMIT\n'
-        orm.wrap_dbapi_exceptions(database.provider, cache.connection.commit)
+            table.create(database.provider, connection, created_tables)
+        cache = database._get_cache()
+        cache.commit()
+        cache.release()
                 
 class Table(object):
     def __init__(table, name, schema):
@@ -65,9 +67,14 @@ class Table(object):
         table.m2m = set()
     def __repr__(table):
         return '<Table(%s)>' % table.name
-    def create(table, database, created_tables=None):
+    def create(table, provider, connection, created_tables=None):
         commands = table.get_create_commands(created_tables)
-        for command in commands: database._exec_sql(command)
+        for sql in commands:
+            if orm.debug:
+                print sql
+                print
+            cursor = connection.cursor()
+            orm.wrap_dbapi_exceptions(provider, cursor.execute, sql)
     def get_create_commands(table, created_tables=None, if_not_exists=True):
         if created_tables is None: created_tables = set()
         schema = table.schema
