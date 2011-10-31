@@ -2946,9 +2946,8 @@ class Query(object):
         if cache_entry is None:
             sql_ast = [ SELECT ]
             if aggr_func_name:
-                attrname = translator.attrname
-                if attrname is not None:
-                    attr = translator.entity._adict_[attrname]
+                attr = translator.attr
+                if attr is not None:
                     attr_type = translator.normalize_type(attr.py_type)
                     if aggr_func_name in (SUM, AVG) and attr_type not in translator.numeric_types:
                         raise TranslationError('%s is valid for numeric attributes only' % aggr_func_name.lower())
@@ -2956,7 +2955,7 @@ class Query(object):
                 elif aggr_func_name is not COUNT: raise TranslationError(
                     'Attribute should be specified for "%s" aggregate function' % aggr_func_name.lower())
                 if aggr_func_name is COUNT:
-                    if attrname is None: aggr_ast = [ COUNT, ALL ]
+                    if attr is None: aggr_ast = [ COUNT, ALL ]
                     else: aggr_ast = [ COUNT, DISTINCT, column_ast ]
                 elif aggr_func_name is SUM: aggr_ast = [ COALESCE, [ SUM, column_ast ], [ VALUE, 0 ] ]
                 else: aggr_ast = [ aggr_func_name, column_ast ]
@@ -2997,8 +2996,8 @@ class Query(object):
         translator = query._translator
         cursor = query._exec_sql(query._order, range)
         result = translator.entity._fetch_objects(cursor, translator.attr_offsets)
-        if translator.attrname is None: return QueryResult(result)
-        return QueryResult(map(attrgetter(translator.attrname), result))
+        if translator.attr is None: return QueryResult(result)
+        return QueryResult(map(attrgetter(translator.attr.name), result))
     def all(query):
         return query._fetch()
     def get(query):
@@ -3070,7 +3069,7 @@ class Query(object):
             if aggr_func_name in (SUM, COUNT): result = 0
             else: return None
         if aggr_func_name is COUNT: return result
-        converter = attr.converters[0]
+        converter = translator.attr.converters[0]
         return converter.sql2py(result)
     def sum(query):
         return query._aggregate(SUM)

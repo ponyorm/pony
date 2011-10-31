@@ -207,9 +207,9 @@ class SQLTranslator(ASTTranslator):
         assert not translator.hint_join
         assert not translator.inside_not
         monad = tree.expr.monad
-        translator.attrname = None
+        translator.attr = None
         if isinstance(monad, translator.AttrMonad) and not isinstance(monad, translator.ObjectMixin):
-            translator.attrname = monad.attr.name
+            translator.attr = monad.attr
             monad = monad.parent
         if not isinstance(monad, translator.ObjectMixin):
             raise NotImplementedError
@@ -1356,8 +1356,8 @@ class QuerySetMonad(SetMixin, Monad):
         Monad.__init__(monad, translator, monad_type)
     def _get_attr_info(monad):
         sub = monad.subtranslator
-        if sub.attrname is None: return None, None
-        attr = sub.entity._adict_[sub.attrname]
+        attr = sub.attr
+        if attr is None: return None, None
         return attr, sub.normalize_type(attr.py_type)
     def contains(monad, item, not_in=False):
         translator = monad.translator
