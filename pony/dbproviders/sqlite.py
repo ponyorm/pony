@@ -13,8 +13,9 @@ from pony.thirdparty.sqlite import (Warning, Error, InterfaceError, DatabaseErro
 
 from pony import dbschema
 from pony import sqlbuilding
+from pony.clobtypes import LongStr, LongUnicode
 from pony.sqltranslation import SQLTranslator as translator_cls
-from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple_decorator, absolutize_path
+from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple_decorator, absolutize_path, is_utf8
 
 paramstyle = 'qmark'
 
@@ -95,7 +96,14 @@ def ast2sql(con, ast):
     b = SQLiteBuilder(ast)
     return b.sql, b.adapter
 
-def get_last_rowid(cursor):
+def execute(cursor, sql, arguments):
+    cursor.execute(sql, arguments)
+
+def executemany(cursor, sql, arguments_list):
+    cursor.executemany(sql, arguments_list)
+
+def execute_sql_returning_id(cursor, sql, arguments, returning_py_type):
+    cursor.execute(sql, arguments)
     return cursor.lastrowid
 
 def _get_converter_type_by_py_type(py_type):
@@ -151,10 +159,14 @@ class BoolConverter(Converter):
 class BasestringConverter(Converter):
     def init(converter, keyargs):
         attr = converter.attr
-        if attr and attr.args:
-            if len(attr.args) > 1: unexpected_args(attr, attr.args[1:])
-            max_len = attr.args[0]
-            if not isinstance(max_len, (int, long)):
+        if attr:
+            if not attr.args: max_len = None
+            elif len(attr.args) > 1: unexpected_args(attr, attr.args[1:])
+            else: max_len = attr.args[0]
+            if issubclass(attr.py_type, (LongStr, LongUnicode)):
+                if max_len is not None: raise TypeError('Max length is not supported for CLOBs')
+            elif max_len is None: max_len = 200
+            elif not isinstance(max_len, (int, long)):
                 raise TypeError('Max length argument must be int. Got: %r' % max_len)
             converter.max_len = max_len
         else: converter.max_len = None
@@ -194,7 +206,7 @@ class StrConverter(BasestringConverter):
                                   % (converter.attr, converter.encoding, type(val)))
         return BasestringConverter.validate(converter, val)
     def py2sql(converter, val):
-        if converter.encoding == 'utf8': return val
+        if is_utf8(converter.encoding): return val
         return val.decode(converter.encoding)
     def sql2py(converter, val):
         return val.encode(converter.encoding, 'replace')

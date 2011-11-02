@@ -16,7 +16,8 @@ class DBSchema(object):
     def column_list(schema, columns):
         return '(%s)' % ', '.join(schema.quote_name(column.name) for column in columns)
     def case(schema, s):
-        if schema.uppercase: return s.upper().replace('%S', '%s').replace('%R', '%r')
+        if schema.uppercase: return s.upper().replace('%S', '%s') \
+            .replace(')S', ')s').replace('%R', '%r').replace(')R', ')r')
         else: return s.lower()
     def add_table(schema, table_name):
         return schema.table_class(table_name, schema)
@@ -114,7 +115,6 @@ class Table(object):
         return table.schema.fk_class(fk_name, table, child_columns, parent_table, parent_columns)
 
 class Column(object):
-    auto_sql_types = frozenset([ 'INTEGER' ])
     auto_template = '%(type)s PRIMARY KEY AUTOINCREMENT'
     def __init__(column, name, table, sql_type, is_not_null=None):
         if name in table.column_dict:
@@ -184,8 +184,6 @@ class Index(Constraint):
                 "Incompatible combination of is_unique=False and is_pk=True")
         elif is_unique is None: is_unique = False
         for column in columns:
-            if is_pk == 'auto' and column.sql_type not in column.auto_sql_types:
-                raise DBSchemaError("Column %s of type %s cannot be declared as 'auto'" % (column.name, column.sql_type))
             column.is_pk = len(columns) == 1 and is_pk
             column.is_pk_part = bool(is_pk)
             column.is_unique = is_unique and len(columns) == 1

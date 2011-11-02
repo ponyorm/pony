@@ -58,7 +58,14 @@ def ast2sql(con, ast):
     b = PGSQLBuilder(ast, paramstyle)
     return str(b.sql), b.adapter
 
-def get_last_rowid(cursor):
+def execute(cursor, sql, arguments):
+    cursor.execute(sql, arguments)
+
+def executemany(cursor, sql, arguments_list):
+    cursor.executemany(sql, arguments_list)
+
+def execute_sql_returning_id(cursor, sql, arguments, returning_py_type):
+    cursor.execute(sql, arguments)
     return cursor.fetchone()[0]
 
 def get_pool(*args, **keyargs):

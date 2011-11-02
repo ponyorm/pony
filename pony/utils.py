@@ -367,4 +367,6 @@ def avg(iter):
         count += 1
     if not count: return None
     return sum / count
-    
+
+def is_utf8(encoding):
+    return encoding.upper().replace('_', '').replace('-', '') in ('UTF8', 'UTF', 'U8')

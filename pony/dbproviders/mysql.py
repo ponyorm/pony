@@ -23,7 +23,7 @@ MAX_PARAMS_COUNT = 200
 ROW_VALUE_SYNTAX = True
 
 class MySQLColumn(dbschema.Column):
-    autoincrement = 'AUTO_INCREMENT'
+    auto_template = '%(type)s PRIMARY KEY AUTO_INCREMENT'
 
 class MySQLSchema(dbschema.DBSchema):
     column_class = MySQLColumn
@@ -85,7 +85,14 @@ def ast2sql(con, ast):
     b = MySQLBuilder(ast, paramstyle, "`")
     return b.sql, b.adapter
 
-def get_last_rowid(cursor):
+def execute(cursor, sql, arguments):
+    cursor.execute(sql, arguments)
+
+def executemany(cursor, sql, arguments_list):
+    cursor.executemany(sql, arguments_list)
+
+def execute_sql_returning_id(cursor, sql, arguments, returning_py_type):
+    cursor.execute(sql, arguments)
     return cursor.lastrowid
 
 def _get_converter_type_by_py_type(py_type):

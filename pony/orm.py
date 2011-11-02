@@ -267,10 +267,10 @@ class Database(object):
         provider = database.provider
         adapted_sql, code = adapt_sql(sql, provider.paramstyle)
         values = eval(code, globals, locals)
+        if values is None: values = ()
         cache = database._get_cache()
         cursor = cache.connection.cursor()
-        if values is None: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql)
-        else: wrap_dbapi_exceptions(provider, cursor.execute, adapted_sql, values)
+        wrap_dbapi_exceptions(provider, provider.execute, cursor, adapted_sql, values)
         return cursor
     def select(database, sql, globals=None, locals=None, frame_depth=0):
         if not select_re.match(sql): sql = 'select ' + sql
@@ -324,7 +324,7 @@ class Database(object):
         cache = database._get_cache()
         sql, adapter = database.provider.ast2sql(cache.connection, sql_ast)
         return sql, adapter
-    def _exec_sql(database, sql, arguments=None):
+    def _exec_sql(database, sql, arguments=()):
         cache = database._get_cache()
         cursor = cache.connection.cursor()
         if debug:
@@ -332,10 +332,20 @@ class Database(object):
             if arguments: print args2str(arguments)
             print
         provider = database.provider
-        if arguments: wrap_dbapi_exceptions(provider, cursor.execute, sql, arguments)
-        else: wrap_dbapi_exceptions(provider, cursor.execute, sql)
+        wrap_dbapi_exceptions(provider, provider.execute, cursor, sql, arguments)
         return cursor
-    def _exec_sql_many(database, sql, arguments_list=None):
+    def _exec_sql_returning_id(database, sql, arguments, returning_py_type):
+        cache = database._get_cache()
+        cursor = cache.connection.cursor()
+        if debug:
+            print sql
+            if arguments: print args2str(arguments)
+            print
+        provider = database.provider
+        new_id = wrap_dbapi_exceptions(provider, provider.execute_sql_returning_id,
+                                       cursor, sql, arguments, returning_py_type)
+        return new_id
+    def _exec_sql_many(database, sql, arguments_list=()):
         cache = database._get_cache()
         cache.optimistic = False
         cursor = cache.connection.cursor()
@@ -344,8 +354,7 @@ class Database(object):
             for args in arguments_list: print args2str(args)
             print
         provider = database.provider
-        if arguments_list is None: wrap_dbapi_exceptions(provider, cursor.executemany, sql)
-        else: wrap_dbapi_exceptions(provider, cursor.executemany, sql, arguments_list)
+        wrap_dbapi_exceptions(provider, provider.executemany, cursor, sql, arguments_list)
         return cursor
     def generate_mapping(database, *args, **keyargs):
         outer_dict = sys._getframe(1).f_locals
@@ -1438,7 +1447,7 @@ class EntityMeta(type):
         entity._link_reverse_attrs_()
 
         entity._cached_create_sql_ = None
-        entity._cached_create_sql_no_pk_ = None
+        entity._cached_create_sql_auto_pk_ = None
         entity._cached_delete_sql_ = None
         entity._find_sql_cache_ = {}
         entity._batchload_sql_cache_ = {}
@@ -2275,39 +2284,40 @@ class Entity(object):
                 assert val._status_ == 'saved'
     def _save_created_(obj):
         values = []
-        no_pk = False
+        auto_pk = (obj._pkval_ is None)
+        if auto_pk: pk_attr = obj.__class__._pk_
         for attr in obj._attrs_:
             if not attr.columns: continue
             if attr.is_collection: continue
             val = obj._curr_[attr.name]
-            if attr.is_pk and val is None:
-                no_pk = True
-                continue
+            if auto_pk and attr.is_pk: continue
             values.extend(attr.get_raw_values(val))
         database = obj._diagram_.database
-        if no_pk: cached_sql = obj._cached_create_sql_no_pk_
+        if auto_pk: cached_sql = obj._cached_create_sql_auto_pk_
         else: cached_sql = obj._cached_create_sql_
         if cached_sql is None:
-            if no_pk:
-                columns = obj._columns_no_pk_
-                converters = obj._converters_no_pk_
+            entity = obj.__class__
+            if auto_pk:
+                columns = entity._columns_without_pk_
+                converters = entity._converters_without_pk_
             else:
-                columns = obj._columns_
-                converters = obj._converters_
+                columns = entity._columns_
+                converters = entity._converters_
             assert len(columns) == len(converters)
             params = [ [ PARAM, i,  converter ] for i, converter in enumerate(converters) ]
-            sql_ast = [ INSERT, obj._table_, columns, params ]
-            if no_pk:
-                assert len(obj._pk_columns_) == 1
-                assert obj.__class__._pk_.auto
+            sql_ast = [ INSERT, entity._table_, columns, params ]
+            if auto_pk:
+                assert len(entity._pk_columns_) == 1
+                assert pk_attr.auto
                 sql_ast.append(obj._pk_columns_[0])
             sql, adapter = database._ast2sql(sql_ast)
-            if no_pk: obj.__class__._cached_create_sql_no_pk_ = sql, adapter
-            else: obj.__class__._cached_create_sql_ = sql, adapter
+            if auto_pk: entity._cached_create_sql_auto_pk_ = sql, adapter
+            else: entity._cached_create_sql_ = sql, adapter
         else: sql, adapter = cached_sql
         arguments = adapter(values)
         try:
-            cursor = database._exec_sql(sql, arguments)
+            if auto_pk: new_id = database._exec_sql_returning_id(sql, arguments, pk_attr.py_type)
+            else: database._exec_sql(sql, arguments)
         except IntegrityError, e:
             msg = " ".join(tostring(arg) for arg in e.args)
             raise TransactionIntegrityError(
@@ -2316,14 +2326,12 @@ class Entity(object):
             msg = " ".join(tostring(arg) for arg in e.args)
             raise UnexpectedError('Object %r cannot be stored in the database. DB message: %s' % (obj, msg), e)
 
-        if obj._pkval_ is None:
-            rowid = database.provider.get_last_rowid(cursor)
-            pk_attr = obj.__class__._pk_
+        if auto_pk:
             index = obj._cache_.indexes.setdefault(pk_attr, {})
-            obj2 = index.setdefault(rowid, obj)
+            obj2 = index.setdefault(new_id, obj)
             if obj2 is not obj: raise TransactionIntegrityError(
-                'Newly auto-generated rowid value %s was already used in transaction cache for another object' % rowid)
-            obj._pkval_ = obj._curr_[pk_attr.name] = rowid
+                'Newly auto-generated id value %s was already used in transaction cache for another object' % new_id)
+            obj._pkval_ = obj._curr_[pk_attr.name] = new_id
             obj._newid_ = None
             
         obj._status_ = 'saved'
@@ -2535,20 +2543,20 @@ class Diagram(object):
                 for attr in key: column_names.extend(attr.columns)
                 table.add_index(None, get_columns(table, column_names), is_unique=True)
             columns = []
-            columns_no_pk = []
+            columns_without_pk = []
             converters = []
-            converters_no_pk = []
+            converters_without_pk = []
             for attr in entity._attrs_:
                 if attr.is_collection: continue
                 columns.extend(attr.columns)  # todo: inheritance
                 converters.extend(attr.converters)
                 if not attr.is_pk:
-                    columns_no_pk.extend(attr.columns)
-                    converters_no_pk.extend(attr.converters)
+                    columns_without_pk.extend(attr.columns)
+                    converters_without_pk.extend(attr.converters)
             entity._columns_ = columns
-            entity._columns_no_pk_ = columns_no_pk
+            entity._columns_without_pk_ = columns_without_pk
             entity._converters_ = converters
-            entity._converters_no_pk_ = converters_no_pk
+            entity._converters_without_pk_ = converters_without_pk
         for entity in entities:
             table = schema.tables[entity._table_]
             for attr in entity._new_attrs_:
