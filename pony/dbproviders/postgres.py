@@ -26,6 +26,7 @@ class PGTable(dbschema.Table):
                 print 'ALREADY EXISTS:', e.args[0]
                 print 'ROLLBACK\n'
             provider.rollback(connection)
+        else: provider.commit(connection)
     def get_create_commands(table, created_tables=None):
         return dbschema.Table.get_create_commands(table, created_tables, False)
 
