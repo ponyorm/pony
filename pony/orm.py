@@ -1427,12 +1427,17 @@ class EntityMeta(type):
     def __init__(entity, name, bases, cls_dict):
         super(EntityMeta, entity).__init__(name, bases, cls_dict)
         if name == 'Entity': return
-        
+
+        databases = set()
         for base_class in bases:
             if isinstance(base_class, EntityMeta):
                 database = base_class._database_
-                break
-        else: assert False
+                if database is None: raise ERDiagramError('Base Entity does not belong to any database')
+                databases.add(database)
+        if not databases: assert False
+        elif len(databases) > 1: raise ERDiagramError(
+            'With multiple inheritance of entities, all entities must belong to the same database')
+        database = databases.pop()
 
         if entity.__name__ in database.entities:
             raise ERDiagramError('Entity %s already exists' % entity.__name__)
@@ -1448,9 +1453,6 @@ class EntityMeta(type):
             if len(roots) > 1: raise ERDiagramError(
                 'With multiple inheritance of entities, inheritance graph must be diamond-like')
             entity._root_ = roots.pop()
-            for base in direct_bases:
-                if base._database_ is not database: raise ERDiagramError(
-                    'When use inheritance, base and derived entities must belong to same database')
         else: entity._root_ = entity
 
         base_attrs = []
