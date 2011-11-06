@@ -130,10 +130,11 @@ class SQLTranslator(ASTTranslator):
         if type1 is type2: return type1
         return translator.coercions.get((type1, type2))
 
-    def __init__(translator, tree, entities, vartypes, functions, parent_translator=None):
+    def __init__(translator, tree, databases, entities, vartypes, functions, parent_translator=None):
         assert isinstance(tree, ast.GenExprInner), tree
         ASTTranslator.__init__(translator, tree)
-        translator.diagram = None
+        translator.database = None
+        translator.databases = databases
         translator.entities = entities
         translator.vartypes = vartypes
         translator.functions = functions
@@ -168,23 +169,40 @@ class SQLTranslator(ASTTranslator):
                 attr_names.append(node.attrname)
                 node = node.expr
             if not isinstance(node, ast.Name): raise TypeError
+            node_name = node.name
+
+            if node_name in databases:
+                db_name = node_name
+                db = databases[db_name]
+                if not attr_names: raise TypeError('Entity name is not specified')
+                entity_name = attr_names[0]
+                try: entity = getattr(db, entity_name)
+                except AttributeError: raise AttributeError(
+                    'Entity %s is not found in database %s' % (entity_name, db_name))
+                entity_name = db_name + '.' + entity_name
+                entity2 = entities.setdefault(entity_name, entity)
+                node_name = entity_name
+                assert entity2 is entity
+                attr_names.pop(0)
 
             if not attr_names:
                 if i > 0: translator.distinct = True
-                entity = entities.get(node.name)
+                entity = entities.get(node_name)
                 if entity is None: raise TranslationError
-                diagram = entity._diagram_
-                if diagram.database is None: raise TranslationError(
-                    'Entity %s is not mapped to a database' % entity.__name__)
-                if translator.diagram is None: translator.diagram = diagram
-                elif translator.diagram is not diagram: raise TranslationError(
-                    'All entities in a query must belong to the same diagram')
+                database = entity._database_
+                
+                if database.schema is None: raise TranslationError(
+                    'Mapping is not generated for entity %s' % entity.__name__)
+
+                if translator.database is None: translator.database = database
+                elif translator.database is not database: raise TranslationError(
+                    'All entities in a query must belong to the same database')
                 tablerefs[name] = TableRef(translator, name, entity)
             else:
                 if len(attr_names) > 1: raise NotImplementedError
                 attrname = attr_names[0]
-                parent_alias = tablerefs.get(node.name)
-                if parent_alias is None: raise TranslationError("Name %r must be defined in query" % node.name)
+                parent_alias = tablerefs.get(node_name)
+                if parent_alias is None: raise TranslationError("Name %r must be defined in query" % node_name)
                 parent_entity = parent_alias.entity
                 attr = parent_entity._adict_.get(attrname)
                 if attr is None: raise AttributeError, attrname
@@ -230,7 +248,7 @@ class SQLTranslator(ASTTranslator):
         else: translator.where = [ WHERE, sqland(translator.conditions) ]
     def preGenExpr(translator, node):
         inner_tree = node.code
-        subtranslator = SQLTranslator(inner_tree, translator.entities, translator.vartypes, translator.functions, translator)
+        subtranslator = SQLTranslator(inner_tree, translator.databases, translator.entities, translator.vartypes, translator.functions, translator)
         node.monad = translator.QuerySetMonad(translator, subtranslator)
         return True
     def postGenExprIf(translator, node):
@@ -271,9 +289,14 @@ class SQLTranslator(ASTTranslator):
             node.monad = translator.ObjectIterMonad(translator, tableref, entity)
             return
 
-        value_type = translator.entities.get(name)
-        if value_type is not None:
-            node.monad = translator.EntityMonad(translator, value_type)
+        database = translator.databases.get(name)
+        if database is not None:
+            node.monad = translator.DatabaseMonad(translator, database)
+            return
+
+        entity = translator.entities.get(name)
+        if entity is not None:
+            node.monad = translator.EntityMonad(translator, entity)
             return
             
         try: value_type = translator.vartypes[name]
@@ -504,6 +527,16 @@ class MethodMonad(Monad):
     def __call__(monad, *args, **keyargs):
         method = getattr(monad.parent, 'call_' + monad.attrname)
         return method(*args, **keyargs)
+
+class DatabaseMonad(Monad):
+    def __init__(monad, translator, database):
+        Monad.__init__(monad, translator, 'DATABASE')
+        Monad.database = database
+    def getattr(monad, attrname):
+        database = monad.database
+        entity = getattr(database, attrname)
+        if not isinstance(entity, EntityMeta): raise NotImplementedError
+        return EntityMonad(monad.translator, entity)
 
 class EntityMonad(Monad):
     def __getitem__(monad, key):
@@ -888,7 +921,7 @@ class ParamMonad(Monad):
         monad.name = name
         monad.parent = parent
         if not isinstance(type, EntityMeta):
-            provider = translator.diagram.database.provider
+            provider = translator.database.provider
             monad.converter = provider.get_converter_by_py_type(type)
         else: monad.converter = None
         if parent is None: monad.extractor = lambda variables : variables[name]
@@ -903,8 +936,8 @@ class ParamMonad(Monad):
 
 class ObjectParamMonad(ObjectMixin, ParamMonad):
     def __init__(monad, translator, entity, name, parent=None):
-        if translator.diagram is not entity._diagram_: raise TranslationError(
-            'All entities in a query must belong to the same diagram')
+        if translator.database is not entity._database_: raise TranslationError(
+            'All entities in a query must belong to the same database')
         monad.params = [ '-'.join((name, path)) for path in entity._pk_paths_ ]
         ParamMonad.__init__(monad, translator, entity, name, parent)
     def getattr(monad, name):

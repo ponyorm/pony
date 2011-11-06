@@ -1,10 +1,11 @@
 import unittest
 from pony.orm import *
 
-class Student(Entity):
+db = Database('sqlite', ':memory:')
+
+class Student(db.Entity):
     name = Required(unicode)
 
-db = Database('sqlite', ':memory:')
 db.generate_mapping(create_tables=True)
 
 @with_transaction()

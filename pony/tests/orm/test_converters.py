@@ -3,31 +3,32 @@ from pony.orm import *
 from decimal import Decimal
 from datetime import date
 
-class Student(Entity):
+db = Database('sqlite', ':memory:')
+
+class Student(db.Entity):
     name = Required(unicode)
     scholarship = Required(Decimal, 5, 2)
     group = Required("Group")
     marks = Set("Mark")
 
-class Group(Entity):
+class Group(db.Entity):
     number = PrimaryKey(int)
     department = Required(int)
     students = Set(Student)
     subjects = Set("Subject")
 
-class Subject(Entity):
+class Subject(db.Entity):
     name = PrimaryKey(unicode)
     groups = Set(Group)
     marks = Set("Mark")
 
-class Mark(Entity):
+class Mark(db.Entity):
     value = Required(int)
     student = Required(Student)
     subject = Required(Subject)
     date = Required(date)
     PrimaryKey(student, subject)
 
-db = Database('sqlite', ':memory:')
 db.generate_mapping(create_tables=True)
 
 @with_transaction

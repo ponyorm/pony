@@ -3,21 +3,21 @@ from datetime import date
 from pony.orm import *
 from testutils import *
 
-_diagram_ = Diagram()
+db = Database('sqlite', ':memory:')
 
-class Group(Entity):
+class Group(db.Entity):
     number = PrimaryKey(int)
     major = Required(unicode)
     students = Set("Student")
 
-class Course(Entity):
+class Course(db.Entity):
     name = Required(unicode)
     semester = Required(int)
     credits = Required(int)
     students = Set("Student")
     PrimaryKey(name, semester)
     
-class Student(Entity):
+class Student(db.Entity):
     id = PrimaryKey(int, auto=True)
     name = Required(unicode)
     dob = Required(date)
@@ -26,7 +26,7 @@ class Student(Entity):
     group = Required(Group)
     courses = Set(Course)
 
-db = Database('sqlite', ':memory:')
+
 db.generate_mapping(create_tables=True)
 
 def flatten(x):

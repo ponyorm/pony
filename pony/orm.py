@@ -34,7 +34,7 @@ __all__ = '''
 
     Database sql_debug
 
-    Entity Diagram Optional Required Unique PrimaryKey Set
+    Optional Required Unique PrimaryKey Set
     flush commit rollback with_transaction
 
     LongStr LongUnicode
@@ -183,9 +183,17 @@ class Database(object):
         self.priority = 0
         self.optimistic = True
         self._insert_cache = {}
+
         # connection test with immediate release:
         connection = provider.connect()
         provider.release(connection)
+
+        # ER-diagram related stuff:
+        self.entities = {}
+        self._unmapped_attrs = {}
+        self.schema = None
+        self.Entity = type.__new__(EntityMeta, 'Entity', (Entity,), {})
+        self.Entity._database_ = self
     def get_connection(database):
         cache = database._get_cache()
         cache.optimistic = False
@@ -303,11 +311,132 @@ class Database(object):
             print
         database.provider.executemany(cursor, sql, arguments_list)
         return cursor
-    def generate_mapping(database, *args, **keyargs):
-        outer_dict = sys._getframe(1).f_locals
-        diagram = outer_dict.get('_diagram_')
-        if diagram is None: raise MappingError('No default diagram found')
-        diagram.generate_mapping(database, *args, **keyargs)
+    def generate_mapping(database, filename=None, check_tables=False, create_tables=False):
+        if create_tables and check_tables: raise TypeError(
+            "Parameters 'check_tables' and 'create_tables' cannot be set to True at the same time")
+
+        def get_columns(table, column_names):
+            return tuple(map(table.column_dict.__getitem__, column_names))
+
+        if database.schema: raise MappingError('Mapping was already generated')
+        if filename is not None: raise NotImplementedError
+        for entity_name in database._unmapped_attrs:
+            raise ERDiagramError('Entity definition %s was not found' % entity_name)
+
+        schema = database.schema = database.provider.dbschema_cls(database.provider)
+        foreign_keys = []
+        entities = list(sorted(database.entities.values(), key=attrgetter('_id_')))
+        for entity in entities:
+            entity._get_pk_columns_()
+            table_name = entity._table_
+            if table_name is None: table_name = entity._table_ = entity.__name__
+            else: assert isinstance(table_name, (basestring, tuple))
+            table = schema.tables.get(table_name)
+            if table is None: table = schema.add_table(table_name)
+            elif table.entities: raise NotImplementedError
+            table.entities.add(entity)
+
+            if entity._base_attrs_: raise NotImplementedError
+            for attr in entity._new_attrs_:
+                if attr.is_collection:
+                    if not isinstance(attr, Set): raise NotImplementedError
+                    reverse = attr.reverse
+                    if not reverse.is_collection: # many-to-one:
+                        if attr.table is not None: raise MappingError(
+                            "Parameter 'table' is not allowed for many-to-one attribute %s" % attr)
+                        elif attr.columns: raise NotImplementedError(
+                            "Parameter 'column' is not allowed for many-to-one attribute %s" % attr)
+                        continue
+                    # many-to-many:
+                    if not isinstance(reverse, Set): raise NotImplementedError
+                    if attr.entity.__name__ >= reverse.entity.__name__: continue
+                    if attr.table:
+                        if reverse.table != attr.table: raise MappingError(
+                            "Parameter 'table' for %s and %s do not match" % (attr, reverse))
+                        table_name = attr.table
+                    else:
+                        table_name = attr.entity.__name__ + '_' + reverse.entity.__name__
+                        attr.table = reverse.table = table_name
+                    m2m_table = schema.tables.get(table_name)
+                    if m2m_table is not None:
+                        if m2m_table.entities or m2m_table.m2m:
+                            if isinstance(table_name, tuple): table_name = '.'.join(table_name)
+                            raise MappingError("Table name '%s' is already in use" % table_name)
+                        raise NotImplementedError
+                    m2m_table = schema.add_table(table_name)
+                    m2m_columns_1 = attr.get_m2m_columns()
+                    m2m_columns_2 = reverse.get_m2m_columns()
+                    assert len(m2m_columns_1) == len(reverse.converters)
+                    assert len(m2m_columns_2) == len(attr.converters)
+                    for column_name, converter in zip(m2m_columns_1 + m2m_columns_2, reverse.converters + attr.converters):
+                        m2m_table.add_column(column_name, converter.sql_type(), True)
+                    m2m_table.add_index(None, tuple(m2m_table.column_list), is_pk=True)
+                    m2m_table.m2m.add(attr)
+                    m2m_table.m2m.add(reverse)
+                else:
+                    columns = attr.get_columns()
+                    if not attr.reverse and attr.default is not None:
+                        assert len(attr.converters) == 1
+                        if not callable(attr.default): attr.default = attr.check(attr.default)
+                    assert len(columns) == len(attr.converters)
+                    for (column_name, converter) in zip(columns, attr.converters):
+                        table.add_column(column_name, converter.sql_type(), attr.is_required)
+            if len(entity._pk_columns_) == 1 and entity._pk_.auto: is_pk = "auto"
+            else: is_pk = True
+            table.add_index(None, get_columns(table, entity._pk_columns_), is_pk)
+            for key in entity._keys_:
+                column_names = []
+                for attr in key: column_names.extend(attr.columns)
+                table.add_index(None, get_columns(table, column_names), is_unique=True)
+            columns = []
+            columns_without_pk = []
+            converters = []
+            converters_without_pk = []
+            for attr in entity._attrs_:
+                if attr.is_collection: continue
+                columns.extend(attr.columns)  # todo: inheritance
+                converters.extend(attr.converters)
+                if not attr.is_pk:
+                    columns_without_pk.extend(attr.columns)
+                    converters_without_pk.extend(attr.converters)
+            entity._columns_ = columns
+            entity._columns_without_pk_ = columns_without_pk
+            entity._converters_ = converters
+            entity._converters_without_pk_ = converters_without_pk
+        for entity in entities:
+            table = schema.tables[entity._table_]
+            for attr in entity._new_attrs_:
+                if attr.is_collection:
+                    reverse = attr.reverse
+                    if not reverse.is_collection: continue
+                    if not isinstance(attr, Set): raise NotImplementedError
+                    if not isinstance(reverse, Set): raise NotImplementedError
+                    m2m_table = schema.tables[attr.table]
+                    parent_columns = get_columns(table, entity._pk_columns_)
+                    child_columns = get_columns(m2m_table, reverse.columns)
+                    m2m_table.add_foreign_key(None, child_columns, table, parent_columns)
+                elif attr.reverse and attr.columns:
+                    rentity = attr.reverse.entity
+                    parent_table = schema.tables[rentity._table_]
+                    parent_columns = get_columns(parent_table, rentity._pk_columns_)
+                    child_columns = get_columns(table, attr.columns)
+                    table.add_foreign_key(None, child_columns, parent_table, parent_columns)
+
+        database.rollback()   
+        if create_tables: schema.create_tables()
+
+        if not check_tables and not create_tables: return
+        for table in schema.tables.values():
+            if isinstance(table.name, tuple): alias = table.name[-1]
+            elif isinstance(table.name, basestring): alias = table.name
+            else: assert False
+            sql_ast = [ SELECT,
+                        [ ALL, ] + [ [ COLUMN, alias, column.name ] for column in table.column_list ],
+                        [ FROM, [ alias, TABLE, table.name ] ],
+                        [ WHERE, [ EQ, [ VALUE, 0 ], [ VALUE, 1 ] ] ]
+                      ]
+            sql, adapter = database._ast2sql(sql_ast)
+            database._exec_sql(sql)
 
 def args2str(args):
     if isinstance(args, (tuple, list)):
@@ -358,7 +487,7 @@ class Attribute(object):
             if py_type is datetime: raise TypeError(
                 'datetime is the module and cannot be used as attribute type. Use datetime.datetime instead')
             raise TypeError('Incorrect type of attribute: %r' % py_type)
-        if py_type == 'Entity' or py_type is Entity:
+        if py_type == 'Entity' or (isinstance(py_type, EntityMeta) and py_type.__name__ == 'Entity'):
             raise TypeError('Cannot link attribute to Entity class. Must use Entity subclass instead')
         attr.py_type = py_type
         attr.is_collection = isinstance(attr, Collection)
@@ -625,7 +754,7 @@ class Attribute(object):
         assert not isinstance(attr.py_type, basestring)
         if attr._columns_checked: return attr.columns
 
-        provider = attr.entity._diagram_.database.provider
+        provider = attr.entity._database_.provider
         reverse = attr.reverse
         if not reverse: # attr is not part of relationship
             if not attr.columns: attr.columns = [ attr.name ]
@@ -813,7 +942,7 @@ class Set(Collection):
         reverse = attr.reverse
         rentity = reverse.entity
         if reverse is None: raise NotImplementedError
-        database = obj._diagram_.database
+        database = obj._database_
         objects = [ obj ]
         setdata_list = [ setdata ]
         cache = obj._cache_
@@ -895,7 +1024,7 @@ class Set(Collection):
         rcolumns = reverse.columns
         rconverters = reverse.converters
         assert len(rcolumns) == len(rconverters)
-        database = attr.entity._diagram_.database
+        database = attr.entity._database_
         
         if batch_size == 1:
             criteria_list = [ AND ]
@@ -1057,7 +1186,7 @@ class Set(Collection):
         return reverse.columns
     def remove_m2m(attr, removed):
         entity = attr.entity
-        database = entity._diagram_.database
+        database = entity._database_
         cached_sql = attr.cached_remove_m2m_sql
         if cached_sql is None:
             reverse = attr.reverse
@@ -1075,7 +1204,7 @@ class Set(Collection):
         database._exec_sql_many(sql, arguments_list)
     def add_m2m(attr, added):
         entity = attr.entity
-        database = entity._diagram_.database
+        database = entity._database_
         cached_sql = attr.cached_add_m2m_sql
         if cached_sql is None:
             reverse = attr.reverse
@@ -1297,18 +1426,20 @@ class EntityMeta(type):
         return super(EntityMeta, meta).__new__(meta, name, bases, cls_dict)
     def __init__(entity, name, bases, cls_dict):
         super(EntityMeta, entity).__init__(name, bases, cls_dict)
-        if 'Entity' not in globals(): return
-        outer_dict = sys._getframe(1).f_locals
+        if name == 'Entity': return
+        
+        for base_class in bases:
+            if isinstance(base_class, EntityMeta):
+                database = base_class._database_
+                break
+        else: assert False
 
-        diagram = cls_dict.pop('_diagram_', None) or outer_dict.get('_diagram_')
-        if diagram is None:
-            diagram = Diagram()
-            outer_dict['_diagram_'] = diagram
-
-        if entity.__name__ in diagram.entities:
+        if entity.__name__ in database.entities:
             raise ERDiagramError('Entity %s already exists' % entity.__name__)
+        assert entity.__name__ not in database.__dict__
+
         entity._id_ = next_entity_id()
-        direct_bases = [ c for c in entity.__bases__ if issubclass(c, Entity) and c is not Entity ]
+        direct_bases = [ c for c in entity.__bases__ if issubclass(c, Entity) and c.__name__ != 'Entity' ]
         entity._direct_bases_ = direct_bases
         entity._all_bases_ = set((entity,))
         for base in direct_bases: entity._all_bases_.update(base._all_bases_)
@@ -1318,8 +1449,8 @@ class EntityMeta(type):
                 'With multiple inheritance of entities, inheritance graph must be diamond-like')
             entity._root_ = roots.pop()
             for base in direct_bases:
-                if base._diagram_ is not diagram: raise ERDiagramError(
-                    'When use inheritance, base and derived entities must belong to same diagram')
+                if base._database_ is not database: raise ERDiagramError(
+                    'When use inheritance, base and derived entities must belong to same database')
         else: entity._root_ = entity
 
         base_attrs = []
@@ -1403,8 +1534,9 @@ class EntityMeta(type):
                         'Each part of table name must be a string. Got: %r' % name_part)
                 entity._table_ = table_name = tuple(table_name)
 
-        entity._diagram_ = diagram
-        diagram.entities[entity.__name__] = entity
+        entity._database_ = database
+        database.entities[entity.__name__] = entity
+        setattr(database, entity.__name__, entity)
         entity._link_reverse_attrs_()
 
         entity._cached_create_sql_ = None
@@ -1419,22 +1551,22 @@ class EntityMeta(type):
         entity._set_wrapper_subclass_ = None
         entity._propagated_set_subclass_ = None
     def _link_reverse_attrs_(entity):
-        diagram = entity._diagram_
-        unmapped_attrs = diagram.unmapped_attrs.pop(entity.__name__, set())
+        database = entity._database_
+        unmapped_attrs = database._unmapped_attrs.pop(entity.__name__, set())
         for attr in entity._new_attrs_:
             py_type = attr.py_type
             if isinstance(py_type, basestring):
-                entity2 = diagram.entities.get(py_type)
+                entity2 = database.entities.get(py_type)
                 if entity2 is None:
-                    diagram.unmapped_attrs.setdefault(py_type, set()).add(attr)
+                    database._unmapped_attrs.setdefault(py_type, set()).add(attr)
                     continue
                 attr.py_type = py_type = entity2
             elif not issubclass(py_type, Entity): continue
             
             entity2 = py_type
-            if entity2._diagram_ is not diagram:
-                raise ERDiagramError('Interrelated entities must belong to same diagram. '
-                                   'Entities %s and %s belongs to different diagrams'
+            if entity2._database_ is not database:
+                raise ERDiagramError('Interrelated entities must belong to same database. '
+                                   'Entities %s and %s belongs to different databases'
                                    % (entity.__name__, entity2.__name__))
             reverse = attr.reverse
             if isinstance(reverse, basestring):
@@ -1525,7 +1657,7 @@ class EntityMeta(type):
         return objects[0]
     def _find_by_sql_(entity, max_fetch_count, sql, globals=None, locals=None, frame_depth=1):
         if not isinstance(sql, basestring): raise TypeError
-        database = entity._diagram_.database
+        database = entity._database_
         cursor = database._execute(sql, globals, locals, frame_depth+2)
 
         col_names = [ column_info[0].upper() for column_info in cursor.description ]
@@ -1649,7 +1781,7 @@ class EntityMeta(type):
         raise KeyError  # not found in cache, can exist in db
     def _find_in_db_(entity, avdict, max_fetch_count=None):
         if max_fetch_count is None: max_fetch_count = options.MAX_FETCH_COUNT
-        database = entity._diagram_.database
+        database = entity._database_
         query_attrs = tuple((attr, value is None) for attr, value in sorted(avdict.iteritems()))
         single_row = (max_fetch_count == 1)
         sql, extractor, adapter, attr_offsets = entity._construct_sql_(query_attrs, order_by_pk=not single_row)
@@ -1690,7 +1822,7 @@ class EntityMeta(type):
             converter = converters[0]
             criteria_list = [ IN, [ COLUMN, None, columns[0] ],
                                    [ [ PARAM, (i, 0), converter ] for i in xrange(batch_size) ] ] 
-        elif entity._diagram_.database.provider.row_value_syntax:
+        elif entity._database_.provider.row_value_syntax:
             criteria_list = [ IN, [ ROW ] + [ [ COLUMN, None, column ] for column in columns ],
                                    [ [ ROW ] + [ [ PARAM, (i, j), converter ] for j, converter in enumerate(converters) ]
                                      for i in xrange(batch_size) ] ]
@@ -1700,7 +1832,7 @@ class EntityMeta(type):
                                                     for j, (column, converter) in enumerate(pairs) ]
                                         for i in xrange(batch_size) ]
         sql_ast = [ SELECT, select_list, from_list, [ WHERE, criteria_list ] ]
-        database = entity._diagram_.database
+        database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
         cached_sql = sql, adapter, attr_offsets
         entity._batchload_sql_cache_[query_key] = cached_sql
@@ -1744,7 +1876,7 @@ class EntityMeta(type):
         sql_ast = [ SELECT, select_list, from_list ]
         if len(criteria_list) > 1: sql_ast.append([ WHERE, criteria_list  ])
         if order_by_pk: sql_ast.append([ ORDER_BY ] + [ ([COLUMN, None, column], ASC) for column in entity._pk_columns_ ])
-        database = entity._diagram_.database
+        database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
         def extractor(avdict):
             param_dict = {}
@@ -1808,7 +1940,7 @@ class EntityMeta(type):
 
         return Query(func.func_code, inner_expr, external_names, globals, locals)
     def _get_cache_(entity):
-        database = entity._diagram_.database
+        database = entity._database_
         if database is None: raise TransactionError
         return database._get_cache()
     def _new_(entity, pkval, status, undo_funcs=None):
@@ -1971,7 +2103,7 @@ class Entity(object):
         cache = obj._cache_
         if not cache.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         entity = obj.__class__
-        database = entity._diagram_.database
+        database = entity._database_
         seeds = cache.seeds[entity._pk_]
         max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
         objects = [ obj ]
@@ -2260,7 +2392,7 @@ class Entity(object):
             val = obj._curr_[attr.name]
             if auto_pk and attr.is_pk: continue
             values.extend(attr.get_raw_values(val))
-        database = obj._diagram_.database
+        database = obj._database_
         if auto_pk: cached_sql = obj._cached_create_sql_auto_pk_
         else: cached_sql = obj._cached_create_sql_
         if cached_sql is None:
@@ -2335,7 +2467,7 @@ class Entity(object):
                         optimistic_check_converters.extend(None for converter in attr.converters)
                     values.extend(attr.get_raw_values(prev))
             query_key = (tuple(update_columns), tuple(optimistic_check_columns), tuple(converter is not None for converter in optimistic_check_converters))
-            database = obj._diagram_.database
+            database = obj._database_
             cached_sql = obj._update_sql_cache_.get(query_key)
             if cached_sql is None:
                 update_converters = []
@@ -2384,7 +2516,7 @@ class Entity(object):
             optimistic_check_converters.extend(attr.converters)
             values.extend(attr.get_raw_values(prev))
         query_key = tuple(optimistic_check_columns)
-        database = obj._diagram_.database
+        database = obj._database_
         cached_sql = obj._lock_sql_cache_.get(query_key)        
         if cached_sql is None:
             criteria_list = [ AND ]
@@ -2400,7 +2532,7 @@ class Entity(object):
         if row is None: raise UnrepeatableReadError('Object %r was updated outside of current transaction' % obj)
         obj._status_ = 'loaded'
     def _save_deleted_(obj):
-        database = obj._diagram_.database
+        database = obj._database_
         cached_sql = obj._cached_delete_sql_
         if cached_sql is None:
             criteria_list = [ AND ]
@@ -2424,140 +2556,6 @@ class Entity(object):
         elif status == 'deleted': obj._save_deleted_()
         elif status == 'locked': obj._save_locked_()
         else: assert False
-
-class Diagram(object):
-    def __init__(diagram):
-        diagram.entities = {}
-        diagram.unmapped_attrs = {}
-        diagram.schema = None
-        diagram.database = None
-    def generate_mapping(diagram, database, filename=None, check_tables=False, create_tables=False):
-        if create_tables and check_tables: raise TypeError(
-            "Parameters 'check_tables' and 'create_tables' cannot be set to True at the same time")
-
-        def get_columns(table, column_names):
-            return tuple(map(table.column_dict.__getitem__, column_names))
-
-        diagram.database = database
-        if diagram.schema: raise MappingError('Mapping was already generated')
-        if filename is not None: raise NotImplementedError
-        for entity_name in diagram.unmapped_attrs:
-            raise ERDiagramError('Entity definition %s was not found' % entity_name)
-
-        schema = diagram.schema = database.provider.dbschema_cls(database.provider)
-        foreign_keys = []
-        entities = list(sorted(diagram.entities.values(), key=attrgetter('_id_')))
-        for entity in entities:
-            entity._get_pk_columns_()
-            table_name = entity._table_
-            if table_name is None: table_name = entity._table_ = entity.__name__
-            else: assert isinstance(table_name, (basestring, tuple))
-            table = schema.tables.get(table_name)
-            if table is None: table = schema.add_table(table_name)
-            elif table.entities: raise NotImplementedError
-            table.entities.add(entity)
-
-            if entity._base_attrs_: raise NotImplementedError
-            for attr in entity._new_attrs_:
-                if attr.is_collection:
-                    if not isinstance(attr, Set): raise NotImplementedError
-                    reverse = attr.reverse
-                    if not reverse.is_collection: # many-to-one:
-                        if attr.table is not None: raise MappingError(
-                            "Parameter 'table' is not allowed for many-to-one attribute %s" % attr)
-                        elif attr.columns: raise NotImplementedError(
-                            "Parameter 'column' is not allowed for many-to-one attribute %s" % attr)
-                        continue
-                    # many-to-many:
-                    if not isinstance(reverse, Set): raise NotImplementedError
-                    if attr.entity.__name__ >= reverse.entity.__name__: continue
-                    if attr.table:
-                        if reverse.table != attr.table: raise MappingError(
-                            "Parameter 'table' for %s and %s do not match" % (attr, reverse))
-                        table_name = attr.table
-                    else:
-                        table_name = attr.entity.__name__ + '_' + reverse.entity.__name__
-                        attr.table = reverse.table = table_name
-                    m2m_table = schema.tables.get(table_name)
-                    if m2m_table is not None:
-                        if m2m_table.entities or m2m_table.m2m:
-                            if isinstance(table_name, tuple): table_name = '.'.join(table_name)
-                            raise MappingError("Table name '%s' is already in use" % table_name)
-                        raise NotImplementedError
-                    m2m_table = schema.add_table(table_name)
-                    m2m_columns_1 = attr.get_m2m_columns()
-                    m2m_columns_2 = reverse.get_m2m_columns()
-                    assert len(m2m_columns_1) == len(reverse.converters)
-                    assert len(m2m_columns_2) == len(attr.converters)
-                    for column_name, converter in zip(m2m_columns_1 + m2m_columns_2, reverse.converters + attr.converters):
-                        m2m_table.add_column(column_name, converter.sql_type(), True)
-                    m2m_table.add_index(None, tuple(m2m_table.column_list), is_pk=True)
-                    m2m_table.m2m.add(attr)
-                    m2m_table.m2m.add(reverse)
-                else:
-                    columns = attr.get_columns()
-                    if not attr.reverse and attr.default is not None:
-                        assert len(attr.converters) == 1
-                        if not callable(attr.default): attr.default = attr.check(attr.default)
-                    assert len(columns) == len(attr.converters)
-                    for (column_name, converter) in zip(columns, attr.converters):
-                        table.add_column(column_name, converter.sql_type(), attr.is_required)
-            if len(entity._pk_columns_) == 1 and entity._pk_.auto: is_pk = "auto"
-            else: is_pk = True
-            table.add_index(None, get_columns(table, entity._pk_columns_), is_pk)
-            for key in entity._keys_:
-                column_names = []
-                for attr in key: column_names.extend(attr.columns)
-                table.add_index(None, get_columns(table, column_names), is_unique=True)
-            columns = []
-            columns_without_pk = []
-            converters = []
-            converters_without_pk = []
-            for attr in entity._attrs_:
-                if attr.is_collection: continue
-                columns.extend(attr.columns)  # todo: inheritance
-                converters.extend(attr.converters)
-                if not attr.is_pk:
-                    columns_without_pk.extend(attr.columns)
-                    converters_without_pk.extend(attr.converters)
-            entity._columns_ = columns
-            entity._columns_without_pk_ = columns_without_pk
-            entity._converters_ = converters
-            entity._converters_without_pk_ = converters_without_pk
-        for entity in entities:
-            table = schema.tables[entity._table_]
-            for attr in entity._new_attrs_:
-                if attr.is_collection:
-                    reverse = attr.reverse
-                    if not reverse.is_collection: continue
-                    if not isinstance(attr, Set): raise NotImplementedError
-                    if not isinstance(reverse, Set): raise NotImplementedError
-                    m2m_table = schema.tables[attr.table]
-                    parent_columns = get_columns(table, entity._pk_columns_)
-                    child_columns = get_columns(m2m_table, reverse.columns)
-                    m2m_table.add_foreign_key(None, child_columns, table, parent_columns)
-                elif attr.reverse and attr.columns:
-                    rentity = attr.reverse.entity
-                    parent_table = schema.tables[rentity._table_]
-                    parent_columns = get_columns(parent_table, rentity._pk_columns_)
-                    child_columns = get_columns(table, attr.columns)
-                    table.add_foreign_key(None, child_columns, parent_table, parent_columns)
-
-        database.rollback()   
-        if create_tables: schema.create_tables()
-
-        if not check_tables and not create_tables: return
-        for table in schema.tables.values():
-            if isinstance(table.name, tuple): alias = table.name[-1]
-            elif isinstance(table.name, basestring): alias = table.name
-            else: assert False
-            sql_ast = [ SELECT,
-                        [ ALL, ] + [ [ COLUMN, alias, column.name ] for column in table.column_list ],
-                        [ FROM, [ alias, TABLE, table.name ] ],
-                        [ WHERE, [ EQ, [ VALUE, 0 ], [ VALUE, 1 ] ] ]
-                      ]
-            sql, adapter = database._ast2sql(sql_ast)
-            database._exec_sql(sql)
 
 class Cache(object):
     def __init__(cache, database, connection):
@@ -2858,6 +2856,7 @@ class Query(object):
         query._tree = tree
         query._external_names = external_names
 
+        query._databases = databases = {}
         query._entities = entities = {}
         query._variables = variables = {}
         query._vartypes = vartypes = {}
@@ -2875,7 +2874,7 @@ class Query(object):
 
         if isinstance(origin, EntityIter): origin = origin.entity
         elif not isinstance(origin, EntityMeta): raise TypeError, origin
-        database = origin._diagram_.database
+        database = origin._database_
         if database is None: raise TranslationError('Entity %s is not mapped to a database' % origin.__name__)
         
         provider = database.provider
@@ -2897,20 +2896,21 @@ class Query(object):
                 entities[name] = value
             elif isinstance(value, EntityIter):
                 entities[name] = value.entity
+            elif isinstance(value, Database):
+                databases[name] = value
             else:
                 variables[name] = value
                 vartypes[name] = translator_cls.get_normalized_type_of(value)
 
         query._result = None
-        key = id(code), tuple(sorted(entities.iteritems())), \
-                        tuple(sorted(vartypes.iteritems())), \
-                        tuple(sorted(functions.iteritems()))
+        key = id(code), tuple(sorted(databases.iteritems())), tuple(sorted(entities.iteritems())), \
+                        tuple(sorted(vartypes.iteritems())), tuple(sorted(functions.iteritems()))
         query._python_ast_key = key
 
         query._database = database
         translator = python_ast_cache.get(key)
         if translator is None:
-            translator = translator_cls(tree, entities, vartypes, functions)
+            translator = translator_cls(tree, databases, entities, vartypes, functions)
             python_ast_cache[key] = translator
         query._translator = translator
         query._order = tuple((attr, True) for attr in translator.entity._pk_attrs_)

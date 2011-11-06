@@ -1,15 +1,16 @@
 import unittest
 from pony.orm import *
 
-class Group(Entity):
+db = Database('sqlite', ':memory:')
+
+class Group(db.Entity):
     number = PrimaryKey(int)
     subjects = Set("Subject")
 
-class Subject(Entity):
+class Subject(db.Entity):
     name = PrimaryKey(str)
     groups = Set(Group)
 
-db = Database('sqlite', ':memory:')
 db.generate_mapping(create_tables=True)
 
 @with_transaction

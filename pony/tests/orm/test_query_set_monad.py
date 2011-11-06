@@ -2,16 +2,17 @@ import unittest
 from pony.orm import *
 from testutils import *
 
-class Student(Entity):
+db = Database('sqlite', ':memory:')
+
+class Student(db.Entity):
     name = Required(unicode)
     group = Required('Group')
     scholarship = Required(int, default=0)
 
-class Group(Entity):
+class Group(db.Entity):
     id = PrimaryKey(int)
     students = Set(Student)
 
-db = Database('sqlite', ':memory:')
 db.generate_mapping(create_tables=True)
 
 @with_transaction

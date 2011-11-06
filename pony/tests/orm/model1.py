@@ -1,6 +1,8 @@
 from pony.orm import *
 
-class Student(Entity):
+db = Database('sqlite', ':memory:')
+
+class Student(db.Entity):
     _table_ = "Students"
     record = PrimaryKey(int)
     name = Required(unicode, column="fio")
@@ -8,27 +10,26 @@ class Student(Entity):
     scholarship = Required(int, default=0)
     marks = Set("Mark")
 
-class Group(Entity):
+class Group(db.Entity):
     _table_ = "Groups"
     number = PrimaryKey(str)
     department = Required(int)
     students = Set("Student")
     subjects = Set("Subject")
 
-class Subject(Entity):
+class Subject(db.Entity):
     _table_ = "Subjects"
     name = PrimaryKey(unicode)
     groups = Set("Group")
     marks = Set("Mark")
 
-class Mark(Entity):
+class Mark(db.Entity):
     _table_ = "Exams"
     student = Required(Student, column="student")
     subject = Required(Subject, column="subject")
     value = Required(int)
     PrimaryKey(student, subject)
 
-db = Database('sqlite', ':memory:')
 
 db.generate_mapping(create_tables=True)
 

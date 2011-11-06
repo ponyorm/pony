@@ -4,24 +4,24 @@ from testutils import *
 
 db = Database('sqlite', ':memory:')
 
-class Student(Entity):
+class Student(db.Entity):
     name = Required(unicode)
     scholarship = Optional(int)
     group = Required("Group")
     marks = Set("Mark")
 
-class Group(Entity):
+class Group(db.Entity):
     number = PrimaryKey(int)
     department = Required(int)
     students = Set(Student)
     subjects = Set("Subject")
 
-class Subject(Entity):
+class Subject(db.Entity):
     name = PrimaryKey(unicode)
     groups = Set(Group)
     marks = Set("Mark")
 
-class Mark(Entity):
+class Mark(db.Entity):
     value = Required(int)
     student = Required(Student)
     subject = Required(Subject)

@@ -4,7 +4,9 @@ from testutils import *
 from datetime import date, datetime
 from decimal import Decimal
 
-class Student(Entity):
+db = Database('sqlite', ':memory:')
+
+class Student(db.Entity):
     id = PrimaryKey(int)
     name = Required(unicode)
     dob = Required(date)
@@ -13,11 +15,11 @@ class Student(Entity):
     phd = Required(bool)
     group = Required('Group')
 
-class Group(Entity):
+class Group(db.Entity):
     number = PrimaryKey(int)
     students = Set(Student)
 
-db = Database('sqlite', ':memory:')
+
 db.generate_mapping(create_tables=True)
 
 @with_transaction

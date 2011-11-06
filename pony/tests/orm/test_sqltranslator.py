@@ -2,33 +2,34 @@ import unittest
 from pony.orm import *
 from testutils import *
 
-class Student(Entity):
+db = Database('sqlite', ':memory:')
+
+class Student(db.Entity):
     name = Required(unicode)
     group = Required('Group')
     scholarship = Required(int, default=0)
     grades = Set('Grade')
 
-class Group(Entity):
+class Group(db.Entity):
     id = PrimaryKey(int)
     students = Set(Student)
     dep = Required(unicode)
     rooms = Set('Room')
 
-class Course(Entity):
+class Course(db.Entity):
     name = Required(unicode)
     grades = Set('Grade')
 
-class Grade(Entity):
+class Grade(db.Entity):
     student = Required(Student)
     course = Required(Course)
     PrimaryKey(student, course)
     value = Required(str)
 
-class Room(Entity):
+class Room(db.Entity):
     name = PrimaryKey(unicode)
     groups = Set(Group)
 
-db = Database('sqlite', ':memory:')
 db.generate_mapping(create_tables=True)
 
 @with_transaction
@@ -51,13 +52,12 @@ def populate_db():
     g2.rooms = [ r2, r3 ]
 populate_db()
 
+db2 = Database('sqlite', ':memory:')
 
-_diagram_ = Diagram()
-
-class Room2(Entity):
+class Room2(db2.Entity):
     name = PrimaryKey(unicode)
 
-db2 = Database('sqlite', ':memory:')
+
 db2.generate_mapping(create_tables=True)
 
 name1 = 'S1'
@@ -136,7 +136,7 @@ class TestSQLTranslator(unittest.TestCase):
     def test_chain_m2m(self):
         result = set(select(g for g in Group for r in g.rooms if r.name == 'Room2'))
         self.assertEquals(result, set([Group[1], Group[2]]))
-    @raises_exception(TranslationError, 'All entities in a query must belong to the same diagram')
+    @raises_exception(TranslationError, 'All entities in a query must belong to the same database')
     def test_two_diagrams(self):
         select(g for g in Group for r in Room2 if r.name == 'Room2').all()
     def test_add_sub_mul_etc(self):

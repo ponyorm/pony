@@ -5,8 +5,8 @@ from testutils import *
 class TestKeys(unittest.TestCase):
 
     def test_keys1(self):
-        _diagram_ = Diagram()
-        class Entity1(Entity):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
             a = PrimaryKey(int)
             b = Required(str)
         self.assertEqual(Entity1._pk_attrs_, (Entity1.a,))
@@ -17,8 +17,8 @@ class TestKeys(unittest.TestCase):
         self.assertEqual(Entity1._composite_keys_, [])
         
     def test_keys2(self):
-        _diagram_ = Diagram()
-        class Entity1(Entity):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
             a = Required(int)
             b = Required(str)
             PrimaryKey(a, b)
@@ -31,23 +31,23 @@ class TestKeys(unittest.TestCase):
 
     @raises_exception(ERDiagramError, 'Only one primary key can be defined in each entity class')
     def test_keys3(self):
-        _diagram_ = Diagram()
-        class Entity1(Entity):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
             a = PrimaryKey(int)
             b = PrimaryKey(int)
 
     @raises_exception(ERDiagramError, 'Only one primary key can be defined in each entity class')
     def test_keys4(self):
-        _diagram_ = Diagram()
-        class Entity1(Entity):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
             a = PrimaryKey(int)
             b = Required(int)
             c = Required(int)
             PrimaryKey(b, c)
 
     def test_unique1(self):
-        _diagram_ = Diagram()
-        class Entity1(Entity):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
             a = PrimaryKey(int)
             b = Unique(int)
         self.assertEqual(Entity1._keys_, [(Entity1.b,)])
@@ -55,8 +55,8 @@ class TestKeys(unittest.TestCase):
         self.assertEqual(Entity1._composite_keys_, [])
 
     def test_unique2(self):
-        _diagram_ = Diagram()
-        class Entity1(Entity):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
             a = PrimaryKey(int)
             b = Optional(int)
             Unique(b)
@@ -65,8 +65,8 @@ class TestKeys(unittest.TestCase):
         self.assertEqual(Entity1._composite_keys_, [])
 
     def test_unique2_1(self):
-        _diagram_ = Diagram()
-        class Entity1(Entity):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
             a = PrimaryKey(int)
             b = Optional(int)
             c = Required(int)
@@ -77,52 +77,52 @@ class TestKeys(unittest.TestCase):
 
     @raises_exception(TypeError, 'Invalid count of positional arguments')
     def test_unique3(self):
-        _diagram_ = Diagram()
-        class Entity1(Entity):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
             a = PrimaryKey(int)
             b = Unique()
 
     @raises_exception(TypeError, 'Incorrect type of attribute: 123')
     def test_unique4(self):
-        _diagram_ = Diagram()
-        class Entity1(Entity):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
             a = PrimaryKey(int)
             b = Unique(123)
 
     @raises_exception(TypeError, 'Invalid arguments')
     def test_unique5(self):
-        _diagram_ = Diagram()
-        class Entity1(Entity):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
             a = PrimaryKey(int)
             b = Unique(int, a)
 
     @raises_exception(TypeError, 'Invalid arguments')
     def test_unique6(self):
-        _diagram_ = Diagram()
-        class Entity1(Entity):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
             a = PrimaryKey(int)
             b = Unique(a, column='x')
 
     @raises_exception(TypeError, 'Set attribute cannot be part of unique index')
     def test_unique7(self):
-        _diagram_ = Diagram()
-        class Entity1(Entity):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
             a = PrimaryKey(int)
             b = Set('Entity2')
             Unique(b)
 
     @raises_exception(TypeError, 'Optional attribute cannot be part of primary key')
     def test_unique8(self):
-        _diagram_ = Diagram()
-        class Entity1(Entity):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
             a = Required(int)
             b = Optional(int)
             PrimaryKey(a, b)
 
     @raises_exception(TypeError, 'Invalid declaration')
     def test_unique9(self):
-        _diagram_ = Diagram()
-        class Entity1(Entity):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
             a = PrimaryKey(int)
             b = Required(int)
             Unique(b)

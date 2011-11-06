@@ -3,19 +3,24 @@ from datetime import date
 
 from pony.orm import *
 
-class Department(Entity):
-    number = PrimaryKey(int)
+db = Database('sqlite', 'presentation.sqlite', create_db=True)
+#db = Database('mysql', host="localhost", user="root", passwd="root", db="presentation")
+#db = Database('postgres', user='pony', password='magic', host='localhost', database='presentation')
+#db = Database('oracle', 'presentation/pony@localhost')
+
+class Department(db.Entity):
+    number = PrimaryKey(int, auto=True)
     name = Unique(unicode)
     groups = Set("Group")
     courses = Set("Course")
 
-class Group(Entity):
+class Group(db.Entity):
     number = PrimaryKey(int)
     major = Required(unicode)
     dept = Required("Department")
     students = Set("Student")
 
-class Course(Entity):
+class Course(db.Entity):
     name = Required(unicode)
     semester = Required(int)
     lect_hours = Required(int)
@@ -25,7 +30,7 @@ class Course(Entity):
     students = Set("Student")
     PrimaryKey(name, semester)
     
-class Student(Entity):
+class Student(db.Entity):
     # _table_ = "public", "Students"  # Schema support
     id = PrimaryKey(int, auto=True)
     name = Required(unicode)
@@ -35,10 +40,6 @@ class Student(Entity):
     group = Required(Group)
     courses = Set(Course)
 
-#db = Database('sqlite', 'presentation.sqlite', create_db=True)
-#db = Database('mysql', host="localhost", user="root", passwd="root", db="university")
-db = Database('postgres', user='pony', password='magic', host='localhost', database='presentation')    
-
 sql_debug(True)  # Output all SQL queries to stdout
 
 db.generate_mapping(create_tables=True)
@@ -47,9 +48,9 @@ def populate_database():
     if select.count(s for s in Student) > 0:
         return
     
-    d1 = Department(number=1, name="Department of Computer Science")
-    d2 = Department(number=2, name="Department of Mathematical Sciences")
-    d3 = Department(number=3, name="Department of Applied Physics")
+    d1 = Department(name="Department of Computer Science")
+    d2 = Department(name="Department of Mathematical Sciences")
+    d3 = Department(name="Department of Applied Physics")
 
     c1 = Course(name="Web Design", semester=1, dept=d1,
                        lect_hours=30, lab_hours=30, credits=3)
@@ -165,6 +166,6 @@ def test_queries():
     print_students(students)
 
 
-if __name__ == '__main__':
-    populate_database()
-    test_queries()
+##if __name__ == '__main__':
+##    populate_database()
+##    test_queries()
