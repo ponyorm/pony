@@ -7,7 +7,7 @@ class TestDiag(unittest.TestCase):
     def setUp(self):
         self.db = Database('sqlite', ':memory:')
 
-    @raises_exception(DiagramError, 'Entity Entity1 already exists')
+    @raises_exception(ERDiagramError, 'Entity Entity1 already exists')
     def test_entity_duplicate(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
@@ -15,7 +15,7 @@ class TestDiag(unittest.TestCase):
         class Entity1(Entity):
             id = PrimaryKey(int)
 
-    @raises_exception(DiagramError, 'Interrelated entities must belong to same diagram.'
+    @raises_exception(ERDiagramError, 'Interrelated entities must belong to same diagram.'
                                     ' Entities Entity2 and Entity1 belongs to different diagrams')
     def test_diagram1(self):
         _diagram_ = Diagram()
@@ -27,7 +27,7 @@ class TestDiag(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
 
-    @raises_exception(DiagramError, 'Entity definition Entity2 was not found')
+    @raises_exception(ERDiagramError, 'Entity definition Entity2 was not found')
     def test_diagram2(self):
         _diagram_ = Diagram()
         class Entity1(Entity):

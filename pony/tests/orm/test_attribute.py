@@ -73,14 +73,14 @@ class TestAttribute(unittest.TestCase):
             id = PrimaryKey(int)
             attr1 = Attribute(str)
 
-    @raises_exception(DiagramError, "Attribute name cannot both starts and ends with underscore. Got: _attr1_")
+    @raises_exception(ERDiagramError, "Attribute name cannot both starts and ends with underscore. Got: _attr1_")
     def test_attribute9(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
             id = PrimaryKey(int)
             _attr1_ = Required(str)
 
-    @raises_exception(DiagramError, "Duplicate use of attribute Entity1.attr1 in entity Entity2")
+    @raises_exception(ERDiagramError, "Duplicate use of attribute Entity1.attr1 in entity Entity2")
     def test_attribute10(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
@@ -90,7 +90,7 @@ class TestAttribute(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Entity1.attr1
 
-    @raises_exception(DiagramError, "Invalid use of attribute Entity1.attr1 in entity Entity2")
+    @raises_exception(ERDiagramError, "Invalid use of attribute Entity1.attr1 in entity Entity2")
     def test_attribute11(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
@@ -100,13 +100,13 @@ class TestAttribute(unittest.TestCase):
             id = PrimaryKey(int)
             Unique(Entity1.attr1)
 
-    @raises_exception(DiagramError, "Cannot create primary key for Entity1 automatically because name 'id' is alredy in use")
+    @raises_exception(ERDiagramError, "Cannot create primary key for Entity1 automatically because name 'id' is alredy in use")
     def test_attribute12(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
             id = Optional(str)
 
-    @raises_exception(DiagramError, "Reverse attribute for Entity1.attr1 was not found")
+    @raises_exception(ERDiagramError, "Reverse attribute for Entity1.attr1 was not found")
     def test_attribute13(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
@@ -115,7 +115,7 @@ class TestAttribute(unittest.TestCase):
         class Entity2(Entity):
             id = PrimaryKey(int)
 
-    @raises_exception(DiagramError, "Reverse attribute Entity1.attr1 not found")
+    @raises_exception(ERDiagramError, "Reverse attribute Entity1.attr1 not found")
     def test_attribute14(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
@@ -124,7 +124,7 @@ class TestAttribute(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Required(Entity1, reverse='attr1')
 
-    @raises_exception(DiagramError, "Inconsistent reverse attributes Entity3.attr3 and Entity2.attr2")
+    @raises_exception(ERDiagramError, "Inconsistent reverse attributes Entity3.attr3 and Entity2.attr2")
     def test_attribute15(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
@@ -137,7 +137,7 @@ class TestAttribute(unittest.TestCase):
             id = PrimaryKey(int)
             attr3 = Required(Entity2, reverse='attr2')
 
-    @raises_exception(DiagramError, "Inconsistent reverse attributes Entity3.attr3 and Entity2.attr2")
+    @raises_exception(ERDiagramError, "Inconsistent reverse attributes Entity3.attr3 and Entity2.attr2")
     def test_attribute16(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
@@ -161,7 +161,7 @@ class TestAttribute(unittest.TestCase):
 ##        class Student(Person):
 ##            record = Required(str)
 
-    @raises_exception(DiagramError, 'Reverse attribute for Entity2.attr2 not found')
+    @raises_exception(ERDiagramError, 'Reverse attribute for Entity2.attr2 not found')
     def test_attribute18(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
@@ -170,7 +170,7 @@ class TestAttribute(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Required('Entity1')            
 
-    @raises_exception(DiagramError, 'Ambiguous reverse attribute for Entity2.c')
+    @raises_exception(ERDiagramError, 'Ambiguous reverse attribute for Entity2.c')
     def test_attribute19(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
@@ -182,7 +182,7 @@ class TestAttribute(unittest.TestCase):
             c = Set(Entity1)
             d = Set(Entity1)
 
-    @raises_exception(DiagramError, 'Ambiguous reverse attribute for Entity2.c')
+    @raises_exception(ERDiagramError, 'Ambiguous reverse attribute for Entity2.c')
     def test_attribute20(self):
         _diagram_ = Diagram()
         class Entity1(Entity):

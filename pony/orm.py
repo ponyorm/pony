@@ -27,7 +27,7 @@ __all__ = '''
     Warning Error InterfaceError DatabaseError DataError OperationalError
     IntegrityError InternalError ProgrammingError NotSupportedError
 
-    OrmError DiagramError SchemaError MappingError ConstraintError CacheIndexError ObjectNotFound
+    OrmError ERDiagramError SchemaError MappingError ConstraintError CacheIndexError ObjectNotFound
     MultipleObjectsFoundError TooManyObjectsFoundError OperationWithDeletedObjectError
     TransactionError TransactionIntegrityError IsolationError CommitException RollbackException
     UnrepeatableReadError UnresolvableCyclicDependency UnexpectedError
@@ -52,7 +52,7 @@ def sql_debug(value):
 
 class OrmError(Exception): pass
 
-class DiagramError(OrmError): pass
+class ERDiagramError(OrmError): pass
 class SchemaError(OrmError): pass
 class MappingError(OrmError): pass
 class ConstraintError(OrmError): pass
@@ -1306,7 +1306,7 @@ class EntityMeta(type):
             outer_dict['_diagram_'] = diagram
 
         if entity.__name__ in diagram.entities:
-            raise DiagramError('Entity %s already exists' % entity.__name__)
+            raise ERDiagramError('Entity %s already exists' % entity.__name__)
         entity._id_ = next_entity_id()
         direct_bases = [ c for c in entity.__bases__ if issubclass(c, Entity) and c is not Entity ]
         entity._direct_bases_ = direct_bases
@@ -1314,11 +1314,11 @@ class EntityMeta(type):
         for base in direct_bases: entity._all_bases_.update(base._all_bases_)
         if direct_bases:
             roots = set(base._root_ for base in direct_bases)
-            if len(roots) > 1: raise DiagramError(
+            if len(roots) > 1: raise ERDiagramError(
                 'With multiple inheritance of entities, inheritance graph must be diamond-like')
             entity._root_ = roots.pop()
             for base in direct_bases:
-                if base._diagram_ is not diagram: raise DiagramError(
+                if base._diagram_ is not diagram: raise ERDiagramError(
                     'When use inheritance, base and derived entities must belong to same diagram')
         else: entity._root_ = entity
 
@@ -1326,17 +1326,17 @@ class EntityMeta(type):
         base_attrs_dict = {}
         for base in direct_bases:
             for a in base._attrs_:
-                if base_attrs_dict.setdefault(a.name, a) is not a: raise DiagramError('Ambiguous attribute name %s' % a.name)
+                if base_attrs_dict.setdefault(a.name, a) is not a: raise ERDiagramError('Ambiguous attribute name %s' % a.name)
                 base_attrs.append(a)
         entity._base_attrs_ = base_attrs
 
         new_attrs = []
         for name, attr in entity.__dict__.items():
-            if name in base_attrs_dict: raise DiagramError("Name '%s' hides base attribute %s" % (name,base_attrs_dict[name]))
+            if name in base_attrs_dict: raise ERDiagramError("Name '%s' hides base attribute %s" % (name,base_attrs_dict[name]))
             if not isinstance(attr, Attribute): continue
-            if name.startswith('_') and name.endswith('_'): raise DiagramError(
+            if name.startswith('_') and name.endswith('_'): raise ERDiagramError(
                 'Attribute name cannot both starts and ends with underscore. Got: %s' % name)
-            if attr.entity is not None: raise DiagramError(
+            if attr.entity is not None: raise ERDiagramError(
                 'Duplicate use of attribute %s in entity %s' % (attr, entity.__name__))
             attr._init_(entity, name)
             new_attrs.append(attr)
@@ -1346,19 +1346,19 @@ class EntityMeta(type):
         for key in keys:
             for attr in key:
                 assert isinstance(attr, Attribute) and not attr.is_collection
-                if attr.entity is not entity: raise DiagramError(
+                if attr.entity is not entity: raise ERDiagramError(
                     'Invalid use of attribute %s in entity %s' % (attr, entity.__name__))
         primary_keys = set(key for key, is_pk in keys.items() if is_pk)
         if direct_bases:
-            if primary_keys: raise DiagramError('Primary key cannot be redefined in derived classes')
+            if primary_keys: raise ERDiagramError('Primary key cannot be redefined in derived classes')
             for base in direct_bases:
                 keys[base._pk_attrs_] = True
                 for key in base._keys_: keys[key] = False
             primary_keys = set(key for key, is_pk in keys.items() if is_pk)
 
-        if len(primary_keys) > 1: raise DiagramError('Only one primary key can be defined in each entity class')
+        if len(primary_keys) > 1: raise ERDiagramError('Only one primary key can be defined in each entity class')
         elif not primary_keys:
-            if hasattr(entity, 'id'): raise DiagramError(
+            if hasattr(entity, 'id'): raise ERDiagramError(
                 "Cannot create primary key for %s automatically because name 'id' is alredy in use" % entity.__name__)
             _keys_ = {}
             attr = PrimaryKey(int, auto=True) # Side effect: modifies _keys_ local variable
@@ -1433,17 +1433,17 @@ class EntityMeta(type):
             
             entity2 = py_type
             if entity2._diagram_ is not diagram:
-                raise DiagramError('Interrelated entities must belong to same diagram. '
+                raise ERDiagramError('Interrelated entities must belong to same diagram. '
                                    'Entities %s and %s belongs to different diagrams'
                                    % (entity.__name__, entity2.__name__))
             reverse = attr.reverse
             if isinstance(reverse, basestring):
                 attr2 = getattr(entity2, reverse, None)
-                if attr2 is None: raise DiagramError('Reverse attribute %s.%s not found' % (entity2.__name__, reverse))
+                if attr2 is None: raise ERDiagramError('Reverse attribute %s.%s not found' % (entity2.__name__, reverse))
             elif isinstance(reverse, Attribute):
                 attr2 = reverse
-                if attr2.entity is not entity2: raise DiagramError('Incorrect reverse attribute %s used in %s' % (attr2, attr)) ###
-            elif reverse is not None: raise DiagramError("Value of 'reverse' option must be string. Got: %r" % type(reverse))
+                if attr2.entity is not entity2: raise ERDiagramError('Incorrect reverse attribute %s used in %s' % (attr2, attr)) ###
+            elif reverse is not None: raise ERDiagramError("Value of 'reverse' option must be string. Got: %r" % type(reverse))
             else:
                 candidates1 = []
                 candidates2 = []
@@ -1453,29 +1453,29 @@ class EntityMeta(type):
                     if reverse2 in (attr, attr.name): candidates1.append(attr2)
                     elif not reverse2: candidates2.append(attr2)
                 msg = 'Ambiguous reverse attribute for %s'
-                if len(candidates1) > 1: raise DiagramError(msg % attr)
+                if len(candidates1) > 1: raise ERDiagramError(msg % attr)
                 elif len(candidates1) == 1: attr2 = candidates1[0]
-                elif len(candidates2) > 1: raise DiagramError(msg % attr)
+                elif len(candidates2) > 1: raise ERDiagramError(msg % attr)
                 elif len(candidates2) == 1: attr2 = candidates2[0]
-                else: raise DiagramError('Reverse attribute for %s not found' % attr)
+                else: raise ERDiagramError('Reverse attribute for %s not found' % attr)
 
             type2 = attr2.py_type
             msg = 'Inconsistent reverse attributes %s and %s'
             if isinstance(type2, basestring):
-                if type2 != entity.__name__: raise DiagramError(msg % (attr, attr2))
+                if type2 != entity.__name__: raise ERDiagramError(msg % (attr, attr2))
                 attr2.py_type = entity
-            elif type2 != entity: raise DiagramError(msg % (attr, attr2))
+            elif type2 != entity: raise ERDiagramError(msg % (attr, attr2))
             reverse2 = attr2.reverse
-            if reverse2 not in (None, attr, attr.name): raise DiagramError(msg % (attr,attr2))
+            if reverse2 not in (None, attr, attr.name): raise ERDiagramError(msg % (attr,attr2))
 
-            if attr.is_required and attr2.is_required: raise DiagramError(
+            if attr.is_required and attr2.is_required: raise ERDiagramError(
                 "At least one attribute of one-to-one relationship %s - %s must be optional" % (attr, attr2))
 
             attr.reverse = attr2
             attr2.reverse = attr
             unmapped_attrs.discard(attr2)          
         for attr in unmapped_attrs:
-            raise DiagramError('Reverse attribute for %s.%s was not found' % (attr.entity.__name__, attr.name))        
+            raise ERDiagramError('Reverse attribute for %s.%s was not found' % (attr.entity.__name__, attr.name))        
     def _get_pk_columns_(entity):
         if entity._pk_columns_ is not None: return entity._pk_columns_
         pk_columns = []
@@ -2442,7 +2442,7 @@ class Diagram(object):
         if diagram.schema: raise MappingError('Mapping was already generated')
         if filename is not None: raise NotImplementedError
         for entity_name in diagram.unmapped_attrs:
-            raise DiagramError('Entity definition %s was not found' % entity_name)
+            raise ERDiagramError('Entity definition %s was not found' % entity_name)
 
         schema = diagram.schema = database.provider.dbschema_cls(database.provider)
         foreign_keys = []

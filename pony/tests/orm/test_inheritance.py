@@ -15,7 +15,7 @@ class TestInheritance(unittest.TestCase):
         class Entity4(Entity2, Entity3):
             c = Required(int)
 
-    @raises_exception(DiagramError, 'With multiple inheritance of entities, inheritance graph must be diamond-like')
+    @raises_exception(ERDiagramError, 'With multiple inheritance of entities, inheritance graph must be diamond-like')
     def test_inheritance2(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
@@ -25,7 +25,7 @@ class TestInheritance(unittest.TestCase):
         class Entity3(Entity1, Entity2):
             c = Required(int)
 
-    @raises_exception(DiagramError, 'When use inheritance, base and derived entities must belong to same diagram')
+    @raises_exception(ERDiagramError, 'When use inheritance, base and derived entities must belong to same diagram')
     def test_inheritance3(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
@@ -34,7 +34,7 @@ class TestInheritance(unittest.TestCase):
         class Entity2(Entity1):
             a = Required(int)
 
-    @raises_exception(DiagramError, 'Ambiguous attribute name a')
+    @raises_exception(ERDiagramError, 'Ambiguous attribute name a')
     def test_inheritance4(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
@@ -46,7 +46,7 @@ class TestInheritance(unittest.TestCase):
         class Entity4(Entity2, Entity3):
             c = Required(int)
 
-    @raises_exception(DiagramError, "Name 'a' hides base attribute Entity1.a")
+    @raises_exception(ERDiagramError, "Name 'a' hides base attribute Entity1.a")
     def test_inheritance5(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
@@ -55,7 +55,7 @@ class TestInheritance(unittest.TestCase):
         class Entity2(Entity1):
             a = Required(int)            
 
-    @raises_exception(DiagramError, "Primary key cannot be redefined in derived classes")
+    @raises_exception(ERDiagramError, "Primary key cannot be redefined in derived classes")
     def test_inheritance6(self):
         _diagram_ = Diagram()
         class Entity1(Entity):

@@ -121,7 +121,7 @@ class TestColumnsMapping(unittest.TestCase):
         self.assertEqual(_diagram_.schema.tables['Student'].column_list[0].name, 'name1')
 
     # Required-Required raises exception
-    @raises_exception(DiagramError,
+    @raises_exception(ERDiagramError,
         'At least one attribute of one-to-one relationship Entity2.attr2 - Entity1.attr1 must be optional')
     def test_relations1(self):
         _diagram_ = Diagram()

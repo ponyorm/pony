@@ -29,14 +29,14 @@ class TestKeys(unittest.TestCase):
         self.assertEqual(Entity1._simple_keys_, [])
         self.assertEqual(Entity1._composite_keys_, [])
 
-    @raises_exception(DiagramError, 'Only one primary key can be defined in each entity class')
+    @raises_exception(ERDiagramError, 'Only one primary key can be defined in each entity class')
     def test_keys3(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
             a = PrimaryKey(int)
             b = PrimaryKey(int)
 
-    @raises_exception(DiagramError, 'Only one primary key can be defined in each entity class')
+    @raises_exception(ERDiagramError, 'Only one primary key can be defined in each entity class')
     def test_keys4(self):
         _diagram_ = Diagram()
         class Entity1(Entity):
