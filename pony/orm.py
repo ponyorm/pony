@@ -11,6 +11,11 @@ from pony import options
 from pony.decompiling import decompile
 from pony.clobtypes import LongStr, LongUnicode
 from pony.sqlsymbols import *
+from pony.dbapiprovider import (
+    DBException, RowNotFound, MultipleRowsFound, TooManyRowsFound,
+    Warning, Error, InterfaceError, DatabaseError, DataError, OperationalError,
+    IntegrityError, InternalError, ProgrammingError, NotSupportedError
+    )
 from pony.utils import (
     localbase, simple_decorator, decorator_with_params,
     import_module, parse_expr, is_ident, reraise, avg, tostring
@@ -44,59 +49,6 @@ debug = False
 def sql_debug(value):
     global debug
     debug = value
-
-class DBException(Exception):
-    def __init__(exc, *args, **keyargs):
-        exceptions = keyargs.pop('exceptions', [])
-        assert not keyargs
-        if not args and exceptions:
-            if len(exceptions) == 1: args = getattr(exceptions[0], 'args', ())
-            else: args = ('Multiple exceptions have occured',)
-        Exception.__init__(exc, *args)
-        exc.exceptions = exceptions
-
-class RowNotFound(DBException): pass
-class MultipleRowsFound(DBException): pass
-class TooManyRowsFound(DBException): pass
-
-##StandardError
-##        |__Warning
-##        |__Error
-##           |__InterfaceError
-##           |__DatabaseError
-##              |__DataError
-##              |__OperationalError
-##              |__IntegrityError
-##              |__InternalError
-##              |__ProgrammingError
-##              |__NotSupportedError
-
-class Warning(DBException): pass
-class Error(DBException): pass
-class   InterfaceError(Error): pass
-class   DatabaseError(Error): pass
-class     DataError(DatabaseError): pass
-class     OperationalError(DatabaseError): pass
-class     IntegrityError(DatabaseError): pass
-class     InternalError(DatabaseError): pass
-class     ProgrammingError(DatabaseError): pass
-class     NotSupportedError(DatabaseError): pass
-
-def wrap_dbapi_exceptions(provider, func, *args, **keyargs):
-    try: return func(*args, **keyargs)
-    except provider.NotSupportedError, e: raise NotSupportedError(exceptions=[e])
-    except provider.ProgrammingError, e: raise ProgrammingError(exceptions=[e])
-    except provider.InternalError, e: raise InternalError(exceptions=[e])
-    except provider.IntegrityError, e: raise IntegrityError(exceptions=[e])
-    except provider.OperationalError, e: raise OperationalError(exceptions=[e])
-    except provider.DataError, e: raise DataError(exceptions=[e])
-    except provider.DatabaseError, e: raise DatabaseError(exceptions=[e])
-    except provider.InterfaceError, e:
-        if e.args == (0, '') and getattr(provider, '__name__', None) == 'pony.dbproviders.mysql':
-            raise InterfaceError('MySQL server misconfiguration', exceptions=[e])
-        raise InterfaceError(exceptions=[e])
-    except provider.Error, e: raise Error(exceptions=[e])
-    except provider.Warning, e: raise Warning(exceptions=[e])
 
 class OrmError(Exception): pass
 
@@ -223,18 +175,17 @@ local = Local()
 select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class Database(object):
-    def __init__(self, provider, *args, **keyargs):
-        if isinstance(provider, basestring): provider = import_module('pony.dbproviders.' + provider)
-        self.provider = provider
-        self.args = args
-        self.keyargs = keyargs
-        self._pool = provider.get_pool(*args, **keyargs)
+    def __init__(self, provider_name, *args, **keyargs):
+        # First argument cannot be named 'database', because 'database' can be in keyargs
+        if not isinstance(provider_name, basestring): raise TypeError
+        provider_module = import_module('pony.dbproviders.' + provider_name)
+        self.provider = provider = provider_module.get_provider(*args, **keyargs)
         self.priority = 0
         self.optimistic = True
         self._insert_cache = {}
-        # connection test with imediate release:
-        connection = wrap_dbapi_exceptions(self.provider, self._pool.connect)
-        wrap_dbapi_exceptions(provider, self._pool.release, connection)
+        # connection test with immediate release:
+        connection = provider.connect()
+        provider.release(connection)
     def get_connection(database):
         cache = database._get_cache()
         cache.optimistic = False
@@ -242,7 +193,7 @@ class Database(object):
     def _get_cache(database):
         cache = local.db2cache.get(database)
         if cache is not None: return cache
-        connection = wrap_dbapi_exceptions(database.provider, database._pool.connect)
+        connection = database.provider.connect()
         cache = local.db2cache[database] = Cache(database, connection)
         return cache
     def flush(database):
@@ -270,7 +221,7 @@ class Database(object):
         if values is None: values = ()
         cache = database._get_cache()
         cursor = cache.connection.cursor()
-        wrap_dbapi_exceptions(provider, provider.execute, cursor, adapted_sql, values)
+        provider.execute(cursor, adapted_sql, values)
         return cursor
     def select(database, sql, globals=None, locals=None, frame_depth=0):
         if not select_re.match(sql): sql = 'select ' + sql
@@ -321,8 +272,7 @@ class Database(object):
         else:
             return cursor.fetchone()[0]
     def _ast2sql(database, sql_ast):
-        cache = database._get_cache()
-        sql, adapter = database.provider.ast2sql(cache.connection, sql_ast)
+        sql, adapter = database.provider.ast2sql(sql_ast)
         return sql, adapter
     def _exec_sql(database, sql, arguments=()):
         cache = database._get_cache()
@@ -331,8 +281,7 @@ class Database(object):
             print sql
             if arguments: print args2str(arguments)
             print
-        provider = database.provider
-        wrap_dbapi_exceptions(provider, provider.execute, cursor, sql, arguments)
+        database.provider.execute(cursor, sql, arguments)
         return cursor
     def _exec_sql_returning_id(database, sql, arguments, returning_py_type):
         cache = database._get_cache()
@@ -341,9 +290,7 @@ class Database(object):
             print sql
             if arguments: print args2str(arguments)
             print
-        provider = database.provider
-        new_id = wrap_dbapi_exceptions(provider, provider.execute_sql_returning_id,
-                                       cursor, sql, arguments, returning_py_type)
+        new_id = database.provider.execute_returning_id(cursor, sql, arguments, returning_py_type)
         return new_id
     def _exec_sql_many(database, sql, arguments_list=()):
         cache = database._get_cache()
@@ -353,8 +300,7 @@ class Database(object):
             print 'EXECUTEMANY\n', sql
             for args in arguments_list: print args2str(args)
             print
-        provider = database.provider
-        wrap_dbapi_exceptions(provider, provider.executemany, cursor, sql, arguments_list)
+        database.provider.executemany(cursor, sql, arguments_list)
         return cursor
     def generate_mapping(database, *args, **keyargs):
         outer_dict = sys._getframe(1).f_locals
@@ -609,7 +555,12 @@ class Attribute(object):
         get_curr = obj._curr_.get
         prev = attr.check(prev, obj, from_db=True)
         old_prev = obj._prev_.get(attr.name, NOT_LOADED)
-        if old_prev == prev: return
+
+        if attr.py_type is float:
+            if old_prev is NOT_LOADED: pass
+            elif attr.converters[0].equals(old_prev, prev): return
+        elif old_prev == prev: return
+
         bit = obj._bits_[attr]
         if obj._rbits_ & bit:
             assert old_prev is not NOT_LOADED
@@ -860,7 +811,7 @@ class Set(Collection):
         counter = cache.collection_statistics.setdefault(attr, 0)
         if counter:
             pk_index = cache.indexes.get(entity._pk_)
-            max_batch_size = database.provider.MAX_PARAMS_COUNT // len(entity._pk_columns_)
+            max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
             for obj2 in pk_index.itervalues():
                 if obj2 is obj: continue
                 if obj2._status_ in ('created', 'deleted', 'cancelled'): continue
@@ -944,7 +895,7 @@ class Set(Collection):
             converter = rconverters[0]
             criteria_list = [ IN, [ COLUMN, None, rcolumns[0] ],
                                   [ [ PARAM, (i, 0), converter ] for i in xrange(batch_size) ] ]
-        elif database.provider.ROW_VALUE_SYNTAX:
+        elif database.provider.row_value_syntax:
             criteria_list = [ IN, [ ROW ] + [ [ COLUMN, None, column ] for column in rcolumns ],
                                   [ [ ROW ] + [ [ PARAM, (i, j), converter ] for j, converter in enumerate(rconverters) ]
                                     for i in xrange(batch_size) ] ]
@@ -1729,7 +1680,7 @@ class EntityMeta(type):
             converter = converters[0]
             criteria_list = [ IN, [ COLUMN, None, columns[0] ],
                                    [ [ PARAM, (i, 0), converter ] for i in xrange(batch_size) ] ] 
-        elif entity._diagram_.database.provider.ROW_VALUE_SYNTAX:
+        elif entity._diagram_.database.provider.row_value_syntax:
             criteria_list = [ IN, [ ROW ] + [ [ COLUMN, None, column ] for column in columns ],
                                    [ [ ROW ] + [ [ PARAM, (i, j), converter ] for j, converter in enumerate(converters) ]
                                      for i in xrange(batch_size) ] ]
@@ -2012,7 +1963,7 @@ class Entity(object):
         entity = obj.__class__
         database = entity._diagram_.database
         seeds = cache.seeds[entity._pk_]
-        max_batch_size = database.provider.MAX_PARAMS_COUNT // len(entity._pk_columns_)
+        max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
         objects = [ obj ]
         for seed in seeds:
             if len(objects) >= max_batch_size: break
@@ -2036,9 +1987,16 @@ class Entity(object):
         for attr, prev in avdict.items():
             assert attr.pk_offset is None
             old_prev = get_prev(attr.name, NOT_LOADED)
-            if old_prev == prev:
+
+            if attr.py_type is float:
+                if old_prev is NOT_LOADED: pass
+                elif attr.converters[0].equals(old_prev, prev):
+                    del avdict[attr]
+                    continue
+            elif old_prev == prev:
                 del avdict[attr]
                 continue
+            
             bit = obj._bits_[attr]
             if rbits & bit: raise UnrepeatableReadError(
                 'Value of %s.%s for %s was updated outside of current transaction (was: %r, now: %r)'
@@ -2476,7 +2434,7 @@ class Diagram(object):
         for entity_name in diagram.unmapped_attrs:
             raise DiagramError('Entity definition %s was not found' % entity_name)
 
-        schema = diagram.schema = database.provider.create_schema(database)
+        schema = diagram.schema = database.provider.dbschema_cls(database.provider)
         foreign_keys = []
         entities = list(sorted(diagram.entities.values(), key=attrgetter('_id_')))
         for entity in entities:
@@ -2576,8 +2534,9 @@ class Diagram(object):
                     child_columns = get_columns(table, attr.columns)
                     table.add_foreign_key(None, child_columns, parent_table, parent_columns)
 
-        if create_tables: schema.create_tables(database)
-            
+        database.rollback()   
+        if create_tables: schema.create_tables()
+
         if not check_tables and not create_tables: return
         for table in schema.tables.values():
             if isinstance(table.name, tuple): alias = table.name[-1]
@@ -2618,19 +2577,19 @@ class Cache(object):
         try:
             if cache.optimistic:
                 if debug: print 'OPTIMISTIC ROLLBACK\n'
-                wrap_dbapi_exceptions(provider, connection.rollback)
+                provider.rollback(connection)
         except:
             cache.is_alive = False
             cache.connection = None
             x = local.db2cache.pop(database); assert x is cache
-            wrap_dbapi_exceptions(provider, database._pool.close, connection)
+            provider.drop(connection)
             raise
         save_is_needed = cache.has_anything_to_save()
         try:
             if save_is_needed: cache.save()
             if save_is_needed or not cache.optimistic:
                 if debug: print 'COMMIT\n'
-                wrap_dbapi_exceptions(provider, connection.commit)
+                provider.commit(connection)
         except:
             cache.rollback()
             raise
@@ -2644,17 +2603,17 @@ class Cache(object):
         cache.connection = None
         try:
             if debug: print 'ROLLBACK\n'
-            wrap_dbapi_exceptions(provider, connection.rollback)
+            provider.rollback(connection)
             if not close_connection:
                 if debug: print 'RELEASE_CONNECTION\n'
-                wrap_dbapi_exceptions(provider, database._pool.release, connection)
+                provider.release(connection)
         except:
             if debug: print 'CLOSE_CONNECTION\n'
-            wrap_dbapi_exceptions(provider, database._pool.close, connection)
+            provider.drop(connection)
             raise
         if close_connection:
             if debug: print 'CLOSE_CONNECTION\n'
-            wrap_dbapi_exceptions(provider, database._pool.close, connection)
+            provider.drop(connection)
     def release(cache):
         assert cache.is_alive
         database = cache.database
@@ -2664,7 +2623,7 @@ class Cache(object):
         connection = cache.connection
         cache.connection = None
         if debug: print 'RELEASE_CONNECTION\n'
-        wrap_dbapi_exceptions(provider, database._pool.release, connection)
+        provider.release(connection)
     def has_anything_to_save(cache):
         return bool(cache.created or cache.updated or cache.deleted or cache.modified_collections)                    
     def save(cache, optimistic=True):
@@ -2987,7 +2946,7 @@ class Query(object):
                 if offset: limit_section.append([ VALUE, offset ])
                 sql_ast = sql_ast + [ limit_section ]
             cache = database._get_cache()
-            sql, adapter = database.provider.ast2sql(cache.connection, sql_ast)
+            sql, adapter = database.provider.ast2sql(sql_ast)
             cache_entry = sql, adapter
             sql_cache[sql_key] = cache_entry
         else: sql, adapter = cache_entry

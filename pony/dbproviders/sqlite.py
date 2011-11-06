@@ -2,36 +2,96 @@ import os.path, weakref
 from thread import get_ident
 from threading import Lock, Thread
 from Queue import Queue
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from datetime import datetime, date, time
 from time import strptime
 
 from pony.thirdparty import sqlite
-from pony.thirdparty.sqlite import (Warning, Error, InterfaceError, DatabaseError,
-                                    DataError, OperationalError, IntegrityError, InternalError,
-                                    ProgrammingError, NotSupportedError)
 
-from pony import dbschema
+from pony.dbschema import DBSchema
 from pony import sqlbuilding
-from pony.clobtypes import LongStr, LongUnicode
-from pony.sqltranslation import SQLTranslator as translator_cls
-from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple_decorator, absolutize_path, is_utf8
+from pony import dbapiprovider
+from pony.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
+from pony.sqltranslation import SQLTranslator
+from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple_decorator, absolutize_path
 
-paramstyle = 'qmark'
+def get_provider(filename, create_db=False):
+    return SQLiteProvider(filename, create_db)
 
-MAX_PARAMS_COUNT = 200
-ROW_VALUE_SYNTAX = False
+class SQLiteBuilder(sqlbuilding.SQLBuilder):
+    def POW(builder, expr1, expr2):
+        return 'pow(', builder(expr1), ', ', builder(expr2), ')'
 
-def create_schema(database):
-    return dbschema.DBSchema(database)
+class SQLiteStrConverter(dbapiprovider.StrConverter):
+    def py2sql(converter, val):
+        if converter.utf8: return val
+        return val.decode(converter.encoding)    
 
-def quote_name(connection, name):
-    return sqlbuilding.quote_name(name)
+class SQLiteDecimalConverter(dbapiprovider.DecimalConverter):
+    def sql2py(converter, val):
+        try: val = Decimal(str(val))
+        except: return val
+        exp = converter.exp
+        if exp is not None: val = val.quantize(exp)
+        return val
+    def py2sql(converter, val):
+        if type(val) is not Decimal: val = Decimal(val)
+        exp = converter.exp
+        if exp is not None: val = val.quantize(exp)
+        return str(val)
+    
+class SQLiteDateConverter(dbapiprovider.DateConverter):
+    def sql2py(converter, val):
+        try:       
+            time_tuple = strptime(val[:10], '%Y-%m-%d')
+            return date(*time_tuple[:3])
+        except: return val
+    def py2sql(converter, val):
+        return val.strftime('%Y-%m-%d')    
 
-def get_pool(filename, create_db=False):
+class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
+    def sql2py(converter, val):
+        try: return timestamp2datetime(val)
+        except: return val
+    def py2sql(converter, val):
+        return datetime2timestamp(val)
+    
+class SQLiteProvider(DBAPIProvider):
+    dbschema_cls = DBSchema
+    translator_cls = SQLTranslator
+    sqlbuilder_cls = SQLiteBuilder
+
+    def __init__(provider, filename, create_db=False):
+        DBAPIProvider.__init__(provider, sqlite)
+        provider.pool = _get_pool(filename, create_db)
+
+    converter_classes = [
+        (bool, dbapiprovider.BoolConverter),
+        (unicode, dbapiprovider.UnicodeConverter),
+        (str, SQLiteStrConverter),
+        ((int, long), dbapiprovider.IntConverter),
+        (float, dbapiprovider.RealConverter),
+        (Decimal, SQLiteDecimalConverter),
+        (buffer, dbapiprovider.BlobConverter),
+        (datetime, SQLiteDatetimeConverter),
+        (date, SQLiteDateConverter)
+    ]
+
+def _get_pool(filename, create_db=False):
     if filename == ':memory:': return MemPool()
     else:
-        filename = absolutize_path(filename, frame_depth=3)
+        # When relative filename is specified, it is considered
+        # not relative to cwd, but to user module where
+        # Database instance is created
+
+        # the list of frames:
+        # 4 - user code: db = Database(...)
+        # 3 - pony.orm.Database.__init__()
+        # 2 - pony.dbapiprovider.sqlite.get_provider()
+        # 1 - pony.dbapiprovider.sqlite.SQLiteProvider.__init__()
+        # 0 - pony.dbproviders.sqlite._get_pool()
+
+        filename = absolutize_path(filename, frame_depth=5)
         return Pool(filename, create_db)
 
 class Pool(localbase):
@@ -54,7 +114,7 @@ class Pool(localbase):
         except:
             pool.close(con)
             raise
-    def close(pool, con):
+    def drop(pool, con):
         assert con is pool.con
         pool.con = None
         con.close()
@@ -74,7 +134,7 @@ class MemPool(object):
     def release(mempool, con):
         assert con is mempool.con
         con.rollback()
-    def close(mempool, con):
+    def drop(mempool, con):
         assert con is mempool.con
         con.rollback()
     def __del__(mempool):
@@ -88,296 +148,10 @@ def _init_connection(con):
     con.text_factory = _text_factory
     con.create_function("pow", 2, pow)
 
-class SQLiteBuilder(sqlbuilding.SQLBuilder):
-    def POW(builder, expr1, expr2):
-        return 'pow(', builder(expr1), ', ', builder(expr2), ')'
-
-def ast2sql(con, ast):
-    b = SQLiteBuilder(ast)
-    return b.sql, b.adapter
-
-def execute(cursor, sql, arguments):
-    cursor.execute(sql, arguments)
-
-def executemany(cursor, sql, arguments_list):
-    cursor.executemany(sql, arguments_list)
-
-def execute_sql_returning_id(cursor, sql, arguments, returning_py_type):
-    cursor.execute(sql, arguments)
-    return cursor.lastrowid
-
-def _get_converter_type_by_py_type(py_type):
-    if issubclass(py_type, bool): return BoolConverter
-    elif issubclass(py_type, unicode): return UnicodeConverter
-    elif issubclass(py_type, str): return StrConverter
-    elif issubclass(py_type, (int, long)): return IntConverter
-    elif issubclass(py_type, float): return RealConverter
-    elif issubclass(py_type, Decimal): return DecimalConverter
-    elif issubclass(py_type, buffer): return BlobConverter
-    elif issubclass(py_type, datetime): return DatetimeConverter
-    elif issubclass(py_type, date): return DateConverter
-    else: raise TypeError, py_type
-
-def get_converter_by_py_type(py_type):
-    return _get_converter_type_by_py_type(py_type)()
-
-def get_converter_by_attr(attr):
-    return _get_converter_type_by_py_type(attr.py_type)(attr)
-    
 def unexpected_args(attr, args):
     raise TypeError(
         'Unexpected positional argument%s for attribute %s: %r'
         % ((args > 1 and 's' or ''), attr, ', '.join(map(repr, args))))
-
-class Converter(object):
-    def __init__(converter, attr=None):
-        converter.attr = attr
-        if attr is None: return
-        keyargs = attr.keyargs.copy()
-        converter.init(keyargs)
-        for option in keyargs: raise TypeError('Unknown option %r' % option)
-    def init(converter, keyargs):
-        pass
-    def validate(converter, val):
-        return val
-    def py2sql(converter, val):
-        return val
-    def sql2py(converter, val):
-        return val
-
-class BoolConverter(Converter):
-    def init(converter, keyargs):
-        attr = converter.attr
-        if attr and attr.args: unexpected_args(attr, attr.args)
-    def validate(converter, val):
-        return bool(val)
-    def sql2py(converter, val):
-        return bool(val)
-    def sql_type(converter):
-        return "BOOLEAN"
-
-class BasestringConverter(Converter):
-    def init(converter, keyargs):
-        attr = converter.attr
-        if attr:
-            if not attr.args: max_len = None
-            elif len(attr.args) > 1: unexpected_args(attr, attr.args[1:])
-            else: max_len = attr.args[0]
-            if issubclass(attr.py_type, (LongStr, LongUnicode)):
-                if max_len is not None: raise TypeError('Max length is not supported for CLOBs')
-            elif max_len is None: max_len = 200
-            elif not isinstance(max_len, (int, long)):
-                raise TypeError('Max length argument must be int. Got: %r' % max_len)
-            converter.max_len = max_len
-        else: converter.max_len = None
-    def validate(converter, val):
-        max_len = converter.max_len
-        val_len = len(val)
-        if max_len and val_len > max_len:
-            raise ValueError('Value for attribute %s is too long. Max length is %d, value length is %d'
-                             % (converter.attr, max_len, val_len))
-        if not val_len: raise ValueError('Empty strings are not allowed. Try using None instead')
-        return val
-    def sql_type(converter):
-        if converter.max_len:
-            return 'VARCHAR(%d)' % converter.max_len
-        return 'TEXT'
-
-class UnicodeConverter(BasestringConverter):
-    def validate(converter, val):
-        if val is None: pass
-        elif isinstance(val, str): val = val.decode('ascii')
-        elif not isinstance(val, unicode): raise TypeError(
-            'Value type for attribute %s must be unicode. Got: %r' % (converter.attr, type(val)))
-        return BasestringConverter.validate(converter, val)
-
-class StrConverter(BasestringConverter):
-    def __init__(converter, attr=None):
-        converter.encoding = 'ascii'  # for the case when attr is None
-        BasestringConverter.__init__(converter, attr)
-    def init(converter, keyargs):
-        BasestringConverter.init(converter, keyargs)
-        converter.encoding = keyargs.pop('encoding', 'latin1')
-    def validate(converter, val):
-        if val is not None:
-            if isinstance(val, str): pass
-            elif isinstance(val, unicode): val = val.encode(converter.encoding)
-            else: raise TypeError('Value type for attribute %s must be str in encoding %r. Got: %r'
-                                  % (converter.attr, converter.encoding, type(val)))
-        return BasestringConverter.validate(converter, val)
-    def py2sql(converter, val):
-        if is_utf8(converter.encoding): return val
-        return val.decode(converter.encoding)
-    def sql2py(converter, val):
-        return val.encode(converter.encoding, 'replace')
-
-class IntConverter(Converter):
-    def init(converter, keyargs):
-        attr = converter.attr
-        if attr and attr.args: unexpected_args(attr, attr.args)
-        min_val = keyargs.pop('min', None)
-        if min_val is not None and not isinstance(min_val, (int, long)):
-            raise TypeError("'min' argument for attribute %s must be int. Got: %r" % (attr, min_val))
-        max_val = keyargs.pop('max', None)
-        if max_val is not None and not isinstance(max_val, (int, long)):
-            raise TypeError("'max' argument for attribute %s must be int. Got: %r" % (attr, max_val))
-        converter.min_val = min_val
-        converter.max_val = max_val
-    def validate(converter, val):
-        if not isinstance(val, (int, long)):
-            raise TypeError('Value type for attribute %s must be int. Got: %r' % (converter.attr, type(val)))
-        if converter.min_val and val < converter.min_val:
-            raise ValueError('Value %r of attr %s is less than the minimum allowed value %r'
-                             % (val, converter.attr, converter.min_val))
-        if converter.max_val and val > converter.max_val:
-            raise ValueError('Value %r of attr %s is greater than the maximum allowed value %r'
-                             % (val, converter.attr, converter.max_val))
-        return val
-    def sql_type(converter):
-        return 'INTEGER'
-
-class RealConverter(Converter):
-    def init(converter, keyargs):
-        attr = converter.attr
-        if attr and attr.args: unexpected_args(attr, attr.args)
-        min_val = keyargs.pop('min', None)
-        if min_val is not None:
-            try: min_val = float(min_val)
-            except ValueError:
-                raise TypeError("Invalid value for 'min' argument for attribute %s: %r" % (attr, min_val))
-        max_val = keyargs.pop('max', None)
-        if max_val is not None:
-            try: max_val = float(max_val)
-            except ValueError:
-                raise TypeError("Invalid value for 'max' argument for attribute %s: %r" % (attr, max_val))
-        converter.min_val = min_val
-        converter.max_val = max_val
-    def validate(converter, val):
-        try: val = float(val)
-        except ValueError:
-            raise TypeError('Invalid value for attribute %s: %r' % (converter.attr, val))
-        if converter.min_val and val < converter.min_val:
-            raise ValueError('Value %r of attr %s is less than the minimum allowed value %r'
-                             % (val, converter.attr, converter.min_val))
-        if converter.max_val and val > converter.max_val:
-            raise ValueError('Value %r of attr %s is greater than the maximum allowed value %r'
-                             % (val, converter.attr, converter.max_val))
-        return val
-    def sql_type(converter):
-        return 'REAL'
-
-class DecimalConverter(Converter):
-    def __init__(converter, attr=None):
-        converter.exp = None  # for the case when attr is None
-        Converter.__init__(converter, attr)
-    def init(converter, keyargs):
-        attr = converter.attr
-        args = attr.args
-        if len(args) > 2: raise TypeError('Too many positional parameters for Decimal (expected: precision and scale)')
-
-        if args: precision = args[0]
-        else: precision = keyargs.pop('precision', 12)
-        if not isinstance(precision, (int, long)):
-            raise TypeError("'precision' positional argument for attribute %s must be int. Got: %r" % (attr, precision))
-        if precision <= 0: raise TypeError(
-            "'precision' positional argument for attribute %s must be positive. Got: %r" % (attr, precision))
-
-        if len(args) == 2: scale = args[1]
-        else: scale = keyargs.pop('scale', 2)
-        if not isinstance(scale, (int, long)):
-            raise TypeError("'scale' positional argument for attribute %s must be int. Got: %r" % (attr, scale))
-        if scale <= 0: raise TypeError(
-            "'scale' positional argument for attribute %s must be positive. Got: %r" % (attr, scale))
-
-        if scale > precision: raise ValueError("'scale' must be less or equal 'precision'")
-        converter.precision = precision
-        converter.scale = scale
-        converter.exp = Decimal(10) ** -scale
-
-        min_val = keyargs.pop('min', None)
-        if min_val is not None:
-            try: min_val = Decimal(min_val)
-            except TypeError: raise TypeError(
-                "Invalid value for 'min' argument for attribute %s: %r" % (attr, min_val))
-
-        max_val = keyargs.pop('max', None)
-        if max_val is not None:
-            try: max_val = Decimal(max_val)
-            except TypeError: raise TypeError(
-                "Invalid value for 'max' argument for attribute %s: %r" % (attr, max_val))
-            
-        converter.min_val = min_val
-        converter.max_val = max_val
-    def validate(converter, val):
-        if type(val) is Decimal: return val
-        try: return Decimal(val)
-        except InvalidOperation, exc:
-            raise TypeError('Invalid value for attribute %s: %r' % (converter.attr, val))
-        if converter.min_val is not None and val < converter.min_val:
-            raise ValueError('Value %r of attr %s is less than the minimum allowed value %r'
-                             % (val, converter.attr, converter.min_val))
-        if converter.max_val is not None and val > converter.max_val:
-            raise ValueError('Value %r of attr %s is greater than the maximum allowed value %r'
-                             % (val, converter.attr, converter.max_val))
-    def sql2py(converter, val):
-        try: val = Decimal(str(val))
-        except: return val
-        exp = converter.exp
-        if exp is not None: val = val.quantize(exp)
-        return val
-    def py2sql(converter, val):
-        if type(val) is not Decimal: val = Decimal(val)
-        exp = converter.exp
-        if exp is not None: val = val.quantize(exp)
-        return str(val)
-    def sql_type(converter):
-        return 'DECIMAL(%d, %d)' % (converter.precision, converter.scale)
-
-class BlobConverter(Converter):
-    def init(converter, keyargs):
-        attr = converter.attr
-        if attr and attr.args: unexpected_args(attr, attr.args)
-    def validate(converter, val):
-        if isinstance(val, buffer): return val
-        if isinstance(val, str): return buffer(val)
-        raise TypeError("Attribute %r: expected type is 'buffer'. Got: %r" % (converter.attr, type(val)))
-    def sql_type(converter):
-        return 'BLOB'
-
-class DatetimeConverter(Converter):
-    def init(converter, keyargs):
-        attr = converter.attr
-        if attr and attr.args: unexpected_args(attr, attr.args)
-    def validate(converter, val):
-        if not isinstance(val, datetime):
-            raise TypeError("Attribute %r: expected type is 'datetime'. Got: %r" % (converter.attr, val))
-        return val
-    def sql2py(converter, val):
-        try: return timestamp2datetime(val)
-        except: return val
-    def py2sql(converter, val):
-        return datetime2timestamp(val)
-    def sql_type(converter):
-        return 'DATETIME'
-
-class DateConverter(Converter):
-    def init(converter, keyargs):
-        attr = converter.attr
-        if attr and attr.args: unexpected_args(attr, attr.args)
-    def validate(converter, val):
-        if isinstance(val, datetime): return val.date()
-        if not isinstance(val, date):
-            raise TypeError("Attribute %r: expected type is 'date'. Got: %r" % (converter.attr, val))
-        return val
-    def sql2py(converter, val):
-        try:       
-            time_tuple = strptime(val[:10], '%Y-%m-%d')
-            return date(*time_tuple[:3])
-        except: return val
-    def py2sql(converter, val):
-        return val.strftime('%Y-%m-%d')
-    def sql_type(converter):
-        return 'DATE'
 
 mem_queue = Queue()
 

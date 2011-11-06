@@ -3,18 +3,16 @@ from pony import orm
 class DBSchemaError(Exception): pass
 
 class DBSchema(object):
-    def __init__(schema, database, uppercase=True):
-        schema.database = database
+    def __init__(schema, provider, uppercase=True):
+        schema.provider = provider
         schema.tables = {}
         schema.constraints = {}
         schema.indent = '  '
         schema.command_separator = ';\n'
         schema.uppercase = uppercase
-    def quote_name(schema, name):
-        cache = schema.database._get_cache()
-        return schema.database.provider.quote_name(cache.connection, name)
     def column_list(schema, columns):
-        return '(%s)' % ', '.join(schema.quote_name(column.name) for column in columns)
+        quote_name = schema.provider.quote_name
+        return '(%s)' % ', '.join(quote_name(column.name) for column in columns)
     def case(schema, s):
         if schema.uppercase: return s.upper().replace('%S', '%s') \
             .replace(')S', ')s').replace('%R', '%r').replace(')R', ')r')
@@ -39,16 +37,18 @@ class DBSchema(object):
         for table in schema.order_tables_to_create():
             commands.extend(table.get_create_commands)
         return schema.command_separator.join(commands)
-    def create_tables(schema, database):
-        cache = database._get_cache()
-        if cache.has_anything_to_save(): cache.commit()
-        connection = database.get_connection()
+    def create_tables(schema):
+        provider = schema.provider
+        connection = provider.connect()
         created_tables = set()
-        for table in schema.order_tables_to_create():
-            table.create(database.provider, connection, created_tables)
-        cache = database._get_cache()
-        cache.commit()
-        cache.release()
+        try:
+            for table in schema.order_tables_to_create():
+                table.create(provider, connection, created_tables)
+        except:
+            provider.drop(connection)
+            raise
+        connection.commit()
+        provider.release(connection)
                 
 class Table(object):
     def __init__(table, name, schema):
@@ -75,14 +75,15 @@ class Table(object):
                 print sql
                 print
             cursor = connection.cursor()
-            orm.wrap_dbapi_exceptions(provider, cursor.execute, sql)
+            provider.execute(cursor, sql)
     def get_create_commands(table, created_tables=None, if_not_exists=True):
         if created_tables is None: created_tables = set()
         schema = table.schema
         case = schema.case
+        quote_name = schema.provider.quote_name
         cmd = []
-        if not if_not_exists: cmd.append(case('CREATE TABLE %s (') % schema.quote_name(table.name))
-        else: cmd.append(case('CREATE TABLE IF NOT EXISTS %s (') % schema.quote_name(table.name))
+        if not if_not_exists: cmd.append(case('CREATE TABLE %s (') % quote_name(table.name))
+        else: cmd.append(case('CREATE TABLE IF NOT EXISTS %s (') % quote_name(table.name))
         for column in table.column_list:
             cmd.append(schema.indent + column.get_sql(created_tables) + ',')
         if len(table.pk_index.columns) > 1:
@@ -134,11 +135,11 @@ class Column(object):
         if created_tables is None: created_tables = set()
         table = column.table
         schema = table.schema
-        quote = schema.quote_name
+        quote_name = schema.provider.quote_name
         case = schema.case
         result = []
         append = result.append
-        append(quote(column.name))
+        append(quote_name(column.name))
         if column.is_pk == 'auto' and column.auto_template:
             append(case(column.auto_template % dict(type=column.sql_type)))
         else:
@@ -152,7 +153,7 @@ class Column(object):
             parent_table = foreign_key.parent_table
             if parent_table in created_tables or parent_table is table:
                 append(case('REFERENCES'))
-                append(quote(parent_table.name))
+                append(quote_name(parent_table.name))
                 append(schema.column_list(foreign_key.parent_columns)) 
         return ' '.join(result)
 
@@ -200,7 +201,7 @@ class Index(Constraint):
     def _get_create_sql(index, inside_table):
         schema = index.schema
         case = schema.case
-        quote_name = schema.quote_name
+        quote_name = schema.provider.quote_name
         cmd = []
         append = cmd.append
         if not inside_table:
@@ -253,7 +254,7 @@ class ForeignKey(Constraint):
     def _get_create_sql(foreign_key, inside_table):
         schema = foreign_key.schema
         case = schema.case
-        quote_name = schema.quote_name
+        quote_name = schema.provider.quote_name
         cmd = []
         append = cmd.append
         if not inside_table:

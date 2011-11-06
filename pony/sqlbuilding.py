@@ -8,12 +8,6 @@ from pony.sqlsymbols import *
 from pony.sqltranslation import sqland
 from pony.utils import datetime2timestamp
 
-def quote_name(name, quote_char='"'):
-    if isinstance(name, basestring):
-        name = name.replace(quote_char, quote_char+quote_char)
-        return quote_char + name + quote_char
-    return '.'.join(quote_name(item, quote_char) for item in name)
-
 class AstError(Exception): pass
 
 class Param(object):
@@ -125,11 +119,12 @@ class SQLBuilder(object):
     make_param = Param
     make_value = Value
     indent_spaces = " " * 4
-    def __init__(builder, ast, paramstyle='qmark', quote_char='"'):
-        builder.indent = 0
+    def __init__(builder, provider, ast):
+        builder.provider = provider
+        builder.quote_name = provider.quote_name
+        builder.paramstyle = paramstyle = provider.paramstyle
         builder.ast = ast
-        builder.paramstyle = paramstyle
-        builder.quote_char = quote_char
+        builder.indent = 0
         builder.keys = {}
         builder.result = flat(builder(ast))
         builder.sql = u''.join(map(unicode, builder.result)).rstrip('\n')
@@ -145,7 +140,7 @@ class SQLBuilder(object):
             params = tuple(param for param in sorted(builder.keys.itervalues(), key=attrgetter('id')))
             def adapter(values):
                 return dict(('p%d' % param.id, value) for param, value in zip(params, convert(values, params)))
-        else: raise NotImplementedError
+        else: raise NotImplementedError, paramstyle
         builder.params = params
         builder.layout = tuple(param.key for param in params)
         builder.adapter = adapter 
@@ -169,8 +164,6 @@ class SQLBuilder(object):
 ##            else:
 ##                del traceback
 ##                raise
-    def quote_name(builder, name):
-        return quote_name(name, builder.quote_char)
     def INSERT(builder, table_name, columns, values, returning=None):
         return [ 'INSERT INTO ', builder.quote_name(table_name), ' (',
                  join(', ', [builder.quote_name(column) for column in columns ]),
