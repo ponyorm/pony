@@ -8,8 +8,7 @@ from decimal import Decimal
 import cx_Oracle
 
 from pony import orm, dbschema, sqlbuilding, dbapiprovider, sqltranslation
-from pony.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
-from pony.clobtypes import LongStr, LongUnicode
+from pony.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, LongStr, LongUnicode
 from pony.utils import is_utf8
 
 def get_provider(*args, **keyargs):

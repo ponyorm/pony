@@ -9,9 +9,9 @@ except ImportError: etree = None
 
 from pony import options
 from pony.decompiling import decompile
-from pony.clobtypes import LongStr, LongUnicode
 from pony.sqlsymbols import *
 from pony.dbapiprovider import (
+    LongStr, LongUnicode,
     DBException, RowNotFound, MultipleRowsFound, TooManyRowsFound,
     Warning, Error, InterfaceError, DatabaseError, DataError, OperationalError,
     IntegrityError, InternalError, ProgrammingError, NotSupportedError

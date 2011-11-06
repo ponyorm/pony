@@ -11,9 +11,8 @@ from MySQLdb.constants import FIELD_TYPE, FLAG
 from pony import dbschema
 from pony import sqlbuilding
 from pony import dbapiprovider
-from pony.dbapiprovider import DBAPIProvider
+from pony.dbapiprovider import DBAPIProvider, LongStr, LongUnicode
 from pony.sqltranslation import SQLTranslator
-from pony.clobtypes import LongStr, LongUnicode
 from pony.utils import localbase
 
 def get_provider(*args, **keyargs):

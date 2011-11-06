@@ -7,9 +7,8 @@ from binascii import unhexlify
 import pgdb
 
 from pony import orm, dbschema, sqlbuilding, dbapiprovider
-from pony.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
+from pony.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, LongStr, LongUnicode
 from pony.sqltranslation import SQLTranslator
-from pony.clobtypes import LongStr, LongUnicode
 from pony.utils import localbase, timestamp2datetime
 
 def get_provider(*args, **keyargs):

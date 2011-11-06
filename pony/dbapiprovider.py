@@ -2,7 +2,6 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time
 
 from pony.utils import is_utf8, simple_decorator
-from pony.clobtypes import LongStr, LongUnicode
 
 class DBException(Exception):
     def __init__(exc, *args, **keyargs):
@@ -58,6 +57,12 @@ def wrap_dbapi_exceptions(func, provider, *args, **keyargs):
         raise InterfaceError(exceptions=[e])
     except dbapi_module.Error, e: raise Error(exceptions=[e])
     except dbapi_module.Warning, e: raise Warning(exceptions=[e])
+
+class LongStr(str):
+    pass
+
+class LongUnicode(unicode):
+    pass
 
 class DBAPIProvider(object):
     paramstyle = 'qmark'

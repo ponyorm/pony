@@ -6,7 +6,7 @@ from decimal import Decimal
 from datetime import date, datetime
 
 from pony import options
-from pony.clobtypes import LongStr, LongUnicode
+from pony.dbapiprovider import LongStr, LongUnicode
 from pony.sqlsymbols import *
 from pony.utils import avg, copy_func_attrs, is_ident
 from pony.orm import select, exists, TranslationError, EntityMeta, Set, JOIN, AsciiStr
