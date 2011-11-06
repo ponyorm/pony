@@ -109,7 +109,7 @@ class OraUnicodeConverter(dbapiprovider.UnicodeConverter):
             val = val.read()
             val = val.decode('utf8')
         return val
-    sql_type = _string_sql_type
+    sql_type = _string_sql_type  # TODO: Add support for NVARCHAR2 and NCLOB datatypes
 
 class OraStrConverter(dbapiprovider.StrConverter):
     def validate(converter, val):
