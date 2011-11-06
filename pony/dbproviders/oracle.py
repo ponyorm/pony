@@ -1,3 +1,6 @@
+import os
+os.environ["NLS_LANG"] = "AMERICAN_AMERICA.UTF8"
+
 from types import NoneType
 from datetime import date, datetime
 from decimal import Decimal
@@ -221,18 +224,21 @@ def _get_pool(*args, **keyargs):
     keyargs.setdefault('increment', 1)
     return Pool(**keyargs)
 
-def to_decimal(val):
+def to_int_or_decimal(val):
     val = val.replace(',', '.')
     if '.' in val: return Decimal(val)
     return int(val)
+
+def to_decimal(val):
+    return Decimal(val.replace(',', '.'))
 
 def output_type_handler(cursor, name, defaultType, size, precision, scale):
     if defaultType == cx_Oracle.NUMBER:
         if scale == 0:
             if precision: return cursor.var(cx_Oracle.STRING, 40, cursor.arraysize, outconverter=int)
-            return cursor.var(cx_Oracle.STRING, 40, cursor.arraysize, outconverter=to_decimal)
+            return cursor.var(cx_Oracle.STRING, 40, cursor.arraysize, outconverter=to_int_or_decimal)
         if scale != -127:
-            return cursor.var(cx_Oracle.STRING, 100, cursor.arraysize, outconverter=Decimal)
+            return cursor.var(cx_Oracle.STRING, 100, cursor.arraysize, outconverter=to_decimal)
     elif defaultType in (cx_Oracle.STRING, cx_Oracle.FIXED_CHAR):
         return cursor.var(unicode, size, cursor.arraysize)  # from cx_Oracle example
     return None
