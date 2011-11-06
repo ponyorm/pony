@@ -1,11 +1,11 @@
+from types import NoneType
 from datetime import date, datetime
 from decimal import Decimal
 
 import cx_Oracle
 
-from pony import orm, dbschema, sqlbuilding, dbapiprovider
+from pony import orm, dbschema, sqlbuilding, dbapiprovider, sqltranslation
 from pony.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
-from pony.sqltranslation import SQLTranslator
 from pony.clobtypes import LongStr, LongUnicode
 from pony.utils import is_utf8
 
@@ -60,7 +60,19 @@ class OraSchema(dbschema.DBSchema):
     table_class = OraTable
     column_class = OraColumn
 
-class OraTranslator(SQLTranslator):
+class OraNoneMonad(sqltranslation.NoneMonad):
+    def __init__(monad, translator, value=None):
+        assert value in (None, '')
+        sqltranslation.ConstMonad.__init__(monad, translator, None)
+
+class OraTranslator(sqltranslation.SQLTranslator):
+    NoneMonad = OraNoneMonad
+    
+    @classmethod
+    def get_normalized_type_of(translator, value):
+        if value == '': return NoneType
+        return sqltranslation.SQLTranslator.get_normalized_type_of(value)
+        
     def DateMixin_attr_year(translator, monad):
         sql = [ 'EXTRACT', 'YEAR', monad.getsql()[0] ]
         translator = monad.translator
@@ -87,6 +99,9 @@ def _string_sql_type(converter):
     return 'CLOB'
 
 class OraUnicodeConverter(dbapiprovider.UnicodeConverter):
+    def validate(converter, val):
+        if val == '': return None
+        return dbapiprovider.UnicodeConverter.validate(converter, val)
     def sql2py(converter, val):
         if isinstance(val, cx_Oracle.LOB):
             val = val.read()
@@ -95,6 +110,9 @@ class OraUnicodeConverter(dbapiprovider.UnicodeConverter):
     sql_type = _string_sql_type
 
 class OraStrConverter(dbapiprovider.StrConverter):
+    def validate(converter, val):
+        if val == '': return None
+        return dbapiprovider.StrConverter.validate(converter, val)
     def sql2py(converter, val):
         if isinstance(val, cx_Oracle.LOB):
             val = val.read()

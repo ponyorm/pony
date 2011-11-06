@@ -414,6 +414,7 @@ class Attribute(object):
         if entity is not None: pass
         elif obj is not None: entity = obj.__class__
         else: entity = attr.entity
+
         if val is DEFAULT:
             default = attr.default
             if default is None:
@@ -422,24 +423,20 @@ class Attribute(object):
                 return None
             if callable(default): val = default()
             else: val = default
-        elif val is None:
-            if attr.is_required:
-                if obj is None: raise ConstraintError(
-                    'Required attribute %s.%s cannot be set to None' % (entity.__name__, attr.name))
-                else: raise ConstraintError(
-                    'Required attribute %s.%s for %r cannot be set to None' % (entity.__name__, attr.name, obj))
-            return val
+        elif val is None: return val
+        
         reverse = attr.reverse
         if not reverse:
             if isinstance(val, Entity): raise TypeError('Attribute %s.%s must be of %s type. Got: %s'
                 % (attr.entity.__name__, attr.name, attr.py_type.__name__, val))
             if attr.converters:
-                assert len(attr.converters) == 1
+                if len(attr.converters) != 1: raise NotImplementedError
                 converter = attr.converters[0]
                 if converter is not None:
                     if from_db: return converter.sql2py(val)
                     else: return converter.validate(val)
             return attr.py_type(val)
+
         if not isinstance(val, reverse.entity):
             raise ConstraintError('Value of attribute %s.%s must be an instance of %s. Got: %s'
                                   % (entity.__name__, attr.name, reverse.entity.__name__, val))
@@ -684,6 +681,18 @@ class Optional(Attribute):
     
 class Required(Attribute):
     __slots__ = []
+    def check(attr, val, obj=None, entity=None, from_db=False):
+        if val is not None:
+            val = Attribute.check(attr, val, obj, entity, from_db)  # val may be changed to None here
+        if val is None and not attr.auto:
+            if entity is not None: pass
+            elif obj is not None: entity = obj.__class__
+            else: entity = attr.entity
+            if obj is None: raise ConstraintError(
+                'Required attribute %s.%s cannot be set to None' % (entity.__name__, attr.name))
+            else: raise ConstraintError(
+                'Required attribute %s.%s for %r cannot be set to None' % (entity.__name__, attr.name, obj))
+        return val
 
 class Unique(Required):
     __slots__ = []
@@ -2488,8 +2497,7 @@ class Diagram(object):
                     columns = attr.get_columns()
                     if not attr.reverse and attr.default is not None:
                         assert len(attr.converters) == 1
-                        if not callable(attr.default):
-                            attr.converters[0].validate(attr.default)
+                        if not callable(attr.default): attr.default = attr.check(attr.default)
                     assert len(columns) == len(attr.converters)
                     for (column_name, converter) in zip(columns, attr.converters):
                         table.add_column(column_name, converter.sql_type(), attr.is_required)
