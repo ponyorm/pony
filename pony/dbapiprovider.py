@@ -77,6 +77,29 @@ class DBAPIProvider(object):
     def __init__(provider, dbapi_module):
         provider.dbapi_module = dbapi_module
 
+    def get_default_entity_table_name(provider, entity):
+        return entity.__name__
+
+    def get_default_m2m_table_name(provider, attr, reverse):
+        return attr.entity.__name__ + '_' + reverse.entity.__name__
+
+    def get_default_column_names(provider, attr, reverse_pk_columns=None):
+        if reverse_pk_columns is None:
+            return [ attr.name ]
+        elif len(reverse_pk_columns) == 1:
+            return [ attr.name ]
+        else:
+            prefix = attr.name + '_'
+            return [ prefix + column for column in reverse_pk_columns ]
+
+    def get_default_m2m_column_names(provider, entity):
+        columns = entity._get_pk_columns_()
+        if len(columns) == 1:
+            return [ entity.__name__.lower() ]
+        else:
+            prefix = entity.__name__.lower() + '_'
+            return [ prefix + column for column in columns ]
+
     def quote_name(provider, name):
         quote_char = provider.quote_char
         if isinstance(name, basestring):

@@ -323,13 +323,16 @@ class Database(object):
         for entity_name in database._unmapped_attrs:
             raise ERDiagramError('Entity definition %s was not found' % entity_name)
 
-        schema = database.schema = database.provider.dbschema_cls(database.provider)
+        provider = database.provider
+        schema = database.schema = provider.dbschema_cls(provider)
         foreign_keys = []
         entities = list(sorted(database.entities.values(), key=attrgetter('_id_')))
         for entity in entities:
             entity._get_pk_columns_()
             table_name = entity._table_
-            if table_name is None: table_name = entity._table_ = entity.__name__
+            if table_name is None:
+                table_name = provider.get_default_entity_table_name(entity)
+                entity._table_ = table_name
             else: assert isinstance(table_name, (basestring, tuple))
             table = schema.tables.get(table_name)
             if table is None: table = schema.add_table(table_name)
@@ -355,7 +358,7 @@ class Database(object):
                             "Parameter 'table' for %s and %s do not match" % (attr, reverse))
                         table_name = attr.table
                     else:
-                        table_name = attr.entity.__name__ + '_' + reverse.entity.__name__
+                        table_name = provider.get_default_m2m_table_name(attr, reverse)
                         attr.table = reverse.table = table_name
                     m2m_table = schema.tables.get(table_name)
                     if m2m_table is not None:
@@ -766,10 +769,7 @@ class Attribute(object):
                 reverse_pk_columns = reverse.entity._get_pk_columns_()
                 reverse_pk_col_paths = reverse.entity._pk_paths_
                 if not attr.columns:
-                    if len(reverse_pk_columns) == 1: attr.columns = [ attr.name ]
-                    else:
-                        prefix = attr.name + '_'
-                        attr.columns = [ prefix + column for column in reverse_pk_columns ]
+                    attr.columns = provider.get_default_column_names(attr, reverse_pk_columns)
                 elif len(attr.columns) != len(reverse_pk_columns): raise MappingError(
                     'Invalid number of columns specified for %s' % attr)
                 attr.col_paths = [ '-'.join((attr.name, paths)) for paths in reverse_pk_col_paths ]
@@ -1176,11 +1176,8 @@ class Set(Collection):
             if len(reverse.columns) != len(entity._get_pk_columns_()): raise MappingError(
                 'Invalid number of columns for %s' % reverse)
         else:
-            columns = entity._get_pk_columns_()
-            if len(columns) == 1: reverse.columns = [ entity.__name__.lower() ]
-            else:
-                prefix = entity.__name__.lower() + '_'
-                reverse.columns = [ prefix + column for column in columns ]
+            provider = attr.entity._database_.provider
+            reverse.columns = provider.get_default_m2m_column_names(entity)
         reverse.converters = entity._pk_converters_
         attr._columns_checked = True
         return reverse.columns
