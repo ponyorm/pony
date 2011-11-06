@@ -217,6 +217,9 @@ class TestSQLTranslator(unittest.TestCase):
     def test_not_monad2(self):
         result = set(select(s for s in Student if not not (s.scholarship > 0 and s.name != 'S1')))
         self.assertEquals(result, set([Student[2], Student[3]]))
+    def test_subquery_with_attr(self):
+        result = select(s for s in Student if max(g.value for g in s.grades) == 'A').all()
+        self.assertEquals(result, set([Student[1]]))
        
 if __name__ == "__main__":
     unittest.main()
