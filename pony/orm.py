@@ -274,14 +274,15 @@ class Database(object):
     def _ast2sql(database, sql_ast):
         sql, adapter = database.provider.ast2sql(sql_ast)
         return sql, adapter
-    def _exec_sql(database, sql, arguments=()):
+    def _exec_sql(database, sql, arguments=None):
         cache = database._get_cache()
         cursor = cache.connection.cursor()
         if debug:
             print sql
             if arguments: print args2str(arguments)
             print
-        database.provider.execute(cursor, sql, arguments)
+        if arguments is None: database.provider.execute(cursor, sql)
+        else: database.provider.execute(cursor, sql, arguments)
         return cursor
     def _exec_sql_returning_id(database, sql, arguments, returning_py_type):
         cache = database._get_cache()
@@ -292,7 +293,7 @@ class Database(object):
             print
         new_id = database.provider.execute_returning_id(cursor, sql, arguments, returning_py_type)
         return new_id
-    def _exec_sql_many(database, sql, arguments_list=()):
+    def _exec_sql_many(database, sql, arguments_list):
         cache = database._get_cache()
         cache.optimistic = False
         cursor = cache.connection.cursor()
