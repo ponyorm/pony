@@ -128,9 +128,9 @@ def test_queries():
     print
     
 
-    students = select(s for s in Student 
-                        if sum(c.credits for c in s.courses) < 15).all()
-    print_students(students)
+##    students = select(s for s in Student 
+##                        if sum(c.credits for c in s.courses) < 15).all()
+##    print_students(students)
 
 
     sstudents = select(s for s in Student 
@@ -139,7 +139,7 @@ def test_queries():
 
 
     students = select(s for s in Student 
-                      if s.group.dept.name == "Department of Computer Science").all()
+                        if s.group.dept.name == "Department of Computer Science").all()
     print_students(students)
 
 
@@ -160,9 +160,9 @@ def test_queries():
 
 
     students = select(s for s in Student 
-             if s.group.dept.name == "Department of Computer Science"
-                and s.gpa > 3.5
-                and len(s.courses) > 3).all()
+                        if s.group.dept.name == "Department of Computer Science"
+                           and s.gpa > 3.5
+                           and len(s.courses) > 3).all()
     print_students(students)
 
 
