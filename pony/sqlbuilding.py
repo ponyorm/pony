@@ -391,3 +391,9 @@ class SQLBuilder(object):
         return 'rtrim(', builder(expr), ', ', builder(chars), ')'
     def TO_INT(builder, expr):
         return 'CAST(', builder(expr), ' AS integer)'
+    def YEAR(builder, expr):
+        return 'EXTRACT(YEAR FROM ', builder(expr), ')'
+    def MONTH(builder, expr):
+        return 'EXTRACT(MONTH FROM ', builder(expr), ')'
+    def DAY(builder, expr):
+        return 'EXTRACT(DAY FROM ', builder(expr), ')'

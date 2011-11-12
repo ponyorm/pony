@@ -21,6 +21,12 @@ def get_provider(filename, create_db=False):
 class SQLiteBuilder(sqlbuilding.SQLBuilder):
     def POW(builder, expr1, expr2):
         return 'pow(', builder(expr1), ', ', builder(expr2), ')'
+    def YEAR(builder, expr):
+        return 'cast(substr(', builder(expr), ', 1, 4) as integer)'
+    def MONTH(builder, expr):
+        return 'cast(substr(', builder(expr), ', 6, 2) as integer)'
+    def DAY(builder, expr):
+        return 'cast(substr(', builder(expr), ', 9, 2) as integer)'
 
 class SQLiteStrConverter(dbapiprovider.StrConverter):
     def py2sql(converter, val):

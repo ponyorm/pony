@@ -33,12 +33,10 @@ class MySQLBuilder(sqlbuilding.SQLBuilder):
     make_value = MyValue
     def YEAR(builder, expr):
         return 'year(', builder(expr), ')'
-
-class MySQLTranslator(SQLTranslator):
-    def DateMixin_attr_year(translator, monad):
-        sql = [ 'YEAR', monad.getsql()[0] ]
-        translator = monad.translator
-        return translator.NumericExprMonad(translator, int, sql)        
+    def MONTH(builder, expr):
+        return 'month(', builder(expr), ')'
+    def DAY(builder, expr):
+        return 'day(', builder(expr), ')'
 
 def _string_sql_type(converter):
     db_encoding = converter.db_encoding or 'utf8'
@@ -70,7 +68,7 @@ class MySQLProvider(DBAPIProvider):
     row_value_syntax = True
 
     dbschema_cls = MySQLSchema
-    translator_cls = MySQLTranslator
+    translator_cls = SQLTranslator
     sqlbuilder_cls = MySQLBuilder
 
     def __init__(provider, *args, **keyargs):

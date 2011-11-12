@@ -663,9 +663,17 @@ class DateMixin(MonadMixin):
     def mixin_init(monad):
         assert monad.type is date
     def attr_year(monad):
-        sql = [ TO_INT, [ SUBSTR, monad.getsql()[0], [ VALUE, 1 ], [ VALUE, 4 ] ] ]
+        sql = [ YEAR, monad.getsql()[0] ]
         translator = monad.translator
-        return translator.NumericExprMonad(translator, int, sql)
+        return translator.NumericExprMonad(translator, int, sql)       
+    def attr_month(monad):
+        sql = [ MONTH, monad.getsql()[0] ]
+        translator = monad.translator
+        return translator.NumericExprMonad(translator, int, sql)       
+    def attr_day(monad):
+        sql = [ DAY, monad.getsql()[0] ]
+        translator = monad.translator
+        return translator.NumericExprMonad(translator, int, sql)       
     
 class DatetimeMixin(DateMixin):
     def mixin_init(monad):

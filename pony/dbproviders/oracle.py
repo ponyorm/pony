@@ -75,19 +75,12 @@ class OraTranslator(sqltranslation.SQLTranslator):
         if value == '': return NoneType
         return sqltranslation.SQLTranslator.get_normalized_type_of(value)
         
-    def DateMixin_attr_year(translator, monad):
-        sql = [ 'EXTRACT', 'YEAR', monad.getsql()[0] ]
-        translator = monad.translator
-        return translator.NumericExprMonad(translator, int, sql)        
-
 class OraBuilder(sqlbuilding.SQLBuilder):
     def INSERT(builder, table_name, columns, values, returning=None):
         result = sqlbuilding.SQLBuilder.INSERT(builder, table_name, columns, values)
         if returning is not None:
             result.extend([ ' RETURNING ', builder.quote_name(returning), ' INTO :new_id' ])
         return result
-    def EXTRACT(builder, datepart, expr):
-        return 'EXTRACT (', datepart, ' FROM ', builder(expr), ')'
 
 class OraBoolConverter(dbapiprovider.BoolConverter):
     def sql2py(converter, val):
