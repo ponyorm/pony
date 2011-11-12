@@ -583,8 +583,14 @@ class Attribute(object):
             reverse = attr.reverse
             assert reverse is not None and reverse.columns
             objects = reverse.entity._find_in_db_({reverse : obj}, 1)
-            assert len(objects) == 1
-            return objects[0]
+            if not objects:
+                obj._curr_[attr.name] = None
+                return None
+            elif len(objects) == 1:
+                val = objects[0]
+                assert obj._curr_[attr.name] == val
+                return val
+            else: assert False
         obj._load_()
         return obj._curr_[attr.name]
     def __get__(attr, obj, cls=None):
@@ -617,7 +623,6 @@ class Attribute(object):
             raise TypeError('Cannot change value of primary key')
         curr =  obj._curr_.get(attr.name, NOT_LOADED)
         if curr is NOT_LOADED and reverse and not reverse.is_collection:
-            assert not is_reverse_call
             curr = attr.load(obj)
         status = obj._status_
         wbits = obj._wbits_
@@ -1913,7 +1918,10 @@ class EntityMeta(type):
                 val = attr.check(row[offset], None, entity, from_db=True)
             else:
                 vals = map(row.__getitem__, offsets)
-                val = attr.py_type._get_by_raw_pkval_(vals)
+                if None in vals:
+                    assert len(set(vals)) == 1
+                    val = None
+                else: val = attr.py_type._get_by_raw_pkval_(vals)
             avdict[attr] = val
         if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_, None)            
         else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
