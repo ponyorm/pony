@@ -29,15 +29,6 @@ class Student(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-def flatten(x):
-    result = []
-    for el in x:
-        if hasattr(el, "__iter__") and not isinstance(el, basestring):
-            result.extend(flatten(el))
-        else:
-            result.append(el)
-    return result
-
 class TestM2MOptimization(unittest.TestCase):
     def setUp(self):
         rollback()

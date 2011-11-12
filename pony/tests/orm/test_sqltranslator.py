@@ -2,7 +2,7 @@ import unittest
 from pony.orm import *
 from testutils import *
 
-db = Database('sqlite', ':memory:')
+db = TestDatabase('sqlite', ':memory:')
 
 class Student(db.Entity):
     name = Required(unicode)
@@ -220,6 +220,13 @@ class TestSQLTranslator(unittest.TestCase):
     def test_subquery_with_attr(self):
         result = select(s for s in Student if max(g.value for g in s.grades) == 'A').all()
         self.assertEquals(result, set([Student[1]]))
+    def test_query_reuse(self):
+        q = select(s for s in Student if s.scholarship > 0)
+        q.count()
+        self.assert_("ORDER BY" not in db.last_sql.upper())
+        q.all() # should not throw exception, query can be reused
+        self.assert_(True)
+        
        
 if __name__ == "__main__":
     unittest.main()
