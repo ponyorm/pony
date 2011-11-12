@@ -397,3 +397,9 @@ class SQLBuilder(object):
         return 'EXTRACT(MONTH FROM ', builder(expr), ')'
     def DAY(builder, expr):
         return 'EXTRACT(DAY FROM ', builder(expr), ')'
+    def HOUR(builder, expr):
+        return 'EXTRACT(HOUR FROM ', builder(expr), ')'
+    def MINUTE(builder, expr):
+        return 'EXTRACT(MINUTE FROM ', builder(expr), ')'
+    def SECOND(builder, expr):
+        return 'EXTRACT(SECOND FROM ', builder(expr), ')'

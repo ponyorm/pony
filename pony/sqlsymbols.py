@@ -12,6 +12,6 @@ symbols = [ 'SELECT', 'INSERT', 'UPDATE', 'DELETE',
             'UPPER', 'LOWER', 'CONCAT', 'STRIN', 'LIKE', 'SUBSTR', 'LENGTH', 'TRIM', 'LTRIM', 'RTRIM',
             'CASE', 'COALESCE',
             'TO_INT',
-            'YEAR', 'MONTH', 'DAY' ]
+            'YEAR', 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND' ]
 
 globals().update((s, s) for s in symbols)

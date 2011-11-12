@@ -37,6 +37,12 @@ class MySQLBuilder(sqlbuilding.SQLBuilder):
         return 'month(', builder(expr), ')'
     def DAY(builder, expr):
         return 'day(', builder(expr), ')'
+    def HOUR(builder, expr):
+        return 'hour(', builder(expr), ')'
+    def MINUTE(builder, expr):
+        return 'minute(', builder(expr), ')'
+    def SECOND(builder, expr):
+        return 'second(', builder(expr), ')'
 
 def _string_sql_type(converter):
     db_encoding = converter.db_encoding or 'utf8'

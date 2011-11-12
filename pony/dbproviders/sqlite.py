@@ -27,6 +27,12 @@ class SQLiteBuilder(sqlbuilding.SQLBuilder):
         return 'cast(substr(', builder(expr), ', 6, 2) as integer)'
     def DAY(builder, expr):
         return 'cast(substr(', builder(expr), ', 9, 2) as integer)'
+    def HOUR(builder, expr):
+        return 'cast(substr(', builder(expr), ', 12, 2) as integer)'
+    def MINUTE(builder, expr):
+        return 'cast(substr(', builder(expr), ', 15, 2) as integer)'
+    def SECOND(builder, expr):
+        return 'cast(substr(', builder(expr), ', 18, 2) as integer)'
 
 class SQLiteStrConverter(dbapiprovider.StrConverter):
     def py2sql(converter, val):

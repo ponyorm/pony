@@ -659,25 +659,27 @@ class NumericMixin(MonadMixin):
         translator = monad.translator
         return translator.CmpMonad('==', monad, translator.ConstMonad(translator, 0))
 
+def datetime_attr_factory(name):
+    def attr_func(monad):
+        sql = [ name, monad.getsql()[0] ]
+        translator = monad.translator
+        return translator.NumericExprMonad(translator, int, sql)
+    attr_func.__name__ = name.lower()
+    return attr_func
+
 class DateMixin(MonadMixin):
     def mixin_init(monad):
         assert monad.type is date
-    def attr_year(monad):
-        sql = [ YEAR, monad.getsql()[0] ]
-        translator = monad.translator
-        return translator.NumericExprMonad(translator, int, sql)       
-    def attr_month(monad):
-        sql = [ MONTH, monad.getsql()[0] ]
-        translator = monad.translator
-        return translator.NumericExprMonad(translator, int, sql)       
-    def attr_day(monad):
-        sql = [ DAY, monad.getsql()[0] ]
-        translator = monad.translator
-        return translator.NumericExprMonad(translator, int, sql)       
+    attr_year = datetime_attr_factory(YEAR)
+    attr_month = datetime_attr_factory(MONTH)
+    attr_day = datetime_attr_factory(DAY)
     
 class DatetimeMixin(DateMixin):
     def mixin_init(monad):
         assert monad.type is datetime
+    attr_hour = datetime_attr_factory(HOUR)
+    attr_minute = datetime_attr_factory(MINUTE)
+    attr_second = datetime_attr_factory(SECOND)
 
 def make_string_binop(sqlop):
     def string_binop(monad, monad2):
