@@ -257,13 +257,19 @@ class TestColumnsMapping(unittest.TestCase):
         self.assertEqual(Entity1.attr1.columns, ['attr1'])
         self.assertEqual(Entity2.attr2.columns, [])
 
-class TestGenerateMapping(unittest.TestCase):
-    @raises_exception(TranslationError, 'Mapping is not generated for entity E1')
-    def test1(self):
+    @raises_exception(ERDiagramError, 'Mapping is not generated for entity E1')
+    def test_generate_mapping1(self):
         db = Database('sqlite', ':memory:')
         class E1(db.Entity):
             a1 = Required(int)
         select(e for e in E1).all()            
+
+    @raises_exception(ERDiagramError, 'Mapping is not generated for entity E1')
+    def test_generate_mapping2(self):
+        db = Database('sqlite', ':memory:')
+        class E1(db.Entity):
+            a1 = Required(int)
+        e = E1(a1=1)
                 
 if __name__ == '__main__':
     unittest.main()

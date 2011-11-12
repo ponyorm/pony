@@ -9,7 +9,7 @@ from pony import options
 from pony.dbapiprovider import LongStr, LongUnicode
 from pony.sqlsymbols import *
 from pony.utils import avg, copy_func_attrs, is_ident
-from pony.orm import select, exists, TranslationError, EntityMeta, Set, JOIN, AsciiStr
+from pony.orm import select, exists, ERDiagramError, TranslationError, EntityMeta, Set, JOIN, AsciiStr
 
 def sqland(items):
     if not items: return items
@@ -191,7 +191,7 @@ class SQLTranslator(ASTTranslator):
                 if entity is None: raise TranslationError
                 database = entity._database_
                 
-                if database.schema is None: raise TranslationError(
+                if database.schema is None: raise ERDiagramError(
                     'Mapping is not generated for entity %s' % entity.__name__)
 
                 if translator.database is None: translator.database = database

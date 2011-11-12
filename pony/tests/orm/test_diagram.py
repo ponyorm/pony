@@ -1,5 +1,6 @@
 import unittest
 from pony.orm import *
+from pony.orm import Entity
 from testutils import *
 
 class TestDiag(unittest.TestCase):
@@ -137,6 +138,10 @@ class TestDiag(unittest.TestCase):
             attr2 = Set(Entity1, columns=['x'])
         db.generate_mapping(check_tables=False)
 
+    @raises_exception(ERDiagramError, 'Base Entity does not belong to any database')
+    def test_diagram12(self):
+        class Test(Entity):
+        	name = Required(unicode)
 
 if __name__ == '__main__':
     unittest.main()

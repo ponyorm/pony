@@ -1428,6 +1428,7 @@ class EntityMeta(type):
         return super(EntityMeta, meta).__new__(meta, name, bases, cls_dict)
     def __init__(entity, name, bases, cls_dict):
         super(EntityMeta, entity).__init__(name, bases, cls_dict)
+        entity._database_ = None
         if name == 'Entity': return
 
         databases = set()
@@ -1708,6 +1709,9 @@ class EntityMeta(type):
         query = Query(None, inner_expr, set(['.0']), {}, { '.0' : entity })
         return query.orderby(*args)
     def _find_(entity, max_fetch_count, args, keyargs):
+        if entity._database_.schema is None:
+            raise ERDiagramError('Mapping is not generated for entity %s' % entity.__name__)
+        
         if not args: pass
         elif isinstance(args[0], types.FunctionType):
             if len(args) > 1: raise TypeError
@@ -2056,6 +2060,9 @@ class Entity(object):
     __metaclass__ = EntityMeta
     __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_prev_', '_curr_', '_rbits_', '_wbits_', '__weakref__'
     def __new__(entity, **keyargs):
+        if entity._database_.schema is None:
+            raise ERDiagramError('Mapping is not generated for entity %s' % entity.__name__)
+
         pkval, avdict = entity._normalize_args_(keyargs, True)
         undo_funcs = []
         cache = entity._get_cache_()
