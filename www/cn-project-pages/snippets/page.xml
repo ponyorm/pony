@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<page visibility="1">
+  <component_list>
+    <component visibility="1" type="ProjectMetadata" order="1">
+      <title localize="false" />
+    </component>
+    <component visibility="1" type="Html" order="2">
+      <title localize="false">Description</title>
+      <filename>HtmlSnippet1.html</filename>
+    </component>
+    <component visibility="1" type="Subproject" order="3">
+      <title localize="true">Subprojects</title>
+    </component>
+  </component_list>
+</page>
+
