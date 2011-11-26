@@ -18,10 +18,10 @@
     <li><a href="@(url)debug=cont">[ @{cont} ]</a></li>
   </ul>
 -->
-  @button{ @(url)debug=step }{ @{step} }
-  @button{ @(url)debug=next }{ @{next} }
-  @button{ @(url)debug=return }{ @{return} }
-  @button{ @(url)debug=cont }{ @{cont} }
+  @button(url + "debug=step"){ @{step} }
+  @button(url + "debug=next"){ @{next} }
+  @button(url + "debug=return"){ @{return} }
+  @button(url + "debug=cont"){ @{cont} }
   <br>
   <br>
   <dl class="frames">
