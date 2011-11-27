@@ -1,9 +1,9 @@
 from datetime import date
 from pony.orm import *
 
-_diagram_ = Diagram()
+db = Database('sqlite', 'complex.sqlite', create_db=True)
 
-class Group(Entity):
+class Group(db.Entity):
     dept = Required('Department')
     year = Required(int)
     spec = Required(int)
@@ -12,33 +12,33 @@ class Group(Entity):
     lessons = Set('Lesson', columns=['building', 'number', 'dt'])
     PrimaryKey(dept, year, spec)
 
-class Department(Entity):
+class Department(db.Entity):
     number = PrimaryKey(int)
     faculty = Required('Faculty')
     name = Required(unicode)
     groups = Set(Group)
     teachers = Set('Teacher')
 
-class Faculty(Entity):
+class Faculty(db.Entity):
     number = PrimaryKey(int)
     name = Required(unicode)
     depts = Set(Department)
 
-class Student(Entity):
+class Student(db.Entity):
     name = Required(unicode)
     group = Required(Group)
     dob = Optional(date)
     grades = Set('Grade')
     PrimaryKey(name, group)
 
-class Grade(Entity):
+class Grade(db.Entity):
     student = Required(Student, columns=['student_name', 'dept', 'year', 'spec'])
     task = Required('Task')
     date = Required(date)
     value = Required(int)
     PrimaryKey(student, task)
 
-class Task(Entity):
+class Task(db.Entity):
     course = Required('Course')
     type = Required(unicode)
     number = Required(int)
@@ -46,7 +46,7 @@ class Task(Entity):
     grades = Set(Grade)
     PrimaryKey(course, type, number)
 
-class Course(Entity):
+class Course(db.Entity):
     subject = Required('Subject')
     semester = Required(int)
     groups = Set(Group)
@@ -55,25 +55,25 @@ class Course(Entity):
     teachers = Set('Teacher')
     PrimaryKey(subject, semester)
 
-class Subject(Entity):
+class Subject(db.Entity):
     name = PrimaryKey(unicode)
     descr = Optional(unicode)
     courses = Set(Course)
 
-class Room(Entity):
+class Room(db.Entity):
     building = Required(unicode)
     number = Required(unicode)
     floor = Optional(int)
     schedules = Set('Lesson')
     PrimaryKey(building, number)
 
-class Teacher(Entity):
+class Teacher(db.Entity):
     dept = Required(Department)
     name = Required(unicode)
     courses = Set(Course)
     lessons = Set('Lesson')
 
-class Lesson(Entity):
+class Lesson(db.Entity):
     _table_ = 'Schedule'
     groups = Set(Group)
     course = Required(Course)
@@ -83,7 +83,6 @@ class Lesson(Entity):
     PrimaryKey(room, date)
     Unique(teacher, date)
 
-db = Database('sqlite', 'complex.sqlite', create_db=True)
 db.generate_mapping(create_tables=True)
 
 def test_queries():
