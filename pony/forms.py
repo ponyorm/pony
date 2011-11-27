@@ -78,7 +78,7 @@ class Form(object):
         object.__delattr__(form, name)
     def __init__(form, method='GET', secure=DEFAULT,
                  prevent_resubmit=True, buttons_align=None, **attrs):
-        # Note for subclassers: __init__ can be caled twice!
+        # Note for subclassers: __init__ can be called twice!
         object.__setattr__(form, '_pickle_entire_form', False)
         object.__setattr__(form, '_cleared', False)
         object.__setattr__(form, '_validated', False)
