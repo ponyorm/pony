@@ -1,16 +1,9 @@
 import pony
 
 from pony.utils import decorator_with_params, tostring
-from pony.templating import htmltag, Html, printhtml, htmljoin, lazy, BoundMarkup
+from pony.templating import htmltag, Html, htmljoin, lazy, BoundMarkup
 from pony.web import local, http, url
 from pony.postprocessing import css_link, script_link
-
-@decorator_with_params
-def webpage(old_func, *args, **keyargs):
-    if pony.MODE.startswith('GAE-'):
-        raise EnvironmentError('@webpage decorator does not work inside Google AppEngine.\n'
-                               'Use @http decorator and html() function instead.')
-    return http(*args, **keyargs)(printhtml(old_func))
 
 def blueprint_link(column_count=24, column_width=30, gutter_width=10, ns=''):
     if column_count == 24 and column_width == 30 and gutter_width == 10 and ns == '':    

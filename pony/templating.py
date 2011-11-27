@@ -1,7 +1,6 @@
 import itertools, sys, os.path, threading, inspect, re, weakref, textwrap, copy_reg
 
 import pony
-from pony import grab_stdout
 from pony import options, i18n, utils
 from pony.utils import read_text_file, is_ident, decorator, decorator_with_params, get_mtime, make_offsets, pos2lineno, getline
 
@@ -191,52 +190,6 @@ def htmltag(_name_, _attrs_=None, **_attrs2_):
         elif value is not False and value is not None:
             attrlist.append(make_attr((name, value)))
     return Html("<%s%s%s>") % (_name_, attrlist and ' ' or '', Html(' ').join(attrlist))
-
-################################################################################
-
-def string_consts_to_html(f):
-    co = f.func_code
-    consts = list(co.co_consts)
-    for i, x in enumerate(consts):
-        if isinstance(x, str): consts[i] = StrHtml(x)
-        elif isinstance(x, unicode): consts[i] = Html(x)
-    new_code = type(co)(co.co_argcount, co.co_nlocals, co.co_stacksize,
-                        co.co_flags, co.co_code, tuple(consts), co.co_names,
-                        co.co_varnames, co.co_filename, co.co_name,
-                        co.co_firstlineno, co.co_lnotab, co.co_freevars,
-                        co.co_cellvars)
-    if f.func_defaults:
-        defaults = list(f.func_defaults)
-        for i, x in enumerate(defaults):
-            if isinstance(x, str): defaults[i] = StrHtml(x)
-            elif isinstance(x, unicode): defaults[i] = Html(x)
-        defaults = tuple(defaults)
-    else: defaults = None
-    new_function = type(f)(new_code, f.func_globals, f.func_name,
-                                     defaults, f.func_closure)
-    return new_function
-
-@decorator
-def printtext(old_func):
-    func = grab_stdout(old_func)
-    def new_func(*args, **keyargs):
-        return u''.join(func(*args, **keyargs))
-    return new_func
-
-@decorator
-def printhtml(old_func):
-    if pony.MODE.startswith('GAE-'):
-        raise EnvironmentError('@printhtml decorator does not work inside Google AppEngine.\n'
-                               'Use @http decorator and html() function instead.')
-    decorators = getattr(old_func, 'decorators', set())
-    if 'printhtml' in decorators: return old_func
-    if decorators: raise TypeError(
-        'Incorrect decorator order: @printhtml must be first decorator to apply\n'
-        '(that is, @printhtml must be last decorator in program text).')
-    func = grab_stdout(string_consts_to_html(old_func))
-    def new_func(*args, **keyargs):
-        return htmljoin(func(*args, **keyargs))
-    return new_func
 
 ################################################################################
 
