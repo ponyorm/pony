@@ -218,7 +218,7 @@ class TestSQLTranslator(unittest.TestCase):
         result = set(select(s for s in Student if not not (s.scholarship > 0 and s.name != 'S1')))
         self.assertEquals(result, set([Student[2], Student[3]]))
     def test_subquery_with_attr(self):
-        result = select(s for s in Student if max(g.value for g in s.grades) == 'A').all()
+        result = set(select(s for s in Student if max(g.value for g in s.grades) == 'C'))
         self.assertEquals(result, set([Student[1]]))
     def test_query_reuse(self):
         q = select(s for s in Student if s.scholarship > 0)

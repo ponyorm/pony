@@ -128,9 +128,9 @@ def test_queries():
     print
     
 
-##    students = select(s for s in Student 
-##                        if sum(c.credits for c in s.courses) < 15).all()
-##    print_students(students)
+    students = select(s for s in Student 
+                        if sum(c.credits for c in s.courses) < 15).all()
+    print_students(students)
 
 
     sstudents = select(s for s in Student 

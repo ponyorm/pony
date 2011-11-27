@@ -244,6 +244,12 @@ class SQLTranslator(ASTTranslator):
         alias, _ = tablerefs[name_path].make_join()
         translator.alias = alias
         translator.select, translator.attr_offsets = entity._construct_select_clause_(alias, translator.distinct)
+        first_from_item = translator.from_[1]
+        if len(first_from_item) > 3:
+            assert len(first_from_item) == 4
+            assert parent_translator
+            join_condition = first_from_item.pop()
+            translator.conditions.insert(0, join_condition)
         if not translator.conditions: translator.where = None
         else: translator.where = [ WHERE, sqland(translator.conditions) ]
     def preGenExpr(translator, node):
