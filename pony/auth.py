@@ -47,8 +47,6 @@ class Session(object):
         return iter(session.__dict__.keys())
     def __len__(session):
         return len(session.__dict__)
-    def clear(session):
-        session.__dict__.clear()
 
 class Local(localbase):
     def __init__(local):
