@@ -6,102 +6,88 @@ use_autoreload()
 
 @http
 def page1():
+    "Returning plain text"
     return 'Hello, world!'
 
-@http(type='text/html')
+@http
 def page2():
-    return """
-              <h1>This is HTML page</h1>
-              <br>
-              <p>Click <a href="/">here</a> for return
-           """
+    name = '<World>'
+    return html("<h1>Hello, @name!</h1>")
 
-@http
-def page3():
-    "This page deliberately contains error"
-    a = u'проверка'
-    b = None   # комментарий
-    c = a / b  # еще один
-    return a
-    
-@http
-@printhtml
-def page4():
-    "Using of <strong>@printhtml</strong> decorator"
-    print '<title>Page 3</title>'
-    print '<h1>Hello again!</h1>'
-    print '<br>'
-    print '<p>Demonstration of <strong>@printhtml</strong> decorator'
-    print '<p>Click <a href="/">here</a> for return'
-
-@printhtml
 def header(title='Demonstration of Pony features'):
-    print '<title>%s</title>' % title
-    print '<h1>%s</h1>' % title
-    print '<br>'
+    return html('''
+        <title>@title</title>
+        <h1>@title</h1>
+        <br>
+    ''')
 
-@printhtml
 def footer():
-    print '<p>Click <a href="/">here</a> to return to main page'
+    return html('<p>Click <a href="/">here</a> to return to main page')
 
-@webpage('mypage.html')
-def page5():
+@http('/mypage.html')
+def page3():
     "Page with custom URL"
-    print header('Demonstration of custom URL')
-    print '<p>This page have custom URL'
-    print '<p>It also demonstrate how common parts of page'
-    print '(such as header or footer) can be factored out'
-    print footer()
+    return html('''
+        @header('Demonstration of custom URL')
+        <p>This page have custom URL
+        <p>It also demonstrates how common parts 
+        (such as header or footer) can be added to the page
+        @footer()
+    ''')
 
-@webpage('/myblog/archives/$year/posts.html')
-@webpage('/myblog/archives/$year/$month/posts.html')
-@webpage('/myblog/$lang/archives/$year/posts.html')
-@webpage('/myblog/$lang/archives/$year/$month/posts.html')
-def page6(year, month=None, lang='en'):
+@http('/myblog/archives/$year/posts.html')
+@http('/myblog/archives/$year/$month/posts.html')
+@http('/myblog/$lang/archives/$year/posts.html')
+@http('/myblog/$lang/archives/$year/$month/posts.html')
+def page4(year, month=None, lang='en'):
     "Parameters encoded in URL"
-    print header('My Blog Archives')
-    print '<p>Demonstration how parameters can be encoded in URL'
-    print '<ul>'
-    print '<li>Language: <strong>%s</strong>' % lang
-    print '<li>Year: <strong>%s</strong>' % year
-    print '<li>Month: <strong>%s</strong>' % (month or 'Not given')
-    print '</ul>'
-    print '<p><a href="%s">Go to year 2003</a></p>' % url(page6, '2003')
-    print ('<p><a href="%s">Go to French 2005-11</a></p>' % url(page6, 2005, 11, 'fr'))
-    print '<p>%s</p>' % link('Go to English 2004-10', page6, 2004, 10)
-    print footer()
+    return html('''
+        @header('My Blog Archives')
+        <p>Demonstration how parameters can be encoded in URL
+        <ul>
+        <li>Language: <strong>@lang</strong>
+        <li>Year: <strong>@year</strong>
+        <li>Month: <strong>@(month or 'Not given')</strong>
+        </ul>
+        <p><a href="@url(page4, '2003')">Go to year 2003</a></p>
+        <p><a href="@url(page4, 2005, 11, 'fr')">Go to French 2005-11</a></p>
+        <p>@link('Go to English 2004-10', page4, 2004, 10)</p>
+        @footer()
+    ''')
 
-@webpage('/hello?first_name=$name')
-def page7(name=None):
+@http('/hello?first_name=$name')
+def page5(name=None):
     "Parameters in query part of URL"
-    print header('URL parameters')
-    if name is None:
-        print '''
-              <h2>What is your name?</h2>
-              <form>
-              <input type="text" name="first_name">
-              <input type="submit" value="Send!">
-              </form>
-              <br>
-              <p>You can try input something &quot;illegal&quot;
-              instead of name, such as
-              <p><code><strong>&lt;script&gt;alert(&quot;You are hacked!&quot;);&lt;/script&gt;</strong></code>
-              <p>You will see as <strong>Pony</strong> automatically prevent
-              such XSS (Cross-Site Scripting) attacks 
-              (those script will not be executed)</p>
-              '''
-    else:
-        print '<h2>Hello, %s!</h2>' % name
-        print '<p><a href="%s">Try again</a></p>' % url(page7)
-    print footer()
+    return html('''
+        @header('URL parameters')
+        @if(name is None)
+        {
+            <h2>What is your name?</h2>
+            <form>
+            <input type="text" name="first_name">
+            <input type="submit" value="Send!">
+            </form>
+            <br>
+            <p>You can try input something &quot;illegal&quot; instead of name, such as
+            <p><code><strong>&lt;script&gt;alert(&quot;You are hacked!&quot;);&lt;/script&gt;</strong></code>
+            <p>You will see as <strong>Pony</strong> automatically prevent such XSS (Cross-Site Scripting)
+            attacks (those script will not be executed)</p>
+        }
+        @else
+        {
+            <h2>Hello, @name!</h2>
+            <p><a href="@url(page5)">Try again</a></p>
+        }
+        @footer()
+    ''')
 
-@webpage
-def page8():
-    "Using of html() function"
+@http
+def page6():
+    "Template defined in a separate file"
     return html()
 
-@webpage
-def page9():
+@http
+def page7():
     "Tabs"
     return html("""
     <link jquery plugins="tabs">
@@ -132,24 +118,30 @@ def page9():
     <p><a href="/">Return to main page</a>
     """)
 
-@webpage('/') # This is root page
+@http
+def page8():
+    "This page deliberately contains error"
+    a = u'проверка'
+    b = None   # These lines will be visible in traceback
+    c = a / b  # Point mouse onto variable name in browser to check its value
+    return a
+
+@http('/')
 def index():
-    print header('Simple Pony examples')
-    print '<ul>'
-    print '<li><h4><a href="%s">HelloWorld example</a></h4></li>' % url(page1)
-    print '<li><h4>%s</h4></li>' % link('Simplest HTML page', page2)
-    print '<li><h4>%s</h4></li>' % link(page3)
-    print '<li><h4>%s</h4></li>' % link(page4)
-    print '<li><h4>%s</h4></li>' % link(page5)
-    print '<li><h4>%s</h4></li>' % link(page6, 2007, 10)
-    print '<li><h4>%s</h4></li>' % link(page7)
-    print '<li><h4>%s</h4></li>' % link(page8)
-    print '<li><h4>%s</h4></li>' % link(page9)
-    print '</ul>'
-    print '<br><br><p><a href="mailto:example@example.com">automatically obfuscated e-mail</a></p>'
-    print '<p><a href="http://www.google.com@members.tripod.com/abc/def?x=1&y=2">External link</a></p>'
-    print '<p><a href="ftp://aaa.bbb.com/xxx/yyy">FTP link</a></p>'
-    print '''<p><a href="javascript:alert('Hello');">JavaScript url</a></p>'''
+    "This is the root page"
+    return html('''
+        @header('Simple Pony examples')
+        <ul>
+        <li><h4><a href="@url(page1)">HelloWorld example</a></h4></li>
+        <li><h4>@link('Simplest HTML page', page2)</h4></li>
+        <li><h4>@link(page3)</h4></li>
+        <li><h4>@link(page4, 2007, 10)</h4></li>
+        <li><h4>@link(page5)</h4></li>
+        <li><h4>@link(page6)</h4></li>
+        <li><h4>@link(page7)</h4></li>
+        <li><h4>@link(page8)</h4></li>
+        </ul>
+    ''')
 
 if __name__ == '__main__':
     http.start()

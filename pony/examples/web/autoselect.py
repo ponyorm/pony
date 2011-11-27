@@ -4,7 +4,7 @@ from pony.main import *
 
 use_autoreload()
 
-@webpage('/')
+@http('/')
 def index():
     f = Form()
     f.continent = AutoSelect(u'Континент', options=[ (None, u'<Выберите континент>'), u'Америка', u'Евразия' ])
@@ -18,11 +18,12 @@ def index():
             elif f.country.value == u'Франция': cities = [ u'Париж', u'Лион', u'Марсель' ]
             elif f.country.value == u'Россия': cities = [ u'Москва', u'Санкт-Петербург', u'Норильск' ]
             f.city = AutoSelect(u'Город', options=[ (None, u'<Выберите город>') ] + cities)
-            if f.city.value:
-                print u'<h1>Результат:</h1>'
-                print u'<h2>Континент: %s</h2>' % f.continent.value
-                print u'<h2>Страна: %s</h2>' % f.country.value
-                print u'<h2>Город: %s</h2>' % f.city.value
-    print f
+            if f.city.value: return html(u'''
+                <h1>Результат:</h1>
+                <h2>Континент: @f.continent.value</h2>
+                <h2>Страна: @f.country.value</h2>
+                <h2>Город: @f.city.value</h2>
+                ''')
+    return f
 
 http.start()    

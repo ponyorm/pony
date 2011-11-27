@@ -3,26 +3,27 @@ from pony.main import *
 
 use_autoreload()
 
-@webpage('/')
+@http('/')
 def page1():
     f1 = Form(name='form1')
     f1.msg = StaticText(u'Служебный роман')
     f1.rating = Text(u'Рейтинг', type=int)
     f1.sbm = Submit(u'Проголосовать')
-    f2 = Form(name='from2')
+    f2 = Form(name='form2')
     f2.msg = StaticText(u'Криминальное чтиво')
     f2.rating = Text(u'Рейтинг',type=int)
     f2.sbm = Submit(u'Проголосовать')
 
-    for f in [f1, f2]:
+    forms = [ f1, f2 ]
+    for f in forms:
         if f.is_valid:
-            raise http.Redirect(url(success, f.msg.value, f.rating.value))
-        else:
-            print f
+            return html(u'<h4>Фильм: @f.msg.value  Рейтинг: @f.rating.value</h4>')
 
-@webpage
-def success(movie, rating):
-    print u"<h4>Фильм:%s  Рейтинг:%s</h4>" % (movie, rating)
-
+    return html('''
+        @for(f in forms)
+        {
+            @f
+        }
+    ''')
 
 http.start()    

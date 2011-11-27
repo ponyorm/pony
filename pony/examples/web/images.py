@@ -2,9 +2,11 @@ from pony.main import *
 
 use_autoreload()
 
-@webpage('/')
+@http('/')
 def index():
-    print '<h1>Hello, world!</h1>'
-    print '<img src="/images/1.jpg">'
+    return html('''
+        <h1>Hello, world!</h1>
+        <img src="/images/1.jpg">
+    ''')
 
 http.start()

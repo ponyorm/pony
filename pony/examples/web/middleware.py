@@ -11,8 +11,8 @@ def index():
     return html('''
     <h1>Hello, world!!!</h1>
     <p><a href="/test/100/200">test page</a></p>
-    <p>@([ getattr(x, '__name__', '?') for x in middleware.decorator_list ])
-    <p>@([ getattr(x, '__name__', '?') for x in middleware.pony_middleware_list ])
+    <p>@([ getattr(x, '__name__', '?') for x in middleware.decorators ])
+    <p>@([ getattr(x, '__name__', '?') for x in middleware.pony_middleware ])
     ''')
 
 @http('/TEST/$a/$b')
@@ -31,7 +31,7 @@ def uppercase_decorator(func):
         return result
     return new_func
 
-middleware.decorator_list.append(uppercase_decorator)
+middleware.decorators.append(uppercase_decorator)
 
 def pony_middleware(app):
     def new_app(environ):
@@ -51,4 +51,4 @@ def pony_middleware(app):
         return status, headers, content
     return new_app
 
-middleware.pony_middleware_list.append(pony_middleware)
+middleware.pony_middleware.append(pony_middleware)

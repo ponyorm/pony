@@ -3,7 +3,7 @@ from pony.main import *
 
 use_autoreload()
 
-@webpage('/')
+@http('/')
 def page1():
     f = Form()
     f.msg = StaticText(u'Перевод денег между счетами')
@@ -14,11 +14,11 @@ def page1():
     if f.is_valid:
         raise http.Redirect('/success')
     else:
-        print f
+        return f
 
-@webpage('/success')
+@http('/success')
 def page2():
-    print u"<h4>Операция выполнена успешно</h4>"
+    return html(u"<h4>Операция выполнена успешно</h4>")
 
 
 http.start()    

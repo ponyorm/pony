@@ -2,15 +2,15 @@ from pony.main import *
 
 use_autoreload()
 
-@webpage
+@http
 def grid1():
     u"Simple grid example"
     f = Form(method='GET')
     f.text = Text()
     f.grid = Grid(columns=['First', 'Second', 'Third'], row_count=2)
-    print f
+    return f
 
-@webpage
+@http
 def grid2():
     u"Grid with different field types"
     f = Form(method='GET')
@@ -25,11 +25,13 @@ def grid2():
     f.grid[2, 0] = StaticText(value='Static text!')
     f.grid[2, 1] = Text(value='CCC')
     f.grid[2, 2] = StaticText(value='Static text!')
-    print f
+    return f
 
-@webpage('/')
+@http('/')
 def index():
-    print '<p>%s</p>' % link(grid1)
-    print '<p>%s</p>' % link(grid2)
+    return html('''
+        <p>@link(grid1)</p>
+        <p>@link(grid2)</p>
+    ''')
     
 http.start()

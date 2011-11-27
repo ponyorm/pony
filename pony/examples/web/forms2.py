@@ -4,7 +4,7 @@ from pony.main import *
 
 use_autoreload()
 
-@webpage('/')
+@http('/')
 def index():
     f = Form()
     f.first_name = Text(required=True)
@@ -23,12 +23,14 @@ def index():
 ##        except ValueError: f.birth_date.error_text = 'Incorrect date'
 
     f.btn = Submit('Send')
-
-    if f.is_valid:
-        print '<h1>Hello, %s!</h1>' % f.first_name.value
-        print '<h2>Birth date: %s</h2>' % f.birth_date.value
-    else:
-        print '<h1>Please fill the form:</h1>'
-        print f
+    return html('''
+        @if (f.is_valid) {
+            <h1>Hello, @f.first_name.value!</h1>
+            <h2>Birth date: @f.birth_date.value</h2>
+        } @else {
+            <h1>Please fill the form:</h1>
+            @f
+        }
+    ''')
 
 http.start()

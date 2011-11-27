@@ -1,4 +1,4 @@
-from pony.templating import html
+from pony.main import *
 
 class Layout(object):
     def header(self, markup):
@@ -12,15 +12,17 @@ class Layout(object):
               <h2>@(self._footer)</h2>
             </div>
             ''')
-    
-print html("""
 
-@Layout()
-@+header{<strong>This is header</strong>}
-@+footer{<em>This is footer</em>}
+@http('/')
+def index():
+    return html("""
+        @Layout()
+        @+header{<strong>This is header</strong>}
+        @+footer{<em>This is footer</em>}
 
-@Layout()
-@+header{<strong>This is header</strong>}
-@+footer{<em>This is footer</em>}
+        @Layout()
+        @+header{<strong>This is header</strong>}
+        @+footer{<em>This is footer</em>}
+    """)
 
-""")
+http.start()
