@@ -126,7 +126,7 @@ def str2date(s):
     for date_re in date_re_list:
         match = date_re.match(s)
         if match is not None: break
-    else: raise ValueError('Unrecognizable date format')
+    else: raise ValueError('Unrecognized date format')
     dict = match.groupdict()
     year = dict['year']
     day = dict['day']
@@ -134,13 +134,13 @@ def str2date(s):
     if month is None:
         for key, value in month_dict.iteritems():
             if key in s: month = value; break
-        else: raise ValueError('Unrecognizable date format')
+        else: raise ValueError('Unrecognized date format')
     return datetime.date(int(year), int(month), int(day))
 
 def str2time(s):
     s = s.strip().lower()
     match = time_re.match(s)
-    if match is None: raise ValueError('Unrecognizable time format')
+    if match is None: raise ValueError('Unrecognized time format')
     hh, mm, ss, ampm = match.groups()
     if ampm == 'pm': hh = int(hh) + 12
     return datetime.time(int(hh), int(mm or 0), int(ss or 0))
@@ -150,7 +150,7 @@ def str2datetime(s):
     for datetime_re in datetime_re_list:
         match = datetime_re.match(s)
         if match is not None: break
-    else: raise ValueError('Unrecognizable datetime format')
+    else: raise ValueError('Unrecognized datetime format')
     dict = match.groupdict()
     year = dict['year']
     day = dict['day']
@@ -158,7 +158,7 @@ def str2datetime(s):
     if month is None:
         for key, value in month_dict.iteritems():
             if key in s: month = value; break
-        else: raise ValueError('Unrecognizable datetime format')
+        else: raise ValueError('Unrecognized datetime format')
     hh, mm, ss = dict.get('hh'), dict.get('mm'), dict.get('ss')
     if hh is None: hh, mm, ss = 12, 00, 00
     elif dict.get('ampm') == 'pm': hh = int(hh) + 12
