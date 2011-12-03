@@ -107,28 +107,30 @@ class SQLTranslator(ASTTranslator):
     coercions.update(((t2, t1), t3) for ((t1, t2), t3) in coercions.items())
 
     @classmethod
+    def coerce_types(translator, type1, type2):
+        if type1 is type2: return type1
+        return translator.coercions.get((type1, type2))
+
+    @classmethod
     def are_comparable_types(translator, type1, type2, op='=='):
         # types must be normalized already! 
         if op in ('is', 'is not'):
             return type1 is not NoneType and type2 is NoneType
-        if op in ('<', '<=', '>', '>='):
-            if type1 is type2 and type1 in translator.comparable_types: return True
-            return (type1, type2) in translator.coercions
         if op in ('==', '<>', '!='):
             if type1 is NoneType and type2 is NoneType: return False
             if type1 is NoneType or type2 is NoneType: return True
             if type1 in translator.primitive_types:
-                return type1 is type2 or (type1, type2) in translator.coercions
+                if type1 is type2: return True
+                if (type1, type2) in translator.coercions: return True
+                if issubclass(type1, (int, long)) and issubclass(type2, basestring): return True
+                if issubclass(type2, (int, long)) and issubclass(type1, basestring): return True
+                return False
             if isinstance(type1, EntityMeta):
                 if not isinstance(type2, EntityMeta): return False
                 return type1._root_ is type2._root_
             return False
-        assert False
-
-    @classmethod
-    def coerce_types(translator, type1, type2):
-        if type1 is type2: return type1
-        return translator.coercions.get((type1, type2))
+        if type1 is type2 and type1 in translator.comparable_types: return True
+        return (type1, type2) in translator.coercions
 
     def __init__(translator, tree, databases, entities, vartypes, functions, parent_translator=None):
         assert isinstance(tree, ast.GenExprInner), tree
@@ -560,8 +562,8 @@ class EntityMonad(Monad):
         translator = monad.translator
         for attr, val, val_type in izip(entity._pk_attrs_, pkval, pktypes):
             attr_type = translator.normalize_type(attr.py_type)
-            if not translator.are_comparable_types(attr_type, val_type): raise TypeError(
-                'Incomparable types: %r and %r' % (attr_type, val_type))
+            if not translator.are_comparable_types(attr_type, val_type):
+                raise TypeError('Incomparable types: %r and %r' % (attr_type, val_type))
         return translator.ObjectConstMonad(translator, monad.type, pkval)
     def __call__(monad, *args, **keyargs):
         pkval, avdict = monad.normalize_args(args, keyargs)
@@ -604,7 +606,8 @@ class ListMonad(Monad):
     def contains(monad, x, not_in=False):
         translator = monad.translator
         for item in monad.items:
-            if not translator.are_comparable_types(item.type, x.type): raise TypeError((item.type, x.type))
+            if not translator.are_comparable_types(item.type, x.type):
+                raise TypeError((item.type, x.type))
         left_sql = x.getsql()
         if len(left_sql) == 1:
             if not_in: sql = [ NOT_IN, left_sql[0], [ item.getsql()[0] for item in monad.items ] ]
@@ -690,7 +693,7 @@ class DatetimeMixin(DateMixin):
 def make_string_binop(sqlop):
     def string_binop(monad, monad2):
         translator = monad.translator
-        if not translator.are_comparable_types(monad.type, monad2.type):
+        if not translator.are_comparable_types(monad.type, monad2.type, sqlop):
             raise TypeError((monad.type, monad2.type))
         left_sql = monad.getsql()
         right_sql = monad2.getsql()
@@ -776,7 +779,7 @@ class StringMixin(MonadMixin):
         return translator.NumericExprMonad(translator, int, [ LENGTH, sql ])
     def contains(monad, item, not_in=False):
         translator = monad.translator
-        if not translator.are_comparable_types(item.type, monad.type):
+        if not translator.are_comparable_types(item.type, monad.type, LIKE):
             raise TypeError((item.type, monad.type))
         if isinstance(item, translator.StringConstMonad):
             item_sql = [ VALUE, '%%%s%%' % item.value ]
@@ -788,7 +791,7 @@ class StringMixin(MonadMixin):
     call_lower = make_string_func(LOWER)
     def call_startswith(monad, arg):
         translator = monad.translator
-        if not translator.are_comparable_types(monad.type, arg.type):
+        if not translator.are_comparable_types(monad.type, arg.type, None):
             raise TypeError("Argument of 'startswith' method must be a string")
         if isinstance(arg, translator.StringConstMonad):
             assert isinstance(arg.value, basestring)
@@ -801,7 +804,7 @@ class StringMixin(MonadMixin):
         return translator.BoolExprMonad(translator, sql)
     def call_endswith(monad, arg):
         translator = monad.translator
-        if not translator.are_comparable_types(monad.type, arg.type):
+        if not translator.are_comparable_types(monad.type, arg.type, None):
             raise TypeError("Argument of 'endswith' method must be a string")
         if isinstance(arg, translator.StringConstMonad):
             assert isinstance(arg.value, basestring)
@@ -814,7 +817,7 @@ class StringMixin(MonadMixin):
         return translator.BoolExprMonad(translator, sql)
     def strip(monad, chars, strip_type):
         translator = monad.translator
-        if chars is not None and not translator.are_comparable_types(monad.type, chars.type):
+        if chars is not None and not translator.are_comparable_types(monad.type, chars.type, None):
             raise TypeError("'chars' argument must be a %s" % monad.type.__name__)
         parent_sql = monad.getsql()[0]
         sql = [ strip_type, parent_sql ]
@@ -1085,8 +1088,8 @@ cmp_negate.update((b, a) for a, b in cmp_negate.items())
 class CmpMonad(BoolMonad):
     def __init__(monad, op, left, right):
         translator = left.translator
-        if not translator.are_comparable_types(left.type, right.type, op): raise TypeError(
-            'Incomparable types: %r and %r' % (left.type, right.type))
+        if not translator.are_comparable_types(left.type, right.type, op):
+            raise TypeError('Incomparable types: %r and %r' % (left.type, right.type))
         if op == '<>': op = '!='
         if left.type is NoneType:
             assert right.type is not NoneType
