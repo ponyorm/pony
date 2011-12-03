@@ -2,6 +2,7 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time
 
 from pony.utils import is_utf8, simple_decorator
+from pony.converting import str2date, str2datetime
 
 class DBException(Exception):
     def __init__(exc, *args, **keyargs):
@@ -256,8 +257,13 @@ class IntConverter(Converter):
         converter.min_val = min_val
         converter.max_val = max_val
     def validate(converter, val):
-        if not isinstance(val, (int, long)):
-            raise TypeError('Value type for attribute %s must be int. Got: %r' % (converter.attr, type(val)))
+        if isinstance(val, (int, long)): pass
+        elif isinstance(val, basestring):
+            try: val = int(val)
+            except ValueError: raise ValueError(
+                'Value type for attribute %s must be int. Got string %r' % (converter.attr, val))
+        else: raise TypeError('Value type for attribute %s must be int. Got: %r' % (converter.attr, type(val)))
+
         if converter.min_val and val < converter.min_val:
             raise ValueError('Value %r of attr %s is less than the minimum allowed value %r'
                              % (val, converter.attr, converter.min_val))
@@ -354,8 +360,7 @@ class DecimalConverter(Converter):
         converter.min_val = min_val
         converter.max_val = max_val
     def validate(converter, val):
-        if type(val) is Decimal: return val
-        try: return Decimal(val)
+        try: val = Decimal(val)
         except InvalidOperation, exc:
             raise TypeError('Invalid value for attribute %s: %r' % (converter.attr, val))
         if converter.min_val is not None and val < converter.min_val:
@@ -364,6 +369,7 @@ class DecimalConverter(Converter):
         if converter.max_val is not None and val > converter.max_val:
             raise ValueError('Value %r of attr %s is greater than the maximum allowed value %r'
                              % (val, converter.attr, converter.max_val))
+        return val
     def sql2py(converter, val):
         return Decimal(val)
     def sql_type(converter):
@@ -389,9 +395,9 @@ class DateConverter(Converter):
         if attr and attr.args: unexpected_args(attr, attr.args)
     def validate(converter, val):
         if isinstance(val, datetime): return val.date()
-        if not isinstance(val, date):
-            raise TypeError("Attribute %r: expected type is 'date'. Got: %r" % (converter.attr, val))
-        return val
+        if isinstance(val, date): return val
+        if isinstance(val, basestring): return str2date(val)
+        raise TypeError("Attribute %r: expected type is 'date'. Got: %r" % (converter.attr, val))
     def sql2py(converter, val):
         if not isinstance(val, date): raise ValueError(
             'Value of unexpected type received from database: instead of date got %s', type(val))
@@ -404,9 +410,9 @@ class DatetimeConverter(Converter):
         attr = converter.attr
         if attr and attr.args: unexpected_args(attr, attr.args)
     def validate(converter, val):
-        if not isinstance(val, datetime): raise ValueError(
-            'Value of unexpected type received from database: instead of datetime got %s', type(val))
-        return val
+        if isinstance(val, datetime): return val
+        if isinstance(val, basestring): return str2datetime(val)
+        raise TypeError("Attribute %r: expected type is 'datetime'. Got: %r" % (converter.attr, val))
     def sql2py(converter, val):
         if not isinstance(val, datetime): raise ValueError
         return val
