@@ -2399,6 +2399,7 @@ class Entity(object):
         for attr in attr_iter:
             val = obj._curr_[attr.name]
             if not attr.reverse: continue
+            if not attr.columns: continue
             if val is None: continue
             if val._status_ == 'created':
                 val._save_(dependent_objects)
