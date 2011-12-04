@@ -352,14 +352,19 @@ class Database(object):
                         continue
                     # many-to-many:
                     if not isinstance(reverse, Set): raise NotImplementedError
-                    if attr.entity.__name__ >= reverse.entity.__name__: continue
+                    if attr.entity.__name__ > reverse.entity.__name__: continue
+                    if attr.entity is reverse.entity and attr.name > reverse.name: continue
+
                     if attr.table:
-                        if reverse.table != attr.table: raise MappingError(
-                            "Parameter 'table' for %s and %s do not match" % (attr, reverse))
+                        if not reverse.table: reverse.table = attr.table
+                        elif reverse.table != attr.table:
+                            raise MappingError("Parameter 'table' for %s and %s do not match" % (attr, reverse))
                         table_name = attr.table
+                    elif reverse.table: table_name = attr.table = reverse.table
                     else:
                         table_name = provider.get_default_m2m_table_name(attr, reverse)
                         attr.table = reverse.table = table_name
+
                     m2m_table = schema.tables.get(table_name)
                     if m2m_table is not None:
                         if m2m_table.entities or m2m_table.m2m:
@@ -887,7 +892,7 @@ class Collection(Attribute):
         Attribute.__init__(attr, py_type, *args, **keyargs)
         if attr.default is not None: raise TypeError('default value could not be set for collection attribute')
         if attr.auto: raise TypeError("'auto' option could not be set for collection attribute")
-
+        for option in attr.keyargs: raise TypeError('Unknown option %r' % option)
         attr.cached_load_sql = {}
         attr.cached_add_m2m_sql = None
         attr.cached_remove_m2m_sql = None
@@ -1588,7 +1593,9 @@ class EntityMeta(type):
                     if attr2.py_type not in (entity, entity.__name__): continue
                     reverse2 = attr2.reverse
                     if reverse2 in (attr, attr.name): candidates1.append(attr2)
-                    elif not reverse2: candidates2.append(attr2)
+                    elif not reverse2:
+                        if attr2 is attr: continue
+                        candidates2.append(attr2)
                 msg = 'Ambiguous reverse attribute for %s'
                 if len(candidates1) > 1: raise ERDiagramError(msg % attr)
                 elif len(candidates1) == 1: attr2 = candidates1[0]
