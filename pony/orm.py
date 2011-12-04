@@ -374,6 +374,8 @@ class Database(object):
                     m2m_table = schema.add_table(table_name)
                     m2m_columns_1 = attr.get_m2m_columns()
                     m2m_columns_2 = reverse.get_m2m_columns()
+                    if m2m_columns_1 == m2m_columns_2: raise MappingError(
+                        'Different column names should be specified for attributes %s and %s' % (attr, reverse))
                     assert len(m2m_columns_1) == len(reverse.converters)
                     assert len(m2m_columns_2) == len(attr.converters)
                     for column_name, converter in zip(m2m_columns_1 + m2m_columns_2, reverse.converters + attr.converters):
