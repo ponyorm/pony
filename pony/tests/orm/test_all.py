@@ -22,7 +22,7 @@ from test_converters import *
 from test_string_mixin import *
 from test_func_monad import *
 from test_join_optimization import *
-from test_one2one import *
+from test_one2one1 import *
 from test_orm_undo import *
 from test_date import *
 

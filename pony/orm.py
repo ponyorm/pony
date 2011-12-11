@@ -679,7 +679,7 @@ class Attribute(object):
             elif curr is not None:
                 if not reverse.is_collection:
                     assert curr is not NOT_LOADED
-                    reverse.__set__(curr, None, undo_funcs)
+                    if val is not None: reverse.__set__(curr, None, undo_funcs)
                 elif isinstance(reverse, Set):
                     if curr is NOT_LOADED: pass
                     else: reverse.reverse_remove((curr,), obj, undo_funcs)
@@ -805,6 +805,7 @@ class Attribute(object):
                     "Both attributes %s and %s have parameter 'column'. "
                     "Parameter 'column' cannot be specified at both sides of one-to-one relation"
                     % (attr, reverse))
+            elif attr.columns: generate_columns()
             elif attr.entity.__name__ > reverse.entity.__name__: pass
             else: generate_columns()
         attr._columns_checked = True
