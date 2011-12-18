@@ -105,7 +105,8 @@ class Table(object):
             if child_table not in created_tables: continue
             for foreign_key in child_table.foreign_keys.values():
                 if foreign_key.parent_table is not table: continue
-                result.append(foreign_key.get_create_command())
+                cmd = foreign_key.get_create_command()
+                if cmd is not None: result.append(cmd)
         created_tables.add(table)
         return result
     def add_column(table, column_name, sql_type, is_not_null=None):
