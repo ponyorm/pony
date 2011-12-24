@@ -693,9 +693,8 @@ class Attribute(object):
         assert cache.is_alive
         assert obj._status_ not in ('created', 'deleted', 'cancelled')
         assert attr.pk_offset is None
-        reverse = attr.reverse
-        get_val = obj._vals_.get
-        new_dbval = attr.check(new_dbval, obj, from_db=True)
+        if new_dbval is NOT_LOADED: assert is_reverse_call
+        else: new_dbval = attr.check(new_dbval, obj, from_db=True)
         old_dbval = obj._dbvals_.get(attr.name, NOT_LOADED)
 
         if attr.py_type is float:
@@ -706,33 +705,41 @@ class Attribute(object):
         bit = obj._bits_[attr]
         if obj._rbits_ & bit:
             assert old_dbval is not NOT_LOADED
-            raise UnrepeatableReadError('Value of %s.%s for %s was updated outside of current transaction (was: %s, now: %s)'
-                                        % (obj.__class__.__name__, attr.name, obj, old_dbval, new_dbval))
-        obj._dbvals_[attr.name] = new_dbval
-        if obj._wbits_ & bit: return
-        old_val = get_val(attr.name, NOT_LOADED)
-        assert old_val == old_dbval
+            if new_dbval is NOT_LOADED: diff = ''
+            else: diff = ' (was: %s, now: %s)' % (old_dbval, new_dbval)
+            raise UnrepeatableReadError(
+                'Value of %s.%s for %s was updated outside of current transaction%s'
+                % (obj.__class__.__name__, attr.name, obj, diff))
 
-        if not attr.reverse and not attr.is_indexed: return
-        cache = obj._cache_
-        if attr.is_unique: cache.db_update_simple_index(obj, attr, old_val, new_dbval)
-        for attrs, i in attr.composite_keys:
-            vals = [ get_val(a.name, NOT_LOADED) for a in attrs ]
-            currents = tuple(vals)
-            vals[i] = new_dbval
-            vals = tuple(vals)
-            cache.db_update_composite_index(obj, attrs, currents, vals)
+        if new_dbval is NOT_LOADED: obj._dbvals_.pop(attr.name, None)
+        else: obj._dbvals_[attr.name] = new_dbval
+            
+        wbit = bool(obj._wbits_ & bit)
+        if not wbit:
+            old_val = obj._vals_.get(attr.name, NOT_LOADED)
+            assert old_val == old_dbval
+            if attr.is_indexed:
+                cache = obj._cache_
+                if attr.is_unique: cache.db_update_simple_index(obj, attr, old_val, new_dbval)
+                for attrs, i in attr.composite_keys:
+                    vals = [ obj._vals_.get(a.name, NOT_LOADED) for a in attrs ]
+                    old_vals = tuple(vals)
+                    vals[i] = new_dbval
+                    new_vals = tuple(vals)
+                    cache.db_update_composite_index(obj, attrs, old_vals, new_vals)
+            obj._vals_[attr.name] = new_dbval
+
+        reverse = attr.reverse
         if not reverse: pass
-        elif not is_reverse_call: attr.db_update_reverse(obj, old_val, new_dbval)
-        elif old_val is not None:
+        elif not is_reverse_call: attr.db_update_reverse(obj, old_dbval, new_dbval)
+        elif old_dbval is not None:
             if not reverse.is_collection:
-                assert old_val is not NOT_LOADED
-                reverse.db_set(old_val, None, is_reverse_call=True)
+                if old_dbval is not NOT_LOADED:
+                    reverse.db_set(old_dbval, NOT_LOADED, is_reverse_call=True)
             elif isinstance(reverse, Set):
-                if old_val is NOT_LOADED: pass
-                else: reverse.db_reverse_remove((old_val,), obj)
+                if old_dbval is NOT_LOADED: pass
+                else: reverse.db_reverse_remove((old_dbval,), obj)
             else: raise NotImplementedError
-        obj._vals_[attr.name] = new_dbval
     def update_reverse(attr, obj, old_val, new_val, undo_funcs):
         reverse = attr.reverse
         if not reverse.is_collection:
@@ -748,8 +755,8 @@ class Attribute(object):
         reverse = attr.reverse
         if not reverse.is_collection:
             if old_dbval is NOT_LOADED: pass
-            elif old_dbval is not None: reverse.db_set(old_dbval, None)
-            if new_dbval is not None: reverse.db_set(new_dbval, obj)
+            elif old_dbval is not None: reverse.db_set(old_dbval, NOT_LOADED, True)
+            if new_dbval is not None: reverse.db_set(new_dbval, obj, True)
         elif isinstance(reverse, Set):
             if old_dbval is NOT_LOADED: pass
             elif old_dbval is not None: reverse.db_reverse_remove((old_dbval,), obj)
@@ -2711,7 +2718,8 @@ class Cache(object):
     def db_update_simple_index(cache, obj, attr, old_dbval, new_dbval):
         index = cache.indexes.get(attr)
         if index is None: index = cache.indexes[attr] = {}
-        if new_dbval is None or cache.ignore_none: pass
+        if new_dbval is NOT_LOADED: pass
+        elif new_dbval is None and cache.ignore_none: pass
         else:
             obj2 = index.setdefault(new_dbval, obj)
             if obj2 is not obj: raise TransactionIntegrityError(
