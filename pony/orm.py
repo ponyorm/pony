@@ -733,7 +733,7 @@ class Attribute(object):
         elif not is_reverse_call: attr.db_update_reverse(obj, old_dbval, new_dbval)
         elif old_dbval not in (None, NOT_LOADED):
             if not reverse.is_collection:
-                reverse.db_set(old_dbval, NOT_LOADED, is_reverse_call=True)
+                if new_dbval is not NOT_LOADED: reverse.db_set(old_dbval, NOT_LOADED, is_reverse_call=True)
             elif isinstance(reverse, Set):
                 reverse.db_reverse_remove((old_dbval,), obj)
             else: raise NotImplementedError
