@@ -153,10 +153,6 @@ class TestColumnsMapping(unittest.TestCase):
             attr2 = Optional(Entity1)
         db.generate_mapping(check_tables=False)
         
-    # exception Optional(column)-Required
-    @raises_exception(MappingError,
-                      "Parameter 'column' cannot be specified for attribute Entity2.attr2. "
-                      "Specify this parameter for reverse attribute Entity1.attr1 or make Entity1.attr1 optional")
     def test_relations4(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
@@ -166,6 +162,8 @@ class TestColumnsMapping(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1, column='a')
         db.generate_mapping(check_tables=False)
+        self.assertEqual(Entity1.attr1.columns, ['attr1'])
+        self.assertEqual(Entity2.attr2.columns, ['a'])
         
     # no exception Optional-Optional
     def test_relations5(self):
@@ -189,9 +187,6 @@ class TestColumnsMapping(unittest.TestCase):
             attr2 = Optional(Entity1)
         db.generate_mapping(check_tables=False)
         
-    # exception Optional(column)-Optional(column)
-    @raises_exception(MappingError, "Both attributes Entity1.attr1 and Entity2.attr2 have parameter 'column'. "
-                                    "Parameter 'column' cannot be specified at both sides of one-to-one relation")
     def test_relations7(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
@@ -201,6 +196,8 @@ class TestColumnsMapping(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1, column='a1')
         db.generate_mapping(check_tables=False)
+        self.assertEqual(Entity1.attr1.columns, ['a'])
+        self.assertEqual(Entity2.attr2.columns, ['a1'])
 
     def test_columns1(self):
         db = Database('sqlite', ':memory:')

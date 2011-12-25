@@ -727,7 +727,8 @@ class Attribute(object):
                     vals[i] = new_dbval
                     new_vals = tuple(vals)
                     cache.db_update_composite_index(obj, attrs, old_vals, new_vals)
-            obj._vals_[attr.name] = new_dbval
+            if new_dbval is NOT_LOADED: obj._vals_.pop(attr.name, None)
+            else: obj._vals_[attr.name] = new_dbval
 
         reverse = attr.reverse
         if not reverse: pass
@@ -754,12 +755,10 @@ class Attribute(object):
     def db_update_reverse(attr, obj, old_dbval, new_dbval):
         reverse = attr.reverse
         if not reverse.is_collection:
-            if old_dbval is NOT_LOADED: pass
-            elif old_dbval is not None: reverse.db_set(old_dbval, NOT_LOADED, True)
+            if old_dbval not in (None, NOT_LOADED): reverse.db_set(old_dbval, NOT_LOADED, True)
             if new_dbval is not None: reverse.db_set(new_dbval, obj, True)
         elif isinstance(reverse, Set):
-            if old_dbval is NOT_LOADED: pass
-            elif old_dbval is not None: reverse.db_reverse_remove((old_dbval,), obj)
+            if old_dbval not in (None, NOT_LOADED): reverse.db_reverse_remove((old_dbval,), obj)
             if new_dbval is not None: reverse.db_reverse_add((new_dbval,), obj)
         else: raise NotImplementedError
     def __delete__(attr, obj):
@@ -801,17 +800,8 @@ class Attribute(object):
             elif attr.is_required:
                 assert not reverse.is_required
                 generate_columns()
-            elif reverse.is_required:
-                if attr.columns: raise MappingError(
-                    "Parameter 'column' cannot be specified for attribute %s. "
-                    "Specify this parameter for reverse attribute %s or make %s optional"
-                    % (attr, reverse, reverse))
-            elif reverse.columns:
-                if attr.columns: raise MappingError(
-                    "Both attributes %s and %s have parameter 'column'. "
-                    "Parameter 'column' cannot be specified at both sides of one-to-one relation"
-                    % (attr, reverse))
             elif attr.columns: generate_columns()
+            elif reverse.columns: pass
             elif attr.entity.__name__ > reverse.entity.__name__: pass
             else: generate_columns()
         attr._columns_checked = True
@@ -2153,7 +2143,6 @@ class Entity(object):
         if not avdict: return
         get_val = obj._vals_.get
         get_dbval = obj._dbvals_.get
-        set_dbval = obj._dbvals_.__setitem__
         rbits = obj._rbits_
         wbits = obj._wbits_
         for attr, new_dbval in avdict.items():
@@ -2173,12 +2162,17 @@ class Entity(object):
             if rbits & bit: raise UnrepeatableReadError(
                 'Value of %s.%s for %s was updated outside of current transaction (was: %r, now: %r)'
                 % (obj.__class__.__name__, attr.name, obj, old_dbval, new_dbval))
-            set_dbval(attr.name, new_dbval)
-            if wbits & bit:
-                del avdict[attr]
-                continue
-            old_val = get_val(attr.name, NOT_LOADED)
-            assert old_val == old_dbval
+
+            if attr.reverse: attr.db_update_reverse(obj, old_dbval, new_dbval)
+            if new_dbval is NOT_LOADED:
+                obj._dbvals_.pop(attr.name, None)
+                if wbits & bit: del avdict[attr]
+                else: obj._vals_.pop(attr.name, None)
+            else:
+                obj._dbvals_[attr.name] = new_dbval
+                if wbits & bit: del avdict[attr]
+                else: obj._vals_[attr.name] = new_dbval
+
         NOT_FOUND = object()
         cache = obj._cache_
         assert cache.is_alive
@@ -2202,12 +2196,6 @@ class Entity(object):
                 vals[i] = new_dbval
             vals = tuple(vals)
             cache.db_update_composite_index(obj, attrs, currents, vals)
-        set_curr = obj._vals_.__setitem__
-        for attr, new_dbval in avdict.iteritems():
-            if attr.reverse:
-                old_val = get_val(attr.name, NOT_LOADED)
-                attr.db_update_reverse(obj, old_val, new_dbval)
-            set_curr(attr.name, new_dbval)
     def _delete_(obj, undo_funcs=None):
         is_recursive_call = undo_funcs is not None
         if not is_recursive_call: undo_funcs = []
