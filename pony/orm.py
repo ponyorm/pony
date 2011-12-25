@@ -676,13 +676,11 @@ class Attribute(object):
                 
             if not reverse: pass
             elif not is_reverse_call: attr.update_reverse(obj, old_val, new_val, undo_funcs)
-            elif old_val is not None:
+            elif old_val not in (None, NOT_LOADED):
                 if not reverse.is_collection:
-                    assert old_val is not NOT_LOADED
                     if new_val is not None: reverse.__set__(old_val, None, undo_funcs)
                 elif isinstance(reverse, Set):
-                    if old_val is NOT_LOADED: pass
-                    else: reverse.reverse_remove((old_val,), obj, undo_funcs)
+                    reverse.reverse_remove((old_val,), obj, undo_funcs)
                 else: raise NotImplementedError
         except:
             if not is_reverse_call:
@@ -733,23 +731,19 @@ class Attribute(object):
         reverse = attr.reverse
         if not reverse: pass
         elif not is_reverse_call: attr.db_update_reverse(obj, old_dbval, new_dbval)
-        elif old_dbval is not None:
+        elif old_dbval not in (None, NOT_LOADED):
             if not reverse.is_collection:
-                if old_dbval is not NOT_LOADED:
-                    reverse.db_set(old_dbval, NOT_LOADED, is_reverse_call=True)
+                reverse.db_set(old_dbval, NOT_LOADED, is_reverse_call=True)
             elif isinstance(reverse, Set):
-                if old_dbval is NOT_LOADED: pass
-                else: reverse.db_reverse_remove((old_dbval,), obj)
+                reverse.db_reverse_remove((old_dbval,), obj)
             else: raise NotImplementedError
     def update_reverse(attr, obj, old_val, new_val, undo_funcs):
         reverse = attr.reverse
         if not reverse.is_collection:
-            if old_val is NOT_LOADED: pass
-            elif old_val is not None: reverse.__set__(old_val, None, undo_funcs)
+            if old_val not in (None, NOT_LOADED): reverse.__set__(old_val, None, undo_funcs)
             if new_val is not None: reverse.__set__(new_val, obj, undo_funcs)
         elif isinstance(reverse, Set):
-            if old_val is NOT_LOADED: pass
-            elif old_val is not None: reverse.reverse_remove((old_val,), obj, undo_funcs)
+            if old_val not in (None, NOT_LOADED): reverse.reverse_remove((old_val,), obj, undo_funcs)
             if new_val is not None: reverse.reverse_add((new_val,), obj, undo_funcs)
         else: raise NotImplementedError
     def db_update_reverse(attr, obj, old_dbval, new_dbval):
