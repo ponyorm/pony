@@ -28,6 +28,7 @@ from test_symmetric_one2one import *
 from test_symmetric_m2m import *
 from test_orm_undo import *
 from test_date import *
+from test_raw_sql import *
 
 if __name__ == '__main__':
     unittest.main()

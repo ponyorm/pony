@@ -22,7 +22,7 @@ def populate_db():
    s3 = Subject(name='Subj3')
    s4 = Subject(name='Subj4')
    g1.subjects = [ s1, s2 ]
-populate_db()    
+populate_db()
 
 class TestManyToManyNonComposite(unittest.TestCase):
     def setUp(self):

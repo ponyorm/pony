@@ -226,7 +226,18 @@ class TestSQLTranslator(unittest.TestCase):
         self.assert_("ORDER BY" not in db.last_sql.upper())
         q.all() # should not throw exception, query can be reused
         self.assert_(True)
-        
+    def test_lambda(self):
+        result = Student.all(lambda s: s.scholarship > 0)
+        self.assertEquals(result, [Student[2], Student[3]])
+    def test_lambda2(self):
+        result = Student.get(lambda s: s.scholarship == 500)
+        self.assertEquals(result, Student[3])
+    def test_where(self):
+        result = set(Student.where(lambda s: s.scholarship > 0))
+        self.assertEquals(result, set([Student[2], Student[3]]))
+    def test_orderby(self):
+        result = list(Student.orderby(Student.name))
+        self.assertEquals(result, [Student[1], Student[2], Student[3]])
        
 if __name__ == "__main__":
     unittest.main()

@@ -144,17 +144,6 @@ class TestAttribute(unittest.TestCase):
             id = PrimaryKey(int)
             attr3 = Required(Entity2, reverse=Entity2.attr2)
 
-##    def test_attribute17(self):
-##        db = Database('sqlite', ':memory:')
-##        class Phone(db.Entity):
-##            id = PrimaryKey(int)
-##            person = Required('Student')
-##        class Person(db.Entity):
-##            id = PrimaryKey(int)
-##            phones = Set('Phone')
-##        class Student(Person):
-##            record = Required(str)
-
     @raises_exception(ERDiagramError, 'Reverse attribute for Entity2.attr2 not found')
     def test_attribute18(self):
         db = Database('sqlite', ':memory:')
@@ -209,17 +198,6 @@ class TestAttribute(unittest.TestCase):
             c = Set(Entity1, reverse='a')
             d = Set(Entity1)
 
-##    def test_attribute23(self):
-##        db = Database('sqlite', ':memory:')
-##        class Entity1(db.Entity):
-##            id = PrimaryKey(int)
-##            a = Required('Entity2', reverse='c')
-##            b = Optional('Entity2')
-##        class Entity2(db.Entity):
-##            id = PrimaryKey(int)
-##            c = Set(Entity1, reverse='b')
-##            #d = Set(Entity1)
-            
     @raises_exception(TypeError, "Parameters 'column' and 'columns' cannot be specified simultaneously")
     def test_columns1(self):
         db = Database('sqlite', ':memory:')
@@ -310,6 +288,72 @@ class TestAttribute(unittest.TestCase):
             PrimaryKey(a, b)
         class Entity2(db.Entity):
             attr2 = Required(Entity1, columns=[1, 2])
+
+    def test_columns12(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            attr1 = Set('Entity1', reverse='attr1', column='column1', reverse_column='column2', reverse_columns=['column2'])
+        db.generate_mapping(create_tables=True)
+
+    @raises_exception(TypeError, "Parameters 'reverse_column' and 'reverse_columns' cannot be specified simultaneously")            
+    def test_columns13(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            attr1 = Set('Entity1', reverse='attr1', column='column1', reverse_column='column2', reverse_columns=['column3'])
+        db.generate_mapping(create_tables=True)
+
+    @raises_exception(TypeError, "Parameter 'reverse_column' must be a string. Got: 5")
+    def test_columns14(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            attr1 = Set('Entity1', reverse='attr1', column='column1', reverse_column=5)
+        db.generate_mapping(create_tables=True)
+
+    @raises_exception(TypeError, "Parameter 'reverse_columns' must be a list. Got: 'column3'")
+    def test_columns15(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            attr1 = Set('Entity1', reverse='attr1', column='column1', reverse_columns='column3')
+        db.generate_mapping(create_tables=True)
+
+    @raises_exception(TypeError, "Parameter 'reverse_columns' must be a list of strings. Got: [5]")
+    def test_columns16(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            attr1 = Set('Entity1', reverse='attr1', column='column1', reverse_columns=[5])
+        db.generate_mapping(create_tables=True)
+
+    def test_columns17(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            attr1 = Set('Entity1', reverse='attr1', column='column1', reverse_columns=['column2'])
+        db.generate_mapping(create_tables=True)
+
+    def test_columns18(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            attr1 = Set('Entity1', reverse='attr1', table='T1')
+        db.generate_mapping(create_tables=True)
+
+    @raises_exception(TypeError, "Parameter 'table' must be a string. Got: 5")
+    def test_columns19(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            attr1 = Set('Entity1', reverse='attr1', table=5)
+        db.generate_mapping(create_tables=True)
+
+    @raises_exception(TypeError, "Each part of table name must be a string. Got: 1")
+    def test_columns20(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            attr1 = Set('Entity1', reverse='attr1', table=[1, 'T1'])
+        db.generate_mapping(create_tables=True)
+
+    def test_columns21(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            attr1 = Set('Entity1', reverse='attr1', table=['db1', 'T1'])
+        db.generate_mapping()
    
 if __name__ == '__main__':
     unittest.main()

@@ -109,7 +109,7 @@ class DBAPIProvider(object):
         if isinstance(name, basestring):
             name = name.replace(quote_char, quote_char+quote_char)
             return quote_char + name + quote_char
-        return '.'.join(quote_name(item, quote_char) for item in name)
+        return '.'.join(provider.quote_name(item) for item in name)
 
     def ast2sql(provider, ast):
         builder = provider.sqlbuilder_cls(provider, ast)

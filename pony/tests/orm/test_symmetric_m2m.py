@@ -92,6 +92,6 @@ class TestSymmetric(unittest.TestCase):
         except UnrepeatableReadError, e:
             self.assertEqual(e.args[0], "Phantom object Person(1) disappeared from collection Person(2).friends")
         else: self.assert_(False)
-        
+
 if __name__ == '__main__':
     unittest.main()

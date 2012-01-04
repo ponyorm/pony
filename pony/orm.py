@@ -888,20 +888,20 @@ class Collection(Attribute):
         if attr.default is not None: raise TypeError('Default value could not be set for collection attribute')
         if attr.auto: raise TypeError("'auto' option could not be set for collection attribute")
 
-        attr.reverse_column = keyargs.pop('reverse_column', None)
-        attr.reverse_columns = keyargs.pop('reverse_columns', None)
+        attr.reverse_column = attr.keyargs.pop('reverse_column', None)
+        attr.reverse_columns = attr.keyargs.pop('reverse_columns', None)
         if attr.reverse_column is not None:
-            if attr.reverse_columns is not None:
+            if attr.reverse_columns is not None and attr.reverse_columns != [ attr.reverse_column ]:
                 raise TypeError("Parameters 'reverse_column' and 'reverse_columns' cannot be specified simultaneously")
             if not isinstance(attr.reverse_column, basestring):
                 raise TypeError("Parameter 'reverse_column' must be a string. Got: %r" % attr.reverse_column)
             attr.reverse_columns = [ attr.reverse_column ]
         elif attr.reverse_columns is not None:
             if not isinstance(attr.reverse_columns, (tuple, list)):
-                raise TypeError("Parameter 'reverse_columns' must be a list. Got: %r'" % attr.reverse_columns)
+                raise TypeError("Parameter 'reverse_columns' must be a list. Got: %r" % attr.reverse_columns)
             for reverse_column in attr.reverse_columns:
                 if not isinstance(reverse_column, basestring):
-                    raise TypeError("Items of parameter 'reverse_columns' must be strings. Got: %r" % attr.reverse_columns)
+                    raise TypeError("Parameter 'reverse_columns' must be a list of strings. Got: %r" % attr.reverse_columns)
             if len(attr.reverse_columns) == 1: attr.reverse_column = attr.reverse_columns[0]
         else: attr.reverse_columns = []
 
@@ -1769,7 +1769,6 @@ class EntityMeta(type):
             globals = sys._getframe(2).f_globals
             locals = sys._getframe(2).f_locals
             query = entity._query_from_lambda_(func, globals, locals)
-            if max_fetch_count == 1: return query.get()
             return query.all()
         elif isinstance(args[0], basestring):
             return entity._find_by_sql_(max_fetch_count, *args, **keyargs)
