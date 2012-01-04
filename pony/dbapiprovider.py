@@ -82,6 +82,9 @@ class DBAPIProvider(object):
         return entity.__name__
 
     def get_default_m2m_table_name(provider, attr, reverse):
+        if attr.symmetric:
+            assert reverse is attr
+            return attr.entity.__name__ + '_' + attr.name
         return attr.entity.__name__ + '_' + reverse.entity.__name__
 
     def get_default_column_names(provider, attr, reverse_pk_columns=None):

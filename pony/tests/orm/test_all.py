@@ -24,7 +24,8 @@ from test_func_monad import *
 from test_join_optimization import *
 from test_one2one1 import *
 from test_one2one2 import *
-from test_symmetric import *
+from test_symmetric_one2one import *
+from test_symmetric_m2m import *
 from test_orm_undo import *
 from test_date import *
 

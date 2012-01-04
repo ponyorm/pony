@@ -243,13 +243,6 @@ class TestAttribute(unittest.TestCase):
             id = PrimaryKey(int, columns=['a'])
         self.assertEqual(Entity1.id.column, 'a')
 
-    @raises_exception(TypeError, "Parameter 'columns' must not be empty list")
-    def test_columns4(self):
-        db = Database('sqlite', ':memory:')
-        class Entity1(db.Entity):
-            id = PrimaryKey(int, columns=[])
-        db.generate_mapping(check_tables=False)
-
     @raises_exception(MappingError, "Too many columns were specified for Entity1.id")
     def test_columns5(self):
         db = Database('sqlite', ':memory:')

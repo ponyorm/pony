@@ -325,7 +325,6 @@ class Database(object):
 
         provider = database.provider
         schema = database.schema = provider.dbschema_cls(provider)
-        foreign_keys = []
         entities = list(sorted(database.entities.values(), key=attrgetter('_id_')))
         for entity in entities:
             entity._get_pk_columns_()
@@ -372,8 +371,8 @@ class Database(object):
                             raise MappingError("Table name '%s' is already in use" % table_name)
                         raise NotImplementedError
                     m2m_table = schema.add_table(table_name)
-                    m2m_columns_1 = attr.get_m2m_columns()
-                    m2m_columns_2 = reverse.get_m2m_columns()
+                    m2m_columns_1 = attr.get_m2m_columns(is_reverse=False)
+                    m2m_columns_2 = reverse.get_m2m_columns(is_reverse=True)
                     if m2m_columns_1 == m2m_columns_2: raise MappingError(
                         'Different column names should be specified for attributes %s and %s' % (attr, reverse))
                     assert len(m2m_columns_1) == len(reverse.converters)
@@ -425,6 +424,9 @@ class Database(object):
                     parent_columns = get_columns(table, entity._pk_columns_)
                     child_columns = get_columns(m2m_table, reverse.columns)
                     m2m_table.add_foreign_key(None, child_columns, table, parent_columns)
+                    if attr.symmetric:
+                        child_columns = get_columns(m2m_table, attr.reverse_columns)
+                        m2m_table.add_foreign_key(None, child_columns, table, parent_columns)
                 elif attr.reverse and attr.columns:
                     rentity = attr.reverse.entity
                     parent_table = schema.tables[rentity._table_]
@@ -532,7 +534,6 @@ class Attribute(object):
         elif attr.columns is not None:
             if not isinstance(attr.columns, (tuple, list)):
                 raise TypeError("Parameter 'columns' must be a list. Got: %r'" % attr.columns)
-            if not attr.columns: raise TypeError("Parameter 'columns' must not be empty list")
             for column in attr.columns:
                 if not isinstance(column, basestring):
                     raise TypeError("Items of parameter 'columns' must be strings. Got: %r" % attr.columns)
@@ -870,7 +871,8 @@ class PrimaryKey(Unique):
     __slots__ = []
 
 class Collection(Attribute):
-    __slots__ = 'table', 'cached_load_sql', 'cached_add_m2m_sql', 'cached_remove_m2m_sql', 'wrapper_class'
+    __slots__ = 'table', 'cached_load_sql', 'cached_add_m2m_sql', 'cached_remove_m2m_sql', 'wrapper_class', \
+                'symmetric', 'reverse_column', 'reverse_columns'
     def __init__(attr, py_type, *args, **keyargs):
         if attr.__class__ is Collection: raise TypeError("'Collection' is abstract type")
         table = keyargs.pop('table', None)  # TODO: rename table to link_table or m2m_table
@@ -883,12 +885,37 @@ class Collection(Attribute):
             table = tuple(table)
         attr.table = table
         Attribute.__init__(attr, py_type, *args, **keyargs)
-        if attr.default is not None: raise TypeError('default value could not be set for collection attribute')
+        if attr.default is not None: raise TypeError('Default value could not be set for collection attribute')
         if attr.auto: raise TypeError("'auto' option could not be set for collection attribute")
+
+        attr.reverse_column = keyargs.pop('reverse_column', None)
+        attr.reverse_columns = keyargs.pop('reverse_columns', None)
+        if attr.reverse_column is not None:
+            if attr.reverse_columns is not None:
+                raise TypeError("Parameters 'reverse_column' and 'reverse_columns' cannot be specified simultaneously")
+            if not isinstance(attr.reverse_column, basestring):
+                raise TypeError("Parameter 'reverse_column' must be a string. Got: %r" % attr.reverse_column)
+            attr.reverse_columns = [ attr.reverse_column ]
+        elif attr.reverse_columns is not None:
+            if not isinstance(attr.reverse_columns, (tuple, list)):
+                raise TypeError("Parameter 'reverse_columns' must be a list. Got: %r'" % attr.reverse_columns)
+            for reverse_column in attr.reverse_columns:
+                if not isinstance(reverse_column, basestring):
+                    raise TypeError("Items of parameter 'reverse_columns' must be strings. Got: %r" % attr.reverse_columns)
+            if len(attr.reverse_columns) == 1: attr.reverse_column = attr.reverse_columns[0]
+        else: attr.reverse_columns = []
+
         for option in attr.keyargs: raise TypeError('Unknown option %r' % option)
         attr.cached_load_sql = {}
         attr.cached_add_m2m_sql = None
         attr.cached_remove_m2m_sql = None
+    def _init_(attr, entity, name):
+        Attribute._init_(attr, entity, name)
+        attr.symmetric = (attr.py_type == entity.__name__ and attr.reverse == name)
+        if not attr.symmetric and attr.reverse_columns: raise TypeError(
+            "'reverse_column' and 'reverse_columns' options can be set for symmetric relations only")
+        if attr.reverse_columns and len(attr.reverse_columns) != len(attr.columns):
+            raise TypeError("Number of columns and reverse columns for symmetric attribute %s do not match" % attr)
     def load(attr, obj):
         assert False, 'Abstract method'
     def __get__(attr, obj, cls=None):
@@ -978,34 +1005,28 @@ class Set(Collection):
             sql, adapter = attr.construct_sql_m2m(len(objects))
             arguments = adapter(value_dict)
             cursor = database._exec_sql(sql, arguments)
-            if len(objects) == 1:
-                items = []
-                for row in cursor.fetchall():
-                    item = rentity._get_by_raw_pkval_(row)
-                    if item in setdata: continue
-                    if item in setdata.removed: continue
-                    items.append(item)
-                    setdata.add(item)
-                reverse.db_reverse_add(items, obj)
-            else:
-                pk_len = len(entity._pk_columns_)
-                d = {}
+            pk_len = len(entity._pk_columns_)
+            d = {}
+            if len(objects) > 1:
                 for row in cursor.fetchall():
                     obj2 = entity._get_by_raw_pkval_(row[:pk_len])
                     item = rentity._get_by_raw_pkval_(row[pk_len:])
                     items = d.get(obj2)
-                    if items is None: items = d[obj2] = []
-                    items.append(item)
-                for obj2, items in d.iteritems():
-                    setdata2 = obj2._vals_.get(attr.name, NOT_LOADED)
-                    if setdata2 is NOT_LOADED: setdata2 = obj._vals_[attr.name] = SetData()
-                    items2 = []
-                    for item in items:
-                        if item in setdata2: continue
-                        if item in setdata2.removed: continue
-                        items2.append(item)
-                        setdata2.add(item)
-                    reverse.db_reverse_add(items2, obj2)
+                    if items is None: items = d[obj2] = set()
+                    items.add(item)
+            else: d[obj] = set(imap(rentity._get_by_raw_pkval_, cursor.fetchall()))
+            for obj2, items in d.iteritems():
+                setdata2 = obj2._vals_.get(attr.name, NOT_LOADED)
+                if setdata2 is NOT_LOADED: setdata2 = obj._vals_[attr.name] = SetData()
+                else:
+                    phantoms = setdata2 - items
+                    phantoms.difference_update(setdata2.added)
+                    if phantoms: raise UnrepeatableReadError(
+                        'Phantom object %r disappeared from collection %r.%s' % (phantoms.pop(), obj, attr.name))
+                items -= setdata2
+                items.difference_update(setdata2.removed)
+                setdata2 |= items
+                reverse.db_reverse_add(items, obj2)
 
         for setdata2 in setdata_list: setdata2.is_fully_loaded = True
         cache.collection_statistics[attr] = counter + 1
@@ -1018,15 +1039,18 @@ class Set(Collection):
         table_name = attr.table
         assert table_name is not None
         select_list = [ ALL ]
+        if not attr.symmetric:
+            columns = attr.columns
+            rcolumns = reverse.columns
+            rconverters = reverse.converters
+        else:
+            columns = attr.reverse_columns
+            rcolumns = attr.columns
+            rconverters = attr.converters
         if batch_size > 1:
-            for column in reverse.columns:
-                select_list.append([ COLUMN, 'T1', column ])
-        for column in attr.columns:
-            select_list.append([ COLUMN, 'T1', column ])
+            select_list.extend([ COLUMN, 'T1', column ] for column in rcolumns)
+        select_list.extend([ COLUMN, 'T1', column ] for column in columns)
         from_list = [ FROM, [ 'T1', TABLE, table_name ]]
-        rcolumns = reverse.columns
-        rconverters = reverse.converters
-        assert len(rcolumns) == len(rconverters)
         database = attr.entity._database_
         
         if batch_size == 1:
@@ -1171,11 +1195,28 @@ class Set(Collection):
         undo_funcs.append(undo_func)
     def db_reverse_remove(attr, objects, item):
         raise AssertionError
-    def get_m2m_columns(attr):
-        if attr._columns_checked: return attr.reverse.columns
+    def get_m2m_columns(attr, is_reverse=False):
         entity = attr.entity
+        if attr.symmetric:
+            if attr._columns_checked:
+                if not is_reverse: return attr.columns
+                else: return attr.reverse_columns
+            if attr.columns:
+                if len(attr.columns) != len(entity._get_pk_columns_()): raise MappingError(
+                    'Invalid number of columns for %s' % reverse)
+            else:
+                provider = attr.entity._database_.provider
+                attr.columns = provider.get_default_m2m_column_names(entity)
+            attr.converters = entity._pk_converters_
+            if not attr.reverse_columns:
+                attr.reverse_columns = [ column + '_2' for column in attr.columns ]
+            attr._columns_checked = True
+            if not is_reverse: return attr.columns
+            else: return attr.reverse_columns
+
         reverse = attr.reverse
-        if reverse.columns:
+        if attr._columns_checked: return attr.reverse.columns
+        elif reverse.columns:
             if len(reverse.columns) != len(entity._get_pk_columns_()): raise MappingError(
                 'Invalid number of columns for %s' % reverse)
         else:
@@ -1193,7 +1234,13 @@ class Set(Collection):
             table_name = attr.table
             assert table_name is not None
             criteria_list = [ AND ]
-            for i, (column, converter) in enumerate(zip(reverse.columns + attr.columns, reverse.converters + attr.converters)):
+            if attr.symmetric:
+                columns = attr.columns + attr.reverse_columns
+                converters = attr.converters + attr.converters
+            else:
+                columns = reverse.columns + attr.columns
+                converters = reverse.converters + attr.converters
+            for i, (column, converter) in enumerate(zip(columns, converters)):
                 criteria_list.append([ EQ, [COLUMN, None, column], [ PARAM, i, converter ] ])
             sql_ast = [ DELETE, table_name, [ WHERE, criteria_list ] ]
             sql, adapter = database._ast2sql(sql_ast)
@@ -1210,11 +1257,13 @@ class Set(Collection):
             reverse = attr.reverse
             table_name = attr.table
             assert table_name is not None
-            columns = []
-            params = []
-            for i, (column, converter) in enumerate(zip(reverse.columns + attr.columns, reverse.converters + attr.converters)):
-                columns.append(column)
-                params.append([PARAM, i, converter])
+            if attr.symmetric:
+                columns = attr.columns + attr.reverse_columns
+                converters = attr.converters + attr.converters
+            else:
+                columns = reverse.columns + attr.columns
+                converters = reverse.converters + attr.converters
+            params = [ [PARAM, i, converter] for i, converter in enumerate(converters) ]
             sql_ast = [ INSERT, table_name, columns, params ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_add_m2m_sql = sql, adapter

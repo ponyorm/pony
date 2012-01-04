@@ -452,16 +452,19 @@ class JoinedTableRef(object):
             if not tableref.joined:
                 m2m_table = attr.table
                 m2m_alias = tableref.translator.get_short_alias(None, 't')
-                m2m_join_cond = join_tables(parent_alias_name, m2m_alias, left_pk_columns, attr.reverse.columns)
+                reverse_columns = attr.symmetric and attr.columns or attr.reverse.columns
+                m2m_join_cond = join_tables(parent_alias_name, m2m_alias, left_pk_columns, reverse_columns)
                 tableref.from_ast.append([ m2m_alias, TABLE, m2m_table, m2m_join_cond ])
+            if attr.symmetric: right_m2m_columns = attr.reverse_columns
+            else: right_m2m_columns = attr.columns
             if pk_only:
                 tableref.alias = m2m_alias
-                tableref.pk_columns = attr.columns
+                tableref.pk_columns = right_m2m_columns
                 tableref.optimized = True
                 tableref.joined = True
                 return m2m_alias, tableref.pk_columns
             alias = tableref.translator.get_short_alias(tableref.name_path, right_entity.__name__)
-            join_cond = join_tables(m2m_alias, alias, attr.columns, pk_columns)
+            join_cond = join_tables(m2m_alias, alias, right_m2m_columns, pk_columns)
             tableref.from_ast.append([ alias, TABLE, right_entity._table_, join_cond ])
         tableref.alias = alias 
         tableref.pk_columns = pk_columns
