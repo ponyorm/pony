@@ -29,8 +29,5 @@ from test_collections import *
 from test_sqlbuilding_formatstyles import *
 from test_sqlbuilding_sqlast import *
 
-from test_converters import *
-
-
 if __name__ == '__main__':
     unittest.main()
