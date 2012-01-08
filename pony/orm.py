@@ -1759,7 +1759,7 @@ class EntityMeta(type):
         return query.orderby(*args)
     def _find_(entity, max_fetch_count, args, keyargs):
         if entity._database_.schema is None:
-            raise ERDiagramError('Mapping is not generated for entity %s' % entity.__name__)
+            raise ERDiagramError('Mapping is not generated for entity %r' % entity.__name__)
         
         if not args: pass
         elif isinstance(args[0], types.FunctionType):
@@ -2109,7 +2109,7 @@ class Entity(object):
     __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '__weakref__'
     def __new__(entity, **keyargs):
         if entity._database_.schema is None:
-            raise ERDiagramError('Mapping is not generated for entity %s' % entity.__name__)
+            raise ERDiagramError('Mapping is not generated for entity %r' % entity.__name__)
 
         pkval, avdict = entity._normalize_args_(keyargs, True)
         undo_funcs = []
@@ -2907,7 +2907,7 @@ class QueryResult(list):
         return self
     def get(self):
         if not self: return None
-        if len(self) > 1: raise MultipleObjectsFoundError('Multiple objects was found. Use .all(...) to retrieve them')
+        if len(self) > 1: raise MultipleObjectsFoundError('Multiple objects were found. Use .all(...) to retrieve them')
         return self[0]
 
 class AsciiStr(str): pass
@@ -2925,17 +2925,14 @@ class Query(object):
         query._functions = functions = {}
 
         node = tree.quals[0].iter
-        while isinstance(node, ast.Getattr): node = node.expr
-        if not isinstance(node, ast.Name): raise TypeError
+        assert isinstance(node, ast.Name)
         name = node.name
-
         try: origin = locals[name]
-        except KeyError:
-            try: origin = globals[name]
-            except KeyError: raise NameError, name
+        except KeyError: assert False
 
         if isinstance(origin, EntityIter): origin = origin.entity
-        elif not isinstance(origin, EntityMeta): raise TypeError, origin
+        elif not isinstance(origin, EntityMeta):
+            raise NotImplementedError, 'Query iterator has unexpected type %r' % type(origin).__name__
         database = origin._database_
         if database is None: raise TranslationError('Entity %s is not mapped to a database' % origin.__name__)
         
@@ -2949,6 +2946,8 @@ class Query(object):
                 except KeyError:
                     try: value = getattr(__builtin__, name)
                     except AttributeError: raise NameError, name
+            try: hash(value)
+            except TypeError: raise TypeError, 'Variable %r has unexpected type %r' % (name, type(value).__name__)
             if value in translator_cls.special_functions: functions[name] = value
             elif type(value) in (types.FunctionType, types.BuiltinFunctionType):
                 raise TypeError('Function %r cannot be used inside query' % value.__name__)
@@ -2962,6 +2961,8 @@ class Query(object):
                 databases[name] = value
             else:
                 variables[name] = value
+                try: normalized_type = translator_cls.get_normalized_type_of(value)
+                except TypeError: raise TypeError("Variable %r has unexpected type %r" % (name, type(value).__name__))
                 vartypes[name] = translator_cls.get_normalized_type_of(value)
 
         query._result = None
@@ -2988,10 +2989,10 @@ class Query(object):
                 if attr is not None:
                     attr_type = translator.normalize_type(attr.py_type)
                     if aggr_func_name in (SUM, AVG) and attr_type not in translator.numeric_types:
-                        raise TranslationError('%s is valid for numeric attributes only' % aggr_func_name.lower())
+                        raise TranslationError('%r is valid for numeric attributes only' % aggr_func_name.lower())
                     column_ast = [ COLUMN, translator.alias, attr.column ]
                 elif aggr_func_name is not COUNT: raise TranslationError(
-                    'Attribute should be specified for "%s" aggregate function' % aggr_func_name.lower())
+                    'Attribute should be specified for %r aggregate function' % aggr_func_name.lower())
                 if aggr_func_name is COUNT:
                     if attr is None: aggr_ast = [ COUNT, ALL ]
                     else: aggr_ast = [ COUNT, DISTINCT, column_ast ]

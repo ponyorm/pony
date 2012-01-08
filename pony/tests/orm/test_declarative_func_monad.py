@@ -76,7 +76,7 @@ class TestFuncMonad(unittest.TestCase):
     def test_date_func1(self):
         result = set(select(s for s in Student if s.dob >= date(1983, 3, 3)))
         self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
-    @raises_exception(TypeError, "'month' argument of date(year, month, day) function must be int")
+    @raises_exception(TypeError, "'month' argument of date(year, month, day) function must be of 'int' type. Got: 'AsciiStr'")
     def test_date_func2(self):
         result = set(select(s for s in Student if s.dob >= date(1983, 'three', 3)))        
     @raises_exception(NotImplementedError)

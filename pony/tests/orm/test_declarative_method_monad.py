@@ -56,7 +56,7 @@ class TestMethodMonad(unittest.TestCase):
         students = set(select(s for s in Student if s.name.strip() == 'Beth'))
         self.assertEqual(students, set([Student[3]]))
 
-    @raises_exception(TypeError, "'chars' argument must be a unicode")        
+    @raises_exception(TypeError, "'chars' argument must be of 'unicode' type in s.name.strip(5), got: 'int'")
     def test3a(self):
         students = set(select(s for s in Student if s.name.strip(5) == 'Beth'))
 
@@ -68,11 +68,11 @@ class TestMethodMonad(unittest.TestCase):
         students = set(select(s for s in Student if s.name.lstrip('P') == 'ete'))
         self.assertEqual(students, set([Student[5]]))
 
-    @raises_exception(TypeError, "Argument of 'startswith' method must be a string")        
+    @raises_exception(TypeError, "Expected 'unicode' argument but got 'int' in expression s.name.startswith(5)")
     def test6(self):
         students = set(select(s for s in Student if not s.name.startswith(5)))      
 
-    @raises_exception(TypeError, "Argument of 'endswith' method must be a string")        
+    @raises_exception(TypeError, "Expected 'unicode' argument but got 'int' in expression s.name.endswith(5)")
     def test7(self):
         students = set(select(s for s in Student if not s.name.endswith(5)))
 

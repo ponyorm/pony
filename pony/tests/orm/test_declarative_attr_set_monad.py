@@ -153,7 +153,7 @@ class TestAttrSetMonad(unittest.TestCase):
         s1 = Student[1]
         groups = set(select(g for g in Group if s1 in g.students))
         self.assertEqual(groups, set([Group[41]]))
-    @raises_exception(AttributeError, 'foo')
+    @raises_exception(AttributeError, 'g.students.name.foo')
     def test27(self):
         select(g for g in Group if g.students.name.foo == 1).all()        
 
