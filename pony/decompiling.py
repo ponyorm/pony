@@ -138,6 +138,9 @@ class Decompiler(object):
         # Pushes a new empty dictionary object onto the stack. The argument is ignored and set to zero by the compiler
         return ast.Dict(())
 
+    def BUILD_SET(decompiler, size):
+        return ast.Set(decompiler.pop_items(size))
+
     def BUILD_SLICE(decompiler, size):
         return ast.Sliceobj(decompiler.pop_items(size))
         
