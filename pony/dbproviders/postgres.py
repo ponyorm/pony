@@ -34,7 +34,15 @@ class PGSchema(dbschema.DBSchema):
     table_class = PGTable
     column_class = PGColumn
 
+class PGValue(sqlbuilding.Value):
+    def __unicode__(self):
+        value = self.value
+        if isinstance(value, buffer):
+            return "'%s'::bytea" % "".join(imap(char2oct.__getitem__, val))
+        return sqlbuilding.Value.__unicode__(self)
+
 class PGSQLBuilder(sqlbuilding.SQLBuilder):
+    make_value = PGValue
     def INSERT(builder, table_name, columns, values, returning=None):
         result = sqlbuilding.SQLBuilder.INSERT(builder, table_name, columns, values)
         if returning is not None:

@@ -2,6 +2,7 @@ import sys, threading
 from operator import attrgetter
 from decimal import Decimal
 from datetime import date, datetime
+from binascii import hexlify
 
 from pony import options
 from pony.sqlsymbols import *
@@ -39,6 +40,7 @@ class Value(object):
         if isinstance(value, basestring): return self.quote_str(value)
         if isinstance(value, datetime): return self.quote_str(datetime2timestamp(value))
         if isinstance(value, date): return self.quote_str(str(value))
+        if isinstance(value, buffer): return "X'%s'" % hexlify(value)
         assert False, value
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self.value)

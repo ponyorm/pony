@@ -773,6 +773,8 @@ class ListMonad(Monad):
             sql = sqlor([ sqland([ [ EQ, a, b ]  for a, b in zip(left_sql, item.getsql()) ]) for item in monad.items ])
         return translator.BoolExprMonad(translator, sql)
 
+class BufferMixin(MonadMixin): pass
+
 numeric_conversions = {
     (int, float): float,
     (int, Decimal): Decimal,
@@ -1090,7 +1092,7 @@ class NumericAttrMonad(NumericMixin, AttrMonad): pass
 class StringAttrMonad(StringMixin, AttrMonad): pass
 class DateAttrMonad(DateMixin, AttrMonad): pass
 class DatetimeAttrMonad(DatetimeMixin, AttrMonad): pass
-class BufferAttrMonad(AttrMonad): pass
+class BufferAttrMonad(BufferMixin, AttrMonad): pass
 
 class ParamMonad(Monad):
     def __new__(cls, translator, type, name, parent=None):
@@ -1153,7 +1155,7 @@ class StringParamMonad(StringMixin, ParamMonad): pass
 class NumericParamMonad(NumericMixin, ParamMonad): pass
 class DateParamMonad(DateMixin, ParamMonad): pass
 class DatetimeParamMonad(DatetimeMixin, ParamMonad): pass
-class BufferParamMonad(ParamMonad): pass
+class BufferParamMonad(BufferMixin, ParamMonad): pass
 
 class ExprMonad(Monad):
     @staticmethod
@@ -1184,6 +1186,7 @@ class ConstMonad(Monad):
         elif value_type is date: cls = translator.DateConstMonad
         elif value_type is datetime: cls = translator.DatetimeConstMonad
         elif value_type is NoneType: cls = translator.NoneMonad
+        elif value_type is buffer: cls = translator.BufferConstMonad
         else: raise NotImplementedError, value_type
         return object.__new__(cls)
     def __init__(monad, translator, value):
@@ -1198,6 +1201,8 @@ class NoneMonad(ConstMonad):
     def __init__(monad, translator, value=None):
         assert value is None
         ConstMonad.__init__(monad, translator, value)
+
+class BufferConstMonad(BufferMixin, ConstMonad): pass
 
 class StringConstMonad(StringMixin, ConstMonad):
     def len(monad):
@@ -1346,6 +1351,12 @@ def func_monad(func, type=None):
         special_functions[func] = SpecificFuncMonad
         return SpecificFuncMonad
     return decorator
+
+@func_monad(buffer, type=buffer)
+def FuncBufferMonad(monad, x):
+    translator = monad.translator
+    if not isinstance(x, translator.StringConstMonad): raise TypeError
+    return translator.ConstMonad(translator, buffer(x.value))
 
 @func_monad(Decimal, type=Decimal)
 def FuncDecimalMonad(monad, x):
