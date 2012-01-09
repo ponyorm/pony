@@ -1458,13 +1458,13 @@ def minmax(monad, sqlop, *args):
 def FuncSelectMonad(monad, subquery):
     translator = monad.translator
     if not isinstance(subquery, translator.QuerySetMonad): raise TypeError(
-        "'select' function expects generator expression. Got: {EXPR}")
+        "'select' function expects generator expression, got: {EXPR}")
     return subquery
 
 @func_monad(exists)
 def FuncExistsMonad(monad, subquery):
     if not isinstance(subquery, monad.translator.SetMixin): raise TypeError(
-        "'exists' function expects generator expression or collection. Got: {EXPR}")
+        "'exists' function expects generator expression or collection, got: {EXPR}")
     return subquery.nonzero()
 
 class JoinMonad(Monad):
