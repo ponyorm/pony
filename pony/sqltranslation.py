@@ -218,7 +218,7 @@ def type2str(t):
 type_normalization_dict = { long : int, bool : int, LongStr : str, LongUnicode : unicode }
 
 class SQLTranslator(ASTTranslator):
-    MAX_ALIAS_LENGTH = 30
+    max_alias_length = 30
     numeric_types = set([ int, float, Decimal ])
     string_types = set([ str, AsciiStr, unicode ])
     comparable_types = set([ int, float, Decimal, str, AsciiStr, unicode, date, datetime, bool ])
@@ -549,9 +549,9 @@ class SQLTranslator(ASTTranslator):
     def get_short_alias(translator, name_path, entity_name):
         if name_path:
             if is_ident(name_path): return name_path
-            if not options.SIMPLE_ALIASES and len(name_path) <= translator.MAX_ALIAS_LENGTH:
+            if not options.SIMPLE_ALIASES and len(name_path) <= translator.max_alias_length:
                 return name_path
-        name = entity_name[:translator.MAX_ALIAS_LENGTH-3].lower()
+        name = entity_name[:translator.max_alias_length-3].lower()
         i = translator.alias_counters.setdefault(name, 0) + 1
         alias = '%s-%d' % (name, i)
         translator.alias_counters[name] = i
