@@ -422,7 +422,7 @@ class SQLTranslator(ASTTranslator):
         else: translator.where = [ WHERE, sqland(translator.conditions) ]
     def preGenExpr(translator, node):
         inner_tree = node.code
-        subtranslator = SQLTranslator(inner_tree, translator.databases, translator.entities, translator.vartypes, translator.functions, translator)
+        subtranslator = translator.__class__(inner_tree, translator.databases, translator.entities, translator.vartypes, translator.functions, translator)
         return translator.QuerySetMonad(translator, subtranslator)
     def postGenExprIf(translator, node):
         monad = node.test.monad
