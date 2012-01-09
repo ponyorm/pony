@@ -148,7 +148,6 @@ class OraDatetimeConverter(dbapiprovider.DatetimeConverter):
 
 class OraProvider(DBAPIProvider):
     paramstyle = 'named'
-    row_value_syntax = True
 
     dbschema_cls = OraSchema
     translator_cls = OraTranslator

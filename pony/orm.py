@@ -1061,7 +1061,7 @@ class Set(Collection):
             converter = rconverters[0]
             criteria_list = [ IN, [ COLUMN, None, rcolumns[0] ],
                                   [ [ PARAM, (i, 0), converter ] for i in xrange(batch_size) ] ]
-        elif database.provider.row_value_syntax:
+        elif database.provider.translator_cls.row_value_syntax:
             criteria_list = [ IN, [ ROW ] + [ [ COLUMN, None, column ] for column in rcolumns ],
                                   [ [ ROW ] + [ [ PARAM, (i, j), converter ] for j, converter in enumerate(rconverters) ]
                                     for i in xrange(batch_size) ] ]
@@ -1878,7 +1878,7 @@ class EntityMeta(type):
             converter = converters[0]
             criteria_list = [ IN, [ COLUMN, None, columns[0] ],
                                    [ [ PARAM, (i, 0), converter ] for i in xrange(batch_size) ] ] 
-        elif entity._database_.provider.row_value_syntax:
+        elif entity._database_.provider.translator_cls.row_value_syntax:
             criteria_list = [ IN, [ ROW ] + [ [ COLUMN, None, column ] for column in columns ],
                                    [ [ ROW ] + [ [ PARAM, (i, j), converter ] for j, converter in enumerate(converters) ]
                                      for i in xrange(batch_size) ] ]

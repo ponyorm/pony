@@ -71,7 +71,6 @@ class MySQLBlobConverter(dbapiprovider.BlobConverter):
 class MySQLProvider(DBAPIProvider):
     paramstyle = 'format'
     quote_char = "`"
-    row_value_syntax = True
 
     dbschema_cls = MySQLSchema
     translator_cls = SQLTranslator

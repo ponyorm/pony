@@ -104,7 +104,6 @@ class PGDatetimeConverter(dbapiprovider.DatetimeConverter):
 
 class PGProvider(DBAPIProvider):
     paramstyle = 'pyformat'
-    row_value_syntax = True
 
     dbschema_cls = PGSchema
     translator_cls = SQLTranslator

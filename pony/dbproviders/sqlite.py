@@ -8,9 +8,8 @@ from time import strptime
 
 from pony.thirdparty import sqlite
 
-from pony import dbschema, sqlbuilding, dbapiprovider
+from pony import dbschema, sqltranslation, sqlbuilding, dbapiprovider
 from pony.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
-from pony.sqltranslation import SQLTranslator
 from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple_decorator, absolutize_path
 
 def get_provider(filename, create_db=False):
@@ -22,6 +21,9 @@ class SQLiteForeignKey(dbschema.ForeignKey):
 
 class SQLiteSchema(dbschema.DBSchema):
     fk_class = SQLiteForeignKey
+
+class SQLiteTranslator(sqltranslation.SQLTranslator):
+    row_value_syntax = False
 
 class SQLiteBuilder(sqlbuilding.SQLBuilder):
     def POW(builder, expr1, expr2):
@@ -75,7 +77,7 @@ class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
     
 class SQLiteProvider(DBAPIProvider):
     dbschema_cls = SQLiteSchema
-    translator_cls = SQLTranslator
+    translator_cls = SQLiteTranslator
     sqlbuilder_cls = SQLiteBuilder
 
     def __init__(provider, filename, create_db=False):

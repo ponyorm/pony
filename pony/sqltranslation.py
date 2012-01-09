@@ -219,6 +219,7 @@ type_normalization_dict = { long : int, bool : int, LongStr : str, LongUnicode :
 
 class SQLTranslator(ASTTranslator):
     max_alias_length = 30
+    row_value_syntax = True
     numeric_types = set([ int, float, Decimal ])
     string_types = set([ str, AsciiStr, unicode ])
     comparable_types = set([ int, float, Decimal, str, AsciiStr, unicode, date, datetime, bool ])

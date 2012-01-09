@@ -69,7 +69,6 @@ class DBAPIProvider(object):
     paramstyle = 'qmark'
     quote_char = '"'
     max_params_count = 200
-    row_value_syntax = False
     
     dbschema_cls = None
     translator_cls = None
