@@ -145,10 +145,10 @@ class TestAttrSetMonad(unittest.TestCase):
     @raises_exception(NotImplementedError)
     def test24(self):
         groups = set(select(g for g in Group for g2 in Group if g.students == g2.students))
-    @raises_exception(NotImplementedError)
     def test25(self):
         m1 = Mark[Student[1], Subject["Math"]]
-        marks = select(s for s in Student if m1 in s.marks)
+        students = set(select(s for s in Student if m1 in s.marks))
+        self.assertEqual(students, set([Student[1]]))
     def test26(self):
         s1 = Student[1]
         groups = set(select(g for g in Group if s1 in g.students))

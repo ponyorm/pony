@@ -1496,16 +1496,20 @@ class AttrSetMonad(SetMixin, Monad):
         item_type = monad.type[0]
         if not translator.are_comparable_types(item.type, item_type): raise TypeError(
             'Incomparable types %r and %r in expression: {EXPR}' % (type2str(item.type), type2str(item_type)))
-        if isinstance(item_type, EntityMeta) and len(item_type._pk_columns_) > 1:
-            raise NotImplementedError
-
         if not translator.hint_join:
-            expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
-            if len(expr_list) > 1: raise NotImplementedError
-            expr = expr_list[0]
-            subquery_ast = [ SELECT, [ ALL, expr ], from_ast, [ WHERE, sqland(outer_conditions+inner_conditions) ] ]
             sqlop = not_in and NOT_IN or IN
-            return translator.BoolExprMonad(translator, [ sqlop, item.getsql()[0], subquery_ast ])
+            expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
+            conditions = outer_conditions + inner_conditions
+            if len(expr_list) == 1:
+                subquery_ast = [ SELECT, [ ALL ] + expr_list, from_ast, [ WHERE, sqland(conditions) ] ]
+                return translator.BoolExprMonad(translator, [ sqlop, item.getsql()[0], subquery_ast ])
+            elif translator.row_value_syntax:
+                subquery_ast = [ SELECT, [ ALL ] + expr_list, from_ast, [ WHERE, sqland(conditions) ] ]
+                return translator.BoolExprMonad(translator, [ sqlop, [ ROW ] + item.getsql(), subquery_ast ])
+            else:
+                conditions += [ [ EQ, expr1, expr2 ] for expr1, expr2 in izip(item.getsql(), expr_list) ]
+                subquery_ast = [ not_in and NOT_EXISTS or EXISTS, from_ast, [ WHERE, sqland(conditions) ] ]
+                return translator.BoolExprMonad(translator, subquery_ast)
         else: raise NotImplementedError
     def getattr(monad, name):
         item_type = monad.type[0]
@@ -1639,22 +1643,28 @@ class QuerySetMonad(SetMixin, Monad):
         item_type = monad.type[0]
         if not translator.are_comparable_types(item.type, item_type): raise TypeError(
             'Incomparable types %r and %r in expression: {EXPR}' % (type2str(item.type), type2str(item_type)))
-        if isinstance(item_type, EntityMeta) and len(item_type._pk_columns_) > 1:
-            raise NotImplementedError
-
         attr, attr_type = monad._get_attr_info()
         if attr is None: columns = item_type._pk_columns_
         else: columns = attr.columns
-        if len(columns) > 1: raise NotImplementedError
-
         sub = monad.subtranslator
-        select_ast = [ ALL, [ COLUMN, sub.alias, columns[0] ] ]
+        columns_ast = [ [ COLUMN, sub.alias, column ] for column in columns ]
         conditions = sub.conditions[:]
-        if attr is not None and not attr.is_required:
-            conditions.append([ IS_NOT_NULL, [ COLUMN, sub.alias, columns[0] ]])
-        subquery_ast = [ SELECT, select_ast, sub.from_, [ WHERE, sqland(conditions) ] ]
-        sqlop = not_in and NOT_IN or IN
-        return translator.BoolExprMonad(translator, [ sqlop, item.getsql()[0], subquery_ast ])
+        if not translator.hint_join:
+            if len(columns) == 1 or translator.row_value_syntax:
+                select_ast = [ ALL ] + columns_ast
+                if attr is not None and not attr.is_required:
+                    conditions += [ [ IS_NOT_NULL, column_ast ] for column_ast in columns_ast ]
+                subquery_ast = [ SELECT, select_ast, sub.from_ ]
+                if conditions: subquery_ast.append([ WHERE, sqland(conditions) ])
+                if len(columns) == 1: expr_ast = item.getsql()[0]
+                else: expr_ast = [ ROW ] + item.getsql()
+                sql_ast = [ not_in and NOT_IN or IN, expr_ast, subquery_ast ]
+                return translator.BoolExprMonad(translator, sql_ast)
+            else:
+                conditions += [ [ EQ, expr1, expr2 ] for expr1, expr2 in izip(item.getsql(), columns_ast) ]
+                subquery_ast = [ not_in and NOT_EXISTS or EXISTS, sub.from_, [ WHERE, sqland(conditions) ] ]
+                return translator.BoolExprMonad(translator, subquery_ast)
+        else: raise NotImplementedError
     def nonzero(monad):        
         sub = monad.subtranslator
         sql_ast = [ EXISTS, sub.from_, [ WHERE, sqland(sub.conditions) ] ]
@@ -1672,11 +1682,19 @@ class QuerySetMonad(SetMixin, Monad):
         return translator.ExprMonad.new(translator, item_type, sql_ast)
     def len(monad):
         attr, attr_type = monad._get_attr_info()
-        if attr is not None:
-            if len(attr.columns) > 1: raise NotImplementedError
+        if attr is None:
+            select_ast = [ AGGREGATES, [ COUNT, ALL ] ]
+            return monad._subselect(int, select_ast)
+        elif len(attr.columns) == 1:
             select_ast = [ AGGREGATES, [ COUNT, DISTINCT, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
-        else: select_ast = [ AGGREGATES, [ COUNT, ALL ] ]
-        return monad._subselect(int, select_ast)
+            return monad._subselect(int, select_ast)
+        sub = monad.subtranslator
+        inner_ast = [ [ DISTINCT ] + [ [ COLUMN, sub.alias, column ] for column in attr.columns ],
+                      sub.from_, [ WHERE, sqland(sub.conditions) ] ]
+        translator = monad.translator
+        alias = translator.get_short_alias(None, 't')
+        outer_ast = [ SELECT, [ AGGREGATES, [ COUNT, ALL ] ], [ FROM, [ alias, SELECT, inner_ast ] ] ]
+        return translator.ExprMonad.new(translator, int, outer_ast)
     def sum(monad):
         translator = monad.translator
         attr, attr_type = monad._get_attr_info()
