@@ -1147,9 +1147,7 @@ class ParamMonad(Monad):
         monad.add_extractors()
         return [ [ PARAM, monad.name, monad.converter ] ]
     def add_extractors(monad):
-        name = monad.name
-        extractors = monad.translator.extractors
-        extractors[name] = monad.extractor
+        monad.translator.extractors[monad.name] = monad.extractor
 
 class ObjectParamMonad(ObjectMixin, ParamMonad):
     def __init__(monad, translator, entity, name, parent=None):
@@ -1161,6 +1159,7 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
         entity = monad.type
         try: attr = entity._adict_[name]
         except KeyError: raise AttributeError
+        if attr.is_collection: raise NotImplementedError
         translator = monad.translator
         return translator.ParamMonad(translator, attr.py_type, name, monad)
     def getsql(monad):
@@ -1254,7 +1253,13 @@ class ObjectConstMonad(Monad):
         entity = monad.type
         return [ [ VALUE, value ] for value in monad.rawpkval ]
     def getattr(monad, name):
-        raise NotImplementedError
+        entity = monad.type
+        try: attr = entity._adict_[name]
+        except KeyError: raise AttributeError
+        if attr.is_collection: raise NotImplementedError
+        monad.extractor = lambda variables: entity[monad.pkval]
+        translator = monad.translator
+        return translator.ParamMonad(translator, attr.py_type, name, monad)
 
 class BoolMonad(Monad):
     def __init__(monad, translator):
