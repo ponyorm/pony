@@ -1,4 +1,4 @@
-import __builtin__, types, sys, decimal
+import __builtin__, types, sys, decimal, re
 from itertools import izip, count
 from types import NoneType
 from compiler import ast
@@ -640,9 +640,8 @@ class JoinedTableRef(object):
 def wrap_monad_method(cls_name, func):
     overrider_name = '%s_%s' % (cls_name, func.__name__)
     def wrapper(monad, *args, **keyargs):
-        overrider = getattr(monad.translator, overrider_name, None)
-        if overrider is None: return func(monad, *args, **keyargs)
-        return overrider(monad, *args, **keyargs)
+        method = getattr(monad.translator, overrider_name, func)
+        return method(monad, *args, **keyargs)
     return copy_func_attrs(wrapper, func)
 
 class MonadMeta(type):
@@ -695,6 +694,25 @@ class Monad(object):
     def __neg__(monad): raise TypeError
     def abs(monad): raise TypeError
 
+typeerror_re = re.compile(r'\(\) takes (no|(?:exactly|at (?:least|most)))(?: (\d+))? arguments \((\d+) given\)')
+
+def reraise_improved_typeerror(exc, func_name, orig_func_name):
+    if not exc.args: raise exc
+    msg = exc.args[0]
+    if not msg.startswith(func_name): raise exc
+    msg = msg[len(func_name):]
+    match = typeerror_re.match(msg)
+    if not match:
+        exc.args = (orig_func_name + msg,)
+        raise exc
+    what, takes, given = match.groups()
+    takes, given = int(takes), int(given)
+    if takes: what = '%s %d' % (what, takes-1)
+    plural = takes > 2 and 's' or ''
+    new_msg = '%s() takes %s argument%s (%d given)' % (orig_func_name, what, plural, given-1)
+    exc.args = (new_msg,)
+    raise exc
+
 class MethodMonad(Monad):
     def __init__(monad, translator, parent, attrname):
         Monad.__init__(monad, translator, 'METHOD')
@@ -702,7 +720,8 @@ class MethodMonad(Monad):
         monad.attrname = attrname
     def __call__(monad, *args, **keyargs):
         method = getattr(monad.parent, 'call_' + monad.attrname)
-        return method(*args, **keyargs)
+        try: return method(*args, **keyargs)
+        except TypeError, exc: reraise_improved_typeerror(exc, method.__name__, monad.attrname)
 
 class DatabaseMonad(Monad):
     def __init__(monad, translator, database):
@@ -1351,7 +1370,9 @@ def func_monad(func, type=None):
                     assert isinstance(arg, Monad)
                 for value in keyargs.values():
                     assert isinstance(value, Monad)
-                return monad_method(monad, *args, **keyargs)
+                try: return monad_method(monad, *args, **keyargs)
+                except TypeError, exc: reraise_improved_typeerror(exc, monad_method.__name__, func.__name__)
+
         SpecificFuncMonad.type = type
         SpecificFuncMonad.__name__ = monad_method.__name__
         assert func not in special_functions
