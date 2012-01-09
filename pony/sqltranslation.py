@@ -662,7 +662,7 @@ class Monad(object):
     def cmp(monad, op, monad2):
         return monad.translator.CmpMonad(op, monad, monad2)
     def contains(monad, item, not_in=False): raise TypeError
-    def nonzero(monad): raise TypeError, monad
+    def nonzero(monad): raise TypeError
     def negate(monad):
         return monad.translator.NotMonad(monad)
 
