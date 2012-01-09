@@ -75,7 +75,7 @@ def binop_src(op, node):
 
 def ast2src(tree):
     try: PythonTranslator(tree)
-    except NotImplementedError: raise # return repr(tree)
+    except NotImplementedError: return repr(tree)
     return tree.src
 
 class PythonTranslator(ASTTranslator):
