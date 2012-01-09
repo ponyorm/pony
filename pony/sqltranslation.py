@@ -41,7 +41,7 @@ class ASTTranslator(object):
         except KeyError:
             pre_method = getattr(translator, 'pre' + cls.__name__, translator.default_pre)
             translator.pre_methods[cls] = pre_method
-        stop = translator.call_pre(pre_method, node)
+        stop = translator.call(pre_method, node)
 
         if stop: return
             
@@ -52,10 +52,8 @@ class ASTTranslator(object):
         except KeyError:
             post_method = getattr(translator, 'post' + cls.__name__, translator.default_post)
             translator.post_methods[cls] = post_method
-        translator.call_post(post_method, node)
-    def call_pre(translator, method, node):
-        return method(node)
-    def call_post(translator, method, node):
+        translator.call(post_method, node)
+    def call(translator, method, node):
         return method(node)
     def default_pre(translator, node):
         pass
@@ -84,7 +82,7 @@ class PythonTranslator(ASTTranslator):
     def __init__(translator, tree):
         ASTTranslator.__init__(translator, tree)
         translator.dispatch(tree)
-    def call_post(translator, method, node):
+    def call(translator, method, node):
         node.src = method(node)
     def default_post(translator, node):
         raise NotImplementedError, node
@@ -225,7 +223,7 @@ class SQLTranslator(ASTTranslator):
     primitive_types = set([ int, float, Decimal, str, AsciiStr, unicode, date, datetime, bool, buffer ])
 
     def call(translator, method, node):
-        try: return method(node)
+        try: monad = method(node)
         except Exception:
             try:
                 exc_class, exc, tb = sys.exc_info()
@@ -237,14 +235,11 @@ class SQLTranslator(ASTTranslator):
                         exc.args = (msg,) + exc.args[1:]
                 raise exc_class, exc, tb
             finally: del tb
-
-    def call_pre(translator, method, node):
-        return translator.call(method, node)
-
-    def call_post(translator, method, node):
-        monad = translator.call(method, node)
-        if monad is not None:
+        else:
+            if monad is None: return
+            node.monad = monad
             monad.node = node
+            return monad
 
     @classmethod
     def get_normalized_type_of(translator, value):
@@ -426,12 +421,11 @@ class SQLTranslator(ASTTranslator):
     def preGenExpr(translator, node):
         inner_tree = node.code
         subtranslator = SQLTranslator(inner_tree, translator.databases, translator.entities, translator.vartypes, translator.functions, translator)
-        node.monad = translator.QuerySetMonad(translator, subtranslator)
-        return True
+        return translator.QuerySetMonad(translator, subtranslator)
     def postGenExprIf(translator, node):
         monad = node.test.monad
         if monad.type is not bool: monad = monad.nonzero()
-        node.monad = monad
+        return monad
     def preCompare(translator, node):
         ops = node.ops
         if len(ops) > 1: raise NotImplementedError
@@ -444,86 +438,82 @@ class SQLTranslator(ASTTranslator):
         # op: '<' | '>' | '=' | '>=' | '<=' | '<>' | '!=' | '=='
         #         | 'in' | 'not in' | 'is' | 'is not'
         if op.endswith('in'):
-            node.monad = expr2.monad.contains(expr1.monad, op == 'not in')
             if op == 'not in': translator.inside_not = not translator.inside_not
+            return expr2.monad.contains(expr1.monad, op == 'not in')
         else:
-            node.monad = expr1.monad.cmp(op, expr2.monad)
+            return expr1.monad.cmp(op, expr2.monad)
     def postConst(translator, node):
         value = node.value
         if type(value) is not tuple:
-            node.monad = translator.ConstMonad(translator, value)
+            return translator.ConstMonad(translator, value)
         else:
-            node.monad = translator.ListMonad(translator, [ translator.ConstMonad(translator, item) for item in value ])
+            return translator.ListMonad(translator, [ translator.ConstMonad(translator, item) for item in value ])
     def postList(translator, node):
-        node.monad = translator.ListMonad(translator, [ item.monad for item in node.nodes ])
+        return translator.ListMonad(translator, [ item.monad for item in node.nodes ])
     def postTuple(translator, node):
-        node.monad = translator.ListMonad(translator, [ item.monad for item in node.nodes ])
+        return translator.ListMonad(translator, [ item.monad for item in node.nodes ])
     def postName(translator, node):
         name = node.name
         tableref = translator.tablerefs.get(name)
         if tableref is not None:
             entity = tableref.entity
-            node.monad = translator.ObjectIterMonad(translator, tableref, entity)
-            return
+            return translator.ObjectIterMonad(translator, tableref, entity)
 
         database = translator.databases.get(name)
         if database is not None:
-            node.monad = translator.DatabaseMonad(translator, database)
-            return
+            return translator.DatabaseMonad(translator, database)
 
         entity = translator.entities.get(name)
         if entity is not None:
-            node.monad = translator.EntityMonad(translator, entity)
-            return
+            return translator.EntityMonad(translator, entity)
             
         try: value_type = translator.vartypes[name]
         except KeyError:
             func = translator.functions.get(name)
             if func is None: raise NameError(name)
             func_monad_class = special_functions[func]
-            node.monad = func_monad_class(translator)
+            return func_monad_class(translator)
         else:
             if name in ('True', 'False') and issubclass(value_type, int):
-                node.monad = translator.ConstMonad(translator, name == 'True' and 1 or 0)
-            elif value_type is NoneType: node.monad = translator.ConstMonad(translator, None)
-            else: node.monad = translator.ParamMonad(translator, value_type, name)
+                return translator.ConstMonad(translator, name == 'True' and 1 or 0)
+            elif value_type is NoneType: return translator.ConstMonad(translator, None)
+            else: return translator.ParamMonad(translator, value_type, name)
     def postAdd(translator, node):
-        node.monad = node.left.monad + node.right.monad
+        return node.left.monad + node.right.monad
     def postSub(translator, node):
-        node.monad = node.left.monad - node.right.monad
+        return node.left.monad - node.right.monad
     def postMul(translator, node):
-        node.monad = node.left.monad * node.right.monad
+        return node.left.monad * node.right.monad
     def postDiv(translator, node):
-        node.monad = node.left.monad / node.right.monad
+        return node.left.monad / node.right.monad
     def postPower(translator, node):
-        node.monad = node.left.monad ** node.right.monad
+        return node.left.monad ** node.right.monad
     def postUnarySub(translator, node):
-        node.monad = -node.expr.monad
+        return -node.expr.monad
     def postGetattr(translator, node):
-        node.monad = node.expr.monad.getattr(node.attrname)
+        return node.expr.monad.getattr(node.attrname)
     def postAnd(translator, node):
-        node.monad = translator.AndMonad([ subnode.monad for subnode in node.nodes ])
+        return translator.AndMonad([ subnode.monad for subnode in node.nodes ])
     def postOr(translator, node):
-        node.monad = translator.OrMonad([ subnode.monad for subnode in node.nodes ])
+        return translator.OrMonad([ subnode.monad for subnode in node.nodes ])
     def preNot(translator, node):
         translator.inside_not = not translator.inside_not
     def postNot(translator, node):
-        node.monad = node.expr.monad.negate()
         translator.inside_not = not translator.inside_not
+        return node.expr.monad.negate()
     def preCallFunc(translator, node):
         if node.star_args is not None: raise NotImplementedError('*%s is not supported' % ast2src(node.star_args))
         if node.dstar_args is not None: raise NotImplementedError('**%s is not supported' % ast2src(node.dstar_args))
         if not isinstance(node.node, (ast.Name, ast.Getattr)): raise NotImplementedError
-        if len(node.args) > 1: return False
-        if not node.args: return False
+        if len(node.args) > 1: return
+        if not node.args: return
         arg = node.args[0]
-        if not isinstance(arg, ast.GenExpr): return False
+        if not isinstance(arg, ast.GenExpr): return
         translator.dispatch(node.node)
         func_monad = node.node.monad
         translator.dispatch(arg)
         query_set_monad = arg.monad
-        node.monad = func_monad(query_set_monad)
-        return True
+        return func_monad(query_set_monad)
     def postCallFunc(translator, node):
         args = []
         keyargs = {}
@@ -532,14 +522,14 @@ class SQLTranslator(ASTTranslator):
                 keyargs[arg.name] = arg.expr.monad
             else: args.append(arg.monad)
         func_monad = node.node.monad
-        node.monad = func_monad(*args, **keyargs)
+        return func_monad(*args, **keyargs)
     def postSubscript(translator, node):
         assert node.flags == 'OP_APPLY'
         assert isinstance(node.subs, list)
         if len(node.subs) > 1: raise NotImplementedError
         expr_monad = node.expr.monad
         index_monad = node.subs[0].monad
-        node.monad = expr_monad[index_monad]
+        return expr_monad[index_monad]
     def postSlice(translator, node):
         assert node.flags == 'OP_APPLY'
         expr_monad = node.expr.monad
@@ -547,7 +537,7 @@ class SQLTranslator(ASTTranslator):
         if upper is not None: upper = upper.monad
         lower = node.lower
         if lower is not None: lower = lower.monad
-        node.monad = expr_monad[lower:upper]
+        return expr_monad[lower:upper]
     def get_short_alias(translator, name_path, entity_name):
         if name_path:
             if is_ident(name_path): return name_path
