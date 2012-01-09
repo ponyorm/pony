@@ -528,13 +528,16 @@ class SQLTranslator(ASTTranslator):
     def postSubscript(translator, node):
         assert node.flags == 'OP_APPLY'
         assert isinstance(node.subs, list)
-        if len(node.subs) > 1: raise NotImplementedError
-        expr_monad = node.expr.monad
+        if len(node.subs) > 1:
+            for x in node.subs:
+                if isinstance(x, ast.Sliceobj): raise TypeError
+            key = translator.ListMonad(translator, [ item.monad for item in node.subs ])
+            return node.expr.monad[key]
         sub = node.subs[0]
         if isinstance(sub, ast.Sliceobj):
             start, stop, step = (sub.nodes+[None])[:3]
-            return expr_monad[start:stop:step]
-        else: return expr_monad[sub.monad]
+            return node.expr.monad[start:stop:step]
+        else: return node.expr.monad[sub.monad]
     def postSlice(translator, node):
         assert node.flags == 'OP_APPLY'
         expr_monad = node.expr.monad
@@ -735,28 +738,16 @@ class DatabaseMonad(Monad):
 
 class EntityMonad(Monad):
     def __getitem__(monad, key):
-        if isinstance(key, ListMonad):
-            for item in key.items:
-                if not isinstance(item, ConstMonad): raise NotImplementedError
-            pkval = tuple(item.value for item in key.items)
-            pktypes = tuple(item.type for item in key.items)
-        elif isinstance(key, ConstMonad):
-            pkval = (key.value,)
-            pktypes = (key.type,)
-        elif isinstance(key, slice):
-            raise TypeError('Slice is not supported in {EXPR}')
+        translator = monad.translator
+        if isinstance(key, translator.ConstMonad): pk_monads = [ key ]
+        elif isinstance(key, translator.ListMonad): pk_monads = key.items
+        elif isinstance(key, slice): raise TypeError('Slice is not supported in {EXPR}')
         else: raise NotImplementedError
         entity = monad.type
-        if len(pkval) != len(entity._pk_attrs_): raise TypeError(
+        if len(pk_monads) != len(entity._pk_attrs_): raise TypeError(
             'Invalid count of attrs in primary key (%d instead of %d) in expression: {EXPR}'
-            % (len(pkval), len(entity._pk_attrs_)))
-        translator = monad.translator
-        for attr, val, val_type in izip(entity._pk_attrs_, pkval, pktypes):
-            attr_type = translator.normalize_type(attr.py_type)
-            if not translator.are_comparable_types(attr_type, val_type):
-                raise TypeError("Attribute %s of type %r cannot be compared with value of %r type in expression: {EXPR}"
-                                % (attr, type2str(attr_type), type2str(val_type)))
-        return translator.ObjectConstMonad(translator, monad.type, pkval)
+            % (len(pk_monads), len(entity._pk_attrs_)))
+        return translator.ObjectConstMonad(translator, monad.type, pk_monads)
     def normalize_args(monad, keyargs):  # pragma: no cover
         translator = monad.translator
         entity = monad.type
@@ -828,7 +819,7 @@ def make_numeric_binop(op, sqlop):
 
 class NumericMixin(MonadMixin):
     def mixin_init(monad):
-        assert monad.type in monad.translator.numeric_types
+        assert monad.type in monad.translator.numeric_types, monad.type
     __add__ = make_numeric_binop('+', ADD)
     __sub__ = make_numeric_binop('-', SUB)
     __mul__ = make_numeric_binop('*', MUL)
@@ -905,8 +896,9 @@ class StringMixin(MonadMixin):
     __add__ = make_string_binop('+', CONCAT)
     def __getitem__(monad, index):
         translator = monad.translator
-        if isinstance(index, slice):
-            if index.step is not None: raise TypeError("Step is not supported in {EXPR}")
+        if isinstance(index, translator.ListMonad): raise TypeError("String index must be of 'int' type. Got 'tuple' in {EXPR}")
+        elif isinstance(index, slice):
+            if index.step is not None: raise TypeError('Step is not supported in {EXPR}')
             start, stop = index.start, index.stop
             if start is None and stop is None: return monad
             if isinstance(monad, translator.StringConstMonad) \
@@ -1238,17 +1230,19 @@ class DateConstMonad(DateMixin, ConstMonad): pass
 class DatetimeConstMonad(DatetimeMixin, ConstMonad): pass
 
 class ObjectConstMonad(Monad):
-    def __init__(monad, translator, entity, pkval):
+    def __init__(monad, translator, entity, pk_monads):
+        for attr, pk_monad in izip(entity._pk_attrs_, pk_monads):
+            attr_type = translator.normalize_type(attr.py_type)
+            if not translator.are_comparable_types(attr_type, pk_monad.type):
+                raise TypeError("Attribute %s of type %r cannot be compared with value of %r type in expression: {EXPR}"
+                                % (attr, type2str(attr_type), type2str(pk_monad.type)))
         Monad.__init__(monad, translator, entity)
-        monad.pkval = pkval
+        monad.pk_monads = pk_monads
         rawpkval = monad.rawpkval = []
-        for attr, val in izip(entity._pk_attrs_, pkval):
-            if attr.is_ref:
-                assert isinstance(val, translator.ObjectConstMonad)
-                rawpkval.extend(val.rawpkval)
-            else:
-                assert not isinstance(val, Monad)
-                rawpkval.append(val)
+        for pk_monad in pk_monads:
+            if isinstance(pk_monad, translator.ConstMonad): rawpkval.append(pk_monad.value)
+            elif isinstance(pk_monad, translator.ObjectConstMonad): rawpkval.extend(pk_monad.rawpkval)
+            else: assert False, pk_monad
     def getsql(monad):
         entity = monad.type
         return [ [ VALUE, value ] for value in monad.rawpkval ]
@@ -1257,7 +1251,7 @@ class ObjectConstMonad(Monad):
         try: attr = entity._adict_[name]
         except KeyError: raise AttributeError
         if attr.is_collection: raise NotImplementedError
-        monad.extractor = lambda variables: entity[monad.pkval]
+        monad.extractor = lambda variables: entity._get_by_raw_pkval_(monad.rawpkval)
         translator = monad.translator
         return translator.ParamMonad(translator, attr.py_type, name, monad)
 
