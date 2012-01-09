@@ -41,7 +41,7 @@ class ASTTranslator(object):
         except KeyError:
             pre_method = getattr(translator, 'pre' + cls.__name__, translator.default_pre)
             translator.pre_methods[cls] = pre_method
-        stop = translator.call(pre_method, node)
+        stop = translator.call_pre(pre_method, node)
 
         if stop: return
             
@@ -52,8 +52,10 @@ class ASTTranslator(object):
         except KeyError:
             post_method = getattr(translator, 'post' + cls.__name__, translator.default_post)
             translator.post_methods[cls] = post_method
-        translator.call(post_method, node)
-    def call(translator, method, node):
+        translator.call_post(post_method, node)
+    def call_pre(translator, method, node):
+        return method(node)
+    def call_post(translator, method, node):
         return method(node)
     def default_pre(translator, node):
         pass
@@ -82,85 +84,87 @@ class PythonTranslator(ASTTranslator):
     def __init__(translator, tree):
         ASTTranslator.__init__(translator, tree)
         translator.dispatch(tree)
+    def call_post(translator, method, node):
+        node.src = method(node)
     def default_post(translator, node):
         raise NotImplementedError, node
     def postGenExpr(translator, node):
-        node.src = node.code.src        
+        return node.code.src        
     def postGenExprInner(translator, node):
-        node.src = node.expr.src + ' ' + ' '.join(qual.src for qual in node.quals)
+        return node.expr.src + ' ' + ' '.join(qual.src for qual in node.quals)
     def postGenExprFor(translator, node):
         src = 'for %s in %s' % (node.assign.src, node.iter.src)
         if node.ifs:
             ifs = ' '.join(if_.src for if_ in node.ifs)
             src += ' ' + ifs
-        node.src = src
+        return src
     def postGenExprIf(translator, node):
-        node.src = 'if %s' % node.test.src 
+        return 'if %s' % node.test.src 
     @priority(14)
     def postOr(translator, node):
-        node.src = ' or '.join(expr.src for expr in node.nodes)
+        return ' or '.join(expr.src for expr in node.nodes)
     @priority(13)
     def postAnd(translator, node):
-        node.src = ' and '.join(expr.src for expr in node.nodes)
+        return ' and '.join(expr.src for expr in node.nodes)
     @priority(12)
     def postNot(translator, node):
-        node.src = 'not ' + node.expr.src
+        return 'not ' + node.expr.src
     @priority(11)
     def postCompare(translator, node):
         result = [ node.expr.src ]
         for op, expr in node.ops: result.extend((op, expr.src))
-        node.src = ' '.join(result)
+        return ' '.join(result)
     @priority(10)
     def postBitor(translator, node):
-        node.src = ' | '.join(expr.src for expr in node.nodes)
+        return ' | '.join(expr.src for expr in node.nodes)
     @priority(9)
     def postBitxor(translator, node):
-        node.src = ' ^ '.join(expr.src for expr in node.nodes)
+        return ' ^ '.join(expr.src for expr in node.nodes)
     @priority(8)
     def postBitand(translator, node):
-        node.src = ' & '.join(expr.src for expr in node.nodes)
+        return ' & '.join(expr.src for expr in node.nodes)
     @priority(7)
     def postLeftShift(translator, node):
-        node.src = binop_src(' << ', node)
+        return binop_src(' << ', node)
     @priority(7)
     def postRightShift(translator, node):
-        node.src = binop_src(' >> ', node)
+        return binop_src(' >> ', node)
     @priority(6)
     def postAdd(translator, node):
-        node.src = binop_src(' + ', node)
+        return binop_src(' + ', node)
     @priority(6)
     def postSub(translator, node):
-        node.src = binop_src(' - ', node)
+        return binop_src(' - ', node)
     @priority(5)
     def postMul(translator, node):
-        node.src = binop_src(' * ', node)
+        return binop_src(' * ', node)
     @priority(5)
     def postDiv(translator, node):
-        node.src = binop_src(' / ', node)
+        return binop_src(' / ', node)
     @priority(5)
     def postMod(translator, node):
-        node.src = binop_src(' % ', node)
+        return binop_src(' % ', node)
     @priority(4)
     def postUnarySub(translator, node):
-        node.src = '-' + node.expr.src
+        return '-' + node.expr.src
     @priority(4)
     def postUnaryAdd(translator, node):
-        node.src = '+' + node.expr.src
+        return '+' + node.expr.src
     @priority(4)
     def postInvert(translator, node):
-        node.src = '~' + node.expr.src
+        return '~' + node.expr.src
     @priority(3)
     def postPower(translator, node):
-        node.src = binop_src(' ** ', node)
+        return binop_src(' ** ', node)
     def postGetattr(translator, node):
         node.priority = 2
-        node.src = '.'.join((node.expr.src, node.attrname))
+        return '.'.join((node.expr.src, node.attrname))
     def postCallFunc(translator, node):
         node.priority = 2
         args = [ arg.src for arg in node.args ]
         if node.star_args: args.append('*'+node.star_args.src)
         if node.dstar_args: args.append('**'+node.dstar_args.src)
-        node.src = '%s(%s)' % (node.node.src, ', '.join(args))
+        return '%s(%s)' % (node.node.src, ', '.join(args))
     def postSubscript(translator, node):
         node.priority = 2
         if len(node.subs) == 1:
@@ -171,41 +175,41 @@ class PythonTranslator(ASTTranslator):
                 key = key[1:-1]
             else: key = sub.src
         else: key = ', '.join([ sub.src for sub in node.subs ])
-        node.src = '%s[%s]' % (node.expr.src, key)
+        return '%s[%s]' % (node.expr.src, key)
     def postSlice(translator, node):
         node.priority = 2
-        node.src = '%s[%s:%s]' % (node.expr.src, node.lower.src, node.upper.src)
+        return '%s[%s:%s]' % (node.expr.src, node.lower.src, node.upper.src)
     def postConst(translator, node):
         node.priority = 1
-        node.src = repr(node.value)
+        return repr(node.value)
     def postList(translator, node):
         node.priority = 1
-        node.src = '[%s]' % ', '.join(item.src for item in node.nodes)
+        return '[%s]' % ', '.join(item.src for item in node.nodes)
     def postTuple(translator, node):
         node.priority = 1
-        if len(node.nodes) == 1: node.src = '(%s,)' % node.nodes[0].src
-        else: node.src = '(%s)' % ', '.join(item.src for item in node.nodes)
+        if len(node.nodes) == 1: return '(%s,)' % node.nodes[0].src
+        else: return '(%s)' % ', '.join(item.src for item in node.nodes)
     def postAssTuple(translator, node):
         node.priority = 1
-        if len(node.nodes) == 1: node.src = '(%s,)' % node.nodes[0].src
-        else: node.src = '(%s)' % ', '.join(item.src for item in node.nodes)
+        if len(node.nodes) == 1: return '(%s,)' % node.nodes[0].src
+        else: return '(%s)' % ', '.join(item.src for item in node.nodes)
     def postDict(translator, node):
         node.priority = 1
-        node.src = '{%s}' % ', '.join('%s:%s' % (key.src, value.src) for key, value in node.items)
+        return '{%s}' % ', '.join('%s:%s' % (key.src, value.src) for key, value in node.items)
     def postSet(translator, node):
         node.priority = 1
-        node.src = '{%s}' % ', '.join(item.src for item in node.nodes)
+        return '{%s}' % ', '.join(item.src for item in node.nodes)
     def postBackquote(translator, node):
         node.priority = 1
-        node.src = '`%s`' % node.expr.src
+        return '`%s`' % node.expr.src
     def postName(translator, node):
         node.priority = 1
-        node.src = node.name
+        return node.name
     def postAssName(translator, node):
         node.priority = 1
-        node.src = node.name
+        return node.name
     def postKeyword(translator, node):
-        node.src = '='.join((node.name, node.expr.src))
+        return '='.join((node.name, node.expr.src))
 
 def type2str(t):
     try: return t.__name__
@@ -233,6 +237,14 @@ class SQLTranslator(ASTTranslator):
                         exc.args = (msg,) + exc.args[1:]
                 raise exc_class, exc, tb
             finally: del tb
+
+    def call_pre(translator, method, node):
+        return translator.call(method, node)
+
+    def call_post(translator, method, node):
+        monad = translator.call(method, node)
+        if monad is not None:
+            monad.node = node
 
     @classmethod
     def get_normalized_type_of(translator, value):
