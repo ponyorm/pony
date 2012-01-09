@@ -229,7 +229,7 @@ class SQLBuilder(object):
                 if alias is not None: result += ' ', alias  # Oracle does not support 'AS' here
             elif kind == SELECT:
                 if alias is None: raise AstError('Subquery in FROM section must have an alias')
-                result += '(', builder.SELECT(*x), ') ', alias  # Oracle does not support 'AS' here
+                result += builder.SELECT(*x), alias  # Oracle does not support 'AS' here
             else: raise AstError('Invalid source kind in FROM section: %r' % kind)
             if join_cond is not None: result += [ '\n', indent3, 'ON ', builder(join_cond) ]
         result.append('\n')
