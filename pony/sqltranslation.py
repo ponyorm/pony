@@ -177,6 +177,8 @@ class PythonTranslator(ASTTranslator):
     def postSlice(translator, node):
         node.priority = 2
         return '%s[%s:%s]' % (node.expr.src, node.lower.src, node.upper.src)
+    def postSliceobj(translator, node):
+        return ':'.join(item.src for item in node.nodes)
     def postConst(translator, node):
         node.priority = 1
         return repr(node.value)
@@ -528,8 +530,11 @@ class SQLTranslator(ASTTranslator):
         assert isinstance(node.subs, list)
         if len(node.subs) > 1: raise NotImplementedError
         expr_monad = node.expr.monad
-        index_monad = node.subs[0].monad
-        return expr_monad[index_monad]
+        sub = node.subs[0]
+        if isinstance(sub, ast.Sliceobj):
+            start, stop, step = (sub.nodes+[None])[:3]
+            return expr_monad[start:stop:step]
+        else: return expr_monad[sub.monad]
     def postSlice(translator, node):
         assert node.flags == 'OP_APPLY'
         expr_monad = node.expr.monad
@@ -719,6 +724,8 @@ class EntityMonad(Monad):
         elif isinstance(key, ConstMonad):
             pkval = (key.value,)
             pktypes = (key.type,)
+        elif isinstance(key, slice):
+            raise TypeError('Slice is not supported in {EXPR}')
         else: raise NotImplementedError
         entity = monad.type
         if len(pkval) != len(entity._pk_attrs_): raise TypeError(
@@ -880,7 +887,7 @@ class StringMixin(MonadMixin):
     def __getitem__(monad, index):
         translator = monad.translator
         if isinstance(index, slice):
-            if index.step is not None: raise TypeError("Step is not supported in string slice {EXPR}")
+            if index.step is not None: raise TypeError("Step is not supported in {EXPR}")
             start, stop = index.start, index.stop
             if start is None and stop is None: return monad
             if isinstance(monad, translator.StringConstMonad) \
