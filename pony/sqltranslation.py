@@ -307,12 +307,12 @@ class SQLTranslator(ASTTranslator):
         translator.entities = entities
         translator.vartypes = vartypes
         translator.functions = functions
+        translator.tablerefs = tablerefs = {}
+        translator.parent = parent_translator
         if parent_translator is None:
-            translator.tablerefs = tablerefs = {}
             translator.alias_counters = {}
             translator.expr_counter = count(1).next
         else:
-            translator.tablerefs = tablerefs = parent_translator.tablerefs.copy()
             translator.alias_counters = parent_translator.alias_counters
             translator.expr_counter = parent_translator.expr_counter
         translator.extractors = {}
@@ -370,7 +370,7 @@ class SQLTranslator(ASTTranslator):
             else:
                 if len(attr_names) > 1: raise NotImplementedError, ast2src(qual.iter)
                 attrname = attr_names[0]
-                parent_alias = tablerefs.get(node_name)
+                parent_alias = translator.get_tableref(node_name)
                 if parent_alias is None: raise TranslationError("Name %r must be defined in query" % node_name)
                 parent_entity = parent_alias.entity
                 attr = parent_entity._adict_.get(attrname)
@@ -410,7 +410,7 @@ class SQLTranslator(ASTTranslator):
             assert name_path in tablerefs
         elif isinstance(monad, translator.ObjectFlatMonad): pass
         else: assert False
-        alias, _ = tablerefs[name_path].make_join()
+        alias, _ = monad.tableref.make_join()
         translator.alias = alias
         translator.select, translator.attr_offsets = entity._construct_select_clause_(alias, translator.distinct)
         first_from_item = translator.from_[1]
@@ -457,7 +457,7 @@ class SQLTranslator(ASTTranslator):
         return translator.ListMonad(translator, [ item.monad for item in node.nodes ])
     def postName(translator, node):
         name = node.name
-        tableref = translator.tablerefs.get(name)
+        tableref = translator.get_tableref(name)
         if tableref is not None:
             entity = tableref.entity
             return translator.ObjectIterMonad(translator, tableref, entity)
@@ -547,6 +547,11 @@ class SQLTranslator(ASTTranslator):
         lower = node.lower
         if lower is not None: lower = lower.monad
         return expr_monad[lower:upper]
+    def get_tableref(translator, name_path):
+        while translator is not None:
+            tableref = translator.tablerefs.get(name_path)
+            if tableref is not None: return tableref
+            translator = translator.parent
     def get_short_alias(translator, name_path, entity_name):
         if name_path:
             if is_ident(name_path): return name_path
@@ -1079,13 +1084,14 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
     def __init__(monad, parent, attr):
         AttrMonad.__init__(monad, parent, attr)
         translator = monad.translator
-        parent = monad.parent
+        parent_monad = monad.parent
         entity = monad.type
-        name_path = '-'.join((parent.tableref.name_path, attr.name))
-        monad.tableref = translator.tablerefs.get(name_path)
+        name_path = '-'.join((parent_monad.tableref.name_path, attr.name))
+        monad.tableref = translator.get_tableref(name_path)
         if monad.tableref is None:
-            monad.tableref = JoinedTableRef(translator, name_path, parent.tableref, attr)
-            translator.tablerefs[name_path] = monad.tableref
+            parent_tableref_translator = parent_monad.tableref.translator
+            monad.tableref = JoinedTableRef(parent_tableref_translator, name_path, parent_monad.tableref, attr)
+            parent_tableref_translator.tablerefs[name_path] = monad.tableref
 
 class ObjectFlatMonad(ObjectMixin, Monad):
     def __init__(monad, parent, attr):
@@ -1103,7 +1109,7 @@ class ObjectFlatMonad(ObjectMixin, Monad):
         parent_entity = monad.parent.type
 
         name_path = '-'.join((parent.tableref.name_path, attr.name))
-        assert name_path not in translator.tablerefs
+        assert translator.get_tableref(name_path) is None
         monad.tableref = JoinedTableRef(translator, name_path, parent.tableref, attr)
         translator.tablerefs[name_path] = monad.tableref
         
