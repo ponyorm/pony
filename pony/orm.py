@@ -303,7 +303,6 @@ class Database(object):
         return new_id
     def _exec_sql_many(database, sql, arguments_list):
         cache = database._get_cache()
-        cache.optimistic = False
         cursor = cache.connection.cursor()
         if debug:
             print 'EXECUTEMANY\n', sql
