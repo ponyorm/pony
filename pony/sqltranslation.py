@@ -12,18 +12,22 @@ from pony.utils import avg, copy_func_attrs, is_ident
 from pony.orm import select, exists, ERDiagramError, TranslationError, EntityMeta, Set, JOIN, AsciiStr
 
 def sqland(items):
-    if not items: return items
+    if not items: return []
+    if len(items) == 1: return items[0]
     result = [ AND ]
     for item in items:
         if item[0] == AND: result.extend(item[1:])
         else: result.append(item)
-    if len(result) == 2: return result[1]
     return result
 
 def sqlor(items):
     if not items: return []
     if len(items) == 1: return items[0]
-    return [ OR ] + items
+    result = [ OR ]
+    for item in items:
+        if item[0] == OR: result.extend(item[1:])
+        else: result.append(item)
+    return result
 
 def join_tables(alias1, alias2, columns1, columns2):
     assert len(columns1) == len(columns2)
