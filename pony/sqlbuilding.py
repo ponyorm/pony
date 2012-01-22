@@ -6,7 +6,6 @@ from binascii import hexlify
 
 from pony import options
 from pony.sqlsymbols import *
-from pony.sqltranslation import sqland
 from pony.utils import datetime2timestamp
 
 class AstError(Exception): pass
@@ -61,6 +60,14 @@ def flat(tree):
             except TypeError: result_append(x)
     return result
 
+def flat_conditions(conditions):
+    result = []
+    for condition in conditions:
+        if condition[0] == AND:
+            result.extend(flat_conditions(condition[1:]))
+        else: result.append(condition)
+    return result       
+
 def join(delimiter, items):
     items = iter(items)
     try: result = [ items.next() ]
@@ -71,24 +78,22 @@ def join(delimiter, items):
     return result
 
 def move_conditions_from_inner_join_to_where(sections):
-    conditions = []
-    new_sections = []
-    for section in sections:
+    new_sections = list(sections)
+    for i, section in enumerate(sections):
         if section[0] == FROM:
-            new_from = section[:2]
-            for join in section[2:]:
-                if join[1] != TABLE or len(join) < 4: new_from.append(join)
-                else:
-                    assert len(join) == 4
-                    new_from.append(join[:3])
-                    conditions.append(join[3])
-            new_sections.append(new_from)
-        elif section[0] == WHERE and conditions:
-            assert len(section) == 2
-            conditions.append(section[1])
-            new_sections.append([ WHERE, sqland(conditions) ])
-        else: new_sections.append(section)
-    return new_sections                    
+            new_from_list = [ FROM ] + [ list(item) for item in section[1:] ]
+            new_sections[i] = new_from_list
+            if len(sections) > i+1 and sections[i+1][0] == WHERE:
+                new_where_list = list(sections[i+1])
+                new_sections[i+1] = new_where_list
+            else:
+                new_where_list = [ WHERE ]
+                new_sections.insert(i+1, new_where_list)
+            break
+    for join in new_from_list[2:]:
+        if join[1] == TABLE and len(join) == 4:
+            new_where_list.append(join.pop())
+    return new_sections
 
 def make_binary_op(symbol, default_parentheses=False):
     def binary_op(builder, expr1, expr2, parentheses=None):
@@ -239,15 +244,15 @@ class SQLBuilder(object):
     @indentable
     def LEFT_JOIN(builder, *sources):
         return builder.sql_join('LEFT', sources)
-    def WHERE(builder, condition):
-        if not condition: return ''
+    def WHERE(builder, *conditions):
+        if not conditions: return ''
+        conditions = flat_conditions(conditions)
         indent = builder.indent_spaces * (builder.indent-1)
         result = [ indent, 'WHERE ' ]
         extend = result.extend
-        if condition[0] == AND:
-            extend((builder(condition[1]), '\n'))
-            for item in condition[2:]: extend((indent, '  AND ', builder(item), '\n'))
-        else: extend((builder(condition), '\n'))
+        extend((builder(conditions[0]), '\n'))
+        for condition in conditions[1:]:
+            extend((indent, '  AND ', builder(condition), '\n'))
         return result
     @indentable
     def GROUP_BY(builder, *expr_list):

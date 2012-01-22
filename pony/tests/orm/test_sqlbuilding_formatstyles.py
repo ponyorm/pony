@@ -9,11 +9,12 @@ class TestFormatStyles(unittest.TestCase):
         self.key2 = object()
         self.provider = DBAPIProvider(dbapi_module=None)
         self.ast = [ SELECT, [ ALL, [COLUMN, None, 'A']], [ FROM, [None, TABLE, 'T1']],
-                     [ WHERE, [ AND, [ EQ, [COLUMN, None, 'B'], [ PARAM, self.key1 ] ],
-                                     [ EQ, [COLUMN, None, 'C'], [ PARAM, self.key2 ] ],
-                                     [ EQ, [COLUMN, None, 'D'], [ PARAM, self.key2 ] ],
-                                     [ EQ, [COLUMN, None, 'E'], [ PARAM, self.key1 ] ]
-                                ]]]
+                     [ WHERE, [ EQ, [COLUMN, None, 'B'], [ PARAM, self.key1 ] ],
+                              [ EQ, [COLUMN, None, 'C'], [ PARAM, self.key2 ] ],
+                              [ EQ, [COLUMN, None, 'D'], [ PARAM, self.key2 ] ],
+                              [ EQ, [COLUMN, None, 'E'], [ PARAM, self.key1 ] ]
+                     ]
+                   ]
     def test_qmark(self):
         self.provider.paramstyle = 'qmark'
         b = SQLBuilder(self.provider, self.ast)

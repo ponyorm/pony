@@ -423,8 +423,7 @@ class SQLTranslator(ASTTranslator):
             assert parent_translator
             join_condition = first_from_item.pop()
             translator.conditions.insert(0, join_condition)
-        if not translator.conditions: translator.where = None
-        else: translator.where = [ WHERE, sqland(translator.conditions) ]
+        translator.where = [ WHERE ] + translator.conditions
     def preGenExpr(translator, node):
         inner_tree = node.code
         subtranslator = translator.__class__(inner_tree, translator.databases, translator.entities, translator.vartypes, translator.functions, translator)
@@ -1511,14 +1510,14 @@ class AttrSetMonad(SetMixin, Monad):
             expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
             conditions = outer_conditions + inner_conditions
             if len(expr_list) == 1:
-                subquery_ast = [ SELECT, [ ALL ] + expr_list, from_ast, [ WHERE, sqland(conditions) ] ]
+                subquery_ast = [ SELECT, [ ALL ] + expr_list, from_ast, [ WHERE ] + conditions ]
                 return translator.BoolExprMonad(translator, [ sqlop, item.getsql()[0], subquery_ast ])
             elif translator.row_value_syntax:
-                subquery_ast = [ SELECT, [ ALL ] + expr_list, from_ast, [ WHERE, sqland(conditions) ] ]
+                subquery_ast = [ SELECT, [ ALL ] + expr_list, from_ast, [ WHERE ] + conditions ]
                 return translator.BoolExprMonad(translator, [ sqlop, [ ROW ] + item.getsql(), subquery_ast ])
             else:
                 conditions += [ [ EQ, expr1, expr2 ] for expr1, expr2 in izip(item.getsql(), expr_list) ]
-                subquery_ast = [ not_in and NOT_EXISTS or EXISTS, from_ast, [ WHERE, sqland(conditions) ] ]
+                subquery_ast = [ not_in and NOT_EXISTS or EXISTS, from_ast, [ WHERE ] + conditions ] 
                 return translator.BoolExprMonad(translator, subquery_ast)
         else: raise NotImplementedError
     def getattr(monad, name):
@@ -1531,7 +1530,7 @@ class AttrSetMonad(SetMixin, Monad):
         return monad.translator.AttrSetMonad(monad.root, monad.path + [ attr ])
     def len(monad):
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
-        sql_ast = [ SELECT, [ AGGREGATES, [ COUNT, ALL ] ], from_ast, [ WHERE, sqland(outer_conditions+inner_conditions) ] ]
+        sql_ast = [ SELECT, [ AGGREGATES, [ COUNT, ALL ] ], from_ast, [ WHERE ] + outer_conditions + inner_conditions ]
         translator = monad.translator
         return translator.NumericExprMonad(translator, int, sql_ast)
     def sum(monad):
@@ -1542,7 +1541,7 @@ class AttrSetMonad(SetMixin, Monad):
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
         assert len(expr_list) == 1
         expr = expr_list[0]
-        sql_ast = [ SELECT, [ AGGREGATES, [COALESCE, [ SUM, expr ], [ VALUE, 0 ]]], from_ast, [ WHERE, sqland(outer_conditions+inner_conditions) ] ]
+        sql_ast = [ SELECT, [ AGGREGATES, [COALESCE, [ SUM, expr ], [ VALUE, 0 ]]], from_ast, [ WHERE ] + outer_conditions + inner_conditions ]
         return translator.NumericExprMonad(translator, item_type, sql_ast)
     def avg(monad):
         translator = monad.translator
@@ -1552,7 +1551,7 @@ class AttrSetMonad(SetMixin, Monad):
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
         assert len(expr_list) == 1
         expr = expr_list[0]
-        sql_ast = [ SELECT, [ AGGREGATES, [ AVG, expr ] ], from_ast, [ WHERE, sqland(outer_conditions+inner_conditions) ] ]
+        sql_ast = [ SELECT, [ AGGREGATES, [ AVG, expr ] ], from_ast, [ WHERE ] + outer_conditions + inner_conditions ]
         return translator.NumericExprMonad(translator, float, sql_ast)
     def min(monad):
         translator = monad.translator
@@ -1562,7 +1561,7 @@ class AttrSetMonad(SetMixin, Monad):
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
         assert len(expr_list) == 1
         expr = expr_list[0]
-        sql_ast = [ SELECT, [ AGGREGATES, [ MIN, expr ] ], from_ast, [ WHERE, sqland(outer_conditions+inner_conditions) ] ]
+        sql_ast = [ SELECT, [ AGGREGATES, [ MIN, expr ] ], from_ast, [ WHERE ] + outer_conditions + inner_conditions ]
         return translator.ExprMonad.new(translator, item_type, sql_ast)
     def max(monad):
         translator = monad.translator
@@ -1586,7 +1585,7 @@ class AttrSetMonad(SetMixin, Monad):
             subquery_columns.append([ AS, [ MAX, expr ], expr_name ])
 
             subquery_ast = [ subquery_columns, from_ast ]
-            if inner_conditions: subquery_ast.append([ WHERE, sqland(inner_conditions) ])
+            if inner_conditions: subquery_ast.append([ WHERE ] + inner_conditions)
             subquery_ast.append([ GROUP_BY ] + groupby_columns)
 
             for cond in outer_conditions: cond[2][1] = alias
@@ -1596,16 +1595,16 @@ class AttrSetMonad(SetMixin, Monad):
         else:
             sql_ast = [ SELECT, [ AGGREGATES, [ MAX, expr ] ],
                                 from_ast,
-                                [ WHERE, sqland(outer_conditions+inner_conditions) ] ]
+                                [ WHERE ] + outer_conditions + inner_conditions ]
         return translator.ExprMonad.new(monad.translator, item_type, sql_ast)
     def nonzero(monad):
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
-        sql_ast = [ EXISTS, from_ast, [ WHERE, sqland(outer_conditions+inner_conditions) ] ]
+        sql_ast = [ EXISTS, from_ast, [ WHERE ] + outer_conditions + inner_conditions ]
         translator = monad.translator
         return translator.BoolExprMonad(translator, sql_ast)
     def negate(monad):
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
-        sql_ast = [ NOT_EXISTS, from_ast, [ WHERE, sqland(outer_conditions+inner_conditions) ] ]
+        sql_ast = [ NOT_EXISTS, from_ast, [ WHERE ] + outer_conditions + inner_conditions ]
         translator = monad.translator
         return translator.BoolExprMonad(translator, sql_ast)
     def _subselect(monad):
@@ -1665,29 +1664,29 @@ class QuerySetMonad(SetMixin, Monad):
                 if attr is not None and not attr.is_required:
                     conditions += [ [ IS_NOT_NULL, column_ast ] for column_ast in columns_ast ]
                 subquery_ast = [ SELECT, select_ast, sub.from_ ]
-                if conditions: subquery_ast.append([ WHERE, sqland(conditions) ])
+                if conditions: subquery_ast.append([ WHERE ] + conditions)
                 if len(columns) == 1: expr_ast = item.getsql()[0]
                 else: expr_ast = [ ROW ] + item.getsql()
                 sql_ast = [ not_in and NOT_IN or IN, expr_ast, subquery_ast ]
                 return translator.BoolExprMonad(translator, sql_ast)
             else:
                 conditions += [ [ EQ, expr1, expr2 ] for expr1, expr2 in izip(item.getsql(), columns_ast) ]
-                subquery_ast = [ not_in and NOT_EXISTS or EXISTS, sub.from_, [ WHERE, sqland(conditions) ] ]
+                subquery_ast = [ not_in and NOT_EXISTS or EXISTS, sub.from_, [ WHERE ] + conditions ]
                 return translator.BoolExprMonad(translator, subquery_ast)
         else: raise NotImplementedError
     def nonzero(monad):        
         sub = monad.subtranslator
-        sql_ast = [ EXISTS, sub.from_, [ WHERE, sqland(sub.conditions) ] ]
+        sql_ast = [ EXISTS, sub.from_, [ WHERE ] + sub.conditions ]
         translator = monad.translator
         return translator.BoolExprMonad(translator, sql_ast)
     def negate(monad):
         sub = monad.subtranslator
-        sql_ast = [ NOT_EXISTS, sub.from_, [ WHERE, sqland(sub.conditions) ] ]
+        sql_ast = [ NOT_EXISTS, sub.from_, [ WHERE ] + sub.conditions ]
         translator = monad.translator
         return translator.BoolExprMonad(translator, sql_ast)
     def _subselect(monad, item_type, select_ast):
         sub = monad.subtranslator
-        sql_ast = [ SELECT, select_ast, sub.from_, [ WHERE, sqland(sub.conditions) ] ]
+        sql_ast = [ SELECT, select_ast, sub.from_, [ WHERE ] + sub.conditions ]
         translator = monad.translator
         return translator.ExprMonad.new(translator, item_type, sql_ast)
     def len(monad):
@@ -1700,7 +1699,7 @@ class QuerySetMonad(SetMixin, Monad):
             return monad._subselect(int, select_ast)
         sub = monad.subtranslator
         inner_ast = [ [ DISTINCT ] + [ [ COLUMN, sub.alias, column ] for column in attr.columns ],
-                      sub.from_, [ WHERE, sqland(sub.conditions) ] ]
+                      sub.from_, [ WHERE ] + sub.conditions ]
         translator = monad.translator
         alias = translator.get_short_alias(None, 't')
         outer_ast = [ SELECT, [ AGGREGATES, [ COUNT, ALL ] ], [ FROM, [ alias, SELECT, inner_ast ] ] ]

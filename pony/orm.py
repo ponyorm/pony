@@ -1053,24 +1053,24 @@ class Set(Collection):
         database = attr.entity._database_
         
         if batch_size == 1:
-            criteria_list = [ AND ]
+            criteria_list = []
             for i, (column, converter) in enumerate(zip(rcolumns, rconverters)):
                 criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, (0, i), converter ]])
         elif len(rcolumns) == 1:
             converter = rconverters[0]
-            criteria_list = [ IN, [ COLUMN, None, rcolumns[0] ],
-                                  [ [ PARAM, (i, 0), converter ] for i in xrange(batch_size) ] ]
+            criteria_list = [ [ IN, [ COLUMN, None, rcolumns[0] ],
+                                   [ [ PARAM, (i, 0), converter ] for i in xrange(batch_size) ] ] ]
         elif database.provider.translator_cls.row_value_syntax:
-            criteria_list = [ IN, [ ROW ] + [ [ COLUMN, None, column ] for column in rcolumns ],
-                                  [ [ ROW ] + [ [ PARAM, (i, j), converter ] for j, converter in enumerate(rconverters) ]
-                                    for i in xrange(batch_size) ] ]
+            criteria_list = [ [ IN, [ ROW ] + [ [ COLUMN, None, column ] for column in rcolumns ],
+                                   [ [ ROW ] + [ [ PARAM, (i, j), converter ] for j, converter in enumerate(rconverters) ]
+                                     for i in xrange(batch_size) ] ] ]
         else:
             pairs = zip(rcolumns, rconverters)
-            criteria_list = [ OR ] + [ [ AND ] + [ [ EQ, [ COLUMN, None, column ], [ PARAM, (i, j), converter ] ]
+            criteria_list = [ [ OR ] + [ [ AND ] + [ [ EQ, [ COLUMN, None, column ], [ PARAM, (i, j), converter ] ]
                                                    for j, (column, converter) in enumerate(pairs) ]
-                                       for i in xrange(batch_size) ]
+                                       for i in xrange(batch_size) ] ]
 
-        sql_ast = [ SELECT, select_list, from_list, [ WHERE, criteria_list ] ]
+        sql_ast = [ SELECT, select_list, from_list, [ WHERE ] + criteria_list ]
         sql, adapter = attr.cached_load_sql[batch_size] = database._ast2sql(sql_ast)
         return sql, adapter
     def copy(attr, obj):
@@ -1232,7 +1232,7 @@ class Set(Collection):
             reverse = attr.reverse
             table_name = attr.table
             assert table_name is not None
-            criteria_list = [ AND ]
+            where_list = [ WHERE ]
             if attr.symmetric:
                 columns = attr.columns + attr.reverse_columns
                 converters = attr.converters + attr.converters
@@ -1240,8 +1240,8 @@ class Set(Collection):
                 columns = reverse.columns + attr.columns
                 converters = reverse.converters + attr.converters
             for i, (column, converter) in enumerate(zip(columns, converters)):
-                criteria_list.append([ EQ, [COLUMN, None, column], [ PARAM, i, converter ] ])
-            sql_ast = [ DELETE, table_name, [ WHERE, criteria_list ] ]
+                where_list.append([ EQ, [COLUMN, None, column], [ PARAM, i, converter ] ])
+            sql_ast = [ DELETE, table_name, where_list ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_remove_m2m_sql = sql, adapter
         else: sql, adapter = cached_sql
@@ -1871,22 +1871,22 @@ class EntityMeta(type):
             columns = attr.columns
             converters = attr.converters
         if batch_size == 1:
-            criteria_list = [ AND ] + [ [ EQ, [ COLUMN, None, column ], [ PARAM, (0, i), converter ] ]
-                                        for i, (column, converter) in enumerate(izip(columns, converters)) ]
+            criteria_list = [ [ EQ, [ COLUMN, None, column ], [ PARAM, (0, i), converter ] ]
+                              for i, (column, converter) in enumerate(izip(columns, converters)) ]
         elif len(columns) == 1:
             converter = converters[0]
-            criteria_list = [ IN, [ COLUMN, None, columns[0] ],
-                                   [ [ PARAM, (i, 0), converter ] for i in xrange(batch_size) ] ] 
+            criteria_list = [ [ IN, [ COLUMN, None, columns[0] ],
+                                   [ [ PARAM, (i, 0), converter ] for i in xrange(batch_size) ] ] ]
         elif entity._database_.provider.translator_cls.row_value_syntax:
-            criteria_list = [ IN, [ ROW ] + [ [ COLUMN, None, column ] for column in columns ],
-                                   [ [ ROW ] + [ [ PARAM, (i, j), converter ] for j, converter in enumerate(converters) ]
-                                     for i in xrange(batch_size) ] ]
+            criteria_list = [ [ IN, [ ROW ] + [ [ COLUMN, None, column ] for column in columns ],
+                                    [ [ ROW ] + [ [ PARAM, (i, j), converter ] for j, converter in enumerate(converters) ]
+                                     for i in xrange(batch_size) ] ] ]
         else:
             pairs = zip(columns, converters)
-            criteria_list = [ OR ] + [ [ AND ] + [ [ EQ, [ COLUMN, None, column ], [ PARAM, (i, j), converter ] ]
-                                                    for j, (column, converter) in enumerate(pairs) ]
-                                        for i in xrange(batch_size) ]
-        sql_ast = [ SELECT, select_list, from_list, [ WHERE, criteria_list ] ]
+            criteria_list = [ [ OR ] + [ [ AND ] + [ [ EQ, [ COLUMN, None, column ], [ PARAM, (i, j), converter ] ]
+                                                     for j, (column, converter) in enumerate(pairs) ]
+                                         for i in xrange(batch_size) ] ]
+        sql_ast = [ SELECT, select_list, from_list, [ WHERE ] + criteria_list ]
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
         cached_sql = sql, adapter, attr_offsets
@@ -1899,16 +1899,16 @@ class EntityMeta(type):
         table_name = entity._table_
         select_list, attr_offsets = entity._construct_select_clause_()
         from_list = [ FROM, [ None, TABLE, table_name ]]
-        criteria_list = [ AND ]
+        where_list = [ WHERE ]
         values = []
         extractors = {}
         for attr, attr_is_none in query_attrs:
             if not attr.reverse:
                 if not attr_is_none:
                     assert len(attr.converters) == 1
-                    criteria_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name, attr.converters[0] ]])
+                    where_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name, attr.converters[0] ]])
                     extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]
-                else: criteria_list.append([IS_NULL, [COLUMN, None, attr.column]])
+                else: where_list.append([IS_NULL, [COLUMN, None, attr.column]])
             elif not attr.columns: raise NotImplementedError
             else:
                 attr_entity = attr.py_type
@@ -1916,20 +1916,19 @@ class EntityMeta(type):
                 if len(attr.columns) == 1:
                     if not attr_is_none:
                         assert len(attr.converters) == 1
-                        criteria_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name, attr.converters[0] ]])
+                        where_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name, attr.converters[0] ]])
                         extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]._get_raw_pkval_()[0]
-                    else: criteria_list.append([IS_NULL, [COLUMN, None, attr.column]])
+                    else: where_list.append([IS_NULL, [COLUMN, None, attr.column]])
                 elif not attr_is_none:
                     for i, (column, converter) in enumerate(zip(attr.columns, attr_entity._pk_converters_)):
                         param_name = '%s-%d' % (attr.name, i+1)
-                        criteria_list.append([EQ, [COLUMN, None, column], [ PARAM, param_name, converter ]])
+                        where_list.append([EQ, [COLUMN, None, column], [ PARAM, param_name, converter ]])
                         extractors[param_name] = lambda avdict, attr=attr, i=i: avdict[attr]._get_raw_pkval_()[i]
                 else:
                     for column in attr.columns:
-                        criteria_list.append([IS_NULL, [COLUMN, None, column]])
+                        where_list.append([IS_NULL, [COLUMN, None, column]])
 
-        sql_ast = [ SELECT, select_list, from_list ]
-        if len(criteria_list) > 1: sql_ast.append([ WHERE, criteria_list  ])
+        sql_ast = [ SELECT, select_list, from_list, where_list ]
         if order_by_pk: sql_ast.append([ ORDER_BY ] + [ ([COLUMN, None, column], ASC) for column in entity._pk_columns_ ])
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
@@ -2537,12 +2536,12 @@ class Entity(object):
                 assert len(update_columns) == len(update_converters)
                 update_params = [ [ PARAM, i, converter ] for i, converter in enumerate(update_converters) ]
                 params_count = len(update_params)
-                criteria_list = [ AND ]
+                where_list = [ WHERE ]
                 pk_columns = obj._pk_columns_
                 pk_converters = obj._pk_converters_
-                params_count = populate_criteria_list(criteria_list, pk_columns, pk_converters, params_count)
-                populate_criteria_list(criteria_list, optimistic_check_columns, optimistic_check_converters, params_count)
-                sql_ast = [ UPDATE, obj._table_, zip(update_columns, update_params), [ WHERE, criteria_list ] ]
+                params_count = populate_criteria_list(where_list, pk_columns, pk_converters, params_count)
+                populate_criteria_list(where_list, optimistic_check_columns, optimistic_check_converters, params_count)
+                sql_ast = [ UPDATE, obj._table_, zip(update_columns, update_params), where_list ]
                 sql, adapter = database._ast2sql(sql_ast)
                 obj._update_sql_cache_[query_key] = sql, adapter
             else: sql, adapter = cached_sql
@@ -2579,10 +2578,10 @@ class Entity(object):
         database = obj._database_
         cached_sql = obj._lock_sql_cache_.get(query_key)        
         if cached_sql is None:
-            criteria_list = [ AND ]
-            params_count = populate_criteria_list(criteria_list, obj._pk_columns_, obj._pk_converters_)
-            populate_criteria_list(criteria_list, optimistic_check_columns, optimistic_check_converters, params_count)
-            sql_ast = [ SELECT, [ ALL, [ VALUE, 1 ]], [ FROM, [ None, TABLE, obj._table_ ] ], [ WHERE, criteria_list ] ]
+            where_list = [ WHERE ]
+            params_count = populate_criteria_list(where_list, obj._pk_columns_, obj._pk_converters_)
+            populate_criteria_list(where_list, optimistic_check_columns, optimistic_check_converters, params_count)
+            sql_ast = [ SELECT, [ ALL, [ VALUE, 1 ]], [ FROM, [ None, TABLE, obj._table_ ] ], where_list ]
             sql, adapter = database._ast2sql(sql_ast)
             obj._lock_sql_cache_[query_key] = sql, adapter
         else: sql, adapter = cached_sql
@@ -2595,9 +2594,9 @@ class Entity(object):
         database = obj._database_
         cached_sql = obj._cached_delete_sql_
         if cached_sql is None:
-            criteria_list = [ AND ]
-            populate_criteria_list(criteria_list, obj._pk_columns_, obj._pk_converters_)
-            sql_ast = [ DELETE, obj._table_, [ WHERE, criteria_list ] ]
+            where_list = [ WHERE ]
+            populate_criteria_list(where_list, obj._pk_columns_, obj._pk_converters_)
+            sql_ast = [ DELETE, obj._table_, where_list ]
             sql, adapter = database._ast2sql(sql_ast)
             obj.__class__._cached_delete_sql_ = sql, adapter
         else: sql, adapter = cached_sql
@@ -3000,7 +2999,7 @@ class Query(object):
                 sql_ast.append([ AGGREGATES, aggr_ast ])
             else: sql_ast.append(translator.select)
             sql_ast.append(translator.from_)
-            if translator.where: sql_ast.append(translator.where)
+            sql_ast.append(translator.where)
             if order:
                 alias = translator.alias
                 orderby_section = [ ORDER_BY ]
