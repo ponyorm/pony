@@ -433,21 +433,24 @@ class SQLTranslator(ASTTranslator):
         if monad.type is not bool: monad = monad.nonzero()
         return monad
     def preCompare(translator, node):
+        monads = []
         ops = node.ops
-        if len(ops) > 1: raise NotImplementedError
-        op, expr2 = ops[0]
-        if op == 'not in': translator.inside_not = not translator.inside_not
-    def postCompare(translator, node):
-        expr1 = node.expr
-        ops = node.ops
-        op, expr2 = ops[0]
+        left = node.expr
+        translator.dispatch(left)
+        inside_not = translator.inside_not
         # op: '<' | '>' | '=' | '>=' | '<=' | '<>' | '!=' | '=='
         #         | 'in' | 'not in' | 'is' | 'is not'
-        if op.endswith('in'):
-            if op == 'not in': translator.inside_not = not translator.inside_not
-            return expr2.monad.contains(expr1.monad, op == 'not in')
-        else:
-            return expr1.monad.cmp(op, expr2.monad)
+        for op, right in node.ops:
+            translator.inside_not = inside_not
+            if op == 'not in': translator.inside_not = not inside_not
+            translator.dispatch(right)
+            if op.endswith('in'):
+                monads.append(right.monad.contains(left.monad, op == 'not in'))
+            else: monads.append(left.monad.cmp(op, right.monad))
+            left = right
+        translator.inside_not = inside_not
+        if len(monads) == 1: return monads[0]
+        return translator.AndMonad(monads)
     def postConst(translator, node):
         value = node.value
         if type(value) is not tuple:
