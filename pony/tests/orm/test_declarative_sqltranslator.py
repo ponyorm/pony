@@ -4,27 +4,40 @@ from testutils import *
 
 db = TestDatabase('sqlite', ':memory:')
 
+class Department(db.Entity):
+    number = PrimaryKey(int)
+    groups = Set('Group')
+
 class Student(db.Entity):
     name = Required(unicode)
     group = Required('Group')
     scholarship = Required(int, default=0)
+    courses = Set('Course')
     grades = Set('Grade')
 
 class Group(db.Entity):
     id = PrimaryKey(int)
     students = Set(Student)
-    dep = Required(unicode)
+    dep = Required(Department)
     rooms = Set('Room')
 
 class Course(db.Entity):
     name = Required(unicode)
+    semester = Required(int)
+    PrimaryKey(name, semester)
     grades = Set('Grade')
+    students = Set(Student)
 
 class Grade(db.Entity):
     student = Required(Student)
     course = Required(Course)
     PrimaryKey(student, course)
     value = Required(str)
+    teacher = Required('Teacher')
+    
+class Teacher(db.Entity):
+    name = Required(unicode)
+    grades = Set(Grade)    
 
 class Room(db.Entity):
     name = PrimaryKey(unicode)
@@ -34,22 +47,28 @@ db.generate_mapping(create_tables=True)
 
 @with_transaction
 def populate_db():
-    g1 = Group(id=1, dep='dep1')
-    g2 = Group(id=2, dep='dep2')
+    d1 = Department(number=44)
+    d2 = Department(number=43)
+    g1 = Group(id=1, dep=d1)
+    g2 = Group(id=2, dep=d2)
     s1 = Student(id=1, name='S1', group=g1, scholarship=0)
     s2 = Student(id=2, name='S2', group=g1, scholarship=100)
     s3 = Student(id=3, name='S3', group=g2, scholarship=500)
-    c1 = Course(id=10, name='Math')
-    c2 = Course(id=11, name='Economics')
-    c3 = Course(id=12, name='Physics')
-    Grade(student=s1, course=c1, value='C')
-    Grade(student=s1, course=c3, value='A')
-    Grade(student=s2, course=c2, value='B')
+    c1 = Course(name='Math', semester=1)
+    c2 = Course(name='Economics', semester=1)
+    c3 = Course(name='Physics', semester=2)
+    t1 = Teacher(id=101, name="T1")
+    t2 = Teacher(id=102, name="T2")
+    Grade(student=s1, course=c1, value='C', teacher=t2)
+    Grade(student=s1, course=c3, value='A', teacher=t1)
+    Grade(student=s2, course=c2, value='B', teacher=t1)
     r1 = Room(name='Room1')
     r2 = Room(name='Room2')
     r3 = Room(name='Room3')
     g1.rooms = [ r1, r2 ]
     g2.rooms = [ r2, r3 ]
+    c1.students.add(s1)
+    c2.students.add(s2)
 populate_db()
 
 db2 = Database('sqlite', ':memory:')
@@ -82,7 +101,7 @@ class TestSQLTranslator(unittest.TestCase):
         result = select(s for s in Student if s.name == x).all()
         self.assertEquals(result, [Student[1]])
     def test_select_composite_key(self):
-        grade1 = Grade[Student[1], Course[12]]
+        grade1 = Grade[Student[1], Course['Physics', 2]]
         result = select(g for g in Grade if g != grade1)
         grades = [ grade.value for grade in result ]
         grades.sort()
@@ -92,14 +111,14 @@ class TestSQLTranslator(unittest.TestCase):
         self.assertEquals(result, [Student[1]])
     @raises_exception(TypeError)
     def test_function_max2(self):
-        grade1 = Grade[Student[1], Course[12]]
+        grade1 = Grade[Student[1], Course['Physics', 2]]
         select(s for s in Student if max(s.grades) == grade1)
     def test_function_min(self):
         result = select(s for s in Student if min(s.grades.value) == 'B').all()
         self.assertEquals(result, [Student[2]])
     @raises_exception(TypeError)
     def test_function_min2(self):
-        grade1 = Grade[Student[1], Course[12]]
+        grade1 = Grade[Student[1], Course['Physics', 2]]
         select(s for s in Student if min(s.grades) == grade1).all()
     def test_function_len1(self):
         result = select(s for s in Student if len(s.grades) == 1).all()
@@ -109,6 +128,9 @@ class TestSQLTranslator(unittest.TestCase):
         self.assertEquals(result, [Student[1]])
     def test_function_sum1(self):
         result = select(g for g in Group if sum(g.students.scholarship) == 100).all()
+        self.assertEquals(result, [Group[1]])
+    def test_function_avg1(self):
+        result = select(g for g in Group if avg(g.students.scholarship) == 50).all()
         self.assertEquals(result, [Group[1]])
     @raises_exception(TypeError)
     def test_function_sum2(self):
@@ -165,12 +187,12 @@ class TestSQLTranslator(unittest.TestCase):
         result = select(s for s in Student if s.name not in ['S1', 'S2']).all()
         self.assertEquals(result, [Student[3]])
     def test_list_monad3(self):
-        grade1 = Grade[Student[1], Course[12]]
-        grade2 = Grade[Student[1], Course[10]]
+        grade1 = Grade[Student[1], Course['Physics', 2]]
+        grade2 = Grade[Student[1], Course['Math', 1]]
         result = set(select(g for g in Grade if g in [grade1, grade2]))
         self.assertEquals(result, set([grade1, grade2]))
         result = set(select(g for g in Grade if g not in [grade1, grade2]))
-        self.assertEquals(result, set([Grade[Student[2], Course[11]]]))
+        self.assertEquals(result, set([Grade[Student[2], Course['Economics', 1]]]))
     def test_tuple_monad1(self):
         n1 = 'S1'
         n2 = 'S2'
@@ -238,6 +260,33 @@ class TestSQLTranslator(unittest.TestCase):
     def test_orderby(self):
         result = list(Student.orderby(Student.name))
         self.assertEquals(result, [Student[1], Student[2], Student[3]])
-       
+    def test_read_inside_query(self):
+        result = set(select(s for s in Student if Group[1].dep.number == 44))
+        self.assertEquals(result, set([Student[1], Student[2], Student[3]]))
+    def test_crud_attr_chain(self):
+        result = set(select(s for s in Student if Group[1].dep.number == s.group.dep.number))
+        self.assertEquals(result, set([Student[1], Student[2]]))
+    def test_composite_key1(self):
+        result = set(select(t for t in Teacher if Grade[Student[1], Course['Physics', 2]] in t.grades))
+        self.assertEquals(result, set([Teacher.get(name='T1')]))
+    def test_composite_key2(self):
+        result = set(select(s for s in Student if Course['Math', 1] in s.courses))
+        self.assertEquals(result, set([Student[1]]))
+    def test_composite_key3(self):
+        result = set(select(s for s in Student if Course['Math', 1] not in s.courses))
+        self.assertEquals(result, set([Student[2], Student[3]]))
+    def test_composite_key4(self):
+        result = set(select(s for s in Student if len(c for c in Course if c not in s.courses) == 2))
+        self.assertEquals(result, set([Student[1], Student[2]]))
+    def test_composite_key5(self):
+        result = set(select(s for s in Student if not (c for c in Course if c not in s.courses)))
+        self.assertEquals(result, set())
+    def test_composite_key6(self):
+        result = set(select(c for c in Course if c not in select(c2 for s in Student for c2 in s.courses)))
+        self.assertEquals(result, set([Course['Physics', 2]]))
+    def test_composite_key7(self):
+        result = set(select(c for s in Student for c in s.courses))
+        self.assertEquals(result, set([Course['Math', 1], Course['Economics', 1]]))        
+
 if __name__ == "__main__":
     unittest.main()

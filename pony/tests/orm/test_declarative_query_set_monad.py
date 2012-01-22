@@ -72,6 +72,10 @@ class TestQuerySetMonad(unittest.TestCase):
     def test_max2(self):
         select(g for g in Group if max(s for s in Student if s.group == g) == None)
 
+    def test_avg1(self):
+        result = select(g for g in Group if avg(s.scholarship for s in Student if s.group == g) == 50).all()
+        self.assertEquals(result, [Group[1]])
+
     def test_negate(self):
         result = set(select(g for g in Group if not(s.scholarship for s in Student if s.group == g)))
         self.assertEquals(result, set([]))
