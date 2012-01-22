@@ -1715,6 +1715,7 @@ class QuerySetMonad(SetMixin, Monad):
         select_ast = [ AGGREGATES, [ COALESCE, [ SUM, [ COLUMN, monad.subtranslator.alias, attr.column ] ], [ VALUE, 0 ] ] ]
         return monad._subselect(attr_type, select_ast)
     def avg(monad):
+        translator = monad.translator
         attr, attr_type = monad._get_attr_info()
         if attr_type not in translator.numeric_types: raise TypeError(
             "Function 'avg' expects query or items of numeric type, got %r in {EXPR}" % type2str(attr_type))

@@ -2961,7 +2961,7 @@ class Query(object):
                 variables[name] = value
                 try: normalized_type = translator_cls.get_normalized_type_of(value)
                 except TypeError: raise TypeError("Variable %r has unexpected type %r" % (name, type(value).__name__))
-                vartypes[name] = translator_cls.get_normalized_type_of(value)
+                vartypes[name] = normalized_type
 
         query._result = None
         key = id(code), tuple(sorted(databases.iteritems())), tuple(sorted(entities.iteritems())), \
@@ -3047,7 +3047,7 @@ class Query(object):
         new_query = query._clone()
         new_query._aggr_func_name = EXISTS
         new_query._aggr_select = [ ALL, [ VALUE, 1 ] ]
-        cursor = new_query._exec_sql((0, 1))
+        cursor = new_query._exec_sql(range=(0, 1))
         row = cursor.fetchone()
         return row is not None
     def __iter__(query):
