@@ -1648,7 +1648,7 @@ class QuerySetMonad(SetMixin, Monad):
     def _get_attr_info(monad):
         sub = monad.subtranslator
         attr = sub.attr
-        if attr is None: return None, None
+        if attr is None: return None, sub.entity
         return attr, sub.normalize_type(attr.py_type)
     def contains(monad, item, not_in=False):
         translator = monad.translator
@@ -1709,36 +1709,32 @@ class QuerySetMonad(SetMixin, Monad):
         return translator.ExprMonad.new(translator, int, outer_ast)
     def sum(monad):
         translator = monad.translator
-        attr, attr_type = monad._get_attr_info()
-        if attr_type not in translator.numeric_types: raise TypeError(
-            "Function 'sum' expects query or items of numeric type, got %r in {EXPR}" 
-            % type2str(attr_type or monad.subtranslator.entity))
+        attr, expr_type = monad._get_attr_info()
+        if expr_type not in translator.numeric_types: raise TypeError(
+            "Function 'sum' expects query or items of numeric type, got %r in {EXPR}" % type2str(expr_type))
         select_ast = [ AGGREGATES, [ COALESCE, [ SUM, [ COLUMN, monad.subtranslator.alias, attr.column ] ], [ VALUE, 0 ] ] ]
-        return monad._subselect(attr_type, select_ast)
+        return monad._subselect(expr_type, select_ast)
     def avg(monad):
         translator = monad.translator
-        attr, attr_type = monad._get_attr_info()
-        if attr_type not in translator.numeric_types: raise TypeError(
-            "Function 'avg' expects query or items of numeric type, got %r in {EXPR}" 
-            % type2str(attr_type or monad.subtranslator.entity))
+        attr, expr_type = monad._get_attr_info()
+        if expr_type not in translator.numeric_types: raise TypeError(
+            "Function 'avg' expects query or items of numeric type, got %r in {EXPR}" % type2str(expr_type))
         select_ast = [ AGGREGATES, [ AVG, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
         return monad._subselect(float, select_ast)
     def min(monad):
         translator = monad.translator
-        attr, attr_type = monad._get_attr_info()
-        if attr_type not in translator.comparable_types: raise TypeError(
-            "Function 'min' expects query or items of numeric type, got %r in {EXPR}" 
-            % type2str(attr_type or monad.subtranslator.entity))
+        attr, expr_type = monad._get_attr_info()
+        if expr_type not in translator.comparable_types: raise TypeError(
+            "Function 'min' expects query or items of numeric type, got %r in {EXPR}" % type2str(expr_type))
         select_ast = [ AGGREGATES, [ MIN, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
-        return monad._subselect(attr_type, select_ast)
+        return monad._subselect(expr_type, select_ast)
     def max(monad):
         translator = monad.translator
-        attr, attr_type = monad._get_attr_info()
-        if attr_type not in translator.comparable_types: raise TypeError(
-            "Function 'max' expects query or items of numeric type, got %r in {EXPR}" 
-            % type2str(attr_type or monad.subtranslator.entity))
+        attr, expr_type = monad._get_attr_info()
+        if expr_type not in translator.comparable_types: raise TypeError(
+            "Function 'max' expects query or items of numeric type, got %r in {EXPR}" % type2str(expr_type))
         select_ast = [ AGGREGATES, [ MAX, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
-        return monad._subselect(attr_type, select_ast)
+        return monad._subselect(expr_type, select_ast)
 
 for name, value in globals().items():
     if name.endswith('Monad') or name.endswith('Mixin'):
