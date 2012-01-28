@@ -186,6 +186,18 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(NotImplementedError, "Group[101].students")
     def test45(self):
         select(s for s in Student if s in Group[101].students).all()
+    @raises_exception(TypeError, "Function 'sum' expects query or items of numeric type, got 'Student' in sum(s for s in Student if s.group == g)")
+    def test46(self):
+        select(g for g in Group if sum(s for s in Student if s.group == g) > 1).all()
+    @raises_exception(TypeError, "Function 'avg' expects query or items of numeric type, got 'Student' in avg(s for s in Student if s.group == g)")
+    def test47(self):
+        select(g for g in Group if avg(s for s in Student if s.group == g) > 1).all()
+    @raises_exception(TypeError, "Function 'min' expects query or items of numeric type, got 'Student' in min(s for s in Student if s.group == g)")
+    def test48(self):
+        select(g for g in Group if min(s for s in Student if s.group == g) > 1).all()
+    @raises_exception(TypeError, "Function 'max' expects query or items of numeric type, got 'Student' in max(s for s in Student if s.group == g)")
+    def test49(self):
+        select(g for g in Group if max(s for s in Student if s.group == g) > 1).all()
         
 if __name__ == '__main__':
     unittest.main()        

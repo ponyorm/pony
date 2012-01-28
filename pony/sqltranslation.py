@@ -1711,28 +1711,32 @@ class QuerySetMonad(SetMixin, Monad):
         translator = monad.translator
         attr, attr_type = monad._get_attr_info()
         if attr_type not in translator.numeric_types: raise TypeError(
-            "Function 'sum' expects query or items of numeric type, got %r in {EXPR}" % type2str(attr_type))
+            "Function 'sum' expects query or items of numeric type, got %r in {EXPR}" 
+            % type2str(attr_type or monad.subtranslator.entity))
         select_ast = [ AGGREGATES, [ COALESCE, [ SUM, [ COLUMN, monad.subtranslator.alias, attr.column ] ], [ VALUE, 0 ] ] ]
         return monad._subselect(attr_type, select_ast)
     def avg(monad):
         translator = monad.translator
         attr, attr_type = monad._get_attr_info()
         if attr_type not in translator.numeric_types: raise TypeError(
-            "Function 'avg' expects query or items of numeric type, got %r in {EXPR}" % type2str(attr_type))
+            "Function 'avg' expects query or items of numeric type, got %r in {EXPR}" 
+            % type2str(attr_type or monad.subtranslator.entity))
         select_ast = [ AGGREGATES, [ AVG, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
         return monad._subselect(float, select_ast)
     def min(monad):
         translator = monad.translator
         attr, attr_type = monad._get_attr_info()
         if attr_type not in translator.comparable_types: raise TypeError(
-            "Function 'min' expects query or items of numeric type, got %r in {EXPR}" % type2str(attr_type))
+            "Function 'min' expects query or items of numeric type, got %r in {EXPR}" 
+            % type2str(attr_type or monad.subtranslator.entity))
         select_ast = [ AGGREGATES, [ MIN, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
         return monad._subselect(attr_type, select_ast)
     def max(monad):
         translator = monad.translator
         attr, attr_type = monad._get_attr_info()
         if attr_type not in translator.comparable_types: raise TypeError(
-            "Function 'max' expects query or items of numeric type, got %r in {EXPR}" % type2str(attr_type))
+            "Function 'max' expects query or items of numeric type, got %r in {EXPR}" 
+            % type2str(attr_type or monad.subtranslator.entity))
         select_ast = [ AGGREGATES, [ MAX, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
         return monad._subselect(attr_type, select_ast)
 
