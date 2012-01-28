@@ -7,22 +7,26 @@ db = TestDatabase('sqlite', ':memory:')
 class Department(db.Entity):
     number = PrimaryKey(int)
     groups = Set('Group')
+    courses = Set('Course')
 
 class Student(db.Entity):
     name = Required(unicode)
     group = Required('Group')
     scholarship = Required(int, default=0)
+    picture = Optional(buffer)
     courses = Set('Course')
     grades = Set('Grade')
 
 class Group(db.Entity):
     id = PrimaryKey(int)
     students = Set(Student)
-    dep = Required(Department)
+    dept = Required(Department)
     rooms = Set('Room')
 
 class Course(db.Entity):
+    dept = Required(Department)
     name = Required(unicode)
+    credits = Optional(int)
     semester = Required(int)
     PrimaryKey(name, semester)
     grades = Set('Grade')
@@ -49,14 +53,14 @@ db.generate_mapping(create_tables=True)
 def populate_db():
     d1 = Department(number=44)
     d2 = Department(number=43)
-    g1 = Group(id=1, dep=d1)
-    g2 = Group(id=2, dep=d2)
+    g1 = Group(id=1, dept=d1)
+    g2 = Group(id=2, dept=d2)
     s1 = Student(id=1, name='S1', group=g1, scholarship=0)
     s2 = Student(id=2, name='S2', group=g1, scholarship=100)
     s3 = Student(id=3, name='S3', group=g2, scholarship=500)
-    c1 = Course(name='Math', semester=1)
-    c2 = Course(name='Economics', semester=1)
-    c3 = Course(name='Physics', semester=2)
+    c1 = Course(name='Math', semester=1, dept=d1)
+    c2 = Course(name='Economics', semester=1, dept=d1)
+    c3 = Course(name='Physics', semester=2, dept=d2)
     t1 = Teacher(id=101, name="T1")
     t2 = Teacher(id=102, name="T2")
     Grade(student=s1, course=c1, value='C', teacher=t2)
@@ -178,7 +182,7 @@ class TestSQLTranslator(unittest.TestCase):
         self.assertEquals(result, [Student[2], Student[3]])        
         result = select(s for s in Student if s.group == s1.group).all()
         self.assertEquals(result, [Student[1], Student[2]])
-        result = select(s for s in Student if s.group.dep == s1.group.dep).all()
+        result = select(s for s in Student if s.group.dept == s1.group.dept).all()
         self.assertEquals(result, [Student[1], Student[2]])
     def test_list_monad1(self):
         result = select(s for s in Student if s.name in ['S1']).all()
@@ -261,10 +265,10 @@ class TestSQLTranslator(unittest.TestCase):
         result = list(Student.orderby(Student.name))
         self.assertEquals(result, [Student[1], Student[2], Student[3]])
     def test_read_inside_query(self):
-        result = set(select(s for s in Student if Group[1].dep.number == 44))
+        result = set(select(s for s in Student if Group[1].dept.number == 44))
         self.assertEquals(result, set([Student[1], Student[2], Student[3]]))
     def test_crud_attr_chain(self):
-        result = set(select(s for s in Student if Group[1].dep.number == s.group.dep.number))
+        result = set(select(s for s in Student if Group[1].dept.number == s.group.dept.number))
         self.assertEquals(result, set([Student[1], Student[2]]))
     def test_composite_key1(self):
         result = set(select(t for t in Teacher if Grade[Student[1], Course['Physics', 2]] in t.grades))
@@ -286,7 +290,32 @@ class TestSQLTranslator(unittest.TestCase):
         self.assertEquals(result, set([Course['Physics', 2]]))
     def test_composite_key7(self):
         result = set(select(c for s in Student for c in s.courses))
-        self.assertEquals(result, set([Course['Math', 1], Course['Economics', 1]]))        
+        self.assertEquals(result, set([Course['Math', 1], Course['Economics', 1]]))     
+    def test_contains1(self):
+        s1 = Student[1]
+        result = set(select(g for g in Group if s1 in g.students))
+        self.assertEquals(result, set([Group[1]]))
+    def test_contains2(self):
+        s1 = Student[1]
+        result = set(select(g for g in Group if s1.name in g.students.name))
+        self.assertEquals(result, set([Group[1]]))
+    def test_contains3(self):
+        s1 = Student[1]
+        result = set(select(g for g in Group if s1 not in g.students))
+        self.assertEquals(result, set([Group[2]]))
+    def test_contains4(self):
+        s1 = Student[1]
+        result = set(select(g for g in Group if s1.name not in g.students.name))
+        self.assertEquals(result, set([Group[2]]))
+    def test_buffer_monad1(self):
+        select(s for s in Student if s.picture == buffer('abc'))
+    def test_database_monad(self):
+        result = set(select(s for s in db.Student if db.Student[1] == s))
+        self.assertEquals(result, set([Student[1]]))
+    def test_duplicate_name(self):
+        result = set(select(x for x in Student if x.group in (x for x in Group)))
+        self.assertEquals(result, set([Student[1], Student[2], Student[3]]))
+        
 
 if __name__ == "__main__":
     unittest.main()
