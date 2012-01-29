@@ -5,13 +5,20 @@ from testutils import *
 
 db = Database('sqlite', ':memory:')
 
+class Department(db.Entity):
+    name = Required(str)
+    groups = Set('Group')
+    courses = Set('Course')
+
 class Group(db.Entity):
     number = PrimaryKey(int)
+    dept = Required(Department)
     major = Required(unicode)
     students = Set("Student")
 
 class Course(db.Entity):
     name = Required(unicode)
+    dept = Required(Department)
     semester = Required(int)
     credits = Required(int)
     students = Set("Student")
@@ -52,7 +59,11 @@ class TestM2MOptimization(unittest.TestCase):
         q = select(s for s in Student if s.group == Group[101])
         #select(s for s in Student if Course('1', 1) in s.courses).all()
         self.assertEquals(Group._table_ not in flatten(q._translator.from_), True)
-
+    def test7(self):
+        q = select(s for s in Student if sum(c.credits for c in Course if s.group.dept == c.dept) > 10)
+        q.all()
+        self.assertEquals(str(q._translator.from_), 
+            "['FROM', ['s', 'TABLE', 'Student'], ['group-1', 'TABLE', 'Group', ['EQ', ['COLUMN', 's', 'group'], ['COLUMN', 'group-1', 'number']]]]")
 
 
 if __name__ == '__main__':

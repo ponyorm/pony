@@ -198,6 +198,54 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(TypeError, "Function 'max' expects query or items of numeric type, got 'Student' in max(s for s in Student if s.group == g)")
     def test49(self):
         select(g for g in Group if max(s for s in Student if s.group == g) > 1).all()
+    @raises_exception(TypeError, "Incomparable types 'Decimal' and 'bool' in expression: s.scholarship == (True or False and not True)")
+    def test50(self):
+        select(s for s in Student if s.scholarship == (True or False and not True)).all()
+    @raises_exception(NotImplementedError, "+3")
+    def test51(self):
+        select(s for s in Student if s.name > +3)
+    @raises_exception(NotImplementedError, "{'a':'b'}")
+    def test52(self):
+        select(s for s in Student if s.name == {'a' : 'b'})
+    @raises_exception(NotImplementedError, "a ^ 2")
+    def test53(self):
+        a = 1
+        select(s for s in Student if s.name > a ^ 2)
+    @raises_exception(NotImplementedError, "a | 2")
+    def test54(self):
+        a = 1
+        select(s for s in Student if s.name > a | 2)
+    @raises_exception(NotImplementedError, "a & 2")
+    def test55(self):
+        a = 1
+        select(s for s in Student if s.name > a & 2)
+    @raises_exception(NotImplementedError, "a << 2")
+    def test56(self):
+        a = 1
+        select(s for s in Student if s.name > a << 2)
+    @raises_exception(NotImplementedError, "a >> 2")
+    def test57(self):
+        a = 1
+        select(s for s in Student if s.name > a >> 2)
+    @raises_exception(NotImplementedError, "(a * 2) % 4")
+    def test58(self):
+        a = 1
+        select(s for s in Student if s.name > a * 2 % 4)
+    @raises_exception(NotImplementedError, "~a")
+    def test59(self):
+        a = 1
+        select(s for s in Student if s.name > ~a)
+    @raises_exception(TypeError, "Incomparable types 'unicode' and 'int' in expression: s.name > 1 / a - 3")
+    def test60(self):
+        a = 1
+        select(s for s in Student if s.name > 1 / a - 3)
+    @raises_exception(TypeError, "Incomparable types 'unicode' and 'int' in expression: s.name > -a")
+    def test61(self):
+        a = 1
+        select(s for s in Student if s.name > -a)
+    @raises_exception(TypeError, "Incomparable types 'unicode' and 'list' in expression: s.name == [1, (2,)]")
+    def test62(self):
+        select(s for s in Student if s.name == [1, (2,)])
         
 if __name__ == '__main__':
     unittest.main()        
