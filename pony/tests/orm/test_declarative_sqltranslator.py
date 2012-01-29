@@ -129,7 +129,8 @@ class TestSQLTranslator(unittest.TestCase):
     def test_min3(self):
         d = date(2011, 1, 1)
         result = set(select(g for g in Grade if min(g.date, d) == d))
-        self.assertEquals(result, set())
+        self.assertEquals(result, set([Grade[Student[1], Course[u'Math', 1]], 
+            Grade[Student[1], Course[u'Physics', 2]]]))
     def test_function_len1(self):
         result = select(s for s in Student if len(s.grades) == 1).all()
         self.assertEquals(result, [Student[2]])
