@@ -229,6 +229,9 @@ class SQLTranslator(ASTTranslator):
     comparable_types = set([ int, float, Decimal, str, AsciiStr, unicode, date, datetime, bool ])
     primitive_types = set([ int, float, Decimal, str, AsciiStr, unicode, date, datetime, bool, buffer ])
 
+    def default_post(translator, node):
+        raise NotImplementedError
+
     def call(translator, method, node):
         try: monad = method(node)
         except Exception:
@@ -553,6 +556,8 @@ class SQLTranslator(ASTTranslator):
         lower = node.lower
         if lower is not None: lower = lower.monad
         return expr_monad[lower:upper]
+    def postSliceobj(translator, node):
+        pass
     def get_tableref(translator, name_path):
         while translator is not None:
             tableref = translator.tablerefs.get(name_path)
