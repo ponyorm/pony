@@ -1,4 +1,5 @@
 import unittest
+from datetime import date
 from pony.orm import *
 from testutils import *
 
@@ -37,6 +38,7 @@ class Grade(db.Entity):
     course = Required(Course)
     PrimaryKey(student, course)
     value = Required(str)
+    date = Optional(date)
     teacher = Required('Teacher')
     
 class Teacher(db.Entity):
@@ -59,12 +61,12 @@ def populate_db():
     s2 = Student(id=2, name='S2', group=g1, scholarship=100)
     s3 = Student(id=3, name='S3', group=g2, scholarship=500)
     c1 = Course(name='Math', semester=1, dept=d1)
-    c2 = Course(name='Economics', semester=1, dept=d1)
+    c2 = Course(name='Economics', semester=1, dept=d1, credits=3)
     c3 = Course(name='Physics', semester=2, dept=d2)
     t1 = Teacher(id=101, name="T1")
     t2 = Teacher(id=102, name="T2")
-    Grade(student=s1, course=c1, value='C', teacher=t2)
-    Grade(student=s1, course=c3, value='A', teacher=t1)
+    Grade(student=s1, course=c1, value='C', teacher=t2, date=date(2011, 1, 1))
+    Grade(student=s1, course=c3, value='A', teacher=t1, date=date(2011, 2, 1))
     Grade(student=s2, course=c2, value='B', teacher=t1)
     r1 = Room(name='Room1')
     r2 = Room(name='Room2')
@@ -124,6 +126,10 @@ class TestSQLTranslator(unittest.TestCase):
     def test_function_min2(self):
         grade1 = Grade[Student[1], Course['Physics', 2]]
         select(s for s in Student if min(s.grades) == grade1).all()
+    def test_min3(self):
+        d = date(2011, 1, 1)
+        result = set(select(g for g in Grade if min(g.date, d) == d))
+        self.assertEquals(result, set())
     def test_function_len1(self):
         result = select(s for s in Student if len(s.grades) == 1).all()
         self.assertEquals(result, [Student[2]])
@@ -159,6 +165,9 @@ class TestSQLTranslator(unittest.TestCase):
     def test_chain1(self):
         result = set(select(g for g in Group for s in g.students if s.name.endswith('3')))
         self.assertEquals(result, set([Group[2]]))
+    def test_chain2(self):
+        result = set(select(s for g in Group if g.dept.number == 44 for s in g.students if s.name.startswith('S')))
+        self.assertEquals(result, set([Student[1], Student[2]]))
     def test_chain_m2m(self):
         result = set(select(g for g in Group for r in g.rooms if r.name == 'Room2'))
         self.assertEquals(result, set([Group[1], Group[2]]))
@@ -315,6 +324,10 @@ class TestSQLTranslator(unittest.TestCase):
     def test_duplicate_name(self):
         result = set(select(x for x in Student if x.group in (x for x in Group)))
         self.assertEquals(result, set([Student[1], Student[2], Student[3]]))
+    def test_hint_join1(self):
+        result = set(select(s for s in Student if JOIN(max(s.courses.credits) == 3)))
+        self.assertEquals(result, set([Student[2]]))
+
         
 
 if __name__ == "__main__":
