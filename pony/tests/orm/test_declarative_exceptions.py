@@ -144,7 +144,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
         x = buffer('a')
         y = buffer('b')
         select(s for s in Student if max(x, y) == x).all()
-    @raises_exception(TypeError, "Incomparable types 'AsciiStr' and 'int' in expression: min(1, 'a')")
+    @raises_exception(TypeError, "Incomparable types 'int' and 'AsciiStr' in expression: min(1, 'a')")
     def test33(self):
         select(s for s in Student if min(1, 'a') == 1).all()
     @raises_exception(TypeError, "Incomparable types 'AsciiStr' and 'int' in expression: min('a', 1)")

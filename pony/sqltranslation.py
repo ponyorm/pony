@@ -1459,12 +1459,12 @@ def minmax(monad, sqlop, *args):
     assert len(args) > 1
     translator = monad.translator
     sql = [ sqlop ] + [ arg.getsql()[0] for arg in args ]
-    arg_types = set(arg.type for arg in args)
-    t = arg_types.pop()
+    arg_types = [ arg.type for arg in args ]
+    t = arg_types[0]
     if t not in translator.comparable_types: raise TypeError(
         "Value of type %r is not valid as argument of %r function in expression {EXPR}"
         % (type2str(t), sqlop.lower()))
-    for t2 in arg_types:
+    for t2 in arg_types[1:]:
         t3 = translator.coerce_types(t, t2)
         if t3 is None: raise TypeError(
             'Incomparable types %r and %r in expression: {EXPR}' % (type2str(t), type2str(t2)))
