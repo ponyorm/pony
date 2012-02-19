@@ -49,7 +49,7 @@ class TestRawSql(unittest.TestCase):
         students = Student.all("select id, age, age*2 as x from Student order by age")
         self.assertEquals(students, [Student[3], Student[2], Student[1]])
 
-    @raises_exception(TypeError, 'Unknown positional argument: 123')
+    @raises_exception(TypeError, 'Positional argument must be lambda function or SQL select command. Got: 123')
     def test4(self):
         students = Student.all(123)
 

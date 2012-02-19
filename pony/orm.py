@@ -1,5 +1,5 @@
 import __builtin__, re, sys, threading, types, inspect
-from compiler import ast
+from compiler import ast, parse
 from operator import attrgetter, itemgetter
 from itertools import count, ifilter, ifilterfalse, imap, izip, chain
 import datetime
@@ -1462,6 +1462,9 @@ class EntityIter(object):
 next_entity_id = count(1).next
 next_new_instance_id = count(1).next
 
+select_re = re.compile(r'select\b', re.IGNORECASE)
+lambda_re = re.compile(r'lambda\b')
+
 class EntityMeta(type):
     def __setattr__(entity, name, val):
         if name.startswith('_') and name.endswith('_'):
@@ -1760,18 +1763,23 @@ class EntityMeta(type):
         if entity._database_.schema is None:
             raise ERDiagramError('Mapping is not generated for entity %r' % entity.__name__)
         
-        if not args: pass
-        elif isinstance(args[0], types.FunctionType):
-            if len(args) > 1: raise TypeError
-            if keyargs: raise TypeError
-            func = args[0]
+        if args:
+            first_arg = args[0]
+            is_string = isinstance(first_arg, basestring)
+
+            msg = 'Positional argument must be lambda function or SQL select command. Got: %r'
+            if is_string:
+                if select_re.match(first_arg):
+                    return entity._find_by_sql_(max_fetch_count, *args, **keyargs)
+                elif not lambda_re.match(first_arg): raise TypeError(msg % first_arg)
+            elif not isinstance(first_arg, types.FunctionType): raise TypeError(msg % first_arg)
+            if len(args) > 1: raise TypeError('Only one positional argument expected')
+            if keyargs: raise TypeError('No keyword arguments expected')
+
             globals = sys._getframe(2).f_globals
             locals = sys._getframe(2).f_locals
-            query = entity._query_from_lambda_(func, globals, locals)
+            query = entity._query_from_lambda_(first_arg, globals, locals)
             return query.all()
-        elif isinstance(args[0], basestring):
-            return entity._find_by_sql_(max_fetch_count, *args, **keyargs)
-        else: raise TypeError('Unknown positional argument: %s' % args[0])
 
         pkval, avdict = entity._normalize_args_(keyargs, False)
         for attr in avdict:
@@ -1977,25 +1985,46 @@ class EntityMeta(type):
         else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
         return pkval, avdict
     def _query_from_lambda_(entity, func, globals, locals):
-        names, argsname, keyargsname, defaults = inspect.getargspec(func)
-        if len(names) > 1: raise TypeError
-        if argsname or keyargsname: raise TypeError
-        if defaults: raise TypeError
-        name = names[0]
+        if not isinstance(func, basestring):
+            names, argsname, keyargsname, defaults = inspect.getargspec(func)
+            if len(names) > 1: raise TypeError
+            if argsname or keyargsname: raise TypeError
+            if defaults: raise TypeError
+            code = func.func_code
+            name = names[0]
+            cond_expr, external_names = decompile(func)
+        else:
+            module_node = parse(func)
+            if not isinstance(module_node, ast.Module): raise TypeError
+            stmt_node = module_node.node
+            if not isinstance(stmt_node, ast.Stmt) or len(stmt_node.nodes) != 1: raise TypeError
+            discard_node = stmt_node.nodes[0]
+            if not isinstance(discard_node, ast.Discard): raise TypeError
+            lambda_expr = discard_node.expr
+            if not isinstance(lambda_expr, ast.Lambda): raise TypeError
+            if len(lambda_expr.argnames) != 1: raise TypeError
+            if lambda_expr.varargs: raise TypeError
+            if lambda_expr.kwargs: raise TypeError
+            if lambda_expr.defaults: raise TypeError
+            code = func
+            name = lambda_expr.argnames[0]            
+            cond_expr = lambda_expr.code
+            external_names = set()
+            def collect_names(tree):
+                for child in tree.getChildNodes():
+                    if isinstance(child, ast.Name): external_names.add(child.name)
+                    else: collect_names(child)
+            collect_names(cond_expr)
 
-        cond_expr, external_names = decompile(func)
         external_names.discard(name)
         external_names.add('.0')
-
         if_expr = ast.GenExprIf(cond_expr)
         for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name('.0'), [ if_expr ])
         inner_expr = ast.GenExprInner(ast.Name(name), [ for_expr ])
-
         locals = locals.copy()
         assert '.0' not in locals
         locals['.0'] = entity
-
-        return Query(func.func_code, inner_expr, external_names, globals, locals)
+        return Query(code, inner_expr, external_names, globals, locals)
     def _get_cache_(entity):
         database = entity._database_
         if database is None: raise TransactionError
@@ -2882,10 +2911,41 @@ python_ast_cache = {}
 sql_cache = {}
 
 def select(gen):
-    tree, external_names = decompile(gen)
-    globals = gen.gi_frame.f_globals
-    locals = gen.gi_frame.f_locals
-    code = gen.gi_frame.f_code
+    if isinstance(gen, types.GeneratorType):
+        tree, external_names = decompile(gen)
+        code = gen.gi_frame.f_code
+        globals = gen.gi_frame.f_globals
+        locals = gen.gi_frame.f_locals
+    elif isinstance(gen, basestring):
+        gen_src = '(%s)' % gen
+        module_node = parse(gen_src)
+        if not isinstance(module_node, ast.Module): raise TypeError
+        stmt_node = module_node.node
+        if not isinstance(stmt_node, ast.Stmt) or len(stmt_node.nodes) != 1: raise TypeError
+        discard_node = stmt_node.nodes[0]
+        if not isinstance(discard_node, ast.Discard): raise TypeError
+        tree = discard_node.expr
+        if not isinstance(tree, ast.GenExpr): raise TypeError
+        code = gen_src
+        internal_names = set()
+        external_names = set()
+        def collect_names(tree, internals, externals):
+            for child in tree.getChildNodes():
+                if isinstance(child, ast.Name): externals.add(child.name)
+                elif isinstance(child, ast.AssName): internals.add(child.name)
+                elif isinstance(child, ast.GenExpr):
+                    inner_internals = set()
+                    inner_externals = set()
+                    collect_names(child, inner_internals, inner_externals)
+                    inner_externals -= inner_internals
+                    for name in inner_externals:
+                        if name not in internals: externals.add(name)
+                else: collect_names(child, internals, externals)
+        collect_names(tree, internal_names, external_names)
+        external_names -= internal_names
+        globals = sys._getframe(1).f_globals
+        locals = sys._getframe(1).f_locals
+    else: raise TypeError
     return Query(code, tree.code, external_names, globals, locals)
 
 select.sum = lambda gen : select(gen).sum()
