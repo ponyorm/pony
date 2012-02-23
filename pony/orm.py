@@ -17,7 +17,7 @@ from pony.dbapiprovider import (
     IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
 from pony.utils import (
-    localbase, simple_decorator, decorator_with_params,
+    localbase, simple_decorator, decorator_with_params, cut_traceback,
     import_module, parse_expr, is_ident, reraise, avg, tostring
     )
 
@@ -175,6 +175,7 @@ local = Local()
 select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class Database(object):
+    @cut_traceback
     def __init__(self, provider_name, *args, **keyargs):
         # First argument cannot be named 'database', because 'database' can be in keyargs
         if not isinstance(provider_name, basestring): raise TypeError
@@ -194,6 +195,7 @@ class Database(object):
         self.schema = None
         self.Entity = type.__new__(EntityMeta, 'Entity', (Entity,), {})
         self.Entity._database_ = self
+    @cut_traceback
     def get_connection(database):
         cache = database._get_cache()
         cache.optimistic = False
@@ -204,18 +206,22 @@ class Database(object):
         connection = database.provider.connect()
         cache = local.db2cache[database] = Cache(database, connection)
         return cache
+    @cut_traceback
     def flush(database):
         cache = database._get_cache()
         cache.flush()
+    @cut_traceback
     def commit(database):
         cache = local.db2cache.get(database)
         if cache is not None: cache.commit()
+    @cut_traceback
     def rollback(database):
         cache = local.db2cache.get(database)
         if cache is not None: cache.rollback()
+    @cut_traceback
     def execute(database, sql, globals=None, locals=None):
         database._get_cache().optimistic = False
-        return database._execute(sql, globals, locals, 1)
+        return database._execute(sql, globals, locals, 2)
     def _execute(database, sql, globals, locals, frame_depth):
         sql = sql[:]  # sql = templating.plainstr(sql)
         if globals is None:
@@ -231,9 +237,10 @@ class Database(object):
         cursor = cache.connection.cursor()
         provider.execute(cursor, adapted_sql, values)
         return cursor
+    @cut_traceback
     def select(database, sql, globals=None, locals=None, frame_depth=0):
         if not select_re.match(sql): sql = 'select ' + sql
-        cursor = database._execute(sql, globals, locals, frame_depth+1)
+        cursor = database._execute(sql, globals, locals, frame_depth+2)
         max_fetch_count = options.MAX_FETCH_COUNT
         if max_fetch_count is not None:
             result = cursor.fetchmany(max_fetch_count)
@@ -249,17 +256,20 @@ class Database(object):
                 setattr(row_class, column_name, property(itemgetter(i)))
             result = [ row_class(row) for row in result ]
         return result
+    @cut_traceback
     def get(database, sql, globals=None, locals=None):
-        rows = database.select(sql, globals, locals, 1)
+        rows = database.select(sql, globals, locals, 2)
         if not rows: raise RowNotFound
         if len(rows) > 1: raise MultipleRowsFound
         row = rows[0]
         return row
+    @cut_traceback
     def exists(database, sql, globals=None, locals=None):
         if not select_re.match(sql): sql = 'select ' + sql
-        cursor = database._execute(sql, globals, locals, 1)
+        cursor = database._execute(sql, globals, locals, 2)
         result = cursor.fetchone()
         return bool(result)
+    @cut_traceback
     def insert(database, table_name, returning=None, **keyargs):
         table_name = table_name[:]  # table_name = templating.plainstr(table_name)
         cache = database._get_cache()
@@ -310,6 +320,7 @@ class Database(object):
             print
         database.provider.executemany(cursor, sql, arguments_list)
         return cursor
+    @cut_traceback
     def generate_mapping(database, filename=None, check_tables=False, create_tables=False):
         if create_tables and check_tables: raise TypeError(
             "Parameters 'check_tables' and 'create_tables' cannot be set to True at the same time")
@@ -485,6 +496,7 @@ class Attribute(object):
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'keyargs'
+    @cut_traceback
     def __init__(attr, py_type, *args, **keyargs):
         if attr.__class__ is Attribute: raise TypeError("'Attribute' is abstract type")
         attr.is_required = isinstance(attr, Required)
@@ -546,6 +558,7 @@ class Attribute(object):
     def _init_(attr, entity, name):
         attr.entity = entity
         attr.name = name
+    @cut_traceback
     def __repr__(attr):
         owner_name = not attr.entity and '?' or attr.entity.__name__
         return '%s.%s' % (owner_name, attr.name or '?')
@@ -600,6 +613,7 @@ class Attribute(object):
             else: assert False
         obj._load_()
         return obj._vals_[attr.name]
+    @cut_traceback
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
         if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
@@ -614,6 +628,7 @@ class Attribute(object):
         val = obj._vals_.get(attr.name, NOT_LOADED)
         if val is NOT_LOADED: val = attr.load(obj)
         return val
+    @cut_traceback
     def __set__(attr, obj, new_val, undo_funcs=None):
         cache = obj._cache_
         if not cache.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
@@ -1084,6 +1099,7 @@ class Set(Collection):
             wbits = item._wbits_
             if wbits is not None and not wbits & bit: item._rbits_ |= bit
         return setdata.copy()
+    @cut_traceback
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
         if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
@@ -1091,6 +1107,7 @@ class Set(Collection):
         rentity = attr.py_type
         wrapper_class = rentity._get_set_wrapper_subclass_()
         return wrapper_class(obj, attr)
+    @cut_traceback
     def __set__(attr, obj, new_items, undo_funcs=None):
         cache = obj._cache_
         if not cache.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
@@ -1277,9 +1294,11 @@ class SetWrapper(object):
     def __init__(wrapper, obj, attr):
         wrapper._obj_ = obj
         wrapper._attr_ = attr
+    @cut_traceback
     def copy(wrapper):
         if not wrapper._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         return wrapper._attr_.copy(wrapper._obj_)
+    @cut_traceback
     def __repr__(wrapper):
         if wrapper._obj_._cache_.is_alive:
             size = len(wrapper)
@@ -1287,8 +1306,10 @@ class SetWrapper(object):
             else: size_str = ' (%d items)' % size
         else: size_str = ''
         return '<%r.%s%s>' % (wrapper._obj_, wrapper._attr_.name, size_str)
+    @cut_traceback
     def __str__(wrapper):
         return str(wrapper.copy())
+    @cut_traceback
     def __nonzero__(wrapper):
         attr = wrapper._attr_
         obj = wrapper._obj_
@@ -1299,6 +1320,7 @@ class SetWrapper(object):
         if setdata: return True
         if not setdata.is_fully_loaded: setdata = attr.load(obj)
         return bool(setdata)
+    @cut_traceback
     def __len__(wrapper):
         attr = wrapper._attr_
         obj = wrapper._obj_
@@ -1306,8 +1328,10 @@ class SetWrapper(object):
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED or not setdata.is_fully_loaded: setdata = attr.load(obj)
         return len(setdata)
+    @cut_traceback
     def __iter__(wrapper):
         return iter(wrapper.copy())
+    @cut_traceback
     def __eq__(wrapper, other):
         if isinstance(other, SetWrapper):
             if wrapper._obj_ is other._obj_ and wrapper._attr_ is other._attr_: return True
@@ -1315,12 +1339,16 @@ class SetWrapper(object):
         elif not isinstance(other, set): other = set(other)
         items = wrapper.copy()
         return items == other
+    @cut_traceback
     def __ne__(wrapper, other):
         return not wrapper.__eq__(other)
+    @cut_traceback
     def __add__(wrapper, new_items):
         return wrapper.copy().union(new_items)
+    @cut_traceback
     def __sub__(wrapper, items):
         return wrapper.copy().difference(items)
+    @cut_traceback
     def __contains__(wrapper, item):
         obj = wrapper._obj_
         if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
@@ -1332,6 +1360,7 @@ class SetWrapper(object):
             if setdata.is_fully_loaded: return False
         setdata = attr.load(obj)
         return item in setdata
+    @cut_traceback
     def add(wrapper, new_items):
         obj = wrapper._obj_
         if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
@@ -1356,9 +1385,11 @@ class SetWrapper(object):
         else: setdata.added.update(new_items)
         if setdata.removed is not EMPTY: setdata.removed -= new_items
         obj._cache_.modified_collections.setdefault(attr, set()).add(obj)
+    @cut_traceback
     def __iadd__(wrapper, items):
         wrapper.add(items)
         return wrapper
+    @cut_traceback
     def remove(wrapper, items):
         obj = wrapper._obj_
         if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
@@ -1384,9 +1415,11 @@ class SetWrapper(object):
         if setdata.removed is EMPTY: setdata.removed = items
         else: setdata.removed.update(items)
         obj._cache_.modified_collections.setdefault(attr, set()).add(obj)
+    @cut_traceback
     def __isub__(wrapper, items):
         wrapper.remove(items)
         return wrapper
+    @cut_traceback
     def clear(wrapper):
         obj = wrapper._obj_
         if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
@@ -1401,14 +1434,17 @@ def iter2dict(iter):
 
 class PropagatedMultiset(object):
     __slots__ = [ '_obj_', '_parent_', '_attr_', '_items_' ]
+    @cut_traceback
     def __init__(pset, parent, attr, items):
         pset._obj_ = parent._obj_
         pset._parent_ = parent
         pset._attr_ = attr
         pset._items_ = iter2dict(items)
+    @cut_traceback
     def distinct(pset):
         if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         return pset._items_.copy()
+    @cut_traceback
     def __repr__(pset):
         if pset._obj_._cache_.is_alive:
             size = sum(pset._items_.itervalues())
@@ -1421,19 +1457,24 @@ class PropagatedMultiset(object):
             path.append(wrapper._attr_.name)
             wrapper = wrapper._parent_
         return '<%s.%s%s>' % (pset._obj_, '.'.join(reversed(path)), size_str)
+    @cut_traceback
     def __str__(pset):
         if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         return str(pset._items_)
+    @cut_traceback
     def __nonzero__(pset):
         if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         return bool(pset._items_)
+    @cut_traceback
     def __len__(pset):
         if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         return sum(pset._items_.values())
+    @cut_traceback
     def __iter__(pset):
         if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         for item, count in pset._items_.iteritems():
             for i in range(count): yield item
+    @cut_traceback
     def __eq__(pset, other):
         if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         if isinstance(other, PropagatedMultiset):
@@ -1443,8 +1484,10 @@ class PropagatedMultiset(object):
         if hasattr(other, 'keys'):
             return pset._items_ == dict(other)
         return pset._items_ == iter2dict(other)
+    @cut_traceback
     def __ne__(pset, other):
         return not pset.__eq__(other)
+    @cut_traceback
     def __contains__(pset, item):
         if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         return item in pset._items_
@@ -1475,6 +1518,7 @@ class EntityMeta(type):
             if '__slots__' in cls_dict: raise TypeError('Entity classes cannot contain __slots__ variable')
             cls_dict['__slots__'] = ()
         return super(EntityMeta, meta).__new__(meta, name, bases, cls_dict)
+    @cut_traceback
     def __init__(entity, name, bases, cls_dict):
         super(EntityMeta, entity).__init__(name, bases, cls_dict)
         entity._database_ = None
@@ -1703,8 +1747,10 @@ class EntityMeta(type):
             else: pkval = tuple(pkval)
         else: pkval = avdict.get(entity._pk_)
         return pkval, avdict        
+    @cut_traceback
     def all(entity, *args, **keyargs):
         return entity._find_(None, args, keyargs)
+    @cut_traceback
     def get(entity, *args, **keyargs):
         objects = entity._find_(1, args, keyargs)
         if not objects: return None
@@ -1714,7 +1760,7 @@ class EntityMeta(type):
     def _find_by_sql_(entity, max_fetch_count, sql, globals=None, locals=None, frame_depth=1):
         if not isinstance(sql, basestring): raise TypeError
         database = entity._database_
-        cursor = database._execute(sql, globals, locals, frame_depth+2)
+        cursor = database._execute(sql, globals, locals, frame_depth+3)
 
         col_names = [ column_info[0].upper() for column_info in cursor.description ]
         attr_offsets = {}
@@ -1739,6 +1785,7 @@ class EntityMeta(type):
         
         objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count)
         return objects
+    @cut_traceback
     def __getitem__(entity, key):
         if type(key) is not tuple: key = (key,)
         if len(key) != len(entity._pk_attrs_): raise TypeError('Invalid count of attrs in primary key')
@@ -1748,11 +1795,13 @@ class EntityMeta(type):
         if len(objects) > 1: raise MultipleObjectsFoundError(
             'Multiple objects was found. Use %s.all(...) to retrieve them' % entity.__name__)
         return objects[0]
+    @cut_traceback
     def where(entity, func):
         if not isinstance(func, types.FunctionType): raise TypeError
-        globals = sys._getframe(1).f_globals
-        locals = sys._getframe(1).f_locals
+        globals = sys._getframe(2).f_globals
+        locals = sys._getframe(2).f_locals
         return entity._query_from_lambda_(func, globals, locals)
+    @cut_traceback
     def orderby(entity, *args):
         name = (''.join(letter for letter in entity.__name__ if letter.isupper())).lower() or entity.__name__[0]
         for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name('.0'), [])
@@ -1776,8 +1825,8 @@ class EntityMeta(type):
             if len(args) > 1: raise TypeError('Only one positional argument expected')
             if keyargs: raise TypeError('No keyword arguments expected')
 
-            globals = sys._getframe(2).f_globals
-            locals = sys._getframe(2).f_locals
+            globals = sys._getframe(3).f_globals
+            locals = sys._getframe(3).f_locals
             query = entity._query_from_lambda_(first_arg, globals, locals)
             return query.all()
 
@@ -2183,6 +2232,7 @@ class Entity(object):
             if not attr.reverse: append(val)
             else: raw_pkval += val._get_raw_pkval_()
         return tuple(raw_pkval)
+    @cut_traceback
     def __repr__(obj):
         pkval = obj._pkval_
         if pkval is None: return '%s(new:%d)' % (obj.__class__.__name__, obj._newid_)
@@ -2347,10 +2397,12 @@ class Entity(object):
             if not is_recursive_call:
                 for undo_func in reversed(undo_funcs): undo_func()
             raise
+    @cut_traceback
     def delete(obj):
         if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         obj._delete_()
+    @cut_traceback
     def set(obj, **keyargs):
         cache = obj._cache_
         if not cache.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
@@ -2438,6 +2490,7 @@ class Entity(object):
                 else: avdict[attr] = new_val
             else: collection_avdict[attr] = new_val
         return avdict, collection_avdict
+    @cut_traceback
     def check_on_commit(obj):
         cache = obj._cache_
         if not cache.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
@@ -2822,9 +2875,11 @@ def _get_caches():
     return list(sorted((cache for cache in local.db2cache.values()),
                        reverse=True, key=lambda cache : (cache.database.priority, cache.num)))
 
+@cut_traceback
 def flush():
     for cache in _get_caches(): cache.flush()
         
+@cut_traceback
 def commit():
     caches = _get_caches()
     if not caches: return
@@ -2847,6 +2902,7 @@ def commit():
     finally:
         del exceptions
         
+@cut_traceback
 def rollback():
     exceptions = []
     try:
@@ -2885,6 +2941,7 @@ def _with_transaction(func, args, keyargs, allowed_exceptions=[]):
 
 @decorator_with_params
 def with_transaction(func, retry=1, retry_exceptions=[ TransactionError ], allowed_exceptions=[]):
+    @cut_traceback
     def new_func(*args, **keyargs):
         counter = retry
         while counter > 0:
@@ -2910,6 +2967,7 @@ def db_decorator(func, *args, **keyargs):
 python_ast_cache = {}
 sql_cache = {}
 
+@cut_traceback
 def select(gen):
     if isinstance(gen, types.GeneratorType):
         tree, external_names = decompile(gen)
@@ -2943,8 +3001,8 @@ def select(gen):
                 else: collect_names(child, internals, externals)
         collect_names(tree, internal_names, external_names)
         external_names -= internal_names
-        globals = sys._getframe(1).f_globals
-        locals = sys._getframe(1).f_locals
+        globals = sys._getframe(2).f_globals
+        locals = sys._getframe(2).f_locals
     else: raise TypeError
     return Query(code, tree.code, external_names, globals, locals)
 
@@ -2954,6 +3012,7 @@ select.min = lambda gen : select(gen).min()
 select.max = lambda gen : select(gen).max()
 select.count = lambda gen : select(gen).count()
 
+@cut_traceback
 def exists(gen):
     return select(gen).exists()
 
@@ -3095,14 +3154,17 @@ class Query(object):
         result = translator.entity._fetch_objects(cursor, translator.attr_offsets)
         if translator.attr is None: return QueryResult(result)
         return QueryResult(map(attrgetter(translator.attr.name), result))
+    @cut_traceback
     def all(query):
         return query._fetch()
+    @cut_traceback
     def get(query):
         objects = query[:2]
         if not objects: return None
         if len(objects) > 1: raise MultipleObjectsFoundError(
             'Multiple objects was found. Use select(..).all() to retrieve them')
         return objects[0]
+    @cut_traceback
     def exists(query):
         new_query = query._clone()
         new_query._aggr_func_name = EXISTS
@@ -3110,8 +3172,10 @@ class Query(object):
         cursor = new_query._exec_sql(range=(0, 1))
         row = cursor.fetchone()
         return row is not None
+    @cut_traceback
     def __iter__(query):
         return iter(query.all())
+    @cut_traceback
     def orderby(query, *args):
         if not args: raise TypeError('query.orderby() requires at least one argument')
         entity = query._translator.entity
@@ -3132,6 +3196,7 @@ class Query(object):
         new_query = object.__new__(Query)
         new_query.__dict__.update(query.__dict__)
         return new_query
+    @cut_traceback
     def __getitem__(query, key):
         if isinstance(key, slice):
             step = key.step
@@ -3152,6 +3217,7 @@ class Query(object):
             return result[0]
         if start >= stop: return []
         return query._fetch((start, stop))
+    @cut_traceback
     def limit(query, limit, offset=None):
         start = offset or 0
         stop = start + limit
@@ -3168,13 +3234,18 @@ class Query(object):
         if aggr_func_name is COUNT: return result
         converter = translator.attr.converters[0]
         return converter.sql2py(result)
+    @cut_traceback
     def sum(query):
         return query._aggregate(SUM)
+    @cut_traceback
     def avg(query):
         return query._aggregate(AVG)
+    @cut_traceback
     def min(query):
         return query._aggregate(MIN)
+    @cut_traceback
     def max(query):
         return query._aggregate(MAX)
+    @cut_traceback
     def count(query):
         return query._aggregate(COUNT)

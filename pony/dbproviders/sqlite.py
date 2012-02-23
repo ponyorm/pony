@@ -104,13 +104,14 @@ def _get_pool(filename, create_db=False):
         # Database instance is created
 
         # the list of frames:
-        # 4 - user code: db = Database(...)
+        # 5 - user code: db = Database(...)
+        # 4 - cut_exception decorator
         # 3 - pony.orm.Database.__init__()
         # 2 - pony.dbapiprovider.sqlite.get_provider()
         # 1 - pony.dbapiprovider.sqlite.SQLiteProvider.__init__()
         # 0 - pony.dbproviders.sqlite._get_pool()
 
-        filename = absolutize_path(filename, frame_depth=5)
+        filename = absolutize_path(filename, frame_depth=6)
         return Pool(filename, create_db)
 
 class Pool(localbase):

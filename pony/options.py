@@ -2,6 +2,8 @@ DEBUG = True
 
 STATIC_DIR = None
 
+CUT_TRACEBACK = True
+
 #postprocessing options:
 STD_DOCTYPE = '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">'
 STD_STYLESHEETS = [

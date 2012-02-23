@@ -58,6 +58,17 @@ def decorator_with_params(old_dec, *args, **keyargs):
         return copy_func_attrs(new_func, old_func, old_dec.__name__)
     return you_should_never_see_this_decorator
 
+@decorator
+def cut_traceback(old_func):
+    def new_func(*args, **keyargs):
+        if not options.CUT_TRACEBACK:
+            return old_func(*args, **keyargs)
+        try:
+            return old_func(*args, **keyargs)
+        except Exception, exc:
+            raise exc  # set pony.options.CUT_TRACEBACK = False to see full traceback
+    return new_func
+
 _cache = {}
 MAX_CACHE_SIZE = 1000
 
