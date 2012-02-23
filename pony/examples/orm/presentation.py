@@ -40,12 +40,12 @@ class Student(db.Entity):
     group = Required(Group)
     courses = Set(Course)
 
-sql_debug(True)  # Output all SQL queries to stdout
-
 db.generate_mapping(create_tables=True)
 
+sql_debug(True)  # Output all SQL queries to stdout
+
 def populate_database():
-    if select.count(s for s in Student) > 0:
+    if query.count(s for s in Student) > 0:
         return
     
     d1 = Department(name="Department of Computer Science")
@@ -96,73 +96,74 @@ def print_students(students):
     print
 
 def test_queries():
-    students = select(s for s in Student).all()
+    students = fetch_all(s for s in Student)
     print_students(students)
 
 
-    students = select(s for s in Student
-                        if s.gpa > 3.4
-                        and s.dob.year == 1990).all()
+    students = fetch_all(s for s in Student
+                         if s.gpa > 3.4
+                         and s.dob.year == 1990)
     print_students(students)
 
 
-    students = select(s for s in Student if len(s.courses) < 4).all()
+    students = fetch_all(s for s in Student if len(s.courses) < 4)
     print_students(students)
 
 
-    students = select(s for s in Student if s.name.startswith("M")).all()
+    students = fetch_all(s for s in Student if s.name.startswith("M"))
     print_students(students)
 
 
-    students = select(s for s in Student if "Smith" in s.name).all()
+    students = fetch_all(s for s in Student if "Smith" in s.name)
     print_students(students)
 
 
-    students = select(s for s in Student 
-                        if "Web Design" in s.courses.name).all()
+    students = fetch_all(s for s in Student 
+                         if "Web Design" in s.courses.name)
     print_students(students)
 
 
-    avg = select.avg(s.gpa for s in Student)
+    avg = fetch_avg(s.gpa for s in Student)
     print 'Average GPA is', avg
     print
     
 
-    students = select(s for s in Student 
-                        if sum(c.credits for c in s.courses) < 15).all()
+    students = fetch_all(s for s in Student 
+                         if sum(c.credits for c in s.courses) < 15)
     print_students(students)
 
 
-    sstudents = select(s for s in Student 
-                         if s.group.major == "B.E. in Computer Engineering").all()
+    students = fetch_all(s for s in Student 
+                         if s.group.major == "B.E. in Computer Engineering")
     print_students(students)
 
 
-    students = select(s for s in Student 
-                        if s.group.dept.name == "Department of Computer Science").all()
+    students = fetch_all(s for s in Student 
+                         if s.group.dept.name == "Department of Computer Science")
     print_students(students)
 
 
-    students = select(s for s in Student).orderby(Student.name).all()
+    students = query(s for s in Student).orderby(Student.name).fetch_all()
     print_students(students)
 
 
-    students = select(s for s in Student).orderby(Student.name)[2:4]
+    students = query(s for s in Student).orderby(Student.name)[2:4]
     print_students(students)
 
 
-    students = select(s for s in Student).orderby(Student.name.desc).all()
+    students = query(s for s in Student).orderby(Student.name.desc).fetch_all()
     print_students(students)
 
 
-    students = select(s for s in Student).orderby(Student.group, Student.name.desc).all()
+    students = query(s for s in Student) \
+               .orderby(Student.group, Student.name.desc).fetch_all()
     print_students(students)
 
 
-    students = select(s for s in Student 
-                        if s.group.dept.name == "Department of Computer Science"
-                           and s.gpa > 3.5
-                           and len(s.courses) > 3).all()
+    students = fetch_all(s for s in Student 
+                         if s.group.dept.name == "Department of Computer Science"
+                            and s.gpa > 3.5
+                            and len(s.courses) > 3)
     print_students(students)
 
 

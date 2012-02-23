@@ -39,7 +39,9 @@ __all__ = '''
 
     LongStr LongUnicode
 
-    TranslationError select exists avg
+    TranslationError
+    query fetch_all fetch_one fetch_count fetch_sum fetch_min fetch_max fetch_avg exists
+    avg
 
     JOIN
     '''.split()
@@ -1748,14 +1750,14 @@ class EntityMeta(type):
         else: pkval = avdict.get(entity._pk_)
         return pkval, avdict        
     @cut_traceback
-    def all(entity, *args, **keyargs):
+    def fetch_all(entity, *args, **keyargs):
         return entity._find_(None, args, keyargs)
     @cut_traceback
-    def get(entity, *args, **keyargs):
+    def fetch_one(entity, *args, **keyargs):
         objects = entity._find_(1, args, keyargs)
         if not objects: return None
         if len(objects) > 1: raise MultipleObjectsFoundError(
-            'Multiple objects were found. Use %s.all(...) to retrieve them' % entity.__name__)
+            'Multiple objects were found. Use %s.fetch_all(...) to retrieve them' % entity.__name__)
         return objects[0]
     def _find_by_sql_(entity, max_fetch_count, sql, globals=None, locals=None, frame_depth=1):
         if not isinstance(sql, basestring): raise TypeError
@@ -1793,11 +1795,14 @@ class EntityMeta(type):
         objects = entity._find_(1, (), keyargs)
         if not objects: raise ObjectNotFound(entity, key)
         if len(objects) > 1: raise MultipleObjectsFoundError(
-            'Multiple objects was found. Use %s.all(...) to retrieve them' % entity.__name__)
+            'Multiple objects was found. Use %s.fetch_all(...) to retrieve them' % entity.__name__)
         return objects[0]
     @cut_traceback
-    def where(entity, func):
-        if not isinstance(func, types.FunctionType): raise TypeError
+    def query(entity, func):
+        if isinstance(func, basestring):
+            if not lambda_re.match(func): raise TypeError(
+                'Lambda function or its text representation expected')
+        elif not isinstance(func, types.FunctionType): raise TypeError
         globals = sys._getframe(2).f_globals
         locals = sys._getframe(2).f_locals
         return entity._query_from_lambda_(func, globals, locals)
@@ -1828,7 +1833,7 @@ class EntityMeta(type):
             globals = sys._getframe(3).f_globals
             locals = sys._getframe(3).f_locals
             query = entity._query_from_lambda_(first_arg, globals, locals)
-            return query.all()
+            return query.fetch_all()
 
         pkval, avdict = entity._normalize_args_(keyargs, False)
         for attr in avdict:
@@ -2003,7 +2008,7 @@ class EntityMeta(type):
             rows = cursor.fetchmany(max_fetch_count + 1)
             if len(rows) == max_fetch_count + 1:
                 if max_fetch_count == 1: raise MultipleObjectsFoundError(
-                    'Multiple objects were found. Use %s.all(...) to retrieve them' % entity.__name__)
+                    'Multiple objects were found. Use %s.fetch_all(...) to retrieve them' % entity.__name__)
                 raise TooManyObjectsFoundError(
                     'Found more then pony.options.MAX_FETCH_COUNT=%d objects' % options.MAX_FETCH_COUNT)
         else: rows = cursor.fetchall()
@@ -2968,7 +2973,7 @@ python_ast_cache = {}
 sql_cache = {}
 
 @cut_traceback
-def select(gen):
+def query(gen, frame_depth=0):
     if isinstance(gen, types.GeneratorType):
         tree, external_names = decompile(gen)
         code = gen.gi_frame.f_code
@@ -3001,16 +3006,38 @@ def select(gen):
                 else: collect_names(child, internals, externals)
         collect_names(tree, internal_names, external_names)
         external_names -= internal_names
-        globals = sys._getframe(2).f_globals
-        locals = sys._getframe(2).f_locals
+        globals = sys._getframe(frame_depth+2).f_globals
+        locals = sys._getframe(frame_depth+2).f_locals
     else: raise TypeError
     return Query(code, tree.code, external_names, globals, locals)
 
-select.sum = lambda gen : select(gen).sum()
-select.avg = lambda gen : select(gen).avg()
-select.min = lambda gen : select(gen).min()
-select.max = lambda gen : select(gen).max()
-select.count = lambda gen : select(gen).count()
+@cut_traceback
+def fetch_all(gen):
+    return query(gen, frame_depth=2).fetch_all()
+
+@cut_traceback
+def fetch_one(gen):
+    return query(gen, frame_depth=2).fetch_one()
+
+@cut_traceback
+def fetch_count(gen):
+    return query(gen).count()
+
+@cut_traceback
+def fetch_sum(gen):
+    return query(gen).sum()
+
+@cut_traceback
+def fetch_min(gen):
+    return query(gen).min()
+
+@cut_traceback
+def fetch_max(gen):
+    return query(gen).max()
+
+@cut_traceback
+def fetch_avg(gen):
+    return query(gen).avg()
 
 @cut_traceback
 def exists(gen):
@@ -3020,11 +3047,11 @@ def JOIN(expr):
     return expr
 
 class QueryResult(list):
-    def all(self):
+    def fetch_all(self):
         return self
-    def get(self):
+    def fetch_one(self):
         if not self: return None
-        if len(self) > 1: raise MultipleObjectsFoundError('Multiple objects were found. Use .all(...) to retrieve them')
+        if len(self) > 1: raise MultipleObjectsFoundError('Multiple objects were found. Use .fetch_all(...) to retrieve them')
         return self[0]
 
 class AsciiStr(str): pass
@@ -3155,14 +3182,14 @@ class Query(object):
         if translator.attr is None: return QueryResult(result)
         return QueryResult(map(attrgetter(translator.attr.name), result))
     @cut_traceback
-    def all(query):
+    def fetch_all(query):
         return query._fetch()
     @cut_traceback
-    def get(query):
+    def fetch_one(query):
         objects = query[:2]
         if not objects: return None
         if len(objects) > 1: raise MultipleObjectsFoundError(
-            'Multiple objects was found. Use select(..).all() to retrieve them')
+            'Multiple objects was found. Use select(..).fetch_all() to retrieve them')
         return objects[0]
     @cut_traceback
     def exists(query):
@@ -3174,7 +3201,7 @@ class Query(object):
         return row is not None
     @cut_traceback
     def __iter__(query):
-        return iter(query.all())
+        return iter(query.fetch_all())
     @cut_traceback
     def orderby(query, *args):
         if not args: raise TypeError('query.orderby() requires at least one argument')
@@ -3206,7 +3233,7 @@ class Query(object):
             elif start < 0: raise TypeError("Parameter 'start' of slice object cannot be negative")
             stop = key.stop
             if stop is None:
-                if not start: return query.all()
+                if not start: return query.fetch_all()
                 else: raise TypeError("Parameter 'stop' of slice object should be specified")
         else:
             try: i = key.__index__()

@@ -32,56 +32,56 @@ class TestQuerySetMonad(unittest.TestCase):
         rollback()
 
     def test_len(self):
-        result = set(select(g for g in Group if len(g.students) > 1))
+        result = set(fetch_all(g for g in Group if len(g.students) > 1))
         self.assertEquals(result, set([Group[1]]))
         
     def test_len2(self):
-        result = set(select(g for g in Group if len(s for s in Student if s.group == g) > 1))
+        result = set(fetch_all(g for g in Group if len(s for s in Student if s.group == g) > 1))
         self.assertEquals(result, set([Group[1]]))
 
     def test_len3(self):
-        result = set(select(g for g in Group if len(s.name for s in Student if s.group == g) > 1))
+        result = set(fetch_all(g for g in Group if len(s.name for s in Student if s.group == g) > 1))
         self.assertEquals(result, set([Group[1]]))
 
     @raises_exception(TypeError)
     def test_sum1(self):
-        result = set(select(g for g in Group if sum(s for s in Student if s.group == g) > 1))
+        result = set(fetch_all(g for g in Group if sum(s for s in Student if s.group == g) > 1))
         self.assertEquals(result, set([]))
 
     @raises_exception(TypeError)
     def test_sum2(self):
-        select(g for g in Group if sum(s.name for s in Student if s.group == g) > 1)
+        fetch_all(g for g in Group if sum(s.name for s in Student if s.group == g) > 1)
 
     def test_sum3(self):
-        result = set(select(g for g in Group if sum(s.scholarship for s in Student if s.group == g) > 500))
+        result = set(fetch_all(g for g in Group if sum(s.scholarship for s in Student if s.group == g) > 500))
         self.assertEquals(result, set([]))
 
     def test_min1(self):
-        result = set(select(g for g in Group if min(s.name for s in Student if s.group == g) == 'S1'))
+        result = set(fetch_all(g for g in Group if min(s.name for s in Student if s.group == g) == 'S1'))
         self.assertEquals(result, set([Group[1]]))
 
     @raises_exception(TypeError)
     def test_min2(self):
-        select(g for g in Group if min(s for s in Student if s.group == g) == None)
+        fetch_all(g for g in Group if min(s for s in Student if s.group == g) == None)
 
     def test_max1(self):
-        result = set(select(g for g in Group if max(s.scholarship for s in Student if s.group == g) > 100))
+        result = set(fetch_all(g for g in Group if max(s.scholarship for s in Student if s.group == g) > 100))
         self.assertEquals(result, set([Group[2]]))
 
     @raises_exception(TypeError)    
     def test_max2(self):
-        select(g for g in Group if max(s for s in Student if s.group == g) == None)
+        fetch_all(g for g in Group if max(s for s in Student if s.group == g) == None)
 
     def test_avg1(self):
-        result = select(g for g in Group if avg(s.scholarship for s in Student if s.group == g) == 50).all()
+        result = fetch_all(g for g in Group if avg(s.scholarship for s in Student if s.group == g) == 50)
         self.assertEquals(result, [Group[1]])
 
     def test_negate(self):
-        result = set(select(g for g in Group if not(s.scholarship for s in Student if s.group == g)))
+        result = set(fetch_all(g for g in Group if not(s.scholarship for s in Student if s.group == g)))
         self.assertEquals(result, set([]))
 
     def test_no_conditions(self):
-        students = set(select(s for s in Student if s.group in (g for g in Group)))
+        students = set(fetch_all(s for s in Student if s.group in (g for g in Group)))
         self.assertEqual(students, set([Student[1], Student[2], Student[3]]))    
 
 if __name__ == "__main__":

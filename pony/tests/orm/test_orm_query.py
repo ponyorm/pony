@@ -29,19 +29,19 @@ class TestQuery(unittest.TestCase):
     @raises_exception(NotImplementedError, "Query iterator has unexpected type 'setiterator'")
     def test_exception1(self):
         g = Group[1]
-        select(s for s in g.students).all()
+        fetch_all(s for s in g.students)
     @raises_exception(NameError, 'a')
     def test_exception2(self):
-        select(a for s in Student).all()
+        fetch_all(a for s in Student)
     @raises_exception(TypeError,"Variable 'x' has unexpected type 'list'")
     def test_exception3(self):
         x = ['A']
-        select(s for s in Student if s.name == x).all()
+        fetch_all(s for s in Student if s.name == x)
     @raises_exception(TypeError,"Function 'f1' cannot be used inside query")
     def test_exception4(self):
         def f1(x):
             return x + 1
-        select(s for s in Student if f1(s.gpa) > 3).all()
+        fetch_all(s for s in Student if f1(s.gpa) > 3)
     @raises_exception(TypeError,"Method 'method1' cannot be used inside query")
     def test_exception5(self):
         class C1(object):
@@ -49,55 +49,55 @@ class TestQuery(unittest.TestCase):
                 return a + b
         c = C1()
         m1 = c.method1
-        select(s for s in Student if m1(s.gpa, 1) > 3).all() 
+        fetch_all(s for s in Student if m1(s.gpa, 1) > 3) 
     @raises_exception(TypeError, "Variable 'x' has unexpected type 'complex'")  
     def test_exception6(self):
         x = 1j
-        select(s for s in Student if s.gpa == x).all()
+        fetch_all(s for s in Student if s.gpa == x)
     def test1(self):
-        select(g for g in Group for s in db.Student).all()
+        fetch_all(g for g in Group for s in db.Student)
         self.assert_(True)
     def test2(self):
-        avg_gpa = select.avg(s.gpa for s in Student)
+        avg_gpa = fetch_avg(s.gpa for s in Student)
         self.assertEquals(avg_gpa, Decimal('3.2'))
     def test21(self):
-        avg_gpa = select.avg(s.gpa for s in Student if s.id < 0)
+        avg_gpa = fetch_avg(s.gpa for s in Student if s.id < 0)
         self.assertEquals(avg_gpa, None)
     def test3(self):
-        sum_ss = select.sum(s.scholarship for s in Student)
+        sum_ss = fetch_sum(s.scholarship for s in Student)
         self.assertEquals(sum_ss, 300)
     def test31(self):
-        sum_ss = select.sum(s.scholarship for s in Student if s.id < 0)
+        sum_ss = fetch_sum(s.scholarship for s in Student if s.id < 0)
         self.assertEquals(sum_ss, 0)
     @raises_exception(TranslationError, "'avg' is valid for numeric attributes only")
     def test4(self):
-        select.avg(s.name for s in Student)
+        fetch_avg(s.name for s in Student)
     def wrapper(self):
-        return select.count(s for s in Student if s.scholarship > 0)
+        return fetch_count(s for s in Student if s.scholarship > 0)
     def test5(self):
         c = self.wrapper()
         c = self.wrapper()
         self.assertEquals(c, 2)
     def test6(self):
-        c = select.count(s.scholarship for s in Student if s.scholarship > 0)
+        c = fetch_count(s.scholarship for s in Student if s.scholarship > 0)
         self.assertEquals(c, 2)
     def test7(self):
-        s = select(s.scholarship for s in Student if s.id == 3).get()
+        s = fetch_one(s.scholarship for s in Student if s.id == 3)
         self.assertEquals(s, 200)
     def test8(self):
-        s = select(s.scholarship for s in Student if s.id == 4).get()
+        s = fetch_one(s.scholarship for s in Student if s.id == 4)
         self.assertEquals(s, None)
     def test9(self):
-        s = select(s for s in Student if s.id == 4).exists()
+        s = query(s for s in Student if s.id == 4).exists()
         self.assertEquals(s, False)
     def test10(self):
-        r = select.min(s.scholarship for s in Student)
+        r = fetch_min(s.scholarship for s in Student)
         self.assertEquals(r, 100)
     def test11(self):
-        r = select.min(s.scholarship for s in Student if s.id < 2)
+        r = fetch_min(s.scholarship for s in Student if s.id < 2)
         self.assertEquals(r, None)
     def test12(self):
-        r = select.max(s.scholarship for s in Student)
+        r = fetch_max(s.scholarship for s in Student)
         self.assertEquals(r, 200)
     
 if __name__ == '__main__':

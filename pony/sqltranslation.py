@@ -9,7 +9,7 @@ from pony import options
 from pony.dbapiprovider import LongStr, LongUnicode
 from pony.sqlsymbols import *
 from pony.utils import avg, copy_func_attrs, is_ident
-from pony.orm import select, exists, ERDiagramError, TranslationError, EntityMeta, Set, JOIN, AsciiStr
+from pony.orm import query, exists, ERDiagramError, TranslationError, EntityMeta, Set, JOIN, AsciiStr
 
 def sqland(items):
     if not items: return []
@@ -1471,11 +1471,11 @@ def minmax(monad, sqlop, *args):
         t = t3
     return translator.ExprMonad(translator, t, sql)
 
-@func_monad(select)
+@func_monad(query)
 def FuncSelectMonad(monad, subquery):
     translator = monad.translator
     if not isinstance(subquery, translator.QuerySetMonad): raise TypeError(
-        "'select' function expects generator expression, got: {EXPR}")
+        "'query' function expects generator expression, got: {EXPR}")
     return subquery
 
 @func_monad(exists)
