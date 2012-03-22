@@ -96,29 +96,29 @@ def print_students(students):
     print
 
 def test_queries():
-    students = fetch_all(s for s in Student)
+    students = fetch(s for s in Student)
     print_students(students)
 
 
-    students = fetch_all(s for s in Student
+    students = fetch(s for s in Student
                          if s.gpa > 3.4
                          and s.dob.year == 1990)
     print_students(students)
 
 
-    students = fetch_all(s for s in Student if len(s.courses) < 4)
+    students = fetch(s for s in Student if len(s.courses) < 4)
     print_students(students)
 
 
-    students = fetch_all(s for s in Student if s.name.startswith("M"))
+    students = fetch(s for s in Student if s.name.startswith("M"))
     print_students(students)
 
 
-    students = fetch_all(s for s in Student if "Smith" in s.name)
+    students = fetch(s for s in Student if "Smith" in s.name)
     print_students(students)
 
 
-    students = fetch_all(s for s in Student 
+    students = fetch(s for s in Student 
                          if "Web Design" in s.courses.name)
     print_students(students)
 
@@ -128,22 +128,22 @@ def test_queries():
     print
     
 
-    students = fetch_all(s for s in Student 
+    students = fetch(s for s in Student 
                          if sum(c.credits for c in s.courses) < 15)
     print_students(students)
 
 
-    students = fetch_all(s for s in Student 
+    students = fetch(s for s in Student 
                          if s.group.major == "B.E. in Computer Engineering")
     print_students(students)
 
 
-    students = fetch_all(s for s in Student 
+    students = fetch(s for s in Student 
                          if s.group.dept.name == "Department of Computer Science")
     print_students(students)
 
 
-    students = query(s for s in Student).orderby(Student.name).fetch_all()
+    students = query(s for s in Student).orderby(Student.name).fetch()
     print_students(students)
 
 
@@ -151,16 +151,16 @@ def test_queries():
     print_students(students)
 
 
-    students = query(s for s in Student).orderby(Student.name.desc).fetch_all()
+    students = query(s for s in Student).orderby(Student.name.desc).fetch()
     print_students(students)
 
 
     students = query(s for s in Student) \
-               .orderby(Student.group, Student.name.desc).fetch_all()
+               .orderby(Student.group, Student.name.desc).fetch()
     print_students(students)
 
 
-    students = fetch_all(s for s in Student 
+    students = fetch(s for s in Student 
                          if s.group.dept.name == "Department of Computer Science"
                             and s.gpa > 3.5
                             and len(s.courses) > 3)

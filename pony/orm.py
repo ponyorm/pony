@@ -40,7 +40,7 @@ __all__ = '''
     LongStr LongUnicode
 
     TranslationError
-    query fetch_all fetch_one fetch_count fetch_sum fetch_min fetch_max fetch_avg exists
+    query fetch fetch_one fetch_count fetch_sum fetch_min fetch_max fetch_avg exists
     avg
 
     JOIN
@@ -1750,14 +1750,14 @@ class EntityMeta(type):
         else: pkval = avdict.get(entity._pk_)
         return pkval, avdict        
     @cut_traceback
-    def fetch_all(entity, *args, **keyargs):
+    def fetch(entity, *args, **keyargs):
         return entity._find_(None, args, keyargs)
     @cut_traceback
     def fetch_one(entity, *args, **keyargs):
         objects = entity._find_(1, args, keyargs)
         if not objects: return None
         if len(objects) > 1: raise MultipleObjectsFoundError(
-            'Multiple objects were found. Use %s.fetch_all(...) to retrieve them' % entity.__name__)
+            'Multiple objects were found. Use %s.fetch(...) to retrieve them' % entity.__name__)
         return objects[0]
     def _find_by_sql_(entity, max_fetch_count, sql, globals=None, locals=None, frame_depth=1):
         if not isinstance(sql, basestring): raise TypeError
@@ -1795,7 +1795,7 @@ class EntityMeta(type):
         objects = entity._find_(1, (), keyargs)
         if not objects: raise ObjectNotFound(entity, key)
         if len(objects) > 1: raise MultipleObjectsFoundError(
-            'Multiple objects was found. Use %s.fetch_all(...) to retrieve them' % entity.__name__)
+            'Multiple objects was found. Use %s.fetch(...) to retrieve them' % entity.__name__)
         return objects[0]
     @cut_traceback
     def query(entity, func):
@@ -1833,7 +1833,7 @@ class EntityMeta(type):
             globals = sys._getframe(3).f_globals
             locals = sys._getframe(3).f_locals
             query = entity._query_from_lambda_(first_arg, globals, locals)
-            return query.fetch_all()
+            return query.fetch()
 
         pkval, avdict = entity._normalize_args_(keyargs, False)
         for attr in avdict:
@@ -2008,7 +2008,7 @@ class EntityMeta(type):
             rows = cursor.fetchmany(max_fetch_count + 1)
             if len(rows) == max_fetch_count + 1:
                 if max_fetch_count == 1: raise MultipleObjectsFoundError(
-                    'Multiple objects were found. Use %s.fetch_all(...) to retrieve them' % entity.__name__)
+                    'Multiple objects were found. Use %s.fetch(...) to retrieve them' % entity.__name__)
                 raise TooManyObjectsFoundError(
                     'Found more then pony.options.MAX_FETCH_COUNT=%d objects' % options.MAX_FETCH_COUNT)
         else: rows = cursor.fetchall()
@@ -3012,8 +3012,8 @@ def query(gen, frame_depth=0):
     return Query(code, tree.code, external_names, globals, locals)
 
 @cut_traceback
-def fetch_all(gen):
-    return query(gen, frame_depth=2).fetch_all()
+def fetch(gen):
+    return query(gen, frame_depth=2).fetch()
 
 @cut_traceback
 def fetch_one(gen):
@@ -3047,11 +3047,11 @@ def JOIN(expr):
     return expr
 
 class QueryResult(list):
-    def fetch_all(self):
+    def fetch(self):
         return self
     def fetch_one(self):
         if not self: return None
-        if len(self) > 1: raise MultipleObjectsFoundError('Multiple objects were found. Use .fetch_all(...) to retrieve them')
+        if len(self) > 1: raise MultipleObjectsFoundError('Multiple objects were found. Use .fetch(...) to retrieve them')
         return self[0]
 
 class AsciiStr(str): pass
@@ -3182,14 +3182,14 @@ class Query(object):
         if translator.attr is None: return QueryResult(result)
         return QueryResult(map(attrgetter(translator.attr.name), result))
     @cut_traceback
-    def fetch_all(query):
+    def fetch(query):
         return query._fetch()
     @cut_traceback
     def fetch_one(query):
         objects = query[:2]
         if not objects: return None
         if len(objects) > 1: raise MultipleObjectsFoundError(
-            'Multiple objects was found. Use select(..).fetch_all() to retrieve them')
+            'Multiple objects was found. Use select(..).fetch() to retrieve them')
         return objects[0]
     @cut_traceback
     def exists(query):
@@ -3201,7 +3201,7 @@ class Query(object):
         return row is not None
     @cut_traceback
     def __iter__(query):
-        return iter(query.fetch_all())
+        return iter(query.fetch())
     @cut_traceback
     def orderby(query, *args):
         if not args: raise TypeError('query.orderby() requires at least one argument')
@@ -3233,7 +3233,7 @@ class Query(object):
             elif start < 0: raise TypeError("Parameter 'start' of slice object cannot be negative")
             stop = key.stop
             if stop is None:
-                if not start: return query.fetch_all()
+                if not start: return query.fetch()
                 else: raise TypeError("Parameter 'stop' of slice object should be specified")
         else:
             try: i = key.__index__()

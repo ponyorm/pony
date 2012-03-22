@@ -14,7 +14,7 @@ class TestCollections(unittest.TestCase):
         self.assert_(len(g.students) == 3)
 
     def test_many2many(self):
-        subjects = Subject.fetch_all()
+        subjects = Subject.fetch()
 
 # replace collection items when the old ones are not fully loaded
 ##>>> from pony.examples.orm.students01.model import *

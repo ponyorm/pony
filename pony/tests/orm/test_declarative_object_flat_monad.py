@@ -61,11 +61,11 @@ class TestObjectFlatMonad(unittest.TestCase):
         rollback()
         
     def test1(self):
-        result = set(fetch_all(s.groups for s in Subject if len(s.name) == 4))
+        result = set(fetch(s.groups for s in Subject if len(s.name) == 4))
         self.assertEquals(result, set([Group[41], Group[42]]))
 
     def test2(self):
-        result = set(fetch_all(g.students for g in Group if g.department == 102))
+        result = set(fetch(g.students for g in Group if g.department == 102))
         self.assertEquals(result, set([Student[5], Student[4]]))
 
 if __name__ == '__main__':

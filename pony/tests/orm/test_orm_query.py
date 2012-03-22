@@ -29,19 +29,19 @@ class TestQuery(unittest.TestCase):
     @raises_exception(NotImplementedError, "Query iterator has unexpected type 'setiterator'")
     def test_exception1(self):
         g = Group[1]
-        fetch_all(s for s in g.students)
+        fetch(s for s in g.students)
     @raises_exception(NameError, 'a')
     def test_exception2(self):
-        fetch_all(a for s in Student)
+        fetch(a for s in Student)
     @raises_exception(TypeError,"Variable 'x' has unexpected type 'list'")
     def test_exception3(self):
         x = ['A']
-        fetch_all(s for s in Student if s.name == x)
+        fetch(s for s in Student if s.name == x)
     @raises_exception(TypeError,"Function 'f1' cannot be used inside query")
     def test_exception4(self):
         def f1(x):
             return x + 1
-        fetch_all(s for s in Student if f1(s.gpa) > 3)
+        fetch(s for s in Student if f1(s.gpa) > 3)
     @raises_exception(TypeError,"Method 'method1' cannot be used inside query")
     def test_exception5(self):
         class C1(object):
@@ -49,13 +49,13 @@ class TestQuery(unittest.TestCase):
                 return a + b
         c = C1()
         m1 = c.method1
-        fetch_all(s for s in Student if m1(s.gpa, 1) > 3) 
+        fetch(s for s in Student if m1(s.gpa, 1) > 3) 
     @raises_exception(TypeError, "Variable 'x' has unexpected type 'complex'")  
     def test_exception6(self):
         x = 1j
-        fetch_all(s for s in Student if s.gpa == x)
+        fetch(s for s in Student if s.gpa == x)
     def test1(self):
-        fetch_all(g for g in Group for s in db.Student)
+        fetch(g for g in Group for s in db.Student)
         self.assert_(True)
     def test2(self):
         avg_gpa = fetch_avg(s.gpa for s in Student)

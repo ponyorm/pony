@@ -57,11 +57,11 @@ class TestM2MOptimization(unittest.TestCase):
         self.assertEquals(Group._table_ in flatten(q._translator.from_), True)
     def test6(self):
         q = query(s for s in Student if s.group == Group[101])
-        #fetch_all(s for s in Student if Course('1', 1) in s.courses)
+        #fetch(s for s in Student if Course('1', 1) in s.courses)
         self.assertEquals(Group._table_ not in flatten(q._translator.from_), True)
     def test7(self):
         q = query(s for s in Student if sum(c.credits for c in Course if s.group.dept == c.dept) > 10)
-        q.fetch_all()
+        q.fetch()
         self.assertEquals(str(q._translator.from_), 
             "['FROM', ['s', 'TABLE', 'Student'], ['group-1', 'TABLE', 'Group', ['EQ', ['COLUMN', 's', 'group'], ['COLUMN', 'group-1', 'number']]]]")
 
