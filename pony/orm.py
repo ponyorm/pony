@@ -32,7 +32,7 @@ __all__ = '''
     TransactionError TransactionIntegrityError IsolationError CommitException RollbackException
     UnrepeatableReadError UnresolvableCyclicDependency UnexpectedError
 
-    Database sql_debug
+    Database sql_debug show
 
     Optional Required Unique PrimaryKey Set
     flush commit rollback with_transaction
@@ -2184,6 +2184,11 @@ class EntityMeta(type):
             result_cls = type(cls_name, (SetWrapper, mixin), {})
             entity._set_wrapper_subclass_ = result_cls
         return result_cls
+    def describe(entity):
+        result = []
+        parents = ','.join(cls.__name__ for cls in entity.__bases__)
+        result.append('class %s(%s):' % (entity.__name__, parents))
+        return '\n'.join(result)
     
 class Entity(object):
     __metaclass__ = EntityMeta
@@ -3276,3 +3281,12 @@ class Query(object):
     @cut_traceback
     def count(query):
         return query._aggregate(COUNT)
+
+def show(x):
+    if isinstance(x, EntityMeta):
+        print x.describe()
+    elif isinstance(x, Entity):
+        print 'instance of ' + x.__class__.describe()
+    else:
+        from pprint import pprint
+        pprint(x)
