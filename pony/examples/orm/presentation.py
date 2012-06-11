@@ -45,7 +45,7 @@ db.generate_mapping(create_tables=True)
 sql_debug(True)  # Output all SQL queries to stdout
 
 def populate_database():
-    if query.count(s for s in Student) > 0:
+    if query(s for s in Student).count() > 0:
         return
     
     d1 = Department(name="Department of Computer Science")
