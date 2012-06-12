@@ -23,11 +23,6 @@ else: LOG_TO_SQLITE = pony.MODE in ('CHERRYPY', 'INTERACTIVE', 'FCGI-FLUP')
 
 logging.basicConfig(level=options.LOGGING_LEVEL or INFO, format='%(message)s')
 root_logger = logging.root
-console_handler = None
-for handler in root_logger.handlers:
-    if isinstance(handler, logging.StreamHandler):
-        if handler.stream is pony.real_stderr: handler.stream = pony.pony_stderr # monkeypatching
-        if handler.stream is pony.pony_stderr: console_handler = handler
 
 pony_logger = logging.getLogger('pony')
 pony_logger.setLevel(options.LOGGING_PONY_LEVEL or WARNING)

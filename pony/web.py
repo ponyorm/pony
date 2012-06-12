@@ -339,88 +339,70 @@ STD_ERROR_HEADERS = {'Content-Type': 'text/html; charset=UTF-8'}
 INTERNAL_SERVER_ERROR = '500 Internal Server Error', STD_ERROR_HEADERS
 
 def app(environ):
-    sys.stdout = pony.pony_stdout
-    sys.stderr = pony.pony_stderr
-    error_stream = environ['wsgi.errors']
-    wsgi_errors_is_stderr = error_stream is sys.stderr
-    if not wsgi_errors_is_stderr: pony.local.error_streams.append(error_stream)
-    if error_stream.__class__.__name__ == 'TeeOutputStream': # flup-fcgi monkeypatching
-        assert error_stream._streamList[0] is pony.pony_stderr
-        error_stream._streamList = (pony.real_stderr,) + error_stream._streamList[1:]
-        
-    pony.local.output_streams.append(error_stream)
-
     request = local.request = HttpRequest(environ)
+    log_request(request)
     response = local.response = HttpResponse()
     local.no_cookies = False
     auth.load(environ, request.cookies)
     auth.verify_ticket(request.fields.getfirst('_t'))
     postprocessing = True
     no_exception = False
-    try:
-        log_request(request)
-        if autoreload.reloading_exception and not request.url.startswith('/pony/static/'):
-            status, headers = INTERNAL_SERVER_ERROR
-            result = format_exc(autoreload.reloading_exception)
-        elif request.method not in ('HEAD', 'GET', 'POST', 'PUT', 'DELETE'):
-            status = '501 Not Implemented'
-            headers = {'Content-Type' : 'text/plain'}
-            result = 'Unknown HTTP method: %s' % request.method
-        else:
+    if autoreload.reloading_exception and not request.url.startswith('/pony/static/'):
+        status, headers = INTERNAL_SERVER_ERROR
+        result = format_exc(autoreload.reloading_exception)
+    elif request.method not in ('HEAD', 'GET', 'POST', 'PUT', 'DELETE'):
+        status = '501 Not Implemented'
+        headers = {'Content-Type' : 'text/plain'}
+        result = 'Unknown HTTP method: %s' % request.method
+    else:
+        try:
             try:
-                try:
-                    if auth.local.ticket_payload is not None:
-                        form = cPickle.loads(auth.local.ticket_payload)
-                        form._handle_request_()
-                        form = None
-                    result = invoke(request.url)
-                finally:
-                    if auth.local.ticket and not request.form_processed and request.form_processed is not None:
-                        auth.unexpire_ticket()
-            except HttpException, e:
-                status, headers, result = e.status, e.headers, e.content
-                result, headers = normalize_result(result, headers)
-            except BdbQuit: raise
-            except:
-                log_exc()
-                status, headers = INTERNAL_SERVER_ERROR
-                result, headers = normalize_result(format_exc(), headers)
-            else:
-                no_exception = True
-                status = response.status
-                headers = response.headers
-                postprocessing = response.postprocessing
+                if auth.local.ticket_payload is not None:
+                    form = cPickle.loads(auth.local.ticket_payload)
+                    form._handle_request_()
+                    form = None
+                result = invoke(request.url)
+            finally:
+                if auth.local.ticket and not request.form_processed and request.form_processed is not None:
+                    auth.unexpire_ticket()
+        except HttpException, e:
+            status, headers, result = e.status, e.headers, e.content
+            result, headers = normalize_result(result, headers)
+        except BdbQuit: raise
+        except:
+            log_exc()
+            status, headers = INTERNAL_SERVER_ERROR
+            result, headers = normalize_result(format_exc(), headers)
+        else:
+            no_exception = True
+            status = response.status
+            headers = response.headers
+            postprocessing = response.postprocessing
 
-        content_type = headers.get('Content-Type', 'text/plain')
-        media_type, type_params = cgi.parse_header(content_type)
-        charset = type_params.get('charset', 'iso-8859-1')
-        if isinstance(result, basestring): 
-            if media_type == 'text/html' and postprocessing:
-                if no_exception:
-                      result = postprocess(result, response.base_stylesheets, response.component_stylesheets, response.scripts)
-                else: result = postprocess(result, [], [], [])
-            if isinstance(result, unicode):
-                if media_type == 'text/html' or 'xml' in media_type :
-                      result = result.encode(charset, 'xmlcharrefreplace')
-                else: result = result.encode(charset, 'replace')
-            headers['Content-Length'] = str(len(result))
+    content_type = headers.get('Content-Type', 'text/plain')
+    media_type, type_params = cgi.parse_header(content_type)
+    charset = type_params.get('charset', 'iso-8859-1')
+    if isinstance(result, basestring): 
+        if media_type == 'text/html' and postprocessing:
+            if no_exception:
+                  result = postprocess(result, response.base_stylesheets, response.component_stylesheets, response.scripts)
+            else: result = postprocess(result, [], [], [])
+        if isinstance(result, unicode):
+            if media_type == 'text/html' or 'xml' in media_type :
+                  result = result.encode(charset, 'xmlcharrefreplace')
+            else: result = result.encode(charset, 'replace')
+        headers['Content-Length'] = str(len(result))
 
-        headers = headers.items()
-        for header, value in headers:
-            assert isinstance(header, str)
-            assert isinstance(value, str)
-        if not local.no_cookies and not status.startswith('5'):
-            auth.save(response.cookies)
-            headers += httputils.serialize_cookies(environ, response.cookies)
-        log(type='HTTP:response', prefix='Response: ', text=status, severity=DEBUG, headers=headers)
-        if request.method == 'HEAD' and 'Content-Length' in headers: result = ''
-        return status, headers, result
-    finally:
-        top_output_stream = pony.local.output_streams.pop()
-        assert top_output_stream is error_stream
-        if not wsgi_errors_is_stderr:
-            top_error_stream = pony.local.error_streams.pop()
-            assert top_error_stream is error_stream
+    headers = headers.items()
+    for header, value in headers:
+        assert isinstance(header, str)
+        assert isinstance(value, str)
+    if not local.no_cookies and not status.startswith('5'):
+        auth.save(response.cookies)
+        headers += httputils.serialize_cookies(environ, response.cookies)
+    log(type='HTTP:response', prefix='Response: ', text=status, severity=DEBUG, headers=headers)
+    if request.method == 'HEAD' and 'Content-Length' in headers: result = ''
+    return status, headers, result
 
 def inner_application(environ, start_response):
     middlewared_app = middleware.pony_wrap(app)
@@ -459,12 +441,10 @@ class ServerThread(threading.Thread):
         thread.setDaemon(True)
     def run(thread):
         message = 'Starting HTTP server at %s:%s' % (thread.host, thread.port)
-        print>>pony.real_stderr, message
-        # log(type='HTTP:start', text=message, severity=WARNING, host=thread.host, port=thread.port, uid=pony.uid)
+        log(type='HTTP:start', text=message, severity=WARNING, host=thread.host, port=thread.port, uid=pony.uid)
         thread.server.start()
         message = 'HTTP server at %s:%s stopped successfully' % (thread.host, thread.port)
-        print>>pony.real_stderr, message
-        # log(type='HTTP:stop', text=message, severity=WARNING, host=thread.host, port=thread.port)
+        log(type='HTTP:stop', text=message, severity=WARNING, host=thread.host, port=thread.port)
         server_threads.pop((thread.host, thread.port), None)
 
 def start_http_server(address='localhost:8080'):
