@@ -825,6 +825,11 @@ class Attribute(object):
     @property
     def desc(attr):
         return DescWrapper(attr)
+    def describe(attr):
+        t = attr.py_type
+        if isinstance(t, type): t = t.__name__            
+        result = "%s(%s)" % (attr.__class__.__name__, t)
+        return "%s = %s" % (attr.name,result)
 
 class Optional(Attribute):
     __slots__ = []
@@ -2188,7 +2193,12 @@ class EntityMeta(type):
         result = []
         parents = ','.join(cls.__name__ for cls in entity.__bases__)
         result.append('class %s(%s):' % (entity.__name__, parents))
-        return '\n'.join(result)
+        if entity._base_attrs_:
+            result.append('# inherited attrs')
+            result.extend(attr.describe() for attr in entity._base_attrs_)
+            result.append('# attrs introduced in %s' % entity.__name__)
+        result.extend(attr.describe() for attr in entity._new_attrs_)
+        return '\n    '.join(result)
     
 class Entity(object):
     __metaclass__ = EntityMeta
@@ -3282,7 +3292,8 @@ class Query(object):
     def count(query):
         return query._aggregate(COUNT)
 
-def show(x):
+def show(entity):
+    x = entity
     if isinstance(x, EntityMeta):
         print x.describe()
     elif isinstance(x, Entity):
