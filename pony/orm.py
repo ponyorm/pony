@@ -3063,14 +3063,6 @@ def exists(gen):
 def JOIN(expr):
     return expr
 
-class QueryResult(list):
-    def fetch(self):
-        return self
-    def fetch_one(self):
-        if not self: return None
-        if len(self) > 1: raise MultipleObjectsFoundError('Multiple objects were found. Use .fetch(...) to retrieve them')
-        return self[0]
-
 class AsciiStr(str): pass
 
 class Query(object):
@@ -3196,8 +3188,8 @@ class Query(object):
         translator = query._translator
         cursor = query._exec_sql(query._order, range)
         result = translator.entity._fetch_objects(cursor, translator.attr_offsets)
-        if translator.attr is None: return QueryResult(result)
-        return QueryResult(map(attrgetter(translator.attr.name), result))
+        if translator.attr is None: return result
+        return map(attrgetter(translator.attr.name), result)
     @cut_traceback
     def fetch(query):
         return query._fetch()
