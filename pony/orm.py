@@ -490,6 +490,8 @@ class DescWrapper(object):
         self.attr = attr
     def __repr__(self):
         return '<DescWrapper(%s)>' % self.attr
+    def __call__(self):
+        return self
 
 next_attr_id = count(1).next
 
