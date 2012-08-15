@@ -34,7 +34,7 @@ class TestInheritance(unittest.TestCase):
             a = Required(int)
         self.assert_(True)
 
-    @raises_exception(ERDiagramError, 'Ambiguous attribute name a')
+    @raises_exception(ERDiagramError, 'Attribute "Entity2.a" clashes with attribute "Entity3.a" in derived entity "Entity4"')
     def test_inheritance4(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):

@@ -1564,7 +1564,10 @@ class EntityMeta(type):
         base_attrs_dict = {}
         for base in direct_bases:
             for a in base._attrs_:
-                if base_attrs_dict.setdefault(a.name, a) is not a: raise ERDiagramError('Ambiguous attribute name %s' % a.name)
+                prev = base_attrs_dict.setdefault(a.name, a)
+                if prev is not a: raise ERDiagramError(
+                    'Attribute "%s" clashes with attribute "%s" in derived entity "%s"'
+                    % (prev, a, entity.__name__))
                 base_attrs.append(a)
         entity._base_attrs_ = base_attrs
 
