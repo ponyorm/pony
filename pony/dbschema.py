@@ -241,8 +241,9 @@ class ForeignKey(Constraint):
             if len(child_columns) == 1: raise DBSchemaError('Foreign key for column %r already defined' % child_columns[0].name)
             else: raise DBSchemaError('Foreign key for columns (%s) already defined' % ', '.join(repr(column.name) for column in child_columns))
         child_table.foreign_keys[child_columns] = foreign_key
-        child_table.parent_tables.add(parent_table)
-        parent_table.child_tables.add(child_table)
+        if child_table is not parent_table:
+            child_table.parent_tables.add(parent_table)
+            parent_table.child_tables.add(child_table)
         Constraint.__init__(foreign_key, name, schema)
         foreign_key.parent_table = parent_table
         foreign_key.parent_columns = parent_columns
