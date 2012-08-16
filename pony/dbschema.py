@@ -67,7 +67,10 @@ class Table(object):
         table.entities = set()
         table.m2m = set()
     def __repr__(table):
-        return '<Table(%s)>' % table.name
+        table_name = table.name
+        if isinstance(table_name, tuple):
+            table_name = '.'.join(table_name)
+        return '<Table(%s)>' % table_name
     def create(table, provider, connection, created_tables=None):
         commands = table.get_create_commands(created_tables)
         for sql in commands:
