@@ -67,7 +67,7 @@ class TestAttribute(unittest.TestCase):
             id = PrimaryKey(int)
             attr1 = Attribute(str)
 
-    @raises_exception(ERDiagramError, "Attribute name cannot both starts and ends with underscore. Got: _attr1_")
+    @raises_exception(ERDiagramError, "Attribute name cannot both start and end with underscore. Got: _attr1_")
     def test_attribute9(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):

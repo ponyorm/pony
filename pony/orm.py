@@ -1596,7 +1596,7 @@ class EntityMeta(type):
             if name in base_attrs_dict: raise ERDiagramError("Name '%s' hides base attribute %s" % (name,base_attrs_dict[name]))
             if not isinstance(attr, Attribute): continue
             if name.startswith('_') and name.endswith('_'): raise ERDiagramError(
-                'Attribute name cannot both starts and ends with underscore. Got: %s' % name)
+                'Attribute name cannot both start and end with underscore. Got: %s' % name)
             if attr.entity is not None: raise ERDiagramError(
                 'Duplicate use of attribute %s in entity %s' % (attr, entity.__name__))
             attr._init_(entity, name)
