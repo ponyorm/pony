@@ -341,16 +341,32 @@ class Database(object):
         for entity in entities:
             entity._get_pk_columns_()
             table_name = entity._table_
-            if table_name is None:
+
+            is_subclass = entity._root_ is not entity
+            if is_subclass:
+                if table_name is not None: raise NotImplementedError
+                table_name = entity._root_._table_
+                entity._table_ = table_name
+            elif table_name is None:
                 table_name = provider.get_default_entity_table_name(entity)
                 entity._table_ = table_name
             else: assert isinstance(table_name, (basestring, tuple))
+
             table = schema.tables.get(table_name)
-            if table is None: table = schema.add_table(table_name)
-            elif table.entities: raise NotImplementedError
+            if table is None:
+                table = schema.add_table(table_name)
+                if entity._direct_subclasses_:
+                    t = entity._database_.provider.get_converter_by_py_type(str).sql_type()
+                    table.add_column('classname', t, True)
+            elif table.entities:
+                for e in table.entities:
+                    if e._root_ is not entity._root_:
+                        raise MappingError("Entities %s and %s cannot be mapped to table %s "
+                                           "because they don't belong to the same hierarchy"
+                                           % (e, entity, table_name))
             table.entities.add(entity)
 
-            if entity._base_attrs_: raise NotImplementedError
+            # if entity._base_attrs_: raise NotImplementedError
             for attr in entity._new_attrs_:
                 if attr.is_collection:
                     if not isinstance(attr, Set): raise NotImplementedError
@@ -401,10 +417,11 @@ class Database(object):
                         if not callable(attr.default): attr.default = attr.check(attr.default)
                     assert len(columns) == len(attr.converters)
                     for (column_name, converter) in zip(columns, attr.converters):
-                        table.add_column(column_name, converter.sql_type(), attr.is_required)
-            if len(entity._pk_columns_) == 1 and entity._pk_.auto: is_pk = "auto"
-            else: is_pk = True
-            table.add_index(None, get_columns(table, entity._pk_columns_), is_pk)
+                        table.add_column(column_name, converter.sql_type(), attr.is_required and not is_subclass)
+            if not table.pk_index:
+                if len(entity._pk_columns_) == 1 and entity._pk_.auto: is_pk = "auto"
+                else: is_pk = True
+                table.add_index(None, get_columns(table, entity._pk_columns_), is_pk)
             for key in entity._keys_:
                 column_names = []
                 for attr in key: column_names.extend(attr.columns)
@@ -1552,7 +1569,10 @@ class EntityMeta(type):
         direct_bases = [ c for c in entity.__bases__ if issubclass(c, Entity) and c.__name__ != 'Entity' ]
         entity._direct_bases_ = direct_bases
         entity._all_bases_ = set((entity,))
-        for base in direct_bases: entity._all_bases_.update(base._all_bases_)
+        entity._direct_subclasses_ = set()
+        for base in direct_bases:
+            entity._all_bases_.update(base._all_bases_)
+            base._direct_subclasses_.add(entity)
         if direct_bases:
             roots = set(base._root_ for base in direct_bases)
             if len(roots) > 1: raise ERDiagramError(

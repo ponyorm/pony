@@ -115,6 +115,9 @@ class Table(object):
     def add_column(table, column_name, sql_type, is_not_null=None):
         return table.schema.column_class(column_name, table, sql_type, is_not_null)
     def add_index(table, index_name, columns, is_pk=False, is_unique=None):
+        index = table.indexes.get(columns)
+        if index and index.name == index_name and index.is_pk == is_pk and index.is_unique == is_unique:
+            return index
         return table.schema.index_class(index_name, table, columns, is_pk, is_unique)
     def add_foreign_key(table, fk_name, child_columns, parent_table, parent_columns):
         return table.schema.fk_class(fk_name, table, child_columns, parent_table, parent_columns)

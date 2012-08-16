@@ -191,6 +191,7 @@ class BoolConverter(Converter):
 
 class BasestringConverter(Converter):
     def __init__(converter, attr=None):
+        converter.max_len = None
         converter.db_encoding = None
         Converter.__init__(converter, attr)
     def init(converter, keyargs):
