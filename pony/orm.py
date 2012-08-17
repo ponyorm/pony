@@ -647,6 +647,9 @@ class Attribute(object):
         if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
         val = obj._vals_.get(attr.name, NOT_LOADED)
         if val is NOT_LOADED: val = attr.load(obj)
+        if attr.reverse and val._discriminator_ and val._subclasses_:
+            seeds = obj._cache_.seeds.get(val.__class__._pk_)
+            if seeds and val in seeds: val._load_()
         return val
     @cut_traceback
     def __set__(attr, obj, new_val, undo_funcs=None):
@@ -2014,7 +2017,8 @@ class EntityMeta(type):
         attr_offsets = {}
         if distinct: select_list = [ DISTINCT ]
         else: select_list = [ ALL ]
-        for attr in chain(entity._attrs_, entity._subclass_attrs_):
+        root = entity._root_
+        for attr in chain(root._attrs_, root._subclass_attrs_):
             if attr.is_collection: continue
             if not attr.columns: continue
             attr_offsets[attr] = offsets = []
@@ -2051,6 +2055,15 @@ class EntityMeta(type):
             criteria_list = [ [ OR ] + [ [ AND ] + [ [ EQ, [ COLUMN, None, column ], [ PARAM, (i, j), converter ] ]
                                                      for j, (column, converter) in enumerate(pairs) ]
                                          for i in xrange(batch_size) ] ]
+
+        discr_attr = entity._discriminator_attr_
+        if discr_attr is not None:
+            code2cls = discr_attr.code2cls
+            discr_values = [ [ VALUE, cls._discriminator_ ] for cls in entity._subclasses_ ]
+            discr_values.append([ VALUE, entity._discriminator_])
+            discr_cond = [ IN, [ COLUMN, None, discr_attr.column ], discr_values ]
+            criteria_list = [ [ AND, discr_cond ] + criteria_list ]
+
         sql_ast = [ SELECT, select_list, from_list, [ WHERE ] + criteria_list ]
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
@@ -2214,7 +2227,15 @@ class EntityMeta(type):
             if entity._pk_is_composite_: pkval = ', '.join(str(item) for item in pkval)
             raise CacheIndexError('Cannot create %s: instance with primary key %s already exists'
                              % (obj.__class__.__name__, pkval))                
-        else: return obj
+        elif obj.__class__ is entity: return obj
+        elif issubclass(obj.__class__, entity): return obj
+        elif not issubclass(entity, obj.__class__): raise TransactionError(
+            'Unexpected class change from %s to %s for object with primary key %r' %
+            (obj.__class__, entity, obj._pkval_))
+        elif obj._rbits_ or obj._wbits_: raise NotImplementedError
+        else:
+            obj.__class__ = entity
+            return obj
         obj = object.__new__(entity)
         obj._dbvals_ = {}
         obj._vals_ = {}
