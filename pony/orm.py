@@ -1064,10 +1064,12 @@ class Set(Collection):
         reverse = attr.reverse
         rentity = reverse.entity
         if reverse is None: raise NotImplementedError
+        cache = obj._cache_
         database = obj._database_
+        if cache is not database._get_cache():
+            raise TransactionError("Transaction of object %s belongs to different thread")
         objects = [ obj ]
         setdata_list = [ setdata ]
-        cache = obj._cache_
         assert cache.is_alive
         counter = cache.collection_statistics.setdefault(attr, 0)
         if counter:
@@ -2378,6 +2380,8 @@ class Entity(object):
         if not cache.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
         entity = obj.__class__
         database = entity._database_
+        if cache is not database._get_cache():
+            raise TransactionError("Transaction of object %s belongs to different thread")
         seeds = cache.seeds[entity._pk_]
         max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
         objects = [ obj ]
