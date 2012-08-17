@@ -904,7 +904,7 @@ class Discriminator(Required):
         elif val is DEFAULT:
             assert entity is not None
             return entity._discriminator_
-        raise TypeError('Discriminator attribute %s cannot be set explicitly' % attr)
+        return Attribute.check(attr, val, obj, entity)
     def load(attr, obj):
         raise AssertionError
     def __get__(attr, obj, cls=None):
@@ -1619,12 +1619,13 @@ class EntityMeta(type):
         entity._id_ = next_entity_id()
         direct_bases = [ c for c in entity.__bases__ if issubclass(c, Entity) and c.__name__ != 'Entity' ]
         entity._direct_bases_ = direct_bases
-        entity._all_bases_ = set()
-        entity._direct_subclasses_ = set()
+        all_bases = entity._all_bases_ = set()
+        entity._subclasses_ = set()
         for base in direct_bases:
-            entity._all_bases_.update(base._all_bases_)
-            entity._all_bases_.add(base)
-            base._direct_subclasses_.add(entity)
+            all_bases.update(base._all_bases_)
+            all_bases.add(base)
+        for base in all_bases:
+            base._subclasses_.add(entity)
         if direct_bases:
             roots = set(base._root_ for base in direct_bases)
             if len(roots) > 1: raise ERDiagramError(
@@ -2063,6 +2064,15 @@ class EntityMeta(type):
         where_list = [ WHERE ]
         values = []
         extractors = {}
+
+        discr_attr = entity._discriminator_attr_
+        if discr_attr is not None and discr_attr not in query_attrs:
+            code2cls = discr_attr.code2cls
+            discr_values = [ [ VALUE, cls._discriminator_ ] for cls in entity._subclasses_ ]
+            discr_values.append([ VALUE, entity._discriminator_])
+
+            where_list.append([ IN, [ COLUMN, None, discr_attr.column ], discr_values ])
+        
         for attr, attr_is_none in query_attrs:
             if not attr.reverse:
                 if not attr_is_none:

@@ -6,6 +6,8 @@ options.CUT_TRACEBACK = False
 
 from pony.orm import *
 
+sql_debug(True)
+
 db = Database('sqlite', 'inheritance1.sqlite', create_db=True)
 
 class Person(db.Entity):
