@@ -353,11 +353,7 @@ class Database(object):
             else: assert isinstance(table_name, (basestring, tuple))
 
             table = schema.tables.get(table_name)
-            if table is None:
-                table = schema.add_table(table_name)
-                if entity._direct_subclasses_:
-                    t = entity._database_.provider.get_converter_by_py_type(str).sql_type()
-                    table.add_column('classname', t, True)
+            if table is None: table = schema.add_table(table_name)
             elif table.entities:
                 for e in table.entities:
                     if e._root_ is not entity._root_:
@@ -513,7 +509,8 @@ class DescWrapper(object):
 next_attr_id = count(1).next
 
 class Attribute(object):
-    __slots__ = 'is_required', 'is_unique', 'is_indexed', 'is_pk', 'is_collection', 'is_ref', 'is_basic', \
+    __slots__ = 'is_required', 'is_discriminator', 'is_unique', 'is_indexed', \
+                'is_pk', 'is_collection', 'is_ref', 'is_basic', \
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'keyargs'
@@ -521,6 +518,7 @@ class Attribute(object):
     def __init__(attr, py_type, *args, **keyargs):
         if attr.__class__ is Attribute: raise TypeError("'Attribute' is abstract type")
         attr.is_required = isinstance(attr, Required)
+        attr.is_discriminator = isinstance(attr, Discriminator)
         attr.is_unique = isinstance(attr, Unique)  # Also can be set to True later
         attr.is_indexed = attr.is_unique  # Also can be set to True later
         attr.is_pk = isinstance(attr, PrimaryKey)
@@ -868,6 +866,57 @@ class Required(Attribute):
                 'Required attribute %s.%s for %r cannot be set to None' % (entity.__name__, attr.name, obj))
         return val
 
+class Discriminator(Required):
+    __slots__ = [ 'code2cls' ]
+    def __init__(attr, py_type, *args, **keyargs):
+        Attribute.__init__(attr, py_type, *args, **keyargs)
+        attr.code2cls = {}
+    def _init_(attr, entity, name):
+        if entity._root_ is not entity: raise ERDiagramError(
+            'Discriminator attribute %s cannot be declared in subclass' % attr)
+        Required._init_(attr, entity, name)
+        entity._discriminator_attr_ = attr
+    @staticmethod
+    def create_default_attr(entity):
+        if hasattr(entity, 'classtype'): raise ERDiagramError(
+            "Cannot create discriminator column for %s automatically "
+            "because name 'classtype' is already in use" % entity.__name__)
+        attr = Discriminator(str, column='classtype')
+        attr._init_(entity, 'classtype')
+        entity._attrs_.append(attr)
+        entity._new_attrs_.append(attr)
+        entity._adict_['classtype'] = attr
+        attr.process_entity_inheritance(entity)
+    def process_entity_inheritance(attr, entity):
+        if '_discriminator_' not in entity.__dict__:
+            entity._discriminator_ = entity.__name__
+        discr_value = entity._discriminator_
+        if discr_value is None:
+            discr_value = entity._discriminator_ = entity.__name__
+        discr_type = type(discr_value)
+        for code, cls in attr.code2cls.items():
+            if type(code) != discr_type: raise ERDiagramError(
+                'Discriminator values %r and %r of entities %s and %s have different types'
+                % (code, discr_value, cls, entity))
+        attr.code2cls[entity.__name__] = discr_value
+    def check(attr, val, obj=None, entity=None, from_db=False):
+        if from_db: return val
+        elif val is DEFAULT:
+            assert entity is not None
+            return entity._discriminator_
+        raise TypeError('Discriminator attribute %s cannot be set explicitly' % attr)
+    def load(attr, obj):
+        raise AssertionError
+    def __get__(attr, obj, cls=None):
+        if obj is None: return attr
+        return obj._discriminator_
+    def __set__(attr, obj, new_val):
+        raise TypeError('Cannot assign value to discriminator attribute')
+    def db_set(attr, obj, new_dbval):
+        assert False
+    def update_reverse(attr, obj, old_val, new_val, undo_funcs):
+        assert False
+
 class Unique(Required):
     __slots__ = []
     def __new__(cls, *args, **keyargs):
@@ -885,8 +934,10 @@ class Unique(Required):
             return result
 
         for attr in attrs:
-            if attr.is_collection or (is_pk and not attr.is_required and not attr.auto): raise TypeError(
-                '%s attribute cannot be part of %s' % (attr.__class__.__name__, is_pk and 'primary key' or 'unique index'))
+            if attr.is_collection or attr.is_discriminator or (
+                    is_pk and not attr.is_required and not attr.auto):
+                raise TypeError('%s attribute cannot be part of %s'
+                                % (attr.__class__.__name__, is_pk and 'primary key' or 'unique index'))
             attr.is_indexed = True
         if len(attrs) == 1:
             attr = attrs[0]
@@ -1577,8 +1628,13 @@ class EntityMeta(type):
             roots = set(base._root_ for base in direct_bases)
             if len(roots) > 1: raise ERDiagramError(
                 'With multiple inheritance of entities, inheritance graph must be diamond-like')
-            entity._root_ = roots.pop()
-        else: entity._root_ = entity
+            root = entity._root_ = roots.pop()
+            if root._discriminator_attr_ is None:
+                assert root._discriminator_ is None
+                Discriminator.create_default_attr(root)
+        else:
+            entity._root_ = entity
+            entity._discriminator_attr_ = None
 
         base_attrs = []
         base_attrs_dict = {}
@@ -1647,7 +1703,7 @@ class EntityMeta(type):
         next_offset = count().next
         all_bits = 0
         for attr in entity._attrs_:
-            if attr.is_collection or attr.pk_offset is not None: continue
+            if attr.is_collection or attr.is_discriminator or attr.pk_offset is not None: continue
             next_bit = 1 << next_offset()
             entity._bits_[attr] = next_bit
             all_bits |= next_bit
@@ -1680,6 +1736,13 @@ class EntityMeta(type):
         entity._propagation_mixin_ = None
         entity._set_wrapper_subclass_ = None
         entity._propagated_set_subclass_ = None
+
+        if '_discriminator_' not in entity.__dict__:
+            entity._discriminator_ = None
+        if entity._discriminator_ and not entity._discriminator_attr_:
+            Discriminator.create_default_attr(entity)
+        if entity._discriminator_attr_:
+            entity._discriminator_attr_.process_entity_inheritance(entity)
     def _link_reverse_attrs_(entity):
         database = entity._database_
         unmapped_attrs = database._unmapped_attrs.pop(entity.__name__, set())
