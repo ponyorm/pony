@@ -51,5 +51,14 @@ def populate_database():
     a1 = Assistant(name='Assistant1', group=g, salary=100, ssn='SSN4', professor=prof)
     commit()
 
+def show_all_persons():
+    for obj in fetch(p for p in Person):
+        print obj
+        print obj._attrs_
+        for attr in obj._attrs_:
+            print attr.name, "=", attr.__get__(obj)
+        print
+
 if __name__ == '__main__':
-    populate_database()
+    # populate_database()
+	show_all_persons()

@@ -898,7 +898,7 @@ class Discriminator(Required):
             if type(code) != discr_type: raise ERDiagramError(
                 'Discriminator values %r and %r of entities %s and %s have different types'
                 % (code, discr_value, cls, entity))
-        attr.code2cls[entity.__name__] = discr_value
+        attr.code2cls[discr_value] = entity
     def check(attr, val, obj=None, entity=None, from_db=False):
         if from_db: return val
         elif val is DEFAULT:
@@ -1619,10 +1619,11 @@ class EntityMeta(type):
         entity._id_ = next_entity_id()
         direct_bases = [ c for c in entity.__bases__ if issubclass(c, Entity) and c.__name__ != 'Entity' ]
         entity._direct_bases_ = direct_bases
-        entity._all_bases_ = set((entity,))
+        entity._all_bases_ = set()
         entity._direct_subclasses_ = set()
         for base in direct_bases:
             entity._all_bases_.update(base._all_bases_)
+            entity._all_bases_.add(base)
             base._direct_subclasses_.add(entity)
         if direct_bases:
             roots = set(base._root_ for base in direct_bases)
@@ -1640,11 +1641,13 @@ class EntityMeta(type):
         base_attrs_dict = {}
         for base in direct_bases:
             for a in base._attrs_:
-                prev = base_attrs_dict.setdefault(a.name, a)
-                if prev is not a: raise ERDiagramError(
+                prev = base_attrs_dict.get(a.name)
+                if prev is None:
+                    base_attrs_dict[a.name] = a
+                    base_attrs.append(a)
+                elif prev is not a: raise ERDiagramError(
                     'Attribute "%s" clashes with attribute "%s" in derived entity "%s"'
                     % (prev, a, entity.__name__))
-                base_attrs.append(a)
         entity._base_attrs_ = base_attrs
 
         new_attrs = []
@@ -1698,6 +1701,9 @@ class EntityMeta(type):
         entity._new_attrs_ = new_attrs
         entity._attrs_ = base_attrs + new_attrs
         entity._adict_ = dict((attr.name, attr) for attr in entity._attrs_)
+        entity._subclass_attrs_ = set()
+        for base in entity._all_bases_:
+            base._subclass_attrs_.update(new_attrs)
 
         entity._bits_ = {}
         next_offset = count().next
@@ -2004,7 +2010,7 @@ class EntityMeta(type):
         attr_offsets = {}
         if distinct: select_list = [ DISTINCT ]
         else: select_list = [ ALL ]
-        for attr in entity._attrs_:
+        for attr in chain(entity._attrs_, entity._subclass_attrs_):
             if attr.is_collection: continue
             if not attr.columns: continue
             attr_offsets[attr] = offsets = []
@@ -2107,15 +2113,24 @@ class EntityMeta(type):
         else: rows = cursor.fetchall()
         objects = []
         for row in rows:
-            pkval, avdict = entity._parse_row_(row, attr_offsets)
-            obj = entity._new_(pkval, 'loaded')
+            real_entity_subclass, pkval, avdict = entity._parse_row_(row, attr_offsets)
+            obj = real_entity_subclass._new_(pkval, 'loaded')
             if obj._status_ in ('deleted', 'cancelled'): continue
             obj._db_set_(avdict)
             objects.append(obj)
         return objects
     def _parse_row_(entity, row, attr_offsets):
+        discr_attr = entity._discriminator_attr_
+        if not discr_attr: real_entity_subclass = entity
+        else:
+            discr_offset = attr_offsets[discr_attr][0]
+            discr_value = discr_attr.check(row[discr_offset], None, entity, from_db=True)
+            real_entity_subclass = discr_attr.code2cls[discr_value]
+
         avdict = {}
-        for attr, offsets in attr_offsets.iteritems():
+        for attr in real_entity_subclass._attrs_:
+            offsets = attr_offsets.get(attr)
+            if offsets is None or attr.is_discriminator: continue
             assert len(attr.columns) == len(offsets)
             if not attr.reverse:
                 if len(offsets) > 1: raise NotImplementedError
@@ -2130,7 +2145,7 @@ class EntityMeta(type):
             avdict[attr] = val
         if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_, None)            
         else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
-        return pkval, avdict
+        return real_entity_subclass, pkval, avdict
     def _query_from_lambda_(entity, func, globals, locals):
         if not isinstance(func, basestring):
             names, argsname, keyargsname, defaults = inspect.getargspec(func)
