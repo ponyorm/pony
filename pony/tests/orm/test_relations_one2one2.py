@@ -113,7 +113,7 @@ class TestOneToOne2(unittest.TestCase):
         self.assertEqual([2, None, None], wives)
         husbands = db.select('husband from Female order by Female.id')
         self.assertEqual([None, 1, None], husbands)
-    @raises_exception(UnrepeatableReadError, 'Value of Male.wife for Male(1) was updated outside of current transaction')
+    @raises_exception(UnrepeatableReadError, 'Value of Male.wife for Male[1] was updated outside of current transaction')
     def test_9(self):
         db.execute('update Female set husband = 3 where id = 1')
         m1 = Male[1]

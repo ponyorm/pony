@@ -63,8 +63,9 @@ class CacheIndexError(OrmError): pass
 class ObjectNotFound(OrmError):
     def __init__(exc, entity, pkval):
         if type(pkval) is tuple:
-            msg = '%s%r' % (entity.__name__, pkval)
-        else: msg = '%s(%r)' % (entity.__name__, pkval)
+            pkval = ','.join(map(repr, pkval))
+        else: pkval = repr(pkval)
+        msg = '%s[%s]' % (entity.__name__, pkval)
         OrmError.__init__(exc, msg)
         exc.entity = entity
         exc.pkval = pkval
@@ -2368,9 +2369,10 @@ class Entity(object):
     @cut_traceback
     def __repr__(obj):
         pkval = obj._pkval_
-        if pkval is None: return '%s(new:%d)' % (obj.__class__.__name__, obj._newid_)
-        elif obj._pk_is_composite_: return '%s%r' % (obj.__class__.__name__, pkval)
-        else: return '%s(%r)' % (obj.__class__.__name__, pkval)
+        if pkval is None: return '%s[new:%d]' % (obj.__class__.__name__, obj._newid_)
+        if obj._pk_is_composite_: pkval = ','.join(map(repr, pkval))
+        else: pkval = repr(pkval)
+        return '%s[%s]' % (obj.__class__.__name__, pkval)
     def _load_(obj):
         cache = obj._cache_
         if not cache.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
