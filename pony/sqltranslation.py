@@ -420,6 +420,10 @@ class SQLTranslator(ASTTranslator):
         alias, _ = monad.tableref.make_join()
         translator.alias = alias
         translator.select, translator.attr_offsets = entity._construct_select_clause_(alias, translator.distinct)
+
+        discr_criteria = entity._construct_discriminator_criteria_()
+        if discr_criteria: translator.conditions.insert(0, discr_criteria)
+
         first_from_item = translator.from_[1]
         if len(first_from_item) > 3:
             assert len(first_from_item) == 4
