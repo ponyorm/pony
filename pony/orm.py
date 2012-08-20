@@ -2026,6 +2026,13 @@ class EntityMeta(type):
                 offsets.append(len(select_list) - 1)
                 select_list.append([ COLUMN, alias, column ])
         return select_list, attr_offsets
+    def _construct_discriminator_criteria_(entity):
+        discr_attr = entity._discriminator_attr_
+        if discr_attr is None: return None
+        code2cls = discr_attr.code2cls
+        discr_values = [ [ VALUE, cls._discriminator_ ] for cls in entity._subclasses_ ]
+        discr_values.append([ VALUE, entity._discriminator_])
+        return [ IN, [ COLUMN, None, discr_attr.column ], discr_values ]
     def _construct_batchload_sql_(entity, batch_size, attr=None):
         query_key = batch_size, attr
         cached_sql = entity._batchload_sql_cache_.get(query_key)
@@ -2056,14 +2063,9 @@ class EntityMeta(type):
                                                      for j, (column, converter) in enumerate(pairs) ]
                                          for i in xrange(batch_size) ] ]
 
-        discr_attr = entity._discriminator_attr_
-        if discr_attr is not None:
-            code2cls = discr_attr.code2cls
-            discr_values = [ [ VALUE, cls._discriminator_ ] for cls in entity._subclasses_ ]
-            discr_values.append([ VALUE, entity._discriminator_])
-            discr_cond = [ IN, [ COLUMN, None, discr_attr.column ], discr_values ]
-            criteria_list = [ [ AND, discr_cond ] + criteria_list ]
-
+        discr_criteria = entity._construct_discriminator_criteria_()
+        if discr_criteria: criteria_list.insert(0, discr_criteria)
+            
         sql_ast = [ SELECT, select_list, from_list, [ WHERE ] + criteria_list ]
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
@@ -2082,13 +2084,10 @@ class EntityMeta(type):
         extractors = {}
 
         discr_attr = entity._discriminator_attr_
-        if discr_attr is not None and discr_attr not in query_attrs:
-            code2cls = discr_attr.code2cls
-            discr_values = [ [ VALUE, cls._discriminator_ ] for cls in entity._subclasses_ ]
-            discr_values.append([ VALUE, entity._discriminator_])
+        if discr_attr and (discr_attr, False) not in query_attrs:
+            discr_criteria = entity._construct_discriminator_criteria_()
+            if discr_criteria: where_list.append(discr_criteria)
 
-            where_list.append([ IN, [ COLUMN, None, discr_attr.column ], discr_values ])
-        
         for attr, attr_is_none in query_attrs:
             if not attr.reverse:
                 if not attr_is_none:
