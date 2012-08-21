@@ -377,9 +377,9 @@ class SQLTranslator(ASTTranslator):
             else:
                 if len(attr_names) > 1: raise NotImplementedError, ast2src(qual.iter)
                 attrname = attr_names[0]
-                parent_alias = translator.get_tableref(node_name)
-                if parent_alias is None: raise TranslationError("Name %r must be defined in query" % node_name)
-                parent_entity = parent_alias.entity
+                parent_tableref = translator.get_tableref(node_name)
+                if parent_tableref is None: raise TranslationError("Name %r must be defined in query" % node_name)
+                parent_entity = parent_tableref.entity
                 attr = parent_entity._adict_.get(attrname)
                 if attr is None: raise AttributeError, attrname
                 if not attr.is_collection: raise TypeError, '%s is not collection' % ast2src(qual.iter)
@@ -390,7 +390,9 @@ class SQLTranslator(ASTTranslator):
                 if reverse.is_collection:
                     if not isinstance(reverse, Set): raise NotImplementedError(ast2src(qual.iter))
                     translator.distinct = True
-                tablerefs[name] = JoinedTableRef(translator, name, parent_alias, attr)
+                elif parent_tableref.alias != tree.quals[i-1].assign.name:
+                    translator.distinct = True
+                tablerefs[name] = JoinedTableRef(translator, name, parent_tableref, attr)
 
             for if_ in qual.ifs:
                 assert isinstance(if_, ast.GenExprIf)
@@ -407,16 +409,9 @@ class SQLTranslator(ASTTranslator):
             monad = monad.parent
         if not isinstance(monad, translator.ObjectMixin):
             raise NotImplementedError, ast2src(tree.expr)
-        name_path = monad.tableref.name_path
         entity = translator.entity = monad.type
-        if isinstance(monad, translator.ObjectIterMonad):
-            if name_path != translator.tree.quals[-1].assign.name:
-                translator.distinct = True
-        elif isinstance(monad, translator.ObjectAttrMonad):
-            translator.distinct = True
-            assert name_path in tablerefs
-        elif isinstance(monad, translator.ObjectFlatMonad): pass
-        else: assert False
+        assert isinstance(monad, ObjectMixin) and not isinstance(monad, ObjectParamMonad)
+        translator.distinct |= monad.requires_distinct()
         alias, _ = monad.tableref.make_join()
         translator.alias = alias
         translator.select, translator.attr_offsets = entity._construct_select_clause_(alias, translator.distinct)
@@ -1054,6 +1049,8 @@ class ObjectMixin(MonadMixin):
             return translator.AttrSetMonad(monad, [ attr ])
         else:
             return translator.ObjectFlatMonad(monad, attr)
+    def requires_distinct(monad):
+        return monad.attr.reverse.is_collection or monad.parent.requires_distinct()
 
 class ObjectIterMonad(ObjectMixin, Monad):
     def __init__(monad, translator, tableref, entity):
@@ -1063,6 +1060,8 @@ class ObjectIterMonad(ObjectMixin, Monad):
         entity = monad.type
         alias, pk_columns = monad.tableref.make_join()
         return [ [ COLUMN, alias, column ] for column in pk_columns ]
+    def requires_distinct(monad):
+        return monad.tableref.name_path != monad.translator.tree.quals[-1].assign.name
 
 class AttrMonad(Monad):
     @staticmethod
@@ -1189,6 +1188,8 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
         else:
             for i, param in enumerate(monad.params):
                 extractors[param] = lambda vars, i=i, e=monad.extractor : e(vars)._get_raw_pkval_()[i]
+    def requires_distinct(monad):
+        assert False
 
 class StringParamMonad(StringMixin, ParamMonad): pass
 class NumericParamMonad(NumericMixin, ParamMonad): pass

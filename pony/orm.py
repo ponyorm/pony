@@ -3326,7 +3326,7 @@ class Query(object):
         cursor = query._exec_sql(query._order, range)
         result = translator.entity._fetch_objects(cursor, translator.attr_offsets)
         if translator.attr is None: return result
-        return map(attrgetter(translator.attr.name), result)
+        return list(set(map(attrgetter(translator.attr.name), result)))
     @cut_traceback
     def fetch(query):
         return query._fetch()
