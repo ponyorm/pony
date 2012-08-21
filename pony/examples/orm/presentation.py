@@ -35,7 +35,7 @@ class Student(db.Entity):
     id = PrimaryKey(int, auto=True)
     name = Required(unicode)
     dob = Required(date)
-    picture = Optional(buffer)
+    picture = Optional(buffer, lazy=True)
     gpa = Required(float, default=0)
     group = Required(Group)
     courses = Set(Course)

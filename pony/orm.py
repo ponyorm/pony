@@ -7,6 +7,7 @@ import datetime
 try: from pony.thirdparty import etree
 except ImportError: etree = None
 
+import pony
 from pony import options
 from pony.decompiling import decompile
 from pony.sqlsymbols import *
@@ -22,6 +23,8 @@ from pony.utils import (
     )
 
 __all__ = '''
+    pony
+
     DBException RowNotFound MultipleRowsFound TooManyRowsFound
 
     Warning Error InterfaceError DatabaseError DataError OperationalError
@@ -513,7 +516,7 @@ class Attribute(object):
     __slots__ = 'is_required', 'is_discriminator', 'is_unique', 'is_indexed', \
                 'is_pk', 'is_collection', 'is_ref', 'is_basic', \
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
-                'args', 'auto', 'default', 'reverse', 'composite_keys', \
+                'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'keyargs'
     @cut_traceback
     def __init__(attr, py_type, *args, **keyargs):
@@ -573,11 +576,15 @@ class Attribute(object):
         attr.col_paths = []
         attr._columns_checked = False
         attr.composite_keys = []
+        attr.lazy = keyargs.pop('lazy', getattr(py_type, 'lazy', False))
+        attr.lazy_sql_cache = None
         attr.keyargs = keyargs
         attr.converters = []
     def _init_(attr, entity, name):
         attr.entity = entity
         attr.name = name
+        if attr.pk_offset is not None and attr.lazy:
+            raise TypeError('Primary key attribute %s cannot be lazy' % attr)
     @cut_traceback
     def __repr__(attr):
         owner_name = not attr.entity and '?' or attr.entity.__name__
@@ -618,6 +625,19 @@ class Attribute(object):
         if cache is not val._cache_:
             raise TransactionError('An attempt to mix objects belongs to different caches')
         return val
+    def parse_value(attr, row, offsets):
+        assert len(attr.columns) == len(offsets)
+        if not attr.reverse:
+            if len(offsets) > 1: raise NotImplementedError
+            offset = offsets[0]
+            val = attr.check(row[offset], None, attr.entity, from_db=True)
+        else:
+            vals = map(row.__getitem__, offsets)
+            if None in vals:
+                assert len(set(vals)) == 1
+                val = None
+            else: val = attr.py_type._get_by_raw_pkval_(vals)
+        return val
     def load(attr, obj):
         if not attr.columns:
             reverse = attr.reverse
@@ -631,7 +651,27 @@ class Attribute(object):
                 assert obj._vals_[attr.name] == dbval
                 return dbval
             else: assert False
-        obj._load_()
+        if attr.lazy:
+            entity = attr.entity
+            database = entity._database_
+            if not attr.lazy_sql_cache:
+                select_list = [ ALL ] + [ [ COLUMN, None, column ] for column in attr.columns ]
+                from_list = [ FROM, [ None, TABLE, entity._table_ ] ]
+                pk_columns = entity._pk_columns_
+                pk_converters = entity._pk_converters_
+                criteria_list = [ [ EQ, [ COLUMN, None, column ], [ PARAM, i, converter ] ]
+                                  for i, (column, converter) in enumerate(izip(pk_columns, pk_converters)) ]
+                sql_ast = [ SELECT, select_list, from_list, [ WHERE ] + criteria_list ]
+                sql, adapter = database._ast2sql(sql_ast)
+                offsets = tuple(range(len(attr.columns)))
+                attr.lazy_sql_cache = sql, adapter, offsets
+            else: sql, adapter, offsets = attr.lazy_sql_cache
+            arguments = adapter(obj._get_raw_pkval_())
+            cursor = database._exec_sql(sql, arguments)
+            row = cursor.fetchone()
+            dbval = attr.parse_value(row, offsets)
+            attr.db_set(obj, dbval)
+        else: obj._load_()
         return obj._vals_[attr.name]
     @cut_traceback
     def __get__(attr, obj, cls=None):
@@ -2021,6 +2061,7 @@ class EntityMeta(type):
         for attr in chain(root._attrs_, root._subclass_attrs_):
             if attr.is_collection: continue
             if not attr.columns: continue
+            if attr.lazy: continue
             attr_offsets[attr] = offsets = []
             for column in attr.columns:
                 offsets.append(len(select_list) - 1)
@@ -2156,18 +2197,7 @@ class EntityMeta(type):
         for attr in real_entity_subclass._attrs_:
             offsets = attr_offsets.get(attr)
             if offsets is None or attr.is_discriminator: continue
-            assert len(attr.columns) == len(offsets)
-            if not attr.reverse:
-                if len(offsets) > 1: raise NotImplementedError
-                offset = offsets[0]
-                val = attr.check(row[offset], None, entity, from_db=True)
-            else:
-                vals = map(row.__getitem__, offsets)
-                if None in vals:
-                    assert len(set(vals)) == 1
-                    val = None
-                else: val = attr.py_type._get_by_raw_pkval_(vals)
-            avdict[attr] = val
+            avdict[attr] = attr.parse_value(row, offsets)
         if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_, None)            
         else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
         return real_entity_subclass, pkval, avdict

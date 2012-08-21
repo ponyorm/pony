@@ -60,10 +60,10 @@ def wrap_dbapi_exceptions(func, provider, *args, **keyargs):
     except dbapi_module.Warning, e: raise Warning(exceptions=[e])
 
 class LongStr(str):
-    pass
+    lazy = True
 
 class LongUnicode(unicode):
-    pass
+    lazy = True
 
 class DBAPIProvider(object):
     paramstyle = 'qmark'
