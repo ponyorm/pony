@@ -103,7 +103,7 @@ class TestKeys(unittest.TestCase):
             a = PrimaryKey(int)
             b = Unique(a, column='x')
 
-    @raises_exception(TypeError, 'Set attribute cannot be part of unique index')
+    @raises_exception(TypeError, 'Set attribute Entity1.b cannot be part of unique index')
     def test_unique7(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
@@ -111,7 +111,7 @@ class TestKeys(unittest.TestCase):
             b = Set('Entity2')
             Unique(b)
 
-    @raises_exception(TypeError, 'Optional attribute cannot be part of primary key')
+    @raises_exception(TypeError, 'Optional attribute Entity1.b cannot be part of primary key')
     def test_unique8(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):

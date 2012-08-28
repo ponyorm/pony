@@ -978,10 +978,6 @@ class Unique(Required):
             return result
 
         for attr in attrs:
-            if attr.is_collection or attr.is_discriminator or (
-                    is_pk and not attr.is_required and not attr.auto):
-                raise TypeError('%s attribute cannot be part of %s'
-                                % (attr.__class__.__name__, is_pk and 'primary key' or 'unique index'))
             attr.is_indexed = True
         if len(attrs) == 1:
             attr = attrs[0]
@@ -991,6 +987,11 @@ class Unique(Required):
             for i, attr in enumerate(attrs): attr.composite_keys.append((attrs, i))
         keys[attrs] = is_pk
         return None
+    def _init_(attr, entity, name):
+        Required._init_(attr, entity, name)
+        if isinstance(attr.py_type, type) and issubclass(attr.py_type, float):
+            raise TypeError('%s attribute %s cannot be of type float'
+                            % (attr.__class__.__name__, attr))
 
 def populate_criteria_list(criteria_list, columns, converters, params_count=0, table_alias=None):
     assert len(columns) == len(converters)
@@ -1710,11 +1711,17 @@ class EntityMeta(type):
         new_attrs.sort(key=attrgetter('id'))
 
         keys = entity.__dict__.get('_keys_', {})
-        for key in keys:
+        for key, is_pk in keys.items():
             for attr in key:
-                assert isinstance(attr, Attribute) and not attr.is_collection
                 if attr.entity is not entity: raise ERDiagramError(
                     'Invalid use of attribute %s in entity %s' % (attr, entity.__name__))
+                if attr.is_collection or attr.is_discriminator or (is_pk and not attr.is_required and not attr.auto):
+                    raise TypeError('%s attribute %s cannot be part of %s'
+                                    % (attr.__class__.__name__, attr, is_pk and 'primary key' or 'unique index'))
+                if isinstance(attr.py_type, type) and issubclass(attr.py_type, float):
+                    raise TypeError('Attribute %s of type float cannot be part of %s'
+                                    % (attr, is_pk and 'primary key' or 'unique index'))
+                
         primary_keys = set(key for key, is_pk in keys.items() if is_pk)
         if direct_bases:
             if primary_keys: raise ERDiagramError('Primary key cannot be redefined in derived classes')
