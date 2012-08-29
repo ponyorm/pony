@@ -10,7 +10,7 @@ from pony.thirdparty import sqlite
 
 from pony import dbschema, sqltranslation, sqlbuilding, dbapiprovider
 from pony.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
-from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple_decorator, absolutize_path
+from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple_decorator, absolutize_path, throw
 
 def get_provider(filename, create_db=False):
     return SQLiteProvider(filename, create_db)
@@ -124,7 +124,7 @@ class Pool(localbase):
         if con is not None: return con
         filename = pool.filename
         if not pool.create_db and not os.path.exists(filename):
-            raise IOError("Database file is not found: %r" % filename)
+            throw(IOError, "Database file is not found: %r" % filename)
         pool.con = con = sqlite.connect(filename)
         _init_connection(con)
         return con
@@ -169,7 +169,7 @@ def _init_connection(con):
     con.create_function("pow", 2, pow)
 
 def unexpected_args(attr, args):
-    raise TypeError(
+    throw(TypeError, 
         'Unexpected positional argument%s for attribute %s: %r'
         % ((args > 1 and 's' or ''), attr, ', '.join(map(repr, args))))
 

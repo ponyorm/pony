@@ -18,7 +18,7 @@ from pony.dbapiprovider import (
     IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
 from pony.utils import (
-    localbase, simple_decorator, decorator_with_params, cut_traceback,
+    localbase, simple_decorator, decorator_with_params, cut_traceback, throw,
     import_module, parse_expr, is_ident, reraise, avg, tostring
     )
 
@@ -155,7 +155,7 @@ def adapt_sql(sql, paramstyle):
                 key = 'p%d' % (len(keyargs) + 1)
                 keyargs[key] = expr
                 result.append('%%(%s)s' % key)
-            else: raise NotImplementedError
+            else: throw(NotImplementedError)
     adapted_sql = ''.join(result)
     if args:
         source = '(%s,)' % ', '.join(args)
@@ -184,7 +184,7 @@ class Database(object):
     @cut_traceback
     def __init__(self, provider_name, *args, **keyargs):
         # First argument cannot be named 'database', because 'database' can be in keyargs
-        if not isinstance(provider_name, basestring): raise TypeError
+        if not isinstance(provider_name, basestring): throw(TypeError)
         provider_module = import_module('pony.dbproviders.' + provider_name)
         self.provider = provider = provider_module.get_provider(*args, **keyargs)
         self.priority = 0
@@ -250,7 +250,7 @@ class Database(object):
         max_fetch_count = options.MAX_FETCH_COUNT
         if max_fetch_count is not None:
             result = cursor.fetchmany(max_fetch_count)
-            if cursor.fetchone() is not None: raise TooManyRowsFound
+            if cursor.fetchone() is not None: throw(TooManyRowsFound)
         else: result = cursor.fetchall()
         if len(cursor.description) == 1: result = [ row[0] for row in result ]
         else:
@@ -265,8 +265,8 @@ class Database(object):
     @cut_traceback
     def get(database, sql, globals=None, locals=None):
         rows = database.select(sql, globals, locals, 2)
-        if not rows: raise RowNotFound
-        if len(rows) > 1: raise MultipleRowsFound
+        if not rows: throw(RowNotFound)
+        if len(rows) > 1: throw(MultipleRowsFound)
         row = rows[0]
         return row
     @cut_traceback
@@ -328,16 +328,16 @@ class Database(object):
         return cursor
     @cut_traceback
     def generate_mapping(database, filename=None, check_tables=False, create_tables=False):
-        if create_tables and check_tables: raise TypeError(
+        if create_tables and check_tables: throw(TypeError, 
             "Parameters 'check_tables' and 'create_tables' cannot be set to True at the same time")
 
         def get_columns(table, column_names):
             return tuple(map(table.column_dict.__getitem__, column_names))
 
-        if database.schema: raise MappingError('Mapping was already generated')
-        if filename is not None: raise NotImplementedError
+        if database.schema: throw(MappingError, 'Mapping was already generated')
+        if filename is not None: throw(NotImplementedError)
         for entity_name in database._unmapped_attrs:
-            raise ERDiagramError('Entity definition %s was not found' % entity_name)
+            throw(ERDiagramError, 'Entity definition %s was not found' % entity_name)
 
         provider = database.provider
         schema = database.schema = provider.dbschema_cls(provider)
@@ -348,7 +348,7 @@ class Database(object):
 
             is_subclass = entity._root_ is not entity
             if is_subclass:
-                if table_name is not None: raise NotImplementedError
+                if table_name is not None: throw(NotImplementedError)
                 table_name = entity._root_._table_
                 entity._table_ = table_name
             elif table_name is None:
@@ -361,31 +361,31 @@ class Database(object):
             elif table.entities:
                 for e in table.entities:
                     if e._root_ is not entity._root_:
-                        raise MappingError("Entities %s and %s cannot be mapped to table %s "
+                        throw(MappingError, "Entities %s and %s cannot be mapped to table %s "
                                            "because they don't belong to the same hierarchy"
                                            % (e, entity, table_name))
             table.entities.add(entity)
 
-            # if entity._base_attrs_: raise NotImplementedError
+            # if entity._base_attrs_: throw(NotImplementedError)
             for attr in entity._new_attrs_:
                 if attr.is_collection:
-                    if not isinstance(attr, Set): raise NotImplementedError
+                    if not isinstance(attr, Set): throw(NotImplementedError)
                     reverse = attr.reverse
                     if not reverse.is_collection: # many-to-one:
-                        if attr.table is not None: raise MappingError(
+                        if attr.table is not None: throw(MappingError, 
                             "Parameter 'table' is not allowed for many-to-one attribute %s" % attr)
-                        elif attr.columns: raise NotImplementedError(
+                        elif attr.columns: throw(NotImplementedError, 
                             "Parameter 'column' is not allowed for many-to-one attribute %s" % attr)
                         continue
                     # many-to-many:
-                    if not isinstance(reverse, Set): raise NotImplementedError
+                    if not isinstance(reverse, Set): throw(NotImplementedError)
                     if attr.entity.__name__ > reverse.entity.__name__: continue
                     if attr.entity is reverse.entity and attr.name > reverse.name: continue
 
                     if attr.table:
                         if not reverse.table: reverse.table = attr.table
                         elif reverse.table != attr.table:
-                            raise MappingError("Parameter 'table' for %s and %s do not match" % (attr, reverse))
+                            throw(MappingError, "Parameter 'table' for %s and %s do not match" % (attr, reverse))
                         table_name = attr.table
                     elif reverse.table: table_name = attr.table = reverse.table
                     else:
@@ -396,12 +396,12 @@ class Database(object):
                     if m2m_table is not None:
                         if m2m_table.entities or m2m_table.m2m:
                             if isinstance(table_name, tuple): table_name = '.'.join(table_name)
-                            raise MappingError("Table name '%s' is already in use" % table_name)
-                        raise NotImplementedError
+                            throw(MappingError, "Table name '%s' is already in use" % table_name)
+                        throw(NotImplementedError)
                     m2m_table = schema.add_table(table_name)
                     m2m_columns_1 = attr.get_m2m_columns(is_reverse=False)
                     m2m_columns_2 = reverse.get_m2m_columns(is_reverse=True)
-                    if m2m_columns_1 == m2m_columns_2: raise MappingError(
+                    if m2m_columns_1 == m2m_columns_2: throw(MappingError, 
                         'Different column names should be specified for attributes %s and %s' % (attr, reverse))
                     assert len(m2m_columns_1) == len(reverse.converters)
                     assert len(m2m_columns_2) == len(attr.converters)
@@ -447,8 +447,8 @@ class Database(object):
                 if attr.is_collection:
                     reverse = attr.reverse
                     if not reverse.is_collection: continue
-                    if not isinstance(attr, Set): raise NotImplementedError
-                    if not isinstance(reverse, Set): raise NotImplementedError
+                    if not isinstance(attr, Set): throw(NotImplementedError)
+                    if not isinstance(reverse, Set): throw(NotImplementedError)
                     m2m_table = schema.tables[attr.table]
                     parent_columns = get_columns(table, entity._pk_columns_)
                     child_columns = get_columns(m2m_table, reverse.columns)
@@ -520,7 +520,7 @@ class Attribute(object):
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'keyargs'
     @cut_traceback
     def __init__(attr, py_type, *args, **keyargs):
-        if attr.__class__ is Attribute: raise TypeError("'Attribute' is abstract type")
+        if attr.__class__ is Attribute: throw(TypeError, "'Attribute' is abstract type")
         attr.is_required = isinstance(attr, Required)
         attr.is_discriminator = isinstance(attr, Discriminator)
         attr.is_unique = isinstance(attr, Unique)  # Also can be set to True later
@@ -530,11 +530,11 @@ class Attribute(object):
         else: attr.pk_offset = None
         attr.id = next_attr_id()
         if not isinstance(py_type, basestring) and not isinstance(py_type, type):
-            if py_type is datetime: raise TypeError(
+            if py_type is datetime: throw(TypeError, 
                 'datetime is the module and cannot be used as attribute type. Use datetime.datetime instead')
-            raise TypeError('Incorrect type of attribute: %r' % py_type)
+            throw(TypeError, 'Incorrect type of attribute: %r' % py_type)
         if py_type == 'Entity' or (isinstance(py_type, EntityMeta) and py_type.__name__ == 'Entity'):
-            raise TypeError('Cannot link attribute to Entity class. Must use Entity subclass instead')
+            throw(TypeError, 'Cannot link attribute to Entity class. Must use Entity subclass instead')
         attr.py_type = py_type
         attr.is_collection = isinstance(attr, Collection)
         attr.is_ref = not attr.is_collection and isinstance(attr.py_type, (EntityMeta, basestring))
@@ -548,29 +548,29 @@ class Attribute(object):
         except KeyError: attr.default = None
         else:
             if attr.default is None and attr.is_required:
-                raise TypeError('Default value for required attribute cannot be None' % attr)
+                throw(TypeError, 'Default value for required attribute cannot be None' % attr)
 
         attr.reverse = keyargs.pop('reverse', None)
         if not attr.reverse: pass
         elif not isinstance(attr.reverse, (basestring, Attribute)):
-            raise TypeError("Value of 'reverse' option must be name of reverse attribute). Got: %r" % attr.reverse)
+            throw(TypeError, "Value of 'reverse' option must be name of reverse attribute). Got: %r" % attr.reverse)
         elif not isinstance(attr.py_type, (basestring, EntityMeta)):
-            raise TypeError('Reverse option cannot be set for this type: %r' % attr.py_type)
+            throw(TypeError, 'Reverse option cannot be set for this type: %r' % attr.py_type)
 
         attr.column = keyargs.pop('column', None)
         attr.columns = keyargs.pop('columns', None)
         if attr.column is not None:
             if attr.columns is not None:
-                raise TypeError("Parameters 'column' and 'columns' cannot be specified simultaneously")
+                throw(TypeError, "Parameters 'column' and 'columns' cannot be specified simultaneously")
             if not isinstance(attr.column, basestring):
-                raise TypeError("Parameter 'column' must be a string. Got: %r" % attr.column)
+                throw(TypeError, "Parameter 'column' must be a string. Got: %r" % attr.column)
             attr.columns = [ attr.column ]
         elif attr.columns is not None:
             if not isinstance(attr.columns, (tuple, list)):
-                raise TypeError("Parameter 'columns' must be a list. Got: %r'" % attr.columns)
+                throw(TypeError, "Parameter 'columns' must be a list. Got: %r'" % attr.columns)
             for column in attr.columns:
                 if not isinstance(column, basestring):
-                    raise TypeError("Items of parameter 'columns' must be strings. Got: %r" % attr.columns)
+                    throw(TypeError, "Items of parameter 'columns' must be strings. Got: %r" % attr.columns)
             if len(attr.columns) == 1: attr.column = attr.columns[0]
         else: attr.columns = []
         attr.col_paths = []
@@ -584,7 +584,7 @@ class Attribute(object):
         attr.entity = entity
         attr.name = name
         if attr.pk_offset is not None and attr.lazy:
-            raise TypeError('Primary key attribute %s cannot be lazy' % attr)
+            throw(TypeError, 'Primary key attribute %s cannot be lazy' % attr)
     @cut_traceback
     def __repr__(attr):
         owner_name = not attr.entity and '?' or attr.entity.__name__
@@ -598,7 +598,7 @@ class Attribute(object):
         if val is DEFAULT:
             default = attr.default
             if default is None:
-                if attr.is_required and not attr.auto: raise ConstraintError(
+                if attr.is_required and not attr.auto: throw(ConstraintError, 
                     'Required attribute %s.%s does not specified' % (entity.__name__, attr.name))
                 return None
             if callable(default): val = default()
@@ -607,10 +607,10 @@ class Attribute(object):
         
         reverse = attr.reverse
         if not reverse:
-            if isinstance(val, Entity): raise TypeError('Attribute %s.%s must be of %s type. Got: %s'
+            if isinstance(val, Entity): throw(TypeError, 'Attribute %s.%s must be of %s type. Got: %s'
                 % (attr.entity.__name__, attr.name, attr.py_type.__name__, val))
             if attr.converters:
-                if len(attr.converters) != 1: raise NotImplementedError
+                if len(attr.converters) != 1: throw(NotImplementedError)
                 converter = attr.converters[0]
                 if converter is not None:
                     if from_db: return converter.sql2py(val)
@@ -618,17 +618,17 @@ class Attribute(object):
             return attr.py_type(val)
 
         if not isinstance(val, reverse.entity):
-            raise ConstraintError('Value of attribute %s.%s must be an instance of %s. Got: %s'
+            throw(ConstraintError, 'Value of attribute %s.%s must be an instance of %s. Got: %s'
                                   % (entity.__name__, attr.name, reverse.entity.__name__, val))
         if obj is not None: cache = obj._cache_
         else: cache = entity._get_cache_()
         if cache is not val._cache_:
-            raise TransactionError('An attempt to mix objects belongs to different caches')
+            throw(TransactionError, 'An attempt to mix objects belongs to different caches')
         return val
     def parse_value(attr, row, offsets):
         assert len(attr.columns) == len(offsets)
         if not attr.reverse:
-            if len(offsets) > 1: raise NotImplementedError
+            if len(offsets) > 1: throw(NotImplementedError)
             offset = offsets[0]
             val = attr.check(row[offset], None, attr.entity, from_db=True)
         else:
@@ -676,7 +676,7 @@ class Attribute(object):
     @cut_traceback
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
-        if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
+        if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
         result = attr.get(obj)
         if attr.pk_offset is not None: return result
         bit = obj._bits_[attr]
@@ -684,7 +684,7 @@ class Attribute(object):
         if wbits is not None and not wbits & bit: obj._rbits_ |= bit
         return result
     def get(attr, obj):
-        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if obj._status_ in ('deleted', 'cancelled'): throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
         val = obj._vals_.get(attr.name, NOT_LOADED)
         if val is NOT_LOADED: val = attr.load(obj)
         if attr.reverse and val._discriminator_ and val._subclasses_:
@@ -694,8 +694,8 @@ class Attribute(object):
     @cut_traceback
     def __set__(attr, obj, new_val, undo_funcs=None):
         cache = obj._cache_
-        if not cache.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
-        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if not cache.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if obj._status_ in ('deleted', 'cancelled'): throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
         is_reverse_call = undo_funcs is not None
         reverse = attr.reverse
         new_val = attr.check(new_val, obj, from_db=False)
@@ -705,7 +705,7 @@ class Attribute(object):
             elif obj._pk_is_composite_:
                 if new_val == pkval[attr.pk_offset]: return
             elif new_val == pkval: return
-            raise TypeError('Cannot change value of primary key')
+            throw(TypeError, 'Cannot change value of primary key')
         old_val =  obj._vals_.get(attr.name, NOT_LOADED)
         if old_val is NOT_LOADED and reverse and not reverse.is_collection:
             old_val = attr.load(obj)
@@ -759,7 +759,7 @@ class Attribute(object):
                     if new_val is not None: reverse.__set__(old_val, None, undo_funcs)
                 elif isinstance(reverse, Set):
                     reverse.reverse_remove((old_val,), obj, undo_funcs)
-                else: raise NotImplementedError
+                else: throw(NotImplementedError)
         except:
             if not is_reverse_call:
                 for undo_func in reversed(undo_funcs): undo_func()
@@ -783,7 +783,7 @@ class Attribute(object):
             assert old_dbval is not NOT_LOADED
             if new_dbval is NOT_LOADED: diff = ''
             else: diff = ' (was: %s, now: %s)' % (old_dbval, new_dbval)
-            raise UnrepeatableReadError(
+            throw(UnrepeatableReadError, 
                 'Value of %s.%s for %s was updated outside of current transaction%s'
                 % (obj.__class__.__name__, attr.name, obj, diff))
 
@@ -814,7 +814,7 @@ class Attribute(object):
                 if new_dbval is not NOT_LOADED: reverse.db_set(old_dbval, NOT_LOADED, is_reverse_call=True)
             elif isinstance(reverse, Set):
                 reverse.db_reverse_remove((old_dbval,), obj)
-            else: raise NotImplementedError
+            else: throw(NotImplementedError)
     def update_reverse(attr, obj, old_val, new_val, undo_funcs):
         reverse = attr.reverse
         if not reverse.is_collection:
@@ -823,7 +823,7 @@ class Attribute(object):
         elif isinstance(reverse, Set):
             if old_val not in (None, NOT_LOADED): reverse.reverse_remove((old_val,), obj, undo_funcs)
             if new_val is not None: reverse.reverse_add((new_val,), obj, undo_funcs)
-        else: raise NotImplementedError
+        else: throw(NotImplementedError)
     def db_update_reverse(attr, obj, old_dbval, new_dbval):
         reverse = attr.reverse
         if not reverse.is_collection:
@@ -832,9 +832,9 @@ class Attribute(object):
         elif isinstance(reverse, Set):
             if old_dbval not in (None, NOT_LOADED): reverse.db_reverse_remove((old_dbval,), obj)
             if new_dbval is not None: reverse.db_reverse_add((new_dbval,), obj)
-        else: raise NotImplementedError
+        else: throw(NotImplementedError)
     def __delete__(attr, obj):
-        raise NotImplementedError
+        throw(NotImplementedError)
     def get_raw_values(attr, val):
         reverse = attr.reverse
         if not reverse: return (val,)
@@ -850,7 +850,7 @@ class Attribute(object):
         reverse = attr.reverse
         if not reverse: # attr is not part of relationship
             if not attr.columns: attr.columns = [ attr.name ]
-            elif len(attr.columns) > 1: raise MappingError("Too many columns were specified for %s" % attr)
+            elif len(attr.columns) > 1: throw(MappingError, "Too many columns were specified for %s" % attr)
             attr.col_paths = [ attr.name ]
             attr.converters = [ provider.get_converter_by_attr(attr) ]
         else:
@@ -859,7 +859,7 @@ class Attribute(object):
                 reverse_pk_col_paths = reverse.entity._pk_paths_
                 if not attr.columns:
                     attr.columns = provider.get_default_column_names(attr, reverse_pk_columns)
-                elif len(attr.columns) != len(reverse_pk_columns): raise MappingError(
+                elif len(attr.columns) != len(reverse_pk_columns): throw(MappingError, 
                     'Invalid number of columns specified for %s' % attr)
                 attr.col_paths = [ '-'.join((attr.name, paths)) for paths in reverse_pk_col_paths ]
                 attr.converters = []
@@ -904,9 +904,9 @@ class Required(Attribute):
             if entity is not None: pass
             elif obj is not None: entity = obj.__class__
             else: entity = attr.entity
-            if obj is None: raise ConstraintError(
+            if obj is None: throw(ConstraintError, 
                 'Required attribute %s.%s cannot be set to None' % (entity.__name__, attr.name))
-            else: raise ConstraintError(
+            else: throw(ConstraintError, 
                 'Required attribute %s.%s for %r cannot be set to None' % (entity.__name__, attr.name, obj))
         return val
 
@@ -916,13 +916,13 @@ class Discriminator(Required):
         Attribute.__init__(attr, py_type, *args, **keyargs)
         attr.code2cls = {}
     def _init_(attr, entity, name):
-        if entity._root_ is not entity: raise ERDiagramError(
+        if entity._root_ is not entity: throw(ERDiagramError, 
             'Discriminator attribute %s cannot be declared in subclass' % attr)
         Required._init_(attr, entity, name)
         entity._discriminator_attr_ = attr
     @staticmethod
     def create_default_attr(entity):
-        if hasattr(entity, 'classtype'): raise ERDiagramError(
+        if hasattr(entity, 'classtype'): throw(ERDiagramError, 
             "Cannot create discriminator column for %s automatically "
             "because name 'classtype' is already in use" % entity.__name__)
         attr = Discriminator(str, column='classtype')
@@ -939,7 +939,7 @@ class Discriminator(Required):
             discr_value = entity._discriminator_ = entity.__name__
         discr_type = type(discr_value)
         for code, cls in attr.code2cls.items():
-            if type(code) != discr_type: raise ERDiagramError(
+            if type(code) != discr_type: throw(ERDiagramError, 
                 'Discriminator values %r and %r of entities %s and %s have different types'
                 % (code, discr_value, cls, entity))
         attr.code2cls[discr_value] = entity
@@ -955,7 +955,7 @@ class Discriminator(Required):
         if obj is None: return attr
         return obj._discriminator_
     def __set__(attr, obj, new_val):
-        raise TypeError('Cannot assign value to discriminator attribute')
+        throw(TypeError, 'Cannot assign value to discriminator attribute')
     def db_set(attr, obj, new_dbval):
         assert False
     def update_reverse(attr, obj, old_val, new_val, undo_funcs):
@@ -965,10 +965,10 @@ class Unique(Required):
     __slots__ = []
     def __new__(cls, *args, **keyargs):
         is_pk = issubclass(cls, PrimaryKey)
-        if not args: raise TypeError('Invalid count of positional arguments')
+        if not args: throw(TypeError, 'Invalid count of positional arguments')
         attrs = tuple(a for a in args if isinstance(a, Attribute))
         non_attrs = [ a for a in args if not isinstance(a, Attribute) ]
-        if attrs and (non_attrs or keyargs): raise TypeError('Invalid arguments')
+        if attrs and (non_attrs or keyargs): throw(TypeError, 'Invalid arguments')
         cls_dict = sys._getframe(1).f_locals
         keys = cls_dict.setdefault('_keys_', {})
 
@@ -981,7 +981,7 @@ class Unique(Required):
             attr.is_indexed = True
         if len(attrs) == 1:
             attr = attrs[0]
-            if attr.is_required: raise TypeError('Invalid declaration')
+            if attr.is_required: throw(TypeError, 'Invalid declaration')
             attr.is_unique = True
         else:
             for i, attr in enumerate(attrs): attr.composite_keys.append((attrs, i))
@@ -990,7 +990,7 @@ class Unique(Required):
     def _init_(attr, entity, name):
         Required._init_(attr, entity, name)
         if isinstance(attr.py_type, type) and issubclass(attr.py_type, float):
-            raise TypeError('%s attribute %s cannot be of type float'
+            throw(TypeError, '%s attribute %s cannot be of type float'
                             % (attr.__class__.__name__, attr))
 
 def populate_criteria_list(criteria_list, columns, converters, params_count=0, table_alias=None):
@@ -1010,48 +1010,48 @@ class Collection(Attribute):
     __slots__ = 'table', 'cached_load_sql', 'cached_add_m2m_sql', 'cached_remove_m2m_sql', 'wrapper_class', \
                 'symmetric', 'reverse_column', 'reverse_columns'
     def __init__(attr, py_type, *args, **keyargs):
-        if attr.__class__ is Collection: raise TypeError("'Collection' is abstract type")
+        if attr.__class__ is Collection: throw(TypeError, "'Collection' is abstract type")
         table = keyargs.pop('table', None)  # TODO: rename table to link_table or m2m_table
         if table is not None and not isinstance(table, basestring):
-            if not isinstance(table, (list, tuple)): raise TypeError(
+            if not isinstance(table, (list, tuple)): throw(TypeError, 
                 "Parameter 'table' must be a string. Got: %r" % table)
             for name_part in table:
-                if not isinstance(name_part, basestring): raise TypeError(
+                if not isinstance(name_part, basestring): throw(TypeError, 
                     'Each part of table name must be a string. Got: %r' % name_part)
             table = tuple(table)
         attr.table = table
         Attribute.__init__(attr, py_type, *args, **keyargs)
-        if attr.default is not None: raise TypeError('Default value could not be set for collection attribute')
-        if attr.auto: raise TypeError("'auto' option could not be set for collection attribute")
+        if attr.default is not None: throw(TypeError, 'Default value could not be set for collection attribute')
+        if attr.auto: throw(TypeError, "'auto' option could not be set for collection attribute")
 
         attr.reverse_column = attr.keyargs.pop('reverse_column', None)
         attr.reverse_columns = attr.keyargs.pop('reverse_columns', None)
         if attr.reverse_column is not None:
             if attr.reverse_columns is not None and attr.reverse_columns != [ attr.reverse_column ]:
-                raise TypeError("Parameters 'reverse_column' and 'reverse_columns' cannot be specified simultaneously")
+                throw(TypeError, "Parameters 'reverse_column' and 'reverse_columns' cannot be specified simultaneously")
             if not isinstance(attr.reverse_column, basestring):
-                raise TypeError("Parameter 'reverse_column' must be a string. Got: %r" % attr.reverse_column)
+                throw(TypeError, "Parameter 'reverse_column' must be a string. Got: %r" % attr.reverse_column)
             attr.reverse_columns = [ attr.reverse_column ]
         elif attr.reverse_columns is not None:
             if not isinstance(attr.reverse_columns, (tuple, list)):
-                raise TypeError("Parameter 'reverse_columns' must be a list. Got: %r" % attr.reverse_columns)
+                throw(TypeError, "Parameter 'reverse_columns' must be a list. Got: %r" % attr.reverse_columns)
             for reverse_column in attr.reverse_columns:
                 if not isinstance(reverse_column, basestring):
-                    raise TypeError("Parameter 'reverse_columns' must be a list of strings. Got: %r" % attr.reverse_columns)
+                    throw(TypeError, "Parameter 'reverse_columns' must be a list of strings. Got: %r" % attr.reverse_columns)
             if len(attr.reverse_columns) == 1: attr.reverse_column = attr.reverse_columns[0]
         else: attr.reverse_columns = []
 
-        for option in attr.keyargs: raise TypeError('Unknown option %r' % option)
+        for option in attr.keyargs: throw(TypeError, 'Unknown option %r' % option)
         attr.cached_load_sql = {}
         attr.cached_add_m2m_sql = None
         attr.cached_remove_m2m_sql = None
     def _init_(attr, entity, name):
         Attribute._init_(attr, entity, name)
         attr.symmetric = (attr.py_type == entity.__name__ and attr.reverse == name)
-        if not attr.symmetric and attr.reverse_columns: raise TypeError(
+        if not attr.symmetric and attr.reverse_columns: throw(TypeError, 
             "'reverse_column' and 'reverse_columns' options can be set for symmetric relations only")
         if attr.reverse_columns and len(attr.reverse_columns) != len(attr.columns):
-            raise TypeError("Number of columns and reverse columns for symmetric attribute %s do not match" % attr)
+            throw(TypeError, "Number of columns and reverse columns for symmetric attribute %s do not match" % attr)
     def load(attr, obj):
         assert False, 'Abstract method'
     def __get__(attr, obj, cls=None):
@@ -1082,22 +1082,22 @@ class Set(Collection):
         elif obj is not None: entity = obj.__class__
         else: entity = attr.entity
         reverse = attr.reverse
-        if not reverse: raise NotImplementedError
+        if not reverse: throw(NotImplementedError)
         if isinstance(val, reverse.entity): items = set((val,))
         else:
             rentity = reverse.entity
             try: items = set(val)
-            except TypeError: raise TypeError('Item of collection %s.%s must be an instance of %s. Got: %r'
+            except TypeError: throw(TypeError, 'Item of collection %s.%s must be an instance of %s. Got: %r'
                                               % (entity.__name__, attr.name, rentity.__name__, val))
             for item in items:
                 if not isinstance(item, rentity):
-                    raise TypeError('Item of collection %s.%s must be an instance of %s. Got: %r'
+                    throw(TypeError, 'Item of collection %s.%s must be an instance of %s. Got: %r'
                                     % (entity.__name__, attr.name, rentity.__name__, item))
         if obj is not None: cache = obj._cache_
         else: cache = entity._get_cache_()
         for item in items:
             if item._cache_ is not cache:
-                raise TransactionError('An attempt to mix objects belongs to different caches')
+                throw(TransactionError, 'An attempt to mix objects belongs to different caches')
         return items
     def load(attr, obj):
         assert obj._status_ not in ('deleted', 'cancelled')
@@ -1107,11 +1107,11 @@ class Set(Collection):
         entity = attr.entity
         reverse = attr.reverse
         rentity = reverse.entity
-        if reverse is None: raise NotImplementedError
+        if reverse is None: throw(NotImplementedError)
         cache = obj._cache_
         database = obj._database_
         if cache is not database._get_cache():
-            raise TransactionError("Transaction of object %s belongs to different thread")
+            throw(TransactionError, "Transaction of object %s belongs to different thread")
         objects = [ obj ]
         setdata_list = [ setdata ]
         assert cache.is_alive
@@ -1159,7 +1159,7 @@ class Set(Collection):
                 else:
                     phantoms = setdata2 - items
                     phantoms.difference_update(setdata2.added)
-                    if phantoms: raise UnrepeatableReadError(
+                    if phantoms: throw(UnrepeatableReadError, 
                         'Phantom object %r disappeared from collection %r.%s' % (phantoms.pop(), obj, attr.name))
                 items -= setdata2
                 items.difference_update(setdata2.removed)
@@ -1213,7 +1213,7 @@ class Set(Collection):
         sql, adapter = attr.cached_load_sql[batch_size] = database._ast2sql(sql_ast)
         return sql, adapter
     def copy(attr, obj):
-        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if obj._status_ in ('deleted', 'cancelled'): throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED or not setdata.is_fully_loaded: setdata = attr.load(obj)
         reverse = attr.reverse
@@ -1226,19 +1226,19 @@ class Set(Collection):
     @cut_traceback
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
-        if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
-        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if obj._status_ in ('deleted', 'cancelled'): throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
         rentity = attr.py_type
         wrapper_class = rentity._get_set_wrapper_subclass_()
         return wrapper_class(obj, attr)
     @cut_traceback
     def __set__(attr, obj, new_items, undo_funcs=None):
         cache = obj._cache_
-        if not cache.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
-        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if not cache.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if obj._status_ in ('deleted', 'cancelled'): throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
         new_items = attr.check(new_items, obj)
         reverse = attr.reverse
-        if not reverse: raise NotImplementedError
+        if not reverse: throw(NotImplementedError)
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED:
             if obj._status_ == 'created':
@@ -1272,7 +1272,7 @@ class Set(Collection):
             if setdata.added is not EMPTY: setdata.added -= to_remove
         cache.modified_collections.setdefault(attr, set()).add(obj)
     def __delete__(attr, obj):
-        raise NotImplementedError
+        throw(NotImplementedError)
     def reverse_add(attr, objects, item, undo_funcs):
         undo = []
         cache = item._cache_
@@ -1305,7 +1305,7 @@ class Set(Collection):
             if setdata is NOT_LOADED:
                 setdata = obj._vals_[attr.name] = SetData()
             elif setdata.is_fully_loaded:
-                raise UnrepeatableReadError('Phantom object %r appeared in collection %r.%s' % (item, obj, attr.name))
+                throw(UnrepeatableReadError, 'Phantom object %r appeared in collection %r.%s' % (item, obj, attr.name))
             setdata.add(item)
     def reverse_remove(attr, objects, item, undo_funcs):
         undo = []
@@ -1342,7 +1342,7 @@ class Set(Collection):
                 if not is_reverse: return attr.columns
                 else: return attr.reverse_columns
             if attr.columns:
-                if len(attr.columns) != len(entity._get_pk_columns_()): raise MappingError(
+                if len(attr.columns) != len(entity._get_pk_columns_()): throw(MappingError, 
                     'Invalid number of columns for %s' % reverse)
             else:
                 provider = attr.entity._database_.provider
@@ -1357,7 +1357,7 @@ class Set(Collection):
         reverse = attr.reverse
         if attr._columns_checked: return attr.reverse.columns
         elif reverse.columns:
-            if len(reverse.columns) != len(entity._get_pk_columns_()): raise MappingError(
+            if len(reverse.columns) != len(entity._get_pk_columns_()): throw(MappingError, 
                 'Invalid number of columns for %s' % reverse)
         else:
             provider = attr.entity._database_.provider
@@ -1420,7 +1420,7 @@ class SetWrapper(object):
         wrapper._attr_ = attr
     @cut_traceback
     def copy(wrapper):
-        if not wrapper._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
+        if not wrapper._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
         return wrapper._attr_.copy(wrapper._obj_)
     @cut_traceback
     def __repr__(wrapper):
@@ -1437,8 +1437,8 @@ class SetWrapper(object):
     def __nonzero__(wrapper):
         attr = wrapper._attr_
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
-        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if obj._status_ in ('deleted', 'cancelled'): throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED: setdata = attr.load(obj)
         if setdata: return True
@@ -1448,7 +1448,7 @@ class SetWrapper(object):
     def __len__(wrapper):
         attr = wrapper._attr_
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
+        if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED or not setdata.is_fully_loaded: setdata = attr.load(obj)
         return len(setdata)
@@ -1475,8 +1475,8 @@ class SetWrapper(object):
     @cut_traceback
     def __contains__(wrapper, item):
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
-        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if obj._status_ in ('deleted', 'cancelled'): throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
         attr = wrapper._attr_
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is not NOT_LOADED:
@@ -1487,11 +1487,11 @@ class SetWrapper(object):
     @cut_traceback
     def add(wrapper, new_items):
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
-        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if obj._status_ in ('deleted', 'cancelled'): throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
         attr = wrapper._attr_
         reverse = attr.reverse
-        if not reverse: raise NotImplementedError
+        if not reverse: throw(NotImplementedError)
         new_items = attr.check(new_items, obj)
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED: setdata = obj._vals_[attr.name] = SetData()
@@ -1516,11 +1516,11 @@ class SetWrapper(object):
     @cut_traceback
     def remove(wrapper, items):
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
-        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if obj._status_ in ('deleted', 'cancelled'): throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
         attr = wrapper._attr_
         reverse = attr.reverse
-        if not reverse: raise NotImplementedError
+        if not reverse: throw(NotImplementedError)
         items = attr.check(items, obj)
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED or not setdata.is_fully_loaded:
@@ -1546,8 +1546,8 @@ class SetWrapper(object):
     @cut_traceback
     def clear(wrapper):
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
-        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if obj._status_ in ('deleted', 'cancelled'): throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
         wrapper._attr_.__set__(obj, None)
 
 def iter2dict(iter):
@@ -1566,7 +1566,7 @@ class PropagatedMultiset(object):
         pset._items_ = iter2dict(items)
     @cut_traceback
     def distinct(pset):
-        if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
+        if not pset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
         return pset._items_.copy()
     @cut_traceback
     def __repr__(pset):
@@ -1583,24 +1583,24 @@ class PropagatedMultiset(object):
         return '<%s.%s%s>' % (pset._obj_, '.'.join(reversed(path)), size_str)
     @cut_traceback
     def __str__(pset):
-        if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
+        if not pset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
         return str(pset._items_)
     @cut_traceback
     def __nonzero__(pset):
-        if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
+        if not pset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
         return bool(pset._items_)
     @cut_traceback
     def __len__(pset):
-        if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
+        if not pset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
         return sum(pset._items_.values())
     @cut_traceback
     def __iter__(pset):
-        if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
+        if not pset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
         for item, count in pset._items_.iteritems():
             for i in range(count): yield item
     @cut_traceback
     def __eq__(pset, other):
-        if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
+        if not pset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
         if isinstance(other, PropagatedMultiset):
             return pset._items_ == other._items_
         if isinstance(other, dict):
@@ -1613,7 +1613,7 @@ class PropagatedMultiset(object):
         return not pset.__eq__(other)
     @cut_traceback
     def __contains__(pset, item):
-        if not pset._obj_._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
+        if not pset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
         return item in pset._items_
 
 ##class List(Collection): pass
@@ -1624,7 +1624,7 @@ class EntityIter(object):
     def __init__(self, entity):
         self.entity = entity
     def next(self):
-        raise TranslationError('Use select(...) function to iterate over entity')
+        throw(TranslationError, 'Use select(...) function to iterate over entity')
 
 next_entity_id = count(1).next
 next_new_instance_id = count(1).next
@@ -1636,10 +1636,10 @@ class EntityMeta(type):
     def __setattr__(entity, name, val):
         if name.startswith('_') and name.endswith('_'):
             type.__setattr__(entity, name, val)
-        else: raise NotImplementedError
+        else: throw(NotImplementedError)
     def __new__(meta, name, bases, cls_dict):
         if 'Entity' in globals():
-            if '__slots__' in cls_dict: raise TypeError('Entity classes cannot contain __slots__ variable')
+            if '__slots__' in cls_dict: throw(TypeError, 'Entity classes cannot contain __slots__ variable')
             cls_dict['__slots__'] = ()
         return super(EntityMeta, meta).__new__(meta, name, bases, cls_dict)
     @cut_traceback
@@ -1652,15 +1652,15 @@ class EntityMeta(type):
         for base_class in bases:
             if isinstance(base_class, EntityMeta):
                 database = base_class._database_
-                if database is None: raise ERDiagramError('Base Entity does not belong to any database')
+                if database is None: throw(ERDiagramError, 'Base Entity does not belong to any database')
                 databases.add(database)
         if not databases: assert False
-        elif len(databases) > 1: raise ERDiagramError(
+        elif len(databases) > 1: throw(ERDiagramError, 
             'With multiple inheritance of entities, all entities must belong to the same database')
         database = databases.pop()
 
         if entity.__name__ in database.entities:
-            raise ERDiagramError('Entity %s already exists' % entity.__name__)
+            throw(ERDiagramError, 'Entity %s already exists' % entity.__name__)
         assert entity.__name__ not in database.__dict__
 
         entity._id_ = next_entity_id()
@@ -1675,7 +1675,7 @@ class EntityMeta(type):
             base._subclasses_.add(entity)
         if direct_bases:
             roots = set(base._root_ for base in direct_bases)
-            if len(roots) > 1: raise ERDiagramError(
+            if len(roots) > 1: throw(ERDiagramError, 
                 'With multiple inheritance of entities, inheritance graph must be diamond-like')
             root = entity._root_ = roots.pop()
             if root._discriminator_attr_ is None:
@@ -1693,18 +1693,18 @@ class EntityMeta(type):
                 if prev is None:
                     base_attrs_dict[a.name] = a
                     base_attrs.append(a)
-                elif prev is not a: raise ERDiagramError(
+                elif prev is not a: throw(ERDiagramError, 
                     'Attribute "%s" clashes with attribute "%s" in derived entity "%s"'
                     % (prev, a, entity.__name__))
         entity._base_attrs_ = base_attrs
 
         new_attrs = []
         for name, attr in entity.__dict__.items():
-            if name in base_attrs_dict: raise ERDiagramError("Name '%s' hides base attribute %s" % (name,base_attrs_dict[name]))
+            if name in base_attrs_dict: throw(ERDiagramError, "Name '%s' hides base attribute %s" % (name,base_attrs_dict[name]))
             if not isinstance(attr, Attribute): continue
-            if name.startswith('_') and name.endswith('_'): raise ERDiagramError(
+            if name.startswith('_') and name.endswith('_'): throw(ERDiagramError, 
                 'Attribute name cannot both start and end with underscore. Got: %s' % name)
-            if attr.entity is not None: raise ERDiagramError(
+            if attr.entity is not None: throw(ERDiagramError, 
                 'Duplicate use of attribute %s in entity %s' % (attr, entity.__name__))
             attr._init_(entity, name)
             new_attrs.append(attr)
@@ -1713,26 +1713,26 @@ class EntityMeta(type):
         keys = entity.__dict__.get('_keys_', {})
         for key, is_pk in keys.items():
             for attr in key:
-                if attr.entity is not entity: raise ERDiagramError(
+                if attr.entity is not entity: throw(ERDiagramError, 
                     'Invalid use of attribute %s in entity %s' % (attr, entity.__name__))
                 if attr.is_collection or attr.is_discriminator or (is_pk and not attr.is_required and not attr.auto):
-                    raise TypeError('%s attribute %s cannot be part of %s'
+                    throw(TypeError, '%s attribute %s cannot be part of %s'
                                     % (attr.__class__.__name__, attr, is_pk and 'primary key' or 'unique index'))
                 if isinstance(attr.py_type, type) and issubclass(attr.py_type, float):
-                    raise TypeError('Attribute %s of type float cannot be part of %s'
+                    throw(TypeError, 'Attribute %s of type float cannot be part of %s'
                                     % (attr, is_pk and 'primary key' or 'unique index'))
                 
         primary_keys = set(key for key, is_pk in keys.items() if is_pk)
         if direct_bases:
-            if primary_keys: raise ERDiagramError('Primary key cannot be redefined in derived classes')
+            if primary_keys: throw(ERDiagramError, 'Primary key cannot be redefined in derived classes')
             for base in direct_bases:
                 keys[base._pk_attrs_] = True
                 for key in base._keys_: keys[key] = False
             primary_keys = set(key for key, is_pk in keys.items() if is_pk)
 
-        if len(primary_keys) > 1: raise ERDiagramError('Only one primary key can be defined in each entity class')
+        if len(primary_keys) > 1: throw(ERDiagramError, 'Only one primary key can be defined in each entity class')
         elif not primary_keys:
-            if hasattr(entity, 'id'): raise ERDiagramError(
+            if hasattr(entity, 'id'): throw(ERDiagramError, 
                 "Cannot create primary key for %s automatically because name 'id' is alredy in use" % entity.__name__)
             _keys_ = {}
             attr = PrimaryKey(int, auto=True) # Side effect: modifies _keys_ local variable
@@ -1773,10 +1773,10 @@ class EntityMeta(type):
         except KeyError: entity._table_ = None
         else:
             if not isinstance(table_name, basestring):
-                if not isinstance(table_name, (list, tuple)): raise TypeError(
+                if not isinstance(table_name, (list, tuple)): throw(TypeError, 
                     '%s._table_ property must be a string. Got: %r' % (entity.__name__, table_name))
                 for name_part in table_name:
-                    if not isinstance(name_part, basestring):raise TypeError(
+                    if not isinstance(name_part, basestring):throw(TypeError, 
                         'Each part of table name must be a string. Got: %r' % name_part)
                 entity._table_ = table_name = tuple(table_name)
 
@@ -1818,17 +1818,17 @@ class EntityMeta(type):
             
             entity2 = py_type
             if entity2._database_ is not database:
-                raise ERDiagramError('Interrelated entities must belong to same database. '
+                throw(ERDiagramError, 'Interrelated entities must belong to same database. '
                                    'Entities %s and %s belongs to different databases'
                                    % (entity.__name__, entity2.__name__))
             reverse = attr.reverse
             if isinstance(reverse, basestring):
                 attr2 = getattr(entity2, reverse, None)
-                if attr2 is None: raise ERDiagramError('Reverse attribute %s.%s not found' % (entity2.__name__, reverse))
+                if attr2 is None: throw(ERDiagramError, 'Reverse attribute %s.%s not found' % (entity2.__name__, reverse))
             elif isinstance(reverse, Attribute):
                 attr2 = reverse
-                if attr2.entity is not entity2: raise ERDiagramError('Incorrect reverse attribute %s used in %s' % (attr2, attr)) ###
-            elif reverse is not None: raise ERDiagramError("Value of 'reverse' option must be string. Got: %r" % type(reverse))
+                if attr2.entity is not entity2: throw(ERDiagramError, 'Incorrect reverse attribute %s used in %s' % (attr2, attr)) ###
+            elif reverse is not None: throw(ERDiagramError, "Value of 'reverse' option must be string. Got: %r" % type(reverse))
             else:
                 candidates1 = []
                 candidates2 = []
@@ -1840,29 +1840,29 @@ class EntityMeta(type):
                         if attr2 is attr: continue
                         candidates2.append(attr2)
                 msg = 'Ambiguous reverse attribute for %s'
-                if len(candidates1) > 1: raise ERDiagramError(msg % attr)
+                if len(candidates1) > 1: throw(ERDiagramError, msg % attr)
                 elif len(candidates1) == 1: attr2 = candidates1[0]
-                elif len(candidates2) > 1: raise ERDiagramError(msg % attr)
+                elif len(candidates2) > 1: throw(ERDiagramError, msg % attr)
                 elif len(candidates2) == 1: attr2 = candidates2[0]
-                else: raise ERDiagramError('Reverse attribute for %s not found' % attr)
+                else: throw(ERDiagramError, 'Reverse attribute for %s not found' % attr)
 
             type2 = attr2.py_type
             msg = 'Inconsistent reverse attributes %s and %s'
             if isinstance(type2, basestring):
-                if type2 != entity.__name__: raise ERDiagramError(msg % (attr, attr2))
+                if type2 != entity.__name__: throw(ERDiagramError, msg % (attr, attr2))
                 attr2.py_type = entity
-            elif type2 != entity: raise ERDiagramError(msg % (attr, attr2))
+            elif type2 != entity: throw(ERDiagramError, msg % (attr, attr2))
             reverse2 = attr2.reverse
-            if reverse2 not in (None, attr, attr.name): raise ERDiagramError(msg % (attr,attr2))
+            if reverse2 not in (None, attr, attr.name): throw(ERDiagramError, msg % (attr,attr2))
 
-            if attr.is_required and attr2.is_required: raise ERDiagramError(
+            if attr.is_required and attr2.is_required: throw(ERDiagramError, 
                 "At least one attribute of one-to-one relationship %s - %s must be optional" % (attr, attr2))
 
             attr.reverse = attr2
             attr2.reverse = attr
             unmapped_attrs.discard(attr2)          
         for attr in unmapped_attrs:
-            raise ERDiagramError('Reverse attribute for %s.%s was not found' % (attr.entity.__name__, attr.name))        
+            throw(ERDiagramError, 'Reverse attribute for %s.%s was not found' % (attr.entity.__name__, attr.name))        
     def _get_pk_columns_(entity):
         if entity._pk_columns_ is not None: return entity._pk_columns_
         pk_columns = []
@@ -1886,7 +1886,7 @@ class EntityMeta(type):
         avdict = {}
         if setdefault:
             for name in ifilterfalse(entity._adict_.__contains__, keyargs):
-                raise TypeError('Unknown attribute %r' % name)
+                throw(TypeError, 'Unknown attribute %r' % name)
             for attr in entity._attrs_:
                 val = keyargs.get(attr.name, DEFAULT)
                 avdict[attr] = attr.check(val, None, entity, from_db=False)
@@ -1894,7 +1894,7 @@ class EntityMeta(type):
             get = entity._adict_.get 
             for name, val in keyargs.items():
                 attr = get(name)
-                if attr is None: raise TypeError('Unknown attribute %r' % name)
+                if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
                 avdict[attr] = attr.check(val, None, entity, from_db=False)
         if entity._pk_is_composite_:
             pkval = map(avdict.get, entity._pk_attrs_)
@@ -1909,11 +1909,11 @@ class EntityMeta(type):
     def fetch_one(entity, *args, **keyargs):
         objects = entity._find_(1, args, keyargs)
         if not objects: return None
-        if len(objects) > 1: raise MultipleObjectsFoundError(
+        if len(objects) > 1: throw(MultipleObjectsFoundError, 
             'Multiple objects were found. Use %s.fetch(...) to retrieve them' % entity.__name__)
         return objects[0]
     def _find_by_sql_(entity, max_fetch_count, sql, globals=None, locals=None, frame_depth=1):
-        if not isinstance(sql, basestring): raise TypeError
+        if not isinstance(sql, basestring): throw(TypeError)
         database = entity._database_
         cursor = database._execute(sql, globals, locals, frame_depth+3)
 
@@ -1932,10 +1932,10 @@ class EntityMeta(type):
             else: attr_offsets[attr] = offsets
         if len(used_columns) < len(col_names):
             for i in range(len(col_names)):
-                if i not in used_columns: raise NameError(
+                if i not in used_columns: throw(NameError, 
                     'Column %s does not belong to entity %s' % (cursor.description[i][0], entity.__name__))
         for attr in entity._pk_attrs_:
-            if attr not in attr_offsets: raise ValueError(
+            if attr not in attr_offsets: throw(ValueError, 
                 'Primary key attribue %s was not found in query result set' % attr)
         
         objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count)
@@ -1943,19 +1943,19 @@ class EntityMeta(type):
     @cut_traceback
     def __getitem__(entity, key):
         if type(key) is not tuple: key = (key,)
-        if len(key) != len(entity._pk_attrs_): raise TypeError('Invalid count of attrs in primary key')
+        if len(key) != len(entity._pk_attrs_): throw(TypeError, 'Invalid count of attrs in primary key')
         keyargs = dict(izip(imap(attrgetter('name'), entity._pk_attrs_), key))
         objects = entity._find_(1, (), keyargs)
-        if not objects: raise ObjectNotFound(entity, key)
-        if len(objects) > 1: raise MultipleObjectsFoundError(
+        if not objects: throw(ObjectNotFound, entity, key)
+        if len(objects) > 1: throw(MultipleObjectsFoundError, 
             'Multiple objects was found. Use %s.fetch(...) to retrieve them' % entity.__name__)
         return objects[0]
     @cut_traceback
     def query(entity, func):
         if isinstance(func, basestring):
-            if not lambda_re.match(func): raise TypeError(
+            if not lambda_re.match(func): throw(TypeError, 
                 'Lambda function or its text representation expected')
-        elif not isinstance(func, types.FunctionType): raise TypeError
+        elif not isinstance(func, types.FunctionType): throw(TypeError)
         globals = sys._getframe(2).f_globals
         locals = sys._getframe(2).f_locals
         return entity._query_from_lambda_(func, globals, locals)
@@ -1968,7 +1968,7 @@ class EntityMeta(type):
         return query.orderby(*args)
     def _find_(entity, max_fetch_count, args, keyargs):
         if entity._database_.schema is None:
-            raise ERDiagramError('Mapping is not generated for entity %r' % entity.__name__)
+            throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
         
         if args:
             first_arg = args[0]
@@ -1978,10 +1978,10 @@ class EntityMeta(type):
             if is_string:
                 if select_re.match(first_arg):
                     return entity._find_by_sql_(max_fetch_count, *args, **keyargs)
-                elif not lambda_re.match(first_arg): raise TypeError(msg % first_arg)
-            elif not isinstance(first_arg, types.FunctionType): raise TypeError(msg % first_arg)
-            if len(args) > 1: raise TypeError('Only one positional argument expected')
-            if keyargs: raise TypeError('No keyword arguments expected')
+                elif not lambda_re.match(first_arg): throw(TypeError, msg % first_arg)
+            elif not isinstance(first_arg, types.FunctionType): throw(TypeError, msg % first_arg)
+            if len(args) > 1: throw(TypeError, 'Only one positional argument expected')
+            if keyargs: throw(TypeError, 'No keyword arguments expected')
 
             globals = sys._getframe(3).f_globals
             locals = sys._getframe(3).f_locals
@@ -1990,7 +1990,7 @@ class EntityMeta(type):
 
         pkval, avdict = entity._normalize_args_(keyargs, False)
         for attr in avdict:
-            if attr.is_collection: raise TypeError(
+            if attr.is_collection: throw(TypeError, 
                 'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
         try:
             objects = entity._find_in_cache_(pkval, avdict)
@@ -2041,14 +2041,14 @@ class EntityMeta(type):
                             else: filtered_objects.append(obj)
                         filtered_objects.sort(key=entity._get_raw_pkval_)
                         return filtered_objects
-                    else: raise NotImplementedError
+                    else: throw(NotImplementedError)
         if obj is not None:
             if obj._status_ == 'deleted': return []
             for attr, val in avdict.iteritems():
                 if val != attr.__get__(obj):
                     return []
             return [ obj ]
-        raise KeyError  # not found in cache, can exist in db
+        throw(KeyError)  # not found in cache, can exist in db
     def _find_in_db_(entity, avdict, max_fetch_count=None):
         if max_fetch_count is None: max_fetch_count = options.MAX_FETCH_COUNT
         database = entity._database_
@@ -2143,7 +2143,7 @@ class EntityMeta(type):
                     where_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name, attr.converters[0] ]])
                     extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]
                 else: where_list.append([IS_NULL, [COLUMN, None, attr.column]])
-            elif not attr.columns: raise NotImplementedError
+            elif not attr.columns: throw(NotImplementedError)
             else:
                 attr_entity = attr.py_type
                 assert attr_entity == attr.reverse.entity
@@ -2179,9 +2179,9 @@ class EntityMeta(type):
         if max_fetch_count is not None:
             rows = cursor.fetchmany(max_fetch_count + 1)
             if len(rows) == max_fetch_count + 1:
-                if max_fetch_count == 1: raise MultipleObjectsFoundError(
+                if max_fetch_count == 1: throw(MultipleObjectsFoundError, 
                     'Multiple objects were found. Use %s.fetch(...) to retrieve them' % entity.__name__)
-                raise TooManyObjectsFoundError(
+                throw(TooManyObjectsFoundError, 
                     'Found more then pony.options.MAX_FETCH_COUNT=%d objects' % options.MAX_FETCH_COUNT)
         else: rows = cursor.fetchall()
         objects = []
@@ -2211,25 +2211,25 @@ class EntityMeta(type):
     def _query_from_lambda_(entity, func, globals, locals):
         if not isinstance(func, basestring):
             names, argsname, keyargsname, defaults = inspect.getargspec(func)
-            if len(names) > 1: raise TypeError
-            if argsname or keyargsname: raise TypeError
-            if defaults: raise TypeError
+            if len(names) > 1: throw(TypeError)
+            if argsname or keyargsname: throw(TypeError)
+            if defaults: throw(TypeError)
             code = func.func_code
             name = names[0]
             cond_expr, external_names = decompile(func)
         else:
             module_node = parse(func)
-            if not isinstance(module_node, ast.Module): raise TypeError
+            if not isinstance(module_node, ast.Module): throw(TypeError)
             stmt_node = module_node.node
-            if not isinstance(stmt_node, ast.Stmt) or len(stmt_node.nodes) != 1: raise TypeError
+            if not isinstance(stmt_node, ast.Stmt) or len(stmt_node.nodes) != 1: throw(TypeError)
             discard_node = stmt_node.nodes[0]
-            if not isinstance(discard_node, ast.Discard): raise TypeError
+            if not isinstance(discard_node, ast.Discard): throw(TypeError)
             lambda_expr = discard_node.expr
-            if not isinstance(lambda_expr, ast.Lambda): raise TypeError
-            if len(lambda_expr.argnames) != 1: raise TypeError
-            if lambda_expr.varargs: raise TypeError
-            if lambda_expr.kwargs: raise TypeError
-            if lambda_expr.defaults: raise TypeError
+            if not isinstance(lambda_expr, ast.Lambda): throw(TypeError)
+            if len(lambda_expr.argnames) != 1: throw(TypeError)
+            if lambda_expr.varargs: throw(TypeError)
+            if lambda_expr.kwargs: throw(TypeError)
+            if lambda_expr.defaults: throw(TypeError)
             code = func
             name = lambda_expr.argnames[0]            
             cond_expr = lambda_expr.code
@@ -2251,7 +2251,7 @@ class EntityMeta(type):
         return Query(code, inner_expr, external_names, globals, locals)
     def _get_cache_(entity):
         database = entity._database_
-        if database is None: raise TransactionError
+        if database is None: throw(TransactionError)
         return database._get_cache()
     def _new_(entity, pkval, status, undo_funcs=None):
         cache = entity._get_cache_()
@@ -2261,14 +2261,14 @@ class EntityMeta(type):
         if obj is None: pass
         elif status == 'created':
             if entity._pk_is_composite_: pkval = ', '.join(str(item) for item in pkval)
-            raise CacheIndexError('Cannot create %s: instance with primary key %s already exists'
+            throw(CacheIndexError, 'Cannot create %s: instance with primary key %s already exists'
                              % (obj.__class__.__name__, pkval))                
         elif obj.__class__ is entity: return obj
         elif issubclass(obj.__class__, entity): return obj
-        elif not issubclass(entity, obj.__class__): raise TransactionError(
+        elif not issubclass(entity, obj.__class__): throw(TransactionError, 
             'Unexpected class change from %s to %s for object with primary key %r' %
             (obj.__class__, entity, obj._pkval_))
-        elif obj._rbits_ or obj._wbits_: raise NotImplementedError
+        elif obj._rbits_ or obj._wbits_: throw(NotImplementedError)
         else:
             obj.__class__ = entity
             return obj
@@ -2310,7 +2310,7 @@ class EntityMeta(type):
                 if not attr.reverse: val = attr.check(val, None, entity, from_db=True)
                 else: val = attr.py_type._get_by_raw_pkval_((val,))
             else:
-                if not attr.reverse: raise NotImplementedError
+                if not attr.reverse: throw(NotImplementedError)
                 vals = raw_pkval[i:i+len(attr.columns)]
                 val = attr.py_type._get_by_raw_pkval_(vals)
             pkval.append(val)
@@ -2378,7 +2378,7 @@ class Entity(object):
     __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '__weakref__'
     def __new__(entity, **keyargs):
         if entity._database_.schema is None:
-            raise ERDiagramError('Mapping is not generated for entity %r' % entity.__name__)
+            throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
 
         pkval, avdict = entity._normalize_args_(keyargs, True)
         undo_funcs = []
@@ -2386,14 +2386,14 @@ class Entity(object):
         indexes = {}
         for attr in entity._simple_keys_:
             val = avdict[attr]
-            if val in cache.indexes.setdefault(attr, {}): raise CacheIndexError(
+            if val in cache.indexes.setdefault(attr, {}): throw(CacheIndexError, 
                 'Cannot create %s: value %s for key %s already exists' % (entity.__name__, val, attr.name))
             indexes[attr] = val
         for attrs in entity._composite_keys_:
             vals = tuple(map(avdict.__getitem__, attrs))
             if vals in cache.indexes.setdefault(attrs, {}):
                 attr_names = ', '.join(attr.name for attr in attrs)
-                raise CacheIndexError('Cannot create %s: value %s for composite key (%s) already exists'
+                throw(CacheIndexError, 'Cannot create %s: value %s for composite key (%s) already exists'
                                  % (obj.__class__.__name__, vals, attr_names))
             indexes[attrs] = vals
         try:
@@ -2434,11 +2434,11 @@ class Entity(object):
         return '%s[%s]' % (obj.__class__.__name__, pkval)
     def _load_(obj):
         cache = obj._cache_
-        if not cache.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
+        if not cache.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
         entity = obj.__class__
         database = entity._database_
         if cache is not database._get_cache():
-            raise TransactionError("Transaction of object %s belongs to different thread")
+            throw(TransactionError, "Transaction of object %s belongs to different thread")
         seeds = cache.seeds[entity._pk_]
         max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
         objects = [ obj ]
@@ -2452,7 +2452,7 @@ class Entity(object):
         arguments = adapter(value_dict)
         cursor = database._exec_sql(sql, arguments)
         objects = entity._fetch_objects(cursor, attr_offsets)
-        if obj not in objects: raise UnrepeatableReadError('%s disappeared' % obj)
+        if obj not in objects: throw(UnrepeatableReadError, '%s disappeared' % obj)
     def _db_set_(obj, avdict):
         assert obj._status_ not in ('created', 'deleted', 'cancelled')
         if not avdict: return
@@ -2474,7 +2474,7 @@ class Entity(object):
                 continue
             
             bit = obj._bits_[attr]
-            if rbits & bit: raise UnrepeatableReadError(
+            if rbits & bit: throw(UnrepeatableReadError, 
                 'Value of %s.%s for %s was updated outside of current transaction (was: %r, now: %r)'
                 % (obj.__class__.__name__, attr.name, obj, old_dbval, new_dbval))
 
@@ -2540,19 +2540,19 @@ class Entity(object):
                         if val is NOT_LOADED: val = attr.load(obj)
                         if val is None: continue
                         if reverse.is_required:
-                            raise ConstraintError('Cannot delete %s: Attribute %s.%s for %s cannot be set to None'
+                            throw(ConstraintError, 'Cannot delete %s: Attribute %s.%s for %s cannot be set to None'
                                                   % (obj, reverse.entity.__name__, reverse.name, val))
                         reverse.__set__(val, None, undo_funcs)
                     elif isinstance(reverse, Set):
                         if val is NOT_LOADED: pass
                         else: reverse.reverse_remove((val,), obj, undo_funcs)
-                    else: raise NotImplementedError
+                    else: throw(NotImplementedError)
                 elif isinstance(attr, Set):
-                    if reverse.is_required and attr.__get__(obj).__nonzero__(): raise ConstraintError(
+                    if reverse.is_required and attr.__get__(obj).__nonzero__(): throw(ConstraintError, 
                         'Cannot delete %s: Attribute %s.%s for associated objects cannot be set to None'
                         % (obj, reverse.entity.__name__, reverse.name))
                     attr.__set__(obj, (), undo_funcs)
-                else: raise NotImplementedError
+                else: throw(NotImplementedError)
 
             for attr in obj._simple_keys_:
                 val = get_val(attr.name, NOT_LOADED)
@@ -2595,14 +2595,14 @@ class Entity(object):
             raise
     @cut_traceback
     def delete(obj):
-        if not obj._cache_.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
-        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if obj._status_ in ('deleted', 'cancelled'): throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
         obj._delete_()
     @cut_traceback
     def set(obj, **keyargs):
         cache = obj._cache_
-        if not cache.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
-        if obj._status_ in ('deleted', 'cancelled'): raise OperationWithDeletedObjectError('%s was deleted' % obj)
+        if not cache.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if obj._status_ in ('deleted', 'cancelled'): throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
         avdict, collection_avdict = obj._keyargs_to_avdicts_(keyargs)
         status = obj._status_
         wbits = obj._wbits_
@@ -2677,19 +2677,19 @@ class Entity(object):
         get = obj._adict_.get
         for name, new_val in keyargs.items():
             attr = get(name)
-            if attr is None: raise TypeError('Unknown attribute %r' % name)
+            if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
             new_val = attr.check(new_val, obj, from_db=False)
             if not attr.is_collection:
                 if attr.pk_offset is not None:
                     old_val = obj._vals_.get(attr.name, NOT_LOADED)
-                    if old_val != new_val: raise TypeError('Cannot change value of primary key attribute %s' % attr.name)
+                    if old_val != new_val: throw(TypeError, 'Cannot change value of primary key attribute %s' % attr.name)
                 else: avdict[attr] = new_val
             else: collection_avdict[attr] = new_val
         return avdict, collection_avdict
     @cut_traceback
     def check_on_commit(obj):
         cache = obj._cache_
-        if not cache.is_alive: raise TransactionRolledBack('Object belongs to obsolete cache')
+        if not cache.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
         if obj._status_ not in ('loaded', 'saved'): return
         obj._status_ = 'locked'
         cache.to_be_checked.append(obj)
@@ -2705,7 +2705,7 @@ class Entity(object):
         if dependent_objects is None: dependent_objects = []
         elif obj in dependent_objects:
             chain = ' -> '.join(obj2.__class__.__name__ for obj2 in dependent_objects)
-            raise UnresolvableCyclicDependency('Cannot save cyclic chain: ' + chain)
+            throw(UnresolvableCyclicDependency, 'Cannot save cyclic chain: ' + chain)
         dependent_objects.append(obj)
         status = obj._status_
         if status == 'created': attr_iter = obj._attrs_with_bit_()
@@ -2757,16 +2757,16 @@ class Entity(object):
             else: database._exec_sql(sql, arguments)
         except IntegrityError, e:
             msg = " ".join(tostring(arg) for arg in e.args)
-            raise TransactionIntegrityError(
+            throw(TransactionIntegrityError, 
                 'Object %r cannot be stored in the database (probably it already exists). DB message: %s' % (obj, msg), e)
         except DatabaseError, e:
             msg = " ".join(tostring(arg) for arg in e.args)
-            raise UnexpectedError('Object %r cannot be stored in the database. DB message: %s' % (obj, msg), e)
+            throw(UnexpectedError, 'Object %r cannot be stored in the database. DB message: %s' % (obj, msg), e)
 
         if auto_pk:
             index = obj._cache_.indexes.setdefault(pk_attr, {})
             obj2 = index.setdefault(new_id, obj)
-            if obj2 is not obj: raise TransactionIntegrityError(
+            if obj2 is not obj: throw(TransactionIntegrityError, 
                 'Newly auto-generated id value %s was already used in transaction cache for another object' % new_id)
             obj._pkval_ = obj._vals_[pk_attr.name] = new_id
             obj._newid_ = None
@@ -2826,7 +2826,7 @@ class Entity(object):
             arguments = adapter(values)
             cursor = database._exec_sql(sql, arguments)
             if cursor.rowcount != 1:
-                raise UnrepeatableReadError('Object %r was updated outside of current transaction' % obj)
+                throw(UnrepeatableReadError, 'Object %r was updated outside of current transaction' % obj)
         obj._status_ = 'saved'
         obj._rbits_ |= obj._wbits_
         obj._wbits_ = 0
@@ -2866,7 +2866,7 @@ class Entity(object):
         arguments = adapter(values)
         cursor = database._exec_sql(sql, arguments)
         row = cursor.fetchone()
-        if row is None: raise UnrepeatableReadError('Object %r was updated outside of current transaction' % obj)
+        if row is None: throw(UnrepeatableReadError, 'Object %r was updated outside of current transaction' % obj)
         obj._status_ = 'loaded'
     def _save_deleted_(obj):
         database = obj._database_
@@ -2998,10 +2998,10 @@ class Cache(object):
     def calc_modified_m2m(cache):
         modified_m2m = {}
         for attr, objects in cache.modified_collections.iteritems():
-            if not isinstance(attr, Set): raise NotImplementedError
+            if not isinstance(attr, Set): throw(NotImplementedError)
             reverse = attr.reverse
             if not reverse.is_collection: continue
-            if not isinstance(reverse, Set): raise NotImplementedError
+            if not isinstance(reverse, Set): throw(NotImplementedError)
             if reverse in modified_m2m: continue
             added, removed = modified_m2m.setdefault(attr, (set(), set()))
             for obj in objects:
@@ -3015,7 +3015,7 @@ class Cache(object):
         if new_val is None and cache.ignore_none: new_val = NO_UNDO_NEEDED
         else:
             obj2 = index.setdefault(new_val, obj)
-            if obj2 is not obj: raise CacheIndexError('Cannot update %s.%s: %s with key %s already exists'
+            if obj2 is not obj: throw(CacheIndexError, 'Cannot update %s.%s: %s with key %s already exists'
                                                  % (obj.__class__.__name__, attr.name, obj2, new_val))
         if old_val is NOT_LOADED: old_val = NO_UNDO_NEEDED
         elif old_val is None and cache.ignore_none: old_val = NO_UNDO_NEEDED
@@ -3028,7 +3028,7 @@ class Cache(object):
         elif new_dbval is None and cache.ignore_none: pass
         else:
             obj2 = index.setdefault(new_dbval, obj)
-            if obj2 is not obj: raise TransactionIntegrityError(
+            if obj2 is not obj: throw(TransactionIntegrityError, 
                 '%s with unique index %s.%s already exists: %s'
                 % (obj2.__class__.__name__, obj.__class__.__name__, attr.name, new_keyval))
                 # attribute which was created or updated lately clashes with one stored in database
@@ -3049,7 +3049,7 @@ class Cache(object):
             obj2 = index.setdefault(vals, obj)
             if obj2 is not obj:
                 attr_names = ', '.join(attr.name for attr in attrs)
-                raise CacheIndexError('Cannot update %r: composite key (%s) with value %s already exists for %r'
+                throw(CacheIndexError, 'Cannot update %r: composite key (%s) with value %s already exists for %r'
                                  % (obj, attr_names, vals, obj2))
         if currents is NO_UNDO_NEEDED: pass
         else: del index[currents]
@@ -3063,7 +3063,7 @@ class Cache(object):
             obj2 = index.setdefault(vals, obj)
             if obj2 is not obj:
                 key_str = ', '.join(repr(item) for item in new_keyval)
-                raise TransactionIntegrityError('%s with unique index %s.%s already exists: %s'
+                throw(TransactionIntegrityError, '%s with unique index %s.%s already exists: %s'
                                                 % (obj2.__class__.__name__, obj.__class__.__name__, attr.name, key_str))
         index.pop(currents, None)
 
@@ -3155,7 +3155,7 @@ def db_decorator(func, *args, **keyargs):
     allowed_exceptions = web and [ web.HttpRedirect ] or []
     try: return _with_transaction(func, args, keyargs, allowed_exceptions)
     except (ObjectNotFound, RowNotFound):
-        if web: raise web.Http404NotFound
+        if web: throw(web.Http404NotFound)
         raise
 
 ###############################################################################
@@ -3173,13 +3173,13 @@ def query(gen, frame_depth=0):
     elif isinstance(gen, basestring):
         gen_src = '(%s)' % gen
         module_node = parse(gen_src)
-        if not isinstance(module_node, ast.Module): raise TypeError
+        if not isinstance(module_node, ast.Module): throw(TypeError)
         stmt_node = module_node.node
-        if not isinstance(stmt_node, ast.Stmt) or len(stmt_node.nodes) != 1: raise TypeError
+        if not isinstance(stmt_node, ast.Stmt) or len(stmt_node.nodes) != 1: throw(TypeError)
         discard_node = stmt_node.nodes[0]
-        if not isinstance(discard_node, ast.Discard): raise TypeError
+        if not isinstance(discard_node, ast.Discard): throw(TypeError)
         tree = discard_node.expr
-        if not isinstance(tree, ast.GenExpr): raise TypeError
+        if not isinstance(tree, ast.GenExpr): throw(TypeError)
         code = gen_src
         internal_names = set()
         external_names = set()
@@ -3199,7 +3199,7 @@ def query(gen, frame_depth=0):
         external_names -= internal_names
         globals = sys._getframe(frame_depth+2).f_globals
         locals = sys._getframe(frame_depth+2).f_locals
-    else: raise TypeError
+    else: throw(TypeError)
     return Query(code, tree.code, external_names, globals, locals)
 
 @cut_traceback
@@ -3259,9 +3259,9 @@ class Query(object):
 
         if isinstance(origin, EntityIter): origin = origin.entity
         elif not isinstance(origin, EntityMeta):
-            raise NotImplementedError, 'Query iterator has unexpected type %r' % type(origin).__name__
+            throw(NotImplementedError, 'Query iterator has unexpected type %r' % type(origin).__name__)
         database = origin._database_
-        if database is None: raise TranslationError('Entity %s is not mapped to a database' % origin.__name__)
+        if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
         
         provider = database.provider
         translator_cls = database.provider.translator_cls
@@ -3272,14 +3272,15 @@ class Query(object):
                 try: value = globals[name]
                 except KeyError:
                     try: value = getattr(__builtin__, name)
-                    except AttributeError: raise NameError, name
+                    except AttributeError: throw(NameError, name)
             try: hash(value)
-            except TypeError: raise TypeError, 'Variable %r has unexpected type %r' % (name, type(value).__name__)
+            except TypeError: throw(TypeError, 'Variable %r has unexpected type %r'
+                                               % (name, type(value).__name__))
             if value in translator_cls.special_functions: functions[name] = value
             elif type(value) in (types.FunctionType, types.BuiltinFunctionType):
-                raise TypeError('Function %r cannot be used inside query' % value.__name__)
+                throw(TypeError, 'Function %r cannot be used inside query' % value.__name__)
             elif type(value) is types.MethodType:
-                raise TypeError('Method %r cannot be used inside query' % value.__name__)
+                throw(TypeError, 'Method %r cannot be used inside query' % value.__name__)
             elif isinstance(value, EntityMeta):
                 entities[name] = value
             elif isinstance(value, EntityIter):
@@ -3289,7 +3290,7 @@ class Query(object):
             else:
                 variables[name] = value
                 try: normalized_type = translator_cls.get_normalized_type_of(value)
-                except TypeError: raise TypeError("Variable %r has unexpected type %r" % (name, type(value).__name__))
+                except TypeError: throw(TypeError, "Variable %r has unexpected type %r" % (name, type(value).__name__))
                 vartypes[name] = normalized_type
 
         query._result = None
@@ -3316,9 +3317,9 @@ class Query(object):
                 if attr is not None:
                     attr_type = translator.normalize_type(attr.py_type)
                     if aggr_func_name in (SUM, AVG) and attr_type not in translator.numeric_types:
-                        raise TranslationError('%r is valid for numeric attributes only' % aggr_func_name.lower())
+                        throw(TranslationError, '%r is valid for numeric attributes only' % aggr_func_name.lower())
                     column_ast = [ COLUMN, translator.alias, attr.column ]
-                elif aggr_func_name is not COUNT: raise TranslationError(
+                elif aggr_func_name is not COUNT: throw(TranslationError, 
                     'Attribute should be specified for %r aggregate function' % aggr_func_name.lower())
                 if aggr_func_name is COUNT:
                     if attr is None: aggr_ast = [ COUNT, ALL ]
@@ -3371,7 +3372,7 @@ class Query(object):
     def fetch_one(query):
         objects = query[:2]
         if not objects: return None
-        if len(objects) > 1: raise MultipleObjectsFoundError(
+        if len(objects) > 1: throw(MultipleObjectsFoundError, 
             'Multiple objects was found. Use select(..).fetch() to retrieve them')
         return objects[0]
     @cut_traceback
@@ -3387,7 +3388,7 @@ class Query(object):
         return iter(query.fetch())
     @cut_traceback
     def orderby(query, *args):
-        if not args: raise TypeError('query.orderby() requires at least one argument')
+        if not args: throw(TypeError, 'query.orderby() requires at least one argument')
         entity = query._translator.entity
         order = []
         if args == (None,): pass
@@ -3395,9 +3396,9 @@ class Query(object):
             for arg in args:
                 if isinstance(arg, Attribute): order.append((arg, True))
                 elif isinstance(arg, DescWrapper): order.append((arg.attr, False))
-                else: raise TypeError('query.orderby() arguments must be attributes. Got: %r' % arg)
+                else: throw(TypeError, 'query.orderby() arguments must be attributes. Got: %r' % arg)
                 attr = order[-1][0]
-                if entity._adict_.get(attr.name) is not attr: raise TypeError(
+                if entity._adict_.get(attr.name) is not attr: throw(TypeError, 
                     'Attribute %s does not belong to Entity %s' % (attr, entity.__name__))
         new_query = query._clone()
         new_query._order = tuple(order)
@@ -3410,19 +3411,19 @@ class Query(object):
     def __getitem__(query, key):
         if isinstance(key, slice):
             step = key.step
-            if step is not None and step <> 1: raise TypeError("Parameter 'step' of slice object is not allowed here")
+            if step is not None and step <> 1: throw(TypeError, "Parameter 'step' of slice object is not allowed here")
             start = key.start
             if start is None: start = 0
-            elif start < 0: raise TypeError("Parameter 'start' of slice object cannot be negative")
+            elif start < 0: throw(TypeError, "Parameter 'start' of slice object cannot be negative")
             stop = key.stop
             if stop is None:
                 if not start: return query.fetch()
-                else: raise TypeError("Parameter 'stop' of slice object should be specified")
+                else: throw(TypeError, "Parameter 'stop' of slice object should be specified")
         else:
             try: i = key.__index__()
             except AttributeError:
                 try: i = key.__int__()
-                except AttributeError: raise TypeError('Incorrect argument type: %r' % key)
+                except AttributeError: throw(TypeError, 'Incorrect argument type: %r' % key)
             result = query._fetch((i, i+1))
             return result[0]
         if start >= stop: return []

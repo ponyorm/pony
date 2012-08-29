@@ -9,7 +9,7 @@ import cx_Oracle
 
 from pony import orm, dbschema, sqlbuilding, dbapiprovider, sqltranslation
 from pony.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, LongStr, LongUnicode
-from pony.utils import is_utf8
+from pony.utils import is_utf8, throw
 
 def get_provider(*args, **keyargs):
     return OraProvider(*args, **keyargs)
@@ -138,7 +138,7 @@ class OraBlobConverter(dbapiprovider.BlobConverter):
 class OraDateConverter(dbapiprovider.DateConverter):
     def sql2py(converter, val):
         if isinstance(val, datetime): return val.date()
-        if not isinstance(val, date): raise ValueError(
+        if not isinstance(val, date): throw(ValueError, 
             'Value of unexpected type received from database: instead of date got %s', type(val))
         return val
 
@@ -183,7 +183,7 @@ class OraProvider(DBAPIProvider):
 
     @wrap_dbapi_exceptions
     def execute_returning_id(provider, cursor, sql, arguments, result_type):
-        if result_type is not int: raise NotImplementedError
+        if result_type is not int: throw(NotImplementedError)
         set_input_sizes(cursor, arguments)
         var = cursor.var(cx_Oracle.NUMBER)
         arguments['new_id'] = var
@@ -210,17 +210,17 @@ def _get_pool(*args, **keyargs):
         if '/' in conn_str:
             user, tail = conn_str.split('/', 1)
             if '@' in tail: password, dsn = tail.split('@', 1)
-        if None in (user, password, dsn): raise ValueError(
+        if None in (user, password, dsn): throw(ValueError, 
             "Incorrect connection string (must be in form of 'user/password@dsn')")
     elif len(args) == 2: user, password = args
     elif len(args) == 3: user, password, dsn = args
-    elif args: raise ValueError('Invalid number of positional arguments')
+    elif args: throw(ValueError, 'Invalid number of positional arguments')
     if user != keyargs.setdefault('user', user):
-        raise ValueError('Ambiguous value for user')
+        throw(ValueError, 'Ambiguous value for user')
     if password != keyargs.setdefault('password', password):
-        raise ValueError('Ambiguous value for password')
+        throw(ValueError, 'Ambiguous value for password')
     if dsn != keyargs.setdefault('dsn', dsn):
-        raise ValueError('Ambiguous value for dsn')
+        throw(ValueError, 'Ambiguous value for dsn')
     keyargs.setdefault('threaded', True)
     keyargs.setdefault('min', 1)
     keyargs.setdefault('max', 10)

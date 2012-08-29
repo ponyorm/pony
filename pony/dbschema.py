@@ -1,4 +1,5 @@
 from pony import orm
+from pony.utils import throw
 
 class DBSchemaError(Exception): pass
 
@@ -53,7 +54,7 @@ class DBSchema(object):
 class Table(object):
     def __init__(table, name, schema):
         if name in schema.tables:
-            raise DBSchemaError("Table %r already exists in database schema" % name)
+            throw(DBSchemaError, "Table %r already exists in database schema" % name)
         schema.tables[name] = table
         table.schema = schema
         table.name = name
@@ -126,7 +127,7 @@ class Column(object):
     auto_template = '%(type)s PRIMARY KEY AUTOINCREMENT'
     def __init__(column, name, table, sql_type, is_not_null=None):
         if name in table.column_dict:
-            raise DBSchemaError("Column %r already exists in table %r" % (name, table.name))
+            throw(DBSchemaError, "Column %r already exists in table %r" % (name, table.name))
         table.column_dict[name] = column
         table.column_list.append(column)
         column.table = table
@@ -167,7 +168,7 @@ class Column(object):
 class Constraint(object):
     def __init__(constraint, name, schema):
         if name is not None:
-            if name in schema.constraints: raise DBSchemaError(
+            if name in schema.constraints: throw(DBSchemaError, 
                 "Constraint with name %r already exists" % name)
             schema.constraints[name] = constraint
         constraint.schema = schema
@@ -177,18 +178,18 @@ class Index(Constraint):
     def __init__(index, name, table, columns, is_pk=False, is_unique=None):
         assert len(columns) > 0
         for column in columns:
-            if column.table is not table: raise DBSchemaError(
+            if column.table is not table: throw(DBSchemaError, 
                 "Column %r does not belong to table %r and cannot be part of its index"
                 % (column.name, table.name))
         if columns in table.indexes:
-            if len(columns) == 1: raise DBSchemaError("Index for column %r already exists" % columns[0].name)
-            else: raise DBSchemaError("Index for columns (%s) already exists" % ', '.join(repr(column.name) for column in columns))
+            if len(columns) == 1: throw(DBSchemaError, "Index for column %r already exists" % columns[0].name)
+            else: throw(DBSchemaError, "Index for columns (%s) already exists" % ', '.join(repr(column.name) for column in columns))
         if is_pk:
-            if table.pk_index is not None: raise DBSchemaError(
+            if table.pk_index is not None: throw(DBSchemaError, 
                 'Primary key for table %r is already defined' % table.name)
             table.pk_index = index
             if is_unique is None: is_unique = True
-            elif not is_unique: raise DBSchemaError(
+            elif not is_unique: throw(DBSchemaError, 
                 "Incompatible combination of is_unique=False and is_pk=True")
         elif is_unique is None: is_unique = False
         for column in columns:
@@ -212,7 +213,7 @@ class Index(Constraint):
         cmd = []
         append = cmd.append
         if not inside_table:
-            if index.is_pk: raise DBSchemaError(
+            if index.is_pk: throw(DBSchemaError, 
                 'Primary key index cannot be defined outside of table definition')
             append(case('CREATE'))
             if index.is_unique: append(case('UNIQUE'))
@@ -233,19 +234,19 @@ class Index(Constraint):
 class ForeignKey(Constraint):
     def __init__(foreign_key, name, child_table, child_columns, parent_table, parent_columns):
         schema = parent_table.schema
-        if schema is not child_table.schema: raise DBSchemaError(
+        if schema is not child_table.schema: throw(DBSchemaError, 
             'Parent and child tables of foreign_key cannot belong to different schemata')
         for column in parent_columns:
-            if column.table is not parent_table: raise DBSchemaError(
+            if column.table is not parent_table: throw(DBSchemaError, 
                 'Column %r does not belong to table %r' % (column.name, parent_table.name))
         for column in child_columns:
-            if column.table is not child_table: raise DBSchemaError(
+            if column.table is not child_table: throw(DBSchemaError, 
                 'Column %r does not belong to table %r' % (column.name, child_table.name))
-        if len(parent_columns) != len(child_columns): raise DBSchemaError(
+        if len(parent_columns) != len(child_columns): throw(DBSchemaError, 
             'Foreign key columns count do not match')
         if child_columns in child_table.foreign_keys: 
-            if len(child_columns) == 1: raise DBSchemaError('Foreign key for column %r already defined' % child_columns[0].name)
-            else: raise DBSchemaError('Foreign key for columns (%s) already defined' % ', '.join(repr(column.name) for column in child_columns))
+            if len(child_columns) == 1: throw(DBSchemaError, 'Foreign key for column %r already defined' % child_columns[0].name)
+            else: throw(DBSchemaError, 'Foreign key for columns (%s) already defined' % ', '.join(repr(column.name) for column in child_columns))
         child_table.foreign_keys[child_columns] = foreign_key
         if child_table is not parent_table:
             child_table.parent_tables.add(parent_table)

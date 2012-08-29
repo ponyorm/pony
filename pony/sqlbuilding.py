@@ -6,7 +6,7 @@ from binascii import hexlify
 
 from pony import options
 from pony.sqlsymbols import *
-from pony.utils import datetime2timestamp
+from pony.utils import datetime2timestamp, throw
 
 class AstError(Exception): pass
 
@@ -24,7 +24,7 @@ class Param(object):
         elif paramstyle == 'numeric': return u':%d' % param.id
         elif paramstyle == 'named': return u':p%d' % param.id
         elif paramstyle == 'pyformat': return u'%%(p%d)s' % param.id
-        else: raise NotImplementedError
+        else: throw(NotImplementedError)
     def __repr__(param):
         return '%s(%r)' % (param.__class__.__name__, param.key)
 
@@ -147,18 +147,18 @@ class SQLBuilder(object):
             params = tuple(param for param in sorted(builder.keys.itervalues(), key=attrgetter('id')))
             def adapter(values):
                 return dict(('p%d' % param.id, value) for param, value in zip(params, convert(values, params)))
-        else: raise NotImplementedError, paramstyle
+        else: throw(NotImplementedError, paramstyle)
         builder.params = params
         builder.layout = tuple(param.key for param in params)
         builder.adapter = adapter 
     def __call__(builder, ast):
         if isinstance(ast, basestring):
-            raise AstError('An SQL AST list was expected. Got string: %r' % ast)
+            throw(AstError, 'An SQL AST list was expected. Got string: %r' % ast)
         symbol = ast[0]
         if not isinstance(symbol, basestring):
-            raise AstError('Invalid node name in AST: %r' % ast)
+            throw(AstError, 'Invalid node name in AST: %r' % ast)
         method = getattr(builder, symbol, None)
-        if method is None: raise AstError('Method not found: %s' % symbol)
+        if method is None: throw(AstError, 'Method not found: %s' % symbol)
         try:
             return method(*ast[1:])
         except TypeError:
@@ -166,7 +166,7 @@ class SQLBuilder(object):
 ##            traceback = sys.exc_info()[2]
 ##            if traceback.tb_next is None:
 ##                del traceback
-##                raise AstError('Invalid data for method %s: %r'
+##                throw(AstError, 'Invalid data for method %s: %r'
 ##                               % (symbol, ast[1:]))
 ##            else:
 ##                del traceback
@@ -223,7 +223,7 @@ class SQLBuilder(object):
         for i, source in enumerate(sources):
             if len(source) == 3:   alias, kind, x = source; join_cond = None
             elif len(source) == 4: alias, kind, x, join_cond = source
-            else: raise AstError('Invalid source in FROM section: %r' % source)
+            else: throw(AstError, 'Invalid source in FROM section: %r' % source)
             if alias is not None: alias = builder.quote_name(alias)
             if i > 0:
                 if join_cond is None: result.append(', ')
@@ -233,9 +233,9 @@ class SQLBuilder(object):
                 else: result.append(builder.compound_name(x))
                 if alias is not None: result += ' ', alias  # Oracle does not support 'AS' here
             elif kind == SELECT:
-                if alias is None: raise AstError('Subquery in FROM section must have an alias')
+                if alias is None: throw(AstError, 'Subquery in FROM section must have an alias')
                 result += builder.SELECT(*x), alias  # Oracle does not support 'AS' here
-            else: raise AstError('Invalid source kind in FROM section: %r' % kind)
+            else: throw(AstError, 'Invalid source kind in FROM section: %r' % kind)
             if join_cond is not None: result += [ '\n', indent3, 'ON ', builder(join_cond) ]
         result.append('\n')
         return result
@@ -335,13 +335,13 @@ class SQLBuilder(object):
     def NOT_BETWEEN(builder, expr1, expr2, expr3):
         return builder(expr1), ' NOT BETWEEN ', builder(expr2), ' AND ', builder(expr3)
     def IN(builder, expr1, x):
-        if not x: raise AstError('Empty IN clause')
+        if not x: throw(AstError, 'Empty IN clause')
         if len(x) >= 1 and x[0] == SELECT:
             return builder(expr1), ' IN ', builder(x)
         expr_list = [ builder(expr) for expr in x ]
         return builder(expr1), ' IN (', join(', ', expr_list), ')'
     def NOT_IN(builder, expr1, x):
-        if not x: raise AstError('Empty IN clause')
+        if not x: throw(AstError, 'Empty IN clause')
         if len(x) >= 1 and x[0] == SELECT:
             return builder(expr1), ' NOT IN ', builder(x)
         expr_list = [ builder(expr) for expr in x ]
@@ -351,9 +351,9 @@ class SQLBuilder(object):
             if expr is None: return ['COUNT(*)']
             return 'COUNT(', builder(expr), ')'
         elif kind == DISTINCT:
-            if expr is None: raise AstError('COUNT(DISTINCT) without argument')
+            if expr is None: throw(AstError, 'COUNT(DISTINCT) without argument')
             return 'COUNT(DISTINCT ', builder(expr), ')'
-        raise AstError('Invalid COUNT kind (must be ALL or DISTINCT)')
+        throw(AstError, 'Invalid COUNT kind (must be ALL or DISTINCT)')
     SUM = make_unary_func('SUM')
     AVG = make_unary_func('AVG')
     UPPER = make_unary_func('upper')

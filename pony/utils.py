@@ -61,13 +61,36 @@ def decorator_with_params(old_dec, *args, **keyargs):
 @decorator
 def cut_traceback(old_func):
     def new_func(*args, **keyargs):
-        if not options.CUT_TRACEBACK:
+        if not (pony.MODE == 'INTERACTIVE' and options.CUT_TRACEBACK):
             return old_func(*args, **keyargs)
         try:
             return old_func(*args, **keyargs)
-        except Exception, exc:
-            raise exc  # set pony.options.CUT_TRACEBACK = False to see full traceback
+        except Exception:
+            exc_type, exc, tb = sys.exc_info()
+            last_pony_tb = None
+            try:
+                while tb.tb_next:
+                    module_name = tb.tb_frame.f_globals['__name__']
+                    if module_name == 'pony' or module_name.startswith('pony.'):
+                        last_pony_tb = tb
+                    tb = tb.tb_next
+                assert last_pony_tb
+                if tb.tb_frame.f_globals['__name__'] == 'pony.utils' and tb.tb_frame.f_code.co_name == 'throw':
+                    raise exc_type, exc, last_pony_tb
+                raise exc  # set pony.options.CUT_TRACEBACK = False to see full traceback
+            finally:
+                del tb, last_pony_tb
     return new_func
+
+def throw(exc_type, *args, **keyargs):
+    if isinstance(exc_type, Exception):
+        assert not args and not keyargs
+        exc = exc_type
+    else: exc = exc_type(*args, **keyargs)
+    if not (pony.MODE == 'INTERACTIVE' and options.CUT_TRACEBACK):
+        raise exc
+    else:
+        raise exc  # set pony.options.CUT_TRACEBACK = False to see full traceback
 
 _cache = {}
 MAX_CACHE_SIZE = 1000
