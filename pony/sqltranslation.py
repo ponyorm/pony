@@ -216,6 +216,8 @@ class PythonTranslator(ASTTranslator):
         return '='.join((node.name, node.expr.src))
 
 def type2str(t):
+    if type(t) is tuple and len(t) == 1:
+        return 'Set of ' + type2str(t[0])
     try: return t.__name__
     except: return str(t)
 
@@ -296,6 +298,7 @@ class SQLTranslator(ASTTranslator):
             if type1 in translator.primitive_types:
                 if type1 is type2: return True
                 if (type1, type2) in translator.coercions: return True
+                if not isinstance(type1, type) or not isinstance(type2, type): return False
                 if issubclass(type1, (int, long)) and issubclass(type2, basestring): return True
                 if issubclass(type2, (int, long)) and issubclass(type1, basestring): return True
                 return False
@@ -1512,6 +1515,9 @@ class AttrSetMonad(SetMixin, Monad):
         monad.root = root
         monad.path = path
     def cmp(monad, op, monad2):
+        if type(monad2.type) is tuple and monad.translator.are_comparable_types(monad.type[0], monad2.type[0]): pass
+        elif monad.type != monad2.type: throw(TypeError, 'Incomparable types %r and %r in expression: {EXPR}'
+                                                         % (type2str(monad.type), type2str(monad2.type)))
         throw(NotImplementedError)
     def contains(monad, item, not_in=False):
         translator = monad.translator
