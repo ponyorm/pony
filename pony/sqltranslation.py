@@ -11,6 +11,13 @@ from pony.sqlsymbols import *
 from pony.utils import avg, copy_func_attrs, is_ident, throw
 from pony.orm import query, exists, ERDiagramError, TranslationError, EntityMeta, Set, JOIN, AsciiStr
 
+class IncomparableTypesError(TypeError):
+    def __init__(exc, type1, type2):
+        msg = 'Incomparable types %r and %r in expression: {EXPR}' % (type2str(type1), type2str(type2))
+        TypeError.__init__(exc, msg)
+        exc.type1 = type1
+        exc.type2 = type2    
+
 def sqland(items):
     if not items: return []
     if len(items) == 1: return items[0]
@@ -797,8 +804,8 @@ class ListMonad(Monad):
     def contains(monad, x, not_in=False):
         translator = monad.translator
         for item in monad.items:
-            if not translator.are_comparable_types(item.type, x.type): throw(TypeError, 
-                'Incomparable types %r and %r in expression: {EXPR}' % (type2str(x.type), type2str(item.type)))
+            if not translator.are_comparable_types(item.type, x.type):
+                throw(IncomparableTypesError, x.type, item.type)
         left_sql = x.getsql()
         if len(left_sql) == 1:
             if not_in: sql = [ NOT_IN, left_sql[0], [ item.getsql()[0] for item in monad.items ] ]
@@ -985,7 +992,7 @@ class StringMixin(MonadMixin):
     def contains(monad, item, not_in=False):
         translator = monad.translator
         if not translator.are_comparable_types(item.type, monad.type, LIKE):
-            throw(TypeError, 'Incomparable types %r and %r in expression: {EXPR}' % (type2str(item.type), type2str(monad.type)))
+            throw(IncomparableTypesError, item.type, monad.type)
         if isinstance(item, translator.StringConstMonad):
             item_sql = [ VALUE, '%%%s%%' % item.value ]
         else:
@@ -1318,7 +1325,7 @@ class CmpMonad(BoolMonad):
     def __init__(monad, op, left, right):
         translator = left.translator
         if not translator.are_comparable_types(left.type, right.type, op):
-            throw(TypeError, "Incomparable types %r and %r in expression: {EXPR}" % (type2str(left.type), type2str(right.type)))
+            throw(IncomparableTypesError, left.type, right.type)
         if op == '<>': op = '!='
         if left.type is NoneType:
             assert right.type is not NoneType
@@ -1474,8 +1481,7 @@ def minmax(monad, sqlop, *args):
         % (type2str(t), sqlop.lower()))
     for t2 in arg_types[1:]:
         t3 = translator.coerce_types(t, t2)
-        if t3 is None: throw(TypeError, 
-            'Incomparable types %r and %r in expression: {EXPR}' % (type2str(t), type2str(t2)))
+        if t3 is None: throw(IncomparableTypesError, t, t2)
         t = t3
     return translator.ExprMonad(translator, t, sql)
 
@@ -1516,14 +1522,13 @@ class AttrSetMonad(SetMixin, Monad):
         monad.path = path
     def cmp(monad, op, monad2):
         if type(monad2.type) is tuple and monad.translator.are_comparable_types(monad.type[0], monad2.type[0]): pass
-        elif monad.type != monad2.type: throw(TypeError, 'Incomparable types %r and %r in expression: {EXPR}'
-                                                         % (type2str(monad.type), type2str(monad2.type)))
+        elif monad.type != monad2.type: throw(IncomparableTypesError, monad.type, monad2.type)
         throw(NotImplementedError)
     def contains(monad, item, not_in=False):
         translator = monad.translator
         item_type = monad.type[0]
-        if not translator.are_comparable_types(item.type, item_type): throw(TypeError, 
-            'Incomparable types %r and %r in expression: {EXPR}' % (type2str(item.type), type2str(item_type)))
+        if not translator.are_comparable_types(item.type, item_type):
+            throw(IncomparableTypesError, item.type, item_type)
         if not translator.hint_join:
             sqlop = not_in and NOT_IN or IN
             expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
@@ -1669,8 +1674,8 @@ class QuerySetMonad(SetMixin, Monad):
     def contains(monad, item, not_in=False):
         translator = monad.translator
         item_type = monad.type[0]
-        if not translator.are_comparable_types(item.type, item_type): throw(TypeError, 
-            'Incomparable types %r and %r in expression: {EXPR}' % (type2str(item.type), type2str(item_type)))
+        if not translator.are_comparable_types(item.type, item_type):
+            throw(IncomparableTypesError, item.type, item_type)
         attr, attr_type = monad._get_attr_info()
         if attr is None: columns = item_type._pk_columns_
         else: columns = attr.columns
