@@ -398,6 +398,10 @@ class SQLBuilder(object):
         return 'rtrim(', builder(expr), ', ', builder(chars), ')'
     def TO_INT(builder, expr):
         return 'CAST(', builder(expr), ' AS integer)'
+    def TODAY(builder):
+        return 'CURRENT_DATE'
+    def NOW(builder):
+        return 'CURRENT_TIMESTAMP'
     def YEAR(builder, expr):
         return 'EXTRACT(YEAR FROM ', builder(expr), ')'
     def MONTH(builder, expr):

@@ -1432,6 +1432,9 @@ class FuncDateMonad(FuncMonad):
                 "'%s' argument of date(year, month, day) function must be of 'int' type. Got: %r" % (name, type2str(x.type)))
             if not isinstance(x, translator.ConstMonad): throw(NotImplementedError)
         return translator.ConstMonad(translator, date(year.value, month.value, day.value))
+    def call_today(monad):
+        translator = monad.translator
+        return translator.ExprMonad(translator, date, [ TODAY ])
 
 class FuncDatetimeMonad(FuncDateMonad):
     func = datetime
@@ -1442,6 +1445,9 @@ class FuncDatetimeMonad(FuncDateMonad):
                 "'%s' argument of datetime(...) function must be of 'int' type. Got: %r" % (name, type2str(x.type)))
             if not isinstance(x, translator.ConstMonad): throw(NotImplementedError)
         return translator.ConstMonad(translator, datetime(*tuple(arg.value for arg in args)))
+    def call_now(monad):
+        translator = monad.translator
+        return translator.ExprMonad(translator, datetime, [ NOW ])
 
 class FuncLenMonad(FuncMonad):
     func = len

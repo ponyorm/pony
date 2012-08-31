@@ -28,6 +28,10 @@ class SQLiteTranslator(sqltranslation.SQLTranslator):
 class SQLiteBuilder(sqlbuilding.SQLBuilder):
     def POW(builder, expr1, expr2):
         return 'pow(', builder(expr1), ', ', builder(expr2), ')'
+    def TODAY(builder):
+        return "date('now', 'localtime')"
+    def NOW(builder):
+        return "datetime('now', 'localtime')"
     def YEAR(builder, expr):
         return 'cast(substr(', builder(expr), ', 1, 4) as integer)'
     def MONTH(builder, expr):
