@@ -1394,7 +1394,7 @@ class FuncMonad(Monad):
 
 special_functions = SQLTranslator.special_functions = {}
 
-def func_monad(func, type=None):
+def func_monad(func):
     def decorator(monad_method):
         class SpecificFuncMonad(FuncMonad):
             def __call__(monad, *args, **keyargs):
@@ -1405,26 +1405,26 @@ def func_monad(func, type=None):
                 try: return monad_method(monad, *args, **keyargs)
                 except TypeError, exc: reraise_improved_typeerror(exc, monad_method.__name__, func.__name__)
 
-        SpecificFuncMonad.type = type
+        SpecificFuncMonad.type = 'function'
         SpecificFuncMonad.__name__ = monad_method.__name__
         assert func not in special_functions
         special_functions[func] = SpecificFuncMonad
         return SpecificFuncMonad
     return decorator
 
-@func_monad(buffer, type=buffer)
+@func_monad(buffer)
 def FuncBufferMonad(monad, x):
     translator = monad.translator
     if not isinstance(x, translator.StringConstMonad): throw(TypeError)
     return translator.ConstMonad(translator, buffer(x.value))
 
-@func_monad(Decimal, type=Decimal)
+@func_monad(Decimal)
 def FuncDecimalMonad(monad, x):
     translator = monad.translator
     if not isinstance(x, translator.StringConstMonad): throw(TypeError)
     return translator.ConstMonad(translator, Decimal(x.value))
 
-@func_monad(date, type=date)
+@func_monad(date)
 def FuncDateMonad(monad, year, month, day):
     translator = monad.translator
     for x, name in zip((year, month, day), ('year', 'month', 'day')):
@@ -1433,7 +1433,7 @@ def FuncDateMonad(monad, year, month, day):
         if not isinstance(x, translator.ConstMonad): throw(NotImplementedError)
     return translator.ConstMonad(translator, date(year.value, month.value, day.value))
 
-@func_monad(datetime, type=datetime)
+@func_monad(datetime)
 def FuncDatetimeMonad(monad, *args):
     translator = monad.translator
     for x, name in zip(args, ('year', 'month', 'day', 'hour', 'minute', 'second', 'microsecond')):
@@ -1442,19 +1442,19 @@ def FuncDatetimeMonad(monad, *args):
         if not isinstance(x, translator.ConstMonad): throw(NotImplementedError)
     return translator.ConstMonad(translator, datetime(*tuple(arg.value for arg in args)))
 
-@func_monad(len, type=int)
+@func_monad(len)
 def FuncLenMonad(monad, x):
     return x.len()
 
-@func_monad(abs, type=int)
+@func_monad(abs)
 def FuncAbsMonad(monad, x):
     return x.abs()
 
-@func_monad(sum, type=int)
+@func_monad(sum)
 def FuncSumMonad(monad, x):
     return x.sum()
 
-@func_monad(avg, type=float)
+@func_monad(avg)
 def FuncAvgMonad(monad, x):
     return x.avg()
 
