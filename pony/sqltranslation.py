@@ -674,12 +674,12 @@ def wrap_monad_method(cls_name, func):
     return copy_func_attrs(wrapper, func)
 
 class MonadMeta(type):
-    def __new__(meta, cls_name, bases, dict):
-        for name, func in dict.items():
+    def __new__(meta, cls_name, bases, cls_dict):
+        for name, func in cls_dict.items():
             if not isinstance(func, types.FunctionType): continue
             if name in ('__new__', '__init__'): continue
-            dict[name] = wrap_monad_method(cls_name, func)
-        return super(MonadMeta, meta).__new__(meta, cls_name, bases, dict)
+            cls_dict[name] = wrap_monad_method(cls_name, func)
+        return super(MonadMeta, meta).__new__(meta, cls_name, bases, cls_dict)
 
 class MonadMixin(object):
     __metaclass__ = MonadMeta
@@ -1387,88 +1387,95 @@ class NotMonad(BoolMonad):
     def getsql(monad):
         return [ NOT, monad.operand.getsql() ]
 
-class FuncMonad(Monad):
-    type = None
-    def __init__(monad, translator):
-        monad.translator = translator
-
 special_functions = SQLTranslator.special_functions = {}
 
-def func_monad(func):
-    def decorator(monad_method):
-        class SpecificFuncMonad(FuncMonad):
-            def __call__(monad, *args, **keyargs):
-                for arg in args:
-                    assert isinstance(arg, Monad)
-                for value in keyargs.values():
-                    assert isinstance(value, Monad)
-                try: return monad_method(monad, *args, **keyargs)
-                except TypeError, exc: reraise_improved_typeerror(exc, monad_method.__name__, func.__name__)
+class FuncMonadMeta(MonadMeta):
+    def __new__(meta, cls_name, bases, cls_dict):
+        func = cls_dict.get('func')
+        monad_cls = super(FuncMonadMeta, meta).__new__(meta, cls_name, bases, cls_dict)
+        if func: special_functions[func] = monad_cls
+        return monad_cls
 
-        SpecificFuncMonad.type = 'function'
-        SpecificFuncMonad.__name__ = monad_method.__name__
-        assert func not in special_functions
-        special_functions[func] = SpecificFuncMonad
-        return SpecificFuncMonad
-    return decorator
+class FuncMonad(Monad):
+    __metaclass__ = FuncMonadMeta
+    type = 'function'
+    def __init__(monad, translator):
+        monad.translator = translator
+    def __call__(monad, *args, **keyargs):
+        for arg in args:
+            assert isinstance(arg, Monad)
+        for value in keyargs.values():
+            assert isinstance(value, Monad)
+        try: return monad.call(*args, **keyargs)
+        except TypeError, exc: reraise_improved_typeerror(exc, 'call', monad.func.__name__)
 
-@func_monad(buffer)
-def FuncBufferMonad(monad, x):
-    translator = monad.translator
-    if not isinstance(x, translator.StringConstMonad): throw(TypeError)
-    return translator.ConstMonad(translator, buffer(x.value))
+class FuncBufferMonad(FuncMonad):
+    func = buffer
+    def call(monad, x):
+        translator = monad.translator
+        if not isinstance(x, translator.StringConstMonad): throw(TypeError)
+        return translator.ConstMonad(translator, buffer(x.value))
 
-@func_monad(Decimal)
-def FuncDecimalMonad(monad, x):
-    translator = monad.translator
-    if not isinstance(x, translator.StringConstMonad): throw(TypeError)
-    return translator.ConstMonad(translator, Decimal(x.value))
+class FuncDecimalMonad(FuncMonad):
+    func = Decimal
+    def call(monad, x):
+        translator = monad.translator
+        if not isinstance(x, translator.StringConstMonad): throw(TypeError)
+        return translator.ConstMonad(translator, Decimal(x.value))
 
-@func_monad(date)
-def FuncDateMonad(monad, year, month, day):
-    translator = monad.translator
-    for x, name in zip((year, month, day), ('year', 'month', 'day')):
-        if not isinstance(x, translator.NumericMixin) or x.type is not int: throw(TypeError, 
-            "'%s' argument of date(year, month, day) function must be of 'int' type. Got: %r" % (name, type2str(x.type)))
-        if not isinstance(x, translator.ConstMonad): throw(NotImplementedError)
-    return translator.ConstMonad(translator, date(year.value, month.value, day.value))
+class FuncDateMonad(FuncMonad):
+    func = date
+    def call(monad, year, month, day):
+        translator = monad.translator
+        for x, name in zip((year, month, day), ('year', 'month', 'day')):
+            if not isinstance(x, translator.NumericMixin) or x.type is not int: throw(TypeError, 
+                "'%s' argument of date(year, month, day) function must be of 'int' type. Got: %r" % (name, type2str(x.type)))
+            if not isinstance(x, translator.ConstMonad): throw(NotImplementedError)
+        return translator.ConstMonad(translator, date(year.value, month.value, day.value))
 
-@func_monad(datetime)
-def FuncDatetimeMonad(monad, *args):
-    translator = monad.translator
-    for x, name in zip(args, ('year', 'month', 'day', 'hour', 'minute', 'second', 'microsecond')):
-        if not isinstance(x, translator.NumericMixin) or x.type is not int: throw(TypeError, 
-            "'%s' argument of datetime(...) function must be of 'int' type. Got: %r" % (name, type2str(x.type)))
-        if not isinstance(x, translator.ConstMonad): throw(NotImplementedError)
-    return translator.ConstMonad(translator, datetime(*tuple(arg.value for arg in args)))
+class FuncDatetimeMonad(FuncDateMonad):
+    func = datetime
+    def call(monad, *args):
+        translator = monad.translator
+        for x, name in zip(args, ('year', 'month', 'day', 'hour', 'minute', 'second', 'microsecond')):
+            if not isinstance(x, translator.NumericMixin) or x.type is not int: throw(TypeError, 
+                "'%s' argument of datetime(...) function must be of 'int' type. Got: %r" % (name, type2str(x.type)))
+            if not isinstance(x, translator.ConstMonad): throw(NotImplementedError)
+        return translator.ConstMonad(translator, datetime(*tuple(arg.value for arg in args)))
 
-@func_monad(len)
-def FuncLenMonad(monad, x):
-    return x.len()
+class FuncLenMonad(FuncMonad):
+    func = len
+    def call(monad, x):
+        return x.len()
 
-@func_monad(abs)
-def FuncAbsMonad(monad, x):
-    return x.abs()
+class FuncAbsMonad(FuncMonad):
+    func = abs
+    def call(monad, x):
+        return x.abs()
 
-@func_monad(sum)
-def FuncSumMonad(monad, x):
-    return x.sum()
+class FuncSumMonad(FuncMonad):
+    func = sum
+    def call(monad, x):
+        return x.sum()
 
-@func_monad(avg)
-def FuncAvgMonad(monad, x):
-    return x.avg()
+class FuncAvgMonad(FuncMonad):
+    func = avg
+    def call(monad, x):
+        return x.avg()
 
-@func_monad(min)
-def FuncMinMonad(monad, *args):
-    if not args: throw(TypeError, 'min expected at least one argument')
-    if len(args) == 1: return args[0].min()
-    return minmax(monad, MIN, *args)
+class FuncMinMonad(FuncMonad):
+    func = min
+    def call(monad, *args):
+        if not args: throw(TypeError, 'min expected at least one argument')
+        if len(args) == 1: return args[0].min()
+        return minmax(monad, MIN, *args)
 
-@func_monad(max)
-def FuncMaxMonad(monad, *args):
-    if not args: throw(TypeError, 'max expected at least one argument')
-    if len(args) == 1: return args[0].max()
-    return minmax(monad, MAX, *args)
+class FuncMaxMonad(FuncMonad):
+    func = max
+    def call(monad, *args):
+        if not args: throw(TypeError, 'max expected at least one argument')
+        if len(args) == 1: return args[0].max()
+        return minmax(monad, MAX, *args)
 
 def minmax(monad, sqlop, *args):
     assert len(args) > 1
@@ -1485,18 +1492,20 @@ def minmax(monad, sqlop, *args):
         t = t3
     return translator.ExprMonad(translator, t, sql)
 
-@func_monad(query)
-def FuncSelectMonad(monad, subquery):
-    translator = monad.translator
-    if not isinstance(subquery, translator.QuerySetMonad): throw(TypeError, 
-        "'query' function expects generator expression, got: {EXPR}")
-    return subquery
+class FuncSelectMonad(FuncMonad):
+    func = query
+    def call(monad, subquery):
+        translator = monad.translator
+        if not isinstance(subquery, translator.QuerySetMonad): throw(TypeError, 
+            "'query' function expects generator expression, got: {EXPR}")
+        return subquery
 
-@func_monad(exists)
-def FuncExistsMonad(monad, subquery):
-    if not isinstance(subquery, monad.translator.SetMixin): throw(TypeError, 
-        "'exists' function expects generator expression or collection, got: {EXPR}")
-    return subquery.nonzero()
+class FuncExistsMonad(FuncMonad):
+    func = exists
+    def call(monad, subquery):
+        if not isinstance(subquery, monad.translator.SetMixin): throw(TypeError, 
+            "'exists' function expects generator expression or collection, got: {EXPR}")
+        return subquery.nonzero()
 
 class JoinMonad(Monad):
     def __init__(monad, translator):
@@ -1506,7 +1515,6 @@ class JoinMonad(Monad):
     def __call__(monad, x):
         monad.translator.hint_join = monad.hint_join_prev
         return x
-    
 special_functions[JOIN] = JoinMonad
 
 class SetMixin(MonadMixin):
