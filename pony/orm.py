@@ -1627,7 +1627,8 @@ class EntityIter(object):
     def __init__(self, entity):
         self.entity = entity
     def next(self):
-        throw(TranslationError, 'Use select(...) function to iterate over entity')
+        throw(TypeError, 'Use fetch(...) function or %s.fetch(...) method for iteration'
+                         % self.entity.__name__)
 
 next_entity_id = count(1).next
 next_new_instance_id = count(1).next
@@ -3240,7 +3241,7 @@ def fetch_avg(gen):
 
 @cut_traceback
 def exists(gen):
-    return select(gen).exists()
+    return query(gen).exists()
 
 def JOIN(expr):
     return expr
@@ -3381,7 +3382,7 @@ class Query(object):
         objects = query[:2]
         if not objects: return None
         if len(objects) > 1: throw(MultipleObjectsFoundError, 
-            'Multiple objects was found. Use select(..).fetch() to retrieve them')
+            'Multiple objects were found. Use fetch(...) or query(...).fetch() to retrieve them')
         return objects[0]
     @cut_traceback
     def exists(query):
