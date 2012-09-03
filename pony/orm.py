@@ -55,6 +55,11 @@ def sql_debug(value):
     global debug
     debug = value
 
+adapted_sql_cache = {}
+string2ast_cache = {}
+translation_cache = {}
+constructed_sql_cache = {}
+
 class OrmError(Exception): pass
 
 class ERDiagramError(OrmError): pass
@@ -112,10 +117,8 @@ class TranslationError(Exception): pass
 
 ###############################################################################
 
-sql_cache = {}
-
 def adapt_sql(sql, paramstyle):
-    result = sql_cache.get((sql, paramstyle))
+    result = adapted_sql_cache.get((sql, paramstyle))
     if result is not None: return result
     pos = 0
     result = []
@@ -167,7 +170,7 @@ def adapt_sql(sql, paramstyle):
         code = compile('None', '<?>', 'eval')
         if paramstyle in ('format', 'pyformat'): sql = sql.replace('%%', '%')
     result = adapted_sql, code
-    sql_cache[(sql, paramstyle)] = result
+    adapted_sql_cache[(sql, paramstyle)] = result
     return result
 
 next_num = count().next
@@ -3160,8 +3163,36 @@ def db_decorator(func, *args, **keyargs):
 
 ###############################################################################
 
-python_ast_cache = {}
-sql_cache = {}
+def string2ast(s):
+    result = string2ast_cache.get(s)
+    if result is not None: return result
+    module_node = parse('(%s)' % s)
+    if not isinstance(module_node, ast.Module): throw(TypeError)
+    stmt_node = module_node.node
+    if not isinstance(stmt_node, ast.Stmt) or len(stmt_node.nodes) != 1: throw(TypeError)
+    discard_node = stmt_node.nodes[0]
+    if not isinstance(discard_node, ast.Discard): throw(TypeError)
+    tree = discard_node.expr
+    if not isinstance(tree, ast.GenExpr): throw(TypeError)
+    internal_names = set()
+    external_names = set()
+    def collect_names(tree, internals, externals):
+        for child in tree.getChildNodes():
+            if isinstance(child, ast.Name): externals.add(child.name)
+            elif isinstance(child, ast.AssName): internals.add(child.name)
+            elif isinstance(child, ast.GenExpr):
+                inner_internals = set()
+                inner_externals = set()
+                collect_names(child, inner_internals, inner_externals)
+                inner_externals -= inner_internals
+                for name in inner_externals:
+                    if name not in internals: externals.add(name)
+            else: collect_names(child, internals, externals)
+    collect_names(tree, internal_names, external_names)
+    external_names -= internal_names
+    result = tree, external_names
+    string2ast_cache[s] = result
+    return result
 
 @cut_traceback
 def query(gen, frame_depth=0):
@@ -3171,32 +3202,9 @@ def query(gen, frame_depth=0):
         globals = gen.gi_frame.f_globals
         locals = gen.gi_frame.f_locals
     elif isinstance(gen, basestring):
-        gen_src = '(%s)' % gen
-        module_node = parse(gen_src)
-        if not isinstance(module_node, ast.Module): throw(TypeError)
-        stmt_node = module_node.node
-        if not isinstance(stmt_node, ast.Stmt) or len(stmt_node.nodes) != 1: throw(TypeError)
-        discard_node = stmt_node.nodes[0]
-        if not isinstance(discard_node, ast.Discard): throw(TypeError)
-        tree = discard_node.expr
-        if not isinstance(tree, ast.GenExpr): throw(TypeError)
-        code = gen_src
-        internal_names = set()
-        external_names = set()
-        def collect_names(tree, internals, externals):
-            for child in tree.getChildNodes():
-                if isinstance(child, ast.Name): externals.add(child.name)
-                elif isinstance(child, ast.AssName): internals.add(child.name)
-                elif isinstance(child, ast.GenExpr):
-                    inner_internals = set()
-                    inner_externals = set()
-                    collect_names(child, inner_internals, inner_externals)
-                    inner_externals -= inner_internals
-                    for name in inner_externals:
-                        if name not in internals: externals.add(name)
-                else: collect_names(child, internals, externals)
-        collect_names(tree, internal_names, external_names)
-        external_names -= internal_names
+        query_string = gen
+        tree, external_names = string2ast(query_string)
+        code = query_string
         globals = sys._getframe(frame_depth+2).f_globals
         locals = sys._getframe(frame_depth+2).f_locals
     else: throw(TypeError)
@@ -3299,16 +3307,16 @@ class Query(object):
         query._python_ast_key = key
 
         query._database = database
-        translator = python_ast_cache.get(key)
+        translator = translation_cache.get(key)
         if translator is None:
             translator = translator_cls(tree, databases, entities, vartypes, functions)
-            python_ast_cache[key] = translator
+            translation_cache[key] = translator
         query._translator = translator
         query._order = tuple((attr, True) for attr in translator.entity._pk_attrs_)
     def _construct_sql(query, order=None, range=None, aggr_func_name=None):
         translator = query._translator
         sql_key = query._python_ast_key + (order, range, aggr_func_name, options.INNER_JOIN_SYNTAX)
-        cache_entry = sql_cache.get(sql_key)
+        cache_entry = constructed_sql_cache.get(sql_key)
         database = query._database
         if cache_entry is None:
             sql_ast = [ SELECT ]
@@ -3348,7 +3356,7 @@ class Query(object):
             cache = database._get_cache()
             sql, adapter = database.provider.ast2sql(sql_ast)
             cache_entry = sql, adapter
-            sql_cache[sql_key] = cache_entry
+            constructed_sql_cache[sql_key] = cache_entry
         else: sql, adapter = cache_entry
         return sql, adapter
     def _exec_sql(query, order=None, range=None, aggr_func_name=None):
