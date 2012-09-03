@@ -712,6 +712,7 @@ class Monad(object):
     def sum(monad): throw(TypeError)
     def min(monad): throw(TypeError)
     def max(monad): throw(TypeError)
+    def avg(monad): throw(TypeError)
     def __getitem__(monad, key): throw(TypeError)
 
     def __add__(monad, monad2): throw(TypeError)
@@ -1117,6 +1118,8 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
             monad.tableref = JoinedTableRef(parent_tableref_translator, name_path, parent_monad.tableref, attr)
             parent_tableref_translator.tablerefs[name_path] = monad.tableref
 
+flatmonad_errmsg = "aggregated expressions like {EXPR} are not allowed before 'for'"
+
 class ObjectFlatMonad(ObjectMixin, Monad):
     def __init__(monad, parent, attr):
         translator = parent.translator
@@ -1136,6 +1139,11 @@ class ObjectFlatMonad(ObjectMixin, Monad):
         assert translator.get_tableref(name_path) is None
         monad.tableref = JoinedTableRef(translator, name_path, parent.tableref, attr)
         translator.tablerefs[name_path] = monad.tableref
+    def len(monad): throw(NotImplementedError, flatmonad_errmsg)
+    def sum(monad): throw(NotImplementedError, flatmonad_errmsg)
+    def min(monad): throw(NotImplementedError, flatmonad_errmsg)
+    def max(monad): throw(NotImplementedError, flatmonad_errmsg)
+    def avg(monad): throw(NotImplementedError, flatmonad_errmsg)
         
 class NumericAttrMonad(NumericMixin, AttrMonad): pass
 class StringAttrMonad(StringMixin, AttrMonad): pass
