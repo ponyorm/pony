@@ -420,7 +420,8 @@ class SQLTranslator(ASTTranslator):
         if isinstance(monad, translator.ParamMonad): throw(TranslationError,
             "External parameter '%s' cannot be used as query result" % ast2src(tree.expr))
         if isinstance(monad, translator.ObjectMixin):
-            entity = translator.entity = monad.type
+            translator.entity = entity = monad.type
+            translator.row_layout = None
             translator.distinct |= monad.requires_distinct()
             alias, _ = monad.tableref.make_join()
             translator.alias = alias
@@ -428,10 +429,24 @@ class SQLTranslator(ASTTranslator):
             discr_criteria = entity._construct_discriminator_criteria_()
             if discr_criteria: translator.conditions.insert(0, discr_criteria)
         else:
-            if isinstance(monad, translator.ListMonad): items = monad.items
-            else: items = [ monad ]
             translator.entity = translator.alias = translator.attr_offsets = None
             translator.distinct = True
+            if isinstance(monad, translator.ListMonad): items = monad.items
+            else: items = [ monad ]
+            provider = translator.database.provider
+            row_layout = []
+            offset = 0
+            for monad in items:
+                expr_type = monad.type
+                if isinstance(expr_type, EntityMeta):
+                    next_offset = offset+len(expr_type._pk_attrs_)
+                    row_layout.append((expr_type._get_by_raw_pkval_, slice(offset, next_offset)))
+                    offset = next_offset
+                else:
+                    converter = provider.get_converter_by_py_type(expr_type)
+                    row_layout.append((converter.sql2py, offset))
+                    offset += 1
+            translator.row_layout = row_layout
             select_list = translator.distinct and [ DISTINCT ] or [ ALL ]
             for item in items: select_list.extend(item.getsql())
             translator.select = select_list

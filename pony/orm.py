@@ -3394,9 +3394,12 @@ class Query(object):
             result = translator.entity._fetch_objects(cursor, translator.attr_offsets)
             if translator.attr is None: return result
             return list(set(map(attrgetter(translator.attr.name), result)))
-        result = cursor.fetchall()
-        if len(cursor.description) == 1: result = map(itemgetter(0), result)
-        return result
+        if len(translator.row_layout) == 1:
+            func, slice_or_offset = translator.row_layout[0]
+            return map(func, cursor.fetchall())
+        return [ tuple(func(sql_row[slice_or_offset])
+                       for func, slice_or_offset in translator.row_layout)
+                 for sql_row in cursor.fetchall() ]
     @cut_traceback
     def fetch(query):
         return query._fetch()
