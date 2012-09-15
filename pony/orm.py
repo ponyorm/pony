@@ -43,7 +43,12 @@ __all__ = '''
     LongStr LongUnicode
 
     TranslationError
-    query fetch fetch_one fetch_count fetch_sum fetch_min fetch_max fetch_avg exists
+
+    query
+    fetch fetch_one fetch_all fetch_distinct
+    fetch_count fetch_sum fetch_min fetch_max fetch_avg
+    exists
+
     avg
 
     JOIN
@@ -3219,6 +3224,14 @@ def fetch_one(gen):
     return query(gen, frame_depth=2).fetch_one()
 
 @cut_traceback
+def fetch_all(gen):
+    return query(gen, frame_depth=2).fetch_all()
+
+@cut_traceback
+def fetch_distinct(gen):
+    return query(gen, frame_depth=2).fetch_distinct()
+
+@cut_traceback
 def fetch_count(gen):
     return query(gen).count()
 
@@ -3315,9 +3328,9 @@ class Query(object):
         entity = translator.entity
         if entity: query._order = tuple((attr, True) for attr in entity._pk_attrs_)
         else: query._order = None
-    def _construct_sql(query, order=None, range=None, aggr_func_name=None):
+    def _construct_sql(query, order=None, range=None, distinct=None, aggr_func_name=None):
         translator = query._translator
-        sql_key = query._python_ast_key + (order, range, aggr_func_name, options.INNER_JOIN_SYNTAX)
+        sql_key = query._python_ast_key + (order, range, distinct, aggr_func_name, options.INNER_JOIN_SYNTAX)
         cache_entry = constructed_sql_cache.get(sql_key)
         database = query._database
         if cache_entry is None:
@@ -3337,7 +3350,12 @@ class Query(object):
                 elif aggr_func_name is SUM: aggr_ast = [ COALESCE, [ SUM, column_ast ], [ VALUE, 0 ] ]
                 else: aggr_ast = [ aggr_func_name, column_ast ]
                 sql_ast.append([ AGGREGATES, aggr_ast ])
-            else: sql_ast.append(translator.select)
+            else:
+                select_ast = translator.select
+                if distinct is not None:
+                    select_ast = select_ast[:]
+                    select_ast[0] = distinct and DISTINCT or ALL
+                sql_ast.append(select_ast)
             sql_ast.append(translator.from_)
             sql_ast.append(translator.where)
             if order:
@@ -3361,17 +3379,17 @@ class Query(object):
             constructed_sql_cache[sql_key] = cache_entry
         else: sql, adapter = cache_entry
         return sql, adapter
-    def _exec_sql(query, order=None, range=None, aggr_func_name=None):
-        sql, adapter = query._construct_sql(order, range, aggr_func_name)
+    def _exec_sql(query, order=None, range=None, distinct=None, aggr_func_name=None):
+        sql, adapter = query._construct_sql(order, range, distinct, aggr_func_name)
         param_dict = {}
         for param_name, extractor in query._translator.extractors.items():
             param_dict[param_name] = extractor(query._variables)
         arguments = adapter(param_dict)
         cursor = query._database._exec_sql(sql, arguments)
         return cursor
-    def _fetch(query, range=None):
+    def _fetch(query, range=None, distinct=None):
         translator = query._translator
-        cursor = query._exec_sql(query._order, range)
+        cursor = query._exec_sql(query._order, range=range, distinct=distinct)
         if translator.entity:
             result = translator.entity._fetch_objects(cursor, translator.attr_offsets)
             if translator.attr is None: return result
@@ -3389,6 +3407,12 @@ class Query(object):
         if len(objects) > 1: throw(MultipleObjectsFoundError, 
             'Multiple objects were found. Use fetch(...) or query(...).fetch() to retrieve them')
         return objects[0]
+    @cut_traceback
+    def fetch_all(query):
+        return query._fetch(distinct=False)
+    @cut_traceback
+    def fetch_distinct(query):
+        return query._fetch(distinct=True)
     @cut_traceback
     def exists(query):
         new_query = query._clone()
@@ -3438,10 +3462,10 @@ class Query(object):
             except AttributeError:
                 try: i = key.__int__()
                 except AttributeError: throw(TypeError, 'Incorrect argument type: %r' % key)
-            result = query._fetch((i, i+1))
+            result = query._fetch(range=(i, i+1))
             return result[0]
         if start >= stop: return []
-        return query._fetch((start, stop))
+        return query._fetch(range=(start, stop))
     @cut_traceback
     def limit(query, limit, offset=None):
         start = offset or 0
@@ -3449,7 +3473,7 @@ class Query(object):
         return query[start:stop]
     def _aggregate(query, aggr_func_name):
         translator = query._translator
-        cursor = query._exec_sql(None, None, aggr_func_name)
+        cursor = query._exec_sql(aggr_func_name=aggr_func_name)
         row = cursor.fetchone()
         if row is not None: result = row[0]
         else: result = None
