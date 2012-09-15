@@ -226,7 +226,7 @@ class TestSQLTranslator(unittest.TestCase):
         n = None
         result = fetch(s for s in Student if n == s.name)
         self.assertEquals(result, [])   
-    @raises_exception(NotImplementedError)        
+    @raises_exception(TranslationError, "External parameter 'a' cannot be used as query result")
     def test_expr1(self):
         a = 100
         result = fetch(a for s in Student)

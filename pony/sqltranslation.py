@@ -417,17 +417,24 @@ class SQLTranslator(ASTTranslator):
         if isinstance(monad, translator.AttrMonad) and not isinstance(monad, translator.ObjectMixin):
             translator.attr = monad.attr
             monad = monad.parent
-        if not isinstance(monad, translator.ObjectMixin):
-            throw(NotImplementedError, ast2src(tree.expr))
-        entity = translator.entity = monad.type
-        assert isinstance(monad, ObjectMixin) and not isinstance(monad, ObjectParamMonad)
-        translator.distinct |= monad.requires_distinct()
-        alias, _ = monad.tableref.make_join()
-        translator.alias = alias
-        translator.select, translator.attr_offsets = entity._construct_select_clause_(alias, translator.distinct)
-
-        discr_criteria = entity._construct_discriminator_criteria_()
-        if discr_criteria: translator.conditions.insert(0, discr_criteria)
+        if isinstance(monad, translator.ParamMonad): throw(TranslationError,
+            "External parameter '%s' cannot be used as query result" % ast2src(tree.expr))
+        if isinstance(monad, translator.ObjectMixin):
+            entity = translator.entity = monad.type
+            translator.distinct |= monad.requires_distinct()
+            alias, _ = monad.tableref.make_join()
+            translator.alias = alias
+            translator.select, translator.attr_offsets = entity._construct_select_clause_(alias, translator.distinct)
+            discr_criteria = entity._construct_discriminator_criteria_()
+            if discr_criteria: translator.conditions.insert(0, discr_criteria)
+        else:
+            if isinstance(monad, translator.ListMonad): items = monad.items
+            else: items = [ monad ]
+            translator.entity = translator.alias = translator.attr_offsets = None
+            translator.distinct = True
+            select_list = translator.distinct and [ DISTINCT ] or [ ALL ]
+            for item in items: select_list.extend(item.getsql())
+            translator.select = select_list
 
         first_from_item = translator.from_[1]
         if len(first_from_item) > 3:

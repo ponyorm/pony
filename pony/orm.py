@@ -255,7 +255,7 @@ class Database(object):
             result = cursor.fetchmany(max_fetch_count)
             if cursor.fetchone() is not None: throw(TooManyRowsFound)
         else: result = cursor.fetchall()
-        if len(cursor.description) == 1: result = [ row[0] for row in result ]
+        if len(cursor.description) == 1: result = map(itemgetter(0), result)
         else:
             row_class = type("row", (tuple,), {})
             for i, column_info in enumerate(cursor.description):
@@ -2066,8 +2066,7 @@ class EntityMeta(type):
         return objects
     def _construct_select_clause_(entity, alias=None, distinct=False):
         attr_offsets = {}
-        if distinct: select_list = [ DISTINCT ]
-        else: select_list = [ ALL ]
+        select_list = distinct and [ DISTINCT ] or [ ALL ]
         root = entity._root_
         for attr in chain(root._attrs_, root._subclass_attrs_):
             if attr.is_collection: continue
@@ -3313,7 +3312,9 @@ class Query(object):
             translator = translator_cls(tree, databases, entities, vartypes, functions)
             translation_cache[key] = translator
         query._translator = translator
-        query._order = tuple((attr, True) for attr in translator.entity._pk_attrs_)
+        entity = translator.entity
+        if entity: query._order = tuple((attr, True) for attr in entity._pk_attrs_)
+        else: query._order = None
     def _construct_sql(query, order=None, range=None, aggr_func_name=None):
         translator = query._translator
         sql_key = query._python_ast_key + (order, range, aggr_func_name, options.INNER_JOIN_SYNTAX)
@@ -3371,9 +3372,13 @@ class Query(object):
     def _fetch(query, range=None):
         translator = query._translator
         cursor = query._exec_sql(query._order, range)
-        result = translator.entity._fetch_objects(cursor, translator.attr_offsets)
-        if translator.attr is None: return result
-        return list(set(map(attrgetter(translator.attr.name), result)))
+        if translator.entity:
+            result = translator.entity._fetch_objects(cursor, translator.attr_offsets)
+            if translator.attr is None: return result
+            return list(set(map(attrgetter(translator.attr.name), result)))
+        result = cursor.fetchall()
+        if len(cursor.description) == 1: result = map(itemgetter(0), result)
+        return result
     @cut_traceback
     def fetch(query):
         return query._fetch()
