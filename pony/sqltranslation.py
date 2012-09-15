@@ -222,9 +222,20 @@ class PythonTranslator(ASTTranslator):
     def postKeyword(translator, node):
         return '='.join((node.name, node.expr.src))
 
+class SetType(object):
+    __slots__ = 'item_type'
+    def __init__(self, item_type):
+        self.item_type = item_type
+    def __eq__(self, other):
+        return type(other) is SetType and self.item_type == other.item_type
+    def __ne__(self, other):
+        return type(other) is not SetType and self.item_type != other.item_type
+    def __hash__(self):
+        return hash(self.item_type) + 1
+
 def type2str(t):
-    if type(t) is tuple and len(t) == 1:
-        return 'Set of ' + type2str(t[0])
+    if type(t) is SetType:
+        return 'Set of ' + type2str(t.item_type)
     try: return t.__name__
     except: return str(t)
 
@@ -1561,16 +1572,16 @@ class AttrSetMonad(SetMixin, Monad):
         if root.translator.inside_expr: throw(NotImplementedError)
         translator = root.translator
         item_type = translator.normalize_type(path[-1].py_type)
-        Monad.__init__(monad, translator, (item_type,))
+        Monad.__init__(monad, translator, SetType(item_type))
         monad.root = root
         monad.path = path
     def cmp(monad, op, monad2):
-        if type(monad2.type) is tuple and monad.translator.are_comparable_types(monad.type[0], monad2.type[0]): pass
+        if type(monad2.type) is SetType and monad.translator.are_comparable_types(monad.type.item_type, monad2.type.item_type): pass
         elif monad.type != monad2.type: throw(IncomparableTypesError, monad.type, monad2.type)
         throw(NotImplementedError)
     def contains(monad, item, not_in=False):
         translator = monad.translator
-        item_type = monad.type[0]
+        item_type = monad.type.item_type
         if not translator.are_comparable_types(item.type, item_type):
             throw(IncomparableTypesError, item.type, item_type)
         if not translator.hint_join:
@@ -1589,7 +1600,7 @@ class AttrSetMonad(SetMixin, Monad):
                 return translator.BoolExprMonad(translator, subquery_ast)
         else: throw(NotImplementedError)
     def getattr(monad, name):
-        item_type = monad.type[0]
+        item_type = monad.type.item_type
         if not isinstance(item_type, EntityMeta):
             throw(AttributeError)
         entity = item_type
@@ -1603,7 +1614,7 @@ class AttrSetMonad(SetMixin, Monad):
         return translator.NumericExprMonad(translator, int, sql_ast)
     def sum(monad):
         translator = monad.translator
-        item_type = monad.type[0]
+        item_type = monad.type.item_type
         if item_type not in translator.numeric_types: throw(TypeError, 
             "Function 'sum' expects query or items of numeric type, got %r in {EXPR}" % type2str(item_type))
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
@@ -1613,7 +1624,7 @@ class AttrSetMonad(SetMixin, Monad):
         return translator.NumericExprMonad(translator, item_type, sql_ast)
     def avg(monad):
         translator = monad.translator
-        item_type = monad.type[0]
+        item_type = monad.type.item_type
         if item_type not in translator.numeric_types: throw(TypeError, 
             "Function 'avg' expects query or items of numeric type, got %r in {EXPR}" % type2str(item_type))
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
@@ -1623,7 +1634,7 @@ class AttrSetMonad(SetMixin, Monad):
         return translator.NumericExprMonad(translator, float, sql_ast)
     def min(monad):
         translator = monad.translator
-        item_type = monad.type[0]
+        item_type = monad.type.item_type
         if item_type not in translator.comparable_types: throw(TypeError, 
             "Function 'min' expects query or items of numeric type, got %r in {EXPR}" % type2str(item_type))
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
@@ -1633,7 +1644,7 @@ class AttrSetMonad(SetMixin, Monad):
         return translator.ExprMonad.new(translator, item_type, sql_ast)
     def max(monad):
         translator = monad.translator
-        item_type = monad.type[0]
+        item_type = monad.type.item_type
         if item_type not in translator.comparable_types: throw(TypeError, 
             "Function 'max' expects query or items of numeric type, got %r in {EXPR}" % type2str(item_type))
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
@@ -1708,7 +1719,7 @@ class QuerySetMonad(SetMixin, Monad):
         attr, attr_type = monad._get_attr_info()
         item_type = attr_type or subtranslator.entity
         monad.item_type = item_type
-        monad_type = (item_type,)  # todo: better way to represent type "Set of item_type"
+        monad_type = SetType(item_type)
         Monad.__init__(monad, translator, monad_type)
     def _get_attr_info(monad):
         sub = monad.subtranslator
@@ -1717,7 +1728,7 @@ class QuerySetMonad(SetMixin, Monad):
         return attr, sub.normalize_type(attr.py_type)
     def contains(monad, item, not_in=False):
         translator = monad.translator
-        item_type = monad.type[0]
+        item_type = monad.type.item_type
         if not translator.are_comparable_types(item.type, item_type):
             throw(IncomparableTypesError, item.type, item_type)
         attr, attr_type = monad._get_attr_info()
