@@ -1773,17 +1773,20 @@ class QuerySetMonad(SetMixin, Monad):
     def len(monad):
         sub = monad.subtranslator
         expr_type = sub.expr_type
-        if isinstance(expr_type, EntityMeta):
-            select_ast = [ AGGREGATES, [ COUNT, ALL ] ]
-            return monad._subselect(int, select_ast)
+        if isinstance(expr_type, (tuple, EntityMeta)):
+            if not sub.distinct:
+                select_ast = [ AGGREGATES, [ COUNT, ALL ] ]
+                return monad._subselect(int, select_ast)
+            translator = monad.translator
+            alias = translator.get_short_alias(None, 't')
+            sql_ast = [ SELECT, [ AGGREGATES, [ COUNT, ALL ] ],
+                                [ FROM, [ alias, SELECT, [ [ DISTINCT ] + sub.expr_columns,
+                                                 sub.from_, [ WHERE ] + sub.conditions ] ] ] ]
+            return translator.ExprMonad.new(translator, int, sql_ast)
         elif len(sub.expr_columns) == 1:
             select_ast = [ AGGREGATES, [ COUNT, DISTINCT, sub.expr_columns[0] ] ]
             return monad._subselect(int, select_ast)
-        inner_ast = [ [ DISTINCT ] + sub.expr_columns, sub.from_, [ WHERE ] + sub.conditions ]
-        translator = monad.translator
-        alias = translator.get_short_alias(None, 't')
-        outer_ast = [ SELECT, [ AGGREGATES, [ COUNT, ALL ] ], [ FROM, [ alias, SELECT, inner_ast ] ] ]
-        return translator.ExprMonad.new(translator, int, outer_ast)
+        else: throw(NotImplementedError)
     def sum(monad):
         translator = monad.translator
         sub = monad.subtranslator

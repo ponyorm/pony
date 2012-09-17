@@ -3335,6 +3335,8 @@ class Query(object):
         cache_entry = constructed_sql_cache.get(sql_key)
         database = query._database
         if cache_entry is None:
+            if distinct is None: distinct = translator.distinct
+            ast_transformer = lambda ast: ast
             sql_ast = [ SELECT ]
             if aggr_func_name:
                 expr_type = translator.expr_type
@@ -3345,20 +3347,24 @@ class Query(object):
                     column_ast = translator.expr_columns[0]
                 elif aggr_func_name is not COUNT: throw(TranslationError, 
                     'Attribute should be specified for %r aggregate function' % aggr_func_name.lower())
+                aggr_ast = None
                 if aggr_func_name is COUNT:
-                    if isinstance(expr_type, EntityMeta): aggr_ast = [ COUNT, ALL ]  # FIXME: DISTINCT problem
+                    if isinstance(expr_type, (tuple, EntityMeta)):
+                        if translator.distinct:
+                            select_ast = [ DISTINCT ] + translator.expr_columns  # aggr_ast remains to be None
+                            def ast_transformer(ast):
+                                return [ SELECT, [ AGGREGATES, [ COUNT, ALL ] ], [ FROM, [ 't', SELECT, ast[1:] ] ] ]
+                        else: aggr_ast = [ COUNT, ALL ]
                     else: aggr_ast = [ COUNT, DISTINCT, column_ast ]
-                elif aggr_func_name is SUM: aggr_ast = [ COALESCE, [ SUM, column_ast ], [ VALUE, 0 ] ]
+                elif aggr_func_name is SUM:
+                    aggr_ast = [ COALESCE, [ SUM, column_ast ], [ VALUE, 0 ] ]
                 else: aggr_ast = [ aggr_func_name, column_ast ]
-                sql_ast.append([ AGGREGATES, aggr_ast ])
-            else:
-                if distinct is None: distinct = translator.distinct
-                if isinstance(translator.expr_type, EntityMeta):
-                    select_ast, attr_offsets = translator.expr_type._construct_select_clause_(translator.alias, distinct)
-                    query._attr_offsets = attr_offsets
-                else:
-                    select_ast = [ distinct and DISTINCT or ALL ] + translator.expr_columns
-                sql_ast.append(select_ast)
+                if aggr_ast: select_ast = [ AGGREGATES, aggr_ast ]
+            elif isinstance(translator.expr_type, EntityMeta):
+                select_ast, attr_offsets = translator.expr_type._construct_select_clause_(translator.alias, distinct)
+                query._attr_offsets = attr_offsets
+            else: select_ast = [ distinct and DISTINCT or ALL ] + translator.expr_columns
+            sql_ast.append(select_ast)
             sql_ast.append(translator.from_)
             sql_ast.append(translator.where)
             if order:
@@ -3376,6 +3382,7 @@ class Query(object):
                 limit_section = [ LIMIT, [ VALUE, limit ]]
                 if offset: limit_section.append([ VALUE, offset ])
                 sql_ast = sql_ast + [ limit_section ]
+            sql_ast = ast_transformer(sql_ast)
             cache = database._get_cache()
             sql, adapter = database.provider.ast2sql(sql_ast)
             cache_entry = sql, adapter
