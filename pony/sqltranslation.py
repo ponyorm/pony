@@ -234,8 +234,8 @@ class SetType(object):
         return hash(self.item_type) + 1
 
 def type2str(t):
-    if type(t) is SetType:
-        return 'Set of ' + type2str(t.item_type)
+    if isinstance(t, tuple): return 'list'
+    if type(t) is SetType: return 'Set of ' + type2str(t.item_type)
     try: return t.__name__
     except: return str(t)
 
@@ -310,6 +310,12 @@ class SQLTranslator(ASTTranslator):
         # types must be normalized already! 
         if op in ('is', 'is not'):
             return type1 is not NoneType and type2 is NoneType
+        if isinstance(type1, tuple):
+            if not isinstance(type2, tuple): return False
+            if len(type1) != len(type2): return False
+            for item1, item2 in izip(type1, type2):
+                if not translator.are_comparable_types(item1, item2): return False
+            return True
         if op in ('==', '<>', '!='):
             if type1 is NoneType and type2 is NoneType: return False
             if type1 is NoneType or type2 is NoneType: return True
@@ -386,14 +392,6 @@ class SQLTranslator(ASTTranslator):
                 if i > 0: translator.distinct = True
                 entity = entities.get(node_name)
                 if entity is None: throw(TranslationError, ast2src(qual.iter))
-                database = entity._database_
-                
-                if database.schema is None: throw(ERDiagramError, 
-                    'Mapping is not generated for entity %r' % entity.__name__)
-
-                if translator.database is None: translator.database = database
-                elif translator.database is not database: throw(TranslationError, 
-                    'All entities in a query must belong to the same database')
                 tablerefs[name] = TableRef(translator, name, entity)
             else:
                 if len(attr_names) > 1: throw(NotImplementedError, ast2src(qual.iter))
@@ -415,6 +413,13 @@ class SQLTranslator(ASTTranslator):
                     translator.distinct = True
                 tablerefs[name] = JoinedTableRef(translator, name, parent_tableref, attr)
 
+            database = entity._database_
+            if database.schema is None: throw(ERDiagramError, 
+                'Mapping is not generated for entity %r' % entity.__name__)
+            if translator.database is None: translator.database = database
+            elif translator.database is not database: throw(TranslationError, 
+                'All entities in a query must belong to the same database')
+
             for if_ in qual.ifs:
                 assert isinstance(if_, ast.GenExprIf)
                 translator.dispatch(if_)
@@ -424,31 +429,35 @@ class SQLTranslator(ASTTranslator):
         assert not translator.hint_join
         assert not translator.inside_not
         monad = tree.expr.monad
-        translator.attr = None
-        if isinstance(monad, translator.AttrMonad) and not isinstance(monad, translator.ObjectMixin):
-            translator.attr = monad.attr
-            monad = monad.parent
         if isinstance(monad, translator.ParamMonad): throw(TranslationError,
             "External parameter '%s' cannot be used as query result" % ast2src(tree.expr))
         if isinstance(monad, translator.ObjectMixin):
-            translator.entity = entity = monad.type
-            translator.row_layout = None
             translator.distinct |= monad.requires_distinct()
             alias, _ = monad.tableref.make_join()
             translator.alias = alias
-            translator.select, translator.attr_offsets = entity._construct_select_clause_(alias, translator.distinct)
+            translator.expr_type = entity = monad.type
+            translator.expr_columns = [ [ COLUMN, alias, column ] for column in entity._pk_columns_ ]
+            translator.row_layout = None
             discr_criteria = entity._construct_discriminator_criteria_()
             if discr_criteria: translator.conditions.insert(0, discr_criteria)
         else:
-            translator.entity = translator.alias = translator.attr_offsets = None
+            translator.alias =  None
             translator.distinct = True
-            if isinstance(monad, translator.ListMonad): items = monad.items
-            else: items = [ monad ]
-            provider = translator.database.provider
+            if isinstance(monad, translator.ListMonad):
+                expr_monads = monad.items
+                translator.expr_type = tuple(m.type for m in expr_monads)
+                expr_columns = []
+                for m in expr_monads: expr_columns.extend(m.getsql())
+                translator.expr_columns = expr_columns
+            else:
+                expr_monads = [ monad ]
+                translator.expr_type = monad.type
+                translator.expr_columns = monad.getsql()
             row_layout = []
             offset = 0
-            for monad in items:
-                expr_type = monad.type
+            provider = translator.database.provider
+            for m in expr_monads:
+                expr_type = m.type
                 if isinstance(expr_type, EntityMeta):
                     next_offset = offset+len(expr_type._pk_attrs_)
                     row_layout.append((expr_type._get_by_raw_pkval_, slice(offset, next_offset)))
@@ -458,9 +467,6 @@ class SQLTranslator(ASTTranslator):
                     row_layout.append((converter.sql2py, offset))
                     offset += 1
             translator.row_layout = row_layout
-            select_list = translator.distinct and [ DISTINCT ] or [ ALL ]
-            for item in items: select_list.extend(item.getsql())
-            translator.select = select_list
 
         first_from_item = translator.from_[1]
         if len(first_from_item) > 3:
@@ -833,7 +839,7 @@ class EntityMonad(Monad):
 
 class ListMonad(Monad):
     def __init__(monad, translator, items):
-        Monad.__init__(monad, translator, list)
+        Monad.__init__(monad, translator, tuple(item.type for item in items))
         monad.items = items
     def contains(monad, x, not_in=False):
         translator = monad.translator
@@ -1716,40 +1722,40 @@ class QuerySetMonad(SetMixin, Monad):
     def __init__(monad, translator, subtranslator):
         monad.translator = translator
         monad.subtranslator = subtranslator
-        attr, attr_type = monad._get_attr_info()
-        item_type = attr_type or subtranslator.entity
+        item_type = subtranslator.expr_type
         monad.item_type = item_type
         monad_type = SetType(item_type)
         Monad.__init__(monad, translator, monad_type)
-    def _get_attr_info(monad):
-        sub = monad.subtranslator
-        attr = sub.attr
-        if attr is None: return None, sub.entity
-        return attr, sub.normalize_type(attr.py_type)
     def contains(monad, item, not_in=False):
         translator = monad.translator
         item_type = monad.type.item_type
         if not translator.are_comparable_types(item.type, item_type):
             throw(IncomparableTypesError, item.type, item_type)
-        attr, attr_type = monad._get_attr_info()
-        if attr is None: columns = item_type._pk_columns_
-        else: columns = attr.columns
         sub = monad.subtranslator
-        columns_ast = [ [ COLUMN, sub.alias, column ] for column in columns ]
+        columns_ast = sub.expr_columns
         conditions = sub.conditions[:]
         if not translator.hint_join:
-            if len(columns) == 1 or translator.row_value_syntax:
+            if len(columns_ast) == 1 or translator.row_value_syntax:
                 select_ast = [ ALL ] + columns_ast
-                if attr is not None and not attr.is_required:
-                    conditions += [ [ IS_NOT_NULL, column_ast ] for column_ast in columns_ast ]
                 subquery_ast = [ SELECT, select_ast, sub.from_ ]
+                subquery_expr = sub.tree.expr.monad
+                if isinstance(subquery_expr, AttrMonad) and subquery_expr.attr.is_required:
+                    print 111
+                    pass
+                else:
+                    print 222
+                    conditions += [ [ IS_NOT_NULL, column_ast ] for column_ast in sub.expr_columns ]
                 if conditions: subquery_ast.append([ WHERE ] + conditions)
-                if len(columns) == 1: expr_ast = item.getsql()[0]
+                if len(columns_ast) == 1: expr_ast = item.getsql()[0]
                 else: expr_ast = [ ROW ] + item.getsql()
                 sql_ast = [ not_in and NOT_IN or IN, expr_ast, subquery_ast ]
                 return translator.BoolExprMonad(translator, sql_ast)
             else:
-                conditions += [ [ EQ, expr1, expr2 ] for expr1, expr2 in izip(item.getsql(), columns_ast) ]
+                if isinstance(item, ListMonad):
+                    item_columns = []
+                    for subitem in item.items: item_columns.extend(subitem.getsql())
+                else: item_columns = item.getsql()
+                conditions += [ [ EQ, expr1, expr2 ] for expr1, expr2 in izip(item_columns, columns_ast) ]
                 subquery_ast = [ not_in and NOT_EXISTS or EXISTS, sub.from_, [ WHERE ] + conditions ]
                 return translator.BoolExprMonad(translator, subquery_ast)
         else: throw(NotImplementedError)
@@ -1769,47 +1775,54 @@ class QuerySetMonad(SetMixin, Monad):
         translator = monad.translator
         return translator.ExprMonad.new(translator, item_type, sql_ast)
     def len(monad):
-        attr, attr_type = monad._get_attr_info()
-        if attr is None:
+        sub = monad.subtranslator
+        expr_type = sub.expr_type
+        if isinstance(expr_type, EntityMeta):
             select_ast = [ AGGREGATES, [ COUNT, ALL ] ]
             return monad._subselect(int, select_ast)
-        elif len(attr.columns) == 1:
-            select_ast = [ AGGREGATES, [ COUNT, DISTINCT, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
+        elif len(sub.expr_columns) == 1:
+            select_ast = [ AGGREGATES, [ COUNT, DISTINCT, sub.expr_columns[0] ] ]
             return monad._subselect(int, select_ast)
-        sub = monad.subtranslator
-        inner_ast = [ [ DISTINCT ] + [ [ COLUMN, sub.alias, column ] for column in attr.columns ],
-                      sub.from_, [ WHERE ] + sub.conditions ]
+        inner_ast = [ [ DISTINCT ] + sub.expr_columns, sub.from_, [ WHERE ] + sub.conditions ]
         translator = monad.translator
         alias = translator.get_short_alias(None, 't')
         outer_ast = [ SELECT, [ AGGREGATES, [ COUNT, ALL ] ], [ FROM, [ alias, SELECT, inner_ast ] ] ]
         return translator.ExprMonad.new(translator, int, outer_ast)
     def sum(monad):
         translator = monad.translator
-        attr, expr_type = monad._get_attr_info()
+        sub = monad.subtranslator
+        expr_type = sub.expr_type
         if expr_type not in translator.numeric_types: throw(TypeError, 
             "Function 'sum' expects query or items of numeric type, got %r in {EXPR}" % type2str(expr_type))
-        select_ast = [ AGGREGATES, [ COALESCE, [ SUM, [ COLUMN, monad.subtranslator.alias, attr.column ] ], [ VALUE, 0 ] ] ]
+        assert len(sub.expr_columns) == 1
+        select_ast = [ AGGREGATES, [ COALESCE, [ SUM, sub.expr_columns[0] ], [ VALUE, 0 ] ] ]
         return monad._subselect(expr_type, select_ast)
     def avg(monad):
         translator = monad.translator
-        attr, expr_type = monad._get_attr_info()
+        sub = monad.subtranslator
+        expr_type = sub.expr_type
         if expr_type not in translator.numeric_types: throw(TypeError, 
             "Function 'avg' expects query or items of numeric type, got %r in {EXPR}" % type2str(expr_type))
-        select_ast = [ AGGREGATES, [ AVG, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
+        assert len(sub.expr_columns) == 1
+        select_ast = [ AGGREGATES, [ AVG, sub.expr_columns[0] ] ]
         return monad._subselect(float, select_ast)
     def min(monad):
         translator = monad.translator
-        attr, expr_type = monad._get_attr_info()
+        sub = monad.subtranslator
+        expr_type = sub.expr_type
         if expr_type not in translator.comparable_types: throw(TypeError, 
-            "Function 'min' expects query or items of numeric type, got %r in {EXPR}" % type2str(expr_type))
-        select_ast = [ AGGREGATES, [ MIN, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
+            "Function 'min' cannot be applied to type %r in {EXPR}" % type2str(expr_type))
+        assert len(sub.expr_columns) == 1
+        select_ast = [ AGGREGATES, [ MIN, sub.expr_columns[0] ] ]
         return monad._subselect(expr_type, select_ast)
     def max(monad):
         translator = monad.translator
-        attr, expr_type = monad._get_attr_info()
+        sub = monad.subtranslator
+        expr_type = sub.expr_type
         if expr_type not in translator.comparable_types: throw(TypeError, 
-            "Function 'max' expects query or items of numeric type, got %r in {EXPR}" % type2str(expr_type))
-        select_ast = [ AGGREGATES, [ MAX, [ COLUMN, monad.subtranslator.alias, attr.column ] ] ]
+            "Function 'max' cannot be applied to type %r in {EXPR}" % type2str(expr_type))
+        assert len(sub.expr_columns) == 1
+        select_ast = [ AGGREGATES, [ MAX, sub.expr_columns[0] ] ]
         return monad._subselect(expr_type, select_ast)
 
 for name, value in globals().items():

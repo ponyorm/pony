@@ -1,7 +1,7 @@
 import __builtin__, re, sys, threading, types, inspect
 from compiler import ast, parse
 from operator import attrgetter, itemgetter
-from itertools import count, ifilter, ifilterfalse, imap, izip, chain
+from itertools import count, ifilter, ifilterfalse, imap, izip, chain, starmap
 import datetime
 
 try: from pony.thirdparty import etree
@@ -3325,9 +3325,10 @@ class Query(object):
             translator = translator_cls(tree, databases, entities, vartypes, functions)
             translation_cache[key] = translator
         query._translator = translator
-        entity = translator.entity
-        if entity: query._order = tuple((attr, True) for attr in entity._pk_attrs_)
+        expr_type = translator.expr_type
+        if isinstance(expr_type, EntityMeta): query._order = tuple((attr, True) for attr in expr_type._pk_attrs_)
         else: query._order = None
+        query._attr_offsets = None
     def _construct_sql(query, order=None, range=None, distinct=None, aggr_func_name=None):
         translator = query._translator
         sql_key = query._python_ast_key + (order, range, distinct, aggr_func_name, options.INNER_JOIN_SYNTAX)
@@ -3336,25 +3337,27 @@ class Query(object):
         if cache_entry is None:
             sql_ast = [ SELECT ]
             if aggr_func_name:
-                attr = translator.attr
-                if attr is not None:
-                    attr_type = translator.normalize_type(attr.py_type)
-                    if aggr_func_name in (SUM, AVG) and attr_type not in translator.numeric_types:
+                expr_type = translator.expr_type
+                if not isinstance(expr_type, EntityMeta):
+                    if aggr_func_name in (SUM, AVG) and expr_type not in translator.numeric_types:
                         throw(TranslationError, '%r is valid for numeric attributes only' % aggr_func_name.lower())
-                    column_ast = [ COLUMN, translator.alias, attr.column ]
+                    assert len(translator.expr_columns) == 1
+                    column_ast = translator.expr_columns[0]
                 elif aggr_func_name is not COUNT: throw(TranslationError, 
                     'Attribute should be specified for %r aggregate function' % aggr_func_name.lower())
                 if aggr_func_name is COUNT:
-                    if attr is None: aggr_ast = [ COUNT, ALL ]
+                    if isinstance(expr_type, EntityMeta): aggr_ast = [ COUNT, ALL ]  # FIXME: DISTINCT problem
                     else: aggr_ast = [ COUNT, DISTINCT, column_ast ]
                 elif aggr_func_name is SUM: aggr_ast = [ COALESCE, [ SUM, column_ast ], [ VALUE, 0 ] ]
                 else: aggr_ast = [ aggr_func_name, column_ast ]
                 sql_ast.append([ AGGREGATES, aggr_ast ])
             else:
-                select_ast = translator.select
-                if distinct is not None:
-                    select_ast = select_ast[:]
-                    select_ast[0] = distinct and DISTINCT or ALL
+                if distinct is None: distinct = translator.distinct
+                if isinstance(translator.expr_type, EntityMeta):
+                    select_ast, attr_offsets = translator.expr_type._construct_select_clause_(translator.alias, distinct)
+                    query._attr_offsets = attr_offsets
+                else:
+                    select_ast = [ distinct and DISTINCT or ALL ] + translator.expr_columns
                 sql_ast.append(select_ast)
             sql_ast.append(translator.from_)
             sql_ast.append(translator.where)
@@ -3390,13 +3393,12 @@ class Query(object):
     def _fetch(query, range=None, distinct=None):
         translator = query._translator
         cursor = query._exec_sql(query._order, range=range, distinct=distinct)
-        if translator.entity:
-            result = translator.entity._fetch_objects(cursor, translator.attr_offsets)
-            if translator.attr is None: return result
-            return list(set(map(attrgetter(translator.attr.name), result)))
+        if isinstance(translator.expr_type, EntityMeta):
+            entity = translator.expr_type
+            return entity._fetch_objects(cursor, query._attr_offsets)
         if len(translator.row_layout) == 1:
             func, slice_or_offset = translator.row_layout[0]
-            return map(func, cursor.fetchall())
+            return list(starmap(func, cursor.fetchall()))
         return [ tuple(func(sql_row[slice_or_offset])
                        for func, slice_or_offset in translator.row_layout)
                  for sql_row in cursor.fetchall() ]
@@ -3430,7 +3432,9 @@ class Query(object):
     @cut_traceback
     def orderby(query, *args):
         if not args: throw(TypeError, 'query.orderby() requires at least one argument')
-        entity = query._translator.entity
+        entity = query._translator.expr_type
+        if not isinstance(entity, EntityMeta): throw(NotImplementedError,
+            'orderby() is supported for queries which return simple list of objects only')
         order = []
         if args == (None,): pass
         else:
@@ -3484,7 +3488,9 @@ class Query(object):
             if aggr_func_name in (SUM, COUNT): result = 0
             else: return None
         if aggr_func_name is COUNT: return result
-        converter = translator.attr.converters[0]
+        expr_type = translator.expr_type
+        provider = query._database.provider
+        converter = provider.get_converter_by_py_type(expr_type)
         return converter.sql2py(result)
     @cut_traceback
     def sum(query):

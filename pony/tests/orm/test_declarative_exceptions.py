@@ -192,10 +192,10 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(TypeError, "Function 'avg' expects query or items of numeric type, got 'Student' in avg(s for s in Student if s.group == g)")
     def test47(self):
         fetch(g for g in Group if avg(s for s in Student if s.group == g) > 1)
-    @raises_exception(TypeError, "Function 'min' expects query or items of numeric type, got 'Student' in min(s for s in Student if s.group == g)")
+    @raises_exception(TypeError, "Function 'min' cannot be applied to type 'Student' in min(s for s in Student if s.group == g)")
     def test48(self):
         fetch(g for g in Group if min(s for s in Student if s.group == g) > 1)
-    @raises_exception(TypeError, "Function 'max' expects query or items of numeric type, got 'Student' in max(s for s in Student if s.group == g)")
+    @raises_exception(TypeError, "Function 'max' cannot be applied to type 'Student' in max(s for s in Student if s.group == g)")
     def test49(self):
         fetch(g for g in Group if max(s for s in Student if s.group == g) > 1)
     @raises_exception(TypeError, "Incomparable types 'Decimal' and 'bool' in expression: s.scholarship == (True or False and not True)")

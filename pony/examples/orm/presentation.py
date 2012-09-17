@@ -35,6 +35,7 @@ class Student(db.Entity):
     id = PrimaryKey(int, auto=True)
     name = Required(unicode)
     dob = Required(date)
+    tel = Optional(str)
     picture = Optional(buffer, lazy=True)
     gpa = Required(float, default=0)
     group = Required(Group)
@@ -74,13 +75,13 @@ def populate_database():
     g105 = Group(number=105, major='B.E in Electronics', dept=d3)
     g106 = Group(number=106, major='B.S./M.S. in Nuclear Engineering', dept=d3)
 
-    s1 = Student(name='John Smith', dob=date(1991, 3, 20), gpa=3, group=g101,
+    s1 = Student(name='John Smith', dob=date(1991, 3, 20), tel='123-456', gpa=3, group=g101,
                         courses=[c1, c2, c4, c6])
     s1 = Student(name='Matthew Reed', dob=date(1990, 11, 26), gpa=3.5, group=g101,
                         courses=[c1, c3, c4, c5])
     s1 = Student(name='Chuan Qin', dob=date(1989, 2, 5), gpa=4, group=g101,
                         courses=[c3, c5, c6])
-    s1 = Student(name='Rebecca Lawson', dob=date(1990, 4, 18), gpa=3.3, group=g102,
+    s1 = Student(name='Rebecca Lawson', dob=date(1990, 4, 18), tel='234-567', gpa=3.3, group=g102,
                         courses=[c1, c4, c5, c6])
     s1 = Student(name='Maria Ionescu', dob=date(1991, 4, 23), gpa=3.9, group=g102,
                         courses=[c1, c2, c4, c6])

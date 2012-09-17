@@ -1,4 +1,5 @@
 import unittest
+from datetime import date
 from decimal import Decimal
 from pony.orm import *
 from testutils import *
@@ -10,6 +11,7 @@ class Student(db.Entity):
     scholarship = Optional(int)
     gpa = Optional(Decimal,3,1)
     group = Required('Group')
+    dob = Optional(date)
     
 class Group(db.Entity):
     number = PrimaryKey(int)
@@ -19,8 +21,8 @@ db.generate_mapping(create_tables=True)
 
 g1 = Group(number=1)
 Student(id=1, name='S1', group=g1, gpa=3.1)
-Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100)
-Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200)
+Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 01, 01))
+Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 01, 02))
 commit()
 
 class TestQuery(unittest.TestCase):
@@ -99,6 +101,9 @@ class TestQuery(unittest.TestCase):
     def test12(self):
         r = fetch_max(s.scholarship for s in Student)
         self.assertEquals(r, 200)
-    
+    def test13(self):
+        r = fetch_max(s.dob.year for s in Student)
+        self.assertEquals(r, 2001)
+
 if __name__ == '__main__':
     unittest.main()    

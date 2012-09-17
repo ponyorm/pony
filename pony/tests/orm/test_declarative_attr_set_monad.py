@@ -34,12 +34,14 @@ def populate_db():
     g41 = Group(number=41, department=101)
     g42 = Group(number=42, department=102)
     g43 = Group(number=43, department=102)
+    g44 = Group(number=44, department=102)
 
     s1 = Student(id=1, name="Joe", scholarship=None, group=g41)
     s2 = Student(id=2, name="Bob", scholarship=100, group=g41)
     s3 = Student(id=3, name="Beth", scholarship=500, group=g41)
     s4 = Student(id=4, name="Jon", scholarship=500, group=g42)
     s5 = Student(id=5, name="Pete", scholarship=700, group=g42)
+    s6 = Student(id=6, name="Mary", scholarship=300, group=g44)
 
     Math = Subject(name="Math")
     Physics = Subject(name="Physics")
@@ -73,6 +75,9 @@ class TestAttrSetMonad(unittest.TestCase):
     def test3(self):
         groups = fetch(g for g in Group if len(g.students.marks) > 2)
         self.assertEqual(groups, [Group[41]])
+    def test3a(self):
+        groups = fetch(g for g in Group if len(g.students.marks) < 2)
+        self.assertEqual(groups, [Group[42], Group[43], Group[44]])
     def test4(self):
         groups = fetch(g for g in Group if max(g.students.marks.value) <= 2)
         self.assertEqual(groups, [Group[42]])
@@ -87,7 +92,7 @@ class TestAttrSetMonad(unittest.TestCase):
         self.assertEqual(students, set([Student[1], Student[2], Student[3]]))
     def test9(self):
         students = set(fetch(s for s in Student if s.group not in (g for g in Group if g.department == 101)))
-        self.assertEqual(students, set([Student[4], Student[5]]))
+        self.assertEqual(students, set([Student[4], Student[5], Student[6]]))
     def test10(self):
         students = set(fetch(s for s in Student if s.group in (g for g in Group if g.department == 101)))
         self.assertEqual(students, set([Student[1], Student[2], Student[3]]))
@@ -99,16 +104,16 @@ class TestAttrSetMonad(unittest.TestCase):
         self.assertEqual(groups, set([Group[41], Group[42]]))
     def test13(self):
         groups = set(fetch(g for g in Group if g.students))
-        self.assertEqual(groups, set([Group[41], Group[42]]))
+        self.assertEqual(groups, set([Group[41], Group[42], Group[44]]))
     def test14(self):
         groups = set(fetch(g for g in Group if not g.students))
         self.assertEqual(groups, set([Group[43]]))
     def test15(self):
         groups = set(fetch(g for g in Group if exists(g.students)))
-        self.assertEqual(groups, set([Group[41], Group[42]]))
+        self.assertEqual(groups, set([Group[41], Group[42], Group[44]]))
     def test15a(self):
         groups = set(fetch(g for g in Group if not not exists(g.students)))
-        self.assertEqual(groups, set([Group[41], Group[42]]))
+        self.assertEqual(groups, set([Group[41], Group[42], Group[44]]))
     def test16(self):
         groups = fetch(g for g in Group if not exists(g.students))
         self.assertEqual(groups, [Group[43]])
@@ -117,7 +122,7 @@ class TestAttrSetMonad(unittest.TestCase):
         self.assertEqual(groups, set([Group[41]]))        
     def test18(self):
         groups = set(fetch(g for g in Group if 100 not in g.students.scholarship))
-        self.assertEqual(groups, set([Group[42], Group[43]]))
+        self.assertEqual(groups, set([Group[42], Group[43], Group[44]]))
     def test19(self):
         groups = set(fetch(g for g in Group if not not not 100 not in g.students.scholarship))
         self.assertEqual(groups, set([Group[41]]))
@@ -126,22 +131,22 @@ class TestAttrSetMonad(unittest.TestCase):
         self.assertEqual(groups, set([Group[41], Group[42]]))
     def test21(self):
         groups = set(fetch(g for g in Group if g.department is not None))
-        self.assertEqual(groups, set([Group[41], Group[42], Group[43]]))
+        self.assertEqual(groups, set([Group[41], Group[42], Group[43], Group[44]]))
     def test21a(self):
         groups = set(fetch(g for g in Group if not g.department is not None))
         self.assertEqual(groups, set([]))
     def test21b(self):
         groups = set(fetch(g for g in Group if not not not g.department is None))
-        self.assertEqual(groups, set([Group[41], Group[42], Group[43]]))   
+        self.assertEqual(groups, set([Group[41], Group[42], Group[43], Group[44]]))   
     def test22(self):
         groups = set(fetch(g for g in Group if 700 in (s.scholarship for s in Student if s.group == g)))
         self.assertEqual(groups, set([Group[42]]))
     def test23a(self):
         groups = set(fetch(g for g in Group if 700 not in g.students.scholarship))
-        self.assertEqual(groups, set([Group[41], Group[43]]))
+        self.assertEqual(groups, set([Group[41], Group[43], Group[44]]))
     def test23b(self):
         groups = set(fetch(g for g in Group if 700 not in (s.scholarship for s in Student if s.group == g)))
-        self.assertEqual(groups, set([Group[41], Group[43]]))
+        self.assertEqual(groups, set([Group[41], Group[43], Group[44]]))
     @raises_exception(NotImplementedError)
     def test24(self):
         groups = set(fetch(g for g in Group for g2 in Group if g.students == g2.students))
