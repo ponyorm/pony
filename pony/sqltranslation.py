@@ -1739,12 +1739,8 @@ class QuerySetMonad(SetMixin, Monad):
                 select_ast = [ ALL ] + columns_ast
                 subquery_ast = [ SELECT, select_ast, sub.from_ ]
                 subquery_expr = sub.tree.expr.monad
-                if isinstance(subquery_expr, AttrMonad) and subquery_expr.attr.is_required:
-                    print 111
-                    pass
-                else:
-                    print 222
-                    conditions += [ [ IS_NOT_NULL, column_ast ] for column_ast in sub.expr_columns ]
+                if isinstance(subquery_expr, AttrMonad) and subquery_expr.attr.is_required: pass
+                else: conditions += [ [ IS_NOT_NULL, column_ast ] for column_ast in sub.expr_columns ]
                 if conditions: subquery_ast.append([ WHERE ] + conditions)
                 if len(columns_ast) == 1: expr_ast = item.getsql()[0]
                 else: expr_ast = [ ROW ] + item.getsql()
