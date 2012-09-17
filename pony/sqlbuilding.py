@@ -221,13 +221,19 @@ class SQLBuilder(object):
         indent3 = indent2 + builder.indent_spaces
         result = [ indent, 'FROM ']
         for i, source in enumerate(sources):
-            if len(source) == 3:   alias, kind, x = source; join_cond = None
-            elif len(source) == 4: alias, kind, x, join_cond = source
+            if len(source) == 3:
+                alias, kind, x = source
+                join_cond = None
+            elif len(source) == 4:
+                alias, kind, x, join_cond = source
             else: throw(AstError, 'Invalid source in FROM section: %r' % source)
+
             if alias is not None: alias = builder.quote_name(alias)
+
             if i > 0:
                 if join_cond is None: result.append(', ')
                 else: result += [ '\n', indent2, '%s JOIN ' % join_type ]
+
             if kind == TABLE:
                 if isinstance(x, basestring): result.append(builder.quote_name(x))
                 else: result.append(builder.compound_name(x))
@@ -236,6 +242,7 @@ class SQLBuilder(object):
                 if alias is None: throw(AstError, 'Subquery in FROM section must have an alias')
                 result += builder.SELECT(*x), alias  # Oracle does not support 'AS' here
             else: throw(AstError, 'Invalid source kind in FROM section: %r' % kind)
+
             if join_cond is not None: result += [ '\n', indent3, 'ON ', builder(join_cond) ]
         result.append('\n')
         return result
