@@ -1615,7 +1615,19 @@ class AttrSetMonad(SetMixin, Monad):
         return monad.translator.AttrSetMonad(monad.root, monad.path + [ attr ])
     def len(monad):
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
-        sql_ast = [ SELECT, [ AGGREGATES, [ COUNT, ALL ] ], from_ast, [ WHERE ] + outer_conditions + inner_conditions ]
+        distinct = False
+        for attr in monad.path:
+            reverse = attr.reverse
+            if reverse and reverse.is_collection:
+                distinct = True
+                break
+        if not distinct:
+            sql_ast = [ SELECT, [ AGGREGATES, [ COUNT, ALL ] ],
+                        from_ast, [ WHERE ] + outer_conditions + inner_conditions ]
+        else:
+            sql_ast = [ SELECT, [ AGGREGATES, [ COUNT, ALL ] ],
+                      [ FROM, [ 't', SELECT, [ [ DISTINCT ] + expr_list,
+                                     from_ast, [ WHERE ] + outer_conditions + inner_conditions ] ] ] ]
         translator = monad.translator
         return translator.NumericExprMonad(translator, int, sql_ast)
     def sum(monad):
