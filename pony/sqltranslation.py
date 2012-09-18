@@ -1684,7 +1684,10 @@ class AttrSetMonad(SetMixin, Monad):
                 if expr_name not in groupby_names: break
 
             subquery_columns = [ 'ALL' ]
-            subquery_columns.extend(groupby_columns)
+            for column in groupby_columns:
+                if column[0] == 'COLUMN': # Workaround for SQLite 3.3.4 bug appeared in vanilla Python 2.5
+                    column = [ 'AS', column, column[-1] ]
+                subquery_columns.append(column)
             subquery_columns.append([ 'AS', [ 'MAX', expr ], expr_name ])
 
             subquery_ast = [ subquery_columns, from_ast ]
