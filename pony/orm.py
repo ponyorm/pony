@@ -10,7 +10,6 @@ except ImportError: etree = None
 import pony
 from pony import options
 from pony.decompiling import decompile
-from pony.sqlsymbols import *
 from pony.dbapiprovider import (
     LongStr, LongUnicode,
     DBException, RowNotFound, MultipleRowsFound, TooManyRowsFound,
@@ -292,7 +291,7 @@ class Database(object):
         if returning is not None: query_key = query_key + (returning,)
         cached_sql = database._insert_cache.get(query_key)
         if cached_sql is None:
-            ast = [ INSERT, table_name, keyargs.keys(), [ [PARAM, i] for i in range(len(keyargs)) ], returning ]
+            ast = [ 'INSERT', table_name, keyargs.keys(), [ [ 'PARAM', i ] for i in range(len(keyargs)) ], returning ]
             sql, adapter = database._ast2sql(ast)
             cached_sql = sql, adapter
             database._insert_cache[query_key] = cached_sql
@@ -479,10 +478,10 @@ class Database(object):
             if isinstance(table.name, tuple): alias = table.name[-1]
             elif isinstance(table.name, basestring): alias = table.name
             else: assert False
-            sql_ast = [ SELECT,
-                        [ ALL, ] + [ [ COLUMN, alias, column.name ] for column in table.column_list ],
-                        [ FROM, [ alias, TABLE, table.name ] ],
-                        [ WHERE, [ EQ, [ VALUE, 0 ], [ VALUE, 1 ] ] ]
+            sql_ast = [ 'SELECT',
+                        [ 'ALL', ] + [ [ 'COLUMN', alias, column.name ] for column in table.column_list ],
+                        [ 'FROM', [ alias, 'TABLE', table.name ] ],
+                        [ 'WHERE', [ 'EQ', [ 'VALUE', 0 ], [ 'VALUE', 1 ] ] ]
                       ]
             sql, adapter = database._ast2sql(sql_ast)
             database._exec_sql(sql)
@@ -663,13 +662,13 @@ class Attribute(object):
             entity = attr.entity
             database = entity._database_
             if not attr.lazy_sql_cache:
-                select_list = [ ALL ] + [ [ COLUMN, None, column ] for column in attr.columns ]
-                from_list = [ FROM, [ None, TABLE, entity._table_ ] ]
+                select_list = [ 'ALL' ] + [ [ 'COLUMN', None, column ] for column in attr.columns ]
+                from_list = [ 'FROM', [ None, 'TABLE', entity._table_ ] ]
                 pk_columns = entity._pk_columns_
                 pk_converters = entity._pk_converters_
-                criteria_list = [ [ EQ, [ COLUMN, None, column ], [ PARAM, i, converter ] ]
+                criteria_list = [ [ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', i, converter ] ]
                                   for i, (column, converter) in enumerate(izip(pk_columns, pk_converters)) ]
-                sql_ast = [ SELECT, select_list, from_list, [ WHERE ] + criteria_list ]
+                sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
                 sql, adapter = database._ast2sql(sql_ast)
                 offsets = tuple(range(len(attr.columns)))
                 attr.lazy_sql_cache = sql, adapter, offsets
@@ -1005,9 +1004,9 @@ def populate_criteria_list(criteria_list, columns, converters, params_count=0, t
     assert len(columns) == len(converters)
     for column, converter in zip(columns, converters):
         if converter is not None:
-            criteria_list.append([EQ, [ COLUMN, table_alias, column ], [ PARAM, params_count, converter ] ])
+            criteria_list.append([ 'EQ', [ 'COLUMN', table_alias, column ], [ 'PARAM', params_count, converter ] ])
         else:
-            criteria_list.append([IS_NULL, [COLUMN, None, column]])
+            criteria_list.append([ IS_NULL, [ 'COLUMN', None, column ] ])
         params_count += 1
     return params_count
 
@@ -1184,7 +1183,7 @@ class Set(Collection):
         assert reverse is not None and reverse.is_collection and issubclass(reverse.py_type, Entity)
         table_name = attr.table
         assert table_name is not None
-        select_list = [ ALL ]
+        select_list = [ 'ALL' ]
         if not attr.symmetric:
             columns = attr.columns
             rcolumns = reverse.columns
@@ -1194,30 +1193,30 @@ class Set(Collection):
             rcolumns = attr.columns
             rconverters = attr.converters
         if batch_size > 1:
-            select_list.extend([ COLUMN, 'T1', column ] for column in rcolumns)
-        select_list.extend([ COLUMN, 'T1', column ] for column in columns)
-        from_list = [ FROM, [ 'T1', TABLE, table_name ]]
+            select_list.extend([ 'COLUMN', 'T1', column ] for column in rcolumns)
+        select_list.extend([ 'COLUMN', 'T1', column ] for column in columns)
+        from_list = [ 'FROM', [ 'T1', 'TABLE', table_name ]]
         database = attr.entity._database_
         
         if batch_size == 1:
             criteria_list = []
             for i, (column, converter) in enumerate(zip(rcolumns, rconverters)):
-                criteria_list.append([EQ, [COLUMN, 'T1', column], [ PARAM, (0, i), converter ]])
+                criteria_list.append([ 'EQ', [ 'COLUMN', 'T1', column ], [ 'PARAM', (0, i), converter ] ])
         elif len(rcolumns) == 1:
             converter = rconverters[0]
-            criteria_list = [ [ IN, [ COLUMN, None, rcolumns[0] ],
-                                   [ [ PARAM, (i, 0), converter ] for i in xrange(batch_size) ] ] ]
+            criteria_list = [ [ 'IN', [ 'COLUMN', None, rcolumns[0] ],
+                                   [ [ 'PARAM', (i, 0), converter ] for i in xrange(batch_size) ] ] ]
         elif database.provider.translator_cls.row_value_syntax:
-            criteria_list = [ [ IN, [ ROW ] + [ [ COLUMN, None, column ] for column in rcolumns ],
-                                   [ [ ROW ] + [ [ PARAM, (i, j), converter ] for j, converter in enumerate(rconverters) ]
+            criteria_list = [ [ 'IN', [ 'ROW' ] + [ [ 'COLUMN', None, column ] for column in rcolumns ],
+                                   [ [ 'ROW' ] + [ [ 'PARAM', (i, j), converter ] for j, converter in enumerate(rconverters) ]
                                      for i in xrange(batch_size) ] ] ]
         else:
             pairs = zip(rcolumns, rconverters)
-            criteria_list = [ [ OR ] + [ [ AND ] + [ [ EQ, [ COLUMN, None, column ], [ PARAM, (i, j), converter ] ]
+            criteria_list = [ [ 'OR' ] + [ [ 'AND' ] + [ [ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (i, j), converter ] ]
                                                    for j, (column, converter) in enumerate(pairs) ]
                                        for i in xrange(batch_size) ] ]
 
-        sql_ast = [ SELECT, select_list, from_list, [ WHERE ] + criteria_list ]
+        sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
         sql, adapter = attr.cached_load_sql[batch_size] = database._ast2sql(sql_ast)
         return sql, adapter
     def copy(attr, obj):
@@ -1381,7 +1380,7 @@ class Set(Collection):
             reverse = attr.reverse
             table_name = attr.table
             assert table_name is not None
-            where_list = [ WHERE ]
+            where_list = [ 'WHERE' ]
             if attr.symmetric:
                 columns = attr.columns + attr.reverse_columns
                 converters = attr.converters + attr.converters
@@ -1389,8 +1388,8 @@ class Set(Collection):
                 columns = reverse.columns + attr.columns
                 converters = reverse.converters + attr.converters
             for i, (column, converter) in enumerate(zip(columns, converters)):
-                where_list.append([ EQ, [COLUMN, None, column], [ PARAM, i, converter ] ])
-            sql_ast = [ DELETE, table_name, where_list ]
+                where_list.append([ 'EQ', ['COLUMN', None, column], [ 'PARAM', i, converter ] ])
+            sql_ast = [ 'DELETE', table_name, where_list ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_remove_m2m_sql = sql, adapter
         else: sql, adapter = cached_sql
@@ -1411,8 +1410,8 @@ class Set(Collection):
             else:
                 columns = reverse.columns + attr.columns
                 converters = reverse.converters + attr.converters
-            params = [ [PARAM, i, converter] for i, converter in enumerate(converters) ]
-            sql_ast = [ INSERT, table_name, columns, params ]
+            params = [ [ 'PARAM', i, converter ] for i, converter in enumerate(converters) ]
+            sql_ast = [ 'INSERT', table_name, columns, params ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_add_m2m_sql = sql, adapter
         else: sql, adapter = cached_sql
@@ -2071,7 +2070,7 @@ class EntityMeta(type):
         return objects
     def _construct_select_clause_(entity, alias=None, distinct=False):
         attr_offsets = {}
-        select_list = distinct and [ DISTINCT ] or [ ALL ]
+        select_list = distinct and [ 'DISTINCT' ] or [ 'ALL' ]
         root = entity._root_
         for attr in chain(root._attrs_, root._subclass_attrs_):
             if attr.is_collection: continue
@@ -2080,22 +2079,22 @@ class EntityMeta(type):
             attr_offsets[attr] = offsets = []
             for column in attr.columns:
                 offsets.append(len(select_list) - 1)
-                select_list.append([ COLUMN, alias, column ])
+                select_list.append([ 'COLUMN', alias, column ])
         return select_list, attr_offsets
     def _construct_discriminator_criteria_(entity):
         discr_attr = entity._discriminator_attr_
         if discr_attr is None: return None
         code2cls = discr_attr.code2cls
-        discr_values = [ [ VALUE, cls._discriminator_ ] for cls in entity._subclasses_ ]
-        discr_values.append([ VALUE, entity._discriminator_])
-        return [ IN, [ COLUMN, None, discr_attr.column ], discr_values ]
+        discr_values = [ [ 'VALUE', cls._discriminator_ ] for cls in entity._subclasses_ ]
+        discr_values.append([ 'VALUE', entity._discriminator_])
+        return [ 'IN', [ 'COLUMN', None, discr_attr.column ], discr_values ]
     def _construct_batchload_sql_(entity, batch_size, attr=None):
         query_key = batch_size, attr
         cached_sql = entity._batchload_sql_cache_.get(query_key)
         if cached_sql is not None: return cached_sql
         table_name = entity._table_
         select_list, attr_offsets = entity._construct_select_clause_()
-        from_list = [ FROM, [ None, TABLE, table_name ]]
+        from_list = [ 'FROM', [ None, 'TABLE', table_name ]]
         if attr is None:
             columns = entity._pk_columns_
             converters = entity._pk_converters_
@@ -2103,26 +2102,26 @@ class EntityMeta(type):
             columns = attr.columns
             converters = attr.converters
         if batch_size == 1:
-            criteria_list = [ [ EQ, [ COLUMN, None, column ], [ PARAM, (0, i), converter ] ]
+            criteria_list = [ [ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (0, i), converter ] ]
                               for i, (column, converter) in enumerate(izip(columns, converters)) ]
         elif len(columns) == 1:
             converter = converters[0]
-            criteria_list = [ [ IN, [ COLUMN, None, columns[0] ],
-                                   [ [ PARAM, (i, 0), converter ] for i in xrange(batch_size) ] ] ]
+            criteria_list = [ [ 'IN', [ 'COLUMN', None, columns[0] ],
+                                   [ [ 'PARAM', (i, 0), converter ] for i in xrange(batch_size) ] ] ]
         elif entity._database_.provider.translator_cls.row_value_syntax:
-            criteria_list = [ [ IN, [ ROW ] + [ [ COLUMN, None, column ] for column in columns ],
-                                    [ [ ROW ] + [ [ PARAM, (i, j), converter ] for j, converter in enumerate(converters) ]
+            criteria_list = [ [ 'IN', [ 'ROW' ] + [ [ 'COLUMN', None, column ] for column in columns ],
+                                    [ [ 'ROW' ] + [ [ 'PARAM', (i, j), converter ] for j, converter in enumerate(converters) ]
                                      for i in xrange(batch_size) ] ] ]
         else:
             pairs = zip(columns, converters)
-            criteria_list = [ [ OR ] + [ [ AND ] + [ [ EQ, [ COLUMN, None, column ], [ PARAM, (i, j), converter ] ]
+            criteria_list = [ [ 'OR' ] + [ [ 'AND' ] + [ [ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (i, j), converter ] ]
                                                      for j, (column, converter) in enumerate(pairs) ]
                                          for i in xrange(batch_size) ] ]
 
         discr_criteria = entity._construct_discriminator_criteria_()
         if discr_criteria: criteria_list.insert(0, discr_criteria)
             
-        sql_ast = [ SELECT, select_list, from_list, [ WHERE ] + criteria_list ]
+        sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
         cached_sql = sql, adapter, attr_offsets
@@ -2134,8 +2133,8 @@ class EntityMeta(type):
         if cached_sql is not None: return cached_sql
         table_name = entity._table_
         select_list, attr_offsets = entity._construct_select_clause_()
-        from_list = [ FROM, [ None, TABLE, table_name ]]
-        where_list = [ WHERE ]
+        from_list = [ 'FROM', [ None, 'TABLE', table_name ]]
+        where_list = [ 'WHERE' ]
         values = []
         extractors = {}
 
@@ -2148,9 +2147,9 @@ class EntityMeta(type):
             if not attr.reverse:
                 if not attr_is_none:
                     assert len(attr.converters) == 1
-                    where_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name, attr.converters[0] ]])
+                    where_list.append([ 'EQ', [ 'COLUMN', None, attr.column ], [ 'PARAM', attr.name, attr.converters[0] ] ])
                     extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]
-                else: where_list.append([IS_NULL, [COLUMN, None, attr.column]])
+                else: where_list.append([ IS_NULL, [ 'COLUMN', None, attr.column ] ])
             elif not attr.columns: throw(NotImplementedError)
             else:
                 attr_entity = attr.py_type
@@ -2158,20 +2157,20 @@ class EntityMeta(type):
                 if len(attr.columns) == 1:
                     if not attr_is_none:
                         assert len(attr.converters) == 1
-                        where_list.append([EQ, [COLUMN, None, attr.column], [ PARAM, attr.name, attr.converters[0] ]])
+                        where_list.append([ 'EQ', [ 'COLUMN', None, attr.column ], [ 'PARAM', attr.name, attr.converters[0] ] ])
                         extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]._get_raw_pkval_()[0]
-                    else: where_list.append([IS_NULL, [COLUMN, None, attr.column]])
+                    else: where_list.append([IS_NULL, [ 'COLUMN', None, attr.column ]])
                 elif not attr_is_none:
                     for i, (column, converter) in enumerate(zip(attr.columns, attr_entity._pk_converters_)):
                         param_name = '%s-%d' % (attr.name, i+1)
-                        where_list.append([EQ, [COLUMN, None, column], [ PARAM, param_name, converter ]])
+                        where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', param_name, converter ] ])
                         extractors[param_name] = lambda avdict, attr=attr, i=i: avdict[attr]._get_raw_pkval_()[i]
                 else:
                     for column in attr.columns:
-                        where_list.append([IS_NULL, [COLUMN, None, column]])
+                        where_list.append([ IS_NULL, [ 'COLUMN', None, column ] ])
 
-        sql_ast = [ SELECT, select_list, from_list, where_list ]
-        if order_by_pk: sql_ast.append([ ORDER_BY ] + [ ([COLUMN, None, column], ASC) for column in entity._pk_columns_ ])
+        sql_ast = [ 'SELECT', select_list, from_list, where_list ]
+        if order_by_pk: sql_ast.append([ 'ORDER_BY' ] + [ ([ 'COLUMN', None, column ], 'ASC') for column in entity._pk_columns_ ])
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
         def extractor(avdict):
@@ -2749,8 +2748,8 @@ class Entity(object):
                 columns = entity._columns_
                 converters = entity._converters_
             assert len(columns) == len(converters)
-            params = [ [ PARAM, i,  converter ] for i, converter in enumerate(converters) ]
-            sql_ast = [ INSERT, entity._table_, columns, params ]
+            params = [ [ 'PARAM', i,  converter ] for i, converter in enumerate(converters) ]
+            sql_ast = [ 'INSERT', entity._table_, columns, params ]
             if auto_pk:
                 assert len(entity._pk_columns_) == 1
                 assert pk_attr.auto
@@ -2820,14 +2819,14 @@ class Entity(object):
                     if not attr.columns: continue
                     update_converters.extend(attr.converters)
                 assert len(update_columns) == len(update_converters)
-                update_params = [ [ PARAM, i, converter ] for i, converter in enumerate(update_converters) ]
+                update_params = [ [ 'PARAM', i, converter ] for i, converter in enumerate(update_converters) ]
                 params_count = len(update_params)
-                where_list = [ WHERE ]
+                where_list = [ 'WHERE' ]
                 pk_columns = obj._pk_columns_
                 pk_converters = obj._pk_converters_
                 params_count = populate_criteria_list(where_list, pk_columns, pk_converters, params_count)
                 populate_criteria_list(where_list, optimistic_check_columns, optimistic_check_converters, params_count)
-                sql_ast = [ UPDATE, obj._table_, zip(update_columns, update_params), where_list ]
+                sql_ast = [ 'UPDATE', obj._table_, zip(update_columns, update_params), where_list ]
                 sql, adapter = database._ast2sql(sql_ast)
                 obj._update_sql_cache_[query_key] = sql, adapter
             else: sql, adapter = cached_sql
@@ -2864,10 +2863,10 @@ class Entity(object):
         database = obj._database_
         cached_sql = obj._lock_sql_cache_.get(query_key)        
         if cached_sql is None:
-            where_list = [ WHERE ]
+            where_list = [ 'WHERE' ]
             params_count = populate_criteria_list(where_list, obj._pk_columns_, obj._pk_converters_)
             populate_criteria_list(where_list, optimistic_check_columns, optimistic_check_converters, params_count)
-            sql_ast = [ SELECT, [ ALL, [ VALUE, 1 ]], [ FROM, [ None, TABLE, obj._table_ ] ], where_list ]
+            sql_ast = [ 'SELECT', [ 'ALL', [ 'VALUE', 1 ]], [ 'FROM', [ None, 'TABLE', obj._table_ ] ], where_list ]
             sql, adapter = database._ast2sql(sql_ast)
             obj._lock_sql_cache_[query_key] = sql, adapter
         else: sql, adapter = cached_sql
@@ -2880,9 +2879,9 @@ class Entity(object):
         database = obj._database_
         cached_sql = obj._cached_delete_sql_
         if cached_sql is None:
-            where_list = [ WHERE ]
+            where_list = [ 'WHERE' ]
             populate_criteria_list(where_list, obj._pk_columns_, obj._pk_converters_)
-            sql_ast = [ DELETE, obj._table_, where_list ]
+            sql_ast = [ 'DELETE', obj._table_, where_list ]
             sql, adapter = database._ast2sql(sql_ast)
             obj.__class__._cached_delete_sql_ = sql, adapter
         else: sql, adapter = cached_sql
@@ -3337,50 +3336,50 @@ class Query(object):
         if cache_entry is None:
             if distinct is None: distinct = translator.distinct
             ast_transformer = lambda ast: ast
-            sql_ast = [ SELECT ]
+            sql_ast = [ 'SELECT' ]
             if aggr_func_name:
                 expr_type = translator.expr_type
                 if not isinstance(expr_type, EntityMeta):
-                    if aggr_func_name in (SUM, AVG) and expr_type not in translator.numeric_types:
+                    if aggr_func_name in ('SUM', 'AVG') and expr_type not in translator.numeric_types:
                         throw(TranslationError, '%r is valid for numeric attributes only' % aggr_func_name.lower())
                     assert len(translator.expr_columns) == 1
                     column_ast = translator.expr_columns[0]
-                elif aggr_func_name is not COUNT: throw(TranslationError, 
+                elif aggr_func_name is not 'COUNT': throw(TranslationError, 
                     'Attribute should be specified for %r aggregate function' % aggr_func_name.lower())
                 aggr_ast = None
-                if aggr_func_name is COUNT:
+                if aggr_func_name is 'COUNT':
                     if isinstance(expr_type, (tuple, EntityMeta)):
                         if translator.distinct:
-                            select_ast = [ DISTINCT ] + translator.expr_columns  # aggr_ast remains to be None
+                            select_ast = [ 'DISTINCT' ] + translator.expr_columns  # aggr_ast remains to be None
                             def ast_transformer(ast):
-                                return [ SELECT, [ AGGREGATES, [ COUNT, ALL ] ], [ FROM, [ 't', SELECT, ast[1:] ] ] ]
-                        else: aggr_ast = [ COUNT, ALL ]
-                    else: aggr_ast = [ COUNT, DISTINCT, column_ast ]
-                elif aggr_func_name is SUM:
-                    aggr_ast = [ COALESCE, [ SUM, column_ast ], [ VALUE, 0 ] ]
+                                return [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ], [ 'FROM', [ 't', 'SELECT', ast[1:] ] ] ]
+                        else: aggr_ast = [ 'COUNT', 'ALL' ]
+                    else: aggr_ast = [ 'COUNT', 'DISTINCT', column_ast ]
+                elif aggr_func_name is 'SUM':
+                    aggr_ast = [ 'COALESCE', [ 'SUM', column_ast ], [ 'VALUE', 0 ] ]
                 else: aggr_ast = [ aggr_func_name, column_ast ]
-                if aggr_ast: select_ast = [ AGGREGATES, aggr_ast ]
+                if aggr_ast: select_ast = [ 'AGGREGATES', aggr_ast ]
             elif isinstance(translator.expr_type, EntityMeta):
                 select_ast, attr_offsets = translator.expr_type._construct_select_clause_(translator.alias, distinct)
                 query._attr_offsets = attr_offsets
-            else: select_ast = [ distinct and DISTINCT or ALL ] + translator.expr_columns
+            else: select_ast = [ distinct and 'DISTINCT' or 'ALL' ] + translator.expr_columns
             sql_ast.append(select_ast)
             sql_ast.append(translator.from_)
             sql_ast.append(translator.where)
             if order:
                 alias = translator.alias
-                orderby_section = [ ORDER_BY ]
+                orderby_section = [ 'ORDER_BY' ]
                 for attr, asc in order:
                     for column in attr.columns:
-                        orderby_section.append(([COLUMN, alias, column], asc and ASC or DESC))
+                        orderby_section.append(([ 'COLUMN', alias, column ], asc and 'ASC' or 'DESC'))
                 sql_ast = sql_ast + [ orderby_section ]
             if range:
                 start, stop = range
                 limit = stop - start
                 offset = start
                 assert limit is not None
-                limit_section = [ LIMIT, [ VALUE, limit ]]
-                if offset: limit_section.append([ VALUE, offset ])
+                limit_section = [ 'LIMIT', [ 'VALUE', limit ]]
+                if offset: limit_section.append([ 'VALUE', offset ])
                 sql_ast = sql_ast + [ limit_section ]
             sql_ast = ast_transformer(sql_ast)
             cache = database._get_cache()
@@ -3428,8 +3427,8 @@ class Query(object):
     @cut_traceback
     def exists(query):
         new_query = query._clone()
-        new_query._aggr_func_name = EXISTS
-        new_query._aggr_select = [ ALL, [ VALUE, 1 ] ]
+        new_query._aggr_func_name = 'EXISTS'
+        new_query._aggr_select = [ 'ALL', [ 'VALUE', 1 ] ]
         cursor = new_query._exec_sql(range=(0, 1))
         row = cursor.fetchone()
         return row is not None
@@ -3492,28 +3491,28 @@ class Query(object):
         if row is not None: result = row[0]
         else: result = None
         if result is None:
-            if aggr_func_name in (SUM, COUNT): result = 0
+            if aggr_func_name in ('SUM', 'COUNT'): result = 0
             else: return None
-        if aggr_func_name is COUNT: return result
+        if aggr_func_name is 'COUNT': return result
         expr_type = translator.expr_type
         provider = query._database.provider
         converter = provider.get_converter_by_py_type(expr_type)
         return converter.sql2py(result)
     @cut_traceback
     def sum(query):
-        return query._aggregate(SUM)
+        return query._aggregate('SUM')
     @cut_traceback
     def avg(query):
-        return query._aggregate(AVG)
+        return query._aggregate('AVG')
     @cut_traceback
     def min(query):
-        return query._aggregate(MIN)
+        return query._aggregate('MIN')
     @cut_traceback
     def max(query):
-        return query._aggregate(MAX)
+        return query._aggregate('MAX')
     @cut_traceback
     def count(query):
-        return query._aggregate(COUNT)
+        return query._aggregate('COUNT')
 
 def show(entity):
     x = entity
