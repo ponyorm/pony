@@ -26,11 +26,14 @@ from test_declarative_orderby_limit import *
 from test_declarative_string_mixin import *
 from test_declarative_query_set_monad import *
 from test_declarative_sqltranslator import *
+from test_declarative_sqltranslator2 import *
 from test_declarative_exceptions import *
 from test_collections import *
 from test_sqlbuilding_formatstyles import *
 from test_sqlbuilding_sqlast import *
 from test_orm_query import *
+
+#from new_tests import *
 
 if __name__ == '__main__':
     unittest.main()
