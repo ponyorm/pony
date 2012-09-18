@@ -3347,7 +3347,7 @@ class Query(object):
                 elif aggr_func_name is not 'COUNT': throw(TranslationError, 
                     'Attribute should be specified for %r aggregate function' % aggr_func_name.lower())
                 aggr_ast = None
-                if aggr_func_name is 'COUNT':
+                if aggr_func_name == 'COUNT':
                     if isinstance(expr_type, (tuple, EntityMeta)):
                         if translator.distinct:
                             select_ast = [ 'DISTINCT' ] + translator.expr_columns  # aggr_ast remains to be None
@@ -3355,7 +3355,7 @@ class Query(object):
                                 return [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ], [ 'FROM', [ 't', 'SELECT', ast[1:] ] ] ]
                         else: aggr_ast = [ 'COUNT', 'ALL' ]
                     else: aggr_ast = [ 'COUNT', 'DISTINCT', column_ast ]
-                elif aggr_func_name is 'SUM':
+                elif aggr_func_name == 'SUM':
                     aggr_ast = [ 'COALESCE', [ 'SUM', column_ast ], [ 'VALUE', 0 ] ]
                 else: aggr_ast = [ aggr_func_name, column_ast ]
                 if aggr_ast: select_ast = [ 'AGGREGATES', aggr_ast ]
@@ -3493,7 +3493,7 @@ class Query(object):
         if result is None:
             if aggr_func_name in ('SUM', 'COUNT'): result = 0
             else: return None
-        if aggr_func_name is 'COUNT': return result
+        if aggr_func_name == 'COUNT': return result
         expr_type = translator.expr_type
         provider = query._database.provider
         converter = provider.get_converter_by_py_type(expr_type)
