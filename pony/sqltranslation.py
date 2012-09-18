@@ -635,14 +635,14 @@ class TableRef(object):
         return tableref.alias, tableref.entity._pk_columns_
 
 class JoinedTableRef(object):
-    def __init__(tableref, translator, name_path, parent_alias, attr, from_ast=None):
+    def __init__(tableref, translator, name_path, parent_tableref, attr, from_ast=None):
         tableref.translator = translator
         if from_ast is not None: tableref.from_ast = from_ast
         else: tableref.from_ast = translator.from_            
         tableref.name_path = name_path
         tableref.alias = None
         tableref.optimized = None
-        tableref.parent_alias = parent_alias
+        tableref.parent_tableref = parent_tableref
         tableref.attr = attr
         tableref.entity = attr.py_type
         assert isinstance(tableref.entity, EntityMeta)
@@ -653,7 +653,7 @@ class JoinedTableRef(object):
                 return tableref.alias, tableref.pk_columns
         attr = tableref.attr
         parent_pk_only = attr.pk_offset is not None or attr.is_collection
-        parent_alias_name, left_pk_columns = tableref.parent_alias.make_join(parent_pk_only)
+        parent_alias, left_pk_columns = tableref.parent_tableref.make_join(parent_pk_only)
         left_entity = attr.entity
         right_entity = attr.py_type
         pk_columns = right_entity._pk_columns_
@@ -662,31 +662,31 @@ class JoinedTableRef(object):
                 reverse = attr.reverse
                 assert reverse.columns and not reverse.is_collection
                 alias = tableref.translator.get_short_alias(tableref.name_path, right_entity.__name__)
-                join_cond = join_tables(parent_alias_name, alias, left_pk_columns, reverse.columns)
+                join_cond = join_tables(parent_alias, alias, left_pk_columns, reverse.columns)
             else:
                 if attr.pk_offset is not None:
                     offset = attr.pk_columns_offset
                     left_columns = left_pk_columns[offset:offset+len(attr.columns)]
                 else: left_columns = attr.columns
                 if pk_only:
-                    tableref.alias = parent_alias_name
+                    tableref.alias = parent_alias
                     tableref.pk_columns = left_columns
                     tableref.optimized = True
                     tableref.joined = True
-                    return parent_alias_name, left_columns
+                    return parent_alias, left_columns
                 alias = tableref.translator.get_short_alias(tableref.name_path, right_entity.__name__)
-                join_cond = join_tables(parent_alias_name, alias, left_columns, pk_columns)
+                join_cond = join_tables(parent_alias, alias, left_columns, pk_columns)
             tableref.from_ast.append([ alias, TABLE, right_entity._table_, join_cond ])
         elif not attr.reverse.is_collection:
             alias = tableref.translator.get_short_alias(tableref.name_path, right_entity.__name__)
-            join_cond = join_tables(parent_alias_name, alias, left_pk_columns, attr.reverse.columns)
+            join_cond = join_tables(parent_alias, alias, left_pk_columns, attr.reverse.columns)
             tableref.from_ast.append([ alias, TABLE, right_entity._table_, join_cond ])
         else:
             if not tableref.joined:
                 m2m_table = attr.table
                 m2m_alias = tableref.translator.get_short_alias(None, 't')
                 reverse_columns = attr.symmetric and attr.columns or attr.reverse.columns
-                m2m_join_cond = join_tables(parent_alias_name, m2m_alias, left_pk_columns, reverse_columns)
+                m2m_join_cond = join_tables(parent_alias, m2m_alias, left_pk_columns, reverse_columns)
                 tableref.from_ast.append([ m2m_alias, TABLE, m2m_table, m2m_join_cond ])
             if attr.symmetric: right_m2m_columns = attr.reverse_columns
             else: right_m2m_columns = attr.columns
