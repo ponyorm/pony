@@ -394,24 +394,31 @@ class SQLTranslator(ASTTranslator):
                 if entity is None: throw(TranslationError, ast2src(qual.iter))
                 tablerefs[name] = TableRef(translator, name, entity)
             else:
-                if len(attr_names) > 1: throw(NotImplementedError, ast2src(qual.iter))
-                attrname = attr_names[0]
+                attr_names.reverse()
+                name_path = node_name
                 parent_tableref = translator.get_tableref(node_name)
                 if parent_tableref is None: throw(TranslationError, "Name %r must be defined in query" % node_name)
                 parent_entity = parent_tableref.entity
-                attr = parent_entity._adict_.get(attrname)
-                if attr is None: throw(AttributeError, attrname)
-                if not attr.is_collection: throw(TypeError, '%s is not collection' % ast2src(qual.iter))
-                if not isinstance(attr, Set): throw(NotImplementedError, ast2src(qual.iter))
-                entity = attr.py_type
-                if not isinstance(entity, EntityMeta): throw(NotImplementedError, ast2src(qual.iter))
-                reverse = attr.reverse
-                if reverse.is_collection:
-                    if not isinstance(reverse, Set): throw(NotImplementedError, ast2src(qual.iter))
-                    translator.distinct = True
-                elif parent_tableref.alias != tree.quals[i-1].assign.name:
-                    translator.distinct = True
-                tablerefs[name] = JoinedTableRef(translator, name, parent_tableref, attr)
+                last_index = len(attr_names) - 1
+                for i, attrname in enumerate(attr_names):
+                    attr = parent_entity._adict_.get(attrname)
+                    if attr is None: throw(AttributeError, attrname)
+                    if not attr.is_collection: throw(TypeError, '%s is not collection' % ast2src(qual.iter))
+                    if not isinstance(attr, Set): throw(NotImplementedError, ast2src(qual.iter))
+                    entity = attr.py_type
+                    if not isinstance(entity, EntityMeta): throw(NotImplementedError, ast2src(qual.iter))
+                    reverse = attr.reverse
+                    if reverse.is_collection:
+                        if not isinstance(reverse, Set): throw(NotImplementedError, ast2src(qual.iter))
+                        translator.distinct = True
+                    elif parent_tableref.alias != tree.quals[i-1].assign.name:
+                        translator.distinct = True
+                    if i == last_index: name_path = name
+                    else: name_path += '-' + attr.name
+                    tableref = JoinedTableRef(translator, name_path, parent_tableref, attr)
+                    tablerefs[name_path] = tableref
+                    parent_tableref = tableref
+                    parent_entity = entity
 
             database = entity._database_
             if database.schema is None: throw(ERDiagramError, 
