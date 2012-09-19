@@ -8,7 +8,10 @@ from datetime import date, datetime
 from pony import options
 from pony.dbapiprovider import LongStr, LongUnicode
 from pony.utils import avg, copy_func_attrs, is_ident, throw
-from pony.orm import query, exists, ERDiagramError, TranslationError, EntityMeta, Set, JOIN, AsciiStr
+from pony.orm import (
+    query, exists, ERDiagramError, TranslationError, EntityMeta, Set, JOIN, AsciiStr,
+    aggregate_functions, COUNT, SUM, MIN, MAX, AVG
+    )
 
 class IncomparableTypesError(TypeError):
     def __init__(exc, type1, type2):
@@ -268,6 +271,13 @@ class SQLTranslator(ASTTranslator):
             if monad is None: return
             node.monad = monad
             monad.node = node
+            if not hasattr(monad, 'aggregated'):
+                for child in node.getChildNodes():
+                    m = getattr(child, 'monad', None) 
+                    if m and getattr(m, 'aggregated', False):
+                        monad.aggregated = True
+                        break
+                else: monad.aggregated = False
             return monad
 
     @classmethod
@@ -352,6 +362,7 @@ class SQLTranslator(ASTTranslator):
         translator.distinct = False
         translator.from_ = [ 'FROM' ]
         translator.conditions = []
+        translator.aggregated = False
         translator.inside_expr = False
         translator.inside_not = False
         translator.hint_join = False
@@ -437,8 +448,11 @@ class SQLTranslator(ASTTranslator):
         monad = tree.expr.monad
         if isinstance(monad, translator.ParamMonad): throw(TranslationError,
             "External parameter '%s' cannot be used as query result" % ast2src(tree.expr))
+        translator.groupby_monads = translator.groupby = None
         if isinstance(monad, translator.ObjectMixin):
-            translator.distinct |= monad.requires_distinct()
+            if monad.aggregated: throw(TranslationError)
+            if translator.aggregated: translator.groupby_monads = [ monad ]
+            else: translator.distinct |= monad.requires_distinct()
             alias, _ = monad.tableref.make_join()
             translator.alias = alias
             translator.expr_type = entity = monad.type
@@ -447,8 +461,7 @@ class SQLTranslator(ASTTranslator):
             discr_criteria = entity._construct_discriminator_criteria_()
             if discr_criteria: translator.conditions.insert(0, discr_criteria)
         else:
-            translator.alias =  None
-            translator.distinct = True
+            translator.alias = None
             if isinstance(monad, translator.ListMonad):
                 expr_monads = monad.items
                 translator.expr_type = tuple(m.type for m in expr_monads)
@@ -459,6 +472,9 @@ class SQLTranslator(ASTTranslator):
                 expr_monads = [ monad ]
                 translator.expr_type = monad.type
                 translator.expr_columns = monad.getsql()
+            if translator.aggregated:
+                translator.groupby_monads = [ m for m in expr_monads if not m.aggregated ]
+            else: translator.distinct = True
             row_layout = []
             offset = 0
             provider = translator.database.provider
@@ -473,6 +489,10 @@ class SQLTranslator(ASTTranslator):
                     row_layout.append((converter.sql2py, offset))
                     offset += 1
             translator.row_layout = row_layout
+
+        if translator.groupby_monads:
+            translator.groupby = [ 'GROUP_BY' ]
+            for m in translator.groupby_monads: translator.groupby.extend(m.getsql())
 
         first_from_item = translator.from_[1]
         if len(first_from_item) > 3:
@@ -1579,6 +1599,41 @@ class FuncExistsMonad(FuncMonad):
         if not isinstance(subquery, monad.translator.SetMixin): throw(TypeError, 
             "'exists' function expects generator expression or collection, got: {EXPR}")
         return subquery.nonzero()
+
+class FuncAggrMonad(FuncMonad):
+    def call(monad, x):
+        if x.aggregated: throw(TranslationError, 'Aggregated functions cannot be nested. Got: {EXPR}')
+        translator = monad.translator
+        translator.aggregated = True
+        expr_type = x.type
+        func_name = monad.func.__name__
+        if func_name in ('SUM', 'AVG') and expr_type not in translator.numeric_types:
+            throw(TypeError, "Function '%s' expects argument of numeric type, got %r in {EXPR}"
+                             % (func_name, type2str(expr_type)))
+        elif func_name == 'COUNT' and isinstance(expr_type, EntityMeta): pass
+        elif expr_type not in translator.comparable_types:
+            throw(TypeError, "Function '%s' cannot be applied to type %r in {EXPR}"
+                             % (func_name, type2str(expr_type)))
+        expr = x.getsql()
+        if len(expr) == 1: expr = expr[0]
+        elif translator.row_value_syntax == True: expr = ['ROW'] + expr
+        else: throw(NotImplementedError, 'Entities with composite primary keys '
+                    'does not supported inside aggregate functions. Got: {EXPR}')
+        def new_expr(type, sql): return translator.ExprMonad.new(translator, type, sql)
+        if func_name == 'COUNT':
+            result = new_expr(int, [ 'COUNT', 'DISTINCT', expr ])
+        else:
+            if func_name == 'AVG': result_type = float
+            else: result_type = x.type
+            result = new_expr(result_type, [ func_name, expr ])
+        result.aggregated = True
+        return result
+
+class FuncCountMonad(FuncAggrMonad): func = COUNT
+class FuncSumMonad(FuncAggrMonad): func = SUM
+class FuncMinMonad(FuncAggrMonad): func = MIN
+class FuncMaxMonad(FuncAggrMonad): func = MAX
+class FuncAvgMonad(FuncAggrMonad): func = AVG
 
 class JoinMonad(Monad):
     def __init__(monad, translator):

@@ -51,6 +51,8 @@ __all__ = '''
     avg
 
     JOIN
+
+    COUNT SUM MIN MAX AVG
     '''.split()
 
 debug = False
@@ -3366,6 +3368,7 @@ class Query(object):
             sql_ast.append(select_ast)
             sql_ast.append(translator.from_)
             sql_ast.append(translator.where)
+            if translator.groupby: sql_ast.append(translator.groupby)
             if order:
                 alias = translator.alias
                 orderby_section = [ 'ORDER_BY' ]
@@ -3513,6 +3516,21 @@ class Query(object):
     @cut_traceback
     def count(query):
         return query._aggregate('COUNT')
+
+aggregate_functions = {}
+
+def make_aggregate_function(name):
+    def func(x):
+        raise TypeError('%s() function can be used inside declarative queries only' % name)
+    func.__name__ = name
+    aggregate_functions[name] = func
+    return func
+
+COUNT = make_aggregate_function('COUNT')
+SUM = make_aggregate_function('SUM')
+MIN = make_aggregate_function('MIN')
+MAX = make_aggregate_function('MAX')
+AVG = make_aggregate_function('AVG')
 
 def show(entity):
     x = entity
