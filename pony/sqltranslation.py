@@ -1658,7 +1658,7 @@ class AttrSetMonad(SetMixin, Monad):
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
         assert len(expr_list) == 1
         expr = expr_list[0]
-        sql_ast = [ 'SELECT', [ 'AGGREGATES', ['COALESCE', [ 'SUM', expr ], [ 'VALUE', 0 ]]], from_ast, [ 'WHERE' ] + outer_conditions + inner_conditions ]
+        sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'SUM', expr ] ], from_ast, [ 'WHERE' ] + outer_conditions + inner_conditions ]
         return translator.NumericExprMonad(translator, item_type, sql_ast)
     def avg(monad):
         translator = monad.translator
@@ -1829,7 +1829,7 @@ class QuerySetMonad(SetMixin, Monad):
         if expr_type not in translator.numeric_types: throw(TypeError, 
             "Function 'sum' expects query or items of numeric type, got %r in {EXPR}" % type2str(expr_type))
         assert len(sub.expr_columns) == 1
-        select_ast = [ 'AGGREGATES', [ 'COALESCE', [ 'SUM', sub.expr_columns[0] ], [ 'VALUE', 0 ] ] ]
+        select_ast = [ 'AGGREGATES', [ 'SUM', sub.expr_columns[0] ] ]
         return monad._subselect(expr_type, select_ast)
     def avg(monad):
         translator = monad.translator

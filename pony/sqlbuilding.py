@@ -361,7 +361,8 @@ class SQLBuilder(object):
             if expr is None: throw(AstError, 'COUNT(DISTINCT) without argument')
             return 'COUNT(DISTINCT ', builder(expr), ')'
         throw(AstError, 'Invalid COUNT kind (must be ALL or DISTINCT)')
-    SUM = make_unary_func('SUM')
+    def SUM(builder, expr):
+        return 'coalesce(SUM(', builder(expr), '), 0)'
     AVG = make_unary_func('AVG')
     UPPER = make_unary_func('upper')
     LOWER = make_unary_func('lower')
