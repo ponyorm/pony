@@ -511,9 +511,9 @@ class SQLTranslator(ASTTranslator):
     def postConst(translator, node):
         value = node.value
         if type(value) is not tuple:
-            return translator.ConstMonad(translator, value)
+            return translator.ConstMonad.new(translator, value)
         else:
-            return translator.ListMonad(translator, [ translator.ConstMonad(translator, item) for item in value ])
+            return translator.ListMonad(translator, [ translator.ConstMonad.new(translator, item) for item in value ])
     def postList(translator, node):
         return translator.ListMonad(translator, [ item.monad for item in node.nodes ])
     def postTuple(translator, node):
@@ -541,9 +541,9 @@ class SQLTranslator(ASTTranslator):
             return func_monad_class(translator)
         else:
             if name in ('True', 'False') and issubclass(value_type, int):
-                return translator.ConstMonad(translator, name == 'True' and 1 or 0)
-            elif value_type is NoneType: return translator.ConstMonad(translator, None)
-            else: return translator.ParamMonad(translator, value_type, name)
+                return translator.ConstMonad.new(translator, name == 'True' and 1 or 0)
+            elif value_type is NoneType: return translator.ConstMonad.new(translator, None)
+            else: return translator.ParamMonad.new(translator, value_type, name)
     def postAdd(translator, node):
         return node.left.monad + node.right.monad
     def postSub(translator, node):
@@ -916,10 +916,10 @@ class NumericMixin(MonadMixin):
         return translator.NumericExprMonad(translator, monad.type, [ 'ABS', sql ])
     def nonzero(monad):
         translator = monad.translator
-        return translator.CmpMonad('!=', monad, translator.ConstMonad(translator, 0))
+        return translator.CmpMonad('!=', monad, translator.ConstMonad.new(translator, 0))
     def negate(monad):
         translator = monad.translator
-        return translator.CmpMonad('==', monad, translator.ConstMonad(translator, 0))
+        return translator.CmpMonad('==', monad, translator.ConstMonad.new(translator, 0))
 
 def datetime_attr_factory(name):
     def attr_func(monad):
@@ -980,7 +980,7 @@ class StringMixin(MonadMixin):
                and (stop is None or isinstance(stop, translator.NumericConstMonad)):
                 if start is not None: start = start.value
                 if stop is not None: stop = stop.value
-                return translator.ConstMonad(translator, monad.value[start:stop])
+                return translator.ConstMonad.new(translator, monad.value[start:stop])
 
             if start is not None and start.type is not int:
                 throw(TypeError, "Invalid type of start index (expected 'int', got %r) in string slice {EXPR}" % type2str(start.type))
@@ -988,7 +988,7 @@ class StringMixin(MonadMixin):
                 throw(TypeError, "Invalid type of stop index (expected 'int', got %r) in string slice {EXPR}" % type2str(stop.type))
             expr_sql = monad.getsql()[0]
 
-            if start is None: start = translator.ConstMonad(translator, 0)
+            if start is None: start = translator.ConstMonad.new(translator, 0)
             
             if isinstance(start, translator.NumericConstMonad):
                 if start.value < 0: throw(NotImplementedError, 'Negative indices are not supported in string slice {EXPR}')
@@ -1016,7 +1016,7 @@ class StringMixin(MonadMixin):
             return translator.StringExprMonad(translator, monad.type, sql)
         
         if isinstance(monad, translator.StringConstMonad) and isinstance(index, translator.NumericConstMonad):
-            return translator.ConstMonad(translator, monad.value[index.value])
+            return translator.ConstMonad.new(translator, monad.value[index.value])
         if index.type is not int: throw(TypeError, 
             'String indices must be integers. Got %r in expression {EXPR}' % type2str(index.type))
         expr_sql = monad.getsql()[0]
@@ -1134,6 +1134,9 @@ class AttrMonad(Monad):
         elif isinstance(type, EntityMeta): cls = translator.ObjectAttrMonad
         else: throw(NotImplementedError, type)
         return cls(parent, attr, *args, **keyargs)
+    def __new__(cls, parent, attr):
+        if cls is AttrMonad: assert False, 'Abstract class'
+        return Monad.__new__(cls, parent, attr)
     def __init__(monad, parent, attr):
         assert monad.__class__ is not AttrMonad
         translator = parent.translator
@@ -1199,8 +1202,8 @@ class DatetimeAttrMonad(DatetimeMixin, AttrMonad): pass
 class BufferAttrMonad(BufferMixin, AttrMonad): pass
 
 class ParamMonad(Monad):
-    def __new__(cls, translator, type, name, parent=None):
-        assert cls is ParamMonad
+    @staticmethod
+    def new(translator, type, name, parent=None):
         type = translator.normalize_type(type)
         if type in translator.numeric_types: cls = translator.NumericParamMonad
         elif type in translator.string_types: cls = translator.StringParamMonad
@@ -1209,7 +1212,10 @@ class ParamMonad(Monad):
         elif type is buffer: cls = translator.BufferParamMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectParamMonad
         else: throw(NotImplementedError, type)
-        return object.__new__(cls)
+        return cls(translator, type, name, parent)
+    def __new__(cls, translator, type, name, parent=None):
+        if cls is ParamMonad: assert False, 'Abstract class'
+        return Monad.__new__(cls, translator, type, name, parent)
     def __init__(monad, translator, type, name, parent=None):
         type = translator.normalize_type(type)
         Monad.__init__(monad, translator, type)
@@ -1239,7 +1245,7 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
         except KeyError: throw(AttributeError)
         if attr.is_collection: throw(NotImplementedError)
         translator = monad.translator
-        return translator.ParamMonad(translator, attr.py_type, name, monad)
+        return translator.ParamMonad.new(translator, attr.py_type, name, monad)
     def getsql(monad):
         monad.add_extractors()
         entity = monad.type
@@ -1286,8 +1292,8 @@ class DateExprMonad(DateMixin, ExprMonad): pass
 class DatetimeExprMonad(DatetimeMixin, ExprMonad): pass
 
 class ConstMonad(Monad):
-    def __new__(cls, translator, value):
-        assert cls is translator.ConstMonad
+    @staticmethod
+    def new(translator, value):
         value_type = translator.get_normalized_type_of(value)
         if value_type in translator.numeric_types: cls = translator.NumericConstMonad
         elif value_type in translator.string_types: cls = translator.StringConstMonad
@@ -1296,7 +1302,10 @@ class ConstMonad(Monad):
         elif value_type is NoneType: cls = translator.NoneMonad
         elif value_type is buffer: cls = translator.BufferConstMonad
         else: throw(NotImplementedError, value_type)
-        return object.__new__(cls)
+        return cls(translator, value)
+    def __new__(cls, translator, value):
+        if cls is ConstMonad: assert False, 'Abstract class'
+        return Monad.__new__(cls, translator, value)
     def __init__(monad, translator, value):
         value_type = translator.get_normalized_type_of(value)
         Monad.__init__(monad, translator, value_type)
@@ -1314,7 +1323,7 @@ class BufferConstMonad(BufferMixin, ConstMonad): pass
 
 class StringConstMonad(StringMixin, ConstMonad):
     def len(monad):
-        return monad.translator.ConstMonad(monad.translator, len(monad.value))
+        return monad.translator.ConstMonad.new(monad.translator, len(monad.value))
     
 class NumericConstMonad(NumericMixin, ConstMonad): pass
 class DateConstMonad(DateMixin, ConstMonad): pass
@@ -1344,7 +1353,7 @@ class ObjectConstMonad(Monad):
         if attr.is_collection: throw(NotImplementedError)
         monad.extractor = lambda variables: entity._get_by_raw_pkval_(monad.rawpkval)
         translator = monad.translator
-        return translator.ParamMonad(translator, attr.py_type, name, monad)
+        return translator.ParamMonad.new(translator, attr.py_type, name, monad)
 
 class BoolMonad(Monad):
     def __init__(monad, translator):
@@ -1472,14 +1481,14 @@ class FuncBufferMonad(FuncMonad):
     def call(monad, x):
         translator = monad.translator
         if not isinstance(x, translator.StringConstMonad): throw(TypeError)
-        return translator.ConstMonad(translator, buffer(x.value))
+        return translator.ConstMonad.new(translator, buffer(x.value))
 
 class FuncDecimalMonad(FuncMonad):
     func = Decimal
     def call(monad, x):
         translator = monad.translator
         if not isinstance(x, translator.StringConstMonad): throw(TypeError)
-        return translator.ConstMonad(translator, Decimal(x.value))
+        return translator.ConstMonad.new(translator, Decimal(x.value))
 
 class FuncDateMonad(FuncMonad):
     func = date
@@ -1489,7 +1498,7 @@ class FuncDateMonad(FuncMonad):
             if not isinstance(x, translator.NumericMixin) or x.type is not int: throw(TypeError, 
                 "'%s' argument of date(year, month, day) function must be of 'int' type. Got: %r" % (name, type2str(x.type)))
             if not isinstance(x, translator.ConstMonad): throw(NotImplementedError)
-        return translator.ConstMonad(translator, date(year.value, month.value, day.value))
+        return translator.ConstMonad.new(translator, date(year.value, month.value, day.value))
     def call_today(monad):
         translator = monad.translator
         return translator.DateExprMonad(translator, date, [ 'TODAY' ])
@@ -1502,7 +1511,7 @@ class FuncDatetimeMonad(FuncDateMonad):
             if not isinstance(x, translator.NumericMixin) or x.type is not int: throw(TypeError, 
                 "'%s' argument of datetime(...) function must be of 'int' type. Got: %r" % (name, type2str(x.type)))
             if not isinstance(x, translator.ConstMonad): throw(NotImplementedError)
-        return translator.ConstMonad(translator, datetime(*tuple(arg.value for arg in args)))
+        return translator.ConstMonad.new(translator, datetime(*tuple(arg.value for arg in args)))
     def call_now(monad):
         translator = monad.translator
         return translator.DatetimeExprMonad(translator, datetime, [ 'NOW' ])
