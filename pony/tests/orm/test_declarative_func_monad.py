@@ -1,8 +1,9 @@
 import unittest
-from pony.orm import *
-from testutils import *
 from datetime import date, datetime
 from decimal import Decimal
+from pony.orm import *
+from pony.sqltranslation import IncomparableTypesError
+from testutils import *
 
 db = Database('sqlite', ':memory:')
 
@@ -70,9 +71,8 @@ class TestFuncMonad(unittest.TestCase):
     def test_minmax6(self):
         x = chr(128)
         result = set(fetch(s for s in Student if min(s.name, x, "CC") == "CC" ))        
-##    @raises_exception(TypeError)
-##    def test_minmax5(self):
-##        result = set(fetch(s for s in Student if min(s.phd, 2) == 2 ))
+    def test_minmax5(self):
+        result = set(fetch(s for s in Student if min(s.phd, 2) == 2 ))
     def test_date_func1(self):
         result = set(fetch(s for s in Student if s.dob >= date(1983, 3, 3)))
         self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
@@ -92,21 +92,28 @@ class TestFuncMonad(unittest.TestCase):
     def test_datetime_func3(self):
         result = set(fetch(s for s in Student if s.last_visit >= datetime(2011, 3, 3, 13, 13, 13)))
         self.assertEquals(result, set([Student[3], Student[4], Student[5]]))        
-##    @raises_exception(TypeError, "'month' argument of date(year, month, day) function must be int")
-##    def test_datetime_func4(self):
-##        Student = self.Student
-##        result = set(fetch(s for s in Student if s.last_visit >= date(1983, 'three', 3)))        
+    @raises_exception(TypeError, "'month' argument of date(year, month, day) function must be of 'int' type. Got: 'AsciiStr'")
+    def test_datetime_func4(self):
+        result = set(fetch(s for s in Student if s.last_visit >= date(1983, 'three', 3)))        
     @raises_exception(NotImplementedError)
     def test_datetime_func5(self):
         d = 3
         result = set(fetch(s for s in Student if s.last_visit >= date(1983, d, 3)))
+    def test_datetime_now1(self):
+        result = fetch(s for s in Student if s.dob < date.today())
+        self.assertEquals(result, [Student[1], Student[2], Student[3], Student[4], Student[5]])
+    @raises_exception(IncomparableTypesError, "Incomparable types 'int' and 'datetime' in expression: 1 < datetime.now()")
+    def test_datetime_now2(self):
+        fetch(s for s in Student if 1 < datetime.now())
+    def test_datetime_now3(self):
+        result = fetch(s for s in Student if s.dob < datetime.today())
+        self.assertEquals(result, [Student[1], Student[2], Student[3], Student[4], Student[5]])
     def test_decimal_func(self):
         result = set(fetch(s for s in Student if s.scholarship >= Decimal("303.3")))
         self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
-##    def test_bool(self):
-##        Student = self.Student
-##        result = set(fetch(s for s in Student if s.phd == True))
-##        self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
+    def test_bool(self):
+        result = set(fetch(s for s in Student if s.phd == True))
+        self.assertEquals(result, set([Student[1], Student[2]]))
         
 if __name__ == '__main__':
     unittest.main()
