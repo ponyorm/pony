@@ -589,6 +589,8 @@ class SQLTranslator(ASTTranslator):
             else: args.append(arg.monad)
         func_monad = node.node.monad
         return func_monad(*args, **keyargs)
+    def postKeyword(translator, node):
+        pass  # this node will be processed by postCallFunc
     def postSubscript(translator, node):
         assert node.flags == 'OP_APPLY'
         assert isinstance(node.subs, list)
