@@ -1271,6 +1271,9 @@ class ExprMonad(Monad):
         elif type is datetime: cls = translator.DatetimeExprMonad
         else: throw(NotImplementedError, type)
         return cls(translator, type, sql)
+    def __new__(cls, translator, type, sql):
+        if cls is ExprMonad: assert False, 'Abstract class'
+        return Monad.__new__(cls, translator, type, sql)
     def __init__(monad, translator, type, sql):
         Monad.__init__(monad, translator, type)
         monad.sql = sql
@@ -1489,7 +1492,7 @@ class FuncDateMonad(FuncMonad):
         return translator.ConstMonad(translator, date(year.value, month.value, day.value))
     def call_today(monad):
         translator = monad.translator
-        return translator.ExprMonad(translator, date, [ 'TODAY' ])
+        return translator.DateExprMonad(translator, date, [ 'TODAY' ])
 
 class FuncDatetimeMonad(FuncDateMonad):
     func = datetime
@@ -1502,7 +1505,7 @@ class FuncDatetimeMonad(FuncDateMonad):
         return translator.ConstMonad(translator, datetime(*tuple(arg.value for arg in args)))
     def call_now(monad):
         translator = monad.translator
-        return translator.ExprMonad(translator, datetime, [ 'NOW' ])
+        return translator.DatetimeExprMonad(translator, datetime, [ 'NOW' ])
 
 class FuncLenMonad(FuncMonad):
     func = len
@@ -1551,7 +1554,7 @@ def minmax(monad, sqlop, *args):
         t3 = translator.coerce_types(t, t2)
         if t3 is None: throw(IncomparableTypesError, t, t2)
         t = t3
-    return translator.ExprMonad(translator, t, sql)
+    return translator.ExprMonad.new(translator, t, sql)
 
 class FuncSelectMonad(FuncMonad):
     func = query
