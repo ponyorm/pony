@@ -3274,10 +3274,18 @@ class Query(object):
         query._functions = functions = {}
 
         node = tree.quals[0].iter
-        assert isinstance(node, ast.Name)
+        attrnames = []
+        while isinstance(node, ast.Getattr):  # only when query is passed as a string
+            attrnames.append(node.attrname)
+            node = node.expr
+        if not isinstance(node, ast.Name): throw(NotImplementedError)
         name = node.name
         try: origin = locals[name]
-        except KeyError: assert False
+        except KeyError:  # only when query is passed as a string
+            try: origin = globals[name]
+            except KeyError: throw(NameError(name))
+        for attrname in reversed(attrnames):
+            origin = getattr(origin, attrname)
 
         if isinstance(origin, EntityIter): origin = origin.entity
         elif not isinstance(origin, EntityMeta):
