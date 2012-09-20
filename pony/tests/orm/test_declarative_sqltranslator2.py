@@ -174,7 +174,27 @@ class TestSQLTranslator2(unittest.TestCase):
     def test_exception2(self):
          fetch_one(s for s in Student)
     def test_exists(self):
-        result = exists(s for s in Student)       
+        result = exists(s for s in Student)
+    @raises_exception(AttributeError, "Entity 'FooBar' is not found in database 'db'")
+    def test_entity_not_found(self):
+        fetch(s for s in db.Student for g in db.FooBar)
+    def test_keyargs1(self):
+        result = fetch(s for s in Student if s.dob < date(year=1990, month=10, day=20))
+        self.assertEquals(result, [Student[3], Student[4], Student[6], Student[7]])
+    def test_query_as_string1(self):
+        result = fetch('s for s in Student if 3 <= s.gpa < 4')
+        self.assertEquals(result, [Student[1], Student[2], Student[4], Student[5], Student[6], Student[7]])
+    def test_query_as_string2(self):
+        result = fetch('s for s in db.Student if 3 <= s.gpa < 4')
+        self.assertEquals(result, [Student[1], Student[2], Student[4], Student[5], Student[6], Student[7]])
+    def test_str_subclasses(self):
+        result = fetch(d for d in Department for g in d.groups for c in d.courses if g.number == 106 and c.name.startswith('T'))
+        self.assertEquals(result, [Department[3]])
+    def test_unicode_subclass(self):
+        class Unicode2(unicode):
+            pass
+        u2 = Unicode2(u'\xf0')
+        fetch(s for s in Student if len(u2) == 1)
         
 if __name__ == "__main__":
     unittest.main()
