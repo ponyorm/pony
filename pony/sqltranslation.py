@@ -286,6 +286,10 @@ class SQLTranslator(ASTTranslator):
             try: value.decode('ascii')
             except UnicodeDecodeError: pass
             else: return AsciiStr
+        elif isinstance(value, unicode):
+            try: value.encode('ascii')
+            except UnicodeEncodeError: pass
+            else: return AsciiStr
         return translator.normalize_type(type(value))
 
     @classmethod
