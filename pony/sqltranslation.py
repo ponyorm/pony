@@ -410,7 +410,7 @@ class SQLTranslator(ASTTranslator):
                 if parent_tableref is None: throw(TranslationError, "Name %r must be defined in query" % node_name)
                 parent_entity = parent_tableref.entity
                 last_index = len(attr_names) - 1
-                for i, attrname in enumerate(attr_names):
+                for j, attrname in enumerate(attr_names):
                     attr = parent_entity._adict_.get(attrname)
                     if attr is None: throw(AttributeError, attrname)
                     if not attr.is_collection: throw(TypeError, '%s is not collection' % ast2src(qual.iter))
@@ -423,7 +423,7 @@ class SQLTranslator(ASTTranslator):
                         translator.distinct = True
                     elif parent_tableref.alias != tree.quals[i-1].assign.name:
                         translator.distinct = True
-                    if i == last_index: name_path = name
+                    if j == last_index: name_path = name
                     else: name_path += '-' + attr.name
                     tableref = JoinedTableRef(translator, name_path, parent_tableref, attr)
                     tablerefs[name_path] = tableref
