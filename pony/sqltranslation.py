@@ -1622,7 +1622,7 @@ class FuncAggrMonad(FuncMonad):
         if len(expr) == 1: expr = expr[0]
         elif translator.row_value_syntax == True: expr = ['ROW'] + expr
         else: throw(NotImplementedError, 'Entities with composite primary keys '
-                    'does not supported inside aggregate functions. Got: {EXPR}')
+                    'not supported inside aggregate functions. Got: {EXPR}')
         def new_expr(type, sql): return translator.ExprMonad.new(translator, type, sql)
         if func_name == 'COUNT':
             result = new_expr(int, [ 'COUNT', 'DISTINCT', expr ])
