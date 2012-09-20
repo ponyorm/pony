@@ -3,6 +3,8 @@ from compiler import ast
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
 from opcode import hasconst, hasname, hasjrel, haslocal, hascompare, hasfree
 
+from pony.utils import throw
+
 ##ast.And.__repr__ = lambda self: "And(%s: %s)" % (getattr(self, 'endpos', '?'), repr(self.nodes),)
 ##ast.Or.__repr__ = lambda self: "Or(%s: %s)" % (getattr(self, 'endpos', '?'), repr(self.nodes),)
 
@@ -13,7 +15,7 @@ codeobjects = {}
 def decompile(x):
     if isinstance(x, types.GeneratorType): codeobject = x.gi_frame.f_code
     elif isinstance(x, types.FunctionType): codeobject = x.func_code
-    else: raise TypeError
+    else: throw(TypeError)
     key = id(codeobject)
     result = ast_cache.get(key)
     if result is None:
@@ -89,7 +91,7 @@ class Decompiler(object):
                 opname = opnames[op].replace('+', '_')
                 # print opname, arg, decompiler.stack
                 method = getattr(decompiler, opname, None)
-                if method is None: raise NotImplementedError('Unsupported operation: %s' % opname)
+                if method is None: throw(NotImplementedError('Unsupported operation: %s' % opname))
                 decompiler.pos = i
                 x = method(*arg)
                 if x is not None: decompiler.stack.append(x)
@@ -255,7 +257,7 @@ class Decompiler(object):
         return if_exp
 
     def LIST_APPEND(decompiler):
-        raise NotImplementedError
+        throw(NotImplementedError)
 
     def LOAD_ATTR(decompiler, attr_name):
         return ast.Getattr(decompiler.stack.pop(), attr_name)
@@ -288,7 +290,7 @@ class Decompiler(object):
         return decompiler.MAKE_FUNCTION(argc)
 
     def MAKE_FUNCTION(decompiler, argc):
-        if argc: raise NotImplementedError
+        if argc: throw(NotImplementedError)
         tos = decompiler.stack.pop()
         codeobject = tos.value
         decompiler = Decompiler(codeobject)
@@ -302,7 +304,7 @@ class Decompiler(object):
         pass
 
     def RETURN_VALUE(decompiler):
-        if decompiler.pos != decompiler.end: raise NotImplementedError
+        if decompiler.pos != decompiler.end: throw(NotImplementedError)
         expr = decompiler.stack.pop()
         decompiler.stack.append(simplify(expr))
         raise AstGenerated
@@ -352,7 +354,7 @@ class Decompiler(object):
 
     def STORE_FAST(decompiler, varname):
         if varname.startswith('_['):
-            raise InvalidQuery('Use generator expression (... for ... in ...) instead of list comprehension [... for ... in ...] inside query')
+            throw(InvalidQuery('Use generator expression (... for ... in ...) instead of list comprehension [... for ... in ...] inside query'))
         decompiler.assnames.add(varname)
         decompiler.store(ast.AssName(varname, 'OP_ASSIGN'))
 
