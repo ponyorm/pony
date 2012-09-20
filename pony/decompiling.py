@@ -239,7 +239,7 @@ class Decompiler(object):
                 if hasattr(top, 'endpos'):
                     top2.endpos = top.endpos
                     if decompiler.targets.get(top.endpos) is top: decompiler.targets[top.endpos] = top2
-            else: assert False
+            else: throw(NotImplementedError('Expression is too complex to decompile, try to pass query as string, e.g. fetch("x for x in Something")'))
             top2.endpos = max(top2.endpos, getattr(top, 'endpos', 0))
             top = decompiler.stack.pop()
         decompiler.stack.append(top)
