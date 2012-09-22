@@ -1203,12 +1203,6 @@ class ObjectFlatMonad(ObjectMixin, Monad):
         monad.parent = parent
         monad.attr = attr
 
-        translator = monad.translator
-        conditions = translator.conditions
-        reverse = attr.reverse
-        entity = monad.type
-        parent_entity = monad.parent.type
-
         name_path = '-'.join((parent.tableref.name_path, attr.name))
         assert translator.get_tableref(name_path) is None
         monad.tableref = JoinedTableRef(translator, name_path, parent.tableref, attr)
