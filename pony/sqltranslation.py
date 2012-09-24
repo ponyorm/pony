@@ -814,11 +814,17 @@ def reraise_improved_typeerror(exc, func_name, orig_func_name):
     exc.args = (new_msg,)
     throw(exc)
 
+def raise_forgot_parentheses(monad):
+    assert monad.type == 'METHOD'
+    throw(TranslationError, 'You seems to forgot parentheses after %s' % ast2src(monad.node))
+
 class MethodMonad(Monad):
     def __init__(monad, translator, parent, attrname):
         Monad.__init__(monad, translator, 'METHOD')
         monad.parent = parent
         monad.attrname = attrname
+    def getattr(monad, attrname):
+        raise_forgot_parentheses(monad)
     def __call__(monad, *args, **keyargs):
         method = getattr(monad.parent, 'call_' + monad.attrname)
         try: return method(*args, **keyargs)
@@ -901,8 +907,9 @@ _binop_errmsg = 'Unsupported operand types %r and %r for operation %r in express
 def make_numeric_binop(op, sqlop):
     def numeric_binop(monad, monad2):
         translator = monad.translator
-        if not isinstance(monad2, translator.NumericMixin):
-            throw(TypeError, _binop_errmsg % (type2str(monad.type), type2str(monad2.type), op))
+        if isinstance(monad2, translator.NumericMixin): pass
+        elif monad2.type == 'METHOD': raise_forgot_parentheses(monad2)
+        else: throw(TypeError, _binop_errmsg % (type2str(monad.type), type2str(monad2.type), op))
         t1, t2 = monad.type, monad2.type
         if t1 is t2: result_type = t1
         else: result_type = numeric_conversions.get((t1, t2))
@@ -1409,8 +1416,10 @@ cmp_negate.update((b, a) for a, b in cmp_negate.items())
 class CmpMonad(BoolMonad):
     def __init__(monad, op, left, right):
         translator = left.translator
-        if not translator.are_comparable_types(left.type, right.type, op):
-            throw(IncomparableTypesError, left.type, right.type)
+        if translator.are_comparable_types(left.type, right.type, op): pass
+        elif left.type == 'METHOD': raise_forgot_parentheses(left)
+        elif right.type == 'METHOD': raise_forgot_parentheses(right)
+        else: throw(IncomparableTypesError, left.type, right.type)
         if op == '<>': op = '!='
         if left.type is NoneType:
             assert right.type is not NoneType
