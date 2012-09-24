@@ -3375,8 +3375,9 @@ class Query(object):
             else: select_ast = [ distinct and 'DISTINCT' or 'ALL' ] + translator.expr_columns
             sql_ast.append(select_ast)
             sql_ast.append(translator.from_)
-            sql_ast.append(translator.where)
+            if translator.where: sql_ast.append(translator.where)
             if translator.groupby: sql_ast.append(translator.groupby)
+            if translator.having: sql_ast.append(translator.having)
             if order:
                 alias = translator.alias
                 orderby_section = [ 'ORDER_BY' ]

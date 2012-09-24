@@ -378,7 +378,11 @@ class SQLTranslator(ASTTranslator):
         translator.extractors = {}
         translator.distinct = False
         translator.from_ = [ 'FROM' ]
+        translator.where = None
         translator.conditions = []
+        translator.groupby = None
+        translator.having = None
+        translator.having_conditions = []
         translator.aggregated = False
         translator.inside_expr = False
         translator.inside_not = False
@@ -457,7 +461,12 @@ class SQLTranslator(ASTTranslator):
             for if_ in qual.ifs:
                 assert isinstance(if_, ast.GenExprIf)
                 translator.dispatch(if_)
-                translator.conditions.append(if_.monad.getsql())
+                if isinstance(if_.monad, AndMonad): cond_monads = if_.monad.operands
+                else: cond_monads = [ if_.monad ]
+                for m in cond_monads:
+                    if not m.aggregated: translator.conditions.append(m.getsql())
+                    else: translator.having_conditions.append(m.getsql())
+                
         translator.inside_expr = True
         translator.dispatch(tree.expr)
         assert not translator.hint_join
@@ -465,10 +474,10 @@ class SQLTranslator(ASTTranslator):
         monad = tree.expr.monad
         if isinstance(monad, translator.ParamMonad): throw(TranslationError,
             "External parameter '%s' cannot be used as query result" % ast2src(tree.expr))
-        translator.groupby_monads = translator.groupby = None
+        groupby_monads = None
         if isinstance(monad, translator.ObjectMixin):
             if monad.aggregated: throw(TranslationError)
-            if translator.aggregated: translator.groupby_monads = [ monad ]
+            if translator.aggregated: groupby_monads = [ monad ]
             else: translator.distinct |= monad.requires_distinct()
             alias, _ = monad.tableref.make_join()
             translator.alias = alias
@@ -490,7 +499,7 @@ class SQLTranslator(ASTTranslator):
                 translator.expr_type = monad.type
                 translator.expr_columns = monad.getsql()
             if translator.aggregated:
-                translator.groupby_monads = [ m for m in expr_monads if not m.aggregated ]
+                groupby_monads = [ m for m in expr_monads if not m.aggregated ]
             else: translator.distinct = True
             row_layout = []
             offset = 0
@@ -507,9 +516,15 @@ class SQLTranslator(ASTTranslator):
                     offset += 1
             translator.row_layout = row_layout
 
-        if translator.groupby_monads:
+        if groupby_monads:
             translator.groupby = [ 'GROUP_BY' ]
-            for m in translator.groupby_monads: translator.groupby.extend(m.getsql())
+            for m in groupby_monads: translator.groupby.extend(m.getsql())
+
+        if translator.having_conditions:
+            if not translator.groupby: throw(TranslationError,
+                'In order to use aggregated functions sucn as SUM(), COUNT(), etc., '
+                'query must have grouping columns (i.e. resulting non-aggregated values)')
+            translator.having = [ 'HAVING' ] + translator.having_conditions
 
         first_from_item = translator.from_[1]
         if len(first_from_item) > 3:
@@ -538,9 +553,10 @@ class SQLTranslator(ASTTranslator):
             translator.inside_not = inside_not
             if op == 'not in': translator.inside_not = not inside_not
             translator.dispatch(right)
-            if op.endswith('in'):
-                monads.append(right.monad.contains(left.monad, op == 'not in'))
-            else: monads.append(left.monad.cmp(op, right.monad))
+            if op.endswith('in'): monad = right.monad.contains(left.monad, op == 'not in')
+            else: monad = left.monad.cmp(op, right.monad)
+            monad.aggregated = getattr(left.monad, 'aggregated', False) or getattr(right.monad, 'aggregated', False)
+            monads.append(monad)
             left = right
         translator.inside_not = inside_not
         if len(monads) == 1: return monads[0]

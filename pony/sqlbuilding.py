@@ -261,6 +261,16 @@ class SQLBuilder(object):
         for condition in conditions[1:]:
             extend((indent, '  AND ', builder(condition), '\n'))
         return result
+    def HAVING(builder, *conditions):
+        if not conditions: return ''
+        conditions = flat_conditions(conditions)
+        indent = builder.indent_spaces * (builder.indent-1)
+        result = [ indent, 'HAVING ' ]
+        extend = result.extend
+        extend((builder(conditions[0]), '\n'))
+        for condition in conditions[1:]:
+            extend((indent, '  AND ', builder(condition), '\n'))
+        return result
     @indentable
     def GROUP_BY(builder, *expr_list):
         exprs = [ builder(e) for e in expr_list ]
