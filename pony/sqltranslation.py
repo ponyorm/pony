@@ -319,8 +319,21 @@ class SQLTranslator(ASTTranslator):
         return translator.coercions.get((type1, type2))
 
     @classmethod
+    def check_comparable(translator, left_monad, right_monad, op='=='):
+        t1, t2 = left_monad.type, right_monad.type
+        if t1 == 'METHOD': raise_forgot_parentheses(left_monad)
+        if t2 == 'METHOD': raise_forgot_parentheses(right_monad)
+        if not translator.are_comparable_types(t1, t2, op):
+            if op in ('in', 'not in') and isinstance(t2, SetType): t2 = t2.item_type
+            throw(IncomparableTypesError, t1, t2)
+
+    @classmethod
     def are_comparable_types(translator, type1, type2, op='=='):
-        # types must be normalized already! 
+        # types must be normalized already!
+        if op in ('in', 'not in'):
+            if not isinstance(type2, SetType): return False
+            op = '=='
+            type2 = type2.item_type
         if op in ('is', 'is not'):
             return type1 is not NoneType and type2 is NoneType
         if isinstance(type1, tuple):
@@ -830,6 +843,25 @@ class MethodMonad(Monad):
         try: return method(*args, **keyargs)
         except TypeError, exc: reraise_improved_typeerror(exc, method.__name__, monad.attrname)
 
+    def contains(monad, item, not_in=False): raise_forgot_parentheses(monad)
+    def nonzero(monad): raise_forgot_parentheses(monad)
+    def negate(monad): raise_forgot_parentheses(monad)
+    def len(monad): raise_forgot_parentheses(monad)
+    def sum(monad): raise_forgot_parentheses(monad)
+    def min(monad): raise_forgot_parentheses(monad)
+    def max(monad): raise_forgot_parentheses(monad)
+    def avg(monad): raise_forgot_parentheses(monad)
+    def __getitem__(monad, key): raise_forgot_parentheses(monad)
+
+    def __add__(monad, monad2): raise_forgot_parentheses(monad)
+    def __sub__(monad, monad2): raise_forgot_parentheses(monad)
+    def __mul__(monad, monad2): raise_forgot_parentheses(monad)
+    def __div__(monad, monad2): raise_forgot_parentheses(monad)
+    def __pow__(monad, monad2): raise_forgot_parentheses(monad)
+
+    def __neg__(monad): raise_forgot_parentheses(monad)
+    def abs(monad): raise_forgot_parentheses(monad)
+
 class DatabaseMonad(Monad):
     def __init__(monad, translator, database):
         Monad.__init__(monad, translator, 'DATABASE')
@@ -881,9 +913,7 @@ class ListMonad(Monad):
         monad.items = items
     def contains(monad, x, not_in=False):
         translator = monad.translator
-        for item in monad.items:
-            if not translator.are_comparable_types(item.type, x.type):
-                throw(IncomparableTypesError, x.type, item.type)
+        for item in monad.items: translator.check_comparable(item, x)
         left_sql = x.getsql()
         if len(left_sql) == 1:
             if not_in: sql = [ 'NOT_IN', left_sql[0], [ item.getsql()[0] for item in monad.items ] ]
@@ -978,6 +1008,7 @@ def make_string_binop(op, sqlop):
     def string_binop(monad, monad2):
         translator = monad.translator
         if not translator.are_comparable_types(monad.type, monad2.type, sqlop):
+            if monad2.type == 'METHOD': raise_forgot_parentheses(monad2)
             throw(TypeError, _binop_errmsg % (type2str(monad.type), type2str(monad2.type), op))
         left_sql = monad.getsql()
         right_sql = monad2.getsql()
@@ -1070,8 +1101,7 @@ class StringMixin(MonadMixin):
         return translator.NumericExprMonad(translator, int, [ 'LENGTH', sql ])
     def contains(monad, item, not_in=False):
         translator = monad.translator
-        if not translator.are_comparable_types(item.type, monad.type, 'LIKE'):
-            throw(IncomparableTypesError, item.type, monad.type)
+        translator.check_comparable(item, monad, 'LIKE')
         if isinstance(item, translator.StringConstMonad):
             item_sql = [ 'VALUE', '%%%s%%' % item.value ]
         else:
@@ -1083,6 +1113,7 @@ class StringMixin(MonadMixin):
     def call_startswith(monad, arg):
         translator = monad.translator
         if not translator.are_comparable_types(monad.type, arg.type, None):
+            if arg.type == 'METHOD': raise_forgot_parentheses(arg)
             throw(TypeError, 'Expected %r argument but got %r in expression {EXPR}'
                             % (type2str(monad.type), type2str(arg.type)))
         if isinstance(arg, translator.StringConstMonad):
@@ -1097,6 +1128,7 @@ class StringMixin(MonadMixin):
     def call_endswith(monad, arg):
         translator = monad.translator
         if not translator.are_comparable_types(monad.type, arg.type, None):
+            if arg.type == 'METHOD': raise_forgot_parentheses(arg)
             throw(TypeError, 'Expected %r argument but got %r in expression {EXPR}'
                             % (type2str(monad.type), type2str(arg.type)))
         if isinstance(arg, translator.StringConstMonad):
@@ -1111,6 +1143,7 @@ class StringMixin(MonadMixin):
     def strip(monad, chars, strip_type):
         translator = monad.translator
         if chars is not None and not translator.are_comparable_types(monad.type, chars.type, None):
+            if chars.type == 'METHOD': raise_forgot_parentheses(chars)
             throw(TypeError, "'chars' argument must be of %r type in {EXPR}, got: %r"
                             % (type2str(monad.type), type2str(chars.type)))
         parent_sql = monad.getsql()[0]
@@ -1416,10 +1449,7 @@ cmp_negate.update((b, a) for a, b in cmp_negate.items())
 class CmpMonad(BoolMonad):
     def __init__(monad, op, left, right):
         translator = left.translator
-        if translator.are_comparable_types(left.type, right.type, op): pass
-        elif left.type == 'METHOD': raise_forgot_parentheses(left)
-        elif right.type == 'METHOD': raise_forgot_parentheses(right)
-        else: throw(IncomparableTypesError, left.type, right.type)
+        translator.check_comparable(left, right, op)
         if op == '<>': op = '!='
         if left.type is NoneType:
             assert right.type is not NoneType
@@ -1583,16 +1613,18 @@ class FuncMaxMonad(FuncMonad):
 def minmax(monad, sqlop, *args):
     assert len(args) > 1
     translator = monad.translator
-    sql = [ sqlop ] + [ arg.getsql()[0] for arg in args ]
-    arg_types = [ arg.type for arg in args ]
-    t = arg_types[0]
+    t = args[0].type
+    if t == 'METHOD': raise_forgot_parentheses(args[0])
     if t not in translator.comparable_types: throw(TypeError, 
         "Value of type %r is not valid as argument of %r function in expression {EXPR}"
         % (type2str(t), sqlop.lower()))
-    for t2 in arg_types[1:]:
+    for arg in args[1:]:
+        t2 = arg.type
+        if t2 == 'METHOD': raise_forgot_parentheses(arg)
         t3 = translator.coerce_types(t, t2)
         if t3 is None: throw(IncomparableTypesError, t, t2)
         t = t3
+    sql = [ sqlop ] + [ arg.getsql()[0] for arg in args ]
     return translator.ExprMonad.new(translator, t, sql)
 
 class FuncSelectMonad(FuncMonad):
@@ -1667,14 +1699,13 @@ class AttrSetMonad(SetMixin, Monad):
         monad.root = root
         monad.path = path
     def cmp(monad, op, monad2):
-        if type(monad2.type) is SetType and monad.translator.are_comparable_types(monad.type.item_type, monad2.type.item_type): pass
-        elif monad.type != monad2.type: throw(IncomparableTypesError, monad.type, monad2.type)
+        if type(monad2.type) is SetType and \
+           monad.translator.are_comparable_types(monad.type.item_type, monad2.type.item_type): pass
+        elif monad.type != monad2.type: translator.check_comparable(monad, monad2)
         throw(NotImplementedError)
     def contains(monad, item, not_in=False):
         translator = monad.translator
-        item_type = monad.type.item_type
-        if not translator.are_comparable_types(item.type, item_type):
-            throw(IncomparableTypesError, item.type, item_type)
+        translator.check_comparable(item, monad, 'in')
         if not translator.hint_join:
             sqlop = not_in and 'NOT_IN' or 'IN'
             expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
@@ -1828,9 +1859,7 @@ class QuerySetMonad(SetMixin, Monad):
         Monad.__init__(monad, translator, monad_type)
     def contains(monad, item, not_in=False):
         translator = monad.translator
-        item_type = monad.type.item_type
-        if not translator.are_comparable_types(item.type, item_type):
-            throw(IncomparableTypesError, item.type, item_type)
+        translator.check_comparable(item, monad, 'in')
         sub = monad.subtranslator
         columns_ast = sub.expr_columns
         conditions = sub.conditions[:]
