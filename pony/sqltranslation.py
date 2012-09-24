@@ -1448,11 +1448,14 @@ class CmpMonad(BoolMonad):
 class LogicalBinOpMonad(BoolMonad):
     def __init__(monad, operands):
         assert len(operands) >= 2
-        operands = list(operands)
-        for i, operand in enumerate(operands):
-            if operand.type is not bool: operands[i] = operand.nonzero()
-        BoolMonad.__init__(monad, operands[0].translator)
-        monad.operands = operands
+        items = []
+        for operand in operands:
+            if operand.type is not bool: items.append(operand.nonzero())
+            elif isinstance(operand, LogicalBinOpMonad) and monad.binop == operand.binop:
+                items.extend(operand.operands)
+            else: items.append(operand)
+        BoolMonad.__init__(monad, items[0].translator)
+        monad.operands = items
     def getsql(monad):
         return [ monad.binop ] + [ operand.getsql() for operand in monad.operands ]
 
