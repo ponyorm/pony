@@ -3399,9 +3399,8 @@ class Query(object):
             cache_entry = sql, adapter
             database._constructed_sql_cache[sql_key] = cache_entry
         else: sql, adapter = cache_entry
-        return sql, adapter
-    def _exec_sql(query, order=None, range=None, distinct=None, aggr_func_name=None):
-        sql, adapter = query._construct_sql(order, range, distinct, aggr_func_name)
+        return sql, adapter, sql_key
+    def _exec_sql(query, sql, adapter):
         param_dict = {}
         for param_name, extractor in query._translator.extractors.items():
             param_dict[param_name] = extractor(query._variables)
@@ -3410,7 +3409,8 @@ class Query(object):
         return cursor
     def _fetch(query, range=None, distinct=None):
         translator = query._translator
-        cursor = query._exec_sql(query._order, range=range, distinct=distinct)
+        sql, adapter, sql_key = query._construct_sql(query._order, range, distinct)
+        cursor = query._exec_sql(sql, adapter)
         if isinstance(translator.expr_type, EntityMeta):
             entity = translator.expr_type
             return entity._fetch_objects(cursor, query._attr_offsets)
@@ -3441,7 +3441,8 @@ class Query(object):
         new_query = query._clone()
         new_query._aggr_func_name = 'EXISTS'
         new_query._aggr_select = [ 'ALL', [ 'VALUE', 1 ] ]
-        cursor = new_query._exec_sql(range=(0, 1))
+        sql, adapter, sql_key = query._construct_sql(range=(0, 1))
+        cursor = new_query._exec_sql(sql, adapter)
         row = cursor.fetchone()
         return row is not None
     @cut_traceback
@@ -3498,7 +3499,8 @@ class Query(object):
         return query[start:stop]
     def _aggregate(query, aggr_func_name):
         translator = query._translator
-        cursor = query._exec_sql(aggr_func_name=aggr_func_name)
+        sql, adapter, sql_key = query._construct_sql(aggr_func_name=aggr_func_name)
+        cursor = query._exec_sql(sql, adapter)
         row = cursor.fetchone()
         if row is not None: result = row[0]
         else: result = None
