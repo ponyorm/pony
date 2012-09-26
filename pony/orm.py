@@ -63,7 +63,6 @@ def sql_debug(value):
 
 adapted_sql_cache = {}
 string2ast_cache = {}
-constructed_sql_cache = {}
 
 class OrmError(Exception): pass
 
@@ -205,6 +204,7 @@ class Database(object):
 
         # ER-diagram related stuff:
         self._translator_cache = {}
+        self._constructed_sql_cache = {}
         self.entities = {}
         self._unmapped_attrs = {}
         self.schema = None
@@ -3341,8 +3341,8 @@ class Query(object):
     def _construct_sql(query, order=None, range=None, distinct=None, aggr_func_name=None):
         translator = query._translator
         sql_key = query._python_ast_key + (order, range, distinct, aggr_func_name, options.INNER_JOIN_SYNTAX)
-        cache_entry = constructed_sql_cache.get(sql_key)
         database = query._database
+        cache_entry = database._constructed_sql_cache.get(sql_key)
         if cache_entry is None:
             if distinct is None: distinct = translator.distinct
             ast_transformer = lambda ast: ast
@@ -3397,7 +3397,7 @@ class Query(object):
             cache = database._get_cache()
             sql, adapter = database.provider.ast2sql(sql_ast)
             cache_entry = sql, adapter
-            constructed_sql_cache[sql_key] = cache_entry
+            database._constructed_sql_cache[sql_key] = cache_entry
         else: sql, adapter = cache_entry
         return sql, adapter
     def _exec_sql(query, order=None, range=None, distinct=None, aggr_func_name=None):
