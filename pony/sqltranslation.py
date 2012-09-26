@@ -1309,8 +1309,7 @@ class ParamMonad(Monad):
 
 class ObjectParamMonad(ObjectMixin, ParamMonad):
     def __init__(monad, translator, entity, name, parent=None):
-        if translator.database is not entity._database_: throw(TranslationError, 
-            'All entities in a query must belong to the same database')
+        assert translator.database is entity._database_
         monad.params = [ '-'.join((name, path)) for path in entity._pk_paths_ ]
         ParamMonad.__init__(monad, translator, entity, name, parent)
     def getattr(monad, name):

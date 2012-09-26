@@ -63,7 +63,6 @@ def sql_debug(value):
 
 adapted_sql_cache = {}
 string2ast_cache = {}
-translation_cache = {}
 constructed_sql_cache = {}
 
 class OrmError(Exception): pass
@@ -205,6 +204,7 @@ class Database(object):
         provider.release(connection)
 
         # ER-diagram related stuff:
+        self._translator_cache = {}
         self.entities = {}
         self._unmapped_attrs = {}
         self.schema = None
@@ -3290,7 +3290,7 @@ class Query(object):
         if isinstance(origin, EntityIter): origin = origin.entity
         elif not isinstance(origin, EntityMeta):
             throw(NotImplementedError, 'Query iterator has unexpected type %r' % type(origin).__name__)
-        database = origin._database_
+        query._database = database = origin._database_
         if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
         
         provider = database.provider
@@ -3316,6 +3316,8 @@ class Query(object):
             elif isinstance(value, EntityIter):
                 entities[name] = value.entity
             elif isinstance(value, Database):
+                if value is not database:
+                    throw(TranslationError, 'All entities in a query must belong to the same database')
                 databases[name] = value
             else:
                 variables[name] = value
@@ -3324,15 +3326,13 @@ class Query(object):
                 vartypes[name] = normalized_type
 
         query._result = None
-        key = id(code), tuple(sorted(databases.iteritems())), tuple(sorted(entities.iteritems())), \
-                        tuple(sorted(vartypes.iteritems())), tuple(sorted(functions.iteritems()))
+        key = id(code), tuple(sorted(entities.iteritems())), tuple(sorted(vartypes.iteritems())), tuple(sorted(functions.iteritems()))
         query._python_ast_key = key
 
-        query._database = database
-        translator = translation_cache.get(key)
+        translator = database._translator_cache.get(key)
         if translator is None:
             translator = translator_cls(tree, databases, entities, vartypes, functions)
-            translation_cache[key] = translator
+            database._translator_cache[key] = translator
         query._translator = translator
         expr_type = translator.expr_type
         if isinstance(expr_type, EntityMeta): query._order = tuple((attr, True) for attr in expr_type._pk_attrs_)
