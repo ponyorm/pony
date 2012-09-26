@@ -2919,8 +2919,10 @@ class Cache(object):
         cache.updated = set()
         cache.modified_collections = {}
         cache.to_be_checked = []
+        cache.query_results = {}
     def flush(cache):
         assert cache.is_alive
+        cache.query_results.clear()
         cache.save(False)
     def commit(cache):
         assert cache.is_alive
@@ -3292,8 +3294,8 @@ class Query(object):
             throw(NotImplementedError, 'Query iterator has unexpected type %r' % type(origin).__name__)
         query._database = database = origin._database_
         if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
-        
-        provider = database.provider
+        query._cache = database._get_cache()
+
         translator_cls = database.provider.translator_cls
 
         for name in external_names:
@@ -3327,7 +3329,7 @@ class Query(object):
 
         query._result = None
         key = id(code), tuple(sorted(entities.iteritems())), tuple(sorted(vartypes.iteritems())), tuple(sorted(functions.iteritems()))
-        query._python_ast_key = key
+        query._base_key = key
 
         translator = database._translator_cache.get(key)
         if translator is None:
@@ -3340,9 +3342,9 @@ class Query(object):
         query._attr_offsets = None
     def _construct_sql(query, order=None, range=None, distinct=None, aggr_func_name=None):
         translator = query._translator
-        sql_key = query._python_ast_key + (order, range, distinct, aggr_func_name, options.INNER_JOIN_SYNTAX)
+        query_key = query._base_key + (order, range, distinct, aggr_func_name, options.INNER_JOIN_SYNTAX)
         database = query._database
-        cache_entry = database._constructed_sql_cache.get(sql_key)
+        cache_entry = database._constructed_sql_cache.get(query_key)
         if cache_entry is None:
             if distinct is None: distinct = translator.distinct
             ast_transformer = lambda ast: ast
@@ -3397,9 +3399,9 @@ class Query(object):
             cache = database._get_cache()
             sql, adapter = database.provider.ast2sql(sql_ast)
             cache_entry = sql, adapter
-            database._constructed_sql_cache[sql_key] = cache_entry
+            database._constructed_sql_cache[query_key] = cache_entry
         else: sql, adapter = cache_entry
-        return sql, adapter, sql_key
+        return sql, adapter, query_key
     def _exec_sql(query, sql, adapter):
         param_dict = {}
         for param_name, extractor in query._translator.extractors.items():
@@ -3409,17 +3411,23 @@ class Query(object):
         return cursor
     def _fetch(query, range=None, distinct=None):
         translator = query._translator
-        sql, adapter, sql_key = query._construct_sql(query._order, range, distinct)
-        cursor = query._exec_sql(sql, adapter)
-        if isinstance(translator.expr_type, EntityMeta):
-            entity = translator.expr_type
-            return entity._fetch_objects(cursor, query._attr_offsets)
-        if len(translator.row_layout) == 1:
-            func, slice_or_offset = translator.row_layout[0]
-            return list(starmap(func, cursor.fetchall()))
-        return [ tuple(func(sql_row[slice_or_offset])
-                       for func, slice_or_offset in translator.row_layout)
-                 for sql_row in cursor.fetchall() ]
+        sql, adapter, query_key = query._construct_sql(query._order, range, distinct)
+        cache = query._cache
+        try: result = cache.query_results[query_key]
+        except KeyError:
+            cursor = query._exec_sql(sql, adapter)
+            if isinstance(translator.expr_type, EntityMeta):
+                entity = translator.expr_type
+                result = entity._fetch_objects(cursor, query._attr_offsets)
+            elif len(translator.row_layout) == 1:
+                func, slice_or_offset = translator.row_layout[0]
+                result = list(starmap(func, cursor.fetchall()))
+            else:
+                result = [ tuple(func(sql_row[slice_or_offset])
+                                 for func, slice_or_offset in translator.row_layout)
+                           for sql_row in cursor.fetchall() ]
+            query._cache.query_results[query_key] = result
+        return result[:]
     @cut_traceback
     def fetch(query):
         return query._fetch()
@@ -3441,10 +3449,15 @@ class Query(object):
         new_query = query._clone()
         new_query._aggr_func_name = 'EXISTS'
         new_query._aggr_select = [ 'ALL', [ 'VALUE', 1 ] ]
-        sql, adapter, sql_key = query._construct_sql(range=(0, 1))
-        cursor = new_query._exec_sql(sql, adapter)
-        row = cursor.fetchone()
-        return row is not None
+        sql, adapter, query_key = new_query._construct_sql(range=(0, 1))
+        cache = new_query._cache
+        try: result = cache.query_results[query_key]
+        except KeyError:
+            cursor = new_query._exec_sql(sql, adapter)
+            row = cursor.fetchone()
+            result = row is not None
+            cache.query_results[query_key] = result
+        return result
     @cut_traceback
     def __iter__(query):
         return iter(query.fetch())
@@ -3499,19 +3512,24 @@ class Query(object):
         return query[start:stop]
     def _aggregate(query, aggr_func_name):
         translator = query._translator
-        sql, adapter, sql_key = query._construct_sql(aggr_func_name=aggr_func_name)
-        cursor = query._exec_sql(sql, adapter)
-        row = cursor.fetchone()
-        if row is not None: result = row[0]
-        else: result = None
-        if result is None:
-            if aggr_func_name in ('SUM', 'COUNT'): result = 0
-            else: return None
-        if aggr_func_name == 'COUNT': return result
-        expr_type = translator.expr_type
-        provider = query._database.provider
-        converter = provider.get_converter_by_py_type(expr_type)
-        return converter.sql2py(result)
+        sql, adapter, query_key = query._construct_sql(aggr_func_name=aggr_func_name)
+        cache = query._cache
+        try: result = cache.query_results[query_key]
+        except KeyError:
+            cursor = query._exec_sql(sql, adapter)
+            row = cursor.fetchone()
+            if row is not None: result = row[0]
+            else: result = None
+            if result is None and aggr_func_name == 'SUM': result = 0
+            if result is None: pass
+            elif aggr_func_name == 'COUNT': pass
+            else:
+                expr_type = translator.expr_type
+                provider = query._database.provider
+                converter = provider.get_converter_by_py_type(expr_type)
+                result = converter.sql2py(result)
+            cache.query_results[query_key] = result
+        return result
     @cut_traceback
     def sum(query):
         return query._aggregate('SUM')
