@@ -1,8 +1,10 @@
-import __builtin__, re, sys, threading, types, inspect
+import __builtin__, re, sys, types, inspect
 from compiler import ast, parse
 from operator import attrgetter, itemgetter
 from itertools import count, ifilter, ifilterfalse, imap, izip, chain, starmap
+from time import time
 import datetime
+from threading import Lock
 
 try: from pony.thirdparty import etree
 except ImportError: etree = None
@@ -185,9 +187,45 @@ class Local(localbase):
 
 local = Local()        
 
+class LocalStats(localbase):
+    def __init__(self):
+        self.stats = {}
+
+class QueryStat(object):
+    def __init__(stat, sql):
+        stat.sql = sql
+        stat.count = 0
+        stat.min_time = None
+        stat.max_time = None
+        stat.sum_time = 0
+    def update(stat, start_time):
+        duration = time() - start_time
+        if not stat.count:
+            stat.count = 1
+            stat.min_time = stat.max_time = stat.sum_time = duration
+        else:
+            stat.count += 1
+            stat.min_time = min(stat.min_time, duration)
+            stat.max_time = min(stat.max_time, duration)
+            stat.sum_time += duration
+    def merge(stat, stat2):
+        assert stat.sql is stat2.sql
+        if not stat.count:
+            stat.__dict__.update(stat2.__dict__)
+        else:
+            stat.count += stat2.count
+            stat.min_time = min(stat.min_time, stat2.min_time)
+            stat.max_time = max(stat.max_time, stat2.max_time)
+            stat.sum_time += stat2.sum_time
+    @property
+    def avg_time(stat):
+        if not stat.count: return None
+        return stat.sum_time / stat.count
+
 select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class Database(object):
+    _stat_class = QueryStat
     @cut_traceback
     def __init__(self, provider_name, *args, **keyargs):
         # First argument cannot be named 'database', because 'database' can be in keyargs
@@ -210,6 +248,28 @@ class Database(object):
         self.schema = None
         self.Entity = type.__new__(EntityMeta, 'Entity', (Entity,), {})
         self.Entity._database_ = self
+
+        self.global_stats = {}
+        self.global_stats_lock = Lock()
+        self.local_stats = LocalStats()
+    def get_local_stats(database):
+        return database.local_stats.stats
+    def update_local_stat(database, sql, start_time):
+        stats = database.local_stats.stats
+        stat = stats.get(sql)
+        if stat is None:
+            stats[sql] = stat = database._stat_class(sql)
+        stat.update(start_time)
+        return stat
+    def merge_local_stats(database):
+        setdefault = database.global_stats.setdefault
+        database.global_stats_lock.acquire()
+        try:
+            for sql, stat in database.local_stats.stats.items():
+                global_stat = setdefault(sql, stat)
+                if global_stat is not stat: global_stat.merge(stat)
+            database.local_stats.stats.clear()
+        finally: database.global_stats_lock.release()
     @cut_traceback
     def get_connection(database):
         cache = database._get_cache()
@@ -314,8 +374,10 @@ class Database(object):
             print sql
             if arguments: print args2str(arguments)
             print
+        t = time()
         if arguments is None: database.provider.execute(cursor, sql)
         else: database.provider.execute(cursor, sql, arguments)
+        database.update_local_stat(sql, t)
         return cursor
     def _exec_sql_returning_id(database, sql, arguments, returning_py_type):
         cache = database._get_cache()
@@ -324,7 +386,9 @@ class Database(object):
             print sql
             if arguments: print args2str(arguments)
             print
+        t = time()
         new_id = database.provider.execute_returning_id(cursor, sql, arguments, returning_py_type)
+        database.update_local_stat(sql, t)
         return new_id
     def _exec_sql_many(database, sql, arguments_list):
         cache = database._get_cache()
@@ -333,7 +397,9 @@ class Database(object):
             print 'EXECUTEMANY\n', sql
             for args in arguments_list: print args2str(args)
             print
+        t = time()
         database.provider.executemany(cursor, sql, arguments_list)
+        database.update_local_stat(sql, t)
         return cursor
     @cut_traceback
     def generate_mapping(database, filename=None, check_tables=False, create_tables=False):
