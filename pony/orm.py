@@ -192,22 +192,17 @@ class LocalStats(localbase):
         self.stats = {}
 
 class QueryStat(object):
-    def __init__(stat, sql):
+    def __init__(stat, sql, start_time):
+        duration = time() - start_time
         stat.sql = sql
-        stat.count = 0
-        stat.min_time = None
-        stat.max_time = None
-        stat.sum_time = 0
+        stat.count = 1
+        stat.min_time = stat.max_time = stat.sum_time = duration
     def update(stat, start_time):
         duration = time() - start_time
-        if not stat.count:
-            stat.count = 1
-            stat.min_time = stat.max_time = stat.sum_time = duration
-        else:
-            stat.count += 1
-            stat.min_time = min(stat.min_time, duration)
-            stat.max_time = max(stat.max_time, duration)
-            stat.sum_time += duration
+        stat.count += 1
+        stat.min_time = min(stat.min_time, duration)
+        stat.max_time = max(stat.max_time, duration)
+        stat.sum_time += duration
     def merge(stat, stat2):
         assert stat.sql == stat2.sql
         if not stat.count:
@@ -254,22 +249,22 @@ class Database(object):
         self.local_stats = LocalStats()
     def get_local_stats(database):
         return database.local_stats.stats
-    def update_local_stat(database, sql, start_time):
+    def _update_local_stat(database, sql, start_time):
         stats = database.local_stats.stats
         stat = stats.get(sql)
         if stat is None:
-            stats[sql] = stat = database._stat_class(sql)
-        stat.update(start_time)
-        return stat
+            stats[sql] = database._stat_class(sql, start_time)
+        else:
+            stat.update(start_time)
     def merge_local_stats(database):
         setdefault = database.global_stats.setdefault
         database.global_stats_lock.acquire()
         try:
-            for sql, stat in database.local_stats.stats.items():
+            for sql, stat in database.local_stats.stats.iteritems():
                 global_stat = setdefault(sql, stat)
                 if global_stat is not stat: global_stat.merge(stat)
-            database.local_stats.stats.clear()
         finally: database.global_stats_lock.release()
+        database.local_stats.stats.clear()
     @cut_traceback
     def get_connection(database):
         cache = database._get_cache()
@@ -377,7 +372,7 @@ class Database(object):
         t = time()
         if arguments is None: database.provider.execute(cursor, sql)
         else: database.provider.execute(cursor, sql, arguments)
-        database.update_local_stat(sql, t)
+        database._update_local_stat(sql, t)
         return cursor
     def _exec_sql_returning_id(database, sql, arguments, returning_py_type):
         cache = database._get_cache()
@@ -388,7 +383,7 @@ class Database(object):
             print
         t = time()
         new_id = database.provider.execute_returning_id(cursor, sql, arguments, returning_py_type)
-        database.update_local_stat(sql, t)
+        database._update_local_stat(sql, t)
         return new_id
     def _exec_sql_many(database, sql, arguments_list):
         cache = database._get_cache()
@@ -399,7 +394,7 @@ class Database(object):
             print
         t = time()
         database.provider.executemany(cursor, sql, arguments_list)
-        database.update_local_stat(sql, t)
+        database._update_local_stat(sql, t)
         return cursor
     @cut_traceback
     def generate_mapping(database, filename=None, check_tables=False, create_tables=False):
