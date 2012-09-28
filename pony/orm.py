@@ -206,10 +206,10 @@ class QueryStat(object):
         else:
             stat.count += 1
             stat.min_time = min(stat.min_time, duration)
-            stat.max_time = min(stat.max_time, duration)
+            stat.max_time = max(stat.max_time, duration)
             stat.sum_time += duration
     def merge(stat, stat2):
-        assert stat.sql is stat2.sql
+        assert stat.sql == stat2.sql
         if not stat.count:
             stat.__dict__.update(stat2.__dict__)
         else:
