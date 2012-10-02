@@ -3400,11 +3400,11 @@ class Query(object):
         expr_type = translator.expr_type
         if isinstance(expr_type, EntityMeta): query._order = tuple((attr, True) for attr in expr_type._pk_attrs_)
         else: query._order = None
-    def _construct_sql(query, order=None, range=None, distinct=None, aggr_func_name=None):
+    def _construct_sql_and_arguments(query, order=None, range=None, distinct=None, aggr_func_name=None):
         translator = query._translator
-        query_key = query._base_key + (order, range, distinct, aggr_func_name, options.INNER_JOIN_SYNTAX)
+        sql_key = query._base_key + (order, range, distinct, aggr_func_name, options.INNER_JOIN_SYNTAX)
         database = query._database
-        cache_entry = database._constructed_sql_cache.get(query_key)
+        cache_entry = database._constructed_sql_cache.get(sql_key)
         if cache_entry is None:
             attr_offsets = None
             if distinct is None: distinct = translator.distinct
@@ -3459,23 +3459,26 @@ class Query(object):
             cache = database._get_cache()
             sql, adapter = database.provider.ast2sql(sql_ast)
             cache_entry = sql, adapter, attr_offsets
-            database._constructed_sql_cache[query_key] = cache_entry
+            database._constructed_sql_cache[sql_key] = cache_entry
         else: sql, adapter, attr_offsets = cache_entry
-        return sql, adapter, attr_offsets, query_key
-    def _exec_sql(query, sql, adapter):
         param_dict = {}
         for param_name, extractor in query._translator.extractors.items():
             param_dict[param_name] = extractor(query._variables)
         arguments = adapter(param_dict)
-        cursor = query._database._exec_sql(sql, arguments)
-        return cursor
+        arguments_type = type(arguments)
+        if arguments_type is tuple: arguments_key = arguments
+        elif arguments_type is dict: arguments_key = tuple(sorted(arguments.iteritems()))
+        try: hash(arguments_key)
+        except: query_key = None  # arguments are unhashable
+        else: query_key = sql_key + (arguments_key)
+        return sql, arguments, attr_offsets, query_key
     def _fetch(query, range=None, distinct=None):
         translator = query._translator
-        sql, adapter, attr_offsets, query_key = query._construct_sql(query._order, range, distinct)
+        sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(query._order, range, distinct)
         cache = query._cache
         try: result = cache.query_results[query_key]
         except KeyError:
-            cursor = query._exec_sql(sql, adapter)
+            cursor = query._database._exec_sql(sql, arguments)
             if isinstance(translator.expr_type, EntityMeta):
                 entity = translator.expr_type
                 result = entity._fetch_objects(cursor, attr_offsets)
@@ -3486,7 +3489,8 @@ class Query(object):
                 result = [ tuple(func(sql_row[slice_or_offset])
                                  for func, slice_or_offset in translator.row_layout)
                            for sql_row in cursor.fetchall() ]
-            query._cache.query_results[query_key] = result
+            if query_key is not None:
+                query._cache.query_results[query_key] = result
         return result[:]
     @cut_traceback
     def fetch(query):
@@ -3509,14 +3513,14 @@ class Query(object):
         new_query = query._clone()
         new_query._aggr_func_name = 'EXISTS'
         new_query._aggr_select = [ 'ALL', [ 'VALUE', 1 ] ]
-        sql, adapter, attr_offsets, query_key = new_query._construct_sql(range=(0, 1))
+        sql, arguments, attr_offsets, query_key = new_query._construct_sql_and_arguments(range=(0, 1))
         cache = new_query._cache
         try: result = cache.query_results[query_key]
         except KeyError:
-            cursor = new_query._exec_sql(sql, adapter)
+            cursor = new_query._database._exec_sql(sql, arguments)
             row = cursor.fetchone()
             result = row is not None
-            cache.query_results[query_key] = result
+            if query_key is not None: cache.query_results[query_key] = result
         return result
     @cut_traceback
     def __iter__(query):
@@ -3572,11 +3576,11 @@ class Query(object):
         return query[start:stop]
     def _aggregate(query, aggr_func_name):
         translator = query._translator
-        sql, adapter, attr_offsets, query_key = query._construct_sql(aggr_func_name=aggr_func_name)
+        sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(aggr_func_name=aggr_func_name)
         cache = query._cache
         try: result = cache.query_results[query_key]
         except KeyError:
-            cursor = query._exec_sql(sql, adapter)
+            cursor = query._database._exec_sql(sql, arguments)
             row = cursor.fetchone()
             if row is not None: result = row[0]
             else: result = None
@@ -3588,7 +3592,7 @@ class Query(object):
                 provider = query._database.provider
                 converter = provider.get_converter_by_py_type(expr_type)
                 result = converter.sql2py(result)
-            cache.query_results[query_key] = result
+            if query_key is not None: cache.query_results[query_key] = result
         return result
     @cut_traceback
     def sum(query):
