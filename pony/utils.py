@@ -90,7 +90,7 @@ def throw(exc_type, *args, **keyargs):
     if not (pony.MODE == 'INTERACTIVE' and options.CUT_TRACEBACK):
         raise exc
     else:
-        raise exc  # set pony.options.CUT_TRACEBACK = False to see full traceback
+        raise exc  # Set "pony.options.CUT_TRACEBACK = False" to see full traceback
 
 _cache = {}
 MAX_CACHE_SIZE = 1000
