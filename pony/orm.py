@@ -3400,13 +3400,13 @@ class Query(object):
         expr_type = translator.expr_type
         if isinstance(expr_type, EntityMeta): query._order = tuple((attr, True) for attr in expr_type._pk_attrs_)
         else: query._order = None
-        query._attr_offsets = None
     def _construct_sql(query, order=None, range=None, distinct=None, aggr_func_name=None):
         translator = query._translator
         query_key = query._base_key + (order, range, distinct, aggr_func_name, options.INNER_JOIN_SYNTAX)
         database = query._database
         cache_entry = database._constructed_sql_cache.get(query_key)
         if cache_entry is None:
+            attr_offsets = None
             if distinct is None: distinct = translator.distinct
             ast_transformer = lambda ast: ast
             sql_ast = [ 'SELECT' ]
@@ -3434,7 +3434,6 @@ class Query(object):
                 if aggr_ast: select_ast = [ 'AGGREGATES', aggr_ast ]
             elif isinstance(translator.expr_type, EntityMeta):
                 select_ast, attr_offsets = translator.expr_type._construct_select_clause_(translator.alias, distinct)
-                query._attr_offsets = attr_offsets
             else: select_ast = [ distinct and 'DISTINCT' or 'ALL' ] + translator.expr_columns
             sql_ast.append(select_ast)
             sql_ast.append(translator.from_)
@@ -3459,10 +3458,10 @@ class Query(object):
             sql_ast = ast_transformer(sql_ast)
             cache = database._get_cache()
             sql, adapter = database.provider.ast2sql(sql_ast)
-            cache_entry = sql, adapter
+            cache_entry = sql, adapter, attr_offsets
             database._constructed_sql_cache[query_key] = cache_entry
-        else: sql, adapter = cache_entry
-        return sql, adapter, query_key
+        else: sql, adapter, attr_offsets = cache_entry
+        return sql, adapter, attr_offsets, query_key
     def _exec_sql(query, sql, adapter):
         param_dict = {}
         for param_name, extractor in query._translator.extractors.items():
@@ -3472,14 +3471,14 @@ class Query(object):
         return cursor
     def _fetch(query, range=None, distinct=None):
         translator = query._translator
-        sql, adapter, query_key = query._construct_sql(query._order, range, distinct)
+        sql, adapter, attr_offsets, query_key = query._construct_sql(query._order, range, distinct)
         cache = query._cache
         try: result = cache.query_results[query_key]
         except KeyError:
             cursor = query._exec_sql(sql, adapter)
             if isinstance(translator.expr_type, EntityMeta):
                 entity = translator.expr_type
-                result = entity._fetch_objects(cursor, query._attr_offsets)
+                result = entity._fetch_objects(cursor, attr_offsets)
             elif len(translator.row_layout) == 1:
                 func, slice_or_offset = translator.row_layout[0]
                 result = list(starmap(func, cursor.fetchall()))
@@ -3510,7 +3509,7 @@ class Query(object):
         new_query = query._clone()
         new_query._aggr_func_name = 'EXISTS'
         new_query._aggr_select = [ 'ALL', [ 'VALUE', 1 ] ]
-        sql, adapter, query_key = new_query._construct_sql(range=(0, 1))
+        sql, adapter, attr_offsets, query_key = new_query._construct_sql(range=(0, 1))
         cache = new_query._cache
         try: result = cache.query_results[query_key]
         except KeyError:
@@ -3573,7 +3572,7 @@ class Query(object):
         return query[start:stop]
     def _aggregate(query, aggr_func_name):
         translator = query._translator
-        sql, adapter, query_key = query._construct_sql(aggr_func_name=aggr_func_name)
+        sql, adapter, attr_offsets, query_key = query._construct_sql(aggr_func_name=aggr_func_name)
         cache = query._cache
         try: result = cache.query_results[query_key]
         except KeyError:
