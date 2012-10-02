@@ -192,35 +192,48 @@ class LocalStats(localbase):
         self.stats = {}
 
 class QueryStat(object):
-    def __init__(stat, sql, start_time):
-        duration = time() - start_time
+    def __init__(stat, sql, query_start_time=None):
+        if query_start_time is not None:
+            query_end_time = time()
+            duration = query_end_time - query_start_time
+            stat.min_time = stat.max_time = stat.sum_time = duration
+            stat.db_count = 1
+            stat.cache_count = 0
+        else:
+            stat.min_time = stat.max_time = stat.sum_time = None
+            stat.db_count = 0
+            stat.cache_count = 1
         stat.sql = sql
-        stat.count = 1
-        stat.min_time = stat.max_time = stat.sum_time = duration
-    def update(stat, start_time):
-        duration = time() - start_time
-        stat.count += 1
-        stat.min_time = min(stat.min_time, duration)
-        stat.max_time = max(stat.max_time, duration)
-        stat.sum_time += duration
+    def query_executed(stat, query_start_time):
+        query_end_time = time()
+        duration = query_end_time - query_start_time
+        if stat.db_count:
+            stat.min_time = min(stat.min_time, duration)
+            stat.max_time = max(stat.max_time, duration)
+            stat.sum_time += duration
+        else: stat.min_time = stat.max_time = stat.sum_time = duration
+        stat.db_count += 1
     def merge(stat, stat2):
         assert stat.sql == stat2.sql
-        if not stat.count:
-            stat.__dict__.update(stat2.__dict__)
-        else:
-            stat.count += stat2.count
+        if not stat2.db_count: pass
+        elif stat.db_count:
             stat.min_time = min(stat.min_time, stat2.min_time)
             stat.max_time = max(stat.max_time, stat2.max_time)
             stat.sum_time += stat2.sum_time
+        else:
+            stat.min_time = stat2.min_time
+            stat.max_time = stat2.max_time
+            stat.sum_time = stat2.sum_time
+        stat.db_count += stat2.db_count
+        stat.cache_count += stat2.cache_count
     @property
     def avg_time(stat):
-        if not stat.count: return None
-        return stat.sum_time / stat.count
+        if not stat.db_count: return None
+        return stat.sum_time / stat.db_count
 
 select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class Database(object):
-    _stat_class = QueryStat
     @cut_traceback
     def __init__(self, provider_name, *args, **keyargs):
         # First argument cannot be named 'database', because 'database' can be in keyargs
@@ -249,13 +262,11 @@ class Database(object):
         self.local_stats = LocalStats()
     def get_local_stats(database):
         return database.local_stats.stats
-    def _update_local_stat(database, sql, start_time):
+    def _update_local_stat(database, sql, query_start_time):
         stats = database.local_stats.stats
         stat = stats.get(sql)
-        if stat is None:
-            stats[sql] = database._stat_class(sql, start_time)
-        else:
-            stat.update(start_time)
+        if stat is not None: stat.query_executed(query_start_time)
+        else: stats[sql] = QueryStat(sql, query_start_time)
     def merge_local_stats(database):
         setdefault = database.global_stats.setdefault
         database.global_stats_lock.acquire()
@@ -3491,6 +3502,11 @@ class Query(object):
                            for sql_row in cursor.fetchall() ]
             if query_key is not None:
                 query._cache.query_results[query_key] = result
+        else:
+            stats = query._database.local_stats.stats
+            stat = stats.get(sql)
+            if stat is not None: stat.cache_count += 1
+            else: stats[sql] = QueryStat(sql)
         return result[:]
     @cut_traceback
     def fetch(query):
