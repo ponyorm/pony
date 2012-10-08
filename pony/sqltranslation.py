@@ -1184,7 +1184,7 @@ class ObjectMixin(MonadMixin):
         if not attr.is_collection:
             return translator.AttrMonad.new(monad, attr)
         elif not translator.inside_expr:
-            return translator.AttrSetMonad(monad, [ attr ])
+            return translator.AttrSetMonad(monad, attr)
         else:
             return translator.ObjectFlatMonad(monad, attr)
     def requires_distinct(monad):
@@ -1685,13 +1685,13 @@ class SetMixin(MonadMixin):
     pass
 
 class AttrSetMonad(SetMixin, Monad):
-    def __init__(monad, root, path):
-        if root.translator.inside_expr: throw(NotImplementedError)
-        translator = root.translator
-        item_type = translator.normalize_type(path[-1].py_type)
+    def __init__(monad, parent, attr):
+        translator = parent.translator
+        if translator.inside_expr: throw(NotImplementedError)
+        item_type = translator.normalize_type(attr.py_type)
         Monad.__init__(monad, translator, SetType(item_type))
-        monad.root = root
-        monad.path = path
+        monad.parent = parent
+        monad.attr = attr
     def cmp(monad, op, monad2):
         if type(monad2.type) is SetType and \
            monad.translator.are_comparable_types(monad.type.item_type, monad2.type.item_type): pass
@@ -1722,15 +1722,13 @@ class AttrSetMonad(SetMixin, Monad):
         entity = item_type
         attr = entity._adict_.get(name)
         if attr is None: throw(AttributeError)
-        return monad.translator.AttrSetMonad(monad.root, monad.path + [ attr ])
+        return monad.translator.AttrSetMonad(monad, attr)
+    def requires_distinct(monad):
+        reverse = monad.attr.reverse
+        return reverse and reverse.is_collection or monad.parent.requires_distinct()
     def len(monad):
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
-        distinct = False
-        for attr in monad.path:
-            reverse = attr.reverse
-            if reverse and reverse.is_collection:
-                distinct = True
-                break
+        distinct = monad.requires_distinct()
         if not distinct:
             sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ],
                         from_ast, [ 'WHERE' ] + outer_conditions + inner_conditions ]
@@ -1817,26 +1815,29 @@ class AttrSetMonad(SetMixin, Monad):
         sql_ast = [ 'NOT_EXISTS', from_ast, [ 'WHERE' ] + outer_conditions + inner_conditions ]
         translator = monad.translator
         return translator.BoolExprMonad(translator, sql_ast)
+    def make_tableref(monad, from_ast):
+        parent = monad.parent
+        attr = monad.attr
+        if isinstance(parent, ObjectMixin): parent_tableref = parent.tableref
+        elif isinstance(parent, AttrSetMonad): parent_tableref = parent.make_tableref(from_ast)
+        else: assert False
+        if not attr.reverse: return parent_tableref
+        return JoinedTableRef(monad.translator, None, parent_tableref, attr, from_ast)
     def _subselect(monad):
-        path = monad.path[:]
+        parent = monad.parent
+        attr = monad.attr
         from_ast = [ 'FROM' ]
-        tableref = monad.root.tableref
-        if not path[-1].reverse:
-            nonlink_attr = path.pop()
-            assert path
-        else: nonlink_attr = None
-        for attr in path:
-            tableref = JoinedTableRef(monad.translator, None, tableref, attr, from_ast)
-        pk_only = not nonlink_attr or nonlink_attr.pk_offset is not None
+        tableref = monad.make_tableref(from_ast)
+        pk_only = attr.reverse or attr.pk_offset is not None
         alias, columns = tableref.make_join(pk_only)
         inner_conditions = []
-        if nonlink_attr:
-            if pk_only:
-                offset = nonlink_attr.pk_columns_offset
-                columns = columns[offset:offset+len(nonlink_attr.columns)]
-            else: columns = nonlink_attr.columns
-        expr_list = [[ 'COLUMN', alias, column ] for column in columns ]
-        if nonlink_attr is not None and not nonlink_attr.is_required:
+        if attr.reverse: pass
+        elif pk_only:
+            offset = attr.pk_columns_offset
+            columns = columns[offset:offset+len(attr.columns)]
+        else: columns = attr.columns
+        expr_list = [ [ 'COLUMN', alias, column ] for column in columns ]
+        if not attr.reverse and not attr.is_required:
             inner_conditions = [ [ 'IS_NOT_NULL', expr ] for expr in expr_list ]
         outer_conditions = [ from_ast[1].pop() ]
         return expr_list, from_ast, inner_conditions, outer_conditions
