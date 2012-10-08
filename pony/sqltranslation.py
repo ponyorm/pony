@@ -475,7 +475,7 @@ class SQLTranslator(ASTTranslator):
         if isinstance(monad, translator.ParamMonad): throw(TranslationError,
             "External parameter '%s' cannot be used as query result" % ast2src(tree.expr))
         groupby_monads = None
-        if isinstance(monad, translator.ObjectMixin):
+        if isinstance(monad, (translator.ObjectMixin, translator.ObjectFlatMonad)):
             if monad.aggregated: throw(TranslationError)
             if translator.aggregated: groupby_monads = [ monad ]
             else: translator.distinct |= monad.requires_distinct()
@@ -1250,7 +1250,7 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
 
 flatmonad_errmsg = "aggregated expressions like {EXPR} are not allowed before 'for'"
 
-class ObjectFlatMonad(ObjectMixin, Monad):
+class ObjectFlatMonad(Monad):
     def __init__(monad, parent, attr):
         translator = parent.translator
         assert translator.inside_expr
@@ -1263,6 +1263,24 @@ class ObjectFlatMonad(ObjectMixin, Monad):
         assert translator.get_tableref(name_path) is None
         monad.tableref = JoinedTableRef(translator, name_path, parent.tableref, attr)
         translator.tablerefs[name_path] = monad.tableref
+    def getattr(monad, name):
+        translator = monad.translator
+        entity = monad.type
+        try: attr = entity._adict_[name]
+        except KeyError: throw(AttributeError)
+        return translator.ObjectFlatMonad(monad, attr)
+    def requires_distinct(monad):
+        return monad.attr.reverse.is_collection or monad.parent.requires_distinct()
+    def getsql(monad):
+        parent = monad.parent
+        attr = monad.attr
+        if isinstance(parent, ObjectAttrMonad) and attr.pk_offset is not None:
+            parent_columns = parent.getsql()
+            entity = attr.entity
+            if len(entity._pk_attrs_) == 1: return parent_columns
+            return parent_columns[attr.pk_columns_offset:attr.pk_columns_offset+len(attr.columns)]
+        alias, _ = monad.parent.tableref.make_join()
+        return [ [ 'COLUMN', alias, column ] for column in monad.attr.columns ]
     def len(monad): throw(NotImplementedError, flatmonad_errmsg)
     def sum(monad): throw(NotImplementedError, flatmonad_errmsg)
     def min(monad): throw(NotImplementedError, flatmonad_errmsg)
