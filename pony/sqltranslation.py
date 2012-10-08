@@ -1822,7 +1822,8 @@ class AttrSetMonad(SetMixin, Monad):
         elif isinstance(parent, AttrSetMonad): parent_tableref = parent.make_tableref(from_ast)
         else: assert False
         if not attr.reverse: return parent_tableref
-        return JoinedTableRef(monad.translator, None, parent_tableref, attr, from_ast)
+        name_path = parent_tableref.name_path + '-' + attr.name
+        return JoinedTableRef(monad.translator, name_path, parent_tableref, attr, from_ast)
     def _subselect(monad):
         parent = monad.parent
         attr = monad.attr
