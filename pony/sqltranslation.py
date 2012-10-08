@@ -1248,45 +1248,6 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
             monad.tableref = JoinedTableRef(parent_tableref_translator, name_path, parent_monad.tableref, attr)
             parent_tableref_translator.tablerefs[name_path] = monad.tableref
 
-flatmonad_errmsg = "aggregated expressions like {EXPR} are not allowed before 'for'"
-
-class ObjectFlatMonad(Monad):
-    def __init__(monad, parent, attr):
-        translator = parent.translator
-        assert translator.inside_expr
-        type = translator.normalize_type(attr.py_type)
-        Monad.__init__(monad, translator, type)
-        monad.parent = parent
-        monad.attr = attr
-
-        name_path = '-'.join((parent.tableref.name_path, attr.name))
-        assert translator.get_tableref(name_path) is None
-        monad.tableref = JoinedTableRef(translator, name_path, parent.tableref, attr)
-        translator.tablerefs[name_path] = monad.tableref
-    def getattr(monad, name):
-        translator = monad.translator
-        entity = monad.type
-        try: attr = entity._adict_[name]
-        except KeyError: throw(AttributeError)
-        return translator.ObjectFlatMonad(monad, attr)
-    def requires_distinct(monad):
-        return monad.attr.reverse.is_collection or monad.parent.requires_distinct()
-    def getsql(monad):
-        parent = monad.parent
-        attr = monad.attr
-        if isinstance(parent, ObjectAttrMonad) and attr.pk_offset is not None:
-            parent_columns = parent.getsql()
-            entity = attr.entity
-            if len(entity._pk_attrs_) == 1: return parent_columns
-            return parent_columns[attr.pk_columns_offset:attr.pk_columns_offset+len(attr.columns)]
-        alias, _ = monad.parent.tableref.make_join()
-        return [ [ 'COLUMN', alias, column ] for column in monad.attr.columns ]
-    def len(monad): throw(NotImplementedError, flatmonad_errmsg)
-    def sum(monad): throw(NotImplementedError, flatmonad_errmsg)
-    def min(monad): throw(NotImplementedError, flatmonad_errmsg)
-    def max(monad): throw(NotImplementedError, flatmonad_errmsg)
-    def avg(monad): throw(NotImplementedError, flatmonad_errmsg)
-        
 class NumericAttrMonad(NumericMixin, AttrMonad): pass
 class StringAttrMonad(StringMixin, AttrMonad): pass
 class DateAttrMonad(DateMixin, AttrMonad): pass
@@ -1881,6 +1842,45 @@ class AttrSetMonad(SetMixin, Monad):
         return expr_list, from_ast, inner_conditions, outer_conditions
     def getsql(monad):
         throw(TranslationError)
+
+flatmonad_errmsg = "aggregated expressions like {EXPR} are not allowed before 'for'"
+
+class ObjectFlatMonad(Monad):
+    def __init__(monad, parent, attr):
+        translator = parent.translator
+        assert translator.inside_expr
+        type = translator.normalize_type(attr.py_type)
+        Monad.__init__(monad, translator, type)
+        monad.parent = parent
+        monad.attr = attr
+
+        name_path = '-'.join((parent.tableref.name_path, attr.name))
+        assert translator.get_tableref(name_path) is None
+        monad.tableref = JoinedTableRef(translator, name_path, parent.tableref, attr)
+        translator.tablerefs[name_path] = monad.tableref
+    def getattr(monad, name):
+        translator = monad.translator
+        entity = monad.type
+        try: attr = entity._adict_[name]
+        except KeyError: throw(AttributeError)
+        return translator.ObjectFlatMonad(monad, attr)
+    def requires_distinct(monad):
+        return monad.attr.reverse.is_collection or monad.parent.requires_distinct()
+    def getsql(monad):
+        parent = monad.parent
+        attr = monad.attr
+        if isinstance(parent, ObjectAttrMonad) and attr.pk_offset is not None:
+            parent_columns = parent.getsql()
+            entity = attr.entity
+            if len(entity._pk_attrs_) == 1: return parent_columns
+            return parent_columns[attr.pk_columns_offset:attr.pk_columns_offset+len(attr.columns)]
+        alias, _ = monad.parent.tableref.make_join()
+        return [ [ 'COLUMN', alias, column ] for column in monad.attr.columns ]
+    def len(monad): throw(NotImplementedError, flatmonad_errmsg)
+    def sum(monad): throw(NotImplementedError, flatmonad_errmsg)
+    def min(monad): throw(NotImplementedError, flatmonad_errmsg)
+    def max(monad): throw(NotImplementedError, flatmonad_errmsg)
+    def avg(monad): throw(NotImplementedError, flatmonad_errmsg)
 
 class QuerySetMonad(SetMixin, Monad):
     def __init__(monad, translator, subtranslator):
