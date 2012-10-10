@@ -244,7 +244,6 @@ def type2str(t):
 type_normalization_dict = { long : int, bool : int, LongStr : str, LongUnicode : unicode }
 
 class SQLTranslator(ASTTranslator):
-    max_alias_length = 30
     row_value_syntax = True
     numeric_types = set([ int, float, Decimal ])
     string_types = set([ str, AsciiStr, unicode ])
@@ -367,17 +366,13 @@ class SQLTranslator(ASTTranslator):
         translator.entities = entities
         translator.vartypes = vartypes
         translator.functions = functions
-        translator.tablerefs = tablerefs = {}
+        if not parent_translator: subquery = Subquery()
+        else: subquery = Subquery(parent_translator.subquery)
+        translator.subquery = subquery
+        tablerefs = subquery.tablerefs
         translator.parent = parent_translator
-        if parent_translator is None:
-            translator.alias_counters = {}
-            translator.expr_counter = count(1).next
-        else:
-            translator.alias_counters = parent_translator.alias_counters
-            translator.expr_counter = parent_translator.expr_counter
         translator.extractors = {}
         translator.distinct = False
-        translator.from_ = [ 'FROM' ]
         translator.where = None
         translator.conditions = []
         translator.groupby = None
@@ -423,11 +418,11 @@ class SQLTranslator(ASTTranslator):
                 if i > 0: translator.distinct = True
                 entity = entities.get(node_name)
                 if entity is None: throw(TranslationError, ast2src(qual.iter))
-                tablerefs[name] = TableRef(translator, name, entity)
+                tablerefs[name] = TableRef(subquery, name, entity)
             else:
                 attr_names.reverse()
                 name_path = node_name
-                parent_tableref = translator.get_tableref(node_name)
+                parent_tableref = subquery.get_tableref(node_name)
                 if parent_tableref is None: throw(TranslationError, "Name %r must be defined in query" % node_name)
                 parent_entity = parent_tableref.entity
                 last_index = len(attr_names) - 1
@@ -446,7 +441,7 @@ class SQLTranslator(ASTTranslator):
                         translator.distinct = True
                     if j == last_index: name_path = name
                     else: name_path += '-' + attr.name
-                    tableref = JoinedTableRef(translator, name_path, parent_tableref, attr)
+                    tableref = JoinedTableRef(subquery, name_path, parent_tableref, attr)
                     tablerefs[name_path] = tableref
                     parent_tableref = tableref
                     parent_entity = entity
@@ -526,7 +521,7 @@ class SQLTranslator(ASTTranslator):
                 'query must have grouping columns (i.e. resulting non-aggregated values)')
             translator.having = [ 'HAVING' ] + translator.having_conditions
 
-        first_from_item = translator.from_[1]
+        first_from_item = translator.subquery.from_ast[1]
         if len(first_from_item) > 3:
             assert len(first_from_item) == 4
             assert parent_translator
@@ -573,7 +568,7 @@ class SQLTranslator(ASTTranslator):
         return translator.ListMonad(translator, [ item.monad for item in node.nodes ])
     def postName(translator, node):
         name = node.name
-        tableref = translator.get_tableref(name)
+        tableref = translator.subquery.get_tableref(name)
         if tableref is not None:
             entity = tableref.entity
             return translator.ObjectIterMonad(translator, tableref, entity)
@@ -667,39 +662,52 @@ class SQLTranslator(ASTTranslator):
         return expr_monad[lower:upper]
     def postSliceobj(translator, node):
         pass
-    def get_tableref(translator, name_path):
-        while translator is not None:
-            tableref = translator.tablerefs.get(name_path)
-            if tableref is not None: return tableref
-            translator = translator.parent
-    def get_short_alias(translator, name_path, entity_name):
+
+max_alias_length = 30
+
+class Subquery(object):
+    def __init__(subquery, parent_subquery=None):
+        subquery.parent_subquery = parent_subquery
+        subquery.from_ast = [ 'FROM' ]
+        subquery.tablerefs = {}
+        if parent_subquery is None:
+            subquery.alias_counters = {}
+            subquery.expr_counter = count(1).next
+        else:
+            subquery.alias_counters = parent_subquery.alias_counters
+            subquery.expr_counter = parent_subquery.expr_counter
+    def get_tableref(subquery, name_path):
+        tableref = subquery.tablerefs.get(name_path)
+        if tableref is not None: return tableref
+        if subquery.parent_subquery:
+            return subquery.parent_subquery.get_tableref(name_path)
+        return None
+    def get_short_alias(subquery, name_path, entity_name):
         if name_path:
             if is_ident(name_path): return name_path
-            if not options.SIMPLE_ALIASES and len(name_path) <= translator.max_alias_length:
+            if not options.SIMPLE_ALIASES and len(name_path) <= max_alias_length:
                 return name_path
-        name = entity_name[:translator.max_alias_length-3].lower()
-        i = translator.alias_counters.setdefault(name, 0) + 1
+        name = entity_name[:max_alias_length-3].lower()
+        i = subquery.alias_counters.setdefault(name, 0) + 1
         alias = '%s-%d' % (name, i)
-        translator.alias_counters[name] = i
+        subquery.alias_counters[name] = i
         return alias
 
 class TableRef(object):
-    def __init__(tableref, translator, name, entity):
-        tableref.translator = translator
+    def __init__(tableref, subquery, name, entity):
+        tableref.subquery = subquery
         tableref.alias = tableref.name_path = name
         tableref.entity = entity
         tableref.joined = False
     def make_join(tableref, pk_only=False):
         if not tableref.joined:
-            tableref.translator.from_.append([ tableref.alias, 'TABLE', tableref.entity._table_ ])
+            tableref.subquery.from_ast.append([ tableref.alias, 'TABLE', tableref.entity._table_ ])
             tableref.joined = True
         return tableref.alias, tableref.entity._pk_columns_
 
 class JoinedTableRef(object):
-    def __init__(tableref, translator, name_path, parent_tableref, attr, from_ast=None):
-        tableref.translator = translator
-        if from_ast is not None: tableref.from_ast = from_ast
-        else: tableref.from_ast = translator.from_            
+    def __init__(tableref, subquery, name_path, parent_tableref, attr):
+        tableref.subquery = subquery
         tableref.name_path = name_path
         tableref.alias = None
         tableref.optimized = None
@@ -722,7 +730,7 @@ class JoinedTableRef(object):
             if not attr.columns:
                 reverse = attr.reverse
                 assert reverse.columns and not reverse.is_collection
-                alias = tableref.translator.get_short_alias(tableref.name_path, right_entity.__name__)
+                alias = tableref.subquery.get_short_alias(tableref.name_path, right_entity.__name__)
                 join_cond = join_tables(parent_alias, alias, left_pk_columns, reverse.columns)
             else:
                 if attr.pk_offset is not None:
@@ -735,20 +743,20 @@ class JoinedTableRef(object):
                     tableref.optimized = True
                     tableref.joined = True
                     return parent_alias, left_columns
-                alias = tableref.translator.get_short_alias(tableref.name_path, right_entity.__name__)
+                alias = tableref.subquery.get_short_alias(tableref.name_path, right_entity.__name__)
                 join_cond = join_tables(parent_alias, alias, left_columns, pk_columns)
-            tableref.from_ast.append([ alias, 'TABLE', right_entity._table_, join_cond ])
+            tableref.subquery.from_ast.append([ alias, 'TABLE', right_entity._table_, join_cond ])
         elif not attr.reverse.is_collection:
-            alias = tableref.translator.get_short_alias(tableref.name_path, right_entity.__name__)
+            alias = tableref.subquery.get_short_alias(tableref.name_path, right_entity.__name__)
             join_cond = join_tables(parent_alias, alias, left_pk_columns, attr.reverse.columns)
-            tableref.from_ast.append([ alias, 'TABLE', right_entity._table_, join_cond ])
+            tableref.subquery.from_ast.append([ alias, 'TABLE', right_entity._table_, join_cond ])
         else:
             if not tableref.joined:
                 m2m_table = attr.table
-                m2m_alias = tableref.translator.get_short_alias(None, 't')
+                m2m_alias = tableref.subquery.get_short_alias(None, 't')
                 reverse_columns = attr.symmetric and attr.columns or attr.reverse.columns
                 m2m_join_cond = join_tables(parent_alias, m2m_alias, left_pk_columns, reverse_columns)
-                tableref.from_ast.append([ m2m_alias, 'TABLE', m2m_table, m2m_join_cond ])
+                tableref.subquery.from_ast.append([ m2m_alias, 'TABLE', m2m_table, m2m_join_cond ])
             if attr.symmetric: right_m2m_columns = attr.reverse_columns
             else: right_m2m_columns = attr.columns
             if pk_only:
@@ -757,9 +765,9 @@ class JoinedTableRef(object):
                 tableref.optimized = True
                 tableref.joined = True
                 return m2m_alias, tableref.pk_columns
-            alias = tableref.translator.get_short_alias(tableref.name_path, right_entity.__name__)
+            alias = tableref.subquery.get_short_alias(tableref.name_path, right_entity.__name__)
             join_cond = join_tables(m2m_alias, alias, right_m2m_columns, pk_columns)
-            tableref.from_ast.append([ alias, 'TABLE', right_entity._table_, join_cond ])
+            tableref.subquery.from_ast.append([ alias, 'TABLE', right_entity._table_, join_cond ])
         tableref.alias = alias 
         tableref.pk_columns = pk_columns
         tableref.optimized = False
@@ -1242,11 +1250,11 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
         parent_monad = monad.parent
         entity = monad.type
         name_path = '-'.join((parent_monad.tableref.name_path, attr.name))
-        monad.tableref = translator.get_tableref(name_path)
+        monad.tableref = translator.subquery.get_tableref(name_path)
         if monad.tableref is None:
-            parent_tableref_translator = parent_monad.tableref.translator
-            monad.tableref = JoinedTableRef(parent_tableref_translator, name_path, parent_monad.tableref, attr)
-            parent_tableref_translator.tablerefs[name_path] = monad.tableref
+            parent_tableref_subquery = parent_monad.tableref.subquery
+            monad.tableref = JoinedTableRef(parent_tableref_subquery, name_path, parent_monad.tableref, attr)
+            parent_tableref_subquery.tablerefs[name_path] = monad.tableref
 
 class NumericAttrMonad(NumericMixin, AttrMonad): pass
 class StringAttrMonad(StringMixin, AttrMonad): pass
@@ -1623,18 +1631,18 @@ def minmax(monad, sqlop, *args):
 
 class FuncSelectMonad(FuncMonad):
     func = query
-    def call(monad, subquery):
+    def call(monad, queryset):
         translator = monad.translator
-        if not isinstance(subquery, translator.QuerySetMonad): throw(TypeError, 
+        if not isinstance(queryset, translator.QuerySetMonad): throw(TypeError, 
             "'query' function expects generator expression, got: {EXPR}")
-        return subquery
+        return queryset
 
 class FuncExistsMonad(FuncMonad):
     func = exists
-    def call(monad, subquery):
-        if not isinstance(subquery, monad.translator.SetMixin): throw(TypeError, 
+    def call(monad, queryset):
+        if not isinstance(queryset, monad.translator.SetMixin): throw(TypeError, 
             "'exists' function expects generator expression or collection, got: {EXPR}")
-        return subquery.nonzero()
+        return queryset.nonzero()
 
 class FuncAggrMonad(FuncMonad):
     def call(monad, x):
@@ -1777,12 +1785,12 @@ class AttrSetMonad(SetMixin, Monad):
         assert len(expr_list) == 1
         expr = expr_list[0]
         if translator.hint_join:
-            alias = translator.get_short_alias(None, 't')
+            alias = translator.subquery.get_short_alias(None, 't')
             groupby_columns = [ inner_column[:] for cond, outer_column, inner_column in outer_conditions ]
             assert len(set(alias for _, alias, column in groupby_columns)) == 1
             groupby_names = set(column for _, alias, column in groupby_columns)
             while True:            
-                expr_name = 'column-%d' % translator.expr_counter()
+                expr_name = 'column-%d' % translator.subquery.expr_counter()
                 if expr_name not in groupby_names: break
 
             subquery_columns = [ 'ALL' ]
@@ -1798,7 +1806,7 @@ class AttrSetMonad(SetMixin, Monad):
 
             for cond in outer_conditions: cond[2][1] = alias
 
-            translator.from_.append([ alias, 'SELECT', subquery_ast, sqland(outer_conditions) ])
+            translator.subquery.from_ast.append([ alias, 'SELECT', subquery_ast, sqland(outer_conditions) ])
             sql_ast = [ 'COLUMN', alias, expr_name ]
         else:
             sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'MAX', expr ] ],
@@ -1815,20 +1823,20 @@ class AttrSetMonad(SetMixin, Monad):
         sql_ast = [ 'NOT_EXISTS', from_ast, [ 'WHERE' ] + outer_conditions + inner_conditions ]
         translator = monad.translator
         return translator.BoolExprMonad(translator, sql_ast)
-    def make_tableref(monad, from_ast):
+    def make_tableref(monad, subquery):
         parent = monad.parent
         attr = monad.attr
         if isinstance(parent, ObjectMixin): parent_tableref = parent.tableref
-        elif isinstance(parent, AttrSetMonad): parent_tableref = parent.make_tableref(from_ast)
+        elif isinstance(parent, AttrSetMonad): parent_tableref = parent.make_tableref(subquery)
         else: assert False
         if not attr.reverse: return parent_tableref
         name_path = parent_tableref.name_path + '-' + attr.name
-        return JoinedTableRef(monad.translator, name_path, parent_tableref, attr, from_ast)
+        return JoinedTableRef(subquery, name_path, parent_tableref, attr)
     def _subselect(monad):
         parent = monad.parent
         attr = monad.attr
-        from_ast = [ 'FROM' ]
-        tableref = monad.make_tableref(from_ast)
+        subquery = Subquery(monad.translator.subquery)
+        tableref = monad.make_tableref(subquery)
         pk_only = attr.reverse or attr.pk_offset is not None
         alias, columns = tableref.make_join(pk_only)
         inner_conditions = []
@@ -1840,8 +1848,8 @@ class AttrSetMonad(SetMixin, Monad):
         expr_list = [ [ 'COLUMN', alias, column ] for column in columns ]
         if not attr.reverse and not attr.is_required:
             inner_conditions = [ [ 'IS_NOT_NULL', expr ] for expr in expr_list ]
-        outer_conditions = [ from_ast[1].pop() ]
-        return expr_list, from_ast, inner_conditions, outer_conditions
+        outer_conditions = [ subquery.from_ast[1].pop() ]
+        return expr_list, subquery.from_ast, inner_conditions, outer_conditions
     def getsql(monad):
         throw(TranslationError)
 
@@ -1857,9 +1865,10 @@ class ObjectFlatMonad(Monad):
         monad.attr = attr
 
         name_path = '-'.join((parent.tableref.name_path, attr.name))
-        assert translator.get_tableref(name_path) is None
-        monad.tableref = JoinedTableRef(translator, name_path, parent.tableref, attr)
-        translator.tablerefs[name_path] = monad.tableref
+        assert translator.subquery.get_tableref(name_path) is None
+        subquery = translator.subquery
+        monad.tableref = JoinedTableRef(subquery, name_path, parent.tableref, attr)
+        subquery.tablerefs[name_path] = monad.tableref
     def getattr(monad, name):
         translator = monad.translator
         entity = monad.type
@@ -1901,7 +1910,7 @@ class QuerySetMonad(SetMixin, Monad):
         if not translator.hint_join:
             if len(columns_ast) == 1 or translator.row_value_syntax:
                 select_ast = [ 'ALL' ] + columns_ast
-                subquery_ast = [ 'SELECT', select_ast, sub.from_ ]
+                subquery_ast = [ 'SELECT', select_ast, sub.subquery.from_ast ]
                 subquery_expr = sub.tree.expr.monad
                 if isinstance(subquery_expr, AttrMonad) and subquery_expr.attr.is_required: pass
                 else: conditions += [ [ 'IS_NOT_NULL', column_ast ] for column_ast in sub.expr_columns ]
@@ -1916,22 +1925,22 @@ class QuerySetMonad(SetMixin, Monad):
                     for subitem in item.items: item_columns.extend(subitem.getsql())
                 else: item_columns = item.getsql()
                 conditions += [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item_columns, columns_ast) ]
-                subquery_ast = [ not_in and 'NOT_EXISTS' or 'EXISTS', sub.from_, [ 'WHERE' ] + conditions ]
+                subquery_ast = [ not_in and 'NOT_EXISTS' or 'EXISTS', sub.subquery.from_ast, [ 'WHERE' ] + conditions ]
                 return translator.BoolExprMonad(translator, subquery_ast)
         else: throw(NotImplementedError)
     def nonzero(monad):        
         sub = monad.subtranslator
-        sql_ast = [ 'EXISTS', sub.from_, [ 'WHERE' ] + sub.conditions ]
+        sql_ast = [ 'EXISTS', sub.subquery.from_ast, [ 'WHERE' ] + sub.conditions ]
         translator = monad.translator
         return translator.BoolExprMonad(translator, sql_ast)
     def negate(monad):
         sub = monad.subtranslator
-        sql_ast = [ 'NOT_EXISTS', sub.from_, [ 'WHERE' ] + sub.conditions ]
+        sql_ast = [ 'NOT_EXISTS', sub.subquery.from_ast, [ 'WHERE' ] + sub.conditions ]
         translator = monad.translator
         return translator.BoolExprMonad(translator, sql_ast)
     def _subselect(monad, item_type, select_ast):
         sub = monad.subtranslator
-        sql_ast = [ 'SELECT', select_ast, sub.from_, [ 'WHERE' ] + sub.conditions ]
+        sql_ast = [ 'SELECT', select_ast, sub.subquery.from_ast, [ 'WHERE' ] + sub.conditions ]
         translator = monad.translator
         return translator.ExprMonad.new(translator, item_type, sql_ast)
     def len(monad):
@@ -1942,10 +1951,10 @@ class QuerySetMonad(SetMixin, Monad):
                 select_ast = [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ]
                 return monad._subselect(int, select_ast)
             translator = monad.translator
-            alias = translator.get_short_alias(None, 't')
+            alias = translator.subquery.get_short_alias(None, 't')
             sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ],
                                 [ 'FROM', [ alias, 'SELECT', [ [ 'DISTINCT' ] + sub.expr_columns,
-                                                 sub.from_, [ 'WHERE' ] + sub.conditions ] ] ] ]
+                                                 sub.subquery.from_ast, [ 'WHERE' ] + sub.conditions ] ] ] ]
             return translator.ExprMonad.new(translator, int, sql_ast)
         elif len(sub.expr_columns) == 1:
             select_ast = [ 'AGGREGATES', [ 'COUNT', 'DISTINCT', sub.expr_columns[0] ] ]

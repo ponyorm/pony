@@ -3447,7 +3447,7 @@ class Query(object):
                 select_ast, attr_offsets = translator.expr_type._construct_select_clause_(translator.alias, distinct)
             else: select_ast = [ distinct and 'DISTINCT' or 'ALL' ] + translator.expr_columns
             sql_ast.append(select_ast)
-            sql_ast.append(translator.from_)
+            sql_ast.append(translator.subquery.from_ast)
             if translator.where: sql_ast.append(translator.where)
             if translator.groupby: sql_ast.append(translator.groupby)
             if translator.having: sql_ast.append(translator.having)
