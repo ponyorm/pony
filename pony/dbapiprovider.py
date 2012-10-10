@@ -152,8 +152,9 @@ class DBAPIProvider(object):
     converter_classes = []
 
     def _get_converter_type_by_py_type(provider, py_type):
-        for type, converter_cls in provider.converter_classes:
-            if issubclass(py_type, type): return converter_cls
+        if isinstance(py_type, type):
+            for t, converter_cls in provider.converter_classes:
+                if issubclass(py_type, t): return converter_cls
         throw(TypeError, 'No database converter found for type %s' % py_type)
 
     def get_converter_by_py_type(provider, py_type):

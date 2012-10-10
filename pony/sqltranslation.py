@@ -374,7 +374,7 @@ class SQLTranslator(ASTTranslator):
         translator.extractors = {}
         translator.distinct = False
         translator.where = None
-        translator.conditions = []
+        translator.conditions = subquery.conditions
         translator.groupby = None
         translator.having = None
         translator.having_conditions = []
@@ -470,13 +470,22 @@ class SQLTranslator(ASTTranslator):
         if isinstance(monad, translator.ParamMonad): throw(TranslationError,
             "External parameter '%s' cannot be used as query result" % ast2src(tree.expr))
         groupby_monads = None
-        if isinstance(monad, (translator.ObjectMixin, translator.ObjectFlatMonad)):
+        expr_type = monad.type
+        if isinstance(expr_type, SetType): expr_type = expr_type.item_type
+        if isinstance(expr_type, EntityMeta):
             if monad.aggregated: throw(TranslationError)
             if translator.aggregated: groupby_monads = [ monad ]
             else: translator.distinct |= monad.requires_distinct()
-            alias, _ = monad.tableref.make_join()
+            if isinstance(monad, translator.ObjectMixin):
+                entity = monad.type
+                tableref = monad.tableref
+            elif isinstance(monad, translator.AttrSetMonad):
+                entity = monad.type.item_type
+                tableref = monad.make_tableref(translator.subquery)
+            else: assert False
+            alias, _ = tableref.make_join()
             translator.alias = alias
-            translator.expr_type = entity = monad.type
+            translator.expr_type = entity
             translator.expr_columns = [ [ 'COLUMN', alias, column ] for column in entity._pk_columns_ ]
             translator.row_layout = None
             discr_criteria = entity._construct_discriminator_criteria_()
@@ -485,7 +494,7 @@ class SQLTranslator(ASTTranslator):
             translator.alias = None
             if isinstance(monad, translator.ListMonad):
                 expr_monads = monad.items
-                translator.expr_type = tuple(m.type for m in expr_monads)
+                translator.expr_type = tuple(m.type for m in expr_monads)  # ?????
                 expr_columns = []
                 for m in expr_monads: expr_columns.extend(m.getsql())
                 translator.expr_columns = expr_columns
@@ -501,6 +510,7 @@ class SQLTranslator(ASTTranslator):
             provider = translator.database.provider
             for m in expr_monads:
                 expr_type = m.type
+                if isinstance(expr_type, SetType): expr_type = expr_type.item_type
                 if isinstance(expr_type, EntityMeta):
                     next_offset = offset+len(expr_type._pk_attrs_)
                     row_layout.append((expr_type._get_by_raw_pkval_, slice(offset, next_offset)))
@@ -669,6 +679,7 @@ class Subquery(object):
     def __init__(subquery, parent_subquery=None):
         subquery.parent_subquery = parent_subquery
         subquery.from_ast = [ 'FROM' ]
+        subquery.conditions = []
         subquery.tablerefs = {}
         if parent_subquery is None:
             subquery.alias_counters = {}
@@ -692,6 +703,19 @@ class Subquery(object):
         alias = '%s-%d' % (name, i)
         subquery.alias_counters[name] = i
         return alias
+    def make_expr_list(subquery, tableref, attr):
+        pk_only = attr.reverse or attr.pk_offset is not None
+        alias, columns = tableref.make_join(pk_only)
+        inner_conditions = []
+        if attr.reverse: pass
+        elif pk_only:
+            offset = attr.pk_columns_offset
+            columns = columns[offset:offset+len(attr.columns)]
+        else: columns = attr.columns
+        expr_list = [ [ 'COLUMN', alias, column ] for column in columns ]
+        if not attr.reverse and not attr.is_required:
+            subquery.conditions.extend([ 'IS_NOT_NULL', expr ] for expr in expr_list)
+        return expr_list
 
 class TableRef(object):
     def __init__(tableref, subquery, name, entity):
@@ -1191,10 +1215,8 @@ class ObjectMixin(MonadMixin):
         except KeyError: throw(AttributeError)
         if not attr.is_collection:
             return translator.AttrMonad.new(monad, attr)
-        elif not translator.inside_expr:
-            return translator.AttrSetMonad(monad, attr)
         else:
-            return translator.ObjectFlatMonad(monad, attr)
+            return translator.AttrSetMonad(monad, attr)
     def requires_distinct(monad):
         return monad.attr.reverse.is_collection or monad.parent.requires_distinct()
 
@@ -1695,11 +1717,11 @@ class SetMixin(MonadMixin):
 class AttrSetMonad(SetMixin, Monad):
     def __init__(monad, parent, attr):
         translator = parent.translator
-        if translator.inside_expr: throw(NotImplementedError)
         item_type = translator.normalize_type(attr.py_type)
         Monad.__init__(monad, translator, SetType(item_type))
         monad.parent = parent
         monad.attr = attr
+        monad.tableref = None
     def cmp(monad, op, monad2):
         if type(monad2.type) is SetType and \
            monad.translator.are_comparable_types(monad.type.item_type, monad2.type.item_type): pass
@@ -1724,10 +1746,8 @@ class AttrSetMonad(SetMixin, Monad):
                 return translator.BoolExprMonad(translator, subquery_ast)
         else: throw(NotImplementedError)
     def getattr(monad, name):
-        item_type = monad.type.item_type
-        if not isinstance(item_type, EntityMeta):
-            throw(AttributeError)
-        entity = item_type
+        entity = monad.type.item_type
+        if not isinstance(entity, EntityMeta): throw(AttributeError)
         attr = entity._adict_.get(name)
         if attr is None: throw(AttributeError)
         return monad.translator.AttrSetMonad(monad, attr)
@@ -1831,67 +1851,22 @@ class AttrSetMonad(SetMixin, Monad):
         else: assert False
         if not attr.reverse: return parent_tableref
         name_path = parent_tableref.name_path + '-' + attr.name
-        return JoinedTableRef(subquery, name_path, parent_tableref, attr)
+        tableref = JoinedTableRef(subquery, name_path, parent_tableref, attr)
+        subquery.tablerefs[name_path] = tableref
+        monad.tableref = tableref
+        return tableref
     def _subselect(monad):
         parent = monad.parent
-        attr = monad.attr
         subquery = Subquery(monad.translator.subquery)
         tableref = monad.make_tableref(subquery)
-        pk_only = attr.reverse or attr.pk_offset is not None
-        alias, columns = tableref.make_join(pk_only)
-        inner_conditions = []
-        if attr.reverse: pass
-        elif pk_only:
-            offset = attr.pk_columns_offset
-            columns = columns[offset:offset+len(attr.columns)]
-        else: columns = attr.columns
-        expr_list = [ [ 'COLUMN', alias, column ] for column in columns ]
-        if not attr.reverse and not attr.is_required:
-            inner_conditions = [ [ 'IS_NOT_NULL', expr ] for expr in expr_list ]
+        expr_list = subquery.make_expr_list(tableref, monad.attr)
         outer_conditions = [ subquery.from_ast[1].pop() ]
-        return expr_list, subquery.from_ast, inner_conditions, outer_conditions
-    def getsql(monad):
-        throw(TranslationError)
-
-flatmonad_errmsg = "aggregated expressions like {EXPR} are not allowed before 'for'"
-
-class ObjectFlatMonad(Monad):
-    def __init__(monad, parent, attr):
-        translator = parent.translator
-        assert translator.inside_expr
-        type = translator.normalize_type(attr.py_type)
-        Monad.__init__(monad, translator, type)
-        monad.parent = parent
-        monad.attr = attr
-
-        name_path = '-'.join((parent.tableref.name_path, attr.name))
-        assert translator.subquery.get_tableref(name_path) is None
-        subquery = translator.subquery
-        monad.tableref = JoinedTableRef(subquery, name_path, parent.tableref, attr)
-        subquery.tablerefs[name_path] = monad.tableref
-    def getattr(monad, name):
-        translator = monad.translator
-        entity = monad.type
-        try: attr = entity._adict_[name]
-        except KeyError: throw(AttributeError)
-        return translator.ObjectFlatMonad(monad, attr)
-    def requires_distinct(monad):
-        return monad.attr.reverse.is_collection or monad.parent.requires_distinct()
+        return expr_list, subquery.from_ast, subquery.conditions, outer_conditions
     def getsql(monad):
         parent = monad.parent
-        attr = monad.attr
-        if isinstance(parent, ObjectAttrMonad) and attr.pk_offset is not None:
-            parent_columns = parent.getsql()
-            entity = attr.entity
-            if len(entity._pk_attrs_) == 1: return parent_columns
-            return parent_columns[attr.pk_columns_offset:attr.pk_columns_offset+len(attr.columns)]
-        alias, _ = monad.parent.tableref.make_join()
-        return [ [ 'COLUMN', alias, column ] for column in monad.attr.columns ]
-    def len(monad): throw(NotImplementedError, flatmonad_errmsg)
-    def sum(monad): throw(NotImplementedError, flatmonad_errmsg)
-    def min(monad): throw(NotImplementedError, flatmonad_errmsg)
-    def max(monad): throw(NotImplementedError, flatmonad_errmsg)
-    def avg(monad): throw(NotImplementedError, flatmonad_errmsg)
+        subquery = monad.translator.subquery
+        tableref = monad.make_tableref(subquery)
+        return subquery.make_expr_list(tableref, monad.attr)
 
 class QuerySetMonad(SetMixin, Monad):
     def __init__(monad, translator, subtranslator):
