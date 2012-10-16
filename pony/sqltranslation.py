@@ -1226,7 +1226,7 @@ class ObjectIterMonad(ObjectMixin, Monad):
         monad.tableref = tableref
     def getsql(monad):
         entity = monad.type
-        alias, pk_columns = monad.tableref.make_join()
+        alias, pk_columns = monad.tableref.make_join(pk_only=True)
         return [ [ 'COLUMN', alias, column ] for column in pk_columns ]
     def requires_distinct(monad):
         return monad.tableref.name_path != monad.translator.tree.quals[-1].assign.name
@@ -1257,13 +1257,15 @@ class AttrMonad(Monad):
     def getsql(monad):
         parent = monad.parent
         attr = monad.attr
-        if isinstance(parent, ObjectAttrMonad) and attr.pk_offset is not None:
-            parent_columns = parent.getsql()
-            entity = attr.entity
-            if len(entity._pk_attrs_) == 1: return parent_columns
-            return parent_columns[attr.pk_columns_offset:attr.pk_columns_offset+len(attr.columns)]
-        alias, _ = monad.parent.tableref.make_join()
-        return [ [ 'COLUMN', alias, column ] for column in monad.attr.columns ]
+        entity = attr.entity
+        pk_only = attr.pk_offset is not None
+        alias, parent_columns = monad.parent.tableref.make_join(pk_only)
+        if not pk_only: columns = attr.columns
+        elif not entity._pk_is_composite_: columns = parent_columns
+        else:
+            offset = attr.pk_columns_offset
+            columns = parent_columns[offset:offset+len(attr.columns)]
+        return [ [ 'COLUMN', alias, column ] for column in columns ]
         
 class ObjectAttrMonad(ObjectMixin, AttrMonad):
     def __init__(monad, parent, attr):
