@@ -1681,6 +1681,7 @@ class FuncAggrMonad(FuncMonad):
             return result
         if x.aggregated: throw(TranslationError, 'Aggregated functions cannot be nested. Got: {EXPR}')
         expr_type = x.type
+        if isinstance(expr_type, SetType): expr_type = expr_type.item_type
         if func_name in ('SUM', 'AVG') and expr_type not in translator.numeric_types:
             throw(TypeError, "Function '%s' expects argument of numeric type, got %r in {EXPR}"
                              % (func_name, type2str(expr_type)))
@@ -1697,7 +1698,7 @@ class FuncAggrMonad(FuncMonad):
             result = translator.ExprMonad.new(translator, int, [ 'COUNT', 'DISTINCT', expr ])
         else:
             if func_name == 'AVG': result_type = float
-            else: result_type = x.type
+            else: result_type = expr_type
             result = translator.ExprMonad.new(translator, result_type, [ func_name, expr ])
         result.aggregated = True
         return result
