@@ -3635,11 +3635,14 @@ def make_aggregate_function(name):
     aggregate_functions[name] = func
     return func
 
-COUNT = make_aggregate_function('COUNT')
 SUM = make_aggregate_function('SUM')
 MIN = make_aggregate_function('MIN')
 MAX = make_aggregate_function('MAX')
 AVG = make_aggregate_function('AVG')
+
+def COUNT(x=None):
+    raise TypeError('%s() function can be used inside declarative queries only' % name)
+aggregate_functions['COUNT'] = COUNT
 
 def show(entity):
     x = entity

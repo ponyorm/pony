@@ -1669,12 +1669,18 @@ class FuncExistsMonad(FuncMonad):
         return queryset.nonzero()
 
 class FuncAggrMonad(FuncMonad):
-    def call(monad, x):
-        if x.aggregated: throw(TranslationError, 'Aggregated functions cannot be nested. Got: {EXPR}')
+    def call(monad, x=None):
         translator = monad.translator
         translator.aggregated = True
-        expr_type = x.type
         func_name = monad.func.__name__
+        if isinstance(x, translator.StringConstMonad) and x.value == '*': x = None
+        if x is None:
+            assert func_name == 'COUNT'
+            result = translator.ExprMonad.new(translator, int, [ 'COUNT', 'ALL' ])
+            result.aggregated = True
+            return result
+        if x.aggregated: throw(TranslationError, 'Aggregated functions cannot be nested. Got: {EXPR}')
+        expr_type = x.type
         if func_name in ('SUM', 'AVG') and expr_type not in translator.numeric_types:
             throw(TypeError, "Function '%s' expects argument of numeric type, got %r in {EXPR}"
                              % (func_name, type2str(expr_type)))
@@ -1687,13 +1693,12 @@ class FuncAggrMonad(FuncMonad):
         elif translator.row_value_syntax == True: expr = ['ROW'] + expr
         else: throw(NotImplementedError, 'Entities with composite primary keys '
                     'not supported inside aggregate functions. Got: {EXPR}')
-        def new_expr(type, sql): return translator.ExprMonad.new(translator, type, sql)
         if func_name == 'COUNT':
-            result = new_expr(int, [ 'COUNT', 'DISTINCT', expr ])
+            result = translator.ExprMonad.new(translator, int, [ 'COUNT', 'DISTINCT', expr ])
         else:
             if func_name == 'AVG': result_type = float
             else: result_type = x.type
-            result = new_expr(result_type, [ func_name, expr ])
+            result = translator.ExprMonad.new(translator, result_type, [ func_name, expr ])
         result.aggregated = True
         return result
 
