@@ -429,16 +429,16 @@ class SQLTranslator(ASTTranslator):
                 for j, attrname in enumerate(attr_names):
                     attr = parent_entity._adict_.get(attrname)
                     if attr is None: throw(AttributeError, attrname)
-                    if not attr.is_collection: throw(TypeError, '%s is not collection' % ast2src(qual.iter))
-                    if not isinstance(attr, Set): throw(NotImplementedError, ast2src(qual.iter))
                     entity = attr.py_type
                     if not isinstance(entity, EntityMeta): throw(NotImplementedError, ast2src(qual.iter))
-                    reverse = attr.reverse
-                    if reverse.is_collection:
-                        if not isinstance(reverse, Set): throw(NotImplementedError, ast2src(qual.iter))
-                        translator.distinct = True
-                    elif parent_tableref.alias != tree.quals[i-1].assign.name:
-                        translator.distinct = True
+                    if attr.is_collection:
+                        if not isinstance(attr, Set): throw(NotImplementedError, ast2src(qual.iter))
+                        reverse = attr.reverse
+                        if reverse.is_collection:
+                            if not isinstance(reverse, Set): throw(NotImplementedError, ast2src(qual.iter))
+                            translator.distinct = True
+                        elif parent_tableref.alias != tree.quals[i-1].assign.name:
+                            translator.distinct = True
                     if j == last_index: name_path = name
                     else: name_path += '-' + attr.name
                     tableref = JoinedTableRef(subquery, name_path, parent_tableref, attr)
