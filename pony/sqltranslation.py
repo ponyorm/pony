@@ -512,12 +512,18 @@ class SQLTranslator(ASTTranslator):
                 expr_type = m.type
                 if isinstance(expr_type, SetType): expr_type = expr_type.item_type
                 if isinstance(expr_type, EntityMeta):
-                    next_offset = offset+len(expr_type._pk_attrs_)
-                    row_layout.append((expr_type._get_by_raw_pkval_, slice(offset, next_offset)))
+                    next_offset = offset + len(expr_type._pk_columns_)
+                    def func(values, constructor=expr_type._get_by_raw_pkval_):
+                        if None in values: return None
+                        return constructor(values)
+                    row_layout.append((func, slice(offset, next_offset)))
                     offset = next_offset
                 else:
                     converter = provider.get_converter_by_py_type(expr_type)
-                    row_layout.append((converter.sql2py, offset))
+                    def func(value, sql2py=converter.sql2py):
+                        if value is None: return None
+                        return sql2py(value)
+                    row_layout.append((func, offset))
                     offset += 1
             translator.row_layout = row_layout
 
@@ -712,16 +718,12 @@ class Subquery(object):
     def make_expr_list(subquery, tableref, attr):
         pk_only = attr.reverse or attr.pk_offset is not None
         alias, columns = tableref.make_join(pk_only)
-        inner_conditions = []
         if attr.reverse: pass
         elif pk_only:
             offset = attr.pk_columns_offset
             columns = columns[offset:offset+len(attr.columns)]
         else: columns = attr.columns
-        expr_list = [ [ 'COLUMN', alias, column ] for column in columns ]
-        if not attr.reverse and not attr.is_required:
-            subquery.conditions.extend([ 'IS_NOT_NULL', expr ] for expr in expr_list)
-        return expr_list
+        return [ [ 'COLUMN', alias, column ] for column in columns ]
 
 class TableRef(object):
     def __init__(tableref, subquery, name, entity):
@@ -1870,9 +1872,12 @@ class AttrSetMonad(SetMixin, Monad):
         return tableref
     def _subselect(monad):
         parent = monad.parent
+        attr = monad.attr
         subquery = Subquery(monad.translator.subquery)
         tableref = monad.make_tableref(subquery)
-        expr_list = subquery.make_expr_list(tableref, monad.attr)
+        expr_list = subquery.make_expr_list(tableref, attr)
+        if not attr.reverse and not attr.is_required:
+            subquery.conditions.extend([ 'IS_NOT_NULL', expr ] for expr in expr_list)
         outer_conditions = [ subquery.from_ast[1].pop() ]
         return expr_list, subquery.from_ast, subquery.conditions, outer_conditions
     def getsql(monad):
