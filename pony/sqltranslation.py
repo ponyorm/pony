@@ -430,7 +430,8 @@ class SQLTranslator(ASTTranslator):
                     attr = parent_entity._adict_.get(attrname)
                     if attr is None: throw(AttributeError, attrname)
                     entity = attr.py_type
-                    if not isinstance(entity, EntityMeta): throw(NotImplementedError, ast2src(qual.iter))
+                    if not isinstance(entity, EntityMeta):
+                        throw(NotImplementedError, 'for %s in %s' % (name, ast2src(qual.iter)))
                     if attr.is_collection:
                         if not isinstance(attr, Set): throw(NotImplementedError, ast2src(qual.iter))
                         reverse = attr.reverse

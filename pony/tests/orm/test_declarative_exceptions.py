@@ -41,7 +41,7 @@ commit()
 class TestSQLTranslatorExceptions(unittest.TestCase):
     def setUp(self):
         rollback()
-    @raises_exception(TypeError, 's.name is not collection')
+    @raises_exception(NotImplementedError, 'for x in s.name')
     def test1(self):
         x = 10
         fetch(s for s in Student for x in s.name)
