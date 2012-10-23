@@ -293,9 +293,14 @@ class Decompiler(object):
         if argc: throw(NotImplementedError)
         tos = decompiler.stack.pop()
         codeobject = tos.value
-        decompiler = Decompiler(codeobject)
-        decompiler.names.update(decompiler.names)
-        return decompiler.ast
+        func_decompiler = Decompiler(codeobject)
+        # decompiler.names.update(decompiler.names)  ???
+        if codeobject.co_varnames[:1] == ('.0',):
+            return func_decompiler.ast  # generator
+        argnames = codeobject.co_varnames[:codeobject.co_argcount]
+        defaults = []  # todo
+        flags = 0  # todo
+        return ast.Lambda(argnames, defaults, flags, func_decompiler.ast)
 
     POP_JUMP_IF_FALSE = JUMP_IF_FALSE
     POP_JUMP_IF_TRUE = JUMP_IF_TRUE

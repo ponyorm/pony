@@ -638,12 +638,34 @@ class SQLTranslator(ASTTranslator):
         if len(node.args) > 1: return
         if not node.args: return
         arg = node.args[0]
-        if not isinstance(arg, ast.GenExpr): return
-        translator.dispatch(node.node)
-        func_monad = node.node.monad
-        translator.dispatch(arg)
-        query_set_monad = arg.monad
-        return func_monad(query_set_monad)
+        if isinstance(arg, ast.GenExpr):
+            translator.dispatch(node.node)
+            func_monad = node.node.monad
+            translator.dispatch(arg)
+            query_set_monad = arg.monad
+            return func_monad(query_set_monad)
+        if not isinstance(arg, ast.Lambda): return
+        lambda_expr = arg
+        if not isinstance(node.node, ast.Getattr): throw(NotImplementedError)
+        expr = node.node.expr
+        translator.dispatch(expr)
+        if not isinstance(expr.monad, EntityMonad): throw(NotImplementedError)
+        entity = expr.monad.type
+        for n, v in translator.entities.iteritems():
+            if entity is v: entity_name = n; break
+        else: assert False
+        if node.node.attrname != 'query': throw(TypeError)
+        if len(lambda_expr.argnames) != 1: throw(TypeError)
+        if lambda_expr.varargs: throw(TypeError)
+        if lambda_expr.kwargs: throw(TypeError)
+        if lambda_expr.defaults: throw(TypeError)
+        name = lambda_expr.argnames[0]            
+        cond_expr = lambda_expr.code
+        if_expr = ast.GenExprIf(cond_expr)
+        for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name(entity_name), [ if_expr ])
+        inner_expr = ast.GenExprInner(ast.Name(name), [ for_expr ])
+        subtranslator = translator.__class__(inner_expr, translator.databases, translator.entities, translator.vartypes, translator.functions, translator)
+        return translator.QuerySetMonad(translator, subtranslator)
     def postCallFunc(translator, node):
         args = []
         keyargs = {}
@@ -962,6 +984,8 @@ class EntityMonad(Monad):
         pkval = map(avdict.get, entity._pk_attrs_)
         if None in pkval: pkval = None
         return pkval, avdict
+    def call_query(monad):
+        throw(NotImplementedError)
 
 class ListMonad(Monad):
     def __init__(monad, translator, items):
