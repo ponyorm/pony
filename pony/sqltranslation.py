@@ -693,6 +693,12 @@ class Subquery(object):
         if subquery.parent_subquery:
             return subquery.parent_subquery.get_tableref(name_path)
         return None
+    def add_tableref(subquery, name_path, parent_tableref, attr):
+        tablerefs = subquery.tablerefs
+        assert name_path not in tablerefs
+        tableref = JoinedTableRef(subquery, name_path, parent_tableref, attr)
+        tablerefs[name_path] = tableref
+        return tableref
     def get_short_alias(subquery, name_path, entity_name):
         if name_path:
             if is_ident(name_path): return name_path
@@ -1276,9 +1282,8 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
         name_path = '-'.join((parent_monad.tableref.name_path, attr.name))
         monad.tableref = translator.subquery.get_tableref(name_path)
         if monad.tableref is None:
-            parent_tableref_subquery = parent_monad.tableref.subquery
-            monad.tableref = JoinedTableRef(parent_tableref_subquery, name_path, parent_monad.tableref, attr)
-            parent_tableref_subquery.tablerefs[name_path] = monad.tableref
+            parent_subquery = parent_monad.tableref.subquery
+            monad.tableref = parent_subquery.add_tableref(name_path, parent_monad.tableref, attr)
 
 class NumericAttrMonad(NumericMixin, AttrMonad): pass
 class StringAttrMonad(StringMixin, AttrMonad): pass
@@ -1859,8 +1864,8 @@ class AttrSetMonad(SetMixin, Monad):
         else: assert False
         if not attr.reverse: return parent_tableref
         name_path = parent_tableref.name_path + '-' + attr.name
-        tableref = JoinedTableRef(subquery, name_path, parent_tableref, attr)
-        subquery.tablerefs[name_path] = tableref
+        tableref = subquery.get_tableref(name_path)
+        if tableref is None: tableref = subquery.add_tableref(name_path, parent_tableref, attr)
         monad.tableref = tableref
         return tableref
     def _subselect(monad):
