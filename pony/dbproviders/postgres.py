@@ -137,11 +137,10 @@ class PGProvider(DBAPIProvider):
         cursor.executemany(sql, arguments_list)
 
     @wrap_dbapi_exceptions    
-    def execute_returning_id(provider, cursor, sql, arguments, result_type):
+    def execute_returning_id(provider, cursor, sql, arguments):
         if isinstance(sql, unicode): sql = sql.encode('utf8')
         cursor.execute(sql, arguments)
-        new_id = cursor.fetchone()[0]
-        return result_type(new_id)
+        return cursor.fetchone()[0]
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),

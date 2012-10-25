@@ -136,10 +136,9 @@ class DBAPIProvider(object):
         cursor.executemany(sql, arguments_list)
 
     @wrap_dbapi_exceptions
-    def execute_returning_id(provider, cursor, sql, arguments, result_type):
+    def execute_returning_id(provider, cursor, sql, arguments):
         cursor.execute(sql, arguments)
-        new_id = cursor.lastrowid
-        return result_type(new_id)
+        return cursor.lastrowid
 
     @wrap_dbapi_exceptions
     def commit(provider, connection):

@@ -30,9 +30,9 @@ class TestDatabase(Database):
     def _exec_sql(database, sql, arguments=None):
         database.last_sql = sql
         return Database._exec_sql(database, sql, arguments)
-    def _exec_sql_returning_id(database, sql, arguments, returning_py_type):
+    def _exec_sql_returning_id(database, sql, arguments):
         database.last_sql = sql
-        return Database._exec_sql_returning_id(database, sql, arguments, returning_py_type)
+        return Database._exec_sql_returning_id(database, sql, arguments)
     def _exec_sql_many(database, sql, arguments_list):
         database.last_sql = sql
         return Database._exec_sql_many(database, sql, arguments_list)

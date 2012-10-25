@@ -365,11 +365,11 @@ class Database(object):
             database._insert_cache[query_key] = cached_sql
         else: sql, adapter = cached_sql
         arguments = adapter(keyargs.values())  # order of values same as order of keys
-        cursor = database._exec_sql(sql, arguments)
         if returning is None:
-            return getattr(cursor, 'lastrowid', None)
-        else:
-            return cursor.fetchone()[0]
+            cursor = database._exec_sql(sql, arguments)
+            return None
+        new_id = database._exec_sql_returning_id(sql, arguments)
+        return new_id
     def _ast2sql(database, sql_ast):
         sql, adapter = database.provider.ast2sql(sql_ast)
         return sql, adapter
@@ -385,7 +385,7 @@ class Database(object):
         else: database.provider.execute(cursor, sql, arguments)
         database._update_local_stat(sql, t)
         return cursor
-    def _exec_sql_returning_id(database, sql, arguments, returning_py_type):
+    def _exec_sql_returning_id(database, sql, arguments):
         cache = database._get_cache()
         cursor = cache.connection.cursor()
         if debug:
@@ -393,7 +393,7 @@ class Database(object):
             if arguments: print args2str(arguments)
             print
         t = time()
-        new_id = database.provider.execute_returning_id(cursor, sql, arguments, returning_py_type)
+        new_id = database.provider.execute_returning_id(cursor, sql, arguments)
         database._update_local_stat(sql, t)
         return new_id
     def _exec_sql_many(database, sql, arguments_list):
@@ -2834,7 +2834,7 @@ class Entity(object):
         else: sql, adapter = cached_sql
         arguments = adapter(values)
         try:
-            if auto_pk: new_id = database._exec_sql_returning_id(sql, arguments, pk_attr.py_type)
+            if auto_pk: new_id = database._exec_sql_returning_id(sql, arguments)
             else: database._exec_sql(sql, arguments)
         except IntegrityError, e:
             msg = " ".join(tostring(arg) for arg in e.args)

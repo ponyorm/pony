@@ -182,14 +182,12 @@ class OraProvider(DBAPIProvider):
         cursor.executemany(sql, arguments_list)
 
     @wrap_dbapi_exceptions
-    def execute_returning_id(provider, cursor, sql, arguments, result_type):
-        if result_type is not int: throw(NotImplementedError)
+    def execute_returning_id(provider, cursor, sql, arguments):
         set_input_sizes(cursor, arguments)
         var = cursor.var(cx_Oracle.NUMBER)
         arguments['new_id'] = var
         cursor.execute(sql, arguments)
-        new_id = var.getvalue()
-        return result_type(new_id)
+        return var.getvalue()
 
     converter_classes = [
         (bool, OraBoolConverter),
