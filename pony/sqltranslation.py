@@ -806,20 +806,22 @@ class JoinedTableRef(object):
             join_cond = join_tables(parent_alias, alias, left_pk_columns, attr.reverse.columns)
             tableref.subquery.from_ast.append([ alias, 'TABLE', right_entity._table_, join_cond ])
         else:
+            right_m2m_columns = attr.symmetric and attr.reverse_columns or attr.columns
             if not tableref.joined:
                 m2m_table = attr.table
                 m2m_alias = tableref.subquery.get_short_alias(None, 't')
                 reverse_columns = attr.symmetric and attr.columns or attr.reverse.columns
                 m2m_join_cond = join_tables(parent_alias, m2m_alias, left_pk_columns, reverse_columns)
                 tableref.subquery.from_ast.append([ m2m_alias, 'TABLE', m2m_table, m2m_join_cond ])
-            if attr.symmetric: right_m2m_columns = attr.reverse_columns
-            else: right_m2m_columns = attr.columns
-            if pk_only:
-                tableref.alias = m2m_alias
-                tableref.pk_columns = right_m2m_columns
-                tableref.optimized = True
-                tableref.joined = True
-                return m2m_alias, tableref.pk_columns
+                if pk_only:
+                    tableref.alias = m2m_alias
+                    tableref.pk_columns = right_m2m_columns
+                    tableref.optimized = True
+                    tableref.joined = True
+                    return m2m_alias, tableref.pk_columns
+            elif tableref.optimized:
+                assert not pk_only
+                m2m_alias = tableref.alias
             alias = tableref.subquery.get_short_alias(tableref.name_path, right_entity.__name__)
             join_cond = join_tables(m2m_alias, alias, right_m2m_columns, pk_columns)
             tableref.subquery.from_ast.append([ alias, 'TABLE', right_entity._table_, join_cond ])
