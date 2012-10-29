@@ -367,7 +367,7 @@ class Database(object):
         arguments = adapter(keyargs.values())  # order of values same as order of keys
         if returning is None:
             cursor = database._exec_sql(sql, arguments)
-            return None
+            return getattr(cursor, 'lastrowid', None)
         new_id = database._exec_sql_returning_id(sql, arguments)
         return new_id
     def _ast2sql(database, sql_ast):
