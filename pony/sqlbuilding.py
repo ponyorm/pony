@@ -183,19 +183,20 @@ class SQLBuilder(object):
         result = [ 'DELETE FROM ', builder.quote_name(table_name) ]
         if where: result += [ '\n', builder(where) ]
         return result
-    def SELECT(builder, *sections):
+    def subquery(builder, *sections):
         builder.indent += 1
         if not options.INNER_JOIN_SYNTAX:
             sections = move_conditions_from_inner_join_to_where(sections)
         result = [ builder(s) for s in sections ]
         builder.indent -= 1
+        return result
+    def SELECT(builder, *sections):
+        result = builder.subquery(*sections)
         if builder.indent : result = ['(\n', result, ')']
         return result
     def EXISTS(builder, *sections):
-        builder.indent += 1
-        indent = builder.indent_spaces * (builder.indent-1)
-        result = [ builder(s) for s in sections ]
-        builder.indent -= 1
+        result = builder.subquery(*sections)
+        indent = builder.indent_spaces * builder.indent
         return 'EXISTS (\n', indent, 'SELECT 1\n', result, indent, ')'
     def NOT_EXISTS(builder, *sections):
         return 'NOT ', builder.EXISTS(*sections)
