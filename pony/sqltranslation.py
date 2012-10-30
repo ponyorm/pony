@@ -484,10 +484,10 @@ class SQLTranslator(ASTTranslator):
                 entity = monad.type.item_type
                 tableref = monad.make_tableref(translator.subquery)
             else: assert False
-            alias, _ = tableref.make_join()
+            alias, pk_columns = tableref.make_join(pk_only=parent_translator is not None)
             translator.alias = alias
             translator.expr_type = entity
-            translator.expr_columns = [ [ 'COLUMN', alias, column ] for column in entity._pk_columns_ ]
+            translator.expr_columns = [ [ 'COLUMN', alias, column ] for column in pk_columns ]
             translator.row_layout = None
             discr_criteria = entity._construct_discriminator_criteria_()
             if discr_criteria: translator.conditions.insert(0, discr_criteria)
