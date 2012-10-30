@@ -163,7 +163,7 @@ class OraProvider(DBAPIProvider):
     def get_default_m2m_table_name(provider, attr, reverse):
         return DBAPIProvider.get_default_m2m_table_name(provider, attr, reverse).upper()
 
-    def get_default_column_names(provider, attr, reverse_pk_columns):
+    def get_default_column_names(provider, attr, reverse_pk_columns=None):
         return [ column.upper() for column in DBAPIProvider.get_default_column_names(provider, attr, reverse_pk_columns) ]
 
     def get_default_m2m_column_names(provider, entity):

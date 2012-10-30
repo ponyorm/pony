@@ -930,7 +930,7 @@ class Attribute(object):
         provider = attr.entity._database_.provider
         reverse = attr.reverse
         if not reverse: # attr is not part of relationship
-            if not attr.columns: attr.columns = [ attr.name ]
+            if not attr.columns: attr.columns = provider.get_default_column_names(attr)
             elif len(attr.columns) > 1: throw(MappingError, "Too many columns were specified for %s" % attr)
             attr.col_paths = [ attr.name ]
             attr.converters = [ provider.get_converter_by_attr(attr) ]
