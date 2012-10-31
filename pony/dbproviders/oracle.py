@@ -81,8 +81,43 @@ class OraBuilder(sqlbuilding.SQLBuilder):
     def INSERT(builder, table_name, columns, values, returning=None):
         result = sqlbuilding.SQLBuilder.INSERT(builder, table_name, columns, values)
         if returning is not None:
-            result.extend([ ' RETURNING ', builder.quote_name(returning), ' INTO :new_id' ])
+            result.extend((' RETURNING ', builder.quote_name(returning), ' INTO :new_id'))
         return result
+    def SELECT(builder, *sections):
+        last_section = sections[-1]
+        limit = offset = None
+        if last_section[0] == 'LIMIT':
+            limit = last_section[1]
+            if len(last_section) > 2: offset = last_section[2]
+            sections = sections[:-1]
+        result = builder.subquery(*sections)
+        indent = builder.indent_spaces * builder.indent
+        if not limit: pass
+        elif not offset:
+            result = [ 'SELECT * FROM (\n' ]
+            builder.indent += 1
+            result.extend(builder.subquery(*sections))
+            builder.indent -= 1
+            result.extend((indent, ') WHERE ROWNUM <= ', builder(limit)))
+        else:
+            indent2 = indent + builder.indent_spaces
+            result = [ 'SELECT * FROM (\n', indent2, 'SELECT t.*, ROWNUM "row-num" FROM (\n' ]
+            builder.indent += 2
+            result.extend(builder.subquery(*sections))
+            builder.indent -= 2
+            result.extend((indent2, ') t '))
+            if limit[0] == 'VALUE' and offset[0] == 'VALUE' \
+                    and isinstance(limit[1], int) and isinstance(offset[1], int):
+                total_limit = [ 'VALUE', limit[1] + offset[1] ]
+                result.extend(('WHERE ROWNUM <= ', builder(total_limit), '\n'))
+            else: result.extend(('WHERE ROWNUM <= ', builder(limit), ' + ', builder(offset), '\n'))
+            result.extend((indent, ') WHERE "row-num" > ', builder(offset)))
+        if builder.indent: return '(\n', result, ')'
+        return result
+    def LIMIT(builder, limit, offset=None):
+        assert False
+        if not offset: return 'LIMIT ', builder(limit), '\n'
+        else: return 'LIMIT ', builder(limit), ' OFFSET ', builder(offset), '\n'
 
 class OraBoolConverter(dbapiprovider.BoolConverter):
     def sql2py(converter, val):
