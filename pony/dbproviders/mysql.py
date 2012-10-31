@@ -9,10 +9,10 @@ import MySQLdb.converters
 from MySQLdb.constants import FIELD_TYPE, FLAG
 
 from pony import dbschema
-from pony import sqlbuilding
 from pony import dbapiprovider
 from pony.dbapiprovider import DBAPIProvider, LongStr, LongUnicode
 from pony.sqltranslation import SQLTranslator
+from pony.sqlbuilding import Value, SQLBuilder
 from pony.utils import localbase
 
 def get_provider(*args, **keyargs):
@@ -24,12 +24,16 @@ class MySQLColumn(dbschema.Column):
 class MySQLSchema(dbschema.DBSchema):
     column_class = MySQLColumn
 
-class MyValue(sqlbuilding.Value):
+class MyValue(Value):
     def quote_str(self, s):
         s = s.replace('%', '%%')
-        return sqlbuilding.Value.quote_str(self, s)
+        return Value.quote_str(self, s)
 
-class MySQLBuilder(sqlbuilding.SQLBuilder):
+class MySQLTranslator(SQLTranslator):
+    dialect = 'MySQL'
+
+class MySQLBuilder(SQLBuilder):
+    dialect = 'MySQL'
     make_value = MyValue
     def YEAR(builder, expr):
         return 'year(', builder(expr), ')'
@@ -73,7 +77,7 @@ class MySQLProvider(DBAPIProvider):
     quote_char = "`"
 
     dbschema_cls = MySQLSchema
-    translator_cls = SQLTranslator
+    translator_cls = MySQLTranslator
     sqlbuilder_cls = MySQLBuilder
 
     def __init__(provider, *args, **keyargs):

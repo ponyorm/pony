@@ -23,9 +23,12 @@ class SQLiteSchema(dbschema.DBSchema):
     fk_class = SQLiteForeignKey
 
 class SQLiteTranslator(sqltranslation.SQLTranslator):
+    dialect = 'SQLite'
+    sqlite_version = sqlite.sqlite_version_info
     row_value_syntax = False
 
 class SQLiteBuilder(sqlbuilding.SQLBuilder):
+    dialect = 'SQLite'
     def POW(builder, expr1, expr2):
         return 'pow(', builder(expr1), ', ', builder(expr2), ')'
     def TODAY(builder):

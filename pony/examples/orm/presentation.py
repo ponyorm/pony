@@ -4,8 +4,8 @@ from datetime import date
 from pony.orm import *
 
 db = Database('sqlite', 'presentation.sqlite', create_db=True)
-#db = Database('mysql', host="localhost", user="root", passwd="root", db="presentation")
-#db = Database('postgres', user='pony', password='magic', host='localhost', database='presentation')
+#db = Database('mysql', host="localhost", user="presentation", passwd="pony", db="presentation")
+#db = Database('postgres', user='presentation', password='pony', host='localhost', database='presentation')
 #db = Database('oracle', 'presentation/pony@localhost')
 
 class Department(db.Entity):
@@ -41,9 +41,9 @@ class Student(db.Entity):
     group = Required(Group)
     courses = Set(Course)
 
-db.generate_mapping(create_tables=True)
-
 sql_debug(True)  # Output all SQL queries to stdout
+
+db.generate_mapping(check_tables=True)
 
 def populate_database():
     if query(s for s in Student).count() > 0:
@@ -108,6 +108,11 @@ def test_queries():
 
 
     students = fetch(s for s in Student if len(s.courses) < 4)
+    print_students(students)
+
+
+    students = fetch(s for s in Student
+                       if len(c for c in s.courses if c.dept.number == 1) < 4)
     print_students(students)
 
 

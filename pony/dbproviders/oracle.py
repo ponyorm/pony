@@ -68,6 +68,7 @@ class OraNoneMonad(sqltranslation.NoneMonad):
         sqltranslation.ConstMonad.__init__(monad, translator, None)
 
 class OraTranslator(sqltranslation.SQLTranslator):
+    dialect = 'Oracle'
     NoneMonad = OraNoneMonad
     
     @classmethod
@@ -76,6 +77,7 @@ class OraTranslator(sqltranslation.SQLTranslator):
         return sqltranslation.SQLTranslator.get_normalized_type_of(value)
         
 class OraBuilder(sqlbuilding.SQLBuilder):
+    dialect = 'Oracle'
     def INSERT(builder, table_name, columns, values, returning=None):
         result = sqlbuilding.SQLBuilder.INSERT(builder, table_name, columns, values)
         if returning is not None:

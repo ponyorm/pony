@@ -244,6 +244,7 @@ def type2str(t):
 type_normalization_dict = { long : int, bool : int, LongStr : str, LongUnicode : unicode }
 
 class SQLTranslator(ASTTranslator):
+    dialect = None
     row_value_syntax = True
     numeric_types = set([ int, float, Decimal ])
     string_types = set([ str, AsciiStr, unicode ])
@@ -484,6 +485,7 @@ class SQLTranslator(ASTTranslator):
                 entity = monad.type.item_type
                 tableref = monad.make_tableref(translator.subquery)
             else: assert False
+            translator.tableref = tableref
             alias, pk_columns = tableref.make_join(pk_only=parent_translator is not None)
             translator.alias = alias
             translator.expr_type = entity
@@ -738,15 +740,6 @@ class Subquery(object):
         alias = '%s-%d' % (name, i)
         subquery.alias_counters[name] = i
         return alias
-    def make_expr_list(subquery, tableref, attr):
-        pk_only = attr.reverse or attr.pk_offset is not None
-        alias, columns = tableref.make_join(pk_only)
-        if attr.reverse: pass
-        elif pk_only:
-            offset = attr.pk_columns_offset
-            columns = columns[offset:offset+len(attr.columns)]
-        else: columns = attr.columns
-        return [ [ 'COLUMN', alias, column ] for column in columns ]
 
 class TableRef(object):
     def __init__(tableref, subquery, name, entity):
@@ -1797,17 +1790,34 @@ class AttrSetMonad(SetMixin, Monad):
         reverse = monad.attr.reverse
         return reverse and reverse.is_collection or monad.parent.requires_distinct()
     def len(monad):
+        translator = monad.translator
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
         distinct = monad.requires_distinct()
         if not distinct:
             sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ],
                         from_ast, [ 'WHERE' ] + outer_conditions + inner_conditions ]
-        else:
-            sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ],
-                      [ 'FROM', [ 't', 'SELECT', [ [ 'DISTINCT' ] + expr_list,
-                                     from_ast, [ 'WHERE' ] + outer_conditions + inner_conditions ] ] ] ]
-        translator = monad.translator
-        return translator.NumericExprMonad(translator, int, sql_ast)
+        elif len(expr_list) == 1:
+            sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'DISTINCT' ] + expr_list ],
+                        from_ast, [ 'WHERE' ] + outer_conditions + inner_conditions ]
+        elif translator.dialect == 'Oracle':
+            sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL', [ 'COUNT', 'ALL' ] ] ],
+                        from_ast, [ 'WHERE' ] + outer_conditions + inner_conditions,
+                        [ 'GROUP_BY' ] + expr_list ]
+        elif translator.row_value_syntax:
+            sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'DISTINCT' ] + expr_list ],
+                        from_ast, [ 'WHERE' ] + outer_conditions + inner_conditions ]
+        elif translator.dialect == 'SQLite':
+            if translator.sqlite_version < (3, 6, 21):
+                alias, pk_columns = monad.tableref.make_join(pk_only=False)
+                sql_ast = [ 'SELECT', [ 'AGGREGATES',
+                              [ 'COUNT', 'DISTINCT', [ 'COLUMN', alias, 'ROWID' ] ] ],
+                            from_ast, [ 'WHERE' ] + outer_conditions + inner_conditions ]
+            else:
+                sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ],
+                          [ 'FROM', [ 't', 'SELECT', [
+                              [ 'DISTINCT' ] + expr_list, from_ast,
+                              [ 'WHERE' ] + outer_conditions + inner_conditions ] ] ] ]
+        return translator.ExprMonad.new(translator, int, sql_ast)
     def sum(monad):
         translator = monad.translator
         item_type = monad.type.item_type
@@ -1872,8 +1882,7 @@ class AttrSetMonad(SetMixin, Monad):
             sql_ast = [ 'COLUMN', alias, expr_name ]
         else:
             sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'MAX', expr ] ],
-                                from_ast,
-                                [ 'WHERE' ] + outer_conditions + inner_conditions ]
+                        from_ast, [ 'WHERE' ] + outer_conditions + inner_conditions ]
         return translator.ExprMonad.new(monad.translator, item_type, sql_ast)
     def nonzero(monad):
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
@@ -1891,18 +1900,28 @@ class AttrSetMonad(SetMixin, Monad):
         if isinstance(parent, ObjectMixin): parent_tableref = parent.tableref
         elif isinstance(parent, AttrSetMonad): parent_tableref = parent.make_tableref(subquery)
         else: assert False
-        if not attr.reverse: return parent_tableref
-        name_path = parent_tableref.name_path + '-' + attr.name
-        tableref = subquery.get_tableref(name_path)
-        if tableref is None: tableref = subquery.add_tableref(name_path, parent_tableref, attr)
-        monad.tableref = tableref
-        return tableref
+        if attr.reverse: 
+            name_path = parent_tableref.name_path + '-' + attr.name
+            monad.tableref = subquery.get_tableref(name_path) \
+                             or subquery.add_tableref(name_path, parent_tableref, attr)
+        else: monad.tableref = parent_tableref
+        return monad.tableref
+    def make_expr_list(monad):
+        attr = monad.attr
+        pk_only = attr.reverse or attr.pk_offset is not None
+        alias, columns = monad.tableref.make_join(pk_only)
+        if attr.reverse: pass
+        elif pk_only:
+            offset = attr.pk_columns_offset
+            columns = columns[offset:offset+len(attr.columns)]
+        else: columns = attr.columns
+        return [ [ 'COLUMN', alias, column ] for column in columns ]
     def _subselect(monad):
         parent = monad.parent
         attr = monad.attr
         subquery = Subquery(monad.translator.subquery)
-        tableref = monad.make_tableref(subquery)
-        expr_list = subquery.make_expr_list(tableref, attr)
+        monad.make_tableref(subquery)
+        expr_list = monad.make_expr_list()
         if not attr.reverse and not attr.is_required:
             subquery.conditions.extend([ 'IS_NOT_NULL', expr ] for expr in expr_list)
         outer_conditions = [ subquery.from_ast[1].pop() ]
@@ -1910,8 +1929,8 @@ class AttrSetMonad(SetMixin, Monad):
     def getsql(monad):
         parent = monad.parent
         subquery = monad.translator.subquery
-        tableref = monad.make_tableref(subquery)
-        return subquery.make_expr_list(tableref, monad.attr)
+        monad.make_tableref(subquery)
+        return monad.make_expr_list()
 
 class QuerySetMonad(SetMixin, Monad):
     def __init__(monad, translator, subtranslator):
@@ -1971,11 +1990,32 @@ class QuerySetMonad(SetMixin, Monad):
                 select_ast = [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ]
                 return monad._subselect(int, select_ast)
             translator = monad.translator
-            alias = translator.subquery.get_short_alias(None, 't')
-            sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ],
-                                [ 'FROM', [ alias, 'SELECT', [ [ 'DISTINCT' ] + sub.expr_columns,
-                                                 sub.subquery.from_ast, [ 'WHERE' ] + sub.conditions ] ] ] ]
-            return translator.ExprMonad.new(translator, int, sql_ast)
+            if len(sub.expr_columns) == 1:
+                select_ast = [ 'AGGREGATES', [ 'COUNT', 'DISTINCT' ] + sub.expr_columns ]
+                return monad._subselect(int, select_ast)
+            if translator.dialect == 'Oracle':
+                sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL', [ 'COUNT', 'ALL' ] ] ],
+                            sub.subquery.from_ast, [ 'WHERE' ] + sub.conditions,
+                            [ 'GROUP_BY' ] + sub.expr_columns ]
+                return translator.ExprMonad.new(translator, int, sql_ast)
+            if translator.row_value_syntax:
+                select_ast = [ 'AGGREGATES', [ 'COUNT', 'DISTINCT' ] + sub.expr_columns ]
+                return monad._subselect(int, select_ast)
+            if translator.dialect == 'SQLite':
+                if True or translator.sqlite_version < (3, 6, 21):
+                    if sub.aggregated: throw(TranslationError)
+                    alias, pk_columns = sub.tableref.make_join(pk_only=False)
+                    sql_ast = [ 'SELECT', [ 'AGGREGATES',
+                                  [ 'COUNT', 'DISTINCT', [ 'COLUMN', alias, 'ROWID' ] ] ],
+                                sub.subquery.from_ast, [ 'WHERE' ] + sub.conditions ]
+                else:
+                    alias = translator.subquery.get_short_alias(None, 't')
+                    sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ],
+                                [ 'FROM', [ alias, 'SELECT', [
+                                  [ 'DISTINCT' ] + sub.expr_columns, sub.subquery.from_ast,
+                                  [ 'WHERE' ] + sub.conditions ] ] ] ]
+                return translator.ExprMonad.new(translator, int, sql_ast)
+            throw(NotImplementedError)  # Must not be here
         elif len(sub.expr_columns) == 1:
             select_ast = [ 'AGGREGATES', [ 'COUNT', 'DISTINCT', sub.expr_columns[0] ] ]
             return monad._subselect(int, select_ast)

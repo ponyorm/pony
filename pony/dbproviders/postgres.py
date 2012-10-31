@@ -41,7 +41,11 @@ class PGValue(sqlbuilding.Value):
             return "'%s'::bytea" % "".join(imap(char2oct.__getitem__, val))
         return sqlbuilding.Value.__unicode__(self)
 
+class PGTranslator(SQLTranslator):
+    dialect = 'PostgreSQL'
+
 class PGSQLBuilder(sqlbuilding.SQLBuilder):
+    dialect = 'PostgreSQL'
     make_value = PGValue
     def INSERT(builder, table_name, columns, values, returning=None):
         result = sqlbuilding.SQLBuilder.INSERT(builder, table_name, columns, values)
@@ -106,7 +110,7 @@ class PGProvider(DBAPIProvider):
     paramstyle = 'pyformat'
 
     dbschema_cls = PGSchema
-    translator_cls = SQLTranslator
+    translator_cls = PGTranslator
     sqlbuilder_cls = PGSQLBuilder
 
     def __init__(provider, *args, **keyargs):

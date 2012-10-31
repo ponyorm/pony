@@ -123,6 +123,7 @@ def convert(values, params):
         yield value
 
 class SQLBuilder(object):
+    dialect = None
     make_param = Param
     make_value = Value
     indent_spaces = " " * 4
@@ -364,13 +365,19 @@ class SQLBuilder(object):
             return builder(expr1), ' NOT IN ', builder(x)
         expr_list = [ builder(expr) for expr in x ]
         return builder(expr1), ' NOT IN (', join(', ', expr_list), ')'
-    def COUNT(builder, kind, expr=None):
+    def COUNT(builder, kind, *expr_list):
         if kind == ALL:
-            if expr is None: return ['COUNT(*)']
-            return 'COUNT(', builder(expr), ')'
+            if not expr_list: return ['COUNT(*)']
+            return 'COUNT(', join(', ', map(builder, expr_list)), ')'
         elif kind == DISTINCT:
-            if expr is None: throw(AstError, 'COUNT(DISTINCT) without argument')
-            return 'COUNT(DISTINCT ', builder(expr), ')'
+            if not expr_list: throw(AstError, 'COUNT(DISTINCT) without argument')
+            if len(expr_list) == 1: return 'COUNT(DISTINCT ', builder(expr_list[0]), ')'
+            if builder.dialect == 'PostgreSQL':
+                return 'COUNT(DISTINCT ', builder.ROW(*expr_list), ')'
+            elif builder.dialect == 'MySQL':
+                return 'COUNT(DISTINCT ', join(', ', map(builder, expr_list)), ')'
+            # Oracle and SQLite queries translated to completely different subquery syntax
+            else: throw(NotImplementedError)  # This line must not be executed
         throw(AstError, 'Invalid COUNT kind (must be ALL or DISTINCT)')
     def SUM(builder, expr):
         return 'coalesce(SUM(', builder(expr), '), 0)'
