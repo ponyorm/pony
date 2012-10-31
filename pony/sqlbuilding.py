@@ -193,7 +193,7 @@ class SQLBuilder(object):
         return result
     def SELECT(builder, *sections):
         result = builder.subquery(*sections)
-        if builder.indent : result = ['(\n', result, ')']
+        if builder.indent: return '(\n', result, ')'
         return result
     def EXISTS(builder, *sections):
         result = builder.subquery(*sections)
@@ -291,7 +291,8 @@ class SQLBuilder(object):
         result = [ 'ORDER BY ' ]
         for i, (expr, dir) in enumerate(order_list):
             if i > 0: result.append(', ')
-            result += builder(expr), ' ', dir
+            if dir == 'ASC': result += builder(expr)
+            else: result += builder(expr), ' ', dir
         result.append('\n')
         return result
     @indentable
