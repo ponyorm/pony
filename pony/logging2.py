@@ -29,7 +29,7 @@ pony_logger.setLevel(options.LOGGING_PONY_LEVEL or WARNING)
 
 warnings_logger = logging.getLogger('warnings')
 prev_showwarning = warnings.showwarning
-def showwarning(message, category, filename, lineno):
+def showwarning(message, category, filename, lineno, file=None, line=None):
     text = warnings.formatwarning(message, category, filename, lineno)
     warnings_logger.warning(text)
 warnings.showwarning = showwarning
