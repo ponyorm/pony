@@ -395,6 +395,7 @@ class Database(object):
         t = time()
         new_id = database.provider.execute_returning_id(cursor, sql, arguments)
         database._update_local_stat(sql, t)
+        if type(new_id) is long: new_id = int(new_id)
         return new_id
     def _exec_sql_many(database, sql, arguments_list):
         cache = database._get_cache()
