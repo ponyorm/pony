@@ -1054,7 +1054,7 @@ class Unique(Required):
         keys = cls_dict.setdefault('_keys_', {})
 
         if not attrs:
-            result = Required.__new__(cls, *args, **keyargs)
+            result = Required.__new__(cls)
             keys[(result,)] = is_pk
             return result
 

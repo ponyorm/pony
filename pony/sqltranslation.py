@@ -1281,7 +1281,7 @@ class AttrMonad(Monad):
         return cls(parent, attr, *args, **keyargs)
     def __new__(cls, parent, attr):
         if cls is AttrMonad: assert False, 'Abstract class'
-        return Monad.__new__(cls, parent, attr)
+        return Monad.__new__(cls)
     def __init__(monad, parent, attr):
         assert monad.__class__ is not AttrMonad
         translator = parent.translator
@@ -1334,7 +1334,7 @@ class ParamMonad(Monad):
         return cls(translator, type, name, parent)
     def __new__(cls, translator, type, name, parent=None):
         if cls is ParamMonad: assert False, 'Abstract class'
-        return Monad.__new__(cls, translator, type, name, parent)
+        return Monad.__new__(cls)
     def __init__(monad, translator, type, name, parent=None):
         type = translator.normalize_type(type)
         Monad.__init__(monad, translator, type)
@@ -1397,7 +1397,7 @@ class ExprMonad(Monad):
         return cls(translator, type, sql)
     def __new__(cls, translator, type, sql):
         if cls is ExprMonad: assert False, 'Abstract class'
-        return Monad.__new__(cls, translator, type, sql)
+        return Monad.__new__(cls)
     def __init__(monad, translator, type, sql):
         Monad.__init__(monad, translator, type)
         monad.sql = sql
@@ -1423,7 +1423,7 @@ class ConstMonad(Monad):
         return cls(translator, value)
     def __new__(cls, translator, value):
         if cls is ConstMonad: assert False, 'Abstract class'
-        return Monad.__new__(cls, translator, value)
+        return Monad.__new__(cls)
     def __init__(monad, translator, value):
         value_type = translator.get_normalized_type_of(value)
         Monad.__init__(monad, translator, value_type)
