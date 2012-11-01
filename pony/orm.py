@@ -1081,7 +1081,7 @@ def populate_criteria_list(criteria_list, columns, converters, params_count=0, t
         if converter is not None:
             criteria_list.append([ 'EQ', [ 'COLUMN', table_alias, column ], [ 'PARAM', params_count, converter ] ])
         else:
-            criteria_list.append([ IS_NULL, [ 'COLUMN', None, column ] ])
+            criteria_list.append([ 'IS_NULL', [ 'COLUMN', None, column ] ])
         params_count += 1
     return params_count
 
@@ -1425,7 +1425,7 @@ class Set(Collection):
                 else: return attr.reverse_columns
             if attr.columns:
                 if len(attr.columns) != len(entity._get_pk_columns_()): throw(MappingError, 
-                    'Invalid number of columns for %s' % reverse)
+                    'Invalid number of columns for %s' % attr.reverse)
             else:
                 provider = attr.entity._database_.provider
                 attr.columns = provider.get_default_m2m_column_names(entity)
@@ -2224,7 +2224,7 @@ class EntityMeta(type):
                     assert len(attr.converters) == 1
                     where_list.append([ 'EQ', [ 'COLUMN', None, attr.column ], [ 'PARAM', attr.name, attr.converters[0] ] ])
                     extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]
-                else: where_list.append([ IS_NULL, [ 'COLUMN', None, attr.column ] ])
+                else: where_list.append([ 'IS_NULL', [ 'COLUMN', None, attr.column ] ])
             elif not attr.columns: throw(NotImplementedError)
             else:
                 attr_entity = attr.py_type
@@ -2234,7 +2234,7 @@ class EntityMeta(type):
                         assert len(attr.converters) == 1
                         where_list.append([ 'EQ', [ 'COLUMN', None, attr.column ], [ 'PARAM', attr.name, attr.converters[0] ] ])
                         extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]._get_raw_pkval_()[0]
-                    else: where_list.append([IS_NULL, [ 'COLUMN', None, attr.column ]])
+                    else: where_list.append(['IS_NULL', [ 'COLUMN', None, attr.column ]])
                 elif not attr_is_none:
                     for i, (column, converter) in enumerate(zip(attr.columns, attr_entity._pk_converters_)):
                         param_name = '%s-%d' % (attr.name, i+1)
@@ -2242,7 +2242,7 @@ class EntityMeta(type):
                         extractors[param_name] = lambda avdict, attr=attr, i=i: avdict[attr]._get_raw_pkval_()[i]
                 else:
                     for column in attr.columns:
-                        where_list.append([ IS_NULL, [ 'COLUMN', None, column ] ])
+                        where_list.append([ 'IS_NULL', [ 'COLUMN', None, column ] ])
 
         sql_ast = [ 'SELECT', select_list, from_list, where_list ]
         if order_by_pk: sql_ast.append([ 'ORDER_BY' ] + [ ([ 'COLUMN', None, column ], 'ASC') for column in entity._pk_columns_ ])
@@ -2476,7 +2476,7 @@ class Entity(object):
             if vals in cache.indexes.setdefault(attrs, {}):
                 attr_names = ', '.join(attr.name for attr in attrs)
                 throw(CacheIndexError, 'Cannot create %s: value %s for composite key (%s) already exists'
-                                 % (obj.__class__.__name__, vals, attr_names))
+                                 % (entity.__name__, vals, attr_names))
             indexes[attrs] = vals
         try:
             obj = entity._new_(pkval, 'created', undo_funcs)
@@ -3114,7 +3114,7 @@ class Cache(object):
             obj2 = index.setdefault(new_dbval, obj)
             if obj2 is not obj: throw(TransactionIntegrityError, 
                 '%s with unique index %s.%s already exists: %s'
-                % (obj2.__class__.__name__, obj.__class__.__name__, attr.name, new_keyval))
+                % (obj2.__class__.__name__, obj.__class__.__name__, attr.name, new_dbval))
                 # attribute which was created or updated lately clashes with one stored in database
         index.pop(old_dbval, None)
     def update_composite_index(cache, obj, attrs, currents, vals, undo):
@@ -3146,9 +3146,9 @@ class Cache(object):
         else:
             obj2 = index.setdefault(vals, obj)
             if obj2 is not obj:
-                key_str = ', '.join(repr(item) for item in new_keyval)
-                throw(TransactionIntegrityError, '%s with unique index %s.%s already exists: %s'
-                                                % (obj2.__class__.__name__, obj.__class__.__name__, attr.name, key_str))
+                key_str = ', '.join(repr(item) for item in vals)
+                throw(TransactionIntegrityError, '%s with unique index (%s) already exists: %s'
+                                 % (obj2.__class__.__name__, ', '.join(attr.name for attr in attrs), key_str))
         index.pop(currents, None)
 
 def _get_caches():
@@ -3631,7 +3631,7 @@ aggregate_functions = {}
 
 def make_aggregate_function(name):
     def func(x):
-        raise TypeError('%s() function can be used inside declarative queries only' % name)
+        raise TypeError('Function %s() can be used inside declarative queries only' % name)
     func.__name__ = name
     aggregate_functions[name] = func
     return func
@@ -3642,7 +3642,7 @@ MAX = make_aggregate_function('MAX')
 AVG = make_aggregate_function('AVG')
 
 def COUNT(x=None):
-    raise TypeError('%s() function can be used inside declarative queries only' % name)
+    raise TypeError('Function COUNT() can be used inside declarative queries only')
 aggregate_functions['COUNT'] = COUNT
 
 def show(entity):
