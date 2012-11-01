@@ -1758,8 +1758,9 @@ class AttrSetMonad(SetMixin, Monad):
         monad.attr = attr
         monad.tableref = None
     def cmp(monad, op, monad2):
+        translator = monad.translator
         if type(monad2.type) is SetType and \
-           monad.translator.are_comparable_types(monad.type.item_type, monad2.type.item_type): pass
+           translator.are_comparable_types(monad.type.item_type, monad2.type.item_type): pass
         elif monad.type != monad2.type: translator.check_comparable(monad, monad2)
         throw(NotImplementedError)
     def contains(monad, item, not_in=False):
