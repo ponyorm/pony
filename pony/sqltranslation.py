@@ -1756,6 +1756,7 @@ class AttrSetMonad(SetMixin, Monad):
         Monad.__init__(monad, translator, SetType(item_type))
         monad.parent = parent
         monad.attr = attr
+        monad.subquery = None
         monad.tableref = None
     def cmp(monad, op, monad2):
         translator = monad.translator
@@ -1768,8 +1769,10 @@ class AttrSetMonad(SetMixin, Monad):
         translator.check_comparable(item, monad, 'in')
         if not translator.hint_join:
             sqlop = not_in and 'NOT_IN' or 'IN'
-            expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
-            conditions = outer_conditions + inner_conditions
+            subquery = monad._subselect()
+            expr_list = subquery.expr_list
+            from_ast = subquery.from_ast
+            conditions = subquery.outer_conditions + subquery.conditions
             if len(expr_list) == 1:
                 subquery_ast = [ 'SELECT', [ 'ALL' ] + expr_list, from_ast, [ 'WHERE' ] + conditions ]
                 return translator.BoolExprMonad(translator, [ sqlop, item.getsql()[0], subquery_ast ])
@@ -1792,7 +1795,13 @@ class AttrSetMonad(SetMixin, Monad):
         return reverse and reverse.is_collection or monad.parent.requires_distinct()
     def len(monad):
         translator = monad.translator
-        expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
+
+        subquery = monad._subselect()
+        expr_list = subquery.expr_list
+        from_ast = subquery.from_ast
+        inner_conditions = subquery.conditions
+        outer_conditions = subquery.outer_conditions
+
         distinct = monad.requires_distinct()
         if not distinct:
             sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ],
@@ -1856,13 +1865,15 @@ class AttrSetMonad(SetMixin, Monad):
         sql_ast = subselect_func(lambda expr_list: [ 'MAX' ] + expr_list)
         return translator.ExprMonad.new(monad.translator, item_type, sql_ast)
     def nonzero(monad):
-        expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
-        sql_ast = [ 'EXISTS', from_ast, [ 'WHERE' ] + outer_conditions + inner_conditions ]
+        subquery = monad._subselect()
+        sql_ast = [ 'EXISTS', subquery.from_ast,
+                    [ 'WHERE' ] + subquery.outer_conditions + subquery.conditions ]
         translator = monad.translator
         return translator.BoolExprMonad(translator, sql_ast)
     def negate(monad):
-        expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
-        sql_ast = [ 'NOT_EXISTS', from_ast, [ 'WHERE' ] + outer_conditions + inner_conditions ]
+        subquery = monad._subselect()
+        sql_ast = [ 'NOT_EXISTS', subquery.from_ast,
+                    [ 'WHERE' ] + subquery.outer_conditions + subquery.conditions ]
         translator = monad.translator
         return translator.BoolExprMonad(translator, sql_ast)
     def make_tableref(monad, subquery):
@@ -1889,13 +1900,18 @@ class AttrSetMonad(SetMixin, Monad):
         return [ [ 'COLUMN', alias, column ] for column in columns ]
     def _aggregated_scalar_subselect(monad, make_aggr):
         translator = monad.translator
-        expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
-        sql_ast = [ 'SELECT', [ 'AGGREGATES', make_aggr(expr_list) ], from_ast,
-                    [ 'WHERE' ] + outer_conditions + inner_conditions ]
+        subquery = monad._subselect()
+        sql_ast = [ 'SELECT', [ 'AGGREGATES', make_aggr(subquery.expr_list) ], subquery.from_ast,
+                    [ 'WHERE' ] + subquery.outer_conditions + subquery.conditions ]
         return sql_ast
     def _joined_subselect(monad, make_aggr):
         translator = monad.translator
-        expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
+        subquery = monad._subselect()
+        expr_list = subquery.expr_list
+        from_ast = subquery.from_ast
+        inner_conditions = subquery.conditions
+        outer_conditions = subquery.outer_conditions
+        
         groupby_columns = [ inner_column[:] for cond, outer_column, inner_column in outer_conditions ]
         assert len(set(alias for _, alias, column in groupby_columns)) == 1
         groupby_names = set(column for _, alias, column in groupby_columns)
@@ -1919,15 +1935,17 @@ class AttrSetMonad(SetMixin, Monad):
         translator.subquery.from_ast.append([ alias, 'SELECT', subquery_ast, sqland(outer_conditions) ])
         return [ 'COLUMN', alias, expr_name ]
     def _subselect(monad):
+        if monad.subquery is not None: return monad.subquery
         parent = monad.parent
         attr = monad.attr
         subquery = Subquery(monad.translator.subquery)
         monad.make_tableref(subquery)
-        expr_list = monad.make_expr_list()
+        subquery.expr_list = monad.make_expr_list()
         if not attr.reverse and not attr.is_required:
-            subquery.conditions.extend([ 'IS_NOT_NULL', expr ] for expr in expr_list)
-        outer_conditions = [ subquery.from_ast[1].pop() ]
-        return expr_list, subquery.from_ast, subquery.conditions, outer_conditions
+            subquery.conditions.extend([ 'IS_NOT_NULL', expr ] for expr in subquery.expr_list)
+        subquery.outer_conditions = [ subquery.from_ast[1].pop() ]
+        monad.subquery = subquery
+        return subquery
     def getsql(monad):
         parent = monad.parent
         subquery = monad.translator.subquery
