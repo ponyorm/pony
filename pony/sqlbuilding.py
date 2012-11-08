@@ -91,7 +91,7 @@ def move_conditions_from_inner_join_to_where(sections):
                 new_sections.insert(i+1, new_where_list)
             break
     for join in new_from_list[2:]:
-        if join[1] == TABLE and len(join) == 4:
+        if join[1] in (TABLE, SELECT) and len(join) == 4:
             new_where_list.append(join.pop())
     return new_sections
 
@@ -193,7 +193,9 @@ class SQLBuilder(object):
         return result
     def SELECT(builder, *sections):
         result = builder.subquery(*sections)
-        if builder.indent: return '(\n', result, ')'
+        if builder.indent:
+            indent = builder.indent_spaces * builder.indent
+            return '(\n', result, indent + ')'
         return result
     def EXISTS(builder, *sections):
         result = builder.subquery(*sections)
@@ -229,13 +231,10 @@ class SQLBuilder(object):
             elif len(source) == 4:
                 alias, kind, x, join_cond = source
             else: throw(AstError, 'Invalid source in FROM section: %r' % source)
-
-            if alias is not None: alias = builder.quote_name(alias)
-
             if i > 0:
                 if join_cond is None: result.append(', ')
-                else: result += [ '\n', indent2, '%s JOIN ' % join_type ]
-
+                else: result += [ '\n', indent, '  %s JOIN ' % join_type ]
+            if alias is not None: alias = builder.quote_name(alias)
             if kind == TABLE:
                 if isinstance(x, basestring): result.append(builder.quote_name(x))
                 else: result.append(builder.compound_name(x))
@@ -244,8 +243,7 @@ class SQLBuilder(object):
                 if alias is None: throw(AstError, 'Subquery in FROM section must have an alias')
                 result += builder.SELECT(*x), ' ', alias  # Oracle does not support 'AS' here
             else: throw(AstError, 'Invalid source kind in FROM section: %r' % kind)
-
-            if join_cond is not None: result += [ '\n', indent3, 'ON ', builder(join_cond) ]
+            if join_cond is not None: result += [ '\n', indent2, 'ON ', builder(join_cond) ]
         result.append('\n')
         return result
     def FROM(builder, *sources):
