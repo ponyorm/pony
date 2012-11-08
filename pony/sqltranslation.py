@@ -1826,7 +1826,7 @@ class AttrSetMonad(SetMixin, Monad):
             "Function 'sum' expects query or items of numeric type, got %r in {EXPR}" % type2str(item_type))
         subselect_func = translator.hint_join and monad._joined_subselect \
                          or monad._aggregated_scalar_subselect
-        sql_ast = subselect_func(lambda expr: [ 'SUM', expr ])
+        sql_ast = subselect_func(lambda expr_list: [ 'SUM' ] + expr_list)
         return translator.ExprMonad.new(monad.translator, item_type, sql_ast)
     def avg(monad):
         translator = monad.translator
@@ -1835,7 +1835,7 @@ class AttrSetMonad(SetMixin, Monad):
             "Function 'avg' expects query or items of numeric type, got %r in {EXPR}" % type2str(item_type))
         subselect_func = translator.hint_join and monad._joined_subselect \
                          or monad._aggregated_scalar_subselect
-        sql_ast = subselect_func(lambda expr: [ 'AVG', expr ])
+        sql_ast = subselect_func(lambda expr_list: [ 'AVG' ] + expr_list)
         return translator.ExprMonad.new(monad.translator, float, sql_ast)
     def min(monad):
         translator = monad.translator
@@ -1844,7 +1844,7 @@ class AttrSetMonad(SetMixin, Monad):
             "Function 'min' expects query or items of comparable type, got %r in {EXPR}" % type2str(item_type))
         subselect_func = translator.hint_join and monad._joined_subselect \
                          or monad._aggregated_scalar_subselect
-        sql_ast = subselect_func(lambda expr: [ 'MIN', expr ])
+        sql_ast = subselect_func(lambda expr_list: [ 'MIN' ] + expr_list)
         return translator.ExprMonad.new(monad.translator, item_type, sql_ast)
     def max(monad):
         translator = monad.translator
@@ -1853,7 +1853,7 @@ class AttrSetMonad(SetMixin, Monad):
             "Function 'max' expects query or items of comparable type, got %r in {EXPR}" % type2str(item_type))
         subselect_func = translator.hint_join and monad._joined_subselect \
                          or monad._aggregated_scalar_subselect
-        sql_ast = subselect_func(lambda expr: [ 'MAX', expr ])
+        sql_ast = subselect_func(lambda expr_list: [ 'MAX' ] + expr_list)
         return translator.ExprMonad.new(monad.translator, item_type, sql_ast)
     def nonzero(monad):
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
@@ -1890,15 +1890,12 @@ class AttrSetMonad(SetMixin, Monad):
     def _aggregated_scalar_subselect(monad, make_aggr):
         translator = monad.translator
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
-        assert len(expr_list) == 1
-        return [ 'SELECT', [ 'AGGREGATES', make_aggr(expr_list[0]) ], from_ast,
-                 [ 'WHERE' ] + outer_conditions + inner_conditions ]
+        sql_ast = [ 'SELECT', [ 'AGGREGATES', make_aggr(expr_list) ], from_ast,
+                    [ 'WHERE' ] + outer_conditions + inner_conditions ]
+        return sql_ast
     def _joined_subselect(monad, make_aggr):
         translator = monad.translator
         expr_list, from_ast, inner_conditions, outer_conditions = monad._subselect()
-        assert len(expr_list) == 1
-        expr = expr_list[0]
-        alias = translator.subquery.get_short_alias(None, 't')
         groupby_columns = [ inner_column[:] for cond, outer_column, inner_column in outer_conditions ]
         assert len(set(alias for _, alias, column in groupby_columns)) == 1
         groupby_names = set(column for _, alias, column in groupby_columns)
@@ -1911,12 +1908,13 @@ class AttrSetMonad(SetMixin, Monad):
             if column[0] == 'COLUMN': # Workaround for SQLite 3.3.4 bug appeared in vanilla Python 2.5
                 column = [ 'AS', column, column[-1] ]
             subquery_columns.append(column)
-        subquery_columns.append([ 'AS', make_aggr(expr), expr_name ])
+        subquery_columns.append([ 'AS', make_aggr(expr_list), expr_name ])
 
         subquery_ast = [ subquery_columns, from_ast ]
         if inner_conditions: subquery_ast.append([ 'WHERE' ] + inner_conditions)
         subquery_ast.append([ 'GROUP_BY' ] + groupby_columns)
 
+        alias = translator.subquery.get_short_alias(None, 't')
         for cond in outer_conditions: cond[2][1] = alias
         translator.subquery.from_ast.append([ alias, 'SELECT', subquery_ast, sqland(outer_conditions) ])
         return [ 'COLUMN', alias, expr_name ]
