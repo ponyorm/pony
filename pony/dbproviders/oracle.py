@@ -112,7 +112,9 @@ class OraBuilder(sqlbuilding.SQLBuilder):
                 result.extend(('WHERE ROWNUM <= ', builder(total_limit), '\n'))
             else: result.extend(('WHERE ROWNUM <= ', builder(limit), ' + ', builder(offset), '\n'))
             result.extend((indent, ') WHERE "row-num" > ', builder(offset)))
-        if builder.indent: return '(\n', result, ')'
+        if builder.indent:
+            indent = builder.indent_spaces * builder.indent
+            return '(\n', result, indent + ')'
         return result
     def LIMIT(builder, limit, offset=None):
         assert False
