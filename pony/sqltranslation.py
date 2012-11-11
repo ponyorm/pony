@@ -458,7 +458,7 @@ class SQLTranslator(ASTTranslator):
             for if_ in qual.ifs:
                 assert isinstance(if_, ast.GenExprIf)
                 translator.dispatch(if_)
-                if isinstance(if_.monad, AndMonad): cond_monads = if_.monad.operands
+                if isinstance(if_.monad, translator.AndMonad): cond_monads = if_.monad.operands
                 else: cond_monads = [ if_.monad ]
                 for m in cond_monads:
                     if not m.aggregated: translator.conditions.append(m.getsql())
@@ -652,7 +652,7 @@ class SQLTranslator(ASTTranslator):
         if not isinstance(node.node, ast.Getattr): throw(NotImplementedError)
         expr = node.node.expr
         translator.dispatch(expr)
-        if not isinstance(expr.monad, EntityMonad): throw(NotImplementedError)
+        if not isinstance(expr.monad, translator.EntityMonad): throw(NotImplementedError)
         entity = expr.monad.type
         for n, v in translator.entities.iteritems():
             if entity is v: entity_name = n; break
@@ -1541,9 +1541,11 @@ class LogicalBinOpMonad(BoolMonad):
     def __init__(monad, operands):
         assert len(operands) >= 2
         items = []
+        translator = operands[0].translator
+        monad.translator = translator
         for operand in operands:
             if operand.type is not bool: items.append(operand.nonzero())
-            elif isinstance(operand, LogicalBinOpMonad) and monad.binop == operand.binop:
+            elif isinstance(operand, translator.LogicalBinOpMonad) and monad.binop == operand.binop:
                 items.extend(operand.operands)
             else: items.append(operand)
         BoolMonad.__init__(monad, items[0].translator)
@@ -1582,10 +1584,11 @@ class FuncMonad(Monad):
     def __init__(monad, translator):
         monad.translator = translator
     def __call__(monad, *args, **keyargs):
+        translator = monad.translator
         for arg in args:
-            assert isinstance(arg, Monad)
+            assert isinstance(arg, translator.Monad)
         for value in keyargs.values():
-            assert isinstance(value, Monad)
+            assert isinstance(value, translator.Monad)
         try: return monad.call(*args, **keyargs)
         except TypeError, exc: reraise_improved_typeerror(exc, 'call', monad.func.__name__)
 
@@ -1890,8 +1893,9 @@ class AttrSetMonad(SetMixin, Monad):
     def make_tableref(monad, subquery):
         parent = monad.parent
         attr = monad.attr
+        translator = monad.translator
         if isinstance(parent, ObjectMixin): parent_tableref = parent.tableref
-        elif isinstance(parent, AttrSetMonad): parent_tableref = parent.make_tableref(subquery)
+        elif isinstance(parent, translator.AttrSetMonad): parent_tableref = parent.make_tableref(subquery)
         else: assert False
         if attr.reverse: 
             name_path = parent_tableref.name_path + '-' + attr.name
@@ -2011,7 +2015,7 @@ class QuerySetMonad(SetMixin, Monad):
                 select_ast = [ 'ALL' ] + columns_ast
                 subquery_ast = [ 'SELECT', select_ast, sub.subquery.from_ast ]
                 subquery_expr = sub.tree.expr.monad
-                if isinstance(subquery_expr, AttrMonad) and subquery_expr.attr.is_required: pass
+                if isinstance(subquery_expr, translator.AttrMonad) and subquery_expr.attr.is_required: pass
                 else: conditions += [ [ 'IS_NOT_NULL', column_ast ] for column_ast in sub.expr_columns ]
                 if conditions: subquery_ast.append([ 'WHERE' ] + conditions)
                 if len(columns_ast) == 1: expr_ast = item.getsql()[0]
@@ -2019,7 +2023,7 @@ class QuerySetMonad(SetMixin, Monad):
                 sql_ast = [ not_in and 'NOT_IN' or 'IN', expr_ast, subquery_ast ]
                 return translator.BoolExprMonad(translator, sql_ast)
             else:
-                if isinstance(item, ListMonad):
+                if isinstance(item, translator.ListMonad):
                     item_columns = []
                     for subitem in item.items: item_columns.extend(subitem.getsql())
                 else: item_columns = item.getsql()
