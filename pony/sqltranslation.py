@@ -1245,8 +1245,8 @@ class ObjectMixin(MonadMixin):
             return translator.AttrMonad.new(monad, attr)
         else:
             return translator.AttrSetMonad(monad, attr)
-    def requires_distinct(monad):
-        return monad.attr.reverse.is_collection or monad.parent.requires_distinct()
+    def requires_distinct(monad, joined=False):
+        return monad.attr.reverse.is_collection or monad.parent.requires_distinct(joined)
 
 class ObjectIterMonad(ObjectMixin, Monad):
     def __init__(monad, translator, tableref, entity):
@@ -1256,7 +1256,7 @@ class ObjectIterMonad(ObjectMixin, Monad):
         entity = monad.type
         alias, pk_columns = monad.tableref.make_join(pk_only=True)
         return [ [ 'COLUMN', alias, column ] for column in pk_columns ]
-    def requires_distinct(monad):
+    def requires_distinct(monad, joined=False):
         return monad.tableref.name_path != monad.translator.tree.quals[-1].assign.name
 
 class AttrMonad(Monad):
@@ -1370,7 +1370,7 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
         else:
             for i, param in enumerate(monad.params):
                 extractors[param] = lambda vars, i=i, e=monad.extractor : e(vars)._get_raw_pkval_()[i]
-    def requires_distinct(monad):
+    def requires_distinct(monad, joined=False):
         assert False
 
 class StringParamMonad(StringMixin, ParamMonad): pass
@@ -1790,9 +1790,15 @@ class AttrSetMonad(SetMixin, Monad):
         attr = entity._adict_.get(name)
         if attr is None: throw(AttributeError)
         return monad.translator.AttrSetMonad(monad, attr)
-    def requires_distinct(monad):
+    def requires_distinct(monad, joined=False):
+        if monad.parent.requires_distinct(joined): return True
         reverse = monad.attr.reverse
-        return reverse and reverse.is_collection or monad.parent.requires_distinct()
+        if not reverse: return True
+        if reverse.is_collection:
+            translator = monad.translator
+            if not translator.hint_join: return True
+            if isinstance(monad.parent, monad.translator.AttrSetMonad): return True
+        return False
     def len(monad):
         translator = monad.translator
 
@@ -1802,31 +1808,36 @@ class AttrSetMonad(SetMixin, Monad):
         inner_conditions = subquery.conditions
         outer_conditions = subquery.outer_conditions
 
-        distinct = monad.requires_distinct()
+        distinct = monad.requires_distinct(joined=translator.hint_join)
+        sql_ast = make_aggr = None
+        extra_grouping = False
         if not distinct:
-            sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ],
-                        from_ast, [ 'WHERE' ] + outer_conditions + inner_conditions ]
+            make_aggr = lambda expr_list: [ 'COUNT', 'ALL' ]
         elif len(expr_list) == 1:
-            sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'DISTINCT' ] + expr_list ],
-                        from_ast, [ 'WHERE' ] + outer_conditions + inner_conditions ]
+            make_aggr = lambda expr_list: [ 'COUNT', 'DISTINCT' ] + expr_list
         elif translator.dialect == 'Oracle':
-            sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL', [ 'COUNT', 'ALL' ] ] ],
-                        from_ast, [ 'WHERE' ] + outer_conditions + inner_conditions,
-                        [ 'GROUP_BY' ] + expr_list ]
+            extra_grouping = True
+            if translator.hint_join: make_aggr = lambda expr_list: [ 'COUNT', 'ALL' ]
+            else: make_aggr = lambda expr_list: [ 'COUNT', 'ALL', [ 'COUNT', 'ALL' ] ]
         elif translator.row_value_syntax:
-            sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'DISTINCT' ] + expr_list ],
-                        from_ast, [ 'WHERE' ] + outer_conditions + inner_conditions ]
+            make_aggr = lambda expr_list: [ 'COUNT', 'DISTINCT' ] + expr_list
         elif translator.dialect == 'SQLite':
-            if translator.sqlite_version < (3, 6, 21):
+            if translator.hint_join:  # Same join as in Oracle
+                extra_grouping = True
+                make_aggr = lambda expr_list: [ 'COUNT', 'ALL' ]
+            elif translator.sqlite_version < (3, 6, 21):
                 alias, pk_columns = monad.tableref.make_join(pk_only=False)
-                sql_ast = [ 'SELECT', [ 'AGGREGATES',
-                              [ 'COUNT', 'DISTINCT', [ 'COLUMN', alias, 'ROWID' ] ] ],
-                            from_ast, [ 'WHERE' ] + outer_conditions + inner_conditions ]
+                make_aggr = lambda expr_list: [ 'COUNT', 'DISTINCT', [ 'COLUMN', alias, 'ROWID' ] ]
             else:
                 sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ],
                           [ 'FROM', [ 't', 'SELECT', [
                               [ 'DISTINCT' ] + expr_list, from_ast,
                               [ 'WHERE' ] + outer_conditions + inner_conditions ] ] ] ]
+        else: throw(NotImplementedError)  # Must not be here
+        if not sql_ast:
+            subselect_func = translator.hint_join and monad._joined_subselect \
+                             or monad._aggregated_scalar_subselect
+            sql_ast = subselect_func(make_aggr, extra_grouping)
         return translator.ExprMonad.new(translator, int, sql_ast)
     def sum(monad):
         translator = monad.translator
@@ -1898,13 +1909,15 @@ class AttrSetMonad(SetMixin, Monad):
             columns = columns[offset:offset+len(attr.columns)]
         else: columns = attr.columns
         return [ [ 'COLUMN', alias, column ] for column in columns ]
-    def _aggregated_scalar_subselect(monad, make_aggr):
+    def _aggregated_scalar_subselect(monad, make_aggr, extra_grouping=False):
         translator = monad.translator
         subquery = monad._subselect()
         sql_ast = [ 'SELECT', [ 'AGGREGATES', make_aggr(subquery.expr_list) ], subquery.from_ast,
                     [ 'WHERE' ] + subquery.outer_conditions + subquery.conditions ]
+        if extra_grouping:  # This is for Oracle only, with COUNT(COUNT(*))
+            sql_ast.append([ 'GROUP_BY' ] + subquery.expr_list)
         return sql_ast
-    def _joined_subselect(monad, make_aggr):
+    def _joined_subselect(monad, make_aggr, extra_grouping=False):
         translator = monad.translator
         subquery = monad._subselect()
         expr_list = subquery.expr_list
@@ -1914,20 +1927,47 @@ class AttrSetMonad(SetMixin, Monad):
         
         groupby_columns = [ inner_column[:] for cond, outer_column, inner_column in outer_conditions ]
         assert len(set(alias for _, alias, column in groupby_columns)) == 1
-        groupby_names = set(column for _, alias, column in groupby_columns)
-        while True:            
-            expr_name = 'column-%d' % translator.subquery.expr_counter()
-            if expr_name not in groupby_names: break
 
+        if extra_grouping:
+            inner_alias = translator.subquery.get_short_alias(None, 't')
+            inner_columns = [ 'DISTINCT' ]
+            col_mapping = {}
+            col_names = set()
+            for i, column_ast in enumerate(groupby_columns + expr_list):
+                assert column_ast[0] == 'COLUMN'
+                tname, cname = column_ast[1:]
+                if cname not in col_names:
+                    col_mapping[tname, cname] = cname
+                    col_names.add(cname)
+                    expr = [ 'AS', column_ast, cname ]
+                    new_name = cname
+                else:
+                    new_name = 'expr-%d' % translator.subquery.expr_counter()
+                    col_mapping[tname, cname] = new_name
+                    expr = [ 'AS', column_ast, new_name ]
+                inner_columns.append(expr)
+                if i < len(groupby_columns):
+                    groupby_columns[i] = [ 'COLUMN', inner_alias, new_name ]
+            inner_select = [ inner_columns, from_ast ]
+            if inner_conditions: inner_select.append([ 'WHERE' ] + inner_conditions)
+            from_ast = [ 'FROM', [ inner_alias, 'SELECT', inner_select ] ]
+            outer_conditions = outer_conditions[:]
+            for i, (cond, outer_column, inner_column) in enumerate(outer_conditions):
+                assert inner_column[0] == 'COLUMN'
+                tname, cname = inner_column[1:]
+                new_name = col_mapping[tname, cname]
+                outer_conditions[i] = [ cond, outer_column, [ 'COLUMN', inner_alias, new_name ] ]
+                
         subquery_columns = [ 'ALL' ]
-        for column in groupby_columns:
-            if column[0] == 'COLUMN': # Workaround for SQLite 3.3.4 bug appeared in vanilla Python 2.5
-                column = [ 'AS', column, column[-1] ]
-            subquery_columns.append(column)
+        for column_ast in groupby_columns:
+            assert column_ast[0] == 'COLUMN'
+            subquery_columns.append([ 'AS', column_ast, column_ast[2] ])
+        expr_name = 'expr-%d' % translator.subquery.expr_counter()
         subquery_columns.append([ 'AS', make_aggr(expr_list), expr_name ])
 
         subquery_ast = [ subquery_columns, from_ast ]
-        if inner_conditions: subquery_ast.append([ 'WHERE' ] + inner_conditions)
+        if inner_conditions and not extra_grouping:
+            subquery_ast.append([ 'WHERE' ] + inner_conditions)
         subquery_ast.append([ 'GROUP_BY' ] + groupby_columns)
 
         alias = translator.subquery.get_short_alias(None, 't')
