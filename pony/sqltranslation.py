@@ -866,7 +866,7 @@ class Monad(object):
             return translator.MethodMonad(translator, monad, attrname)
         return property_method()
     def __call__(monad, *args, **keyargs): throw(TypeError)
-    def len(monad): throw(TypeError)
+    def count(monad): throw(TypeError)
     def sum(monad): throw(TypeError)
     def min(monad): throw(TypeError)
     def max(monad): throw(TypeError)
@@ -920,7 +920,7 @@ class MethodMonad(Monad):
     def contains(monad, item, not_in=False): raise_forgot_parentheses(monad)
     def nonzero(monad): raise_forgot_parentheses(monad)
     def negate(monad): raise_forgot_parentheses(monad)
-    def len(monad): raise_forgot_parentheses(monad)
+    def count(monad): raise_forgot_parentheses(monad)
     def sum(monad): raise_forgot_parentheses(monad)
     def min(monad): raise_forgot_parentheses(monad)
     def max(monad): raise_forgot_parentheses(monad)
@@ -1171,7 +1171,7 @@ class StringMixin(MonadMixin):
         sql = monad.getsql()[0]
         translator = monad.translator
         return translator.BoolExprMonad(translator, [ 'GT', [ 'LENGTH', sql ], [ 'VALUE', 0 ]])
-    def len(monad):
+    def count(monad):
         sql = monad.getsql()[0]
         translator = monad.translator
         return translator.NumericExprMonad(translator, int, [ 'LENGTH', sql ])
@@ -1433,7 +1433,7 @@ class NoneMonad(ConstMonad):
 class BufferConstMonad(BufferMixin, ConstMonad): pass
 
 class StringConstMonad(StringMixin, ConstMonad):
-    def len(monad):
+    def count(monad):
         return monad.translator.ConstMonad.new(monad.translator, len(monad.value))
     
 class NumericConstMonad(NumericMixin, ConstMonad): pass
@@ -1632,10 +1632,10 @@ class FuncDatetimeMonad(FuncDateMonad):
         translator = monad.translator
         return translator.DatetimeExprMonad(translator, datetime, [ 'NOW' ])
 
-class FuncLenMonad(FuncMonad):
+class FuncCountMonad(FuncMonad):
     func = len
     def call(monad, x):
-        return x.len()
+        return x.count()
 
 class FuncAbsMonad(FuncMonad):
     func = abs
@@ -1802,7 +1802,7 @@ class AttrSetMonad(SetMixin, Monad):
             if not translator.hint_join: return True
             if isinstance(monad.parent, monad.translator.AttrSetMonad): return True
         return False
-    def len(monad):
+    def count(monad):
         translator = monad.translator
 
         subquery = monad._subselect()
@@ -2046,7 +2046,7 @@ class QuerySetMonad(SetMixin, Monad):
         sql_ast = [ 'SELECT', select_ast, sub.subquery.from_ast, [ 'WHERE' ] + sub.conditions ]
         translator = monad.translator
         return translator.ExprMonad.new(translator, item_type, sql_ast)
-    def len(monad):
+    def count(monad):
         sub = monad.subtranslator
         expr_type = sub.expr_type
         if isinstance(expr_type, (tuple, EntityMeta)):
