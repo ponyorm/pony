@@ -704,12 +704,15 @@ class Attribute(object):
                 if len(attr.converters) != 1: throw(NotImplementedError)
                 converter = attr.converters[0]
                 if converter is not None:
-                    if from_db: return converter.sql2py(val)
-                    else: return converter.validate(val)
+                    try:
+                        if from_db: return converter.sql2py(val)
+                        else: return converter.validate(val)
+                    except UnicodeDecodeError, e: raise ValueError(
+                        'Value for attribute %s cannot be converted to unicode: %r' % (attr, val))
             return attr.py_type(val)
 
         if not isinstance(val, reverse.entity):
-            throw(ConstraintError, 'Value of attribute %s.%s must be an instance of %s. Got: %s'
+            throw(ConstraintError, 'Value of attribute %s must be an instance of %s. Got: %s'
                                   % (entity.__name__, attr.name, reverse.entity.__name__, val))
         if obj is not None: cache = obj._cache_
         else: cache = entity._get_cache_()
@@ -2467,6 +2470,7 @@ class EntityMeta(type):
 class Entity(object):
     __metaclass__ = EntityMeta
     __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '__weakref__'
+    @cut_traceback
     def __new__(entity, **keyargs):
         if entity._database_.schema is None:
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
