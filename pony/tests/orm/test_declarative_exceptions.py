@@ -136,7 +136,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(NotImplementedError, "date(s.id, 1, 1)")
     def test30(self):
         fetch(s for s in Student if s.dob < date(s.id, 1, 1))
-    @raises_exception(TypeError, "max expected at least one argument")
+    @raises_exception(TypeError, "max() function expected at least one argument")
     def test31(self):
         fetch(s for s in Student if s.id < max())
     @raises_exception(TypeError, "Value of type 'buffer' is not valid as argument of 'max' function in expression max(x, y)")
@@ -165,16 +165,16 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(AttributeError, "s.courses.foo")
     def test38(self):
         fetch(s for s in Student if 'x' in s.courses.foo.bar)
-    @raises_exception(TypeError, "Function 'sum' expects query or items of numeric type, got 'unicode' in sum(s.courses.name)")
+    @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got 'unicode' in sum(s.courses.name)")
     def test39(self):
         fetch(s for s in Student if sum(s.courses.name) > 10) 
-    @raises_exception(TypeError, "Function 'sum' expects query or items of numeric type, got 'unicode' in sum(c.name for c in s.courses)")
+    @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got 'unicode' in sum(c.name for c in s.courses)")
     def test40(self):
         fetch(s for s in Student if sum(c.name for c in s.courses) > 10)
-    @raises_exception(TypeError, "Function 'sum' expects query or items of numeric type, got 'unicode' in sum(c.name for c in s.courses)")
+    @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got 'unicode' in sum(c.name for c in s.courses)")
     def test41(self):
         fetch(s for s in Student if sum(c.name for c in s.courses) > 10)
-    @raises_exception(TypeError, "Function 'avg' expects query or items of numeric type, got 'unicode' in avg(c.name for c in s.courses)")
+    @raises_exception(TypeError, "Function avg() expects query or items of numeric type, got 'unicode' in avg(c.name for c in s.courses)")
     def test42(self):
         fetch(s for s in Student if avg(c.name for c in s.courses) > 10 and len(s.courses) > 1)
     @raises_exception(TypeError, "strip() takes at most 1 argument (3 given)")
@@ -186,16 +186,16 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(NotImplementedError, "Group[101].students")
     def test45(self):
         fetch(s for s in Student if s in Group[101].students)
-    @raises_exception(TypeError, "Function 'sum' expects query or items of numeric type, got 'Student' in sum(s for s in Student if s.group == g)")
+    @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got 'Student' in sum(s for s in Student if s.group == g)")
     def test46(self):
         fetch(g for g in Group if sum(s for s in Student if s.group == g) > 1)
-    @raises_exception(TypeError, "Function 'avg' expects query or items of numeric type, got 'Student' in avg(s for s in Student if s.group == g)")
+    @raises_exception(TypeError, "Function avg() expects query or items of numeric type, got 'Student' in avg(s for s in Student if s.group == g)")
     def test47(self):
         fetch(g for g in Group if avg(s for s in Student if s.group == g) > 1)
-    @raises_exception(TypeError, "Function 'min' cannot be applied to type 'Student' in min(s for s in Student if s.group == g)")
+    @raises_exception(TypeError, "Function min() cannot be applied to type 'Student' in min(s for s in Student if s.group == g)")
     def test48(self):
         fetch(g for g in Group if min(s for s in Student if s.group == g) > 1)
-    @raises_exception(TypeError, "Function 'max' cannot be applied to type 'Student' in max(s for s in Student if s.group == g)")
+    @raises_exception(TypeError, "Function max() cannot be applied to type 'Student' in max(s for s in Student if s.group == g)")
     def test49(self):
         fetch(g for g in Group if max(s for s in Student if s.group == g) > 1)
     @raises_exception(TypeError, "Incomparable types 'Decimal' and 'bool' in expression: s.scholarship == (True or False and not True)")

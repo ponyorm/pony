@@ -866,11 +866,8 @@ class Monad(object):
             return translator.MethodMonad(translator, monad, attrname)
         return property_method()
     def __call__(monad, *args, **keyargs): throw(TypeError)
+    def aggregate(monad, func_name): throw(TypeError)
     def count(monad): throw(TypeError)
-    def sum(monad): throw(TypeError)
-    def min(monad): throw(TypeError)
-    def max(monad): throw(TypeError)
-    def avg(monad): throw(TypeError)
     def __getitem__(monad, key): throw(TypeError)
 
     def __add__(monad, monad2): throw(TypeError)
@@ -920,11 +917,7 @@ class MethodMonad(Monad):
     def contains(monad, item, not_in=False): raise_forgot_parentheses(monad)
     def nonzero(monad): raise_forgot_parentheses(monad)
     def negate(monad): raise_forgot_parentheses(monad)
-    def count(monad): raise_forgot_parentheses(monad)
-    def sum(monad): raise_forgot_parentheses(monad)
-    def min(monad): raise_forgot_parentheses(monad)
-    def max(monad): raise_forgot_parentheses(monad)
-    def avg(monad): raise_forgot_parentheses(monad)
+    def aggregate(monad, func_name): raise_forgot_parentheses(monad)
     def __getitem__(monad, key): raise_forgot_parentheses(monad)
 
     def __add__(monad, monad2): raise_forgot_parentheses(monad)
@@ -1645,25 +1638,25 @@ class FuncAbsMonad(FuncMonad):
 class FuncSumMonad(FuncMonad):
     func = sum
     def call(monad, x):
-        return x.sum()
+        return x.aggregate('SUM')
 
 class FuncAvgMonad(FuncMonad):
     func = avg
     def call(monad, x):
-        return x.avg()
+        return x.aggregate('AVG')
 
 class FuncMinMonad(FuncMonad):
     func = min
     def call(monad, *args):
-        if not args: throw(TypeError, 'min expected at least one argument')
-        if len(args) == 1: return args[0].min()
+        if not args: throw(TypeError, 'min() function expected at least one argument')
+        if len(args) == 1: return args[0].aggregate('MIN')
         return minmax(monad, 'MIN', *args)
 
 class FuncMaxMonad(FuncMonad):
     func = max
     def call(monad, *args):
-        if not args: throw(TypeError, 'max expected at least one argument')
-        if len(args) == 1: return args[0].max()
+        if not args: throw(TypeError, 'max() function expected at least one argument')
+        if len(args) == 1: return args[0].aggregate('MAX')
         return minmax(monad, 'MAX', *args)
 
 def minmax(monad, sqlop, *args):
@@ -1842,42 +1835,25 @@ class AttrSetMonad(SetMixin, Monad):
                              or monad._aggregated_scalar_subselect
             sql_ast = subselect_func(make_aggr, extra_grouping)
         return translator.ExprMonad.new(translator, int, sql_ast)
-    def sum(monad):
+    def aggregate(monad, func_name):
         translator = monad.translator
         item_type = monad.type.item_type
-        if item_type not in translator.numeric_types: throw(TypeError, 
-            "Function 'sum' expects query or items of numeric type, got %r in {EXPR}" % type2str(item_type))
+
+        if func_name in ('SUM', 'AVG'):        
+            if item_type not in translator.numeric_types: throw(TypeError, 
+                "Function %s() expects query or items of numeric type, got %r in {EXPR}"
+                % (func_name.lower(), type2str(item_type)))
+        elif func_name in ('MIN', 'MAX'):
+            if item_type not in translator.comparable_types: throw(TypeError, 
+                "Function %s() expects query or items of comparable type, got %r in {EXPR}"
+                % (func_name.lower(), type2str(item_type)))
+        else: assert False
+            
         subselect_func = translator.hint_join and monad._joined_subselect \
                          or monad._aggregated_scalar_subselect
-        sql_ast = subselect_func(lambda expr_list: [ 'SUM' ] + expr_list)
-        return translator.ExprMonad.new(monad.translator, item_type, sql_ast)
-    def avg(monad):
-        translator = monad.translator
-        item_type = monad.type.item_type
-        if item_type not in translator.numeric_types: throw(TypeError, 
-            "Function 'avg' expects query or items of numeric type, got %r in {EXPR}" % type2str(item_type))
-        subselect_func = translator.hint_join and monad._joined_subselect \
-                         or monad._aggregated_scalar_subselect
-        sql_ast = subselect_func(lambda expr_list: [ 'AVG' ] + expr_list)
-        return translator.ExprMonad.new(monad.translator, float, sql_ast)
-    def min(monad):
-        translator = monad.translator
-        item_type = monad.type.item_type
-        if item_type not in translator.comparable_types: throw(TypeError, 
-            "Function 'min' expects query or items of comparable type, got %r in {EXPR}" % type2str(item_type))
-        subselect_func = translator.hint_join and monad._joined_subselect \
-                         or monad._aggregated_scalar_subselect
-        sql_ast = subselect_func(lambda expr_list: [ 'MIN' ] + expr_list)
-        return translator.ExprMonad.new(monad.translator, item_type, sql_ast)
-    def max(monad):
-        translator = monad.translator
-        item_type = monad.type.item_type
-        if item_type not in translator.comparable_types: throw(TypeError, 
-            "Function 'max' expects query or items of comparable type, got %r in {EXPR}" % type2str(item_type))
-        subselect_func = translator.hint_join and monad._joined_subselect \
-                         or monad._aggregated_scalar_subselect
-        sql_ast = subselect_func(lambda expr_list: [ 'MAX' ] + expr_list)
-        return translator.ExprMonad.new(monad.translator, item_type, sql_ast)
+        sql_ast = subselect_func(lambda expr_list: [ func_name ] + expr_list)
+        result_type = func_name == 'AVG' and float or item_type
+        return translator.ExprMonad.new(monad.translator, result_type, sql_ast)
     def nonzero(monad):
         subquery = monad._subselect()
         sql_ast = [ 'EXISTS', subquery.from_ast,
@@ -2084,42 +2060,23 @@ class QuerySetMonad(SetMixin, Monad):
             select_ast = [ 'AGGREGATES', [ 'COUNT', 'DISTINCT', sub.expr_columns[0] ] ]
             return monad._subselect(int, select_ast)
         else: throw(NotImplementedError)
-    def sum(monad):
+    def aggregate(monad, func_name):
         translator = monad.translator
         sub = monad.subtranslator
         expr_type = sub.expr_type
-        if expr_type not in translator.numeric_types: throw(TypeError, 
-            "Function 'sum' expects query or items of numeric type, got %r in {EXPR}" % type2str(expr_type))
+        if func_name in ('SUM', 'AVG'):
+            if expr_type not in translator.numeric_types: throw(TypeError, 
+                "Function %s() expects query or items of numeric type, got %r in {EXPR}"
+                % (func_name.lower(), type2str(expr_type)))
+        elif func_name in ('MIN', 'MAX'):
+            if expr_type not in translator.comparable_types: throw(TypeError, 
+                "Function %s() cannot be applied to type %r in {EXPR}"
+                % (func_name.lower(), type2str(expr_type)))
+        else: assert False        
         assert len(sub.expr_columns) == 1
-        select_ast = [ 'AGGREGATES', [ 'SUM', sub.expr_columns[0] ] ]
-        return monad._subselect(expr_type, select_ast)
-    def avg(monad):
-        translator = monad.translator
-        sub = monad.subtranslator
-        expr_type = sub.expr_type
-        if expr_type not in translator.numeric_types: throw(TypeError, 
-            "Function 'avg' expects query or items of numeric type, got %r in {EXPR}" % type2str(expr_type))
-        assert len(sub.expr_columns) == 1
-        select_ast = [ 'AGGREGATES', [ 'AVG', sub.expr_columns[0] ] ]
-        return monad._subselect(float, select_ast)
-    def min(monad):
-        translator = monad.translator
-        sub = monad.subtranslator
-        expr_type = sub.expr_type
-        if expr_type not in translator.comparable_types: throw(TypeError, 
-            "Function 'min' cannot be applied to type %r in {EXPR}" % type2str(expr_type))
-        assert len(sub.expr_columns) == 1
-        select_ast = [ 'AGGREGATES', [ 'MIN', sub.expr_columns[0] ] ]
-        return monad._subselect(expr_type, select_ast)
-    def max(monad):
-        translator = monad.translator
-        sub = monad.subtranslator
-        expr_type = sub.expr_type
-        if expr_type not in translator.comparable_types: throw(TypeError, 
-            "Function 'max' cannot be applied to type %r in {EXPR}" % type2str(expr_type))
-        assert len(sub.expr_columns) == 1
-        select_ast = [ 'AGGREGATES', [ 'MAX', sub.expr_columns[0] ] ]
-        return monad._subselect(expr_type, select_ast)
+        select_ast = [ 'AGGREGATES', [ func_name, sub.expr_columns[0] ] ]
+        result_type = func_name == 'AVG' and float or expr_type
+        return monad._subselect(result_type, select_ast)
 
 for name, value in globals().items():
     if name.endswith('Monad') or name.endswith('Mixin'):
