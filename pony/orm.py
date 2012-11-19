@@ -316,7 +316,9 @@ class Database(object):
         if values is None: values = ()
         cache = database._get_cache()
         cursor = cache.connection.cursor()
+        t = time()
         provider.execute(cursor, adapted_sql, values)
+        database._update_local_stat(sql, t)
         return cursor
     @cut_traceback
     def select(database, sql, globals=None, locals=None, frame_depth=0):
