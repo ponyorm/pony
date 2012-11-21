@@ -187,9 +187,10 @@ class Local(localbase):
 
 local = Local()        
 
-class LocalStats(localbase):
-    def __init__(self):
-        self.stats = {}
+class DbLocal(localbase):
+    def __init__(dblocal):
+        dblocal.stats = {}
+        dblocal.last_sql = None
 
 class QueryStat(object):
     def __init__(stat, sql, query_start_time=None):
@@ -259,11 +260,17 @@ class Database(object):
 
         self.global_stats = {}
         self.global_stats_lock = Lock()
-        self.local_stats = LocalStats()
-    def get_local_stats(database):
-        return database.local_stats.stats
+        self.dblocal = DbLocal()
+    @property
+    def last_sql(database):
+        return database.dblocal.last_sql
+    @property
+    def local_stats(database):
+        return database.dblocal.stats
     def _update_local_stat(database, sql, query_start_time):
-        stats = database.local_stats.stats
+        dblocal = database.dblocal
+        dblocal.last_sql = sql
+        stats = dblocal.stats
         stat = stats.get(sql)
         if stat is not None: stat.query_executed(query_start_time)
         else: stats[sql] = QueryStat(sql, query_start_time)
@@ -271,11 +278,11 @@ class Database(object):
         setdefault = database.global_stats.setdefault
         database.global_stats_lock.acquire()
         try:
-            for sql, stat in database.local_stats.stats.iteritems():
+            for sql, stat in database.dblocal.stats.iteritems():
                 global_stat = setdefault(sql, stat)
                 if global_stat is not stat: global_stat.merge(stat)
         finally: database.global_stats_lock.release()
-        database.local_stats.stats.clear()
+        database.dblocal.stats.clear()
     @cut_traceback
     def get_connection(database):
         cache = database._get_cache()
@@ -3506,7 +3513,7 @@ class Query(object):
             if query_key is not None:
                 query._cache.query_results[query_key] = result
         else:
-            stats = query._database.local_stats.stats
+            stats = query._database.dblocal.stats
             stat = stats.get(sql)
             if stat is not None: stat.cache_count += 1
             else: stats[sql] = QueryStat(sql)
