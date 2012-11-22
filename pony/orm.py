@@ -50,11 +50,9 @@ __all__ = '''
     fetch_count fetch_sum fetch_min fetch_max fetch_avg
     exists
 
-    avg
+    count avg
 
     JOIN
-
-    COUNT SUM MIN MAX AVG
     '''.split()
 
 debug = False
@@ -1690,8 +1688,8 @@ class PropagatedMultiset(object):
     @cut_traceback
     def __iter__(pset):
         if not pset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
-        for item, count in pset._items_.iteritems():
-            for i in range(count): yield item
+        for item, cnt in pset._items_.iteritems():
+            for i in range(cnt): yield item
     @cut_traceback
     def __eq__(pset, other):
         if not pset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
@@ -3639,24 +3637,6 @@ class Query(object):
     @cut_traceback
     def count(query):
         return query._aggregate('COUNT')
-
-aggregate_functions = {}
-
-def make_aggregate_function(name):
-    def func(x):
-        raise TypeError('Function %s() can be used inside declarative queries only' % name)
-    func.__name__ = name
-    aggregate_functions[name] = func
-    return func
-
-SUM = make_aggregate_function('SUM')
-MIN = make_aggregate_function('MIN')
-MAX = make_aggregate_function('MAX')
-AVG = make_aggregate_function('AVG')
-
-def COUNT(x=None):
-    raise TypeError('Function COUNT() can be used inside declarative queries only')
-aggregate_functions['COUNT'] = COUNT
 
 def show(entity):
     x = entity

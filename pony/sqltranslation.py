@@ -8,10 +8,8 @@ from datetime import date, datetime
 from pony import options
 from pony.dbapiprovider import LongStr, LongUnicode
 from pony.utils import avg, copy_func_attrs, is_ident, throw
-from pony.orm import (
-    query, exists, ERDiagramError, TranslationError, EntityMeta, Set, JOIN, AsciiStr,
-    aggregate_functions, COUNT, SUM, MIN, MAX, AVG
-    )
+from pony.orm import query, exists, ERDiagramError, TranslationError, \
+                     EntityMeta, Set, JOIN, AsciiStr
 
 class IncomparableTypesError(TypeError):
     def __init__(exc, type1, type2):
@@ -856,7 +854,6 @@ class Monad(object):
     def nonzero(monad): throw(TypeError)
     def negate(monad):
         return monad.translator.NotMonad(monad)
-
     def getattr(monad, attrname):
         try: property_method = getattr(monad, 'attr_' + attrname)
         except AttributeError:
@@ -865,17 +862,53 @@ class Monad(object):
             translator = monad.translator
             return translator.MethodMonad(translator, monad, attrname)
         return property_method()
+    def len(monad): throw(TypeError)
+    def count(monad):
+        translator = monad.translator
+        translator.aggregated = True
+        if monad.aggregated: throw(TranslationError, 'Aggregated functions cannot be nested. Got: {EXPR}')
+        expr = monad.getsql()
+        if len(expr) == 1: expr = expr[0]
+        elif translator.row_value_syntax == True: expr = ['ROW'] + expr
+        elif translator.dialect == 'SQLite':
+            alias, pk_columns = monad.tableref.make_join(pk_only=False)
+            expr = [ 'COLUMN', alias, 'ROWID' ]
+        else: throw(NotImplementedError)
+        result = translator.ExprMonad.new(translator, int, [ 'COUNT', 'DISTINCT', expr ])
+        result.aggregated = True
+        return result
+    def aggregate(monad, func_name):
+        translator = monad.translator
+        translator.aggregated = True
+        if monad.aggregated: throw(TranslationError, 'Aggregated functions cannot be nested. Got: {EXPR}')
+        expr_type = monad.type
+        # if isinstance(expr_type, SetType): expr_type = expr_type.item_type
+        if func_name in ('SUM', 'AVG'):
+            if expr_type not in translator.numeric_types:
+                throw(TypeError, "Function '%s' expects argument of numeric type, got %r in {EXPR}"
+                                 % (func_name, type2str(expr_type)))
+        elif func_name in ('MIN', 'MAX'):
+            if expr_type not in translator.comparable_types:
+                throw(TypeError, "Function '%s' cannot be applied to type %r in {EXPR}"
+                                 % (func_name, type2str(expr_type)))
+        else: assert False
+        expr = monad.getsql()
+        if len(expr) == 1: expr = expr[0]
+        elif translator.row_value_syntax == True: expr = ['ROW'] + expr
+        else: throw(NotImplementedError, 'Database does not support entities '
+                    'with composite primary keys inside aggregate functions. Got: {EXPR}')
+        if func_name == 'AVG': result_type = float
+        else: result_type = expr_type
+        result = translator.ExprMonad.new(translator, result_type, [ func_name, expr ])
+        result.aggregated = True
+        return result
     def __call__(monad, *args, **keyargs): throw(TypeError)
-    def aggregate(monad, func_name): throw(TypeError)
-    def count(monad): throw(TypeError)
     def __getitem__(monad, key): throw(TypeError)
-
     def __add__(monad, monad2): throw(TypeError)
     def __sub__(monad, monad2): throw(TypeError)
     def __mul__(monad, monad2): throw(TypeError)
     def __div__(monad, monad2): throw(TypeError)
     def __pow__(monad, monad2): throw(TypeError)
-
     def __neg__(monad): throw(TypeError)
     def abs(monad): throw(TypeError)
 
@@ -1164,7 +1197,7 @@ class StringMixin(MonadMixin):
         sql = monad.getsql()[0]
         translator = monad.translator
         return translator.BoolExprMonad(translator, [ 'GT', [ 'LENGTH', sql ], [ 'VALUE', 0 ]])
-    def count(monad):
+    def len(monad):
         sql = monad.getsql()[0]
         translator = monad.translator
         return translator.NumericExprMonad(translator, int, [ 'LENGTH', sql ])
@@ -1426,7 +1459,7 @@ class NoneMonad(ConstMonad):
 class BufferConstMonad(BufferMixin, ConstMonad): pass
 
 class StringConstMonad(StringMixin, ConstMonad):
-    def count(monad):
+    def len(monad):
         return monad.translator.ConstMonad.new(monad.translator, len(monad.value))
     
 class NumericConstMonad(NumericMixin, ConstMonad): pass
@@ -1625,10 +1658,20 @@ class FuncDatetimeMonad(FuncDateMonad):
         translator = monad.translator
         return translator.DatetimeExprMonad(translator, datetime, [ 'NOW' ])
 
-class FuncCountMonad(FuncMonad):
+class FuncLenMonad(FuncMonad):
     func = len
     def call(monad, x):
-        return x.count()
+        return x.len()
+
+class FuncCountMonad(FuncMonad):
+    func = count
+    def call(monad, x=None):
+        translator = monad.translator
+        if isinstance(x, translator.StringConstMonad) and x.value == '*': x = None
+        if x is not None: return x.count()
+        result = translator.ExprMonad.new(translator, int, [ 'COUNT', 'ALL' ])
+        result.aggregated = True
+        return result
 
 class FuncAbsMonad(FuncMonad):
     func = abs
@@ -1690,47 +1733,6 @@ class FuncExistsMonad(FuncMonad):
         if not isinstance(queryset, monad.translator.SetMixin): throw(TypeError, 
             "'exists' function expects generator expression or collection, got: {EXPR}")
         return queryset.nonzero()
-
-class FuncAggrMonad(FuncMonad):
-    def call(monad, x=None):
-        translator = monad.translator
-        translator.aggregated = True
-        func_name = monad.func.__name__
-        if isinstance(x, translator.StringConstMonad) and x.value == '*': x = None
-        if x is None:
-            assert func_name == 'COUNT'
-            result = translator.ExprMonad.new(translator, int, [ 'COUNT', 'ALL' ])
-            result.aggregated = True
-            return result
-        if x.aggregated: throw(TranslationError, 'Aggregated functions cannot be nested. Got: {EXPR}')
-        expr_type = x.type
-        if isinstance(expr_type, SetType): expr_type = expr_type.item_type
-        if func_name in ('SUM', 'AVG') and expr_type not in translator.numeric_types:
-            throw(TypeError, "Function '%s' expects argument of numeric type, got %r in {EXPR}"
-                             % (func_name, type2str(expr_type)))
-        elif func_name == 'COUNT' and isinstance(expr_type, EntityMeta): pass
-        elif expr_type not in translator.comparable_types:
-            throw(TypeError, "Function '%s' cannot be applied to type %r in {EXPR}"
-                             % (func_name, type2str(expr_type)))
-        expr = x.getsql()
-        if len(expr) == 1: expr = expr[0]
-        elif translator.row_value_syntax == True: expr = ['ROW'] + expr
-        else: throw(NotImplementedError, 'Entities with composite primary keys '
-                    'not supported inside aggregate functions. Got: {EXPR}')
-        if func_name == 'COUNT':
-            result = translator.ExprMonad.new(translator, int, [ 'COUNT', 'DISTINCT', expr ])
-        else:
-            if func_name == 'AVG': result_type = float
-            else: result_type = expr_type
-            result = translator.ExprMonad.new(translator, result_type, [ func_name, expr ])
-        result.aggregated = True
-        return result
-
-class FuncCountMonad(FuncAggrMonad): func = COUNT
-class FuncSumMonad(FuncAggrMonad): func = SUM
-class FuncMinMonad(FuncAggrMonad): func = MIN
-class FuncMaxMonad(FuncAggrMonad): func = MAX
-class FuncAvgMonad(FuncAggrMonad): func = AVG
 
 class JoinMonad(Monad):
     def __init__(monad, translator):
@@ -1835,6 +1837,7 @@ class AttrSetMonad(SetMixin, Monad):
                              or monad._aggregated_scalar_subselect
             sql_ast = subselect_func(make_aggr, extra_grouping)
         return translator.ExprMonad.new(translator, int, sql_ast)
+    len = count
     def aggregate(monad, func_name):
         translator = monad.translator
         item_type = monad.type.item_type
@@ -2060,6 +2063,7 @@ class QuerySetMonad(SetMixin, Monad):
             select_ast = [ 'AGGREGATES', [ 'COUNT', 'DISTINCT', sub.expr_columns[0] ] ]
             return monad._subselect(int, select_ast)
         else: throw(NotImplementedError)
+    len = count
     def aggregate(monad, func_name):
         translator = monad.translator
         sub = monad.subtranslator
