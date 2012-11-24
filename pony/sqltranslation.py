@@ -98,7 +98,7 @@ class PythonTranslator(ASTTranslator):
     def default_post(translator, node):
         throw(NotImplementedError, node)
     def postGenExpr(translator, node):
-        return node.code.src        
+        return '(%s)' % node.code.src        
     def postGenExprInner(translator, node):
         return node.expr.src + ' ' + ' '.join(qual.src for qual in node.quals)
     def postGenExprFor(translator, node):
