@@ -1028,31 +1028,21 @@ class ListMonad(Monad):
             sql = sqlor([ sqland([ [ 'EQ', a, b ]  for a, b in zip(left_sql, item.getsql()) ]) for item in monad.items ])
         return translator.BoolExprMonad(translator, sql)
 
-class BufferMixin(MonadMixin): pass
-
-numeric_conversions = {
-    (int, float): float,
-    (int, Decimal): Decimal,
-    }
-numeric_conversions.update(((t2, t1), t3) for (t1, t2), t3 in numeric_conversions.items())
+class BufferMixin(MonadMixin):
+    pass
 
 _binop_errmsg = 'Unsupported operand types %r and %r for operation %r in expression: {EXPR}'
 
 def make_numeric_binop(op, sqlop):
     def numeric_binop(monad, monad2):
         translator = monad.translator
-        if isinstance(monad2, translator.NumericMixin): pass
-        elif monad2.type == 'METHOD': raise_forgot_parentheses(monad2)
-        else: throw(TypeError, _binop_errmsg % (type2str(monad.type), type2str(monad2.type), op))
-        t1, t2 = monad.type, monad2.type
-        if t1 is t2: result_type = t1
-        else: result_type = numeric_conversions.get((t1, t2))
+        if monad2.type == 'METHOD': raise_forgot_parentheses(monad2)
+        result_type = translator.coerce_types(monad.type, monad2.type)
         if result_type is None:
             throw(TypeError, _binop_errmsg % (type2str(monad.type), type2str(monad2.type), op))
-        left_sql = monad.getsql()
-        right_sql = monad2.getsql()
-        assert len(left_sql) == len(right_sql) == 1
-        return translator.NumericExprMonad(translator, result_type, [ sqlop, left_sql[0], right_sql[0] ])
+        left_sql = monad.getsql()[0]
+        right_sql = monad2.getsql()[0]
+        return translator.NumericExprMonad(translator, result_type, [ sqlop, left_sql, right_sql ])
     numeric_binop.__name__ = sqlop
     return numeric_binop
 
