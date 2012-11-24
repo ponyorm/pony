@@ -173,6 +173,8 @@ class PythonTranslator(ASTTranslator):
         args = [ arg.src for arg in node.args ]
         if node.star_args: args.append('*'+node.star_args.src)
         if node.dstar_args: args.append('**'+node.dstar_args.src)
+        if len(args) == 1 and isinstance(node.args[0], ast.GenExpr):
+            return node.node.src + args[0]
         return '%s(%s)' % (node.node.src, ', '.join(args))
     def postSubscript(translator, node):
         node.priority = 2
