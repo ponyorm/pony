@@ -1036,6 +1036,8 @@ _binop_errmsg = 'Unsupported operand types %r and %r for operation %r in express
 def make_numeric_binop(op, sqlop):
     def numeric_binop(monad, monad2):
         translator = monad.translator
+        if isinstance(monad2, (translator.AttrSetMonad, translator.NumericSetExprMonad)):
+            return translator.NumericSetExprMonad(op, sqlop, monad, monad2)
         if monad2.type == 'METHOD': raise_forgot_parentheses(monad2)
         result_type = translator.coerce_types(monad.type, monad2.type)
         if result_type is None:
@@ -1270,7 +1272,7 @@ class ObjectIterMonad(ObjectMixin, Monad):
     def __init__(monad, translator, tableref, entity):
         Monad.__init__(monad, translator, entity)
         monad.tableref = tableref
-    def getsql(monad):
+    def getsql(monad, subquery=None):
         entity = monad.type
         alias, pk_columns = monad.tableref.make_join(pk_only=True)
         return [ [ 'COLUMN', alias, column ] for column in pk_columns ]
@@ -1300,7 +1302,7 @@ class AttrMonad(Monad):
         Monad.__init__(monad, parent.translator, attr_type)
         monad.parent = parent
         monad.attr = attr
-    def getsql(monad):
+    def getsql(monad, subquery=None):
         parent = monad.parent
         attr = monad.attr
         entity = attr.entity
@@ -1357,7 +1359,7 @@ class ParamMonad(Monad):
         else: monad.converter = None
         if parent is None: monad.extractor = lambda variables : variables[name]
         else: monad.extractor = lambda variables : getattr(parent.extractor(variables), name)
-    def getsql(monad):
+    def getsql(monad, subquery=None):
         monad.add_extractors()
         return [ [ 'PARAM', monad.name, monad.converter ] ]
     def add_extractors(monad):
@@ -1375,7 +1377,7 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
         if attr.is_collection: throw(NotImplementedError)
         translator = monad.translator
         return translator.ParamMonad.new(translator, attr.py_type, name, monad)
-    def getsql(monad):
+    def getsql(monad, subquery=None):
         monad.add_extractors()
         entity = monad.type
         assert len(monad.params) == len(entity._pk_converters_)
@@ -1412,7 +1414,7 @@ class ExprMonad(Monad):
     def __init__(monad, translator, type, sql):
         Monad.__init__(monad, translator, type)
         monad.sql = sql
-    def getsql(monad):
+    def getsql(monad, subquery=None):
         return [ monad.sql ]
 
 class StringExprMonad(StringMixin, ExprMonad): pass
@@ -1439,7 +1441,7 @@ class ConstMonad(Monad):
         value_type = translator.get_normalized_type_of(value)
         Monad.__init__(monad, translator, value_type)
         monad.value = value
-    def getsql(monad):
+    def getsql(monad, subquery=None):
         return [ [ 'VALUE', monad.value ] ]
 
 class NoneMonad(ConstMonad):
@@ -1472,7 +1474,7 @@ class ObjectConstMonad(Monad):
             if isinstance(pk_monad, translator.ConstMonad): rawpkval.append(pk_monad.value)
             elif isinstance(pk_monad, translator.ObjectConstMonad): rawpkval.extend(pk_monad.rawpkval)
             else: assert False, pk_monad
-    def getsql(monad):
+    def getsql(monad, subquery=None):
         entity = monad.type
         return [ [ 'VALUE', value ] for value in monad.rawpkval ]
     def getattr(monad, name):
@@ -1497,7 +1499,7 @@ class BoolExprMonad(BoolMonad):
         monad.translator = translator
         monad.type = bool
         monad.sql = sql
-    def getsql(monad):
+    def getsql(monad, subquery=None):
         return monad.sql
     def negate(monad):
         translator = monad.translator
@@ -1536,7 +1538,7 @@ class CmpMonad(BoolMonad):
         monad.right = right
     def negate(monad):
         return monad.translator.CmpMonad(cmp_negate[monad.op], monad.left, monad.right)
-    def getsql(monad):
+    def getsql(monad, subquery=None):
         op = monad.op
         sql = []
         left_sql = monad.left.getsql()
@@ -1568,7 +1570,7 @@ class LogicalBinOpMonad(BoolMonad):
             else: items.append(operand)
         BoolMonad.__init__(monad, items[0].translator)
         monad.operands = items
-    def getsql(monad):
+    def getsql(monad, subquery=None):
         return [ monad.binop ] + [ operand.getsql() for operand in monad.operands ]
 
 class AndMonad(LogicalBinOpMonad):
@@ -1584,7 +1586,7 @@ class NotMonad(BoolMonad):
         monad.operand = operand
     def negate(monad):
         return monad.operand
-    def getsql(monad):
+    def getsql(monad, subquery=None):
         return [ 'NOT', monad.operand.getsql() ]
 
 special_functions = SQLTranslator.special_functions = {}
@@ -1721,10 +1723,10 @@ class FuncSelectMonad(FuncMonad):
 
 class FuncExistsMonad(FuncMonad):
     func = exists
-    def call(monad, queryset):
-        if not isinstance(queryset, monad.translator.SetMixin): throw(TypeError, 
+    def call(monad, arg):
+        if not isinstance(arg, monad.translator.SetMixin): throw(TypeError, 
             "'exists' function expects generator expression or collection, got: {EXPR}")
-        return queryset.nonzero()
+        return arg.nonzero()
 
 class JoinMonad(Monad):
     def __init__(monad, translator):
@@ -1738,6 +1740,12 @@ special_functions[JOIN] = JoinMonad
 
 class SetMixin(MonadMixin):
     pass
+
+def make_attrset_binop(op, sqlop):
+    def attrset_binop(monad, monad2):
+        NumericSetExprMonad = monad.translator.NumericSetExprMonad
+        return NumericSetExprMonad(op, sqlop, monad, monad2)
+    return attrset_binop
 
 class AttrSetMonad(SetMixin, Monad):
     def __init__(monad, parent, attr):
@@ -1961,11 +1969,67 @@ class AttrSetMonad(SetMixin, Monad):
         subquery.outer_conditions = [ subquery.from_ast[1].pop() ]
         monad.subquery = subquery
         return subquery
-    def getsql(monad):
+    def getsql(monad, subquery=None):
         parent = monad.parent
-        subquery = monad.translator.subquery
+        if subquery is None: subquery = monad.translator.subquery
         monad.make_tableref(subquery)
         return monad.make_expr_list()
+    __add__ = make_attrset_binop('+', 'ADD')
+    __sub__ = make_attrset_binop('-', 'SUB')
+    __mul__ = make_attrset_binop('*', 'MUL')
+    __div__ = make_attrset_binop('/', 'DIV')
+
+def make_numericset_binop(op, sqlop):
+    def numericset_binop(monad, monad2):
+        NumericSetExprMonad = monad.translator.NumericSetExprMonad
+        return NumericSetExprMonad(op, sqlop, monad, monad2)
+    return numericset_binop
+
+class NumericSetExprMonad(SetMixin, Monad):
+    def __init__(monad, op, sqlop, left, right):
+        t1 = left.type
+        if isinstance(t1, SetType): t1 = t1.item_type
+        t2 = right.type
+        if isinstance(t2, SetType): t2 = t2.item_type
+        translator = left.translator
+        result_type = translator.coerce_types(t1, t2)
+        if result_type not in translator.numeric_types:
+            throw(TypeError, _binop_errmsg % (type2str(left.type), type2str(right.type), op))
+        Monad.__init__(monad, translator, result_type)
+        monad.op = op
+        monad.sqlop = sqlop
+        monad.left = left
+        monad.right = right
+    def aggregate(monad, func_name):
+        translator = monad.translator
+        subquery = Subquery(translator.subquery)
+        expr = [ monad.sqlop, monad.left.getsql(subquery), monad.right.getsql(subquery) ]
+        subquery.outer_conditions = [ subquery.from_ast[1].pop() ]
+        if func_name == 'AVG': result_type = float
+        else: result_type = monad.type
+        return translator.ExprMonad.new(translator, result_type,
+            [ 'SELECT', [ 'AGGREGATES', [ func_name, monad.getsql(subquery)[0] ] ],
+              subquery.from_ast,
+              [ 'WHERE' ] + subquery.outer_conditions + subquery.conditions ])
+    def getsql(monad, subquery=None):
+        if subquery is None: subquery = monad.translator.subquery
+        left = monad.left
+        left_expr = left.getsql(subquery)[0]
+        right = monad.right
+        right_expr = right.getsql(subquery)[0]
+        if isinstance(left, NumericMixin): left_path = ''
+        else: left_path = left.tableref.name_path + '-'
+        if isinstance(right, NumericMixin): right_path = ''
+        else: right_path = right.tableref.name_path + '-'
+        if left_path.startswith(right_path): tableref = left.tableref
+        elif right_path.startswith(left_path): tableref = right.tableref
+        else: throw(TranslationError, 'Cartesian product detected in %s' % ast2src(monad.node))
+        monad.tableref = tableref
+        return [ [ monad.sqlop, left_expr, right_expr ] ]
+    __add__ = make_numericset_binop('+', 'ADD')
+    __sub__ = make_numericset_binop('-', 'SUB')
+    __mul__ = make_numericset_binop('*', 'MUL')
+    __div__ = make_numericset_binop('/', 'DIV')
 
 class QuerySetMonad(SetMixin, Monad):
     def __init__(monad, translator, subtranslator):
