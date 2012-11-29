@@ -870,13 +870,17 @@ class Monad(object):
         translator.aggregated = True
         if monad.aggregated: throw(TranslationError, 'Aggregated functions cannot be nested. Got: {EXPR}')
         expr = monad.getsql()
-        if len(expr) == 1: expr = expr[0]
+        count_kind = 'DISTINCT'
+        if monad.type is bool:
+            expr = [ 'CASE', None, [ [ expr, [ 'VALUE', 1 ] ] ], [ 'VALUE', None ] ]
+            count_kind = 'ALL'
+        elif len(expr) == 1: expr = expr[0]
         elif translator.row_value_syntax == True: expr = ['ROW'] + expr
         elif translator.dialect == 'SQLite':
             alias, pk_columns = monad.tableref.make_join(pk_only=False)
             expr = [ 'COLUMN', alias, 'ROWID' ]
         else: throw(NotImplementedError)
-        result = translator.ExprMonad.new(translator, int, [ 'COUNT', 'DISTINCT', expr ])
+        result = translator.ExprMonad.new(translator, int, [ 'COUNT', count_kind, expr ])
         result.aggregated = True
         return result
     def aggregate(monad, func_name):
