@@ -1,2 +1,5 @@
 *.pyc
 *.sqlite
+/pony/tests/.coverage
+/pony/tests/coverage.bat
+/pony/tests/htmlcov/*.*
