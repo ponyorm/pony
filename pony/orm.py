@@ -779,6 +779,7 @@ class Attribute(object):
         if obj._status_ in ('deleted', 'cancelled'): throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
         val = obj._vals_.get(attr.name, NOT_LOADED)
         if val is NOT_LOADED: val = attr.load(obj)
+        if val is None: return val
         if attr.reverse and val._discriminator_ and val._subclasses_:
             seeds = obj._cache_.seeds.get(val.__class__._pk_)
             if seeds and val in seeds: val._load_()
