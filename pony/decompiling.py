@@ -13,8 +13,10 @@ ast_cache = {}
 codeobjects = {}
 
 def decompile(x):
-    if isinstance(x, types.GeneratorType): codeobject = x.gi_frame.f_code
-    elif isinstance(x, types.FunctionType): codeobject = x.func_code
+    t = type(x)
+    if t is types.CodeType: codeobject = x
+    elif t is types.GeneratorType: codeobject = x.gi_frame.f_code
+    elif t is types.FunctionType: codeobject = x.func_code
     else: throw(TypeError)
     key = id(codeobject)
     result = ast_cache.get(key)
