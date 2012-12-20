@@ -391,7 +391,6 @@ class SQLTranslator(ASTTranslator):
             name = assign.name
             if name in tablerefs: throw(TranslationError, 'Duplicate name: %r' % name)
             if name.startswith('__'): throw(TranslationError, 'Illegal name: %r' % name)
-            assert name not in tablerefs
 
             node = qual.iter
             attr_names = []
