@@ -13,8 +13,8 @@ except ImportError: etree = None
 import pony
 from pony import options
 from pony.decompiling import decompile
+from pony.ormtypes import AsciiStr, LongStr, LongUnicode, numeric_types, get_normalized_type_of
 from pony.dbapiprovider import (
-    LongStr, LongUnicode,
     DBException, RowNotFound, MultipleRowsFound, TooManyRowsFound,
     Warning, Error, InterfaceError, DatabaseError, DataError, OperationalError,
     IntegrityError, InternalError, ProgrammingError, NotSupportedError
@@ -42,7 +42,7 @@ __all__ = '''
     Optional Required Unique PrimaryKey Set
     flush commit rollback with_transaction
 
-    LongStr LongUnicode
+    AsciiStr LongStr LongUnicode
 
     TranslationError
 
@@ -3351,8 +3351,6 @@ def exists(gen):
 def JOIN(expr):
     return expr
 
-class AsciiStr(str): pass
-
 class Query(object):
     def __init__(query, code, tree, external_names, globals, locals):
         assert isinstance(tree, ast.GenExprInner)
@@ -3413,7 +3411,7 @@ class Query(object):
                 databases[name] = value
             else:
                 variables[name] = value
-                try: normalized_type = translator_cls.get_normalized_type_of(value)
+                try: normalized_type = get_normalized_type_of(value)
                 except TypeError: throw(TypeError, "Variable %r has unexpected type %r" % (name, type(value).__name__))
                 vartypes[name] = normalized_type
 
@@ -3442,7 +3440,7 @@ class Query(object):
             if aggr_func_name:
                 expr_type = translator.expr_type
                 if not isinstance(expr_type, EntityMeta):
-                    if aggr_func_name in ('SUM', 'AVG') and expr_type not in translator.numeric_types:
+                    if aggr_func_name in ('SUM', 'AVG') and expr_type not in numeric_types:
                         throw(TranslationError, '%r is valid for numeric attributes only' % aggr_func_name.lower())
                     assert len(translator.expr_columns) == 1
                     column_ast = translator.expr_columns[0]

@@ -7,7 +7,7 @@ from binascii import unhexlify
 import pgdb
 
 from pony import orm, dbschema, sqlbuilding, dbapiprovider
-from pony.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, LongStr, LongUnicode
+from pony.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
 from pony.sqltranslation import SQLTranslator
 from pony.utils import localbase, timestamp2datetime
 

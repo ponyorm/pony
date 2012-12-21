@@ -10,7 +10,7 @@ from MySQLdb.constants import FIELD_TYPE, FLAG
 
 from pony import dbschema
 from pony import dbapiprovider
-from pony.dbapiprovider import DBAPIProvider, LongStr, LongUnicode
+from pony.dbapiprovider import DBAPIProvider
 from pony.sqltranslation import SQLTranslator
 from pony.sqlbuilding import Value, SQLBuilder
 from pony.utils import localbase
