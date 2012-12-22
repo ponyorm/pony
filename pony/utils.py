@@ -71,7 +71,8 @@ def cut_traceback(old_func):
             try:
                 while tb.tb_next:
                     module_name = tb.tb_frame.f_globals['__name__']
-                    if module_name == 'pony' or module_name.startswith('pony.'):
+                    if module_name == 'pony' or (module_name is not None  # may be None during import
+                                                 and module_name.startswith('pony.')):
                         last_pony_tb = tb
                     tb = tb.tb_next
                 assert last_pony_tb
