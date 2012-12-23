@@ -1897,6 +1897,14 @@ class EntityMeta(type):
             Discriminator.create_default_attr(entity)
         if entity._discriminator_attr_:
             entity._discriminator_attr_.process_entity_inheritance(entity)
+
+        iter_name = entity._default_iter_name_ = (
+            ''.join(letter for letter in entity.__name__ if letter.isupper()).lower()
+            or entity.__name__
+            )
+        for_expr = ast.GenExprFor(ast.AssName(iter_name, 'OP_ASSIGN'), ast.Name('.0'), [])
+        inner_expr = ast.GenExprInner(ast.Name(iter_name), [ for_expr ])
+        entity._default_genexpr_ = inner_expr
     def _link_reverse_attrs_(entity):
         database = entity._database_
         unmapped_attrs = database._unmapped_attrs.pop(entity.__name__, set())
@@ -2055,10 +2063,7 @@ class EntityMeta(type):
         return entity._query_from_lambda_(func, globals, locals)
     @cut_traceback
     def orderby(entity, *args):
-        name = (''.join(letter for letter in entity.__name__ if letter.isupper())).lower() or entity.__name__[0]
-        for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name('.0'), [])
-        inner_expr = ast.GenExprInner(ast.Name(name), [ for_expr ])
-        query = Query(None, inner_expr, set(['.0']), {}, { '.0' : entity })
+        query = Query(entity._default_iter_name_, entity._default_genexpr_, set(['.0']), {}, { '.0' : entity })
         return query.orderby(*args)
     def _find_(entity, max_fetch_count, args, keyargs):
         if entity._database_.schema is None:
