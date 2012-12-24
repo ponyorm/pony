@@ -154,15 +154,15 @@ class TestSQLTranslator(unittest.TestCase):
         self.assertEquals(result, [Student[2]])
     def test_builtin_in_locals(self):
         x = max
-        gen = (s for s in Student if x(s.grades.value) == 'C')
+        gen = (s.group for s in Student if x(s.grades.value) == 'C')
         result = fetch(gen)
-        self.assertEquals(result, [Student[1]])
+        self.assertEquals(result, [Group[1]])
         x = min
         result = fetch(gen)
         self.assertEquals(result, [])
-    @raises_exception(TranslationError, "Name 'g' must be defined in query")
-    def test_name(self):
-        fetch(s for s in Student for g in g.subjects)
+    # @raises_exception(TranslationError, "Name 'g' must be defined in query")
+    # def test_name(self):
+    #     fetch(s for s in Student for g in g.subjects)
     def test_chain1(self):
         result = set(fetch(g for g in Group for s in g.students if s.name.endswith('3')))
         self.assertEquals(result, set([Group[2]]))

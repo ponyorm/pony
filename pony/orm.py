@@ -1,5 +1,6 @@
 import __builtin__, re, sys, types, inspect
 from compiler import ast, parse
+from cPickle import loads, dumps
 from operator import attrgetter, itemgetter
 from itertools import count as _count, ifilter, ifilterfalse, imap, izip, chain, starmap
 from time import time
@@ -14,6 +15,7 @@ import pony
 from pony import options
 from pony.decompiling import decompile
 from pony.ormtypes import AsciiStr, LongStr, LongUnicode, numeric_types, get_normalized_type_of
+from pony.asttranslation import create_extractors, TranslationError
 from pony.dbapiprovider import (
     DBException, RowNotFound, MultipleRowsFound, TooManyRowsFound,
     Warning, Error, InterfaceError, DatabaseError, DataError, OperationalError,
@@ -37,14 +39,14 @@ __all__ = '''
     TransactionError TransactionIntegrityError IsolationError CommitException RollbackException
     UnrepeatableReadError UnresolvableCyclicDependency UnexpectedError
 
+    TranslationError ExprEvalError
+
     Database sql_debug show
 
     Optional Required Unique PrimaryKey Set
     flush commit rollback with_transaction
 
     AsciiStr LongStr LongUnicode
-
-    TranslationError
 
     query
     fetch fetch_one fetch_all fetch_distinct
@@ -117,7 +119,12 @@ class UnexpectedError(TransactionError):
         Exception.__init__(exc, msg)
         exc.original_exc = original_exc
 
-class TranslationError(Exception): pass
+class ExprEvalError(TranslationError):
+    def __init__(exc, src, cause):
+        assert isinstance(cause, Exception)
+        msg = '%s raises %s: %s' % (src, type(cause).__name__, str(cause))
+        TranslationError.__init__(exc, msg)
+        exc.cause = cause
 
 ###############################################################################
 
@@ -1222,9 +1229,7 @@ class Set(Collection):
                 setdata_list.append(setdata2)
                 if len(objects) >= max_batch_size: break
 
-        value_dict = {}
-        for i, obj2 in enumerate(objects):
-            for j, val in enumerate(obj2._get_raw_pkval_()): value_dict[i, j] = val
+        value_dict = dict(enumerate(objects))
             
         if not reverse.is_collection:
             sql, adapter, attr_offsets = rentity._construct_batchload_sql_(len(objects), reverse)
@@ -2045,7 +2050,9 @@ class EntityMeta(type):
     @cut_traceback
     def __getitem__(entity, key):
         if type(key) is not tuple: key = (key,)
-        if len(key) != len(entity._pk_attrs_): throw(TypeError, 'Invalid count of attrs in primary key')
+        if len(key) != len(entity._pk_attrs_):
+            throw(TypeError, 'Invalid count of attrs in %s primary key (%s instead of %s)'
+                             % (entity.__name__, len(key), len(entity._pk_attrs_)))
         keyargs = dict(izip(imap(attrgetter('name'), entity._pk_attrs_), key))
         objects = entity._find_(1, (), keyargs)
         if not objects: throw(ObjectNotFound, entity, key)
@@ -2063,7 +2070,7 @@ class EntityMeta(type):
         return entity._query_from_lambda_(func, globals, locals)
     @cut_traceback
     def orderby(entity, *args):
-        query = Query(entity._default_iter_name_, entity._default_genexpr_, set(['.0']), {}, { '.0' : entity })
+        query = Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
         return query.orderby(*args)
     def _find_(entity, max_fetch_count, args, keyargs):
         if entity._database_.schema is None:
@@ -2153,9 +2160,8 @@ class EntityMeta(type):
         database = entity._database_
         query_attrs = tuple((attr, value is None) for attr, value in sorted(avdict.iteritems()))
         single_row = (max_fetch_count == 1)
-        sql, extractor, adapter, attr_offsets = entity._construct_sql_(query_attrs, order_by_pk=not single_row)
-        value_dict = extractor(avdict)
-        arguments = adapter(value_dict)
+        sql, adapter, attr_offsets = entity._construct_sql_(query_attrs, order_by_pk=not single_row)
+        arguments = adapter(avdict)
         cursor = database._exec_sql(sql, arguments)
         objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count)
         return objects
@@ -2227,7 +2233,6 @@ class EntityMeta(type):
         from_list = [ 'FROM', [ None, 'TABLE', table_name ]]
         where_list = [ 'WHERE' ]
         values = []
-        extractors = {}
 
         discr_attr = entity._discriminator_attr_
         if discr_attr and (discr_attr, False) not in query_attrs:
@@ -2236,40 +2241,25 @@ class EntityMeta(type):
 
         for attr, attr_is_none in query_attrs:
             if not attr.reverse:
-                if not attr_is_none:
-                    assert len(attr.converters) == 1
-                    where_list.append([ 'EQ', [ 'COLUMN', None, attr.column ], [ 'PARAM', attr.name, attr.converters[0] ] ])
-                    extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]
-                else: where_list.append([ 'IS_NULL', [ 'COLUMN', None, attr.column ] ])
+                if attr_is_none: where_list.append([ 'IS_NULL', [ 'COLUMN', None, attr.column ] ])
+                else:
+                    if len(attr.converters) > 1: throw(NotImplementedError)
+                    where_list.append([ 'EQ', [ 'COLUMN', None, attr.column ], [ 'PARAM', attr, attr.converters[0] ] ])
             elif not attr.columns: throw(NotImplementedError)
             else:
-                attr_entity = attr.py_type
-                assert attr_entity == attr.reverse.entity
-                if len(attr.columns) == 1:
-                    if not attr_is_none:
-                        assert len(attr.converters) == 1
-                        where_list.append([ 'EQ', [ 'COLUMN', None, attr.column ], [ 'PARAM', attr.name, attr.converters[0] ] ])
-                        extractors[attr.name] = lambda avdict, attr=attr: avdict[attr]._get_raw_pkval_()[0]
-                    else: where_list.append(['IS_NULL', [ 'COLUMN', None, attr.column ]])
-                elif not attr_is_none:
-                    for i, (column, converter) in enumerate(zip(attr.columns, attr_entity._pk_converters_)):
-                        param_name = '%s-%d' % (attr.name, i+1)
-                        where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', param_name, converter ] ])
-                        extractors[param_name] = lambda avdict, attr=attr, i=i: avdict[attr]._get_raw_pkval_()[i]
-                else:
+                attr_entity = attr.py_type; assert attr_entity == attr.reverse.entity
+                if attr_is_none:
                     for column in attr.columns:
                         where_list.append([ 'IS_NULL', [ 'COLUMN', None, column ] ])
+                else:
+                    for i, (column, converter) in enumerate(zip(attr.columns, attr_entity._pk_converters_)):
+                        where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (attr, i), converter ] ])
 
         sql_ast = [ 'SELECT', select_list, from_list, where_list ]
         if order_by_pk: sql_ast.append([ 'ORDER_BY' ] + [ ([ 'COLUMN', None, column ], 'ASC') for column in entity._pk_columns_ ])
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
-        def extractor(avdict):
-            param_dict = {}
-            for param, extractor in extractors.iteritems():
-                param_dict[param] = extractor(avdict)
-            return param_dict
-        cached_sql = sql, extractor, adapter, attr_offsets
+        cached_sql = sql, adapter, attr_offsets
         entity._find_sql_cache_[query_key] = cached_sql
         return cached_sql
     def _fetch_objects(entity, cursor, attr_offsets, max_fetch_count=None):
@@ -2306,17 +2296,18 @@ class EntityMeta(type):
         if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_, None)            
         else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
         return real_entity_subclass, pkval, avdict
-    def _query_from_lambda_(entity, func, globals, locals):
-        if not isinstance(func, basestring):
-            names, argsname, keyargsname, defaults = inspect.getargspec(func)
+    def _query_from_lambda_(entity, lambda_func, globals, locals):
+        if type(lambda_func) is types.FunctionType:
+            names, argsname, keyargsname, defaults = inspect.getargspec(lambda_func)
             if len(names) > 1: throw(TypeError)
             if argsname or keyargsname: throw(TypeError)
             if defaults: throw(TypeError)
-            code = func.func_code
+            code_key = id(lambda_func.func_code)
             name = names[0]
-            cond_expr, external_names = decompile(func)
-        else:
-            module_node = parse(func)
+            cond_expr, external_names = decompile(lambda_func)
+        elif isinstance(lambda_func, basestring):
+            lambda_text = lambda_func
+            module_node = parse(lambda_text)
             if not isinstance(module_node, ast.Module): throw(TypeError)
             stmt_node = module_node.node
             if not isinstance(stmt_node, ast.Stmt) or len(stmt_node.nodes) != 1: throw(TypeError)
@@ -2328,25 +2319,17 @@ class EntityMeta(type):
             if lambda_expr.varargs: throw(TypeError)
             if lambda_expr.kwargs: throw(TypeError)
             if lambda_expr.defaults: throw(TypeError)
-            code = func
+            code_key = lambda_text
             name = lambda_expr.argnames[0]            
             cond_expr = lambda_expr.code
-            external_names = set()
-            def collect_names(tree):
-                for child in tree.getChildNodes():
-                    if isinstance(child, ast.Name): external_names.add(child.name)
-                    else: collect_names(child)
-            collect_names(cond_expr)
 
-        external_names.discard(name)
-        external_names.add('.0')
         if_expr = ast.GenExprIf(cond_expr)
         for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name('.0'), [ if_expr ])
         inner_expr = ast.GenExprInner(ast.Name(name), [ for_expr ])
         locals = locals.copy()
         assert '.0' not in locals
         locals['.0'] = entity
-        return Query(code, inner_expr, external_names, globals, locals)
+        return Query(code_key, inner_expr, globals, locals)
     def _get_cache_(entity):
         database = entity._database_
         if database is None: throw(TransactionError)
@@ -2475,7 +2458,9 @@ class Entity(object):
     __metaclass__ = EntityMeta
     __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '__weakref__'
     @cut_traceback
-    def __new__(entity, **keyargs):
+    def __new__(entity, *args, **keyargs):
+        if args: raise TypeError('%s constructor accept only keyword arguments. Got: %d positional argument%s'
+                                 % (entity.__name__, len(args), len(args) > 1 and 's' or ''))
         if entity._database_.schema is None:
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
 
@@ -2545,9 +2530,7 @@ class Entity(object):
             if len(objects) >= max_batch_size: break
             if seed is not obj: objects.append(seed)
         sql, adapter, attr_offsets = entity._construct_batchload_sql_(len(objects))
-        value_dict = {}
-        for i, obj in enumerate(objects):
-            for j, val in enumerate(obj._get_raw_pkval_()): value_dict[i, j] = val
+        value_dict = dict(enumerate(objects))
         arguments = adapter(value_dict)
         cursor = database._exec_sql(sql, arguments)
         objects = entity._fetch_objects(cursor, attr_offsets)
@@ -3272,23 +3255,7 @@ def string2ast(s):
     if not isinstance(discard_node, ast.Discard): throw(TypeError)
     tree = discard_node.expr
     if not isinstance(tree, ast.GenExpr): throw(TypeError)
-    internal_names = set()
-    external_names = set()
-    def collect_names(tree, internals, externals):
-        for child in tree.getChildNodes():
-            if isinstance(child, ast.Name): externals.add(child.name)
-            elif isinstance(child, ast.AssName): internals.add(child.name)
-            elif isinstance(child, ast.GenExpr):
-                inner_internals = set()
-                inner_externals = set()
-                collect_names(child, inner_internals, inner_externals)
-                inner_externals -= inner_internals
-                for name in inner_externals:
-                    if name not in internals: externals.add(name)
-            else: collect_names(child, internals, externals)
-    collect_names(tree, internal_names, external_names)
-    external_names -= internal_names
-    result = tree, external_names
+    result = tree #, external_names
     string2ast_cache[s] = result
     return result
 
@@ -3296,17 +3263,17 @@ def string2ast(s):
 def query(gen, frame_depth=0):
     if isinstance(gen, types.GeneratorType):
         tree, external_names = decompile(gen)
-        code = gen.gi_frame.f_code
+        code_key = id(gen.gi_frame.f_code)
         globals = gen.gi_frame.f_globals
         locals = gen.gi_frame.f_locals
     elif isinstance(gen, basestring):
         query_string = gen
-        tree, external_names = string2ast(query_string)
-        code = query_string
+        tree = string2ast(query_string)
+        code_key = query_string
         globals = sys._getframe(frame_depth+2).f_globals
         locals = sys._getframe(frame_depth+2).f_locals
     else: throw(TypeError)
-    return Query(code, tree.code, external_names, globals, locals)
+    return Query(code_key, tree.code, globals, locals)
 
 @cut_traceback
 def fetch(gen):
@@ -3352,77 +3319,55 @@ def JOIN(expr):
     return expr
 
 class Query(object):
-    def __init__(query, code, tree, external_names, globals, locals):
+    def __init__(query, code_key, tree, globals, locals):
         assert isinstance(tree, ast.GenExprInner)
-        query._tree = tree
-        query._external_names = external_names
+        extractors, varnames, tree = create_extractors(code_key, tree)
+        vars = {}
+        vartypes = {}
+        for src, code in extractors.iteritems():
+            if src == '.0': value = locals['.0']
+            else:
+                try: value = eval(code, globals, locals)
+                except Exception, cause: raise ExprEvalError(src, cause)
+                if src == 'None' and value is not None: throw(TranslationError)
+                if src == 'True' and value is not True: throw(TranslationError)
+                if src == 'False' and value is not False: throw(TranslationError)
+            try: vartypes[src] = get_normalized_type_of(value)
+            except TypeError:
+                if not isinstance(value, dict):
+                    unsupported = False
+                    try: value = tuple(value)
+                    except: unsupported = True
+                else: unsupported = True                    
+                if unsupported:
+                    typename = type(value).__name__
+                    if src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
+                    throw(TypeError, 'Expression %s has unsupported type %r' % (src, typename))
+                vartypes[src] = get_normalized_type_of(value)
+            vars[src] = value
+        query_key = code_key, tuple(map(vartypes.__getitem__, varnames))
 
-        query._databases = databases = {}
-        query._entities = entities = {}
-        query._variables = variables = {}
-        query._vartypes = vartypes = {}
-        query._functions = functions = {}
+        query._vars = vars
+        query._vartypes = vartypes
+        query._base_key = query_key
 
         node = tree.quals[0].iter
-        attrnames = []
-        while isinstance(node, ast.Getattr):  # only when query is passed as a string
-            attrnames.append(node.attrname)
-            node = node.expr
-        if not isinstance(node, ast.Name): throw(NotImplementedError)
-        name = node.name
-        try: origin = locals[name]
-        except KeyError:  # only when query is passed as a string
-            try: origin = globals[name]
-            except KeyError: throw(NameError(name))
-        for attrname in reversed(attrnames):
-            origin = getattr(origin, attrname)
-
+        origin = vars[node.src]
         if isinstance(origin, EntityIter): origin = origin.entity
         elif not isinstance(origin, EntityMeta):
-            throw(NotImplementedError, 'Query iterator has unexpected type %r' % type(origin).__name__)
+            if src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
+            else: throw(TypeError, 'Cannot iterate over non-entity object %s' % node.src)
         query._database = database = origin._database_
         if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
         query._cache = database._get_cache()
 
-        translator_cls = database.provider.translator_cls
-
-        for name in external_names:
-            try: value = locals[name]
-            except KeyError:
-                try: value = globals[name]
-                except KeyError:
-                    try: value = getattr(__builtin__, name)
-                    except AttributeError: throw(NameError, name)
-            try: hash(value)
-            except TypeError: throw(TypeError, 'Variable %r has unexpected type %r'
-                                               % (name, type(value).__name__))
-            if value in translator_cls.special_functions: functions[name] = value
-            elif type(value) in (types.FunctionType, types.BuiltinFunctionType):
-                throw(TypeError, 'Function %r cannot be used inside query' % value.__name__)
-            elif type(value) is types.MethodType:
-                throw(TypeError, 'Method %r cannot be used inside query' % value.__name__)
-            elif isinstance(value, EntityMeta):
-                entities[name] = value
-            elif isinstance(value, EntityIter):
-                entities[name] = value.entity
-            elif isinstance(value, Database):
-                if value is not database:
-                    throw(TranslationError, 'All entities in a query must belong to the same database')
-                databases[name] = value
-            else:
-                variables[name] = value
-                try: normalized_type = get_normalized_type_of(value)
-                except TypeError: throw(TypeError, "Variable %r has unexpected type %r" % (name, type(value).__name__))
-                vartypes[name] = normalized_type
-
-        query._result = None
-        key = id(code), tuple(sorted(entities.iteritems())), tuple(sorted(vartypes.iteritems())), tuple(sorted(functions.iteritems()))
-        query._base_key = key
-
-        translator = database._translator_cache.get(key)
+        translator = database._translator_cache.get(query_key)
         if translator is None:
-            translator = translator_cls(tree, databases, entities, vartypes, functions)
-            database._translator_cache[key] = translator
+            tree = loads(dumps(tree, 2))  # tree = deepcopy(tree)
+            translator_cls = database.provider.translator_cls
+            translator = translator_cls(tree, extractors, vartypes)
+            database._translator_cache[query_key] = translator
+        query._tree = translator.tree
         query._translator = translator
         expr_type = translator.expr_type
         if isinstance(expr_type, EntityMeta): query._order = tuple((attr, True) for attr in expr_type._pk_attrs_)
@@ -3486,10 +3431,7 @@ class Query(object):
             cache_entry = sql, adapter, attr_offsets
             database._constructed_sql_cache[sql_key] = cache_entry
         else: sql, adapter, attr_offsets = cache_entry
-        param_dict = {}
-        for param_name, extractor in query._translator.extractors.items():
-            param_dict[param_name] = extractor(query._variables)
-        arguments = adapter(param_dict)
+        arguments = adapter(query._vars)
         arguments_type = type(arguments)
         if arguments_type is tuple: arguments_key = arguments
         elif arguments_type is dict: arguments_key = tuple(sorted(arguments.iteritems()))

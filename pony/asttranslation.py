@@ -2,6 +2,8 @@ from compiler import ast
 
 from pony.utils import copy_func_attrs, throw
 
+class TranslationError(Exception): pass
+
 class ASTTranslator(object):
     def __init__(translator, tree):
         translator.tree = tree
@@ -151,7 +153,9 @@ class PythonTranslator(ASTTranslator):
         return '%s[%s]' % (node.expr.src, key)
     def postSlice(translator, node):
         node.priority = 2
-        return '%s[%s:%s]' % (node.expr.src, node.lower.src, node.upper.src)
+        lower = node.lower is not None and node.lower.src or ''
+        upper = node.upper is not None and node.upper.src or ''
+        return '%s[%s:%s]' % (node.expr.src, lower, upper)
     def postSliceobj(translator, node):
         return ':'.join(item.src for item in node.nodes)
     def postConst(translator, node):
@@ -185,3 +189,73 @@ class PythonTranslator(ASTTranslator):
         return node.name
     def postKeyword(translator, node):
         return '='.join((node.name, node.expr.src))
+
+nonexternalizable_types = (ast.Keyword, ast.Sliceobj, ast.List, ast.Tuple)
+
+class PreTranslator(ASTTranslator):
+    def __init__(translator, tree):
+        assert isinstance(tree, ast.GenExprInner), tree
+        ASTTranslator.__init__(translator, tree)
+        translator.contexts = []
+        translator.externals = externals = set()
+        translator.dispatch(tree)
+        for node in externals.copy():
+            if isinstance(node, nonexternalizable_types):
+                node.external = False
+                externals.remove(node)
+                externals.update(node.getChildNodes())
+    def dispatch(translator, node):
+        node.external = node.constant = False
+        ASTTranslator.dispatch(translator, node)
+        childs = node.getChildNodes()
+        if childs and all(getattr(child, 'external', False) for child in childs):
+            node.external = True
+        if node.external:
+            externals = translator.externals
+            externals.difference_update(childs)
+            externals.add(node)
+    def preGenExprInner(translator, node):
+        translator.contexts.append(set())
+        dispatch = translator.dispatch
+        for i, qual in enumerate(node.quals):
+            dispatch(qual.iter)
+            dispatch(qual.assign)
+            for if_ in qual.ifs: dispatch(if_.test)
+        dispatch(node.expr)
+        translator.contexts.pop()
+        return True
+    def preLambda(translator, node):
+        if node.varargs or node.kwargs or node.defaults: throw(NotImplementedError)
+        translator.contexts.append(set(node.argnames))
+        translator.dispatch(node.code)
+        translator.contexts.pop()
+        return True
+    def postAssName(translator, node):
+        if node.flags != 'OP_ASSIGN': throw(TypeError)
+        name = node.name
+        if name.startswith('__'): throw(TranslationError, 'Illegal name: %r' % name)
+        translator.contexts[-1].add(name)
+    def postName(translator, node):
+        name = node.name
+        for context in translator.contexts:
+            if name in context: return
+        node.external = True
+    def postConst(translator, node):
+        node.external = node.constant = True
+
+extractors_cache = {}
+
+def create_extractors(code_key, tree):
+    result = extractors_cache.get(code_key)
+    if result is None:
+        pretranslator = PreTranslator(tree)
+        extractors = {}
+        for node in pretranslator.externals:
+            src = node.src = ast2src(node)
+            if src == '.0': code = None
+            else: code = compile(src, src, 'eval')
+            extractors[src] = code
+        varnames = list(sorted(extractors))
+        result = extractors_cache[code_key] = extractors, varnames, tree
+    return result
+

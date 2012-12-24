@@ -7,13 +7,12 @@ from datetime import date, datetime
 
 from pony import options
 from pony.utils import avg, copy_func_attrs, is_ident, throw
-from pony.asttranslation import ASTTranslator, ast2src
-from pony.ormtypes import (
-    string_types, numeric_types, comparable_types, SetType,
+from pony.asttranslation import ASTTranslator, ast2src, TranslationError
+from pony.ormtypes import \
+    string_types, numeric_types, comparable_types, SetType, FuncType, MethodType, \
     get_normalized_type_of, normalize_type, coerce_types, are_comparable_types
-    )
 import orm
-from pony.orm import query, exists, ERDiagramError, TranslationError, EntityMeta, Set, JOIN, AsciiStr
+from pony.orm import query, exists, ERDiagramError, EntityMeta, Set, JOIN, AsciiStr
 
 def check_comparable(left_monad, right_monad, op='=='):
     t1, t2 = left_monad.type, right_monad.type
@@ -65,6 +64,41 @@ class SQLTranslator(ASTTranslator):
     def default_post(translator, node):
         throw(NotImplementedError)
 
+    def dispatch(translator, node):
+        if hasattr(node, 'monad'): return  # monad already assigned somehow
+        if not getattr(node, 'external', False) or getattr(node, 'constant', False):
+            return ASTTranslator.dispatch(translator, node)  # default route
+        src = node.src
+        t = translator.vartypes[src]
+        tt = type(t)
+        if t is NoneType:
+            monad = translator.ConstMonad.new(translator, None)
+        elif tt is SetType:
+            if isinstance(t.item_type, EntityMeta):
+                monad = translator.EntityMonad(translator, t.item_type)
+            else: throw(NotImplementedError)
+        elif tt is FuncType:
+            func = t.func
+            if func not in translator.special_functions:
+                throw(TypeError, 'Function %r cannot be used inside query' % func.__name__)
+            func_monad_class = special_functions[func]
+            monad = func_monad_class(translator)
+        elif tt is MethodType:
+            obj, func = t.obj, t.func
+            if not isinstance(obj, EntityMeta): throw(NotImplementedError)
+            entity_monad = translator.EntityMonad(translator, obj)
+            if obj.__class__.__dict__.get(func.__name__) is not func: throw(NotImplementedError)
+            monad = translator.MethodMonad(translator, entity_monad, func.__name__)
+        elif isinstance(node, ast.Name) and node.name in ('True', 'False'):
+            value = node.name == 'True' and 1 or 0
+            monad = translator.ConstMonad.new(translator, value)
+        elif tt is tuple:
+            monad = translator.ListMonad(translator, [ ParamMonad.new(translator, item_type, (src, i))
+                                                       for i, item_type in enumerate(t) ])
+        else:
+            monad = translator.ParamMonad.new(translator, t, src)
+        node.monad = monad
+
     def call(translator, method, node):
         try: monad = method(node)
         except Exception:
@@ -91,20 +125,17 @@ class SQLTranslator(ASTTranslator):
                 else: monad.aggregated = False
             return monad
 
-    def __init__(translator, tree, databases, entities, vartypes, functions, parent_translator=None):
+    def __init__(translator, tree, extractors, vartypes, parent_translator=None):
         assert isinstance(tree, ast.GenExprInner), tree
         ASTTranslator.__init__(translator, tree)
         translator.database = None
-        translator.databases = databases
-        translator.entities = entities
+        translator.extractors = extractors
         translator.vartypes = vartypes
-        translator.functions = functions
+        translator.parent = parent_translator
         if not parent_translator: subquery = Subquery()
         else: subquery = Subquery(parent_translator.subquery)
         translator.subquery = subquery
         tablerefs = subquery.tablerefs
-        translator.parent = parent_translator
-        translator.extractors = {}
         translator.distinct = False
         translator.where = None
         translator.conditions = subquery.conditions
@@ -125,33 +156,25 @@ class SQLTranslator(ASTTranslator):
             if name.startswith('__'): throw(TranslationError, 'Illegal name: %r' % name)
 
             node = qual.iter
-            attr_names = []
-            while isinstance(node, ast.Getattr):
-                attr_names.append(node.attrname)
-                node = node.expr
-            if not isinstance(node, ast.Name): throw(TypeError, ast2src(node))
-            node_name = node.name
-
-            if node_name in databases:
-                db_name = node_name
-                db = databases[db_name]
-                if not attr_names: throw(TypeError, 'Entity name is not specified after database name %r' % db_name)
-                entity_name = attr_names[0]
-                try: entity = getattr(db, entity_name)
-                except AttributeError: throw(AttributeError, 
-                    'Entity %r is not found in database %r' % (entity_name, db_name))
-                entity_name = db_name + '.' + entity_name
-                entity2 = entities.setdefault(entity_name, entity)
-                node_name = entity_name
-                assert entity2 is entity
-                attr_names.pop(0)
-
-            if not attr_names:
+            src = getattr(node, 'src', None)
+            if src:
+                iterable = translator.vartypes[src]
+                if not isinstance(iterable, SetType): throw(TranslationError,
+                    'Inside declarative query, iterator must be entity. '
+                    'Got: for %s in %s' % (name, ast2src(qual.iter)))
+                entity = iterable.item_type
+                if not isinstance(entity, EntityMeta):
+                    throw(TranslationError, 'for %s in %s' % (name, ast2src(qual.iter)))
                 if i > 0: translator.distinct = True
-                entity = entities.get(node_name)
-                if entity is None: throw(TranslationError, ast2src(qual.iter))
                 tablerefs[name] = TableRef(subquery, name, entity)
             else:
+                attr_names = []
+                while isinstance(node, ast.Getattr):
+                    attr_names.append(node.attrname)
+                    node = node.expr
+                if not isinstance(node, ast.Name) or not attr_names:
+                    throw(TranslationError, 'for %s in %s' % (name, ast2src(qual.iter)))
+                node_name = node.name
                 attr_names.reverse()
                 name_path = node_name
                 parent_tableref = subquery.get_tableref(node_name)
@@ -280,7 +303,7 @@ class SQLTranslator(ASTTranslator):
         translator.where = [ 'WHERE' ] + translator.conditions
     def preGenExpr(translator, node):
         inner_tree = node.code
-        subtranslator = translator.__class__(inner_tree, translator.databases, translator.entities, translator.vartypes, translator.functions, translator)
+        subtranslator = translator.__class__(inner_tree, translator.extractors, translator.vartypes, translator)
         return translator.QuerySetMonad(translator, subtranslator)
     def postGenExprIf(translator, node):
         monad = node.test.monad
@@ -319,29 +342,8 @@ class SQLTranslator(ASTTranslator):
     def postName(translator, node):
         name = node.name
         tableref = translator.subquery.get_tableref(name)
-        if tableref is not None:
-            entity = tableref.entity
-            return translator.ObjectIterMonad(translator, tableref, entity)
-
-        database = translator.databases.get(name)
-        if database is not None:
-            return translator.DatabaseMonad(translator, database)
-
-        entity = translator.entities.get(name)
-        if entity is not None:
-            return translator.EntityMonad(translator, entity)
-            
-        try: value_type = translator.vartypes[name]
-        except KeyError:
-            func = translator.functions.get(name)
-            if func is None: throw(NameError, name)
-            func_monad_class = special_functions[func]
-            return func_monad_class(translator)
-        else:
-            if name in ('True', 'False') and issubclass(value_type, int):
-                return translator.ConstMonad.new(translator, name == 'True' and 1 or 0)
-            elif value_type is NoneType: return translator.ConstMonad.new(translator, None)
-            else: return translator.ParamMonad.new(translator, value_type, name)
+        assert tableref is not None
+        return translator.ObjectIterMonad(translator, tableref, tableref.entity)
     def postAdd(translator, node):
         return node.left.monad + node.right.monad
     def postSub(translator, node):
@@ -380,10 +382,15 @@ class SQLTranslator(ASTTranslator):
             return func_monad(query_set_monad)
         if not isinstance(arg, ast.Lambda): return
         lambda_expr = arg
+        translator.dispatch(node.node)
+        
+
         if not isinstance(node.node, ast.Getattr): throw(NotImplementedError)
         expr = node.node.expr
         translator.dispatch(expr)
         if not isinstance(expr.monad, translator.EntityMonad): throw(NotImplementedError)
+
+
         entity = expr.monad.type
         for n, v in translator.entities.iteritems():
             if entity is v: entity_name = n; break
@@ -398,7 +405,7 @@ class SQLTranslator(ASTTranslator):
         if_expr = ast.GenExprIf(cond_expr)
         for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name(entity_name), [ if_expr ])
         inner_expr = ast.GenExprInner(ast.Name(name), [ for_expr ])
-        subtranslator = translator.__class__(inner_expr, translator.databases, translator.entities, translator.vartypes, translator.functions, translator)
+        subtranslator = translator.__class__(inner_expr, translator.extractors, translator.vartypes, translator)
         return translator.QuerySetMonad(translator, subtranslator)
     def postCallFunc(translator, node):
         args = []
@@ -710,39 +717,14 @@ class DatabaseMonad(Monad):
         return EntityMonad(monad.translator, entity)
 
 class EntityMonad(Monad):
-    def __getitem__(monad, key):
-        translator = monad.translator
-        if isinstance(key, translator.ConstMonad): pk_monads = [ key ]
-        elif isinstance(key, translator.ListMonad): pk_monads = key.items
-        elif isinstance(key, slice): throw(TypeError, 'Slice is not supported in {EXPR}')
-        else: throw(NotImplementedError)
-        entity = monad.type
-        if len(pk_monads) != len(entity._pk_attrs_): throw(TypeError, 
-            'Invalid count of attrs in primary key (%d instead of %d) in expression: {EXPR}'
-            % (len(pk_monads), len(entity._pk_attrs_)))
-        return translator.ObjectConstMonad(translator, monad.type, pk_monads)
-    def normalize_args(monad, keyargs):  # pragma: no cover
-        translator = monad.translator
-        entity = monad.type
-        avdict = {}
-        get = entity._adict_.get 
-        for name, val_monad in keyargs.items():
-            val_type = val_monad.type
-            attr = get(name)
-            if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
-            if attr.is_collection: throw(NotImplementedError)
-            if attr.is_ref:
-                if not issubclass(val_type, attr.py_type): throw(TypeError)
-                if not isinstance(val_monad, translator.ObjectConstMonad):
-                    throw(TypeError, 'Entity constructor arguments in declarative query should be consts')
-                avdict[attr] = val_monad
-            elif isinstance(val_monad, translator.ConstMonad):
-                val = val_monad.value
-                avdict[attr] = attr.check(val, None, entity, from_db=False)
-            else: throw(TypeError, 'Entity constructor arguments in declarative query should be consts')
-        pkval = map(avdict.get, entity._pk_attrs_)
-        if None in pkval: pkval = None
-        return pkval, avdict
+    def __init__(monad, translator, entity):
+        Monad.__init__(monad, translator, SetType(entity))
+        if translator.database is None:
+            translator.database = entity._database_
+        elif translator.database is not entity._database_:
+            throw(TranslationError, 'All entities in a query must belong to the same database')
+    def __getitem__(monad, *args):
+        throw(NotImplementedError)
     def call_query(monad):
         throw(NotImplementedError)
 
@@ -1001,7 +983,7 @@ class ObjectMixin(MonadMixin):
         else:
             return translator.AttrSetMonad(monad, attr)
     def requires_distinct(monad, joined=False):
-        return monad.attr.reverse.is_collection or monad.parent.requires_distinct(joined)
+        return monad.attr.reverse.is_collection or monad.parent.requires_distinct(joined)  # parent ???
 
 class ObjectIterMonad(ObjectMixin, Monad):
     def __init__(monad, translator, tableref, entity):
@@ -1070,7 +1052,7 @@ class BufferAttrMonad(BufferMixin, AttrMonad): pass
 
 class ParamMonad(Monad):
     @staticmethod
-    def new(translator, type, name, parent=None):
+    def new(translator, type, src):
         type = normalize_type(type)
         if type in numeric_types: cls = translator.NumericParamMonad
         elif type in string_types: cls = translator.StringParamMonad
@@ -1079,52 +1061,30 @@ class ParamMonad(Monad):
         elif type is buffer: cls = translator.BufferParamMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectParamMonad
         else: throw(NotImplementedError, type)
-        return cls(translator, type, name, parent)
-    def __new__(cls, translator, type, name, parent=None):
+        return cls(translator, type, src)
+    def __new__(cls, translator, type, src):
         if cls is ParamMonad: assert False, 'Abstract class'
         return Monad.__new__(cls)
-    def __init__(monad, translator, type, name, parent=None):
+    def __init__(monad, translator, type, src):
         type = normalize_type(type)
         Monad.__init__(monad, translator, type)
-        monad.name = name
-        monad.parent = parent
+        monad.src = src
         if not isinstance(type, EntityMeta):
             provider = translator.database.provider
             monad.converter = provider.get_converter_by_py_type(type)
         else: monad.converter = None
-        if parent is None: monad.extractor = lambda variables : variables[name]
-        else: monad.extractor = lambda variables : getattr(parent.extractor(variables), name)
     def getsql(monad, subquery=None):
-        monad.add_extractors()
-        return [ [ 'PARAM', monad.name, monad.converter ] ]
-    def add_extractors(monad):
-        monad.translator.extractors[monad.name] = monad.extractor
+        return [ [ 'PARAM', monad.src, monad.converter ] ]
 
 class ObjectParamMonad(ObjectMixin, ParamMonad):
-    def __init__(monad, translator, entity, name, parent=None):
+    def __init__(monad, translator, entity, src):
         assert translator.database is entity._database_
-        monad.params = [ '-'.join((name, path)) for path in entity._pk_paths_ ]
-        ParamMonad.__init__(monad, translator, entity, name, parent)
-    def getattr(monad, name):
-        entity = monad.type
-        try: attr = entity._adict_[name]
-        except KeyError: throw(AttributeError)
-        if attr.is_collection: throw(NotImplementedError)
-        translator = monad.translator
-        return translator.ParamMonad.new(translator, attr.py_type, name, monad)
+        ParamMonad.__init__(monad, translator, entity, src)
+        monad.params = tuple((src, i) for i in range(len(entity._pk_converters_)))
     def getsql(monad, subquery=None):
-        monad.add_extractors()
         entity = monad.type
         assert len(monad.params) == len(entity._pk_converters_)
         return [ [ 'PARAM', param, converter ] for param, converter in zip(monad.params, entity._pk_converters_) ]
-    def add_extractors(monad):
-        entity = monad.type
-        extractors = monad.translator.extractors
-        if len(entity._pk_columns_) == 1:
-            extractors[monad.params[0]] = lambda vars, e=monad.extractor : e(vars)._get_raw_pkval_()[0]
-        else:
-            for i, param in enumerate(monad.params):
-                extractors[param] = lambda vars, i=i, e=monad.extractor : e(vars)._get_raw_pkval_()[i]
     def requires_distinct(monad, joined=False):
         assert False
 
@@ -1194,32 +1154,6 @@ class StringConstMonad(StringMixin, ConstMonad):
 class NumericConstMonad(NumericMixin, ConstMonad): pass
 class DateConstMonad(DateMixin, ConstMonad): pass
 class DatetimeConstMonad(DatetimeMixin, ConstMonad): pass
-
-class ObjectConstMonad(Monad):
-    def __init__(monad, translator, entity, pk_monads):
-        for attr, pk_monad in izip(entity._pk_attrs_, pk_monads):
-            attr_type = normalize_type(attr.py_type)
-            if not are_comparable_types(attr_type, pk_monad.type):
-                throw(TypeError, "Attribute %s of type %r cannot be compared with value of %r type in expression: {EXPR}"
-                                % (attr, type2str(attr_type), type2str(pk_monad.type)))
-        Monad.__init__(monad, translator, entity)
-        monad.pk_monads = pk_monads
-        rawpkval = monad.rawpkval = []
-        for pk_monad in pk_monads:
-            if isinstance(pk_monad, translator.ConstMonad): rawpkval.append(pk_monad.value)
-            elif isinstance(pk_monad, translator.ObjectConstMonad): rawpkval.extend(pk_monad.rawpkval)
-            else: assert False, pk_monad
-    def getsql(monad, subquery=None):
-        entity = monad.type
-        return [ [ 'VALUE', value ] for value in monad.rawpkval ]
-    def getattr(monad, name):
-        entity = monad.type
-        try: attr = entity._adict_[name]
-        except KeyError: throw(AttributeError)
-        if attr.is_collection: throw(NotImplementedError)
-        monad.extractor = lambda variables: entity._get_by_raw_pkval_(monad.rawpkval)
-        translator = monad.translator
-        return translator.ParamMonad.new(translator, attr.py_type, name, monad)
 
 class BoolMonad(Monad):
     def __init__(monad, translator):

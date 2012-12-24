@@ -76,13 +76,13 @@ class TestFuncMonad(unittest.TestCase):
     def test_date_func1(self):
         result = set(fetch(s for s in Student if s.dob >= date(1983, 3, 3)))
         self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
-    @raises_exception(TypeError, "'month' argument of date(year, month, day) function must be of 'int' type. Got: 'AsciiStr'")
+    @raises_exception(ExprEvalError, "date(1983, 'three', 3) raises TypeError: an integer is required")
     def test_date_func2(self):
         result = set(fetch(s for s in Student if s.dob >= date(1983, 'three', 3)))        
-    @raises_exception(NotImplementedError)
-    def test_date_func3(self):
-        d = 3
-        result = set(fetch(s for s in Student if s.dob >= date(1983, d, 3)))
+    # @raises_exception(NotImplementedError)
+    # def test_date_func3(self):
+    #     d = 3
+    #     result = set(fetch(s for s in Student if s.dob >= date(1983, d, 3)))
     def test_datetime_func1(self):
         result = set(fetch(s for s in Student if s.last_visit >= date(2011, 3, 3)))
         self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
@@ -92,17 +92,17 @@ class TestFuncMonad(unittest.TestCase):
     def test_datetime_func3(self):
         result = set(fetch(s for s in Student if s.last_visit >= datetime(2011, 3, 3, 13, 13, 13)))
         self.assertEquals(result, set([Student[3], Student[4], Student[5]]))        
-    @raises_exception(TypeError, "'month' argument of date(year, month, day) function must be of 'int' type. Got: 'AsciiStr'")
+    @raises_exception(ExprEvalError, "date(1983, 'three', 3) raises TypeError: an integer is required")
     def test_datetime_func4(self):
         result = set(fetch(s for s in Student if s.last_visit >= date(1983, 'three', 3)))        
-    @raises_exception(NotImplementedError)
-    def test_datetime_func5(self):
-        d = 3
-        result = set(fetch(s for s in Student if s.last_visit >= date(1983, d, 3)))
+    # @raises_exception(NotImplementedError)
+    # def test_datetime_func5(self):
+    #     d = 3
+    #     result = set(fetch(s for s in Student if s.last_visit >= date(1983, d, 3)))
     def test_datetime_now1(self):
         result = fetch(s for s in Student if s.dob < date.today())
         self.assertEquals(result, [Student[1], Student[2], Student[3], Student[4], Student[5]])
-    @raises_exception(IncomparableTypesError, "Incomparable types 'int' and 'datetime' in expression: 1 < datetime.now()")
+    @raises_exception(ExprEvalError, "1 < datetime.now() raises TypeError: can't compare datetime.datetime to int")
     def test_datetime_now2(self):
         fetch(s for s in Student if 1 < datetime.now())
     def test_datetime_now3(self):

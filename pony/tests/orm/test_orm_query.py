@@ -28,14 +28,14 @@ commit()
 class TestQuery(unittest.TestCase):
     def setUp(self):
         rollback()
-    @raises_exception(NotImplementedError, "Query iterator has unexpected type 'setiterator'")
+    @raises_exception(TypeError, "Cannot iterate over non-entity object")
     def test_exception1(self):
         g = Group[1]
         fetch(s for s in g.students)
-    @raises_exception(NameError, 'a')
+    @raises_exception(ExprEvalError, "a raises NameError: name 'a' is not defined")
     def test_exception2(self):
         fetch(a for s in Student)
-    @raises_exception(TypeError,"Variable 'x' has unexpected type 'list'")
+    @raises_exception(TypeError,"Incomparable types 'unicode' and 'list' in expression: s.name == x")
     def test_exception3(self):
         x = ['A']
         fetch(s for s in Student if s.name == x)
@@ -44,7 +44,7 @@ class TestQuery(unittest.TestCase):
         def f1(x):
             return x + 1
         fetch(s for s in Student if f1(s.gpa) > 3)
-    @raises_exception(TypeError,"Method 'method1' cannot be used inside query")
+    @raises_exception(NotImplementedError, "m1(s.gpa, 1) > 3")
     def test_exception5(self):
         class C1(object):
             def method1(self, a, b):
@@ -52,7 +52,7 @@ class TestQuery(unittest.TestCase):
         c = C1()
         m1 = c.method1
         fetch(s for s in Student if m1(s.gpa, 1) > 3) 
-    @raises_exception(TypeError, "Variable 'x' has unexpected type 'complex'")  
+    @raises_exception(TypeError, "Expression x has unsupported type 'complex'")  
     def test_exception6(self):
         x = 1j
         fetch(s for s in Student if s.gpa == x)

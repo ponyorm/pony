@@ -2,6 +2,7 @@ import unittest
 from datetime import date
 from decimal import Decimal
 from pony.orm import *
+from pony.sqltranslation import IncomparableTypesError
 from testutils import *
 
 db = Database('sqlite', ':memory:')
@@ -45,11 +46,11 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     def test1(self):
         x = 10
         fetch(s for s in Student for x in s.name)
-    @raises_exception(TypeError, "Variable 'x' has unexpected type 'list'")
+    @raises_exception(TranslationError, "Inside declarative query, iterator must be entity. Got: for i in x")
     def test2(self):
         x = [1, 2, 3]
-        fetch(s for s in Student for s in x)
-    @raises_exception(TranslationError, "Name 'g' must be defined in query")
+        fetch(s for s in Student for i in x)
+    @raises_exception(TranslationError, "Inside declarative query, iterator must be entity. Got: for s2 in g.students")
     def test3(self):
         g = Group[101]
         fetch(s for s in Student for s2 in g.students)
@@ -57,31 +58,31 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     def test4(self):
         args = 'abc'
         fetch(s for s in Student if s.name.upper(*args))
-    @raises_exception(NotImplementedError, "**{'a':'b', 'c':'d'} is not supported")
+    @raises_exception(TypeError, "Expression {'a':'b', 'c':'d'} has unsupported type 'dict'")
     def test5(self):
         fetch(s for s in Student if s.name.upper(**{'a':'b', 'c':'d'}))
-    @raises_exception(TypeError, '1 in 2')
+    @raises_exception(ExprEvalError, "1 in 2 raises TypeError: argument of type 'int' is not iterable")
     def test6(self):
         fetch(s for s in Student if 1 in 2)
     @raises_exception(NotImplementedError, 'Group[s.group.number]')
     def test7(self):
         fetch(s for s in Student if Group[s.group.number].dept.number == 44)
-    @raises_exception(TypeError, "Invalid count of attrs in primary key (2 instead of 1) in expression: Group[s.group.number, 123]")
-    def test8(self):
-        fetch(s for s in Student if Group[s.group.number, 123].dept.number == 44)
-    @raises_exception(TypeError, "Invalid count of attrs in primary key (2 instead of 1) in expression: Group[123, 456]")
+    # @raises_exception(TypeError, "Invalid count of attrs in Group primary key (2 instead of 1)")
+    # def test8(self):
+    #     fetch(s for s in Student if Group[s.group.number, 123].dept.number == 44)
+    @raises_exception(ExprEvalError, "Group[123, 456].dept.number == 44 raises TypeError: Invalid count of attrs in Group primary key (2 instead of 1)")
     def test9(self):
         fetch(s for s in Student if Group[123, 456].dept.number == 44)
-    @raises_exception(TypeError, "Invalid count of attrs in primary key (1 instead of 2) in expression: Course[123]")        
+    @raises_exception(ExprEvalError, "Course[123] raises TypeError: Invalid count of attrs in Course primary key (1 instead of 2)")
     def test10(self):
         fetch(s for s in Student if Course[123] in s.courses)
     @raises_exception(TypeError, "Incomparable types 'unicode' and 'float' in expression: s.name < s.gpa")
     def test11(self):
         fetch(s for s in Student if s.name < s.gpa)
-    @raises_exception(TypeError, "Group(101)")
+    @raises_exception(ExprEvalError, "Group(101) raises TypeError: Group constructor accept only keyword arguments. Got: 1 positional argument")
     def test12(self):
         fetch(s for s in Student if s.group == Group(101))
-    @raises_exception(TypeError, "Attribute Group.number of type 'int' cannot be compared with value of 'date' type in expression: Group[date(2011, 1, 2)]")
+    @raises_exception(ExprEvalError, "Group[date(2011, 1, 2)] raises TypeError: Value type for attribute Group.number must be int. Got: <type 'datetime.date'>")
     def test13(self):
         fetch(s for s in Student if s.group == Group[date(2011, 1, 2)])
     @raises_exception(TypeError, "Unsupported operand types 'int' and 'unicode' for operation '+' in expression: s.group.number + s.name")
@@ -126,36 +127,36 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(AttributeError, "s.group.foo")
     def test27(self):
         fetch(s.name for s in Student if s.group.foo.bar == 10)
-    @raises_exception(AttributeError, "g.dept.foo")
+    @raises_exception(ExprEvalError, "g.dept.foo.bar raises AttributeError: 'Department' object has no attribute 'foo'")
     def test28(self):
         g = Group[101]
         fetch(s for s in Student if s.name == g.dept.foo.bar)
-    @raises_exception(TypeError, "'year' argument of date(year, month, day) function must be of 'int' type. Got: 'AsciiStr'")
+    @raises_exception(ExprEvalError, "date('2011', 1, 1) raises TypeError: an integer is required")
     def test29(self):
         fetch(s for s in Student if s.dob < date('2011', 1, 1))
     @raises_exception(NotImplementedError, "date(s.id, 1, 1)")
     def test30(self):
         fetch(s for s in Student if s.dob < date(s.id, 1, 1))
-    @raises_exception(TypeError, "max() function expected at least one argument")
+    @raises_exception(ExprEvalError, "max() raises TypeError: max expected 1 arguments, got 0")
     def test31(self):
         fetch(s for s in Student if s.id < max())
-    @raises_exception(TypeError, "Value of type 'buffer' is not valid as argument of 'max' function in expression max(x, y)")
-    def test32(self):
-        x = buffer('a')
-        y = buffer('b')
-        fetch(s for s in Student if max(x, y) == x)
-    @raises_exception(TypeError, "Incomparable types 'int' and 'AsciiStr' in expression: min(1, 'a')")
-    def test33(self):
-        fetch(s for s in Student if min(1, 'a') == 1)
-    @raises_exception(TypeError, "Incomparable types 'AsciiStr' and 'int' in expression: min('a', 1)")
-    def test33a(self):
-        fetch(s for s in Student if min('a', 1) == 1)        
-    @raises_exception(TypeError, "'query' function expects generator expression, got: query('* from Students')")
-    def test34(self):
-        fetch(s for s in Student if s.group in query("* from Students"))
-    @raises_exception(TypeError, "'exists' function expects generator expression or collection, got: exists('g for g in Group')")
-    def test35(self):
-        fetch(s for s in Student if exists("g for g in Group"))
+    #@raises_exception(TypeError, "Value of type 'buffer' is not valid as argument of 'max' function in expression max(x, y)")
+    # def test32(self):
+    #     x = buffer('a')
+    #     y = buffer('b')
+    #    fetch(s for s in Student if max(x, y) == x)
+    # @raises_exception(TypeError, "Incomparable types 'int' and 'AsciiStr' in expression: min(1, 'a')")
+    # def test33(self):
+    #     fetch(s for s in Student if min(1, 'a') == 1)
+    # @raises_exception(TypeError, "Incomparable types 'AsciiStr' and 'int' in expression: min('a', 1)")
+    # def test33a(self):
+    #     fetch(s for s in Student if min('a', 1) == 1)        
+    # @raises_exception(TypeError, "'query' function expects generator expression, got: query('* from Students')")
+    # def test34(self):
+    #    fetch(s for s in Student if s.group in query("* from Students"))
+    # @raises_exception(TypeError, "'exists' function expects generator expression or collection, got: exists('g for g in Group')")
+    # def test35(self): ###
+    #    fetch(s for s in Student if exists("g for g in Group"))
     @raises_exception(TypeError, "Incomparable types 'Student' and 'Course' in expression: s in s.courses")
     def test36(self):
         fetch(s for s in Student if s in s.courses)
@@ -180,12 +181,12 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(TypeError, "strip() takes at most 1 argument (3 given)")
     def test43(self):
         fetch(s for s in Student if s.name.strip(1, 2, 3))
-    @raises_exception(TypeError, "len() takes exactly 1 argument (2 given)")
+    @raises_exception(ExprEvalError, "len(1, 2) == 3 raises TypeError: len() takes exactly one argument (2 given)")
     def test44(self):
         fetch(s for s in Student if len(1, 2) == 3)
-    @raises_exception(NotImplementedError, "Group[101].students")
-    def test45(self):
-        fetch(s for s in Student if s in Group[101].students)
+    # @raises_exception(NotImplementedError, "Group[101].students")
+    # def test45(self):
+    #     fetch(s for s in Student if s in Group[101].students)
     @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got 'Student' in sum(s for s in Student if s.group == g)")
     def test46(self):
         fetch(g for g in Group if sum(s for s in Student if s.group == g) > 1)
@@ -198,41 +199,41 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(TypeError, "Function max() cannot be applied to type 'Student' in max(s for s in Student if s.group == g)")
     def test49(self):
         fetch(g for g in Group if max(s for s in Student if s.group == g) > 1)
-    @raises_exception(TypeError, "Incomparable types 'Decimal' and 'bool' in expression: s.scholarship == (True or False and not True)")
-    def test50(self):
-        fetch(s for s in Student if s.scholarship == (True or False and not True))
-    @raises_exception(NotImplementedError, "+3")
-    def test51(self):
+    # @raises_exception(TypeError, "Incomparable types 'Decimal' and 'bool' in expression: s.scholarship == (True or False and not True)")
+    # def test50(self):
+    #     fetch(s for s in Student if s.scholarship == (True or False and not True))
+    @raises_exception(IncomparableTypesError, "Incomparable types 'unicode' and 'int' in expression: s.name > +3")
+    def test51(self): ###
         fetch(s for s in Student if s.name > +3)
-    @raises_exception(NotImplementedError, "{'a':'b'}")
+    @raises_exception(TypeError, "Expression {'a':'b'} has unsupported type 'dict'")
     def test52(self):
         fetch(s for s in Student if s.name == {'a' : 'b'})
-    @raises_exception(NotImplementedError, "a ^ 2")
-    def test53(self):
+    @raises_exception(IncomparableTypesError, "Incomparable types 'unicode' and 'int' in expression: s.name > a ^ 2")
+    def test53(self): ###
         a = 1
         fetch(s for s in Student if s.name > a ^ 2)
-    @raises_exception(NotImplementedError, "a | 2")
-    def test54(self):
+    @raises_exception(IncomparableTypesError, "Incomparable types 'unicode' and 'int' in expression: s.name > a | 2")
+    def test54(self): ###
         a = 1
         fetch(s for s in Student if s.name > a | 2)
-    @raises_exception(NotImplementedError, "a & 2")
+    @raises_exception(IncomparableTypesError, "Incomparable types 'unicode' and 'int' in expression: s.name > a & 2")
     def test55(self):
         a = 1
         fetch(s for s in Student if s.name > a & 2)
-    @raises_exception(NotImplementedError, "a << 2")
-    def test56(self):
+    @raises_exception(IncomparableTypesError, "Incomparable types 'unicode' and 'int' in expression: s.name > a << 2")
+    def test56(self): ###
         a = 1
         fetch(s for s in Student if s.name > a << 2)
-    @raises_exception(NotImplementedError, "a >> 2")
-    def test57(self):
+    @raises_exception(IncomparableTypesError, "Incomparable types 'unicode' and 'int' in expression: s.name > a >> 2")
+    def test57(self): ###
         a = 1
         fetch(s for s in Student if s.name > a >> 2)
-    @raises_exception(NotImplementedError, "(a * 2) % 4")
-    def test58(self):
+    @raises_exception(IncomparableTypesError, "Incomparable types 'unicode' and 'int' in expression: s.name > (a * 2) % 4")
+    def test58(self): ###
         a = 1
         fetch(s for s in Student if s.name > a * 2 % 4)
-    @raises_exception(NotImplementedError, "~a")
-    def test59(self):
+    @raises_exception(IncomparableTypesError, "Incomparable types 'unicode' and 'int' in expression: s.name > ~a")
+    def test59(self): ###
         a = 1
         fetch(s for s in Student if s.name > ~a)
     @raises_exception(TypeError, "Incomparable types 'unicode' and 'int' in expression: s.name > 1 / a - 3")

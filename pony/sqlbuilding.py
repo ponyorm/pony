@@ -116,9 +116,20 @@ def indentable(method):
     return new_method
 
 def convert(values, params):
-    getitem = values.__getitem__
     for param in params:
-        value = getitem(param.key)
+        key = param.key
+        if type(key) is tuple:
+            key, i = key
+            if type(key) is tuple:
+                key, j = key
+                tup = values[key]
+                obj = tup[j]
+                value = obj._get_raw_pkval_()[i]
+            else:
+                obj_or_tuple = values[key]
+                if type(obj_or_tuple) is tuple: value = obj_or_tuple[i]
+                else: value = obj_or_tuple._get_raw_pkval_()[i]
+        else: value = values[key]
         if value is not None: value = param.py2sql(value)
         yield value
 
