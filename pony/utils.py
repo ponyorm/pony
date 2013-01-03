@@ -75,7 +75,7 @@ def cut_traceback(old_func):
                                                  and module_name.startswith('pony.')):
                         last_pony_tb = tb
                     tb = tb.tb_next
-                assert last_pony_tb
+                if last_pony_tb is None: raise
                 if tb.tb_frame.f_globals['__name__'] == 'pony.utils' and tb.tb_frame.f_code.co_name == 'throw':
                     raise exc_type, exc, last_pony_tb
                 raise exc  # Set "pony.options.CUT_TRACEBACK = False" to see full traceback
