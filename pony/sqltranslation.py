@@ -8,6 +8,7 @@ from datetime import date, datetime
 from pony import options
 from pony.dbapiprovider import LongStr, LongUnicode
 from pony.utils import avg, copy_func_attrs, is_ident, throw
+import orm
 from pony.orm import query, exists, ERDiagramError, TranslationError, \
                      EntityMeta, Set, JOIN, AsciiStr
 
@@ -1598,7 +1599,10 @@ class FuncMonadMeta(MonadMeta):
     def __new__(meta, cls_name, bases, cls_dict):
         func = cls_dict.get('func')
         monad_cls = super(FuncMonadMeta, meta).__new__(meta, cls_name, bases, cls_dict)
-        if func: special_functions[func] = monad_cls
+        if func:
+            if type(func) is tuple: functions = func
+            else: functions = (func,)
+            for func in functions: special_functions[func] = monad_cls
         return monad_cls
 
 class FuncMonad(Monad):
@@ -1613,7 +1617,10 @@ class FuncMonad(Monad):
         for value in keyargs.values():
             assert isinstance(value, translator.Monad)
         try: return monad.call(*args, **keyargs)
-        except TypeError, exc: reraise_improved_typeerror(exc, 'call', monad.func.__name__)
+        except TypeError, exc:
+            func = monad.func
+            if type(func) is tuple: func = func[0]
+            reraise_improved_typeerror(exc, 'call', func.__name__)
 
 class FuncBufferMonad(FuncMonad):
     func = buffer
@@ -1661,7 +1668,7 @@ class FuncLenMonad(FuncMonad):
         return x.len()
 
 class FuncCountMonad(FuncMonad):
-    func = count
+    func = count, orm.count
     def call(monad, x=None):
         translator = monad.translator
         if isinstance(x, translator.StringConstMonad) and x.value == '*': x = None
@@ -1676,24 +1683,24 @@ class FuncAbsMonad(FuncMonad):
         return x.abs()
 
 class FuncSumMonad(FuncMonad):
-    func = sum
+    func = sum, orm.sum
     def call(monad, x):
         return x.aggregate('SUM')
 
 class FuncAvgMonad(FuncMonad):
-    func = avg
+    func = avg, orm.avg
     def call(monad, x):
         return x.aggregate('AVG')
 
 class FuncMinMonad(FuncMonad):
-    func = min
+    func = min, orm.min
     def call(monad, *args):
         if not args: throw(TypeError, 'min() function expected at least one argument')
         if len(args) == 1: return args[0].aggregate('MIN')
         return minmax(monad, 'MIN', *args)
 
 class FuncMaxMonad(FuncMonad):
-    func = max
+    func = max, orm.max
     def call(monad, *args):
         if not args: throw(TypeError, 'max() function expected at least one argument')
         if len(args) == 1: return args[0].aggregate('MAX')

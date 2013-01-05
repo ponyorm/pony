@@ -60,28 +60,28 @@ class TestQuery(unittest.TestCase):
         fetch(g for g in Group for s in db.Student)
         self.assert_(True)
     def test2(self):
-        avg_gpa = fetch_avg(s.gpa for s in Student)
+        avg_gpa = avg(s.gpa for s in Student)
         self.assertEquals(avg_gpa, Decimal('3.2'))
     def test21(self):
-        avg_gpa = fetch_avg(s.gpa for s in Student if s.id < 0)
+        avg_gpa = avg(s.gpa for s in Student if s.id < 0)
         self.assertEquals(avg_gpa, None)
     def test3(self):
-        sum_ss = fetch_sum(s.scholarship for s in Student)
+        sum_ss = sum(s.scholarship for s in Student)
         self.assertEquals(sum_ss, 300)
     def test31(self):
-        sum_ss = fetch_sum(s.scholarship for s in Student if s.id < 0)
+        sum_ss = sum(s.scholarship for s in Student if s.id < 0)
         self.assertEquals(sum_ss, 0)
     @raises_exception(TranslationError, "'avg' is valid for numeric attributes only")
     def test4(self):
-        fetch_avg(s.name for s in Student)
+        avg(s.name for s in Student)
     def wrapper(self):
-        return fetch_count(s for s in Student if s.scholarship > 0)
+        return count(s for s in Student if s.scholarship > 0)
     def test5(self):
         c = self.wrapper()
         c = self.wrapper()
         self.assertEquals(c, 2)
     def test6(self):
-        c = fetch_count(s.scholarship for s in Student if s.scholarship > 0)
+        c = count(s.scholarship for s in Student if s.scholarship > 0)
         self.assertEquals(c, 2)
     def test7(self):
         s = fetch_one(s.scholarship for s in Student if s.id == 3)
@@ -93,16 +93,16 @@ class TestQuery(unittest.TestCase):
         s = query(s for s in Student if s.id == 4).exists()
         self.assertEquals(s, False)
     def test10(self):
-        r = fetch_min(s.scholarship for s in Student)
+        r = min(s.scholarship for s in Student)
         self.assertEquals(r, 100)
     def test11(self):
-        r = fetch_min(s.scholarship for s in Student if s.id < 2)
+        r = min(s.scholarship for s in Student if s.id < 2)
         self.assertEquals(r, None)
     def test12(self):
-        r = fetch_max(s.scholarship for s in Student)
+        r = max(s.scholarship for s in Student)
         self.assertEquals(r, 200)
     def test13(self):
-        r = fetch_max(s.dob.year for s in Student)
+        r = max(s.dob.year for s in Student)
         self.assertEquals(r, 2001)
 
 if __name__ == '__main__':

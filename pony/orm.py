@@ -1,10 +1,11 @@
 import __builtin__, re, sys, types, inspect
 from compiler import ast, parse
 from operator import attrgetter, itemgetter
-from itertools import count, ifilter, ifilterfalse, imap, izip, chain, starmap
+from itertools import count as _count, ifilter, ifilterfalse, imap, izip, chain, starmap
 from time import time
 import datetime
 from threading import Lock
+from __builtin__ import min as _min, max as _max, sum as _sum
 
 try: from pony.thirdparty import etree
 except ImportError: etree = None
@@ -20,7 +21,7 @@ from pony.dbapiprovider import (
     )
 from pony.utils import (
     localbase, simple_decorator, decorator_with_params, cut_traceback, throw,
-    import_module, parse_expr, is_ident, reraise, avg, tostring
+    import_module, parse_expr, is_ident, reraise, avg as _avg, tostring
     )
 
 __all__ = '''
@@ -47,10 +48,9 @@ __all__ = '''
 
     query
     fetch fetch_one fetch_all fetch_distinct
-    fetch_count fetch_sum fetch_min fetch_max fetch_avg
     exists
 
-    count avg
+    count sum min max avg
 
     JOIN
     '''.split()
@@ -177,7 +177,7 @@ def adapt_sql(sql, paramstyle):
     adapted_sql_cache[(sql, paramstyle)] = result
     return result
 
-next_num = count().next
+next_num = _count().next
 
 class Local(localbase):
     def __init__(local):
@@ -207,8 +207,8 @@ class QueryStat(object):
         query_end_time = time()
         duration = query_end_time - query_start_time
         if stat.db_count:
-            stat.min_time = min(stat.min_time, duration)
-            stat.max_time = max(stat.max_time, duration)
+            stat.min_time = _min(stat.min_time, duration)
+            stat.max_time = _max(stat.max_time, duration)
             stat.sum_time += duration
         else: stat.min_time = stat.max_time = stat.sum_time = duration
         stat.db_count += 1
@@ -216,8 +216,8 @@ class QueryStat(object):
         assert stat.sql == stat2.sql
         if not stat2.db_count: pass
         elif stat.db_count:
-            stat.min_time = min(stat.min_time, stat2.min_time)
-            stat.max_time = max(stat.max_time, stat2.max_time)
+            stat.min_time = _min(stat.min_time, stat2.min_time)
+            stat.max_time = _max(stat.max_time, stat2.max_time)
             stat.sum_time += stat2.sum_time
         else:
             stat.min_time = stat2.min_time
@@ -599,7 +599,7 @@ class DescWrapper(object):
     def __call__(self):
         return self
 
-next_attr_id = count(1).next
+next_attr_id = _count(1).next
 
 class Attribute(object):
     __slots__ = 'is_required', 'is_discriminator', 'is_unique', 'is_indexed', \
@@ -1664,7 +1664,7 @@ class PropagatedMultiset(object):
     @cut_traceback
     def __repr__(pset):
         if pset._obj_._cache_.is_alive:
-            size = sum(pset._items_.itervalues())
+            size = _sum(pset._items_.itervalues())
             if size == 1: size_str = ' (1 item)'
             else: size_str = ' (%d items)' % size
         else: size_str = ''
@@ -1685,7 +1685,7 @@ class PropagatedMultiset(object):
     @cut_traceback
     def __len__(pset):
         if not pset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
-        return sum(pset._items_.values())
+        return _sum(pset._items_.values())
     @cut_traceback
     def __iter__(pset):
         if not pset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
@@ -1720,8 +1720,8 @@ class EntityIter(object):
         throw(TypeError, 'Use fetch(...) function or %s.fetch(...) method for iteration'
                          % self.entity.__name__)
 
-next_entity_id = count(1).next
-next_new_instance_id = count(1).next
+next_entity_id = _count(1).next
+next_new_instance_id = _count(1).next
 
 select_re = re.compile(r'select\b', re.IGNORECASE)
 lambda_re = re.compile(r'lambda\b')
@@ -1854,7 +1854,7 @@ class EntityMeta(type):
             base._subclass_attrs_.update(new_attrs)
 
         entity._bits_ = {}
-        next_offset = count().next
+        next_offset = _count().next
         all_bits = 0
         for attr in entity._attrs_:
             if attr.is_collection or attr.is_discriminator or attr.pk_offset is not None: continue
@@ -3324,26 +3324,26 @@ def fetch_all(gen):
 def fetch_distinct(gen):
     return query(gen, frame_depth=2).fetch_distinct()
 
-@cut_traceback
-def fetch_count(gen):
-    return query(gen).count()
+def make_aggrfunc(std_func):
+    def aggrfunc(*args, **keyargs):
+        if keyargs: return std_func(*args, **keyargs)
+        if len(args) != 1: return std_func(*args)
+        arg = args[0]
+        if type(arg) is types.GeneratorType:
+            try: iterator = arg.gi_frame.f_locals['.0']
+            except: return std_func(*args)
+            if isinstance(iterator, EntityIter):
+                return getattr(query(arg), std_func.__name__)()
+        return std_func(*args)
+    aggrfunc.__name__ = std_func.__name__
+    return aggrfunc
 
-@cut_traceback
-def fetch_sum(gen):
-    return query(gen).sum()
-
-@cut_traceback
-def fetch_min(gen):
-    return query(gen).min()
-
-@cut_traceback
-def fetch_max(gen):
-    return query(gen).max()
-
-@cut_traceback
-def fetch_avg(gen):
-    return query(gen).avg()
-
+count = make_aggrfunc(_count)
+sum = make_aggrfunc(_sum)
+min = make_aggrfunc(_min)
+max = make_aggrfunc(_max)
+avg = make_aggrfunc(_avg)
+    
 @cut_traceback
 def exists(gen):
     return query(gen).exists()

@@ -129,10 +129,9 @@ def test_queries():
     print_students(students)
 
 
-    avg = fetch_avg(s.gpa for s in Student)
-    print 'Average GPA is', avg
+    print 'Average GPA is', avg(s.gpa for s in Student)
     print
-    
+
 
     students = fetch(s for s in Student 
                          if sum(c.credits for c in s.courses) < 15)
