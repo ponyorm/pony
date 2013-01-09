@@ -3457,8 +3457,6 @@ class Query(object):
                                 return [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ], [ 'FROM', [ 't', 'SELECT', ast[1:] ] ] ]
                         else: aggr_ast = [ 'COUNT', 'ALL' ]
                     else: aggr_ast = [ 'COUNT', 'DISTINCT', column_ast ]
-                elif aggr_func_name == 'SUM':
-                    aggr_ast = [ 'COALESCE', [ 'SUM', column_ast ], [ 'VALUE', 0 ] ]
                 else: aggr_ast = [ aggr_func_name, column_ast ]
                 if aggr_ast: select_ast = [ 'AGGREGATES', aggr_ast ]
             elif isinstance(translator.expr_type, EntityMeta):
