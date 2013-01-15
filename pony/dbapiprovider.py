@@ -158,6 +158,8 @@ class DBAPIProvider(object):
         return provider._get_converter_type_by_py_type(attr.py_type)(attr)
 
 class Converter(object):
+    def __deepcopy__(converter, memo):
+        return converter  # Converter instances are "immutable"
     def __init__(converter, attr=None):
         converter.attr = attr
         if attr is None: return

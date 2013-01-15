@@ -240,6 +240,8 @@ class QueryStat(object):
 select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class Database(object):
+    def __deepcopy__(self, memo):
+        return self  # Database cannot be cloned by deepcopy()
     @cut_traceback
     def __init__(self, provider_name, *args, **keyargs):
         # First argument cannot be named 'database', because 'database' can be in keyargs
@@ -614,6 +616,8 @@ class Attribute(object):
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'keyargs'
+    def __deepcopy__(attr, memo):
+        return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
     def __init__(attr, py_type, *args, **keyargs):
         if attr.__class__ is Attribute: throw(TypeError, "'Attribute' is abstract type")

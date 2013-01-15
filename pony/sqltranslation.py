@@ -452,7 +452,7 @@ class Subquery(object):
         subquery.tablerefs = {}
         if parent_subquery is None:
             subquery.alias_counters = {}
-            subquery.expr_counter = count(1).next
+            subquery.expr_counter = count(1)
         else:
             subquery.alias_counters = parent_subquery.alias_counters
             subquery.expr_counter = parent_subquery.expr_counter
@@ -1009,7 +1009,7 @@ class AttrMonad(Monad):
         elif isinstance(type, EntityMeta): cls = translator.ObjectAttrMonad
         else: throw(NotImplementedError, type)
         return cls(parent, attr, *args, **keyargs)
-    def __new__(cls, parent, attr):
+    def __new__(cls, *args):
         if cls is AttrMonad: assert False, 'Abstract class'
         return Monad.__new__(cls)
     def __init__(monad, parent, attr):
@@ -1062,7 +1062,7 @@ class ParamMonad(Monad):
         elif isinstance(type, EntityMeta): cls = translator.ObjectParamMonad
         else: throw(NotImplementedError, type)
         return cls(translator, type, src)
-    def __new__(cls, translator, type, src):
+    def __new__(cls, *args):
         if cls is ParamMonad: assert False, 'Abstract class'
         return Monad.__new__(cls)
     def __init__(monad, translator, type, src):
@@ -1103,7 +1103,7 @@ class ExprMonad(Monad):
         elif type is datetime: cls = translator.DatetimeExprMonad
         else: throw(NotImplementedError, type)
         return cls(translator, type, sql)
-    def __new__(cls, translator, type, sql):
+    def __new__(cls, *args):
         if cls is ExprMonad: assert False, 'Abstract class'
         return Monad.__new__(cls)
     def __init__(monad, translator, type, sql):
@@ -1129,7 +1129,7 @@ class ConstMonad(Monad):
         elif value_type is buffer: cls = translator.BufferConstMonad
         else: throw(NotImplementedError, value_type)
         return cls(translator, value)
-    def __new__(cls, translator, value):
+    def __new__(cls, *args):
         if cls is ConstMonad: assert False, 'Abstract class'
         return Monad.__new__(cls)
     def __init__(monad, translator, value):
@@ -1600,7 +1600,7 @@ class AttrSetMonad(SetMixin, Monad):
                     expr = [ 'AS', column_ast, cname ]
                     new_name = cname
                 else:
-                    new_name = 'expr-%d' % translator.subquery.expr_counter()
+                    new_name = 'expr-%d' % translator.subquery.expr_counter.next()
                     col_mapping[tname, cname] = new_name
                     expr = [ 'AS', column_ast, new_name ]
                 inner_columns.append(expr)
@@ -1620,7 +1620,7 @@ class AttrSetMonad(SetMixin, Monad):
         for column_ast in groupby_columns:
             assert column_ast[0] == 'COLUMN'
             subquery_columns.append([ 'AS', column_ast, column_ast[2] ])
-        expr_name = 'expr-%d' % translator.subquery.expr_counter()
+        expr_name = 'expr-%d' % translator.subquery.expr_counter.next()
         subquery_columns.append([ 'AS', make_aggr(expr_list), expr_name ])
 
         subquery_ast = [ subquery_columns, from_ast ]

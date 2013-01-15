@@ -16,6 +16,8 @@ class LongUnicode(unicode):
 
 class SetType(object):
     __slots__ = 'item_type'
+    def __deepcopy__(self, memo):
+        return self  # SetType instances are "immutable"
     def __init__(self, item_type):
         self.item_type = item_type
     def __eq__(self, other):
@@ -27,6 +29,8 @@ class SetType(object):
 
 class FuncType(object):
     __slots__ = 'func'
+    def __deepcopy__(self, memo):
+        return self  # FuncType instances are "immutable"
     def __init__(self, func):
         self.func = func
     def __eq__(self, other):
@@ -38,6 +42,8 @@ class FuncType(object):
 
 class MethodType(object):
     __slots__ = 'obj', 'func'
+    def __deepcopy__(self, memo):
+        return self  # MethodType instances are "immutable"
     def __init__(self, method):
         self.obj = method.im_self
         self.func = method.im_func
