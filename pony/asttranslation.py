@@ -210,7 +210,7 @@ class PreTranslator(ASTTranslator):
         childs = node.getChildNodes()
         if childs and all(getattr(child, 'external', False) for child in childs):
             node.external = True
-        if node.external:
+        if node.external and not node.constant:
             externals = translator.externals
             externals.difference_update(childs)
             externals.add(node)
