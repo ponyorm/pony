@@ -193,9 +193,9 @@ class PythonTranslator(ASTTranslator):
 nonexternalizable_types = (ast.Keyword, ast.Sliceobj, ast.List, ast.Tuple)
 
 class PreTranslator(ASTTranslator):
-    def __init__(translator, tree):
-        assert isinstance(tree, ast.GenExprInner), tree
+    def __init__(translator, tree, additional_internal_names=()):
         ASTTranslator.__init__(translator, tree)
+        translator.additional_internal_names = additional_internal_names
         translator.contexts = []
         translator.externals = externals = set()
         translator.dispatch(tree)
@@ -239,16 +239,16 @@ class PreTranslator(ASTTranslator):
         name = node.name
         for context in translator.contexts:
             if name in context: return
-        node.external = True
+        node.external = name not in translator.additional_internal_names
     def postConst(translator, node):
         node.external = node.constant = True
 
 extractors_cache = {}
 
-def create_extractors(code_key, tree):
+def create_extractors(code_key, tree, additional_internal_names=()):
     result = extractors_cache.get(code_key)
     if result is None:
-        pretranslator = PreTranslator(tree)
+        pretranslator = PreTranslator(tree, additional_internal_names)
         extractors = {}
         for node in pretranslator.externals:
             src = node.src = ast2src(node)

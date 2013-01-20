@@ -298,12 +298,11 @@ class SQLBuilder(object):
     @indentable
     def ORDER_BY(builder, *order_list):
         result = [ 'ORDER BY ' ]
-        for i, (expr, dir) in enumerate(order_list):
-            if i > 0: result.append(', ')
-            if dir == 'ASC': result += builder(expr)
-            else: result += builder(expr), ' ', dir
+        result.extend(join(', ', [ builder(expr) for expr in order_list ]))
         result.append('\n')
         return result
+    def DESC(builder, expr):
+        return builder(expr), ' DESC'
     @indentable
     def LIMIT(builder, limit, offset=None):
         if not offset: return 'LIMIT ', builder(limit), '\n'

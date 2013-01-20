@@ -12,7 +12,7 @@ from pony.ormtypes import \
     string_types, numeric_types, comparable_types, SetType, FuncType, MethodType, \
     get_normalized_type_of, normalize_type, coerce_types, are_comparable_types
 import orm
-from pony.orm import query, exists, ERDiagramError, EntityMeta, Set, JOIN, AsciiStr
+from pony.orm import ERDiagramError, EntityMeta, Set, JOIN, AsciiStr
 
 def check_comparable(left_monad, right_monad, op='=='):
     t1, t2 = left_monad.type, right_monad.type
@@ -27,7 +27,7 @@ class IncomparableTypesError(TypeError):
         msg = 'Incomparable types %r and %r in expression: {EXPR}' % (type2str(type1), type2str(type2))
         TypeError.__init__(exc, msg)
         exc.type1 = type1
-        exc.type2 = type2    
+        exc.type2 = type2
 
 def sqland(items):
     if not items: return []
@@ -137,14 +137,13 @@ class SQLTranslator(ASTTranslator):
         translator.subquery = subquery
         tablerefs = subquery.tablerefs
         translator.distinct = False
-        translator.where = None
         translator.conditions = subquery.conditions
-        translator.groupby = None
-        translator.having = None
         translator.having_conditions = []
+        translator.order = []
         translator.aggregated = False
         translator.inside_expr = False
         translator.inside_not = False
+        translator.inside_orderby = False
         translator.hint_join = False
         for i, qual in enumerate(tree.quals):
             assign = qual.assign
@@ -203,8 +202,7 @@ class SQLTranslator(ASTTranslator):
                     parent_entity = entity
 
             database = entity._database_
-            if database.schema is None: throw(ERDiagramError, 
-                'Mapping is not generated for entity %r' % entity.__name__)
+            assert database.schema is not None
             if translator.database is None: translator.database = database
             elif translator.database is not database: throw(TranslationError, 
                 'All entities in a query must belong to the same database')
@@ -225,12 +223,13 @@ class SQLTranslator(ASTTranslator):
         monad = tree.expr.monad
         if isinstance(monad, translator.ParamMonad): throw(TranslationError,
             "External parameter '%s' cannot be used as query result" % ast2src(tree.expr))
-        groupby_monads = None
+        translator.groupby_monads = None
         expr_type = monad.type
         if isinstance(expr_type, SetType): expr_type = expr_type.item_type
         if isinstance(expr_type, EntityMeta):
+            monad.orderby_columns = range(1, len(expr_type._pk_columns_)+1)
             if monad.aggregated: throw(TranslationError)
-            if translator.aggregated: groupby_monads = [ monad ]
+            if translator.aggregated: translator.groupby_monads = [ monad ]
             else: translator.distinct |= monad.requires_distinct()
             if isinstance(monad, translator.ObjectMixin):
                 entity = monad.type
@@ -260,7 +259,7 @@ class SQLTranslator(ASTTranslator):
                 translator.expr_type = monad.type
                 translator.expr_columns = monad.getsql()
             if translator.aggregated:
-                groupby_monads = [ m for m in expr_monads if not m.aggregated ]
+                translator.groupby_monads = [ m for m in expr_monads if not m.aggregated ]
             else: translator.distinct = True
             row_layout = []
             offset = 0
@@ -274,6 +273,7 @@ class SQLTranslator(ASTTranslator):
                         if None in values: return None
                         return constructor(values)
                     row_layout.append((func, slice(offset, next_offset)))
+                    m.orderby_columns = range(offset+1, next_offset+1)
                     offset = next_offset
                 else:
                     converter = provider.get_converter_by_py_type(expr_type)
@@ -281,18 +281,9 @@ class SQLTranslator(ASTTranslator):
                         if value is None: return None
                         return sql2py(value)
                     row_layout.append((func, offset))
+                    m.orderby_columns = (offset+1,)
                     offset += 1
             translator.row_layout = row_layout
-
-        if groupby_monads:
-            translator.groupby = [ 'GROUP_BY' ]
-            for m in groupby_monads: translator.groupby.extend(m.getsql())
-
-        if translator.having_conditions:
-            if not translator.groupby: throw(TranslationError,
-                'In order to use aggregated functions sucn as SUM(), COUNT(), etc., '
-                'query must have grouping columns (i.e. resulting non-aggregated values)')
-            translator.having = [ 'HAVING' ] + translator.having_conditions
 
         first_from_item = translator.subquery.from_ast[1]
         if len(first_from_item) > 3:
@@ -300,7 +291,66 @@ class SQLTranslator(ASTTranslator):
             assert parent_translator
             join_condition = first_from_item.pop()
             translator.conditions.insert(0, join_condition)
-        translator.where = [ 'WHERE' ] + translator.conditions
+
+    def construct_sql_ast(translator, range=None, distinct=None, aggr_func_name=None):
+        attr_offsets = None
+        if distinct is None: distinct = translator.distinct
+        ast_transformer = lambda ast: ast
+        sql_ast = [ 'SELECT' ]
+        if aggr_func_name:
+            expr_type = translator.expr_type
+            if not isinstance(expr_type, EntityMeta):
+                if aggr_func_name in ('SUM', 'AVG') and expr_type not in numeric_types:
+                    throw(TranslationError, '%r is valid for numeric attributes only' % aggr_func_name.lower())
+                assert len(translator.expr_columns) == 1
+                column_ast = translator.expr_columns[0]
+            elif aggr_func_name is not 'COUNT': throw(TranslationError, 
+                'Attribute should be specified for %r aggregate function' % aggr_func_name.lower())
+            aggr_ast = None
+            if aggr_func_name == 'COUNT':
+                if isinstance(expr_type, (tuple, EntityMeta)):
+                    if translator.distinct:
+                        select_ast = [ 'DISTINCT' ] + translator.expr_columns  # aggr_ast remains to be None
+                        def ast_transformer(ast):
+                            return [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ], [ 'FROM', [ 't', 'SELECT', ast[1:] ] ] ]
+                    else: aggr_ast = [ 'COUNT', 'ALL' ]
+                else: aggr_ast = [ 'COUNT', 'DISTINCT', column_ast ]
+            else: aggr_ast = [ aggr_func_name, column_ast ]
+            if aggr_ast: select_ast = [ 'AGGREGATES', aggr_ast ]
+        elif isinstance(translator.expr_type, EntityMeta):
+            select_ast, attr_offsets = translator.expr_type._construct_select_clause_(translator.alias, distinct)
+        else: select_ast = [ distinct and 'DISTINCT' or 'ALL' ] + translator.expr_columns
+        sql_ast.append(select_ast)
+        sql_ast.append(translator.subquery.from_ast)
+
+        if translator.conditions:
+            sql_ast.append([ 'WHERE' ] + translator.conditions)
+
+        if translator.groupby_monads:
+            groupby = [ 'GROUP_BY' ]
+            for m in translator.groupby_monads: groupby.extend(m.getsql())
+            sql_ast.append(groupby)
+        else: groupby = None
+
+        if translator.having_conditions:
+            if not groupby: throw(TranslationError,
+                'In order to use aggregated functions sucn as SUM(), COUNT(), etc., '
+                'query must have grouping columns (i.e. resulting non-aggregated values)')
+            sql_ast.append([ 'HAVING' ] + translator.having_conditions)
+
+        if translator.order: sql_ast.append([ 'ORDER_BY' ] + translator.order)
+
+        if range:
+            start, stop = range
+            limit = stop - start
+            offset = start
+            assert limit is not None
+            limit_section = [ 'LIMIT', [ 'VALUE', limit ]]
+            if offset: limit_section.append([ 'VALUE', offset ])
+            sql_ast = sql_ast + [ limit_section ]
+
+        sql_ast = ast_transformer(sql_ast)
+        return sql_ast, attr_offsets
     def preGenExpr(translator, node):
         inner_tree = node.code
         subtranslator = translator.__class__(inner_tree, translator.extractors, translator.vartypes, translator)
@@ -462,6 +512,7 @@ class Subquery(object):
         if subquery.parent_subquery:
             return subquery.parent_subquery.get_tableref(name_path)
         return None
+    __contains__ = get_tableref
     def add_tableref(subquery, name_path, parent_tableref, attr):
         tablerefs = subquery.tablerefs
         assert name_path not in tablerefs
@@ -1389,7 +1440,7 @@ def minmax(monad, sqlop, *args):
     return translator.ExprMonad.new(translator, t, sql)
 
 class FuncSelectMonad(FuncMonad):
-    func = query
+    func = orm.query
     def call(monad, queryset):
         translator = monad.translator
         if not isinstance(queryset, translator.QuerySetMonad): throw(TypeError, 
@@ -1397,15 +1448,27 @@ class FuncSelectMonad(FuncMonad):
         return queryset
 
 class FuncExistsMonad(FuncMonad):
-    func = exists
+    func = orm.exists
     def call(monad, arg):
         if not isinstance(arg, monad.translator.SetMixin): throw(TypeError, 
             "'exists' function expects generator expression or collection, got: {EXPR}")
         return arg.nonzero()
 
+class FuncDescMonad(FuncMonad):
+    func = orm.desc
+    def call(monad, expr):
+        return DescMonad(expr)
+
+class DescMonad(Monad):
+    def __init__(monad, expr):
+        Monad.__init__(monad, expr.translator, expr.type)
+        monad.expr = expr
+    def getsql(monad):
+        return [ [ 'DESC', item ] for item in monad.expr.getsql() ]
+
 class JoinMonad(Monad):
     def __init__(monad, translator):
-        monad.translator = translator
+        Monad.__init__(monad, translator, 'JOIN')
         monad.hint_join_prev = translator.hint_join
         translator.hint_join = True
     def __call__(monad, x):

@@ -1,6 +1,7 @@
 import __builtin__, re, sys, types, inspect
 from compiler import ast, parse
 from cPickle import loads, dumps
+from copy import deepcopy
 from operator import attrgetter, itemgetter
 from itertools import count as _count, ifilter, ifilterfalse, imap, izip, chain, starmap
 from time import time
@@ -53,6 +54,8 @@ __all__ = '''
     exists
 
     count sum min max avg
+
+    desc
 
     JOIN
     '''.split()
@@ -607,6 +610,12 @@ class DescWrapper(object):
         return '<DescWrapper(%s)>' % self.attr
     def __call__(self):
         return self
+    def __eq__(self, other):
+        return type(other) is DescWrapper and self.attr == other.attr
+    def __ne__(self, other):
+        return type(other) is not DescWrapper or self.attr != other.attr
+    def __hash__(self):
+        return hash(self.attr) + 1
 
 next_attr_id = _count(1).next
 
@@ -2260,7 +2269,7 @@ class EntityMeta(type):
                         where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (attr, i), converter ] ])
 
         sql_ast = [ 'SELECT', select_list, from_list, where_list ]
-        if order_by_pk: sql_ast.append([ 'ORDER_BY' ] + [ ([ 'COLUMN', None, column ], 'ASC') for column in entity._pk_columns_ ])
+        if order_by_pk: sql_ast.append([ 'ORDER_BY' ] + [ [ 'COLUMN', None, column ] for column in entity._pk_columns_ ])
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
         cached_sql = sql, adapter, attr_offsets
@@ -2311,13 +2320,7 @@ class EntityMeta(type):
             cond_expr, external_names = decompile(lambda_func)
         elif isinstance(lambda_func, basestring):
             lambda_text = lambda_func
-            module_node = parse(lambda_text)
-            if not isinstance(module_node, ast.Module): throw(TypeError)
-            stmt_node = module_node.node
-            if not isinstance(stmt_node, ast.Stmt) or len(stmt_node.nodes) != 1: throw(TypeError)
-            discard_node = stmt_node.nodes[0]
-            if not isinstance(discard_node, ast.Discard): throw(TypeError)
-            lambda_expr = discard_node.expr
+            lambda_expr = string2ast(lambda_text)
             if not isinstance(lambda_expr, ast.Lambda): throw(TypeError)
             if len(lambda_expr.argnames) != 1: throw(TypeError)
             if lambda_expr.varargs: throw(TypeError)
@@ -2326,6 +2329,7 @@ class EntityMeta(type):
             code_key = lambda_text
             name = lambda_expr.argnames[0]            
             cond_expr = lambda_expr.code
+        else: assert False
 
         if_expr = ast.GenExprIf(cond_expr)
         for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name('.0'), [ if_expr ])
@@ -3257,10 +3261,8 @@ def string2ast(s):
     if not isinstance(stmt_node, ast.Stmt) or len(stmt_node.nodes) != 1: throw(TypeError)
     discard_node = stmt_node.nodes[0]
     if not isinstance(discard_node, ast.Discard): throw(TypeError)
-    tree = discard_node.expr
-    if not isinstance(tree, ast.GenExpr): throw(TypeError)
-    result = tree #, external_names
-    string2ast_cache[s] = result
+    result = string2ast_cache[s] = discard_node.expr
+    # result = deepcopy(result)  # no need for now, but may be needed later
     return result
 
 @cut_traceback
@@ -3273,6 +3275,7 @@ def query(gen, frame_depth=0):
     elif isinstance(gen, basestring):
         query_string = gen
         tree = string2ast(query_string)
+        if not isinstance(tree, ast.GenExpr): throw(TypeError)
         code_key = query_string
         globals = sys._getframe(frame_depth+2).f_globals
         locals = sys._getframe(frame_depth+2).f_locals
@@ -3322,114 +3325,74 @@ def exists(gen):
 def JOIN(expr):
     return expr
 
+def desc(expr):
+    if isinstance(expr, Attribute):
+        return expr.desc
+    if isinstance(expr, (int, long)) and expr > 0:
+        return -expr
+    if isinstance(expr, basestring):
+        return 'desc(%s)' % expr
+    return expr
+
+def extract_vars(extractors, globals, locals):
+    vars = {}
+    vartypes = {}
+    for src, code in extractors.iteritems():
+        if src == '.0': value = locals['.0']
+        else:
+            try: value = eval(code, globals, locals)
+            except Exception, cause: raise ExprEvalError(src, cause)
+            if src == 'None' and value is not None: throw(TranslationError)
+            if src == 'True' and value is not True: throw(TranslationError)
+            if src == 'False' and value is not False: throw(TranslationError)
+        try: vartypes[src] = get_normalized_type_of(value)
+        except TypeError:
+            if not isinstance(value, dict):
+                unsupported = False
+                try: value = tuple(value)
+                except: unsupported = True
+            else: unsupported = True                    
+            if unsupported:
+                typename = type(value).__name__
+                if src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
+                throw(TypeError, 'Expression %s has unsupported type %r' % (src, typename))
+            vartypes[src] = get_normalized_type_of(value)
+        vars[src] = value
+    return vars, vartypes
+
 class Query(object):
     def __init__(query, code_key, tree, globals, locals):
         assert isinstance(tree, ast.GenExprInner)
         extractors, varnames, tree = create_extractors(code_key, tree)
-        vars = {}
-        vartypes = {}
-        for src, code in extractors.iteritems():
-            if src == '.0': value = locals['.0']
-            else:
-                try: value = eval(code, globals, locals)
-                except Exception, cause: raise ExprEvalError(src, cause)
-                if src == 'None' and value is not None: throw(TranslationError)
-                if src == 'True' and value is not True: throw(TranslationError)
-                if src == 'False' and value is not False: throw(TranslationError)
-            try: vartypes[src] = get_normalized_type_of(value)
-            except TypeError:
-                if not isinstance(value, dict):
-                    unsupported = False
-                    try: value = tuple(value)
-                    except: unsupported = True
-                else: unsupported = True                    
-                if unsupported:
-                    typename = type(value).__name__
-                    if src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
-                    throw(TypeError, 'Expression %s has unsupported type %r' % (src, typename))
-                vartypes[src] = get_normalized_type_of(value)
-            vars[src] = value
-        query_key = code_key, tuple(map(vartypes.__getitem__, varnames))
-
+        vars, vartypes = extract_vars(extractors, globals, locals)
         query._vars = vars
-        query._vartypes = vartypes
-        query._base_key = query_key
+        query._key = code_key, tuple(map(vartypes.__getitem__, varnames))
 
         node = tree.quals[0].iter
         origin = vars[node.src]
         if isinstance(origin, EntityIter): origin = origin.entity
         elif not isinstance(origin, EntityMeta):
-            if src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
+            if node.src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
             else: throw(TypeError, 'Cannot iterate over non-entity object %s' % node.src)
         query._database = database = origin._database_
         if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
+        if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
         query._cache = database._get_cache()
 
-        translator = database._translator_cache.get(query_key)
+        translator = database._translator_cache.get(query._key)
         if translator is None:
             tree = loads(dumps(tree, 2))  # tree = deepcopy(tree)
             translator_cls = database.provider.translator_cls
             translator = translator_cls(tree, extractors, vartypes)
-            database._translator_cache[query_key] = translator
-        query._tree = translator.tree
+            database._translator_cache[query._key] = translator
         query._translator = translator
-        expr_type = translator.expr_type
-        if isinstance(expr_type, EntityMeta): query._order = tuple((attr, True) for attr in expr_type._pk_attrs_)
-        else: query._order = None
-    def _construct_sql_and_arguments(query, order=None, range=None, distinct=None, aggr_func_name=None):
+    def _construct_sql_and_arguments(query, range=None, distinct=None, aggr_func_name=None):
         translator = query._translator
-        sql_key = query._base_key + (order, range, distinct, aggr_func_name, options.INNER_JOIN_SYNTAX)
+        sql_key = query._key + (range, distinct, aggr_func_name, options.INNER_JOIN_SYNTAX)
         database = query._database
         cache_entry = database._constructed_sql_cache.get(sql_key)
         if cache_entry is None:
-            attr_offsets = None
-            if distinct is None: distinct = translator.distinct
-            ast_transformer = lambda ast: ast
-            sql_ast = [ 'SELECT' ]
-            if aggr_func_name:
-                expr_type = translator.expr_type
-                if not isinstance(expr_type, EntityMeta):
-                    if aggr_func_name in ('SUM', 'AVG') and expr_type not in numeric_types:
-                        throw(TranslationError, '%r is valid for numeric attributes only' % aggr_func_name.lower())
-                    assert len(translator.expr_columns) == 1
-                    column_ast = translator.expr_columns[0]
-                elif aggr_func_name is not 'COUNT': throw(TranslationError, 
-                    'Attribute should be specified for %r aggregate function' % aggr_func_name.lower())
-                aggr_ast = None
-                if aggr_func_name == 'COUNT':
-                    if isinstance(expr_type, (tuple, EntityMeta)):
-                        if translator.distinct:
-                            select_ast = [ 'DISTINCT' ] + translator.expr_columns  # aggr_ast remains to be None
-                            def ast_transformer(ast):
-                                return [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ], [ 'FROM', [ 't', 'SELECT', ast[1:] ] ] ]
-                        else: aggr_ast = [ 'COUNT', 'ALL' ]
-                    else: aggr_ast = [ 'COUNT', 'DISTINCT', column_ast ]
-                else: aggr_ast = [ aggr_func_name, column_ast ]
-                if aggr_ast: select_ast = [ 'AGGREGATES', aggr_ast ]
-            elif isinstance(translator.expr_type, EntityMeta):
-                select_ast, attr_offsets = translator.expr_type._construct_select_clause_(translator.alias, distinct)
-            else: select_ast = [ distinct and 'DISTINCT' or 'ALL' ] + translator.expr_columns
-            sql_ast.append(select_ast)
-            sql_ast.append(translator.subquery.from_ast)
-            if translator.where: sql_ast.append(translator.where)
-            if translator.groupby: sql_ast.append(translator.groupby)
-            if translator.having: sql_ast.append(translator.having)
-            if order:
-                alias = translator.alias
-                orderby_section = [ 'ORDER_BY' ]
-                for attr, asc in order:
-                    for column in attr.columns:
-                        orderby_section.append(([ 'COLUMN', alias, column ], asc and 'ASC' or 'DESC'))
-                sql_ast = sql_ast + [ orderby_section ]
-            if range:
-                start, stop = range
-                limit = stop - start
-                offset = start
-                assert limit is not None
-                limit_section = [ 'LIMIT', [ 'VALUE', limit ]]
-                if offset: limit_section.append([ 'VALUE', offset ])
-                sql_ast = sql_ast + [ limit_section ]
-            sql_ast = ast_transformer(sql_ast)
+            sql_ast, attr_offsets = translator.construct_sql_ast(range, distinct, aggr_func_name)
             cache = database._get_cache()
             sql, adapter = database.provider.ast2sql(sql_ast)
             cache_entry = sql, adapter, attr_offsets
@@ -3445,7 +3408,7 @@ class Query(object):
         return sql, arguments, attr_offsets, query_key
     def _fetch(query, range=None, distinct=None):
         translator = query._translator
-        sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(query._order, range, distinct)
+        sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(range, distinct)
         cache = query._cache
         try: result = cache.query_results[query_key]
         except KeyError:
@@ -3503,23 +3466,125 @@ class Query(object):
         return iter(query.fetch())
     @cut_traceback
     def orderby(query, *args):
-        if not args: throw(TypeError, 'query.orderby() requires at least one argument')
-        entity = query._translator.expr_type
-        if not isinstance(entity, EntityMeta): throw(NotImplementedError,
-            'orderby() is supported for queries which return simple list of objects only')
-        order = []
-        if args == (None,): pass
-        else:
-            for arg in args:
-                if isinstance(arg, Attribute): order.append((arg, True))
-                elif isinstance(arg, DescWrapper): order.append((arg.attr, False))
-                else: throw(TypeError, 'query.orderby() arguments must be attributes. Got: %r' % arg)
-                attr = order[-1][0]
+        if not args: throw(TypeError, 'orderby() method requires at least one argument')
+        if args[0] is None:
+            if len(args) > 1: throw(TypeError, 'When first argument of orderby() method is None, it must be the only argument')
+            return query._without_order_by()
+
+        attributes = functions = strings = numbers = False
+        for arg in args:
+            if isinstance(arg, basestring): strings = True
+            elif type(arg) is types.FunctionType: functions = True
+            elif isinstance(arg, (int, long)): numbers = True
+            elif isinstance(arg, (Attribute, DescWrapper)): attributes = True
+            else: throw(TypeError, "Arguments of orderby() method must be attributes, numbers, strings or lambdas")
+        if strings + functions + numbers + attributes > 1:
+            throw(TypeError, 'All arguments of orderby() method must be of the same type')
+        if len(args) > 1 and strings + functions:
+            throw(TypeError, 'When argument of orderby() method is string or lambda, it must be the only argument')
+
+        if numbers:
+            return query._order_by_numbers(args)
+        if attributes:
+            return query._order_by_attributes(args)
+        globals = sys._getframe(2).f_globals
+        locals = sys._getframe(2).f_locals
+        if strings:
+            expr_text = func_id = args[0]
+            func_ast = string2ast(expr_text)
+            if isinstance(func_ast, ast.Lambda): func_ast = func_ast.code
+        elif functions:
+            func = args[0]
+            for name in func.func_code.co_varnames:
+                if name not in query._translator.subquery:
+                    throw(TranslationError, 'Unknown name %s' % name)
+            func_id = id(func.func_code)
+            func_ast = decompile(func)[0]
+        else: assert False
+        return query._order_by_lambda(func_id, func_ast, globals, locals)
+    def _without_order_by(query):
+        query._key = query._key[:2]
+        database = query._database
+        translator = database._translator_cache.get(query._key)
+        assert translator is not None  # Translator for query without orderby must be in cache already
+        query._translator = translator
+        return query
+    def _order_by_numbers(query, numbers):
+        if 0 in numbers: throw(ValueError, 'Numeric arguments of orderby() method must be non-zero')
+        new_key = query._key + (numbers,)
+        translator = query._database._translator_cache.get(new_key)
+        if translator is None:
+            translator = object.__new__(query._translator.__class__)
+            translator.__dict__.update(query._translator.__dict__)  # shallow copy
+            order = translator.order = translator.order[:]  # only order will be changed
+            expr_monad = translator.tree.expr.monad
+            if isinstance(expr_monad, translator.ListMonad): monads = expr_monad.items
+            else: monads = (expr_monad,)
+            for i in numbers:
+                try: monad = monads[abs(i)-1]
+                except IndexError: throw(IndexError,
+                    'Invalid index of orderby() method: %d (query result has only %d column%s)'
+                    % (i, len(monads), len(monads) > 1 and 's' or ''))
+                for pos in monad.orderby_columns:
+                    order.append(i < 0 and [ 'DESC', [ 'VALUE', pos ] ] or [ 'VALUE', pos ])
+            query._database._translator_cache[new_key] = translator
+        query._key = new_key
+        query._translator = translator
+        return query
+    def _order_by_attributes(query, attrs):
+        new_key = query._key + (attrs,)
+        translator = query._database._translator_cache.get(new_key)
+        if translator is None:
+            entity = query._translator.expr_type
+            if not isinstance(entity, EntityMeta): throw(NotImplementedError,
+                'orderby() is supported for queries which return simple list of objects only')
+            translator = object.__new__(query._translator.__class__)
+            translator.__dict__.update(query._translator.__dict__)  # shallow copy
+            order = translator.order = translator.order[:]  # only order will be changed
+            alias = translator.alias
+            for x in attrs:
+                if isinstance(x, DescWrapper):
+                    attr = x.attr
+                    desc_wrapper = lambda column: [ 'DESC', column ]
+                elif isinstance(x, Attribute):
+                    attr = x
+                    desc_wrapper = lambda column: column
+                else: assert False, x
                 if entity._adict_.get(attr.name) is not attr: throw(TypeError, 
                     'Attribute %s does not belong to Entity %s' % (attr, entity.__name__))
-        new_query = query._clone()
-        new_query._order = tuple(order)
-        return new_query
+                for column in attr.columns:
+                    order.append(desc_wrapper([ 'COLUMN', alias, column]))
+            query._database._translator_cache[new_key] = translator
+        query._key = new_key
+        query._translator = translator
+        return query
+    def _order_by_lambda(query, func_id, func_ast, globals, locals):
+        extractors, varnames, func_ast = create_extractors(func_id, func_ast, query._translator.subquery)
+        if extractors:
+            vars, vartypes = extract_vars(extractors, globals, locals)
+            query_vars = query._vars
+            for name, value in vars.iteritems():
+                if query_vars.setdefault(name, value) != value: throw(TranslationError,
+                    'Meaning of expression %s has changed during query translation' % name)
+        else: vars, vartypes = {}, {}
+        sorted_vartypes = tuple(map(vartypes.__getitem__, varnames))
+        new_key = query._key + ((func_id, sorted_vartypes),)
+        translator = query._database._translator_cache.get(new_key)
+        if translator is None:
+            translator = deepcopy(query._translator)
+            func_ast = loads(dumps(func_ast, 2))  # func_ast = deepcopy(func_ast)
+            translator.extractors.update(extractors)
+            translator.vartypes.update(vartypes)
+            translator.inside_orderby = True
+            translator.dispatch(func_ast)
+            translator.inside_orderby = False
+            if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
+            else: nodes = (func_ast,)
+            for node in nodes: translator.order.extend(node.monad.getsql())
+            query._database._translator_cache[new_key] = translator
+        query._key = new_key
+        query._translator = translator
+        return query
     def _clone(query):
         new_query = object.__new__(Query)
         new_query.__dict__.update(query.__dict__)
