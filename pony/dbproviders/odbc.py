@@ -15,8 +15,8 @@ def quote_name(connection, name):
     quote_char = connection.getinfo(pyodbc.SQL_IDENTIFIER_QUOTE_CHAR)
     return sqlbuilding.quote_name(name, quote_char)
 
-def connect(*args, **keyargs):
-    return pyodbc.connect(*args, **keyargs)
+def connect(*args, **kwargs):
+    return pyodbc.connect(*args, **kwargs)
 
 def release(connection):
     connection.close()

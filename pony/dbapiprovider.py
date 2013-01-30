@@ -6,9 +6,9 @@ from pony.converting import str2date, str2datetime
 from pony.ormtypes import LongStr, LongUnicode
 
 class DBException(Exception):
-    def __init__(exc, *args, **keyargs):
-        exceptions = keyargs.pop('exceptions', [])
-        assert not keyargs
+    def __init__(exc, *args, **kwargs):
+        exceptions = kwargs.pop('exceptions', [])
+        assert not kwargs
         if not args and exceptions:
             if len(exceptions) == 1: args = getattr(exceptions[0], 'args', ())
             else: args = ('Multiple exceptions have occured',)
@@ -43,9 +43,9 @@ class     ProgrammingError(DatabaseError): pass
 class     NotSupportedError(DatabaseError): pass
 
 @simple_decorator
-def wrap_dbapi_exceptions(func, provider, *args, **keyargs):
+def wrap_dbapi_exceptions(func, provider, *args, **kwargs):
     dbapi_module = provider.dbapi_module
-    try: return func(provider, *args, **keyargs)
+    try: return func(provider, *args, **kwargs)
     except dbapi_module.NotSupportedError, e: raise NotSupportedError(exceptions=[e])
     except dbapi_module.ProgrammingError, e: raise ProgrammingError(exceptions=[e])
     except dbapi_module.InternalError, e: raise InternalError(exceptions=[e])
@@ -163,10 +163,10 @@ class Converter(object):
     def __init__(converter, attr=None):
         converter.attr = attr
         if attr is None: return
-        keyargs = attr.keyargs.copy()
-        converter.init(keyargs)
-        for option in keyargs: throw(TypeError, 'Unknown option %r' % option)
-    def init(converter, keyargs):
+        kwargs = attr.kwargs.copy()
+        converter.init(kwargs)
+        for option in kwargs: throw(TypeError, 'Unknown option %r' % option)
+    def init(converter, kwargs):
         pass
     def validate(converter, val):
         return val
@@ -176,7 +176,7 @@ class Converter(object):
         return val
 
 class BoolConverter(Converter):
-    def init(converter, keyargs):
+    def init(converter, kwargs):
         attr = converter.attr
         if attr and attr.args: unexpected_args(attr, attr.args)
     def validate(converter, val):
@@ -191,7 +191,7 @@ class BasestringConverter(Converter):
         converter.max_len = None
         converter.db_encoding = None
         Converter.__init__(converter, attr)
-    def init(converter, keyargs):
+    def init(converter, kwargs):
         attr = converter.attr
         if not attr.args: max_len = None
         elif len(attr.args) > 1: unexpected_args(attr, attr.args[1:])
@@ -202,7 +202,7 @@ class BasestringConverter(Converter):
         elif not isinstance(max_len, (int, long)):
             throw(TypeError, 'Max length argument must be int. Got: %r' % max_len)
         converter.max_len = max_len
-        converter.db_encoding = keyargs.pop('db_encoding', None)
+        converter.db_encoding = kwargs.pop('db_encoding', None)
     def validate(converter, val):
         max_len = converter.max_len
         val_len = len(val)
@@ -229,9 +229,9 @@ class StrConverter(BasestringConverter):
         converter.encoding = 'ascii'  # for the case when attr is None
         BasestringConverter.__init__(converter, attr)
         converter.utf8 = is_utf8(converter.encoding)
-    def init(converter, keyargs):
-        BasestringConverter.init(converter, keyargs)
-        converter.encoding = keyargs.pop('encoding', 'latin1')
+    def init(converter, kwargs):
+        BasestringConverter.init(converter, kwargs)
+        converter.encoding = kwargs.pop('encoding', 'latin1')
     def validate(converter, val):
         if val is not None:
             if isinstance(val, str): pass
@@ -245,13 +245,13 @@ class StrConverter(BasestringConverter):
         return val.encode(converter.encoding, 'replace')
 
 class IntConverter(Converter):
-    def init(converter, keyargs):
+    def init(converter, kwargs):
         attr = converter.attr
         if attr and attr.args: unexpected_args(attr, attr.args)
-        min_val = keyargs.pop('min', None)
+        min_val = kwargs.pop('min', None)
         if min_val is not None and not isinstance(min_val, (int, long)):
             throw(TypeError, "'min' argument for attribute %s must be int. Got: %r" % (attr, min_val))
-        max_val = keyargs.pop('max', None)
+        max_val = kwargs.pop('max', None)
         if max_val is not None and not isinstance(max_val, (int, long)):
             throw(TypeError, "'max' argument for attribute %s must be int. Got: %r" % (attr, max_val))
         converter.min_val = min_val
@@ -278,22 +278,22 @@ class IntConverter(Converter):
 
 class RealConverter(Converter):
     default_tolerance = None
-    def init(converter, keyargs):
+    def init(converter, kwargs):
         attr = converter.attr
         if attr and attr.args: unexpected_args(attr, attr.args)
-        min_val = keyargs.pop('min', None)
+        min_val = kwargs.pop('min', None)
         if min_val is not None:
             try: min_val = float(min_val)
             except ValueError:
                 throw(TypeError, "Invalid value for 'min' argument for attribute %s: %r" % (attr, min_val))
-        max_val = keyargs.pop('max', None)
+        max_val = kwargs.pop('max', None)
         if max_val is not None:
             try: max_val = float(max_val)
             except ValueError:
                 throw(TypeError, "Invalid value for 'max' argument for attribute %s: %r" % (attr, max_val))
         converter.min_val = min_val
         converter.max_val = max_val
-        converter.tolerance = keyargs.pop('tolerance', converter.default_tolerance)
+        converter.tolerance = kwargs.pop('tolerance', converter.default_tolerance)
     def validate(converter, val):
         try: val = float(val)
         except ValueError:
@@ -321,20 +321,20 @@ class DecimalConverter(Converter):
     def __init__(converter, attr=None):
         converter.exp = None  # for the case when attr is None
         Converter.__init__(converter, attr)
-    def init(converter, keyargs):
+    def init(converter, kwargs):
         attr = converter.attr
         args = attr.args
         if len(args) > 2: throw(TypeError, 'Too many positional parameters for Decimal (expected: precision and scale)')
 
         if args: precision = args[0]
-        else: precision = keyargs.pop('precision', 12)
+        else: precision = kwargs.pop('precision', 12)
         if not isinstance(precision, (int, long)):
             throw(TypeError, "'precision' positional argument for attribute %s must be int. Got: %r" % (attr, precision))
         if precision <= 0: throw(TypeError, 
             "'precision' positional argument for attribute %s must be positive. Got: %r" % (attr, precision))
 
         if len(args) == 2: scale = args[1]
-        else: scale = keyargs.pop('scale', 2)
+        else: scale = kwargs.pop('scale', 2)
         if not isinstance(scale, (int, long)):
             throw(TypeError, "'scale' positional argument for attribute %s must be int. Got: %r" % (attr, scale))
         if scale <= 0: throw(TypeError, 
@@ -345,13 +345,13 @@ class DecimalConverter(Converter):
         converter.scale = scale
         converter.exp = Decimal(10) ** -scale
 
-        min_val = keyargs.pop('min', None)
+        min_val = kwargs.pop('min', None)
         if min_val is not None:
             try: min_val = Decimal(min_val)
             except TypeError: throw(TypeError, 
                 "Invalid value for 'min' argument for attribute %s: %r" % (attr, min_val))
 
-        max_val = keyargs.pop('max', None)
+        max_val = kwargs.pop('max', None)
         if max_val is not None:
             try: max_val = Decimal(max_val)
             except TypeError: throw(TypeError, 
@@ -376,7 +376,7 @@ class DecimalConverter(Converter):
         return 'DECIMAL(%d, %d)' % (converter.precision, converter.scale)
 
 class BlobConverter(Converter):
-    def init(converter, keyargs):
+    def init(converter, kwargs):
         attr = converter.attr
         if attr and attr.args: unexpected_args(attr, attr.args)
     def validate(converter, val):
@@ -390,7 +390,7 @@ class BlobConverter(Converter):
         return 'BLOB'
 
 class DateConverter(Converter):
-    def init(converter, keyargs):
+    def init(converter, kwargs):
         attr = converter.attr
         if attr and attr.args: unexpected_args(attr, attr.args)
     def validate(converter, val):
@@ -406,7 +406,7 @@ class DateConverter(Converter):
         return 'DATE'
 
 class DatetimeConverter(Converter):
-    def init(converter, keyargs):
+    def init(converter, kwargs):
         attr = converter.attr
         if attr and attr.args: unexpected_args(attr, attr.args)
     def validate(converter, val):

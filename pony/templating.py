@@ -708,7 +708,7 @@ class FunctionElement(SyntaxElement):
         elem.params = elem.params or ''
         elem.markup_args = [ Markup(source, item) for item in markup_args ]
         elem.func_code = _compile(elem.expr)
-        s = '(lambda *args, **keyargs: (list(args), keyargs))(%s)' % elem.params
+        s = '(lambda *args, **kwargs: (list(args), kwargs))(%s)' % elem.params
         elem.params_code = _compile(s)
         elem.methods = []
     def append_method(elem, item):
@@ -717,12 +717,12 @@ class FunctionElement(SyntaxElement):
         method_name = expr[1:]
         params = params or ''
         markup_args = [ Markup(elem.source, item) for item in markup_args ]
-        s = '(lambda *args, **keyargs: (list(args), keyargs))(%s)' % params
+        s = '(lambda *args, **kwargs: (list(args), kwargs))(%s)' % params
         params_code = _compile(s)
         elem.methods.append((method_name, params_code, markup_args))
     def eval(elem, globals, locals=None):
         func = _eval(elem.func_code, globals, locals)
-        args, keyargs = _eval(elem.params_code, globals, locals)
+        args, kwargs = _eval(elem.params_code, globals, locals)
         if getattr(func, '__lazy__', False):
             args.extend([BoundMarkup(m, globals, locals) for m in elem.markup_args])
         else:
@@ -730,15 +730,15 @@ class FunctionElement(SyntaxElement):
         if locals is None: locals = {}
         locals['__pony_func__'] = func
         locals['__pony_args__'] = args
-        locals['__pony_keyargs__'] = keyargs
+        locals['__pony_keyargs__'] = kwargs
         result = _eval(_func_code, globals, locals)
         for method_name, params_code, markup_args in elem.methods:
             method = getattr(result, method_name)
-            args, keyargs = _eval(params_code, globals, locals)
+            args, kwargs = _eval(params_code, globals, locals)
             if getattr(method, '__lazy__', False):
                   args.extend([BoundMarkup(m, globals, locals) for m in markup_args])
             else: args.extend([ m.eval(globals, locals) for m in markup_args ])
-            method(*args, **keyargs)
+            method(*args, **kwargs)
         if inspect.isroutine(result): result = result()
         if isinstance(result, basestring): return result
         return unicode(result)
@@ -915,8 +915,8 @@ def _template(str_cls, default_ext, text=None, filename=None, globals=None, loca
         locals = sys._getframe(2).f_locals
     return markup.eval(globals, locals)
 
-def template(*args, **keyargs):
-    return _template(unicode, '.txt', *args, **keyargs)
+def template(*args, **kwargs):
+    return _template(unicode, '.txt', *args, **kwargs)
 
-def html(*args, **keyargs):
-    return _template(Html, '.html', *args, **keyargs)
+def html(*args, **kwargs):
+    return _template(Html, '.html', *args, **kwargs)

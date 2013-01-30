@@ -190,9 +190,9 @@ class Local(localbase):
 local = Local()
 
 @simple_decorator
-def in_dedicated_thread(func, *args, **keyargs):
+def in_dedicated_thread(func, *args, **kwargs):
     result_holder = []
-    mem_queue.put((local.lock, func, args, keyargs, result_holder))
+    mem_queue.put((local.lock, func, args, kwargs, result_holder))
     local.lock.acquire()
     result = result_holder[0]
     if isinstance(result, Exception):
@@ -203,9 +203,9 @@ def in_dedicated_thread(func, *args, **keyargs):
 
 def make_wrapper_method(method_name):
     @in_dedicated_thread
-    def wrapper_method(wrapper, *args, **keyargs):
+    def wrapper_method(wrapper, *args, **kwargs):
         method = getattr(wrapper.obj, method_name)
-        return method(*args, **keyargs)
+        return method(*args, **kwargs)
     wrapper_method.__name__ = method_name
     return wrapper_method
 
@@ -227,7 +227,7 @@ class MemoryConnectionWrapper(object):
     def interrupt(wrapper):
         wrapper.obj.interrupt()
     @in_dedicated_thread
-    def iterdump(wrapper, *args, **keyargs):
+    def iterdump(wrapper, *args, **kwargs):
         return iter(list(wrapper.obj.iterdump()))
 
 sqlite_con_methods = '''cursor commit rollback close execute executemany executescript
@@ -267,8 +267,8 @@ class SqliteMemoryDbThread(Thread):
         while True:
             x = mem_queue.get()
             if x is None: break
-            lock, func, args, keyargs, result_holder = x
-            try: result = func(*args, **keyargs)
+            lock, func, args, kwargs, result_holder = x
+            try: result = func(*args, **kwargs)
             except Exception, e:
                 result_holder.append(e)
                 del e

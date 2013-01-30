@@ -137,10 +137,10 @@ class HttpResponse(object):
             if not isinstance(link, basestring): raise TypeError('Reference to script must be string. Got: %r' % link)
             if link not in scripts: scripts.append(link)
 
-def url(func, *args, **keyargs):
+def url(func, *args, **kwargs):
     routes = getattr(func, 'routes')
     if routes is None: raise ValueError('Cannot create url for this object :%s' % func)
-    try: keyparams = func.dummy_func(*args, **keyargs).copy()
+    try: keyparams = func.dummy_func(*args, **kwargs).copy()
     except TypeError, e: raise TypeError(e.args[0].replace('<lambda>', func.__name__, 1))
     names, argsname, keyargsname, defaults, converters = func.argspec
     indexparams = map(keyparams.pop, names)
@@ -193,9 +193,9 @@ def set_cookie(name, value, expires=None, max_age=None, path=None, domain=None,
                         name, value, expires, max_age, path, domain, secure, http_only, comment, version)
 
 @simple_decorator
-def no_cookies(func, *args, **keyargs):
+def no_cookies(func, *args, **kwargs):
     local.no_cookies = True
-    return func(*args, **keyargs)
+    return func(*args, **kwargs)
 
 path_re = re.compile(r"^[-_.!~*'()A-Za-z0-9]+$")
 
@@ -227,8 +227,8 @@ def get_static_file(path, dir=None, max_age=10):
     return file(fname, 'rb')
 
 @simple_decorator
-def normalize_result_decorator(func, *args, **keyargs):
-    content, headers = normalize_result(func(*args, **keyargs), local.response.headers)
+def normalize_result_decorator(func, *args, **kwargs):
+    content, headers = normalize_result(func(*args, **kwargs), local.response.headers)
     local.response.headers = headers
     return content
 
@@ -290,12 +290,12 @@ def invoke(url):
         if routes: raise Http405MethodNotAllowed
         raise Http404NotFound
     
-    route, args, keyargs = routes[0]
+    route, args, kwargs = routes[0]
 
     if route.redirect:
         for alternative in route.func.routes:
             if not alternative.redirect:
-                new_url = make_url(route.func, *args, **keyargs)
+                new_url = make_url(route.func, *args, **kwargs)
                 status = '301 Moved Permanently'
                 if isinstance(route.redirect, basestring): status = route.redirect
                 elif isinstance(route.redirect, (int, long)) and 300 <= route.redirect < 400:
@@ -306,10 +306,10 @@ def invoke(url):
     names, argsname, keyargsname, defaults, converters = route.func.argspec
     params = request.params
     params.update(zip(names, args))
-    params.update(keyargs)
+    params.update(kwargs)
 
     middlewared_func = middleware.decorator_wrap(normalize_result_decorator(route.func))
-    result = middlewared_func(*args, **keyargs)
+    result = middlewared_func(*args, **kwargs)
 
     headers = response.headers
     headers.setdefault('Expires', '0')

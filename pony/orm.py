@@ -137,7 +137,7 @@ def adapt_sql(sql, paramstyle):
     pos = 0
     result = []
     args = []
-    keyargs = {}
+    kwargs = {}
     if paramstyle in ('format', 'pyformat'): sql = sql.replace('%', '%%')
     while True:
         try: i = sql.index('$', pos)
@@ -165,20 +165,20 @@ def adapt_sql(sql, paramstyle):
                 args.append(expr)
                 result.append(':%d' % len(args))
             elif paramstyle == 'named':
-                key = 'p%d' % (len(keyargs) + 1)
-                keyargs[key] = expr
+                key = 'p%d' % (len(kwargs) + 1)
+                kwargs[key] = expr
                 result.append(':' + key)
             elif paramstyle == 'pyformat':
-                key = 'p%d' % (len(keyargs) + 1)
-                keyargs[key] = expr
+                key = 'p%d' % (len(kwargs) + 1)
+                kwargs[key] = expr
                 result.append('%%(%s)s' % key)
             else: throw(NotImplementedError)
     adapted_sql = ''.join(result)
     if args:
         source = '(%s,)' % ', '.join(args)
         code = compile(source, '<?>', 'eval')
-    elif keyargs:
-        source = '{%s}' % ','.join('%r:%s' % item for item in keyargs.items())
+    elif kwargs:
+        source = '{%s}' % ','.join('%r:%s' % item for item in kwargs.items())
         code = compile(source, '<?>', 'eval')
     else:
         code = compile('None', '<?>', 'eval')
@@ -246,11 +246,11 @@ class Database(object):
     def __deepcopy__(self, memo):
         return self  # Database cannot be cloned by deepcopy()
     @cut_traceback
-    def __init__(self, provider_name, *args, **keyargs):
-        # First argument cannot be named 'database', because 'database' can be in keyargs
+    def __init__(self, provider_name, *args, **kwargs):
+        # First argument cannot be named 'database', because 'database' can be in kwargs
         if not isinstance(provider_name, basestring): throw(TypeError)
         provider_module = import_module('pony.dbproviders.' + provider_name)
-        self.provider = provider = provider_module.get_provider(*args, **keyargs)
+        self.provider = provider = provider_module.get_provider(*args, **kwargs)
         self.priority = 0
         self.optimistic = True
         self._insert_cache = {}
@@ -370,20 +370,20 @@ class Database(object):
         result = cursor.fetchone()
         return bool(result)
     @cut_traceback
-    def insert(database, table_name, returning=None, **keyargs):
+    def insert(database, table_name, returning=None, **kwargs):
         table_name = table_name[:]  # table_name = templating.plainstr(table_name)
         cache = database._get_cache()
         cache.optimistic = False
-        query_key = (table_name,) + tuple(keyargs)  # keys are not sorted deliberately!!
+        query_key = (table_name,) + tuple(kwargs)  # keys are not sorted deliberately!!
         if returning is not None: query_key = query_key + (returning,)
         cached_sql = database._insert_cache.get(query_key)
         if cached_sql is None:
-            ast = [ 'INSERT', table_name, keyargs.keys(), [ [ 'PARAM', i ] for i in range(len(keyargs)) ], returning ]
+            ast = [ 'INSERT', table_name, kwargs.keys(), [ [ 'PARAM', i ] for i in range(len(kwargs)) ], returning ]
             sql, adapter = database._ast2sql(ast)
             cached_sql = sql, adapter
             database._insert_cache[query_key] = cached_sql
         else: sql, adapter = cached_sql
-        arguments = adapter(keyargs.values())  # order of values same as order of keys
+        arguments = adapter(kwargs.values())  # order of values same as order of keys
         if returning is None:
             cursor = database._exec_sql(sql, arguments)
             return getattr(cursor, 'lastrowid', None)
@@ -624,11 +624,11 @@ class Attribute(object):
                 'is_pk', 'is_collection', 'is_ref', 'is_basic', \
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
-                'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'keyargs'
+                'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
-    def __init__(attr, py_type, *args, **keyargs):
+    def __init__(attr, py_type, *args, **kwargs):
         if attr.__class__ is Attribute: throw(TypeError, "'Attribute' is abstract type")
         attr.is_required = isinstance(attr, Required)
         attr.is_discriminator = isinstance(attr, Discriminator)
@@ -648,26 +648,26 @@ class Attribute(object):
         attr.is_collection = isinstance(attr, Collection)
         attr.is_ref = not attr.is_collection and isinstance(attr.py_type, (EntityMeta, basestring))
         attr.is_basic = not attr.is_collection and not attr.is_ref
-        attr.sql_type = keyargs.pop('sql_type', None)
+        attr.sql_type = kwargs.pop('sql_type', None)
         attr.entity = attr.name = None
         attr.args = args
-        attr.auto = keyargs.pop('auto', False)
+        attr.auto = kwargs.pop('auto', False)
 
-        try: attr.default = keyargs.pop('default')
+        try: attr.default = kwargs.pop('default')
         except KeyError: attr.default = None
         else:
             if attr.default is None and attr.is_required:
                 throw(TypeError, 'Default value for required attribute cannot be None' % attr)
 
-        attr.reverse = keyargs.pop('reverse', None)
+        attr.reverse = kwargs.pop('reverse', None)
         if not attr.reverse: pass
         elif not isinstance(attr.reverse, (basestring, Attribute)):
             throw(TypeError, "Value of 'reverse' option must be name of reverse attribute). Got: %r" % attr.reverse)
         elif not isinstance(attr.py_type, (basestring, EntityMeta)):
             throw(TypeError, 'Reverse option cannot be set for this type: %r' % attr.py_type)
 
-        attr.column = keyargs.pop('column', None)
-        attr.columns = keyargs.pop('columns', None)
+        attr.column = kwargs.pop('column', None)
+        attr.columns = kwargs.pop('columns', None)
         if attr.column is not None:
             if attr.columns is not None:
                 throw(TypeError, "Parameters 'column' and 'columns' cannot be specified simultaneously")
@@ -685,9 +685,9 @@ class Attribute(object):
         attr.col_paths = []
         attr._columns_checked = False
         attr.composite_keys = []
-        attr.lazy = keyargs.pop('lazy', getattr(py_type, 'lazy', False))
+        attr.lazy = kwargs.pop('lazy', getattr(py_type, 'lazy', False))
         attr.lazy_sql_cache = None
-        attr.keyargs = keyargs
+        attr.kwargs = kwargs
         attr.converters = []
     def _init_(attr, entity, name):
         attr.entity = entity
@@ -1025,8 +1025,8 @@ class Required(Attribute):
 
 class Discriminator(Required):
     __slots__ = [ 'code2cls' ]
-    def __init__(attr, py_type, *args, **keyargs):
-        Attribute.__init__(attr, py_type, *args, **keyargs)
+    def __init__(attr, py_type, *args, **kwargs):
+        Attribute.__init__(attr, py_type, *args, **kwargs)
         attr.code2cls = {}
     def _init_(attr, entity, name):
         if entity._root_ is not entity: throw(ERDiagramError, 
@@ -1076,12 +1076,12 @@ class Discriminator(Required):
 
 class Unique(Required):
     __slots__ = []
-    def __new__(cls, *args, **keyargs):
+    def __new__(cls, *args, **kwargs):
         is_pk = issubclass(cls, PrimaryKey)
         if not args: throw(TypeError, 'Invalid count of positional arguments')
         attrs = tuple(a for a in args if isinstance(a, Attribute))
         non_attrs = [ a for a in args if not isinstance(a, Attribute) ]
-        if attrs and (non_attrs or keyargs): throw(TypeError, 'Invalid arguments')
+        if attrs and (non_attrs or kwargs): throw(TypeError, 'Invalid arguments')
         cls_dict = sys._getframe(1).f_locals
         keys = cls_dict.setdefault('_keys_', {})
 
@@ -1122,9 +1122,9 @@ class PrimaryKey(Unique):
 class Collection(Attribute):
     __slots__ = 'table', 'cached_load_sql', 'cached_add_m2m_sql', 'cached_remove_m2m_sql', 'wrapper_class', \
                 'symmetric', 'reverse_column', 'reverse_columns'
-    def __init__(attr, py_type, *args, **keyargs):
+    def __init__(attr, py_type, *args, **kwargs):
         if attr.__class__ is Collection: throw(TypeError, "'Collection' is abstract type")
-        table = keyargs.pop('table', None)  # TODO: rename table to link_table or m2m_table
+        table = kwargs.pop('table', None)  # TODO: rename table to link_table or m2m_table
         if table is not None and not isinstance(table, basestring):
             if not isinstance(table, (list, tuple)): throw(TypeError, 
                 "Parameter 'table' must be a string. Got: %r" % table)
@@ -1133,12 +1133,12 @@ class Collection(Attribute):
                     'Each part of table name must be a string. Got: %r' % name_part)
             table = tuple(table)
         attr.table = table
-        Attribute.__init__(attr, py_type, *args, **keyargs)
+        Attribute.__init__(attr, py_type, *args, **kwargs)
         if attr.default is not None: throw(TypeError, 'Default value could not be set for collection attribute')
         if attr.auto: throw(TypeError, "'auto' option could not be set for collection attribute")
 
-        attr.reverse_column = attr.keyargs.pop('reverse_column', None)
-        attr.reverse_columns = attr.keyargs.pop('reverse_columns', None)
+        attr.reverse_column = attr.kwargs.pop('reverse_column', None)
+        attr.reverse_columns = attr.kwargs.pop('reverse_columns', None)
         if attr.reverse_column is not None:
             if attr.reverse_columns is not None and attr.reverse_columns != [ attr.reverse_column ]:
                 throw(TypeError, "Parameters 'reverse_column' and 'reverse_columns' cannot be specified simultaneously")
@@ -1154,7 +1154,7 @@ class Collection(Attribute):
             if len(attr.reverse_columns) == 1: attr.reverse_column = attr.reverse_columns[0]
         else: attr.reverse_columns = []
 
-        for option in attr.keyargs: throw(TypeError, 'Unknown option %r' % option)
+        for option in attr.kwargs: throw(TypeError, 'Unknown option %r' % option)
         attr.cached_load_sql = {}
         attr.cached_add_m2m_sql = None
         attr.cached_remove_m2m_sql = None
@@ -2002,17 +2002,17 @@ class EntityMeta(type):
         return pk_columns
     def __iter__(entity):
         return EntityIter(entity)
-    def _normalize_args_(entity, keyargs, setdefault=False):
+    def _normalize_args_(entity, kwargs, setdefault=False):
         avdict = {}
         if setdefault:
-            for name in ifilterfalse(entity._adict_.__contains__, keyargs):
+            for name in ifilterfalse(entity._adict_.__contains__, kwargs):
                 throw(TypeError, 'Unknown attribute %r' % name)
             for attr in entity._attrs_:
-                val = keyargs.get(attr.name, DEFAULT)
+                val = kwargs.get(attr.name, DEFAULT)
                 avdict[attr] = attr.check(val, None, entity, from_db=False)
         else:
             get = entity._adict_.get 
-            for name, val in keyargs.items():
+            for name, val in kwargs.items():
                 attr = get(name)
                 if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
                 avdict[attr] = attr.check(val, None, entity, from_db=False)
@@ -2023,11 +2023,11 @@ class EntityMeta(type):
         else: pkval = avdict.get(entity._pk_)
         return pkval, avdict        
     @cut_traceback
-    def fetch(entity, *args, **keyargs):
-        return entity._find_(None, args, keyargs)
+    def fetch(entity, *args, **kwargs):
+        return entity._find_(None, args, kwargs)
     @cut_traceback
-    def fetch_one(entity, *args, **keyargs):
-        objects = entity._find_(1, args, keyargs)
+    def fetch_one(entity, *args, **kwargs):
+        objects = entity._find_(1, args, kwargs)
         if not objects: return None
         if len(objects) > 1: throw(MultipleObjectsFoundError, 
             'Multiple objects were found. Use %s.fetch(...) to retrieve them' % entity.__name__)
@@ -2066,8 +2066,8 @@ class EntityMeta(type):
         if len(key) != len(entity._pk_attrs_):
             throw(TypeError, 'Invalid count of attrs in %s primary key (%s instead of %s)'
                              % (entity.__name__, len(key), len(entity._pk_attrs_)))
-        keyargs = dict(izip(imap(attrgetter('name'), entity._pk_attrs_), key))
-        objects = entity._find_(1, (), keyargs)
+        kwargs = dict(izip(imap(attrgetter('name'), entity._pk_attrs_), key))
+        objects = entity._find_(1, (), kwargs)
         if not objects: throw(ObjectNotFound, entity, key)
         if len(objects) > 1: throw(MultipleObjectsFoundError, 
             'Multiple objects was found. Use %s.fetch(...) to retrieve them' % entity.__name__)
@@ -2085,7 +2085,7 @@ class EntityMeta(type):
     def orderby(entity, *args):
         query = Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
         return query.orderby(*args)
-    def _find_(entity, max_fetch_count, args, keyargs):
+    def _find_(entity, max_fetch_count, args, kwargs):
         if entity._database_.schema is None:
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
         
@@ -2096,18 +2096,18 @@ class EntityMeta(type):
             msg = 'Positional argument must be lambda function or SQL select command. Got: %r'
             if is_string:
                 if select_re.match(first_arg):
-                    return entity._find_by_sql_(max_fetch_count, *args, **keyargs)
+                    return entity._find_by_sql_(max_fetch_count, *args, **kwargs)
                 elif not lambda_re.match(first_arg): throw(TypeError, msg % first_arg)
             elif not isinstance(first_arg, types.FunctionType): throw(TypeError, msg % first_arg)
             if len(args) > 1: throw(TypeError, 'Only one positional argument expected')
-            if keyargs: throw(TypeError, 'No keyword arguments expected')
+            if kwargs: throw(TypeError, 'No keyword arguments expected')
 
             globals = sys._getframe(3).f_globals
             locals = sys._getframe(3).f_locals
             query = entity._query_from_lambda_(first_arg, globals, locals)
             return query.fetch()
 
-        pkval, avdict = entity._normalize_args_(keyargs, False)
+        pkval, avdict = entity._normalize_args_(kwargs, False)
         for attr in avdict:
             if attr.is_collection: throw(TypeError, 
                 'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
@@ -2466,13 +2466,13 @@ class Entity(object):
     __metaclass__ = EntityMeta
     __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '__weakref__'
     @cut_traceback
-    def __new__(entity, *args, **keyargs):
+    def __new__(entity, *args, **kwargs):
         if args: raise TypeError('%s constructor accept only keyword arguments. Got: %d positional argument%s'
                                  % (entity.__name__, len(args), len(args) > 1 and 's' or ''))
         if entity._database_.schema is None:
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
 
-        pkval, avdict = entity._normalize_args_(keyargs, True)
+        pkval, avdict = entity._normalize_args_(kwargs, True)
         undo_funcs = []
         cache = entity._get_cache_()
         indexes = {}
@@ -2689,11 +2689,11 @@ class Entity(object):
         if obj._status_ in ('deleted', 'cancelled'): throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
         obj._delete_()
     @cut_traceback
-    def set(obj, **keyargs):
+    def set(obj, **kwargs):
         cache = obj._cache_
         if not cache.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
         if obj._status_ in ('deleted', 'cancelled'): throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
-        avdict, collection_avdict = obj._keyargs_to_avdicts_(keyargs)
+        avdict, collection_avdict = obj._keyargs_to_avdicts_(kwargs)
         status = obj._status_
         wbits = obj._wbits_
         get_val = obj._vals_.get
@@ -2762,10 +2762,10 @@ class Entity(object):
             for undo_func in undo_funcs: undo_func()
             raise
         obj._vals_.update((attr.name, new_val) for attr, new_val in avdict.iteritems())
-    def _keyargs_to_avdicts_(obj, keyargs):
+    def _keyargs_to_avdicts_(obj, kwargs):
         avdict, collection_avdict = {}, {}
         get = obj._adict_.get
-        for name, new_val in keyargs.items():
+        for name, new_val in kwargs.items():
             attr = get(name)
             if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
             new_val = attr.check(new_val, obj, from_db=False)
@@ -3207,9 +3207,9 @@ def _release():
     for cache in _get_caches(): cache.release()
     assert not local.db2cache
 
-def _with_transaction(func, args, keyargs, allowed_exceptions=[]):
+def _with_transaction(func, args, kwargs, allowed_exceptions=[]):
     try:
-        try: result = func(*args, **keyargs)
+        try: result = func(*args, **kwargs)
         except Exception, e:
             exc_info = sys.exc_info()
             try:
@@ -3230,10 +3230,10 @@ def _with_transaction(func, args, keyargs, allowed_exceptions=[]):
 @decorator_with_params
 def with_transaction(func, retry=1, retry_exceptions=[ TransactionError ], allowed_exceptions=[]):
     @cut_traceback
-    def new_func(*args, **keyargs):
+    def new_func(*args, **kwargs):
         counter = retry
         while counter > 0:
-            try: return _with_transaction(func, args, keyargs, allowed_exceptions)
+            try: return _with_transaction(func, args, kwargs, allowed_exceptions)
             except Exception, e:
                 for exc_class in retry_exceptions:
                     if isinstance(e, exc_class): break # for
@@ -3242,10 +3242,10 @@ def with_transaction(func, retry=1, retry_exceptions=[ TransactionError ], allow
     return new_func
 
 @simple_decorator
-def db_decorator(func, *args, **keyargs):
+def db_decorator(func, *args, **kwargs):
     web = sys.modules.get('pony.web')
     allowed_exceptions = web and [ web.HttpRedirect ] or []
-    try: return _with_transaction(func, args, keyargs, allowed_exceptions)
+    try: return _with_transaction(func, args, kwargs, allowed_exceptions)
     except (ObjectNotFound, RowNotFound):
         if web: throw(web.Http404NotFound)
         raise
@@ -3299,8 +3299,8 @@ def fetch_distinct(gen):
     return query(gen, frame_depth=2).fetch_distinct()
 
 def make_aggrfunc(std_func):
-    def aggrfunc(*args, **keyargs):
-        if keyargs: return std_func(*args, **keyargs)
+    def aggrfunc(*args, **kwargs):
+        if kwargs: return std_func(*args, **kwargs)
         if len(args) != 1: return std_func(*args)
         arg = args[0]
         if type(arg) is types.GeneratorType:

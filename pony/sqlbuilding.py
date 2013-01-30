@@ -108,8 +108,8 @@ def make_unary_func(symbol):
     return unary_func
 
 def indentable(method):
-    def new_method(builder, *args, **keyargs):
-        result = method(builder, *args, **keyargs)
+    def new_method(builder, *args, **kwargs):
+        result = method(builder, *args, **kwargs)
         if builder.indent <= 1: return result
         return builder.indent_spaces * (builder.indent-1), result
     new_method.__name__ = method.__name__

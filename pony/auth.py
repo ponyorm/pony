@@ -22,9 +22,9 @@ if storage is None:
     from pony.sessionstorage import memcachedstorage as storage
 
 class Session(object):
-    def __init__(session, dict=None, **keyargs):
+    def __init__(session, dict=None, **kwargs):
         if dict: session.__dict__.update(dict)
-        session.__dict__.update(keyargs)
+        session.__dict__.update(kwargs)
     def __call__(session, key, default):
         return session.__dict__.get(key, default)
     def __getitem__(session, key):
@@ -280,15 +280,15 @@ if not pony.MODE.startswith('GAE-'):
     queue = Queue()
 
     @simple_decorator
-    def exec_in_auth_thread(f, *args, **keyargs):
+    def exec_in_auth_thread(f, *args, **kwargs):
         result_holder = []
-        queue.put((local.lock, f, args, keyargs, result_holder))
+        queue.put((local.lock, f, args, kwargs, result_holder))
         local.lock.acquire()
         return result_holder[0]
 
     @simple_decorator
-    def exec_async(f, *args, **keyargs):
-        queue.put((None, f, args, keyargs, None))
+    def exec_async(f, *args, **kwargs):
+        queue.put((None, f, args, kwargs, None))
 
     connection = None
 
@@ -397,9 +397,9 @@ if not pony.MODE.startswith('GAE-'):
                 while True:
                     x = queue.get()
                     if x is None: break
-                    lock, func, args, keyargs, result_holder = x
+                    lock, func, args, kwargs, result_holder = x
                     while True:
-                        try: result = func(*args, **keyargs)
+                        try: result = func(*args, **kwargs)
                         except sqlite.OperationalError:
                             connection.rollback()
                             sleep(random())

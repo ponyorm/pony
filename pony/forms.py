@@ -26,14 +26,14 @@ class FormMeta(type):
 
 @decorator
 def _form_init_decorator(__init__):
-    def new_init(form, *args, **keyargs):
+    def new_init(form, *args, **kwargs):
         try: init_counter = form._init_counter
         except AttributeError:
             if form.__class__ is not Form: Form.__init__.original_func(form)
-            object.__setattr__(form, '_init_args', cPickle.dumps((args, keyargs), 2))
+            object.__setattr__(form, '_init_args', cPickle.dumps((args, kwargs), 2))
             object.__setattr__(form, '_init_counter', 1)
         else: object.__setattr__(form, '_init_counter', init_counter+1)
-        try: __init__(form, *args, **keyargs)
+        try: __init__(form, *args, **kwargs)
         finally:
             init_counter = form._init_counter
             object.__setattr__(form, '_init_counter', init_counter-1)
@@ -108,8 +108,8 @@ class Form(object):
         return state
     def __setstate__(form, state):
         if isinstance(state, str):
-            args, keyargs = cPickle.loads(state)
-            form.__init__(*args, **keyargs)
+            args, kwargs = cPickle.loads(state)
+            form.__init__(*args, **kwargs)
         elif isinstance(state, dict):
             state['_pickle_entire_form'] = True
             state['_init_args'] = None

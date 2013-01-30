@@ -35,7 +35,7 @@ DEFAULT = DefaultValueType()
 next_id = count().next
 
 class Attribute(object):
-    def __init__(attr, py_type, *args, **keyargs):
+    def __init__(attr, py_type, *args, **kwargs):
         if attr.__class__ is Attribute: raise TypeError("'Atrribute' is abstract type")
         attr.is_required = isinstance(attr, Required)
         attr.is_unique = isinstance(attr, Unique)  # Also can be set to True later
@@ -48,20 +48,20 @@ class Attribute(object):
         attr.py_type = py_type
         attr.entity = attr.name = None
         attr.args = args
-        attr.auto = keyargs.pop('auto', False)
-        try: attr.default = keyargs.pop('default')
+        attr.auto = kwargs.pop('auto', False)
+        try: attr.default = kwargs.pop('default')
         except KeyError: attr.default = None
         else:
             if attr.default is None and attr.is_required:
                 raise TypeError('Default value for required attribute %s cannot be None' % attr)
 
-        attr.reverse = keyargs.pop('reverse', None)
+        attr.reverse = kwargs.pop('reverse', None)
         if not attr.reverse: pass
         elif not isinstance(attr.reverse, (basestring, Attribute)):
             raise TypeError("Value of 'reverse' option must be name of reverse attribute). Got: %r" % attr.reverse)
         elif not isinstance(attr.py_type, (basestring, EntityMeta)):
             raise DiagramError('Reverse option cannot be set for this type %r' % attr.py_type)
-        for option in keyargs: raise TypeError('Unknown option %r' % option)
+        for option in kwargs: raise TypeError('Unknown option %r' % option)
         attr.composite_keys = []
     def _init_(attr, entity, name):
         attr.entity = entity
@@ -201,17 +201,17 @@ class Optional(Attribute): pass
 class Required(Attribute): pass
 
 class Unique(Required):
-    def __new__(cls, *args, **keyargs):
+    def __new__(cls, *args, **kwargs):
         is_pk = issubclass(cls, PrimaryKey)
         if not args: raise TypeError('Invalid count of positional arguments')
         attrs = tuple(a for a in args if isinstance(a, Attribute))
         non_attrs = [ a for a in args if not isinstance(a, Attribute) ]
-        if attrs and (non_attrs or keyargs): raise TypeError('Invalid arguments')
+        if attrs and (non_attrs or kwargs): raise TypeError('Invalid arguments')
         cls_dict = sys._getframe(1).f_locals
         keys = cls_dict.setdefault('_keys_', {})
 
         if not attrs:
-            result = Required.__new__(cls, *args, **keyargs)
+            result = Required.__new__(cls, *args, **kwargs)
             keys[(result,)] = is_pk
             return result
 
@@ -231,9 +231,9 @@ class Unique(Required):
 class PrimaryKey(Unique): pass
 
 class Collection(Attribute):
-    def __init__(attr, py_type, *args, **keyargs):
+    def __init__(attr, py_type, *args, **kwargs):
         if attr.__class__ is Collection: raise TypeError("'Collection' is abstract type")
-        Attribute.__init__(attr, py_type, *args, **keyargs)
+        Attribute.__init__(attr, py_type, *args, **kwargs)
         if attr.default is not None: raise TypeError('default value could not be set for collection attribute')
         if attr.auto: raise TypeError("'auto' option could not be set for collection attribute")
     def __get__(attr, obj, type=None):
@@ -680,7 +680,7 @@ class Entity(object):
                 for attr2, name2 in attr.py_type._expand_pkattrs_():
                     items((attr2, attr.name + '_' + name2))
         return result
-    def __init__(obj, *args, **keyargs):
+    def __init__(obj, *args, **kwargs):
         raise TypeError('You cannot create entity instances directly. Use Entity.create(...) or Entity.find(...) instead')
     def _expand_pkval_(self):
         result = []
@@ -710,15 +710,15 @@ class Entity(object):
     def old(obj):
         return OldProxy(obj)
     @classmethod
-    def find(entity, *args, **keyargs):
+    def find(entity, *args, **kwargs):
         pk_attrs = entity._pk_attrs_
         if args:
             if len(args) != len(pk_attrs):
                 raise TypeError('Invalid count of attrs in primary key')
             for attr, val in zip(pk_attrs, args):
-                if keyargs.setdefault(attr.name, val) != val:
+                if kwargs.setdefault(attr.name, val) != val:
                     raise TypeError('Ambiguous attribute value for %r' % attr.name)
-        for name in ifilterfalse(entity._adict_.__contains__, keyargs):
+        for name in ifilterfalse(entity._adict_.__contains__, kwargs):
             raise TypeError('Unknown attribute %r' % name)
 
         info = entity._get_info()
@@ -729,7 +729,7 @@ class Entity(object):
         data = entity._data_template_[:]
         used_attrs = []
         for attr in entity._attrs_:
-            val = keyargs.get(attr.name, UNKNOWN)
+            val = kwargs.get(attr.name, UNKNOWN)
             data[get_old_offset(attr)] = None
             if val is not UNKNOWN:
                 val = attr.check(val, None, entity)
@@ -765,15 +765,15 @@ class Entity(object):
 
         raise NotImplementedError
     @classmethod
-    def create(entity, *args, **keyargs):
+    def create(entity, *args, **kwargs):
         pk_attrs = entity._pk_attrs_
         if args:
             if len(args) != len(pk_attrs):
                 raise TypeError('Invalid count of attrs in primary key')
             for attr, val in zip(pk_attrs, args):
-                if keyargs.setdefault(attr.name, val) != val:
+                if kwargs.setdefault(attr.name, val) != val:
                     raise TypeError('Ambiguous attribute value for %r' % attr.name)
-        for name in ifilterfalse(entity._adict_.__contains__, keyargs):
+        for name in ifilterfalse(entity._adict_.__contains__, kwargs):
             raise TypeError('Unknown attribute %r' % name)
 
         info = entity._get_info()
@@ -783,7 +783,7 @@ class Entity(object):
         get_old_offset = entity._old_offsets_.__getitem__
         data = entity._data_template_[:]
         for attr in entity._attrs_:
-            val = keyargs.get(attr.name, DEFAULT)
+            val = kwargs.get(attr.name, DEFAULT)
             data[get_old_offset(attr)] = None
             data[get_new_offset(attr)] = attr.check(val, None, entity)
         pkval = tuple(map(data.__getitem__, map(get_new_offset, pk_attrs)))
@@ -848,7 +848,7 @@ class Entity(object):
 ##                else: new_row[column.new_offset] = None
 ##            if cache.rows.setdefault(pkval, new_row) is not new_row: raise AssertionError
         return obj
-    def set(obj, **keyargs):
+    def set(obj, **kwargs):
         pkval = obj._pkval_
         info = obj._get_info()
         trans = obj._trans_
@@ -859,7 +859,7 @@ class Entity(object):
         old_data = data[:]
 
         attrs = set()
-        for name, val in keyargs.items():
+        for name, val in kwargs.items():
             attr = obj._adict_.get(name)
             if attr is None: raise TypeError("Unknown attribute: %r" % name)
             val = attr.check(val, obj)
@@ -1012,8 +1012,8 @@ class Diagram(object):
 class DataSource(object):
     _cache = {}
     _cache_lock = threading.Lock() # threadsafe access to cache of datasources
-    def __new__(cls, provider, *args, **keyargs):
-        mapping = keyargs.pop('mapping', None)
+    def __new__(cls, provider, *args, **kwargs):
+        mapping = kwargs.pop('mapping', None)
         if isinstance(mapping, basestring):
             if etree is None: raise ImportError('cElementTree library does not found')
             filename = utils.absolutize_path(mapping)
@@ -1028,7 +1028,7 @@ class DataSource(object):
         else:
             mapping_key = mapping
             document = mapping
-        key = (provider, mapping_key, args, tuple(sorted(keyargs.items())))
+        key = (provider, mapping_key, args, tuple(sorted(kwargs.items())))
         data_source = cls._cache.get(key)
         if data_source is not None: return data_source
         cls._cache_lock.acquire()
@@ -1036,15 +1036,15 @@ class DataSource(object):
             data_source = cls._cache.get(key)
             if data_source is not None: return data_source
             data_source = object.__new__(cls)
-            data_source._init_(document, provider, *args, **keyargs)
+            data_source._init_(document, provider, *args, **kwargs)
             return data_source
         finally: cls._cache_lock.release()
-    def _init_(data_source, mapping, provider, *args, **keyargs):
+    def _init_(data_source, mapping, provider, *args, **kwargs):
         data_source.lock = threading.RLock() # threadsafe access to datasource schema
         data_source.mapping = mapping
         data_source.provider = provider
         data_source.args = args
-        data_source.keyargs = keyargs
+        data_source.kwargs = kwargs
         data_source.transactions = set()        
         data_source.tables = {}     # table_name -> Table
         data_source.entity_map = {} # entity_name -> dict(attr_name -> [ Column ])
@@ -1084,7 +1084,7 @@ class DataSource(object):
         provider = data_source.provider
         if isinstance(provider, basestring):
             provider = utils.import_module('pony.dbproviders.' + provider)
-        return provider.connect(*data_source.args, **data_source.keyargs)
+        return provider.connect(*data_source.args, **data_source.kwargs)
     def begin(data_source):
         return begin(data_source)
 

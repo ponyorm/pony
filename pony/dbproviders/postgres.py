@@ -11,8 +11,8 @@ from pony.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
 from pony.sqltranslation import SQLTranslator
 from pony.utils import localbase, timestamp2datetime
 
-def get_provider(*args, **keyargs):
-    return PGProvider(*args, **keyargs)
+def get_provider(*args, **kwargs):
+    return PGProvider(*args, **kwargs)
 
 class PGColumn(dbschema.Column):
     auto_template = 'SERIAL PRIMARY KEY'
@@ -113,9 +113,9 @@ class PGProvider(DBAPIProvider):
     translator_cls = PGTranslator
     sqlbuilder_cls = PGSQLBuilder
 
-    def __init__(provider, *args, **keyargs):
+    def __init__(provider, *args, **kwargs):
         DBAPIProvider.__init__(provider, pgdb)
-        provider.pool = _get_pool(*args, **keyargs)
+        provider.pool = _get_pool(*args, **kwargs)
 
     def get_default_entity_table_name(provider, entity):
         return DBAPIProvider.get_default_entity_table_name(provider, entity).lower()
@@ -159,17 +159,17 @@ class PGProvider(DBAPIProvider):
         (date, PGDateConverter)
     ]
 
-def _get_pool(*args, **keyargs):
-    return Pool(*args, **keyargs)
+def _get_pool(*args, **kwargs):
+    return Pool(*args, **kwargs)
 
 class Pool(localbase):
-    def __init__(pool, *args, **keyargs):
+    def __init__(pool, *args, **kwargs):
         pool.args = args
-        pool.keyargs = keyargs
+        pool.kwargs = kwargs
         pool.con = None
     def connect(pool):
         if pool.con is None:
-            pool.con = pgdb.connect(*pool.args, **pool.keyargs)
+            pool.con = pgdb.connect(*pool.args, **pool.kwargs)
         return pool.con
     def release(pool, con):
         assert con is pool.con

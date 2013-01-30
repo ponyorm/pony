@@ -459,13 +459,13 @@ class SQLTranslator(ASTTranslator):
         return translator.QuerySetMonad(translator, subtranslator)
     def postCallFunc(translator, node):
         args = []
-        keyargs = {}
+        kwargs = {}
         for arg in node.args:
             if isinstance(arg, ast.Keyword):
-                keyargs[arg.name] = arg.expr.monad
+                kwargs[arg.name] = arg.expr.monad
             else: args.append(arg.monad)
         func_monad = node.node.monad
-        return func_monad(*args, **keyargs)
+        return func_monad(*args, **kwargs)
     def postKeyword(translator, node):
         pass  # this node will be processed by postCallFunc
     def postSubscript(translator, node):
@@ -615,9 +615,9 @@ class JoinedTableRef(object):
 
 def wrap_monad_method(cls_name, func):
     overrider_name = '%s_%s' % (cls_name, func.__name__)
-    def wrapper(monad, *args, **keyargs):
+    def wrapper(monad, *args, **kwargs):
         method = getattr(monad.translator, overrider_name, func)
-        return method(monad, *args, **keyargs)
+        return method(monad, *args, **kwargs)
     return copy_func_attrs(wrapper, func)
 
 class MonadMeta(type):
@@ -697,7 +697,7 @@ class Monad(object):
         result = translator.ExprMonad.new(translator, result_type, [ func_name, expr ])
         result.aggregated = True
         return result
-    def __call__(monad, *args, **keyargs): throw(TypeError)
+    def __call__(monad, *args, **kwargs): throw(TypeError)
     def __getitem__(monad, key): throw(TypeError)
     def __add__(monad, monad2): throw(TypeError)
     def __sub__(monad, monad2): throw(TypeError)
@@ -737,9 +737,9 @@ class MethodMonad(Monad):
         monad.attrname = attrname
     def getattr(monad, attrname):
         raise_forgot_parentheses(monad)
-    def __call__(monad, *args, **keyargs):
+    def __call__(monad, *args, **kwargs):
         method = getattr(monad.parent, 'call_' + monad.attrname)
-        try: return method(*args, **keyargs)
+        try: return method(*args, **kwargs)
         except TypeError, exc: reraise_improved_typeerror(exc, method.__name__, monad.attrname)
 
     def contains(monad, item, not_in=False): raise_forgot_parentheses(monad)
@@ -1049,7 +1049,7 @@ class ObjectIterMonad(ObjectMixin, Monad):
 
 class AttrMonad(Monad):
     @staticmethod
-    def new(parent, attr, *args, **keyargs):
+    def new(parent, attr, *args, **kwargs):
         translator = parent.translator
         type = normalize_type(attr.py_type)
         if type in numeric_types: cls = translator.NumericAttrMonad
@@ -1059,7 +1059,7 @@ class AttrMonad(Monad):
         elif type is buffer: cls = translator.BufferAttrMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectAttrMonad
         else: throw(NotImplementedError, type)
-        return cls(parent, attr, *args, **keyargs)
+        return cls(parent, attr, *args, **kwargs)
     def __new__(cls, *args):
         if cls is AttrMonad: assert False, 'Abstract class'
         return Monad.__new__(cls)
@@ -1326,13 +1326,13 @@ class FuncMonad(Monad):
     type = 'function'
     def __init__(monad, translator):
         monad.translator = translator
-    def __call__(monad, *args, **keyargs):
+    def __call__(monad, *args, **kwargs):
         translator = monad.translator
         for arg in args:
             assert isinstance(arg, translator.Monad)
-        for value in keyargs.values():
+        for value in kwargs.values():
             assert isinstance(value, translator.Monad)
-        try: return monad.call(*args, **keyargs)
+        try: return monad.call(*args, **kwargs)
         except TypeError, exc:
             func = monad.func
             if type(func) is tuple: func = func[0]

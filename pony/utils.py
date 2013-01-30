@@ -37,8 +37,8 @@ def copy_func_attrs(new_func, old_func, decorator_name=None):
 
 def simple_decorator(old_dec):
     def new_dec(old_func):
-        def new_func(*args, **keyargs):
-            return old_dec(old_func, *args, **keyargs)
+        def new_func(*args, **kwargs):
+            return old_dec(old_func, *args, **kwargs)
         return copy_func_attrs(new_func, old_func, old_dec.__name__)
     return copy_func_attrs(new_dec, old_dec, 'simple_decorator')
 
@@ -48,23 +48,23 @@ def decorator(old_dec, old_func):
     return copy_func_attrs(new_func, old_func, old_dec.__name__)
 
 @simple_decorator
-def decorator_with_params(old_dec, *args, **keyargs):
-    if len(args) == 1 and isfunction(args[0]) and not keyargs:
+def decorator_with_params(old_dec, *args, **kwargs):
+    if len(args) == 1 and isfunction(args[0]) and not kwargs:
         old_func = args[0]
         new_func = old_dec(old_func)
         return copy_func_attrs(new_func, old_func, old_dec.__name__)
     def you_should_never_see_this_decorator(old_func):
-        new_func = old_dec(old_func, *args, **keyargs)
+        new_func = old_dec(old_func, *args, **kwargs)
         return copy_func_attrs(new_func, old_func, old_dec.__name__)
     return you_should_never_see_this_decorator
 
 @decorator
 def cut_traceback(old_func):
-    def new_func(*args, **keyargs):
+    def new_func(*args, **kwargs):
         if not (pony.MODE == 'INTERACTIVE' and options.CUT_TRACEBACK):
-            return old_func(*args, **keyargs)
+            return old_func(*args, **kwargs)
         try:
-            return old_func(*args, **keyargs)
+            return old_func(*args, **kwargs)
         except Exception:
             exc_type, exc, tb = sys.exc_info()
             last_pony_tb = None
@@ -83,11 +83,11 @@ def cut_traceback(old_func):
                 del tb, last_pony_tb
     return new_func
 
-def throw(exc_type, *args, **keyargs):
+def throw(exc_type, *args, **kwargs):
     if isinstance(exc_type, Exception):
-        assert not args and not keyargs
+        assert not args and not kwargs
         exc = exc_type
-    else: exc = exc_type(*args, **keyargs)
+    else: exc = exc_type(*args, **kwargs)
     if not (pony.MODE == 'INTERACTIVE' and options.CUT_TRACEBACK):
         raise exc
     else:
@@ -97,12 +97,12 @@ _cache = {}
 MAX_CACHE_SIZE = 1000
 
 @simple_decorator
-def cached(f, *args, **keyargs):
-    key = (f, args, tuple(sorted(keyargs.items())))
+def cached(f, *args, **kwargs):
+    key = (f, args, tuple(sorted(kwargs.items())))
     value = _cache.get(key)
     if value is not None: return value
     if len(_cache) == MAX_CACHE_SIZE: _cache.clear()
-    return _cache.setdefault(key, f(*args, **keyargs))
+    return _cache.setdefault(key, f(*args, **kwargs))
 
 def error_method(*args, **kwargs):
     raise TypeError
@@ -242,11 +242,11 @@ def markdown(s):
 
 class JsonString(unicode): pass
 
-def json(obj, **keyargs):
+def json(obj, **kwargs):
     from pony.thirdparty import simplejson
-    result = JsonString(simplejson.dumps(obj, **keyargs))
+    result = JsonString(simplejson.dumps(obj, **kwargs))
     result.media_type = 'application/json'
-    if 'encoding' in keyargs: result.charset = keyargs['encoding']
+    if 'encoding' in kwargs: result.charset = kwargs['encoding']
     return result
 
 def new_guid():

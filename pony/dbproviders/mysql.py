@@ -15,8 +15,8 @@ from pony.sqltranslation import SQLTranslator
 from pony.sqlbuilding import Value, SQLBuilder
 from pony.utils import localbase
 
-def get_provider(*args, **keyargs):
-    return MySQLProvider(*args, **keyargs)
+def get_provider(*args, **kwargs):
+    return MySQLProvider(*args, **kwargs)
 
 class MySQLColumn(dbschema.Column):
     auto_template = '%(type)s PRIMARY KEY AUTO_INCREMENT'
@@ -80,9 +80,9 @@ class MySQLProvider(DBAPIProvider):
     translator_cls = MySQLTranslator
     sqlbuilder_cls = MySQLBuilder
 
-    def __init__(provider, *args, **keyargs):
+    def __init__(provider, *args, **kwargs):
         DBAPIProvider.__init__(provider, MySQLdb)
-        provider.pool = _get_pool(*args, **keyargs)
+        provider.pool = _get_pool(*args, **kwargs)
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
@@ -97,23 +97,23 @@ class MySQLProvider(DBAPIProvider):
         (date, dbapiprovider.DateConverter)
     ]
 
-def _get_pool(*args, **keyargs):
-    if 'conv' not in keyargs:
+def _get_pool(*args, **kwargs):
+    if 'conv' not in kwargs:
         conv = MySQLdb.converters.conversions.copy()
         conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]
-        keyargs['conv'] = conv
-    if 'charset' not in keyargs:
-        keyargs['charset'] = 'utf8'
-    return Pool(*args, **keyargs)
+        kwargs['conv'] = conv
+    if 'charset' not in kwargs:
+        kwargs['charset'] = 'utf8'
+    return Pool(*args, **kwargs)
 
 class Pool(localbase):
-    def __init__(pool, *args, **keyargs): # called separately in each thread
+    def __init__(pool, *args, **kwargs): # called separately in each thread
         pool.args = args
-        pool.keyargs = keyargs
+        pool.kwargs = kwargs
         pool.con = None
     def connect(pool):
         if pool.con is None:
-            pool.con = MySQLdb.connect(*pool.args, **pool.keyargs)
+            pool.con = MySQLdb.connect(*pool.args, **pool.kwargs)
         return pool.con
     def release(pool, con):
         assert con is pool.con

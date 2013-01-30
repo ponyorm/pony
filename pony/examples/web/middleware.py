@@ -24,8 +24,8 @@ def test(a, b):
     ''')
 
 def uppercase_decorator(func):
-    def new_func(*args, **keyargs):
-        result = func(*args, **keyargs)
+    def new_func(*args, **kwargs):
+        result = func(*args, **kwargs)
         if isinstance(result, (Html, StrHtml)): result = Html(result.upper())
         http.response.headers['X-Bar'] = 'Yes'
         return result

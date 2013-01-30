@@ -29,7 +29,7 @@ link_funcs = dict(
     )
 
 @lazy
-def link(*args, **keyargs):
+def link(*args, **kwargs):
     if not args: raise TypeError('link() function requires at least one positional argument')
     attrs = None
     
@@ -58,22 +58,22 @@ def link(*args, **keyargs):
         args = args[3:]
     elif isinstance(first, basestring):
         func = link_funcs.get(first)
-        if func is not None: return func(*args[1:], **keyargs)
+        if func is not None: return func(*args[1:], **kwargs)
         if first.endswith('.css'):
-            if keyargs: raise TypeError('Unexpected key arguments')
+            if kwargs: raise TypeError('Unexpected key arguments')
             return css_link(args)
         if first.endswith('.js'):
             if len(args) > 1: raise TypeError('Unexpected positional arguments')
-            if keyargs: raise TypeError('Unexpected key arguments')
+            if kwargs: raise TypeError('Unexpected key arguments')
             return script_link(first)
         raise TypeError('Invalid arguments of link() function')
         
-    href = url(func, *args, **keyargs)
+    href = url(func, *args, **kwargs)
     return htmljoin([htmltag('a', attrs, href=href), description, Html('</a>')])
 
 img_template = Html(u'<img src="%s" title="%s" alt="%s">')
 
-def img(*args, **keyargs):
+def img(*args, **kwargs):
     description = None
     if isinstance(args[0], basestring):
         description = args[0]
@@ -84,12 +84,12 @@ def img(*args, **keyargs):
         args = args[1:]
         if func.__doc__ is None: description = func.__name__
         else: description = Html(func.__doc__.split('\n', 1)[0])
-    href = url(func, *args, **keyargs)
+    href = url(func, *args, **kwargs)
     return img_template % (href, description, description)
 
 @decorator_with_params
 def component(old_func, css=None, js=None):
-    def new_func(*args, **keyargs):
+    def new_func(*args, **kwargs):
         response = local.response
         if css is not None:
             if isinstance(css, (basestring, tuple)):
@@ -99,7 +99,7 @@ def component(old_func, css=None, js=None):
             if isinstance(js, basestring):
                   response.add_scripts([ js ])
             else: response.add_scripts(js)
-        return old_func(*args, **keyargs)
+        return old_func(*args, **kwargs)
     return new_func
 
 @component(css='/pony/static/css/rounded-corners.css')

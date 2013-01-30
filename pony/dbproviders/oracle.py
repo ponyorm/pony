@@ -11,8 +11,8 @@ from pony import orm, dbschema, sqlbuilding, dbapiprovider, sqltranslation
 from pony.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
 from pony.utils import is_utf8, throw
 
-def get_provider(*args, **keyargs):
-    return OraProvider(*args, **keyargs)
+def get_provider(*args, **kwargs):
+    return OraProvider(*args, **kwargs)
 
 trigger_template = """
 create trigger %s
@@ -192,9 +192,9 @@ class OraProvider(DBAPIProvider):
     translator_cls = OraTranslator
     sqlbuilder_cls = OraBuilder
 
-    def __init__(provider, *args, **keyargs):
+    def __init__(provider, *args, **kwargs):
         DBAPIProvider.__init__(provider, cx_Oracle)
-        provider.pool = _get_pool(*args, **keyargs)
+        provider.pool = _get_pool(*args, **kwargs)
 
     def get_default_entity_table_name(provider, entity):
         return DBAPIProvider.get_default_entity_table_name(provider, entity).upper()
@@ -240,7 +240,7 @@ class OraProvider(DBAPIProvider):
         (date, OraDateConverter)
     ]
 
-def _get_pool(*args, **keyargs):
+def _get_pool(*args, **kwargs):
     user = password = dsn = None
     if len(args) == 1:
         conn_str = args[0]
@@ -252,17 +252,17 @@ def _get_pool(*args, **keyargs):
     elif len(args) == 2: user, password = args
     elif len(args) == 3: user, password, dsn = args
     elif args: throw(ValueError, 'Invalid number of positional arguments')
-    if user != keyargs.setdefault('user', user):
+    if user != kwargs.setdefault('user', user):
         throw(ValueError, 'Ambiguous value for user')
-    if password != keyargs.setdefault('password', password):
+    if password != kwargs.setdefault('password', password):
         throw(ValueError, 'Ambiguous value for password')
-    if dsn != keyargs.setdefault('dsn', dsn):
+    if dsn != kwargs.setdefault('dsn', dsn):
         throw(ValueError, 'Ambiguous value for dsn')
-    keyargs.setdefault('threaded', True)
-    keyargs.setdefault('min', 1)
-    keyargs.setdefault('max', 10)
-    keyargs.setdefault('increment', 1)
-    return Pool(**keyargs)
+    kwargs.setdefault('threaded', True)
+    kwargs.setdefault('min', 1)
+    kwargs.setdefault('max', 10)
+    kwargs.setdefault('increment', 1)
+    return Pool(**kwargs)
 
 def to_int_or_decimal(val):
     val = val.replace(',', '.')
@@ -284,8 +284,8 @@ def output_type_handler(cursor, name, defaultType, size, precision, scale):
     return None
 
 class Pool(object):
-    def __init__(pool, **keyargs):
-        pool._pool = cx_Oracle.SessionPool(**keyargs)
+    def __init__(pool, **kwargs):
+        pool._pool = cx_Oracle.SessionPool(**kwargs)
     def connect(pool):
         con = pool._pool.acquire()
         con.outputtypehandler = output_type_handler

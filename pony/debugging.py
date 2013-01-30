@@ -249,13 +249,13 @@ else:
     import bdb
 
     @simple_decorator
-    def debugging_decorator(func, *args, **keyargs):
+    def debugging_decorator(func, *args, **kwargs):
         if options.DEBUG:
             web = sys.modules.get('pony.web')
             if web is not None:
                 debugger = web.local.request.environ.get('debugger')
                 if debugger is not None: debugger().set_trace()
-        return func(*args, **keyargs)
+        return func(*args, **kwargs)
 
     class Local(threading.local):
         def __init__(local):

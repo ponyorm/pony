@@ -9,7 +9,7 @@ else: PIL = True
 from pony.templating import template, cycle
 if __name__ == '__main__':
     def cached(func): return func
-    def http(*args, **keyargs): return lambda x: x
+    def http(*args, **kwargs): return lambda x: x
 else:
     from pony.utils import cached
     from pony.web import http

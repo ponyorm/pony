@@ -50,7 +50,7 @@ class Route(object):
         route.redirect = redirect
         route.headers = dict([ (name.replace('_', '-').title(), value) for name, value in headers.items() ])        
         route.args = set()
-        route.keyargs = set()
+        route.kwargs = set()
         route.parsed_path = []
         route.star = False
         for component in route.path:
@@ -138,7 +138,7 @@ class Route(object):
             raise ValueError('Invalid url component: %r' % component)
     def adjust(route, x):
         names, argsname, keyargsname, defaults, converters = route.func.argspec
-        args, keyargs = route.args, route.keyargs
+        args, kwargs = route.args, route.kwargs
         if isinstance(x, int):
             if x < 0 or x >= len(names) and argsname is None: raise TypeError('Invalid parameter index: %d' % (x+1))
             if x in args: raise TypeError('Parameter index %d already in use' % (x+1))
@@ -147,8 +147,8 @@ class Route(object):
         elif isinstance(x, basestring):
             try: i = names.index(x)
             except ValueError:
-                if keyargsname is None or x in keyargs: raise TypeError('Unknown parameter name: %s' % x)
-                keyargs.add(x)
+                if keyargsname is None or x in kwargs: raise TypeError('Unknown parameter name: %s' % x)
+                kwargs.add(x)
                 return x
             else:
                 if i in args: raise TypeError('Parameter name %s already in use' % x)
@@ -159,7 +159,7 @@ class Route(object):
         names, argsname, keyargsname, defaults, converters = route.func.argspec
         if route.star and not argsname: raise TypeError(
             "Function %s does not accept arbitrary argument list" % route.func.__name__)
-        args, keyargs = route.args, route.keyargs
+        args, kwargs = route.args, route.kwargs
         diff = len(names) - len(defaults)
         for i, name in enumerate(names[:diff]):
             if i not in args: raise TypeError('Undefined path parameter: %s' % name)
@@ -224,7 +224,7 @@ def get_routes(path, qdict, method, host, port):
     result = []
     not_found = object()
     for route in routes:
-        args, keyargs = {}, {}
+        args, kwargs = {}, {}
         priority = 0
         if route.host is not None:
             if route.host != host: continue
@@ -244,7 +244,7 @@ def get_routes(path, qdict, method, host, port):
                 continue
             value = path[i].decode('utf8')
             if isinstance(x, int): args[x] = value
-            elif isinstance(x, basestring): keyargs[x] = value
+            elif isinstance(x, basestring): kwargs[x] = value
             elif isinstance(x, list):
                 match = x[1].match(value)
                 if not match: break
@@ -256,7 +256,7 @@ def get_routes(path, qdict, method, host, port):
                 assert len(params) == len(groups)
                 for param, value in zip(params, groups):
                     if isinstance(param, int): args[param] = value
-                    elif isinstance(param, basestring): keyargs[param] = value
+                    elif isinstance(param, basestring): kwargs[param] = value
                     else: assert False
             else: assert False
         else:
@@ -277,7 +277,7 @@ def get_routes(path, qdict, method, host, port):
                     else: args[x] = value
                 elif isinstance(x, basestring):
                     if value is not_found: break
-                    keyargs[x] = value
+                    kwargs[x] = value
                 elif isinstance(x, list):
                     if value is not_found:
                         for is_param, y in x[2:]:
@@ -297,7 +297,7 @@ def get_routes(path, qdict, method, host, port):
                     for param, value in zip(params, groups):
                         if isinstance(param, int): args[param] = value
                         elif isinstance(param, basestring):
-                            keyargs[param] = value
+                            kwargs[param] = value
                         else: assert False
                 else: assert False
             else:
@@ -317,7 +317,7 @@ def get_routes(path, qdict, method, host, port):
                     if len(route.parsed_path) != len(path):
                         assert route.star
                         arglist.extend(path[len(route.parsed_path):])
-                    result.append((route, arglist, keyargs, priority, len(non_used_query_params)))
+                    result.append((route, arglist, kwargs, priority, len(non_used_query_params)))
     if result:
         x = max(map(itemgetter(3), result))
         result = [ tup for tup in result if tup[3] == x ]

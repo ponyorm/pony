@@ -121,10 +121,10 @@ if LOG_TO_SQLITE:
             if record.name == 'pony': return
             if record.exc_info:
                 if not record.exc_text: record.exc_text = logging._defaultFormatter.formatException(record.exc_info)
-                keyargs = {'exc_text': record.exc_text}
-            else: keyargs = {}
+                kwargs = {'exc_text': record.exc_text}
+            else: kwargs = {}
             log(type='logging:%s' % record.name, text=record.getMessage(),
-                severity=record.levelno, module=record.module, lineno=record.lineno, **keyargs)
+                severity=record.levelno, module=record.module, lineno=record.lineno, **kwargs)
     pony_handler = PonyHandler()
     logging.root.addHandler(pony_handler)
 

@@ -2,9 +2,9 @@ from pony.orm import Database
 
 def raises_exception(exc_class, msg=None):
     def decorator(func):
-        def wrapper(self, *args, **keyargs):
+        def wrapper(self, *args, **kwargs):
             try:
-                func(self, *args, **keyargs)
+                func(self, *args, **kwargs)
                 self.assert_(False, "expected exception %s wasn't raised" % exc_class.__name__)
             except exc_class, e:
                 if not e.args: self.assertEqual(msg, None)
