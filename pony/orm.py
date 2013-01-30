@@ -1121,7 +1121,7 @@ class PrimaryKey(Unique):
 
 class Collection(Attribute):
     __slots__ = 'table', 'cached_load_sql', 'cached_add_m2m_sql', 'cached_remove_m2m_sql', 'wrapper_class', \
-                'symmetric', 'reverse_column', 'reverse_columns'
+                'symmetric', 'reverse_column', 'reverse_columns', 'nplus1_threshold'
     def __init__(attr, py_type, *args, **kwargs):
         if attr.__class__ is Collection: throw(TypeError, "'Collection' is abstract type")
         table = kwargs.pop('table', None)  # TODO: rename table to link_table or m2m_table
@@ -1136,9 +1136,10 @@ class Collection(Attribute):
         Attribute.__init__(attr, py_type, *args, **kwargs)
         if attr.default is not None: throw(TypeError, 'Default value could not be set for collection attribute')
         if attr.auto: throw(TypeError, "'auto' option could not be set for collection attribute")
+        kwargs = attr.kwargs
 
-        attr.reverse_column = attr.kwargs.pop('reverse_column', None)
-        attr.reverse_columns = attr.kwargs.pop('reverse_columns', None)
+        attr.reverse_column = kwargs.pop('reverse_column', None)
+        attr.reverse_columns = kwargs.pop('reverse_columns', None)
         if attr.reverse_column is not None:
             if attr.reverse_columns is not None and attr.reverse_columns != [ attr.reverse_column ]:
                 throw(TypeError, "Parameters 'reverse_column' and 'reverse_columns' cannot be specified simultaneously")
@@ -1154,6 +1155,7 @@ class Collection(Attribute):
             if len(attr.reverse_columns) == 1: attr.reverse_column = attr.reverse_columns[0]
         else: attr.reverse_columns = []
 
+        attr.nplus1_threshold = kwargs.pop('nplus1_threshold', 1)
         for option in attr.kwargs: throw(TypeError, 'Unknown option %r' % option)
         attr.cached_load_sql = {}
         attr.cached_add_m2m_sql = None
@@ -1229,7 +1231,7 @@ class Set(Collection):
         setdata_list = [ setdata ]
         assert cache.is_alive
         counter = cache.collection_statistics.setdefault(attr, 0)
-        if counter:
+        if counter >= attr.nplus1_threshold:
             pk_index = cache.indexes.get(entity._pk_)
             max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
             for obj2 in pk_index.itervalues():
@@ -2425,6 +2427,8 @@ class EntityMeta(type):
                     return cls(wrapper, attr, items)
             else:
                 def fget(wrapper, attr=attr):
+                    cache = attr.entity._database_._get_cache()
+                    cache.collection_statistics.setdefault(attr, attr.nplus1_threshold)
                     items = [ subitem for item in wrapper
                                       for subitem in attr.__get__(item) ]
                     rentity = attr.py_type

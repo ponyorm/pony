@@ -39,7 +39,7 @@ class Student(db.Entity):
     picture = Optional(buffer, lazy=True)
     gpa = Required(float, default=0)
     group = Required(Group)
-    courses = Set(Course)
+    courses = Set(Course, nplus1_threshold=0)
 
 sql_debug(True)  # Output all SQL queries to stdout
 
