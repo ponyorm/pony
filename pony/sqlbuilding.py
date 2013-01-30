@@ -388,9 +388,10 @@ class SQLBuilder(object):
             # Oracle and SQLite queries translated to completely different subquery syntax
             else: throw(NotImplementedError)  # This line must not be executed
         throw(AstError, 'Invalid COUNT kind (must be ALL or DISTINCT)')
-    def SUM(builder, expr):
-        return 'coalesce(SUM(', builder(expr), '), 0)'
-    AVG = make_unary_func('AVG')
+    def SUM(builder, expr, distinct=False):
+        return distinct and 'coalesce(SUM(DISTINCT ' or 'coalesce(SUM(', builder(expr), '), 0)'
+    def AVG(builder, expr, distinct=False):
+        return distinct and 'AVG(DISTINCT ' or 'AVG(', builder(expr), ')'
     UPPER = make_unary_func('upper')
     LOWER = make_unary_func('lower')
     LENGTH = make_unary_func('length')

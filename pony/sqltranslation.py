@@ -1494,6 +1494,12 @@ class AttrSetMonad(SetMixin, Monad):
         monad.attr = attr
         monad.subquery = None
         monad.tableref = None
+        monad.forced_distinct = False
+    def call_distinct(monad):
+        new_monad = object.__new__(monad.__class__)
+        new_monad.__dict__.update(monad.__dict__)
+        new_monad.forced_distinct = True
+        return new_monad
     def cmp(monad, op, monad2):
         translator = monad.translator
         if type(monad2.type) is SetType \
@@ -1521,6 +1527,8 @@ class AttrSetMonad(SetMixin, Monad):
                 return translator.BoolExprMonad(translator, subquery_ast)
         else: throw(NotImplementedError)
     def getattr(monad, name):
+        try: return Monad.getattr(monad, name)
+        except AttributeError: pass
         entity = monad.type.item_type
         if not isinstance(entity, EntityMeta): throw(AttributeError)
         attr = entity._adict_.get(name)
@@ -1592,7 +1600,11 @@ class AttrSetMonad(SetMixin, Monad):
             
         subselect_func = translator.hint_join and monad._joined_subselect \
                          or monad._aggregated_scalar_subselect
-        sql_ast = subselect_func(lambda expr_list: [ func_name ] + expr_list)
+
+        if monad.forced_distinct and func_name in ('SUM', 'AVG'):
+            make_aggr = lambda expr_list: [ func_name ] + expr_list + [ True ]
+        else: make_aggr = lambda expr_list: [ func_name ] + expr_list
+        sql_ast = subselect_func(make_aggr)
         result_type = func_name == 'AVG' and float or item_type
         return translator.ExprMonad.new(monad.translator, result_type, sql_ast)
     def nonzero(monad):
