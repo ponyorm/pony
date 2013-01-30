@@ -2,7 +2,7 @@
 
 import re, os, os.path, sys, time, datetime, types, linecache
 
-from itertools import imap, ifilter
+from itertools import imap, ifilter, count as _count
 from operator import itemgetter
 from inspect import isfunction
 from time import strptime
@@ -390,6 +390,14 @@ def reraise(exc_class, exceptions):
         msg = '%s: %s' % (cls.__name__, " ".join(tostring(arg) for arg in exc.args))
         raise exc_class, exc_class(msg, exceptions), tb
     finally: del tb
+
+def count(*args, **kwargs):
+    if kwargs: return _count(*args, **kwargs)
+    if len(args) != 1: return _count(*args)
+    arg = args[0]
+    try: it = iter(arg)
+    except TypeError: return _count(arg)
+    return len(set(it))
 
 def avg(iter):
     count = 0

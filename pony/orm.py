@@ -24,7 +24,7 @@ from pony.dbapiprovider import (
     )
 from pony.utils import (
     localbase, simple_decorator, decorator_with_params, cut_traceback, throw,
-    import_module, parse_expr, is_ident, reraise, avg as _avg, tostring
+    import_module, parse_expr, is_ident, reraise, count, avg as _avg, tostring
     )
 
 __all__ = '''
@@ -3315,14 +3315,6 @@ def make_aggrfunc(std_func):
         return std_func(*args)
     aggrfunc.__name__ = std_func.__name__
     return aggrfunc
-
-def count(*args, **kwargs):
-    if kwargs: return _count(*args, **kwargs)
-    if len(args) != 1: return _count(*args)
-    arg = args[0]
-    try: it = iter(arg)
-    except TypeError: return _count(arg)
-    return len(set(it))
 
 count = make_aggrfunc(count)
 sum = make_aggrfunc(_sum)
