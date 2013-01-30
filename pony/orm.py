@@ -9,9 +9,6 @@ import datetime
 from threading import Lock
 from __builtin__ import min as _min, max as _max, sum as _sum
 
-try: from pony.thirdparty import etree
-except ImportError: etree = None
-
 import pony
 from pony import options
 from pony.decompiling import decompile
