@@ -3312,7 +3312,15 @@ def make_aggrfunc(std_func):
     aggrfunc.__name__ = std_func.__name__
     return aggrfunc
 
-count = make_aggrfunc(_count)
+def count(*args, **kwargs):
+    if kwargs: return _count(*args, **kwargs)
+    if len(args) != 1: return _count(*args)
+    arg = args[0]
+    try: it = iter(arg)
+    except TypeError: return _count(arg)
+    return len(set(it))
+
+count = make_aggrfunc(count)
 sum = make_aggrfunc(_sum)
 min = make_aggrfunc(_min)
 max = make_aggrfunc(_max)
