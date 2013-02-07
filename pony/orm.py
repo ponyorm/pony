@@ -2043,34 +2043,6 @@ class EntityMeta(type):
         if len(objects) > 1: throw(MultipleObjectsFoundError, 
             'Multiple objects were found. Use %s.fetch(...) to retrieve them' % entity.__name__)
         return objects[0]
-    def _find_by_sql_(entity, max_fetch_count, sql, globals=None, locals=None, frame_depth=1):
-        if not isinstance(sql, basestring): throw(TypeError)
-        database = entity._database_
-        cursor = database._execute(sql, globals, locals, frame_depth+3)
-
-        col_names = [ column_info[0].upper() for column_info in cursor.description ]
-        attr_offsets = {}
-        used_columns = set()
-        for attr in entity._attrs_:
-            if attr.is_collection: continue
-            if not attr.columns: continue
-            offsets = []
-            for column in attr.columns:
-                try: offset = col_names.index(column.upper())
-                except ValueError: break
-                offsets.append(offset)
-                used_columns.add(offset)
-            else: attr_offsets[attr] = offsets
-        if len(used_columns) < len(col_names):
-            for i in range(len(col_names)):
-                if i not in used_columns: throw(NameError, 
-                    'Column %s does not belong to entity %s' % (cursor.description[i][0], entity.__name__))
-        for attr in entity._pk_attrs_:
-            if attr not in attr_offsets: throw(ValueError, 
-                'Primary key attribue %s was not found in query result set' % attr)
-        
-        objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count)
-        return objects
     @cut_traceback
     def query(entity, func):
         if isinstance(func, basestring):
@@ -2175,6 +2147,34 @@ class EntityMeta(type):
         sql, adapter, attr_offsets = entity._construct_sql_(query_attrs, order_by_pk=not single_row)
         arguments = adapter(avdict)
         cursor = database._exec_sql(sql, arguments)
+        objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count)
+        return objects
+    def _find_by_sql_(entity, max_fetch_count, sql, globals=None, locals=None, frame_depth=1):
+        if not isinstance(sql, basestring): throw(TypeError)
+        database = entity._database_
+        cursor = database._execute(sql, globals, locals, frame_depth+3)
+
+        col_names = [ column_info[0].upper() for column_info in cursor.description ]
+        attr_offsets = {}
+        used_columns = set()
+        for attr in entity._attrs_:
+            if attr.is_collection: continue
+            if not attr.columns: continue
+            offsets = []
+            for column in attr.columns:
+                try: offset = col_names.index(column.upper())
+                except ValueError: break
+                offsets.append(offset)
+                used_columns.add(offset)
+            else: attr_offsets[attr] = offsets
+        if len(used_columns) < len(col_names):
+            for i in range(len(col_names)):
+                if i not in used_columns: throw(NameError, 
+                    'Column %s does not belong to entity %s' % (cursor.description[i][0], entity.__name__))
+        for attr in entity._pk_attrs_:
+            if attr not in attr_offsets: throw(ValueError, 
+                'Primary key attribue %s was not found in query result set' % attr)
+        
         objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count)
         return objects
     def _construct_select_clause_(entity, alias=None, distinct=False):
