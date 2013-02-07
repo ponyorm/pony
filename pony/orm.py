@@ -2022,6 +2022,18 @@ class EntityMeta(type):
         else: pkval = avdict.get(entity._pk_)
         return pkval, avdict        
     @cut_traceback
+    def __getitem__(entity, key):
+        if type(key) is not tuple: key = (key,)
+        if len(key) != len(entity._pk_attrs_):
+            throw(TypeError, 'Invalid count of attrs in %s primary key (%s instead of %s)'
+                             % (entity.__name__, len(key), len(entity._pk_attrs_)))
+        kwargs = dict(izip(imap(attrgetter('name'), entity._pk_attrs_), key))
+        objects = entity._find_(1, (), kwargs)
+        if not objects: throw(ObjectNotFound, entity, key)
+        if len(objects) > 1: throw(MultipleObjectsFoundError, 
+            'Multiple objects was found. Use %s.fetch(...) to retrieve them' % entity.__name__)
+        return objects[0]
+    @cut_traceback
     def fetch(entity, *args, **kwargs):
         return entity._find_(None, args, kwargs)
     @cut_traceback
@@ -2059,18 +2071,6 @@ class EntityMeta(type):
         
         objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count)
         return objects
-    @cut_traceback
-    def __getitem__(entity, key):
-        if type(key) is not tuple: key = (key,)
-        if len(key) != len(entity._pk_attrs_):
-            throw(TypeError, 'Invalid count of attrs in %s primary key (%s instead of %s)'
-                             % (entity.__name__, len(key), len(entity._pk_attrs_)))
-        kwargs = dict(izip(imap(attrgetter('name'), entity._pk_attrs_), key))
-        objects = entity._find_(1, (), kwargs)
-        if not objects: throw(ObjectNotFound, entity, key)
-        if len(objects) > 1: throw(MultipleObjectsFoundError, 
-            'Multiple objects was found. Use %s.fetch(...) to retrieve them' % entity.__name__)
-        return objects[0]
     @cut_traceback
     def query(entity, func):
         if isinstance(func, basestring):
