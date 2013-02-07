@@ -445,7 +445,7 @@ class SQLTranslator(ASTTranslator):
         for n, v in translator.entities.iteritems():
             if entity is v: entity_name = n; break
         else: assert False
-        if node.node.attrname != 'query': throw(TypeError)
+        if node.node.attrname != 'select': throw(TypeError)
         if len(lambda_expr.argnames) != 1: throw(TypeError)
         if lambda_expr.varargs: throw(TypeError)
         if lambda_expr.kwargs: throw(TypeError)
@@ -1440,11 +1440,11 @@ def minmax(monad, sqlop, *args):
     return translator.ExprMonad.new(translator, t, sql)
 
 class FuncSelectMonad(FuncMonad):
-    func = orm.query
+    func = orm.select
     def call(monad, queryset):
         translator = monad.translator
         if not isinstance(queryset, translator.QuerySetMonad): throw(TypeError, 
-            "'query' function expects generator expression, got: {EXPR}")
+            "'select' function expects generator expression, got: {EXPR}")
         return queryset
 
 class FuncExistsMonad(FuncMonad):

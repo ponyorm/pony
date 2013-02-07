@@ -90,111 +90,111 @@ class TestSQLTranslator2(unittest.TestCase):
     def tearDown(self):
         rollback()
     def test_distinct1(self):
-        q = query(c.students for c in Course)
+        q = select(c.students for c in Course)
         self.assertEquals(q._translator.distinct, True)
         self.assertEquals(q.count(), 7)
     def test_distinct2(self):
-        q = query(d for d in Department if len(d.courses.students) > len(s for s in Student))
+        q = select(d for d in Department if len(d.courses.students) > len(s for s in Student))
         self.assertEquals("DISTINCT" in flatten(q._translator.conditions), True)
-        self.assertEquals(q.fetch_all(), [])
+        self.assertEquals(q[:], [])
     def test_distinct3(self):
-        q = query(d for d in Department if len(s for c in d.courses for s in c.students) > len(s for s in Student))
+        q = select(d for d in Department if len(s for c in d.courses for s in c.students) > len(s for s in Student))
         self.assertEquals("DISTINCT" in flatten(q._translator.conditions), True)
-        self.assertEquals(q.fetch_all(), [])
+        self.assertEquals(q[:], [])
     def test_distinct4(self):
-        q = query(d for d in Department if len(d.groups.students) > 3)
+        q = select(d for d in Department if len(d.groups.students) > 3)
         self.assertEquals("DISTINCT" not in flatten(q._translator.conditions), True)
-        self.assertEquals(q.fetch_all(), [Department[2]])
+        self.assertEquals(q[:], [Department[2]])
     def test_distinct5(self):
-        result = fetch(s for s in Student)
+        result = select(s for s in Student)[:]
         self.assertEquals(result, [Student[1], Student[2], Student[3], Student[4], Student[5], Student[6], Student[7]])
     def test_distinct6(self):
-        result = fetch_distinct(s for s in Student)
+        result = select(s for s in Student).distinct()
         self.assertEquals(result, [Student[1], Student[2], Student[3], Student[4], Student[5], Student[6], Student[7]])
     def test_not_null1(self):
-        q = query(g for g in Group if '123-45-67' not in g.students.tel and g.dept == Department[1])
+        q = select(g for g in Group if '123-45-67' not in g.students.tel and g.dept == Department[1])
         not_null = "IS_NOT_NULL COLUMN student-1 tel" in (" ".join(str(i) for i in flatten(q._translator.conditions)))
         self.assertEquals(not_null, True)
-        self.assertEquals(q.fetch_all(), [Group[101]])
+        self.assertEquals(q[:], [Group[101]])
     def test_not_null2(self):
-        q = query(g for g in Group if 'John' not in g.students.name and g.dept == Department[1])
+        q = select(g for g in Group if 'John' not in g.students.name and g.dept == Department[1])
         not_null = "IS_NOT_NULL COLUMN student-1 name" in (" ".join(str(i) for i in flatten(q._translator.conditions)))
         self.assertEquals(not_null, False)
-        self.assertEquals(q.fetch_all(), [Group[101]])
+        self.assertEquals(q[:], [Group[101]])
     def test_chain_of_attrs_inside_for1(self):
-        result = fetch(s for d in Department if d.number == 2 for s in d.groups.students)
+        result = select(s for d in Department if d.number == 2 for s in d.groups.students)[:]
         self.assertEquals(result, [Student[4], Student[5], Student[6], Student[7]])
     def test_chain_of_attrs_inside_for2(self):
         pony.options.SIMPLE_ALIASES = False
-        result = fetch(s for d in Department if d.number == 2 for s in d.groups.students)
+        result = select(s for d in Department if d.number == 2 for s in d.groups.students)[:]
         self.assertEquals(result, [Student[4], Student[5], Student[6], Student[7]])
         pony.options.SIMPLE_ALIASES = True
     def test_non_entity_result1(self):
-        result = fetch((s.name, s.group.number) for s in Student if s.name.startswith("J"))
+        result = select((s.name, s.group.number) for s in Student if s.name.startswith("J"))[:]
         self.assertEquals(result, [(u'Jing Xia', 102), (u'John Smith', 101)])
     def test_non_entity_result2(self):
-        result = fetch((s.dob.year, s.group.number) for s in Student)
+        result = select((s.dob.year, s.group.number) for s in Student)[:]
         self.assertEquals(result, [(1988, 102), (1989, 101), (1990, 101), (1990, 102), (1991, 101), (1991, 102)])
     def test_non_entity_result3(self):
-        result = fetch_all(s.dob.year for s in Student)
+        result = select(s.dob.year for s in Student).without_distinct()
         self.assertEquals(result, [1991, 1990, 1989, 1990, 1991, 1990, 1988])
-        result = fetch(s.dob.year for s in Student)  # test the last query didn't override the cached one
+        result = select(s.dob.year for s in Student)[:]  # test the last query didn't override the cached one
         self.assertEquals(result, [1988, 1989, 1990, 1991])
     def test_non_entity_result3a(self):
-        result = fetch(s.dob.year for s in Student)
+        result = select(s.dob.year for s in Student)[:]
         self.assertEquals(result, [1988, 1989, 1990, 1991])
     def test_non_entity_result4(self):
-        result = set(fetch(s.name for s in Student if s.name.startswith('M')))
+        result = set(select(s.name for s in Student if s.name.startswith('M')))
         self.assertEquals(result, set([u'Matthew Reed', u'Maria Ionescu']))
     def test_non_entity_result5(self):
-        result = fetch((s.group, s.dob) for s in Student if s.group == Group[101])
+        result = select((s.group, s.dob) for s in Student if s.group == Group[101])[:]
         self.assertEquals(result, [(Group[101], date(1989, 2, 5)), (Group[101], date(1990, 11, 26)), (Group[101], date(1991, 3, 20))])
     def test_non_entity_result6(self):
-        result = fetch((c, s) for s in Student for c in Course if c.semester == 1 and s.id < 3)
+        result = select((c, s) for s in Student for c in Course if c.semester == 1 and s.id < 3)[:]
         self.assertEquals(result, [(Course[u'Linear Algebra',1], Student[1]), (Course[u'Linear Algebra',1],
             Student[2]), (Course[u'Web Design',1], Student[1]), (Course[u'Web Design',1], Student[2])])
     def test_non_entity7(self):
-        result = fetch(s for s in Student if (s.name, s.dob) not in (((s2.name, s2.dob) for s2 in Student if s.group.number == 101)))
+        result = select(s for s in Student if (s.name, s.dob) not in (((s2.name, s2.dob) for s2 in Student if s.group.number == 101)))[:]
         self.assertEquals(result, [Student[4], Student[5], Student[6], Student[7]])
     @raises_exception(IncomparableTypesError, "Incomparable types 'int' and 'Set of Student' in expression: g.number == g.students")
     def test_incompartible_types(self):
-        fetch(g for g in Group if g.number == g.students)
+        select(g for g in Group if g.number == g.students)
     @raises_exception(TranslationError, "External parameter 'x' cannot be used as query result")
     def test_external_param1(self):
         x = Student[1]
-        fetch(x for s in Student)
+        select(x for s in Student)
     def test_external_param2(self):
         x = Student[1]
-        result = fetch(s for s in Student if s.name != x.name)
+        result = select(s for s in Student if s.name != x.name)[:]
         self.assertEquals(result, [Student[2], Student[3], Student[4], Student[5], Student[6], Student[7]])
-    @raises_exception(TypeError, "Use fetch(...) function or Group.fetch(...) method for iteration")
+    @raises_exception(TypeError, "Use select(...) function or Group.select(...) method for iteration")
     def test_exception1(self):
         for g in Group: print g.number
-    @raises_exception(MultipleObjectsFoundError, "Multiple objects were found. Use fetch(...) or query(...).fetch() to retrieve them")
+    @raises_exception(MultipleObjectsFoundError, "Multiple objects were found. Use select(...) to retrieve them")
     def test_exception2(self):
-         fetch_one(s for s in Student)
+         get(s for s in Student)
     def test_exists(self):
         result = exists(s for s in Student)
     @raises_exception(ExprEvalError, "db.FooBar raises AttributeError: 'TestDatabase' object has no attribute 'FooBar'")
     def test_entity_not_found(self):
-        fetch(s for s in db.Student for g in db.FooBar)
+        select(s for s in db.Student for g in db.FooBar)
     def test_keyargs1(self):
-        result = fetch(s for s in Student if s.dob < date(year=1990, month=10, day=20))
+        result = select(s for s in Student if s.dob < date(year=1990, month=10, day=20))[:]
         self.assertEquals(result, [Student[3], Student[4], Student[6], Student[7]])
     def test_query_as_string1(self):
-        result = fetch('s for s in Student if 3 <= s.gpa < 4')
+        result = select('s for s in Student if 3 <= s.gpa < 4')[:]
         self.assertEquals(result, [Student[1], Student[2], Student[4], Student[5], Student[6], Student[7]])
     def test_query_as_string2(self):
-        result = fetch('s for s in db.Student if 3 <= s.gpa < 4')
+        result = select('s for s in db.Student if 3 <= s.gpa < 4')[:]
         self.assertEquals(result, [Student[1], Student[2], Student[4], Student[5], Student[6], Student[7]])
     def test_str_subclasses(self):
-        result = fetch(d for d in Department for g in d.groups for c in d.courses if g.number == 106 and c.name.startswith('T'))
+        result = select(d for d in Department for g in d.groups for c in d.courses if g.number == 106 and c.name.startswith('T'))[:]
         self.assertEquals(result, [Department[3]])
     def test_unicode_subclass(self):
         class Unicode2(unicode):
             pass
         u2 = Unicode2(u'\xf0')
-        fetch(s for s in Student if len(u2) == 1)
+        select(s for s in Student if len(u2) == 1)
         
 if __name__ == "__main__":
     unittest.main()

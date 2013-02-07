@@ -5,16 +5,13 @@ from model1 import *
 class TestCollections(unittest.TestCase):
 
     def test_setwrapper_len(self):
-        g = Group.fetch_one(number='4145')
+        g = Group.get(number='4145')
         self.assert_(len(g.students) == 3)
 
     def test_setwrapper_nonzero(self):
-        g = Group.fetch_one(number='4145')
+        g = Group.get(number='4145')
         self.assert_(bool(g.students) == True)
         self.assert_(len(g.students) == 3)
-
-    def test_many2many(self):
-        subjects = Subject.fetch()
 
 # replace collection items when the old ones are not fully loaded
 ##>>> from pony.examples.orm.students01.model import *

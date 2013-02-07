@@ -31,19 +31,19 @@ class TestQuery(unittest.TestCase):
     @raises_exception(TypeError, "Cannot iterate over non-entity object")
     def test_exception1(self):
         g = Group[1]
-        fetch(s for s in g.students)
+        select(s for s in g.students)
     @raises_exception(ExprEvalError, "a raises NameError: name 'a' is not defined")
     def test_exception2(self):
-        fetch(a for s in Student)
+        select(a for s in Student)
     @raises_exception(TypeError,"Incomparable types 'unicode' and 'list' in expression: s.name == x")
     def test_exception3(self):
         x = ['A']
-        fetch(s for s in Student if s.name == x)
+        select(s for s in Student if s.name == x)
     @raises_exception(TypeError,"Function 'f1' cannot be used inside query")
     def test_exception4(self):
         def f1(x):
             return x + 1
-        fetch(s for s in Student if f1(s.gpa) > 3)
+        select(s for s in Student if f1(s.gpa) > 3)
     @raises_exception(NotImplementedError, "m1(s.gpa, 1) > 3")
     def test_exception5(self):
         class C1(object):
@@ -51,13 +51,13 @@ class TestQuery(unittest.TestCase):
                 return a + b
         c = C1()
         m1 = c.method1
-        fetch(s for s in Student if m1(s.gpa, 1) > 3) 
+        select(s for s in Student if m1(s.gpa, 1) > 3) 
     @raises_exception(TypeError, "Expression x has unsupported type 'complex'")  
     def test_exception6(self):
         x = 1j
-        fetch(s for s in Student if s.gpa == x)
+        select(s for s in Student if s.gpa == x)
     def test1(self):
-        fetch(g for g in Group for s in db.Student)
+        select(g for g in Group for s in db.Student)
         self.assert_(True)
     def test2(self):
         avg_gpa = avg(s.gpa for s in Student)
@@ -84,13 +84,13 @@ class TestQuery(unittest.TestCase):
         c = count(s.scholarship for s in Student if s.scholarship > 0)
         self.assertEquals(c, 2)
     def test7(self):
-        s = fetch_one(s.scholarship for s in Student if s.id == 3)
+        s = get(s.scholarship for s in Student if s.id == 3)
         self.assertEquals(s, 200)
     def test8(self):
-        s = fetch_one(s.scholarship for s in Student if s.id == 4)
+        s = get(s.scholarship for s in Student if s.id == 4)
         self.assertEquals(s, None)
     def test9(self):
-        s = query(s for s in Student if s.id == 4).exists()
+        s = select(s for s in Student if s.id == 4).exists()
         self.assertEquals(s, False)
     def test10(self):
         r = min(s.scholarship for s in Student)

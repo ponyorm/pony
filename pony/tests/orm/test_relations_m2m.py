@@ -30,8 +30,8 @@ class TestManyToManyNonComposite(unittest.TestCase):
     def tearDown(self):
         rollback()
     def test_add_remove(self):
-        g = Group.fetch_one(number=101)
-        subjects = Subject.fetch()
+        g = Group.get(number=101)
+        subjects = Subject.all()[:]
         g.subjects.remove(subjects[:2])
         g.subjects.add(subjects[-2:])
         commit()
@@ -98,17 +98,17 @@ class TestManyToManyNonComposite(unittest.TestCase):
 #    def tearDown(self):
 #        self.db.release()
 #    def test_add(self):
-#        Group = self.diagram.entities.fetch_one("Group")
-#        Subject = self.diagram.entities.fetch_one("Subject")
-#        g = Group.fetch_one(number=101)
-#        s2 = Subject.fetch_one('Subj2')
+#        Group = self.diagram.entities.get("Group")
+#        Subject = self.diagram.entities.get("Subject")
+#        g = Group.get(number=101)
+#        s2 = Subject.get('Subj2')
 #        g.subjects.add(s2)
 #        #commit()
 #    def test_remove(self):
-#        Group = self.diagram.entities.fetch_one("Group")
-#        Subject = self.diagram.entities.fetch_one("Subject")
-#        g = Group.fetch_one(number=101)
-#        s1 = Subject.fetch_one('Subj1')
+#        Group = self.diagram.entities.get("Group")
+#        Subject = self.diagram.entities.get("Subject")
+#        g = Group.get(number=101)
+#        s1 = Subject.get('Subj1')
 #        g.subjects.add(s1)
 #        #commit()
 

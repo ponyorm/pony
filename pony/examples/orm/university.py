@@ -105,35 +105,35 @@ db.generate_mapping(create_tables=True)
 
 def test_queries():
     # very simple query 
-    select(s for s in Student).all()
+    select(s for s in Student)[:]
 
     # one condition
-    select(s for s in Student if s.scholarship > 0).all()
+    select(s for s in Student if s.scholarship > 0)[:]
 
     # multiple conditions
-    select(s for s in Student if s.scholarship > 0 and s.group.number == 4142).all()
+    select(s for s in Student if s.scholarship > 0 and s.group.number == 4142)[:]
 
     # no join here - attribute can be found in table Students
-    select(s for s in Student if s.group.number == 4142).all()
+    select(s for s in Student if s.group.number == 4142)[:]
 
     # automatic join of two tables because grad_year is stored in table Groups
-    select(s for s in Student if s.group.grad_year == 2011).all()
+    select(s for s in Student if s.group.grad_year == 2011)[:]
 
     # still two tables are joined
-    select(s for s in Student if s.group.department.number == 44).all()
+    select(s for s in Student if s.group.department.number == 44)[:]
 
     # automatic join of tree tables
-    select(s for s in Student if s.group.department.name == 'Ancient Philosophy').all()
+    select(s for s in Student if s.group.department.name == 'Ancient Philosophy')[:]
 
     # manual join of tables will produce equivalent query
-    select(s for s in Student for g in Group if s.group == g and g.department.name == 'Ancient Philosophy').all()
+    select(s for s in Student for g in Group if s.group == g and g.department.name == 'Ancient Philosophy')[:]
 
     # join two tables by composite foreign key
-    select(c for c in Classroom for l in Lesson if l.classroom == c and l.course.subject.name == 'Physics').all()
+    select(c for c in Classroom for l in Lesson if l.classroom == c and l.course.subject.name == 'Physics')[:]
 
     # Lessons  will be joined with Buildings directly without Classrooms
-    select(s for s in Subject for l in Lesson if s == l.course.subject and l.classroom.building.description == 'some description').all()
+    select(s for s in Subject for l in Lesson if s == l.course.subject and l.classroom.building.description == 'some description')[:]
 
     # just another example of join of many tables
-    select(c for c in Course if c.major.department.faculty.number == 4).all()
+    select(c for c in Course if c.major.department.faculty.number == 4)[:]
     

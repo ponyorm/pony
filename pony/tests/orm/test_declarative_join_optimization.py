@@ -40,27 +40,27 @@ class TestM2MOptimization(unittest.TestCase):
     def setUp(self):
         rollback()
     def test1(self):
-        q = query(s for s in Student if len(s.courses) > 2)
+        q = select(s for s in Student if len(s.courses) > 2)
         self.assertEquals(Course._table_ not in flatten(q._translator.conditions), True)
     def test2(self):
-        q = query(s for s in Student if max(s.courses.semester) > 2)
+        q = select(s for s in Student if max(s.courses.semester) > 2)
         self.assertEquals(Course._table_ not in flatten(q._translator.conditions), True)
     def test3(self):
-        q = query(s for s in Student if max(s.courses.credits) > 2)
+        q = select(s for s in Student if max(s.courses.credits) > 2)
         self.assertEquals(Course._table_ in flatten(q._translator.conditions), True)
         self.assertEquals(Course.students.table in flatten(q._translator.conditions), True)
     def test4(self):
-        q = query(g for g in Group if sum(g.students.gpa) > 5)
+        q = select(g for g in Group if sum(g.students.gpa) > 5)
         self.assertEquals(Group._table_ not in flatten(q._translator.conditions), True)
     def test5(self):
-        q = query(s for s in Student if s.group.number == 1 or s.group.major == '1')
+        q = select(s for s in Student if s.group.number == 1 or s.group.major == '1')
         self.assertEquals(Group._table_ in flatten(q._translator.subquery.from_ast), True)
     # def test6(self): ###  Broken with ExprEvalError: Group[101] raises ObjectNotFound: Group[101]
-    #    q = query(s for s in Student if s.group == Group[101])
+    #    q = select(s for s in Student if s.group == Group[101])
     #    self.assertEquals(Group._table_ not in flatten(q._translator.subquery.from_ast), True)
     def test7(self):
-        q = query(s for s in Student if sum(c.credits for c in Course if s.group.dept == c.dept) > 10)
-        q.fetch()
+        q = select(s for s in Student if sum(c.credits for c in Course if s.group.dept == c.dept) > 10)
+        objects = q[:]
         self.assertEquals(str(q._translator.subquery.from_ast), 
             "['FROM', ['s', 'TABLE', 'Student'], ['group-1', 'TABLE', 'Group', ['EQ', ['COLUMN', 's', 'group'], ['COLUMN', 'group-1', 'number']]]]")
 

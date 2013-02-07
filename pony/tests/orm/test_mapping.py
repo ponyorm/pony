@@ -259,7 +259,7 @@ class TestColumnsMapping(unittest.TestCase):
         db = Database('sqlite', ':memory:')
         class E1(db.Entity):
             a1 = Required(int)
-        fetch(e for e in E1)
+        select(e for e in E1)
 
     @raises_exception(ERDiagramError, "Mapping is not generated for entity 'E1'")
     def test_generate_mapping2(self):

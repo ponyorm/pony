@@ -67,100 +67,100 @@ class TestAttrSetMonad(unittest.TestCase):
         rollback()
 
     def test1(self):
-        groups = fetch(g for g in Group if len(g.students) > 2)
+        groups = select(g for g in Group if len(g.students) > 2)[:]
         self.assertEqual(groups, [Group[41]])
     def test2(self):
-        groups = set(fetch(g for g in Group if len(g.students.name) >= 2))
+        groups = set(select(g for g in Group if len(g.students.name) >= 2))
         self.assertEqual(groups, set([Group[41], Group[42]]))
     def test3(self):
-        groups = fetch(g for g in Group if len(g.students.marks) > 2)
+        groups = select(g for g in Group if len(g.students.marks) > 2)[:]
         self.assertEqual(groups, [Group[41]])
     def test3a(self):
-        groups = fetch(g for g in Group if len(g.students.marks) < 2)
+        groups = select(g for g in Group if len(g.students.marks) < 2)[:]
         self.assertEqual(groups, [Group[42], Group[43], Group[44]])
     def test4(self):
-        groups = fetch(g for g in Group if max(g.students.marks.value) <= 2)
+        groups = select(g for g in Group if max(g.students.marks.value) <= 2)[:]
         self.assertEqual(groups, [Group[42]])
     def test5(self):
-        students = fetch(s for s in Student if len(s.marks.subject.name) > 5)
+        students = select(s for s in Student if len(s.marks.subject.name) > 5)[:]
         self.assertEqual(students, [])
     def test6(self):
-        students = set(fetch(s for s in Student if len(s.marks.subject) >= 2))
+        students = set(select(s for s in Student if len(s.marks.subject) >= 2))
         self.assertEqual(students, set([Student[2], Student[3]]))
     def test8(self):
-        students = set(fetch(s for s in Student if s.group in (g for g in Group if g.department == 101)))
+        students = set(select(s for s in Student if s.group in (g for g in Group if g.department == 101)))
         self.assertEqual(students, set([Student[1], Student[2], Student[3]]))
     def test9(self):
-        students = set(fetch(s for s in Student if s.group not in (g for g in Group if g.department == 101)))
+        students = set(select(s for s in Student if s.group not in (g for g in Group if g.department == 101)))
         self.assertEqual(students, set([Student[4], Student[5], Student[6]]))
     def test10(self):
-        students = set(fetch(s for s in Student if s.group in (g for g in Group if g.department == 101)))
+        students = set(select(s for s in Student if s.group in (g for g in Group if g.department == 101)))
         self.assertEqual(students, set([Student[1], Student[2], Student[3]]))
     def test11(self):
-        students = set(fetch(g for g in Group if len(g.subjects.groups.subjects) > 1))
+        students = set(select(g for g in Group if len(g.subjects.groups.subjects) > 1))
         self.assertEqual(students, set([Group[41], Group[42], Group[43]]))
     def test12(self):
-        groups = set(fetch(g for g in Group if len(g.subjects) >= 2))
+        groups = set(select(g for g in Group if len(g.subjects) >= 2))
         self.assertEqual(groups, set([Group[41], Group[42]]))
     def test13(self):
-        groups = set(fetch(g for g in Group if g.students))
+        groups = set(select(g for g in Group if g.students))
         self.assertEqual(groups, set([Group[41], Group[42], Group[44]]))
     def test14(self):
-        groups = set(fetch(g for g in Group if not g.students))
+        groups = set(select(g for g in Group if not g.students))
         self.assertEqual(groups, set([Group[43]]))
     def test15(self):
-        groups = set(fetch(g for g in Group if exists(g.students)))
+        groups = set(select(g for g in Group if exists(g.students)))
         self.assertEqual(groups, set([Group[41], Group[42], Group[44]]))
     def test15a(self):
-        groups = set(fetch(g for g in Group if not not exists(g.students)))
+        groups = set(select(g for g in Group if not not exists(g.students)))
         self.assertEqual(groups, set([Group[41], Group[42], Group[44]]))
     def test16(self):
-        groups = fetch(g for g in Group if not exists(g.students))
+        groups = select(g for g in Group if not exists(g.students))[:]
         self.assertEqual(groups, [Group[43]])
     def test17(self):
-        groups = set(fetch(g for g in Group if 100 in g.students.scholarship))
+        groups = set(select(g for g in Group if 100 in g.students.scholarship))
         self.assertEqual(groups, set([Group[41]]))        
     def test18(self):
-        groups = set(fetch(g for g in Group if 100 not in g.students.scholarship))
+        groups = set(select(g for g in Group if 100 not in g.students.scholarship))
         self.assertEqual(groups, set([Group[42], Group[43], Group[44]]))
     def test19(self):
-        groups = set(fetch(g for g in Group if not not not 100 not in g.students.scholarship))
+        groups = set(select(g for g in Group if not not not 100 not in g.students.scholarship))
         self.assertEqual(groups, set([Group[41]]))
     def test20(self):
-        groups = set(fetch(g for g in Group if exists(s for s in Student if s.group == g and s.scholarship == 500)))
+        groups = set(select(g for g in Group if exists(s for s in Student if s.group == g and s.scholarship == 500)))
         self.assertEqual(groups, set([Group[41], Group[42]]))
     def test21(self):
-        groups = set(fetch(g for g in Group if g.department is not None))
+        groups = set(select(g for g in Group if g.department is not None))
         self.assertEqual(groups, set([Group[41], Group[42], Group[43], Group[44]]))
     def test21a(self):
-        groups = set(fetch(g for g in Group if not g.department is not None))
+        groups = set(select(g for g in Group if not g.department is not None))
         self.assertEqual(groups, set([]))
     def test21b(self):
-        groups = set(fetch(g for g in Group if not not not g.department is None))
+        groups = set(select(g for g in Group if not not not g.department is None))
         self.assertEqual(groups, set([Group[41], Group[42], Group[43], Group[44]]))   
     def test22(self):
-        groups = set(fetch(g for g in Group if 700 in (s.scholarship for s in Student if s.group == g)))
+        groups = set(select(g for g in Group if 700 in (s.scholarship for s in Student if s.group == g)))
         self.assertEqual(groups, set([Group[42]]))
     def test23a(self):
-        groups = set(fetch(g for g in Group if 700 not in g.students.scholarship))
+        groups = set(select(g for g in Group if 700 not in g.students.scholarship))
         self.assertEqual(groups, set([Group[41], Group[43], Group[44]]))
     def test23b(self):
-        groups = set(fetch(g for g in Group if 700 not in (s.scholarship for s in Student if s.group == g)))
+        groups = set(select(g for g in Group if 700 not in (s.scholarship for s in Student if s.group == g)))
         self.assertEqual(groups, set([Group[41], Group[43], Group[44]]))
     @raises_exception(NotImplementedError)
     def test24(self):
-        groups = set(fetch(g for g in Group for g2 in Group if g.students == g2.students))
+        groups = set(select(g for g in Group for g2 in Group if g.students == g2.students))
     def test25(self):
         m1 = Mark[Student[1], Subject["Math"]]
-        students = set(fetch(s for s in Student if m1 in s.marks))
+        students = set(select(s for s in Student if m1 in s.marks))
         self.assertEqual(students, set([Student[1]]))
     def test26(self):
         s1 = Student[1]
-        groups = set(fetch(g for g in Group if s1 in g.students))
+        groups = set(select(g for g in Group if s1 in g.students))
         self.assertEqual(groups, set([Group[41]]))
     @raises_exception(AttributeError, 'g.students.name.foo')
     def test27(self):
-        fetch(g for g in Group if g.students.name.foo == 1)        
+        select(g for g in Group if g.students.name.foo == 1)        
 
 if __name__ == "__main__":
     unittest.main()

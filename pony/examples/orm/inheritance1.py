@@ -56,7 +56,7 @@ def populate_database():
     commit()
 
 def show_all_persons():
-    for obj in fetch(p for p in Person):
+    for obj in select(p for p in Person):
         print obj
         print obj._attrs_
         for attr in obj._attrs_:
