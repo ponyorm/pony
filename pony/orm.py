@@ -515,7 +515,11 @@ class Database(object):
                         if not callable(attr.default): attr.default = attr.check(attr.default)
                     assert len(columns) == len(attr.converters)
                     for (column_name, converter) in zip(columns, attr.converters):
-                        table.add_column(column_name, converter.sql_type(), attr.is_required and not is_subclass)
+                        if entity._root_ is not entity:
+                            if attr.nullable is False: throw(ERDiagramError,
+                                'Attribute %s must be nullable due to single-table inheritance')
+                            attr.nullable = True
+                        table.add_column(column_name, converter.sql_type(), not attr.nullable)
             if not table.pk_index:
                 if len(entity._pk_columns_) == 1 and entity._pk_.auto: is_pk = "auto"
                 else: is_pk = True
@@ -617,8 +621,8 @@ class DescWrapper(object):
 next_attr_id = _count(1).next
 
 class Attribute(object):
-    __slots__ = 'is_required', 'is_discriminator', 'is_unique', 'is_indexed', \
-                'is_pk', 'is_collection', 'is_ref', 'is_basic', \
+    __slots__ = 'nullable', 'is_required', 'is_discriminator', 'is_unique', 'is_indexed', \
+                'is_pk', 'is_collection', 'is_ref', 'is_basic', 'is_string', \
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs'
@@ -642,6 +646,14 @@ class Attribute(object):
         if py_type == 'Entity' or (isinstance(py_type, EntityMeta) and py_type.__name__ == 'Entity'):
             throw(TypeError, 'Cannot link attribute to Entity class. Must use Entity subclass instead')
         attr.py_type = py_type
+        attr.is_string = type(py_type) is type and issubclass(py_type, basestring)
+
+        nullable = kwargs.pop('nullable', None)
+        if not attr.is_required and not attr.is_string:
+            if nullable is False: throw(TypeError, 'Optional attribute with non-string type must be nullable')
+            nullable = True
+        attr.nullable = nullable
+
         attr.is_collection = isinstance(attr, Collection)
         attr.is_ref = not attr.is_collection and isinstance(attr.py_type, (EntityMeta, basestring))
         attr.is_basic = not attr.is_collection and not attr.is_ref
@@ -649,12 +661,6 @@ class Attribute(object):
         attr.entity = attr.name = None
         attr.args = args
         attr.auto = kwargs.pop('auto', False)
-
-        try: attr.default = kwargs.pop('default')
-        except KeyError: attr.default = None
-        else:
-            if attr.default is None and attr.is_required:
-                throw(TypeError, 'Default value for required attribute cannot be None' % attr)
 
         attr.reverse = kwargs.pop('reverse', None)
         if not attr.reverse: pass
@@ -691,30 +697,38 @@ class Attribute(object):
         attr.name = name
         if attr.pk_offset is not None and attr.lazy:
             throw(TypeError, 'Primary key attribute %s cannot be lazy' % attr)
+        try: attr.default = attr.kwargs.pop('default')
+        except KeyError: attr.default = '' if attr.is_string and not attr.is_required else None
+        else:
+            if attr.is_required:
+                if attr.default is None:
+                    throw(TypeError, 'Default value for required attribute %s cannot be None' % attr)
+                if attr.default == '':
+                    throw(TypeError, 'Default value for required attribute %s cannot be empty string' % attr)
     @cut_traceback
     def __repr__(attr):
         owner_name = not attr.entity and '?' or attr.entity.__name__
         return '%s.%s' % (owner_name, attr.name or '?')
     def check(attr, val, obj=None, entity=None, from_db=False):
+        if val is None:
+            if not attr.nullable and not from_db:
+                throw(ConstraintError, 'Attribute %s cannot be set to None' % attr)
+            return val
         assert val is not NOT_LOADED
+        if val is DEFAULT:
+            default = attr.default
+            if default is None: return None
+            if callable(default): val = default()
+            else: val = default
+
         if entity is not None: pass
         elif obj is not None: entity = obj.__class__
         else: entity = attr.entity
 
-        if val is DEFAULT:
-            default = attr.default
-            if default is None:
-                if attr.is_required and not attr.auto: throw(ConstraintError, 
-                    'Required attribute %s.%s does not specified' % (entity.__name__, attr.name))
-                return None
-            if callable(default): val = default()
-            else: val = default
-        elif val is None: return val
-        
         reverse = attr.reverse
         if not reverse:
-            if isinstance(val, Entity): throw(TypeError, 'Attribute %s.%s must be of %s type. Got: %s'
-                % (attr.entity.__name__, attr.name, attr.py_type.__name__, val))
+            if isinstance(val, Entity): throw(TypeError, 'Attribute %s must be of %s type. Got: %s'
+                % (attr, attr.py_type.__name__, val))
             if attr.converters:
                 if len(attr.converters) != 1: throw(NotImplementedError)
                 converter = attr.converters[0]
@@ -1008,16 +1022,13 @@ class Optional(Attribute):
 class Required(Attribute):
     __slots__ = []
     def check(attr, val, obj=None, entity=None, from_db=False):
-        if val is not None:
-            val = Attribute.check(attr, val, obj, entity, from_db)  # val may be changed to None here
-        if val is None and not attr.auto:
+        val = Attribute.check(attr, val, obj, entity, from_db)  # val may be changed to None here
+        if val == '' or val is None and not attr.auto:
             if entity is not None: pass
             elif obj is not None: entity = obj.__class__
             else: entity = attr.entity
-            if obj is None: throw(ConstraintError, 
-                'Required attribute %s.%s cannot be set to None' % (entity.__name__, attr.name))
-            else: throw(ConstraintError, 
-                'Required attribute %s.%s for %r cannot be set to None' % (entity.__name__, attr.name, obj))
+            if obj is None: throw(ConstraintError, 'Attribute %s is required' % attr)
+            else: throw(ConstraintError, 'Attribute %s of %r is required' % (attr, obj))
         return val
 
 class Discriminator(Required):
@@ -1091,7 +1102,14 @@ class Unique(Required):
             attr.is_indexed = True
         if len(attrs) == 1:
             attr = attrs[0]
-            if attr.is_required: throw(TypeError, 'Invalid declaration')
+            if isinstance(attr, Required):
+                t = attr.py_type
+                throw(TypeError, 'Invalid declaration: just write attrname = Unique(%s)'
+                      % t.__name__ if type(t) is type else t)
+            if attr.nullable is False:
+                throw(TypeError, 'Optional unique attribute must be nullable')
+            # See additional checks inside EntityMeta.__init__
+            attr.nullable = True
             attr.is_unique = True
         else:
             for i, attr in enumerate(attrs): attr.composite_keys.append((attrs, i))
@@ -1131,7 +1149,6 @@ class Collection(Attribute):
             table = tuple(table)
         attr.table = table
         Attribute.__init__(attr, py_type, *args, **kwargs)
-        if attr.default is not None: throw(TypeError, 'Default value could not be set for collection attribute')
         if attr.auto: throw(TypeError, "'auto' option could not be set for collection attribute")
         kwargs = attr.kwargs
 
@@ -1159,6 +1176,8 @@ class Collection(Attribute):
         attr.cached_remove_m2m_sql = None
     def _init_(attr, entity, name):
         Attribute._init_(attr, entity, name)
+        if attr.default is not None:
+            throw(TypeError, 'Default value could not be set for collection attribute')
         attr.symmetric = (attr.py_type == entity.__name__ and attr.reverse == name)
         if not attr.symmetric and attr.reverse_columns: throw(TypeError, 
             "'reverse_column' and 'reverse_columns' options can be set for symmetric relations only")

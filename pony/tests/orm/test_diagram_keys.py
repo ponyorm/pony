@@ -119,7 +119,7 @@ class TestKeys(unittest.TestCase):
             b = Optional(int)
             PrimaryKey(a, b)
 
-    @raises_exception(TypeError, 'Invalid declaration')
+    @raises_exception(TypeError, 'Invalid declaration: just write attrname = Unique(int)')
     def test_unique9(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):

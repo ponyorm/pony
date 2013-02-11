@@ -19,7 +19,7 @@ class TestAttribute(unittest.TestCase):
             id = PrimaryKey(int)
             b = Required(db.Entity)
 
-    @raises_exception(TypeError, 'Default value for required attribute cannot be None')
+    @raises_exception(TypeError, 'Default value for required attribute Entity1.b cannot be None')
     def test_attribute3(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):

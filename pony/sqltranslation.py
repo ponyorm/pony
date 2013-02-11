@@ -1800,7 +1800,7 @@ class QuerySetMonad(SetMixin, Monad):
                 select_ast = [ 'ALL' ] + columns_ast
                 subquery_ast = [ 'SELECT', select_ast, sub.subquery.from_ast ]
                 subquery_expr = sub.tree.expr.monad
-                if isinstance(subquery_expr, translator.AttrMonad) and subquery_expr.attr.is_required: pass
+                if isinstance(subquery_expr, translator.AttrMonad) and not subquery_expr.attr.nullable: pass
                 else: conditions += [ [ 'IS_NOT_NULL', column_ast ] for column_ast in sub.expr_columns ]
                 if conditions: subquery_ast.append([ 'WHERE' ] + conditions)
                 if len(columns_ast) == 1: expr_ast = item.getsql()[0]

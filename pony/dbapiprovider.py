@@ -209,7 +209,6 @@ class BasestringConverter(Converter):
         if max_len and val_len > max_len:
             throw(ValueError, 'Value for attribute %s is too long. Max length is %d, value length is %d'
                              % (converter.attr, max_len, val_len))
-        if not val_len: throw(ValueError, 'Empty strings are not allowed. Try using None instead')
         return val
     def sql_type(converter):
         if converter.max_len:

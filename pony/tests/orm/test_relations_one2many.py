@@ -1,4 +1,5 @@
 import unittest
+from testutils import *
 from pony.orm import *
 
 db = Database('sqlite', ':memory:', create_db=True)
@@ -32,18 +33,12 @@ commit()
 class TestORMUndo(unittest.TestCase):
     def setUp(self):
         db.rollback()
-    def test2(self):        
-        try:
-            Student[1].group = None
-            self.assert_(False)
-        except ConstraintError:
-            self.assert_(True)
+    @raises_exception(ConstraintError, 'Attribute Student.group cannot be set to None')
+    def test2(self):
+        Student[1].group = None
+    @raises_exception(ConstraintError, 'Attribute Student.group cannot be set to None')
     def test3(self):
-        try:
-            Group[101].students = Group[102].students
-            self.assert_(False)
-        except ConstraintError:
-            self.assert_(True)
+        Group[101].students = Group[102].students
 
 if __name__ == '__main__':
     unittest.main()
