@@ -621,7 +621,7 @@ class DescWrapper(object):
 next_attr_id = _count(1).next
 
 class Attribute(object):
-    __slots__ = 'nullable', 'is_required', 'is_discriminator', 'is_unique', 'is_indexed', \
+    __slots__ = 'nullable', 'is_required', 'is_discriminator', 'is_unique', 'is_part_of_unique_index', \
                 'is_pk', 'is_collection', 'is_ref', 'is_basic', 'is_string', \
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
@@ -634,7 +634,7 @@ class Attribute(object):
         attr.is_required = isinstance(attr, Required)
         attr.is_discriminator = isinstance(attr, Discriminator)
         attr.is_unique = isinstance(attr, Unique)  # Also can be set to True later
-        attr.is_indexed = attr.is_unique  # Also can be set to True later
+        attr.is_part_of_unique_index = attr.is_unique  # Also can be set to True later
         attr.is_pk = isinstance(attr, PrimaryKey)
         if attr.is_pk: attr.pk_offset = 0
         else: attr.pk_offset = None
@@ -842,7 +842,7 @@ class Attribute(object):
                 else: assert status == 'locked'
                 obj._status_ = 'updated'
                 cache.updated.add(obj)
-        if not attr.reverse and not attr.is_indexed:
+        if not attr.reverse and not attr.is_part_of_unique_index:
             obj._vals_[attr.name] = new_val
             return
         if not is_reverse_call: undo_funcs = []
@@ -918,7 +918,7 @@ class Attribute(object):
         if not wbit:
             old_val = obj._vals_.get(attr.name, NOT_LOADED)
             assert old_val == old_dbval
-            if attr.is_indexed:
+            if attr.is_part_of_unique_index:
                 cache = obj._cache_
                 if attr.is_unique: cache.db_update_simple_index(obj, attr, old_val, new_dbval)
                 for attrs, i in attr.composite_keys:
@@ -1099,7 +1099,7 @@ class Unique(Required):
             return result
 
         for attr in attrs:
-            attr.is_indexed = True
+            attr.is_part_of_unique_index = True
         if len(attrs) == 1:
             attr = attrs[0]
             if isinstance(attr, Required):
@@ -2737,7 +2737,7 @@ class Entity(object):
                     else: assert status == 'locked'
             if not collection_avdict:
                 for attr in avdict:
-                    if attr.reverse or attr.is_indexed: break
+                    if attr.reverse or attr.is_part_of_unique_index: break
                 else:
                     obj._vals_.update((attr.name, new_val) for attr, new_val in avdict.iteritems())
                     return
