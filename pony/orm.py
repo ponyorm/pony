@@ -1121,16 +1121,6 @@ class Unique(Required):
             throw(TypeError, '%s attribute %s cannot be of type float'
                             % (attr.__class__.__name__, attr))
 
-def populate_criteria_list(criteria_list, columns, converters, params_count=0, table_alias=None):
-    assert len(columns) == len(converters)
-    for column, converter in zip(columns, converters):
-        if converter is not None:
-            criteria_list.append([ 'EQ', [ 'COLUMN', table_alias, column ], [ 'PARAM', params_count, converter ] ])
-        else:
-            criteria_list.append([ 'IS_NULL', [ 'COLUMN', None, column ] ])
-        params_count += 1
-    return params_count
-
 class PrimaryKey(Unique):
     __slots__ = []
 
@@ -2485,7 +2475,17 @@ class EntityMeta(type):
             result.append('# attrs introduced in %s' % entity.__name__)
         result.extend(attr.describe() for attr in entity._new_attrs_)
         return '\n    '.join(result)
-    
+
+def populate_criteria_list(criteria_list, columns, converters, params_count=0, table_alias=None):
+    assert len(columns) == len(converters)
+    for column, converter in zip(columns, converters):
+        if converter is not None:
+            criteria_list.append([ 'EQ', [ 'COLUMN', table_alias, column ], [ 'PARAM', params_count, converter ] ])
+        else:
+            criteria_list.append([ 'IS_NULL', [ 'COLUMN', None, column ] ])
+        params_count += 1
+    return params_count
+
 class Entity(object):
     __metaclass__ = EntityMeta
     __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '__weakref__'
