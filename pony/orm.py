@@ -705,6 +705,11 @@ class Attribute(object):
                     throw(TypeError, 'Default value for required attribute %s cannot be None' % attr)
                 if attr.default == '':
                     throw(TypeError, 'Default value for required attribute %s cannot be empty string' % attr)
+        if attr.py_type == float:
+            if attr.pk_offset is not None:
+                throw(TypeError, 'Primary key attribute %s cannot be of type float' % attr)
+            elif attr.is_unique:
+                throw(TypeError, 'Unique attribute %s cannot be of type float' % attr)
     @cut_traceback
     def __repr__(attr):
         owner_name = not attr.entity and '?' or attr.entity.__name__
@@ -1115,11 +1120,6 @@ class Unique(Required):
             for i, attr in enumerate(attrs): attr.composite_keys.append((attrs, i))
         keys[attrs] = is_pk
         return None
-    def _init_(attr, entity, name):
-        Required._init_(attr, entity, name)
-        if isinstance(attr.py_type, type) and issubclass(attr.py_type, float):
-            throw(TypeError, '%s attribute %s cannot be of type float'
-                            % (attr.__class__.__name__, attr))
 
 class PrimaryKey(Unique):
     __slots__ = []
