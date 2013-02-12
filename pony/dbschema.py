@@ -1,7 +1,6 @@
 from pony import orm
+from pony.orm import DBSchemaError
 from pony.utils import throw
-
-class DBSchemaError(Exception): pass
 
 class DBSchema(object):
     def __init__(schema, provider, uppercase=True):

@@ -32,7 +32,7 @@ __all__ = '''
     Warning Error InterfaceError DatabaseError DataError OperationalError
     IntegrityError InternalError ProgrammingError NotSupportedError
 
-    OrmError ERDiagramError SchemaError MappingError ConstraintError CacheIndexError ObjectNotFound
+    OrmError ERDiagramError DBSchemaError MappingError ConstraintError CacheIndexError ObjectNotFound
     MultipleObjectsFoundError TooManyObjectsFoundError OperationWithDeletedObjectError
     TransactionError TransactionIntegrityError IsolationError CommitException RollbackException
     UnrepeatableReadError UnresolvableCyclicDependency UnexpectedError
@@ -69,7 +69,7 @@ string2ast_cache = {}
 class OrmError(Exception): pass
 
 class ERDiagramError(OrmError): pass
-class SchemaError(OrmError): pass
+class DBSchemaError(OrmError): pass
 class MappingError(OrmError): pass
 class ConstraintError(OrmError): pass
 class CacheIndexError(OrmError): pass
