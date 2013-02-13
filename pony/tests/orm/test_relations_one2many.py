@@ -1,6 +1,6 @@
 import unittest
 from testutils import *
-from pony.orm import *
+from pony.orm.core import *
 
 db = Database('sqlite', ':memory:', create_db=True)
 

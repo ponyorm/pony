@@ -7,12 +7,12 @@ from datetime import date, datetime
 
 from pony import options
 from pony.utils import avg, copy_func_attrs, is_ident, throw
-from pony.asttranslation import ASTTranslator, ast2src, TranslationError
-from pony.ormtypes import \
+from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
+from pony.orm.ormtypes import \
     string_types, numeric_types, comparable_types, SetType, FuncType, MethodType, \
     get_normalized_type_of, normalize_type, coerce_types, are_comparable_types
-import orm
-from pony.orm import ERDiagramError, EntityMeta, Set, JOIN, AsciiStr
+from pony.orm import core
+from pony.orm.core import ERDiagramError, EntityMeta, Set, JOIN, AsciiStr
 
 def check_comparable(left_monad, right_monad, op='=='):
     t1, t2 = left_monad.type, right_monad.type
@@ -1384,7 +1384,7 @@ class FuncLenMonad(FuncMonad):
         return x.len()
 
 class FuncCountMonad(FuncMonad):
-    func = count, orm.count
+    func = count, core.count
     def call(monad, x=None):
         translator = monad.translator
         if isinstance(x, translator.StringConstMonad) and x.value == '*': x = None
@@ -1399,24 +1399,24 @@ class FuncAbsMonad(FuncMonad):
         return x.abs()
 
 class FuncSumMonad(FuncMonad):
-    func = sum, orm.sum
+    func = sum, core.sum
     def call(monad, x):
         return x.aggregate('SUM')
 
 class FuncAvgMonad(FuncMonad):
-    func = avg, orm.avg
+    func = avg, core.avg
     def call(monad, x):
         return x.aggregate('AVG')
 
 class FuncMinMonad(FuncMonad):
-    func = min, orm.min
+    func = min, core.min
     def call(monad, *args):
         if not args: throw(TypeError, 'min() function expected at least one argument')
         if len(args) == 1: return args[0].aggregate('MIN')
         return minmax(monad, 'MIN', *args)
 
 class FuncMaxMonad(FuncMonad):
-    func = max, orm.max
+    func = max, core.max
     def call(monad, *args):
         if not args: throw(TypeError, 'max() function expected at least one argument')
         if len(args) == 1: return args[0].aggregate('MAX')
@@ -1440,7 +1440,7 @@ def minmax(monad, sqlop, *args):
     return translator.ExprMonad.new(translator, t, sql)
 
 class FuncSelectMonad(FuncMonad):
-    func = orm.select
+    func = core.select
     def call(monad, queryset):
         translator = monad.translator
         if not isinstance(queryset, translator.QuerySetMonad): throw(TypeError, 
@@ -1448,14 +1448,14 @@ class FuncSelectMonad(FuncMonad):
         return queryset
 
 class FuncExistsMonad(FuncMonad):
-    func = orm.exists
+    func = core.exists
     def call(monad, arg):
         if not isinstance(arg, monad.translator.SetMixin): throw(TypeError, 
             "'exists' function expects generator expression or collection, got: {EXPR}")
         return arg.nonzero()
 
 class FuncDescMonad(FuncMonad):
-    func = orm.desc
+    func = core.desc
     def call(monad, expr):
         return DescMonad(expr)
 

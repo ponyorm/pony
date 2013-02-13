@@ -1,4 +1,4 @@
-from pony.orm import *
+from pony.orm.core import *
 from decimal import Decimal
 from datetime import date
 

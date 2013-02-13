@@ -1,8 +1,8 @@
 import unittest
-import pony.orm, pony.options
+import pony.orm.core, pony.options
 
 pony.options.CUT_TRACEBACK = False
-pony.orm.sql_debug(False)
+pony.orm.core.sql_debug(False)
 
 from test_diagram import *
 from test_diagram_attribute import *

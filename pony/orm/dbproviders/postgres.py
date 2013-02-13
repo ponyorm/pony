@@ -6,9 +6,9 @@ from binascii import unhexlify
 
 import pgdb
 
-from pony import orm, dbschema, sqlbuilding, dbapiprovider
-from pony.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
-from pony.sqltranslation import SQLTranslator
+from pony.orm import core, dbschema, sqlbuilding, dbapiprovider
+from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
+from pony.orm.sqltranslation import SQLTranslator
 from pony.utils import localbase, timestamp2datetime
 
 def get_provider(*args, **kwargs):
@@ -20,9 +20,9 @@ class PGColumn(dbschema.Column):
 class PGTable(dbschema.Table):
     def create(table, provider, connection, created_tables=None):
         try: dbschema.Table.create(table, provider, connection, created_tables)
-        except orm.DatabaseError, e:
+        except core.DatabaseError, e:
             if 'already exists' not in e.args[0]: raise
-            if orm.debug:
+            if core.debug:
                 print 'ALREADY EXISTS:', e.args[0]
                 print 'ROLLBACK\n'
             provider.rollback(connection)

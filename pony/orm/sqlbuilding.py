@@ -5,7 +5,7 @@ from datetime import date, datetime
 from binascii import hexlify
 
 from pony import options
-from pony.sqlsymbols import *
+from pony.orm.sqlsymbols import *
 from pony.utils import datetime2timestamp, throw
 
 class AstError(Exception): pass

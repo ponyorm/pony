@@ -1,7 +1,7 @@
 from decimal import Decimal
 from datetime import date
 
-from pony.orm import *
+from pony.orm.core import *
 
 db = Database('sqlite', 'presentation.sqlite', create_db=True)
 #db = Database('mysql', host="localhost", user="presentation", passwd="pony", db="presentation")

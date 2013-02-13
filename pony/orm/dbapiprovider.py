@@ -3,7 +3,7 @@ from datetime import datetime, date, time
 
 from pony.utils import is_utf8, simple_decorator, throw
 from pony.converting import str2date, str2datetime
-from pony.ormtypes import LongStr, LongUnicode
+from pony.orm.ormtypes import LongStr, LongUnicode
 
 class DBException(Exception):
     def __init__(exc, *args, **kwargs):

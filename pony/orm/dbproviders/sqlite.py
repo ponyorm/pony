@@ -8,8 +8,8 @@ from time import strptime
 
 from pony.thirdparty import sqlite
 
-from pony import dbschema, sqltranslation, sqlbuilding, dbapiprovider
-from pony.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
+from pony.orm import dbschema, sqltranslation, sqlbuilding, dbapiprovider
+from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
 from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple_decorator, absolutize_path, throw
 
 def get_provider(filename, create_db=False):

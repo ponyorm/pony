@@ -1,5 +1,5 @@
 import unittest
-from pony.orm import *
+from pony.orm.core import *
 from testutils import raises_exception
 
 db = Database('sqlite', ':memory:')

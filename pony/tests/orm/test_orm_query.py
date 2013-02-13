@@ -1,7 +1,7 @@
 import unittest
 from datetime import date
 from decimal import Decimal
-from pony.orm import *
+from pony.orm.core import *
 from testutils import *
 
 db = Database('sqlite', ':memory:')

@@ -4,7 +4,7 @@ from pyodbc import (Warning, Error, InterfaceError, DatabaseError,
                     DataError, OperationalError, IntegrityError, InternalError,
                     ProgrammingError, NotSupportedError)
 
-from pony import sqlbuilding
+from pony.orm import sqlbuilding
 
 paramstyle = 'qmark'
 

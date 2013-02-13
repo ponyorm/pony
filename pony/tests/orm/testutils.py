@@ -1,4 +1,4 @@
-from pony.orm import Database
+from pony.orm.core import Database
 
 def raises_exception(exc_class, msg=None):
     def decorator(func):

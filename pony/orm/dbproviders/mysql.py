@@ -2,18 +2,18 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time
 
 import warnings
-warnings.filterwarnings('ignore', '^Table.+already exists$', Warning, '^pony\\.orm$')
+warnings.filterwarnings('ignore', '^Table.+already exists$', Warning, '^pony\\.ormcore$')
 
 import MySQLdb
 import MySQLdb.converters
 from MySQLdb.constants import FIELD_TYPE, FLAG
 
-from pony import dbschema
-from pony import dbapiprovider
-from pony.dbapiprovider import DBAPIProvider
-from pony.sqltranslation import SQLTranslator
-from pony.sqlbuilding import Value, SQLBuilder
 from pony.utils import localbase
+from pony.orm import dbschema
+from pony.orm import dbapiprovider
+from pony.orm.dbapiprovider import DBAPIProvider
+from pony.orm.sqltranslation import SQLTranslator
+from pony.orm.sqlbuilding import Value, SQLBuilder
 
 def get_provider(*args, **kwargs):
     return MySQLProvider(*args, **kwargs)

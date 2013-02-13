@@ -1,6 +1,6 @@
 import unittest
 from datetime import date, datetime
-from pony.orm import *
+from pony.orm.core import *
 from testutils import *
 
 db = TestDatabase('sqlite', ':memory:')

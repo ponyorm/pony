@@ -1,7 +1,7 @@
 import unittest
-from pony.sqlsymbols import *
-from pony.sqlbuilding import SQLBuilder
-from pony.dbapiprovider import DBAPIProvider
+from pony.orm.sqlsymbols import *
+from pony.orm.sqlbuilding import SQLBuilder
+from pony.orm.dbapiprovider import DBAPIProvider
 
 class TestFormatStyles(unittest.TestCase):
     def setUp(self):

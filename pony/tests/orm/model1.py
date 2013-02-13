@@ -1,4 +1,4 @@
-from pony.orm import *
+from pony.orm.core import *
 
 db = Database('sqlite', ':memory:')
 

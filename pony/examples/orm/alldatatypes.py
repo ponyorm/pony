@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 from decimal import Decimal
-from pony.orm import *
+from pony.orm.core import *
 import time
 
 #db = Database('oracle', 'presentation/pony@localhost')    

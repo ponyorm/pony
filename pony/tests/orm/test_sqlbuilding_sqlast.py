@@ -1,6 +1,6 @@
 import unittest
-from pony.orm import Database
-from pony.sqlsymbols import *
+from pony.orm.core import Database
+from pony.orm.sqlsymbols import *
 
 class TestSQLAST(unittest.TestCase):
     def setUp(self):

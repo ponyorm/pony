@@ -1,6 +1,6 @@
 import unittest
-from pony.orm import *
-from pony.orm import Entity
+from pony.orm.core import *
+from pony.orm.core import Entity
 from testutils import *
 
 class TestDiag(unittest.TestCase):

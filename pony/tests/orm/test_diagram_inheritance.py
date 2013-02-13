@@ -1,5 +1,5 @@
 import unittest
-from pony.orm import *
+from pony.orm.core import *
 from testutils import *
 
 class TestInheritance(unittest.TestCase):

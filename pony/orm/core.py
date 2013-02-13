@@ -11,10 +11,10 @@ from __builtin__ import min as _min, max as _max, sum as _sum
 
 import pony
 from pony import options
-from pony.decompiling import decompile
-from pony.ormtypes import AsciiStr, LongStr, LongUnicode, numeric_types, get_normalized_type_of
-from pony.asttranslation import create_extractors, TranslationError
-from pony.dbapiprovider import (
+from pony.orm.decompiling import decompile
+from pony.orm.ormtypes import AsciiStr, LongStr, LongUnicode, numeric_types, get_normalized_type_of
+from pony.orm.asttranslation import create_extractors, TranslationError
+from pony.orm.dbapiprovider import (
     DBException, RowNotFound, MultipleRowsFound, TooManyRowsFound,
     Warning, Error, InterfaceError, DatabaseError, DataError, OperationalError,
     IntegrityError, InternalError, ProgrammingError, NotSupportedError
@@ -246,7 +246,7 @@ class Database(object):
     def __init__(self, provider_name, *args, **kwargs):
         # First argument cannot be named 'database', because 'database' can be in kwargs
         if not isinstance(provider_name, basestring): throw(TypeError)
-        provider_module = import_module('pony.dbproviders.' + provider_name)
+        provider_module = import_module('pony.orm.dbproviders.' + provider_name)
         self.provider = provider = provider_module.get_provider(*args, **kwargs)
         self.priority = 0
         self.optimistic = True

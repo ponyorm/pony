@@ -1,5 +1,4 @@
 import unittest
-from pony.orm import *
 from model1 import *
 
 class TestCollections(unittest.TestCase):

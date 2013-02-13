@@ -1,5 +1,5 @@
 from datetime import date
-from pony.orm import *
+from pony.orm.core import *
 
 db = Database('sqlite', 'complex.sqlite', create_db=True)
 

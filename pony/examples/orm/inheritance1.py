@@ -4,7 +4,7 @@ from datetime import date
 from pony import options
 options.CUT_TRACEBACK = False
 
-from pony.orm import *
+from pony.orm.core import *
 
 sql_debug(True)
 
