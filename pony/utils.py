@@ -114,6 +114,40 @@ def is_ident(string):
     'is_ident(string) -> bool'
     return bool(_ident_re.match(string))
 
+_name_parts_re = re.compile(r'''
+            [A-Z][A-Z0-9]+(?![a-z]) # ACRONYM
+        |   [A-Z][a-z]*             # Capitalized or single capital
+        |   [a-z+                   # all-lowercase
+        |   [0-9]+                  # numbers
+        |   _+                      # underscores
+        ''', re.VERBOSE)
+
+def split_name(name):
+    "split_name('Some_FUNNYName') -> ['Some', 'FUNNY', 'Name']"
+    if not _ident_re.match(name):
+        raise ValueError('Name is not correct Python identifier')
+    list = _name_parts_re.findall(name)
+    if not (list[0].strip('_') and list[-1].strip('_')):
+        raise ValueError('Name must not starting or ending with underscores')
+    return [ s for s in list if s.strip('_') ]
+
+def uppercase_name(name):
+    "uppercase_name('Some_FUNNYName') -> 'SOME_FUNNY_NAME'"
+    return '_'.join(s.upper() for s in split_name(name))
+
+def lowercase_name(name):
+    "uppercase_name('Some_FUNNYName') -> 'some_funny_name'"
+    return '_'.join(s.lower() for s in split_name(name))
+
+def camelcase_name(name):
+    "uppercase_name('Some_FUNNYName') -> 'SomeFunnyName'"
+    return ''.join(s.capitalize() for s in split_name(name))
+
+def mixedcase_name(name):
+    "mixedcase_name('Some_FUNNYName') -> 'someFunnyName'"
+    list = split_name(name)
+    return list[0].lower() + ''.join(s.capitalize() for s in list[1:])
+
 def import_module(name):
     "import_module('a.b.c') -> <module a.b.c>"
     mod = sys.modules.get(name)

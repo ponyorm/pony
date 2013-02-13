@@ -1,5 +1,0 @@
-0. logo
-1. fix bugs with C modules
-2. fcgi(fastcgi)
-3. GAE Memcache
-4. mapper
