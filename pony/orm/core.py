@@ -46,9 +46,7 @@ __all__ = '''
 
     AsciiStr LongStr LongUnicode
 
-    select
-    get
-    exists
+    select left_join get exists
 
     count sum min max avg
 
@@ -3290,7 +3288,7 @@ def string2ast(s):
     return result
 
 @cut_traceback
-def select(gen, frame_depth=0):
+def select(gen, frame_depth=0, left_join=False):
     if isinstance(gen, types.GeneratorType):
         tree, external_names = decompile(gen)
         code_key = id(gen.gi_frame.f_code)
@@ -3304,7 +3302,11 @@ def select(gen, frame_depth=0):
         globals = sys._getframe(frame_depth+2).f_globals
         locals = sys._getframe(frame_depth+2).f_locals
     else: throw(TypeError)
-    return Query(code_key, tree.code, globals, locals)
+    return Query(code_key, tree.code, globals, locals, left_join)
+
+@cut_traceback
+def left_join(gen, frame_depth=0):
+    return select(gen, frame_depth=frame_depth+2, left_join=True)
 
 @cut_traceback
 def get(gen):
@@ -3373,12 +3375,12 @@ def extract_vars(extractors, globals, locals):
     return vars, vartypes
 
 class Query(object):
-    def __init__(query, code_key, tree, globals, locals):
+    def __init__(query, code_key, tree, globals, locals, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
         extractors, varnames, tree = create_extractors(code_key, tree)
         vars, vartypes = extract_vars(extractors, globals, locals)
         query._vars = vars
-        query._key = code_key, tuple(map(vartypes.__getitem__, varnames))
+        query._key = code_key, tuple(map(vartypes.__getitem__, varnames)), left_join
 
         node = tree.quals[0].iter
         origin = vars[node.src]
@@ -3395,7 +3397,7 @@ class Query(object):
         if translator is None:
             tree = loads(dumps(tree, 2))  # tree = deepcopy(tree)
             translator_cls = database.provider.translator_cls
-            translator = translator_cls(tree, extractors, vartypes)
+            translator = translator_cls(tree, extractors, vartypes, left_join=left_join)
             database._translator_cache[query._key] = translator
         query._translator = translator
     def _construct_sql_and_arguments(query, range=None, distinct=None, aggr_func_name=None):
@@ -3515,7 +3517,7 @@ class Query(object):
         else: assert False
         return query._order_by_lambda(func_id, func_ast, globals, locals)
     def _without_order_by(query):
-        query._key = query._key[:2]
+        query._key = query._key[:3]
         database = query._database
         translator = database._translator_cache.get(query._key)
         assert translator is not None  # Translator for query without orderby must be in cache already

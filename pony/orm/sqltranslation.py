@@ -125,15 +125,16 @@ class SQLTranslator(ASTTranslator):
                 else: monad.aggregated = False
             return monad
 
-    def __init__(translator, tree, extractors, vartypes, parent_translator=None):
+    def __init__(translator, tree, extractors, vartypes, parent_translator=None, left_join=False):
         assert isinstance(tree, ast.GenExprInner), tree
         ASTTranslator.__init__(translator, tree)
         translator.database = None
         translator.extractors = extractors
         translator.vartypes = vartypes
+        translator.left_join = left_join
         translator.parent = parent_translator
-        if not parent_translator: subquery = Subquery()
-        else: subquery = Subquery(parent_translator.subquery)
+        if not parent_translator: subquery = Subquery(left_join=left_join)
+        else: subquery = Subquery(parent_translator.subquery, left_join=left_join)
         translator.subquery = subquery
         tablerefs = subquery.tablerefs
         translator.distinct = False
@@ -164,7 +165,11 @@ class SQLTranslator(ASTTranslator):
                 entity = iterable.item_type
                 if not isinstance(entity, EntityMeta):
                     throw(TranslationError, 'for %s in %s' % (name, ast2src(qual.iter)))
-                if i > 0: translator.distinct = True
+                if i > 0:
+                    if translator.left_join: throw(TranslationError,
+                        'Collection expected inside left join query. '
+                        'Got: for %s in %s' % (name, ast2src(qual.iter)))
+                    translator.distinct = True
                 tablerefs[name] = TableRef(subquery, name, entity)
             else:
                 attr_names = []
@@ -495,9 +500,10 @@ class SQLTranslator(ASTTranslator):
 max_alias_length = 30
 
 class Subquery(object):
-    def __init__(subquery, parent_subquery=None):
+    def __init__(subquery, parent_subquery=None, left_join=False):
         subquery.parent_subquery = parent_subquery
-        subquery.from_ast = [ 'FROM' ]
+        subquery.left_join = left_join
+        subquery.from_ast = [ 'LEFT_JOIN' if left_join else 'FROM' ]
         subquery.conditions = []
         subquery.tablerefs = {}
         if parent_subquery is None:
