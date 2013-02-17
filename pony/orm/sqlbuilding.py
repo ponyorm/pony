@@ -90,6 +90,7 @@ def move_conditions_from_inner_join_to_where(sections):
                 new_where_list = [ WHERE ]
                 new_sections.insert(i+1, new_where_list)
             break
+    else: return sections
     for join in new_from_list[2:]:
         if join[1] in (TABLE, SELECT) and len(join) == 4:
             new_where_list.append(join.pop())
