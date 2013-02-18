@@ -93,10 +93,6 @@ class TestSQLTranslator2(unittest.TestCase):
         q = select(c.students for c in Course)
         self.assertEquals(q._translator.distinct, True)
         self.assertEquals(q.count(), 7)
-    def test_distinct2(self):
-        q = select(d for d in Department if len(d.courses.students) > len(s for s in Student))
-        self.assertEquals("DISTINCT" in flatten(q._translator.conditions), True)
-        self.assertEquals(q[:], [])
     def test_distinct3(self):
         q = select(d for d in Department if len(s for c in d.courses for s in c.students) > len(s for s in Student))
         self.assertEquals("DISTINCT" in flatten(q._translator.conditions), True)

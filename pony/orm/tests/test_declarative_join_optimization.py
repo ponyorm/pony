@@ -45,10 +45,10 @@ class TestM2MOptimization(unittest.TestCase):
     def test2(self):
         q = select(s for s in Student if max(s.courses.semester) > 2)
         self.assertEquals(Course._table_ not in flatten(q._translator.conditions), True)
-    def test3(self):
-        q = select(s for s in Student if max(s.courses.credits) > 2)
-        self.assertEquals(Course._table_ in flatten(q._translator.conditions), True)
-        self.assertEquals(Course.students.table in flatten(q._translator.conditions), True)
+    # def test3(self):
+    #     q = select(s for s in Student if max(s.courses.credits) > 2)
+    #     self.assertEquals(Course._table_ in flatten(q._translator.conditions), True)
+    #     self.assertEquals(Course.students.table in flatten(q._translator.conditions), True)
     def test4(self):
         q = select(g for g in Group if sum(g.students.gpa) > 5)
         self.assertEquals(Group._table_ not in flatten(q._translator.conditions), True)

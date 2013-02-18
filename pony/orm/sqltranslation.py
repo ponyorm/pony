@@ -125,14 +125,16 @@ class SQLTranslator(ASTTranslator):
                 else: monad.aggregated = False
             return monad
 
-    def __init__(translator, tree, extractors, vartypes, parent_translator=None, left_join=False):
+    def __init__(translator, tree, extractors, vartypes, parent_translator=None, left_join=False, optimize=None):
         assert isinstance(tree, ast.GenExprInner), tree
         ASTTranslator.__init__(translator, tree)
         translator.database = None
         translator.extractors = extractors
         translator.vartypes = vartypes
-        translator.left_join = left_join
         translator.parent = parent_translator
+        translator.left_join = left_join
+        translator.optimize = optimize
+        translator.from_optimized = False
         if not parent_translator: subquery = Subquery(left_join=left_join)
         else: subquery = Subquery(parent_translator.subquery, left_join=left_join)
         translator.subquery = subquery
@@ -141,11 +143,12 @@ class SQLTranslator(ASTTranslator):
         translator.conditions = subquery.conditions
         translator.having_conditions = []
         translator.order = []
-        translator.aggregated = False
+        translator.aggregated = False if not optimize else True
         translator.inside_expr = False
         translator.inside_not = False
         translator.inside_orderby = False
         translator.hint_join = False
+        translator.aggregated_subquery_paths = set()
         for i, qual in enumerate(tree.quals):
             assign = qual.assign
             if not isinstance(assign, ast.AssName): throw(NotImplementedError, ast2src(assign))
@@ -220,7 +223,7 @@ class SQLTranslator(ASTTranslator):
                 for m in cond_monads:
                     if not m.aggregated: translator.conditions.append(m.getsql())
                     else: translator.having_conditions.append(m.getsql())
-                
+
         translator.inside_expr = True
         translator.dispatch(tree.expr)
         assert not translator.hint_join
@@ -296,7 +299,10 @@ class SQLTranslator(ASTTranslator):
             assert parent_translator
             join_condition = first_from_item.pop()
             translator.conditions.insert(0, join_condition)
-
+    def can_be_optimised(translator):
+        if translator.groupby_monads: return False
+        if len(translator.aggregated_subquery_paths) != 1: return False
+        return iter(translator.aggregated_subquery_paths).next()
     def construct_sql_ast(translator, range=None, distinct=None, aggr_func_name=None):
         attr_offsets = None
         if distinct is None: distinct = translator.distinct
@@ -510,7 +516,7 @@ class Subquery(object):
             subquery.alias_counters = {}
             subquery.expr_counter = count(1)
         else:
-            subquery.alias_counters = parent_subquery.alias_counters
+            subquery.alias_counters = parent_subquery.alias_counters.copy()
             subquery.expr_counter = parent_subquery.expr_counter
     def get_tableref(subquery, name_path):
         tableref = subquery.tablerefs.get(name_path)
@@ -1561,7 +1567,7 @@ class AttrSetMonad(SetMixin, Monad):
         distinct = monad.requires_distinct(joined=translator.hint_join)
         sql_ast = make_aggr = None
         extra_grouping = False
-        if not distinct:
+        if not distinct and monad.tableref.name_path != translator.optimize:
             make_aggr = lambda expr_list: [ 'COUNT', 'ALL' ]
         elif len(expr_list) == 1:
             make_aggr = lambda expr_list: [ 'COUNT', 'DISTINCT' ] + expr_list
@@ -1587,8 +1593,14 @@ class AttrSetMonad(SetMixin, Monad):
         if not sql_ast:
             subselect_func = translator.hint_join and monad._joined_subselect \
                              or monad._aggregated_scalar_subselect
-            sql_ast = subselect_func(make_aggr, extra_grouping)
-        return translator.ExprMonad.new(translator, int, sql_ast)
+            sql_ast, optimized = subselect_func(make_aggr, extra_grouping)
+        else: optimized = False
+        translator.aggregated_subquery_paths.add(monad.tableref.name_path)
+        result = translator.ExprMonad.new(translator, int, sql_ast)
+        if optimized:
+            translator.aggregated = True
+            result.aggregated = True
+        return result
     len = count
     def aggregate(monad, func_name):
         translator = monad.translator
@@ -1610,9 +1622,14 @@ class AttrSetMonad(SetMixin, Monad):
         if monad.forced_distinct and func_name in ('SUM', 'AVG'):
             make_aggr = lambda expr_list: [ func_name ] + expr_list + [ True ]
         else: make_aggr = lambda expr_list: [ func_name ] + expr_list
-        sql_ast = subselect_func(make_aggr)
+        sql_ast, optimized = subselect_func(make_aggr)
         result_type = func_name == 'AVG' and float or item_type
-        return translator.ExprMonad.new(monad.translator, result_type, sql_ast)
+        translator.aggregated_subquery_paths.add(monad.tableref.name_path)
+        result = translator.ExprMonad.new(monad.translator, result_type, sql_ast)
+        if optimized:
+            translator.aggregated = True
+            result.aggregated = True
+        return result
     def nonzero(monad):
         subquery = monad._subselect()
         sql_ast = [ 'EXISTS', subquery.from_ast,
@@ -1651,11 +1668,21 @@ class AttrSetMonad(SetMixin, Monad):
     def _aggregated_scalar_subselect(monad, make_aggr, extra_grouping=False):
         translator = monad.translator
         subquery = monad._subselect()
-        sql_ast = [ 'SELECT', [ 'AGGREGATES', make_aggr(subquery.expr_list) ], subquery.from_ast,
-                    [ 'WHERE' ] + subquery.outer_conditions + subquery.conditions ]
+        optimized = False
+        if translator.optimize == monad.tableref.name_path:
+            sql_ast = make_aggr(subquery.expr_list)
+            optimized = True
+            if not translator.from_optimized:
+                from_ast = monad.subquery.from_ast[1:]
+                from_ast[0] = from_ast[0] + subquery.outer_conditions
+                translator.subquery.from_ast.extend(from_ast)
+                translator.from_optimized = True
+        else: sql_ast = [ 'SELECT', [ 'AGGREGATES', make_aggr(subquery.expr_list) ],
+                          subquery.from_ast,
+                          [ 'WHERE' ] + subquery.outer_conditions + subquery.conditions ]
         if extra_grouping:  # This is for Oracle only, with COUNT(COUNT(*))
             sql_ast.append([ 'GROUP_BY' ] + subquery.expr_list)
-        return sql_ast
+        return sql_ast, optimized
     def _joined_subselect(monad, make_aggr, extra_grouping=False):
         translator = monad.translator
         subquery = monad._subselect()
@@ -1712,17 +1739,19 @@ class AttrSetMonad(SetMixin, Monad):
         alias = translator.subquery.get_short_alias(None, 't')
         for cond in outer_conditions: cond[2][1] = alias
         translator.subquery.from_ast.append([ alias, 'SELECT', subquery_ast, sqland(outer_conditions) ])
-        return [ 'COLUMN', alias, expr_name ]
+        return [ 'COLUMN', alias, expr_name ], False
     def _subselect(monad):
         if monad.subquery is not None: return monad.subquery
         parent = monad.parent
         attr = monad.attr
-        subquery = Subquery(monad.translator.subquery)
+        translator = monad.translator
+        subquery = Subquery(translator.subquery)
         monad.make_tableref(subquery)
         subquery.expr_list = monad.make_expr_list()
         if not attr.reverse and not attr.is_required:
             subquery.conditions.extend([ 'IS_NOT_NULL', expr ] for expr in subquery.expr_list)
-        subquery.outer_conditions = [ subquery.from_ast[1].pop() ]
+        if subquery is not translator.subquery:
+            subquery.outer_conditions = [ subquery.from_ast[1].pop() ]
         monad.subquery = subquery
         return subquery
     def getsql(monad, subquery=None):

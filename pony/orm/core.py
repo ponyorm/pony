@@ -3395,9 +3395,14 @@ class Query(object):
 
         translator = database._translator_cache.get(query._key)
         if translator is None:
-            tree = loads(dumps(tree, 2))  # tree = deepcopy(tree)
+            pickled_tree = query._pickled_tree = dumps(tree, 2)
+            tree = loads(pickled_tree)  # tree = deepcopy(tree)
             translator_cls = database.provider.translator_cls
             translator = translator_cls(tree, extractors, vartypes, left_join=left_join)
+            name_path = translator.can_be_optimised()
+            if name_path:
+                tree = loads(pickled_tree)  # tree = deepcopy(tree)
+                translator = translator_cls(tree, extractors, vartypes, left_join=True, optimize=name_path)
             database._translator_cache[query._key] = translator
         query._translator = translator
     def _construct_sql_and_arguments(query, range=None, distinct=None, aggr_func_name=None):
@@ -3585,12 +3590,27 @@ class Query(object):
         new_key = query._key + ((func_id, sorted_vartypes),)
         translator = query._database._translator_cache.get(new_key)
         if translator is None:
+            prev_optimized = query._translator.optimize
             translator = deepcopy(query._translator)
-            func_ast = loads(dumps(func_ast, 2))  # func_ast = deepcopy(func_ast)
+            pickled_func_ast = dumps(func_ast, 2)
+            func_ast = loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
             translator.extractors.update(extractors)
             translator.vartypes.update(vartypes)
             translator.inside_orderby = True
             translator.dispatch(func_ast)
+            if not prev_optimized:
+                name_path = translator.can_be_optimised()
+                if name_path:
+                    tree = loads(query._pickled_tree)  # tree = deepcopy(tree)
+                    prev_extractors = query._translator.extractors
+                    prev_vartypes = query._translator.vartypes
+                    translator_cls = query._translator.__class__
+                    translator = translator_cls(tree, prev_extractors, prev_vartypes, left_join=True, optimize=name_path)
+                    func_ast = loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
+                    translator.extractors.update(extractors)
+                    translator.vartypes.update(vartypes)
+                    translator.inside_orderby = True
+                    translator.dispatch(func_ast)
             translator.inside_orderby = False
             if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
             else: nodes = (func_ast,)
