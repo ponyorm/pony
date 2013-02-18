@@ -123,6 +123,16 @@ class SQLTranslator(ASTTranslator):
                         monad.aggregated = True
                         break
                 else: monad.aggregated = False
+            if not hasattr(monad, 'nogroup'):
+                for child in node.getChildNodes():
+                    m = getattr(child, 'monad', None) 
+                    if m and getattr(m, 'nogroup', False):
+                        monad.nogroup = True
+                        break
+                else: monad.nogroup = False
+            if monad.aggregated and monad.nogroup and not isinstance(monad, ListMonad):
+                throw(NotImplementedError, 'Aggregation functions with different semantics cannot be mixed. '
+                                           'Got: %s' % ast2src(node))
             return monad
 
     def __init__(translator, tree, extractors, vartypes, parent_translator=None, left_join=False, optimize=None):
@@ -267,7 +277,7 @@ class SQLTranslator(ASTTranslator):
                 translator.expr_type = monad.type
                 translator.expr_columns = monad.getsql()
             if translator.aggregated:
-                translator.groupby_monads = [ m for m in expr_monads if not m.aggregated ]
+                translator.groupby_monads = [ m for m in expr_monads if not m.aggregated and not m.nogroup ]
             else: translator.distinct = True
             row_layout = []
             offset = 0
@@ -385,6 +395,9 @@ class SQLTranslator(ASTTranslator):
             if op.endswith('in'): monad = right.monad.contains(left.monad, op == 'not in')
             else: monad = left.monad.cmp(op, right.monad)
             monad.aggregated = getattr(left.monad, 'aggregated', False) or getattr(right.monad, 'aggregated', False)
+            monad.nogroup = getattr(left.monad, 'nogroup', False) or getattr(right.monad, 'nogroup', False)
+            if monad.aggregated and monad.nogroup: throw(NotImplementedError,
+                "Aggregation functions with different semantics cannot be mixed. Got: {EXPR}")
             monads.append(monad)
             left = right
         translator.inside_not = inside_not
@@ -1600,6 +1613,7 @@ class AttrSetMonad(SetMixin, Monad):
         if optimized:
             translator.aggregated = True
             result.aggregated = True
+        else: result.nogroup = True
         return result
     len = count
     def aggregate(monad, func_name):
@@ -1629,6 +1643,7 @@ class AttrSetMonad(SetMixin, Monad):
         if optimized:
             translator.aggregated = True
             result.aggregated = True
+        else: result.nogroup = True
         return result
     def nonzero(monad):
         subquery = monad._subselect()
@@ -1817,6 +1832,7 @@ class NumericSetExprMonad(SetMixin, Monad):
     __div__ = make_numericset_binop('/', 'DIV')
 
 class QuerySetMonad(SetMixin, Monad):
+    nogroup = True
     def __init__(monad, translator, subtranslator):
         monad.translator = translator
         monad.subtranslator = subtranslator
