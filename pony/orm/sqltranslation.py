@@ -1589,7 +1589,7 @@ class AttrSetMonad(SetMixin, Monad):
                           [ 'FROM', [ 't', 'SELECT', [
                               [ 'DISTINCT' ] + expr_list, from_ast,
                               [ 'WHERE' ] + outer_conditions + inner_conditions ] ] ] ]
-        else: throw(NotImplementedError)  # Must not be here
+        else: throw(NotImplementedError)  # Never happens
         if not sql_ast:
             subselect_func = translator.hint_join and monad._joined_subselect \
                              or monad._aggregated_scalar_subselect
