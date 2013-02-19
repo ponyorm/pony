@@ -280,7 +280,15 @@ class SQLTranslator(ASTTranslator):
                 translator.expr_columns = monad.getsql()
             if translator.aggregated:
                 translator.groupby_monads = [ m for m in expr_monads if not m.aggregated and not m.nogroup ]
-            else: translator.distinct = True
+            else:
+                expr_set = set()
+                for m in expr_monads:
+                    if isinstance(m, ObjectIterMonad):
+                        expr_set.add(m.tableref.name_path)
+                for tr in tablerefs.values():
+                    if tr.name_path not in expr_set:
+                        translator.distinct = True
+                        break
             row_layout = []
             offset = 0
             provider = translator.database.provider
