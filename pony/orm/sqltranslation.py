@@ -285,10 +285,15 @@ class SQLTranslator(ASTTranslator):
                 for m in expr_monads:
                     if isinstance(m, ObjectIterMonad):
                         expr_set.add(m.tableref.name_path)
+                    elif isinstance(m, AttrMonad) and isinstance(m.parent, ObjectIterMonad):
+                        expr_set.add((m.parent.tableref.name_path, m.attr))
                 for tr in tablerefs.values():
-                    if tr.name_path not in expr_set:
-                        translator.distinct = True
-                        break
+                    if tr.name_path in expr_set: continue
+                    for attr in tr.entity._pk_attrs_:
+                        if (tr.name_path, attr) not in expr_set: break
+                    else: continue
+                    translator.distinct = True
+                    break
             row_layout = []
             offset = 0
             provider = translator.database.provider
