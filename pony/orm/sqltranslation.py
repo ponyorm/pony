@@ -130,9 +130,11 @@ class SQLTranslator(ASTTranslator):
                         monad.nogroup = True
                         break
                 else: monad.nogroup = False
-            if monad.aggregated and monad.nogroup and not isinstance(monad, ListMonad):
-                throw(NotImplementedError, 'Aggregation functions with different semantics cannot be mixed. '
-                                           'Got: %s' % ast2src(node))
+            if monad.aggregated:
+                translator.aggregated = True
+                if monad.nogroup and not isinstance(monad, ListMonad):
+                    throw(NotImplementedError,
+                          'Aggregation functions with different semantics cannot be mixed. Got: %s' % ast2src(node))
             return monad
 
     def __init__(translator, tree, extractors, vartypes, parent_translator=None, left_join=False, optimize=None):
@@ -681,7 +683,6 @@ class Monad(object):
     def len(monad): throw(TypeError)
     def count(monad):
         translator = monad.translator
-        translator.aggregated = True
         if monad.aggregated: throw(TranslationError, 'Aggregated functions cannot be nested. Got: {EXPR}')
         expr = monad.getsql()
         count_kind = 'DISTINCT'
@@ -699,7 +700,6 @@ class Monad(object):
         return result
     def aggregate(monad, func_name):
         translator = monad.translator
-        translator.aggregated = True
         if monad.aggregated: throw(TranslationError, 'Aggregated functions cannot be nested. Got: {EXPR}')
         expr_type = monad.type
         # if isinstance(expr_type, SetType): expr_type = expr_type.item_type
@@ -1610,9 +1610,7 @@ class AttrSetMonad(SetMixin, Monad):
         else: optimized = False
         translator.aggregated_subquery_paths.add(monad.tableref.name_path)
         result = translator.ExprMonad.new(translator, int, sql_ast)
-        if optimized:
-            translator.aggregated = True
-            result.aggregated = True
+        if optimized: result.aggregated = True
         else: result.nogroup = True
         return result
     len = count
@@ -1640,9 +1638,7 @@ class AttrSetMonad(SetMixin, Monad):
         result_type = func_name == 'AVG' and float or item_type
         translator.aggregated_subquery_paths.add(monad.tableref.name_path)
         result = translator.ExprMonad.new(monad.translator, result_type, sql_ast)
-        if optimized:
-            translator.aggregated = True
-            result.aggregated = True
+        if optimized: result.aggregated = True
         else: result.nogroup = True
         return result
     def nonzero(monad):
