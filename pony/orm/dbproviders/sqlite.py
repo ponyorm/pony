@@ -11,9 +11,6 @@ from pony.orm import dbschema, sqltranslation, sqlbuilding, dbapiprovider
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
 from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple_decorator, absolutize_path, throw
 
-def get_provider(filename, create_db=False):
-    return SQLiteProvider(filename, create_db)
-
 class SQLiteForeignKey(dbschema.ForeignKey):
     def get_create_command(foreign_key):
         return None
@@ -82,13 +79,10 @@ class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
         return datetime2timestamp(val)
     
 class SQLiteProvider(DBAPIProvider):
+    dbapi_module = sqlite
     dbschema_cls = SQLiteSchema
     translator_cls = SQLiteTranslator
     sqlbuilder_cls = SQLiteBuilder
-
-    def __init__(provider, filename, create_db=False):
-        DBAPIProvider.__init__(provider, sqlite)
-        provider.pool = _get_pool(filename, create_db)
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
@@ -102,23 +96,23 @@ class SQLiteProvider(DBAPIProvider):
         (date, SQLiteDateConverter)
     ]
 
-def _get_pool(filename, create_db=False):
-    if filename == ':memory:': return MemPool()
-    else:
-        # When relative filename is specified, it is considered
-        # not relative to cwd, but to user module where
-        # Database instance is created
+    def _get_pool(provider, filename, create_db=False):
+        if filename == ':memory:': return MemPool()
+        else:
+            # When relative filename is specified, it is considered
+            # not relative to cwd, but to user module where
+            # Database instance is created
 
-        # the list of frames:
-        # 5 - user code: db = Database(...)
-        # 4 - cut_exception decorator
-        # 3 - pony.orm.Database.__init__()
-        # 2 - pony.dbapiprovider.sqlite.get_provider()
-        # 1 - pony.dbapiprovider.sqlite.SQLiteProvider.__init__()
-        # 0 - pony.dbproviders.sqlite._get_pool()
+            # the list of frames:
+            # 3 - user code: db = Database(...)
+            # 2 - cut_exception decorator
+            # 1 - pony.orm.Database.__init__()
+            # 0 - pony.dbproviders.sqlite._get_pool()
 
-        filename = absolutize_path(filename, frame_depth=6)
-        return Pool(filename, create_db)
+            filename = absolutize_path(filename, frame_depth=4)
+            return Pool(filename, create_db)
+
+provider_cls = SQLiteProvider
 
 class Pool(localbase):
     def __init__(pool, filename, create_db): # called separately in each thread

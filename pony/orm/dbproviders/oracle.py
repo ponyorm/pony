@@ -12,9 +12,6 @@ from pony.orm.core import log_orm, log_sql, DatabaseError
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
 from pony.utils import is_utf8, throw
 
-def get_provider(*args, **kwargs):
-    return OraProvider(*args, **kwargs)
-
 trigger_template = """
 create trigger %s
   before insert on %s  
@@ -188,13 +185,10 @@ class OraDatetimeConverter(dbapiprovider.DatetimeConverter):
 class OraProvider(DBAPIProvider):
     paramstyle = 'named'
 
+    dbapi_module = cx_Oracle
     dbschema_cls = OraSchema
     translator_cls = OraTranslator
     sqlbuilder_cls = OraBuilder
-
-    def __init__(provider, *args, **kwargs):
-        DBAPIProvider.__init__(provider, cx_Oracle)
-        provider.pool = _get_pool(*args, **kwargs)
 
     def get_default_entity_table_name(provider, entity):
         return DBAPIProvider.get_default_entity_table_name(provider, entity).upper()
@@ -240,29 +234,31 @@ class OraProvider(DBAPIProvider):
         (date, OraDateConverter)
     ]
 
-def _get_pool(*args, **kwargs):
-    user = password = dsn = None
-    if len(args) == 1:
-        conn_str = args[0]
-        if '/' in conn_str:
-            user, tail = conn_str.split('/', 1)
-            if '@' in tail: password, dsn = tail.split('@', 1)
-        if None in (user, password, dsn): throw(ValueError, 
-            "Incorrect connection string (must be in form of 'user/password@dsn')")
-    elif len(args) == 2: user, password = args
-    elif len(args) == 3: user, password, dsn = args
-    elif args: throw(ValueError, 'Invalid number of positional arguments')
-    if user != kwargs.setdefault('user', user):
-        throw(ValueError, 'Ambiguous value for user')
-    if password != kwargs.setdefault('password', password):
-        throw(ValueError, 'Ambiguous value for password')
-    if dsn != kwargs.setdefault('dsn', dsn):
-        throw(ValueError, 'Ambiguous value for dsn')
-    kwargs.setdefault('threaded', True)
-    kwargs.setdefault('min', 1)
-    kwargs.setdefault('max', 10)
-    kwargs.setdefault('increment', 1)
-    return Pool(**kwargs)
+    def _get_pool(provider, *args, **kwargs):
+        user = password = dsn = None
+        if len(args) == 1:
+            conn_str = args[0]
+            if '/' in conn_str:
+                user, tail = conn_str.split('/', 1)
+                if '@' in tail: password, dsn = tail.split('@', 1)
+            if None in (user, password, dsn): throw(ValueError, 
+                "Incorrect connection string (must be in form of 'user/password@dsn')")
+        elif len(args) == 2: user, password = args
+        elif len(args) == 3: user, password, dsn = args
+        elif args: throw(ValueError, 'Invalid number of positional arguments')
+        if user != kwargs.setdefault('user', user):
+            throw(ValueError, 'Ambiguous value for user')
+        if password != kwargs.setdefault('password', password):
+            throw(ValueError, 'Ambiguous value for password')
+        if dsn != kwargs.setdefault('dsn', dsn):
+            throw(ValueError, 'Ambiguous value for dsn')
+        kwargs.setdefault('threaded', True)
+        kwargs.setdefault('min', 1)
+        kwargs.setdefault('max', 10)
+        kwargs.setdefault('increment', 1)
+        return Pool(**kwargs)
+
+provider_cls = OraProvider
 
 def to_int_or_decimal(val):
     val = val.replace(',', '.')

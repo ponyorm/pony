@@ -4,7 +4,7 @@ from pony.orm.core import *
 from pony.orm.sqltranslation import IncomparableTypesError
 from testutils import *
 
-db = TestDatabase('sqlite', ':memory:')
+db = Database('sqlite', ':memory:')
 
 class Department(db.Entity):
     number = PrimaryKey(int, auto=True)
@@ -171,7 +171,7 @@ class TestSQLTranslator2(unittest.TestCase):
          get(s for s in Student)
     def test_exists(self):
         result = exists(s for s in Student)
-    @raises_exception(ExprEvalError, "db.FooBar raises AttributeError: 'TestDatabase' object has no attribute 'FooBar'")
+    @raises_exception(ExprEvalError, "db.FooBar raises AttributeError: 'Database' object has no attribute 'FooBar'")
     def test_entity_not_found(self):
         select(s for s in db.Student for g in db.FooBar)
     def test_keyargs1(self):

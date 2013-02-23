@@ -15,9 +15,6 @@ from pony.orm.dbapiprovider import DBAPIProvider
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import Value, SQLBuilder
 
-def get_provider(*args, **kwargs):
-    return MySQLProvider(*args, **kwargs)
-
 class MySQLColumn(dbschema.Column):
     auto_template = '%(type)s PRIMARY KEY AUTO_INCREMENT'
 
@@ -76,13 +73,10 @@ class MySQLProvider(DBAPIProvider):
     paramstyle = 'format'
     quote_char = "`"
 
+    dbapi_module = MySQLdb
     dbschema_cls = MySQLSchema
     translator_cls = MySQLTranslator
     sqlbuilder_cls = MySQLBuilder
-
-    def __init__(provider, *args, **kwargs):
-        DBAPIProvider.__init__(provider, MySQLdb)
-        provider.pool = _get_pool(*args, **kwargs)
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
@@ -97,14 +91,16 @@ class MySQLProvider(DBAPIProvider):
         (date, dbapiprovider.DateConverter)
     ]
 
-def _get_pool(*args, **kwargs):
-    if 'conv' not in kwargs:
-        conv = MySQLdb.converters.conversions.copy()
-        conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]
-        kwargs['conv'] = conv
-    if 'charset' not in kwargs:
-        kwargs['charset'] = 'utf8'
-    return Pool(*args, **kwargs)
+    def _get_pool(provider, *args, **kwargs):
+        if 'conv' not in kwargs:
+            conv = MySQLdb.converters.conversions.copy()
+            conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]
+            kwargs['conv'] = conv
+        if 'charset' not in kwargs:
+            kwargs['charset'] = 'utf8'
+        return Pool(*args, **kwargs)
+
+provider_cls = MySQLProvider
 
 class Pool(localbase):
     def __init__(pool, *args, **kwargs): # called separately in each thread

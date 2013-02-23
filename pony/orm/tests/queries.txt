@@ -1,0 +1,124 @@
+# Testing queries from documentation (CRUD):
+
+Schema:
+pony.orm.examples.estore
+
+>>> Product.get(name="Product1")
+
+SELECT "id", "name", "description", "picture", "price", "quantity"
+FROM "Product"
+WHERE "name" = ?
+
+>>> Product.select(lambda p: p.price > 100)
+
+SELECT "p"."id", "p"."name", "p"."description", "p"."picture", "p"."price", "p"."quantity"
+FROM "Product" "p"
+WHERE "p"."price" > 100
+
+>>> x = 100
+>>> Product.select(lambda p: p.price > x)
+
+SELECT "p"."id", "p"."name", "p"."description", "p"."picture", "p"."price", "p"."quantity"
+FROM "Product" "p"
+WHERE "p"."price" > ?
+
+>>> Product.select(lambda p: p.price > 100).orderby(lambda p: desc(p.price))
+
+SELECT "p"."id", "p"."name", "p"."description", "p"."picture", "p"."price", "p"."quantity"
+FROM "Product" "p"
+WHERE "p"."price" > 100
+ORDER BY "p"."price" DESC
+
+>>> Product.select(lambda p: p.price > 100).orderby(desc(Product.price))
+
+SELECT "p"."id", "p"."name", "p"."description", "p"."picture", "p"."price", "p"."quantity"
+FROM "Product" "p"
+WHERE "p"."price" > 100
+ORDER BY "p"."price" DESC
+
+>>> Product.select(lambda p: p.price > 100).orderby(desc(Product.price), Product.name)
+
+SELECT "p"."id", "p"."name", "p"."description", "p"."picture", "p"."price", "p"."quantity"
+FROM "Product" "p"
+WHERE "p"."price" > 100
+ORDER BY "p"."price" DESC, "p"."name"
+
+>>> Product.select(lambda p: p.price > 100).orderby("desc(p.price), p.name")
+
+SELECT "p"."id", "p"."name", "p"."description", "p"."picture", "p"."price", "p"."quantity"
+FROM "Product" "p"
+WHERE "p"."price" > 100
+ORDER BY "p"."price" DESC, "p"."name"
+
+>>> Product.orderby(lambda p: desc(p.price))[:10]
+
+SELECT "p"."id", "p"."name", "p"."description", "p"."picture", "p"."price", "p"."quantity"
+FROM "Product" "p"
+ORDER BY "p"."price" DESC
+LIMIT 10
+
+
+# Testing declarative queries from documentation:
+
+# TODO
+
+# Testing aggregation queries from documentation:
+
+Schema:
+pony.orm.examples.presentation
+
+>>> sum(s.gpa for s in Student if s.group.number == 101)
+
+SELECT coalesce(SUM("s"."gpa"), 0)
+FROM "Student" "s"
+WHERE "s"."group" = 101
+
+>>> count(s for s in Student if s.gpa > 3)
+
+SELECT COUNT(*)
+FROM "Student" "s"
+WHERE "s"."gpa" > 3
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Schema:
+pony.orm.examples.presentation
+
+>>> select(s for s in Student if s.gpa > 3)[:]
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "Student" "s"
+WHERE "s"."gpa" > 3
+
+Oracle:
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE "s"."GPA" > 3
+
+>>> select(s for s in Student if s.group.number == 1)[:]
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "Student" "s"
+WHERE "s"."group" = 1
+
+Oracle:
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE "s"."GROUP" = 1
+
+
+

@@ -3,7 +3,7 @@ from datetime import date, datetime
 from pony.orm.core import *
 from testutils import *
 
-db = TestDatabase('sqlite', ':memory:')
+db = Database('sqlite', ':memory:')
 
 class Entity1(db.Entity):
 	a = PrimaryKey(int)

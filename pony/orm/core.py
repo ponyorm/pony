@@ -280,14 +280,22 @@ class Database(object):
         # First argument cannot be named 'database', because 'database' can be in kwargs
         if not isinstance(provider_name, basestring): throw(TypeError)
         provider_module = import_module('pony.orm.dbproviders.' + provider_name)
-        self.provider = provider = provider_module.get_provider(*args, **kwargs)
+        self.provider = provider = provider_module.provider_cls()
+
+        check_connection = kwargs.pop('pony_check_connection', True)
+        pool_mockup = kwargs.pop('pony_pool_mockup', None)
+
+        if pool_mockup: provider.pool = pool_mockup
+        else: provider.pool = provider._get_pool(*args, **kwargs)
+
         self.priority = 0
         self.optimistic = True
         self._insert_cache = {}
 
-        # connection test with immediate release:
-        connection = provider.connect()
-        provider.release(connection)
+        if check_connection:
+            # connection test with immediate release:
+            connection = provider.connect()
+            provider.release(connection)
 
         # ER-diagram related stuff:
         self._translator_cache = {}

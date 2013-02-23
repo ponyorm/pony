@@ -69,9 +69,6 @@ class DBAPIProvider(object):
     translator_cls = None
     sqlbuilder_cls = None
 
-    def __init__(provider, dbapi_module):
-        provider.dbapi_module = dbapi_module
-
     def get_default_entity_table_name(provider, entity):
         return entity.__name__
 

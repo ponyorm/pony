@@ -12,9 +12,6 @@ from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
 from pony.utils import localbase, timestamp2datetime
 
-def get_provider(*args, **kwargs):
-    return PGProvider(*args, **kwargs)
-
 class PGColumn(dbschema.Column):
     auto_template = 'SERIAL PRIMARY KEY'
 
@@ -110,13 +107,10 @@ class PGDatetimeConverter(dbapiprovider.DatetimeConverter):
 class PGProvider(DBAPIProvider):
     paramstyle = 'pyformat'
 
+    dbapi_module = pgdb
     dbschema_cls = PGSchema
     translator_cls = PGTranslator
     sqlbuilder_cls = PGSQLBuilder
-
-    def __init__(provider, *args, **kwargs):
-        DBAPIProvider.__init__(provider, pgdb)
-        provider.pool = _get_pool(*args, **kwargs)
 
     def get_default_entity_table_name(provider, entity):
         return DBAPIProvider.get_default_entity_table_name(provider, entity).lower()
@@ -160,8 +154,10 @@ class PGProvider(DBAPIProvider):
         (date, PGDateConverter)
     ]
 
-def _get_pool(*args, **kwargs):
-    return Pool(*args, **kwargs)
+    def _get_pool(provider, *args, **kwargs):
+        return Pool(*args, **kwargs)
+
+provider_cls = PGProvider
 
 class Pool(localbase):
     def __init__(pool, *args, **kwargs):

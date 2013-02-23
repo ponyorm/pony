@@ -7,7 +7,7 @@ class TestFormatStyles(unittest.TestCase):
     def setUp(self):
         self.key1 = object()
         self.key2 = object()
-        self.provider = DBAPIProvider(dbapi_module=None)
+        self.provider = DBAPIProvider()
         self.ast = [ SELECT, [ ALL, [COLUMN, None, 'A']], [ FROM, [None, TABLE, 'T1']],
                      [ WHERE, [ EQ, [COLUMN, None, 'B'], [ PARAM, self.key1 ] ],
                               [ EQ, [COLUMN, None, 'C'], [ PARAM, self.key2 ] ],
