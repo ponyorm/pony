@@ -171,8 +171,13 @@ class SQLTranslator(ASTTranslator):
             if name.startswith('__'): throw(TranslationError, 'Illegal name: %r' % name)
 
             node = qual.iter
+            monad = getattr(node, 'monad', None)
             src = getattr(node, 'src', None)
-            if src:
+            if monad:  # Lambda was encountered inside generator
+                assert isinstance(monad, EntityMonad)
+                entity = monad.type.item_type
+                tablerefs[name] = TableRef(subquery, name, entity)               
+            elif src:
                 iterable = translator.vartypes[src]
                 if not isinstance(iterable, SetType): throw(TranslationError,
                     'Inside declarative query, iterator must be entity. '
@@ -472,28 +477,23 @@ class SQLTranslator(ASTTranslator):
         if not isinstance(arg, ast.Lambda): return
         lambda_expr = arg
         translator.dispatch(node.node)
-        
-
-        if not isinstance(node.node, ast.Getattr): throw(NotImplementedError)
-        expr = node.node.expr
-        translator.dispatch(expr)
-        if not isinstance(expr.monad, translator.EntityMonad): throw(NotImplementedError)
-
-
-        entity = expr.monad.type
-        for n, v in translator.entities.iteritems():
-            if entity is v: entity_name = n; break
-        else: assert False
-        if node.node.attrname != 'select': throw(TypeError)
+        method_monad = node.node.monad
+        if not isinstance(method_monad, MethodMonad): throw(NotImplementedError)
+        entity_monad = method_monad.parent
+        if not isinstance(entity_monad, EntityMonad): throw(NotImplementedError)
+        entity = entity_monad.type.item_type
+        if method_monad.attrname != 'select': throw(TypeError)
         if len(lambda_expr.argnames) != 1: throw(TypeError)
         if lambda_expr.varargs: throw(TypeError)
         if lambda_expr.kwargs: throw(TypeError)
         if lambda_expr.defaults: throw(TypeError)
-        name = lambda_expr.argnames[0]            
+        iter_name = lambda_expr.argnames[0]            
         cond_expr = lambda_expr.code
         if_expr = ast.GenExprIf(cond_expr)
-        for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name(entity_name), [ if_expr ])
-        inner_expr = ast.GenExprInner(ast.Name(name), [ for_expr ])
+        name_ast = ast.Name(entity.__name__)
+        name_ast.monad = entity_monad
+        for_expr = ast.GenExprFor(ast.AssName(iter_name, 'OP_ASSIGN'), name_ast, [ if_expr ])
+        inner_expr = ast.GenExprInner(ast.Name(iter_name), [ for_expr ])
         subtranslator = translator.__class__(inner_expr, translator.extractors, translator.vartypes, translator)
         return translator.QuerySetMonad(translator, subtranslator)
     def postCallFunc(translator, node):
