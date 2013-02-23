@@ -1947,6 +1947,16 @@ class QuerySetMonad(SetMixin, Monad):
         select_ast = [ 'AGGREGATES', [ func_name, sub.expr_columns[0] ] ]
         result_type = func_name == 'AVG' and float or expr_type
         return monad._subselect(result_type, select_ast)
+    def call_count(monad):
+        return monad.count()
+    def call_sum(monad):
+        return monad.aggregate('SUM')
+    def call_min(monad):
+        return monad.aggregate('MIN')
+    def call_max(monad):
+        return monad.aggregate('MAX')
+    def call_avg(monad):
+        return monad.aggregate('AVG')
 
 for name, value in globals().items():
     if name.endswith('Monad') or name.endswith('Mixin'):
