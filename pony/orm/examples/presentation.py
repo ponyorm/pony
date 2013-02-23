@@ -43,7 +43,8 @@ class Student(db.Entity):
 
 sql_debug(True)  # Output all SQL queries to stdout
 
-db.generate_mapping(check_tables=True)
+db.generate_mapping(create_tables=True)
+# db.generate_mapping(check_tables=True)
 
 def populate_database():
     if select(s for s in Student).count() > 0:
