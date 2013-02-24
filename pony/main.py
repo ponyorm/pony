@@ -21,7 +21,4 @@ except ImportError: pass  # may happen if pony.options.log_to_sqlite = False
 import pony.layouts.blueprint
 import pony.images
 
-from pony.orm import (
-    Database, RowNotFound, MultipleRowsFound,
-    Entity, Optional, Required, Unique, PrimaryKey, Set
-    )
+from pony.orm import *
