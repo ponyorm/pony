@@ -127,28 +127,28 @@ class TestSQLTranslator2(unittest.TestCase):
         pony.options.SIMPLE_ALIASES = True
     def test_non_entity_result1(self):
         result = select((s.name, s.group.number) for s in Student if s.name.startswith("J"))[:]
-        self.assertEquals(result, [(u'Jing Xia', 102), (u'John Smith', 101)])
+        self.assertEquals(sorted(result), [(u'Jing Xia', 102), (u'John Smith', 101)])
     def test_non_entity_result2(self):
         result = select((s.dob.year, s.group.number) for s in Student)[:]
-        self.assertEquals(result, [(1988, 102), (1989, 101), (1990, 101), (1990, 102), (1991, 101), (1991, 102)])
+        self.assertEquals(sorted(result), [(1988, 102), (1989, 101), (1990, 101), (1990, 102), (1991, 101), (1991, 102)])
     def test_non_entity_result3(self):
         result = select(s.dob.year for s in Student).without_distinct()
-        self.assertEquals(result, [1991, 1990, 1989, 1990, 1991, 1990, 1988])
+        self.assertEquals(sorted(result), [1988, 1989, 1990, 1990, 1990, 1991, 1991])
         result = select(s.dob.year for s in Student)[:]  # test the last query didn't override the cached one
-        self.assertEquals(result, [1988, 1989, 1990, 1991])
+        self.assertEquals(sorted(result), [1988, 1989, 1990, 1991])
     def test_non_entity_result3a(self):
         result = select(s.dob.year for s in Student)[:]
-        self.assertEquals(result, [1988, 1989, 1990, 1991])
+        self.assertEquals(sorted(result), [1988, 1989, 1990, 1991])
     def test_non_entity_result4(self):
         result = set(select(s.name for s in Student if s.name.startswith('M')))
         self.assertEquals(result, set([u'Matthew Reed', u'Maria Ionescu']))
     def test_non_entity_result5(self):
         result = select((s.group, s.dob) for s in Student if s.group == Group[101])[:]
-        self.assertEquals(result, [(Group[101], date(1989, 2, 5)), (Group[101], date(1990, 11, 26)), (Group[101], date(1991, 3, 20))])
+        self.assertEquals(sorted(result), [(Group[101], date(1989, 2, 5)), (Group[101], date(1990, 11, 26)), (Group[101], date(1991, 3, 20))])
     def test_non_entity_result6(self):
         result = select((c, s) for s in Student for c in Course if c.semester == 1 and s.id < 3)[:]
-        self.assertEquals(result, [(Course[u'Linear Algebra',1], Student[1]), (Course[u'Linear Algebra',1],
-            Student[2]), (Course[u'Web Design',1], Student[1]), (Course[u'Web Design',1], Student[2])])
+        self.assertEquals(sorted(result), sorted([(Course[u'Linear Algebra',1], Student[1]), (Course[u'Linear Algebra',1],
+            Student[2]), (Course[u'Web Design',1], Student[1]), (Course[u'Web Design',1], Student[2])]))
     def test_non_entity7(self):
         result = select(s for s in Student if (s.name, s.dob) not in (((s2.name, s2.dob) for s2 in Student if s.group.number == 101)))[:]
         self.assertEquals(result, [Student[4], Student[5], Student[6], Student[7]])
