@@ -191,7 +191,7 @@ if LOG_TO_SQLITE:
             threading.Thread.__init__(thread, name="LoggerThread")
             thread.setDaemon(True)
         def run(thread):
-            from pony.thirdparty import sqlite
+            import sqlite3 as sqlite
             global OperationalError
             OperationalError = sqlite.OperationalError
             con = thread.connection = sqlite.connect(get_logfile_name())

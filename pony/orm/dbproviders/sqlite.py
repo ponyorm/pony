@@ -1,12 +1,11 @@
 import os.path, weakref
+import sqlite3 as sqlite
 from thread import get_ident
 from threading import Lock, Thread
 from Queue import Queue
 from decimal import Decimal
 from datetime import datetime, date, time
 from time import strptime
-
-from pony.thirdparty import sqlite
 
 from pony.orm import dbschema, sqltranslation, sqlbuilding, dbapiprovider
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
