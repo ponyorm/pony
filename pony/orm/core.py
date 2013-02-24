@@ -1,4 +1,4 @@
-import __builtin__, re, sys, types, inspect
+import __builtin__, re, sys, types, inspect, logging
 from compiler import ast, parse
 from cPickle import loads, dumps
 from copy import deepcopy
@@ -60,6 +60,41 @@ debug = False
 def sql_debug(value):
     global debug
     debug = value
+
+orm_logger = logging.getLogger('pony.orm')
+sql_logger = logging.getLogger('pony.orm.sql')
+
+orm_log_level = logging.INFO
+
+def log_orm(msg):
+    if logging.root.handlers:
+        orm_logger.log(orm_log_level, msg)
+    else:
+        print msg
+        print
+
+def log_sql(sql, arguments=None):
+    if logging.root.handlers:
+        sql_logger.log(orm_log_level, sql)  # arguments can hold sensitive information
+    else:
+        print sql
+        if arguments: print args2str(arguments)
+        print
+
+def log_sql_many(sql, arguments_list):
+    if logging.root.handlers:
+        sql_logger.log(orm_log_level, 'EXECUTEMANY\n' + sql)  # arguments can hold sensitive information
+    else:
+        print 'EXECUTEMANY\n' + sql
+        for arguments in arguments_list:
+            print args2str(arguments)
+        print
+
+def args2str(args):
+    if isinstance(args, (tuple, list)):
+        return '[%s]' % ', '.join(map(repr, args))
+    elif isinstance(args, dict):
+        return '{%s}' % ', '.join('%s:%s' % (repr(key), repr(val)) for key, val in sorted(args.iteritems()))
 
 adapted_sql_cache = {}
 string2ast_cache = {}
@@ -390,10 +425,7 @@ class Database(object):
     def _exec_sql(database, sql, arguments=None):
         cache = database._get_cache()
         cursor = cache.connection.cursor()
-        if debug:
-            print sql
-            if arguments: print args2str(arguments)
-            print
+        if debug: log_sql(sql, arguments)
         t = time()
         if arguments is None: database.provider.execute(cursor, sql)
         else: database.provider.execute(cursor, sql, arguments)
@@ -402,10 +434,7 @@ class Database(object):
     def _exec_sql_returning_id(database, sql, arguments):
         cache = database._get_cache()
         cursor = cache.connection.cursor()
-        if debug:
-            print sql
-            if arguments: print args2str(arguments)
-            print
+        if debug: log_sql(sql, arguments)
         t = time()
         new_id = database.provider.execute_returning_id(cursor, sql, arguments)
         database._update_local_stat(sql, t)
@@ -414,10 +443,7 @@ class Database(object):
     def _exec_sql_many(database, sql, arguments_list):
         cache = database._get_cache()
         cursor = cache.connection.cursor()
-        if debug:
-            print 'EXECUTEMANY\n', sql
-            for args in arguments_list: print args2str(args)
-            print
+        if debug: log_sql_many(sql, arguments_list)
         t = time()
         database.provider.executemany(cursor, sql, arguments_list)
         database._update_local_stat(sql, t)
@@ -578,12 +604,6 @@ class Database(object):
                       ]
             sql, adapter = database._ast2sql(sql_ast)
             database._exec_sql(sql)
-
-def args2str(args):
-    if isinstance(args, (tuple, list)):
-        return '[%s]' % ', '.join(map(repr, args))
-    elif isinstance(args, dict):
-        return '{%s}' % ', '.join('%s:%s' % (repr(key), repr(val)) for key, val in sorted(args.iteritems()))
 
 ###############################################################################
 
@@ -3034,7 +3054,7 @@ class Cache(object):
         connection = cache.connection
         try:
             if cache.optimistic:
-                if debug: print 'OPTIMISTIC ROLLBACK\n'
+                if debug: log_orm('OPTIMISTIC ROLLBACK')
                 provider.rollback(connection)
         except:
             cache.is_alive = False
@@ -3046,7 +3066,7 @@ class Cache(object):
         try:
             if save_is_needed: cache.save()
             if save_is_needed or not cache.optimistic:
-                if debug: print 'COMMIT\n'
+                if debug: log_orm('COMMIT')
                 provider.commit(connection)
         except:
             cache.rollback()
@@ -3060,17 +3080,17 @@ class Cache(object):
         connection = cache.connection
         cache.connection = None
         try:
-            if debug: print 'ROLLBACK\n'
+            if debug: log_orm('ROLLBACK')
             provider.rollback(connection)
             if not close_connection:
-                if debug: print 'RELEASE_CONNECTION\n'
+                if debug: log_orm('RELEASE_CONNECTION')
                 provider.release(connection)
         except:
-            if debug: print 'CLOSE_CONNECTION\n'
+            if debug: log_orm('CLOSE_CONNECTION')
             provider.drop(connection)
             raise
         if close_connection:
-            if debug: print 'CLOSE_CONNECTION\n'
+            if debug: log_orm('CLOSE_CONNECTION')
             provider.drop(connection)
     def release(cache):
         assert cache.is_alive
@@ -3080,7 +3100,7 @@ class Cache(object):
         provider = database.provider
         connection = cache.connection
         cache.connection = None
-        if debug: print 'RELEASE_CONNECTION\n'
+        if debug: log_orm('RELEASE_CONNECTION')
         provider.release(connection)
     def has_anything_to_save(cache):
         return bool(cache.created or cache.updated or cache.deleted or cache.modified_collections)                    

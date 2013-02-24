@@ -8,6 +8,7 @@ from decimal import Decimal
 import cx_Oracle
 
 from pony.orm import core, dbschema, sqlbuilding, dbapiprovider, sqltranslation
+from pony.orm.core import log_orm, log_sql, DatabaseError
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
 from pony.utils import is_utf8, throw
 
@@ -28,16 +29,15 @@ class OraTable(dbschema.Table):
     def create(table, provider, connection, created_tables=None):
         commands = table.get_create_commands(created_tables)
         for i, sql in enumerate(commands):
-            if core.debug:
-                print sql
-                print
+            if core.debug: log_sql(sql)
             cursor = connection.cursor()
             try: provider.execute(cursor, sql)
-            except core.DatabaseError, e:
+            except DatabaseError, e:
                 if e.exceptions[0].args[0].code == 955:
-                    if core.debug: print 'ALREADY EXISTS:', e.args[0].message
+                    if core.debug: log_orm('ALREADY EXISTS: %s' % e.args[0].message)
                     if not i:
-                        if len(commands) > 1: print 'SKIP FURTHER DDL COMMANDS FOR TABLE %s\n' % table.name
+                        if len(commands) > 1:
+                            log_orm('SKIP FURTHER DDL COMMANDS FOR TABLE %s\n' % table.name)
                         return
                 else: raise
     def get_create_commands(table, created_tables=None):

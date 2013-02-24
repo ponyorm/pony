@@ -1,5 +1,5 @@
 from pony.orm import core
-from pony.orm.core import DBSchemaError
+from pony.orm.core import log_sql, DBSchemaError
 from pony.utils import throw
 
 class DBSchema(object):
@@ -74,9 +74,7 @@ class Table(object):
     def create(table, provider, connection, created_tables=None):
         commands = table.get_create_commands(created_tables)
         for sql in commands:
-            if core.debug:
-                print sql
-                print
+            if core.debug: log_sql(sql)
             cursor = connection.cursor()
             provider.execute(cursor, sql)
     def get_create_commands(table, created_tables=None, if_not_exists=True):

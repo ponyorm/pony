@@ -7,6 +7,7 @@ from binascii import unhexlify
 import pgdb
 
 from pony.orm import core, dbschema, sqlbuilding, dbapiprovider
+from pony.orm.core import log_orm, DatabaseError
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
 from pony.utils import localbase, timestamp2datetime
@@ -20,11 +21,11 @@ class PGColumn(dbschema.Column):
 class PGTable(dbschema.Table):
     def create(table, provider, connection, created_tables=None):
         try: dbschema.Table.create(table, provider, connection, created_tables)
-        except core.DatabaseError, e:
+        except DatabaseError, e:
             if 'already exists' not in e.args[0]: raise
             if core.debug:
-                print 'ALREADY EXISTS:', e.args[0]
-                print 'ROLLBACK\n'
+                log_orm('ALREADY EXISTS: %s' % e.args[0])
+                log_orm('ROLLBACK')
             provider.rollback(connection)
         else: provider.commit(connection)
     def get_create_commands(table, created_tables=None):
