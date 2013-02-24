@@ -464,7 +464,9 @@ class Text(BaseWidget):
                 return None
         try: return str2py(value, field.type)
         except ValidationError, e:
-            field._auto_error_text = e.translated_msg
+            err_msg = e.args[0]
+            translated_msg = html('@{%s}' % err_msg)  # possible template injection?
+            field._auto_error_text = translated_msg
             return None
     value = property(_get_value, BaseWidget._set_value)
     @property
