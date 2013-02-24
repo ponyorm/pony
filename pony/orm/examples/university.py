@@ -2,7 +2,7 @@ from pony.orm.core import *
 from decimal import Decimal
 from datetime import date
 
-db = Database('sqlite', 'university.db3', create_db=True)
+db = Database('sqlite', 'university.sqlite', create_db=True)
 # db = Database('mysql', host='localhost', user='root', passwd='root', db='university')
 
 class Faculty(db.Entity):
