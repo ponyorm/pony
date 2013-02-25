@@ -643,7 +643,8 @@ class Attribute(object):
                 'is_pk', 'is_collection', 'is_ref', 'is_basic', 'is_string', \
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
-                'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs'
+                'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
+                'cascade_delete'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
@@ -679,6 +680,7 @@ class Attribute(object):
         attr.entity = attr.name = None
         attr.args = args
         attr.auto = kwargs.pop('auto', False)
+        attr.cascade_delete = kwargs.pop('cascade_delete', None)
 
         attr.reverse = kwargs.pop('reverse', None)
         if not attr.reverse: pass
@@ -715,6 +717,9 @@ class Attribute(object):
         attr.name = name
         if attr.pk_offset is not None and attr.lazy:
             throw(TypeError, 'Primary key attribute %s cannot be lazy' % attr)
+        if attr.cascade_delete is not None and attr.is_basic:
+            throw(TypeError, "'cascade_delete' option cannot be set for attribute %s, "
+                             "because it is not relationship attribute" % attr)
         try: attr.default = attr.kwargs.pop('default')
         except KeyError: attr.default = '' if attr.is_string and not attr.is_required else None
         else:
@@ -728,6 +733,17 @@ class Attribute(object):
                 throw(TypeError, 'Primary key attribute %s cannot be of type float' % attr)
             elif attr.is_unique:
                 throw(TypeError, 'Unique attribute %s cannot be of type float' % attr)
+    def linked(attr):
+        reverse = attr.reverse
+        if attr.cascade_delete is None:
+            attr.cascade_delete = attr.is_collection and reverse.is_required
+        elif attr.cascade_delete:
+            if reverse.cascade_delete: throw(TypeError,
+                "'cascade_delete' option cannot be set for both sides of relationship "
+                "(%s and %s) simultaneously" % (attr, reverse))
+            if reverse.is_collection: throw(TypeError,
+                "'cascade_delete' option cannot be set for attribute %s, "
+                "because reverse attribute %s is collection" % (attr, reverse))
     @cut_traceback
     def __repr__(attr):
         owner_name = not attr.entity and '?' or attr.entity.__name__
@@ -2006,6 +2022,8 @@ class EntityMeta(type):
 
             attr.reverse = attr2
             attr2.reverse = attr
+            attr.linked()
+            attr2.linked()
             unmapped_attrs.discard(attr2)          
         for attr in unmapped_attrs:
             throw(ERDiagramError, 'Reverse attribute for %s.%s was not found' % (attr.entity.__name__, attr.name))        
@@ -2644,11 +2662,11 @@ class Entity(object):
             vals = tuple(vals)
             cache.db_update_composite_index(obj, attrs, currents, vals)
     def _delete_(obj, undo_funcs=None):
+        status = obj._status_
+        if status in ('deleted', 'cancelled'): return
         is_recursive_call = undo_funcs is not None
         if not is_recursive_call: undo_funcs = []
         cache = obj._cache_
-        status = obj._status_
-        assert status not in ('deleted', 'cancelled')
         get_val = obj._vals_.get
         undo_list = []
         undo_dict = {}
@@ -2671,18 +2689,24 @@ class Entity(object):
                     if not reverse.is_collection:
                         if val is NOT_LOADED: val = attr.load(obj)
                         if val is None: continue
-                        if reverse.is_required:
-                            throw(ConstraintError, 'Cannot delete %s: Attribute %s.%s for %s cannot be set to None'
-                                                  % (obj, reverse.entity.__name__, reverse.name, val))
-                        reverse.__set__(val, None, undo_funcs)
+                        if attr.cascade_delete: val._delete_()
+                        elif not reverse.is_required: reverse.__set__(val, None, undo_funcs)
+                        else: throw(ConstraintError, "Cannot delete object %s, because it has associated %s, "
+                                                     "and 'cascade_delete' option of %s is set to False"
+                                                     % (obj, attr.name, attr))
                     elif isinstance(reverse, Set):
                         if val is NOT_LOADED: pass
                         else: reverse.reverse_remove((val,), obj, undo_funcs)
                     else: throw(NotImplementedError)
                 elif isinstance(attr, Set):
-                    if reverse.is_required and attr.__get__(obj).__nonzero__(): throw(ConstraintError, 
-                        'Cannot delete %s: Attribute %s.%s for associated objects cannot be set to None'
-                        % (obj, reverse.entity.__name__, reverse.name))
+                    set_wrapper = attr.__get__(obj)
+                    if not set_wrapper.__nonzero__(): pass
+                    elif attr.cascade_delete:
+                        for robj in set_wrapper: robj._delete_()
+                    elif not reverse.is_required: attr.__set__(obj, (), undo_funcs)
+                    else: throw(ConstraintError, "Cannot delete object %s, because it has non-empty set of %s, "
+                                                 "and 'cascade_delete' option of %s is set to False"
+                                                 % (obj, attr.name, attr))
                     attr.__set__(obj, (), undo_funcs)
                 else: throw(NotImplementedError)
 
@@ -2715,7 +2739,7 @@ class Entity(object):
                 elif status in ('loaded', 'saved'): cache.to_be_checked.append(obj)
                 else: assert status == 'locked'
                 obj._status_ = 'deleted'
-                cache.deleted.add(obj)
+                cache.deleted.append(obj)
             for attr in obj._attrs_:
                 if attr.pk_offset is None:
                     val = obj._vals_.pop(attr.name, NOT_LOADED)
@@ -3038,7 +3062,7 @@ class Cache(object):
         cache.seeds = {}
         cache.collection_statistics = {}
         cache.created = set()
-        cache.deleted = set()
+        cache.deleted = []
         cache.updated = set()
         cache.modified_collections = {}
         cache.to_be_checked = []
@@ -3126,7 +3150,7 @@ class Cache(object):
             index = indexes[obj.__class__._pk_]
             index.pop(pkval)
             
-        cache.deleted.clear()
+        cache.deleted[:] = []
         cache.modified_collections.clear()
         cache.to_be_checked[:] = []
     def calc_modified_m2m(cache):
