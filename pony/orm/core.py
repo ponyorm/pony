@@ -1709,65 +1709,65 @@ def iter2dict(iter):
         d[item] = d.get(item, 0) + 1
     return d
 
-class PropagatedMultiset(object):
+class Multiset(object):
     __slots__ = [ '_obj_', '_parent_', '_attr_', '_items_' ]
     @cut_traceback
-    def __init__(pset, parent, attr, items):
-        pset._obj_ = parent._obj_
-        pset._parent_ = parent
-        pset._attr_ = attr
-        pset._items_ = iter2dict(items)
+    def __init__(multiset, parent, attr, items):
+        multiset._obj_ = parent._obj_
+        multiset._parent_ = parent
+        multiset._attr_ = attr
+        multiset._items_ = iter2dict(items)
     @cut_traceback
-    def distinct(pset):
-        if not pset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
-        return pset._items_.copy()
+    def distinct(multiset):
+        if not multiset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        return multiset._items_.copy()
     @cut_traceback
-    def __repr__(pset):
-        if pset._obj_._cache_.is_alive:
-            size = _sum(pset._items_.itervalues())
+    def __repr__(multiset):
+        if multiset._obj_._cache_.is_alive:
+            size = _sum(multiset._items_.itervalues())
             if size == 1: size_str = ' (1 item)'
             else: size_str = ' (%d items)' % size
         else: size_str = ''
         path = []
-        wrapper = pset
+        wrapper = multiset
         while wrapper is not None:
             path.append(wrapper._attr_.name)
             wrapper = wrapper._parent_
-        return '<%s.%s%s>' % (pset._obj_, '.'.join(reversed(path)), size_str)
+        return '<%s %s.%s%s>' % (multiset.__class__.__name__, multiset._obj_, '.'.join(reversed(path)), size_str)
     @cut_traceback
-    def __str__(pset):
-        if not pset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
-        return str(pset._items_)
+    def __str__(multiset):
+        if not multiset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        return '%s(%s)' % (multiset.__class__.__name__, str(multiset._items_))
     @cut_traceback
-    def __nonzero__(pset):
-        if not pset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
-        return bool(pset._items_)
+    def __nonzero__(multiset):
+        if not multiset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        return bool(multiset._items_)
     @cut_traceback
-    def __len__(pset):
-        if not pset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
-        return _sum(pset._items_.values())
+    def __len__(multiset):
+        if not multiset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        return _sum(multiset._items_.values())
     @cut_traceback
-    def __iter__(pset):
-        if not pset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
-        for item, cnt in pset._items_.iteritems():
+    def __iter__(multiset):
+        if not multiset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        for item, cnt in multiset._items_.iteritems():
             for i in range(cnt): yield item
     @cut_traceback
-    def __eq__(pset, other):
-        if not pset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
-        if isinstance(other, PropagatedMultiset):
-            return pset._items_ == other._items_
+    def __eq__(multiset, other):
+        if not multiset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if isinstance(other, Multiset):
+            return multiset._items_ == other._items_
         if isinstance(other, dict):
-            return pset._items_ == other
+            return multiset._items_ == other
         if hasattr(other, 'keys'):
-            return pset._items_ == dict(other)
-        return pset._items_ == iter2dict(other)
+            return multiset._items_ == dict(other)
+        return multiset._items_ == iter2dict(other)
     @cut_traceback
-    def __ne__(pset, other):
-        return not pset.__eq__(other)
+    def __ne__(multiset, other):
+        return not multiset.__eq__(other)
     @cut_traceback
-    def __contains__(pset, item):
-        if not pset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
-        return item in pset._items_
+    def __contains__(multiset, item):
+        if not multiset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        return item in multiset._items_
 
 ##class List(Collection): pass
 ##class Dict(Collection): pass
@@ -2464,7 +2464,7 @@ class EntityMeta(type):
             if not attr.reverse:
                 def fget(wrapper, attr=attr):
                     items = [ attr.__get__(item) for item in wrapper ]
-                    return PropagatedMultiset(wrapper, attr, items)
+                    return Multiset(wrapper, attr, items)
             elif not attr.is_collection:
                 def fget(wrapper, attr=attr):
                     items = [ attr.__get__(item) for item in wrapper ]
@@ -2489,8 +2489,8 @@ class EntityMeta(type):
         result_cls = entity._propagated_set_subclass_
         if result_cls is None:
             mixin = entity._get_propagation_mixin_()
-            cls_name = entity.__name__ + 'PropagatedMultiset'
-            result_cls = type(cls_name, (PropagatedMultiset, mixin), {})
+            cls_name = entity.__name__ + 'Multiset'
+            result_cls = type(cls_name, (Multiset, mixin), {})
             entity._propagated_set_subclass_ = result_cls
         return result_cls
     def _get_set_wrapper_subclass_(entity):
