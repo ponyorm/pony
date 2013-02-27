@@ -20,7 +20,7 @@ class Product(db.Entity):
     picture = Optional(buffer)
     price = Required(Decimal)
     quantity = Required(int)
-    car_items = Set("CartItem")
+    cart_items = Set("CartItem")
     order_items = Set("OrderItem")
 
 class CartItem(db.Entity):
@@ -30,7 +30,7 @@ class CartItem(db.Entity):
 
 class OrderItem(db.Entity):
     quantity = Required(int)
-    item_price = Required(Decimal)
+    price = Required(Decimal)
     order = Required("Order")
     product = Required(Product)
     PrimaryKey(order, product)
@@ -43,7 +43,7 @@ class Order(db.Entity):
     date_delivered = Optional(datetime)
     total_price = Required(Decimal)
     customer = Required(Customer)
-    order_items = Set(OrderItem)
+    items = Set(OrderItem)
 
 class Category(db.Entity):
     name = Required(unicode)
