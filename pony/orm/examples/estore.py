@@ -8,6 +8,7 @@ class Customer(db.Entity):
     email = Unique(unicode)
     password = Required(unicode)
     name = Required(unicode)
+    country = Required(unicode)
     address = Required(unicode)
     cart_items = Set("CartItem")
     orders = Set("Order")
