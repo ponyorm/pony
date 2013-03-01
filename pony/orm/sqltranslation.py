@@ -375,7 +375,7 @@ class SQLTranslator(ASTTranslator):
 
         if translator.having_conditions:
             if not groupby: throw(TranslationError,
-                'In order to use aggregated functions sucn as SUM(), COUNT(), etc., '
+                'In order to use aggregated functions such as SUM(), COUNT(), etc., '
                 'query must have grouping columns (i.e. resulting non-aggregated values)')
             sql_ast.append([ 'HAVING' ] + translator.having_conditions)
 
