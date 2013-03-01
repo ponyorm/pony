@@ -2247,13 +2247,13 @@ class EntityMeta(type):
                 offsets.append(len(select_list) - 1)
                 select_list.append([ 'COLUMN', alias, column ])
         return select_list, attr_offsets
-    def _construct_discriminator_criteria_(entity):
+    def _construct_discriminator_criteria_(entity, alias=None):
         discr_attr = entity._discriminator_attr_
         if discr_attr is None: return None
         code2cls = discr_attr.code2cls
         discr_values = [ [ 'VALUE', cls._discriminator_ ] for cls in entity._subclasses_ ]
         discr_values.append([ 'VALUE', entity._discriminator_])
-        return [ 'IN', [ 'COLUMN', None, discr_attr.column ], discr_values ]
+        return [ 'IN', [ 'COLUMN', alias, discr_attr.column ], discr_values ]
     def _construct_batchload_sql_(entity, batch_size, attr=None):
         query_key = batch_size, attr
         cached_sql = entity._batchload_sql_cache_.get(query_key)
@@ -2342,12 +2342,16 @@ class EntityMeta(type):
                     'Found more then pony.options.MAX_FETCH_COUNT=%d objects' % options.MAX_FETCH_COUNT)
         else: rows = cursor.fetchall()
         objects = []
-        for row in rows:
-            real_entity_subclass, pkval, avdict = entity._parse_row_(row, attr_offsets)
-            obj = real_entity_subclass._new_(pkval, 'loaded')
-            if obj._status_ in ('deleted', 'cancelled'): continue
-            obj._db_set_(avdict)
-            objects.append(obj)
+        if attr_offsets is None:
+            objects = [ entity._get_by_raw_pkval_(row) for row in rows ]
+            entity._load_many_(objects)
+        else:
+            for row in rows:
+                real_entity_subclass, pkval, avdict = entity._parse_row_(row, attr_offsets)
+                obj = real_entity_subclass._new_(pkval, 'loaded')
+                if obj._status_ in ('deleted', 'cancelled'): continue
+                obj._db_set_(avdict)
+                objects.append(obj)
         return objects
     def _parse_row_(entity, row, attr_offsets):
         discr_attr = entity._discriminator_attr_
@@ -2365,6 +2369,25 @@ class EntityMeta(type):
         if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_, None)            
         else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
         return real_entity_subclass, pkval, avdict
+    def _load_many_(entity, objects):
+        database = entity._database_
+        cache = database._get_cache()
+        seeds = cache.seeds.get(entity._pk_)
+        if not seeds: return
+        objects = set(obj for obj in objects if obj in seeds)
+        objects = sorted(objects, key=attrgetter('_pkval_'))
+        max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
+        while objects:
+            batch = objects[:max_batch_size]
+            objects = objects[max_batch_size:]
+            sql, adapter, attr_offsets = entity._construct_batchload_sql_(len(batch))
+            value_dict = dict(enumerate(batch))
+            arguments = adapter(value_dict)
+            cursor = database._exec_sql(sql, arguments)
+            result = entity._fetch_objects(cursor, attr_offsets)
+            if len(result) < len(batch):
+                for obj in result:
+                    if obj not in batch: throw(UnrepeatableReadError, '%s disappeared' % obj)
     def _query_from_lambda_(entity, lambda_func, globals, locals):
         if type(lambda_func) is types.FunctionType:
             names, argsname, keyargsname, defaults = inspect.getargspec(lambda_func)
@@ -2598,7 +2621,7 @@ class Entity(object):
         entity = obj.__class__
         database = entity._database_
         if cache is not database._get_cache():
-            throw(TransactionError, "Transaction of object %s belongs to different thread")
+            throw(TransactionError, "Object %s doesn't belong to current transaction" % obj)
         seeds = cache.seeds[entity._pk_]
         max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
         objects = [ obj ]
@@ -3494,6 +3517,9 @@ class Query(object):
                 result = [ tuple(func(sql_row[slice_or_offset])
                                  for func, slice_or_offset in translator.row_layout)
                            for sql_row in cursor.fetchall() ]
+                for i, t in enumerate(translator.expr_type):
+                    if isinstance(t, EntityMeta) and t._discriminator_ and t._subclasses_:
+                        t._load_many_(row[i] for row in result)
             if query_key is not None:
                 query._cache.query_results[query_key] = result
         else:

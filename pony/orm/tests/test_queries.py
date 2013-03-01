@@ -63,7 +63,7 @@ def do_test(provider_name):
     statement_used = True
 
 dirname, fname = os.path.split(__file__)
-queries_fname = os.path.join(dirname, 'queries.txt')
+queries_fname = os.path.join(dirname, 'aggregate_count_queries.txt')
 
 def orphan_lines(lines):
     SQLite()
@@ -92,4 +92,8 @@ for raw_line in file(queries_fname):
         statement_used = False
     else:
         lines.append(raw_line.rstrip())
-if directive: directive()
+
+if directive:
+    directive()
+elif lines:
+    orphan_lines(lines)

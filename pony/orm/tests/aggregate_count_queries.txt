@@ -1,0 +1,30 @@
+Schema:
+pony.orm.examples.presentation
+
+>>> select(d for d in Department if count(d.groups) > 1)
+
+# COUNT по одной колонке, можно использовать DISTINCT в любой СУБД
+# поскольку в запросе только одна AttrSetMonad, применяется оптимизация
+# идем по общей ветке для COUNT DISTINCT
+
+SELECT "d"."number"
+FROM "Department" "d"
+  LEFT JOIN "Group" "group-1"
+    ON "d"."number" = "group-1"."dept"
+GROUP BY "d"."number"
+HAVING COUNT(DISTINCT "group-1"."number") > 1
+
+>>> select(d for d in Department if count(d.groups) <> count(d.courses))
+
+SELECT "d"."number", "d"."name"
+FROM "Department" "d"
+WHERE (
+    SELECT COUNT(*)
+    FROM "Group" "group-1"
+    WHERE "d"."number" = "group-1"."dept"
+    ) <> (
+    SELECT COUNT(*)
+    FROM "Course" "course-1"
+    WHERE "d"."number" = "course-1"."dept"
+    )
+
