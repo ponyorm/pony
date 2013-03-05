@@ -329,7 +329,7 @@ class SQLTranslator(ASTTranslator):
             assert parent_translator
             join_condition = first_from_item.pop()
             translator.conditions.insert(0, join_condition)
-    def can_be_optimised(translator):
+    def can_be_optimized(translator):
         if translator.groupby_monads: return False
         if len(translator.aggregated_subquery_paths) != 1: return False
         return iter(translator.aggregated_subquery_paths).next()

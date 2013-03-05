@@ -3474,7 +3474,7 @@ class Query(object):
             tree = loads(pickled_tree)  # tree = deepcopy(tree)
             translator_cls = database.provider.translator_cls
             translator = translator_cls(tree, extractors, vartypes, left_join=left_join)
-            name_path = translator.can_be_optimised()
+            name_path = translator.can_be_optimized()
             if name_path:
                 tree = loads(pickled_tree)  # tree = deepcopy(tree)
                 translator = translator_cls(tree, extractors, vartypes, left_join=True, optimize=name_path)
@@ -3677,7 +3677,7 @@ class Query(object):
             translator.inside_orderby = True
             translator.dispatch(func_ast)
             if not prev_optimized:
-                name_path = translator.can_be_optimised()
+                name_path = translator.can_be_optimized()
                 if name_path:
                     tree = loads(query._pickled_tree)  # tree = deepcopy(tree)
                     prev_extractors = query._translator.extractors
