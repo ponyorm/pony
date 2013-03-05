@@ -66,7 +66,7 @@ def show_all_persons():
 if __name__ == '__main__':
     # populate_database()
     # show_all_persons()
-    a = Assistant[5]
-    prof = a.professor
-    print prof.name
-
+    s1 = Student.get(name='Student1')
+    mentor = s1.mentor
+    print isinstance(mentor, Assistant)
+    print mentor.name
