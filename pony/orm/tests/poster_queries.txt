@@ -1,0 +1,96 @@
+Schema:
+pony.orm.examples.estore
+
+>>> x = "joe@example.com"
+>>> select((o for o in Order if o.customer.email == x))[:]
+
+SELECT "o"."id", "o"."state", "o"."date_created", "o"."date_shipped", "o"."date_delivered", "o"."total_price", "o"."customer"
+FROM "Order" "o", "Customer" "customer-1"
+WHERE "customer-1"."email" = ?
+  AND "o"."customer" = "customer-1"."id"
+
+MySQL:
+
+SELECT `o`.`id`, `o`.`state`, `o`.`date_created`, `o`.`date_shipped`, `o`.`date_delivered`, `o`.`total_price`, `o`.`customer`
+FROM `Order` `o`, `Customer` `customer-1`
+WHERE `customer-1`.`email` = %s
+  AND `o`.`customer` = `customer-1`.`id`
+
+PostgreSQL:
+
+SELECT "o"."id", "o"."state", "o"."date_created", "o"."date_shipped", "o"."date_delivered", "o"."total_price", "o"."customer"
+FROM "order" "o", "customer" "customer-1"
+WHERE "customer-1"."email" = %(p1)s
+  AND "o"."customer" = "customer-1"."id"
+
+Oracle:
+
+SELECT "o"."ID", "o"."STATE", "o"."DATE_CREATED", "o"."DATE_SHIPPED", "o"."DATE_DELIVERED", "o"."TOTAL_PRICE", "o"."CUSTOMER"
+FROM "ORDER" "o", "CUSTOMER" "customer-1"
+WHERE "customer-1"."EMAIL" = :p1
+  AND "o"."CUSTOMER" = "customer-1"."ID"
+
+>>> avg(o.total_price for o in Order if o.date_created.year == 2012)
+
+SELECT AVG("o"."total_price")
+FROM "Order" "o"
+WHERE cast(substr("o"."date_created", 1, 4) as integer) = 2012
+
+MySQL:
+
+SELECT AVG(`o`.`total_price`)
+FROM `Order` `o`
+WHERE year(`o`.`date_created`) = 2012
+
+PostgreSQL:
+
+SELECT AVG("o"."total_price")
+FROM "order" "o"
+WHERE EXTRACT(YEAR FROM "o"."date_created") = 2012
+
+Oracle:
+
+SELECT AVG("o"."TOTAL_PRICE")
+FROM "ORDER" "o"
+WHERE EXTRACT(YEAR FROM "o"."DATE_CREATED") = 2012
+
+>>> select((c, sum(c.orders.total_price)) for c in Customer).orderby(lambda c: desc(sum(c.orders.total_price)))[:10]
+
+SELECT "c"."id", coalesce(SUM("order-1"."total_price"), 0)
+FROM "Customer" "c"
+  LEFT JOIN "Order" "order-1"
+    ON "c"."id" = "order-1"."customer"
+GROUP BY "c"."id"
+ORDER BY coalesce(SUM("order-1"."total_price"), 0) DESC
+LIMIT 10
+
+MySQL:
+
+SELECT `c`.`id`, coalesce(SUM(`order-1`.`total_price`), 0)
+FROM `Customer` `c`
+  LEFT JOIN `Order` `order-1`
+    ON `c`.`id` = `order-1`.`customer`
+GROUP BY `c`.`id`
+ORDER BY coalesce(SUM(`order-1`.`total_price`), 0) DESC
+LIMIT 10
+
+PostgreSQL:
+
+SELECT "c"."id", coalesce(SUM("order-1"."total_price"), 0)
+FROM "customer" "c"
+  LEFT JOIN "order" "order-1"
+    ON "c"."id" = "order-1"."customer"
+GROUP BY "c"."id"
+ORDER BY coalesce(SUM("order-1"."total_price"), 0) DESC
+LIMIT 10
+
+Oracle:
+
+SELECT * FROM (
+    SELECT "c"."ID", coalesce(SUM("order-1"."TOTAL_PRICE"), 0)
+        FROM "CUSTOMER" "c"
+      LEFT JOIN "ORDER" "order-1"
+        ON "c"."ID" = "order-1"."CUSTOMER"
+    GROUP BY "c"."ID"
+    ORDER BY coalesce(SUM("order-1"."TOTAL_PRICE"), 0) DESC
+) WHERE ROWNUM <= 10
