@@ -1575,13 +1575,13 @@ class AttrSetMonad(SetMixin, Monad):
         attr = entity._adict_.get(name)
         if attr is None: throw(AttributeError)
         return monad.translator.AttrSetMonad(monad, attr)
-    def requires_distinct(monad, joined=False):
+    def requires_distinct(monad, joined=False, for_count=False):
         if monad.parent.requires_distinct(joined): return True
         reverse = monad.attr.reverse
         if not reverse: return True
         if reverse.is_collection:
             translator = monad.translator
-            if not translator.hint_join: return True
+            if not for_count and not translator.hint_join: return True
             if isinstance(monad.parent, monad.translator.AttrSetMonad): return True
         return False
     def count(monad):
@@ -1593,7 +1593,7 @@ class AttrSetMonad(SetMixin, Monad):
         inner_conditions = subquery.conditions
         outer_conditions = subquery.outer_conditions
 
-        distinct = monad.requires_distinct(joined=translator.hint_join)
+        distinct = monad.requires_distinct(joined=translator.hint_join, for_count=True)
         sql_ast = make_aggr = None
         extra_grouping = False
         if not distinct and monad.tableref.name_path != translator.optimize:
@@ -1607,7 +1607,10 @@ class AttrSetMonad(SetMixin, Monad):
         elif translator.row_value_syntax:
             make_aggr = lambda expr_list: [ 'COUNT', 'DISTINCT' ] + expr_list
         elif translator.dialect == 'SQLite':
-            if translator.hint_join:  # Same join as in Oracle
+            if not distinct:
+                alias, pk_columns = monad.tableref.make_join(pk_only=True)
+                make_aggr = lambda expr_list: [ 'COUNT', 'ALL', [ 'COLUMN', alias, 'ROWID' ] ]
+            elif translator.hint_join:  # Same join as in Oracle
                 extra_grouping = True
                 make_aggr = lambda expr_list: [ 'COUNT', 'ALL' ]
             elif translator.sqlite_version < (3, 6, 21):
