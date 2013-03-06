@@ -24,28 +24,42 @@ def Schema():
 def SQLite():
     do_test('sqlite')
 
+def MySQL():
+    do_test('mysql')
+
+def PostgreSQL():
+    do_test('postgres')
+
 def Oracle():
     do_test('oracle')
 
+unavailable_providers = set()
+
 def do_test(provider_name):
+    if provider_name in unavailable_providers: return
     testutils.TestDatabase.real_provider_name = provider_name
     core.Database = orm.Database = testutils.TestDatabase
     sys.modules.pop(module_name, None)
-    __import__(module_name)
+    try: __import__(module_name)
+    except ImportError, e:
+        print
+        print 'ImportError for database provider %s:\n%s' % (provider_name, e)
+        print
+        unavailable_providers.add(provider_name)
+        return
     module = sys.modules[module_name]
     core.debug = orm.debug = False
-    glob = vars(module)
-    loc = {}
+    globals = vars(module).copy()
     for statement in statements[:-1]:
         code = compile(statement, '<string>', 'exec')
-        exec code in glob, loc
+        exec code in globals
     statement = statements[-1]
     try: last_code = compile(statement, '<string>', 'eval')
     except SyntaxError:
         last_code = compile(statement, '<string>', 'exec')
-        exec code in glob, loc
+        exec last_code in globals
     else:
-        result = eval(last_code, vars(module), loc)
+        result = eval(last_code, globals)
         if isinstance(result, core.Query): result = list(result)
     sql = module.db.sql
     expected_sql = '\n'.join(lines)
