@@ -51,3 +51,5 @@ class Category(db.Entity):
     products = Set(Product)
 
 db.generate_mapping(create_tables=True)
+
+sql_debug(True)
