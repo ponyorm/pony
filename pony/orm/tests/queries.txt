@@ -126,7 +126,7 @@ WHERE (
 
 >>> select(g for g in Group if avg(g.students.gpa) > 4.5)
 
-SELECT "g"."number", "g"."major", "g"."dept"
+SELECT "g"."number"
 FROM "Group" "g"
   LEFT JOIN "Student" "student-1"
     ON "g"."number" = "student-1"."group"
@@ -245,7 +245,7 @@ HAVING AVG("s"."gpa") > 4
 
 >>> select(g for g in Group if max(g.students.gpa) < 4)
 
-SELECT "g"."number", "g"."major", "g"."dept"
+SELECT "g"."number"
 FROM "Group" "g"
   LEFT JOIN "Student" "student-1"
     ON "g"."number" = "student-1"."group"
@@ -254,7 +254,7 @@ HAVING MAX("student-1"."gpa") < 4
 
 >>> select(g for g in Group if JOIN(max(g.students.gpa) < 4))
 
-SELECT "g"."number", "g"."major", "g"."dept"
+SELECT "g"."number"
 FROM "Group" "g"
   LEFT JOIN (
     SELECT "student-1"."group" AS "group", MAX("student-1"."gpa") AS "expr-1"

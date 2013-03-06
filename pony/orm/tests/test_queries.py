@@ -63,7 +63,7 @@ def do_test(provider_name):
     statement_used = True
 
 dirname, fname = os.path.split(__file__)
-queries_fname = os.path.join(dirname, 'aggregate_count_queries.txt')
+queries_fname = os.path.join(dirname, 'queries.txt')
 
 def orphan_lines(lines):
     SQLite()
