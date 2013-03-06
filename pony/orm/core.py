@@ -1,13 +1,19 @@
 import __builtin__, re, sys, types, inspect, logging
 from compiler import ast, parse
 from cPickle import loads, dumps
-from copy import deepcopy
+from copy import deepcopy, _deepcopy_dispatch
 from operator import attrgetter, itemgetter
 from itertools import count as _count, ifilter, ifilterfalse, imap, izip, chain, starmap
 from time import time
 import datetime
 from threading import Lock
 from __builtin__ import min as _min, max as _max, sum as _sum
+
+# deepcopy instance method patch for Python < 2.7:
+if types.MethodType not in _deepcopy_dispatch:
+    def _deepcopy_method(x, memo):
+        return type(x)(x.im_func, deepcopy(x.im_self, memo), x.im_class)
+    _deepcopy_dispatch[types.MethodType] = _deepcopy_method
 
 import pony
 from pony import options
