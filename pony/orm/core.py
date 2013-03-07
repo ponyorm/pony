@@ -2127,9 +2127,6 @@ class EntityMeta(type):
         
         if args:
             first_arg = args[0]
-            is_string = isinstance(first_arg, basestring)
-
-            msg = 'Positional argument must be lambda function or SQL select command. Got: %r'
             if not (isinstance(first_arg, types.FunctionType)
                     or isinstance(first_arg, basestring) and lambda_re.match(first_arg)):
                 throw(TypeError, 'Positional argument must be lambda function or its text source. Got: %r' % first_arg)
