@@ -1622,11 +1622,11 @@ class AttrSetMonad(SetMixin, Monad):
                               [ 'DISTINCT' ] + expr_list, from_ast,
                               [ 'WHERE' ] + outer_conditions + inner_conditions ] ] ] ]
         else: throw(NotImplementedError)  # Never happens
-        if not sql_ast:
-            subselect_func = translator.hint_join and monad._joined_subselect \
-                             or monad._aggregated_scalar_subselect
-            sql_ast, optimized = subselect_func(make_aggr, extra_grouping)
-        else: optimized = False
+        if sql_ast: optimized = False
+        elif translator.hint_join:
+            sql_ast, optimized = monad._joined_subselect(make_aggr, extra_grouping, coalesce_to_zero=True)
+        else:
+            sql_ast, optimized = monad._aggregated_scalar_subselect(make_aggr, extra_grouping)
         translator.aggregated_subquery_paths.add(monad.tableref.name_path)
         result = translator.ExprMonad.new(translator, int, sql_ast)
         if optimized: result.aggregated = True
@@ -1647,13 +1647,16 @@ class AttrSetMonad(SetMixin, Monad):
                 % (func_name.lower(), type2str(item_type)))
         else: assert False
             
-        subselect_func = translator.hint_join and monad._joined_subselect \
-                         or monad._aggregated_scalar_subselect
-
         if monad.forced_distinct and func_name in ('SUM', 'AVG'):
             make_aggr = lambda expr_list: [ func_name ] + expr_list + [ True ]
-        else: make_aggr = lambda expr_list: [ func_name ] + expr_list
-        sql_ast, optimized = subselect_func(make_aggr)
+        else:
+            make_aggr = lambda expr_list: [ func_name ] + expr_list
+
+        if translator.hint_join:
+            sql_ast, optimized = monad._joined_subselect(make_aggr, coalesce_to_zero=(func_name=='SUM'))
+        else:
+            sql_ast, optimized = monad._aggregated_scalar_subselect(make_aggr)
+
         result_type = func_name == 'AVG' and float or item_type
         translator.aggregated_subquery_paths.add(monad.tableref.name_path)
         result = translator.ExprMonad.new(monad.translator, result_type, sql_ast)
@@ -1713,7 +1716,7 @@ class AttrSetMonad(SetMixin, Monad):
         if extra_grouping:  # This is for Oracle only, with COUNT(COUNT(*))
             sql_ast.append([ 'GROUP_BY' ] + subquery.expr_list)
         return sql_ast, optimized
-    def _joined_subselect(monad, make_aggr, extra_grouping=False):
+    def _joined_subselect(monad, make_aggr, extra_grouping=False, coalesce_to_zero=False):
         translator = monad.translator
         subquery = monad._subselect()
         expr_list = subquery.expr_list
@@ -1760,7 +1763,6 @@ class AttrSetMonad(SetMixin, Monad):
             subquery_columns.append([ 'AS', column_ast, column_ast[2] ])
         expr_name = 'expr-%d' % translator.subquery.expr_counter.next()
         subquery_columns.append([ 'AS', make_aggr(expr_list), expr_name ])
-
         subquery_ast = [ subquery_columns, from_ast ]
         if inner_conditions and not extra_grouping:
             subquery_ast.append([ 'WHERE' ] + inner_conditions)
@@ -1769,7 +1771,9 @@ class AttrSetMonad(SetMixin, Monad):
         alias = translator.subquery.get_short_alias(None, 't')
         for cond in outer_conditions: cond[2][1] = alias
         translator.subquery.from_ast.append([ alias, 'SELECT', subquery_ast, sqland(outer_conditions) ])
-        return [ 'COLUMN', alias, expr_name ], False
+        expr_ast = [ 'COLUMN', alias, expr_name ]
+        if coalesce_to_zero: expr_ast = [ 'COALESCE', expr_ast, [ 'VALUE', 0 ] ]        
+        return expr_ast, False
     def _subselect(monad):
         if monad.subquery is not None: return monad.subquery
         parent = monad.parent
