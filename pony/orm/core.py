@@ -3580,7 +3580,7 @@ class Query(object):
             elif type(arg) is types.FunctionType: functions = True
             elif isinstance(arg, (int, long)): numbers = True
             elif isinstance(arg, (Attribute, DescWrapper)): attributes = True
-            else: throw(TypeError, "Arguments of orderby() method must be attributes, numbers, strings or lambdas")
+            else: throw(TypeError, "Arguments of orderby() method must be attributes, numbers, strings or lambdas. Got: %r" % arg)
         if strings + functions + numbers + attributes > 1:
             throw(TypeError, 'All arguments of orderby() method must be of the same type')
         if len(args) > 1 and strings + functions:
@@ -3625,9 +3625,13 @@ class Query(object):
             else: monads = (expr_monad,)
             for i in numbers:
                 try: monad = monads[abs(i)-1]
-                except IndexError: throw(IndexError,
-                    'Invalid index of orderby() method: %d (query result has only %d column%s)'
-                    % (i, len(monads), len(monads) > 1 and 's' or ''))
+                except IndexError:
+                    if len(monads) > 1: throw(IndexError,
+                        "Invalid index of orderby() method: %d "
+                        "(query result is list of tuples with only %d elements in each)" % (i, len(monads)))
+                    else: throw(IndexError,
+                        "Invalid index of orderby() method: %d "
+                        "(query result is single list of elements and has only one 'column')" % i)
                 for pos in monad.orderby_columns:
                     order.append(i < 0 and [ 'DESC', [ 'VALUE', pos ] ] or [ 'VALUE', pos ])
             query._database._translator_cache[new_key] = translator
@@ -3640,7 +3644,8 @@ class Query(object):
         if translator is None:
             entity = query._translator.expr_type
             if not isinstance(entity, EntityMeta): throw(NotImplementedError,
-                'orderby() is supported for queries which return simple list of objects only')
+                'Ordering by attributes is limited to queries which return simple list of objects. '
+                'Try use other forms of ordering (by tuple element numbers or by full-blown lambda expr).')
             translator = object.__new__(query._translator.__class__)
             translator.__dict__.update(query._translator.__dict__)  # shallow copy
             order = translator.order = translator.order[:]  # only order will be changed
