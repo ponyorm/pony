@@ -86,18 +86,18 @@ class Lesson(db.Entity):
 db.generate_mapping(create_tables=True)
 
 def test_queries():
-    select(grade for grade in Grade if grade.task.type == 'Lab').all()
-    select(grade for grade in Grade if grade.task.descr.startswith('Intermediate')).all()
-    select(grade for grade in Grade if grade.task.course.semester == 2).all()
-    select(grade for grade in Grade if grade.task.course.subject.name == 'Math').all()
-    select(grade for grade in Grade if 'elementary' in grade.task.course.subject.descr.lower()).all()
-    select(grade for grade in Grade if 'elementary' in grade.task.course.subject.descr.lower() and grade.task.descr.startswith('Intermediate')).all()
-    select(grade for grade in Grade if grade.task.descr.startswith('Intermediate') and 'elementary' in grade.task.course.subject.descr.lower()).all()
-    select(s for s in Student if s.group.dept.faculty.name == 'Abc').all()
-    select(g for g in Group if avg(g.students.grades.value) > 4).all()
-    select(g for g in Group if avg(g.students.grades.value) > 4 and max(g.students.grades.date) < date(2011, 3, 2)).all()
-    select(g for g in Group if '4-A' in g.lessons.room.number).all()
-    select(g for g in Group if 1 in g.lessons.room.floor).all()
-    select(t for t in Teacher if t not in t.courses.groups.lessons.teacher).all()
+    select(grade for grade in Grade if grade.task.type == 'Lab')[:]
+    select(grade for grade in Grade if grade.task.descr.startswith('Intermediate'))[:]
+    select(grade for grade in Grade if grade.task.course.semester == 2)[:]
+    select(grade for grade in Grade if grade.task.course.subject.name == 'Math')[:]
+    select(grade for grade in Grade if 'elementary' in grade.task.course.subject.descr.lower())[:]
+    select(grade for grade in Grade if 'elementary' in grade.task.course.subject.descr.lower() and grade.task.descr.startswith('Intermediate'))[:]
+    select(grade for grade in Grade if grade.task.descr.startswith('Intermediate') and 'elementary' in grade.task.course.subject.descr.lower())[:]
+    select(s for s in Student if s.group.dept.faculty.name == 'Abc')[:]
+    select(g for g in Group if avg(g.students.grades.value) > 4)[:]
+    select(g for g in Group if avg(g.students.grades.value) > 4 and max(g.students.grades.date) < date(2011, 3, 2))[:]
+    select(g for g in Group if '4-A' in g.lessons.room.number)[:]
+    select(g for g in Group if 1 in g.lessons.room.floor)[:]
+    select(t for t in Teacher if t not in t.courses.groups.lessons.teacher)[:]
 
 sql_debug(True)

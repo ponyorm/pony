@@ -103,6 +103,8 @@ class Classroom(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
+sql_debug(True)
+
 def test_queries():
     # very simple query 
     select(s for s in Student)[:]

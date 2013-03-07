@@ -53,7 +53,7 @@ commit()
 rollback()
 t2 = time.time()
 
-e2 = AllDataTypes.all()[0]
+e2 = AllDataTypes.select().first()
 t3 = time.time()
 
 for name, value in fields.items():
