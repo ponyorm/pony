@@ -3542,6 +3542,17 @@ class Query(object):
             'Multiple objects were found. Use select(...) to retrieve them')
         return objects[0]
     @cut_traceback
+    def first(query):
+        translator = query._translator
+        if translator.order: pass
+        elif type(translator.expr_type) is tuple:        
+            query = query.orderby(*[i+1 for i in range(len(query._translator.expr_type))])
+        else:
+            query = query.orderby(1)
+        objects = query[:1]
+        if not objects: return None
+        return objects[0]
+    @cut_traceback
     def without_distinct(query):
         return query._fetch(distinct=False)
     @cut_traceback
