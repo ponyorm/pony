@@ -2104,7 +2104,9 @@ class EntityMeta(type):
         assert len(objects) == 1
         return objects[0]
     @cut_traceback
-    def select(entity, func):
+    def select(entity, func=None):
+        if func is None:
+            return Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
         if not (isinstance(func, types.FunctionType)
                 or isinstance(func, basestring) and lambda_re.match(func)):
             throw(TypeError, 'Lambda function or its text representation expected. Got: %r' % func)
@@ -2115,9 +2117,6 @@ class EntityMeta(type):
     @cut_traceback
     def select_by_sql(entity, sql, globals=None, locals=None):
         return entity._find_by_sql_(None, sql, globals, locals, 2)
-    @cut_traceback
-    def all(entity):
-        return Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
     @cut_traceback
     def orderby(entity, *args):
         query = Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })

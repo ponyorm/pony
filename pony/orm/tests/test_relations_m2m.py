@@ -31,7 +31,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         rollback()
     def test_add_remove(self):
         g = Group.get(number=101)
-        subjects = Subject.all()[:]
+        subjects = Subject.select()[:]
         g.subjects.remove(subjects[:2])
         g.subjects.add(subjects[-2:])
         commit()
