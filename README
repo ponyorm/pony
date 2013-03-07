@@ -1,0 +1,11 @@
+Pony Object-Relational Mapper
+-----------------------------
+
+This is the pre-release version of Pony Object-Relational Mapper.
+At this point Pony offers a couple of self-explanatory examples 
+which can be found in the pony.orm.examples package.
+Tutorials and documentation are coming soon.
+
+License
+---------
+Pony is released under the GNU Affero General Public License version 3.
