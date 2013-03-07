@@ -2,7 +2,7 @@ from distutils.core import setup
 import sys
 
 name = "pony"
-version = "0.2.1"
+version = "0.3"
 description = "Pony Object-Relational Mapper"
 long_description = """Pony helps to simplify data management. Using Pony you can work 
 with the data in terms of entities and their relationships. 
