@@ -1,9 +1,0 @@
-/* large text font */
-p, li {
-    font-size: 1.2em;
-    line-height: 1.8em;
-}
-p {
-    text-align: justify;
-    margin-bottom: 1.25em;
-}

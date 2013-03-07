@@ -1,9 +1,0 @@
-#doc, #doc2, #doc3, #bd {
-    height: 94%;
-}
-#hd, #ft {
-    float: left; clear: both; width: 100%;
-}
-#bd {
-    clear: both;
-}
