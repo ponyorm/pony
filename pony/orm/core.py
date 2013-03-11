@@ -47,7 +47,8 @@ __all__ = '''
 
     Database sql_debug show
 
-    Optional Required Unique PrimaryKey Set
+    PrimaryKey Required Optional Set
+    composite_key
     flush commit rollback with_transaction
 
     AsciiStr LongStr LongUnicode
@@ -666,7 +667,12 @@ class Attribute(object):
         if attr.__class__ is Attribute: throw(TypeError, "'Attribute' is abstract type")
         attr.is_required = isinstance(attr, Required)
         attr.is_discriminator = isinstance(attr, Discriminator)
-        attr.is_unique = isinstance(attr, Unique)  # Also can be set to True later
+        attr.is_unique = kwargs.pop('unique', None)
+        if isinstance(attr, PrimaryKey):
+            if attr.is_unique is not None:
+                throw(TypeError, "'unique' option cannot be set for PrimaryKey attribute ")
+            attr.is_unique = True
+        attr.nullable = kwargs.pop('nullable', None)
         attr.is_part_of_unique_index = attr.is_unique  # Also can be set to True later
         attr.is_pk = isinstance(attr, PrimaryKey)
         if attr.is_pk: attr.pk_offset = 0
@@ -680,13 +686,6 @@ class Attribute(object):
             throw(TypeError, 'Cannot link attribute to Entity class. Must use Entity subclass instead')
         attr.py_type = py_type
         attr.is_string = type(py_type) is type and issubclass(py_type, basestring)
-
-        nullable = kwargs.pop('nullable', None)
-        if not attr.is_required and not attr.is_string:
-            if nullable is False: throw(TypeError, 'Optional attribute with non-string type must be nullable')
-            nullable = True
-        attr.nullable = nullable
-
         attr.is_collection = isinstance(attr, Collection)
         attr.is_ref = not attr.is_collection and isinstance(attr.py_type, (EntityMeta, basestring))
         attr.is_basic = not attr.is_collection and not attr.is_ref
@@ -734,6 +733,15 @@ class Attribute(object):
         if attr.cascade_delete is not None and attr.is_basic:
             throw(TypeError, "'cascade_delete' option cannot be set for attribute %s, "
                              "because it is not relationship attribute" % attr)
+
+        if not attr.is_required:
+            if attr.is_unique and attr.nullable is False:
+                throw(TypeError, 'Optional unique attribute %s must be nullable' % attr)
+            if not attr.is_string:
+                if attr.nullable is False:
+                    throw(TypeError, 'Optional attribute with non-string type %s must be nullable' % attr)
+                attr.nullable = True
+
         try: attr.default = attr.kwargs.pop('default')
         except KeyError: attr.default = '' if attr.is_string and not attr.is_required else None
         else:
@@ -742,6 +750,7 @@ class Attribute(object):
                     throw(TypeError, 'Default value for required attribute %s cannot be None' % attr)
                 if attr.default == '':
                     throw(TypeError, 'Default value for required attribute %s cannot be empty string' % attr)
+
         if attr.py_type == float:
             if attr.pk_offset is not None:
                 throw(TypeError, 'Primary key attribute %s cannot be of type float' % attr)
@@ -1135,42 +1144,47 @@ class Discriminator(Required):
     def update_reverse(attr, obj, old_val, new_val, undo_funcs):
         assert False
 
-class Unique(Required):
+def composite_key(*attrs):
+    if len(attrs) < 2: throw(TypeError,
+        'composite_key() must receive at least two attributes as arguments')
+    for i, attr in enumerate(attrs):
+        if not isinstance(attr, Attribute): throw(TypeError,
+            'composite_key() arguments must be attributes. Got: %r' % attr)
+        attr.is_part_of_unique_index = True
+        attr.composite_keys.append((attrs, i))
+    cls_dict = sys._getframe(1).f_locals
+    composite_keys = cls_dict.setdefault('_keys_', {})
+    composite_keys[attrs] = False
+
+class PrimaryKey(Required):
     __slots__ = []
     def __new__(cls, *args, **kwargs):
-        is_pk = issubclass(cls, PrimaryKey)
-        if not args: throw(TypeError, 'Invalid count of positional arguments')
+        if not args: throw(TypeError, 'PrimaryKey must receive at least one positional argument')
+        cls_dict = sys._getframe(1).f_locals
         attrs = tuple(a for a in args if isinstance(a, Attribute))
         non_attrs = [ a for a in args if not isinstance(a, Attribute) ]
-        if attrs and (non_attrs or kwargs): throw(TypeError, 'Invalid arguments')
         cls_dict = sys._getframe(1).f_locals
-        keys = cls_dict.setdefault('_keys_', {})
 
         if not attrs:
-            result = Required.__new__(cls)
-            keys[(result,)] = is_pk
-            return result
-
-        for attr in attrs:
-            attr.is_part_of_unique_index = True
-        if len(attrs) == 1:
+            return Required.__new__(cls)
+        elif non_attrs or kwargs:
+            throw(TypeError, 'PrimaryKey got invalid arguments: %r %r' % (args, kwargs))
+        elif len(attrs) == 1:
             attr = attrs[0]
-            if isinstance(attr, Required):
-                t = attr.py_type
-                throw(TypeError, 'Invalid declaration: just write attrname = Unique(%s)'
-                      % t.__name__ if type(t) is type else t)
-            if attr.nullable is False:
-                throw(TypeError, 'Optional unique attribute must be nullable')
-            # See additional checks inside EntityMeta.__init__
-            attr.nullable = True
-            attr.is_unique = True
-        else:
-            for i, attr in enumerate(attrs): attr.composite_keys.append((attrs, i))
-        keys[attrs] = is_pk
-        return None
+            attr_name = 'something'
+            for key, val in cls_dict.iteritems():
+                if val is attr: attr_name = key; break
+            py_type = attr.py_type
+            type_str = py_type.__name__ if type(py_type) is type else repr(py_type)
+            throw(TypeError, 'Just use %s = PrimaryKey(%s, ...) directly instead of PrimaryKey(%s)'
+                  % (attr_name, type_str, attr_name))
 
-class PrimaryKey(Unique):
-    __slots__ = []
+        for i, attr in enumerate(attrs):
+            attr.is_part_of_unique_index = True
+            attr.composite_keys.append((attrs, i))
+        keys = cls_dict.setdefault('_keys_', {})
+        keys[attrs] = True
+        return None
 
 class Collection(Attribute):
     __slots__ = 'table', 'cached_load_sql', 'cached_add_m2m_sql', 'cached_remove_m2m_sql', 'wrapper_class', \
@@ -1179,11 +1193,11 @@ class Collection(Attribute):
         if attr.__class__ is Collection: throw(TypeError, "'Collection' is abstract type")
         table = kwargs.pop('table', None)  # TODO: rename table to link_table or m2m_table
         if table is not None and not isinstance(table, basestring):
-            if not isinstance(table, (list, tuple)): throw(TypeError, 
-                "Parameter 'table' must be a string. Got: %r" % table)
+            if not isinstance(table, (list, tuple)):
+                throw(TypeError, "Parameter 'table' must be a string. Got: %r" % table)
             for name_part in table:
-                if not isinstance(name_part, basestring): throw(TypeError, 
-                    'Each part of table name must be a string. Got: %r' % name_part)
+                if not isinstance(name_part, basestring):
+                    throw(TypeError, 'Each part of table name must be a string. Got: %r' % name_part)
             table = tuple(table)
         attr.table = table
         Attribute.__init__(attr, py_type, *args, **kwargs)
@@ -1214,6 +1228,8 @@ class Collection(Attribute):
         attr.cached_remove_m2m_sql = None
     def _init_(attr, entity, name):
         Attribute._init_(attr, entity, name)
+        if attr.is_unique: throw(TypeError,
+            "'unique' option cannot be set for attribute %s because it is collection" % attr)
         if attr.default is not None:
             throw(TypeError, 'Default value could not be set for collection attribute')
         attr.symmetric = (attr.py_type == entity.__name__ and attr.reverse == name)
@@ -1879,6 +1895,8 @@ class EntityMeta(type):
         new_attrs.sort(key=attrgetter('id'))
 
         keys = entity.__dict__.get('_keys_', {})
+        for attr in new_attrs:
+            if attr.is_unique: keys[(attr,)] = isinstance(attr, PrimaryKey)
         for key, is_pk in keys.items():
             for attr in key:
                 if attr.entity is not entity: throw(ERDiagramError, 
@@ -1889,6 +1907,10 @@ class EntityMeta(type):
                 if isinstance(attr.py_type, type) and issubclass(attr.py_type, float):
                     throw(TypeError, 'Attribute %s of type float cannot be part of %s'
                                     % (attr, is_pk and 'primary key' or 'unique index'))
+                if not attr.is_required:
+                    if attr.nullable is False:
+                        throw(TypeError, 'Optional attribute %s must be nullable, because it is part of composite key' % attr)
+                    attr.nullable = True
                 
         primary_keys = set(key for key, is_pk in keys.items() if is_pk)
         if direct_bases:
@@ -1902,14 +1924,12 @@ class EntityMeta(type):
         elif not primary_keys:
             if hasattr(entity, 'id'): throw(ERDiagramError, 
                 "Cannot create primary key for %s automatically because name 'id' is alredy in use" % entity.__name__)
-            _keys_ = {}
-            attr = PrimaryKey(int, auto=True) # Side effect: modifies _keys_ local variable
+            attr = PrimaryKey(int, auto=True)
             attr._init_(entity, 'id')
             type.__setattr__(entity, 'id', attr)  # entity.id = attr
             new_attrs.insert(0, attr)
-            key, is_pk = _keys_.popitem()
-            keys[key] = True
-            pk_attrs = key
+            pk_attrs = (attr,)
+            keys[pk_attrs] = True
         else: pk_attrs = primary_keys.pop()
         for i, attr in enumerate(pk_attrs): attr.pk_offset = i
         entity._pk_columns_ = None

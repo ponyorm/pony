@@ -10,7 +10,7 @@ db = Database('sqlite', 'presentation.sqlite', create_db=True)
 
 class Department(db.Entity):
     number = PrimaryKey(int, auto=True)
-    name = Unique(unicode)
+    name = Required(unicode, unique=True)
     groups = Set("Group")
     courses = Set("Course")
 
