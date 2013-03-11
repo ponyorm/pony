@@ -81,7 +81,7 @@ class Lesson(db.Entity):
     teacher = Required(Teacher)
     date = Required(date)
     PrimaryKey(room, date)
-    Unique(teacher, date)
+    composite_key(teacher, date)
 
 db.generate_mapping(create_tables=True)
 

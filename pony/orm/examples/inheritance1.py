@@ -14,7 +14,7 @@ class Person(db.Entity):
     id = PrimaryKey(int, auto=True)
     name = Required(unicode)
     dob = Optional(date)
-    ssn = Unique(str)
+    ssn = Required(str, unique=True)
 
 class Student(Person):
     group = Required("Group")

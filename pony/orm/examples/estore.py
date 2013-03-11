@@ -5,7 +5,7 @@ from pony.orm import *
 db = Database("sqlite", "estore.sqlite", create_db=True)
 
 class Customer(db.Entity):
-    email = Unique(unicode)
+    email = Required(unicode, unique=True)
     password = Required(unicode)
     name = Required(unicode)
     country = Required(unicode)

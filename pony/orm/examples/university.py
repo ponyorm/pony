@@ -8,13 +8,13 @@ db = Database('sqlite', 'university.sqlite', create_db=True)
 class Faculty(db.Entity):
     _table_ = 'Faculties'
     number = PrimaryKey(int)
-    name = Unique(str)
+    name = Required(str, unique=True)
     departments = Set('Department')
 
 class Department(db.Entity):
     _table_ = 'Departments'
     number = PrimaryKey(int)
-    name = Unique(str)
+    name = Required(str, unique=True)
     faculty = Required(Faculty)
     teachers = Set('Teacher')
     majors = Set('Major')
@@ -52,7 +52,7 @@ class Course(db.Entity):
     major = Required(Major)
     subject = Required(Subject)
     semester = Required(int)
-    Unique(major, subject, semester)
+    composite_key(major, subject, semester)
     lect_hours = Required(int)    
     pract_hours = Required(int)
     credit = Required(int)

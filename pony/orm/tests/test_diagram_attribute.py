@@ -84,15 +84,14 @@ class TestAttribute(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Entity1.attr1
 
-    @raises_exception(ERDiagramError, "Invalid use of attribute Entity1.attr1 in entity Entity2")
+    @raises_exception(ERDiagramError, "Invalid use of attribute Entity1.a in entity Entity2")
     def test_attribute11(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
-            id = PrimaryKey(int)
-            attr1 = Optional(str)
+            a = Required(str)
         class Entity2(db.Entity):
-            id = PrimaryKey(int)
-            Unique(Entity1.attr1)
+            b = Required(str)
+            composite_key(Entity1.a, b)
 
     @raises_exception(ERDiagramError, "Cannot create primary key for Entity1 automatically because name 'id' is alredy in use")
     def test_attribute12(self):
