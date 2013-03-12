@@ -203,7 +203,7 @@ escape_re = re.compile(r'''
         x[0-9a-f]{2}  # byte escaping
     |   u[0-9a-f]{4}  # unicode escaping
     |   U[0-9a-f]{8}  # long unicode escaping
-    )  
+    )
     ''', re.VERBOSE)
 
 def restore_escapes(s, console_encoding=None, source_encoding=None):

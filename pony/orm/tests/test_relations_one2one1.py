@@ -28,7 +28,7 @@ class TestOneToOne(unittest.TestCase):
         rollback()
     def test_1(self):
         Male[3].wife = Female[3]
-        
+
         self.assertEqual(Male[3]._vals_['wife'], Female[3])
         self.assertEqual(Female[3]._vals_['husband'], Male[3])
         commit()
@@ -36,7 +36,7 @@ class TestOneToOne(unittest.TestCase):
         self.assertEqual([1, 2, 3], wives)
     def test_2(self):
         Female[3].husband = Male[3]
-        
+
         self.assertEqual(Male[3]._vals_['wife'], Female[3])
         self.assertEqual(Female[3]._vals_['husband'], Male[3])
         commit()
@@ -44,7 +44,7 @@ class TestOneToOne(unittest.TestCase):
         self.assertEqual([1, 2, 3], wives)
     def test_3(self):
         Male[1].wife = None
-        
+
         self.assertEqual(Male[1]._vals_['wife'], None)
         self.assertEqual(Female[1]._vals_['husband'], None)
         commit()
@@ -52,7 +52,7 @@ class TestOneToOne(unittest.TestCase):
         self.assertEqual([None, 2, None], wives)
     def test_4(self):
         Female[1].husband = None
-        
+
         self.assertEqual(Male[1]._vals_['wife'], None)
         self.assertEqual(Female[1]._vals_['husband'], None)
         commit()
@@ -60,7 +60,7 @@ class TestOneToOne(unittest.TestCase):
         self.assertEqual([None, 2, None], wives)
     def test_5(self):
         Male[1].wife = Female[3]
-        
+
         self.assertEqual(Male[1]._vals_['wife'], Female[3])
         self.assertEqual(Female[1]._vals_['husband'], None)
         self.assertEqual(Female[3]._vals_['husband'], Male[1])
@@ -69,7 +69,7 @@ class TestOneToOne(unittest.TestCase):
         self.assertEqual([3, 2, None], wives)
     def test_6(self):
         Female[3].husband = Male[1]
-        
+
         self.assertEqual(Male[1]._vals_['wife'], Female[3])
         self.assertEqual(Female[1]._vals_['husband'], None)
         self.assertEqual(Female[3]._vals_['husband'], Male[1])
@@ -78,7 +78,7 @@ class TestOneToOne(unittest.TestCase):
         self.assertEqual([3, 2, None], wives)
     def test_7(self):
         Male[1].wife = Female[2]
-        
+
         self.assertEqual(Male[1]._vals_['wife'], Female[2])
         self.assertEqual(Male[2]._vals_['wife'], None)
         self.assertEqual(Female[1]._vals_['husband'], None)
@@ -88,7 +88,7 @@ class TestOneToOne(unittest.TestCase):
         self.assertEqual([2, None, None], wives)
     def test_8(self):
         Female[2].husband = Male[1]
-        
+
         self.assertEqual(Male[1]._vals_['wife'], Female[2])
         self.assertEqual(Male[2]._vals_['wife'], None)
         self.assertEqual(Female[1]._vals_['husband'], None)
@@ -98,4 +98,4 @@ class TestOneToOne(unittest.TestCase):
         self.assertEqual([2, None, None], wives)
 
 if __name__ == '__main__':
-    unittest.main()        
+    unittest.main()

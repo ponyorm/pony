@@ -12,12 +12,12 @@ class Student(db.Entity):
     gpa = Optional(Decimal,3,1)
     group = Required('Group')
     dob = Optional(date)
-    
+
 class Group(db.Entity):
     number = PrimaryKey(int)
     students = Set(Student)
-    
-db.generate_mapping(create_tables=True)        
+
+db.generate_mapping(create_tables=True)
 
 g1 = Group(number=1)
 Student(id=1, name='S1', group=g1, gpa=3.1)
@@ -51,8 +51,8 @@ class TestQuery(unittest.TestCase):
                 return a + b
         c = C1()
         m1 = c.method1
-        select(s for s in Student if m1(s.gpa, 1) > 3) 
-    @raises_exception(TypeError, "Expression x has unsupported type 'complex'")  
+        select(s for s in Student if m1(s.gpa, 1) > 3)
+    @raises_exception(TypeError, "Expression x has unsupported type 'complex'")
     def test_exception6(self):
         x = 1j
         select(s for s in Student if s.gpa == x)
@@ -106,4 +106,4 @@ class TestQuery(unittest.TestCase):
         self.assertEquals(r, 2001)
 
 if __name__ == '__main__':
-    unittest.main()    
+    unittest.main()

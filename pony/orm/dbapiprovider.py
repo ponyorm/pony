@@ -64,7 +64,7 @@ class DBAPIProvider(object):
     paramstyle = 'qmark'
     quote_char = '"'
     max_params_count = 200
-    
+
     dbschema_cls = None
     translator_cls = None
     sqlbuilder_cls = None
@@ -216,7 +216,7 @@ class UnicodeConverter(BasestringConverter):
     def validate(converter, val):
         if val is None: pass
         elif isinstance(val, str): val = val.decode('ascii')
-        elif not isinstance(val, unicode): throw(TypeError, 
+        elif not isinstance(val, unicode): throw(TypeError,
             'Value type for attribute %s must be unicode. Got: %r' % (converter.attr, type(val)))
         return BasestringConverter.validate(converter, val)
 
@@ -256,7 +256,7 @@ class IntConverter(Converter):
         if isinstance(val, (int, long)): pass
         elif isinstance(val, basestring):
             try: val = int(val)
-            except ValueError: throw(ValueError, 
+            except ValueError: throw(ValueError,
                 'Value type for attribute %s must be int. Got string %r' % (converter.attr, val))
         else: throw(TypeError, 'Value type for attribute %s must be int. Got: %r' % (converter.attr, type(val)))
 
@@ -326,14 +326,14 @@ class DecimalConverter(Converter):
         else: precision = kwargs.pop('precision', 12)
         if not isinstance(precision, (int, long)):
             throw(TypeError, "'precision' positional argument for attribute %s must be int. Got: %r" % (attr, precision))
-        if precision <= 0: throw(TypeError, 
+        if precision <= 0: throw(TypeError,
             "'precision' positional argument for attribute %s must be positive. Got: %r" % (attr, precision))
 
         if len(args) == 2: scale = args[1]
         else: scale = kwargs.pop('scale', 2)
         if not isinstance(scale, (int, long)):
             throw(TypeError, "'scale' positional argument for attribute %s must be int. Got: %r" % (attr, scale))
-        if scale <= 0: throw(TypeError, 
+        if scale <= 0: throw(TypeError,
             "'scale' positional argument for attribute %s must be positive. Got: %r" % (attr, scale))
 
         if scale > precision: throw(ValueError, "'scale' must be less or equal 'precision'")
@@ -344,15 +344,15 @@ class DecimalConverter(Converter):
         min_val = kwargs.pop('min', None)
         if min_val is not None:
             try: min_val = Decimal(min_val)
-            except TypeError: throw(TypeError, 
+            except TypeError: throw(TypeError,
                 "Invalid value for 'min' argument for attribute %s: %r" % (attr, min_val))
 
         max_val = kwargs.pop('max', None)
         if max_val is not None:
             try: max_val = Decimal(max_val)
-            except TypeError: throw(TypeError, 
+            except TypeError: throw(TypeError,
                 "Invalid value for 'max' argument for attribute %s: %r" % (attr, max_val))
-            
+
         converter.min_val = min_val
         converter.max_val = max_val
     def validate(converter, val):
@@ -395,7 +395,7 @@ class DateConverter(Converter):
         if isinstance(val, basestring): return str2date(val)
         throw(TypeError, "Attribute %r: expected type is 'date'. Got: %r" % (converter.attr, val))
     def sql2py(converter, val):
-        if not isinstance(val, date): throw(ValueError, 
+        if not isinstance(val, date): throw(ValueError,
             'Value of unexpected type received from database: instead of date got %s', type(val))
         return val
     def sql_type(converter):

@@ -33,7 +33,7 @@ class TestMethodMonad(unittest.TestCase):
     def test1a(self):
         x = "Pe"
         students = set(select(s for s in Student if s.name.startswith(x)))
-        self.assertEqual(students, set([Student[5]]))            
+        self.assertEqual(students, set([Student[5]]))
 
     def test1b(self):
         students = set(select(s for s in Student if not not s.name.startswith('J')))
@@ -62,7 +62,7 @@ class TestMethodMonad(unittest.TestCase):
 
     def test4(self):
         students = set(select(s for s in Student if s.name.rstrip('n') == 'Jo'))
-        self.assertEqual(students, set([Student[4]]))        
+        self.assertEqual(students, set([Student[4]]))
 
     def test5(self):
         students = set(select(s for s in Student if s.name.lstrip('P') == 'ete'))
@@ -70,7 +70,7 @@ class TestMethodMonad(unittest.TestCase):
 
     @raises_exception(TypeError, "Expected 'unicode' argument but got 'int' in expression s.name.startswith(5)")
     def test6(self):
-        students = set(select(s for s in Student if not s.name.startswith(5)))      
+        students = set(select(s for s in Student if not s.name.startswith(5)))
 
     @raises_exception(TypeError, "Expected 'unicode' argument but got 'int' in expression s.name.endswith(5)")
     def test7(self):
@@ -87,6 +87,6 @@ class TestMethodMonad(unittest.TestCase):
     @raises_exception(AttributeError, "'unicode' object has no attribute 'unknown'")
     def test10(self):
         result = set(select(s for s in Student if s.name.unknown() == "joe"))
-        
+
 if __name__ == "__main__":
     unittest.main()

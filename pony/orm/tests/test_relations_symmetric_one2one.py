@@ -8,7 +8,7 @@ class Person(db.Entity):
     name = Required(unicode)
     spouse = Optional('Person', reverse='spouse')
 
-db.generate_mapping(create_tables=True)    
+db.generate_mapping(create_tables=True)
 
 class TestSymmetric(unittest.TestCase):
     def setUp(self):
@@ -22,8 +22,8 @@ class TestSymmetric(unittest.TestCase):
         commit()
         rollback()
     def test1(self):
-        p1 = Person[1]        
-        p2 = Person[2]                
+        p1 = Person[1]
+        p2 = Person[2]
         p5 = Person[5]
         p1.spouse = p5
         commit()
@@ -42,8 +42,8 @@ class TestSymmetric(unittest.TestCase):
         data = db.select('spouse from Person order by id')
         self.assertEquals([None, None, 4, 3, None], data)
     def test3(self):
-        p1 = Person[1]        
-        p2 = Person[2]                
+        p1 = Person[1]
+        p2 = Person[2]
         p3 = Person[3]
         p4 = Person[4]
         p1.spouse = p3
@@ -71,6 +71,6 @@ class TestSymmetric(unittest.TestCase):
         p2.name
         p1.spouse
         self.assertEquals(p2._vals_.get('spouse'), p1)
-        
+
 if __name__ == '__main__':
     unittest.main()

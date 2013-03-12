@@ -19,7 +19,7 @@ class ASTTranslator(object):
         stop = translator.call(pre_method, node)
 
         if stop: return
-            
+
         for child in node.getChildNodes():
             translator.dispatch(child)
 
@@ -62,7 +62,7 @@ class PythonTranslator(ASTTranslator):
     def default_post(translator, node):
         throw(NotImplementedError, node)
     def postGenExpr(translator, node):
-        return '(%s)' % node.code.src        
+        return '(%s)' % node.code.src
     def postGenExprInner(translator, node):
         return node.expr.src + ' ' + ' '.join(qual.src for qual in node.quals)
     def postGenExprFor(translator, node):
@@ -72,7 +72,7 @@ class PythonTranslator(ASTTranslator):
             src += ' ' + ifs
         return src
     def postGenExprIf(translator, node):
-        return 'if %s' % node.test.src 
+        return 'if %s' % node.test.src
     @priority(14)
     def postOr(translator, node):
         return ' or '.join(expr.src for expr in node.nodes)
@@ -258,4 +258,3 @@ def create_extractors(code_key, tree, additional_internal_names=()):
         varnames = list(sorted(extractors))
         result = extractors_cache[code_key] = extractors, varnames, tree
     return result
-

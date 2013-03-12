@@ -141,7 +141,7 @@ class TestColumnsMapping(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Required(Entity1)
         db.generate_mapping(check_tables=False)
-        
+
     # no exception Optional-Required(column)
     def test_relations3(self):
         db = Database('sqlite', ':memory:')
@@ -152,7 +152,7 @@ class TestColumnsMapping(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
         db.generate_mapping(check_tables=False)
-        
+
     def test_relations4(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
@@ -164,7 +164,7 @@ class TestColumnsMapping(unittest.TestCase):
         db.generate_mapping(check_tables=False)
         self.assertEqual(Entity1.attr1.columns, ['attr1'])
         self.assertEqual(Entity2.attr2.columns, ['a'])
-        
+
     # no exception Optional-Optional
     def test_relations5(self):
         db = Database('sqlite', ':memory:')
@@ -175,7 +175,7 @@ class TestColumnsMapping(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
         db.generate_mapping(check_tables=False)
-        
+
     # no exception Optional-Optional(column)
     def test_relations6(self):
         db = Database('sqlite', ':memory:')
@@ -186,7 +186,7 @@ class TestColumnsMapping(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
         db.generate_mapping(check_tables=False)
-        
+
     def test_relations7(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
@@ -267,6 +267,6 @@ class TestColumnsMapping(unittest.TestCase):
         class E1(db.Entity):
             a1 = Required(int)
         e = E1(a1=1)
-                
+
 if __name__ == '__main__':
     unittest.main()

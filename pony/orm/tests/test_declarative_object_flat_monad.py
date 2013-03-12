@@ -59,7 +59,7 @@ class TestObjectFlatMonad(unittest.TestCase):
 
     def tearDown(Self):
         rollback()
-        
+
     def test1(self):
         result = set(select(s.groups for s in Subject if len(s.name) == 4))
         self.assertEquals(result, set([Group[41], Group[42]]))
@@ -70,4 +70,3 @@ class TestObjectFlatMonad(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-        

@@ -47,7 +47,7 @@ class SQLiteBuilder(sqlbuilding.SQLBuilder):
 class SQLiteStrConverter(dbapiprovider.StrConverter):
     def py2sql(converter, val):
         if converter.utf8: return val
-        return val.decode(converter.encoding)    
+        return val.decode(converter.encoding)
 
 class SQLiteDecimalConverter(dbapiprovider.DecimalConverter):
     def sql2py(converter, val):
@@ -61,15 +61,15 @@ class SQLiteDecimalConverter(dbapiprovider.DecimalConverter):
         exp = converter.exp
         if exp is not None: val = val.quantize(exp)
         return str(val)
-    
+
 class SQLiteDateConverter(dbapiprovider.DateConverter):
     def sql2py(converter, val):
-        try:       
+        try:
             time_tuple = strptime(val[:10], '%Y-%m-%d')
             return date(*time_tuple[:3])
         except: return val
     def py2sql(converter, val):
-        return val.strftime('%Y-%m-%d')    
+        return val.strftime('%Y-%m-%d')
 
 class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
     def sql2py(converter, val):
@@ -77,7 +77,7 @@ class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
         except: return val
     def py2sql(converter, val):
         return datetime2timestamp(val)
-    
+
 class SQLiteProvider(DBAPIProvider):
     dbapi_module = sqlite
     dbschema_cls = SQLiteSchema
@@ -169,7 +169,7 @@ def _init_connection(con):
     con.create_function("pow", 2, pow)
 
 def unexpected_args(attr, args):
-    throw(TypeError, 
+    throw(TypeError,
         'Unexpected positional argument%s for attribute %s: %r'
         % ((args > 1 and 's' or ''), attr, ', '.join(map(repr, args))))
 
@@ -240,7 +240,7 @@ class MemoryCursorWrapper(object):
         wrapper.obj = cur
     def __iter__(wrapper):
         return wrapper
-    
+
 sqlite_cur_methods = '''execute executemany executescript fetchone fetchmany fetchall
                         next close setinputsize setoutputsize'''.split()
 
@@ -251,7 +251,7 @@ sqlite_cur_properties = 'rowcount lastrowid description arraysize'.split()
 
 for p in sqlite_cur_properties:
     setattr(MemoryCursorWrapper, p, make_wrapper_property(p))
-    
+
 class SqliteMemoryDbThread(Thread):
     def __init__(mem_thread):
         Thread.__init__(mem_thread, name="SqliteMemoryDbThread")

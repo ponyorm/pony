@@ -112,7 +112,7 @@ class TestAttribute(unittest.TestCase):
     def test_attribute14(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
-            id = PrimaryKey(int)            
+            id = PrimaryKey(int)
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Required(Entity1, reverse='attr1')
@@ -150,7 +150,7 @@ class TestAttribute(unittest.TestCase):
             id = PrimaryKey(int)
         class Entity2(db.Entity):
             id = PrimaryKey(int)
-            attr2 = Required('Entity1')            
+            attr2 = Required('Entity1')
 
     @raises_exception(ERDiagramError, 'Ambiguous reverse attribute for Entity2.c')
     def test_attribute19(self):
@@ -233,7 +233,7 @@ class TestAttribute(unittest.TestCase):
         class Entity1(db.Entity):
             id = PrimaryKey(int, columns=set(['a']))
         db.generate_mapping(check_tables=False)
-        
+
     @raises_exception(TypeError, "Parameter 'column' must be a string. Got: 4")
     def test_columns7(self):
         db = Database('sqlite', ':memory:')
@@ -265,7 +265,7 @@ class TestAttribute(unittest.TestCase):
             attr2 = Required(Entity1, columns=['x', 'y', 'z'])
         db.generate_mapping(check_tables=False)
 
-    @raises_exception(MappingError, 'Invalid number of columns specified for Entity2.attr2')        
+    @raises_exception(MappingError, 'Invalid number of columns specified for Entity2.attr2')
     def test_columns10(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
@@ -277,7 +277,7 @@ class TestAttribute(unittest.TestCase):
             attr2 = Required(Entity1, column='x')
         db.generate_mapping(check_tables=False)
 
-    @raises_exception(TypeError, "Items of parameter 'columns' must be strings. Got: [1, 2]")        
+    @raises_exception(TypeError, "Items of parameter 'columns' must be strings. Got: [1, 2]")
     def test_columns11(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
@@ -294,7 +294,7 @@ class TestAttribute(unittest.TestCase):
             attr1 = Set('Entity1', reverse='attr1', column='column1', reverse_column='column2', reverse_columns=['column2'])
         db.generate_mapping(create_tables=True)
 
-    @raises_exception(TypeError, "Parameters 'reverse_column' and 'reverse_columns' cannot be specified simultaneously")            
+    @raises_exception(TypeError, "Parameters 'reverse_column' and 'reverse_columns' cannot be specified simultaneously")
     def test_columns13(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
@@ -353,6 +353,6 @@ class TestAttribute(unittest.TestCase):
         class Entity1(db.Entity):
             attr1 = Set('Entity1', reverse='attr1', table=['db1', 'T1'])
         db.generate_mapping()
-   
+
 if __name__ == '__main__':
     unittest.main()

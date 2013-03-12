@@ -118,14 +118,14 @@ class SQLTranslator(ASTTranslator):
             monad.node = node
             if not hasattr(monad, 'aggregated'):
                 for child in node.getChildNodes():
-                    m = getattr(child, 'monad', None) 
+                    m = getattr(child, 'monad', None)
                     if m and getattr(m, 'aggregated', False):
                         monad.aggregated = True
                         break
                 else: monad.aggregated = False
             if not hasattr(monad, 'nogroup'):
                 for child in node.getChildNodes():
-                    m = getattr(child, 'monad', None) 
+                    m = getattr(child, 'monad', None)
                     if m and getattr(m, 'nogroup', False):
                         monad.nogroup = True
                         break
@@ -176,7 +176,7 @@ class SQLTranslator(ASTTranslator):
             if monad:  # Lambda was encountered inside generator
                 assert isinstance(monad, EntityMonad)
                 entity = monad.type.item_type
-                tablerefs[name] = TableRef(subquery, name, entity)               
+                tablerefs[name] = TableRef(subquery, name, entity)
             elif src:
                 iterable = translator.vartypes[src]
                 if not isinstance(iterable, SetType): throw(TranslationError,
@@ -229,7 +229,7 @@ class SQLTranslator(ASTTranslator):
             database = entity._database_
             assert database.schema is not None
             if translator.database is None: translator.database = database
-            elif translator.database is not database: throw(TranslationError, 
+            elif translator.database is not database: throw(TranslationError,
                 'All entities in a query must belong to the same database')
 
             for if_ in qual.ifs:
@@ -345,7 +345,7 @@ class SQLTranslator(ASTTranslator):
                     throw(TranslationError, '%r is valid for numeric attributes only' % aggr_func_name.lower())
                 assert len(translator.expr_columns) == 1
                 column_ast = translator.expr_columns[0]
-            elif aggr_func_name is not 'COUNT': throw(TranslationError, 
+            elif aggr_func_name is not 'COUNT': throw(TranslationError,
                 'Attribute should be specified for %r aggregate function' % aggr_func_name.lower())
             aggr_ast = None
             if aggr_func_name == 'COUNT':
@@ -487,7 +487,7 @@ class SQLTranslator(ASTTranslator):
         if lambda_expr.varargs: throw(TypeError)
         if lambda_expr.kwargs: throw(TypeError)
         if lambda_expr.defaults: throw(TypeError)
-        iter_name = lambda_expr.argnames[0]            
+        iter_name = lambda_expr.argnames[0]
         cond_expr = lambda_expr.code
         if_expr = ast.GenExprIf(cond_expr)
         name_ast = ast.Name(entity.__name__)
@@ -650,7 +650,7 @@ class JoinedTableRef(object):
             alias = tableref.subquery.get_short_alias(tableref.name_path, right_entity.__name__)
             join_cond = join_tables(m2m_alias, alias, right_m2m_columns, pk_columns)
             tableref.subquery.from_ast.append([ alias, 'TABLE', right_entity._table_, join_cond ])
-        tableref.alias = alias 
+        tableref.alias = alias
         tableref.pk_columns = pk_columns
         tableref.optimized = False
         tableref.joined = True
@@ -901,7 +901,7 @@ class DateMixin(MonadMixin):
     attr_year = datetime_attr_factory('YEAR')
     attr_month = datetime_attr_factory('MONTH')
     attr_day = datetime_attr_factory('DAY')
-    
+
 class DatetimeMixin(DateMixin):
     def mixin_init(monad):
         assert monad.type is datetime
@@ -956,7 +956,7 @@ class StringMixin(MonadMixin):
             expr_sql = monad.getsql()[0]
 
             if start is None: start = translator.ConstMonad.new(translator, 0)
-            
+
             if isinstance(start, translator.NumericConstMonad):
                 if start.value < 0: throw(NotImplementedError, 'Negative indices are not supported in string slice {EXPR}')
                 start_sql = [ 'VALUE', start.value + 1 ]
@@ -981,10 +981,10 @@ class StringMixin(MonadMixin):
 
             sql = [ 'SUBSTR', expr_sql, start_sql, len_sql ]
             return translator.StringExprMonad(translator, monad.type, sql)
-        
+
         if isinstance(monad, translator.StringConstMonad) and isinstance(index, translator.NumericConstMonad):
             return translator.ConstMonad.new(translator, monad.value[index.value])
-        if index.type is not int: throw(TypeError, 
+        if index.type is not int: throw(TypeError,
             'String indices must be integers. Got %r in expression {EXPR}' % type2str(index.type))
         expr_sql = monad.getsql()[0]
         if isinstance(index, translator.NumericConstMonad):
@@ -1061,7 +1061,7 @@ class StringMixin(MonadMixin):
         return monad.strip(chars, 'LTRIM')
     def call_rstrip(monad, chars=None):
         return monad.strip(chars, 'RTRIM')
-    
+
 class ObjectMixin(MonadMixin):
     def mixin_init(monad):
         assert isinstance(monad.type, EntityMeta)
@@ -1123,7 +1123,7 @@ class AttrMonad(Monad):
             offset = attr.pk_columns_offset
             columns = parent_columns[offset:offset+len(attr.columns)]
         return [ [ 'COLUMN', alias, column ] for column in columns ]
-        
+
 class ObjectAttrMonad(ObjectMixin, AttrMonad):
     def __init__(monad, parent, attr):
         AttrMonad.__init__(monad, parent, attr)
@@ -1242,7 +1242,7 @@ class BufferConstMonad(BufferMixin, ConstMonad): pass
 class StringConstMonad(StringMixin, ConstMonad):
     def len(monad):
         return monad.translator.ConstMonad.new(monad.translator, len(monad.value))
-    
+
 class NumericConstMonad(NumericMixin, ConstMonad): pass
 class DateConstMonad(DateMixin, ConstMonad): pass
 class DatetimeConstMonad(DatetimeMixin, ConstMonad): pass
@@ -1275,7 +1275,7 @@ class BoolExprMonad(BoolMonad):
         else: return translator.NotMonad(translator, sql)
         return translator.BoolExprMonad(translator, negated_sql)
 
-cmp_ops = { '>=' : 'GE', '>' : 'GT', '<=' : 'LE', '<' : 'LT' }        
+cmp_ops = { '>=' : 'GE', '>' : 'GT', '<=' : 'LE', '<' : 'LT' }
 
 cmp_negate = { '<' : '>=', '<=' : '>', '==' : '!=', 'is' : 'is not' }
 cmp_negate.update((b, a) for a, b in cmp_negate.items())
@@ -1398,7 +1398,7 @@ class FuncDateMonad(FuncMonad):
     def call(monad, year, month, day):
         translator = monad.translator
         for x, name in zip((year, month, day), ('year', 'month', 'day')):
-            if not isinstance(x, translator.NumericMixin) or x.type is not int: throw(TypeError, 
+            if not isinstance(x, translator.NumericMixin) or x.type is not int: throw(TypeError,
                 "'%s' argument of date(year, month, day) function must be of 'int' type. Got: %r" % (name, type2str(x.type)))
             if not isinstance(x, translator.ConstMonad): throw(NotImplementedError)
         return translator.ConstMonad.new(translator, date(year.value, month.value, day.value))
@@ -1411,7 +1411,7 @@ class FuncDatetimeMonad(FuncDateMonad):
     def call(monad, *args):
         translator = monad.translator
         for x, name in zip(args, ('year', 'month', 'day', 'hour', 'minute', 'second', 'microsecond')):
-            if not isinstance(x, translator.NumericMixin) or x.type is not int: throw(TypeError, 
+            if not isinstance(x, translator.NumericMixin) or x.type is not int: throw(TypeError,
                 "'%s' argument of datetime(...) function must be of 'int' type. Got: %r" % (name, type2str(x.type)))
             if not isinstance(x, translator.ConstMonad): throw(NotImplementedError)
         return translator.ConstMonad.new(translator, datetime(*tuple(arg.value for arg in args)))
@@ -1468,7 +1468,7 @@ def minmax(monad, sqlop, *args):
     translator = monad.translator
     t = args[0].type
     if t == 'METHOD': raise_forgot_parentheses(args[0])
-    if t not in comparable_types: throw(TypeError, 
+    if t not in comparable_types: throw(TypeError,
         "Value of type %r is not valid as argument of %r function in expression {EXPR}"
         % (type2str(t), sqlop.lower()))
     for arg in args[1:]:
@@ -1484,14 +1484,14 @@ class FuncSelectMonad(FuncMonad):
     func = core.select
     def call(monad, queryset):
         translator = monad.translator
-        if not isinstance(queryset, translator.QuerySetMonad): throw(TypeError, 
+        if not isinstance(queryset, translator.QuerySetMonad): throw(TypeError,
             "'select' function expects generator expression, got: {EXPR}")
         return queryset
 
 class FuncExistsMonad(FuncMonad):
     func = core.exists
     def call(monad, arg):
-        if not isinstance(arg, monad.translator.SetMixin): throw(TypeError, 
+        if not isinstance(arg, monad.translator.SetMixin): throw(TypeError,
             "'exists' function expects generator expression or collection, got: {EXPR}")
         return arg.nonzero()
 
@@ -1564,7 +1564,7 @@ class AttrSetMonad(SetMixin, Monad):
                 return translator.BoolExprMonad(translator, [ sqlop, [ 'ROW' ] + item.getsql(), subquery_ast ])
             else:
                 conditions += [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item.getsql(), expr_list) ]
-                subquery_ast = [ not_in and 'NOT_EXISTS' or 'EXISTS', from_ast, [ 'WHERE' ] + conditions ] 
+                subquery_ast = [ not_in and 'NOT_EXISTS' or 'EXISTS', from_ast, [ 'WHERE' ] + conditions ]
                 return translator.BoolExprMonad(translator, subquery_ast)
         else: throw(NotImplementedError)
     def getattr(monad, name):
@@ -1637,16 +1637,16 @@ class AttrSetMonad(SetMixin, Monad):
         translator = monad.translator
         item_type = monad.type.item_type
 
-        if func_name in ('SUM', 'AVG'):        
-            if item_type not in numeric_types: throw(TypeError, 
+        if func_name in ('SUM', 'AVG'):
+            if item_type not in numeric_types: throw(TypeError,
                 "Function %s() expects query or items of numeric type, got %r in {EXPR}"
                 % (func_name.lower(), type2str(item_type)))
         elif func_name in ('MIN', 'MAX'):
-            if item_type not in comparable_types: throw(TypeError, 
+            if item_type not in comparable_types: throw(TypeError,
                 "Function %s() expects query or items of comparable type, got %r in {EXPR}"
                 % (func_name.lower(), type2str(item_type)))
         else: assert False
-            
+
         if monad.forced_distinct and func_name in ('SUM', 'AVG'):
             make_aggr = lambda expr_list: [ func_name ] + expr_list + [ True ]
         else:
@@ -1682,7 +1682,7 @@ class AttrSetMonad(SetMixin, Monad):
         if isinstance(parent, ObjectMixin): parent_tableref = parent.tableref
         elif isinstance(parent, translator.AttrSetMonad): parent_tableref = parent.make_tableref(subquery)
         else: assert False
-        if attr.reverse: 
+        if attr.reverse:
             name_path = parent_tableref.name_path + '-' + attr.name
             monad.tableref = subquery.get_tableref(name_path) \
                              or subquery.add_tableref(name_path, parent_tableref, attr)
@@ -1723,7 +1723,7 @@ class AttrSetMonad(SetMixin, Monad):
         from_ast = subquery.from_ast
         inner_conditions = subquery.conditions
         outer_conditions = subquery.outer_conditions
-        
+
         groupby_columns = [ inner_column[:] for cond, outer_column, inner_column in outer_conditions ]
         assert len(set(alias for _, alias, column in groupby_columns)) == 1
 
@@ -1756,7 +1756,7 @@ class AttrSetMonad(SetMixin, Monad):
                 tname, cname = inner_column[1:]
                 new_name = col_mapping[tname, cname]
                 outer_conditions[i] = [ cond, outer_column, [ 'COLUMN', inner_alias, new_name ] ]
-                
+
         subquery_columns = [ 'ALL' ]
         for column_ast in groupby_columns:
             assert column_ast[0] == 'COLUMN'
@@ -1772,7 +1772,7 @@ class AttrSetMonad(SetMixin, Monad):
         for cond in outer_conditions: cond[2][1] = alias
         translator.subquery.from_ast.append([ alias, 'SELECT', subquery_ast, sqland(outer_conditions) ])
         expr_ast = [ 'COLUMN', alias, expr_name ]
-        if coalesce_to_zero: expr_ast = [ 'COALESCE', expr_ast, [ 'VALUE', 0 ] ]        
+        if coalesce_to_zero: expr_ast = [ 'COALESCE', expr_ast, [ 'VALUE', 0 ] ]
         return expr_ast, False
     def _subselect(monad):
         if monad.subquery is not None: return monad.subquery
@@ -1886,7 +1886,7 @@ class QuerySetMonad(SetMixin, Monad):
                 subquery_ast = [ not_in and 'NOT_EXISTS' or 'EXISTS', sub.subquery.from_ast, [ 'WHERE' ] + conditions ]
                 return translator.BoolExprMonad(translator, subquery_ast)
         else: throw(NotImplementedError)
-    def nonzero(monad):        
+    def nonzero(monad):
         sub = monad.subtranslator
         sql_ast = [ 'EXISTS', sub.subquery.from_ast, [ 'WHERE' ] + sub.conditions ]
         translator = monad.translator
@@ -1945,14 +1945,14 @@ class QuerySetMonad(SetMixin, Monad):
         sub = monad.subtranslator
         expr_type = sub.expr_type
         if func_name in ('SUM', 'AVG'):
-            if expr_type not in numeric_types: throw(TypeError, 
+            if expr_type not in numeric_types: throw(TypeError,
                 "Function %s() expects query or items of numeric type, got %r in {EXPR}"
                 % (func_name.lower(), type2str(expr_type)))
         elif func_name in ('MIN', 'MAX'):
-            if expr_type not in comparable_types: throw(TypeError, 
+            if expr_type not in comparable_types: throw(TypeError,
                 "Function %s() cannot be applied to type %r in {EXPR}"
                 % (func_name.lower(), type2str(expr_type)))
-        else: assert False        
+        else: assert False
         assert len(sub.expr_columns) == 1
         select_ast = [ 'AGGREGATES', [ func_name, sub.expr_columns[0] ] ]
         result_type = func_name == 'AVG' and float or expr_type

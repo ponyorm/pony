@@ -66,7 +66,7 @@ def flat_conditions(conditions):
         if condition[0] == AND:
             result.extend(flat_conditions(condition[1:]))
         else: result.append(condition)
-    return result       
+    return result
 
 def join(delimiter, items):
     items = iter(items)
@@ -163,7 +163,7 @@ class SQLBuilder(object):
         else: throw(NotImplementedError, paramstyle)
         builder.params = params
         builder.layout = tuple(param.key for param in params)
-        builder.adapter = adapter 
+        builder.adapter = adapter
     def __call__(builder, ast):
         if isinstance(ast, basestring):
             throw(AstError, 'An SQL AST list was expected. Got string: %r' % ast)
@@ -330,7 +330,7 @@ class SQLBuilder(object):
         return '(', join(' OR ', cond_list), ')'
     def NOT(builder, condition):
         return 'NOT (', builder(condition), ')'
-    
+
     EQ  = make_binary_op(' = ')
     NE  = make_binary_op(' <> ')
     LT  = make_binary_op(' < ')
@@ -343,7 +343,7 @@ class SQLBuilder(object):
     DIV = make_binary_op(' / ', True)
     POW = make_binary_op(' ** ')
 
-    def CONCAT(builder, *args):        
+    def CONCAT(builder, *args):
         return '(',  join(' || ', map(builder, args)), ')'
     def NEG(builder, expr):
         return '-(', builder(expr), ')'

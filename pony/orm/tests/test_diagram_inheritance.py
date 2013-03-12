@@ -24,7 +24,7 @@ class TestInheritance(unittest.TestCase):
             b = PrimaryKey(int)
         class Entity3(Entity1, Entity2):
             c = Required(int)
-    
+
     def test_inheritance3(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
@@ -53,7 +53,7 @@ class TestInheritance(unittest.TestCase):
             id = PrimaryKey(int)
             a = Required(int)
         class Entity2(Entity1):
-            a = Required(int)            
+            a = Required(int)
 
     @raises_exception(ERDiagramError, "Primary key cannot be redefined in derived classes")
     def test_inheritance6(self):
@@ -62,6 +62,6 @@ class TestInheritance(unittest.TestCase):
             a = PrimaryKey(int)
         class Entity2(Entity1):
             b = PrimaryKey(int)
-            
+
 if __name__ == '__main__':
     unittest.main()

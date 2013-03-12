@@ -31,7 +31,7 @@ def isbn10_checksum(digits):
     reminder = sum(digit*coef for digit, coef in zip(map(int, digits), xrange(10, 1, -1))) % 11
     if reminder == 1: return 'X'
     return reminder and str(11 - reminder) or '0'
-    
+
 def isbn13_checksum(digits):
     if len(digits) != 12: raise ValueError
     reminder = sum(digit*coef for digit, coef in zip(map(int, digits), (1, 3)*6)) % 10
@@ -113,7 +113,7 @@ datetime_re_list = [ re.compile('^%s(?: %s)?$' % (date_str, time_str), re.UNICOD
 
 month_lists = [
     "jan feb mar apr may jun jul aug sep oct nov dec".split(),
-    u"янв фев мар апр май июн июл авг сен окт ноя дек".split(),  # Russian 
+    u"янв фев мар апр май июн июл авг сен окт ноя дек".split(),  # Russian
     ]
 month_dict = {}
 
@@ -122,7 +122,7 @@ for month_list in month_lists:
         month_dict[month] = i + 1
 
 month_dict[u'мая'] = 5  # Russian
-    
+
 def str2date(s):
     s = s.strip().lower()
     for date_re in date_re_list:
@@ -188,5 +188,5 @@ def str2py(value, type):
     try: return str2py(value)
     except ValidationError: raise
     except:
-        if value == '': return None 
+        if value == '': return None
         raise ValidationError(err_msg or 'Incorrect data')

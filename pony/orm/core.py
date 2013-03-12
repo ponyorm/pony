@@ -133,7 +133,7 @@ class TransactionIntegrityError(TransactionError):
     def __init__(exc, msg, original_exc=None):
         Exception.__init__(exc, msg)
         exc.original_exc = original_exc
-        
+
 class CommitException(TransactionError):
     def __init__(exc, msg, exceptions):
         Exception.__init__(exc, msg)
@@ -230,7 +230,7 @@ class Local(localbase):
     def __init__(local):
         local.db2cache = {}
 
-local = Local()        
+local = Local()
 
 class DbLocal(localbase):
     def __init__(dblocal):
@@ -465,7 +465,7 @@ class Database(object):
         return cursor
     @cut_traceback
     def generate_mapping(database, filename=None, check_tables=False, create_tables=False):
-        if create_tables and check_tables: throw(TypeError, 
+        if create_tables and check_tables: throw(TypeError,
             "Parameters 'check_tables' and 'create_tables' cannot be set to True at the same time")
 
         def get_columns(table, column_names):
@@ -509,9 +509,9 @@ class Database(object):
                     if not isinstance(attr, Set): throw(NotImplementedError)
                     reverse = attr.reverse
                     if not reverse.is_collection: # many-to-one:
-                        if attr.table is not None: throw(MappingError, 
+                        if attr.table is not None: throw(MappingError,
                             "Parameter 'table' is not allowed for many-to-one attribute %s" % attr)
-                        elif attr.columns: throw(NotImplementedError, 
+                        elif attr.columns: throw(NotImplementedError,
                             "Parameter 'column' is not allowed for many-to-one attribute %s" % attr)
                         continue
                     # many-to-many:
@@ -538,7 +538,7 @@ class Database(object):
                     m2m_table = schema.add_table(table_name)
                     m2m_columns_1 = attr.get_m2m_columns(is_reverse=False)
                     m2m_columns_2 = reverse.get_m2m_columns(is_reverse=True)
-                    if m2m_columns_1 == m2m_columns_2: throw(MappingError, 
+                    if m2m_columns_1 == m2m_columns_2: throw(MappingError,
                         'Different column names should be specified for attributes %s and %s' % (attr, reverse))
                     assert len(m2m_columns_1) == len(reverse.converters)
                     assert len(m2m_columns_2) == len(attr.converters)
@@ -604,7 +604,7 @@ class Database(object):
                     child_columns = get_columns(table, attr.columns)
                     table.add_foreign_key(None, child_columns, parent_table, parent_columns)
 
-        database.rollback()   
+        database.rollback()
         if create_tables: schema.create_tables()
 
         if not check_tables and not create_tables: return
@@ -679,7 +679,7 @@ class Attribute(object):
         else: attr.pk_offset = None
         attr.id = next_attr_id()
         if not isinstance(py_type, basestring) and not isinstance(py_type, type):
-            if py_type is datetime: throw(TypeError, 
+            if py_type is datetime: throw(TypeError,
                 'datetime is the module and cannot be used as attribute type. Use datetime.datetime instead')
             throw(TypeError, 'Incorrect type of attribute: %r' % py_type)
         if py_type == 'Entity' or (isinstance(py_type, EntityMeta) and py_type.__name__ == 'Entity'):
@@ -937,7 +937,7 @@ class Attribute(object):
                 cache.update_composite_index(obj, attrs, currents, vals, undo)
 
             obj._vals_[attr.name] = new_val
-                
+
             if not reverse: pass
             elif not is_reverse_call: attr.update_reverse(obj, old_val, new_val, undo_funcs)
             elif old_val not in (None, NOT_LOADED):
@@ -969,13 +969,13 @@ class Attribute(object):
             assert old_dbval is not NOT_LOADED
             if new_dbval is NOT_LOADED: diff = ''
             else: diff = ' (was: %s, now: %s)' % (old_dbval, new_dbval)
-            throw(UnrepeatableReadError, 
+            throw(UnrepeatableReadError,
                 'Value of %s.%s for %s was updated outside of current transaction%s'
                 % (obj.__class__.__name__, attr.name, obj, diff))
 
         if new_dbval is NOT_LOADED: obj._dbvals_.pop(attr.name, None)
         else: obj._dbvals_[attr.name] = new_dbval
-            
+
         wbit = bool(obj._wbits_ & bit)
         if not wbit:
             old_val = obj._vals_.get(attr.name, NOT_LOADED)
@@ -1045,7 +1045,7 @@ class Attribute(object):
                 reverse_pk_col_paths = reverse.entity._pk_paths_
                 if not attr.columns:
                     attr.columns = provider.get_default_column_names(attr, reverse_pk_columns)
-                elif len(attr.columns) != len(reverse_pk_columns): throw(MappingError, 
+                elif len(attr.columns) != len(reverse_pk_columns): throw(MappingError,
                     'Invalid number of columns specified for %s' % attr)
                 attr.col_paths = [ '-'.join((attr.name, paths)) for paths in reverse_pk_col_paths ]
                 attr.converters = []
@@ -1074,13 +1074,13 @@ class Attribute(object):
         return DescWrapper(attr)
     def describe(attr):
         t = attr.py_type
-        if isinstance(t, type): t = t.__name__            
+        if isinstance(t, type): t = t.__name__
         result = "%s(%s)" % (attr.__class__.__name__, t)
         return "%s = %s" % (attr.name,result)
 
 class Optional(Attribute):
     __slots__ = []
-    
+
 class Required(Attribute):
     __slots__ = []
     def check(attr, val, obj=None, entity=None, from_db=False):
@@ -1099,13 +1099,13 @@ class Discriminator(Required):
         Attribute.__init__(attr, py_type, *args, **kwargs)
         attr.code2cls = {}
     def _init_(attr, entity, name):
-        if entity._root_ is not entity: throw(ERDiagramError, 
+        if entity._root_ is not entity: throw(ERDiagramError,
             'Discriminator attribute %s cannot be declared in subclass' % attr)
         Required._init_(attr, entity, name)
         entity._discriminator_attr_ = attr
     @staticmethod
     def create_default_attr(entity):
-        if hasattr(entity, 'classtype'): throw(ERDiagramError, 
+        if hasattr(entity, 'classtype'): throw(ERDiagramError,
             "Cannot create discriminator column for %s automatically "
             "because name 'classtype' is already in use" % entity.__name__)
         attr = Discriminator(str, column='classtype')
@@ -1122,7 +1122,7 @@ class Discriminator(Required):
             discr_value = entity._discriminator_ = entity.__name__
         discr_type = type(discr_value)
         for code, cls in attr.code2cls.items():
-            if type(code) != discr_type: throw(ERDiagramError, 
+            if type(code) != discr_type: throw(ERDiagramError,
                 'Discriminator values %r and %r of entities %s and %s have different types'
                 % (code, discr_value, cls, entity))
         attr.code2cls[discr_value] = entity
@@ -1233,7 +1233,7 @@ class Collection(Attribute):
         if attr.default is not None:
             throw(TypeError, 'Default value could not be set for collection attribute')
         attr.symmetric = (attr.py_type == entity.__name__ and attr.reverse == name)
-        if not attr.symmetric and attr.reverse_columns: throw(TypeError, 
+        if not attr.symmetric and attr.reverse_columns: throw(TypeError,
             "'reverse_column' and 'reverse_columns' options can be set for symmetric relations only")
         if attr.reverse_columns and len(attr.reverse_columns) != len(attr.columns):
             throw(TypeError, "Number of columns and reverse columns for symmetric attribute %s do not match" % attr)
@@ -1315,7 +1315,7 @@ class Set(Collection):
                 if len(objects) >= max_batch_size: break
 
         value_dict = dict(enumerate(objects))
-            
+
         if not reverse.is_collection:
             sql, adapter, attr_offsets = rentity._construct_batchload_sql_(len(objects), reverse)
             arguments = adapter(value_dict)
@@ -1342,7 +1342,7 @@ class Set(Collection):
                 else:
                     phantoms = setdata2 - items
                     phantoms.difference_update(setdata2.added)
-                    if phantoms: throw(UnrepeatableReadError, 
+                    if phantoms: throw(UnrepeatableReadError,
                         'Phantom object %r disappeared from collection %r.%s' % (phantoms.pop(), obj, attr.name))
                 items -= setdata2
                 items.difference_update(setdata2.removed)
@@ -1373,7 +1373,7 @@ class Set(Collection):
         select_list.extend([ 'COLUMN', 'T1', column ] for column in columns)
         from_list = [ 'FROM', [ 'T1', 'TABLE', table_name ]]
         database = attr.entity._database_
-        
+
         if batch_size == 1:
             criteria_list = []
             for i, (column, converter) in enumerate(zip(rcolumns, rconverters)):
@@ -1464,7 +1464,7 @@ class Set(Collection):
             setdata = obj._vals_.get(attr.name, NOT_LOADED)
             if setdata is NOT_LOADED:
                 setdata = obj._vals_[attr.name] = SetData()
-            if setdata.added is EMPTY: setdata.added = set()  
+            if setdata.added is EMPTY: setdata.added = set()
             elif item in setdata.added: raise AssertionError
             in_setdata = item in setdata
             in_removed = item in setdata.removed
@@ -1525,7 +1525,7 @@ class Set(Collection):
                 if not is_reverse: return attr.columns
                 else: return attr.reverse_columns
             if attr.columns:
-                if len(attr.columns) != len(entity._get_pk_columns_()): throw(MappingError, 
+                if len(attr.columns) != len(entity._get_pk_columns_()): throw(MappingError,
                     'Invalid number of columns for %s' % attr.reverse)
             else:
                 provider = attr.entity._database_.provider
@@ -1540,7 +1540,7 @@ class Set(Collection):
         reverse = attr.reverse
         if attr._columns_checked: return attr.reverse.columns
         elif reverse.columns:
-            if len(reverse.columns) != len(entity._get_pk_columns_()): throw(MappingError, 
+            if len(reverse.columns) != len(entity._get_pk_columns_()): throw(MappingError,
                 'Invalid number of columns for %s' % reverse)
         else:
             provider = attr.entity._database_.provider
@@ -1839,7 +1839,7 @@ class EntityMeta(type):
                 if database is None: throw(ERDiagramError, 'Base Entity does not belong to any database')
                 databases.add(database)
         if not databases: assert False
-        elif len(databases) > 1: throw(ERDiagramError, 
+        elif len(databases) > 1: throw(ERDiagramError,
             'With multiple inheritance of entities, all entities must belong to the same database')
         database = databases.pop()
 
@@ -1859,7 +1859,7 @@ class EntityMeta(type):
             base._subclasses_.add(entity)
         if direct_bases:
             roots = set(base._root_ for base in direct_bases)
-            if len(roots) > 1: throw(ERDiagramError, 
+            if len(roots) > 1: throw(ERDiagramError,
                 'With multiple inheritance of entities, inheritance graph must be diamond-like')
             root = entity._root_ = roots.pop()
             if root._discriminator_attr_ is None:
@@ -1877,7 +1877,7 @@ class EntityMeta(type):
                 if prev is None:
                     base_attrs_dict[a.name] = a
                     base_attrs.append(a)
-                elif prev is not a: throw(ERDiagramError, 
+                elif prev is not a: throw(ERDiagramError,
                     'Attribute "%s" clashes with attribute "%s" in derived entity "%s"'
                     % (prev, a, entity.__name__))
         entity._base_attrs_ = base_attrs
@@ -1886,9 +1886,9 @@ class EntityMeta(type):
         for name, attr in entity.__dict__.items():
             if name in base_attrs_dict: throw(ERDiagramError, "Name '%s' hides base attribute %s" % (name,base_attrs_dict[name]))
             if not isinstance(attr, Attribute): continue
-            if name.startswith('_') and name.endswith('_'): throw(ERDiagramError, 
+            if name.startswith('_') and name.endswith('_'): throw(ERDiagramError,
                 'Attribute name cannot both start and end with underscore. Got: %s' % name)
-            if attr.entity is not None: throw(ERDiagramError, 
+            if attr.entity is not None: throw(ERDiagramError,
                 'Duplicate use of attribute %s in entity %s' % (attr, entity.__name__))
             attr._init_(entity, name)
             new_attrs.append(attr)
@@ -1899,7 +1899,7 @@ class EntityMeta(type):
             if attr.is_unique: keys[(attr,)] = isinstance(attr, PrimaryKey)
         for key, is_pk in keys.items():
             for attr in key:
-                if attr.entity is not entity: throw(ERDiagramError, 
+                if attr.entity is not entity: throw(ERDiagramError,
                     'Invalid use of attribute %s in entity %s' % (attr, entity.__name__))
                 if attr.is_collection or attr.is_discriminator or (is_pk and not attr.is_required and not attr.auto):
                     throw(TypeError, '%s attribute %s cannot be part of %s'
@@ -1911,7 +1911,7 @@ class EntityMeta(type):
                     if attr.nullable is False:
                         throw(TypeError, 'Optional attribute %s must be nullable, because it is part of composite key' % attr)
                     attr.nullable = True
-                
+
         primary_keys = set(key for key, is_pk in keys.items() if is_pk)
         if direct_bases:
             if primary_keys: throw(ERDiagramError, 'Primary key cannot be redefined in derived classes')
@@ -1922,7 +1922,7 @@ class EntityMeta(type):
 
         if len(primary_keys) > 1: throw(ERDiagramError, 'Only one primary key can be defined in each entity class')
         elif not primary_keys:
-            if hasattr(entity, 'id'): throw(ERDiagramError, 
+            if hasattr(entity, 'id'): throw(ERDiagramError,
                 "Cannot create primary key for %s automatically because name 'id' is alredy in use" % entity.__name__)
             attr = PrimaryKey(int, auto=True)
             attr._init_(entity, 'id')
@@ -1961,10 +1961,10 @@ class EntityMeta(type):
         except KeyError: entity._table_ = None
         else:
             if not isinstance(table_name, basestring):
-                if not isinstance(table_name, (list, tuple)): throw(TypeError, 
+                if not isinstance(table_name, (list, tuple)): throw(TypeError,
                     '%s._table_ property must be a string. Got: %r' % (entity.__name__, table_name))
                 for name_part in table_name:
-                    if not isinstance(name_part, basestring):throw(TypeError, 
+                    if not isinstance(name_part, basestring):throw(TypeError,
                         'Each part of table name must be a string. Got: %r' % name_part)
                 entity._table_ = table_name = tuple(table_name)
 
@@ -2011,7 +2011,7 @@ class EntityMeta(type):
                     continue
                 attr.py_type = py_type = entity2
             elif not issubclass(py_type, Entity): continue
-            
+
             entity2 = py_type
             if entity2._database_ is not database:
                 throw(ERDiagramError, 'Interrelated entities must belong to same database. '
@@ -2051,16 +2051,16 @@ class EntityMeta(type):
             reverse2 = attr2.reverse
             if reverse2 not in (None, attr, attr.name): throw(ERDiagramError, msg % (attr,attr2))
 
-            if attr.is_required and attr2.is_required: throw(ERDiagramError, 
+            if attr.is_required and attr2.is_required: throw(ERDiagramError,
                 "At least one attribute of one-to-one relationship %s - %s must be optional" % (attr, attr2))
 
             attr.reverse = attr2
             attr2.reverse = attr
             attr.linked()
             attr2.linked()
-            unmapped_attrs.discard(attr2)          
+            unmapped_attrs.discard(attr2)
         for attr in unmapped_attrs:
-            throw(ERDiagramError, 'Reverse attribute for %s.%s was not found' % (attr.entity.__name__, attr.name))        
+            throw(ERDiagramError, 'Reverse attribute for %s.%s was not found' % (attr.entity.__name__, attr.name))
     def _get_pk_columns_(entity):
         if entity._pk_columns_ is not None: return entity._pk_columns_
         pk_columns = []
@@ -2089,7 +2089,7 @@ class EntityMeta(type):
                 val = kwargs.get(attr.name, DEFAULT)
                 avdict[attr] = attr.check(val, None, entity, from_db=False)
         else:
-            get = entity._adict_.get 
+            get = entity._adict_.get
             for name, val in kwargs.items():
                 attr = get(name)
                 if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
@@ -2099,7 +2099,7 @@ class EntityMeta(type):
             if None in pkval: pkval = None
             else: pkval = tuple(pkval)
         else: pkval = avdict.get(entity._pk_)
-        return pkval, avdict        
+        return pkval, avdict
     @cut_traceback
     def __getitem__(entity, key):
         if type(key) is not tuple: key = (key,)
@@ -2144,7 +2144,7 @@ class EntityMeta(type):
     def _find_(entity, max_fetch_count, args, kwargs):
         if entity._database_.schema is None:
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
-        
+
         if args:
             first_arg = args[0]
             if not (isinstance(first_arg, types.FunctionType)
@@ -2159,7 +2159,7 @@ class EntityMeta(type):
 
         pkval, avdict = entity._normalize_args_(kwargs, False)
         for attr in avdict:
-            if attr.is_collection: throw(TypeError, 
+            if attr.is_collection: throw(TypeError,
                 'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
         try:
             objects = entity._find_in_cache_(pkval, avdict)
@@ -2248,12 +2248,12 @@ class EntityMeta(type):
             else: attr_offsets[attr] = offsets
         if len(used_columns) < len(col_names):
             for i in range(len(col_names)):
-                if i not in used_columns: throw(NameError, 
+                if i not in used_columns: throw(NameError,
                     'Column %s does not belong to entity %s' % (cursor.description[i][0], entity.__name__))
         for attr in entity._pk_attrs_:
-            if attr not in attr_offsets: throw(ValueError, 
+            if attr not in attr_offsets: throw(ValueError,
                 'Primary key attribue %s was not found in query result set' % attr)
-        
+
         objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count)
         return objects
     def _construct_select_clause_(entity, alias=None, distinct=False):
@@ -2308,7 +2308,7 @@ class EntityMeta(type):
 
         discr_criteria = entity._construct_discriminator_criteria_()
         if discr_criteria: criteria_list.insert(0, discr_criteria)
-            
+
         sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
@@ -2358,9 +2358,9 @@ class EntityMeta(type):
         if max_fetch_count is not None:
             rows = cursor.fetchmany(max_fetch_count + 1)
             if len(rows) == max_fetch_count + 1:
-                if max_fetch_count == 1: throw(MultipleObjectsFoundError, 
+                if max_fetch_count == 1: throw(MultipleObjectsFoundError,
                     'Multiple objects were found. Use %s.select(...) to retrieve them' % entity.__name__)
-                throw(TooManyObjectsFoundError, 
+                throw(TooManyObjectsFoundError,
                     'Found more then pony.options.MAX_FETCH_COUNT=%d objects' % options.MAX_FETCH_COUNT)
         else: rows = cursor.fetchall()
         objects = []
@@ -2388,7 +2388,7 @@ class EntityMeta(type):
             offsets = attr_offsets.get(attr)
             if offsets is None or attr.is_discriminator: continue
             avdict[attr] = attr.parse_value(row, offsets)
-        if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_, None)            
+        if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_, None)
         else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
         return real_entity_subclass, pkval, avdict
     def _load_many_(entity, objects):
@@ -2428,7 +2428,7 @@ class EntityMeta(type):
             if lambda_expr.kwargs: throw(TypeError)
             if lambda_expr.defaults: throw(TypeError)
             code_key = lambda_text
-            name = lambda_expr.argnames[0]            
+            name = lambda_expr.argnames[0]
             cond_expr = lambda_expr.code
         else: assert False
 
@@ -2452,10 +2452,10 @@ class EntityMeta(type):
         elif status == 'created':
             if entity._pk_is_composite_: pkval = ', '.join(str(item) for item in pkval)
             throw(CacheIndexError, 'Cannot create %s: instance with primary key %s already exists'
-                             % (obj.__class__.__name__, pkval))                
+                             % (obj.__class__.__name__, pkval))
         elif obj.__class__ is entity: return obj
         elif issubclass(obj.__class__, entity): return obj
-        elif not issubclass(entity, obj.__class__): throw(TransactionError, 
+        elif not issubclass(entity, obj.__class__): throw(TransactionError,
             'Unexpected class change from %s to %s for object with primary key %r' %
             (obj.__class__, entity, obj._pkval_))
         elif obj._rbits_ or obj._wbits_: throw(NotImplementedError)
@@ -2591,7 +2591,7 @@ class Entity(object):
         indexes = {}
         for attr in entity._simple_keys_:
             val = avdict[attr]
-            if val in cache.indexes.setdefault(attr, {}): throw(CacheIndexError, 
+            if val in cache.indexes.setdefault(attr, {}): throw(CacheIndexError,
                 'Cannot create %s: value %s for key %s already exists' % (entity.__name__, val, attr.name))
             indexes[attr] = val
         for attrs in entity._composite_keys_:
@@ -2675,9 +2675,9 @@ class Entity(object):
             elif old_dbval == new_dbval:
                 del avdict[attr]
                 continue
-            
+
             bit = obj._bits_[attr]
-            if rbits & bit: throw(UnrepeatableReadError, 
+            if rbits & bit: throw(UnrepeatableReadError,
                 'Value of %s.%s for %s was updated outside of current transaction (was: %r, now: %r)'
                 % (obj.__class__.__name__, attr.name, obj, old_dbval, new_dbval))
 
@@ -2772,7 +2772,7 @@ class Entity(object):
                 obj2 = index.pop(val)
                 assert obj2 is obj
                 undo_list.append((index, val))
-                
+
             for attrs in obj._composite_keys_:
                 vals = tuple(get_val(a.name, NOT_LOADED) for a in attrs)
                 if NOT_LOADED in vals: continue
@@ -2966,7 +2966,7 @@ class Entity(object):
             else: database._exec_sql(sql, arguments)
         except IntegrityError, e:
             msg = " ".join(tostring(arg) for arg in e.args)
-            throw(TransactionIntegrityError, 
+            throw(TransactionIntegrityError,
                 'Object %r cannot be stored in the database (probably it already exists). DB message: %s' % (obj, msg), e)
         except DatabaseError, e:
             msg = " ".join(tostring(arg) for arg in e.args)
@@ -2975,11 +2975,11 @@ class Entity(object):
         if auto_pk:
             index = obj._cache_.indexes.setdefault(pk_attr, {})
             obj2 = index.setdefault(new_id, obj)
-            if obj2 is not obj: throw(TransactionIntegrityError, 
+            if obj2 is not obj: throw(TransactionIntegrityError,
                 'Newly auto-generated id value %s was already used in transaction cache for another object' % new_id)
             obj._pkval_ = obj._vals_[pk_attr.name] = new_id
             obj._newid_ = None
-            
+
         obj._status_ = 'saved'
         obj._rbits_ = obj._all_bits_
         obj._wbits_ = 0
@@ -3063,7 +3063,7 @@ class Entity(object):
             values.extend(attr.get_raw_values(dbval))
         query_key = tuple(optimistic_check_columns)
         database = obj._database_
-        cached_sql = obj._lock_sql_cache_.get(query_key)        
+        cached_sql = obj._lock_sql_cache_.get(query_key)
         if cached_sql is None:
             where_list = [ 'WHERE' ]
             params_count = populate_criteria_list(where_list, obj._pk_columns_, obj._pk_converters_)
@@ -3180,7 +3180,7 @@ class Cache(object):
         if debug: log_orm('RELEASE_CONNECTION')
         provider.release(connection)
     def has_anything_to_save(cache):
-        return bool(cache.created or cache.updated or cache.deleted or cache.modified_collections)                    
+        return bool(cache.created or cache.updated or cache.deleted or cache.modified_collections)
     def save(cache, optimistic=True):
         cache.optimistic = optimistic
         if not cache.has_anything_to_save(): return
@@ -3202,7 +3202,7 @@ class Cache(object):
             pkval = obj._pkval_
             index = indexes[obj.__class__._pk_]
             index.pop(pkval)
-            
+
         cache.deleted[:] = []
         cache.modified_collections.clear()
         cache.to_be_checked[:] = []
@@ -3239,7 +3239,7 @@ class Cache(object):
         elif new_dbval is None and cache.ignore_none: pass
         else:
             obj2 = index.setdefault(new_dbval, obj)
-            if obj2 is not obj: throw(TransactionIntegrityError, 
+            if obj2 is not obj: throw(TransactionIntegrityError,
                 '%s with unique index %s.%s already exists: %s'
                 % (obj2.__class__.__name__, obj.__class__.__name__, attr.name, new_dbval))
                 # attribute which was created or updated lately clashes with one stored in database
@@ -3285,7 +3285,7 @@ def _get_caches():
 @cut_traceback
 def flush():
     for cache in _get_caches(): cache.flush()
-        
+
 @cut_traceback
 def commit():
     caches = _get_caches()
@@ -3308,7 +3308,7 @@ def commit():
             reraise(PartialCommitException, exceptions)
     finally:
         del exceptions
-        
+
 @cut_traceback
 def rollback():
     exceptions = []
@@ -3356,7 +3356,7 @@ def with_transaction(func, retry=1, retry_exceptions=[ TransactionError ], allow
             except Exception, e:
                 for exc_class in retry_exceptions:
                     if isinstance(e, exc_class): break # for
-                else: raise                    
+                else: raise
             counter -= 1
     return new_func
 
@@ -3428,7 +3428,7 @@ sum = make_aggrfunc(_sum)
 min = make_aggrfunc(_min)
 max = make_aggrfunc(_max)
 avg = make_aggrfunc(_avg)
-    
+
 @cut_traceback
 def exists(gen):
     return select(gen).exists()
@@ -3462,7 +3462,7 @@ def extract_vars(extractors, globals, locals):
                 unsupported = False
                 try: value = tuple(value)
                 except: unsupported = True
-            else: unsupported = True                    
+            else: unsupported = True
             if unsupported:
                 typename = type(value).__name__
                 if src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
@@ -3554,14 +3554,14 @@ class Query(object):
     def get(query):
         objects = query[:2]
         if not objects: return None
-        if len(objects) > 1: throw(MultipleObjectsFoundError, 
+        if len(objects) > 1: throw(MultipleObjectsFoundError,
             'Multiple objects were found. Use select(...) to retrieve them')
         return objects[0]
     @cut_traceback
     def first(query):
         translator = query._translator
         if translator.order: pass
-        elif type(translator.expr_type) is tuple:        
+        elif type(translator.expr_type) is tuple:
             query = query.orderby(*[i+1 for i in range(len(query._translator.expr_type))])
         else:
             query = query.orderby(1)
@@ -3685,7 +3685,7 @@ class Query(object):
                     attr = x
                     desc_wrapper = lambda column: column
                 else: assert False, x
-                if entity._adict_.get(attr.name) is not attr: throw(TypeError, 
+                if entity._adict_.get(attr.name) is not attr: throw(TypeError,
                     'Attribute %s does not belong to Entity %s' % (attr, entity.__name__))
                 for column in attr.columns:
                     order.append(desc_wrapper([ 'COLUMN', alias, column]))

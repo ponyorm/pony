@@ -22,7 +22,7 @@ class Bio(db.Entity):
     desc = Required(unicode)
     Student = Required(Student)
 
-db.generate_mapping(create_tables=True)    
+db.generate_mapping(create_tables=True)
 
 class TestRawSql(unittest.TestCase):
     def setUp(self):
@@ -54,4 +54,4 @@ class TestRawSql(unittest.TestCase):
         students = Student.select(123)
 
 if __name__ == '__main__':
-    unittest.main()        
+    unittest.main()

@@ -14,7 +14,7 @@ from pony.utils import is_utf8, throw
 
 trigger_template = """
 create trigger %s
-  before insert on %s  
+  before insert on %s
   for each row
 begin
   if :new.%s is null then
@@ -54,7 +54,7 @@ class OraTable(dbschema.Table):
 
 class OraColumn(dbschema.Column):
     auto_template = None
-    
+
 class OraSchema(dbschema.DBSchema):
     table_class = OraTable
     column_class = OraColumn
@@ -67,12 +67,12 @@ class OraNoneMonad(sqltranslation.NoneMonad):
 class OraTranslator(sqltranslation.SQLTranslator):
     dialect = 'Oracle'
     NoneMonad = OraNoneMonad
-    
+
     @classmethod
     def get_normalized_type_of(translator, value):
         if value == '': return NoneType
         return sqltranslation.SQLTranslator.get_normalized_type_of(value)
-        
+
 class OraBuilder(sqlbuilding.SQLBuilder):
     dialect = 'Oracle'
     def INSERT(builder, table_name, columns, values, returning=None):
@@ -174,7 +174,7 @@ class OraBlobConverter(dbapiprovider.BlobConverter):
 class OraDateConverter(dbapiprovider.DateConverter):
     def sql2py(converter, val):
         if isinstance(val, datetime): return val.date()
-        if not isinstance(val, date): throw(ValueError, 
+        if not isinstance(val, date): throw(ValueError,
             'Value of unexpected type received from database: instead of date got %s', type(val))
         return val
 
@@ -241,7 +241,7 @@ class OraProvider(DBAPIProvider):
             if '/' in conn_str:
                 user, tail = conn_str.split('/', 1)
                 if '@' in tail: password, dsn = tail.split('@', 1)
-            if None in (user, password, dsn): throw(ValueError, 
+            if None in (user, password, dsn): throw(ValueError,
                 "Incorrect connection string (must be in form of 'user/password@dsn')")
         elif len(args) == 2: user, password = args
         elif len(args) == 3: user, password, dsn = args

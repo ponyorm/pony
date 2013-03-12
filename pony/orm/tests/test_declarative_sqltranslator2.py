@@ -27,7 +27,7 @@ class Course(db.Entity):
     dept = Required(Department)
     students = Set("Student")
     PrimaryKey(name, semester)
-    
+
 class Student(db.Entity):
     id = PrimaryKey(int, auto=True)
     name = Required(unicode)
@@ -191,6 +191,6 @@ class TestSQLTranslator2(unittest.TestCase):
             pass
         u2 = Unicode2(u'\xf0')
         select(s for s in Student if len(u2) == 1)
-        
+
 if __name__ == "__main__":
     unittest.main()

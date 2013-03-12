@@ -8,7 +8,7 @@ class Person(db.Entity):
     name = Required(unicode)
     friends = Set('Person', reverse='friends')
 
-db.generate_mapping(create_tables=True)    
+db.generate_mapping(create_tables=True)
 
 class TestSymmetric(unittest.TestCase):
     def setUp(self):
@@ -44,7 +44,7 @@ class TestSymmetric(unittest.TestCase):
         commit()
         rows = db.select("* from Person_friends order by person, person_2")
         self.assertEqual(rows, [(1,2), (1,3), (1,4), (2,1), (3,1), (4,1)])
-        
+
     def test2a(self):
         p1 = Person[1]
         p2 = Person[2]
