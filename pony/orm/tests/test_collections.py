@@ -20,7 +20,7 @@ class TestCollections(unittest.TestCase):
 ##False
 ##>>> s2 = Student[104]
 ##>>> g.students = [s2]
-##>>> 
+##>>>
 
 # replace collection items when the old ones are not loaded
 ##>>> from pony.examples.orm.students01.model import *
@@ -32,4 +32,4 @@ class TestCollections(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()    
+    unittest.main()

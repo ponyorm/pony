@@ -125,7 +125,7 @@ class Feed(object):
             entry_xml[-1].tail = indent
             xml.append(entry_xml)
 
-        for child in xml: child.tail = indent   
+        for child in xml: child.tail = indent
         xml[-1].tail = pretty_print and '\n' or ''
         return xml
     def rss2(feed, pretty_print=True):

@@ -872,4 +872,3 @@ class Grid(BaseWidget):
                 hidden = getattr(field, 'hidden', None)
                 if hidden: result.append(hidden)
         return Html('\n').join(result)
-    

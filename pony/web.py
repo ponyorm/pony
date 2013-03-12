@@ -180,7 +180,7 @@ class Local(localbase):
         local.response = HttpResponse()
         local.no_cookies = False
 
-local = Local()        
+local = Local()
 
 def get_cookie(name, default=None):
     morsel = local.request.cookies.get(name)
@@ -289,7 +289,7 @@ def invoke(url):
         routes = routing.get_routes(path, qdict, 'GET', request.host, request.port)
         if routes: raise Http405MethodNotAllowed
         raise Http404NotFound
-    
+
     route, args, kwargs = routes[0]
 
     if route.redirect:
@@ -382,7 +382,7 @@ def app(environ):
     content_type = headers.get('Content-Type', 'text/plain')
     media_type, type_params = cgi.parse_header(content_type)
     charset = type_params.get('charset', 'iso-8859-1')
-    if isinstance(result, basestring): 
+    if isinstance(result, basestring):
         if media_type == 'text/html' and postprocessing:
             if no_exception:
                   result = postprocess(result, response.base_stylesheets, response.component_stylesheets, response.scripts)
@@ -482,7 +482,7 @@ def stop_http_server(address=None):
 
 class Http(object):
     NO_REDIRECT = True
-    
+
     invoke = staticmethod(invoke)
     remove = staticmethod(routing.remove)
     clear = staticmethod(routing.clear)

@@ -48,4 +48,3 @@ def test_quote():
 if __name__ == '__main__':
     test_quote()
     import time; time.sleep(1)
-    

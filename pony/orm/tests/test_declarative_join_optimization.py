@@ -23,7 +23,7 @@ class Course(db.Entity):
     credits = Required(int)
     students = Set("Student")
     PrimaryKey(name, semester)
-    
+
 class Student(db.Entity):
     id = PrimaryKey(int, auto=True)
     name = Required(unicode)
@@ -61,7 +61,7 @@ class TestM2MOptimization(unittest.TestCase):
     def test7(self):
         q = select(s for s in Student if sum(c.credits for c in Course if s.group.dept == c.dept) > 10)
         objects = q[:]
-        self.assertEquals(str(q._translator.subquery.from_ast), 
+        self.assertEquals(str(q._translator.subquery.from_ast),
             "['FROM', ['s', 'TABLE', 'Student'], ['group-1', 'TABLE', 'Group', ['EQ', ['COLUMN', 's', 'group'], ['COLUMN', 'group-1', 'number']]]]")
 
 

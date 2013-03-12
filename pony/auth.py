@@ -217,7 +217,7 @@ def get_ticket(payload=None, prevent_resubmit=False):
     else:
         assert isinstance(payload, str)
         payload = compress(payload)
-        
+
     now = int(time()) // 60
     now_str = '%x' % now
     rnd = os.urandom(8)
@@ -273,7 +273,7 @@ def dumps(obj):
     if type == 'json': return compress(simplejson.dumps(obj, separators=(',', ':')))
     elif type == 'pickle': return compress(cPickle.dumps(obj, 2))
     else: raise TypeError("Incorrect value of pony.options.COOKIE_SERIALIZATION_TYPE (must be 'json' or 'pickle')")
-    
+
 if not pony.MODE.startswith('GAE-'):
 
     from Queue import Queue
@@ -363,7 +363,7 @@ if not pony.MODE.startswith('GAE-'):
     sql_create = """
     create table if not exists time_secrets (
         minute integer primary key,
-        secret blob not null    
+        secret blob not null
         );
     create table if not exists used_tickets (
         minute integer not null,

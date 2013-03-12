@@ -166,9 +166,9 @@ if LOG_TO_SQLITE:
     sql_create = """
     create table if not exists log (
         id           integer primary key, -- autoincremented row id
-        timestamp    timestamp not null,  
+        timestamp    timestamp not null,
         type         text not null,       -- for example HTTP:GET or SQL:SELECT
-        severity     integer,             
+        severity     integer,
         process_id   integer  not null,
         thread_id    integer  not null,
         trans_id     integer,             -- reserved for future use; must be NULL

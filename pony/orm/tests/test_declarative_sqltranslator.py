@@ -40,10 +40,10 @@ class Grade(db.Entity):
     value = Required(str)
     date = Optional(date)
     teacher = Required('Teacher')
-    
+
 class Teacher(db.Entity):
     name = Required(unicode)
-    grades = Set(Grade)    
+    grades = Set(Grade)
 
 class Room(db.Entity):
     name = PrimaryKey(unicode)
@@ -95,7 +95,7 @@ class TestSQLTranslator(unittest.TestCase):
     def test_select1(self):
         result = set(select(s for s in Student))
         self.assertEquals(result, set([Student[1], Student[2], Student[3]]))
-    def test_select_param(self):        
+    def test_select_param(self):
         result = select(s for s in Student if s.name == name1)[:]
         self.assertEquals(result, [Student[1]])
     def test_select_object_param(self):
@@ -129,7 +129,7 @@ class TestSQLTranslator(unittest.TestCase):
     def test_min3(self):
         d = date(2011, 1, 1)
         result = set(select(g for g in Grade if min(g.date, d) == d))
-        self.assertEquals(result, set([Grade[Student[1], Course[u'Math', 1]], 
+        self.assertEquals(result, set([Grade[Student[1], Course[u'Math', 1]],
             Grade[Student[1], Course[u'Physics', 2]]]))
     def test_function_len1(self):
         result = select(s for s in Student if len(s.grades) == 1)[:]
@@ -183,13 +183,13 @@ class TestSQLTranslator(unittest.TestCase):
         self.assertEquals(result, set([Student[2]]))
     def test_slice(self):
         result = set(select(s for s in Student if s.name[:1] == 'S'))
-        self.assertEquals(result, set([Student[3], Student[2], Student[1]]))        
+        self.assertEquals(result, set([Student[3], Student[2], Student[1]]))
     def test_attr_chain(self):
         s1 = Student[1]
         result = select(s for s in Student if s == s1)[:]
         self.assertEquals(result, [Student[1]])
         result = select(s for s in Student if not s == s1)[:]
-        self.assertEquals(result, [Student[2], Student[3]])        
+        self.assertEquals(result, [Student[2], Student[3]])
         result = select(s for s in Student if s.group == s1.group)[:]
         self.assertEquals(result, [Student[1], Student[2]])
         result = select(s for s in Student if s.group.dept == s1.group.dept)[:]
@@ -221,11 +221,11 @@ class TestSQLTranslator(unittest.TestCase):
     def test_None_value3(self):
         n = None
         result = select(s for s in Student if s.name == n)[:]
-        self.assertEquals(result, [])        
+        self.assertEquals(result, [])
     def test_None_value4(self):
         n = None
         result = select(s for s in Student if n == s.name)[:]
-        self.assertEquals(result, [])   
+        self.assertEquals(result, [])
     @raises_exception(TranslationError, "External parameter 'a' cannot be used as query result")
     def test_expr1(self):
         a = 100
@@ -300,7 +300,7 @@ class TestSQLTranslator(unittest.TestCase):
         self.assertEquals(result, set([Course['Physics', 2]]))
     def test_composite_key7(self):
         result = set(select(c for s in Student for c in s.courses))
-        self.assertEquals(result, set([Course['Math', 1], Course['Economics', 1]]))     
+        self.assertEquals(result, set([Course['Math', 1], Course['Economics', 1]]))
     def test_contains1(self):
         s1 = Student[1]
         result = set(select(g for g in Group if s1 in g.students))
@@ -329,7 +329,7 @@ class TestSQLTranslator(unittest.TestCase):
         result = set(select(s for s in Student if JOIN(max(s.courses.credits) == 3)))
         self.assertEquals(result, set([Student[2]]))
 
-        
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -101,7 +101,7 @@ class TkMainWindow(Frame):
         self.width = w = 1000
         self.height = h = 600
         self.root=root
-        self.after_handler = None 
+        self.after_handler = None
         self.root.title('Pony')
         self.records=[]
         self.tab_buttons=[]
@@ -239,7 +239,7 @@ class HttpRequestRecord(Record):
 
         session_text = pprint.pformat(data['session'])
         widget.session_field.insert(END, session_text)
-            
+
         process_id = self.data['process_id']
         thread_id = self.data['thread_id']
         record_id = self.data['id']
@@ -275,7 +275,7 @@ tk_lock = threading.Lock()
 
 class TkThread(threading.Thread):
     def __init__(self):
-        threading.Thread.__init__(self)        
+        threading.Thread.__init__(self)
         self.setDaemon(True)
     def quit(self, event):
         self.window.after_cancel(self.window.after_handler)
@@ -293,7 +293,7 @@ class TkThread(threading.Thread):
             tk_thread = self
         finally: tk_lock.release()
         try:
-            self.root = Tk() 
+            self.root = Tk()
             self.window = TkMainWindow(self.root)
             self.window.bind("<Destroy>", self.quit)
             self.window.load()

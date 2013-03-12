@@ -70,7 +70,7 @@ class TestFuncMonad(unittest.TestCase):
     @raises_exception(TypeError)
     def test_minmax6(self):
         x = chr(128)
-        result = set(select(s for s in Student if min(s.name, x, "CC") == "CC" ))        
+        result = set(select(s for s in Student if min(s.name, x, "CC") == "CC" ))
     def test_minmax5(self):
         result = set(select(s for s in Student if min(s.phd, 2) == 2 ))
     def test_date_func1(self):
@@ -78,7 +78,7 @@ class TestFuncMonad(unittest.TestCase):
         self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
     @raises_exception(ExprEvalError, "date(1983, 'three', 3) raises TypeError: an integer is required")
     def test_date_func2(self):
-        result = set(select(s for s in Student if s.dob >= date(1983, 'three', 3)))        
+        result = set(select(s for s in Student if s.dob >= date(1983, 'three', 3)))
     # @raises_exception(NotImplementedError)
     # def test_date_func3(self):
     #     d = 3
@@ -88,13 +88,13 @@ class TestFuncMonad(unittest.TestCase):
         self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
     def test_datetime_func2(self):
         result = set(select(s for s in Student if s.last_visit >= datetime(2011, 3, 3)))
-        self.assertEquals(result, set([Student[3], Student[4], Student[5]]))        
+        self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
     def test_datetime_func3(self):
         result = set(select(s for s in Student if s.last_visit >= datetime(2011, 3, 3, 13, 13, 13)))
-        self.assertEquals(result, set([Student[3], Student[4], Student[5]]))        
+        self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
     @raises_exception(ExprEvalError, "date(1983, 'three', 3) raises TypeError: an integer is required")
     def test_datetime_func4(self):
-        result = set(select(s for s in Student if s.last_visit >= date(1983, 'three', 3)))        
+        result = set(select(s for s in Student if s.last_visit >= date(1983, 'three', 3)))
     # @raises_exception(NotImplementedError)
     # def test_datetime_func5(self):
     #     d = 3
@@ -114,6 +114,6 @@ class TestFuncMonad(unittest.TestCase):
     def test_bool(self):
         result = set(select(s for s in Student if s.phd == True))
         self.assertEquals(result, set([Student[1], Student[2]]))
-        
+
 if __name__ == '__main__':
     unittest.main()

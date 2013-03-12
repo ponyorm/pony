@@ -46,14 +46,14 @@ class Subject(db.Entity):
     name = PrimaryKey(str)
     courses = Set('Course')
     teachers = Set('Teacher')
-    
+
 class Course(db.Entity):
     _table_ = 'Courses'
     major = Required(Major)
     subject = Required(Subject)
     semester = Required(int)
     composite_key(major, subject, semester)
-    lect_hours = Required(int)    
+    lect_hours = Required(int)
     pract_hours = Required(int)
     credit = Required(int)
     lessons = Set('Lesson')
@@ -68,7 +68,7 @@ class Lesson(db.Entity):
     course = Required(Course)
     teacher = Required('Teacher')
     groups = Set(Group)
-    
+
 class Grade(db.Entity):
     _table_ = 'Grades'
     student = Required(Student)
@@ -77,7 +77,7 @@ class Grade(db.Entity):
     teacher = Required('Teacher')
     date = Required(date)
     value = Required(str)
-    
+
 class Teacher(db.Entity):
     _table_ = 'Teachers'
     name = Required(str)
@@ -92,7 +92,7 @@ class Building(db.Entity):
     number = PrimaryKey(str)
     description = Optional(str)
     classrooms = Set('Classroom')
-    
+
 class Classroom(db.Entity):
     _table_ = 'Classrooms'
     building = Required(Building)
@@ -106,7 +106,7 @@ db.generate_mapping(create_tables=True)
 sql_debug(True)
 
 def test_queries():
-    # very simple query 
+    # very simple query
     select(s for s in Student)[:]
 
     # one condition
@@ -138,4 +138,3 @@ def test_queries():
 
     # just another example of join of many tables
     select(c for c in Course if c.major.department.faculty.number == 4)[:]
-    

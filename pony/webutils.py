@@ -6,7 +6,7 @@ from pony.web import local, http, url
 from pony.postprocessing import css_link, script_link
 
 def blueprint_link(column_count=24, column_width=30, gutter_width=10, ns=''):
-    if column_count == 24 and column_width == 30 and gutter_width == 10 and ns == '':    
+    if column_count == 24 and column_width == 30 and gutter_width == 10 and ns == '':
         return Html(
             '<link rel="stylesheet" href="/pony/static/blueprint/screen.css" type="text/css" media="screen, projection">\n'
             '<link rel="stylesheet" href="/pony/static/blueprint/print.css" type="text/css" media="print">\n'
@@ -32,7 +32,7 @@ link_funcs = dict(
 def link(*args, **kwargs):
     if not args: raise TypeError('link() function requires at least one positional argument')
     attrs = None
-    
+
     last = args[-1]
     if isinstance(last, BoundMarkup):
         description = last()
@@ -67,7 +67,7 @@ def link(*args, **kwargs):
             if kwargs: raise TypeError('Unexpected key arguments')
             return script_link(first)
         raise TypeError('Invalid arguments of link() function')
-        
+
     href = url(func, *args, **kwargs)
     return htmljoin([htmltag('a', attrs, href=href), description, Html('</a>')])
 

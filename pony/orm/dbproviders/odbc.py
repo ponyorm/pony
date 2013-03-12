@@ -28,4 +28,3 @@ def ast2sql(connection, ast):
 
 def get_last_rowid(cursor):
     return cursor.lastrowid
-

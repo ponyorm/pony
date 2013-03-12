@@ -119,7 +119,7 @@ class TestAttrSetMonad(unittest.TestCase):
         self.assertEqual(groups, [Group[43]])
     def test17(self):
         groups = set(select(g for g in Group if 100 in g.students.scholarship))
-        self.assertEqual(groups, set([Group[41]]))        
+        self.assertEqual(groups, set([Group[41]]))
     def test18(self):
         groups = set(select(g for g in Group if 100 not in g.students.scholarship))
         self.assertEqual(groups, set([Group[42], Group[43], Group[44]]))
@@ -137,7 +137,7 @@ class TestAttrSetMonad(unittest.TestCase):
         self.assertEqual(groups, set([]))
     def test21b(self):
         groups = set(select(g for g in Group if not not not g.department is None))
-        self.assertEqual(groups, set([Group[41], Group[42], Group[43], Group[44]]))   
+        self.assertEqual(groups, set([Group[41], Group[42], Group[43], Group[44]]))
     def test22(self):
         groups = set(select(g for g in Group if 700 in (s.scholarship for s in Student if s.group == g)))
         self.assertEqual(groups, set([Group[42]]))
@@ -160,8 +160,7 @@ class TestAttrSetMonad(unittest.TestCase):
         self.assertEqual(groups, set([Group[41]]))
     @raises_exception(AttributeError, 'g.students.name.foo')
     def test27(self):
-        select(g for g in Group if g.students.name.foo == 1)        
+        select(g for g in Group if g.students.name.foo == 1)
 
 if __name__ == "__main__":
     unittest.main()
-

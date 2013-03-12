@@ -4,9 +4,9 @@ import sys
 name = "pony"
 version = "0.3"
 description = "Pony Object-Relational Mapper"
-long_description = """Pony helps to simplify data management. Using Pony you can work 
-with the data in terms of entities and their relationships. 
-Pony also allows querying data in pure Python using the syntax of generator 
+long_description = """Pony helps to simplify data management. Using Pony you can work
+with the data in terms of entities and their relationships.
+Pony also allows querying data in pure Python using the syntax of generator
 expressions."""
 
 classifiers = [
@@ -47,7 +47,7 @@ def main():
         s = "Sorry, but %s %s requires Python version 2.5, 2.6 or 2.7. You have version %s"
         print s % (name, version, python_version.split(' ', 1)[0])
         sys.exit(1)
-    
+
     setup(
         name=name,
         version=version,

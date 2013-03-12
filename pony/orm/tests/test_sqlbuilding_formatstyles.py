@@ -50,7 +50,7 @@ class TestFormatStyles(unittest.TestCase):
                                 'FROM "T1"\n'
                                 'WHERE "B" = %(p1)s\n  AND "C" = %(p2)s\n  AND "D" = %(p2)s\n  AND "E" = %(p1)s')
         self.assertEqual(b.layout, (self.key1, self.key2))
-                         
+
 
 if __name__ == "__main__":
     unittest.main()

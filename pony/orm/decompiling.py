@@ -128,7 +128,7 @@ class Decompiler(object):
     BINARY_OR           = binop(ast.Bitor, list)
     BINARY_TRUE_DIVIDE  = BINARY_DIVIDE
     BINARY_MODULO       = binop(ast.Mod)
-    
+
     def BINARY_SUBSCR(decompiler):
         oper2 = decompiler.stack.pop()
         oper1 = decompiler.stack.pop()
@@ -147,7 +147,7 @@ class Decompiler(object):
 
     def BUILD_SLICE(decompiler, size):
         return ast.Sliceobj(decompiler.pop_items(size))
-        
+
     def BUILD_TUPLE(decompiler, size):
         return ast.Tuple(decompiler.pop_items(size))
 
@@ -335,23 +335,23 @@ class Decompiler(object):
 
     def SLICE_0(decompiler):
         return ast.Slice(decompiler.stack.pop(), 'OP_APPLY', None, None)
-    
+
     def SLICE_1(decompiler):
         tos = decompiler.stack.pop()
         tos1 = decompiler.stack.pop()
         return ast.Slice(tos1, 'OP_APPLY', tos, None)
-    
+
     def SLICE_2(decompiler):
         tos = decompiler.stack.pop()
         tos1 = decompiler.stack.pop()
         return ast.Slice(tos1, 'OP_APPLY', None, tos)
-    
+
     def SLICE_3(decompiler):
         tos = decompiler.stack.pop()
         tos1 = decompiler.stack.pop()
         tos2 = decompiler.stack.pop()
         return ast.Slice(tos2, 'OP_APPLY', tos1, tos)
-    
+
     def STORE_ATTR(decompiler, attrname):
         decompiler.store(ast.AssAttr(decompiler.stack.pop(), attrname, 'OP_ASSIGN'))
 
@@ -389,7 +389,7 @@ class Decompiler(object):
 
     def UNARY_NOT(decompiler):
         return ast.Not(decompiler.stack.pop())
-        
+
     def UNARY_CONVERT(decompiler):
         return ast.Backquote(decompiler.stack.pop())
 
@@ -430,17 +430,17 @@ test_lines = """
     (a for b in T if f and h or t)
     (a for b in T if f == 5 and r or t)
     (a for b in T if f and r and t)
-    
+
     (a for b in T if f == 5 and +r or not t)
     (a for b in T if -t and ~r or `f`)
-    
+
     (a**2 for b in T if t * r > y / 3)
     (a + 2 for b in T if t + r > y // 3)
     (a[2,v] for b in T if t - r > y[3])
     ((a + 2) * 3 for b in T if t[r, e] > y[3, r * 4, t])
     (a<<2 for b in T if t>>e > r & (y & u))
     (a|b for c in T1 if t^e > r | (y & (u & (w % z))))
-    
+
     ([a, b, c] for d in T)
     ([a, b, 4] for d in T if a[4, b] > b[1,v,3])
     ((a, b, c) for d in T)
@@ -483,14 +483,14 @@ test_lines = """
     (a for a in T1 if a > x and a in (b for b in T1 if b < y) and a < z)
 """
 ##   should throw InvalidQuery due to using [] inside of a query
-##   (a for a in T1 if a in [b for b in T2 if b in [(c, d) for c in T3]])  
+##   (a for a in T1 if a in [b for b in T2 if b in [(c, d) for c in T3]])
 
 ##    examples of conditional expressions
 ##    (a if b else c for x in T)
 ##    (x for x in T if (d if e else f))
 ##    (a if b else c for x in T if (d if e else f))
-##    (a and b or c and d if x and y or p and q else r and n or m and k for i in T)   
-##    (i for i in T if (a and b or c and d if x and y or p and q else r and n or m and k))   
+##    (a and b or c and d if x and y or p and q else r and n or m and k for i in T)
+##    (i for i in T if (a and b or c and d if x and y or p and q else r and n or m and k))
 ##    (a and b or c and d if x and y or p and q else r and n or m and k for i in T if (A and B or C and D if X and Y or P and Q else R and N or M and K))
 
 def test():
@@ -526,6 +526,5 @@ def test():
             break
         else: print 'OK: %s' % line
     else: print 'Done!'
-            
+
 if __name__ == '__main__': test()
-    

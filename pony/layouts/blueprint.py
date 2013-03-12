@@ -44,7 +44,7 @@ def grid_background(column_count=24, column_width=30, gutter_width=10, ns=''):
 @cached
 def ie(column_count=24, column_width=30, gutter_width=10, ns=''):
     return compress(template())
-                    
+
 @http('/pony/blueprint/print.css', type='text/css')
 @http('/pony/blueprint/$column_count/$column_width/$gutter_width/print.css', type='text/css')
 @http('/pony/blueprint/$column_count/$column_width/$gutter_width/$ns/print.css', type='text/css')
@@ -65,7 +65,7 @@ def screen(column_count=24, column_width=30, gutter_width=10, ns=''):
                       '/* typography.css */', typography_str,
                       '/* grid.css */', grid_str,
                       '/* forms.css */', forms_str))
-    
+
 @http('/pony/blueprint/reset.css', type='text/css')
 @http('/pony/blueprint/$column_count/$column_width/$gutter_width/reset.css', type='text/css')
 @http('/pony/blueprint/$column_count/$column_width/$gutter_width/$ns/reset.css', type='text/css')
@@ -103,4 +103,3 @@ if __name__ == '__main__':
     file('grid_test.css', 'w').write(grid())
     file('ie_test.css', 'w').write(ie())
     file('print_test.css', 'w').write(print_())
-    

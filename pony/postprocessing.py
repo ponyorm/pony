@@ -38,7 +38,7 @@ def postprocess(content, stylesheets, component_stylesheets, scripts):
     if isinstance(content, (Html, StrHtml)): pass
     elif isinstance(content, str): content = StrHtml(content)
     elif isinstance(content, unicode): content = Html(content)
-    
+
     if not stylesheets: stylesheets = options.STD_STYLESHEETS
     base_css = css_links(stylesheets)
     if base_css: base_css += StrHtml('\n')
@@ -48,7 +48,7 @@ def postprocess(content, stylesheets, component_stylesheets, scripts):
     if scripts: scripts += StrHtml('\n')
 
     doctype = ''
-    try:        
+    try:
         match = element_re.search(content)
         if match is None or match.group(2).lower() not in header_tags:
             doctype = StrHtml(options.STD_DOCTYPE)

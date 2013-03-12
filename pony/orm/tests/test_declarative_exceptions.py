@@ -14,23 +14,23 @@ class Student(db.Entity):
     scholarship = Optional(Decimal, 7, 2)
     group = Required('Group')
     courses = Set('Course')
-    
+
 class Group(db.Entity):
     number = PrimaryKey(int)
     students = Set(Student)
     dept = Required('Department')
-    
+
 class Department(db.Entity):
     number = PrimaryKey(int)
-    groups = Set(Group)    
-    
+    groups = Set(Group)
+
 class Course(db.Entity):
     name = Required(unicode)
     semester = Required(int)
     PrimaryKey(name, semester)
     students = Set(Student)
-    
-db.generate_mapping(create_tables=True)        
+
+db.generate_mapping(create_tables=True)
 
 d1 = Department(number=44)
 g1 = Group(number=101, dept=d1)
@@ -87,7 +87,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
         select(s for s in Student if s.group == Group[date(2011, 1, 2)])
     @raises_exception(TypeError, "Unsupported operand types 'int' and 'unicode' for operation '+' in expression: s.group.number + s.name")
     def test14(self):
-        select(s for s in Student if s.group.number + s.name < 0)        
+        select(s for s in Student if s.group.number + s.name < 0)
     @raises_exception(TypeError, "Unsupported operand types 'Decimal' and 'float' for operation '+' in expression: s.scholarship + 1.1")
     def test15(self):
         select(s for s in Student if s.scholarship + 1.1 > 10)
@@ -150,7 +150,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     #     select(s for s in Student if min(1, 'a') == 1)
     # @raises_exception(TypeError, "Incomparable types 'AsciiStr' and 'int' in expression: min('a', 1)")
     # def test33a(self):
-    #     select(s for s in Student if min('a', 1) == 1)        
+    #     select(s for s in Student if min('a', 1) == 1)
     # @raises_exception(TypeError, "'select' function expects generator expression, got: select('* from Students')")
     # def test34(self):
     #    select(s for s in Student if s.group in select("* from Students"))
@@ -168,7 +168,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
         select(s for s in Student if 'x' in s.courses.foo.bar)
     @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got 'unicode' in sum(s.courses.name)")
     def test39(self):
-        select(s for s in Student if sum(s.courses.name) > 10) 
+        select(s for s in Student if sum(s.courses.name) > 10)
     @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got 'unicode' in sum(c.name for c in s.courses)")
     def test40(self):
         select(s for s in Student if sum(c.name for c in s.courses) > 10)
@@ -247,6 +247,6 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(TypeError, "Incomparable types 'unicode' and 'list' in expression: s.name == [1, (2,)]")
     def test62(self):
         select(s for s in Student if s.name == [1, (2,)])
-        
+
 if __name__ == '__main__':
-    unittest.main()        
+    unittest.main()

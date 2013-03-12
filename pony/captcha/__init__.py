@@ -60,7 +60,7 @@ TEXT_Y = 30
 def generate_captcha():
     text = generate_text()
     font = choice(fonts)
-    
+
     img = Image.new(MODE, (WIDTH, HEIGHT), BLACK)
     pix = img.load()
     draw = ImageDraw.ImageDraw(img)
@@ -73,7 +73,7 @@ def generate_captcha():
         img.paste(WHITE, (text_offset, randint(0, 15)), glyph)
         text_offset += glyph.size[0] - randint(4, 6)
 
-    if maps: 
+    if maps:
         map = choice(maps)
         next = iter(map).next
 
@@ -105,13 +105,13 @@ def generate_map():
     Y_AMP = randint(3, 6)
     X_PHASE = 6.28*random()
     Y_PHASE = 6.28*random()
-    
+
     SWIRL_X = randint(60, 100)
     SWIRL_Y = randint(70, 80)
     SWIRL_ANGLE = (random() - 0.5)
     if SWIRL_ANGLE > 0: SWIRL_ANGLE += 0.4
     else: SWIRL_ANGLE -= 0.4
-    
+
     SWIRL2_X = randint(120, 160)
     SWIRL2_Y = randint(80, 90)
     SWIRL2_ANGLE = (random() - 0.5)
@@ -127,7 +127,7 @@ def generate_map():
                 for X in range(WIDTH)   ]
 
     map = []
-    
+
     for Y, ylist2 in ylist:
         if pony.shutdown: return
         if not (Y % 10) and not main: time.sleep(.1)
@@ -143,7 +143,7 @@ def generate_map():
                     angle = SWIRL_ANGLE * exp(-(radius/30)**2)
                     c = cos(angle)
                     s = sin(angle)
- 
+
                     x3 = SWIRL_X + delta_x*c - delta_y*s
                     y3 = SWIRL_Y + delta_x*s + delta_y*c
 
@@ -159,7 +159,7 @@ def generate_map():
 
                     x_result = int(x4)
                     y_result = int(y4)
-                    
+
                     if x_result < 0 or x_result >= WIDTH or y_result < 0 or y_result >= HEIGHT:
                         map.append('\x00\x00')
                     else:

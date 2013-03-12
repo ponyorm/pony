@@ -6,10 +6,10 @@ import compiler
 class Meta(type):
       def __iter__(self):
            return iter([])
-      
+
 class Entity(object):
     __metaclass__ = Meta
-      
+
 class Student(Entity):
       pass
 
@@ -19,7 +19,7 @@ class TestDecompiler:
     def verify(self, expr):
         expected = str(compiler.parse(expr))
         result = self.add_framing(str(decompile_to_ast(eval(expr))))
-        if result != expected:            
+        if result != expected:
             print 'result = ' + result
             print 'expected = ' + expected
             raise Exception('Test failed')
@@ -28,13 +28,13 @@ class TestDecompiler:
         result = str(result)
         result = result.replace("Name('.0')", "Name('Student')")
         return "Module(None, Stmt([Discard(GenExpr(" + result + "))]))"
-    
+
     def test_1(self):
-        self.verify('(a for b in Student)') 
+        self.verify('(a for b in Student)')
 
     def test_2(self):
-        self.verify('(a for b, c in Student)')  
-        
+        self.verify('(a for b, c in Student)')
+
     def test_3(self):
         self.verify('(a for b in Student for c in [])')
 
@@ -103,7 +103,7 @@ class TestDecompiler:
 
     def test_l4(self):
         self.verify('({} for d in Student )')
-    
+
     def test_l5(self):
         self.verify("({'a' : x, 'b' : y} for a, b in Student)")
 
@@ -169,7 +169,7 @@ class TestDecompiler:
     def test_f4(self):
         self.verify("(func(a, a.attr, keyarg=123) for a in Student if a.method(x, *y, **z) == 4)")
 
-    #g = (a(lambda x,y: x > 0) for a in [])    
+    #g = (a(lambda x,y: x > 0) for a in [])
     #g = (a(b, lambda x,y: x > 0) for a in [])
     #g = (a(b, lambda x,y: x > 0) for a,b,x,y in [])
 
@@ -183,4 +183,5 @@ def main():
             getattr(t, attr)()
             print attr + ' done.'
 
-if __name__ == '__main__': main()        
+if __name__ == '__main__':
+      main()

@@ -38,7 +38,7 @@ def reconstruct_script_url(environ):
     script_name = environ.get('SCRIPT_NAME','')
     path_info   = environ.get('PATH_INFO','')
     query       = environ.get('QUERY_STRING')
-    
+
     url = url_scheme + '://'
     if host: url += host
     else:

@@ -344,9 +344,9 @@ else:
         if hasattr(opt, 'get_multi'): return opt
         from pony.thirdparty.memcache import Client
         return Client(opt)
-    
+
     memcache = choose_memcache(options.MEMCACHE)
     session_memcache = choose_memcache(options.ALTERNATIVE_SESSION_MEMCACHE, memcache)
     orm_memcache = choose_memcache(options.ALTERNATIVE_ORM_MEMCACHE, memcache)
     templating_memcache = choose_memcache(options.ALTERNATIVE_TEMPLATING_MEMCACHE, memcache)
-    responce_memcache = choose_memcache(options.ALTERNATIVE_RESPONCE_MEMCACHE, memcache)        
+    responce_memcache = choose_memcache(options.ALTERNATIVE_RESPONCE_MEMCACHE, memcache)

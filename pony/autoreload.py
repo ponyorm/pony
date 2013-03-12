@@ -81,7 +81,7 @@ def use_autoreload():
     except Exception, e:
         pony.exception_in_main = e
         raise
-    if not pony._do_mainloop: sys.exit()    
+    if not pony._do_mainloop: sys.exit()
     while True:
         if pony.shutdown: sys.exit()
         check_files()

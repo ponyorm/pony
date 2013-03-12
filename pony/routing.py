@@ -9,7 +9,7 @@ from pony.autoreload import on_reload
 
 class NodefaultType(object):
     def __repr__(self): return '__nodefault__'
-    
+
 __nodefault__ = NodefaultType()
 
 registry_lock = threading.RLock()
@@ -48,7 +48,7 @@ class Route(object):
         route.port = port and int(port) or None
         route.path, route.qlist = split_url(url, strict_parsing=True)
         route.redirect = redirect
-        route.headers = dict([ (name.replace('_', '-').title(), value) for name, value in headers.items() ])        
+        route.headers = dict([ (name.replace('_', '-').title(), value) for name, value in headers.items() ])
         route.args = set()
         route.kwargs = set()
         route.parsed_path = []
@@ -237,7 +237,7 @@ def get_routes(path, qdict, method, host, port):
         elif route.method is None and method in ('HEAD', 'GET', 'POST'): pass
         elif route.method == 'GET' and method == 'HEAD': priority += 1000
         else: continue
-        
+
         for i, (is_param, x) in enumerate(route.parsed_path):
             if not is_param:
                 priority += 1
@@ -422,7 +422,7 @@ def _remove(route):
     route.func.routes.remove(route)
     if route.system: system_routes.remove(routre.url)
     else: user_routes.remove(route)
-            
+
 @on_reload
 def clear():
     registry_lock.acquire()

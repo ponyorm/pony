@@ -5,12 +5,12 @@ from decimal import Decimal
 from pony.orm.core import *
 import time
 
-#db = Database('oracle', 'presentation/pony@localhost')    
-#db = Database('postgres', user='pony', password='magic', host='localhost', database='presentation')    
+#db = Database('oracle', 'presentation/pony@localhost')
+#db = Database('postgres', user='pony', password='magic', host='localhost', database='presentation')
 #db = Database('mysql', user='pony', passwd='magic', host='localhost', db='test')
 db = Database('sqlite', 'alldatatypes.sqlite', create_db=True)
 
-sql_debug(False)  # sql_debug(True) can result in long delay due to enormous print 
+sql_debug(False)  # sql_debug(True) can result in long delay due to enormous print
 
 class AllDataTypes(db.Entity):
     a_bool1 = Required(bool)

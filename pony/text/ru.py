@@ -18,7 +18,7 @@ basic_endings = set(u"""
 
 def basic_stem(word):
     # Basic stemming. Approximate 5x faster then snowball_stem(word)
-    
+
     # word = word.lower().replace(u'¸', u'å')
     size = len(word)
     if size > 5 and word[-3:] in basic_endings: return word[:-3]
@@ -100,7 +100,7 @@ endings = _generate_endings()
 def fast_stem(word):
     # Approximate 2x faster then snowball_stem(word)
 
-    # word = word.lower().replace(u'¸', u'å')    
+    # word = word.lower().replace(u'¸', u'å')
     for i in xrange(min(6, len(word)-3), 0, -1):
         x = endings.get(word[-i:])
         if x is not None: return word[:-i+x]
@@ -128,4 +128,3 @@ if __name__ == '__main__':
     print min(t3.repeat(5, 1000))
 
     raw_input()
-    

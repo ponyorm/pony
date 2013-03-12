@@ -29,7 +29,7 @@ class Course(db.Entity):
     dept = Required(Department)
     students = Set("Student")
     PrimaryKey(name, semester)
-    
+
 class Student(db.Entity):
     # _table_ = "public", "Students"  # Schema support
     id = PrimaryKey(int, auto=True)
@@ -49,7 +49,7 @@ db.generate_mapping(create_tables=True)
 def populate_database():
     if select(s for s in Student).count() > 0:
         return
-    
+
     d1 = Department(name="Department of Computer Science")
     d2 = Department(name="Department of Mathematical Sciences")
     d3 = Department(name="Department of Applied Physics")
@@ -123,7 +123,7 @@ def test_queries():
     print_students(students)
 
 
-    students = select(s for s in Student 
+    students = select(s for s in Student
                          if "Web Design" in s.courses.name)
     print_students(students)
 
@@ -132,17 +132,17 @@ def test_queries():
     print
 
 
-    students = select(s for s in Student 
+    students = select(s for s in Student
                          if sum(c.credits for c in s.courses) < 15)
     print_students(students)
 
 
-    students = select(s for s in Student 
+    students = select(s for s in Student
                          if s.group.major == "B.E. in Computer Engineering")
     print_students(students)
 
 
-    students = select(s for s in Student 
+    students = select(s for s in Student
                          if s.group.dept.name == "Department of Computer Science")
     print_students(students)
 
@@ -164,7 +164,7 @@ def test_queries():
     print_students(students)
 
 
-    students = select(s for s in Student 
+    students = select(s for s in Student
                          if s.group.dept.name == "Department of Computer Science"
                             and s.gpa > 3.5
                             and len(s.courses) > 3)

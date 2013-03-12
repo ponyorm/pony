@@ -52,7 +52,7 @@ def exitfunc():
     mainloop()
     _shutdown()
     if sys.platform == 'win32' and MODE == 'CHERRYPY' and exception_in_main:
-        # If a script is started in Windows by double-clicking 
+        # If a script is started in Windows by double-clicking
         # and a problem occurs, then the following code will
         # prevent the console window from closing immediately.
         # This only works if use_autoreload() has been called

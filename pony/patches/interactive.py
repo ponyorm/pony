@@ -19,7 +19,7 @@ def excepthook(type, value, tb):
 old_excepthook = sys.excepthook
 sys.excepthook = excepthook
 
-def write(self, data):  # because displayhook does not work in PythonWin 
+def write(self, data):  # because displayhook does not work in PythonWin
     data = restore_escapes(data)
     sys.stderr.write(data)
 code.InteractiveInterpreter.write = write

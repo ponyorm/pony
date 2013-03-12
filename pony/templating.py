@@ -45,7 +45,7 @@ class Html(unicode):
 class StrHtml(str):
     def __str__(self):        # Because of bug in Python 2.4 print statement.
         s = str.__str__(self)
-        return StrHtml2(s) 
+        return StrHtml2(s)
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, str.__repr__(self))
     def __add__(self, x):
@@ -170,7 +170,7 @@ else:
     copy_reg.pickle(StrHtml2, lambda x: (StrHtml, (str.__str__(x),)))
     copy_reg.add_extension('pony.templating', 'Html', start_offset)
     copy_reg.add_extension('pony.templating', 'StrHtml', start_offset+1)
-    
+
 htmljoin = Html('').join
 
 def htmltag(_name_, _attrs_=None, **_attrs2_):
@@ -322,13 +322,13 @@ def parse_markup(source, start_pos=0, nested=False):
 command_re = re.compile(r"""
 
     \s*                         # optional whitespace
-    (?:                         
+    (?:
         (;)                     # end of command (group 1)
     |   (\\?[{])                   # start of markup block (group 2)
     )?
 
 """, re.VERBOSE)
-    
+
 def parse_command(source, start, pos, name):
     text = source[0]
     exprlist = None
@@ -348,7 +348,7 @@ def parse_command(source, start, pos, name):
             markup_args.append(arg)
         else: assert False
         pos = end
-   
+
 exprlist_re = re.compile(r"""
 
         (                         # comments (group 1):
@@ -381,7 +381,7 @@ def parse_exprlist(source, pos):
         elif i == 2:
             counter += 1
             result.append('(')
-        elif i == 3:               
+        elif i == 3:
             counter -= 1
             result.append(')')
             if counter == 0: return ''.join(result)[:-1], end
@@ -553,7 +553,7 @@ for_re = re.compile(r"""
     |   \"""(?:[^\\]|\\.)*?\"""   # \"""triple-quoted string\"""
     |   '(?:[^'\\]|\\.)*?'        # 'string'
     |   "(?:[^"\\]|\\.)*?"        # "string"
-    |   ;                         
+    |   ;
     """, re.VERBOSE)
 
 ident_re = re.compile(r'[A-Za-z_]\w*')
@@ -652,7 +652,7 @@ class TryElement(SyntaxElement):
                     if issubclass(exc_type, exc): return markup.eval(globals, locals)
                 raise exc_type, exc_value, traceback
             finally: del traceback
-                
+
 class ExprElement(SyntaxElement):
     def __init__(elem, source, item):
         elem.source = source
@@ -742,7 +742,7 @@ class FunctionElement(SyntaxElement):
         if inspect.isroutine(result): result = result()
         if isinstance(result, basestring): return result
         return unicode(result)
-        
+
 class BoundMarkup(object):
     def __init__(elem, markup, globals, locals=None):
         elem.markup = markup
@@ -800,7 +800,7 @@ try: __builtins__['cycle'] = cycle
 except:  # Just in case... I'm not sure is it needed
     try: __builtins__.cycle = cycle
     except: pass
-    
+
 codename_cache = {}
 
 def get_class_name(frame):
@@ -841,7 +841,7 @@ def get_template_name(frame):
         if cls_name is None:
             root, ext = os.path.splitext(file_name)
             result = '%s.%s' % (root, code_name)
-        else:            
+        else:
             head, tail = os.path.split(file_name)
             tail = '%s.%s' % (cls_name, code_name)
             result = os.path.join(head, tail)

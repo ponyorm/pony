@@ -59,7 +59,7 @@ def _circle_image(radius, color, bgcolor):
 @cached
 def png_circle(radius, color='000000', bgcolor=None):
     try:
-        color, bgcolor = _decode_png_colors(color, bgcolor)                
+        color, bgcolor = _decode_png_colors(color, bgcolor)
         img = _circle_image(radius, color, bgcolor)
         io = StringIO()
         img.save(io, 'PNG')
@@ -259,7 +259,7 @@ def tab_png(width=300, height=200, radius=5, topcolor=None, bottomcolor=None, bo
     backcolor = backcolor and _decode_color(backcolor) or (255, 255, 255, 0)
     gradients = []
     for i, color in _calc_colors(height/8, topcolor, bottomcolor): gradients.append(color)
-    
+
     corner = Image.new('RGBA', (radius*4, radius*4), backcolor)
     pixels = corner.load()
     draw = ImageDraw.Draw(corner)

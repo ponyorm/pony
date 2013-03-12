@@ -71,7 +71,7 @@ def truncate(s, maxlen):
 class Record(object):
     def __init__(record, module, filename, lineno, lines, index, func=None):
         record.func = None
-        
+
         record.module = module
         if module == '<template>': record.moduletype = 'template'
         elif module == 'pony' or module.startswith('pony.'): record.moduletype = 'module-system'
@@ -92,7 +92,7 @@ class Record(object):
         source_encoding = detect_source_encoding(filename)
         formatted_lines = [ format_line(frame, line.decode(source_encoding, 'replace')) for line in lines ]
         return Record(module, filename, lineno, formatted_lines, index, func)
-        
+
 def format_exc(info=None, context=5):
     if info: exc_type, exc_value, tb = info
     else: exc_type, exc_value, tb = sys.exc_info()
@@ -146,8 +146,8 @@ def format_exc(info=None, context=5):
 
 python_re = re.compile(r"""
         (                                        # string (group 1)
-        (?:[Uu][Rr]?|[Rr][Uu]?)?                 #     string prefix 
-        (?:                                      
+        (?:[Uu][Rr]?|[Rr][Uu]?)?                 #     string prefix
+        (?:
             '''(?:[^\\]|\\.)*?(?:'''|\Z)         #     '''triple-quoted string'''
         |   \"""(?:[^\\]|\\.)*?(?:\"""|\Z)       #     \"""triple-quoted string\"""
         |   '(?:[^'\\]|\\.)*?(?:'|$)             #     'string'
@@ -157,7 +157,7 @@ python_re = re.compile(r"""
     |   ([A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*)  # identifier chain (group 3)
     |   (\#.*$)                                  # comment (group 4)
     """, re.VERBOSE)
-           
+
 
 ident_re = re.compile(r'[A-Za-z_]\w*')
 end1_re = re.compile(r"(?:[^\\]|\\.)*?'''")
@@ -237,7 +237,7 @@ def format_record(record):
     return html()
 
 if pony.MODE.startswith('GAE-'):
-    
+
     def debugging_decorator(func):
         return func
 
@@ -292,7 +292,7 @@ else:
         command = debug_re.search(url).group(1)
         url = debug_re.sub('', url)
         if url.endswith('&'): url = url[:-1]
-        
+
         expr_match = expr_re.search(url)
         if expr_match is not None:
             expr = unquote_plus(expr_match.group(1))
@@ -318,7 +318,7 @@ else:
             global last
             last = queue.get()
             while last is not None:
-                lock, app, environ, result_holder, url, command, expr = last                
+                lock, app, environ, result_holder, url, command, expr = last
                 debugger = Debugger(url)
                 environ['debugger'] = weakref.ref(debugger)
                 result = debugger.runcall(app, environ)
@@ -337,7 +337,7 @@ else:
             debugger.__state = 0
             debugger.__top_user_frame = None
         def process_queue(debugger, frame):
-            from pony.webutils import button  
+            from pony.webutils import button
             result = None
             if debugger.__state == 0:
                 debugger.__state = 1

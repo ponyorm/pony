@@ -15,7 +15,7 @@ class TestKeys(unittest.TestCase):
         self.assertEqual(Entity1._keys_, [])
         self.assertEqual(Entity1._simple_keys_, [])
         self.assertEqual(Entity1._composite_keys_, [])
-        
+
     def test_keys2(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
@@ -118,6 +118,6 @@ class TestKeys(unittest.TestCase):
             b = Optional(int)
             PrimaryKey(a, b)
 
-        
+
 if __name__ == '__main__':
     unittest.main()

@@ -73,7 +73,7 @@ class PGRealConverter(dbapiprovider.RealConverter):
 
 char2oct = {}
 for i in range(256):
-    ch = chr(i)    
+    ch = chr(i)
     if 31 < i < 127:
         char2oct[ch] = ch
     else: char2oct[ch] = '\\' + ('00'+oct(i))[-3:]
@@ -135,7 +135,7 @@ class PGProvider(DBAPIProvider):
         if isinstance(sql, unicode): sql = sql.encode('utf8')
         cursor.executemany(sql, arguments_list)
 
-    @wrap_dbapi_exceptions    
+    @wrap_dbapi_exceptions
     def execute_returning_id(provider, cursor, sql, arguments):
         if isinstance(sql, unicode): sql = sql.encode('utf8')
         cursor.execute(sql, arguments)
