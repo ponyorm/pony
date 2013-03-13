@@ -503,7 +503,6 @@ class Database(object):
                                            % (e, entity, table_name))
             table.entities.add(entity)
 
-            # if entity._base_attrs_: throw(NotImplementedError)
             for attr in entity._new_attrs_:
                 if attr.is_collection:
                     if not isinstance(attr, Set): throw(NotImplementedError)
