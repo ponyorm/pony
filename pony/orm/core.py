@@ -1291,7 +1291,7 @@ class Set(Collection):
         entity = attr.entity
         reverse = attr.reverse
         rentity = reverse.entity
-        if reverse is None: throw(NotImplementedError)
+        if not reverse: throw(NotImplementedError)
         cache = obj._cache_
         database = obj._database_
         if cache is not database._get_cache():
