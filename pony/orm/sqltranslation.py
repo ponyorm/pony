@@ -1574,7 +1574,13 @@ class AttrSetMonad(SetMixin, Monad):
                 conditions += [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item.getsql(), expr_list) ]
                 subquery_ast = [ not_in and 'NOT_EXISTS' or 'EXISTS', from_ast, [ 'WHERE' ] + conditions ]
                 return translator.BoolExprMonad(translator, subquery_ast)
-        else: throw(NotImplementedError)
+        elif not not_in:
+            translator.distinct = True
+            tableref = monad.make_tableref(translator.subquery)
+            alias, columns = monad.tableref.make_join(pk_only=True)
+            expr_ast = sqland([ [ 'EQ', [ 'COLUMN', alias, column ], expr ]  for column, expr in zip(columns, item.getsql()) ])
+            return translator.BoolExprMonad(translator, expr_ast)
+        else: throw(NotImplementedError, 'JOIN({EXPR})')
     def getattr(monad, name):
         try: return Monad.getattr(monad, name)
         except AttributeError: pass
