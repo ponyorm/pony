@@ -807,16 +807,6 @@ class MethodMonad(Monad):
     def __neg__(monad): raise_forgot_parentheses(monad)
     def abs(monad): raise_forgot_parentheses(monad)
 
-class DatabaseMonad(Monad):
-    def __init__(monad, translator, database):
-        Monad.__init__(monad, translator, 'DATABASE')
-        Monad.database = database
-    def getattr(monad, attrname):
-        database = monad.database
-        entity = getattr(database, attrname)
-        if not isinstance(entity, EntityMeta): throw(NotImplementedError)
-        return EntityMonad(monad.translator, entity)
-
 class EntityMonad(Monad):
     def __init__(monad, translator, entity):
         Monad.__init__(monad, translator, SetType(entity))
