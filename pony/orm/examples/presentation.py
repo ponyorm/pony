@@ -147,20 +147,20 @@ def test_queries():
     print_students(students)
 
 
-    students = select(s for s in Student).orderby(Student.name)
+    students = select(s for s in Student).order_by(Student.name)
     print_students(students)
 
 
-    students = select(s for s in Student).orderby(Student.name)[2:4]
+    students = select(s for s in Student).order_by(Student.name)[2:4]
     print_students(students)
 
 
-    students = select(s for s in Student).orderby(Student.name.desc)
+    students = select(s for s in Student).order_by(Student.name.desc)
     print_students(students)
 
 
     students = select(s for s in Student) \
-               .orderby(Student.group, Student.name.desc)
+               .order_by(Student.group, Student.name.desc)
     print_students(students)
 
 

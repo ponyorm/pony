@@ -22,35 +22,35 @@ SELECT "p"."id", "p"."name", "p"."description", "p"."picture", "p"."price", "p".
 FROM "Product" "p"
 WHERE "p"."price" > ?
 
->>> Product.select(lambda p: p.price > 100).orderby(lambda p: desc(p.price))
+>>> Product.select(lambda p: p.price > 100).order_by(lambda p: desc(p.price))
 
 SELECT "p"."id", "p"."name", "p"."description", "p"."picture", "p"."price", "p"."quantity"
 FROM "Product" "p"
 WHERE "p"."price" > 100
 ORDER BY "p"."price" DESC
 
->>> Product.select(lambda p: p.price > 100).orderby(desc(Product.price))
+>>> Product.select(lambda p: p.price > 100).order_by(desc(Product.price))
 
 SELECT "p"."id", "p"."name", "p"."description", "p"."picture", "p"."price", "p"."quantity"
 FROM "Product" "p"
 WHERE "p"."price" > 100
 ORDER BY "p"."price" DESC
 
->>> Product.select(lambda p: p.price > 100).orderby(desc(Product.price), Product.name)
+>>> Product.select(lambda p: p.price > 100).order_by(desc(Product.price), Product.name)
 
 SELECT "p"."id", "p"."name", "p"."description", "p"."picture", "p"."price", "p"."quantity"
 FROM "Product" "p"
 WHERE "p"."price" > 100
 ORDER BY "p"."price" DESC, "p"."name"
 
->>> Product.select(lambda p: p.price > 100).orderby("desc(p.price), p.name")
+>>> Product.select(lambda p: p.price > 100).order_by("desc(p.price), p.name")
 
 SELECT "p"."id", "p"."name", "p"."description", "p"."picture", "p"."price", "p"."quantity"
 FROM "Product" "p"
 WHERE "p"."price" > 100
 ORDER BY "p"."price" DESC, "p"."name"
 
->>> Product.orderby(lambda p: desc(p.price))[:10]
+>>> Product.order_by(lambda p: desc(p.price))[:10]
 
 SELECT "p"."id", "p"."name", "p"."description", "p"."picture", "p"."price", "p"."quantity"
 FROM "Product" "p"
@@ -273,28 +273,28 @@ WHERE "s"."group" = "group-1"."number"
 GROUP BY "s"."group"
 HAVING MAX("s"."gpa") < 4
 
->>> select((s.group, avg(s.gpa)) for s in Student) .orderby(lambda: avg(s.gpa))
+>>> select((s.group, avg(s.gpa)) for s in Student) .order_by(lambda: avg(s.gpa))
 
 SELECT "s"."group", AVG("s"."gpa")
 FROM "Student" "s"
 GROUP BY "s"."group"
 ORDER BY AVG("s"."gpa")
 
->>> select((s.group, avg(s.gpa)) for s in Student) .orderby(lambda: desc(avg(s.gpa)))
+>>> select((s.group, avg(s.gpa)) for s in Student) .order_by(lambda: desc(avg(s.gpa)))
 
 SELECT "s"."group", AVG("s"."gpa")
 FROM "Student" "s"
 GROUP BY "s"."group"
 ORDER BY AVG("s"."gpa") DESC
 
->>> select((s.group, avg(s.gpa)) for s in Student).orderby(2)
+>>> select((s.group, avg(s.gpa)) for s in Student).order_by(2)
 
 SELECT "s"."group", AVG("s"."gpa")
 FROM "Student" "s"
 GROUP BY "s"."group"
 ORDER BY 2
 
->>> select((s.group, avg(s.gpa)) for s in Student).orderby(-2)
+>>> select((s.group, avg(s.gpa)) for s in Student).order_by(-2)
 
 SELECT "s"."group", AVG("s"."gpa")
 FROM "Student" "s"
