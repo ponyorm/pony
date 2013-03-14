@@ -816,8 +816,6 @@ class EntityMonad(Monad):
             throw(TranslationError, 'All entities in a query must belong to the same database')
     def __getitem__(monad, *args):
         throw(NotImplementedError)
-    def call_query(monad):
-        throw(NotImplementedError)
 
 class ListMonad(Monad):
     def __init__(monad, translator, items):
