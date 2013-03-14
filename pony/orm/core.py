@@ -381,6 +381,7 @@ class Database(object):
         if values is None: values = ()
         cache = database._get_cache()
         cursor = cache.connection.cursor()
+        if debug: log_sql(adapted_sql, values)
         t = time()
         provider.execute(cursor, adapted_sql, values)
         database._update_local_stat(sql, t)
