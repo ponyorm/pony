@@ -1581,7 +1581,21 @@ class AttrSetMonad(SetMixin, Monad):
             alias, columns = monad.tableref.make_join(pk_only=True)
             expr_ast = sqland([ [ 'EQ', [ 'COLUMN', alias, column ], expr ]  for column, expr in zip(columns, item.getsql()) ])
             return translator.BoolExprMonad(translator, expr_ast)
-        else: throw(NotImplementedError, 'JOIN({EXPR})')
+        else:
+            subquery = Subquery(translator.subquery)
+            tableref = monad.make_tableref(subquery)
+            attr = monad.attr
+            alias, columns = tableref.make_join(pk_only=attr.reverse)
+            subquery.expr_list = monad.make_expr_list()
+            if not attr.reverse: columns = attr.columns
+            from_ast = translator.subquery.from_ast
+            from_ast[0] = 'LEFT_JOIN'
+            from_ast.extend(subquery.from_ast[1:])
+            conditions = [ [ 'EQ', [ 'COLUMN', alias, column ], expr ]  for column, expr in zip(columns, item.getsql()) ]
+            conditions.extend(subquery.conditions)
+            from_ast[-1][-1] = sqland([ from_ast[-1][-1] ] + conditions)
+            expr_ast = sqland([ [ 'IS_NULL', [ 'COLUMN', alias, column ] ] for column in columns ])
+            return translator.BoolExprMonad(translator, expr_ast)
     def getattr(monad, name):
         try: return Monad.getattr(monad, name)
         except AttributeError: pass
