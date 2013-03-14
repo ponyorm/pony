@@ -1901,7 +1901,7 @@ class QuerySetMonad(SetMixin, Monad):
                 conditions += [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item_columns, columns_ast) ]
                 subquery_ast = [ not_in and 'NOT_EXISTS' or 'EXISTS', sub.subquery.from_ast, [ 'WHERE' ] + conditions ]
                 return translator.BoolExprMonad(translator, subquery_ast)
-        else: throw(NotImplementedError)
+        else: throw(NotImplementedError, 'JOIN({EXPR})')
     def nonzero(monad):
         sub = monad.subtranslator
         sql_ast = [ 'EXISTS', sub.subquery.from_ast, [ 'WHERE' ] + sub.conditions ]
