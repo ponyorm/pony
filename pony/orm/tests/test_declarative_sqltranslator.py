@@ -271,8 +271,8 @@ class TestSQLTranslator(unittest.TestCase):
     def test_where(self):
         result = set(Student.select(lambda s: s.scholarship > 0))
         self.assertEquals(result, set([Student[2], Student[3]]))
-    def test_orderby(self):
-        result = list(Student.orderby(Student.name))
+    def test_order_by(self):
+        result = list(Student.order_by(Student.name))
         self.assertEquals(result, [Student[1], Student[2], Student[3]])
     def test_read_inside_query(self):
         result = set(select(s for s in Student if Group[1].dept.number == 44))

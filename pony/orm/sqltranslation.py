@@ -159,7 +159,7 @@ class SQLTranslator(ASTTranslator):
         translator.aggregated = False if not optimize else True
         translator.inside_expr = False
         translator.inside_not = False
-        translator.inside_orderby = False
+        translator.inside_order_by = False
         translator.hint_join = False
         translator.aggregated_subquery_paths = set()
         for i, qual in enumerate(tree.quals):
@@ -369,13 +369,13 @@ class SQLTranslator(ASTTranslator):
             sql_ast.append([ 'WHERE' ] + translator.conditions)
 
         if translator.groupby_monads:
-            groupby = [ 'GROUP_BY' ]
-            for m in translator.groupby_monads: groupby.extend(m.getsql())
-            sql_ast.append(groupby)
-        else: groupby = None
+            group_by = [ 'GROUP_BY' ]
+            for m in translator.groupby_monads: group_by.extend(m.getsql())
+            sql_ast.append(group_by)
+        else: group_by = None
 
         if translator.having_conditions:
-            if not groupby: throw(TranslationError,
+            if not group_by: throw(TranslationError,
                 'In order to use aggregated functions such as SUM(), COUNT(), etc., '
                 'query must have grouping columns (i.e. resulting non-aggregated values)')
             sql_ast.append([ 'HAVING' ] + translator.having_conditions)

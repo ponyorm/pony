@@ -54,7 +54,7 @@ SELECT AVG("o"."TOTAL_PRICE")
 FROM "ORDER" "o"
 WHERE EXTRACT(YEAR FROM "o"."DATE_CREATED") = 2012
 
->>> select((c, sum(c.orders.total_price)) for c in Customer).orderby(lambda c: desc(sum(c.orders.total_price)))[:10]
+>>> select((c, sum(c.orders.total_price)) for c in Customer).order_by(lambda c: desc(sum(c.orders.total_price)))[:10]
 
 SELECT "c"."id", coalesce(SUM("order-1"."total_price"), 0)
 FROM "Customer" "c"

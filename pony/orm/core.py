@@ -2140,9 +2140,9 @@ class EntityMeta(type):
     def select_by_sql(entity, sql, globals=None, locals=None):
         return entity._find_by_sql_(None, sql, globals, locals, 2)
     @cut_traceback
-    def orderby(entity, *args):
+    def order_by(entity, *args):
         query = Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
-        return query.orderby(*args)
+        return query.order_by(*args)
     def _find_(entity, max_fetch_count, args, kwargs):
         if entity._database_.schema is None:
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
@@ -3565,9 +3565,9 @@ class Query(object):
         translator = query._translator
         if translator.order: pass
         elif type(translator.expr_type) is tuple:
-            query = query.orderby(*[i+1 for i in range(len(query._translator.expr_type))])
+            query = query.order_by(*[i+1 for i in range(len(query._translator.expr_type))])
         else:
-            query = query.orderby(1)
+            query = query.order_by(1)
         objects = query[:1]
         if not objects: return None
         return objects[0]
@@ -3598,10 +3598,10 @@ class Query(object):
     def __iter__(query):
         return iter(query._fetch())
     @cut_traceback
-    def orderby(query, *args):
-        if not args: throw(TypeError, 'orderby() method requires at least one argument')
+    def order_by(query, *args):
+        if not args: throw(TypeError, 'order_by() method requires at least one argument')
         if args[0] is None:
-            if len(args) > 1: throw(TypeError, 'When first argument of orderby() method is None, it must be the only argument')
+            if len(args) > 1: throw(TypeError, 'When first argument of order_by() method is None, it must be the only argument')
             return query._without_order_by()
 
         attributes = functions = strings = numbers = False
@@ -3610,11 +3610,11 @@ class Query(object):
             elif type(arg) is types.FunctionType: functions = True
             elif isinstance(arg, (int, long)): numbers = True
             elif isinstance(arg, (Attribute, DescWrapper)): attributes = True
-            else: throw(TypeError, "Arguments of orderby() method must be attributes, numbers, strings or lambdas. Got: %r" % arg)
+            else: throw(TypeError, "Arguments of order_by() method must be attributes, numbers, strings or lambdas. Got: %r" % arg)
         if strings + functions + numbers + attributes > 1:
-            throw(TypeError, 'All arguments of orderby() method must be of the same type')
+            throw(TypeError, 'All arguments of order_by() method must be of the same type')
         if len(args) > 1 and strings + functions:
-            throw(TypeError, 'When argument of orderby() method is string or lambda, it must be the only argument')
+            throw(TypeError, 'When argument of order_by() method is string or lambda, it must be the only argument')
 
         if numbers:
             return query._order_by_numbers(args)
@@ -3639,11 +3639,11 @@ class Query(object):
         query._key = query._key[:3]
         database = query._database
         translator = database._translator_cache.get(query._key)
-        assert translator is not None  # Translator for query without orderby must be in cache already
+        assert translator is not None  # Translator for query without order_by must be in cache already
         query._translator = translator
         return query
     def _order_by_numbers(query, numbers):
-        if 0 in numbers: throw(ValueError, 'Numeric arguments of orderby() method must be non-zero')
+        if 0 in numbers: throw(ValueError, 'Numeric arguments of order_by() method must be non-zero')
         new_key = query._key + (numbers,)
         translator = query._database._translator_cache.get(new_key)
         if translator is None:
@@ -3657,10 +3657,10 @@ class Query(object):
                 try: monad = monads[abs(i)-1]
                 except IndexError:
                     if len(monads) > 1: throw(IndexError,
-                        "Invalid index of orderby() method: %d "
+                        "Invalid index of order_by() method: %d "
                         "(query result is list of tuples with only %d elements in each)" % (i, len(monads)))
                     else: throw(IndexError,
-                        "Invalid index of orderby() method: %d "
+                        "Invalid index of order_by() method: %d "
                         "(query result is single list of elements and has only one 'column')" % i)
                 for pos in monad.orderby_columns:
                     order.append(i < 0 and [ 'DESC', [ 'VALUE', pos ] ] or [ 'VALUE', pos ])
@@ -3715,7 +3715,7 @@ class Query(object):
             func_ast = loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
             translator.extractors.update(extractors)
             translator.vartypes.update(vartypes)
-            translator.inside_orderby = True
+            translator.inside_order_by = True
             translator.dispatch(func_ast)
             if not prev_optimized:
                 name_path = translator.can_be_optimized()
@@ -3728,9 +3728,9 @@ class Query(object):
                     func_ast = loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
                     translator.extractors.update(extractors)
                     translator.vartypes.update(vartypes)
-                    translator.inside_orderby = True
+                    translator.inside_order_by = True
                     translator.dispatch(func_ast)
-            translator.inside_orderby = False
+            translator.inside_order_by = False
             if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
             else: nodes = (func_ast,)
             for node in nodes: translator.order.extend(node.monad.getsql())
