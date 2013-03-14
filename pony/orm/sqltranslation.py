@@ -706,11 +706,16 @@ class Monad(object):
             expr = [ 'CASE', None, [ [ expr, [ 'VALUE', 1 ] ] ], [ 'VALUE', None ] ]
             count_kind = 'ALL'
         elif len(expr) == 1: expr = expr[0]
-        elif translator.row_value_syntax == True: expr = ['ROW'] + expr
+        elif translator.row_value_syntax == True and translator.dialect != 'Oracle':
+            expr = ['ROW'] + expr
         elif translator.dialect == 'SQLite':
             alias, pk_columns = monad.tableref.make_join(pk_only=False)
             expr = [ 'COLUMN', alias, 'ROWID' ]
-        else: throw(NotImplementedError)
+        else: throw(NotImplementedError,
+                    '%s database provider does not support entities '
+                    'with composite primary keys inside aggregate functions. Got: {EXPR} '
+                    '(you can suggest us how to write SQL for this query)'
+                    % translator.dialect)
         result = translator.ExprMonad.new(translator, int, [ 'COUNT', count_kind, expr ])
         result.aggregated = True
         return result
@@ -731,8 +736,11 @@ class Monad(object):
         expr = monad.getsql()
         if len(expr) == 1: expr = expr[0]
         elif translator.row_value_syntax == True: expr = ['ROW'] + expr
-        else: throw(NotImplementedError, 'Database does not support entities '
-                    'with composite primary keys inside aggregate functions. Got: {EXPR}')
+        else: throw(NotImplementedError,
+                    '%s database provider does not support entities '
+                    'with composite primary keys inside aggregate functions. Got: {EXPR} '
+                    '(you can suggest us how to write SQL for this query)'
+                    % translator.dialect)
         if func_name == 'AVG': result_type = float
         else: result_type = expr_type
         result = translator.ExprMonad.new(translator, result_type, [ func_name, expr ])
