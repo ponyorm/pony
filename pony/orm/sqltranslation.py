@@ -12,7 +12,7 @@ from pony.orm.ormtypes import \
     string_types, numeric_types, comparable_types, SetType, FuncType, MethodType, \
     get_normalized_type_of, normalize_type, coerce_types, are_comparable_types
 from pony.orm import core
-from pony.orm.core import ERDiagramError, EntityMeta, Set, JOIN, AsciiStr
+from pony.orm.core import ERDiagramError, EntityMeta, Set, JOIN, AsciiStr, OptimizationFailed
 
 def check_comparable(left_monad, right_monad, op='=='):
     t1, t2 = left_monad.type, right_monad.type
@@ -147,6 +147,7 @@ class SQLTranslator(ASTTranslator):
         translator.left_join = left_join
         translator.optimize = optimize
         translator.from_optimized = False
+        translator.optimization_failed = False
         if not parent_translator: subquery = Subquery(left_join=left_join)
         else: subquery = Subquery(parent_translator.subquery, left_join=left_join)
         translator.subquery = subquery
@@ -1615,6 +1616,7 @@ class AttrSetMonad(SetMixin, Monad):
         elif len(expr_list) == 1:
             make_aggr = lambda expr_list: [ 'COUNT', 'DISTINCT' ] + expr_list
         elif translator.dialect == 'Oracle':
+            if monad.tableref.name_path == translator.optimize: raise OptimizationFailed
             extra_grouping = True
             if translator.hint_join: make_aggr = lambda expr_list: [ 'COUNT', 'ALL' ]
             else: make_aggr = lambda expr_list: [ 'COUNT', 'ALL', [ 'COUNT', 'ALL' ] ]
