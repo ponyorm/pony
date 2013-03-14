@@ -166,6 +166,9 @@ class ExprEvalError(TranslationError):
         TranslationError.__init__(exc, msg)
         exc.cause = cause
 
+class OptimizationFailed(Exception):
+    pass  # Internal exception, cannot be encountered in user code
+
 ###############################################################################
 
 def adapt_sql(sql, paramstyle):
@@ -3498,7 +3501,8 @@ class Query(object):
             name_path = translator.can_be_optimized()
             if name_path:
                 tree = loads(pickled_tree)  # tree = deepcopy(tree)
-                translator = translator_cls(tree, extractors, vartypes, left_join=True, optimize=name_path)
+                try: translator = translator_cls(tree, extractors, vartypes, left_join=True, optimize=name_path)
+                except OptimizationFailed: translator.optimization_failed = True
             database._translator_cache[query._key] = translator
         query._translator = translator
     def _construct_sql_and_arguments(query, range=None, distinct=None, aggr_func_name=None):
