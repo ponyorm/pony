@@ -1792,7 +1792,6 @@ class AttrSetMonad(SetMixin, Monad):
         return expr_ast, False
     def _subselect(monad):
         if monad.subquery is not None: return monad.subquery
-        parent = monad.parent
         attr = monad.attr
         translator = monad.translator
         subquery = Subquery(translator.subquery)
@@ -1805,7 +1804,6 @@ class AttrSetMonad(SetMixin, Monad):
         monad.subquery = subquery
         return subquery
     def getsql(monad, subquery=None):
-        parent = monad.parent
         if subquery is None: subquery = monad.translator.subquery
         monad.make_tableref(subquery)
         return monad.make_expr_list()
