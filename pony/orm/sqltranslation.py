@@ -1885,23 +1885,63 @@ class QuerySetMonad(SetMixin, Monad):
             item_columns = []
             for subitem in item.items: item_columns.extend(subitem.getsql())
         else: item_columns = item.getsql()
-        if not translator.hint_join:
-            if len(columns_ast) == 1 or translator.row_value_syntax:
-                select_ast = [ 'ALL' ] + columns_ast
-                subquery_ast = [ 'SELECT', select_ast, sub.subquery.from_ast ]
-                subquery_expr = sub.tree.expr.monad
-                if isinstance(subquery_expr, translator.AttrMonad) and not subquery_expr.attr.nullable: pass
-                else: conditions += [ [ 'IS_NOT_NULL', column_ast ] for column_ast in sub.expr_columns ]
-                if conditions: subquery_ast.append([ 'WHERE' ] + conditions)
-                if len(columns_ast) == 1: expr_ast = item_columns[0]
-                else: expr_ast = [ 'ROW' ] + item_columns
-                sql_ast = [ not_in and 'NOT_IN' or 'IN', expr_ast, subquery_ast ]
-                return translator.BoolExprMonad(translator, sql_ast)
+        if translator.hint_join:
+            subquery = translator.subquery
+            if not not_in:
+                translator.distinct = True
+                if subquery.from_ast[0] == 'FROM':
+                    subquery.from_ast[0] = 'INNER_JOIN'
             else:
-                conditions += [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item_columns, columns_ast) ]
-                subquery_ast = [ not_in and 'NOT_EXISTS' or 'EXISTS', sub.subquery.from_ast, [ 'WHERE' ] + conditions ]
-                return translator.BoolExprMonad(translator, subquery_ast)
-        else: throw(NotImplementedError, 'JOIN({EXPR})')
+                subquery.left_join = True
+                subquery.from_ast[0] = 'LEFT_JOIN'
+            col_names = set()
+            next = subquery.expr_counter.next
+            new_names = []
+            exprs = []
+            for column_ast in columns_ast:
+                if column_ast[0] == 'COLUMN':
+                    tab_name, col_name = column_ast[1:]
+                    if col_name not in col_names:
+                        col_names.add(col_name)
+                        new_names.append(col_name)
+                        exprs.append([ 'AS', column_ast, col_name ])
+                        continue
+                new_name = 'expr-%d' % next()
+                new_names.append(new_name)
+                exprs.append([ 'AS', column_ast, new_name ])
+            from_ast = sub.subquery.from_ast[:]
+            if len(from_ast[1]) == 4:
+                outer_conditions = from_ast[1][-1]
+                from_ast[1] = from_ast[:-1]
+            else: outer_conditions = []
+            subquery_ast = [ [ 'ALL' ] + exprs, from_ast ]
+            subquery_expr = sub.tree.expr.monad
+            if isinstance(subquery_expr, translator.AttrMonad) and not subquery_expr.attr.nullable: pass
+            else: conditions += [ [ 'IS_NOT_NULL', column_ast ] for column_ast in sub.expr_columns ]
+            if conditions: subquery_ast.append([ 'WHERE' ] + conditions)
+            alias = subquery.get_short_alias(None, 't')
+            outer_conditions.extend([ [ 'EQ', item_column, [ 'COLUMN', alias, new_name ] ]
+                                    for item_column, new_name in izip(item_columns, new_names) ])
+            subquery.from_ast.append([ alias, 'SELECT', subquery_ast, sqland(outer_conditions) ])
+            if not_in: result_expr = sqland([ [ 'IS_NULL', [ 'COLUMN', alias, new_name ] ]
+                                              for new_name in new_names ])
+            else: result_expr = [ 'EQ', [ 'VALUE', 1 ], [ 'VALUE', 1 ] ]
+            return translator.BoolExprMonad(translator, result_expr)
+        if len(columns_ast) == 1 or translator.row_value_syntax:
+            select_ast = [ 'ALL' ] + columns_ast
+            subquery_ast = [ 'SELECT', select_ast, sub.subquery.from_ast ]
+            subquery_expr = sub.tree.expr.monad
+            if isinstance(subquery_expr, translator.AttrMonad) and not subquery_expr.attr.nullable: pass
+            else: conditions += [ [ 'IS_NOT_NULL', column_ast ] for column_ast in sub.expr_columns ]
+            if conditions: subquery_ast.append([ 'WHERE' ] + conditions)
+            if len(columns_ast) == 1: expr_ast = item_columns[0]
+            else: expr_ast = [ 'ROW' ] + item_columns
+            sql_ast = [ not_in and 'NOT_IN' or 'IN', expr_ast, subquery_ast ]
+            return translator.BoolExprMonad(translator, sql_ast)
+        else:
+            conditions += [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item_columns, columns_ast) ]
+            subquery_ast = [ not_in and 'NOT_EXISTS' or 'EXISTS', sub.subquery.from_ast, [ 'WHERE' ] + conditions ]
+            return translator.BoolExprMonad(translator, subquery_ast)
     def nonzero(monad):
         sub = monad.subtranslator
         sql_ast = [ 'EXISTS', sub.subquery.from_ast, [ 'WHERE' ] + sub.conditions ]
