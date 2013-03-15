@@ -146,6 +146,7 @@ class SQLBuilder(object):
         builder.ast = ast
         builder.indent = 0
         builder.keys = {}
+        builder.inner_join_syntax = options.INNER_JOIN_SYNTAX
         builder.result = flat(builder(ast))
         builder.sql = u''.join(map(unicode, builder.result)).rstrip('\n')
         if paramstyle in ('qmark', 'format'):
@@ -198,7 +199,7 @@ class SQLBuilder(object):
         return result
     def subquery(builder, *sections):
         builder.indent += 1
-        if not options.INNER_JOIN_SYNTAX:
+        if not builder.inner_join_syntax:
             sections = move_conditions_from_inner_join_to_where(sections)
         result = [ builder(s) for s in sections ]
         builder.indent -= 1
@@ -259,6 +260,9 @@ class SQLBuilder(object):
         result.append('\n')
         return result
     def FROM(builder, *sources):
+        return builder.sql_join('INNER', sources)
+    def INNER_JOIN(builder, *sources):
+        builder.inner_join_syntax = True
         return builder.sql_join('INNER', sources)
     @indentable
     def LEFT_JOIN(builder, *sources):
