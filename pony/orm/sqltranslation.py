@@ -1881,6 +1881,10 @@ class QuerySetMonad(SetMixin, Monad):
         sub = monad.subtranslator
         columns_ast = sub.expr_columns
         conditions = sub.conditions[:]
+        if isinstance(item, translator.ListMonad):
+            item_columns = []
+            for subitem in item.items: item_columns.extend(subitem.getsql())
+        else: item_columns = item.getsql()
         if not translator.hint_join:
             if len(columns_ast) == 1 or translator.row_value_syntax:
                 select_ast = [ 'ALL' ] + columns_ast
@@ -1889,15 +1893,11 @@ class QuerySetMonad(SetMixin, Monad):
                 if isinstance(subquery_expr, translator.AttrMonad) and not subquery_expr.attr.nullable: pass
                 else: conditions += [ [ 'IS_NOT_NULL', column_ast ] for column_ast in sub.expr_columns ]
                 if conditions: subquery_ast.append([ 'WHERE' ] + conditions)
-                if len(columns_ast) == 1: expr_ast = item.getsql()[0]
-                else: expr_ast = [ 'ROW' ] + item.getsql()
+                if len(columns_ast) == 1: expr_ast = item_columns[0]
+                else: expr_ast = [ 'ROW' ] + item_columns
                 sql_ast = [ not_in and 'NOT_IN' or 'IN', expr_ast, subquery_ast ]
                 return translator.BoolExprMonad(translator, sql_ast)
             else:
-                if isinstance(item, translator.ListMonad):
-                    item_columns = []
-                    for subitem in item.items: item_columns.extend(subitem.getsql())
-                else: item_columns = item.getsql()
                 conditions += [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item_columns, columns_ast) ]
                 subquery_ast = [ not_in and 'NOT_EXISTS' or 'EXISTS', sub.subquery.from_ast, [ 'WHERE' ] + conditions ]
                 return translator.BoolExprMonad(translator, subquery_ast)
