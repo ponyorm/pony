@@ -1566,15 +1566,15 @@ class AttrSetMonad(SetMixin, Monad):
         elif not not_in:
             translator.distinct = True
             tableref = monad.make_tableref(translator.subquery)
-            alias, columns = monad.tableref.make_join(pk_only=True)
-            expr_ast = sqland([ [ 'EQ', [ 'COLUMN', alias, column ], expr ]  for column, expr in zip(columns, item.getsql()) ])
+            expr_list = monad.make_expr_list()
+            expr_ast = sqland([ [ 'EQ', expr1, expr2 ]  for expr1, expr2 in zip(expr_list, item.getsql()) ])
             return translator.BoolExprMonad(translator, expr_ast)
         else:
             subquery = Subquery(translator.subquery)
             tableref = monad.make_tableref(subquery)
             attr = monad.attr
             alias, columns = tableref.make_join(pk_only=attr.reverse)
-            subquery.expr_list = monad.make_expr_list()
+            expr_list = monad.make_expr_list()
             if not attr.reverse: columns = attr.columns
             from_ast = translator.subquery.from_ast
             from_ast[0] = 'LEFT_JOIN'
@@ -1582,7 +1582,7 @@ class AttrSetMonad(SetMixin, Monad):
             conditions = [ [ 'EQ', [ 'COLUMN', alias, column ], expr ]  for column, expr in zip(columns, item.getsql()) ]
             conditions.extend(subquery.conditions)
             from_ast[-1][-1] = sqland([ from_ast[-1][-1] ] + conditions)
-            expr_ast = sqland([ [ 'IS_NULL', [ 'COLUMN', alias, column ] ] for column in columns ])
+            expr_ast = sqland([ [ 'IS_NULL', expr ] for expr in expr_list ])
             return translator.BoolExprMonad(translator, expr_ast)
     def getattr(monad, name):
         try: return Monad.getattr(monad, name)
