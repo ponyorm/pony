@@ -61,6 +61,7 @@ db.generate_mapping(create_tables=True)
 CREATED = 'CREATED'
 SHIPPED = 'SHIPPED'
 DELIVERED = 'DELIVERED'
+CANCELLED = 'CANCELLED'
 
 def populate_database():
     c1 = Customer(email='john@example.com', password='***',
@@ -80,7 +81,7 @@ def populate_database():
 
     tablets = Category(name='Tablets')
     flash_drives = Category(name='USB Flash Drives')
-    ssd = Category(name='Solid State Disks')
+    ssd = Category(name='Solid State Drives')
     storage = Category(name='Data Storage')
 
     p1 = Product(name='Kindle Fire HD', price=Decimal('284.00'), quantity=120,
@@ -96,7 +97,7 @@ def populate_database():
 
     p3 = Product(name='SanDisk Cruzer 16 GB USB Flash Drive', price=Decimal('9.99'),
                  quantity=400, description='Take it all with you on reliable '
-                                           'SanDisk USB flash drives',
+                                           'SanDisk USB flash drive',
                  categories=[flash_drives, storage])
 
     p4 = Product(name='Kingston Digital DataTraveler SE9 16GB USB 2.0',
@@ -178,7 +179,7 @@ def test_queries():
 
     print 'Max SSD price'
     print
-    result = max(p.price for p in Product for cat in p.categories if cat.name == 'Solid State Disks')
+    result = max(p.price for p in Product for cat in p.categories if cat.name == 'Solid State Drives')
 
     print result
     print
@@ -190,7 +191,7 @@ def test_queries():
     print result
     print
 
-    print 'Products out of stock'
+    print 'Out of stock products'
     print
     result = select(p for p in Product if p.quantity == 0)[:]
 
@@ -211,7 +212,7 @@ def test_queries():
     print result
     print
 
-    print 'Customer who made several orders'
+    print 'Customers who made several orders'
     print
     result = select(c for c in Customer if count(c.orders) > 1)[:]
 
@@ -225,35 +226,35 @@ def test_queries():
     print result
     print
 
-    print 'Customer who has shipped but undelivered orders'
+    print 'Customers whose orders were shipped'
     print
     result = select(c for c in Customer if SHIPPED in c.orders.state)[:]
 
     print result
     print
 
-    print 'The same query with INNER JOIN instead of IN'
+    print 'The same query with the INNER JOIN instead of IN'
     print
     result = select(c for c in Customer if JOIN(SHIPPED in c.orders.state))[:]
 
     print result
     print
 
-    print "Customer who dosn't ordered anything yet"
+    print 'Customers with no orders'
     print
     result = select(c for c in Customer if not c.orders)[:]
 
     print result
     print
 
-    print 'The same query with LEFT JOIN instead of NOT EXISTS'
+    print 'The same query with the LEFT JOIN instead of NOT EXISTS'
     print
     result = left_join(c for c in Customer for o in c.orders if o is None)[:]
 
     print result
     print
 
-    print 'Customer who ordered several different tablets'
+    print 'Customers which ordered several different tablets'
     print
     result = select(c for c in Customer
                       for p in c.orders.items.product
@@ -262,7 +263,7 @@ def test_queries():
     print result
     print
 
-    print 'Customer who ordered several products from the same category'
+    print 'Customers which ordered several products from the same category'
     print
     result = select((customer, category.name)
                     for customer in Customer
@@ -273,7 +274,7 @@ def test_queries():
     print result
     print
 
-    print 'Customer who ordered several products from the same category in the same order'
+    print 'Customers which ordered several products from the same category in the same order'
     print
     result = select((customer, order, category.name)
                     for customer in Customer
@@ -300,7 +301,7 @@ def test_queries():
     print result
     print
 
-    print 'Orders with discount (order total price < sum of order item prices)'
+    print 'Orders with a discount (order total price < sum of order item prices)'
     print
     result = select(o for o in Order if o.total_price < sum(o.items.price * o.items.quantity))[:]
 
