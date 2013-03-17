@@ -170,6 +170,13 @@ def test_queries():
     print result
     print
 
+    print 'The number of customers for each country'
+    print
+    result = select((c.country, count(c)) for c in Customer)[:]
+
+    print result
+    print
+
     print 'Max product price'
     print
     result = max(p.price for p in Product)
