@@ -3433,8 +3433,8 @@ max = make_aggrfunc(_max)
 avg = make_aggrfunc(_avg)
 
 @cut_traceback
-def exists(gen):
-    return select(gen).exists()
+def exists(gen, frame_depth=0):
+    return select(gen, frame_depth=frame_depth+2).exists()
 
 def JOIN(expr):
     return expr
