@@ -3556,8 +3556,8 @@ class Query(object):
             else: stats[sql] = QueryStat(sql)
         return QueryResult(result, query)
     @cut_traceback
-    def show(query):
-        query._fetch().show()
+    def show(query, width=None):
+        query._fetch().show(width)
     @cut_traceback
     def get(query):
         objects = query[:2]
@@ -3809,7 +3809,8 @@ class QueryResult(list):
         result[:] = list
         result._query = query
     @cut_traceback
-    def show(result, width=80):
+    def show(result, width=None):
+        if not width: width = options.CONSOLE_WIDTH
         max_columns = width // 5
         translator = result._query._translator
 
