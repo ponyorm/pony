@@ -4,6 +4,7 @@ from cPickle import loads, dumps
 from copy import deepcopy, _deepcopy_dispatch
 from operator import attrgetter, itemgetter
 from itertools import count as _count, ifilter, ifilterfalse, imap, izip, chain, starmap
+from collections import defaultdict
 from time import time
 import datetime
 from threading import Lock
@@ -3537,11 +3538,11 @@ class Query(object):
                 entity = translator.expr_type
                 result = entity._fetch_objects(cursor, attr_offsets)
             elif len(translator.row_layout) == 1:
-                func, slice_or_offset = translator.row_layout[0]
+                func, slice_or_offset, src = translator.row_layout[0]
                 result = list(starmap(func, cursor.fetchall()))
             else:
                 result = [ tuple(func(sql_row[slice_or_offset])
-                                 for func, slice_or_offset in translator.row_layout)
+                                 for func, slice_or_offset, src in translator.row_layout)
                            for sql_row in cursor.fetchall() ]
                 for i, t in enumerate(translator.expr_type):
                     if isinstance(t, EntityMeta) and t._discriminator_ and t._subclasses_:
@@ -3553,7 +3554,10 @@ class Query(object):
             stat = stats.get(sql)
             if stat is not None: stat.cache_count += 1
             else: stats[sql] = QueryStat(sql)
-        return result[:]
+        return QueryResult(result, query)
+    @cut_traceback
+    def show(query):
+        query._fetch().show()
     @cut_traceback
     def get(query):
         objects = query[:2]
@@ -3799,12 +3803,72 @@ class Query(object):
     def count(query):
         return query._aggregate('COUNT')
 
+class QueryResult(list):
+    __slots__ = '_query'
+    def __init__(result, list, query):
+        result[:] = list
+        result._query = query
+    @cut_traceback
+    def show(result, width=80):
+        max_columns = width // 5
+        translator = result._query._translator
+
+        if isinstance(translator.expr_type, EntityMeta):
+            entity = translator.expr_type
+            colnames = [ attr.name for attr in entity._attrs_
+                                   if not attr.is_collection and not attr.lazy ][:max_columns]
+            row_maker = attrgetter(*colnames)
+            rows = [ map(str, row_maker(obj)) for obj in result ]
+        elif len(translator.row_layout) == 1:
+            func, slice_or_offset, src = translator.row_layout[0]
+            colnames = [ src ]
+            rows = [ (str(obj),) for obj in result ]
+        else:
+            colnames = [ src for func, slice_or_offset, src in translator.row_layout ]
+            rows = [ map(str, row) for row in result ]
+
+        remaining_columns = {}
+        for col_num, colname in enumerate(colnames):
+            remaining_columns[col_num] = max(len(colname), max(len(row[col_num]) for row in rows))
+
+        width_dict = {}
+        available_width = width - len(colnames) + 1
+        while remaining_columns:
+            base_len = (available_width - len(remaining_columns) + 1) // len(remaining_columns)
+            for col_num, max_len in remaining_columns.items():
+                if max_len <= base_len:
+                    width_dict[col_num] = max_len
+                    del remaining_columns[col_num]
+                    available_width -= max_len
+                    break
+            else: break
+        if remaining_columns:
+            base_len = available_width // len(remaining_columns)
+            for col_num, max_len in remaining_columns.items():
+                width_dict[col_num] = base_len
+
+        def cut(s, width):
+            if len(s) <= width:
+                return s + ' ' * (width - len(s))
+            else:
+                return s[:width-3] + '...'
+
+        print '|'.join(cut(colname, width_dict[i]) for i, colname in enumerate(colnames))
+        print '+'.join('-' * width_dict[i] for i in xrange(len(colnames)))
+        for row in rows:
+            print '|'.join(cut(item, width_dict[i]) for i, item in enumerate(row))
+
+@cut_traceback
 def show(entity):
     x = entity
     if isinstance(x, EntityMeta):
         print x.describe()
     elif isinstance(x, Entity):
         print 'instance of ' + x.__class__.describe()
+    elif isinstance(x, (basestring, types.GeneratorType)):
+        select(x).show()
+    elif hasattr(x, 'show'):
+        x.show()
     else:
         from pprint import pprint
         pprint(x)

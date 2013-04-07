@@ -311,7 +311,7 @@ class SQLTranslator(ASTTranslator):
                     def func(values, constructor=expr_type._get_by_raw_pkval_):
                         if None in values: return None
                         return constructor(values)
-                    row_layout.append((func, slice(offset, next_offset)))
+                    row_layout.append((func, slice(offset, next_offset), ast2src(m.node)))
                     m.orderby_columns = range(offset+1, next_offset+1)
                     offset = next_offset
                 else:
@@ -319,7 +319,7 @@ class SQLTranslator(ASTTranslator):
                     def func(value, sql2py=converter.sql2py):
                         if value is None: return None
                         return sql2py(value)
-                    row_layout.append((func, offset))
+                    row_layout.append((func, offset, ast2src(m.node)))
                     m.orderby_columns = (offset+1,)
                     offset += 1
             translator.row_layout = row_layout
