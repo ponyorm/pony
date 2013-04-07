@@ -61,6 +61,9 @@ CONSOLE_ENCODING = None
 # db options
 MAX_FETCH_COUNT = 1000
 
+# used for select(...).show()
+CONSOLE_WIDTH = 80
+
 # sql translator options
 SIMPLE_ALIASES = True  # if True just use entity name like "Course-1"
                        # if False use attribute names chain as an alias like "student-grades-course"
