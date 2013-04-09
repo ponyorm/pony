@@ -3878,12 +3878,12 @@ def show(entity):
         print x.describe()
     elif isinstance(x, Entity):
         print 'instance of ' + x.__class__.__name__
-        width = options.CONSOLE_WIDTH
-        for attr in x._attrs_:
-            if attr.is_collection or attr.lazy: continue
-            value = str(attr.__get__(x)).replace('\n', ' ')
-            print '  %s: %s' % (attr.name, strcut(value, width-len(attr.name)-4))
-        print
+        # width = options.CONSOLE_WIDTH
+        # for attr in x._attrs_:
+        #     if attr.is_collection or attr.lazy: continue
+        #     value = str(attr.__get__(x)).replace('\n', ' ')
+        #     print '  %s: %s' % (attr.name, strcut(value, width-len(attr.name)-4))
+        # print
         QueryResult([ x ], x.__class__, None).show()
     elif isinstance(x, (basestring, types.GeneratorType)):
         select(x).show()
