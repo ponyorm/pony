@@ -3848,7 +3848,9 @@ class QueryResult(list):
 
         remaining_columns = {}
         for col_num, colname in enumerate(colnames):
-            remaining_columns[col_num] = max(len(colname), max(len(row[col_num]) for row in rows))
+            if not rows: max_len = len(colname)
+            else: max_len = max(len(colname), max(len(row[col_num]) for row in rows))
+            remaining_columns[col_num] = max_len
 
         width_dict = {}
         available_width = width - len(colnames) + 1
