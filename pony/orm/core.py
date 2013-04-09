@@ -1079,7 +1079,14 @@ class Attribute(object):
     def describe(attr):
         t = attr.py_type
         if isinstance(t, type): t = t.__name__
-        result = "%s(%s)" % (attr.__class__.__name__, t)
+        options = []
+        if attr.args: options.append(', '.join(map(str, attr.args)))
+        if attr.auto: options.append('auto=True')
+        if not isinstance(attr, PrimaryKey) and attr.is_unique: options.append('unique=True')
+        if attr.default is not None: options.append('default=%s' % attr.default)
+        if not options: options = ''
+        else: options = ', ' + ', '.join(options)
+        result = "%s(%s%s)" % (attr.__class__.__name__, t, options)
         return "%s = %s" % (attr.name,result)
 
 class Optional(Attribute):
