@@ -3561,7 +3561,7 @@ class Query(object):
             stat = stats.get(sql)
             if stat is not None: stat.cache_count += 1
             else: stats[sql] = QueryStat(sql)
-        return QueryResult(result, query)
+        return QueryResult(result, translator.expr_type, translator.row_layout)
     @cut_traceback
     def show(query, width=None):
         query._fetch().show(width)
@@ -3810,30 +3810,41 @@ class Query(object):
     def count(query):
         return query._aggregate('COUNT')
 
+def strcut(s, width):
+    if len(s) <= width:
+        return s + ' ' * (width - len(s))
+    else:
+        return s[:width-3] + '...'
+
 class QueryResult(list):
-    __slots__ = '_query'
-    def __init__(result, list, query):
+    __slots__ = '_expr_type', '_row_layout'
+    def __init__(result, list, expr_type, row_layout):
         result[:] = list
-        result._query = query
+        result._expr_type = expr_type
+        result._row_layout = row_layout
     @cut_traceback
     def show(result, width=None):
         if not width: width = options.CONSOLE_WIDTH
         max_columns = width // 5
-        translator = result._query._translator
+        expr_type = result._expr_type
+        row_layout = result._row_layout
 
-        if isinstance(translator.expr_type, EntityMeta):
-            entity = translator.expr_type
+        def to_str(x):
+            return str(x).replace('\n', ' ')
+
+        if isinstance(expr_type, EntityMeta):
+            entity = expr_type
             colnames = [ attr.name for attr in entity._attrs_
                                    if not attr.is_collection and not attr.lazy ][:max_columns]
             row_maker = attrgetter(*colnames)
-            rows = [ map(str, row_maker(obj)) for obj in result ]
-        elif len(translator.row_layout) == 1:
-            func, slice_or_offset, src = translator.row_layout[0]
+            rows = [ map(to_str, row_maker(obj)) for obj in result ]
+        elif len(row_layout) == 1:
+            func, slice_or_offset, src = row_layout[0]
             colnames = [ src ]
-            rows = [ (str(obj),) for obj in result ]
+            rows = [ (to_str(obj),) for obj in result ]
         else:
-            colnames = [ src for func, slice_or_offset, src in translator.row_layout ]
-            rows = [ map(str, row) for row in result ]
+            colnames = [ src for func, slice_or_offset, src in row_layout ]
+            rows = [ map(to_str, row) for row in result ]
 
         remaining_columns = {}
         for col_num, colname in enumerate(colnames):
@@ -3855,16 +3866,10 @@ class QueryResult(list):
             for col_num, max_len in remaining_columns.items():
                 width_dict[col_num] = base_len
 
-        def cut(s, width):
-            if len(s) <= width:
-                return s + ' ' * (width - len(s))
-            else:
-                return s[:width-3] + '...'
-
-        print '|'.join(cut(colname, width_dict[i]) for i, colname in enumerate(colnames))
+        print '|'.join(strcut(colname, width_dict[i]) for i, colname in enumerate(colnames))
         print '+'.join('-' * width_dict[i] for i in xrange(len(colnames)))
         for row in rows:
-            print '|'.join(cut(item, width_dict[i]) for i, item in enumerate(row))
+            print '|'.join(strcut(item, width_dict[i]) for i, item in enumerate(row))
 
 @cut_traceback
 def show(entity):
@@ -3872,7 +3877,14 @@ def show(entity):
     if isinstance(x, EntityMeta):
         print x.describe()
     elif isinstance(x, Entity):
-        print 'instance of ' + x.__class__.describe()
+        print 'instance of ' + x.__class__.__name__
+        width = options.CONSOLE_WIDTH
+        for attr in x._attrs_:
+            if attr.is_collection or attr.lazy: continue
+            value = str(attr.__get__(x)).replace('\n', ' ')
+            print '  %s: %s' % (attr.name, strcut(value, width-len(attr.name)-4))
+        print
+        QueryResult([ x ], x.__class__, None).show()
     elif isinstance(x, (basestring, types.GeneratorType)):
         select(x).show()
     elif hasattr(x, 'show'):
