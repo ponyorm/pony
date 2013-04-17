@@ -149,15 +149,19 @@ class DBAPIProvider(object):
         throw(TypeError, 'No database converter found for type %s' % py_type)
 
     def get_converter_by_py_type(provider, py_type):
-        return provider._get_converter_type_by_py_type(py_type)()
+        converter_cls = provider._get_converter_type_by_py_type(py_type)
+        return converter_cls(py_type)
 
     def get_converter_by_attr(provider, attr):
-        return provider._get_converter_type_by_py_type(attr.py_type)(attr)
+        py_type = attr.py_type
+        converter_cls = provider._get_converter_type_by_py_type(py_type)
+        return converter_cls(py_type, attr)
 
 class Converter(object):
     def __deepcopy__(converter, memo):
         return converter  # Converter instances are "immutable"
-    def __init__(converter, attr=None):
+    def __init__(converter, py_type, attr=None):
+        converter.py_type = py_type
         converter.attr = attr
         if attr is None: return
         kwargs = attr.kwargs.copy()
@@ -182,10 +186,10 @@ class BoolConverter(Converter):
         return "BOOLEAN"
 
 class BasestringConverter(Converter):
-    def __init__(converter, attr=None):
+    def __init__(converter, py_type, attr=None):
         converter.max_len = None
         converter.db_encoding = None
-        Converter.__init__(converter, attr)
+        Converter.__init__(converter, py_type, attr)
     def init(converter, kwargs):
         attr = converter.attr
         if not attr.args: max_len = None
@@ -219,9 +223,9 @@ class UnicodeConverter(BasestringConverter):
         return BasestringConverter.validate(converter, val)
 
 class StrConverter(BasestringConverter):
-    def __init__(converter, attr=None):
+    def __init__(converter, py_type, attr=None):
         converter.encoding = 'ascii'  # for the case when attr is None
-        BasestringConverter.__init__(converter, attr)
+        BasestringConverter.__init__(converter, py_type, attr)
         converter.utf8 = is_utf8(converter.encoding)
     def init(converter, kwargs):
         BasestringConverter.init(converter, kwargs)
@@ -310,9 +314,9 @@ class RealConverter(Converter):
         return 'REAL'
 
 class DecimalConverter(Converter):
-    def __init__(converter, attr=None):
+    def __init__(converter, py_type, attr=None):
         converter.exp = None  # for the case when attr is None
-        Converter.__init__(converter, attr)
+        Converter.__init__(converter, py_type, attr)
     def init(converter, kwargs):
         attr = converter.attr
         args = attr.args
