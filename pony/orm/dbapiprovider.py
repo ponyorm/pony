@@ -164,7 +164,8 @@ class Converter(object):
         converter.init(kwargs)
         for option in kwargs: throw(TypeError, 'Unknown option %r' % option)
     def init(converter, kwargs):
-        pass
+        attr = converter.attr
+        if attr and attr.args: unexpected_args(attr, attr.args)
     def validate(converter, val):
         return val
     def py2sql(converter, val):
@@ -173,9 +174,6 @@ class Converter(object):
         return val
 
 class BoolConverter(Converter):
-    def init(converter, kwargs):
-        attr = converter.attr
-        if attr and attr.args: unexpected_args(attr, attr.args)
     def validate(converter, val):
         return bool(val)
     def sql2py(converter, val):
@@ -242,8 +240,7 @@ class StrConverter(BasestringConverter):
 
 class IntConverter(Converter):
     def init(converter, kwargs):
-        attr = converter.attr
-        if attr and attr.args: unexpected_args(attr, attr.args)
+        Converter.init(converter, kwargs)
         min_val = kwargs.pop('min', None)
         if min_val is not None and not isinstance(min_val, (int, long)):
             throw(TypeError, "'min' argument for attribute %s must be int. Got: %r" % (attr, min_val))
@@ -275,8 +272,7 @@ class IntConverter(Converter):
 class RealConverter(Converter):
     default_tolerance = None
     def init(converter, kwargs):
-        attr = converter.attr
-        if attr and attr.args: unexpected_args(attr, attr.args)
+        Converter.init(converter, kwargs)
         min_val = kwargs.pop('min', None)
         if min_val is not None:
             try: min_val = float(min_val)
@@ -372,9 +368,6 @@ class DecimalConverter(Converter):
         return 'DECIMAL(%d, %d)' % (converter.precision, converter.scale)
 
 class BlobConverter(Converter):
-    def init(converter, kwargs):
-        attr = converter.attr
-        if attr and attr.args: unexpected_args(attr, attr.args)
     def validate(converter, val):
         if isinstance(val, buffer): return val
         if isinstance(val, str): return buffer(val)
@@ -386,9 +379,6 @@ class BlobConverter(Converter):
         return 'BLOB'
 
 class DateConverter(Converter):
-    def init(converter, kwargs):
-        attr = converter.attr
-        if attr and attr.args: unexpected_args(attr, attr.args)
     def validate(converter, val):
         if isinstance(val, datetime): return val.date()
         if isinstance(val, date): return val
@@ -402,9 +392,6 @@ class DateConverter(Converter):
         return 'DATE'
 
 class DatetimeConverter(Converter):
-    def init(converter, kwargs):
-        attr = converter.attr
-        if attr and attr.args: unexpected_args(attr, attr.args)
     def validate(converter, val):
         if isinstance(val, datetime): return val
         if isinstance(val, basestring): return str2datetime(val)
