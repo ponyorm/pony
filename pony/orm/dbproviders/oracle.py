@@ -234,7 +234,7 @@ class OraProvider(DBAPIProvider):
         (date, OraDateConverter)
     ]
 
-    def _get_pool(provider, *args, **kwargs):
+    def get_pool(provider, *args, **kwargs):
         user = password = dsn = None
         if len(args) == 1:
             conn_str = args[0]
@@ -256,7 +256,7 @@ class OraProvider(DBAPIProvider):
         kwargs.setdefault('min', 1)
         kwargs.setdefault('max', 10)
         kwargs.setdefault('increment', 1)
-        return Pool(**kwargs)
+        return OraPool(**kwargs)
 
 provider_cls = OraProvider
 
@@ -279,7 +279,7 @@ def output_type_handler(cursor, name, defaultType, size, precision, scale):
         return cursor.var(unicode, size, cursor.arraysize)  # from cx_Oracle example
     return None
 
-class Pool(object):
+class OraPool(object):
     def __init__(pool, **kwargs):
         pool._pool = cx_Oracle.SessionPool(**kwargs)
     def connect(pool):

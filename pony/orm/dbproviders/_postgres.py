@@ -4,13 +4,11 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time
 from binascii import unhexlify
 
-import pgdb
-
 from pony.orm import core, dbschema, sqlbuilding, dbapiprovider
 from pony.orm.core import log_orm, DatabaseError
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
-from pony.utils import localbase, timestamp2datetime
+from pony.utils import timestamp2datetime
 
 class PGColumn(dbschema.Column):
     auto_template = 'SERIAL PRIMARY KEY'
@@ -107,7 +105,7 @@ class PGDatetimeConverter(dbapiprovider.DatetimeConverter):
 class PGProvider(DBAPIProvider):
     paramstyle = 'pyformat'
 
-    dbapi_module = pgdb
+    dbapi_module = None  # Derived class overrides this with pgdb or psycopg2
     dbschema_cls = PGSchema
     translator_cls = PGTranslator
     sqlbuilder_cls = PGSQLBuilder
@@ -153,28 +151,3 @@ class PGProvider(DBAPIProvider):
         (datetime, PGDatetimeConverter),
         (date, PGDateConverter)
     ]
-
-    def _get_pool(provider, *args, **kwargs):
-        return Pool(*args, **kwargs)
-
-provider_cls = PGProvider
-
-class Pool(localbase):
-    def __init__(pool, *args, **kwargs):
-        pool.args = args
-        pool.kwargs = kwargs
-        pool.con = None
-    def connect(pool):
-        if pool.con is None:
-            pool.con = pgdb.connect(*pool.args, **pool.kwargs)
-        return pool.con
-    def release(pool, con):
-        assert con is pool.con
-        try: con.rollback()
-        except:
-            pool.close(con)
-            raise
-    def drop(pool, con):
-        assert con is pool.con
-        pool.con = None
-        con.close()

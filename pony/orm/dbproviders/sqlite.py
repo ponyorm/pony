@@ -8,7 +8,7 @@ from datetime import datetime, date, time
 from time import strptime
 
 from pony.orm import dbschema, sqltranslation, sqlbuilding, dbapiprovider
-from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
+from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
 from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple_decorator, absolutize_path, throw
 
 class SQLiteForeignKey(dbschema.ForeignKey):
@@ -96,7 +96,7 @@ class SQLiteProvider(DBAPIProvider):
         (date, SQLiteDateConverter)
     ]
 
-    def _get_pool(provider, filename, create_db=False):
+    def get_pool(provider, filename, create_db=False):
         if filename == ':memory:': return MemPool()
         else:
             # When relative filename is specified, it is considered
@@ -107,14 +107,14 @@ class SQLiteProvider(DBAPIProvider):
             # 3 - user code: db = Database(...)
             # 2 - cut_exception decorator
             # 1 - pony.orm.Database.__init__()
-            # 0 - pony.dbproviders.sqlite._get_pool()
+            # 0 - pony.dbproviders.sqlite.get_pool()
 
             filename = absolutize_path(filename, frame_depth=4)
-            return Pool(filename, create_db)
+            return SQLitePool(filename, create_db)
 
 provider_cls = SQLiteProvider
 
-class Pool(localbase):
+class SQLitePool(Pool):
     def __init__(pool, filename, create_db): # called separately in each thread
         pool.filename = filename
         pool.create_db = create_db
@@ -128,16 +128,6 @@ class Pool(localbase):
         pool.con = con = sqlite.connect(filename)
         _init_connection(con)
         return con
-    def release(pool, con):
-        assert con is pool.con
-        try: con.rollback()
-        except:
-            pool.close(con)
-            raise
-    def drop(pool, con):
-        assert con is pool.con
-        pool.con = None
-        con.close()
 
 mem_connect_lock = Lock()
 

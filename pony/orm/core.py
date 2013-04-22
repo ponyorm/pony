@@ -298,7 +298,7 @@ class Database(object):
         pool_mockup = kwargs.pop('pony_pool_mockup', None)
 
         if pool_mockup: provider.pool = pool_mockup
-        else: provider.pool = provider._get_pool(*args, **kwargs)
+        else: provider.pool = provider.get_pool(*args, **kwargs)
 
         self.priority = 0
         self.optimistic = True

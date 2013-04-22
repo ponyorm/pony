@@ -1,7 +1,7 @@
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time
 
-from pony.utils import is_utf8, simple_decorator, throw
+from pony.utils import is_utf8, simple_decorator, throw, localbase
 from pony.converting import str2date, str2datetime
 from pony.orm.ormtypes import LongStr, LongUnicode
 
@@ -156,6 +156,30 @@ class DBAPIProvider(object):
         py_type = attr.py_type
         converter_cls = provider._get_converter_type_by_py_type(py_type)
         return converter_cls(py_type, attr)
+
+    def get_pool(provider, *args, **kwargs):
+        return Pool(provider.dbapi_module, *args, **kwargs)
+
+class Pool(localbase):
+    def __init__(pool, dbapi_module, *args, **kwargs): # called separately in each thread
+        pool.dbapi_module = dbapi_module
+        pool.args = args
+        pool.kwargs = kwargs
+        pool.con = None
+    def connect(pool):
+        if pool.con is None:
+            pool.con = pool.dbapi_module.connect(*pool.args, **pool.kwargs)
+        return pool.con
+    def release(pool, con):
+        assert con is pool.con
+        try: con.rollback()
+        except:
+            pool.close(con)
+            raise
+    def drop(pool, con):
+        assert con is pool.con
+        pool.con = None
+        con.close()
 
 class Converter(object):
     def __deepcopy__(converter, memo):
