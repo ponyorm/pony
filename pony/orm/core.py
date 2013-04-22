@@ -802,8 +802,10 @@ class Attribute(object):
                     try:
                         if from_db: return converter.sql2py(val)
                         else: return converter.validate(val)
-                    except UnicodeDecodeError, e: raise ValueError(
-                        'Value for attribute %s cannot be converted to unicode: %r' % (attr, val))
+                    except UnicodeDecodeError, e:
+                        vrepr = repr(val)
+                        if len(vrepr) > 100: vrepr = vrepr[:97] + '...'
+                        raise ValueError('Value for attribute %s cannot be converted to unicode: %s' % (attr, vrepr))
             return attr.py_type(val)
 
         if not isinstance(val, reverse.entity):
@@ -960,7 +962,6 @@ class Attribute(object):
         assert obj._status_ not in ('created', 'deleted', 'cancelled')
         assert attr.pk_offset is None
         if new_dbval is NOT_LOADED: assert is_reverse_call
-        else: new_dbval = attr.check(new_dbval, obj, from_db=True)
         old_dbval = obj._dbvals_.get(attr.name, NOT_LOADED)
 
         if attr.py_type is float:
