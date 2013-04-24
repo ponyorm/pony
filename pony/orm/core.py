@@ -28,7 +28,7 @@ from pony.orm.dbapiprovider import (
     )
 from pony.utils import (
     localbase, simple_decorator, decorator_with_params, cut_traceback, throw,
-    import_module, parse_expr, is_ident, reraise, count, avg as _avg, tostring
+    import_module, parse_expr, is_ident, count, avg as _avg, tostring
     )
 
 __all__ = '''
@@ -2979,10 +2979,12 @@ class Entity(object):
         except IntegrityError, e:
             msg = " ".join(tostring(arg) for arg in e.args)
             throw(TransactionIntegrityError,
-                'Object %r cannot be stored in the database (probably it already exists). DB message: %s' % (obj, msg), e)
+                  'Object %r cannot be stored in the database (probably it already exists). %s: %s'
+                  % (obj, e.__class__.__name__, msg), e)
         except DatabaseError, e:
             msg = " ".join(tostring(arg) for arg in e.args)
-            throw(UnexpectedError, 'Object %r cannot be stored in the database. DB message: %s' % (obj, msg), e)
+            throw(UnexpectedError, 'Object %r cannot be stored in the database. %s: %s'
+                                   % (obj, e.__class__.__name__, msg), e)
 
         if auto_pk:
             index = obj._cache_.indexes.setdefault(pk_attr, {})
@@ -3300,6 +3302,15 @@ def _get_caches():
 @cut_traceback
 def flush():
     for cache in _get_caches(): cache.flush()
+
+def reraise(exc_class, exceptions):
+    try:
+        cls, exc, tb = exceptions[0]
+        msg = " ".join(tostring(arg) for arg in exc.args)
+        if not issubclass(cls, TransactionError):
+            msg = '%s: %s' % (cls.__name__, msg)
+        raise exc_class, exc_class(msg, exceptions), tb
+    finally: del tb
 
 @cut_traceback
 def commit():
