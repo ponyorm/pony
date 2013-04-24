@@ -1,8 +1,5 @@
-import re
-from itertools import imap
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from datetime import datetime, date, time
-from binascii import unhexlify
 
 from pony.orm import core, dbschema, sqlbuilding, dbapiprovider
 from pony.orm.core import log_orm, DatabaseError
@@ -30,19 +27,11 @@ class PGSchema(dbschema.DBSchema):
     table_class = PGTable
     column_class = PGColumn
 
-class PGValue(sqlbuilding.Value):
-    def __unicode__(self):
-        value = self.value
-        if isinstance(value, buffer):
-            return "'%s'::bytea" % "".join(imap(char2oct.__getitem__, val))
-        return sqlbuilding.Value.__unicode__(self)
-
 class PGTranslator(SQLTranslator):
     dialect = 'PostgreSQL'
 
 class PGSQLBuilder(sqlbuilding.SQLBuilder):
     dialect = 'PostgreSQL'
-    make_value = PGValue
     def INSERT(builder, table_name, columns, values, returning=None):
         result = sqlbuilding.SQLBuilder.INSERT(builder, table_name, columns, values)
         if returning is not None:
@@ -69,46 +58,21 @@ class PGRealConverter(dbapiprovider.RealConverter):
     def sql_type(converter):
         return 'DOUBLE PRECISION'
 
-char2oct = {}
-for i in range(256):
-    ch = chr(i)
-    if 31 < i < 127:
-        char2oct[ch] = ch
-    else: char2oct[ch] = '\\' + ('00'+oct(i))[-3:]
-char2oct['\\'] = '\\\\'
-
-oct_re = re.compile(r'\\[0-7]{3}')
-
 class PGBlobConverter(dbapiprovider.BlobConverter):
-    def py2sql(converter, val):
-        db_val = "".join(imap(char2oct.__getitem__, val))
-        return db_val
-    def sql2py(converter, val):
-        if val.startswith('\\x'): val = unhexlify(val[2:])
-        else: val = oct_re.sub(lambda match: chr(int(match.group(0)[-3:], 8)), val.replace('\\\\', '\\'))
-        return buffer(val)
     def sql_type(converter):
         return 'BYTEA'
-
-class PGDateConverter(dbapiprovider.DateConverter):
-    def py2sql(converter, val):
-        return datetime(val.year, val.month, val.day)
-    def sql2py(converter, val):
-        return datetime.strptime(val, '%Y-%m-%d').date()
 
 class PGDatetimeConverter(dbapiprovider.DatetimeConverter):
     def sql_type(converter):
         return 'TIMESTAMP'
-    def sql2py(converter, val):
-        return timestamp2datetime(val)
 
 class PGProvider(DBAPIProvider):
     paramstyle = 'pyformat'
 
-    dbapi_module = None  # Derived class overrides this with pgdb or psycopg2
+    dbapi_module = None  # pgdb or psycopg2
     dbschema_cls = PGSchema
     translator_cls = PGTranslator
-    sqlbuilder_cls = PGSQLBuilder
+    sqlbuilder_cls = PGSQLBuilder  # pygresql redefines this to PyGreSQLBuilder
 
     def get_default_entity_table_name(provider, entity):
         return DBAPIProvider.get_default_entity_table_name(provider, entity).lower()
@@ -149,5 +113,5 @@ class PGProvider(DBAPIProvider):
         (Decimal, dbapiprovider.DecimalConverter),
         (buffer, PGBlobConverter),
         (datetime, PGDatetimeConverter),
-        (date, PGDateConverter)
+        (date, dbapiprovider.DateConverter)
     ]
