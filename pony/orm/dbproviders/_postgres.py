@@ -42,13 +42,17 @@ class PGUnicodeConverter(dbapiprovider.UnicodeConverter):
     def py2sql(converter, val):
         return val.encode('utf-8')
     def sql2py(converter, val):
+        if isinstance(val, unicode): return val
         return val.decode('utf-8')
 
 class PGStrConverter(dbapiprovider.StrConverter):
     def py2sql(converter, val):
         return val.decode(converter.encoding).encode('utf-8')
     def sql2py(converter, val):
-        return val.decode('utf-8').encode(converter.encoding, 'replace')
+        if not isinstance(val, unicode):
+            if converter.utf8: return val
+            val = val.decode('utf-8')
+        return val.encode(converter.encoding, 'replace')
 
 class PGLongConverter(dbapiprovider.IntConverter):
     def sql_type(converter):
