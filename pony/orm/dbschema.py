@@ -33,9 +33,10 @@ class DBSchema(object):
             tables.append(table)
         return tables
     def generate_create_script(schema):
+        created_tables = set()
         commands = []
         for table in schema.order_tables_to_create():
-            commands.extend(table.get_create_commands())
+            commands.extend(table.get_create_commands(created_tables))
         return schema.command_separator.join(commands)
     def create_tables(schema):
         provider = schema.provider
