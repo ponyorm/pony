@@ -3220,7 +3220,8 @@ class Cache(object):
         cache.to_be_checked[:] = []
     def calc_modified_m2m(cache):
         modified_m2m = {}
-        for attr, objects in cache.modified_collections.iteritems():
+        for attr, objects in sorted(cache.modified_collections.iteritems(),
+                                    key=lambda (attr, objects): (attr.entity.__name__, attr.name)):
             if not isinstance(attr, Set): throw(NotImplementedError)
             reverse = attr.reverse
             if not reverse.is_collection: continue
@@ -3231,6 +3232,8 @@ class Cache(object):
                 setdata = obj._vals_[attr.name]
                 for obj2 in setdata.added: added.add((obj, obj2))
                 for obj2 in setdata.removed: removed.add((obj, obj2))
+                setdata.added = setdata.removed = EMPTY
+        cache.modified_collections.clear()
         return modified_m2m
     def update_simple_index(cache, obj, attr, old_val, new_val, undo):
         index = cache.indexes.get(attr)
