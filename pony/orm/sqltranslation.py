@@ -270,8 +270,6 @@ class SQLTranslator(ASTTranslator):
             translator.expr_type = entity
             translator.expr_columns = [ [ 'COLUMN', alias, column ] for column in pk_columns ]
             translator.row_layout = None
-            discr_criteria = entity._construct_discriminator_criteria_()
-            if discr_criteria: translator.conditions.insert(0, discr_criteria)
         else:
             translator.alias = None
             if isinstance(monad, translator.ListMonad):
@@ -578,13 +576,16 @@ class TableRef(object):
         tableref.entity = entity
         tableref.joined = False
     def make_join(tableref, pk_only=False):
+        entity = tableref.entity
         if not tableref.joined:
             subquery = tableref.subquery
-            subquery.from_ast.append([ tableref.alias, 'TABLE', tableref.entity._table_ ])
-            discr_criteria = tableref.entity._construct_discriminator_criteria_()
-            if discr_criteria: subquery.conditions.append(discr_criteria)
+            subquery.from_ast.append([ tableref.alias, 'TABLE', entity._table_ ])
+            if entity._discriminator_attr_:
+                discr_criteria = entity._construct_discriminator_criteria_(tableref.alias)
+                assert discr_criteria is not None
+                subquery.conditions.append(discr_criteria)
             tableref.joined = True
-        return tableref.alias, tableref.entity._pk_columns_
+        return tableref.alias, entity._pk_columns_
 
 class JoinedTableRef(object):
     def __init__(tableref, subquery, name_path, parent_tableref, attr):
@@ -598,20 +599,22 @@ class JoinedTableRef(object):
         assert isinstance(tableref.entity, EntityMeta)
         tableref.joined = False
     def make_join(tableref, pk_only=False):
+        entity = tableref.entity
+        pk_only = pk_only and not entity._discriminator_attr_
         if tableref.joined:
             if pk_only or not tableref.optimized:
                 return tableref.alias, tableref.pk_columns
+        subquery = tableref.subquery
         attr = tableref.attr
         parent_pk_only = attr.pk_offset is not None or attr.is_collection
         parent_alias, left_pk_columns = tableref.parent_tableref.make_join(parent_pk_only)
         left_entity = attr.entity
-        right_entity = attr.py_type
-        pk_columns = right_entity._pk_columns_
+        pk_columns = entity._pk_columns_
         if not attr.is_collection:
             if not attr.columns:
                 reverse = attr.reverse
                 assert reverse.columns and not reverse.is_collection
-                alias = tableref.subquery.get_short_alias(tableref.name_path, right_entity.__name__)
+                alias = subquery.get_short_alias(tableref.name_path, entity.__name__)
                 join_cond = join_tables(parent_alias, alias, left_pk_columns, reverse.columns)
             else:
                 if attr.pk_offset is not None:
@@ -624,21 +627,21 @@ class JoinedTableRef(object):
                     tableref.optimized = True
                     tableref.joined = True
                     return parent_alias, left_columns
-                alias = tableref.subquery.get_short_alias(tableref.name_path, right_entity.__name__)
+                alias = subquery.get_short_alias(tableref.name_path, entity.__name__)
                 join_cond = join_tables(parent_alias, alias, left_columns, pk_columns)
-            tableref.subquery.from_ast.append([ alias, 'TABLE', right_entity._table_, join_cond ])
+            subquery.from_ast.append([ alias, 'TABLE', entity._table_, join_cond ])
         elif not attr.reverse.is_collection:
-            alias = tableref.subquery.get_short_alias(tableref.name_path, right_entity.__name__)
+            alias = subquery.get_short_alias(tableref.name_path, entity.__name__)
             join_cond = join_tables(parent_alias, alias, left_pk_columns, attr.reverse.columns)
-            tableref.subquery.from_ast.append([ alias, 'TABLE', right_entity._table_, join_cond ])
+            subquery.from_ast.append([ alias, 'TABLE', entity._table_, join_cond ])
         else:
             right_m2m_columns = attr.symmetric and attr.reverse_columns or attr.columns
             if not tableref.joined:
                 m2m_table = attr.table
-                m2m_alias = tableref.subquery.get_short_alias(None, 't')
+                m2m_alias = subquery.get_short_alias(None, 't')
                 reverse_columns = attr.symmetric and attr.columns or attr.reverse.columns
                 m2m_join_cond = join_tables(parent_alias, m2m_alias, left_pk_columns, reverse_columns)
-                tableref.subquery.from_ast.append([ m2m_alias, 'TABLE', m2m_table, m2m_join_cond ])
+                subquery.from_ast.append([ m2m_alias, 'TABLE', m2m_table, m2m_join_cond ])
                 if pk_only:
                     tableref.alias = m2m_alias
                     tableref.pk_columns = right_m2m_columns
@@ -648,9 +651,13 @@ class JoinedTableRef(object):
             elif tableref.optimized:
                 assert not pk_only
                 m2m_alias = tableref.alias
-            alias = tableref.subquery.get_short_alias(tableref.name_path, right_entity.__name__)
+            alias = subquery.get_short_alias(tableref.name_path, entity.__name__)
             join_cond = join_tables(m2m_alias, alias, right_m2m_columns, pk_columns)
-            tableref.subquery.from_ast.append([ alias, 'TABLE', right_entity._table_, join_cond ])
+            subquery.from_ast.append([ alias, 'TABLE', entity._table_, join_cond ])
+        if entity._discriminator_attr_:
+            discr_criteria = entity._construct_discriminator_criteria_(alias)
+            assert discr_criteria is not None
+            subquery.conditions.insert(0, discr_criteria)
         tableref.alias = alias
         tableref.pk_columns = pk_columns
         tableref.optimized = False
