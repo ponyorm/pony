@@ -147,7 +147,7 @@ class OraStrConverter(dbapiprovider.StrConverter):
     def sql2py(converter, val):
         if isinstance(val, cx_Oracle.LOB):
             val = val.read()
-            if is_utf8(converter.encoding): return val
+            if converter.utf8: return val
             val = val.decode('utf8')
         assert isinstance(val, unicode)
         val = val.encode(converter.encoding, 'replace')

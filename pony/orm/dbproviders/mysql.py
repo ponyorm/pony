@@ -2,7 +2,7 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time
 
 import warnings
-warnings.filterwarnings('ignore', '^Table.+already exists$', Warning, '^pony\\.ormcore$')
+warnings.filterwarnings('ignore', '^Table.+already exists$', Warning, '^pony\\.orm\\.dbapiprovider$')
 
 import MySQLdb
 import MySQLdb.converters

@@ -28,7 +28,7 @@ from pony.orm.dbapiprovider import (
     )
 from pony.utils import (
     localbase, simple_decorator, decorator_with_params, cut_traceback, throw,
-    import_module, parse_expr, is_ident, reraise, count, avg as _avg, tostring
+    import_module, parse_expr, is_ident, count, avg as _avg, tostring
     )
 
 __all__ = '''
@@ -802,8 +802,10 @@ class Attribute(object):
                     try:
                         if from_db: return converter.sql2py(val)
                         else: return converter.validate(val)
-                    except UnicodeDecodeError, e: raise ValueError(
-                        'Value for attribute %s cannot be converted to unicode: %r' % (attr, val))
+                    except UnicodeDecodeError, e:
+                        vrepr = repr(val)
+                        if len(vrepr) > 100: vrepr = vrepr[:97] + '...'
+                        raise ValueError('Value for attribute %s cannot be converted to unicode: %s' % (attr, vrepr))
             return attr.py_type(val)
 
         if not isinstance(val, reverse.entity):
@@ -960,7 +962,6 @@ class Attribute(object):
         assert obj._status_ not in ('created', 'deleted', 'cancelled')
         assert attr.pk_offset is None
         if new_dbval is NOT_LOADED: assert is_reverse_call
-        else: new_dbval = attr.check(new_dbval, obj, from_db=True)
         old_dbval = obj._dbvals_.get(attr.name, NOT_LOADED)
 
         if attr.py_type is float:
@@ -2978,10 +2979,12 @@ class Entity(object):
         except IntegrityError, e:
             msg = " ".join(tostring(arg) for arg in e.args)
             throw(TransactionIntegrityError,
-                'Object %r cannot be stored in the database (probably it already exists). DB message: %s' % (obj, msg), e)
+                  'Object %r cannot be stored in the database (probably it already exists). %s: %s'
+                  % (obj, e.__class__.__name__, msg), e)
         except DatabaseError, e:
             msg = " ".join(tostring(arg) for arg in e.args)
-            throw(UnexpectedError, 'Object %r cannot be stored in the database. DB message: %s' % (obj, msg), e)
+            throw(UnexpectedError, 'Object %r cannot be stored in the database. %s: %s'
+                                   % (obj, e.__class__.__name__, msg), e)
 
         if auto_pk:
             index = obj._cache_.indexes.setdefault(pk_attr, {})
@@ -3219,7 +3222,8 @@ class Cache(object):
         cache.to_be_checked[:] = []
     def calc_modified_m2m(cache):
         modified_m2m = {}
-        for attr, objects in cache.modified_collections.iteritems():
+        for attr, objects in sorted(cache.modified_collections.iteritems(),
+                                    key=lambda (attr, objects): (attr.entity.__name__, attr.name)):
             if not isinstance(attr, Set): throw(NotImplementedError)
             reverse = attr.reverse
             if not reverse.is_collection: continue
@@ -3230,6 +3234,8 @@ class Cache(object):
                 setdata = obj._vals_[attr.name]
                 for obj2 in setdata.added: added.add((obj, obj2))
                 for obj2 in setdata.removed: removed.add((obj, obj2))
+                setdata.added = setdata.removed = EMPTY
+        cache.modified_collections.clear()
         return modified_m2m
     def update_simple_index(cache, obj, attr, old_val, new_val, undo):
         index = cache.indexes.get(attr)
@@ -3296,6 +3302,15 @@ def _get_caches():
 @cut_traceback
 def flush():
     for cache in _get_caches(): cache.flush()
+
+def reraise(exc_class, exceptions):
+    try:
+        cls, exc, tb = exceptions[0]
+        msg = " ".join(tostring(arg) for arg in exc.args)
+        if not issubclass(cls, TransactionError):
+            msg = '%s: %s' % (cls.__name__, msg)
+        raise exc_class, exc_class(msg, exceptions), tb
+    finally: del tb
 
 @cut_traceback
 def commit():

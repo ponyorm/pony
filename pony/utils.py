@@ -418,13 +418,6 @@ def getlines2(filename, lineno, context=1):
     index = lineno - 1 - start
     return lines, index
 
-def reraise(exc_class, exceptions):
-    try:
-        cls, exc, tb = exceptions[0]
-        msg = '%s: %s' % (cls.__name__, " ".join(tostring(arg) for arg in exc.args))
-        raise exc_class, exc_class(msg, exceptions), tb
-    finally: del tb
-
 def count(*args, **kwargs):
     if kwargs: return _count(*args, **kwargs)
     if len(args) != 1: return _count(*args)
