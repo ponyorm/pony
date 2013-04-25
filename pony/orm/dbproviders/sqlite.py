@@ -104,12 +104,13 @@ class SQLiteProvider(DBAPIProvider):
             # Database instance is created
 
             # the list of frames:
-            # 3 - user code: db = Database(...)
-            # 2 - cut_exception decorator
-            # 1 - pony.orm.Database.__init__()
+            # 4 - user code: db = Database(...)
+            # 3 - cut_exception decorator
+            # 2 - pony.orm.Database.__init__()
+            # 1 - pony.dbapiprovider.DBAPIProvider.__init__()
             # 0 - pony.dbproviders.sqlite.get_pool()
 
-            filename = absolutize_path(filename, frame_depth=4)
+            filename = absolutize_path(filename, frame_depth=5)
             return SQLitePool(filename, create_db)
 
 provider_cls = SQLiteProvider

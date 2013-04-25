@@ -2,12 +2,13 @@ import unittest
 from pony.orm.sqlsymbols import *
 from pony.orm.sqlbuilding import SQLBuilder
 from pony.orm.dbapiprovider import DBAPIProvider
+from pony.orm.tests.testutils import TestPool
 
 class TestFormatStyles(unittest.TestCase):
     def setUp(self):
         self.key1 = object()
         self.key2 = object()
-        self.provider = DBAPIProvider()
+        self.provider = DBAPIProvider(pony_pool_mockup=TestPool())
         self.ast = [ SELECT, [ ALL, [COLUMN, None, 'A']], [ FROM, [None, TABLE, 'T1']],
                      [ WHERE, [ EQ, [COLUMN, None, 'B'], [ PARAM, self.key1 ] ],
                               [ EQ, [COLUMN, None, 'C'], [ PARAM, self.key2 ] ],

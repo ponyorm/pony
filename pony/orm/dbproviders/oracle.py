@@ -190,6 +190,9 @@ class OraProvider(DBAPIProvider):
     translator_cls = OraTranslator
     sqlbuilder_cls = OraBuilder
 
+    def inspect_connection(provider, connection):
+        provider.table_if_not_exists_syntax = False
+
     def get_default_entity_table_name(provider, entity):
         return DBAPIProvider.get_default_entity_table_name(provider, entity).upper()
 

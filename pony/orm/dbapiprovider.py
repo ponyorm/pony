@@ -65,9 +65,21 @@ class DBAPIProvider(object):
     quote_char = '"'
     max_params_count = 200
 
+    dbapi_module = None
     dbschema_cls = None
     translator_cls = None
     sqlbuilder_cls = None
+
+    def __init__(provider, *args, **kwargs):
+        pool_mockup = kwargs.pop('pony_pool_mockup', None)
+        if pool_mockup: provider.pool = pool_mockup
+        else: provider.pool = provider.get_pool(*args, **kwargs)
+        connection = provider.connect()
+        provider.inspect_connection(connection)
+        provider.release(connection)
+
+    def inspect_connection(provider, connection):
+        provider.table_if_not_exists_syntax = True
 
     def get_default_entity_table_name(provider, entity):
         return entity.__name__

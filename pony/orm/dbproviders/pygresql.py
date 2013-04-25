@@ -49,6 +49,10 @@ class PyGreSQLProvider(PGProvider):
     dbapi_module = pgdb
     sqlbuilder_cls = PyGreSQLBuilder
 
+    def inspect_connection(provider, connection):
+        provider.server_version = connection._cnx.server_version
+        provider.table_if_not_exists_syntax = provider.server_version >= 90100
+
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
         (unicode, PGUnicodeConverter),
