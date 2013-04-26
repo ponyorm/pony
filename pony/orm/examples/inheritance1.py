@@ -6,7 +6,7 @@ options.CUT_TRACEBACK = False
 
 from pony.orm.core import *
 
-sql_debug(True)
+sql_debug(False)
 
 db = Database('sqlite', 'inheritance1.sqlite', create_db=True)
 
@@ -56,17 +56,27 @@ def populate_database():
     commit()
 
 def show_all_persons():
-    for obj in select(p for p in Person):
+    for obj in Person.select():
         print obj
-        print obj._attrs_
         for attr in obj._attrs_:
             print attr.name, "=", attr.__get__(obj)
         print
 
 if __name__ == '__main__':
-    # populate_database()
+    if not Person.select().first():
+        populate_database()
     # show_all_persons()
+
+    sql_debug(True)
+
     s1 = Student.get(name='Student1')
-    mentor = s1.mentor
-    print isinstance(mentor, Assistant)
-    print mentor.name
+    if s1 is None:
+        print 'Student1 not found'
+    else:
+        mentor = s1.mentor
+        print mentor.name, 'is mentor of Student1'
+        print 'Is he assistant?', isinstance(mentor, Assistant)
+    print
+
+    for s in Student.select(lambda s: s.mentor.salary == 1000):
+        print s.name
