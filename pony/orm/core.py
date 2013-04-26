@@ -1412,12 +1412,12 @@ class Set(Collection):
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED or not setdata.is_fully_loaded: setdata = attr.load(obj)
         reverse = attr.reverse
-        if reverse.is_collection or reverse.pk_offset is not None: return setdata.copy()
-        for item in setdata:
-            bit = item._bits_[reverse]
-            wbits = item._wbits_
-            if wbits is not None and not wbits & bit: item._rbits_ |= bit
-        return setdata.copy()
+        if not reverse.is_collection and reverse.pk_offset is None:
+            for item in setdata:
+                bit = item._bits_[reverse]
+                wbits = item._wbits_
+                if wbits is not None and not wbits & bit: item._rbits_ |= bit
+        return set(setdata)
     @cut_traceback
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
