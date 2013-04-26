@@ -1619,15 +1619,12 @@ class SetWrapper(object):
         return wrapper._attr_.copy(wrapper._obj_)
     @cut_traceback
     def __repr__(wrapper):
-        if wrapper._obj_._cache_.is_alive:
-            size = len(wrapper)
-            if size == 1: size_str = ' (1 item)'
-            else: size_str = ' (%d items)' % size
-        else: size_str = ''
-        return '<%r.%s%s>' % (wrapper._obj_, wrapper._attr_.name, size_str)
+        return '<%s %r.%s>' % (wrapper.__class__.__name__, wrapper._obj_, wrapper._attr_.name)
     @cut_traceback
     def __str__(wrapper):
-        return str(wrapper.copy())
+        if not wrapper._obj_._cache_.is_alive: content = '-'
+        else: content = ', '.join(imap(str, wrapper))
+        return '%s([%s])' % (wrapper.__class__.__name__, content)
     @cut_traceback
     def __nonzero__(wrapper):
         attr = wrapper._attr_
@@ -2562,7 +2559,7 @@ class EntityMeta(type):
         result_cls = entity._set_wrapper_subclass_
         if result_cls is None:
             mixin = entity._get_propagation_mixin_()
-            cls_name = entity.__name__ + 'SetWrapper'
+            cls_name = entity.__name__ + 'Set'
             result_cls = type(cls_name, (SetWrapper, mixin), {})
             entity._set_wrapper_subclass_ = result_cls
         return result_cls
