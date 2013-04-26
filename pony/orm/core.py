@@ -1125,6 +1125,7 @@ class Discriminator(Required):
         entity._attrs_.append(attr)
         entity._new_attrs_.append(attr)
         entity._adict_['classtype'] = attr
+        type.__setattr__(entity, 'classtype', attr)
         attr.process_entity_inheritance(entity)
     def process_entity_inheritance(attr, entity):
         if '_discriminator_' not in entity.__dict__:
