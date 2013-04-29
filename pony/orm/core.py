@@ -233,6 +233,7 @@ next_num = _count().next
 class Local(localbase):
     def __init__(local):
         local.db2cache = {}
+        local.with_transaction_counter = 0
 
 local = Local()
 
@@ -3351,7 +3352,11 @@ def _release():
     assert not local.db2cache
 
 def _with_transaction(func, args, kwargs, allowed_exceptions=[]):
+    local.with_transaction_counter += 1
     try:
+        if local.with_transaction_counter > 1:
+            return func(*args, **kwargs)
+            
         try: result = func(*args, **kwargs)
         except Exception, e:
             exc_info = sys.exc_info()
@@ -3363,12 +3368,14 @@ def _with_transaction(func, args, kwargs, allowed_exceptions=[]):
                         break
                 else: rollback()
             finally:
-                try:
-                    raise exc_info[0], exc_info[1], exc_info[2]
+                try: raise exc_info[0], exc_info[1], exc_info[2]
                 finally: del exc_info
         commit()
         return result
-    finally: _release()
+    finally:
+        local.with_transaction_counter -= 1
+        if not local.with_transaction_counter:
+            _release()
 
 @decorator_with_params
 def with_transaction(func, retry=1, retry_exceptions=[ TransactionError ], allowed_exceptions=[]):
