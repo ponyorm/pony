@@ -49,7 +49,7 @@ class Order(db.Entity):
     items = Set(OrderItem)
 
 class Category(db.Entity):
-    name = Required(unicode)
+    name = Required(unicode, unique=True)
     products = Set(Product)
 
 sql_debug(True)
