@@ -1679,6 +1679,13 @@ class SetWrapper(object):
         setdata = attr.load(obj)
         return item in setdata
     @cut_traceback
+    def create(wrapper, **kwargs):
+        attr = wrapper._attr_
+        item_type = attr.py_type
+        item = item_type(**kwargs)
+        wrapper.add(item)
+        return item
+    @cut_traceback
     def add(wrapper, new_items):
         obj = wrapper._obj_
         if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
