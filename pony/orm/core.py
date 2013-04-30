@@ -2670,12 +2670,19 @@ class Entity(object):
     def _db_set_(obj, avdict):
         assert obj._status_ not in ('created', 'deleted', 'cancelled')
         if not avdict: return
+
+        cache = obj._cache_
+        assert cache.is_alive
+        seeds = cache.seeds.setdefault(obj.__class__._pk_, set())
+        seeds.discard(obj)
+
         get_val = obj._vals_.get
         get_dbval = obj._dbvals_.get
         rbits = obj._rbits_
         wbits = obj._wbits_
         for attr, new_dbval in avdict.items():
             assert attr.pk_offset is None
+            assert new_dbval is not NOT_LOADED
             old_dbval = get_dbval(attr.name, NOT_LOADED)
 
             if attr.py_type is float:
@@ -2693,26 +2700,14 @@ class Entity(object):
                 % (obj.__class__.__name__, attr.name, obj, old_dbval, new_dbval))
 
             if attr.reverse: attr.db_update_reverse(obj, old_dbval, new_dbval)
-            if new_dbval is NOT_LOADED:
-                obj._dbvals_.pop(attr.name, None)
-                if wbits & bit: del avdict[attr]
-                else: obj._vals_.pop(attr.name, None)
-            else:
-                obj._dbvals_[attr.name] = new_dbval
-                if wbits & bit: del avdict[attr]
-                else: obj._vals_[attr.name] = new_dbval
+            obj._dbvals_[attr.name] = new_dbval
+            if wbits & bit: del avdict[attr]
+            if attr.is_unique:
+                old_val = get_val(attr.name, NOT_LOADED)
+                if old_val != new_dbval:
+                    cache.db_update_simple_index(obj, attr, old_val, new_dbval)
 
         NOT_FOUND = object()
-        cache = obj._cache_
-        assert cache.is_alive
-        seeds = cache.seeds.setdefault(obj.__class__._pk_, set())
-        seeds.discard(obj)
-        for attr in obj._simple_keys_:
-            new_dbval = avdict.get(attr, NOT_FOUND)
-            if new_dbval is NOT_FOUND: continue
-            old_val = get_val(attr.name, NOT_LOADED)
-            if old_val == new_dbval: continue
-            cache.db_update_simple_index(obj, attr, old_val, new_dbval)
         for attrs in obj._composite_keys_:
             for attr in attrs:
                 if attr in avdict: break
@@ -2725,6 +2720,9 @@ class Entity(object):
                 vals[i] = new_dbval
             vals = tuple(vals)
             cache.db_update_composite_index(obj, attrs, currents, vals)
+
+        for attr, new_dbval in avdict.iteritems():
+            obj._vals_[attr.name] = new_dbval
     def _delete_(obj, undo_funcs=None):
         status = obj._status_
         if status in ('deleted', 'cancelled'): return
@@ -3237,6 +3235,7 @@ class Cache(object):
         cache.modified_collections.clear()
         return modified_m2m
     def update_simple_index(cache, obj, attr, old_val, new_val, undo):
+        assert old_val != new_val
         index = cache.indexes.get(attr)
         if index is None: index = cache.indexes[attr] = {}
         if new_val is None and cache.ignore_none: new_val = NO_UNDO_NEEDED
@@ -3249,6 +3248,7 @@ class Cache(object):
         else: del index[old_val]
         undo.append((index, old_val, new_val))
     def db_update_simple_index(cache, obj, attr, old_dbval, new_dbval):
+        assert old_dbval != new_dbval
         index = cache.indexes.get(attr)
         if index is None: index = cache.indexes[attr] = {}
         if new_dbval is NOT_LOADED: pass
