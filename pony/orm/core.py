@@ -2125,13 +2125,26 @@ class EntityMeta(type):
             throw(TypeError, 'Invalid count of attrs in %s primary key (%s instead of %s)'
                              % (entity.__name__, len(key), len(entity._pk_attrs_)))
         kwargs = dict(izip(imap(attrgetter('name'), entity._pk_attrs_), key))
-        objects = entity._find_(1, (), kwargs)
+        objects = entity._find_(1, kwargs)
         if not objects: throw(ObjectNotFound, entity, key)
         assert len(objects) == 1
         return objects[0]
     @cut_traceback
     def get(entity, *args, **kwargs):
-        objects = entity._find_(1, args, kwargs)  # can throw MultipleObjectsFoundError
+        if args:
+            if len(args) > 1: throw(TypeError, 'Only one positional argument expected')
+            if kwargs: throw(TypeError, 'If positional argument presented, no keyword arguments expected')
+            first_arg = args[0]
+            if not (isinstance(first_arg, types.FunctionType)
+                    or isinstance(first_arg, basestring) and lambda_re.match(first_arg)):
+                throw(TypeError, 'Positional argument must be lambda function or its text source. '
+                                 'Got: %s.get(%r)' % (entity.__name__, first_arg))
+
+            globals = sys._getframe(2).f_globals
+            locals = sys._getframe(2).f_locals
+            return entity._query_from_lambda_(first_arg, globals, locals).get()
+
+        objects = entity._find_(1, kwargs)  # can throw MultipleObjectsFoundError
         if not objects: return None
         assert len(objects) == 1
         return objects[0]
@@ -2159,21 +2172,9 @@ class EntityMeta(type):
     def order_by(entity, *args):
         query = Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
         return query.order_by(*args)
-    def _find_(entity, max_fetch_count, args, kwargs):
+    def _find_(entity, max_fetch_count, kwargs):
         if entity._database_.schema is None:
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
-
-        if args:
-            first_arg = args[0]
-            if not (isinstance(first_arg, types.FunctionType)
-                    or isinstance(first_arg, basestring) and lambda_re.match(first_arg)):
-                throw(TypeError, 'Positional argument must be lambda function or its text source. Got: %r' % first_arg)
-            if len(args) > 1: throw(TypeError, 'Only one positional argument expected')
-            if kwargs: throw(TypeError, 'No keyword arguments expected')
-
-            globals = sys._getframe(3).f_globals
-            locals = sys._getframe(3).f_locals
-            return [ entity._query_from_lambda_(first_arg, globals, locals).get() ]
 
         pkval, avdict = entity._normalize_args_(kwargs, False)
         for attr in avdict:
