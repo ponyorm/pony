@@ -234,8 +234,7 @@ def current_timestamp():
 
 def datetime2timestamp(d):
     result = d.isoformat(' ')
-    if len(result) == 19: return result + '.000'
-    elif len(result) > 23: return result[:23]
+    if len(result) == 19: return result + '.000000'
     return result
 
 def timestamp2datetime(t):
