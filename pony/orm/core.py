@@ -3386,7 +3386,6 @@ def _with_transaction(func, args, kwargs, allowed_exceptions=[]):
 
 @decorator_with_params
 def with_transaction(func, retry=1, retry_exceptions=[ TransactionError ], allowed_exceptions=[]):
-    @cut_traceback
     def new_func(*args, **kwargs):
         counter = retry
         while counter > 0:
