@@ -49,14 +49,14 @@ def decorator(old_dec, old_func):
 
 @simple_decorator
 def decorator_with_params(old_dec, *args, **kwargs):
-    if len(args) == 1 and isfunction(args[0]) and not kwargs:
+    if len(args) == 1 and not kwargs:
         old_func = args[0]
         new_func = old_dec(old_func)
         return copy_func_attrs(new_func, old_func, old_dec.__name__)
-    def you_should_never_see_this_decorator(old_func):
+    def parameterized_decorator(old_func):
         new_func = old_dec(old_func, *args, **kwargs)
         return copy_func_attrs(new_func, old_func, old_dec.__name__)
-    return you_should_never_see_this_decorator
+    return parameterized_decorator
 
 @decorator
 def cut_traceback(old_func):
@@ -234,8 +234,7 @@ def current_timestamp():
 
 def datetime2timestamp(d):
     result = d.isoformat(' ')
-    if len(result) == 19: return result + '.000'
-    elif len(result) > 23: return result[:23]
+    if len(result) == 19: return result + '.000000'
     return result
 
 def timestamp2datetime(t):

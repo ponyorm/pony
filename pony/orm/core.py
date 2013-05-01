@@ -1679,6 +1679,13 @@ class SetWrapper(object):
         setdata = attr.load(obj)
         return item in setdata
     @cut_traceback
+    def create(wrapper, **kwargs):
+        attr = wrapper._attr_
+        item_type = attr.py_type
+        item = item_type(**kwargs)
+        wrapper.add(item)
+        return item
+    @cut_traceback
     def add(wrapper, new_items):
         obj = wrapper._obj_
         if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
@@ -2118,13 +2125,26 @@ class EntityMeta(type):
             throw(TypeError, 'Invalid count of attrs in %s primary key (%s instead of %s)'
                              % (entity.__name__, len(key), len(entity._pk_attrs_)))
         kwargs = dict(izip(imap(attrgetter('name'), entity._pk_attrs_), key))
-        objects = entity._find_(1, (), kwargs)
+        objects = entity._find_(1, kwargs)
         if not objects: throw(ObjectNotFound, entity, key)
         assert len(objects) == 1
         return objects[0]
     @cut_traceback
     def get(entity, *args, **kwargs):
-        objects = entity._find_(1, args, kwargs)  # can throw MultipleObjectsFoundError
+        if args:
+            if len(args) > 1: throw(TypeError, 'Only one positional argument expected')
+            if kwargs: throw(TypeError, 'If positional argument presented, no keyword arguments expected')
+            first_arg = args[0]
+            if not (isinstance(first_arg, types.FunctionType)
+                    or isinstance(first_arg, basestring) and lambda_re.match(first_arg)):
+                throw(TypeError, 'Positional argument must be lambda function or its text source. '
+                                 'Got: %s.get(%r)' % (entity.__name__, first_arg))
+
+            globals = sys._getframe(2).f_globals
+            locals = sys._getframe(2).f_locals
+            return entity._query_from_lambda_(first_arg, globals, locals).get()
+
+        objects = entity._find_(1, kwargs)  # can throw MultipleObjectsFoundError
         if not objects: return None
         assert len(objects) == 1
         return objects[0]
@@ -2152,21 +2172,9 @@ class EntityMeta(type):
     def order_by(entity, *args):
         query = Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
         return query.order_by(*args)
-    def _find_(entity, max_fetch_count, args, kwargs):
+    def _find_(entity, max_fetch_count, kwargs):
         if entity._database_.schema is None:
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
-
-        if args:
-            first_arg = args[0]
-            if not (isinstance(first_arg, types.FunctionType)
-                    or isinstance(first_arg, basestring) and lambda_re.match(first_arg)):
-                throw(TypeError, 'Positional argument must be lambda function or its text source. Got: %r' % first_arg)
-            if len(args) > 1: throw(TypeError, 'Only one positional argument expected')
-            if kwargs: throw(TypeError, 'No keyword arguments expected')
-
-            globals = sys._getframe(3).f_globals
-            locals = sys._getframe(3).f_locals
-            return [ entity._query_from_lambda_(first_arg, globals, locals).get() ]
 
         pkval, avdict = entity._normalize_args_(kwargs, False)
         for attr in avdict:
@@ -2670,12 +2678,19 @@ class Entity(object):
     def _db_set_(obj, avdict):
         assert obj._status_ not in ('created', 'deleted', 'cancelled')
         if not avdict: return
+
+        cache = obj._cache_
+        assert cache.is_alive
+        seeds = cache.seeds.setdefault(obj.__class__._pk_, set())
+        seeds.discard(obj)
+
         get_val = obj._vals_.get
         get_dbval = obj._dbvals_.get
         rbits = obj._rbits_
         wbits = obj._wbits_
         for attr, new_dbval in avdict.items():
             assert attr.pk_offset is None
+            assert new_dbval is not NOT_LOADED
             old_dbval = get_dbval(attr.name, NOT_LOADED)
 
             if attr.py_type is float:
@@ -2693,26 +2708,14 @@ class Entity(object):
                 % (obj.__class__.__name__, attr.name, obj, old_dbval, new_dbval))
 
             if attr.reverse: attr.db_update_reverse(obj, old_dbval, new_dbval)
-            if new_dbval is NOT_LOADED:
-                obj._dbvals_.pop(attr.name, None)
-                if wbits & bit: del avdict[attr]
-                else: obj._vals_.pop(attr.name, None)
-            else:
-                obj._dbvals_[attr.name] = new_dbval
-                if wbits & bit: del avdict[attr]
-                else: obj._vals_[attr.name] = new_dbval
+            obj._dbvals_[attr.name] = new_dbval
+            if wbits & bit: del avdict[attr]
+            if attr.is_unique:
+                old_val = get_val(attr.name, NOT_LOADED)
+                if old_val != new_dbval:
+                    cache.db_update_simple_index(obj, attr, old_val, new_dbval)
 
         NOT_FOUND = object()
-        cache = obj._cache_
-        assert cache.is_alive
-        seeds = cache.seeds.setdefault(obj.__class__._pk_, set())
-        seeds.discard(obj)
-        for attr in obj._simple_keys_:
-            new_dbval = avdict.get(attr, NOT_FOUND)
-            if new_dbval is NOT_FOUND: continue
-            old_val = get_val(attr.name, NOT_LOADED)
-            if old_val == new_dbval: continue
-            cache.db_update_simple_index(obj, attr, old_val, new_dbval)
         for attrs in obj._composite_keys_:
             for attr in attrs:
                 if attr in avdict: break
@@ -2725,6 +2728,9 @@ class Entity(object):
                 vals[i] = new_dbval
             vals = tuple(vals)
             cache.db_update_composite_index(obj, attrs, currents, vals)
+
+        for attr, new_dbval in avdict.iteritems():
+            obj._vals_[attr.name] = new_dbval
     def _delete_(obj, undo_funcs=None):
         status = obj._status_
         if status in ('deleted', 'cancelled'): return
@@ -3237,6 +3243,7 @@ class Cache(object):
         cache.modified_collections.clear()
         return modified_m2m
     def update_simple_index(cache, obj, attr, old_val, new_val, undo):
+        assert old_val != new_val
         index = cache.indexes.get(attr)
         if index is None: index = cache.indexes[attr] = {}
         if new_val is None and cache.ignore_none: new_val = NO_UNDO_NEEDED
@@ -3249,6 +3256,7 @@ class Cache(object):
         else: del index[old_val]
         undo.append((index, old_val, new_val))
     def db_update_simple_index(cache, obj, attr, old_dbval, new_dbval):
+        assert old_dbval != new_dbval
         index = cache.indexes.get(attr)
         if index is None: index = cache.indexes[attr] = {}
         if new_dbval is NOT_LOADED: pass
@@ -3379,7 +3387,6 @@ def _with_transaction(func, args, kwargs, allowed_exceptions=[]):
 
 @decorator_with_params
 def with_transaction(func, retry=1, retry_exceptions=[ TransactionError ], allowed_exceptions=[]):
-    @cut_traceback
     def new_func(*args, **kwargs):
         counter = retry
         while counter > 0:
