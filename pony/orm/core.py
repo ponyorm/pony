@@ -3359,7 +3359,7 @@ def _release():
     for cache in _get_caches(): cache.release()
     assert not local.db2cache
 
-def _with_transaction(func, args, kwargs, allowed_exceptions=[]):
+def _with_transaction(func, args, kwargs, allowed_exceptions=()):
     if local.inside_with_transaction_decorator:
         return func(*args, **kwargs)
 
@@ -3370,11 +3370,12 @@ def _with_transaction(func, args, kwargs, allowed_exceptions=[]):
             exc_info = sys.exc_info()
             try:
                 # write to log
-                for exc_class in allowed_exceptions:
-                    if isinstance(e, exc_class):
-                        commit()
-                        break
+
+                if callable(allowed_exceptions): allowed = allowed_exceptions(e)
+                else: allowed = isinstance(e, tuple(allowed_exceptions))
+                if allowed: commit()
                 else: rollback()
+
             finally:
                 try: raise exc_info[0], exc_info[1], exc_info[2]
                 finally: del exc_info
@@ -3386,7 +3387,7 @@ def _with_transaction(func, args, kwargs, allowed_exceptions=[]):
         _release()
 
 @decorator_with_params
-def with_transaction(func, retry=1, retry_exceptions=[ TransactionError ], allowed_exceptions=[]):
+def with_transaction(func, retry=1, retry_exceptions=(TransactionError,), allowed_exceptions=()):
     def new_func(*args, **kwargs):
         counter = retry
         while counter > 0:
