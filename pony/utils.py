@@ -4,7 +4,7 @@ import re, os, os.path, sys, time, datetime, types, linecache
 
 from itertools import imap, ifilter, count as _count
 from operator import itemgetter
-from inspect import isfunction
+from inspect import isfunction, ismethod
 from time import strptime
 from os import urandom
 from codecs import BOM_UTF8, BOM_LE, BOM_BE
@@ -22,6 +22,8 @@ else: from threading import local as localbase
 
 def copy_func_attrs(new_func, old_func, decorator_name=None):
     if new_func is not old_func:
+        if not isfunction(old_func) and not ismethod(old_func):
+            throw(TypeError, 'Decorated object must be function or method. Got: %r' % old_func)
         new_func.__name__ = old_func.__name__
         new_func.__doc__ = old_func.__doc__
         new_func.__module__ = old_func.__module__
@@ -37,9 +39,9 @@ def copy_func_attrs(new_func, old_func, decorator_name=None):
 
 def simple_decorator(old_dec):
     def new_dec(old_func):
-        def new_func(*args, **kwargs):
+        def pony_wrapper(*args, **kwargs):
             return old_dec(old_func, *args, **kwargs)
-        return copy_func_attrs(new_func, old_func, old_dec.__name__)
+        return copy_func_attrs(pony_wrapper, old_func, old_dec.__name__)
     return copy_func_attrs(new_dec, old_dec, 'simple_decorator')
 
 @simple_decorator

@@ -233,7 +233,7 @@ next_num = _count().next
 class Local(localbase):
     def __init__(local):
         local.db2cache = {}
-        local.with_transaction_counter = 0
+        local.inside_with_transaction_decorator = False
 
 local = Local()
 
@@ -3359,34 +3359,35 @@ def _release():
     for cache in _get_caches(): cache.release()
     assert not local.db2cache
 
-def _with_transaction(func, args, kwargs, allowed_exceptions=[]):
-    local.with_transaction_counter += 1
+def _with_transaction(func, args, kwargs, allowed_exceptions=()):
+    if local.inside_with_transaction_decorator:
+        return func(*args, **kwargs)
+
+    local.inside_with_transaction_decorator = True
     try:
-        if local.with_transaction_counter > 1:
-            return func(*args, **kwargs)
-            
         try: result = func(*args, **kwargs)
         except Exception, e:
             exc_info = sys.exc_info()
             try:
                 # write to log
-                for exc_class in allowed_exceptions:
-                    if isinstance(e, exc_class):
-                        commit()
-                        break
+
+                if callable(allowed_exceptions): allowed = allowed_exceptions(e)
+                else: allowed = isinstance(e, tuple(allowed_exceptions))
+                if allowed: commit()
                 else: rollback()
+
             finally:
                 try: raise exc_info[0], exc_info[1], exc_info[2]
                 finally: del exc_info
-        commit()
-        return result
+        else:
+            commit()
+            return result
     finally:
-        local.with_transaction_counter -= 1
-        if not local.with_transaction_counter:
-            _release()
+        local.inside_with_transaction_decorator = False
+        _release()
 
 @decorator_with_params
-def with_transaction(func, retry=1, retry_exceptions=[ TransactionError ], allowed_exceptions=[]):
+def with_transaction(func, retry=1, retry_exceptions=(TransactionError,), allowed_exceptions=()):
     def new_func(*args, **kwargs):
         counter = retry
         while counter > 0:
