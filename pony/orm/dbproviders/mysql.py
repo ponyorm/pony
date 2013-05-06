@@ -20,17 +20,11 @@ class MySQLColumn(dbschema.Column):
 class MySQLSchema(dbschema.DBSchema):
     column_class = MySQLColumn
 
-class MyValue(Value):
-    def quote_str(self, s):
-        s = s.replace('%', '%%')
-        return Value.quote_str(self, s)
-
 class MySQLTranslator(SQLTranslator):
     dialect = 'MySQL'
 
 class MySQLBuilder(SQLBuilder):
     dialect = 'MySQL'
-    make_value = MyValue
     def CONCAT(builder, *args):
         return 'concat(',  join(', ', map(builder, args)), ')'
     def YEAR(builder, expr):
