@@ -613,6 +613,7 @@ class Database(object):
         if create_tables: schema.create_tables()
 
         if not check_tables and not create_tables: return
+
         for table in schema.tables.values():
             if isinstance(table.name, tuple): alias = table.name[-1]
             elif isinstance(table.name, basestring): alias = table.name
@@ -624,6 +625,8 @@ class Database(object):
                       ]
             sql, adapter = database._ast2sql(sql_ast)
             database._exec_sql(sql)
+
+        database.rollback()
 
 ###############################################################################
 
