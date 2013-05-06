@@ -110,7 +110,7 @@ class SQLiteProvider(DBAPIProvider):
             # 1 - pony.dbapiprovider.DBAPIProvider.__init__()
             # 0 - pony.dbproviders.sqlite.get_pool()
 
-            filename = absolutize_path(filename, frame_depth=5)
+            filename = absolutize_path(filename, frame_depth=4)
             return SQLitePool(filename, create_db)
 
 provider_cls = SQLiteProvider

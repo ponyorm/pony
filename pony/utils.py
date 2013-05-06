@@ -166,9 +166,9 @@ else: _absolute_re = re.compile(r'^/')
 def is_absolute_path(filename):
     return bool(_absolute_re.match(filename))
 
-def absolutize_path(filename, frame_depth=2):
+def absolutize_path(filename, frame_depth):
     if is_absolute_path(filename): return filename
-    code_filename = sys._getframe(frame_depth).f_code.co_filename
+    code_filename = sys._getframe(frame_depth+1).f_code.co_filename
     if not is_absolute_path(code_filename):
         if code_filename.startswith('<') and code_filename.endswith('>'):
             if pony.MODE == 'INTERACTIVE': raise ValueError(
