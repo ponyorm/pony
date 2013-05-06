@@ -3730,6 +3730,8 @@ class Query(object):
                 else: assert False, x
                 if entity._adict_.get(attr.name) is not attr: throw(TypeError,
                     'Attribute %s does not belong to Entity %s' % (attr, entity.__name__))
+                if attr.is_collection: throw(TypeError,
+                    'Collection attribute %s cannot be used for ordering' % attr)
                 for column in attr.columns:
                     order.append(desc_wrapper([ 'COLUMN', alias, column]))
             query._database._translator_cache[new_key] = translator
