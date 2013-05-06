@@ -3773,6 +3773,7 @@ class Query(object):
                     translator.inside_order_by = True
                     translator.dispatch(func_ast)
             translator.inside_order_by = False
+            translator.distinct = True
             if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
             else: nodes = (func_ast,)
             for node in nodes: translator.order.extend(node.monad.getsql())
