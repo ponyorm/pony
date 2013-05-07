@@ -3337,11 +3337,12 @@ def commit():
                 try: cache.rollback()
                 except: exceptions.append(sys.exc_info())
             reraise(CommitException, exceptions)
-        for cache in other_caches:
-            try: cache.commit()
-            except: exceptions.append(sys.exc_info())
-        if exceptions:
-            reraise(PartialCommitException, exceptions)
+        else:
+            for cache in other_caches:
+                try: cache.commit()
+                except: exceptions.append(sys.exc_info())
+            if exceptions:
+                reraise(PartialCommitException, exceptions)
     finally:
         del exceptions
 
