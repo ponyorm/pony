@@ -11,15 +11,7 @@ class PGColumn(dbschema.Column):
     auto_template = 'SERIAL PRIMARY KEY'
 
 class PGTable(dbschema.Table):
-    def create(table, provider, connection, created_tables=None):
-        try: dbschema.Table.create(table, provider, connection, created_tables)
-        except DatabaseError, e:
-            if 'already exists' not in e.args[0]: raise
-            if core.debug:
-                log_orm('ALREADY EXISTS: %s' % e.args[0])
-                log_orm('ROLLBACK')
-            provider.rollback(connection)
-        else: provider.commit(connection)
+    pass
 
 class PGSchema(dbschema.DBSchema):
     table_class = PGTable
