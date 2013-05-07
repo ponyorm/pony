@@ -38,7 +38,7 @@ class OraTable(dbschema.Table):
                         return
                 else: raise
     def get_create_commands(table, created_tables=None):
-        result = dbschema.Table.get_create_commands(table, created_tables, False)
+        result = dbschema.Table.get_create_commands(table, created_tables)
         for column in table.column_list:
             if column.is_pk == 'auto':
                 quote_name = table.schema.provider.quote_name

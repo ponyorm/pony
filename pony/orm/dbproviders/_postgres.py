@@ -20,8 +20,6 @@ class PGTable(dbschema.Table):
                 log_orm('ROLLBACK')
             provider.rollback(connection)
         else: provider.commit(connection)
-    def get_create_commands(table, created_tables=None):
-        return dbschema.Table.get_create_commands(table, created_tables, False)
 
 class PGSchema(dbschema.DBSchema):
     table_class = PGTable
