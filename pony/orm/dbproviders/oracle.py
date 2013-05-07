@@ -30,7 +30,7 @@ class OraTable(dbschema.Table):
             cursor = connection.cursor()
             try: provider.execute(cursor, sql)
             except DatabaseError, e:
-                if e.exceptions[0].args[0].code == 955:
+                if e.original_exc.args[0].code == 955:
                     if core.debug: log_orm('ALREADY EXISTS: %s' % e.args[0].message)
                     if not i:
                         if len(commands) > 1:
