@@ -613,6 +613,7 @@ class Database(object):
         if create_tables: schema.create_tables()
 
         if not check_tables and not create_tables: return
+
         for table in schema.tables.values():
             if isinstance(table.name, tuple): alias = table.name[-1]
             elif isinstance(table.name, basestring): alias = table.name
@@ -624,6 +625,8 @@ class Database(object):
                       ]
             sql, adapter = database._ast2sql(sql_ast)
             database._exec_sql(sql)
+
+        database.rollback()
 
 ###############################################################################
 
@@ -811,7 +814,7 @@ class Attribute(object):
 
         if not isinstance(val, reverse.entity):
             throw(ConstraintError, 'Value of attribute %s must be an instance of %s. Got: %s'
-                                  % (entity.__name__, attr.name, reverse.entity.__name__, val))
+                                  % (attr, reverse.entity.__name__, val))
         if obj is not None: cache = obj._cache_
         else: cache = entity._get_cache_()
         if cache is not val._cache_:
@@ -3334,11 +3337,12 @@ def commit():
                 try: cache.rollback()
                 except: exceptions.append(sys.exc_info())
             reraise(CommitException, exceptions)
-        for cache in other_caches:
-            try: cache.commit()
-            except: exceptions.append(sys.exc_info())
-        if exceptions:
-            reraise(PartialCommitException, exceptions)
+        else:
+            for cache in other_caches:
+                try: cache.commit()
+                except: exceptions.append(sys.exc_info())
+            if exceptions:
+                reraise(PartialCommitException, exceptions)
     finally:
         del exceptions
 
@@ -3730,6 +3734,8 @@ class Query(object):
                 else: assert False, x
                 if entity._adict_.get(attr.name) is not attr: throw(TypeError,
                     'Attribute %s does not belong to Entity %s' % (attr, entity.__name__))
+                if attr.is_collection: throw(TypeError,
+                    'Collection attribute %s cannot be used for ordering' % attr)
                 for column in attr.columns:
                     order.append(desc_wrapper([ 'COLUMN', alias, column]))
             query._database._translator_cache[new_key] = translator
@@ -3771,6 +3777,7 @@ class Query(object):
                     translator.inside_order_by = True
                     translator.dispatch(func_ast)
             translator.inside_order_by = False
+            translator.distinct = True
             if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
             else: nodes = (func_ast,)
             for node in nodes: translator.order.extend(node.monad.getsql())

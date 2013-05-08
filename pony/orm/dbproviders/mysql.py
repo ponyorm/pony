@@ -13,7 +13,7 @@ from pony.orm import dbschema
 from pony.orm import dbapiprovider
 from pony.orm.dbapiprovider import DBAPIProvider
 from pony.orm.sqltranslation import SQLTranslator
-from pony.orm.sqlbuilding import Value, SQLBuilder
+from pony.orm.sqlbuilding import Value, SQLBuilder, join
 
 class MySQLColumn(dbschema.Column):
     auto_template = '%(type)s PRIMARY KEY AUTO_INCREMENT'
@@ -32,6 +32,8 @@ class MySQLTranslator(SQLTranslator):
 class MySQLBuilder(SQLBuilder):
     dialect = 'MySQL'
     make_value = MyValue
+    def CONCAT(builder, *args):
+        return 'concat(',  join(', ', map(builder, args)), ')'
     def YEAR(builder, expr):
         return 'year(', builder(expr), ')'
     def MONTH(builder, expr):
