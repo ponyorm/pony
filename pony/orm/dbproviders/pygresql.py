@@ -38,7 +38,8 @@ class PyGreSQLValue(sqlbuilding.Value):
     def __unicode__(self):
         value = self.value
         if isinstance(value, buffer):
-            return "'%s'::bytea" % "".join(imap(char2oct.__getitem__, val))
+            # currently this is not used, because buffer always translated to parameter
+            return "'%s'::bytea" % "".join(imap(char2oct.__getitem__, value))
         return sqlbuilding.Value.__unicode__(self)
 
 class PyGreSQLBuilder(PGSQLBuilder):
