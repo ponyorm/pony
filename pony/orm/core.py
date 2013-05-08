@@ -814,7 +814,7 @@ class Attribute(object):
 
         if not isinstance(val, reverse.entity):
             throw(ConstraintError, 'Value of attribute %s must be an instance of %s. Got: %s'
-                                  % (entity.__name__, attr.name, reverse.entity.__name__, val))
+                                  % (attr, reverse.entity.__name__, val))
         if obj is not None: cache = obj._cache_
         else: cache = entity._get_cache_()
         if cache is not val._cache_:
