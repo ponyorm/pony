@@ -8,10 +8,9 @@ import MySQLdb
 import MySQLdb.converters
 from MySQLdb.constants import FIELD_TYPE, FLAG
 
-from pony.utils import localbase
 from pony.orm import dbschema
 from pony.orm import dbapiprovider
-from pony.orm.dbapiprovider import DBAPIProvider
+from pony.orm.dbapiprovider import DBAPIProvider, Pool
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import Value, SQLBuilder, join
 
@@ -21,17 +20,11 @@ class MySQLColumn(dbschema.Column):
 class MySQLSchema(dbschema.DBSchema):
     column_class = MySQLColumn
 
-class MyValue(Value):
-    def quote_str(self, s):
-        s = s.replace('%', '%%')
-        return Value.quote_str(self, s)
-
 class MySQLTranslator(SQLTranslator):
     dialect = 'MySQL'
 
 class MySQLBuilder(SQLBuilder):
     dialect = 'MySQL'
-    make_value = MyValue
     def CONCAT(builder, *args):
         return 'concat(',  join(', ', map(builder, args)), ')'
     def YEAR(builder, expr):
@@ -93,33 +86,13 @@ class MySQLProvider(DBAPIProvider):
         (date, dbapiprovider.DateConverter)
     ]
 
-    def _get_pool(provider, *args, **kwargs):
+    def get_pool(provider, *args, **kwargs):
         if 'conv' not in kwargs:
             conv = MySQLdb.converters.conversions.copy()
             conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]
             kwargs['conv'] = conv
         if 'charset' not in kwargs:
             kwargs['charset'] = 'utf8'
-        return Pool(*args, **kwargs)
+        return Pool(MySQLdb, *args, **kwargs)
 
 provider_cls = MySQLProvider
-
-class Pool(localbase):
-    def __init__(pool, *args, **kwargs): # called separately in each thread
-        pool.args = args
-        pool.kwargs = kwargs
-        pool.con = None
-    def connect(pool):
-        if pool.con is None:
-            pool.con = MySQLdb.connect(*pool.args, **pool.kwargs)
-        return pool.con
-    def release(pool, con):
-        assert con is pool.con
-        try: con.rollback()
-        except:
-            pool.close(con)
-            raise
-    def drop(pool, con):
-        assert con is pool.con
-        pool.con = None
-        con.close()

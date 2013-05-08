@@ -78,11 +78,13 @@ class Table(object):
             if core.debug: log_sql(sql)
             cursor = connection.cursor()
             provider.execute(cursor, sql)
-    def get_create_commands(table, created_tables=None, if_not_exists=True):
+    def get_create_commands(table, created_tables=None):
         if created_tables is None: created_tables = set()
         schema = table.schema
         case = schema.case
-        quote_name = schema.provider.quote_name
+        provider = schema.provider
+        quote_name = provider.quote_name
+        if_not_exists = provider.table_if_not_exists_syntax
         cmd = []
         if not if_not_exists: cmd.append(case('CREATE TABLE %s (') % quote_name(table.name))
         else: cmd.append(case('CREATE TABLE IF NOT EXISTS %s (') % quote_name(table.name))

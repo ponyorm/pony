@@ -714,6 +714,9 @@ class Monad(object):
             expr = [ 'CASE', None, [ [ expr, [ 'VALUE', 1 ] ] ], [ 'VALUE', None ] ]
             count_kind = 'ALL'
         elif len(expr) == 1: expr = expr[0]
+        elif translator.dialect == 'PostgreSQL':
+            row = [ 'ROW' ] + expr
+            expr = [ 'CASE', None, [ [ [ 'IS_NULL', row ], [ 'VALUE', None ] ] ], row ]
         elif translator.row_value_syntax == True and translator.dialect != 'Oracle':
             expr = ['ROW'] + expr
         elif translator.dialect == 'SQLite':
@@ -1629,6 +1632,10 @@ class AttrSetMonad(SetMixin, Monad):
             extra_grouping = True
             if translator.hint_join: make_aggr = lambda expr_list: [ 'COUNT', 'ALL' ]
             else: make_aggr = lambda expr_list: [ 'COUNT', 'ALL', [ 'COUNT', 'ALL' ] ]
+        elif translator.dialect == 'PostgreSQL':
+            row = [ 'ROW' ] + expr_list
+            expr = [ 'CASE', None, [ [ [ 'IS_NULL', row ], [ 'VALUE', None ] ] ], row ]
+            make_aggr = lambda expr_list: [ 'COUNT', 'DISTINCT', expr ]
         elif translator.row_value_syntax:
             make_aggr = lambda expr_list: [ 'COUNT', 'DISTINCT' ] + expr_list
         elif translator.dialect == 'SQLite':

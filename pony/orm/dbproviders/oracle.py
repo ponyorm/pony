@@ -30,7 +30,7 @@ class OraTable(dbschema.Table):
             cursor = connection.cursor()
             try: provider.execute(cursor, sql)
             except DatabaseError, e:
-                if e.exceptions[0].args[0].code == 955:
+                if e.original_exc.args[0].code == 955:
                     if core.debug: log_orm('ALREADY EXISTS: %s' % e.args[0].message)
                     if not i:
                         if len(commands) > 1:
@@ -38,7 +38,7 @@ class OraTable(dbschema.Table):
                         return
                 else: raise
     def get_create_commands(table, created_tables=None):
-        result = dbschema.Table.get_create_commands(table, created_tables, False)
+        result = dbschema.Table.get_create_commands(table, created_tables)
         for column in table.column_list:
             if column.is_pk == 'auto':
                 quote_name = table.schema.provider.quote_name
@@ -190,6 +190,9 @@ class OraProvider(DBAPIProvider):
     translator_cls = OraTranslator
     sqlbuilder_cls = OraBuilder
 
+    def inspect_connection(provider, connection):
+        provider.table_if_not_exists_syntax = False
+
     def get_default_entity_table_name(provider, entity):
         return DBAPIProvider.get_default_entity_table_name(provider, entity).upper()
 
@@ -234,7 +237,7 @@ class OraProvider(DBAPIProvider):
         (date, OraDateConverter)
     ]
 
-    def _get_pool(provider, *args, **kwargs):
+    def get_pool(provider, *args, **kwargs):
         user = password = dsn = None
         if len(args) == 1:
             conn_str = args[0]
@@ -256,7 +259,7 @@ class OraProvider(DBAPIProvider):
         kwargs.setdefault('min', 1)
         kwargs.setdefault('max', 10)
         kwargs.setdefault('increment', 1)
-        return Pool(**kwargs)
+        return OraPool(**kwargs)
 
 provider_cls = OraProvider
 
@@ -279,7 +282,7 @@ def output_type_handler(cursor, name, defaultType, size, precision, scale):
         return cursor.var(unicode, size, cursor.arraysize)  # from cx_Oracle example
     return None
 
-class Pool(object):
+class OraPool(object):
     def __init__(pool, **kwargs):
         pool._pool = cx_Oracle.SessionPool(**kwargs)
     def connect(pool):

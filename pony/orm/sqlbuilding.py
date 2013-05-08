@@ -29,8 +29,9 @@ class Param(object):
         return '%s(%r)' % (param.__class__.__name__, param.key)
 
 class Value(object):
-    __slots__ = 'value',
-    def __init__(self, value):
+    __slots__ = 'paramstyle', 'value'
+    def __init__(self, paramstyle, value):
+        self.paramstyle = paramstyle
         self.value = value
     def __unicode__(self):
         value = self.value
@@ -44,6 +45,7 @@ class Value(object):
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self.value)
     def quote_str(self, s):
+        if self.paramstyle in ('format', 'pyformat'): s = s.replace('%', '%%')
         return "'%s'" % s.replace("'", "''")
 
 def flat(tree):
@@ -325,7 +327,7 @@ class SQLBuilder(object):
     def ROW(builder, *items):
         return '(', join(', ', map(builder, items)), ')'
     def VALUE(builder, value):
-        return [ builder.make_value(value) ]
+        return [ builder.make_value(builder.paramstyle, value) ]
     def AND(builder, *cond_list):
         cond_list = [ builder(condition) for condition in cond_list ]
         return join(' AND ', cond_list)

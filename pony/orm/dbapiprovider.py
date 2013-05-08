@@ -1,19 +1,15 @@
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time
 
-from pony.utils import is_utf8, simple_decorator, throw
+from pony.utils import is_utf8, simple_decorator, throw, localbase
 from pony.converting import str2date, str2datetime
 from pony.orm.ormtypes import LongStr, LongUnicode
 
 class DBException(Exception):
-    def __init__(exc, *args, **kwargs):
-        exceptions = kwargs.pop('exceptions', [])
-        assert not kwargs
-        if not args and exceptions:
-            if len(exceptions) == 1: args = getattr(exceptions[0], 'args', ())
-            else: args = ('Multiple exceptions have occured',)
+    def __init__(exc, original_exc, *args):
+        args = args or getattr(original_exc, 'args', ())
         Exception.__init__(exc, *args)
-        exc.exceptions = exceptions
+        exc.original_exc = original_exc
 
 class RowNotFound(DBException): pass
 class MultipleRowsFound(DBException): pass
@@ -46,28 +42,40 @@ class     NotSupportedError(DatabaseError): pass
 def wrap_dbapi_exceptions(func, provider, *args, **kwargs):
     dbapi_module = provider.dbapi_module
     try: return func(provider, *args, **kwargs)
-    except dbapi_module.NotSupportedError, e: raise NotSupportedError(exceptions=[e])
-    except dbapi_module.ProgrammingError, e: raise ProgrammingError(exceptions=[e])
-    except dbapi_module.InternalError, e: raise InternalError(exceptions=[e])
-    except dbapi_module.IntegrityError, e: raise IntegrityError(exceptions=[e])
-    except dbapi_module.OperationalError, e: raise OperationalError(exceptions=[e])
-    except dbapi_module.DataError, e: raise DataError(exceptions=[e])
-    except dbapi_module.DatabaseError, e: raise DatabaseError(exceptions=[e])
+    except dbapi_module.NotSupportedError, e: raise NotSupportedError(e)
+    except dbapi_module.ProgrammingError, e: raise ProgrammingError(e)
+    except dbapi_module.InternalError, e: raise InternalError(e)
+    except dbapi_module.IntegrityError, e: raise IntegrityError(e)
+    except dbapi_module.OperationalError, e: raise OperationalError(e)
+    except dbapi_module.DataError, e: raise DataError(e)
+    except dbapi_module.DatabaseError, e: raise DatabaseError(e)
     except dbapi_module.InterfaceError, e:
         if e.args == (0, '') and getattr(dbapi_module, '__name__', None) == 'MySQLdb':
-            throw(InterfaceError, 'MySQL server misconfiguration', exceptions=[e])
-        raise InterfaceError(exceptions=[e])
-    except dbapi_module.Error, e: raise Error(exceptions=[e])
-    except dbapi_module.Warning, e: raise Warning(exceptions=[e])
+            throw(InterfaceError, e, 'MySQL server misconfiguration')
+        raise InterfaceError(e)
+    except dbapi_module.Error, e: raise Error(e)
+    except dbapi_module.Warning, e: raise Warning(e)
 
 class DBAPIProvider(object):
     paramstyle = 'qmark'
     quote_char = '"'
     max_params_count = 200
 
+    dbapi_module = None
     dbschema_cls = None
     translator_cls = None
     sqlbuilder_cls = None
+
+    def __init__(provider, *args, **kwargs):
+        pool_mockup = kwargs.pop('pony_pool_mockup', None)
+        if pool_mockup: provider.pool = pool_mockup
+        else: provider.pool = provider.get_pool(*args, **kwargs)
+        connection = provider.connect()
+        provider.inspect_connection(connection)
+        provider.release(connection)
+
+    def inspect_connection(provider, connection):
+        provider.table_if_not_exists_syntax = True
 
     def get_default_entity_table_name(provider, entity):
         return entity.__name__
@@ -156,6 +164,30 @@ class DBAPIProvider(object):
         py_type = attr.py_type
         converter_cls = provider._get_converter_type_by_py_type(py_type)
         return converter_cls(py_type, attr)
+
+    def get_pool(provider, *args, **kwargs):
+        return Pool(provider.dbapi_module, *args, **kwargs)
+
+class Pool(localbase):
+    def __init__(pool, dbapi_module, *args, **kwargs): # called separately in each thread
+        pool.dbapi_module = dbapi_module
+        pool.args = args
+        pool.kwargs = kwargs
+        pool.con = None
+    def connect(pool):
+        if pool.con is None:
+            pool.con = pool.dbapi_module.connect(*pool.args, **pool.kwargs)
+        return pool.con
+    def release(pool, con):
+        assert con is pool.con
+        try: con.rollback()
+        except:
+            pool.close(con)
+            raise
+    def drop(pool, con):
+        assert con is pool.con
+        pool.con = None
+        con.close()
 
 class Converter(object):
     def __deepcopy__(converter, memo):
