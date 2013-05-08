@@ -90,7 +90,7 @@ class SQLTranslator(ASTTranslator):
             if obj.__class__.__dict__.get(func.__name__) is not func: throw(NotImplementedError)
             monad = translator.MethodMonad(translator, entity_monad, func.__name__)
         elif isinstance(node, ast.Name) and node.name in ('True', 'False'):
-            value = node.name == 'True' and 1 or 0
+            value = node.name == 'True' and True or False
             monad = translator.ConstMonad.new(translator, value)
         elif tt is tuple:
             monad = translator.ListMonad(translator, [ ParamMonad.new(translator, item_type, (src, i))
@@ -1006,7 +1006,9 @@ class StringMixin(MonadMixin):
     def nonzero(monad):
         sql = monad.getsql()[0]
         translator = monad.translator
-        return translator.BoolExprMonad(translator, [ 'GT', [ 'LENGTH', sql ], [ 'VALUE', 0 ]])
+        result = translator.BoolExprMonad(translator, [ 'GT', [ 'LENGTH', sql ], [ 'VALUE', 0 ]])
+        result.aggregated = monad.aggregated
+        return result
     def len(monad):
         sql = monad.getsql()[0]
         translator = monad.translator
@@ -1160,7 +1162,9 @@ class ParamMonad(Monad):
         elif type is buffer: cls = translator.BufferParamMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectParamMonad
         else: throw(NotImplementedError, type)
-        return cls(translator, type, src)
+        result = cls(translator, type, src)
+        result.aggregated = False
+        return result
     def __new__(cls, *args):
         if cls is ParamMonad: assert False, 'Abstract class'
         return Monad.__new__(cls)
@@ -1227,7 +1231,9 @@ class ConstMonad(Monad):
         elif value_type is NoneType: cls = translator.NoneMonad
         elif value_type is buffer: cls = translator.BufferConstMonad
         else: throw(NotImplementedError, value_type)
-        return cls(translator, value)
+        result = cls(translator, value)
+        result.aggregated = False
+        return result
     def __new__(cls, *args):
         if cls is ConstMonad: assert False, 'Abstract class'
         return Monad.__new__(cls)
@@ -1290,7 +1296,6 @@ cmp_negate.update((b, a) for a, b in cmp_negate.items())
 class CmpMonad(BoolMonad):
     def __init__(monad, op, left, right):
         translator = left.translator
-        check_comparable(left, right, op)
         if op == '<>': op = '!='
         if left.type is NoneType:
             assert right.type is not NoneType
@@ -1300,10 +1305,12 @@ class CmpMonad(BoolMonad):
             elif op == '!=': op = 'is not'
         elif op == 'is': op = '=='
         elif op == 'is not': op = '!='
+        check_comparable(left, right, op)
         BoolMonad.__init__(monad, translator)
         monad.op = op
         monad.left = left
         monad.right = right
+        monad.aggregated = left.aggregated or right.aggregated
     def negate(monad):
         return monad.translator.CmpMonad(cmp_negate[monad.op], monad.left, monad.right)
     def getsql(monad, subquery=None):

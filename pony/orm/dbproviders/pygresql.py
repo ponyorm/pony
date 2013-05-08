@@ -33,7 +33,7 @@ char2oct['\\'] = '\\\\'
 
 oct_re = re.compile(r'\\[0-7]{3}')
 
-class PyGreSQLValue(sqlbuilding.Value):
+class PyGreSQLValue(PGValue):
     __slots__ = []
     def __unicode__(self):
         value = self.value

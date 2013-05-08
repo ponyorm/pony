@@ -36,6 +36,7 @@ class Value(object):
     def __unicode__(self):
         value = self.value
         if value is None: return 'null'
+        if isinstance(value, bool): return value and '1' or '0'
         if isinstance(value, (int, long, float, Decimal)): return str(value)
         if isinstance(value, basestring): return self.quote_str(value)
         if isinstance(value, datetime): return self.quote_str(datetime2timestamp(value))

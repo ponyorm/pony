@@ -54,11 +54,11 @@ class MethodType(object):
     def __hash__(self):
         return hash(self.obj) ^ hash(self.func)
 
-numeric_types = set([ int, float, Decimal ])
+numeric_types = set([ bool, int, float, Decimal ])
 string_types = set([ str, AsciiStr, unicode ])
 comparable_types = set([ int, float, Decimal, str, AsciiStr, unicode, date, datetime, bool ])
 primitive_types = set([ int, float, Decimal, str, AsciiStr, unicode, date, datetime, bool, buffer ])
-type_normalization_dict = { long : int, bool : int, LongStr : str, LongUnicode : unicode }
+type_normalization_dict = { long : int, LongStr : str, LongUnicode : unicode }
 function_types = set([type, types.FunctionType, types.BuiltinFunctionType])
 
 def get_normalized_type_of(value):
@@ -99,7 +99,10 @@ coercions = {
     (int, Decimal) : Decimal,
     (date, datetime) : datetime,
     (AsciiStr, str) : str,
-    (AsciiStr, unicode) : unicode
+    (AsciiStr, unicode) : unicode,
+    (bool, int) : int,
+    (bool, float) : float,
+    (bool, Decimal) : Decimal
     }
 coercions.update(((t2, t1), t3) for ((t1, t2), t3) in coercions.items())
 
