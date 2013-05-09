@@ -346,7 +346,8 @@ class Database(object):
     @cut_traceback
     def flush(database):
         cache = database._get_cache()
-        cache.flush()
+        cache.optimistic = False
+        cache.save()
     @cut_traceback
     def commit(database):
         cache = local.db2cache.get(database)
@@ -3131,10 +3132,6 @@ class Cache(object):
         cache.modified_collections = {}
         cache.to_be_checked = []
         cache.query_results = {}
-    def flush(cache):
-        assert cache.is_alive
-        cache.query_results.clear()
-        cache.save(False)
     def commit(cache):
         assert cache.is_alive
         database = cache.database
@@ -3156,6 +3153,7 @@ class Cache(object):
             if save_is_needed or not cache.optimistic:
                 if debug: log_orm('COMMIT')
                 provider.commit(connection)
+            cache.optimistic = database.optimistic
         except:
             cache.rollback()
             raise
@@ -3192,8 +3190,9 @@ class Cache(object):
         provider.release(connection)
     def has_anything_to_save(cache):
         return bool(cache.created or cache.updated or cache.deleted or cache.modified_collections)
-    def save(cache, optimistic=True):
-        cache.optimistic = optimistic
+    def save(cache):
+        assert cache.is_alive
+        cache.query_results.clear()
         if not cache.has_anything_to_save(): return
         modified_m2m = cache.calc_modified_m2m()
         for attr, (added, removed) in modified_m2m.iteritems():
@@ -3300,7 +3299,9 @@ def _get_caches():
 
 @cut_traceback
 def flush():
-    for cache in _get_caches(): cache.flush()
+    for cache in _get_caches():
+        cache.optimistic = False
+        cache.save()
 
 def reraise(exc_class, exceptions):
     try:

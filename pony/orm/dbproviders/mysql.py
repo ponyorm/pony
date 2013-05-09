@@ -27,6 +27,15 @@ class MySQLBuilder(SQLBuilder):
     dialect = 'MySQL'
     def CONCAT(builder, *args):
         return 'concat(',  join(', ', map(builder, args)), ')'
+    def TRIM(builder, expr, chars=None):
+        if chars is None: return 'trim(', builder(expr), ')'
+        return 'trim(both ', builder(chars), ' from ' ,builder(expr), ')'
+    def LTRIM(builder, expr, chars=None):
+        if chars is None: return 'ltrim(', builder(expr), ')'
+        return 'trim(leading ', builder(chars), ' from ' ,builder(expr), ')'
+    def RTRIM(builder, expr, chars=None):
+        if chars is None: return 'rtrim(', builder(expr), ')'
+        return 'trim(trailing ', builder(chars), ' from ' ,builder(expr), ')'
     def YEAR(builder, expr):
         return 'year(', builder(expr), ')'
     def MONTH(builder, expr):
