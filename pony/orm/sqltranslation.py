@@ -1496,6 +1496,11 @@ def minmax(monad, sqlop, *args):
         t3 = coerce_types(t, t2)
         if t3 is None: throw(IncomparableTypesError, t, t2)
         t = t3
+    if t3 in numeric_types and translator.dialect == 'PostgreSQL':
+        args = list(args)
+        for i, arg in enumerate(args):
+            if arg.type is bool:
+                args[i] = NumericExprMonad(translator, int, [ 'TO_INT', arg.getsql() ])
     sql = [ sqlop ] + [ arg.getsql()[0] for arg in args ]
     return translator.ExprMonad.new(translator, t, sql)
 

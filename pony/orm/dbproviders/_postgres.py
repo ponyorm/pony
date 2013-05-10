@@ -36,6 +36,8 @@ class PGSQLBuilder(sqlbuilding.SQLBuilder):
         if returning is not None:
             result.extend([' RETURNING ', builder.quote_name(returning) ])
         return result
+    def TO_INT(builder, expr):
+        return '(', builder(expr), ')::int'
 
 class PGUnicodeConverter(dbapiprovider.UnicodeConverter):
     def py2sql(converter, val):
