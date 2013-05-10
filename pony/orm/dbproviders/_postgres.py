@@ -6,6 +6,7 @@ from pony.orm.core import log_orm, DatabaseError
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
 from pony.utils import timestamp2datetime
+from pony.orm.sqlbuilding import Value
 
 class PGColumn(dbschema.Column):
     auto_template = 'SERIAL PRIMARY KEY'
@@ -20,13 +21,23 @@ class PGSchema(dbschema.DBSchema):
 class PGTranslator(SQLTranslator):
     dialect = 'PostgreSQL'
 
+class PGValue(Value):
+    __slots__ = []
+    def __unicode__(self):
+        value = self.value
+        if isinstance(value, bool): return value and 'true' or 'false'
+        return Value.__unicode__(self)
+
 class PGSQLBuilder(sqlbuilding.SQLBuilder):
     dialect = 'PostgreSQL'
+    make_value = PGValue
     def INSERT(builder, table_name, columns, values, returning=None):
         result = sqlbuilding.SQLBuilder.INSERT(builder, table_name, columns, values)
         if returning is not None:
             result.extend([' RETURNING ', builder.quote_name(returning) ])
         return result
+    def TO_INT(builder, expr):
+        return '(', builder(expr), ')::int'
 
 class PGUnicodeConverter(dbapiprovider.UnicodeConverter):
     def py2sql(converter, val):

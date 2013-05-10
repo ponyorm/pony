@@ -90,7 +90,7 @@ class SQLTranslator(ASTTranslator):
             if obj.__class__.__dict__.get(func.__name__) is not func: throw(NotImplementedError)
             monad = translator.MethodMonad(translator, entity_monad, func.__name__)
         elif isinstance(node, ast.Name) and node.name in ('True', 'False'):
-            value = node.name == 'True' and 1 or 0
+            value = node.name == 'True' and True or False
             monad = translator.ConstMonad.new(translator, value)
         elif tt is tuple:
             monad = translator.ListMonad(translator, [ ParamMonad.new(translator, item_type, (src, i))
@@ -239,8 +239,8 @@ class SQLTranslator(ASTTranslator):
                 if isinstance(if_.monad, translator.AndMonad): cond_monads = if_.monad.operands
                 else: cond_monads = [ if_.monad ]
                 for m in cond_monads:
-                    if not m.aggregated: translator.conditions.append(m.getsql())
-                    else: translator.having_conditions.append(m.getsql())
+                    if not m.aggregated: translator.conditions.extend(m.getsql())
+                    else: translator.having_conditions.extend(m.getsql())
 
         translator.inside_expr = True
         translator.dispatch(tree.expr)
@@ -265,7 +265,8 @@ class SQLTranslator(ASTTranslator):
                 tableref = monad.make_tableref(translator.subquery)
             else: assert False
             translator.tableref = tableref
-            alias, pk_columns = tableref.make_join(pk_only=parent_translator is not None)
+            pk_only = parent_translator is not None or translator.aggregated
+            alias, pk_columns = tableref.make_join(pk_only=pk_only)
             translator.alias = alias
             translator.expr_type = entity
             translator.expr_columns = [ [ 'COLUMN', alias, column ] for column in pk_columns ]
@@ -529,6 +530,33 @@ class SQLTranslator(ASTTranslator):
         return expr_monad[lower:upper]
     def postSliceobj(translator, node):
         pass
+    def postIfExp(translator, node):
+        test_monad, then_monad, else_monad = node.test.monad, node.then.monad, node.else_.monad
+        if test_monad.type is not bool: test_monad = test_monad.nonzero()
+        result_type = coerce_types(then_monad.type, else_monad.type)
+        test_sql, then_sql, else_sql = test_monad.getsql()[0], then_monad.getsql(), else_monad.getsql()
+        if len(then_sql) == 1: then_sql, else_sql = then_sql[0], else_sql[0]
+        elif not translator.row_value_syntax: throw(NotImplementedError)
+        else: then_sql, else_sql = [ 'ROW' ] + then_sql, [ 'ROW' ] + else_sql
+        expr = [ 'CASE', None, [ [ test_sql, then_sql ] ], else_sql ]
+        result = translator.ExprMonad.new(translator, result_type, expr)
+        result.aggregated = test_monad.aggregated or then_monad.aggregated or else_monad.aggregated
+        return result
+
+def coerce_monads(m1, m2):
+    result_type = coerce_types(m1.type, m2.type)
+    if result_type in numeric_types and bool in (m1.type, m2.type) and result_type is not bool:
+        translator = m1.translator
+        if translator.dialect == 'PostgreSQL':
+            if m1.type is bool:
+                new_m1 = NumericExprMonad(translator, int, [ 'TO_INT', m1.getsql()[0] ])
+                new_m1.aggregated = m1.aggregated
+                m1 = new_m1
+            if m2.type is bool:
+                new_m2 = NumericExprMonad(translator, int, [ 'TO_INT', m2.getsql()[0] ])
+                new_m2.aggregated = m2.aggregated
+                m2 = new_m2
+    return result_type, m1, m2                
 
 max_alias_length = 30
 
@@ -855,7 +883,7 @@ def make_numeric_binop(op, sqlop):
         if isinstance(monad2, (translator.AttrSetMonad, translator.NumericSetExprMonad)):
             return translator.NumericSetExprMonad(op, sqlop, monad, monad2)
         if monad2.type == 'METHOD': raise_forgot_parentheses(monad2)
-        result_type = coerce_types(monad.type, monad2.type)
+        result_type, monad, monad2 = coerce_monads(monad, monad2)
         if result_type is None:
             throw(TypeError, _binop_errmsg % (type2str(monad.type), type2str(monad2.type), op))
         left_sql = monad.getsql()[0]
@@ -1006,7 +1034,9 @@ class StringMixin(MonadMixin):
     def nonzero(monad):
         sql = monad.getsql()[0]
         translator = monad.translator
-        return translator.BoolExprMonad(translator, [ 'GT', [ 'LENGTH', sql ], [ 'VALUE', 0 ]])
+        result = translator.BoolExprMonad(translator, [ 'GT', [ 'LENGTH', sql ], [ 'VALUE', 0 ]])
+        result.aggregated = monad.aggregated
+        return result
     def len(monad):
         sql = monad.getsql()[0]
         translator = monad.translator
@@ -1160,7 +1190,9 @@ class ParamMonad(Monad):
         elif type is buffer: cls = translator.BufferParamMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectParamMonad
         else: throw(NotImplementedError, type)
-        return cls(translator, type, src)
+        result = cls(translator, type, src)
+        result.aggregated = False
+        return result
     def __new__(cls, *args):
         if cls is ParamMonad: assert False, 'Abstract class'
         return Monad.__new__(cls)
@@ -1227,7 +1259,9 @@ class ConstMonad(Monad):
         elif value_type is NoneType: cls = translator.NoneMonad
         elif value_type is buffer: cls = translator.BufferConstMonad
         else: throw(NotImplementedError, value_type)
-        return cls(translator, value)
+        result = cls(translator, value)
+        result.aggregated = False
+        return result
     def __new__(cls, *args):
         if cls is ConstMonad: assert False, 'Abstract class'
         return Monad.__new__(cls)
@@ -1268,7 +1302,7 @@ class BoolExprMonad(BoolMonad):
         monad.type = bool
         monad.sql = sql
     def getsql(monad, subquery=None):
-        return monad.sql
+        return [ monad.sql ]
     def negate(monad):
         translator = monad.translator
         sql = monad.sql
@@ -1290,7 +1324,6 @@ cmp_negate.update((b, a) for a, b in cmp_negate.items())
 class CmpMonad(BoolMonad):
     def __init__(monad, op, left, right):
         translator = left.translator
-        check_comparable(left, right, op)
         if op == '<>': op = '!='
         if left.type is NoneType:
             assert right.type is not NoneType
@@ -1300,10 +1333,13 @@ class CmpMonad(BoolMonad):
             elif op == '!=': op = 'is not'
         elif op == 'is': op = '=='
         elif op == 'is not': op = '!='
+        check_comparable(left, right, op)
+        result_type, left, right = coerce_monads(left, right)
         BoolMonad.__init__(monad, translator)
         monad.op = op
         monad.left = left
         monad.right = right
+        monad.aggregated = left.aggregated or right.aggregated
     def negate(monad):
         return monad.translator.CmpMonad(cmp_negate[monad.op], monad.left, monad.right)
     def getsql(monad, subquery=None):
@@ -1311,18 +1347,18 @@ class CmpMonad(BoolMonad):
         sql = []
         left_sql = monad.left.getsql()
         if op == 'is':
-            return sqland([ [ 'IS_NULL', item ] for item in left_sql ])
+            return [ sqland([ [ 'IS_NULL', item ] for item in left_sql ]) ]
         if op == 'is not':
-            return sqland([ [ 'IS_NOT_NULL', item ] for item in left_sql ])
+            return [ sqland([ [ 'IS_NOT_NULL', item ] for item in left_sql ]) ]
         right_sql = monad.right.getsql()
         assert len(left_sql) == len(right_sql)
         if op in ('<', '<=', '>', '>='):
             assert len(left_sql) == len(right_sql) == 1
-            return [ cmp_ops[op], left_sql[0], right_sql[0] ]
+            return [ [ cmp_ops[op], left_sql[0], right_sql[0] ] ]
         if op == '==':
-            return sqland([ [ 'EQ', a, b ] for (a, b) in zip(left_sql, right_sql) ])
+            return [ sqland([ [ 'EQ', a, b ] for (a, b) in zip(left_sql, right_sql) ]) ]
         if op == '!=':
-            return sqlor([ [ 'NE', a, b ] for (a, b) in zip(left_sql, right_sql) ])
+            return [ sqlor([ [ 'NE', a, b ] for (a, b) in zip(left_sql, right_sql) ]) ]
         assert False
 
 class LogicalBinOpMonad(BoolMonad):
@@ -1339,7 +1375,12 @@ class LogicalBinOpMonad(BoolMonad):
         BoolMonad.__init__(monad, items[0].translator)
         monad.operands = items
     def getsql(monad, subquery=None):
-        return [ monad.binop ] + [ operand.getsql() for operand in monad.operands ]
+        result = [ monad.binop ]
+        for operand in monad.operands:
+            operand_sql = operand.getsql()
+            assert len(operand_sql) == 1
+            result.extend(operand_sql)
+        return [ result ]
 
 class AndMonad(LogicalBinOpMonad):
     binop = 'AND'
@@ -1355,7 +1396,7 @@ class NotMonad(BoolMonad):
     def negate(monad):
         return monad.operand
     def getsql(monad, subquery=None):
-        return [ 'NOT', monad.operand.getsql() ]
+        return [ [ 'NOT', monad.operand.getsql()[0] ] ]
 
 special_functions = SQLTranslator.special_functions = {}
 
@@ -1484,6 +1525,11 @@ def minmax(monad, sqlop, *args):
         t3 = coerce_types(t, t2)
         if t3 is None: throw(IncomparableTypesError, t, t2)
         t = t3
+    if t3 in numeric_types and translator.dialect == 'PostgreSQL':
+        args = list(args)
+        for i, arg in enumerate(args):
+            if arg.type is bool:
+                args[i] = NumericExprMonad(translator, int, [ 'TO_INT', arg.getsql() ])
     sql = [ sqlop ] + [ arg.getsql()[0] for arg in args ]
     return translator.ExprMonad.new(translator, t, sql)
 
@@ -1841,7 +1887,7 @@ class NumericSetExprMonad(SetMixin, Monad):
         t2 = right.type
         if isinstance(t2, SetType): t2 = t2.item_type
         translator = left.translator
-        result_type = coerce_types(t1, t2)
+        result_type, left, right = coerce_monads(left, right)
         if result_type not in numeric_types:
             throw(TypeError, _binop_errmsg % (type2str(left.type), type2str(right.type), op))
         Monad.__init__(monad, translator, result_type)

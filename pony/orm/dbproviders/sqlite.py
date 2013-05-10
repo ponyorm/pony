@@ -7,7 +7,8 @@ from decimal import Decimal
 from datetime import datetime, date, time
 from time import strptime
 
-from pony.orm import dbschema, sqltranslation, sqlbuilding, dbapiprovider
+from pony.orm import dbschema, sqltranslation, dbapiprovider
+from pony.orm.sqlbuilding import SQLBuilder, join
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
 from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple_decorator, absolutize_path, throw
 
@@ -23,10 +24,8 @@ class SQLiteTranslator(sqltranslation.SQLTranslator):
     sqlite_version = sqlite.sqlite_version_info
     row_value_syntax = False
 
-class SQLiteBuilder(sqlbuilding.SQLBuilder):
+class SQLiteBuilder(SQLBuilder):
     dialect = 'SQLite'
-    def POW(builder, expr1, expr2):
-        return 'pow(', builder(expr1), ', ', builder(expr2), ')'
     def TODAY(builder):
         return "date('now', 'localtime')"
     def NOW(builder):
@@ -43,6 +42,16 @@ class SQLiteBuilder(sqlbuilding.SQLBuilder):
         return 'cast(substr(', builder(expr), ', 15, 2) as integer)'
     def SECOND(builder, expr):
         return 'cast(substr(', builder(expr), ', 18, 2) as integer)'
+    def MIN(builder, *args):
+        if len(args) == 0: assert False
+        elif len(args) == 1: fname = 'MIN'
+        else: fname = 'min'
+        return fname, '(',  join(', ', map(builder, args)), ')'
+    def MAX(builder, *args):
+        if len(args) == 0: assert False
+        elif len(args) == 1: fname = 'MAX'
+        else: fname = 'max'
+        return fname, '(',  join(', ', map(builder, args)), ')'
 
 class SQLiteStrConverter(dbapiprovider.StrConverter):
     def py2sql(converter, val):
@@ -157,7 +166,7 @@ def _text_factory(s):
 
 def _init_connection(con):
     con.text_factory = _text_factory
-    con.create_function("pow", 2, pow)
+    con.create_function('power', 2, pow)
 
 def unexpected_args(attr, args):
     throw(TypeError,

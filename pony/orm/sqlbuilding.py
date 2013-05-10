@@ -36,6 +36,7 @@ class Value(object):
     def __unicode__(self):
         value = self.value
         if value is None: return 'null'
+        if isinstance(value, bool): return value and '1' or '0'
         if isinstance(value, (int, long, float, Decimal)): return str(value)
         if isinstance(value, basestring): return self.quote_str(value)
         if isinstance(value, datetime): return self.quote_str(datetime2timestamp(value))
@@ -336,6 +337,8 @@ class SQLBuilder(object):
         return '(', join(' OR ', cond_list), ')'
     def NOT(builder, condition):
         return 'NOT (', builder(condition), ')'
+    def POW(builder, expr1, expr2):
+        return 'power(', builder(expr1), ', ', builder(expr2), ')'
 
     EQ  = make_binary_op(' = ')
     NE  = make_binary_op(' <> ')
@@ -347,7 +350,6 @@ class SQLBuilder(object):
     SUB = make_binary_op(' - ', True)
     MUL = make_binary_op(' * ', True)
     DIV = make_binary_op(' / ', True)
-    POW = make_binary_op(' ** ')
 
     def CONCAT(builder, *args):
         return '(',  join(' || ', map(builder, args)), ')'
@@ -409,12 +411,12 @@ class SQLBuilder(object):
     def MIN(builder, *args):
         if len(args) == 0: assert False
         elif len(args) == 1: fname = 'MIN'
-        else: fname = 'min'
+        else: fname = 'least'
         return fname, '(',  join(', ', map(builder, args)), ')'
     def MAX(builder, *args):
         if len(args) == 0: assert False
         elif len(args) == 1: fname = 'MAX'
-        else: fname = 'max'
+        else: fname = 'greatest'
         return fname, '(',  join(', ', map(builder, args)), ')'
     def SUBSTR(builder, expr, start, len=None):
         if len is None: return 'substr(', builder(expr), ', ', builder(start), ')'

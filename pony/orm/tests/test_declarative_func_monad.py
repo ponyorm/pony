@@ -111,9 +111,6 @@ class TestFuncMonad(unittest.TestCase):
     def test_decimal_func(self):
         result = set(select(s for s in Student if s.scholarship >= Decimal("303.3")))
         self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
-    def test_bool(self):
-        result = set(select(s for s in Student if s.phd == True))
-        self.assertEquals(result, set([Student[1], Student[2]]))
 
 if __name__ == '__main__':
     unittest.main()

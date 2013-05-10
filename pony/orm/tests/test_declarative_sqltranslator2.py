@@ -1,5 +1,6 @@
 import unittest
-from datetime import date, datetime
+from datetime import date
+from decimal import Decimal
 from pony.orm.core import *
 from pony.orm.sqltranslation import IncomparableTypesError
 from testutils import *
@@ -35,6 +36,7 @@ class Student(db.Entity):
     tel = Optional(str)
     picture = Optional(buffer, lazy=True)
     gpa = Required(float, default=0)
+    phd = Optional(bool)
     group = Required(Group)
     courses = Set(Course)
 
@@ -66,19 +68,19 @@ def populate_db():
     g105 = Group(number=105, major='B.E in Electronics', dept=d3)
     g106 = Group(number=106, major='B.S./M.S. in Nuclear Engineering', dept=d3)
 
-    s1 = Student(name='John Smith', dob=date(1991, 3, 20), tel='123-456', gpa=3, group=g101,
+    Student(name='John Smith', dob=date(1991, 3, 20), tel='123-456', gpa=3, group=g101, phd=True,
                         courses=[c1, c2, c4, c6])
-    s1 = Student(name='Matthew Reed', dob=date(1990, 11, 26), gpa=3.5, group=g101,
+    Student(name='Matthew Reed', dob=date(1990, 11, 26), gpa=3.5, group=g101, phd=True,
                         courses=[c1, c3, c4, c5])
-    s1 = Student(name='Chuan Qin', dob=date(1989, 2, 5), gpa=4, group=g101,
+    Student(name='Chuan Qin', dob=date(1989, 2, 5), gpa=4, group=g101,
                         courses=[c3, c5, c6])
-    s1 = Student(name='Rebecca Lawson', dob=date(1990, 4, 18), tel='234-567', gpa=3.3, group=g102,
+    Student(name='Rebecca Lawson', dob=date(1990, 4, 18), tel='234-567', gpa=3.3, group=g102,
                         courses=[c1, c4, c5, c6])
-    s1 = Student(name='Maria Ionescu', dob=date(1991, 4, 23), gpa=3.9, group=g102,
+    Student(name='Maria Ionescu', dob=date(1991, 4, 23), gpa=3.9, group=g102,
                         courses=[c1, c2, c4, c6])
-    s1 = Student(name='Oliver Blakey', dob=date(1990, 9, 8), gpa=3.1, group=g102,
+    Student(name='Oliver Blakey', dob=date(1990, 9, 8), gpa=3.1, group=g102,
                         courses=[c1, c2, c5])
-    s1 = Student(name='Jing Xia', dob=date(1988, 12, 30), gpa=3.2, group=g102,
+    Student(name='Jing Xia', dob=date(1988, 12, 30), gpa=3.2, group=g102,
                         courses=[c1, c3, c5, c6])
 
 db.generate_mapping(create_tables=True)
@@ -191,6 +193,26 @@ class TestSQLTranslator2(unittest.TestCase):
             pass
         u2 = Unicode2(u'\xf0')
         select(s for s in Student if len(u2) == 1)
+    def test_bool(self):
+        result = set(select(s for s in Student if s.phd == True))
+        self.assertEquals(result, set([Student[1], Student[2]]))
+    def test_bool2(self):
+        result = list(select(s for s in Student if s.phd + 1 == True))
+        self.assertEquals(result, [])
+    def test_bool3(self):
+        result = list(select(s for s in Student if s.phd + 1.1 == True))
+        self.assertEquals(result, [])
+    def test_bool4(self):
+        result = list(select(s for s in Student if s.phd + Decimal('1.1') == True))
+        self.assertEquals(result, [])
+    def test_bool5(self):
+        x = True
+        result = set(select(s for s in Student if s.phd == True and (False or (True and x))))
+        self.assertEquals(result, set([Student[1], Student[2]]))
+    def test_bool6(self):
+        x = False
+        result = list(select(s for s in Student if s.phd == (False or (True and x)) and s.phd is True))
+        self.assertEquals(result, [])
 
 if __name__ == "__main__":
     unittest.main()
