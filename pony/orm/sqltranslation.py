@@ -529,6 +529,18 @@ class SQLTranslator(ASTTranslator):
         return expr_monad[lower:upper]
     def postSliceobj(translator, node):
         pass
+    def postIfExp(translator, node):
+        test_monad, then_monad, else_monad = node.test.monad, node.then.monad, node.else_.monad
+        if test_monad.type is not bool: test_monad = test_monad.nonzero()
+        result_type = coerce_types(then_monad.type, else_monad.type)
+        test_sql, then_sql, else_sql = test_monad.getsql()[0], then_monad.getsql(), else_monad.getsql()
+        if len(then_sql) == 1: then_sql, else_sql = then_sql[0], else_sql[0]
+        elif not translator.row_value_syntax: throw(NotImplementedError)
+        else: then_sql, else_sql = [ 'ROW' ] + then_sql, [ 'ROW' ] + else_sql
+        expr = [ 'CASE', None, [ [ test_sql, then_sql ] ], else_sql ]
+        result = translator.ExprMonad.new(translator, result_type, expr)
+        result.aggregated = test_monad.aggregated or then_monad.aggregated or else_monad.aggregated
+        return result
 
 max_alias_length = 30
 
