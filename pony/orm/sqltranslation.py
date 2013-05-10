@@ -265,7 +265,8 @@ class SQLTranslator(ASTTranslator):
                 tableref = monad.make_tableref(translator.subquery)
             else: assert False
             translator.tableref = tableref
-            alias, pk_columns = tableref.make_join(pk_only=parent_translator is not None)
+            pk_only = parent_translator is not None or translator.aggregated
+            alias, pk_columns = tableref.make_join(pk_only=pk_only)
             translator.alias = alias
             translator.expr_type = entity
             translator.expr_columns = [ [ 'COLUMN', alias, column ] for column in pk_columns ]
