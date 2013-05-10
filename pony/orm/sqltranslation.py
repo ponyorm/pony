@@ -239,8 +239,8 @@ class SQLTranslator(ASTTranslator):
                 if isinstance(if_.monad, translator.AndMonad): cond_monads = if_.monad.operands
                 else: cond_monads = [ if_.monad ]
                 for m in cond_monads:
-                    if not m.aggregated: translator.conditions.append(m.getsql())
-                    else: translator.having_conditions.append(m.getsql())
+                    if not m.aggregated: translator.conditions.extend(m.getsql())
+                    else: translator.having_conditions.extend(m.getsql())
 
         translator.inside_expr = True
         translator.dispatch(tree.expr)
@@ -1268,7 +1268,7 @@ class BoolExprMonad(BoolMonad):
         monad.type = bool
         monad.sql = sql
     def getsql(monad, subquery=None):
-        return monad.sql
+        return [ monad.sql ]
     def negate(monad):
         translator = monad.translator
         sql = monad.sql
@@ -1311,18 +1311,18 @@ class CmpMonad(BoolMonad):
         sql = []
         left_sql = monad.left.getsql()
         if op == 'is':
-            return sqland([ [ 'IS_NULL', item ] for item in left_sql ])
+            return [ sqland([ [ 'IS_NULL', item ] for item in left_sql ]) ]
         if op == 'is not':
-            return sqland([ [ 'IS_NOT_NULL', item ] for item in left_sql ])
+            return [ sqland([ [ 'IS_NOT_NULL', item ] for item in left_sql ]) ]
         right_sql = monad.right.getsql()
         assert len(left_sql) == len(right_sql)
         if op in ('<', '<=', '>', '>='):
             assert len(left_sql) == len(right_sql) == 1
-            return [ cmp_ops[op], left_sql[0], right_sql[0] ]
+            return [ [ cmp_ops[op], left_sql[0], right_sql[0] ] ]
         if op == '==':
-            return sqland([ [ 'EQ', a, b ] for (a, b) in zip(left_sql, right_sql) ])
+            return [ sqland([ [ 'EQ', a, b ] for (a, b) in zip(left_sql, right_sql) ]) ]
         if op == '!=':
-            return sqlor([ [ 'NE', a, b ] for (a, b) in zip(left_sql, right_sql) ])
+            return [ sqlor([ [ 'NE', a, b ] for (a, b) in zip(left_sql, right_sql) ]) ]
         assert False
 
 class LogicalBinOpMonad(BoolMonad):
@@ -1339,7 +1339,12 @@ class LogicalBinOpMonad(BoolMonad):
         BoolMonad.__init__(monad, items[0].translator)
         monad.operands = items
     def getsql(monad, subquery=None):
-        return [ monad.binop ] + [ operand.getsql() for operand in monad.operands ]
+        result = [ monad.binop ]
+        for operand in monad.operands:
+            operand_sql = operand.getsql()
+            assert len(operand_sql) == 1
+            result.extend(operand_sql)
+        return [ result ]
 
 class AndMonad(LogicalBinOpMonad):
     binop = 'AND'
@@ -1355,7 +1360,7 @@ class NotMonad(BoolMonad):
     def negate(monad):
         return monad.operand
     def getsql(monad, subquery=None):
-        return [ 'NOT', monad.operand.getsql() ]
+        return [ [ 'NOT', monad.operand.getsql()[0] ] ]
 
 special_functions = SQLTranslator.special_functions = {}
 
