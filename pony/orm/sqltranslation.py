@@ -543,6 +543,21 @@ class SQLTranslator(ASTTranslator):
         result.aggregated = test_monad.aggregated or then_monad.aggregated or else_monad.aggregated
         return result
 
+def coerce_monads(m1, m2):
+    result_type = coerce_types(m1.type, m2.type)
+    if result_type in numeric_types and bool in (m1.type, m2.type) and result_type is not bool:
+        translator = m1.translator
+        if translator.dialect == 'PostgreSQL':
+            if m1.type is bool:
+                new_m1 = NumericExprMonad(translator, int, [ 'TO_INT', m1.getsql()[0] ])
+                new_m1.aggregated = m1.aggregated
+                m1 = new_m1
+            if m2.type is bool:
+                new_m2 = NumericExprMonad(translator, int, [ 'TO_INT', m2.getsql()[0] ])
+                new_m2.aggregated = m2.aggregated
+                m2 = new_m2
+    return result_type, m1, m2                
+
 max_alias_length = 30
 
 class Subquery(object):
@@ -868,7 +883,7 @@ def make_numeric_binop(op, sqlop):
         if isinstance(monad2, (translator.AttrSetMonad, translator.NumericSetExprMonad)):
             return translator.NumericSetExprMonad(op, sqlop, monad, monad2)
         if monad2.type == 'METHOD': raise_forgot_parentheses(monad2)
-        result_type = coerce_types(monad.type, monad2.type)
+        result_type, monad, monad2 = coerce_monads(monad, monad2)
         if result_type is None:
             throw(TypeError, _binop_errmsg % (type2str(monad.type), type2str(monad2.type), op))
         left_sql = monad.getsql()[0]
@@ -1319,6 +1334,7 @@ class CmpMonad(BoolMonad):
         elif op == 'is': op = '=='
         elif op == 'is not': op = '!='
         check_comparable(left, right, op)
+        result_type, left, right = coerce_monads(left, right)
         BoolMonad.__init__(monad, translator)
         monad.op = op
         monad.left = left
@@ -1871,7 +1887,7 @@ class NumericSetExprMonad(SetMixin, Monad):
         t2 = right.type
         if isinstance(t2, SetType): t2 = t2.item_type
         translator = left.translator
-        result_type = coerce_types(t1, t2)
+        result_type, left, right = coerce_monads(left, right)
         if result_type not in numeric_types:
             throw(TypeError, _binop_errmsg % (type2str(left.type), type2str(right.type), op))
         Monad.__init__(monad, translator, result_type)
