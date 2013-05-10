@@ -410,12 +410,12 @@ class SQLBuilder(object):
     def MIN(builder, *args):
         if len(args) == 0: assert False
         elif len(args) == 1: fname = 'MIN'
-        else: fname = 'min'
+        else: fname = 'least'
         return fname, '(',  join(', ', map(builder, args)), ')'
     def MAX(builder, *args):
         if len(args) == 0: assert False
         elif len(args) == 1: fname = 'MAX'
-        else: fname = 'max'
+        else: fname = 'greatest'
         return fname, '(',  join(', ', map(builder, args)), ')'
     def SUBSTR(builder, expr, start, len=None):
         if len is None: return 'substr(', builder(expr), ', ', builder(start), ')'
