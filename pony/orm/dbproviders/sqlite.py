@@ -26,8 +26,6 @@ class SQLiteTranslator(sqltranslation.SQLTranslator):
 
 class SQLiteBuilder(SQLBuilder):
     dialect = 'SQLite'
-    def POW(builder, expr1, expr2):
-        return 'pow(', builder(expr1), ', ', builder(expr2), ')'
     def TODAY(builder):
         return "date('now', 'localtime')"
     def NOW(builder):
@@ -168,7 +166,7 @@ def _text_factory(s):
 
 def _init_connection(con):
     con.text_factory = _text_factory
-    con.create_function("pow", 2, pow)
+    con.create_function('power', 2, pow)
 
 def unexpected_args(attr, args):
     throw(TypeError,

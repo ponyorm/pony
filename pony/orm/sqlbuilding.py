@@ -337,6 +337,8 @@ class SQLBuilder(object):
         return '(', join(' OR ', cond_list), ')'
     def NOT(builder, condition):
         return 'NOT (', builder(condition), ')'
+    def POW(builder, expr1, expr2):
+        return 'power(', builder(expr1), ', ', builder(expr2), ')'
 
     EQ  = make_binary_op(' = ')
     NE  = make_binary_op(' <> ')
@@ -348,7 +350,6 @@ class SQLBuilder(object):
     SUB = make_binary_op(' - ', True)
     MUL = make_binary_op(' * ', True)
     DIV = make_binary_op(' / ', True)
-    POW = make_binary_op(' ** ')
 
     def CONCAT(builder, *args):
         return '(',  join(' || ', map(builder, args)), ')'
