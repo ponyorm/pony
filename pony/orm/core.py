@@ -2797,6 +2797,14 @@ class Entity(object):
                 obj._status_ = 'cancelled'
                 assert obj in cache.created
                 cache.created.remove(obj)
+                for attr in obj._attrs_:
+                    if attr.pk_offset is not None: continue
+                    obj._vals_.pop(attr.name, None)
+                    if attr.is_collection:
+                        mc = cache.modified_collections.get(attr)
+                        if mc is not None: mc.discard(obj)
+                if obj._pkval_ is not None:
+                    del cache.indexes[obj.__class__._pk_][obj._pkval_]
             else:
                 if status == 'updated': cache.updated.remove(obj)
                 elif status in ('loaded', 'saved'): cache.to_be_checked.append(obj)
