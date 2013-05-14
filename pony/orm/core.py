@@ -885,8 +885,8 @@ class Attribute(object):
         is_reverse_call = undo_funcs is not None
         reverse = attr.reverse
         new_val = attr.check(new_val, obj, from_db=False)
-        pkval = obj._pkval_
         if attr.pk_offset is not None:
+            pkval = obj._pkval_
             if pkval is None: pass
             elif obj._pk_is_composite_:
                 if new_val == pkval[attr.pk_offset]: return
