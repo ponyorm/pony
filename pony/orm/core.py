@@ -1511,16 +1511,17 @@ class Set(Collection):
             in_added = item in setdata.added
             was_modified_earlier = obj in objects_with_modified_collections
             undo.append((obj, in_setdata, in_added, was_modified_earlier))
+            objects_with_modified_collections.add(obj)
             if in_setdata: setdata.remove(item)
             if in_added: setdata.added.remove(item)
-            setdata.removed.add(item)
-            objects_with_modified_collections.add(obj)
+            if item._status_ not in ('created', 'cancelled'):
+                setdata.removed.add(item)
         def undo_func():
             for obj, in_setdata, in_removed, was_modified_earlier in undo:
                 setdata = obj._vals_[attr.name]
                 if in_added: setdata.added.add(item)
                 if in_setdata: setdata.add(item)
-                setdata.removed.remove(item)
+                setdata.removed.discard(item)
                 if not was_modified_earlier: objects_with_modified_collections.remove(obj)
         undo_funcs.append(undo_func)
     def db_reverse_remove(attr, objects, item):
