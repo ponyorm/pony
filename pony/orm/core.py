@@ -2771,7 +2771,6 @@ class Entity(object):
                     else: throw(ConstraintError, "Cannot delete object %s, because it has non-empty set of %s, "
                                                  "and 'cascade_delete' option of %s is set to False"
                                                  % (obj, attr.name, attr))
-                    attr.__set__(obj, (), undo_funcs)
                 else: throw(NotImplementedError)
 
             for attr in obj._simple_keys_:
