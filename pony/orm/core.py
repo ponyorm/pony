@@ -2803,11 +2803,6 @@ class Entity(object):
                 else: assert status == 'locked'
                 obj._status_ = 'deleted'
                 cache.deleted.append(obj)
-            for attr in obj._attrs_:
-                if attr.pk_offset is None and not attr.is_collection:
-                    val = obj._vals_.pop(attr.name, NOT_LOADED)
-                    if val is NOT_LOADED: continue
-                    undo_dict[attr] = val
         except:
             if not is_recursive_call:
                 for undo_func in reversed(undo_funcs): undo_func()
