@@ -2804,7 +2804,7 @@ class Entity(object):
                 obj._status_ = 'deleted'
                 cache.deleted.append(obj)
             for attr in obj._attrs_:
-                if attr.pk_offset is None:
+                if attr.pk_offset is None and not attr.is_collection:
                     val = obj._vals_.pop(attr.name, NOT_LOADED)
                     if val is NOT_LOADED: continue
                     undo_dict[attr] = val
@@ -3227,10 +3227,9 @@ class Cache(object):
             if reverse in modified_m2m: continue
             added, removed = modified_m2m.setdefault(attr, (set(), set()))
             for obj in objects:
-                setdata = obj._vals_[attr.name]
+                setdata = obj._vals_.pop(attr.name)
                 for obj2 in setdata.added: added.add((obj, obj2))
                 for obj2 in setdata.removed: removed.add((obj, obj2))
-                setdata.added = setdata.removed = EMPTY
         cache.modified_collections.clear()
         return modified_m2m
     def update_simple_index(cache, obj, attr, old_val, new_val, undo):
