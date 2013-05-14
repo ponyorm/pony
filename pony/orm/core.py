@@ -2520,7 +2520,7 @@ class EntityMeta(type):
         if not entity._pk_is_composite_: pkval = pkval[0]
         else: pkval = tuple(pkval)
         obj = entity._new_(pkval, 'loaded')
-        assert obj._status_ not in ('deleted', 'cancelled')
+        assert obj._status_ != 'cancelled'
         return obj
     def _get_propagation_mixin_(entity):
         mixin = entity._propagation_mixin_
