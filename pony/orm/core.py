@@ -2827,7 +2827,6 @@ class Entity(object):
     @cut_traceback
     def delete(obj):
         if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
-        if obj._status_ in ('deleted', 'cancelled'): throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
         obj._delete_()
     @cut_traceback
     def set(obj, **kwargs):
