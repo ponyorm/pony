@@ -953,7 +953,7 @@ class Attribute(object):
     def db_set(attr, obj, new_dbval, is_reverse_call=False):
         cache = obj._cache_
         assert cache.is_alive
-        assert obj._status_ not in ('created', 'deleted', 'cancelled')
+        assert obj._status_ not in created_or_deleted_statuses
         assert attr.pk_offset is None
         if new_dbval is NOT_LOADED: assert is_reverse_call
         old_dbval = obj._dbvals_.get(attr.name, NOT_LOADED)
@@ -1313,7 +1313,7 @@ class Set(Collection):
             max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
             for obj2 in pk_index.itervalues():
                 if obj2 is obj: continue
-                if obj2._status_ in ('created', 'deleted', 'cancelled'): continue
+                if obj2._status_ in created_or_deleted_statuses: continue
                 setdata2 = obj2._vals_.get(attr.name, NOT_LOADED)
                 if setdata2 is NOT_LOADED: setdata2 = obj2._vals_[attr.name] = SetData()
                 elif setdata2.is_fully_loaded: continue
@@ -2594,6 +2594,7 @@ def populate_criteria_list(criteria_list, columns, converters, params_count=0, t
 
 statuses = set(['created', 'loaded', 'updated', 'deleted', 'cancelled', 'saved', 'locked'])
 del_statuses = set(['deleted', 'cancelled'])
+created_or_deleted_statuses = set(['created']) | del_statuses
 
 def throw_object_was_deleted(obj):
     throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
@@ -2683,7 +2684,7 @@ class Entity(object):
         objects = entity._fetch_objects(cursor, attr_offsets)
         if obj not in objects: throw(UnrepeatableReadError, '%s disappeared' % obj)
     def _db_set_(obj, avdict):
-        assert obj._status_ not in ('created', 'deleted', 'cancelled')
+        assert obj._status_ not in created_or_deleted_statuses
         if not avdict: return
 
         cache = obj._cache_
