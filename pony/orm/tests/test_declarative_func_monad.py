@@ -100,14 +100,14 @@ class TestFuncMonad(unittest.TestCase):
     #     d = 3
     #     result = set(select(s for s in Student if s.last_visit >= date(1983, d, 3)))
     def test_datetime_now1(self):
-        result = select(s for s in Student if s.dob < date.today())[:]
-        self.assertEquals(result, [Student[1], Student[2], Student[3], Student[4], Student[5]])
+        result = set(select(s for s in Student if s.dob < date.today()))
+        self.assertEquals(result, set([Student[1], Student[2], Student[3], Student[4], Student[5]]))
     @raises_exception(ExprEvalError, "1 < datetime.now() raises TypeError: can't compare datetime.datetime to int")
     def test_datetime_now2(self):
         select(s for s in Student if 1 < datetime.now())
     def test_datetime_now3(self):
-        result = select(s for s in Student if s.dob < datetime.today())[:]
-        self.assertEquals(result, [Student[1], Student[2], Student[3], Student[4], Student[5]])
+        result = set(select(s for s in Student if s.dob < datetime.today()))
+        self.assertEquals(result, set([Student[1], Student[2], Student[3], Student[4], Student[5]]))
     def test_decimal_func(self):
         result = set(select(s for s in Student if s.scholarship >= Decimal("303.3")))
         self.assertEquals(result, set([Student[3], Student[4], Student[5]]))

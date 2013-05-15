@@ -104,11 +104,11 @@ class TestSQLTranslator2(unittest.TestCase):
         self.assertEquals("DISTINCT" not in flatten(q._translator.conditions), True)
         self.assertEquals(q[:], [Department[2]])
     def test_distinct5(self):
-        result = select(s for s in Student)[:]
-        self.assertEquals(result, [Student[1], Student[2], Student[3], Student[4], Student[5], Student[6], Student[7]])
+        result = set(select(s for s in Student))
+        self.assertEquals(result, set([Student[1], Student[2], Student[3], Student[4], Student[5], Student[6], Student[7]]))
     def test_distinct6(self):
-        result = select(s for s in Student).distinct()
-        self.assertEquals(result, [Student[1], Student[2], Student[3], Student[4], Student[5], Student[6], Student[7]])
+        result = set(select(s for s in Student).distinct())
+        self.assertEquals(result, set([Student[1], Student[2], Student[3], Student[4], Student[5], Student[6], Student[7]]))
     def test_not_null1(self):
         q = select(g for g in Group if '123-45-67' not in g.students.tel and g.dept == Department[1])
         not_null = "IS_NOT_NULL COLUMN student-1 tel" in (" ".join(str(i) for i in flatten(q._translator.conditions)))
@@ -120,12 +120,12 @@ class TestSQLTranslator2(unittest.TestCase):
         self.assertEquals(not_null, False)
         self.assertEquals(q[:], [Group[101]])
     def test_chain_of_attrs_inside_for1(self):
-        result = select(s for d in Department if d.number == 2 for s in d.groups.students)[:]
-        self.assertEquals(result, [Student[4], Student[5], Student[6], Student[7]])
+        result = set(select(s for d in Department if d.number == 2 for s in d.groups.students))
+        self.assertEquals(result, set([Student[4], Student[5], Student[6], Student[7]]))
     def test_chain_of_attrs_inside_for2(self):
         pony.options.SIMPLE_ALIASES = False
-        result = select(s for d in Department if d.number == 2 for s in d.groups.students)[:]
-        self.assertEquals(result, [Student[4], Student[5], Student[6], Student[7]])
+        result = set(select(s for d in Department if d.number == 2 for s in d.groups.students))
+        self.assertEquals(result, set([Student[4], Student[5], Student[6], Student[7]]))
         pony.options.SIMPLE_ALIASES = True
     def test_non_entity_result1(self):
         result = select((s.name, s.group.number) for s in Student if s.name.startswith("J"))[:]
@@ -152,8 +152,8 @@ class TestSQLTranslator2(unittest.TestCase):
         self.assertEquals(sorted(result), sorted([(Course[u'Linear Algebra',1], Student[1]), (Course[u'Linear Algebra',1],
             Student[2]), (Course[u'Web Design',1], Student[1]), (Course[u'Web Design',1], Student[2])]))
     def test_non_entity7(self):
-        result = select(s for s in Student if (s.name, s.dob) not in (((s2.name, s2.dob) for s2 in Student if s.group.number == 101)))[:]
-        self.assertEquals(result, [Student[4], Student[5], Student[6], Student[7]])
+        result = set(select(s for s in Student if (s.name, s.dob) not in (((s2.name, s2.dob) for s2 in Student if s.group.number == 101))))
+        self.assertEquals(result, set([Student[4], Student[5], Student[6], Student[7]]))
     @raises_exception(IncomparableTypesError, "Incomparable types 'int' and 'Set of Student' in expression: g.number == g.students")
     def test_incompartible_types(self):
         select(g for g in Group if g.number == g.students)
@@ -163,8 +163,8 @@ class TestSQLTranslator2(unittest.TestCase):
         select(x for s in Student)
     def test_external_param2(self):
         x = Student[1]
-        result = select(s for s in Student if s.name != x.name)[:]
-        self.assertEquals(result, [Student[2], Student[3], Student[4], Student[5], Student[6], Student[7]])
+        result = set(select(s for s in Student if s.name != x.name))
+        self.assertEquals(result, set([Student[2], Student[3], Student[4], Student[5], Student[6], Student[7]]))
     @raises_exception(TypeError, "Use select(...) function or Group.select(...) method for iteration")
     def test_exception1(self):
         for g in Group: print g.number
@@ -177,14 +177,14 @@ class TestSQLTranslator2(unittest.TestCase):
     def test_entity_not_found(self):
         select(s for s in db.Student for g in db.FooBar)
     def test_keyargs1(self):
-        result = select(s for s in Student if s.dob < date(year=1990, month=10, day=20))[:]
-        self.assertEquals(result, [Student[3], Student[4], Student[6], Student[7]])
+        result = set(select(s for s in Student if s.dob < date(year=1990, month=10, day=20)))
+        self.assertEquals(result, set([Student[3], Student[4], Student[6], Student[7]]))
     def test_query_as_string1(self):
-        result = select('s for s in Student if 3 <= s.gpa < 4')[:]
-        self.assertEquals(result, [Student[1], Student[2], Student[4], Student[5], Student[6], Student[7]])
+        result = set(select('s for s in Student if 3 <= s.gpa < 4'))
+        self.assertEquals(result, set([Student[1], Student[2], Student[4], Student[5], Student[6], Student[7]]))
     def test_query_as_string2(self):
-        result = select('s for s in db.Student if 3 <= s.gpa < 4')[:]
-        self.assertEquals(result, [Student[1], Student[2], Student[4], Student[5], Student[6], Student[7]])
+        result = set(select('s for s in db.Student if 3 <= s.gpa < 4'))
+        self.assertEquals(result, set([Student[1], Student[2], Student[4], Student[5], Student[6], Student[7]]))
     def test_str_subclasses(self):
         result = select(d for d in Department for g in d.groups for c in d.courses if g.number == 106 and c.name.startswith('T'))[:]
         self.assertEquals(result, [Department[3]])
