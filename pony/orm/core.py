@@ -555,7 +555,7 @@ class Database(object):
                             attr.nullable = True
                         table.add_column(column_name, converter.sql_type(), not attr.nullable)
             if not table.pk_index:
-                if len(entity._pk_columns_) == 1 and entity._pk_.auto: is_pk = "auto"
+                if len(entity._pk_columns_) == 1 and entity.__dict__['_pk_'].auto: is_pk = "auto"
                 else: is_pk = True
                 table.add_index(None, get_columns(table, entity._pk_columns_), is_pk)
             for key in entity._keys_:
@@ -874,7 +874,7 @@ class Attribute(object):
         if val is NOT_LOADED: val = attr.load(obj)
         if val is None: return val
         if attr.reverse and val._discriminator_ and val._subclasses_:
-            seeds = obj._cache_.seeds.get(val.__class__._pk_)
+            seeds = obj._cache_.seeds.get(val.__class__.__dict__['_pk_'])
             if seeds and val in seeds: val._load_()
         return val
     @cut_traceback
@@ -1309,7 +1309,7 @@ class Set(Collection):
         assert cache.is_alive
         counter = cache.collection_statistics.setdefault(attr, 0)
         if counter >= attr.nplus1_threshold:
-            pk_index = cache.indexes.get(entity._pk_)
+            pk_index = cache.indexes.get(entity.__dict__['_pk_'])
             max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
             for obj2 in pk_index.itervalues():
                 if obj2 is obj: continue
@@ -2106,11 +2106,12 @@ class EntityMeta(type):
                 attr = get(name)
                 if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
                 avdict[attr] = attr.check(val, None, entity, from_db=False)
+        pk = entity.__dict__['_pk_']
         if entity._pk_is_composite_:
-            pkval = map(avdict.get, entity._pk_attrs_)
+            pkval = map(avdict.get, pk)
             if None in pkval: pkval = None
             else: pkval = tuple(pkval)
-        else: pkval = avdict.get(entity._pk_)
+        else: pkval = avdict.get(pk)
         return pkval, avdict
     @cut_traceback
     def __getitem__(entity, key):
@@ -2183,7 +2184,7 @@ class EntityMeta(type):
         cache = entity._get_cache_()
         obj = None
         if pkval is not None:
-            index = cache.indexes.get(entity._pk_)
+            index = cache.indexes.get(entity.__dict__['_pk_'])
             if index is not None: obj = index.get(pkval)
         if obj is None:
             for attr in ifilter(avdict.__contains__, entity._simple_keys_):
@@ -2401,13 +2402,15 @@ class EntityMeta(type):
             offsets = attr_offsets.get(attr)
             if offsets is None or attr.is_discriminator: continue
             avdict[attr] = attr.parse_value(row, offsets)
-        if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_, None)
-        else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
+        pk = entity.__dict__['_pk_']
+        if not entity._pk_is_composite_: pkval = avdict.pop(pk, None)
+        else: pkval = tuple(avdict.pop(attr, None) for attr in pk)
         return real_entity_subclass, pkval, avdict
     def _load_many_(entity, objects):
         database = entity._database_
         cache = database._get_cache()
-        seeds = cache.seeds.get(entity._pk_)
+        pk = entity.__dict__['_pk_']
+        seeds = cache.seeds.get(pk)
         if not seeds: return
         objects = set(obj for obj in objects if obj in seeds)
         objects = sorted(objects, key=attrgetter('_pkval_'))
@@ -2458,7 +2461,8 @@ class EntityMeta(type):
         return database._get_cache()
     def _new_(entity, pkval, status, undo_funcs=None):
         cache = entity._get_cache_()
-        index = cache.indexes.setdefault(entity._pk_, {})
+        pk = entity.__dict__['_pk_']
+        index = cache.indexes.setdefault(pk, {})
         if pkval is None: obj = None
         else: obj = index.get(pkval)
         if obj is None: pass
@@ -2485,15 +2489,15 @@ class EntityMeta(type):
             index[pkval] = obj
             obj._newid_ = None
         else: obj._newid_ = next_new_instance_id()
-        if obj._pk_is_composite_: pairs = zip(entity._pk_attrs_, pkval)
-        else: pairs = ((entity._pk_, pkval),)
+        if obj._pk_is_composite_: pairs = zip(pk, pkval)
+        else: pairs = ((pk, pkval),)
         if status == 'loaded':
             assert undo_funcs is None
             obj._rbits_ = obj._wbits_ = 0
             for attr, val in pairs:
                 obj._vals_[attr.name] = val
                 if attr.reverse: attr.db_update_reverse(obj, NOT_LOADED, val)
-            seeds = cache.seeds.setdefault(entity._pk_, set())
+            seeds = cache.seeds.setdefault(pk, set())
             seeds.add(obj)
         elif status == 'created':
             assert undo_funcs is not None
@@ -2626,7 +2630,8 @@ class Entity(object):
             for undo_func in reversed(undo_funcs): undo_func()
             raise
         if pkval is not None:
-            cache.indexes[entity._pk_][pkval] = obj
+            pk = entity.__dict__['_pk_']
+            cache.indexes[pk][pkval] = obj
         for key, vals in indexes.iteritems():
             cache.indexes[key][vals] = obj
         cache.created.add(obj)
@@ -2635,7 +2640,8 @@ class Entity(object):
     def _get_raw_pkval_(obj):
         pkval = obj._pkval_
         if not obj._pk_is_composite_:
-            if not obj.__class__._pk_.reverse: return (pkval,)
+            pk = obj.__class__.__dict__['_pk_']
+            if not pk.reverse: return (pkval,)
             else: return pkval._get_raw_pkval_()
         raw_pkval = []
         append = raw_pkval.append
@@ -2657,7 +2663,8 @@ class Entity(object):
         database = entity._database_
         if cache is not database._get_cache():
             throw(TransactionError, "Object %s doesn't belong to current transaction" % obj)
-        seeds = cache.seeds[entity._pk_]
+        pk = entity.__dict__['_pk_']
+        seeds = cache.seeds[pk]
         max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
         objects = [ obj ]
         for seed in seeds:
@@ -2675,7 +2682,8 @@ class Entity(object):
 
         cache = obj._cache_
         assert cache.is_alive
-        seeds = cache.seeds.setdefault(obj.__class__._pk_, set())
+        pk = obj.__class__.__dict__['_pk_']
+        seeds = cache.seeds.setdefault(pk, set())
         seeds.discard(obj)
 
         get_val = obj._vals_.get
@@ -2804,7 +2812,8 @@ class Entity(object):
                         mc = cache.modified_collections.get(attr)
                         if mc is not None: mc.discard(obj)
                 if obj._pkval_ is not None:
-                    del cache.indexes[obj.__class__._pk_][obj._pkval_]
+                    pk = obj.__class__.__dict__['_pk_']
+                    del cache.indexes[pk][obj._pkval_]
             else:
                 if status == 'updated': cache.updated.remove(obj)
                 elif status in ('loaded', 'saved'): cache.to_be_checked.append(obj)
@@ -2944,7 +2953,7 @@ class Entity(object):
     def _save_created_(obj):
         values = []
         auto_pk = (obj._pkval_ is None)
-        if auto_pk: pk_attr = obj.__class__._pk_
+        if auto_pk: pk = obj.__class__.__dict__['_pk_']
         for attr in obj._attrs_:
             if not attr.columns: continue
             if attr.is_collection: continue
@@ -2967,7 +2976,7 @@ class Entity(object):
             sql_ast = [ 'INSERT', entity._table_, columns, params ]
             if auto_pk:
                 assert len(entity._pk_columns_) == 1
-                assert pk_attr.auto
+                assert pk.auto
                 sql_ast.append(obj._pk_columns_[0])
             sql, adapter = database._ast2sql(sql_ast)
             if auto_pk: entity._cached_create_sql_auto_pk_ = sql, adapter
@@ -2988,11 +2997,11 @@ class Entity(object):
                                    % (obj, e.__class__.__name__, msg), e)
 
         if auto_pk:
-            index = obj._cache_.indexes.setdefault(pk_attr, {})
+            index = obj._cache_.indexes.setdefault(pk, {})
             obj2 = index.setdefault(new_id, obj)
             if obj2 is not obj: throw(TransactionIntegrityError,
                 'Newly auto-generated id value %s was already used in transaction cache for another object' % new_id)
-            obj._pkval_ = obj._vals_[pk_attr.name] = new_id
+            obj._pkval_ = obj._vals_[pk.name] = new_id
             obj._newid_ = None
 
         obj._status_ = 'saved'
@@ -3213,7 +3222,8 @@ class Cache(object):
         indexes = cache.indexes
         for obj in cache.deleted:
             pkval = obj._pkval_
-            index = indexes[obj.__class__._pk_]
+            pk = obj.__class__.__dict__['_pk_']
+            index = indexes[pk]
             index.pop(pkval)
 
         cache.deleted[:] = []
