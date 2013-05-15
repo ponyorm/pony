@@ -861,7 +861,7 @@ class Attribute(object):
     @cut_traceback
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
-        if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
         result = attr.get(obj)
         if attr.pk_offset is not None: return result
         bit = obj._bits_[attr]
@@ -880,7 +880,7 @@ class Attribute(object):
     @cut_traceback
     def __set__(attr, obj, new_val, undo_funcs=None):
         cache = obj._cache_
-        if not cache.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not cache.is_alive: throw_obsolete_cache(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         is_reverse_call = undo_funcs is not None
         reverse = attr.reverse
@@ -1416,7 +1416,7 @@ class Set(Collection):
     @cut_traceback
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
-        if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         rentity = attr.py_type
         wrapper_class = rentity._get_set_wrapper_subclass_()
@@ -1424,7 +1424,7 @@ class Set(Collection):
     @cut_traceback
     def __set__(attr, obj, new_items, undo_funcs=None):
         cache = obj._cache_
-        if not cache.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not cache.is_alive: throw_obsolete_cache(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         new_items = attr.check(new_items, obj)
         reverse = attr.reverse
@@ -1611,7 +1611,7 @@ class SetWrapper(object):
         wrapper._attr_ = attr
     @cut_traceback
     def copy(wrapper):
-        if not wrapper._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not wrapper._obj_._cache_.is_alive: throw_obsolete_cache(obj)
         return wrapper._attr_.copy(wrapper._obj_)
     @cut_traceback
     def __repr__(wrapper):
@@ -1625,7 +1625,7 @@ class SetWrapper(object):
     def __nonzero__(wrapper):
         attr = wrapper._attr_
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED: setdata = attr.load(obj)
@@ -1636,7 +1636,7 @@ class SetWrapper(object):
     def __len__(wrapper):
         attr = wrapper._attr_
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED or not setdata.is_fully_loaded: setdata = attr.load(obj)
         return len(setdata)
@@ -1663,7 +1663,7 @@ class SetWrapper(object):
     @cut_traceback
     def __contains__(wrapper, item):
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
@@ -1682,7 +1682,7 @@ class SetWrapper(object):
     @cut_traceback
     def add(wrapper, new_items):
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
         reverse = attr.reverse
@@ -1711,7 +1711,7 @@ class SetWrapper(object):
     @cut_traceback
     def remove(wrapper, items):
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
         reverse = attr.reverse
@@ -1741,7 +1741,7 @@ class SetWrapper(object):
     @cut_traceback
     def clear(wrapper):
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         wrapper._attr_.__set__(obj, None)
 
@@ -1761,7 +1761,7 @@ class Multiset(object):
         multiset._items_ = iter2dict(items)
     @cut_traceback
     def distinct(multiset):
-        if not multiset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
         return multiset._items_.copy()
     @cut_traceback
     def __repr__(multiset):
@@ -1778,24 +1778,24 @@ class Multiset(object):
         return '<%s %s.%s%s>' % (multiset.__class__.__name__, multiset._obj_, '.'.join(reversed(path)), size_str)
     @cut_traceback
     def __str__(multiset):
-        if not multiset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
         return '%s(%s)' % (multiset.__class__.__name__, str(multiset._items_))
     @cut_traceback
     def __nonzero__(multiset):
-        if not multiset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
         return bool(multiset._items_)
     @cut_traceback
     def __len__(multiset):
-        if not multiset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
         return _sum(multiset._items_.values())
     @cut_traceback
     def __iter__(multiset):
-        if not multiset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
         for item, cnt in multiset._items_.iteritems():
             for i in range(cnt): yield item
     @cut_traceback
     def __eq__(multiset, other):
-        if not multiset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
         if isinstance(other, Multiset):
             return multiset._items_ == other._items_
         if isinstance(other, dict):
@@ -1808,7 +1808,7 @@ class Multiset(object):
         return not multiset.__eq__(other)
     @cut_traceback
     def __contains__(multiset, item):
-        if not multiset._obj_._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
         return item in multiset._items_
 
 ##class List(Collection): pass
@@ -2599,6 +2599,9 @@ created_or_deleted_statuses = set(['created']) | del_statuses
 def throw_object_was_deleted(obj):
     throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
 
+def throw_obsolete_cache(obj):
+    throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+
 class Entity(object):
     __metaclass__ = EntityMeta
     __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '__weakref__'
@@ -2665,7 +2668,7 @@ class Entity(object):
         return '%s[%s]' % (obj.__class__.__name__, pkval)
     def _load_(obj):
         cache = obj._cache_
-        if not cache.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not cache.is_alive: throw_obsolete_cache(obj)
         entity = obj.__class__
         database = entity._database_
         if cache is not database._get_cache():
@@ -2833,12 +2836,12 @@ class Entity(object):
             raise
     @cut_traceback
     def delete(obj):
-        if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
         obj._delete_()
     @cut_traceback
     def set(obj, **kwargs):
         cache = obj._cache_
-        if not cache.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not cache.is_alive: throw_obsolete_cache(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         avdict, collection_avdict = obj._keyargs_to_avdicts_(kwargs)
         status = obj._status_
@@ -2926,7 +2929,7 @@ class Entity(object):
     @cut_traceback
     def check_on_commit(obj):
         cache = obj._cache_
-        if not cache.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+        if not cache.is_alive: throw_obsolete_cache(obj)
         if obj._status_ not in ('loaded', 'saved'): return
         obj._status_ = 'locked'
         cache.to_be_checked.append(obj)
