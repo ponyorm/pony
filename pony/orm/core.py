@@ -869,7 +869,7 @@ class Attribute(object):
         if wbits is not None and not wbits & bit: obj._rbits_ |= bit
         return result
     def get(attr, obj):
-        if obj._status_ in del_statuses: throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
+        if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         val = obj._vals_.get(attr.name, NOT_LOADED)
         if val is NOT_LOADED: val = attr.load(obj)
         if val is None: return val
@@ -881,7 +881,7 @@ class Attribute(object):
     def __set__(attr, obj, new_val, undo_funcs=None):
         cache = obj._cache_
         if not cache.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
-        if obj._status_ in del_statuses: throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
+        if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         is_reverse_call = undo_funcs is not None
         reverse = attr.reverse
         new_val = attr.check(new_val, obj, from_db=False)
@@ -1403,7 +1403,7 @@ class Set(Collection):
         sql, adapter = attr.cached_load_sql[batch_size] = database._ast2sql(sql_ast)
         return sql, adapter
     def copy(attr, obj):
-        if obj._status_ in del_statuses: throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
+        if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED or not setdata.is_fully_loaded: setdata = attr.load(obj)
         reverse = attr.reverse
@@ -1417,7 +1417,7 @@ class Set(Collection):
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
         if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
-        if obj._status_ in del_statuses: throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
+        if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         rentity = attr.py_type
         wrapper_class = rentity._get_set_wrapper_subclass_()
         return wrapper_class(obj, attr)
@@ -1425,7 +1425,7 @@ class Set(Collection):
     def __set__(attr, obj, new_items, undo_funcs=None):
         cache = obj._cache_
         if not cache.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
-        if obj._status_ in del_statuses: throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
+        if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         new_items = attr.check(new_items, obj)
         reverse = attr.reverse
         if not reverse: throw(NotImplementedError)
@@ -1626,7 +1626,7 @@ class SetWrapper(object):
         attr = wrapper._attr_
         obj = wrapper._obj_
         if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
-        if obj._status_ in del_statuses: throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
+        if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED: setdata = attr.load(obj)
         if setdata: return True
@@ -1664,7 +1664,7 @@ class SetWrapper(object):
     def __contains__(wrapper, item):
         obj = wrapper._obj_
         if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
-        if obj._status_ in del_statuses: throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
+        if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is not NOT_LOADED:
@@ -1683,7 +1683,7 @@ class SetWrapper(object):
     def add(wrapper, new_items):
         obj = wrapper._obj_
         if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
-        if obj._status_ in del_statuses: throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
+        if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
         reverse = attr.reverse
         if not reverse: throw(NotImplementedError)
@@ -1712,7 +1712,7 @@ class SetWrapper(object):
     def remove(wrapper, items):
         obj = wrapper._obj_
         if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
-        if obj._status_ in del_statuses: throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
+        if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
         reverse = attr.reverse
         if not reverse: throw(NotImplementedError)
@@ -1742,7 +1742,7 @@ class SetWrapper(object):
     def clear(wrapper):
         obj = wrapper._obj_
         if not obj._cache_.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
-        if obj._status_ in del_statuses: throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
+        if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         wrapper._attr_.__set__(obj, None)
 
 def iter2dict(iter):
@@ -1814,9 +1814,6 @@ class Multiset(object):
 ##class List(Collection): pass
 ##class Dict(Collection): pass
 ##class Relation(Collection): pass
-
-statuses = set(['created', 'loaded', 'updated', 'deleted', 'cancelled', 'saved', 'locked'])
-del_statuses = set(['deleted', 'cancelled'])
 
 class EntityIter(object):
     def __init__(self, entity):
@@ -2595,6 +2592,12 @@ def populate_criteria_list(criteria_list, columns, converters, params_count=0, t
         params_count += 1
     return params_count
 
+statuses = set(['created', 'loaded', 'updated', 'deleted', 'cancelled', 'saved', 'locked'])
+del_statuses = set(['deleted', 'cancelled'])
+
+def throw_object_was_deleted(obj):
+    throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
+
 class Entity(object):
     __metaclass__ = EntityMeta
     __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '__weakref__'
@@ -2835,7 +2838,7 @@ class Entity(object):
     def set(obj, **kwargs):
         cache = obj._cache_
         if not cache.is_alive: throw(TransactionRolledBack, 'Object belongs to obsolete cache')
-        if obj._status_ in del_statuses: throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
+        if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         avdict, collection_avdict = obj._keyargs_to_avdicts_(kwargs)
         status = obj._status_
         wbits = obj._wbits_
