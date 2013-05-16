@@ -20,6 +20,14 @@ class PsycopgTable(PGTable):
 class PsycopgSchema(PGSchema):
     table_class = PsycopgTable
 
+class PsycopgPool(Pool):
+    def connect(pool):
+        if pool.con is None:
+            pool.con = pool.dbapi_module.connect(*pool.args, **pool.kwargs)
+            if 'client_encoding' not in pool.kwargs:
+                pool.con.set_client_encoding('UTF8')
+        return pool.con
+
 class PsycopgProvider(PGProvider):
     dbapi_module = psycopg2
     dbschema_cls = PsycopgSchema
@@ -29,9 +37,6 @@ class PsycopgProvider(PGProvider):
         provider.table_if_not_exists_syntax = provider.server_version >= 90100
 
     def get_pool(provider, *args, **kwargs):
-        encoding = kwargs.setdefault('client_encoding', 'UTF8')
-        if not is_utf8(encoding): throw(ValueError,
-            "Only client_encoding='UTF8' Psycopg database option is supported")
-        return Pool(provider.dbapi_module, *args, **kwargs)
+        return PsycopgPool(provider.dbapi_module, *args, **kwargs)
     
 provider_cls = PsycopgProvider

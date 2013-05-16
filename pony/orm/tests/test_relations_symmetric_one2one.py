@@ -13,12 +13,15 @@ db.generate_mapping(create_tables=True)
 class TestSymmetric(unittest.TestCase):
     def setUp(self):
         rollback()
-        db.execute('delete from Person')
-        db.insert('Person', id=1, name='A', spouse=2)
-        db.insert('Person', id=2, name='B', spouse=1)
-        db.insert('Person', id=3, name='C', spouse=4)
-        db.insert('Person', id=4, name='D', spouse=3)
-        db.insert('Person', id=5, name='E', spouse=None)
+        db.execute('update person set spouse=null')
+        db.execute('delete from person')
+        db.insert('person', id=1, name='A')
+        db.insert('person', id=2, name='B', spouse=1)
+        db.execute('update person set spouse=2 where id=1')
+        db.insert('person', id=3, name='C')
+        db.insert('person', id=4, name='D', spouse=3)
+        db.execute('update person set spouse=4 where id=3')
+        db.insert('person', id=5, name='E', spouse=None)
         commit()
         rollback()
     def test1(self):
@@ -30,7 +33,7 @@ class TestSymmetric(unittest.TestCase):
         self.assertEquals(p1._vals_.get('spouse'), p5)
         self.assertEquals(p5._vals_.get('spouse'), p1)
         self.assertEquals(p2._vals_.get('spouse'), None)
-        data = db.select('spouse from Person order by id')
+        data = db.select('spouse from person order by id')
         self.assertEquals([5, None, 4, 3, 1], data)
     def test2(self):
         p1 = Person[1]
@@ -39,7 +42,7 @@ class TestSymmetric(unittest.TestCase):
         commit()
         self.assertEquals(p1._vals_.get('spouse'), None)
         self.assertEquals(p2._vals_.get('spouse'), None)
-        data = db.select('spouse from Person order by id')
+        data = db.select('spouse from person order by id')
         self.assertEquals([None, None, 4, 3, None], data)
     def test3(self):
         p1 = Person[1]
@@ -52,20 +55,20 @@ class TestSymmetric(unittest.TestCase):
         self.assertEquals(p2._vals_.get('spouse'), None)
         self.assertEquals(p3._vals_.get('spouse'), p1)
         self.assertEquals(p4._vals_.get('spouse'), None)
-        data = db.select('spouse from Person order by id')
+        data = db.select('spouse from person order by id')
         self.assertEquals([3, None, 1, None, None], data)
     def test4(self):
         persons = set(select(p for p in Person if p.spouse.name in ('B', 'D')))
         self.assertEquals(persons, set([Person[1], Person[3]]))
-    @raises_exception(UnrepeatableReadError, 'Value of Person.spouse for Person(1) was updated outside of current transaction')
+    @raises_exception(UnrepeatableReadError, 'Value of Person.spouse for Person[1] was updated outside of current transaction')
     def test5(self):
-        db.execute('update Person set spouse = 3 where id = 2')
+        db.execute('update person set spouse = 3 where id = 2')
         p1 = Person[1]
         p1.spouse
         p2 = Person[2]
         p2.name
     def test6(self):
-        db.execute('update Person set spouse = 3 where id = 2')
+        db.execute('update person set spouse = 3 where id = 2')
         p1 = Person[1]
         p2 = Person[2]
         p2.name

@@ -119,7 +119,7 @@ def is_ident(string):
 _name_parts_re = re.compile(r'''
             [A-Z][A-Z0-9]+(?![a-z]) # ACRONYM
         |   [A-Z][a-z]*             # Capitalized or single capital
-        |   [a-z+                   # all-lowercase
+        |   [a-z]+                  # all-lowercase
         |   [0-9]+                  # numbers
         |   _+                      # underscores
         ''', re.VERBOSE)
