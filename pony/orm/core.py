@@ -335,7 +335,7 @@ class Database(object):
     @cut_traceback
     def get_connection(database):
         cache = database._get_cache()
-        cache.optimistic = False
+        cache.flush()
         return cache.connection
     def _get_cache(database):
         cache = local.db2cache.get(database)
@@ -345,9 +345,7 @@ class Database(object):
         return cache
     @cut_traceback
     def flush(database):
-        cache = database._get_cache()
-        cache.optimistic = False
-        cache.save()
+        database._get_cache().flush()
     @cut_traceback
     def commit(database):
         cache = local.db2cache.get(database)
@@ -358,7 +356,7 @@ class Database(object):
         if cache is not None: cache.rollback()
     @cut_traceback
     def execute(database, sql, globals=None, locals=None):
-        database._get_cache().optimistic = False
+        database._get_cache().flush()
         return database._execute(sql, globals, locals, 2)
     def _execute(database, sql, globals, locals, frame_depth):
         sql = sql[:]  # sql = templating.plainstr(sql)
@@ -372,6 +370,7 @@ class Database(object):
         values = eval(code, globals, locals)
         if values is None: values = ()
         cache = database._get_cache()
+        if not cache.optimistic: cache.flush()
         cursor = cache.connection.cursor()
         if debug: log_sql(adapted_sql, values)
         t = time()
@@ -413,8 +412,6 @@ class Database(object):
     @cut_traceback
     def insert(database, table_name, returning=None, **kwargs):
         table_name = table_name[:]  # table_name = templating.plainstr(table_name)
-        cache = database._get_cache()
-        cache.optimistic = False
         query_key = (table_name,) + tuple(kwargs)  # keys are not sorted deliberately!!
         if returning is not None: query_key = query_key + (returning,)
         cached_sql = database._insert_cache.get(query_key)
@@ -425,6 +422,9 @@ class Database(object):
             database._insert_cache[query_key] = cached_sql
         else: sql, adapter = cached_sql
         arguments = adapter(kwargs.values())  # order of values same as order of keys
+        cache = database._get_cache()
+        if cache.optimistic:
+            cache.switch_to_pessimistic_mode()
         if returning is None:
             cursor = database._exec_sql(sql, arguments)
             return getattr(cursor, 'lastrowid', None)
@@ -433,8 +433,9 @@ class Database(object):
     def _ast2sql(database, sql_ast):
         sql, adapter = database.provider.ast2sql(sql_ast)
         return sql, adapter
-    def _exec_sql(database, sql, arguments=None):
+    def _exec_sql(database, sql, arguments=None, autoflush=True):
         cache = database._get_cache()
+        if autoflush and not cache.optimistic and cache.modified: cache.flush()
         cursor = cache.connection.cursor()
         if debug: log_sql(sql, arguments)
         t = time()
@@ -442,8 +443,9 @@ class Database(object):
         else: database.provider.execute(cursor, sql, arguments)
         database._update_local_stat(sql, t)
         return cursor
-    def _exec_sql_returning_id(database, sql, arguments):
+    def _exec_sql_returning_id(database, sql, arguments, autoflush=True):
         cache = database._get_cache()
+        if autoflush and not cache.optimistic and cache.modified: cache.flush()
         cursor = cache.connection.cursor()
         if debug: log_sql(sql, arguments)
         t = time()
@@ -451,8 +453,9 @@ class Database(object):
         database._update_local_stat(sql, t)
         if type(new_id) is long: new_id = int(new_id)
         return new_id
-    def _exec_sql_many(database, sql, arguments_list):
+    def _exec_sql_many(database, sql, arguments_list, autoflush=True):
         cache = database._get_cache()
+        if autoflush and not cache.optimistic and cache.modified: cache.flush()
         cursor = cache.connection.cursor()
         if debug: log_sql_many(sql, arguments_list)
         t = time()
@@ -903,6 +906,7 @@ class Attribute(object):
                 if status in ('loaded', 'saved'): cache.to_be_checked.append(obj)
                 else: assert status == 'locked'
                 obj._status_ = 'updated'
+                cache.modified = True
                 cache.updated.add(obj)
         if not attr.reverse and not attr.is_part_of_unique_index:
             obj._vals_[attr.name] = new_val
@@ -1460,6 +1464,7 @@ class Set(Collection):
             if setdata.removed is EMPTY: setdata.removed = to_remove
             else: setdata.removed.update(to_remove)
             if setdata.added is not EMPTY: setdata.added -= to_remove
+        cache.modified = True
         cache.modified_collections.setdefault(attr, set()).add(obj)
     def __delete__(attr, obj):
         throw(NotImplementedError)
@@ -1579,7 +1584,7 @@ class Set(Collection):
         else: sql, adapter = cached_sql
         arguments_list = [ adapter(obj._get_raw_pkval_() + robj._get_raw_pkval_())
                            for obj, robj in removed ]
-        database._exec_sql_many(sql, arguments_list)
+        database._exec_sql_many(sql, arguments_list, autoflush=False)
     def add_m2m(attr, added):
         entity = attr.entity
         database = entity._database_
@@ -1601,7 +1606,7 @@ class Set(Collection):
         else: sql, adapter = cached_sql
         arguments_list = [ adapter(obj._get_raw_pkval_() + robj._get_raw_pkval_())
                            for obj, robj in added ]
-        database._exec_sql_many(sql, arguments_list)
+        database._exec_sql_many(sql, arguments_list, autoflush=False)
 
 class SetWrapper(object):
     __slots__ = '_obj_', '_attr_'
@@ -1703,7 +1708,9 @@ class SetWrapper(object):
         if setdata.added is EMPTY: setdata.added = new_items
         else: setdata.added.update(new_items)
         if setdata.removed is not EMPTY: setdata.removed -= new_items
-        obj._cache_.modified_collections.setdefault(attr, set()).add(obj)
+        cache = obj._cache_
+        cache.modified = True
+        cache.modified_collections.setdefault(attr, set()).add(obj)
     @cut_traceback
     def __iadd__(wrapper, items):
         wrapper.add(items)
@@ -1733,7 +1740,9 @@ class SetWrapper(object):
         if setdata.added is not EMPTY: setdata.added -= items
         if setdata.removed is EMPTY: setdata.removed = items
         else: setdata.removed.update(items)
-        obj._cache_.modified_collections.setdefault(attr, set()).add(obj)
+        cache = obj._cache_
+        cache.modified = True
+        cache.modified_collections.setdefault(attr, set()).add(obj)
     @cut_traceback
     def __isub__(wrapper, items):
         wrapper.remove(items)
@@ -2644,6 +2653,7 @@ class Entity(object):
             cache.indexes[pk][pkval] = obj
         for key, vals in indexes.iteritems():
             cache.indexes[key][vals] = obj
+        cache.modified = True
         cache.created.add(obj)
         cache.to_be_checked.append(obj)
         return obj
@@ -2829,6 +2839,7 @@ class Entity(object):
                 elif status in ('loaded', 'saved'): cache.to_be_checked.append(obj)
                 else: assert status == 'locked'
                 obj._status_ = 'deleted'
+                cache.modified = True
                 cache.deleted.append(obj)
         except:
             if not is_recursive_call:
@@ -2858,6 +2869,7 @@ class Entity(object):
                 obj._wbits_ = new_wbits
                 if status != 'updated':
                     obj._status_ = 'updated'
+                    cache.modified = True
                     cache.updated.add(obj)
                     if status in ('loaded', 'saved'): cache.to_be_checked.append(obj)
                     else: assert status == 'locked'
@@ -2993,8 +3005,8 @@ class Entity(object):
         else: sql, adapter = cached_sql
         arguments = adapter(values)
         try:
-            if auto_pk: new_id = database._exec_sql_returning_id(sql, arguments)
-            else: database._exec_sql(sql, arguments)
+            if auto_pk: new_id = database._exec_sql_returning_id(sql, arguments, autoflush=False)
+            else: database._exec_sql(sql, arguments, autoflush=False)
         except IntegrityError, e:
             msg = " ".join(tostring(arg) for arg in e.args)
             throw(TransactionIntegrityError,
@@ -3066,7 +3078,7 @@ class Entity(object):
                 obj._update_sql_cache_[query_key] = sql, adapter
             else: sql, adapter = cached_sql
             arguments = adapter(values)
-            cursor = database._exec_sql(sql, arguments)
+            cursor = database._exec_sql(sql, arguments, autoflush=False)
             if cursor.rowcount != 1:
                 throw(UnrepeatableReadError, 'Object %r was updated outside of current transaction' % obj)
         obj._status_ = 'saved'
@@ -3106,7 +3118,7 @@ class Entity(object):
             obj._lock_sql_cache_[query_key] = sql, adapter
         else: sql, adapter = cached_sql
         arguments = adapter(values)
-        cursor = database._exec_sql(sql, arguments)
+        cursor = database._exec_sql(sql, arguments, autoflush=False)
         row = cursor.fetchone()
         if row is None: throw(UnrepeatableReadError, 'Object %r was updated outside of current transaction' % obj)
         obj._status_ = 'loaded'
@@ -3122,7 +3134,7 @@ class Entity(object):
         else: sql, adapter = cached_sql
         values = obj._get_raw_pkval_()
         arguments = adapter(values)
-        database._exec_sql(sql, arguments)
+        database._exec_sql(sql, arguments, autoflush=False)
     def _save_(obj, dependent_objects=None):
         assert obj._cache_.is_alive
         status = obj._status_
@@ -3142,7 +3154,8 @@ class Cache(object):
         cache.database = database
         cache.connection = connection
         cache.num = next_num()
-        cache.optimistic = database.optimistic
+        if database.optimistic: cache.switch_to_optimistic_mode()
+        else: cache.switch_to_pessimistic_mode()
         cache.ignore_none = True  # todo : get from provider
         cache.indexes = {}
         cache.seeds = {}
@@ -3153,6 +3166,15 @@ class Cache(object):
         cache.modified_collections = {}
         cache.to_be_checked = []
         cache.query_results = {}
+        cache.modified = False
+    def switch_to_optimistic_mode(cache):
+        cache.optimistic = True
+        provider = cache.database.provider
+        provider.set_optimistic_mode(cache.connection)
+    def switch_to_pessimistic_mode(cache):
+        cache.optimistic = False
+        provider = cache.database.provider
+        provider.set_pessimistic_mode(cache.connection)
     def commit(cache):
         assert cache.is_alive
         database = cache.database
@@ -3168,13 +3190,18 @@ class Cache(object):
             x = local.db2cache.pop(database); assert x is cache
             provider.drop(connection)
             raise
-        save_is_needed = cache.has_anything_to_save()
         try:
-            if save_is_needed: cache.save()
-            if save_is_needed or not cache.optimistic:
+            modified = cache.modified
+            if modified:
+                if cache.optimistic:
+                    if debug: log_orm('START OPTIMISTIC SAVE')
+                    provider.start_optimistic_save(connection)
+                cache.save()
+            if modified or not cache.optimistic:
                 if debug: log_orm('COMMIT')
                 provider.commit(connection)
-            cache.optimistic = database.optimistic
+            if database.optimistic: cache.switch_to_optimistic_mode()
+            else: cache.switch_to_pessimistic_mode()
         except:
             cache.rollback()
             raise
@@ -3209,12 +3236,14 @@ class Cache(object):
         cache.connection = None
         if debug: log_orm('RELEASE_CONNECTION')
         provider.release(connection)
-    def has_anything_to_save(cache):
-        return bool(cache.created or cache.updated or cache.deleted or cache.modified_collections)
+    def flush(cache):
+        cache.switch_to_pessimistic_mode()
+        if cache.modified: cache.save()
     def save(cache):
         assert cache.is_alive
+        if not cache.modified: return
+        if not (cache.created or cache.updated or cache.deleted or cache.modified_collections): return
         cache.query_results.clear()
-        if not cache.has_anything_to_save(): return
         modified_m2m = cache.calc_modified_m2m()
         for attr, (added, removed) in modified_m2m.iteritems():
             if not removed: continue
@@ -3238,6 +3267,7 @@ class Cache(object):
         cache.deleted[:] = []
         cache.modified_collections.clear()
         cache.to_be_checked[:] = []
+        cache.modified = False
     def calc_modified_m2m(cache):
         modified_m2m = {}
         for attr, objects in sorted(cache.modified_collections.iteritems(),
@@ -3320,9 +3350,7 @@ def _get_caches():
 
 @cut_traceback
 def flush():
-    for cache in _get_caches():
-        cache.optimistic = False
-        cache.save()
+    for cache in _get_caches(): cache.flush()
 
 def reraise(exc_class, exceptions):
     try:

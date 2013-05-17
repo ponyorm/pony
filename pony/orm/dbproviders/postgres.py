@@ -1,8 +1,10 @@
 from pony.utils import throw, is_utf8
+from pony.orm import core
 from pony.orm.dbapiprovider import Pool, ProgrammingError
 from pony.orm.dbproviders._postgres import *
 
 import psycopg2
+from psycopg2 import extensions
 
 class PsycopgTable(PGTable):
     def create(table, provider, connection, created_tables=None):
@@ -38,5 +40,17 @@ class PsycopgProvider(PGProvider):
 
     def get_pool(provider, *args, **kwargs):
         return PsycopgPool(provider.dbapi_module, *args, **kwargs)
-    
+
+    def set_optimistic_mode(provider, connection):
+        if core.debug: core.log_orm('SET AUTOCOMMIT = ON')
+        connection.autocommit = True
+
+    def set_pessimistic_mode(provider, connection):
+        if core.debug: core.log_orm('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
+        connection.set_isolation_level(extensions.ISOLATION_LEVEL_READ_COMMITTED)
+
+    def start_optimistic_save(provider, connection):
+        if core.debug: core.log_orm('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
+        connection.set_isolation_level(extensions.ISOLATION_LEVEL_READ_COMMITTED)
+
 provider_cls = PsycopgProvider
