@@ -168,6 +168,16 @@ class DBAPIProvider(object):
     def get_pool(provider, *args, **kwargs):
         return Pool(provider.dbapi_module, *args, **kwargs)
 
+    def set_optimistic_mode(provider, connection):
+        pass
+
+    def set_pessimistic_mode(provider, connection):
+        pass
+
+    def start_optimistic_save(provider, connection):
+        pass
+
+
 class Pool(localbase):
     def __init__(pool, dbapi_module, *args, **kwargs): # called separately in each thread
         pool.dbapi_module = dbapi_module

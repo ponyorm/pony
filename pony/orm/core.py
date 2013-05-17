@@ -422,7 +422,9 @@ class Database(object):
             database._insert_cache[query_key] = cached_sql
         else: sql, adapter = cached_sql
         arguments = adapter(kwargs.values())  # order of values same as order of keys
-        database._get_cache().optimistic = False
+        cache = database._get_cache()
+        if cache.optimistic:
+            cache.switch_to_pessimistic_mode()
         if returning is None:
             cursor = database._exec_sql(sql, arguments)
             return getattr(cursor, 'lastrowid', None)
@@ -3152,7 +3154,8 @@ class Cache(object):
         cache.database = database
         cache.connection = connection
         cache.num = next_num()
-        cache.optimistic = database.optimistic
+        if database.optimistic: cache.switch_to_optimistic_mode()
+        else: cache.switch_to_pessimistic_mode()
         cache.ignore_none = True  # todo : get from provider
         cache.indexes = {}
         cache.seeds = {}
@@ -3164,6 +3167,14 @@ class Cache(object):
         cache.to_be_checked = []
         cache.query_results = {}
         cache.modified = False
+    def switch_to_optimistic_mode(cache):
+        cache.optimistic = True
+        provider = cache.database.provider
+        provider.set_optimistic_mode(cache.connection)
+    def switch_to_pessimistic_mode(cache):
+        cache.optimistic = False
+        provider = cache.database.provider
+        provider.set_pessimistic_mode(cache.connection)
     def commit(cache):
         assert cache.is_alive
         database = cache.database
@@ -3181,11 +3192,16 @@ class Cache(object):
             raise
         try:
             modified = cache.modified
-            if modified: cache.save()
+            if modified:
+                if cache.optimistic:
+                    if debug: log_orm('START OPTIMISTIC SAVE')
+                    provider.start_optimistic_save(connection)
+                cache.save()
             if modified or not cache.optimistic:
                 if debug: log_orm('COMMIT')
                 provider.commit(connection)
-            cache.optimistic = database.optimistic
+            if database.optimistic: cache.switch_to_optimistic_mode()
+            else: cache.switch_to_pessimistic_mode()
         except:
             cache.rollback()
             raise
@@ -3221,7 +3237,7 @@ class Cache(object):
         if debug: log_orm('RELEASE_CONNECTION')
         provider.release(connection)
     def flush(cache):
-        cache.optimistic = False
+        cache.switch_to_pessimistic_mode()
         if cache.modified: cache.save()
     def save(cache):
         assert cache.is_alive
