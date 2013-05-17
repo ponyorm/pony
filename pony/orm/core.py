@@ -433,7 +433,7 @@ class Database(object):
         return sql, adapter
     def _exec_sql(database, sql, arguments=None, autoflush=True):
         cache = database._get_cache()
-        if autoflush and not cache.optimistic: cache.flush()
+        if autoflush and not cache.optimistic and cache.modified: cache.flush()
         cursor = cache.connection.cursor()
         if debug: log_sql(sql, arguments)
         t = time()
@@ -443,7 +443,7 @@ class Database(object):
         return cursor
     def _exec_sql_returning_id(database, sql, arguments, autoflush=True):
         cache = database._get_cache()
-        if autoflush and not cache.optimistic: cache.flush()
+        if autoflush and not cache.optimistic and cache.modified: cache.flush()
         cursor = cache.connection.cursor()
         if debug: log_sql(sql, arguments)
         t = time()
@@ -453,7 +453,7 @@ class Database(object):
         return new_id
     def _exec_sql_many(database, sql, arguments_list, autoflush=True):
         cache = database._get_cache()
-        if autoflush and not cache.optimistic: cache.flush()
+        if autoflush and not cache.optimistic and cache.modified: cache.flush()
         cursor = cache.connection.cursor()
         if debug: log_sql_many(sql, arguments_list)
         t = time()
@@ -904,6 +904,7 @@ class Attribute(object):
                 if status in ('loaded', 'saved'): cache.to_be_checked.append(obj)
                 else: assert status == 'locked'
                 obj._status_ = 'updated'
+                cache.modified = True
                 cache.updated.add(obj)
         if not attr.reverse and not attr.is_part_of_unique_index:
             obj._vals_[attr.name] = new_val
@@ -1461,6 +1462,7 @@ class Set(Collection):
             if setdata.removed is EMPTY: setdata.removed = to_remove
             else: setdata.removed.update(to_remove)
             if setdata.added is not EMPTY: setdata.added -= to_remove
+        cache.modified = True
         cache.modified_collections.setdefault(attr, set()).add(obj)
     def __delete__(attr, obj):
         throw(NotImplementedError)
@@ -1704,7 +1706,9 @@ class SetWrapper(object):
         if setdata.added is EMPTY: setdata.added = new_items
         else: setdata.added.update(new_items)
         if setdata.removed is not EMPTY: setdata.removed -= new_items
-        obj._cache_.modified_collections.setdefault(attr, set()).add(obj)
+        cache = obj._cache_
+        cache.modified = True
+        cache.modified_collections.setdefault(attr, set()).add(obj)
     @cut_traceback
     def __iadd__(wrapper, items):
         wrapper.add(items)
@@ -1734,7 +1738,9 @@ class SetWrapper(object):
         if setdata.added is not EMPTY: setdata.added -= items
         if setdata.removed is EMPTY: setdata.removed = items
         else: setdata.removed.update(items)
-        obj._cache_.modified_collections.setdefault(attr, set()).add(obj)
+        cache = obj._cache_
+        cache.modified = True
+        cache.modified_collections.setdefault(attr, set()).add(obj)
     @cut_traceback
     def __isub__(wrapper, items):
         wrapper.remove(items)
@@ -2645,6 +2651,7 @@ class Entity(object):
             cache.indexes[pk][pkval] = obj
         for key, vals in indexes.iteritems():
             cache.indexes[key][vals] = obj
+        cache.modified = True
         cache.created.add(obj)
         cache.to_be_checked.append(obj)
         return obj
@@ -2830,6 +2837,7 @@ class Entity(object):
                 elif status in ('loaded', 'saved'): cache.to_be_checked.append(obj)
                 else: assert status == 'locked'
                 obj._status_ = 'deleted'
+                cache.modified = True
                 cache.deleted.append(obj)
         except:
             if not is_recursive_call:
@@ -2859,6 +2867,7 @@ class Entity(object):
                 obj._wbits_ = new_wbits
                 if status != 'updated':
                     obj._status_ = 'updated'
+                    cache.modified = True
                     cache.updated.add(obj)
                     if status in ('loaded', 'saved'): cache.to_be_checked.append(obj)
                     else: assert status == 'locked'
@@ -3154,6 +3163,7 @@ class Cache(object):
         cache.modified_collections = {}
         cache.to_be_checked = []
         cache.query_results = {}
+        cache.modified = False
     def commit(cache):
         assert cache.is_alive
         database = cache.database
@@ -3169,10 +3179,10 @@ class Cache(object):
             x = local.db2cache.pop(database); assert x is cache
             provider.drop(connection)
             raise
-        save_is_needed = cache.has_anything_to_save()
         try:
-            if save_is_needed: cache.save()
-            if save_is_needed or not cache.optimistic:
+            modified = cache.modified
+            if modified: cache.save()
+            if modified or not cache.optimistic:
                 if debug: log_orm('COMMIT')
                 provider.commit(connection)
             cache.optimistic = database.optimistic
@@ -3212,13 +3222,12 @@ class Cache(object):
         provider.release(connection)
     def flush(cache):
         cache.optimistic = False
-        cache.save()
-    def has_anything_to_save(cache):
-        return bool(cache.created or cache.updated or cache.deleted or cache.modified_collections)
+        if cache.modified: cache.save()
     def save(cache):
         assert cache.is_alive
+        if not cache.modified: return
+        if not (cache.created or cache.updated or cache.deleted or cache.modified_collections): return
         cache.query_results.clear()
-        if not cache.has_anything_to_save(): return
         modified_m2m = cache.calc_modified_m2m()
         for attr, (added, removed) in modified_m2m.iteritems():
             if not removed: continue
@@ -3242,6 +3251,7 @@ class Cache(object):
         cache.deleted[:] = []
         cache.modified_collections.clear()
         cache.to_be_checked[:] = []
+        cache.modified = False
     def calc_modified_m2m(cache):
         modified_m2m = {}
         for attr, objects in sorted(cache.modified_collections.iteritems(),
