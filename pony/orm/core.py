@@ -335,7 +335,7 @@ class Database(object):
     @cut_traceback
     def get_connection(database):
         cache = database._get_cache()
-        cache.optimistic = False
+        cache.flush()
         return cache.connection
     def _get_cache(database):
         cache = local.db2cache.get(database)
@@ -345,9 +345,7 @@ class Database(object):
         return cache
     @cut_traceback
     def flush(database):
-        cache = database._get_cache()
-        cache.optimistic = False
-        cache.save()
+        database._get_cache().flush()
     @cut_traceback
     def commit(database):
         cache = local.db2cache.get(database)
@@ -358,7 +356,7 @@ class Database(object):
         if cache is not None: cache.rollback()
     @cut_traceback
     def execute(database, sql, globals=None, locals=None):
-        database._get_cache().optimistic = False
+        database._get_cache().flush()
         return database._execute(sql, globals, locals, 2)
     def _execute(database, sql, globals, locals, frame_depth):
         sql = sql[:]  # sql = templating.plainstr(sql)
@@ -372,6 +370,7 @@ class Database(object):
         values = eval(code, globals, locals)
         if values is None: values = ()
         cache = database._get_cache()
+        if not cache.optimistic: cache.flush()
         cursor = cache.connection.cursor()
         if debug: log_sql(adapted_sql, values)
         t = time()
@@ -413,8 +412,6 @@ class Database(object):
     @cut_traceback
     def insert(database, table_name, returning=None, **kwargs):
         table_name = table_name[:]  # table_name = templating.plainstr(table_name)
-        cache = database._get_cache()
-        cache.optimistic = False
         query_key = (table_name,) + tuple(kwargs)  # keys are not sorted deliberately!!
         if returning is not None: query_key = query_key + (returning,)
         cached_sql = database._insert_cache.get(query_key)
@@ -425,6 +422,7 @@ class Database(object):
             database._insert_cache[query_key] = cached_sql
         else: sql, adapter = cached_sql
         arguments = adapter(kwargs.values())  # order of values same as order of keys
+        database._get_cache().optimistic = False
         if returning is None:
             cursor = database._exec_sql(sql, arguments)
             return getattr(cursor, 'lastrowid', None)
@@ -433,8 +431,9 @@ class Database(object):
     def _ast2sql(database, sql_ast):
         sql, adapter = database.provider.ast2sql(sql_ast)
         return sql, adapter
-    def _exec_sql(database, sql, arguments=None):
+    def _exec_sql(database, sql, arguments=None, autoflush=True):
         cache = database._get_cache()
+        if autoflush and not cache.optimistic: cache.flush()
         cursor = cache.connection.cursor()
         if debug: log_sql(sql, arguments)
         t = time()
@@ -442,8 +441,9 @@ class Database(object):
         else: database.provider.execute(cursor, sql, arguments)
         database._update_local_stat(sql, t)
         return cursor
-    def _exec_sql_returning_id(database, sql, arguments):
+    def _exec_sql_returning_id(database, sql, arguments, autoflush=True):
         cache = database._get_cache()
+        if autoflush and not cache.optimistic: cache.flush()
         cursor = cache.connection.cursor()
         if debug: log_sql(sql, arguments)
         t = time()
@@ -451,8 +451,9 @@ class Database(object):
         database._update_local_stat(sql, t)
         if type(new_id) is long: new_id = int(new_id)
         return new_id
-    def _exec_sql_many(database, sql, arguments_list):
+    def _exec_sql_many(database, sql, arguments_list, autoflush=True):
         cache = database._get_cache()
+        if autoflush and not cache.optimistic: cache.flush()
         cursor = cache.connection.cursor()
         if debug: log_sql_many(sql, arguments_list)
         t = time()
@@ -1579,7 +1580,7 @@ class Set(Collection):
         else: sql, adapter = cached_sql
         arguments_list = [ adapter(obj._get_raw_pkval_() + robj._get_raw_pkval_())
                            for obj, robj in removed ]
-        database._exec_sql_many(sql, arguments_list)
+        database._exec_sql_many(sql, arguments_list, autoflush=False)
     def add_m2m(attr, added):
         entity = attr.entity
         database = entity._database_
@@ -1601,7 +1602,7 @@ class Set(Collection):
         else: sql, adapter = cached_sql
         arguments_list = [ adapter(obj._get_raw_pkval_() + robj._get_raw_pkval_())
                            for obj, robj in added ]
-        database._exec_sql_many(sql, arguments_list)
+        database._exec_sql_many(sql, arguments_list, autoflush=False)
 
 class SetWrapper(object):
     __slots__ = '_obj_', '_attr_'
@@ -2993,8 +2994,8 @@ class Entity(object):
         else: sql, adapter = cached_sql
         arguments = adapter(values)
         try:
-            if auto_pk: new_id = database._exec_sql_returning_id(sql, arguments)
-            else: database._exec_sql(sql, arguments)
+            if auto_pk: new_id = database._exec_sql_returning_id(sql, arguments, autoflush=False)
+            else: database._exec_sql(sql, arguments, autoflush=False)
         except IntegrityError, e:
             msg = " ".join(tostring(arg) for arg in e.args)
             throw(TransactionIntegrityError,
@@ -3066,7 +3067,7 @@ class Entity(object):
                 obj._update_sql_cache_[query_key] = sql, adapter
             else: sql, adapter = cached_sql
             arguments = adapter(values)
-            cursor = database._exec_sql(sql, arguments)
+            cursor = database._exec_sql(sql, arguments, autoflush=False)
             if cursor.rowcount != 1:
                 throw(UnrepeatableReadError, 'Object %r was updated outside of current transaction' % obj)
         obj._status_ = 'saved'
@@ -3106,7 +3107,7 @@ class Entity(object):
             obj._lock_sql_cache_[query_key] = sql, adapter
         else: sql, adapter = cached_sql
         arguments = adapter(values)
-        cursor = database._exec_sql(sql, arguments)
+        cursor = database._exec_sql(sql, arguments, autoflush=False)
         row = cursor.fetchone()
         if row is None: throw(UnrepeatableReadError, 'Object %r was updated outside of current transaction' % obj)
         obj._status_ = 'loaded'
@@ -3122,7 +3123,7 @@ class Entity(object):
         else: sql, adapter = cached_sql
         values = obj._get_raw_pkval_()
         arguments = adapter(values)
-        database._exec_sql(sql, arguments)
+        database._exec_sql(sql, arguments, autoflush=False)
     def _save_(obj, dependent_objects=None):
         assert obj._cache_.is_alive
         status = obj._status_
@@ -3209,6 +3210,9 @@ class Cache(object):
         cache.connection = None
         if debug: log_orm('RELEASE_CONNECTION')
         provider.release(connection)
+    def flush(cache):
+        cache.optimistic = False
+        cache.save()
     def has_anything_to_save(cache):
         return bool(cache.created or cache.updated or cache.deleted or cache.modified_collections)
     def save(cache):
@@ -3320,9 +3324,7 @@ def _get_caches():
 
 @cut_traceback
 def flush():
-    for cache in _get_caches():
-        cache.optimistic = False
-        cache.save()
+    for cache in _get_caches(): cache.flush()
 
 def reraise(exc_class, exceptions):
     try:
