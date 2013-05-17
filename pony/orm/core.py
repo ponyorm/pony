@@ -28,7 +28,7 @@ from pony.orm.dbapiprovider import (
     )
 from pony.utils import (
     localbase, simple_decorator, decorator_with_params, cut_traceback, throw,
-    import_module, parse_expr, is_ident, count, avg as _avg, tostring
+    import_module, parse_expr, is_ident, count, avg as _avg, tostring, strjoin
     )
 
 __all__ = '''
@@ -3904,7 +3904,7 @@ class QueryResult(list):
         row_layout = result._row_layout
 
         def to_str(x):
-            return str(x).replace('\n', ' ')
+            return tostring(x).replace('\n', ' ')
 
         if isinstance(expr_type, EntityMeta):
             entity = expr_type
@@ -3942,10 +3942,10 @@ class QueryResult(list):
             for col_num, max_len in remaining_columns.items():
                 width_dict[col_num] = base_len
 
-        print '|'.join(strcut(colname, width_dict[i]) for i, colname in enumerate(colnames))
-        print '+'.join('-' * width_dict[i] for i in xrange(len(colnames)))
+        print strjoin('|', (strcut(colname, width_dict[i]) for i, colname in enumerate(colnames)))
+        print strjoin('+', ('-' * width_dict[i] for i in xrange(len(colnames))))
         for row in rows:
-            print '|'.join(strcut(item, width_dict[i]) for i, item in enumerate(row))
+            print strjoin('|', (strcut(item, width_dict[i]) for i, item in enumerate(row)))
 
 @cut_traceback
 def show(entity):
