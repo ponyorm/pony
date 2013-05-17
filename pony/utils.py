@@ -378,6 +378,18 @@ def tostring(x):
     if type(x) == types.InstanceType: return '<%s instance at 0x%X>' % (x.__class__.__name__)
     return '<%s object at 0x%X>' % (x.__class__.__name__)
 
+def strjoin(sep, strings, source_encoding='ascii', dest_encoding=None):
+    "Can join mix of unicode and byte strings in different encodings"
+    strings = list(strings)
+    try: return sep.join(strings)
+    except UnicodeDecodeError: pass
+    for i, s in enumerate(strings):
+        if isinstance(s, str):
+            strings[i] = s.decode(source_encoding, 'replace').replace(u'\ufffd', '?')
+    result = sep.join(strings)
+    if dest_encoding is None: return result
+    return result.encode(dest_encoding, replace)
+
 def make_offsets(s):
     offsets = [ 0 ]
     si = -1
