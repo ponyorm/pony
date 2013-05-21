@@ -211,6 +211,7 @@ class SQLTranslator(ASTTranslator):
                     entity = attr.py_type
                     if not isinstance(entity, EntityMeta):
                         throw(NotImplementedError, 'for %s in %s' % (name, ast2src(qual.iter)))
+                    can_affect_distinct = None
                     if attr.is_collection:
                         if not isinstance(attr, Set): throw(NotImplementedError, ast2src(qual.iter))
                         reverse = attr.reverse
@@ -219,9 +220,12 @@ class SQLTranslator(ASTTranslator):
                             translator.distinct = True
                         elif parent_tableref.alias != tree.quals[i-1].assign.name:
                             translator.distinct = True
+                        else: can_affect_distinct = True
                     if j == last_index: name_path = name
                     else: name_path += '-' + attr.name
                     tableref = JoinedTableRef(subquery, name_path, parent_tableref, attr)
+                    if can_affect_distinct is not None:
+                        tableref.can_affect_distinct = can_affect_distinct
                     tablerefs[name_path] = tableref
                     parent_tableref = tableref
                     parent_entity = entity
@@ -292,6 +296,7 @@ class SQLTranslator(ASTTranslator):
                     elif isinstance(m, AttrMonad) and isinstance(m.parent, ObjectIterMonad):
                         expr_set.add((m.parent.tableref.name_path, m.attr))
                 for tr in tablerefs.values():
+                    if not tr.can_affect_distinct: continue
                     if tr.name_path in expr_set: continue
                     for attr in tr.entity._pk_attrs_:
                         if (tr.name_path, attr) not in expr_set: break
@@ -602,6 +607,7 @@ class TableRef(object):
         tableref.alias = tableref.name_path = name
         tableref.entity = entity
         tableref.joined = False
+        tableref.can_affect_distinct = True
     def make_join(tableref, pk_only=False):
         entity = tableref.entity
         if not tableref.joined:
@@ -625,6 +631,7 @@ class JoinedTableRef(object):
         tableref.entity = attr.py_type
         assert isinstance(tableref.entity, EntityMeta)
         tableref.joined = False
+        tableref.can_affect_distinct = False
     def make_join(tableref, pk_only=False):
         entity = tableref.entity
         pk_only = pk_only and not entity._discriminator_attr_
@@ -1764,6 +1771,7 @@ class AttrSetMonad(SetMixin, Monad):
             monad.tableref = subquery.get_tableref(name_path) \
                              or subquery.add_tableref(name_path, parent_tableref, attr)
         else: monad.tableref = parent_tableref
+        monad.tableref.can_affect_distinct = True
         return monad.tableref
     def make_expr_list(monad):
         attr = monad.attr
