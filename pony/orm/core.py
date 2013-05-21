@@ -20,7 +20,7 @@ import pony
 from pony import options
 from pony.orm.decompiling import decompile
 from pony.orm.ormtypes import AsciiStr, LongStr, LongUnicode, numeric_types, get_normalized_type_of
-from pony.orm.asttranslation import create_extractors, TranslationError
+from pony.orm.asttranslation import create_extractors, ast2src, TranslationError
 from pony.orm.dbapiprovider import (
     DBException, RowNotFound, MultipleRowsFound, TooManyRowsFound,
     Warning, Error, InterfaceError, DatabaseError, DataError, OperationalError,
@@ -3816,10 +3816,14 @@ class Query(object):
                     translator.extractors.update(extractors)
                     translator.vartypes.update(vartypes)
                     translator.dispatch(func_ast)
-            translator.distinct = True
             if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
             else: nodes = (func_ast,)
-            for node in nodes: translator.order.extend(node.monad.getsql())
+            for node in nodes:
+                if isinstance(node.monad, translator.SetMixin):
+                    t = node.monad.type.item_type
+                    if isinstance(type(t), type): t = t.__name__
+                    throw(TranslationError, 'Set of %s (%s) cannot be used for ordering' % (t, ast2src(node)))
+                translator.order.extend(node.monad.getsql())            
             query._database._translator_cache[new_key] = translator
         query._key = new_key
         query._translator = translator
