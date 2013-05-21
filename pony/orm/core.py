@@ -3792,8 +3792,8 @@ class Query(object):
             for name, value in vars.iteritems():
                 if query_vars.setdefault(name, value) != value: throw(TranslationError,
                     'Meaning of expression %s has changed during query translation' % name)
-        else: vars, vartypes = {}, {}
-        sorted_vartypes = tuple(map(vartypes.__getitem__, varnames))
+            sorted_vartypes = tuple(map(vartypes.__getitem__, varnames))
+        else: vars, vartypes, sorted_vartypes = {}, {}, ()
         new_key = query._key + ((func_id, sorted_vartypes),)
         translator = query._database._translator_cache.get(new_key)
         if translator is None:
