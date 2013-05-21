@@ -3803,7 +3803,6 @@ class Query(object):
             func_ast = loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
             translator.extractors.update(extractors)
             translator.vartypes.update(vartypes)
-            translator.inside_order_by = True
             translator.dispatch(func_ast)
             if not prev_optimized:
                 name_path = translator.can_be_optimized()
@@ -3816,9 +3815,7 @@ class Query(object):
                     func_ast = loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
                     translator.extractors.update(extractors)
                     translator.vartypes.update(vartypes)
-                    translator.inside_order_by = True
                     translator.dispatch(func_ast)
-            translator.inside_order_by = False
             translator.distinct = True
             if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
             else: nodes = (func_ast,)

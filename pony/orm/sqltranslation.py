@@ -159,7 +159,6 @@ class SQLTranslator(ASTTranslator):
         translator.aggregated = False if not optimize else True
         translator.inside_expr = False
         translator.inside_not = False
-        translator.inside_order_by = False
         translator.hint_join = False
         translator.aggregated_subquery_paths = set()
         for i, qual in enumerate(tree.quals):
