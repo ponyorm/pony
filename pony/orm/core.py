@@ -3662,7 +3662,10 @@ class Query(object):
         return query._fetch(distinct=True)
     @cut_traceback
     def exists(query):
-        new_query = query._clone()
+        # new_query = query._clone()
+        new_query = object.__new__(Query)
+        new_query.__dict__.update(query.__dict__)
+
         new_query._aggr_func_name = 'EXISTS'
         new_query._aggr_select = [ 'ALL', [ 'VALUE', 1 ] ]
         sql, arguments, attr_offsets, query_key = new_query._construct_sql_and_arguments(range=(0, 1))
@@ -3824,10 +3827,6 @@ class Query(object):
         query._key = new_key
         query._translator = translator
         return query
-    def _clone(query):
-        new_query = object.__new__(Query)
-        new_query.__dict__.update(query.__dict__)
-        return new_query
     @cut_traceback
     def __getitem__(query, key):
         if isinstance(key, slice):
