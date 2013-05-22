@@ -1,7 +1,6 @@
 import __builtin__, re, sys, types, inspect, logging
 from compiler import ast, parse
 from cPickle import loads, dumps
-from copy import deepcopy, _deepcopy_dispatch
 from operator import attrgetter, itemgetter
 from itertools import count as _count, ifilter, ifilterfalse, imap, izip, chain, starmap
 from collections import defaultdict
@@ -10,17 +9,11 @@ import datetime
 from threading import Lock
 from __builtin__ import min as _min, max as _max, sum as _sum
 
-# deepcopy instance method patch for Python < 2.7:
-if types.MethodType not in _deepcopy_dispatch:
-    def _deepcopy_method(x, memo):
-        return type(x)(x.im_func, deepcopy(x.im_self, memo), x.im_class)
-    _deepcopy_dispatch[types.MethodType] = _deepcopy_method
-
 import pony
 from pony import options
 from pony.orm.decompiling import decompile
 from pony.orm.ormtypes import AsciiStr, LongStr, LongUnicode, numeric_types, get_normalized_type_of
-from pony.orm.asttranslation import create_extractors, TranslationError
+from pony.orm.asttranslation import create_extractors, ast2src, TranslationError
 from pony.orm.dbapiprovider import (
     DBException, RowNotFound, MultipleRowsFound, TooManyRowsFound,
     Warning, Error, InterfaceError, DatabaseError, DataError, OperationalError,
@@ -3585,6 +3578,7 @@ class Query(object):
                 except OptimizationFailed: translator.optimization_failed = True
             database._translator_cache[query._key] = translator
         query._translator = translator
+        query._filters = []
     def _construct_sql_and_arguments(query, range=None, distinct=None, aggr_func_name=None):
         translator = query._translator
         sql_key = query._key + (range, distinct, aggr_func_name, options.INNER_JOIN_SYNTAX)
@@ -3662,7 +3656,10 @@ class Query(object):
         return query._fetch(distinct=True)
     @cut_traceback
     def exists(query):
-        new_query = query._clone()
+        # new_query = query._clone()
+        new_query = object.__new__(Query)
+        new_query.__dict__.update(query.__dict__)
+
         new_query._aggr_func_name = 'EXISTS'
         new_query._aggr_select = [ 'ALL', [ 'VALUE', 1 ] ]
         sql, arguments, attr_offsets, query_key = new_query._construct_sql_and_arguments(range=(0, 1))
@@ -3699,10 +3696,18 @@ class Query(object):
         if len(args) > 1 and strings + functions:
             throw(TypeError, 'When argument of order_by() method is string or lambda, it must be the only argument')
 
-        if numbers:
-            return query._order_by_numbers(args)
-        if attributes:
-            return query._order_by_attributes(args)
+        if numbers or attributes:
+            query._filters.append((numbers, args))
+            new_key = query._key + (args,)
+            translator = query._database._translator_cache.get(new_key)
+            if translator is None:
+                if numbers: translator = query._translator.order_by_numbers(args)
+                else: translator = query._translator.order_by_attributes(args)
+                query._database._translator_cache[new_key] = translator
+            query._key = new_key
+            query._translator = translator
+            return query
+
         globals = sys._getframe(2).f_globals
         locals = sys._getframe(2).f_locals
         if strings:
@@ -3717,7 +3722,7 @@ class Query(object):
             func_id = id(func.func_code)
             func_ast = decompile(func)[0]
         else: assert False
-        return query._order_by_lambda(func_id, func_ast, globals, locals)
+        return query._process_lambda(func_id, func_ast, globals, locals, order_by=True)
     def _without_order_by(query):
         query._key = query._key[:3]
         database = query._database
@@ -3725,63 +3730,7 @@ class Query(object):
         assert translator is not None  # Translator for query without order_by must be in cache already
         query._translator = translator
         return query
-    def _order_by_numbers(query, numbers):
-        if 0 in numbers: throw(ValueError, 'Numeric arguments of order_by() method must be non-zero')
-        new_key = query._key + (numbers,)
-        translator = query._database._translator_cache.get(new_key)
-        if translator is None:
-            translator = object.__new__(query._translator.__class__)
-            translator.__dict__.update(query._translator.__dict__)  # shallow copy
-            order = translator.order = translator.order[:]  # only order will be changed
-            expr_monad = translator.tree.expr.monad
-            if isinstance(expr_monad, translator.ListMonad): monads = expr_monad.items
-            else: monads = (expr_monad,)
-            for i in numbers:
-                try: monad = monads[abs(i)-1]
-                except IndexError:
-                    if len(monads) > 1: throw(IndexError,
-                        "Invalid index of order_by() method: %d "
-                        "(query result is list of tuples with only %d elements in each)" % (i, len(monads)))
-                    else: throw(IndexError,
-                        "Invalid index of order_by() method: %d "
-                        "(query result is single list of elements and has only one 'column')" % i)
-                for pos in monad.orderby_columns:
-                    order.append(i < 0 and [ 'DESC', [ 'VALUE', pos ] ] or [ 'VALUE', pos ])
-            query._database._translator_cache[new_key] = translator
-        query._key = new_key
-        query._translator = translator
-        return query
-    def _order_by_attributes(query, attrs):
-        new_key = query._key + (attrs,)
-        translator = query._database._translator_cache.get(new_key)
-        if translator is None:
-            entity = query._translator.expr_type
-            if not isinstance(entity, EntityMeta): throw(NotImplementedError,
-                'Ordering by attributes is limited to queries which return simple list of objects. '
-                'Try use other forms of ordering (by tuple element numbers or by full-blown lambda expr).')
-            translator = object.__new__(query._translator.__class__)
-            translator.__dict__.update(query._translator.__dict__)  # shallow copy
-            order = translator.order = translator.order[:]  # only order will be changed
-            alias = translator.alias
-            for x in attrs:
-                if isinstance(x, DescWrapper):
-                    attr = x.attr
-                    desc_wrapper = lambda column: [ 'DESC', column ]
-                elif isinstance(x, Attribute):
-                    attr = x
-                    desc_wrapper = lambda column: column
-                else: assert False, x
-                if entity._adict_.get(attr.name) is not attr: throw(TypeError,
-                    'Attribute %s does not belong to Entity %s' % (attr, entity.__name__))
-                if attr.is_collection: throw(TypeError,
-                    'Collection attribute %s cannot be used for ordering' % attr)
-                for column in attr.columns:
-                    order.append(desc_wrapper([ 'COLUMN', alias, column]))
-            query._database._translator_cache[new_key] = translator
-        query._key = new_key
-        query._translator = translator
-        return query
-    def _order_by_lambda(query, func_id, func_ast, globals, locals):
+    def _process_lambda(query, func_id, func_ast, globals, locals, order_by):
         extractors, varnames, func_ast = create_extractors(func_id, func_ast, query._translator.subquery)
         if extractors:
             vars, vartypes = extract_vars(extractors, globals, locals)
@@ -3789,19 +3738,14 @@ class Query(object):
             for name, value in vars.iteritems():
                 if query_vars.setdefault(name, value) != value: throw(TranslationError,
                     'Meaning of expression %s has changed during query translation' % name)
-        else: vars, vartypes = {}, {}
-        sorted_vartypes = tuple(map(vartypes.__getitem__, varnames))
-        new_key = query._key + ((func_id, sorted_vartypes),)
+            sorted_vartypes = tuple(map(vartypes.__getitem__, varnames))
+        else: vars, vartypes, sorted_vartypes = {}, {}, ()
+        query._filters.append((order_by, func_ast, extractors, vartypes))
+        new_key = query._key + ((order_by and 'order_by' or 'filter', func_id, sorted_vartypes),)
         translator = query._database._translator_cache.get(new_key)
         if translator is None:
             prev_optimized = query._translator.optimize
-            translator = deepcopy(query._translator)
-            pickled_func_ast = dumps(func_ast, 2)
-            func_ast = loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
-            translator.extractors.update(extractors)
-            translator.vartypes.update(vartypes)
-            translator.inside_order_by = True
-            translator.dispatch(func_ast)
+            translator = query._translator.apply_lambda(order_by, func_ast, extractors, vartypes)
             if not prev_optimized:
                 name_path = translator.can_be_optimized()
                 if name_path:
@@ -3810,24 +3754,37 @@ class Query(object):
                     prev_vartypes = query._translator.vartypes
                     translator_cls = query._translator.__class__
                     translator = translator_cls(tree, prev_extractors, prev_vartypes, left_join=True, optimize=name_path)
-                    func_ast = loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
-                    translator.extractors.update(extractors)
-                    translator.vartypes.update(vartypes)
-                    translator.inside_order_by = True
-                    translator.dispatch(func_ast)
-            translator.inside_order_by = False
-            translator.distinct = True
-            if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
-            else: nodes = (func_ast,)
-            for node in nodes: translator.order.extend(node.monad.getsql())
+                    translator = query.reapply_filters(translator)
             query._database._translator_cache[new_key] = translator
         query._key = new_key
         query._translator = translator
         return query
-    def _clone(query):
-        new_query = object.__new__(Query)
-        new_query.__dict__.update(query.__dict__)
-        return new_query
+    def reapply_filters(query, translator):
+        for tup in query._filters:
+            if len(tup) == 2:
+                numbers, args = tup
+                if numbers: translator = translator.order_by_numbers(args)
+                else: translator = translator.order_by_attributes(args)
+                continue
+            order_by, func_ast, extractors, vartypes = tup
+            translator = translator.apply_lambda(order_by, func_ast, extractors, vartypes)
+        return translator
+    @cut_traceback
+    def filter(query, func):
+        globals = sys._getframe(2).f_globals
+        locals = sys._getframe(2).f_locals
+        if isinstance(func, basestring):
+            func_id = func
+            func_ast = string2ast(func)
+            if isinstance(func_ast, ast.Lambda): func_ast = func_ast.code
+        elif type(func) is types.FunctionType:
+            for name in func.func_code.co_varnames:
+                if name not in query._translator.subquery:
+                    throw(TranslationError, 'Unknown name %s' % name)
+            func_id = id(func.func_code)
+            func_ast = decompile(func)[0]
+        else: throw(TypeError, 'Argument of filter() method must be a lambda functon or its text. Got: %r' % func)
+        return query._process_lambda(func_id, func_ast, globals, locals, order_by=False)
     @cut_traceback
     def __getitem__(query, key):
         if isinstance(key, slice):

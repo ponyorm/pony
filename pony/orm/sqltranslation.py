@@ -4,6 +4,8 @@ from types import NoneType
 from compiler import ast
 from decimal import Decimal
 from datetime import date, datetime
+from cPickle import loads, dumps
+from copy import deepcopy
 
 from pony import options
 from pony.utils import avg, copy_func_attrs, is_ident, throw
@@ -12,7 +14,8 @@ from pony.orm.ormtypes import \
     string_types, numeric_types, comparable_types, SetType, FuncType, MethodType, \
     get_normalized_type_of, normalize_type, coerce_types, are_comparable_types
 from pony.orm import core
-from pony.orm.core import ERDiagramError, EntityMeta, Set, JOIN, AsciiStr, OptimizationFailed
+from pony.orm.core import ERDiagramError, EntityMeta, Set, JOIN, AsciiStr, OptimizationFailed, \
+                          Attribute, DescWrapper
 
 def check_comparable(left_monad, right_monad, op='=='):
     t1, t2 = left_monad.type, right_monad.type
@@ -159,7 +162,6 @@ class SQLTranslator(ASTTranslator):
         translator.aggregated = False if not optimize else True
         translator.inside_expr = False
         translator.inside_not = False
-        translator.inside_order_by = False
         translator.hint_join = False
         translator.aggregated_subquery_paths = set()
         for i, qual in enumerate(tree.quals):
@@ -212,6 +214,7 @@ class SQLTranslator(ASTTranslator):
                     entity = attr.py_type
                     if not isinstance(entity, EntityMeta):
                         throw(NotImplementedError, 'for %s in %s' % (name, ast2src(qual.iter)))
+                    can_affect_distinct = None
                     if attr.is_collection:
                         if not isinstance(attr, Set): throw(NotImplementedError, ast2src(qual.iter))
                         reverse = attr.reverse
@@ -220,9 +223,12 @@ class SQLTranslator(ASTTranslator):
                             translator.distinct = True
                         elif parent_tableref.alias != tree.quals[i-1].assign.name:
                             translator.distinct = True
+                        else: can_affect_distinct = True
                     if j == last_index: name_path = name
                     else: name_path += '-' + attr.name
                     tableref = JoinedTableRef(subquery, name_path, parent_tableref, attr)
+                    if can_affect_distinct is not None:
+                        tableref.can_affect_distinct = can_affect_distinct
                     tablerefs[name_path] = tableref
                     parent_tableref = tableref
                     parent_entity = entity
@@ -293,6 +299,7 @@ class SQLTranslator(ASTTranslator):
                     elif isinstance(m, AttrMonad) and isinstance(m.parent, ObjectIterMonad):
                         expr_set.add((m.parent.tableref.name_path, m.attr))
                 for tr in tablerefs.values():
+                    if not tr.can_affect_distinct: continue
                     if tr.name_path in expr_set: continue
                     for attr in tr.entity._pk_attrs_:
                         if (tr.name_path, attr) not in expr_set: break
@@ -329,6 +336,10 @@ class SQLTranslator(ASTTranslator):
             assert parent_translator
             join_condition = first_from_item.pop()
             translator.conditions.insert(0, join_condition)
+    def shallow_copy(translator):
+        new_translator = object.__new__(translator.__class__)
+        new_translator.__dict__.update(translator.__dict__)
+        return new_translator
     def can_be_optimized(translator):
         if translator.groupby_monads: return False
         if len(translator.aggregated_subquery_paths) != 1: return False
@@ -392,6 +403,75 @@ class SQLTranslator(ASTTranslator):
 
         sql_ast = ast_transformer(sql_ast)
         return sql_ast, attr_offsets
+    def order_by_numbers(translator, numbers):
+        if 0 in numbers: throw(ValueError, 'Numeric arguments of order_by() method must be non-zero')
+        translator = translator.shallow_copy()
+        order = translator.order = translator.order[:]  # only order will be changed
+        expr_monad = translator.tree.expr.monad
+        if isinstance(expr_monad, translator.ListMonad): monads = expr_monad.items
+        else: monads = (expr_monad,)
+        for i in numbers:
+            try: monad = monads[abs(i)-1]
+            except IndexError:
+                if len(monads) > 1: throw(IndexError,
+                    "Invalid index of order_by() method: %d "
+                    "(query result is list of tuples with only %d elements in each)" % (i, len(monads)))
+                else: throw(IndexError,
+                    "Invalid index of order_by() method: %d "
+                    "(query result is single list of elements and has only one 'column')" % i)
+            for pos in monad.orderby_columns:
+                order.append(i < 0 and [ 'DESC', [ 'VALUE', pos ] ] or [ 'VALUE', pos ])
+        return translator
+    def order_by_attributes(translator, attrs):
+        entity = translator.expr_type
+        if not isinstance(entity, EntityMeta): throw(NotImplementedError,
+            'Ordering by attributes is limited to queries which return simple list of objects. '
+            'Try use other forms of ordering (by tuple element numbers or by full-blown lambda expr).')
+        translator = translator.shallow_copy()
+        order = translator.order = translator.order[:]  # only order will be changed
+        alias = translator.alias
+        for x in attrs:
+            if isinstance(x, DescWrapper):
+                attr = x.attr
+                desc_wrapper = lambda column: [ 'DESC', column ]
+            elif isinstance(x, Attribute):
+                attr = x
+                desc_wrapper = lambda column: column
+            else: assert False, x
+            if entity._adict_.get(attr.name) is not attr: throw(TypeError,
+                'Attribute %s does not belong to Entity %s' % (attr, entity.__name__))
+            if attr.is_collection: throw(TypeError,
+                'Collection attribute %s cannot be used for ordering' % attr)
+            for column in attr.columns:
+                order.append(desc_wrapper([ 'COLUMN', alias, column]))
+        return translator
+    def apply_lambda(translator, order_by, func_ast, extractors, vartypes):
+        prev_optimized = translator.optimize
+        translator = deepcopy(translator)
+        pickled_func_ast = dumps(func_ast, 2)
+        func_ast = loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
+        translator.extractors.update(extractors)
+        translator.vartypes.update(vartypes)
+        translator.dispatch(func_ast)
+        if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
+        else: nodes = (func_ast,)
+        if order_by:
+            for node in nodes:
+                if isinstance(node.monad, translator.SetMixin):
+                    t = node.monad.type.item_type
+                    if isinstance(type(t), type): t = t.__name__
+                    throw(TranslationError, 'Set of %s (%s) cannot be used for ordering'
+                                            % (t, ast2src(node)))
+                translator.order.extend(node.monad.getsql())
+        else:
+            for node in nodes:
+                monad = node.monad
+                if isinstance(monad, translator.AndMonad): cond_monads = if_.monad.operands
+                else: cond_monads = [ monad ]
+                for m in cond_monads:
+                    if not m.aggregated: translator.conditions.extend(m.getsql())
+                    else: translator.having_conditions.extend(m.getsql())
+        return translator
     def preGenExpr(translator, node):
         inner_tree = node.code
         subtranslator = translator.__class__(inner_tree, translator.extractors, translator.vartypes, translator)
@@ -603,6 +683,7 @@ class TableRef(object):
         tableref.alias = tableref.name_path = name
         tableref.entity = entity
         tableref.joined = False
+        tableref.can_affect_distinct = True
     def make_join(tableref, pk_only=False):
         entity = tableref.entity
         if not tableref.joined:
@@ -626,6 +707,7 @@ class JoinedTableRef(object):
         tableref.entity = attr.py_type
         assert isinstance(tableref.entity, EntityMeta)
         tableref.joined = False
+        tableref.can_affect_distinct = False
     def make_join(tableref, pk_only=False):
         entity = tableref.entity
         pk_only = pk_only and not entity._discriminator_attr_
@@ -1765,6 +1847,7 @@ class AttrSetMonad(SetMixin, Monad):
             monad.tableref = subquery.get_tableref(name_path) \
                              or subquery.add_tableref(name_path, parent_tableref, attr)
         else: monad.tableref = parent_tableref
+        monad.tableref.can_affect_distinct = True
         return monad.tableref
     def make_expr_list(monad):
         attr = monad.attr
