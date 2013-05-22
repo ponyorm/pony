@@ -4,6 +4,8 @@ from types import NoneType
 from compiler import ast
 from decimal import Decimal
 from datetime import date, datetime
+from cPickle import loads, dumps
+from copy import deepcopy
 
 from pony import options
 from pony.utils import avg, copy_func_attrs, is_ident, throw
@@ -442,6 +444,33 @@ class SQLTranslator(ASTTranslator):
                 'Collection attribute %s cannot be used for ordering' % attr)
             for column in attr.columns:
                 order.append(desc_wrapper([ 'COLUMN', alias, column]))
+        return translator
+    def apply_lambda(translator, order_by, func_ast, extractors, vartypes):
+        prev_optimized = translator.optimize
+        translator = deepcopy(translator)
+        pickled_func_ast = dumps(func_ast, 2)
+        func_ast = loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
+        translator.extractors.update(extractors)
+        translator.vartypes.update(vartypes)
+        translator.dispatch(func_ast)
+        if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
+        else: nodes = (func_ast,)
+        if order_by:
+            for node in nodes:
+                if isinstance(node.monad, translator.SetMixin):
+                    t = node.monad.type.item_type
+                    if isinstance(type(t), type): t = t.__name__
+                    throw(TranslationError, 'Set of %s (%s) cannot be used for ordering'
+                                            % (t, ast2src(node)))
+                translator.order.extend(node.monad.getsql())
+        else:
+            for node in nodes:
+                monad = node.monad
+                if isinstance(monad, translator.AndMonad): cond_monads = if_.monad.operands
+                else: cond_monads = [ monad ]
+                for m in cond_monads:
+                    if not m.aggregated: translator.conditions.extend(m.getsql())
+                    else: translator.having_conditions.extend(m.getsql())
         return translator
     def preGenExpr(translator, node):
         inner_tree = node.code
