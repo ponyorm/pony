@@ -12,7 +12,8 @@ from pony.orm.ormtypes import \
     string_types, numeric_types, comparable_types, SetType, FuncType, MethodType, \
     get_normalized_type_of, normalize_type, coerce_types, are_comparable_types
 from pony.orm import core
-from pony.orm.core import ERDiagramError, EntityMeta, Set, JOIN, AsciiStr, OptimizationFailed
+from pony.orm.core import ERDiagramError, EntityMeta, Set, JOIN, AsciiStr, OptimizationFailed, \
+                          Attribute, DescWrapper
 
 def check_comparable(left_monad, right_monad, op='=='):
     t1, t2 = left_monad.type, right_monad.type
@@ -333,6 +334,10 @@ class SQLTranslator(ASTTranslator):
             assert parent_translator
             join_condition = first_from_item.pop()
             translator.conditions.insert(0, join_condition)
+    def shallow_copy(translator):
+        new_translator = object.__new__(translator.__class__)
+        new_translator.__dict__.update(translator.__dict__)
+        return new_translator
     def can_be_optimized(translator):
         if translator.groupby_monads: return False
         if len(translator.aggregated_subquery_paths) != 1: return False
@@ -396,6 +401,48 @@ class SQLTranslator(ASTTranslator):
 
         sql_ast = ast_transformer(sql_ast)
         return sql_ast, attr_offsets
+    def order_by_numbers(translator, numbers):
+        if 0 in numbers: throw(ValueError, 'Numeric arguments of order_by() method must be non-zero')
+        translator = translator.shallow_copy()
+        order = translator.order = translator.order[:]  # only order will be changed
+        expr_monad = translator.tree.expr.monad
+        if isinstance(expr_monad, translator.ListMonad): monads = expr_monad.items
+        else: monads = (expr_monad,)
+        for i in numbers:
+            try: monad = monads[abs(i)-1]
+            except IndexError:
+                if len(monads) > 1: throw(IndexError,
+                    "Invalid index of order_by() method: %d "
+                    "(query result is list of tuples with only %d elements in each)" % (i, len(monads)))
+                else: throw(IndexError,
+                    "Invalid index of order_by() method: %d "
+                    "(query result is single list of elements and has only one 'column')" % i)
+            for pos in monad.orderby_columns:
+                order.append(i < 0 and [ 'DESC', [ 'VALUE', pos ] ] or [ 'VALUE', pos ])
+        return translator
+    def order_by_attributes(translator, attrs):
+        entity = translator.expr_type
+        if not isinstance(entity, EntityMeta): throw(NotImplementedError,
+            'Ordering by attributes is limited to queries which return simple list of objects. '
+            'Try use other forms of ordering (by tuple element numbers or by full-blown lambda expr).')
+        translator = translator.shallow_copy()
+        order = translator.order = translator.order[:]  # only order will be changed
+        alias = translator.alias
+        for x in attrs:
+            if isinstance(x, DescWrapper):
+                attr = x.attr
+                desc_wrapper = lambda column: [ 'DESC', column ]
+            elif isinstance(x, Attribute):
+                attr = x
+                desc_wrapper = lambda column: column
+            else: assert False, x
+            if entity._adict_.get(attr.name) is not attr: throw(TypeError,
+                'Attribute %s does not belong to Entity %s' % (attr, entity.__name__))
+            if attr.is_collection: throw(TypeError,
+                'Collection attribute %s cannot be used for ordering' % attr)
+            for column in attr.columns:
+                order.append(desc_wrapper([ 'COLUMN', alias, column]))
+        return translator
     def preGenExpr(translator, node):
         inner_tree = node.code
         subtranslator = translator.__class__(inner_tree, translator.extractors, translator.vartypes, translator)

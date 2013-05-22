@@ -3702,10 +3702,17 @@ class Query(object):
         if len(args) > 1 and strings + functions:
             throw(TypeError, 'When argument of order_by() method is string or lambda, it must be the only argument')
 
-        if numbers:
-            return query._order_by_numbers(args)
-        if attributes:
-            return query._order_by_attributes(args)
+        if numbers or attributes:
+            new_key = query._key + (args,)
+            translator = query._database._translator_cache.get(new_key)
+            if translator is None:
+                if numbers: translator = query._translator.order_by_numbers(args)
+                else: translator = query._translator.order_by_attributes(args)
+                query._database._translator_cache[new_key] = translator
+            query._key = new_key
+            query._translator = translator
+            return query
+
         globals = sys._getframe(2).f_globals
         locals = sys._getframe(2).f_locals
         if strings:
@@ -3726,62 +3733,6 @@ class Query(object):
         database = query._database
         translator = database._translator_cache.get(query._key)
         assert translator is not None  # Translator for query without order_by must be in cache already
-        query._translator = translator
-        return query
-    def _order_by_numbers(query, numbers):
-        if 0 in numbers: throw(ValueError, 'Numeric arguments of order_by() method must be non-zero')
-        new_key = query._key + (numbers,)
-        translator = query._database._translator_cache.get(new_key)
-        if translator is None:
-            translator = object.__new__(query._translator.__class__)
-            translator.__dict__.update(query._translator.__dict__)  # shallow copy
-            order = translator.order = translator.order[:]  # only order will be changed
-            expr_monad = translator.tree.expr.monad
-            if isinstance(expr_monad, translator.ListMonad): monads = expr_monad.items
-            else: monads = (expr_monad,)
-            for i in numbers:
-                try: monad = monads[abs(i)-1]
-                except IndexError:
-                    if len(monads) > 1: throw(IndexError,
-                        "Invalid index of order_by() method: %d "
-                        "(query result is list of tuples with only %d elements in each)" % (i, len(monads)))
-                    else: throw(IndexError,
-                        "Invalid index of order_by() method: %d "
-                        "(query result is single list of elements and has only one 'column')" % i)
-                for pos in monad.orderby_columns:
-                    order.append(i < 0 and [ 'DESC', [ 'VALUE', pos ] ] or [ 'VALUE', pos ])
-            query._database._translator_cache[new_key] = translator
-        query._key = new_key
-        query._translator = translator
-        return query
-    def _order_by_attributes(query, attrs):
-        new_key = query._key + (attrs,)
-        translator = query._database._translator_cache.get(new_key)
-        if translator is None:
-            entity = query._translator.expr_type
-            if not isinstance(entity, EntityMeta): throw(NotImplementedError,
-                'Ordering by attributes is limited to queries which return simple list of objects. '
-                'Try use other forms of ordering (by tuple element numbers or by full-blown lambda expr).')
-            translator = object.__new__(query._translator.__class__)
-            translator.__dict__.update(query._translator.__dict__)  # shallow copy
-            order = translator.order = translator.order[:]  # only order will be changed
-            alias = translator.alias
-            for x in attrs:
-                if isinstance(x, DescWrapper):
-                    attr = x.attr
-                    desc_wrapper = lambda column: [ 'DESC', column ]
-                elif isinstance(x, Attribute):
-                    attr = x
-                    desc_wrapper = lambda column: column
-                else: assert False, x
-                if entity._adict_.get(attr.name) is not attr: throw(TypeError,
-                    'Attribute %s does not belong to Entity %s' % (attr, entity.__name__))
-                if attr.is_collection: throw(TypeError,
-                    'Collection attribute %s cannot be used for ordering' % attr)
-                for column in attr.columns:
-                    order.append(desc_wrapper([ 'COLUMN', alias, column]))
-            query._database._translator_cache[new_key] = translator
-        query._key = new_key
         query._translator = translator
         return query
     def _order_by_lambda(query, func_id, func_ast, globals, locals):
