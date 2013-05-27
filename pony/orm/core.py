@@ -41,7 +41,7 @@ __all__ = '''
 
     Database sql_debug show
 
-    PrimaryKey Required Optional Set
+    PrimaryKey Required Optional Set Discriminator
     composite_key
     flush commit rollback with_transaction
 
@@ -539,17 +539,23 @@ class Database(object):
                     m2m_table.m2m.add(attr)
                     m2m_table.m2m.add(reverse)
                 else:
+                    if entity._root_ is not entity:
+                        if attr.nullable is False: throw(ERDiagramError,
+                            'Attribute %s must be nullable due to single-table inheritance')
+                        attr.nullable = True
                     columns = attr.get_columns()
                     if not attr.reverse and attr.default is not None:
                         assert len(attr.converters) == 1
                         if not callable(attr.default): attr.default = attr.check(attr.default)
                     assert len(columns) == len(attr.converters)
-                    for (column_name, converter) in zip(columns, attr.converters):
-                        if entity._root_ is not entity:
-                            if attr.nullable is False: throw(ERDiagramError,
-                                'Attribute %s must be nullable due to single-table inheritance')
-                            attr.nullable = True
-                        table.add_column(column_name, converter.sql_type(), not attr.nullable)
+                    if len(columns) == 1:
+                        sql_type = attr.sql_type or attr.converters[0].sql_type()
+                        table.add_column(columns[0], sql_type, not attr.nullable)
+                    else:
+                        if attr.sql_type is not None: throw(NotImplementedError,
+                            'sql_type cannot be specified for composite attribute %s' % attr)
+                        for (column_name, converter) in zip(columns, attr.converters):
+                            table.add_column(column_name, converter.sql_type(), not attr.nullable)
             if not table.pk_index:
                 if len(entity._pk_columns_) == 1 and entity.__dict__['_pk_'].auto: is_pk = "auto"
                 else: is_pk = True
