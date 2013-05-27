@@ -41,7 +41,7 @@ __all__ = '''
 
     Database sql_debug show
 
-    PrimaryKey Required Optional Set
+    PrimaryKey Required Optional Set Discriminator
     composite_key
     flush commit rollback with_transaction
 
