@@ -1688,6 +1688,12 @@ class SetWrapper(object):
         if not obj._cache_.is_alive: throw_obsolete_cache(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
+        if not isinstance(item, attr.py_type): return False
+        reverse = attr.reverse
+        if not reverse.is_collection:
+            obj2 = item._vals_.get(reverse.name, NOT_LOADED)
+            if obj2 is NOT_LOADED: obj2 = reverse.load(item)
+            return obj is obj2
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is not NOT_LOADED:
             if item in setdata: return True
