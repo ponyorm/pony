@@ -531,6 +531,8 @@ class Database(object):
                     m2m_columns_2 = reverse.get_m2m_columns(is_reverse=True)
                     if m2m_columns_1 == m2m_columns_2: throw(MappingError,
                         'Different column names should be specified for attributes %s and %s' % (attr, reverse))
+                    if attr.symmetric and len(attr.reverse_columns) != len(attr.entity._pk_attrs_):
+                        throw(MappingError, "Invalid number of reverse columns for symmetric attribute %s" % attr)
                     assert len(m2m_columns_1) == len(reverse.converters)
                     assert len(m2m_columns_2) == len(attr.converters)
                     for column_name, converter in zip(m2m_columns_1 + m2m_columns_2, reverse.converters + attr.converters):
@@ -1245,8 +1247,6 @@ class Collection(Attribute):
         attr.symmetric = (attr.py_type == entity.__name__ and attr.reverse == name)
         if not attr.symmetric and attr.reverse_columns: throw(TypeError,
             "'reverse_column' and 'reverse_columns' options can be set for symmetric relations only")
-        if attr.reverse_columns and len(attr.reverse_columns) != len(attr.columns):
-            throw(TypeError, "Number of columns and reverse columns for symmetric attribute %s do not match" % attr)
     def load(attr, obj):
         assert False, 'Abstract method'
     def __get__(attr, obj, cls=None):
