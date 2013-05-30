@@ -1322,7 +1322,7 @@ class Set(Collection):
             if item._cache_ is not cache:
                 throw(TransactionError, 'An attempt to mix objects belongs to different caches')
         return items
-    def load(attr, obj):
+    def load(attr, obj, items=None):
         assert obj._status_ not in del_statuses
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED: setdata = obj._vals_[attr.name] = SetData()
@@ -1332,14 +1332,41 @@ class Set(Collection):
         rentity = reverse.entity
         if not reverse: throw(NotImplementedError)
         cache = obj._cache_
+        assert cache.is_alive
         database = obj._database_
         if cache is not database._get_cache():
             throw(TransactionError, "Transaction of object %s belongs to different thread")
+
+        counter = cache.collection_statistics.setdefault(attr, 0)
+        nplus1_threshold = attr.nplus1_threshold
+        prefetching = not attr.lazy and nplus1_threshold is not None and counter >= nplus1_threshold
+
+        if items and not setdata:
+            items_to_load = [ item for item in items
+                              if item not in setdata and item not in setdata.removed ]
+            if not items_to_load: return setdata
+
+            value_dict = dict(enumerate(items))
+            if not reverse.is_collection:
+                sql, adapter, attr_offsets = rentity._construct_batchload_sql_(len(items))
+                arguments = adapter(value_dict)
+                cursor = database._exec_sql(sql, arguments)
+                items = rentity._fetch_objects(cursor, attr_offsets)
+                return setdata
+            
+            items_count = len(items_to_load)            
+            sql, adapter = attr.construct_sql_m2m(1, items_count)
+            value_dict[items_count] = obj
+            arguments = adapter(value_dict)
+            cursor = database._exec_sql(sql, arguments)
+            loaded_items = set(imap(rentity._get_by_raw_pkval_, cursor.fetchall()))
+            setdata |= loaded_items
+            reverse.db_reverse_add(loaded_items, obj)
+            return setdata
+
         objects = [ obj ]
         setdata_list = [ setdata ]
-        assert cache.is_alive
-        counter = cache.collection_statistics.setdefault(attr, 0)
-        if counter >= attr.nplus1_threshold:
+        if prefetching:
             pk_index = cache.indexes.get(entity.__dict__['_pk_'])
             max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
             for obj2 in pk_index.itervalues():
@@ -1360,7 +1387,6 @@ class Set(Collection):
             cursor = database._exec_sql(sql, arguments)
             items = rentity._fetch_objects(cursor, attr_offsets)
         else:
-            rentity = reverse.entity
             sql, adapter = attr.construct_sql_m2m(len(objects))
             arguments = adapter(value_dict)
             cursor = database._exec_sql(sql, arguments)
@@ -1390,8 +1416,12 @@ class Set(Collection):
         for setdata2 in setdata_list: setdata2.is_fully_loaded = True
         cache.collection_statistics[attr] = counter + 1
         return setdata
-    def construct_sql_m2m(attr, batch_size=1):
-        cached_sql = attr.cached_load_sql.get(batch_size)
+    def construct_sql_m2m(attr, batch_size=1, items_count=0):
+        if items_count:
+            assert batch_size == 1
+            cache_key = -items_count
+        else: cache_key = batch_size
+        cached_sql = attr.cached_load_sql.get(cache_key)
         if cached_sql is not None: return cached_sql
         reverse = attr.reverse
         assert reverse is not None and reverse.is_collection and issubclass(reverse.py_type, Entity)
@@ -1400,21 +1430,25 @@ class Set(Collection):
         select_list = [ 'ALL' ]
         if not attr.symmetric:
             columns = attr.columns
+            converters = attr.converters
             rcolumns = reverse.columns
             rconverters = reverse.converters
         else:
             columns = attr.reverse_columns
             rcolumns = attr.columns
-            rconverters = attr.converters
+            converters = rconverters = attr.converters
         if batch_size > 1:
             select_list.extend([ 'COLUMN', 'T1', column ] for column in rcolumns)
         select_list.extend([ 'COLUMN', 'T1', column ] for column in columns)
         from_list = [ 'FROM', [ 'T1', 'TABLE', table_name ]]
         database = attr.entity._database_
         row_value_syntax = database.provider.translator_cls.row_value_syntax
-        criteria_list = construct_criteria_list('T1', rcolumns, rconverters, row_value_syntax, batch_size)
-        sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
-        sql, adapter = attr.cached_load_sql[batch_size] = database._ast2sql(sql_ast)
+        where_list = [ 'WHERE' ]
+        if items_count:
+            where_list += construct_criteria_list('T1', columns, converters, row_value_syntax, items_count)
+        where_list += construct_criteria_list('T1', rcolumns, rconverters, row_value_syntax, batch_size, items_count)
+        sql_ast = [ 'SELECT', select_list, from_list, where_list ]
+        sql, adapter = attr.cached_load_sql[cache_key] = database._ast2sql(sql_ast)
         return sql, adapter
     def copy(attr, obj):
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
@@ -1709,7 +1743,7 @@ class SetWrapper(object):
         if setdata is not NOT_LOADED:
             if item in setdata: return True
             if setdata.is_fully_loaded: return False
-        setdata = attr.load(obj)
+        setdata = attr.load(obj, (item,))
         return item in setdata
     @cut_traceback
     def create(wrapper, **kwargs):
@@ -1758,9 +1792,10 @@ class SetWrapper(object):
         reverse = attr.reverse
         if not reverse: throw(NotImplementedError)
         items = attr.check(items, obj)
+        if not items: return
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED or not setdata.is_fully_loaded:
-            setdata = attr.load(obj) # TODO: Load only the necessary objects
+            setdata = attr.load(obj, items)
         items.difference_update(setdata.removed)
         undo_funcs = []
         try:
