@@ -1415,10 +1415,9 @@ class Set(Collection):
         if setdata is NOT_LOADED or not setdata.is_fully_loaded: setdata = attr.load(obj)
         reverse = attr.reverse
         if not reverse.is_collection and reverse.pk_offset is None:
+            added = setdata.added
             for item in setdata:
-                bit = item._bits_[reverse]
-                wbits = item._wbits_
-                if wbits is not None and not wbits & bit: item._rbits_ |= bit
+                if item not in added: item._rbits_ |= item._bits_[reverse]
         return set(setdata)
     @cut_traceback
     def __get__(attr, obj, cls=None):
@@ -1693,6 +1692,11 @@ class SetWrapper(object):
         if not reverse.is_collection:
             obj2 = item._vals_.get(reverse.name, NOT_LOADED)
             if obj2 is NOT_LOADED: obj2 = reverse.load(item)
+            bit = item._bits_[reverse]
+
+            wbits = item._wbits_
+            if wbits is not None and not wbits & bit: item._rbits_ |= bit
+
             return obj is obj2
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is not NOT_LOADED:
