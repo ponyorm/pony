@@ -531,6 +531,8 @@ class Database(object):
                     m2m_columns_2 = reverse.get_m2m_columns(is_reverse=True)
                     if m2m_columns_1 == m2m_columns_2: throw(MappingError,
                         'Different column names should be specified for attributes %s and %s' % (attr, reverse))
+                    if attr.symmetric and len(attr.reverse_columns) != len(attr.entity._pk_attrs_):
+                        throw(MappingError, "Invalid number of reverse columns for symmetric attribute %s" % attr)
                     assert len(m2m_columns_1) == len(reverse.converters)
                     assert len(m2m_columns_2) == len(attr.converters)
                     for column_name, converter in zip(m2m_columns_1 + m2m_columns_2, reverse.converters + attr.converters):
@@ -1245,8 +1247,6 @@ class Collection(Attribute):
         attr.symmetric = (attr.py_type == entity.__name__ and attr.reverse == name)
         if not attr.symmetric and attr.reverse_columns: throw(TypeError,
             "'reverse_column' and 'reverse_columns' options can be set for symmetric relations only")
-        if attr.reverse_columns and len(attr.reverse_columns) != len(attr.columns):
-            throw(TypeError, "Number of columns and reverse columns for symmetric attribute %s do not match" % attr)
     def load(attr, obj):
         assert False, 'Abstract method'
     def __get__(attr, obj, cls=None):
@@ -1529,7 +1529,9 @@ class Set(Collection):
                 if not was_modified_earlier: objects_with_modified_collections.remove(obj)
         undo_funcs.append(undo_func)
     def db_reverse_remove(attr, objects, item):
-        raise AssertionError
+        for obj in objects:
+            setdata = obj._vals_[attr.name]
+            setdata.remove(item)
     def get_m2m_columns(attr, is_reverse=False):
         entity = attr.entity
         if attr.symmetric:
@@ -1607,12 +1609,24 @@ class Set(Collection):
                            for obj, robj in added ]
         database._exec_sql_many(sql, arguments_list, autoflush=False)
 
+def unpickle_setwrapper(obj, attrname, items):
+    attr = getattr(obj.__class__, attrname)
+    wrapper_cls = attr.py_type._get_set_wrapper_subclass_()
+    wrapper = wrapper_cls(obj, attr)
+    setdata = obj._vals_.get(attr.name, NOT_LOADED)
+    if setdata is NOT_LOADED: setdata = obj._vals_[attr.name] = SetData()
+    setdata.is_fully_loaded = True
+    return wrapper
+
 class SetWrapper(object):
-    __slots__ = '_obj_', '_attr_'
+    __slots__ = '_obj_', '_attr_', '_attrnames_'
     _parent_ = None
     def __init__(wrapper, obj, attr):
         wrapper._obj_ = obj
         wrapper._attr_ = attr
+        wrapper._attrnames_ = (attr.name,)
+    def __reduce__(wrapper):
+        return unpickle_setwrapper, (wrapper._obj_, wrapper._attr_.name, wrapper.copy())
     @cut_traceback
     def copy(wrapper):
         if not wrapper._obj_._cache_.is_alive: throw_obsolete_cache(obj)
@@ -1759,14 +1773,28 @@ def iter2dict(iter):
         d[item] = d.get(item, 0) + 1
     return d
 
+def unpickle_multiset(obj, attrnames, items):
+    entity = obj.__class__
+    for name in attrnames:
+        attr = entity._adict_[name]
+        if attr.reverse: entity = attr.py_type
+        else:
+            entity = None
+            break
+    if entity is None: multiset_cls = Multiset
+    else: multiset_cls = entity._get_multiset_subclass_()
+    return multiset_cls(obj, attrnames, items)
+
 class Multiset(object):
-    __slots__ = [ '_obj_', '_parent_', '_attr_', '_items_' ]
+    __slots__ = [ '_obj_', '_attrnames_', '_items_' ]
     @cut_traceback
-    def __init__(multiset, parent, attr, items):
-        multiset._obj_ = parent._obj_
-        multiset._parent_ = parent
-        multiset._attr_ = attr
-        multiset._items_ = iter2dict(items)
+    def __init__(multiset, obj, attrnames, items):
+        multiset._obj_ = obj
+        multiset._attrnames_ = attrnames
+        if type(items) is dict: multiset._items_ = items
+        else: multiset._items_ = iter2dict(items)
+    def __reduce__(multiset):
+        return unpickle_multiset, (multiset._obj_, multiset._attrnames_, multiset._items_)
     @cut_traceback
     def distinct(multiset):
         if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
@@ -1778,12 +1806,8 @@ class Multiset(object):
             if size == 1: size_str = ' (1 item)'
             else: size_str = ' (%d items)' % size
         else: size_str = ''
-        path = []
-        wrapper = multiset
-        while wrapper is not None:
-            path.append(wrapper._attr_.name)
-            wrapper = wrapper._parent_
-        return '<%s %s.%s%s>' % (multiset.__class__.__name__, multiset._obj_, '.'.join(reversed(path)), size_str)
+        return '<%s %s.%s%s>' % (multiset.__class__.__name__, multiset._obj_,
+                                 '.'.join(multiset._attrnames_), size_str)
     @cut_traceback
     def __str__(multiset):
         if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
@@ -2003,7 +2027,7 @@ class EntityMeta(type):
 
         entity._propagation_mixin_ = None
         entity._set_wrapper_subclass_ = None
-        entity._propagated_set_subclass_ = None
+        entity._multiset_subclass_ = None
 
         if '_discriminator_' not in entity.__dict__:
             entity._discriminator_ = None
@@ -2541,35 +2565,38 @@ class EntityMeta(type):
         for attr in entity._attrs_:
             if not attr.reverse:
                 def fget(wrapper, attr=attr):
+                    attrnames = wrapper._attrnames_ + (attr.name,)
                     items = [ attr.__get__(item) for item in wrapper ]
-                    return Multiset(wrapper, attr, items)
+                    return Multiset(wrapper._obj_, attrnames, items)
             elif not attr.is_collection:
                 def fget(wrapper, attr=attr):
+                    attrnames = wrapper._attrnames_ + (attr.name,)
                     items = [ attr.__get__(item) for item in wrapper ]
                     rentity = attr.py_type
-                    cls = rentity._get_propagated_set_subclass_()
-                    return cls(wrapper, attr, items)
+                    cls = rentity._get_multiset_subclass_()
+                    return cls(wrapper._obj_, attrnames, items)
             else:
                 def fget(wrapper, attr=attr):
                     cache = attr.entity._database_._get_cache()
                     cache.collection_statistics.setdefault(attr, attr.nplus1_threshold)
+                    attrnames = wrapper._attrnames_ + (attr.name,)
                     items = [ subitem for item in wrapper
                                       for subitem in attr.__get__(item) ]
                     rentity = attr.py_type
-                    cls = rentity._get_propagated_set_subclass_()
-                    return cls(wrapper, attr, items)
+                    cls = rentity._get_multiset_subclass_()
+                    return cls(wrapper._obj_, attrnames, items)
             cls_dict[attr.name] = property(fget)
         result_cls_name = entity.__name__ + 'SetMixin'
         result_cls = type(result_cls_name, (object,), cls_dict)
         entity._propagation_mixin_ = result_cls
         return result_cls
-    def _get_propagated_set_subclass_(entity):
-        result_cls = entity._propagated_set_subclass_
+    def _get_multiset_subclass_(entity):
+        result_cls = entity._multiset_subclass_
         if result_cls is None:
             mixin = entity._get_propagation_mixin_()
             cls_name = entity.__name__ + 'Multiset'
             result_cls = type(cls_name, (Multiset, mixin), {})
-            entity._propagated_set_subclass_ = result_cls
+            entity._multiset_subclass_ = result_cls
         return result_cls
     def _get_set_wrapper_subclass_(entity):
         result_cls = entity._set_wrapper_subclass_
@@ -2610,9 +2637,38 @@ def throw_object_was_deleted(obj):
 def throw_obsolete_cache(obj):
     throw(TransactionRolledBack, 'Object belongs to obsolete cache')
 
+def unpickle_entity(d):
+    entity = d.pop('__class__')
+    cache = entity._get_cache_()
+    pk = entity.__dict__['_pk_']
+    if not entity._pk_is_composite_: pkval = d.get(pk.name)
+    else: pkval = tuple(d[attr.name] for attr in entity._pk_attrs_)
+    assert pkval is not None
+    obj = entity._new_(pkval, 'loaded')
+    if obj._status_ in del_statuses: return obj
+    avdict = {}
+    for attrname, val in d.iteritems():
+        attr = entity._adict_[attrname]
+        if attr.pk_offset is not None: continue
+        avdict[attr] = val
+    obj._db_set_(avdict, unpickling=True)
+    return obj
+
 class Entity(object):
     __metaclass__ = EntityMeta
     __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '__weakref__'
+    def __reduce__(obj):
+        if obj._status_ in del_statuses: throw(
+            OperationWithDeletedObjectError, 'Deleted object %s cannot be pickled' % obj)
+        if obj._status_ in ('created', 'updated'): throw(
+            OrmError, '%s object %s has to be stored in DB before it can be pickled'
+                      % (obj._status_.capitalize(), obj))
+        d = {'__class__' : obj.__class__}
+        adict = obj._adict_
+        for attrname, val in obj._vals_.iteritems():
+            attr = adict[attrname]
+            if not attr.is_collection: d[attrname] = val
+        return unpickle_entity, (d,)
     @cut_traceback
     def __new__(entity, *args, **kwargs):
         if args: raise TypeError('%s constructor accept only keyword arguments. Got: %d positional argument%s'
@@ -2695,7 +2751,7 @@ class Entity(object):
         cursor = database._exec_sql(sql, arguments)
         objects = entity._fetch_objects(cursor, attr_offsets)
         if obj not in objects: throw(UnrepeatableReadError, '%s disappeared' % obj)
-    def _db_set_(obj, avdict):
+    def _db_set_(obj, avdict, unpickling=False):
         assert obj._status_ not in created_or_deleted_statuses
         if not avdict: return
 
@@ -2713,8 +2769,10 @@ class Entity(object):
             assert attr.pk_offset is None
             assert new_dbval is not NOT_LOADED
             old_dbval = get_dbval(attr.name, NOT_LOADED)
-
-            if attr.py_type is float:
+            if unpickling and old_dbval is not NOT_LOADED:
+                del avdict[attr]
+                continue
+            elif attr.py_type is float:
                 if old_dbval is NOT_LOADED: pass
                 elif attr.converters[0].equals(old_dbval, new_dbval):
                     del avdict[attr]
@@ -3552,6 +3610,9 @@ def extract_vars(extractors, globals, locals):
         vars[src] = value
     return vars, vartypes
 
+def unpickle_query(query_result):
+    return query_result
+
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
@@ -3585,6 +3646,8 @@ class Query(object):
             database._translator_cache[query._key] = translator
         query._translator = translator
         query._filters = []
+    def __reduce__(query):
+        return unpickle_query, (query._fetch(),)
     def _construct_sql_and_arguments(query, range=None, distinct=None, aggr_func_name=None):
         translator = query._translator
         sql_key = query._key + (range, distinct, aggr_func_name, options.INNER_JOIN_SYNTAX)
@@ -3632,7 +3695,7 @@ class Query(object):
             stat = stats.get(sql)
             if stat is not None: stat.cache_count += 1
             else: stats[sql] = QueryStat(sql)
-        return QueryResult(result, translator.expr_type, translator.row_layout)
+        return QueryResult(result, translator.expr_type, translator.col_names)
     @cut_traceback
     def show(query, width=None):
         query._fetch().show(width)
@@ -3854,43 +3917,46 @@ def strcut(s, width):
         return s[:width-3] + '...'
 
 class QueryResult(list):
-    __slots__ = '_expr_type', '_row_layout'
-    def __init__(result, list, expr_type, row_layout):
+    __slots__ = '_expr_type', '_col_names'
+    def __init__(result, list, expr_type, col_names):
         result[:] = list
         result._expr_type = expr_type
-        result._row_layout = row_layout
+        result._col_names = col_names
+    def __getstate__(result):
+        return list(result), result._expr_type, result._col_names
+    def __setstate__(result, state):
+        result[:] = state[0]
+        result._expr_type = state[1]
+        result._col_names = state[2]
     @cut_traceback
     def show(result, width=None):
         if not width: width = options.CONSOLE_WIDTH
         max_columns = width // 5
         expr_type = result._expr_type
-        row_layout = result._row_layout
+        col_names = result._col_names
 
         def to_str(x):
             return tostring(x).replace('\n', ' ')
 
         if isinstance(expr_type, EntityMeta):
             entity = expr_type
-            colnames = [ attr.name for attr in entity._attrs_
-                                   if not attr.is_collection and not attr.lazy ][:max_columns]
-            row_maker = attrgetter(*colnames)
+            col_names = [ attr.name for attr in entity._attrs_
+                                    if not attr.is_collection and not attr.lazy ][:max_columns]
+            row_maker = attrgetter(*col_names)
             rows = [ map(to_str, row_maker(obj)) for obj in result ]
-        elif len(row_layout) == 1:
-            func, slice_or_offset, src = row_layout[0]
-            colnames = [ src ]
+        elif len(col_names) == 1:
             rows = [ (to_str(obj),) for obj in result ]
         else:
-            colnames = [ src for func, slice_or_offset, src in row_layout ]
             rows = [ map(to_str, row) for row in result ]
 
         remaining_columns = {}
-        for col_num, colname in enumerate(colnames):
+        for col_num, colname in enumerate(col_names):
             if not rows: max_len = len(colname)
             else: max_len = max(len(colname), max(len(row[col_num]) for row in rows))
             remaining_columns[col_num] = max_len
 
         width_dict = {}
-        available_width = width - len(colnames) + 1
+        available_width = width - len(col_names) + 1
         while remaining_columns:
             base_len = (available_width - len(remaining_columns) + 1) // len(remaining_columns)
             for col_num, max_len in remaining_columns.items():
@@ -3905,8 +3971,8 @@ class QueryResult(list):
             for col_num, max_len in remaining_columns.items():
                 width_dict[col_num] = base_len
 
-        print strjoin('|', (strcut(colname, width_dict[i]) for i, colname in enumerate(colnames)))
-        print strjoin('+', ('-' * width_dict[i] for i in xrange(len(colnames))))
+        print strjoin('|', (strcut(colname, width_dict[i]) for i, colname in enumerate(col_names)))
+        print strjoin('+', ('-' * width_dict[i] for i in xrange(len(col_names))))
         for row in rows:
             print strjoin('|', (strcut(item, width_dict[i]) for i, item in enumerate(row)))
 
