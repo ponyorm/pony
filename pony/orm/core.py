@@ -1529,7 +1529,9 @@ class Set(Collection):
                 if not was_modified_earlier: objects_with_modified_collections.remove(obj)
         undo_funcs.append(undo_func)
     def db_reverse_remove(attr, objects, item):
-        raise AssertionError
+        for obj in objects:
+            setdata = obj._vals_[attr.name]
+            setdata.remove(item)
     def get_m2m_columns(attr, is_reverse=False):
         entity = attr.entity
         if attr.symmetric:
@@ -1607,12 +1609,23 @@ class Set(Collection):
                            for obj, robj in added ]
         database._exec_sql_many(sql, arguments_list, autoflush=False)
 
+def unpickle_setwrapper(obj, attrname, items):
+    attr = getattr(obj.__class__, attrname)
+    wrapper_cls = attr.py_type._get_set_wrapper_subclass_()
+    wrapper = wrapper_cls(obj, attr)
+    setdata = obj._vals_.get(attr.name, NOT_LOADED)
+    if setdata is NOT_LOADED: setdata = obj._vals_[attr.name] = SetData()
+    setdata.is_fully_loaded = True
+    return wrapper
+
 class SetWrapper(object):
     __slots__ = '_obj_', '_attr_'
     _parent_ = None
     def __init__(wrapper, obj, attr):
         wrapper._obj_ = obj
         wrapper._attr_ = attr
+    def __reduce__(wrapper):
+        return unpickle_setwrapper, (wrapper._obj_, wrapper._attr_.name, wrapper.copy())
     @cut_traceback
     def copy(wrapper):
         if not wrapper._obj_._cache_.is_alive: throw_obsolete_cache(obj)
@@ -2610,9 +2623,38 @@ def throw_object_was_deleted(obj):
 def throw_obsolete_cache(obj):
     throw(TransactionRolledBack, 'Object belongs to obsolete cache')
 
+def unpickle_entity(d):
+    entity = d.pop('__class__')
+    cache = entity._get_cache_()
+    pk = entity.__dict__['_pk_']
+    if not entity._pk_is_composite_: pkval = d.get(pk.name)
+    else: pkval = tuple(d[attr.name] for attr in entity._pk_attrs_)
+    assert pkval is not None
+    obj = entity._new_(pkval, 'loaded')
+    if obj._status_ in del_statuses: return obj
+    avdict = {}
+    for attrname, val in d.iteritems():
+        attr = entity._adict_[attrname]
+        if attr.pk_offset is not None: continue
+        avdict[attr] = val
+    obj._db_set_(avdict, unpickling=True)
+    return obj
+
 class Entity(object):
     __metaclass__ = EntityMeta
     __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '__weakref__'
+    def __reduce__(obj):
+        if obj._status_ in del_statuses: throw(
+            OperationWithDeletedObjectError, 'Deleted object %s cannot be pickled' % obj)
+        if obj._status_ in ('created', 'updated'): throw(
+            OrmError, '%s object %s has to be stored in DB before it can be pickled'
+                      % (obj._status_.capitalize(), obj))
+        d = {'__class__' : obj.__class__}
+        adict = obj._adict_
+        for attrname, val in obj._vals_.iteritems():
+            attr = adict[attrname]
+            if not attr.is_collection: d[attrname] = val
+        return unpickle_entity, (d,)
     @cut_traceback
     def __new__(entity, *args, **kwargs):
         if args: raise TypeError('%s constructor accept only keyword arguments. Got: %d positional argument%s'
@@ -2695,7 +2737,7 @@ class Entity(object):
         cursor = database._exec_sql(sql, arguments)
         objects = entity._fetch_objects(cursor, attr_offsets)
         if obj not in objects: throw(UnrepeatableReadError, '%s disappeared' % obj)
-    def _db_set_(obj, avdict):
+    def _db_set_(obj, avdict, unpickling=False):
         assert obj._status_ not in created_or_deleted_statuses
         if not avdict: return
 
@@ -2713,8 +2755,10 @@ class Entity(object):
             assert attr.pk_offset is None
             assert new_dbval is not NOT_LOADED
             old_dbval = get_dbval(attr.name, NOT_LOADED)
-
-            if attr.py_type is float:
+            if unpickling and old_dbval is not NOT_LOADED:
+                del avdict[attr]
+                continue
+            elif attr.py_type is float:
                 if old_dbval is NOT_LOADED: pass
                 elif attr.converters[0].equals(old_dbval, new_dbval):
                     del avdict[attr]
@@ -3552,6 +3596,9 @@ def extract_vars(extractors, globals, locals):
         vars[src] = value
     return vars, vartypes
 
+def unpickle_query(query_result):
+    return query_result
+
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
@@ -3585,6 +3632,8 @@ class Query(object):
             database._translator_cache[query._key] = translator
         query._translator = translator
         query._filters = []
+    def __reduce__(query):
+        return unpickle_query, (query._fetch(),)
     def _construct_sql_and_arguments(query, range=None, distinct=None, aggr_func_name=None):
         translator = query._translator
         sql_key = query._key + (range, distinct, aggr_func_name, options.INNER_JOIN_SYNTAX)
@@ -3632,7 +3681,7 @@ class Query(object):
             stat = stats.get(sql)
             if stat is not None: stat.cache_count += 1
             else: stats[sql] = QueryStat(sql)
-        return QueryResult(result, translator.expr_type, translator.row_layout)
+        return QueryResult(result, translator.expr_type, translator.col_names)
     @cut_traceback
     def show(query, width=None):
         query._fetch().show(width)
@@ -3854,43 +3903,46 @@ def strcut(s, width):
         return s[:width-3] + '...'
 
 class QueryResult(list):
-    __slots__ = '_expr_type', '_row_layout'
-    def __init__(result, list, expr_type, row_layout):
+    __slots__ = '_expr_type', '_col_names'
+    def __init__(result, list, expr_type, col_names):
         result[:] = list
         result._expr_type = expr_type
-        result._row_layout = row_layout
+        result._col_names = col_names
+    def __getstate__(result):
+        return list(result), result._expr_type, result._col_names
+    def __setstate__(result, state):
+        result[:] = state[0]
+        result._expr_type = state[1]
+        result._col_names = state[2]
     @cut_traceback
     def show(result, width=None):
         if not width: width = options.CONSOLE_WIDTH
         max_columns = width // 5
         expr_type = result._expr_type
-        row_layout = result._row_layout
+        col_names = result._col_names
 
         def to_str(x):
             return tostring(x).replace('\n', ' ')
 
         if isinstance(expr_type, EntityMeta):
             entity = expr_type
-            colnames = [ attr.name for attr in entity._attrs_
-                                   if not attr.is_collection and not attr.lazy ][:max_columns]
-            row_maker = attrgetter(*colnames)
+            col_names = [ attr.name for attr in entity._attrs_
+                                    if not attr.is_collection and not attr.lazy ][:max_columns]
+            row_maker = attrgetter(*col_names)
             rows = [ map(to_str, row_maker(obj)) for obj in result ]
-        elif len(row_layout) == 1:
-            func, slice_or_offset, src = row_layout[0]
-            colnames = [ src ]
+        elif len(col_names) == 1:
             rows = [ (to_str(obj),) for obj in result ]
         else:
-            colnames = [ src for func, slice_or_offset, src in row_layout ]
             rows = [ map(to_str, row) for row in result ]
 
         remaining_columns = {}
-        for col_num, colname in enumerate(colnames):
+        for col_num, colname in enumerate(col_names):
             if not rows: max_len = len(colname)
             else: max_len = max(len(colname), max(len(row[col_num]) for row in rows))
             remaining_columns[col_num] = max_len
 
         width_dict = {}
-        available_width = width - len(colnames) + 1
+        available_width = width - len(col_names) + 1
         while remaining_columns:
             base_len = (available_width - len(remaining_columns) + 1) // len(remaining_columns)
             for col_num, max_len in remaining_columns.items():
@@ -3905,8 +3957,8 @@ class QueryResult(list):
             for col_num, max_len in remaining_columns.items():
                 width_dict[col_num] = base_len
 
-        print strjoin('|', (strcut(colname, width_dict[i]) for i, colname in enumerate(colnames)))
-        print strjoin('+', ('-' * width_dict[i] for i in xrange(len(colnames))))
+        print strjoin('|', (strcut(colname, width_dict[i]) for i, colname in enumerate(col_names)))
+        print strjoin('+', ('-' * width_dict[i] for i in xrange(len(col_names))))
         for row in rows:
             print strjoin('|', (strcut(item, width_dict[i]) for i, item in enumerate(row)))
 

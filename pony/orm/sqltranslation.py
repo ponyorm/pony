@@ -277,6 +277,8 @@ class SQLTranslator(ASTTranslator):
             translator.expr_type = entity
             translator.expr_columns = [ [ 'COLUMN', alias, column ] for column in pk_columns ]
             translator.row_layout = None
+            translator.col_names = [ attr.name for attr in entity._attrs_
+                                               if not attr.is_collection and not attr.lazy ]
         else:
             translator.alias = None
             if isinstance(monad, translator.ListMonad):
@@ -329,6 +331,7 @@ class SQLTranslator(ASTTranslator):
                     m.orderby_columns = (offset+1,)
                     offset += 1
             translator.row_layout = row_layout
+            translator.col_names = [ src for func, slice_or_offset, src in translator.row_layout ]
 
         first_from_item = translator.subquery.from_ast[1]
         if len(first_from_item) > 3:
