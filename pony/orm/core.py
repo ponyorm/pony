@@ -1619,11 +1619,12 @@ def unpickle_setwrapper(obj, attrname, items):
     return wrapper
 
 class SetWrapper(object):
-    __slots__ = '_obj_', '_attr_'
+    __slots__ = '_obj_', '_attr_', '_attrnames_'
     _parent_ = None
     def __init__(wrapper, obj, attr):
         wrapper._obj_ = obj
         wrapper._attr_ = attr
+        wrapper._attrnames_ = (attr.name,)
     def __reduce__(wrapper):
         return unpickle_setwrapper, (wrapper._obj_, wrapper._attr_.name, wrapper.copy())
     @cut_traceback
@@ -1773,12 +1774,11 @@ def iter2dict(iter):
     return d
 
 class Multiset(object):
-    __slots__ = [ '_obj_', '_parent_', '_attr_', '_items_' ]
+    __slots__ = [ '_obj_', '_attrnames_', '_items_' ]
     @cut_traceback
-    def __init__(multiset, parent, attr, items):
-        multiset._obj_ = parent._obj_
-        multiset._parent_ = parent
-        multiset._attr_ = attr
+    def __init__(multiset, obj, attrnames, items):
+        multiset._obj_ = obj
+        multiset._attrnames_ = attrnames
         multiset._items_ = iter2dict(items)
     @cut_traceback
     def distinct(multiset):
@@ -1791,12 +1791,8 @@ class Multiset(object):
             if size == 1: size_str = ' (1 item)'
             else: size_str = ' (%d items)' % size
         else: size_str = ''
-        path = []
-        wrapper = multiset
-        while wrapper is not None:
-            path.append(wrapper._attr_.name)
-            wrapper = wrapper._parent_
-        return '<%s %s.%s%s>' % (multiset.__class__.__name__, multiset._obj_, '.'.join(reversed(path)), size_str)
+        return '<%s %s.%s%s>' % (multiset.__class__.__name__, multiset._obj_,
+                                 '.'.join(multiset._attrnames_), size_str)
     @cut_traceback
     def __str__(multiset):
         if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
@@ -2016,7 +2012,7 @@ class EntityMeta(type):
 
         entity._propagation_mixin_ = None
         entity._set_wrapper_subclass_ = None
-        entity._propagated_set_subclass_ = None
+        entity._multiset_subclass_ = None
 
         if '_discriminator_' not in entity.__dict__:
             entity._discriminator_ = None
@@ -2554,35 +2550,38 @@ class EntityMeta(type):
         for attr in entity._attrs_:
             if not attr.reverse:
                 def fget(wrapper, attr=attr):
+                    attrnames = wrapper._attrnames_ + (attr.name,)
                     items = [ attr.__get__(item) for item in wrapper ]
-                    return Multiset(wrapper, attr, items)
+                    return Multiset(wrapper._obj_, attrnames, items)
             elif not attr.is_collection:
                 def fget(wrapper, attr=attr):
+                    attrnames = wrapper._attrnames_ + (attr.name,)
                     items = [ attr.__get__(item) for item in wrapper ]
                     rentity = attr.py_type
-                    cls = rentity._get_propagated_set_subclass_()
-                    return cls(wrapper, attr, items)
+                    cls = rentity._get_multiset_subclass_()
+                    return cls(wrapper._obj_, attrnames, items)
             else:
                 def fget(wrapper, attr=attr):
                     cache = attr.entity._database_._get_cache()
                     cache.collection_statistics.setdefault(attr, attr.nplus1_threshold)
+                    attrnames = wrapper._attrnames_ + (attr.name,)
                     items = [ subitem for item in wrapper
                                       for subitem in attr.__get__(item) ]
                     rentity = attr.py_type
-                    cls = rentity._get_propagated_set_subclass_()
-                    return cls(wrapper, attr, items)
+                    cls = rentity._get_multiset_subclass_()
+                    return cls(wrapper._obj_, attrnames, items)
             cls_dict[attr.name] = property(fget)
         result_cls_name = entity.__name__ + 'SetMixin'
         result_cls = type(result_cls_name, (object,), cls_dict)
         entity._propagation_mixin_ = result_cls
         return result_cls
-    def _get_propagated_set_subclass_(entity):
-        result_cls = entity._propagated_set_subclass_
+    def _get_multiset_subclass_(entity):
+        result_cls = entity._multiset_subclass_
         if result_cls is None:
             mixin = entity._get_propagation_mixin_()
             cls_name = entity.__name__ + 'Multiset'
             result_cls = type(cls_name, (Multiset, mixin), {})
-            entity._propagated_set_subclass_ = result_cls
+            entity._multiset_subclass_ = result_cls
         return result_cls
     def _get_set_wrapper_subclass_(entity):
         result_cls = entity._set_wrapper_subclass_
