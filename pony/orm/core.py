@@ -1773,13 +1773,28 @@ def iter2dict(iter):
         d[item] = d.get(item, 0) + 1
     return d
 
+def unpickle_multiset(obj, attrnames, items):
+    entity = obj.__class__
+    for name in attrnames:
+        attr = entity._adict_[name]
+        if attr.reverse: entity = attr.py_type
+        else:
+            entity = None
+            break
+    if entity is None: multiset_cls = Multiset
+    else: multiset_cls = entity._get_multiset_subclass_()
+    return multiset_cls(obj, attrnames, items)
+
 class Multiset(object):
     __slots__ = [ '_obj_', '_attrnames_', '_items_' ]
     @cut_traceback
     def __init__(multiset, obj, attrnames, items):
         multiset._obj_ = obj
         multiset._attrnames_ = attrnames
-        multiset._items_ = iter2dict(items)
+        if type(items) is dict: multiset._items_ = items
+        else: multiset._items_ = iter2dict(items)
+    def __reduce__(multiset):
+        return unpickle_multiset, (multiset._obj_, multiset._attrnames_, multiset._items_)
     @cut_traceback
     def distinct(multiset):
         if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
