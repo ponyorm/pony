@@ -1968,15 +1968,11 @@ def make_numericset_binop(op, sqlop):
 
 class NumericSetExprMonad(SetMixin, Monad):
     def __init__(monad, op, sqlop, left, right):
-        t1 = left.type
-        if isinstance(t1, SetType): t1 = t1.item_type
-        t2 = right.type
-        if isinstance(t2, SetType): t2 = t2.item_type
-        translator = left.translator
         result_type, left, right = coerce_monads(left, right)
-        if result_type not in numeric_types:
+        assert type(result_type) is SetType
+        if result_type.item_type not in numeric_types:
             throw(TypeError, _binop_errmsg % (type2str(left.type), type2str(right.type), op))
-        Monad.__init__(monad, translator, result_type)
+        Monad.__init__(monad, left.translator, result_type)
         monad.op = op
         monad.sqlop = sqlop
         monad.left = left
@@ -1987,7 +1983,7 @@ class NumericSetExprMonad(SetMixin, Monad):
         expr = [ monad.sqlop, monad.left.getsql(subquery), monad.right.getsql(subquery) ]
         subquery.outer_conditions = [ subquery.from_ast[1].pop() ]
         if func_name == 'AVG': result_type = float
-        else: result_type = monad.type
+        else: result_type = monad.type.item_type
         return translator.ExprMonad.new(translator, result_type,
             [ 'SELECT', [ 'AGGREGATES', [ func_name, monad.getsql(subquery)[0] ] ],
               subquery.from_ast,
