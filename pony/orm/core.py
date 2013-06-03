@@ -1272,6 +1272,30 @@ class SetData(set):
         setdata.is_fully_loaded = False
         setdata.added = setdata.removed = EMPTY
 
+def construct_criteria_list(alias, columns, converters, row_value_syntax, count=1, start=0):
+    assert count > 0
+    if count == 1:
+        return [ [ 'EQ', [ 'COLUMN', alias, column ], [ 'PARAM', (start, i), converter ] ]
+                 for i, (column, converter) in enumerate(izip(columns, converters)) ]
+    if len(columns) == 1:
+        column = columns[0]
+        converter = converters[0]
+        param_list = [ [ 'PARAM', (i+start, 0), converter ] for i in xrange(count) ]
+        condition = [ 'IN', [ 'COLUMN', alias, column ], param_list ]
+        return [ condition ]
+    elif row_value_syntax:
+        row = [ 'ROW' ] + [ [ 'COLUMN', alias, column ] for column in columns ]
+        param_list = [ [ 'ROW' ] + [ [ 'PARAM', (i+start, j), converter ]
+                                     for j, converter in enumerate(converters) ]
+                       for i in xrange(count) ]
+        condition = [ 'IN', row, param_list ]
+        return [ condition ]
+    else:
+        conditions = [ [ 'AND' ] + [ [ 'EQ', [ 'COLUMN', alias, column ], [ 'PARAM', (i+start, j), converter ] ]
+                                     for j, (column, converter) in enumerate(izip(columns, converters)) ]
+                       for i in xrange(count) ]
+        return [ [ 'OR' ] + conditions ]
+
 class Set(Collection):
     __slots__ = []
     def check(attr, val, obj=None, entity=None, from_db=False):
@@ -1387,25 +1411,8 @@ class Set(Collection):
         select_list.extend([ 'COLUMN', 'T1', column ] for column in columns)
         from_list = [ 'FROM', [ 'T1', 'TABLE', table_name ]]
         database = attr.entity._database_
-
-        if batch_size == 1:
-            criteria_list = []
-            for i, (column, converter) in enumerate(zip(rcolumns, rconverters)):
-                criteria_list.append([ 'EQ', [ 'COLUMN', 'T1', column ], [ 'PARAM', (0, i), converter ] ])
-        elif len(rcolumns) == 1:
-            converter = rconverters[0]
-            criteria_list = [ [ 'IN', [ 'COLUMN', None, rcolumns[0] ],
-                                   [ [ 'PARAM', (i, 0), converter ] for i in xrange(batch_size) ] ] ]
-        elif database.provider.translator_cls.row_value_syntax:
-            criteria_list = [ [ 'IN', [ 'ROW' ] + [ [ 'COLUMN', None, column ] for column in rcolumns ],
-                                   [ [ 'ROW' ] + [ [ 'PARAM', (i, j), converter ] for j, converter in enumerate(rconverters) ]
-                                     for i in xrange(batch_size) ] ] ]
-        else:
-            pairs = zip(rcolumns, rconverters)
-            criteria_list = [ [ 'OR' ] + [ [ 'AND' ] + [ [ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (i, j), converter ] ]
-                                                   for j, (column, converter) in enumerate(pairs) ]
-                                       for i in xrange(batch_size) ] ]
-
+        row_value_syntax = database.provider.translator_cls.row_value_syntax
+        criteria_list = construct_criteria_list('T1', rcolumns, rconverters, row_value_syntax, batch_size)
         sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
         sql, adapter = attr.cached_load_sql[batch_size] = database._ast2sql(sql_ast)
         return sql, adapter
@@ -2349,26 +2356,10 @@ class EntityMeta(type):
         else:
             columns = attr.columns
             converters = attr.converters
-        if batch_size == 1:
-            criteria_list = [ [ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (0, i), converter ] ]
-                              for i, (column, converter) in enumerate(izip(columns, converters)) ]
-        elif len(columns) == 1:
-            converter = converters[0]
-            criteria_list = [ [ 'IN', [ 'COLUMN', None, columns[0] ],
-                                   [ [ 'PARAM', (i, 0), converter ] for i in xrange(batch_size) ] ] ]
-        elif entity._database_.provider.translator_cls.row_value_syntax:
-            criteria_list = [ [ 'IN', [ 'ROW' ] + [ [ 'COLUMN', None, column ] for column in columns ],
-                                    [ [ 'ROW' ] + [ [ 'PARAM', (i, j), converter ] for j, converter in enumerate(converters) ]
-                                     for i in xrange(batch_size) ] ] ]
-        else:
-            pairs = zip(columns, converters)
-            criteria_list = [ [ 'OR' ] + [ [ 'AND' ] + [ [ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (i, j), converter ] ]
-                                                     for j, (column, converter) in enumerate(pairs) ]
-                                         for i in xrange(batch_size) ] ]
-
+        row_value_syntax = entity._database_.provider.translator_cls.row_value_syntax
+        criteria_list = construct_criteria_list(None, columns, converters, row_value_syntax, batch_size)
         discr_criteria = entity._construct_discriminator_criteria_()
         if discr_criteria: criteria_list.insert(0, discr_criteria)
-
         sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
