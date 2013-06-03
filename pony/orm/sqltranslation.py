@@ -824,7 +824,7 @@ class Monad(object):
         expr = monad.getsql()
         count_kind = 'DISTINCT'
         if monad.type is bool:
-            expr = [ 'CASE', None, [ [ expr, [ 'VALUE', 1 ] ] ], [ 'VALUE', None ] ]
+            expr = [ 'CASE', None, [ [ expr[0], [ 'VALUE', 1 ] ] ], [ 'VALUE', None ] ]
             count_kind = 'ALL'
         elif len(expr) == 1: expr = expr[0]
         elif translator.dialect == 'PostgreSQL':
