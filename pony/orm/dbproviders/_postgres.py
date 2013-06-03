@@ -15,6 +15,7 @@ class PGTable(dbschema.Table):
     pass
 
 class PGSchema(dbschema.DBSchema):
+    dialect = 'PostgreSQL'
     table_class = PGTable
     column_class = PGColumn
 

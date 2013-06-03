@@ -56,6 +56,7 @@ class OraColumn(dbschema.Column):
     auto_template = None
 
 class OraSchema(dbschema.DBSchema):
+    dialect = 'Oracle'
     table_class = OraTable
     column_class = OraColumn
 

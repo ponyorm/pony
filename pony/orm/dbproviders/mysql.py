@@ -18,6 +18,7 @@ class MySQLColumn(dbschema.Column):
     auto_template = '%(type)s PRIMARY KEY AUTO_INCREMENT'
 
 class MySQLSchema(dbschema.DBSchema):
+    dialect = 'MySQL'
     column_class = MySQLColumn
 
 class MySQLTranslator(SQLTranslator):
