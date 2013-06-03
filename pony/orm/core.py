@@ -2841,7 +2841,7 @@ class Entity(object):
                         if attr.cascade_delete: val._delete_()
                         elif not reverse.is_required: reverse.__set__(val, None, undo_funcs)
                         else: throw(ConstraintError, "Cannot delete object %s, because it has associated %s, "
-                                                     "and 'cascade_delete' option of %s is set to False"
+                                                     "and 'cascade_delete' option of %s is not set"
                                                      % (obj, attr.name, attr))
                     elif isinstance(reverse, Set):
                         if val is NOT_LOADED: pass
@@ -2854,7 +2854,7 @@ class Entity(object):
                         for robj in set_wrapper: robj._delete_()
                     elif not reverse.is_required: attr.__set__(obj, (), undo_funcs)
                     else: throw(ConstraintError, "Cannot delete object %s, because it has non-empty set of %s, "
-                                                 "and 'cascade_delete' option of %s is set to False"
+                                                 "and 'cascade_delete' option of %s is not set"
                                                  % (obj, attr.name, attr))
                 else: throw(NotImplementedError)
 
