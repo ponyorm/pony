@@ -372,7 +372,7 @@ class SQLTranslator(ASTTranslator):
                 else: aggr_ast = [ 'COUNT', 'DISTINCT', column_ast ]
             else: aggr_ast = [ aggr_func_name, column_ast ]
             if aggr_ast: select_ast = [ 'AGGREGATES', aggr_ast ]
-        elif isinstance(translator.expr_type, EntityMeta) and not translator.optimize:
+        elif isinstance(translator.expr_type, EntityMeta) and not translator.aggregated and not translator.optimize:
             select_ast, attr_offsets = translator.expr_type._construct_select_clause_(translator.alias, distinct)
         else: select_ast = [ distinct and 'DISTINCT' or 'ALL' ] + translator.expr_columns
         sql_ast.append(select_ast)
