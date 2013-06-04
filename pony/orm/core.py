@@ -1444,9 +1444,9 @@ class Set(Collection):
         database = attr.entity._database_
         row_value_syntax = database.provider.translator_cls.row_value_syntax
         where_list = [ 'WHERE' ]
+        where_list += construct_criteria_list('T1', rcolumns, rconverters, row_value_syntax, batch_size, items_count)
         if items_count:
             where_list += construct_criteria_list('T1', columns, converters, row_value_syntax, items_count)
-        where_list += construct_criteria_list('T1', rcolumns, rconverters, row_value_syntax, batch_size, items_count)
         sql_ast = [ 'SELECT', select_list, from_list, where_list ]
         sql, adapter = attr.cached_load_sql[cache_key] = database._ast2sql(sql_ast)
         return sql, adapter
@@ -1470,6 +1470,8 @@ class Set(Collection):
         return wrapper_class(obj, attr)
     @cut_traceback
     def __set__(attr, obj, new_items, undo_funcs=None):
+        if isinstance(new_items, SetWrapper) and new_items._obj_ is obj and new_items._attr_ is attr:
+            return  # after += or -=
         cache = obj._cache_
         if not cache.is_alive: throw_obsolete_cache(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
@@ -1762,8 +1764,11 @@ class SetWrapper(object):
         if not reverse: throw(NotImplementedError)
         new_items = attr.check(new_items, obj)
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
-        if setdata is NOT_LOADED: setdata = obj._vals_[attr.name] = SetData()
-        new_items.difference_update(setdata.added)
+        if setdata is not NOT_LOADED:
+            new_items.difference_update(setdata)
+        if setdata is NOT_LOADED or not setdata.is_fully_loaded:
+            setdata = attr.load(obj, new_items)
+        new_items.difference_update(setdata)
         undo_funcs = []
         try:
             if not reverse.is_collection:
@@ -1792,11 +1797,12 @@ class SetWrapper(object):
         reverse = attr.reverse
         if not reverse: throw(NotImplementedError)
         items = attr.check(items, obj)
-        if not items: return
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
+        if setdata is not NOT_LOADED:
+            items.difference_update(setdata.removed)
+        if not items: return
         if setdata is NOT_LOADED or not setdata.is_fully_loaded:
             setdata = attr.load(obj, items)
-        items.difference_update(setdata.removed)
         undo_funcs = []
         try:
             if not reverse.is_collection:
