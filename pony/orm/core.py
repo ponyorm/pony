@@ -547,7 +547,7 @@ class Database(object):
                         attr.nullable = True
                     if entity._root_ is not entity:
                         if attr.nullable is False: throw(ERDiagramError,
-                            'Attribute %s must be nullable due to single-table inheritance')
+                            'Attribute %s must be nullable due to single-table inheritance' % attr)
                         attr.nullable = True
                     columns = attr.get_columns()
                     if not attr.reverse and attr.default is not None:
