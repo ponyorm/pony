@@ -228,7 +228,7 @@ class OraProvider(DBAPIProvider):
     @wrap_dbapi_exceptions
     def execute_returning_id(provider, cursor, sql, arguments):
         set_input_sizes(cursor, arguments)
-        var = cursor.var(cx_Oracle.NUMBER)
+        var = cursor.var(cx_Oracle.STRING, 40, cursor.arraysize, outconverter=int)
         arguments['new_id'] = var
         cursor.execute(sql, arguments)
         return var.getvalue()
