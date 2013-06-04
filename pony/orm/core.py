@@ -3618,8 +3618,6 @@ class Query(object):
         assert isinstance(tree, ast.GenExprInner)
         extractors, varnames, tree = create_extractors(code_key, tree)
         vars, vartypes = extract_vars(extractors, globals, locals)
-        query._vars = vars
-        query._key = code_key, tuple(map(vartypes.__getitem__, varnames)), left_join
 
         node = tree.quals[0].iter
         origin = vars[node.src]
@@ -3627,9 +3625,19 @@ class Query(object):
         elif not isinstance(origin, EntityMeta):
             if node.src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
             else: throw(TypeError, 'Cannot iterate over non-entity object %s' % node.src)
-        query._database = database = origin._database_
+        database = origin._database_
         if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
         if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
+
+        if database.provider.translator_cls.dialect == 'Oracle':
+            for name, value in vars.iteritems():
+                if value == '':
+                    vars[name] = None
+                    vartypes[name] = type(None)
+
+        query._vars = vars
+        query._key = code_key, tuple(map(vartypes.__getitem__, varnames)), left_join
+        query._database = database
         query._cache = database._get_cache()
 
         translator = database._translator_cache.get(query._key)

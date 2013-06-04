@@ -65,9 +65,16 @@ class OraNoneMonad(sqltranslation.NoneMonad):
         assert value in (None, '')
         sqltranslation.ConstMonad.__init__(monad, translator, None)
 
+class OraConstMonad(sqltranslation.ConstMonad):
+    @staticmethod
+    def new(translator, value):
+        if value == '': value = None
+        return sqltranslation.ConstMonad.new(translator, value)    
+
 class OraTranslator(sqltranslation.SQLTranslator):
     dialect = 'Oracle'
     NoneMonad = OraNoneMonad
+    ConstMonad = OraConstMonad
 
     @classmethod
     def get_normalized_type_of(translator, value):
