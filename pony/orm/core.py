@@ -541,6 +541,10 @@ class Database(object):
                     m2m_table.m2m.add(attr)
                     m2m_table.m2m.add(reverse)
                 else:
+                    if schema.dialect == 'Oracle' and attr.is_string and not attr.is_required:
+                        if attr.nullable is False: throw(ERDiagramError,
+                            'In Oracle, optional string attribute %s must be nullable' % attr)
+                        attr.nullable = True
                     if entity._root_ is not entity:
                         if attr.nullable is False: throw(ERDiagramError,
                             'Attribute %s must be nullable due to single-table inheritance')
