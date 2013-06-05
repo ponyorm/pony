@@ -447,6 +447,8 @@ class Database(object):
         if type(new_id) is long: new_id = int(new_id)
         return new_id
     def _exec_sql_many(database, sql, arguments_list, autoflush=True):
+        if len(arguments_list) == 1:
+            return database._exec_sql(sql, arguments_list[0], autoflush)
         cache = database._get_cache()
         if autoflush and not cache.optimistic and cache.modified: cache.flush()
         cursor = cache.connection.cursor()
