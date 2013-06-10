@@ -398,6 +398,10 @@ class DecimalConverter(Converter):
         converter.min_val = min_val
         converter.max_val = max_val
     def validate(converter, val):
+        if isinstance(val, float):
+            s = str(val)
+            if float(s) != val: s = repr(val)
+            val = Decimal(s)
         try: val = Decimal(val)
         except InvalidOperation, exc:
             throw(TypeError, 'Invalid value for attribute %s: %r' % (converter.attr, val))
