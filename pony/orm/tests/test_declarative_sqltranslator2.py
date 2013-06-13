@@ -40,7 +40,7 @@ class Student(db.Entity):
     group = Required(Group)
     courses = Set(Course)
 
-@with_transaction
+@db_session
 def populate_db():
     d1 = Department(name="Department of Computer Science")
     d2 = Department(name="Department of Mathematical Sciences")

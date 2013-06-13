@@ -15,7 +15,7 @@ class Group(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-@with_transaction
+@db_session
 def populate_db():
     g1 = Group(id=1)
     g2 = Group(id=2)

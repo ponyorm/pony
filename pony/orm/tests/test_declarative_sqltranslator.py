@@ -51,7 +51,7 @@ class Room(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-@with_transaction
+@db_session
 def populate_db():
     d1 = Department(number=44)
     d2 = Department(number=43)

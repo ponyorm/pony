@@ -8,6 +8,7 @@ from time import time
 import datetime
 from threading import Lock
 from __builtin__ import min as _min, max as _max, sum as _sum
+import warnings
 
 import pony
 from pony import options
@@ -21,7 +22,8 @@ from pony.orm.dbapiprovider import (
     )
 from pony.utils import (
     localbase, simple_decorator, decorator_with_params, cut_traceback, throw,
-    import_module, parse_expr, is_ident, count, avg as _avg, tostring, strjoin
+    import_module, parse_expr, is_ident, count, avg as _avg, tostring, strjoin,
+    copy_func_attrs
     )
 
 __all__ = '''
@@ -43,7 +45,7 @@ __all__ = '''
 
     PrimaryKey Required Optional Set Discriminator
     composite_key
-    flush commit rollback with_transaction
+    flush commit rollback db_session with_transaction
 
     AsciiStr LongStr LongUnicode
 
@@ -61,6 +63,14 @@ debug = False
 def sql_debug(value):
     global debug
     debug = value
+
+class PonyDeprecationWarning(DeprecationWarning):
+    pass
+
+def deprecated(message):
+    warnings.warn(message, PonyDeprecationWarning, stacklevel=3)
+
+warnings.simplefilter('once', PonyDeprecationWarning)
 
 orm_logger = logging.getLogger('pony.orm')
 sql_logger = logging.getLogger('pony.orm.sql')
@@ -226,7 +236,7 @@ next_num = _count().next
 class Local(localbase):
     def __init__(local):
         local.db2cache = {}
-        local.inside_with_transaction_decorator = False
+        local.db_context_counter = 0
 
 local = Local()
 
@@ -871,7 +881,7 @@ class Attribute(object):
     @cut_traceback
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
-        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
+        if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         result = attr.get(obj)
         if attr.pk_offset is not None: return result
         bit = obj._bits_[attr]
@@ -890,7 +900,7 @@ class Attribute(object):
     @cut_traceback
     def __set__(attr, obj, new_val, undo_funcs=None):
         cache = obj._cache_
-        if not cache.is_alive: throw_obsolete_cache(obj)
+        if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         is_reverse_call = undo_funcs is not None
         reverse = attr.reverse
@@ -1465,7 +1475,7 @@ class Set(Collection):
     @cut_traceback
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
-        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
+        if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         rentity = attr.py_type
         wrapper_class = rentity._get_set_wrapper_subclass_()
@@ -1475,7 +1485,7 @@ class Set(Collection):
         if isinstance(new_items, SetWrapper) and new_items._obj_ is obj and new_items._attr_ is attr:
             return  # after += or -=
         cache = obj._cache_
-        if not cache.is_alive: throw_obsolete_cache(obj)
+        if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         new_items = attr.check(new_items, obj)
         reverse = attr.reverse
@@ -1677,7 +1687,7 @@ class SetWrapper(object):
         return unpickle_setwrapper, (wrapper._obj_, wrapper._attr_.name, wrapper.copy())
     @cut_traceback
     def copy(wrapper):
-        if not wrapper._obj_._cache_.is_alive: throw_obsolete_cache(obj)
+        if not wrapper._obj_._cache_.is_alive: throw_db_session_is_over(obj)
         return wrapper._attr_.copy(wrapper._obj_)
     @cut_traceback
     def __repr__(wrapper):
@@ -1691,7 +1701,7 @@ class SetWrapper(object):
     def __nonzero__(wrapper):
         attr = wrapper._attr_
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
+        if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED: setdata = attr.load(obj)
@@ -1702,7 +1712,7 @@ class SetWrapper(object):
     def __len__(wrapper):
         attr = wrapper._attr_
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
+        if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED or not setdata.is_fully_loaded: setdata = attr.load(obj)
         return len(setdata)
@@ -1729,7 +1739,7 @@ class SetWrapper(object):
     @cut_traceback
     def __contains__(wrapper, item):
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
+        if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
         if not isinstance(item, attr.py_type): return False
@@ -1759,7 +1769,7 @@ class SetWrapper(object):
     @cut_traceback
     def add(wrapper, new_items):
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
+        if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
         reverse = attr.reverse
@@ -1793,7 +1803,7 @@ class SetWrapper(object):
     @cut_traceback
     def remove(wrapper, items):
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
+        if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
         reverse = attr.reverse
@@ -1827,7 +1837,7 @@ class SetWrapper(object):
     @cut_traceback
     def clear(wrapper):
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
+        if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         wrapper._attr_.__set__(obj, None)
 
@@ -1861,7 +1871,7 @@ class Multiset(object):
         return unpickle_multiset, (multiset._obj_, multiset._attrnames_, multiset._items_)
     @cut_traceback
     def distinct(multiset):
-        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
         return multiset._items_.copy()
     @cut_traceback
     def __repr__(multiset):
@@ -1874,24 +1884,24 @@ class Multiset(object):
                                  '.'.join(multiset._attrnames_), size_str)
     @cut_traceback
     def __str__(multiset):
-        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
         return '%s(%s)' % (multiset.__class__.__name__, str(multiset._items_))
     @cut_traceback
     def __nonzero__(multiset):
-        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
         return bool(multiset._items_)
     @cut_traceback
     def __len__(multiset):
-        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
         return _sum(multiset._items_.values())
     @cut_traceback
     def __iter__(multiset):
-        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
         for item, cnt in multiset._items_.iteritems():
             for i in range(cnt): yield item
     @cut_traceback
     def __eq__(multiset, other):
-        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
         if isinstance(other, Multiset):
             return multiset._items_ == other._items_
         if isinstance(other, dict):
@@ -1904,7 +1914,7 @@ class Multiset(object):
         return not multiset.__eq__(other)
     @cut_traceback
     def __contains__(multiset, item):
-        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
         return item in multiset._items_
 
 ##class List(Collection): pass
@@ -2682,8 +2692,8 @@ created_or_deleted_statuses = set(['created']) | del_statuses
 def throw_object_was_deleted(obj):
     throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
 
-def throw_obsolete_cache(obj):
-    throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+def throw_db_session_is_over(obj):
+    throw(TransactionRolledBack, 'Object %s cannot be used after the database session is over' % obj)
 
 def unpickle_entity(d):
     entity = d.pop('__class__')
@@ -2781,7 +2791,7 @@ class Entity(object):
         return '%s[%s]' % (obj.__class__.__name__, pkval)
     def _load_(obj):
         cache = obj._cache_
-        if not cache.is_alive: throw_obsolete_cache(obj)
+        if not cache.is_alive: throw_db_session_is_over(obj)
         entity = obj.__class__
         database = entity._database_
         if cache is not database._get_cache():
@@ -2952,12 +2962,12 @@ class Entity(object):
             raise
     @cut_traceback
     def delete(obj):
-        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
+        if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         obj._delete_()
     @cut_traceback
     def set(obj, **kwargs):
         cache = obj._cache_
-        if not cache.is_alive: throw_obsolete_cache(obj)
+        if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         avdict, collection_avdict = obj._keyargs_to_avdicts_(kwargs)
         status = obj._status_
@@ -3046,7 +3056,7 @@ class Entity(object):
     @cut_traceback
     def check_on_commit(obj):
         cache = obj._cache_
-        if not cache.is_alive: throw_obsolete_cache(obj)
+        if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ not in ('loaded', 'saved'): return
         obj._status_ = 'locked'
         cache.to_be_checked.append(obj)
@@ -3507,45 +3517,53 @@ def _release():
     for cache in _get_caches(): cache.release()
     assert not local.db2cache
 
-def _with_transaction(func, args, kwargs, allowed_exceptions=()):
-    if local.inside_with_transaction_decorator:
-        return func(*args, **kwargs)
+class DBSessionContextManager(object):
+    def __init__(self, retry=1, retry_exceptions=(TransactionError,), allowed_exceptions=()):
+        if retry is not 1 and (type(retry) is not int or retry < 0): throw(TypeError)
+        self.retry = retry
+        self.retry_exceptions = retry_exceptions
+        self.allowed_exceptions = allowed_exceptions
+        self.is_decorator = False
+    def __call__(self, *args, **kwargs):
+        if not args and not kwargs: return self
+        if len(args) > 1: throw(TypeError)
+        if len(args) == 1:
+            if kwargs: throw(TypeError)
+            self.is_decorator = True
+            old_func = args[0]
+            def new_func(*args, **kwargs):
+                for i in xrange(self.retry):
+                    try:
+                        with self: return old_func(*args, **kwargs)
+                    except Exception, e:
+                        if not isinstance(e, self.retry_exceptions): raise
+                raise e
+            return copy_func_attrs(new_func, old_func, 'db_session')
+        return self.__class__(**kwargs)
+    def __enter__(self):
+        if not self.is_decorator and self.retry != 1: throw(TypeError,
+            "@db_session can accept 'retry' parameter only when used as decorator and not as context manager")
+        local.db_context_counter += 1
+    def __exit__(self, exc_type=None, exc_value=None, traceback=None):
+        local.db_context_counter -= 1
+        if local.db_context_counter: return
+        try:
+            if exc_type is None:
+                commit()
+                return
+            assert isinstance(exc_value, exc_type)
+            allowed_exceptions = self.allowed_exceptions
+            if callable(allowed_exceptions): allowed = allowed_exceptions(exc_value)
+            else: allowed = isinstance(exc_value, tuple(allowed_exceptions))
+            if allowed: commit()
+            else: rollback()
+        finally: _release()
 
-    local.inside_with_transaction_decorator = True
-    try:
-        try: result = func(*args, **kwargs)
-        except Exception, e:
-            exc_info = sys.exc_info()
-            try:
-                # write to log
+db_session = DBSessionContextManager()
 
-                if callable(allowed_exceptions): allowed = allowed_exceptions(e)
-                else: allowed = isinstance(e, tuple(allowed_exceptions))
-                if allowed: commit()
-                else: rollback()
-
-            finally:
-                try: raise exc_info[0], exc_info[1], exc_info[2]
-                finally: del exc_info
-        else:
-            commit()
-            return result
-    finally:
-        local.inside_with_transaction_decorator = False
-        _release()
-
-@decorator_with_params
-def with_transaction(func, retry=1, retry_exceptions=(TransactionError,), allowed_exceptions=()):
-    def new_func(*args, **kwargs):
-        counter = retry
-        while counter > 0:
-            try: return _with_transaction(func, args, kwargs, allowed_exceptions)
-            except Exception, e:
-                for exc_class in retry_exceptions:
-                    if isinstance(e, exc_class): break # for
-                else: raise
-            counter -= 1
-    return new_func
+def with_transaction(*args, **kwargs):
+    deprecated("@with_transaction decorator is deprecated, use @db_session decorator instead")
+    return db_session(*args, **kwargs)
 
 @simple_decorator
 def db_decorator(func, *args, **kwargs):

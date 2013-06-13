@@ -11,7 +11,7 @@ class Student(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-@with_transaction
+@db_session
 def populate_db():
     Student(id=1, name="B", scholarship=None, group=41)
     Student(id=2, name="C", scholarship=700, group=41)

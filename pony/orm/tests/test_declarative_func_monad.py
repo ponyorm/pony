@@ -23,7 +23,7 @@ class Group(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-@with_transaction
+@db_session
 def populate_db():
     g1 = Group(number=1)
     g2 = Group(number=2)

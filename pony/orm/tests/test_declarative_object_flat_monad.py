@@ -28,7 +28,7 @@ class Mark(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-@with_transaction
+@db_session
 def populate_db():
     Math = Subject(name="Math")
     Physics = Subject(name="Physics")

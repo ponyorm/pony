@@ -63,6 +63,7 @@ SHIPPED = 'SHIPPED'
 DELIVERED = 'DELIVERED'
 CANCELLED = 'CANCELLED'
 
+@db_session
 def populate_database():
     c1 = Customer(email='john@example.com', password='***',
                   name='John Smith', country='USA', address='address 1')
@@ -157,8 +158,6 @@ def populate_database():
 
     OrderItem(order=o5, product=p1, price=Decimal('284.00'), quantity=1)
     OrderItem(order=o5, product=p2, price=Decimal('478.50'), quantity=1)
-
-    commit()
 
 
 def test_queries():
