@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import unittest
 from pony.orm.core import *
 from testutils import *
@@ -11,20 +13,21 @@ class Student(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-@db_session
-def populate_db():
+with db_session:
     Student(id=1, name="B", scholarship=None, group=41)
     Student(id=2, name="C", scholarship=700, group=41)
     Student(id=3, name="A", scholarship=500, group=42)
     Student(id=4, name="D", scholarship=500, group=43)
     Student(id=5, name="E", scholarship=700, group=42)
-populate_db()
 
 class TestOrderbyLimit(unittest.TestCase):
     def setUp(self):
         rollback()
+        db_session.__enter__()
+
     def tearDown(self):
         rollback()
+        db_session.__exit__()
 
     def test1(self):
         students = set(select(s for s in Student).order_by(Student.name))

@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import unittest
 from testutils import *
 from pony.orm.core import *
@@ -21,18 +23,22 @@ class Group(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-g101 = Group(number=101)
-g102 = Group(number=102)
+with db_session:
+    g101 = Group(number=101)
+    g102 = Group(number=102)
 
-s1 = Student(id=1, name='Student1', group=g101)
-s2 = Student(id=2, name='Student2', group=g102)
-ext_info = ExtInfo(id=100, info='ext_info1')
-ext_info2 = ExtInfo(id=200, info='ext_info2')
-commit()
+    s1 = Student(id=1, name='Student1', group=g101)
+    s2 = Student(id=2, name='Student2', group=g102)
+    ext_info = ExtInfo(id=100, info='ext_info1')
+    ext_info2 = ExtInfo(id=200, info='ext_info2')
 
 class TestORMUndo(unittest.TestCase):
     def setUp(self):
-        db.rollback()
+        rollback()
+        db_session.__enter__()
+    def tearDown(self):
+        rollback()
+        db_session.__exit__()
     @raises_exception(ConstraintError, 'Attribute Student.group cannot be set to None')
     def test2(self):
         Student[1].group = None

@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import unittest
 from pony.orm.core import *
 from testutils import *
@@ -29,8 +31,7 @@ class Mark(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-@db_session
-def populate_db():
+with db_session:
     g41 = Group(number=41, department=101)
     g42 = Group(number=42, department=102)
     g43 = Group(number=43, department=102)
@@ -58,13 +59,15 @@ def populate_db():
     Mark(value=1, student=s3, subject=History)
     Mark(value=2, student=s3, subject=Math)
     Mark(value=2, student=s4, subject=Math)
-populate_db()
-
+    
 class TestAttrSetMonad(unittest.TestCase):
     def setUp(self):
         rollback()
+        db_session.__enter__()
+        
     def tearDown(self):
         rollback()
+        db_session.__exit__()
 
     def test1(self):
         groups = select(g for g in Group if len(g.students) > 2)[:]

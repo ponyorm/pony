@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import unittest
 from datetime import date
 from pony.orm.core import *
@@ -51,8 +53,7 @@ class Room(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-@db_session
-def populate_db():
+with db_session:
     d1 = Department(number=44)
     d2 = Department(number=43)
     g1 = Group(id=1, dept=d1)
@@ -75,13 +76,11 @@ def populate_db():
     g2.rooms = [ r2, r3 ]
     c1.students.add(s1)
     c2.students.add(s2)
-populate_db()
 
 db2 = Database('sqlite', ':memory:')
 
 class Room2(db2.Entity):
     name = PrimaryKey(unicode)
-
 
 db2.generate_mapping(create_tables=True)
 
@@ -90,8 +89,10 @@ name1 = 'S1'
 class TestSQLTranslator(unittest.TestCase):
     def setUp(self):
         rollback()
+        db_session.__enter__()
     def tearDown(self):
         rollback()
+        db_session.__exit__()
     def test_select1(self):
         result = set(select(s for s in Student))
         self.assertEquals(result, set([Student[1], Student[2], Student[3]]))

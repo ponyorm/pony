@@ -23,6 +23,12 @@ def flatten(x):
             result.append(el)
     return result
 
+class TestConnection(object):
+    def commit(con):
+        pass
+    def rollback(con):
+        pass
+
 class TestCursor(object):
     def __init__(cursor):
         cursor.description = []
@@ -37,7 +43,7 @@ test_cursor = TestCursor()
 
 class TestPool(object):
     def connect(pool):
-        return None
+        return TestConnection()
     def release(pool, con):
         pass
     def drop(pool, con):

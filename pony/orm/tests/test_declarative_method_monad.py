@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import unittest
 from pony.orm.core import *
 from testutils import *
@@ -10,21 +12,21 @@ class Student(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-@db_session
-def populate_db():
+with db_session:
     Student(id=1, name="Joe", scholarship=None)
     Student(id=2, name=" Bob ", scholarship=100)
     Student(id=3, name=" Beth ", scholarship=500)
     Student(id=4, name="Jon", scholarship=500)
     Student(id=5, name="Pete", scholarship=700)
-populate_db()
 
 class TestMethodMonad(unittest.TestCase):
     def setUp(self):
         rollback()
+        db_session.__enter__()
 
     def tearDown(self):
         rollback()
+        db_session.__exit__()
 
     def test1(self):
         students = set(select(s for s in Student if not s.name.startswith('J')))

@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import unittest
 from datetime import date, datetime
 from pony.orm.core import *
@@ -12,14 +14,18 @@ class Entity1(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-Entity1(a=1, b=date(2009, 10, 20), c=datetime(2009, 10, 20, 10, 20, 30))
-Entity1(a=2, b=date(2010, 10, 21), c=datetime(2010, 10, 21, 10, 21, 31))
-Entity1(a=3, b=date(2011, 11, 22), c=datetime(2011, 11, 22, 10, 20, 32))
-commit()
+with db_session:
+    Entity1(a=1, b=date(2009, 10, 20), c=datetime(2009, 10, 20, 10, 20, 30))
+    Entity1(a=2, b=date(2010, 10, 21), c=datetime(2010, 10, 21, 10, 21, 31))
+    Entity1(a=3, b=date(2011, 11, 22), c=datetime(2011, 11, 22, 10, 20, 32))
 
 class TestDate(unittest.TestCase):
     def setUp(self):
         rollback()
+        db_session.__enter__()
+    def tearDown(self):
+        rollback()
+        db_session.__exit__()
     def test_create(self):
         e1 = Entity1(a=4, b=date(2011, 10, 20), c=datetime(2009, 10, 20, 10, 20, 30))
         self.assert_(True)

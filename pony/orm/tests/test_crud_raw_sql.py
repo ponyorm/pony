@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import unittest
 from pony.orm.core import *
 from testutils import raises_exception
@@ -26,15 +28,19 @@ db.generate_mapping(create_tables=True)
 
 class TestRawSql(unittest.TestCase):
     def setUp(self):
+        with db_session:
+            db.execute('delete from Student')
+            db.execute('delete from "Group"')
+            db.insert('Group', dept=44, grad_year=1999)
+            db.insert('Student', id=1, name='A', age=30, group_dept=44, group_grad_year=1999)
+            db.insert('Student', id=2, name='B', age=25, group_dept=44, group_grad_year=1999)
+            db.insert('Student', id=3, name='C', age=20, group_dept=44, group_grad_year=1999)
         rollback()
-        db.execute('delete from Student')
-        db.execute('delete from "Group"')
-        db.insert('Group', dept=44, grad_year=1999)
-        db.insert('Student', id=1, name='A', age=30, group_dept=44, group_grad_year=1999)
-        db.insert('Student', id=2, name='B', age=25, group_dept=44, group_grad_year=1999)
-        db.insert('Student', id=3, name='C', age=20, group_dept=44, group_grad_year=1999)
-        commit()
+        db_session.__enter__()
+
+    def tearDown(self):
         rollback()
+        db_session.__exit__()
 
     def test1(self):
         students = set(Student.select_by_sql("select id, name, age, group_dept, group_grad_year from Student order by age"))

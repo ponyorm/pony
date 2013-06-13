@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import unittest
 from pony.orm.core import *
 
@@ -28,8 +30,7 @@ class Mark(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-@db_session
-def populate_db():
+with db_session:
     Math = Subject(name="Math")
     Physics = Subject(name="Physics")
     History = Subject(name="History")
@@ -51,19 +52,14 @@ def populate_db():
     Mark(value=1, student=s3, subject=History)
     Mark(value=2, student=s3, subject=Math)
     Mark(value=2, student=s4, subject=Math)
-populate_db()
 
 class TestObjectFlatMonad(unittest.TestCase):
-    def setUp(self):
-        rollback()
-
-    def tearDown(Self):
-        rollback()
-
+    @db_session
     def test1(self):
         result = set(select(s.groups for s in Subject if len(s.name) == 4))
         self.assertEquals(result, set([Group[41], Group[42]]))
 
+    @db_session
     def test2(self):
         result = set(select(g.students for g in Group if g.department == 102))
         self.assertEquals(result, set([Student[5], Student[4]]))

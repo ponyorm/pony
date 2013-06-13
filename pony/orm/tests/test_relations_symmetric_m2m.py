@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import unittest
 from pony.orm.core import *
 
@@ -12,25 +14,23 @@ db.generate_mapping(create_tables=True)
 class TestSymmetric(unittest.TestCase):
     def setUp(self):
         rollback()
-        for i in range(1, 6):
-            try:
-                p = Person[i]
-                p.delete()
-            except ObjectNotFound: break
-        else:
+        with db_session:
+            for p in Person.select(): p.delete()
             commit()
-        db.insert('person', id=1, name='A')
-        db.insert('person', id=2, name='B')
-        db.insert('person', id=3, name='C')
-        db.insert('person', id=4, name='D')
-        db.insert('person', id=5, name='E')
-        db.insert('person_friends', person=1, person_2=2)
-        db.insert('person_friends', person=2, person_2=1)
-        db.insert('person_friends', person=1, person_2=3)
-        db.insert('person_friends', person=3, person_2=1)
-        commit()
+            db.insert('person', id=1, name='A')
+            db.insert('person', id=2, name='B')
+            db.insert('person', id=3, name='C')
+            db.insert('person', id=4, name='D')
+            db.insert('person', id=5, name='E')
+            db.insert('person_friends', person=1, person_2=2)
+            db.insert('person_friends', person=2, person_2=1)
+            db.insert('person_friends', person=1, person_2=3)
+            db.insert('person_friends', person=3, person_2=1)
         rollback()
-
+        db_session.__enter__()
+    def tearDown(self):
+        rollback()
+        db_session.__exit__()
     def test1a(self):
         p1 = Person[1]
         p4 = Person[4]

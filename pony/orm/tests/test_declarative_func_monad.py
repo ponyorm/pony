@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import unittest
 from datetime import date, datetime
 from decimal import Decimal
@@ -23,8 +25,7 @@ class Group(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-@db_session
-def populate_db():
+with db_session:
     g1 = Group(number=1)
     g2 = Group(number=2)
 
@@ -43,14 +44,14 @@ def populate_db():
     Student(id=5, name="EE", dob=date(1985, 05, 05), last_visit=datetime(2011, 05, 05, 15, 15, 15),
                    scholarship=Decimal("505.5"), phd=False, group=g2)
 
-populate_db()
-
 
 class TestFuncMonad(unittest.TestCase):
     def setUp(self):
         rollback()
+        db_session.__enter__()
     def tearDown(self):
         rollback()
+        db_session.__exit__()
     def test_minmax1(self):
         result = set(select(s for s in Student if max(s.id, 3) == 3 ))
         self.assertEquals(result, set([Student[1], Student[2], Student[3]]))

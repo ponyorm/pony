@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import unittest
 from pony.orm.core import *
 
@@ -13,8 +15,7 @@ class Subject(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-@db_session
-def populate_db():
+with db_session:
    g1 = Group(number=101)
    g2 = Group(number=102)
    s1 = Subject(name='Subj1')
@@ -22,13 +23,14 @@ def populate_db():
    s3 = Subject(name='Subj3')
    s4 = Subject(name='Subj4')
    g1.subjects = [ s1, s2 ]
-populate_db()
 
 class TestManyToManyNonComposite(unittest.TestCase):
     def setUp(self):
         rollback()
+        db_session.__enter__()
     def tearDown(self):
         rollback()
+        db_session.__exit__()
     def test_add_remove(self):
         g = Group.get(number=101)
         subjects = Subject.select()[:]

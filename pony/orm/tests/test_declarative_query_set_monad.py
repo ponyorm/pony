@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import unittest
 from pony.orm.core import *
 from testutils import *
@@ -15,21 +17,21 @@ class Group(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-@db_session
-def populate_db():
+with db_session:
     g1 = Group(id=1)
     g2 = Group(id=2)
     s1 = Student(id=1, name='S1', group=g1, scholarship=0)
     s2 = Student(id=2, name='S2', group=g1, scholarship=100)
     s3 = Student(id=3, name='S3', group=g2, scholarship=500)
-populate_db()
 
 class TestQuerySetMonad(unittest.TestCase):
     def setUp(self):
         rollback()
+        db_session.__enter__()
 
     def tearDown(self):
         rollback()
+        db_session.__exit__()
 
     def test_len(self):
         result = set(select(g for g in Group if len(g.students) > 1))

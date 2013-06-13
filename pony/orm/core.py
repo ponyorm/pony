@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import __builtin__, re, sys, types, inspect, logging
 from compiler import ast, parse
 from cPickle import loads, dumps
@@ -6,7 +8,7 @@ from itertools import count as _count, ifilter, ifilterfalse, imap, izip, chain,
 from collections import defaultdict
 from time import time
 import datetime
-from threading import Lock
+from threading import Lock, currentThread as current_thread, _MainThread
 from __builtin__ import min as _min, max as _max, sum as _sum
 import warnings
 
@@ -343,6 +345,9 @@ class Database(object):
     def _get_cache(database):
         cache = local.db2cache.get(database)
         if cache is not None: return cache
+        if not local.db_context_counter and not (
+                pony.MODE == 'INTERACTIVE' and current_thread().__class__ is _MainThread
+            ): throw(TransactionError, 'db_session is required when working with the database')
         connection = database.provider.connect()
         cache = local.db2cache[database] = Cache(database, connection)
         return cache
@@ -471,6 +476,9 @@ class Database(object):
     def generate_mapping(database, filename=None, check_tables=False, create_tables=False):
         if create_tables and check_tables: throw(TypeError,
             "Parameters 'check_tables' and 'create_tables' cannot be set to True at the same time")
+        if local.db_context_counter: throw(MappingError,
+            "generate_mapping() couldn't be used inside @db_session")
+        assert local.db2cache.get(database) is None
 
         def get_columns(table, column_names):
             return tuple(map(table.column_dict.__getitem__, column_names))
@@ -619,23 +627,24 @@ class Database(object):
                     child_columns = get_columns(table, attr.columns)
                     table.add_foreign_key(None, child_columns, parent_table, parent_columns)
 
-        database.rollback()
         if create_tables: schema.create_tables()
 
         if not check_tables and not create_tables: return
 
-        for table in schema.tables.values():
-            if isinstance(table.name, tuple): alias = table.name[-1]
-            elif isinstance(table.name, basestring): alias = table.name
-            else: assert False
-            sql_ast = [ 'SELECT',
-                        [ 'ALL', ] + [ [ 'COLUMN', alias, column.name ] for column in table.column_list ],
-                        [ 'FROM', [ alias, 'TABLE', table.name ] ],
-                        [ 'WHERE', [ 'EQ', [ 'VALUE', 0 ], [ 'VALUE', 1 ] ] ]
-                      ]
-            sql, adapter = database._ast2sql(sql_ast)
-            database._exec_sql(sql)
-
+        local.db_context_counter = True
+        try:
+            for table in schema.tables.values():
+                if isinstance(table.name, tuple): alias = table.name[-1]
+                elif isinstance(table.name, basestring): alias = table.name
+                else: assert False
+                sql_ast = [ 'SELECT',
+                            [ 'ALL', ] + [ [ 'COLUMN', alias, column.name ] for column in table.column_list ],
+                            [ 'FROM', [ alias, 'TABLE', table.name ] ],
+                            [ 'WHERE', [ 'EQ', [ 'VALUE', 0 ], [ 'VALUE', 1 ] ] ]
+                          ]
+                sql, adapter = database._ast2sql(sql_ast)
+                database._exec_sql(sql)
+        finally: local.db_context_counter = False
         database.rollback()
 
 ###############################################################################

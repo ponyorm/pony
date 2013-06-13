@@ -3,10 +3,12 @@ from model1 import *
 
 class TestCollections(unittest.TestCase):
 
+    @db_session
     def test_setwrapper_len(self):
         g = Group.get(number='4145')
         self.assert_(len(g.students) == 3)
 
+    @db_session
     def test_setwrapper_nonzero(self):
         g = Group.get(number='4145')
         self.assert_(bool(g.students) == True)
