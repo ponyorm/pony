@@ -160,7 +160,11 @@ class PythonTranslator(ASTTranslator):
         return ':'.join(item.src for item in node.nodes)
     def postConst(translator, node):
         node.priority = 1
-        return repr(node.value)
+        value = node.value
+        if type(value) is float: # for Python < 2.7
+            s = str(value)
+            if float(s) == value: return s
+        return repr(value)
     def postList(translator, node):
         node.priority = 1
         return '[%s]' % ', '.join(item.src for item in node.nodes)
