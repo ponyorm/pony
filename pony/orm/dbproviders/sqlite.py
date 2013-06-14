@@ -89,6 +89,7 @@ class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
         return datetime2timestamp(val)
 
 class SQLiteProvider(DBAPIProvider):
+    dialect = 'SQLite'
     dbapi_module = sqlite
     dbschema_cls = SQLiteSchema
     translator_cls = SQLiteTranslator

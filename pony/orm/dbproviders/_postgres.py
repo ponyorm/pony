@@ -73,6 +73,7 @@ class PGDatetimeConverter(dbapiprovider.DatetimeConverter):
         return 'TIMESTAMP'
 
 class PGProvider(DBAPIProvider):
+    dialect = 'PostgreSQL'
     paramstyle = 'pyformat'
 
     dbapi_module = None  # pgdb or psycopg2

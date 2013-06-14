@@ -75,6 +75,7 @@ class MySQLBlobConverter(dbapiprovider.BlobConverter):
         return 'LONGBLOB'
 
 class MySQLProvider(DBAPIProvider):
+    dialect = 'MySQL'
     paramstyle = 'format'
     quote_char = "`"
 

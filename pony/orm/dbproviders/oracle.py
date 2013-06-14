@@ -191,6 +191,7 @@ class OraDatetimeConverter(dbapiprovider.DatetimeConverter):
         return 'TIMESTAMP(6)'
 
 class OraProvider(DBAPIProvider):
+    dialect = 'Oracle'
     paramstyle = 'named'
 
     table_if_not_exists_syntax = False

@@ -3704,7 +3704,7 @@ class Query(object):
         if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
         if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
 
-        if database.provider.translator_cls.dialect == 'Oracle':
+        if database.provider.dialect == 'Oracle':
             for name, value in vars.iteritems():
                 if value == '':
                     vars[name] = None
