@@ -1,5 +1,6 @@
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time
+import re
 
 from pony.utils import is_utf8, simple_decorator, throw, localbase
 from pony.converting import str2date, str2datetime
@@ -56,10 +57,20 @@ def wrap_dbapi_exceptions(func, provider, *args, **kwargs):
     except dbapi_module.Error, e: raise Error(e)
     except dbapi_module.Warning, e: raise Warning(e)
 
+version_re = re.compile('[0-9\.]+')
+
+def get_version_tuple(s):
+    m = version_re.match(s)
+    if m is not None:
+        return tuple(map(int, m.group(0).split('.')))
+    return None
+
 class DBAPIProvider(object):
     paramstyle = 'qmark'
     quote_char = '"'
     max_params_count = 200
+
+    table_if_not_exists_syntax = True
 
     dbapi_module = None
     dbschema_cls = None
@@ -75,7 +86,7 @@ class DBAPIProvider(object):
         provider.release(connection)
 
     def inspect_connection(provider, connection):
-        provider.table_if_not_exists_syntax = True
+        pass
 
     def get_default_entity_table_name(provider, entity):
         return entity.__name__

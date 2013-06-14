@@ -10,7 +10,7 @@ from MySQLdb.constants import FIELD_TYPE, FLAG
 
 from pony.orm import dbschema
 from pony.orm import dbapiprovider
-from pony.orm.dbapiprovider import DBAPIProvider, Pool
+from pony.orm.dbapiprovider import DBAPIProvider, Pool, get_version_tuple
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import Value, SQLBuilder, join
 
@@ -95,6 +95,13 @@ class MySQLProvider(DBAPIProvider):
         (datetime, dbapiprovider.DatetimeConverter),
         (date, dbapiprovider.DateConverter)
     ]
+
+    def inspect_connection(provider, connection):
+        cursor = connection.cursor()
+        cursor.execute('select version()')
+        row = cursor.fetchone()
+        assert row is not None
+        provider.server_version = get_version_tuple(row[0])
 
     def get_pool(provider, *args, **kwargs):
         if 'conv' not in kwargs:

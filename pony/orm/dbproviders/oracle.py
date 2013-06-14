@@ -9,7 +9,7 @@ import cx_Oracle
 
 from pony.orm import core, dbschema, sqlbuilding, dbapiprovider, sqltranslation
 from pony.orm.core import log_orm, log_sql, DatabaseError
-from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
+from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, get_version_tuple
 from pony.utils import is_utf8, throw
 
 trigger_template = """
@@ -193,13 +193,20 @@ class OraDatetimeConverter(dbapiprovider.DatetimeConverter):
 class OraProvider(DBAPIProvider):
     paramstyle = 'named'
 
+    table_if_not_exists_syntax = False
+
     dbapi_module = cx_Oracle
     dbschema_cls = OraSchema
     translator_cls = OraTranslator
     sqlbuilder_cls = OraBuilder
 
     def inspect_connection(provider, connection):
-        provider.table_if_not_exists_syntax = False
+        sql = "select version from product_component_version where product like 'Oracle Database %'"
+        cursor = connection.cursor()
+        cursor.execute(sql)
+        row = cursor.fetchone()
+        assert row is not None
+        provider.server_version = get_version_tuple(row[0])
 
     def get_default_entity_table_name(provider, entity):
         return DBAPIProvider.get_default_entity_table_name(provider, entity).upper()

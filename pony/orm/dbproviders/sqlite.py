@@ -94,6 +94,8 @@ class SQLiteProvider(DBAPIProvider):
     translator_cls = SQLiteTranslator
     sqlbuilder_cls = SQLiteBuilder
 
+    server_version = sqlite.sqlite_version_info
+
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
         (unicode, dbapiprovider.UnicodeConverter),
