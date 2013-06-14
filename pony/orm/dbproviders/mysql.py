@@ -79,6 +79,8 @@ class MySQLProvider(DBAPIProvider):
     paramstyle = 'format'
     quote_char = "`"
 
+    max_time_precision = default_time_precision = 0
+
     dbapi_module = MySQLdb
     dbschema_cls = MySQLSchema
     translator_cls = MySQLTranslator
@@ -103,6 +105,8 @@ class MySQLProvider(DBAPIProvider):
         row = cursor.fetchone()
         assert row is not None
         provider.server_version = get_version_tuple(row[0])
+        if provider.server_version >= (5, 6, 4):
+            provider.max_time_precision = 6
 
     def get_pool(provider, *args, **kwargs):
         if 'conv' not in kwargs:

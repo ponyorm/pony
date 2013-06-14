@@ -71,6 +71,7 @@ class DBAPIProvider(object):
     max_params_count = 200
 
     table_if_not_exists_syntax = True
+    max_time_precision = default_time_precision = 6
 
     dbapi_module = None
     dbschema_cls = None
@@ -453,12 +454,45 @@ class DateConverter(Converter):
         return 'DATE'
 
 class DatetimeConverter(Converter):
+    sql_type_name = 'DATETIME'
+    def __init__(converter, py_type, attr=None):
+        converter.precision = None  # for the case when attr is None
+        Converter.__init__(converter, py_type, attr)
+    def init(converter, kwargs):
+        attr = converter.attr
+        args = attr.args        
+        if len(args) > 1: throw(TypeError, 'Too many positional parameters for datetime attribute %s. '
+                                           'Expected: precision, got: %r' % (attr, args))
+        provider = attr.entity._database_.provider
+        if args:
+            precision = args[0]
+            if 'precision' in kwargs: throw(TypeError,
+                'Precision for datetime attribute %s has both positional and keyword value' % attr)
+        else: precision = kwargs.pop('precision', provider.default_time_precision)
+        if not isinstance(precision, int) or not 0 <= precision <= 6: throw(ValueError,
+            'Precision value of datetime attribute %s must be between 0 and 6. Got: %r' % (attr, precision))
+        if precision > provider.max_time_precision: throw(ValueError,
+            'Precision value (%d) of attribute %s exceeds max datetime precision (%d) of %s %s'
+            % (precision, attr, provider.max_time_precision, provider.dialect, provider.server_version))
+        converter.precision = precision
     def validate(converter, val):
-        if isinstance(val, datetime): return val
-        if isinstance(val, basestring): return str2datetime(val)
-        throw(TypeError, "Attribute %r: expected type is 'datetime'. Got: %r" % (converter.attr, val))
+        if isinstance(val, datetime): pass
+        elif isinstance(val, basestring): val = str2datetime(val)
+        else: throw(TypeError, "Attribute %r: expected type is 'datetime'. Got: %r" % (converter.attr, val))
+        p = converter.precision
+        if not p: val = val.replace(microsecond=0)
+        elif p == 6: pass
+        else:
+            rounding = 10 ** (6-p)
+            microsecond = (val.microsecond // rounding) * rounding
+            val = val.replace(microsecond=microsecond)
+        return val
     def sql2py(converter, val):
         if not isinstance(val, datetime): raise ValueError
         return val
     def sql_type(converter):
-        return 'DATETIME'
+        attr = converter.attr
+        precision = converter.precision
+        if not attr or precision == attr.entity._database_.provider.default_time_precision:
+            return converter.sql_type_name
+        return converter.sql_type_name + '(%d)' % precision

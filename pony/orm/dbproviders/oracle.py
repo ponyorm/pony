@@ -187,8 +187,7 @@ class OraDateConverter(dbapiprovider.DateConverter):
         return val
 
 class OraDatetimeConverter(dbapiprovider.DatetimeConverter):
-    def sql_type(converter):
-        return 'TIMESTAMP(6)'
+    sql_type_name = 'TIMESTAMP'
 
 class OraProvider(DBAPIProvider):
     dialect = 'Oracle'
