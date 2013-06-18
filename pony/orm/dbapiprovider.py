@@ -374,8 +374,8 @@ class DecimalConverter(Converter):
     def init(converter, kwargs):
         attr = converter.attr
         args = attr.args
-        if len(args) > 2: throw(TypeError, 'Too many positional parameters for Decimal (expected: precision and scale)')
-
+        if len(args) > 2: throw(TypeError, 'Too many positional parameters for Decimal '
+                                           '(expected: precision and scale), got: %s' % args)
         if args: precision = args[0]
         else: precision = kwargs.pop('precision', 12)
         if not isinstance(precision, (int, long)):
@@ -448,7 +448,7 @@ class DateConverter(Converter):
         throw(TypeError, "Attribute %r: expected type is 'date'. Got: %r" % (converter.attr, val))
     def sql2py(converter, val):
         if not isinstance(val, date): throw(ValueError,
-            'Value of unexpected type received from database: instead of date got %s', type(val))
+            'Value of unexpected type received from database: instead of date got %s' % type(val))
         return val
     def sql_type(converter):
         return 'DATE'
@@ -488,7 +488,8 @@ class DatetimeConverter(Converter):
             val = val.replace(microsecond=microsecond)
         return val
     def sql2py(converter, val):
-        if not isinstance(val, datetime): raise ValueError
+        if not isinstance(val, datetime): throw(ValueError,
+            'Value of unexpected type received from database: instead of datetime got %s' % type(val))
         return val
     def sql_type(converter):
         attr = converter.attr
