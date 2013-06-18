@@ -1,5 +1,5 @@
 from decimal import Decimal, InvalidOperation
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 
 import warnings
 warnings.filterwarnings('ignore', '^Table.+already exists$', Warning, '^pony\\.orm\\.dbapiprovider$')
@@ -112,9 +112,26 @@ class MySQLProvider(DBAPIProvider):
         if 'conv' not in kwargs:
             conv = MySQLdb.converters.conversions.copy()
             conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]
+            conv[FIELD_TYPE.TIMESTAMP] = str2datetime
+            conv[FIELD_TYPE.DATETIME] = str2datetime
+            conv[FIELD_TYPE.TIME] = str2timedelta
             kwargs['conv'] = conv
         if 'charset' not in kwargs:
             kwargs['charset'] = 'utf8'
         return Pool(MySQLdb, *args, **kwargs)
 
 provider_cls = MySQLProvider
+
+def str2datetime(s):
+    if 19 < len(s) < 26: s += '000000'[:26-len(s)]
+    s = s.replace('-', ' ').replace(':', ' ').replace('.', ' ').replace('T', ' ')
+    return datetime(*map(int, s.split()))
+
+def str2timedelta(s):
+    if '.' in s:
+        s, fractional = s.split('.')
+        microseconds = int((fractional + '000000')[:6])
+    else: microseconds = 0
+    h, m, s = map(int, s.split(':'))
+    td = timedelta(hours=abs(h), minutes=m, seconds=s, microseconds=microseconds)
+    return -td if h < 0 else td
