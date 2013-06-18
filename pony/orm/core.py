@@ -478,7 +478,7 @@ class Database(object):
             "Parameters 'check_tables' and 'create_tables' cannot be set to True at the same time")
         if local.db_context_counter: throw(MappingError,
             "generate_mapping() couldn't be used inside @db_session")
-        assert local.db2cache.get(database) is None
+        database.rollback()
 
         def get_columns(table, column_names):
             return tuple(map(table.column_dict.__getitem__, column_names))
