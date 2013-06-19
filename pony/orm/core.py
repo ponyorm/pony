@@ -1362,7 +1362,7 @@ class Set(Collection):
         nplus1_threshold = attr.nplus1_threshold
         prefetching = not attr.lazy and nplus1_threshold is not None and counter >= nplus1_threshold
 
-        if items and not setdata:
+        if items and (attr.lazy or not setdata):
             items_to_load = [ item for item in items
                               if item not in setdata and item not in setdata.removed ]
             if not items_to_load: return setdata
