@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import unittest
 from datetime import date
 from decimal import Decimal
@@ -40,8 +42,9 @@ class Student(db.Entity):
     group = Required(Group)
     courses = Set(Course)
 
-@with_transaction
-def populate_db():
+db.generate_mapping(create_tables=True)
+
+with db_session:
     d1 = Department(name="Department of Computer Science")
     d2 = Department(name="Department of Mathematical Sciences")
     d3 = Department(name="Department of Applied Physics")
@@ -83,14 +86,13 @@ def populate_db():
     Student(name='Jing Xia', dob=date(1988, 12, 30), gpa=3.2, group=g102,
                         courses=[c1, c3, c5, c6])
 
-db.generate_mapping(create_tables=True)
-populate_db()
-
 class TestSQLTranslator2(unittest.TestCase):
     def setUp(self):
         rollback()
+        db_session.__enter__()
     def tearDown(self):
         rollback()
+        db_session.__exit__()
     def test_distinct1(self):
         q = select(c.students for c in Course)
         self.assertEquals(q._translator.distinct, True)

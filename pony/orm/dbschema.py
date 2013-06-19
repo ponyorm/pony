@@ -3,6 +3,7 @@ from pony.orm.core import log_sql, DBSchemaError
 from pony.utils import throw
 
 class DBSchema(object):
+    dialect = None
     def __init__(schema, provider, uppercase=True):
         schema.provider = provider
         schema.tables = {}
@@ -152,7 +153,9 @@ class Column(object):
             append(case(column.auto_template % dict(type=column.sql_type)))
         else:
             append(case(column.sql_type))
-            if column.is_pk: append(case('PRIMARY KEY'))
+            if column.is_pk:
+                if schema.dialect == 'SQLite': append(case('NOT NULL'))
+                append(case('PRIMARY KEY'))
             else:
                 if column.is_unique: append(case('UNIQUE'))
                 if column.is_not_null: append(case('NOT NULL'))

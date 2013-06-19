@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import re, os, os.path, sys, imp
 
 from pony import orm
@@ -50,18 +52,19 @@ def do_test(provider_name):
     module = sys.modules[module_name]
     core.debug = orm.debug = False
     globals = vars(module).copy()
-    for statement in statements[:-1]:
-        code = compile(statement, '<string>', 'exec')
-        exec code in globals
-    statement = statements[-1]
-    try: last_code = compile(statement, '<string>', 'eval')
-    except SyntaxError:
-        last_code = compile(statement, '<string>', 'exec')
-        exec last_code in globals
-    else:
-        result = eval(last_code, globals)
-        if isinstance(result, core.Query): result = list(result)
-    sql = module.db.sql
+    with orm.db_session:
+        for statement in statements[:-1]:
+            code = compile(statement, '<string>', 'exec')
+            exec code in globals
+        statement = statements[-1]
+        try: last_code = compile(statement, '<string>', 'eval')
+        except SyntaxError:
+            last_code = compile(statement, '<string>', 'exec')
+            exec last_code in globals
+        else:
+            result = eval(last_code, globals)
+            if isinstance(result, core.Query): result = list(result)
+        sql = module.db.sql
     expected_sql = '\n'.join(lines)
     if sql == expected_sql: print '+', provider_name, statements[-1]
     else:

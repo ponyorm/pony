@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import unittest
 from datetime import date
 from decimal import Decimal
@@ -32,16 +34,20 @@ class Course(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-d1 = Department(number=44)
-g1 = Group(number=101, dept=d1)
-Student(name='S1', group=g1)
-Student(name='S2', group=g1)
-Student(name='S3', group=g1)
-commit()
+with db_session:
+    d1 = Department(number=44)
+    g1 = Group(number=101, dept=d1)
+    Student(name='S1', group=g1)
+    Student(name='S2', group=g1)
+    Student(name='S3', group=g1)
 
 class TestSQLTranslatorExceptions(unittest.TestCase):
     def setUp(self):
         rollback()
+        db_session.__enter__()
+    def tearDown(self):
+        rollback()
+        db_session.__exit__()
     @raises_exception(NotImplementedError, 'for x in s.name')
     def test1(self):
         x = 10

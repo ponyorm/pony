@@ -1,5 +1,5 @@
 from decimal import Decimal, InvalidOperation
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 
 import warnings
 warnings.filterwarnings('ignore', '^Table.+already exists$', Warning, '^pony\\.orm\\.dbapiprovider$')
@@ -10,7 +10,7 @@ from MySQLdb.constants import FIELD_TYPE, FLAG
 
 from pony.orm import dbschema
 from pony.orm import dbapiprovider
-from pony.orm.dbapiprovider import DBAPIProvider, Pool
+from pony.orm.dbapiprovider import DBAPIProvider, Pool, get_version_tuple
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import Value, SQLBuilder, join
 
@@ -18,6 +18,7 @@ class MySQLColumn(dbschema.Column):
     auto_template = '%(type)s PRIMARY KEY AUTO_INCREMENT'
 
 class MySQLSchema(dbschema.DBSchema):
+    dialect = 'MySQL'
     column_class = MySQLColumn
 
 class MySQLTranslator(SQLTranslator):
@@ -74,8 +75,11 @@ class MySQLBlobConverter(dbapiprovider.BlobConverter):
         return 'LONGBLOB'
 
 class MySQLProvider(DBAPIProvider):
+    dialect = 'MySQL'
     paramstyle = 'format'
     quote_char = "`"
+
+    max_time_precision = default_time_precision = 0
 
     dbapi_module = MySQLdb
     dbschema_cls = MySQLSchema
@@ -95,13 +99,39 @@ class MySQLProvider(DBAPIProvider):
         (date, dbapiprovider.DateConverter)
     ]
 
+    def inspect_connection(provider, connection):
+        cursor = connection.cursor()
+        cursor.execute('select version()')
+        row = cursor.fetchone()
+        assert row is not None
+        provider.server_version = get_version_tuple(row[0])
+        if provider.server_version >= (5, 6, 4):
+            provider.max_time_precision = 6
+
     def get_pool(provider, *args, **kwargs):
         if 'conv' not in kwargs:
             conv = MySQLdb.converters.conversions.copy()
             conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]
+            conv[FIELD_TYPE.TIMESTAMP] = str2datetime
+            conv[FIELD_TYPE.DATETIME] = str2datetime
+            conv[FIELD_TYPE.TIME] = str2timedelta
             kwargs['conv'] = conv
         if 'charset' not in kwargs:
             kwargs['charset'] = 'utf8'
         return Pool(MySQLdb, *args, **kwargs)
 
 provider_cls = MySQLProvider
+
+def str2datetime(s):
+    if 19 < len(s) < 26: s += '000000'[:26-len(s)]
+    s = s.replace('-', ' ').replace(':', ' ').replace('.', ' ').replace('T', ' ')
+    return datetime(*map(int, s.split()))
+
+def str2timedelta(s):
+    if '.' in s:
+        s, fractional = s.split('.')
+        microseconds = int((fractional + '000000')[:6])
+    else: microseconds = 0
+    h, m, s = map(int, s.split(':'))
+    td = timedelta(hours=abs(h), minutes=m, seconds=s, microseconds=microseconds)
+    return -td if h < 0 else td

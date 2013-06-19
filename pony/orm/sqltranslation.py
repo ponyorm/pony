@@ -372,7 +372,7 @@ class SQLTranslator(ASTTranslator):
                 else: aggr_ast = [ 'COUNT', 'DISTINCT', column_ast ]
             else: aggr_ast = [ aggr_func_name, column_ast ]
             if aggr_ast: select_ast = [ 'AGGREGATES', aggr_ast ]
-        elif isinstance(translator.expr_type, EntityMeta) and not translator.optimize:
+        elif isinstance(translator.expr_type, EntityMeta) and not translator.aggregated and not translator.optimize:
             select_ast, attr_offsets = translator.expr_type._construct_select_clause_(translator.alias, distinct)
         else: select_ast = [ distinct and 'DISTINCT' or 'ALL' ] + translator.expr_columns
         sql_ast.append(select_ast)
@@ -824,7 +824,7 @@ class Monad(object):
         expr = monad.getsql()
         count_kind = 'DISTINCT'
         if monad.type is bool:
-            expr = [ 'CASE', None, [ [ expr, [ 'VALUE', 1 ] ] ], [ 'VALUE', None ] ]
+            expr = [ 'CASE', None, [ [ expr[0], [ 'VALUE', 1 ] ] ], [ 'VALUE', None ] ]
             count_kind = 'ALL'
         elif len(expr) == 1: expr = expr[0]
         elif translator.dialect == 'PostgreSQL':
@@ -1968,15 +1968,11 @@ def make_numericset_binop(op, sqlop):
 
 class NumericSetExprMonad(SetMixin, Monad):
     def __init__(monad, op, sqlop, left, right):
-        t1 = left.type
-        if isinstance(t1, SetType): t1 = t1.item_type
-        t2 = right.type
-        if isinstance(t2, SetType): t2 = t2.item_type
-        translator = left.translator
         result_type, left, right = coerce_monads(left, right)
-        if result_type not in numeric_types:
+        assert type(result_type) is SetType
+        if result_type.item_type not in numeric_types:
             throw(TypeError, _binop_errmsg % (type2str(left.type), type2str(right.type), op))
-        Monad.__init__(monad, translator, result_type)
+        Monad.__init__(monad, left.translator, result_type)
         monad.op = op
         monad.sqlop = sqlop
         monad.left = left
@@ -1987,7 +1983,7 @@ class NumericSetExprMonad(SetMixin, Monad):
         expr = [ monad.sqlop, monad.left.getsql(subquery), monad.right.getsql(subquery) ]
         subquery.outer_conditions = [ subquery.from_ast[1].pop() ]
         if func_name == 'AVG': result_type = float
-        else: result_type = monad.type
+        else: result_type = monad.type.item_type
         return translator.ExprMonad.new(translator, result_type,
             [ 'SELECT', [ 'AGGREGATES', [ func_name, monad.getsql(subquery)[0] ] ],
               subquery.from_ast,

@@ -107,8 +107,17 @@ coercions = {
 coercions.update(((t2, t1), t3) for ((t1, t2), t3) in coercions.items())
 
 def coerce_types(t1, t2):
-    if t1 is t2: return t1
-    return coercions.get((t1, t2))
+    if t1 == t2: return t1
+    is_set_type = False
+    if type(t1) is SetType:
+        is_set_type = True
+        t1 = t1.item_type
+    if type(t2) is SetType:
+        is_set_type = True
+        t2 = t2.item_type
+    result = coercions.get((t1, t2))
+    if result is not None and is_set_type: result = SetType(result)
+    return result
 
 def are_comparable_types(t1, t2, op='=='):
     # types must be normalized already!

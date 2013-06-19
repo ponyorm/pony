@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import __builtin__, re, sys, types, inspect, logging
 from compiler import ast, parse
 from cPickle import loads, dumps
@@ -6,8 +8,9 @@ from itertools import count as _count, ifilter, ifilterfalse, imap, izip, chain,
 from collections import defaultdict
 from time import time
 import datetime
-from threading import Lock
+from threading import Lock, currentThread as current_thread, _MainThread
 from __builtin__ import min as _min, max as _max, sum as _sum
+import warnings
 
 import pony
 from pony import options
@@ -21,7 +24,8 @@ from pony.orm.dbapiprovider import (
     )
 from pony.utils import (
     localbase, simple_decorator, decorator_with_params, cut_traceback, throw,
-    import_module, parse_expr, is_ident, count, avg as _avg, tostring, strjoin
+    import_module, parse_expr, is_ident, count, avg as _avg, tostring, strjoin,
+    copy_func_attrs
     )
 
 __all__ = '''
@@ -43,7 +47,7 @@ __all__ = '''
 
     PrimaryKey Required Optional Set Discriminator
     composite_key
-    flush commit rollback with_transaction
+    flush commit rollback db_session with_transaction
 
     AsciiStr LongStr LongUnicode
 
@@ -61,6 +65,14 @@ debug = False
 def sql_debug(value):
     global debug
     debug = value
+
+class PonyDeprecationWarning(DeprecationWarning):
+    pass
+
+def deprecated(message):
+    warnings.warn(message, PonyDeprecationWarning, stacklevel=3)
+
+warnings.simplefilter('once', PonyDeprecationWarning)
 
 orm_logger = logging.getLogger('pony.orm')
 sql_logger = logging.getLogger('pony.orm.sql')
@@ -226,7 +238,7 @@ next_num = _count().next
 class Local(localbase):
     def __init__(local):
         local.db2cache = {}
-        local.inside_with_transaction_decorator = False
+        local.db_context_counter = 0
 
 local = Local()
 
@@ -333,6 +345,9 @@ class Database(object):
     def _get_cache(database):
         cache = local.db2cache.get(database)
         if cache is not None: return cache
+        if not local.db_context_counter and not (
+                pony.MODE == 'INTERACTIVE' and current_thread().__class__ is _MainThread
+            ): throw(TransactionError, 'db_session is required when working with the database')
         connection = database.provider.connect()
         cache = local.db2cache[database] = Cache(database, connection)
         return cache
@@ -447,6 +462,8 @@ class Database(object):
         if type(new_id) is long: new_id = int(new_id)
         return new_id
     def _exec_sql_many(database, sql, arguments_list, autoflush=True):
+        if len(arguments_list) == 1:
+            return database._exec_sql(sql, arguments_list[0], autoflush)
         cache = database._get_cache()
         if autoflush and not cache.optimistic and cache.modified: cache.flush()
         cursor = cache.connection.cursor()
@@ -459,6 +476,9 @@ class Database(object):
     def generate_mapping(database, filename=None, check_tables=False, create_tables=False):
         if create_tables and check_tables: throw(TypeError,
             "Parameters 'check_tables' and 'create_tables' cannot be set to True at the same time")
+        if local.db_context_counter: throw(MappingError,
+            "generate_mapping() couldn't be used inside @db_session")
+        database.rollback()
 
         def get_columns(table, column_names):
             return tuple(map(table.column_dict.__getitem__, column_names))
@@ -541,9 +561,13 @@ class Database(object):
                     m2m_table.m2m.add(attr)
                     m2m_table.m2m.add(reverse)
                 else:
+                    if schema.dialect == 'Oracle' and attr.is_string and not attr.is_required:
+                        if attr.nullable is False: throw(ERDiagramError,
+                            'In Oracle, optional string attribute %s must be nullable' % attr)
+                        attr.nullable = True
                     if entity._root_ is not entity:
                         if attr.nullable is False: throw(ERDiagramError,
-                            'Attribute %s must be nullable due to single-table inheritance')
+                            'Attribute %s must be nullable due to single-table inheritance' % attr)
                         attr.nullable = True
                     columns = attr.get_columns()
                     if not attr.reverse and attr.default is not None:
@@ -603,23 +627,24 @@ class Database(object):
                     child_columns = get_columns(table, attr.columns)
                     table.add_foreign_key(None, child_columns, parent_table, parent_columns)
 
-        database.rollback()
         if create_tables: schema.create_tables()
 
         if not check_tables and not create_tables: return
 
-        for table in schema.tables.values():
-            if isinstance(table.name, tuple): alias = table.name[-1]
-            elif isinstance(table.name, basestring): alias = table.name
-            else: assert False
-            sql_ast = [ 'SELECT',
-                        [ 'ALL', ] + [ [ 'COLUMN', alias, column.name ] for column in table.column_list ],
-                        [ 'FROM', [ alias, 'TABLE', table.name ] ],
-                        [ 'WHERE', [ 'EQ', [ 'VALUE', 0 ], [ 'VALUE', 1 ] ] ]
-                      ]
-            sql, adapter = database._ast2sql(sql_ast)
-            database._exec_sql(sql)
-
+        local.db_context_counter = True
+        try:
+            for table in schema.tables.values():
+                if isinstance(table.name, tuple): alias = table.name[-1]
+                elif isinstance(table.name, basestring): alias = table.name
+                else: assert False
+                sql_ast = [ 'SELECT',
+                            [ 'ALL', ] + [ [ 'COLUMN', alias, column.name ] for column in table.column_list ],
+                            [ 'FROM', [ alias, 'TABLE', table.name ] ],
+                            [ 'WHERE', [ 'EQ', [ 'VALUE', 0 ], [ 'VALUE', 1 ] ] ]
+                          ]
+                sql, adapter = database._ast2sql(sql_ast)
+                database._exec_sql(sql)
+        finally: local.db_context_counter = False
         database.rollback()
 
 ###############################################################################
@@ -865,7 +890,7 @@ class Attribute(object):
     @cut_traceback
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
-        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
+        if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         result = attr.get(obj)
         if attr.pk_offset is not None: return result
         bit = obj._bits_[attr]
@@ -884,7 +909,7 @@ class Attribute(object):
     @cut_traceback
     def __set__(attr, obj, new_val, undo_funcs=None):
         cache = obj._cache_
-        if not cache.is_alive: throw_obsolete_cache(obj)
+        if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         is_reverse_call = undo_funcs is not None
         reverse = attr.reverse
@@ -1268,6 +1293,30 @@ class SetData(set):
         setdata.is_fully_loaded = False
         setdata.added = setdata.removed = EMPTY
 
+def construct_criteria_list(alias, columns, converters, row_value_syntax, count=1, start=0):
+    assert count > 0
+    if count == 1:
+        return [ [ 'EQ', [ 'COLUMN', alias, column ], [ 'PARAM', (start, i), converter ] ]
+                 for i, (column, converter) in enumerate(izip(columns, converters)) ]
+    if len(columns) == 1:
+        column = columns[0]
+        converter = converters[0]
+        param_list = [ [ 'PARAM', (i+start, 0), converter ] for i in xrange(count) ]
+        condition = [ 'IN', [ 'COLUMN', alias, column ], param_list ]
+        return [ condition ]
+    elif row_value_syntax:
+        row = [ 'ROW' ] + [ [ 'COLUMN', alias, column ] for column in columns ]
+        param_list = [ [ 'ROW' ] + [ [ 'PARAM', (i+start, j), converter ]
+                                     for j, converter in enumerate(converters) ]
+                       for i in xrange(count) ]
+        condition = [ 'IN', row, param_list ]
+        return [ condition ]
+    else:
+        conditions = [ [ 'AND' ] + [ [ 'EQ', [ 'COLUMN', alias, column ], [ 'PARAM', (i+start, j), converter ] ]
+                                     for j, (column, converter) in enumerate(izip(columns, converters)) ]
+                       for i in xrange(count) ]
+        return [ [ 'OR' ] + conditions ]
+
 class Set(Collection):
     __slots__ = []
     def check(attr, val, obj=None, entity=None, from_db=False):
@@ -1294,7 +1343,7 @@ class Set(Collection):
             if item._cache_ is not cache:
                 throw(TransactionError, 'An attempt to mix objects belongs to different caches')
         return items
-    def load(attr, obj):
+    def load(attr, obj, items=None):
         assert obj._status_ not in del_statuses
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED: setdata = obj._vals_[attr.name] = SetData()
@@ -1304,14 +1353,41 @@ class Set(Collection):
         rentity = reverse.entity
         if not reverse: throw(NotImplementedError)
         cache = obj._cache_
+        assert cache.is_alive
         database = obj._database_
         if cache is not database._get_cache():
             throw(TransactionError, "Transaction of object %s belongs to different thread")
+
+        counter = cache.collection_statistics.setdefault(attr, 0)
+        nplus1_threshold = attr.nplus1_threshold
+        prefetching = not attr.lazy and nplus1_threshold is not None and counter >= nplus1_threshold
+
+        if items and not setdata:
+            items_to_load = [ item for item in items
+                              if item not in setdata and item not in setdata.removed ]
+            if not items_to_load: return setdata
+
+            value_dict = dict(enumerate(items))
+            if not reverse.is_collection:
+                sql, adapter, attr_offsets = rentity._construct_batchload_sql_(len(items))
+                arguments = adapter(value_dict)
+                cursor = database._exec_sql(sql, arguments)
+                items = rentity._fetch_objects(cursor, attr_offsets)
+                return setdata
+            
+            items_count = len(items_to_load)            
+            sql, adapter = attr.construct_sql_m2m(1, items_count)
+            value_dict[items_count] = obj
+            arguments = adapter(value_dict)
+            cursor = database._exec_sql(sql, arguments)
+            loaded_items = set(imap(rentity._get_by_raw_pkval_, cursor.fetchall()))
+            setdata |= loaded_items
+            reverse.db_reverse_add(loaded_items, obj)
+            return setdata
+
         objects = [ obj ]
         setdata_list = [ setdata ]
-        assert cache.is_alive
-        counter = cache.collection_statistics.setdefault(attr, 0)
-        if counter >= attr.nplus1_threshold:
+        if prefetching:
             pk_index = cache.indexes.get(entity.__dict__['_pk_'])
             max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
             for obj2 in pk_index.itervalues():
@@ -1332,7 +1408,6 @@ class Set(Collection):
             cursor = database._exec_sql(sql, arguments)
             items = rentity._fetch_objects(cursor, attr_offsets)
         else:
-            rentity = reverse.entity
             sql, adapter = attr.construct_sql_m2m(len(objects))
             arguments = adapter(value_dict)
             cursor = database._exec_sql(sql, arguments)
@@ -1362,8 +1437,12 @@ class Set(Collection):
         for setdata2 in setdata_list: setdata2.is_fully_loaded = True
         cache.collection_statistics[attr] = counter + 1
         return setdata
-    def construct_sql_m2m(attr, batch_size=1):
-        cached_sql = attr.cached_load_sql.get(batch_size)
+    def construct_sql_m2m(attr, batch_size=1, items_count=0):
+        if items_count:
+            assert batch_size == 1
+            cache_key = -items_count
+        else: cache_key = batch_size
+        cached_sql = attr.cached_load_sql.get(cache_key)
         if cached_sql is not None: return cached_sql
         reverse = attr.reverse
         assert reverse is not None and reverse.is_collection and issubclass(reverse.py_type, Entity)
@@ -1372,38 +1451,25 @@ class Set(Collection):
         select_list = [ 'ALL' ]
         if not attr.symmetric:
             columns = attr.columns
+            converters = attr.converters
             rcolumns = reverse.columns
             rconverters = reverse.converters
         else:
             columns = attr.reverse_columns
             rcolumns = attr.columns
-            rconverters = attr.converters
+            converters = rconverters = attr.converters
         if batch_size > 1:
             select_list.extend([ 'COLUMN', 'T1', column ] for column in rcolumns)
         select_list.extend([ 'COLUMN', 'T1', column ] for column in columns)
         from_list = [ 'FROM', [ 'T1', 'TABLE', table_name ]]
         database = attr.entity._database_
-
-        if batch_size == 1:
-            criteria_list = []
-            for i, (column, converter) in enumerate(zip(rcolumns, rconverters)):
-                criteria_list.append([ 'EQ', [ 'COLUMN', 'T1', column ], [ 'PARAM', (0, i), converter ] ])
-        elif len(rcolumns) == 1:
-            converter = rconverters[0]
-            criteria_list = [ [ 'IN', [ 'COLUMN', None, rcolumns[0] ],
-                                   [ [ 'PARAM', (i, 0), converter ] for i in xrange(batch_size) ] ] ]
-        elif database.provider.translator_cls.row_value_syntax:
-            criteria_list = [ [ 'IN', [ 'ROW' ] + [ [ 'COLUMN', None, column ] for column in rcolumns ],
-                                   [ [ 'ROW' ] + [ [ 'PARAM', (i, j), converter ] for j, converter in enumerate(rconverters) ]
-                                     for i in xrange(batch_size) ] ] ]
-        else:
-            pairs = zip(rcolumns, rconverters)
-            criteria_list = [ [ 'OR' ] + [ [ 'AND' ] + [ [ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (i, j), converter ] ]
-                                                   for j, (column, converter) in enumerate(pairs) ]
-                                       for i in xrange(batch_size) ] ]
-
-        sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
-        sql, adapter = attr.cached_load_sql[batch_size] = database._ast2sql(sql_ast)
+        row_value_syntax = database.provider.translator_cls.row_value_syntax
+        where_list = [ 'WHERE' ]
+        where_list += construct_criteria_list('T1', rcolumns, rconverters, row_value_syntax, batch_size, items_count)
+        if items_count:
+            where_list += construct_criteria_list('T1', columns, converters, row_value_syntax, items_count)
+        sql_ast = [ 'SELECT', select_list, from_list, where_list ]
+        sql, adapter = attr.cached_load_sql[cache_key] = database._ast2sql(sql_ast)
         return sql, adapter
     def copy(attr, obj):
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
@@ -1411,23 +1477,24 @@ class Set(Collection):
         if setdata is NOT_LOADED or not setdata.is_fully_loaded: setdata = attr.load(obj)
         reverse = attr.reverse
         if not reverse.is_collection and reverse.pk_offset is None:
+            added = setdata.added
             for item in setdata:
-                bit = item._bits_[reverse]
-                wbits = item._wbits_
-                if wbits is not None and not wbits & bit: item._rbits_ |= bit
+                if item not in added: item._rbits_ |= item._bits_[reverse]
         return set(setdata)
     @cut_traceback
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
-        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
+        if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         rentity = attr.py_type
         wrapper_class = rentity._get_set_wrapper_subclass_()
         return wrapper_class(obj, attr)
     @cut_traceback
     def __set__(attr, obj, new_items, undo_funcs=None):
+        if isinstance(new_items, SetWrapper) and new_items._obj_ is obj and new_items._attr_ is attr:
+            return  # after += or -=
         cache = obj._cache_
-        if not cache.is_alive: throw_obsolete_cache(obj)
+        if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         new_items = attr.check(new_items, obj)
         reverse = attr.reverse
@@ -1629,7 +1696,7 @@ class SetWrapper(object):
         return unpickle_setwrapper, (wrapper._obj_, wrapper._attr_.name, wrapper.copy())
     @cut_traceback
     def copy(wrapper):
-        if not wrapper._obj_._cache_.is_alive: throw_obsolete_cache(obj)
+        if not wrapper._obj_._cache_.is_alive: throw_db_session_is_over(obj)
         return wrapper._attr_.copy(wrapper._obj_)
     @cut_traceback
     def __repr__(wrapper):
@@ -1643,7 +1710,7 @@ class SetWrapper(object):
     def __nonzero__(wrapper):
         attr = wrapper._attr_
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
+        if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED: setdata = attr.load(obj)
@@ -1654,7 +1721,7 @@ class SetWrapper(object):
     def __len__(wrapper):
         attr = wrapper._attr_
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
+        if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is NOT_LOADED or not setdata.is_fully_loaded: setdata = attr.load(obj)
         return len(setdata)
@@ -1681,14 +1748,25 @@ class SetWrapper(object):
     @cut_traceback
     def __contains__(wrapper, item):
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
+        if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
+        if not isinstance(item, attr.py_type): return False
+        reverse = attr.reverse
+        if not reverse.is_collection:
+            obj2 = item._vals_.get(reverse.name, NOT_LOADED)
+            if obj2 is NOT_LOADED: obj2 = reverse.load(item)
+            bit = item._bits_[reverse]
+
+            wbits = item._wbits_
+            if wbits is not None and not wbits & bit: item._rbits_ |= bit
+
+            return obj is obj2
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
         if setdata is not NOT_LOADED:
             if item in setdata: return True
             if setdata.is_fully_loaded: return False
-        setdata = attr.load(obj)
+        setdata = attr.load(obj, (item,))
         return item in setdata
     @cut_traceback
     def create(wrapper, **kwargs):
@@ -1700,15 +1778,18 @@ class SetWrapper(object):
     @cut_traceback
     def add(wrapper, new_items):
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
+        if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
         reverse = attr.reverse
         if not reverse: throw(NotImplementedError)
         new_items = attr.check(new_items, obj)
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
-        if setdata is NOT_LOADED: setdata = obj._vals_[attr.name] = SetData()
-        new_items.difference_update(setdata.added)
+        if setdata is not NOT_LOADED:
+            new_items.difference_update(setdata)
+        if setdata is NOT_LOADED or not setdata.is_fully_loaded:
+            setdata = attr.load(obj, new_items)
+        new_items.difference_update(setdata)
         undo_funcs = []
         try:
             if not reverse.is_collection:
@@ -1731,16 +1812,18 @@ class SetWrapper(object):
     @cut_traceback
     def remove(wrapper, items):
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
+        if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
         reverse = attr.reverse
         if not reverse: throw(NotImplementedError)
         items = attr.check(items, obj)
         setdata = obj._vals_.get(attr.name, NOT_LOADED)
+        if setdata is not NOT_LOADED:
+            items.difference_update(setdata.removed)
+        if not items: return
         if setdata is NOT_LOADED or not setdata.is_fully_loaded:
-            setdata = attr.load(obj) # TODO: Load only the necessary objects
-        items.difference_update(setdata.removed)
+            setdata = attr.load(obj, items)
         undo_funcs = []
         try:
             if not reverse.is_collection:
@@ -1763,7 +1846,7 @@ class SetWrapper(object):
     @cut_traceback
     def clear(wrapper):
         obj = wrapper._obj_
-        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
+        if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         wrapper._attr_.__set__(obj, None)
 
@@ -1797,7 +1880,7 @@ class Multiset(object):
         return unpickle_multiset, (multiset._obj_, multiset._attrnames_, multiset._items_)
     @cut_traceback
     def distinct(multiset):
-        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
         return multiset._items_.copy()
     @cut_traceback
     def __repr__(multiset):
@@ -1810,24 +1893,24 @@ class Multiset(object):
                                  '.'.join(multiset._attrnames_), size_str)
     @cut_traceback
     def __str__(multiset):
-        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
         return '%s(%s)' % (multiset.__class__.__name__, str(multiset._items_))
     @cut_traceback
     def __nonzero__(multiset):
-        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
         return bool(multiset._items_)
     @cut_traceback
     def __len__(multiset):
-        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
         return _sum(multiset._items_.values())
     @cut_traceback
     def __iter__(multiset):
-        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
         for item, cnt in multiset._items_.iteritems():
             for i in range(cnt): yield item
     @cut_traceback
     def __eq__(multiset, other):
-        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
         if isinstance(other, Multiset):
             return multiset._items_ == other._items_
         if isinstance(other, dict):
@@ -1840,7 +1923,7 @@ class Multiset(object):
         return not multiset.__eq__(other)
     @cut_traceback
     def __contains__(multiset, item):
-        if not multiset._obj_._cache_.is_alive: throw_obsolete_cache(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
         return item in multiset._items_
 
 ##class List(Collection): pass
@@ -2335,26 +2418,10 @@ class EntityMeta(type):
         else:
             columns = attr.columns
             converters = attr.converters
-        if batch_size == 1:
-            criteria_list = [ [ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (0, i), converter ] ]
-                              for i, (column, converter) in enumerate(izip(columns, converters)) ]
-        elif len(columns) == 1:
-            converter = converters[0]
-            criteria_list = [ [ 'IN', [ 'COLUMN', None, columns[0] ],
-                                   [ [ 'PARAM', (i, 0), converter ] for i in xrange(batch_size) ] ] ]
-        elif entity._database_.provider.translator_cls.row_value_syntax:
-            criteria_list = [ [ 'IN', [ 'ROW' ] + [ [ 'COLUMN', None, column ] for column in columns ],
-                                    [ [ 'ROW' ] + [ [ 'PARAM', (i, j), converter ] for j, converter in enumerate(converters) ]
-                                     for i in xrange(batch_size) ] ] ]
-        else:
-            pairs = zip(columns, converters)
-            criteria_list = [ [ 'OR' ] + [ [ 'AND' ] + [ [ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (i, j), converter ] ]
-                                                     for j, (column, converter) in enumerate(pairs) ]
-                                         for i in xrange(batch_size) ] ]
-
+        row_value_syntax = entity._database_.provider.translator_cls.row_value_syntax
+        criteria_list = construct_criteria_list(None, columns, converters, row_value_syntax, batch_size)
         discr_criteria = entity._construct_discriminator_criteria_()
         if discr_criteria: criteria_list.insert(0, discr_criteria)
-
         sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
@@ -2634,8 +2701,8 @@ created_or_deleted_statuses = set(['created']) | del_statuses
 def throw_object_was_deleted(obj):
     throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
 
-def throw_obsolete_cache(obj):
-    throw(TransactionRolledBack, 'Object belongs to obsolete cache')
+def throw_db_session_is_over(obj):
+    throw(TransactionRolledBack, 'Object %s cannot be used after the database session is over' % obj)
 
 def unpickle_entity(d):
     entity = d.pop('__class__')
@@ -2733,7 +2800,7 @@ class Entity(object):
         return '%s[%s]' % (obj.__class__.__name__, pkval)
     def _load_(obj):
         cache = obj._cache_
-        if not cache.is_alive: throw_obsolete_cache(obj)
+        if not cache.is_alive: throw_db_session_is_over(obj)
         entity = obj.__class__
         database = entity._database_
         if cache is not database._get_cache():
@@ -2841,7 +2908,7 @@ class Entity(object):
                         if attr.cascade_delete: val._delete_()
                         elif not reverse.is_required: reverse.__set__(val, None, undo_funcs)
                         else: throw(ConstraintError, "Cannot delete object %s, because it has associated %s, "
-                                                     "and 'cascade_delete' option of %s is set to False"
+                                                     "and 'cascade_delete' option of %s is not set"
                                                      % (obj, attr.name, attr))
                     elif isinstance(reverse, Set):
                         if val is NOT_LOADED: pass
@@ -2854,7 +2921,7 @@ class Entity(object):
                         for robj in set_wrapper: robj._delete_()
                     elif not reverse.is_required: attr.__set__(obj, (), undo_funcs)
                     else: throw(ConstraintError, "Cannot delete object %s, because it has non-empty set of %s, "
-                                                 "and 'cascade_delete' option of %s is set to False"
+                                                 "and 'cascade_delete' option of %s is not set"
                                                  % (obj, attr.name, attr))
                 else: throw(NotImplementedError)
 
@@ -2904,12 +2971,12 @@ class Entity(object):
             raise
     @cut_traceback
     def delete(obj):
-        if not obj._cache_.is_alive: throw_obsolete_cache(obj)
+        if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         obj._delete_()
     @cut_traceback
     def set(obj, **kwargs):
         cache = obj._cache_
-        if not cache.is_alive: throw_obsolete_cache(obj)
+        if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         avdict, collection_avdict = obj._keyargs_to_avdicts_(kwargs)
         status = obj._status_
@@ -2998,7 +3065,7 @@ class Entity(object):
     @cut_traceback
     def check_on_commit(obj):
         cache = obj._cache_
-        if not cache.is_alive: throw_obsolete_cache(obj)
+        if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ not in ('loaded', 'saved'): return
         obj._status_ = 'locked'
         cache.to_be_checked.append(obj)
@@ -3459,45 +3526,53 @@ def _release():
     for cache in _get_caches(): cache.release()
     assert not local.db2cache
 
-def _with_transaction(func, args, kwargs, allowed_exceptions=()):
-    if local.inside_with_transaction_decorator:
-        return func(*args, **kwargs)
+class DBSessionContextManager(object):
+    def __init__(self, retry=1, retry_exceptions=(TransactionError,), allowed_exceptions=()):
+        if retry is not 1 and (type(retry) is not int or retry < 0): throw(TypeError)
+        self.retry = retry
+        self.retry_exceptions = retry_exceptions
+        self.allowed_exceptions = allowed_exceptions
+        self.is_decorator = False
+    def __call__(self, *args, **kwargs):
+        if not args and not kwargs: return self
+        if len(args) > 1: throw(TypeError)
+        if len(args) == 1:
+            if kwargs: throw(TypeError)
+            self.is_decorator = True
+            old_func = args[0]
+            def new_func(*args, **kwargs):
+                for i in xrange(self.retry):
+                    try:
+                        with self: return old_func(*args, **kwargs)
+                    except Exception, e:
+                        if not isinstance(e, self.retry_exceptions): raise
+                raise e
+            return copy_func_attrs(new_func, old_func, 'db_session')
+        return self.__class__(**kwargs)
+    def __enter__(self):
+        if not self.is_decorator and self.retry != 1: throw(TypeError,
+            "@db_session can accept 'retry' parameter only when used as decorator and not as context manager")
+        local.db_context_counter += 1
+    def __exit__(self, exc_type=None, exc_value=None, traceback=None):
+        local.db_context_counter -= 1
+        if local.db_context_counter: return
+        try:
+            if exc_type is None:
+                commit()
+                return
+            assert isinstance(exc_value, exc_type)
+            allowed_exceptions = self.allowed_exceptions
+            if callable(allowed_exceptions): allowed = allowed_exceptions(exc_value)
+            else: allowed = isinstance(exc_value, tuple(allowed_exceptions))
+            if allowed: commit()
+            else: rollback()
+        finally: _release()
 
-    local.inside_with_transaction_decorator = True
-    try:
-        try: result = func(*args, **kwargs)
-        except Exception, e:
-            exc_info = sys.exc_info()
-            try:
-                # write to log
+db_session = DBSessionContextManager()
 
-                if callable(allowed_exceptions): allowed = allowed_exceptions(e)
-                else: allowed = isinstance(e, tuple(allowed_exceptions))
-                if allowed: commit()
-                else: rollback()
-
-            finally:
-                try: raise exc_info[0], exc_info[1], exc_info[2]
-                finally: del exc_info
-        else:
-            commit()
-            return result
-    finally:
-        local.inside_with_transaction_decorator = False
-        _release()
-
-@decorator_with_params
-def with_transaction(func, retry=1, retry_exceptions=(TransactionError,), allowed_exceptions=()):
-    def new_func(*args, **kwargs):
-        counter = retry
-        while counter > 0:
-            try: return _with_transaction(func, args, kwargs, allowed_exceptions)
-            except Exception, e:
-                for exc_class in retry_exceptions:
-                    if isinstance(e, exc_class): break # for
-                else: raise
-            counter -= 1
-    return new_func
+def with_transaction(*args, **kwargs):
+    deprecated("@with_transaction decorator is deprecated, use @db_session decorator instead")
+    return db_session(*args, **kwargs)
 
 @simple_decorator
 def db_decorator(func, *args, **kwargs):
@@ -3618,8 +3693,6 @@ class Query(object):
         assert isinstance(tree, ast.GenExprInner)
         extractors, varnames, tree = create_extractors(code_key, tree)
         vars, vartypes = extract_vars(extractors, globals, locals)
-        query._vars = vars
-        query._key = code_key, tuple(map(vartypes.__getitem__, varnames)), left_join
 
         node = tree.quals[0].iter
         origin = vars[node.src]
@@ -3627,9 +3700,19 @@ class Query(object):
         elif not isinstance(origin, EntityMeta):
             if node.src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
             else: throw(TypeError, 'Cannot iterate over non-entity object %s' % node.src)
-        query._database = database = origin._database_
+        database = origin._database_
         if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
         if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
+
+        if database.provider.dialect == 'Oracle':
+            for name, value in vars.iteritems():
+                if value == '':
+                    vars[name] = None
+                    vartypes[name] = type(None)
+
+        query._vars = vars
+        query._key = code_key, tuple(map(vartypes.__getitem__, varnames)), left_join
+        query._database = database
         query._cache = database._get_cache()
 
         translator = database._translator_cache.get(query._key)

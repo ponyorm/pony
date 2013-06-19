@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import unittest
 from pony.orm.core import *
 
@@ -15,17 +17,18 @@ db.generate_mapping(create_tables=True)
 
 class TestOneToOne(unittest.TestCase):
     def setUp(self):
-        rollback()
-        db.execute('delete from male')
-        db.execute('delete from female')
-        db.insert('female', id=1, name='F1')
-        db.insert('female', id=2, name='F2')
-        db.insert('female', id=3, name='F3')
-        db.insert('male', id=1, name='M1', wife=1)
-        db.insert('male', id=2, name='M2', wife=2)
-        db.insert('male', id=3, name='M3', wife=None)
-        commit()
-        rollback()
+        with db_session:
+            db.execute('delete from male')
+            db.execute('delete from female')
+            db.insert('female', id=1, name='F1')
+            db.insert('female', id=2, name='F2')
+            db.insert('female', id=3, name='F3')
+            db.insert('male', id=1, name='M1', wife=1)
+            db.insert('male', id=2, name='M2', wife=2)
+            db.insert('male', id=3, name='M3', wife=None)
+        db_session.__enter__()
+    def tearDown(self):
+        db_session.__exit__()
     def test_1(self):
         Male[3].wife = Female[3]
 

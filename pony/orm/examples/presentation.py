@@ -46,7 +46,7 @@ sql_debug(True)  # Output all SQL queries to stdout
 db.generate_mapping(create_tables=True)
 # db.generate_mapping(check_tables=True)
 
-@with_transaction
+@db_session
 def populate_database():
     if select(s for s in Student).count() > 0:
         return
@@ -98,7 +98,7 @@ def print_students(students):
         print s.name
     print
 
-@with_transaction
+@db_session
 def test_queries():
     students = select(s for s in Student)
     print_students(students)

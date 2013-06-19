@@ -15,6 +15,7 @@ class PGTable(dbschema.Table):
     pass
 
 class PGSchema(dbschema.DBSchema):
+    dialect = 'PostgreSQL'
     table_class = PGTable
     column_class = PGColumn
 
@@ -68,10 +69,10 @@ class PGBlobConverter(dbapiprovider.BlobConverter):
         return 'BYTEA'
 
 class PGDatetimeConverter(dbapiprovider.DatetimeConverter):
-    def sql_type(converter):
-        return 'TIMESTAMP'
+    sql_type_name = 'TIMESTAMP'
 
 class PGProvider(DBAPIProvider):
+    dialect = 'PostgreSQL'
     paramstyle = 'pyformat'
 
     dbapi_module = None  # pgdb or psycopg2

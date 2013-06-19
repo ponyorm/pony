@@ -39,6 +39,10 @@ db.generate_mapping(create_tables=True)
 class TestM2MOptimization(unittest.TestCase):
     def setUp(self):
         rollback()
+        db_session.__enter__()
+    def tearDown(self):
+        rollback()
+        db_session.__exit__()
     def test1(self):
         q = select(s for s in Student if len(s.courses) > 2)
         self.assertEquals(Course._table_ not in flatten(q._translator.conditions), True)

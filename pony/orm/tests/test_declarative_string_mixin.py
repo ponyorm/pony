@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import unittest
 from pony.orm.core import *
 
@@ -8,21 +10,21 @@ class Student(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-@with_transaction()
-def populate_db():
+with db_session:
     Student(id=1, name="ABCDEF")
     Student(id=2, name="Bob")
     Student(id=3, name="Beth")
     Student(id=4, name="Jon")
     Student(id=5, name="Pete")
-populate_db()
 
 class TestStringMixin(unittest.TestCase):
     def setUp(self):
         rollback()
+        db_session.__enter__()
 
     def tearDown(self):
         rollback()
+        db_session.__exit__()
 
     def test1(self):
         name = "ABCDEF5"

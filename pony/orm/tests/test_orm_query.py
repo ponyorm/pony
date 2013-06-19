@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import unittest
 from datetime import date
 from decimal import Decimal
@@ -19,15 +21,19 @@ class Group(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-g1 = Group(number=1)
-Student(id=1, name='S1', group=g1, gpa=3.1)
-Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 01, 01))
-Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 01, 02))
-commit()
+with db_session:
+    g1 = Group(number=1)
+    Student(id=1, name='S1', group=g1, gpa=3.1)
+    Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 01, 01))
+    Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 01, 02))
 
 class TestQuery(unittest.TestCase):
     def setUp(self):
         rollback()
+        db_session.__enter__()
+    def tearDown(self):
+        rollback()
+        db_session.__exit__()
     @raises_exception(TypeError, "Cannot iterate over non-entity object")
     def test_exception1(self):
         g = Group[1]

@@ -1,3 +1,5 @@
+from __future__ import with_statement
+
 import unittest
 from pony.orm.core import *
 from pony.orm.dbschema import DBSchemaError
@@ -12,7 +14,8 @@ class TestColumnsMapping(unittest.TestCase):
         class Student(db.Entity):
             name = PrimaryKey(str)
         sql = "drop table if exists Student;"
-        db.get_connection().executescript(sql)
+        with db_session:
+            db.get_connection().executescript(sql)
         db.generate_mapping(check_tables=True)
 
     # no exception if table was specified
@@ -26,7 +29,8 @@ class TestColumnsMapping(unittest.TestCase):
                 name varchar(30)
             );
         """
-        db.get_connection().executescript(sql)
+        with db_session:
+            db.get_connection().executescript(sql)
         db.generate_mapping(check_tables=True)
         self.assertEqual(db.schema.tables['Student'].column_list[0].name, 'name')
 
@@ -51,7 +55,8 @@ class TestColumnsMapping(unittest.TestCase):
                 name varchar(30)
             );
         """
-        db.get_connection().executescript(sql)
+        with db_session:
+            db.get_connection().executescript(sql)
         db.generate_mapping(check_tables=True)
         self.assertEqual(db.schema.tables['Table1'].column_list[0].name, 'name')
 
@@ -67,7 +72,8 @@ class TestColumnsMapping(unittest.TestCase):
                 name varchar(30)
             );
         """
-        db.get_connection().executescript(sql)
+        with db_session:
+            db.get_connection().executescript(sql)
         db.generate_mapping(check_tables=True)
 
     # 'id' field created if primary key is not defined
@@ -82,7 +88,8 @@ class TestColumnsMapping(unittest.TestCase):
                 name varchar(30)
             );
         """
-        db.get_connection().executescript(sql)
+        with db_session:
+            db.get_connection().executescript(sql)
         db.generate_mapping(check_tables=True)
         self.assertEqual(db.schema.tables['Student'].column_list[0].name, 'id')
 
@@ -99,7 +106,8 @@ class TestColumnsMapping(unittest.TestCase):
                 name varchar(30)
             );
         """
-        db.get_connection().executescript(sql)
+        with db_session:
+            db.get_connection().executescript(sql)
         db.generate_mapping(check_tables=True)
         self.assert_(False)
 
@@ -114,7 +122,8 @@ class TestColumnsMapping(unittest.TestCase):
                 name1 varchar(30)
             );
         """
-        db.get_connection().executescript(sql)
+        with db_session:
+            db.get_connection().executescript(sql)
         db.generate_mapping(check_tables=True)
         self.assertEqual(db.schema.tables['Student'].column_list[0].name, 'name1')
 

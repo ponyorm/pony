@@ -267,9 +267,8 @@ GROUP BY "g"."number"
 
 >>> select(s.group for s in Student if max(s.gpa) < 4)
 
-SELECT "group-1"."number", "group-1"."major", "group-1"."dept"
-FROM "Student" "s", "Group" "group-1"
-WHERE "s"."group" = "group-1"."number"
+SELECT "s"."group"
+FROM "Student" "s"
 GROUP BY "s"."group"
 HAVING MAX("s"."gpa") < 4
 

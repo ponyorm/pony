@@ -17,6 +17,7 @@ class SQLiteForeignKey(dbschema.ForeignKey):
         return None
 
 class SQLiteSchema(dbschema.DBSchema):
+    dialect = 'SQLite'
     fk_class = SQLiteForeignKey
 
 class SQLiteTranslator(sqltranslation.SQLTranslator):
@@ -88,10 +89,13 @@ class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
         return datetime2timestamp(val)
 
 class SQLiteProvider(DBAPIProvider):
+    dialect = 'SQLite'
     dbapi_module = sqlite
     dbschema_cls = SQLiteSchema
     translator_cls = SQLiteTranslator
     sqlbuilder_cls = SQLiteBuilder
+
+    server_version = sqlite.sqlite_version_info
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
