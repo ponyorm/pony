@@ -223,7 +223,7 @@ class Index(Constraint):
             append(case('INDEX'))
             append(quote_name(index.name))
             append(case('ON'))
-            append(quote_name(table.name))
+            append(quote_name(index.table.name))
         else:
             if index.name:
                 append(case('CONSTRAINT'))
