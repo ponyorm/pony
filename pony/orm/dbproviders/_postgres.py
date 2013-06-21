@@ -93,21 +93,15 @@ class PGProvider(DBAPIProvider):
         return [ column.lower() for column in DBAPIProvider.get_default_m2m_column_names(provider, entity) ]
 
     @wrap_dbapi_exceptions
-    def execute(provider, cursor, sql, arguments=None):
+    def execute(provider, cursor, sql, arguments=None, returning_id=False):
         if isinstance(sql, unicode): sql = sql.encode('utf8')
-        if arguments is None: cursor.execute(sql)
-        else: cursor.execute(sql, arguments)
-
-    @wrap_dbapi_exceptions
-    def executemany(provider, cursor, sql, arguments_list):
-        if isinstance(sql, unicode): sql = sql.encode('utf8')
-        cursor.executemany(sql, arguments_list)
-
-    @wrap_dbapi_exceptions
-    def execute_returning_id(provider, cursor, sql, arguments):
-        if isinstance(sql, unicode): sql = sql.encode('utf8')
-        cursor.execute(sql, arguments)
-        return cursor.fetchone()[0]
+        if type(arguments) is list:
+            assert arguments and not returning_id
+            cursor.executemany(sql, arguments)
+        else:
+            if arguments is None: cursor.execute(sql)
+            else: cursor.execute(sql, arguments)
+            if returning_id: return cursor.fetchone()[0]
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),

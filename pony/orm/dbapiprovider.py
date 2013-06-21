@@ -139,18 +139,14 @@ class DBAPIProvider(object):
         return provider.pool.drop(connection)
 
     @wrap_dbapi_exceptions
-    def execute(provider, cursor, sql, arguments=None):
-        if arguments is None: cursor.execute(sql)
-        else: cursor.execute(sql, arguments)
-
-    @wrap_dbapi_exceptions
-    def executemany(provider, cursor, sql, arguments_list):
-        cursor.executemany(sql, arguments_list)
-
-    @wrap_dbapi_exceptions
-    def execute_returning_id(provider, cursor, sql, arguments):
-        cursor.execute(sql, arguments)
-        return cursor.lastrowid
+    def execute(provider, cursor, sql, arguments=None, returning_id=False):
+        if type(arguments) is list:
+            assert arguments and not returning_id
+            cursor.executemany(sql, arguments)
+        else:
+            if arguments is None: cursor.execute(sql)
+            else: cursor.execute(sql, arguments)
+            if returning_id: return cursor.lastrowid
 
     @wrap_dbapi_exceptions
     def commit(provider, connection):

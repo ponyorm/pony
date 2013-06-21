@@ -83,13 +83,10 @@ class TestDatabase(Database):
         Database.__init__(self, TestProvider, *args, **kwargs)
     def _execute(database, sql, globals, locals, frame_depth):
         assert False
-    def _exec_sql(database, sql, arguments=None):
+    def _exec_sql(database, sql, arguments=None, returning_id=False):
+        assert type(arguments) is not list and not returning_id
         database.sql = sql
         database.arguments = arguments
         return test_cursor
-    def _exec_sql_returning_id(database, sql, arguments):
-        assert False
-    def _exec_sql_many(database, sql, arguments_list):
-        assert False
     def generate_mapping(database, filename=None, check_tables=False, create_tables=False):
         return Database.generate_mapping(database, filename)

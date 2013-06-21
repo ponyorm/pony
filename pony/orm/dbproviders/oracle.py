@@ -221,24 +221,21 @@ class OraProvider(DBAPIProvider):
         return [ column.upper() for column in DBAPIProvider.get_default_m2m_column_names(provider, entity) ]
 
     @wrap_dbapi_exceptions
-    def execute(provider, cursor, sql, arguments=None):
-        if arguments is not None:
-            set_input_sizes(cursor, arguments)
-            cursor.execute(sql, arguments)
-        else: cursor.execute(sql)
-
-    @wrap_dbapi_exceptions
-    def executemany(provider, cursor, sql, arguments_list):
-        set_input_sizes(cursor, arguments_list[0])
-        cursor.executemany(sql, arguments_list)
-
-    @wrap_dbapi_exceptions
-    def execute_returning_id(provider, cursor, sql, arguments):
-        set_input_sizes(cursor, arguments)
-        var = cursor.var(cx_Oracle.STRING, 40, cursor.arraysize, outconverter=int)
-        arguments['new_id'] = var
-        cursor.execute(sql, arguments)
-        return var.getvalue()
+    def execute(provider, cursor, sql, arguments=None, returning_id=False):
+        if type(arguments) is list:
+            assert arguments and not returning_id
+            set_input_sizes(cursor, arguments[0])
+            cursor.executemany(sql, arguments)
+        else:
+            if arguments is not None: set_input_sizes(cursor, arguments)
+            if returning_id:
+                var = cursor.var(cx_Oracle.STRING, 40, cursor.arraysize, outconverter=int)
+                arguments['new_id'] = var
+                if arguments is None: cursor.execute(sql)
+                else: cursor.execute(sql, arguments)
+                return var.getvalue()
+            if arguments is None: cursor.execute(sql)
+            else: cursor.execute(sql, arguments)
 
     converter_classes = [
         (bool, OraBoolConverter),
@@ -324,4 +321,4 @@ def set_input_sizes(cursor, arguments):
     elif type(arguments) is tuple:
         input_sizes = map(get_inputsize, arguments)
         cursor.setinputsizes(*input_sizes)
-    else: assert False
+    else: assert False, type(arguments)

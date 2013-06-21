@@ -87,20 +87,16 @@ def log_orm(msg):
         print
 
 def log_sql(sql, arguments=None):
+    if type(arguments) is list:
+        sql = 'EXECUTEMANY (%d)\n%s' % (len(arguments), sql)
     if logging.root.handlers:
         sql_logger.log(orm_log_level, sql)  # arguments can hold sensitive information
     else:
         print sql
-        if arguments: print args2str(arguments)
-        print
-
-def log_sql_many(sql, arguments_list):
-    if logging.root.handlers:
-        sql_logger.log(orm_log_level, 'EXECUTEMANY\n' + sql)  # arguments can hold sensitive information
-    else:
-        print 'EXECUTEMANY\n' + sql
-        for arguments in arguments_list:
-            print args2str(arguments)
+        if not arguments: pass
+        elif type(arguments) is list:
+            for args in arguments: print args2str(args)
+        else: print args2str(arguments)
         print
 
 def args2str(args):
@@ -441,41 +437,22 @@ class Database(object):
         if returning is None:
             cursor = database._exec_sql(sql, arguments)
             return getattr(cursor, 'lastrowid', None)
-        new_id = database._exec_sql_returning_id(sql, arguments)
+        new_id = database._exec_sql(sql, arguments, returning_id=True)
         return new_id
     def _ast2sql(database, sql_ast):
         sql, adapter = database.provider.ast2sql(sql_ast)
         return sql, adapter
-    def _exec_sql(database, sql, arguments=None):
+    def _exec_sql(database, sql, arguments=None, returning_id=False):
         cache = database._get_cache()
         if not cache.saving and not cache.optimistic and cache.modified: cache.flush()
         cursor = cache.connection.cursor()
         if debug: log_sql(sql, arguments)
         t = time()
-        database.provider.execute(cursor, sql, arguments)
+        new_id = database.provider.execute(cursor, sql, arguments, returning_id)
         database._update_local_stat(sql, t)
-        return cursor
-    def _exec_sql_returning_id(database, sql, arguments):
-        cache = database._get_cache()
-        if not cache.saving and not cache.optimistic and cache.modified: cache.flush()
-        cursor = cache.connection.cursor()
-        if debug: log_sql(sql, arguments)
-        t = time()
-        new_id = database.provider.execute_returning_id(cursor, sql, arguments)
-        database._update_local_stat(sql, t)
+        if not returning_id: return cursor
         if type(new_id) is long: new_id = int(new_id)
         return new_id
-    def _exec_sql_many(database, sql, arguments_list):
-        if len(arguments_list) == 1:
-            return database._exec_sql(sql, arguments_list[0])
-        cache = database._get_cache()
-        if not cache.saving and not cache.optimistic and cache.modified: cache.flush()
-        cursor = cache.connection.cursor()
-        if debug: log_sql_many(sql, arguments_list)
-        t = time()
-        database.provider.executemany(cursor, sql, arguments_list)
-        database._update_local_stat(sql, t)
-        return cursor
     @cut_traceback
     def generate_mapping(database, filename=None, check_tables=False, create_tables=False):
         if create_tables and check_tables: throw(TypeError,
@@ -1634,6 +1611,7 @@ class Set(Collection):
         attr._columns_checked = True
         return reverse.columns
     def remove_m2m(attr, removed):
+        assert removed
         entity = attr.entity
         database = entity._database_
         cached_sql = attr.cached_remove_m2m_sql
@@ -1656,8 +1634,9 @@ class Set(Collection):
         else: sql, adapter = cached_sql
         arguments_list = [ adapter(obj._get_raw_pkval_() + robj._get_raw_pkval_())
                            for obj, robj in removed ]
-        database._exec_sql_many(sql, arguments_list)
+        database._exec_sql(sql, arguments_list)
     def add_m2m(attr, added):
+        assert added
         entity = attr.entity
         database = entity._database_
         cached_sql = attr.cached_add_m2m_sql
@@ -1678,7 +1657,7 @@ class Set(Collection):
         else: sql, adapter = cached_sql
         arguments_list = [ adapter(obj._get_raw_pkval_() + robj._get_raw_pkval_())
                            for obj, robj in added ]
-        database._exec_sql_many(sql, arguments_list)
+        database._exec_sql(sql, arguments_list)
 
 def unpickle_setwrapper(obj, attrname, items):
     attr = getattr(obj.__class__, attrname)
@@ -3133,7 +3112,7 @@ class Entity(object):
         else: sql, adapter = cached_sql
         arguments = adapter(values)
         try:
-            if auto_pk: new_id = database._exec_sql_returning_id(sql, arguments)
+            if auto_pk: new_id = database._exec_sql(sql, arguments, returning_id=True)
             else: database._exec_sql(sql, arguments)
         except IntegrityError, e:
             msg = " ".join(tostring(arg) for arg in e.args)
