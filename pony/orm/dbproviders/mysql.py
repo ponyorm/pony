@@ -19,6 +19,7 @@ class MySQLColumn(dbschema.Column):
 
 class MySQLSchema(dbschema.DBSchema):
     dialect = 'MySQL'
+    inline_fk_syntax = False
     column_class = MySQLColumn
 
 class MySQLTranslator(SQLTranslator):
