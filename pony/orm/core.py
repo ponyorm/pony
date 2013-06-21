@@ -3545,7 +3545,7 @@ class DBSessionContextManager(object):
                         with self: return old_func(*args, **kwargs)
                     except Exception, e:
                         if not isinstance(e, self.retry_exceptions): raise
-                raise e
+                raise
             return copy_func_attrs(new_func, old_func, 'db_session')
         return self.__class__(**kwargs)
     def __enter__(self):
