@@ -452,8 +452,7 @@ class Database(object):
         cursor = cache.connection.cursor()
         if debug: log_sql(sql, arguments)
         t = time()
-        if arguments is None: database.provider.execute(cursor, sql)
-        else: database.provider.execute(cursor, sql, arguments)
+        database.provider.execute(cursor, sql, arguments)
         database._update_local_stat(sql, t)
         return cursor
     def _exec_sql_returning_id(database, sql, arguments, autoflush=True):
