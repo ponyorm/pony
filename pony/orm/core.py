@@ -18,7 +18,7 @@ from pony.orm.decompiling import decompile
 from pony.orm.ormtypes import AsciiStr, LongStr, LongUnicode, numeric_types, get_normalized_type_of
 from pony.orm.asttranslation import create_extractors, ast2src, TranslationError
 from pony.orm.dbapiprovider import (
-    DBException, RowNotFound, MultipleRowsFound, TooManyRowsFound,
+    DBAPIProvider, DBException, RowNotFound, MultipleRowsFound, TooManyRowsFound,
     Warning, Error, InterfaceError, DatabaseError, DataError, OperationalError,
     IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
@@ -293,11 +293,16 @@ class Database(object):
     def __deepcopy__(self, memo):
         return self  # Database cannot be cloned by deepcopy()
     @cut_traceback
-    def __init__(self, provider_name, *args, **kwargs):
+    def __init__(self, provider, *args, **kwargs):
         # First argument cannot be named 'database', because 'database' can be in kwargs
-        if not isinstance(provider_name, basestring): throw(TypeError)
-        provider_module = import_module('pony.orm.dbproviders.' + provider_name)
-        self.provider = provider = provider_module.provider_cls(*args, **kwargs)
+        if isinstance(provider, type) and issubclass(provider, DBAPIProvider):
+            provider_cls = provider
+        else:
+            if not isinstance(provider, basestring): throw(TypeError)
+            provider_module = import_module('pony.orm.dbproviders.' + provider)
+            provider_cls = provider_module.provider_cls
+
+        self.provider = provider = provider_cls(*args, **kwargs)
 
         self.priority = 0
         self.optimistic = True

@@ -6,12 +6,12 @@ from pony import orm
 from pony.orm import core
 from pony.orm.tests import testutils
 
-directive_re = re.compile(r'(\w+):')
+directive_re = re.compile(r'(\w+)(\s+[0-9\.]+)?:')
 directive = module_name = None
 statements = []
 lines = []
 
-def Schema():
+def Schema(param):
     if not statement_used:
         print
         print 'Statement not used:'
@@ -23,23 +23,24 @@ def Schema():
     global module_name
     module_name = lines[0].strip()
 
-def SQLite():
-    do_test('sqlite')
+def SQLite(server_version):
+    do_test('sqlite', server_version)
 
-def MySQL():
-    do_test('mysql')
+def MySQL(server_version):
+    do_test('mysql', server_version)
 
-def PostgreSQL():
-    do_test('postgres')
+def PostgreSQL(server_version):
+    do_test('postgres', server_version)
 
-def Oracle():
-    do_test('oracle')
+def Oracle(server_version):
+    do_test('oracle', server_version)
 
 unavailable_providers = set()
 
-def do_test(provider_name):
+def do_test(provider_name, raw_server_version):
     if provider_name in unavailable_providers: return
     testutils.TestDatabase.real_provider_name = provider_name
+    testutils.TestDatabase.raw_server_version = raw_server_version
     core.Database = orm.Database = testutils.TestDatabase
     sys.modules.pop(module_name, None)
     try: __import__(module_name)
@@ -83,7 +84,7 @@ dirname, fname = os.path.split(__file__)
 queries_fname = os.path.join(dirname, 'queries.txt')
 
 def orphan_lines(lines):
-    SQLite()
+    SQLite(None)
     lines[:] = []
 
 statement_used = True
@@ -94,23 +95,27 @@ for raw_line in file(queries_fname):
     match = directive_re.match(line)
     if match:
         if directive:
-            directive()
+            directive(directive_param)
             lines[:] = []
         elif lines: orphan_lines(lines)
         directive = eval(match.group(1))
+        if match.group(2):
+            directive_param = match.group(2)
+        else: directive_param = None
     elif line.startswith('>>> '):
         if directive:
-            directive()
+            directive(directive_param)
             lines[:] = []
             statements[:] = []
         elif lines: orphan_lines(lines)
         directive = None
+        directive_param = None
         statements.append(line[4:])
         statement_used = False
     else:
         lines.append(raw_line.rstrip())
 
 if directive:
-    directive()
+    directive(directive_param)
 elif lines:
     orphan_lines(lines)
