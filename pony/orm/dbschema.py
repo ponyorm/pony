@@ -4,6 +4,7 @@ from pony.utils import throw
 
 class DBSchema(object):
     dialect = None
+    inline_fk_syntax = True
     def __init__(schema, provider, uppercase=True):
         schema.provider = provider
         schema.tables = {}
@@ -99,7 +100,7 @@ class Table(object):
             if len(index.columns) == 1: continue
             cmd.append(index.get_sql() + ',')
         for foreign_key in table.foreign_keys.values():
-            if len(foreign_key.child_columns) == 1: continue
+            if schema.inline_fk_syntax and len(foreign_key.child_columns) == 1: continue
             if not foreign_key.parent_table in created_tables: continue
             cmd.append(foreign_key.get_sql() + ',')
         cmd[-1] = cmd[-1][:-1]
@@ -159,13 +160,14 @@ class Column(object):
             else:
                 if column.is_unique: append(case('UNIQUE'))
                 if column.is_not_null: append(case('NOT NULL'))
-        foreign_key = table.foreign_keys.get((column,))
-        if foreign_key is not None:
-            parent_table = foreign_key.parent_table
-            if parent_table in created_tables or parent_table is table:
-                append(case('REFERENCES'))
-                append(quote_name(parent_table.name))
-                append(schema.column_list(foreign_key.parent_columns))
+        if schema.inline_fk_syntax:
+            foreign_key = table.foreign_keys.get((column,))
+            if foreign_key is not None:
+                parent_table = foreign_key.parent_table
+                if parent_table in created_tables or parent_table is table:
+                    append(case('REFERENCES'))
+                    append(quote_name(parent_table.name))
+                    append(schema.column_list(foreign_key.parent_columns))
         return ' '.join(result)
 
 class Constraint(object):
