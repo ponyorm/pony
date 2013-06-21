@@ -446,18 +446,18 @@ class Database(object):
     def _ast2sql(database, sql_ast):
         sql, adapter = database.provider.ast2sql(sql_ast)
         return sql, adapter
-    def _exec_sql(database, sql, arguments=None, autoflush=True):
+    def _exec_sql(database, sql, arguments=None):
         cache = database._get_cache()
-        if autoflush and not cache.optimistic and cache.modified: cache.flush()
+        if not cache.saving and not cache.optimistic and cache.modified: cache.flush()
         cursor = cache.connection.cursor()
         if debug: log_sql(sql, arguments)
         t = time()
         database.provider.execute(cursor, sql, arguments)
         database._update_local_stat(sql, t)
         return cursor
-    def _exec_sql_returning_id(database, sql, arguments, autoflush=True):
+    def _exec_sql_returning_id(database, sql, arguments):
         cache = database._get_cache()
-        if autoflush and not cache.optimistic and cache.modified: cache.flush()
+        if not cache.saving and not cache.optimistic and cache.modified: cache.flush()
         cursor = cache.connection.cursor()
         if debug: log_sql(sql, arguments)
         t = time()
@@ -465,11 +465,11 @@ class Database(object):
         database._update_local_stat(sql, t)
         if type(new_id) is long: new_id = int(new_id)
         return new_id
-    def _exec_sql_many(database, sql, arguments_list, autoflush=True):
+    def _exec_sql_many(database, sql, arguments_list):
         if len(arguments_list) == 1:
-            return database._exec_sql(sql, arguments_list[0], autoflush)
+            return database._exec_sql(sql, arguments_list[0])
         cache = database._get_cache()
-        if autoflush and not cache.optimistic and cache.modified: cache.flush()
+        if not cache.saving and not cache.optimistic and cache.modified: cache.flush()
         cursor = cache.connection.cursor()
         if debug: log_sql_many(sql, arguments_list)
         t = time()
@@ -1656,7 +1656,7 @@ class Set(Collection):
         else: sql, adapter = cached_sql
         arguments_list = [ adapter(obj._get_raw_pkval_() + robj._get_raw_pkval_())
                            for obj, robj in removed ]
-        database._exec_sql_many(sql, arguments_list, autoflush=False)
+        database._exec_sql_many(sql, arguments_list)
     def add_m2m(attr, added):
         entity = attr.entity
         database = entity._database_
@@ -1678,7 +1678,7 @@ class Set(Collection):
         else: sql, adapter = cached_sql
         arguments_list = [ adapter(obj._get_raw_pkval_() + robj._get_raw_pkval_())
                            for obj, robj in added ]
-        database._exec_sql_many(sql, arguments_list, autoflush=False)
+        database._exec_sql_many(sql, arguments_list)
 
 def unpickle_setwrapper(obj, attrname, items):
     attr = getattr(obj.__class__, attrname)
@@ -3133,8 +3133,8 @@ class Entity(object):
         else: sql, adapter = cached_sql
         arguments = adapter(values)
         try:
-            if auto_pk: new_id = database._exec_sql_returning_id(sql, arguments, autoflush=False)
-            else: database._exec_sql(sql, arguments, autoflush=False)
+            if auto_pk: new_id = database._exec_sql_returning_id(sql, arguments)
+            else: database._exec_sql(sql, arguments)
         except IntegrityError, e:
             msg = " ".join(tostring(arg) for arg in e.args)
             throw(TransactionIntegrityError,
@@ -3206,7 +3206,7 @@ class Entity(object):
                 obj._update_sql_cache_[query_key] = sql, adapter
             else: sql, adapter = cached_sql
             arguments = adapter(values)
-            cursor = database._exec_sql(sql, arguments, autoflush=False)
+            cursor = database._exec_sql(sql, arguments)
             if cursor.rowcount != 1:
                 throw(UnrepeatableReadError, 'Object %r was updated outside of current transaction' % obj)
         obj._status_ = 'saved'
@@ -3246,7 +3246,7 @@ class Entity(object):
             obj._lock_sql_cache_[query_key] = sql, adapter
         else: sql, adapter = cached_sql
         arguments = adapter(values)
-        cursor = database._exec_sql(sql, arguments, autoflush=False)
+        cursor = database._exec_sql(sql, arguments)
         row = cursor.fetchone()
         if row is None: throw(UnrepeatableReadError, 'Object %r was updated outside of current transaction' % obj)
         obj._status_ = 'loaded'
@@ -3262,9 +3262,10 @@ class Entity(object):
         else: sql, adapter = cached_sql
         values = obj._get_raw_pkval_()
         arguments = adapter(values)
-        database._exec_sql(sql, arguments, autoflush=False)
+        database._exec_sql(sql, arguments)
     def _save_(obj, dependent_objects=None):
-        assert obj._cache_.is_alive
+        cache = obj._cache_
+        assert cache.is_alive and cache.saving
         status = obj._status_
         if status in ('loaded', 'saved', 'cancelled'): return
         if status in ('created', 'updated'):
@@ -3295,6 +3296,7 @@ class Cache(object):
         cache.to_be_checked = []
         cache.query_results = {}
         cache.modified = False
+        cache.saving = False
     def switch_to_optimistic_mode(cache):
         cache.optimistic = True
         provider = cache.database.provider
@@ -3371,31 +3373,36 @@ class Cache(object):
         assert cache.is_alive
         if not cache.modified: return
         if not (cache.created or cache.updated or cache.deleted or cache.modified_collections): return
-        cache.query_results.clear()
-        modified_m2m = cache.calc_modified_m2m()
-        for attr, (added, removed) in modified_m2m.iteritems():
-            if not removed: continue
-            attr.remove_m2m(removed)
-        for obj in cache.to_be_checked:
-            obj._save_()
-        for attr, (added, removed) in modified_m2m.iteritems():
-            if not added: continue
-            attr.add_m2m(added)
+        assert cache.saving == False
+        cache.saving = True
+        try:
+            cache.query_results.clear()
+            modified_m2m = cache.calc_modified_m2m()
+            for attr, (added, removed) in modified_m2m.iteritems():
+                if not removed: continue
+                attr.remove_m2m(removed)
+            for obj in cache.to_be_checked:
+                obj._save_()
+            for attr, (added, removed) in modified_m2m.iteritems():
+                if not added: continue
+                attr.add_m2m(added)
 
-        cache.created.clear()
-        cache.updated.clear()
+            cache.created.clear()
+            cache.updated.clear()
 
-        indexes = cache.indexes
-        for obj in cache.deleted:
-            pkval = obj._pkval_
-            pk = obj.__class__.__dict__['_pk_']
-            index = indexes[pk]
-            index.pop(pkval)
+            indexes = cache.indexes
+            for obj in cache.deleted:
+                pkval = obj._pkval_
+                pk = obj.__class__.__dict__['_pk_']
+                index = indexes[pk]
+                index.pop(pkval)
 
-        cache.deleted[:] = []
-        cache.modified_collections.clear()
-        cache.to_be_checked[:] = []
-        cache.modified = False
+            cache.deleted[:] = []
+            cache.modified_collections.clear()
+            cache.to_be_checked[:] = []
+            cache.modified = False
+        finally:
+            cache.saving = False
     def calc_modified_m2m(cache):
         modified_m2m = {}
         for attr, objects in sorted(cache.modified_collections.iteritems(),
