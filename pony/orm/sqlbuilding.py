@@ -4,7 +4,6 @@ from datetime import date, datetime
 from binascii import hexlify
 
 from pony import options
-from pony.orm.sqlsymbols import *
 from pony.utils import datetime2timestamp, throw
 
 class AstError(Exception): pass
@@ -65,7 +64,7 @@ def flat(tree):
 def flat_conditions(conditions):
     result = []
     for condition in conditions:
-        if condition[0] == AND:
+        if condition[0] == 'AND':
             result.extend(flat_conditions(condition[1:]))
         else: result.append(condition)
     return result
@@ -82,19 +81,19 @@ def join(delimiter, items):
 def move_conditions_from_inner_join_to_where(sections):
     new_sections = list(sections)
     for i, section in enumerate(sections):
-        if section[0] == FROM:
-            new_from_list = [ FROM ] + [ list(item) for item in section[1:] ]
+        if section[0] == 'FROM':
+            new_from_list = [ 'FROM' ] + [ list(item) for item in section[1:] ]
             new_sections[i] = new_from_list
-            if len(sections) > i+1 and sections[i+1][0] == WHERE:
+            if len(sections) > i+1 and sections[i+1][0] == 'WHERE':
                 new_where_list = list(sections[i+1])
                 new_sections[i+1] = new_where_list
             else:
-                new_where_list = [ WHERE ]
+                new_where_list = [ 'WHERE' ]
                 new_sections.insert(i+1, new_where_list)
             break
     else: return sections
     for join in new_from_list[2:]:
-        if join[1] in (TABLE, SELECT) and len(join) == 4:
+        if join[1] in ('TABLE', 'SELECT') and len(join) == 4:
             new_where_list.append(join.pop())
     return new_sections
 
@@ -250,11 +249,11 @@ class SQLBuilder(object):
                 if join_cond is None: result.append(', ')
                 else: result += [ '\n', indent, '  %s JOIN ' % join_type ]
             if alias is not None: alias = builder.quote_name(alias)
-            if kind == TABLE:
+            if kind == 'TABLE':
                 if isinstance(x, basestring): result.append(builder.quote_name(x))
                 else: result.append(builder.compound_name(x))
                 if alias is not None: result += ' ', alias  # Oracle does not support 'AS' here
-            elif kind == SELECT:
+            elif kind == 'SELECT':
                 if alias is None: throw(AstError, 'Subquery in FROM section must have an alias')
                 result += builder.SELECT(*x), ' ', alias  # Oracle does not support 'AS' here
             else: throw(AstError, 'Invalid source kind in FROM section: %r' % kind)
@@ -372,21 +371,21 @@ class SQLBuilder(object):
         return builder(expr1), ' NOT BETWEEN ', builder(expr2), ' AND ', builder(expr3)
     def IN(builder, expr1, x):
         if not x: throw(AstError, 'Empty IN clause')
-        if len(x) >= 1 and x[0] == SELECT:
+        if len(x) >= 1 and x[0] == 'SELECT':
             return builder(expr1), ' IN ', builder(x)
         expr_list = [ builder(expr) for expr in x ]
         return builder(expr1), ' IN (', join(', ', expr_list), ')'
     def NOT_IN(builder, expr1, x):
         if not x: throw(AstError, 'Empty IN clause')
-        if len(x) >= 1 and x[0] == SELECT:
+        if len(x) >= 1 and x[0] == 'SELECT':
             return builder(expr1), ' NOT IN ', builder(x)
         expr_list = [ builder(expr) for expr in x ]
         return builder(expr1), ' NOT IN (', join(', ', expr_list), ')'
     def COUNT(builder, kind, *expr_list):
-        if kind == ALL:
+        if kind == 'ALL':
             if not expr_list: return ['COUNT(*)']
             return 'COUNT(', join(', ', map(builder, expr_list)), ')'
-        elif kind == DISTINCT:
+        elif kind == 'DISTINCT':
             if not expr_list: throw(AstError, 'COUNT(DISTINCT) without argument')
             if len(expr_list) == 1: return 'COUNT(DISTINCT ', builder(expr_list[0]), ')'
             if builder.dialect == 'PostgreSQL':
