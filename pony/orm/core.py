@@ -2518,7 +2518,9 @@ class EntityMeta(type):
     def _query_from_lambda_(entity, lambda_func, globals, locals):
         if type(lambda_func) is types.FunctionType:
             names, argsname, keyargsname, defaults = inspect.getargspec(lambda_func)
-            if len(names) > 1: throw(TypeError)
+            if len(names) != 1: throw(TypeError,
+                'Lambda query requires exactly one parameter name, like %s.select(lambda %s: ...). '
+                'Got: %d parameters' % (entity.__name__, entity.__name__[0].lower(), len(names)))
             if argsname or keyargsname: throw(TypeError)
             if defaults: throw(TypeError)
             code_key = id(lambda_func.func_code)
