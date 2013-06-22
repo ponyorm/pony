@@ -1,11 +1,9 @@
 from decimal import Decimal
-from datetime import datetime, date, time
+from datetime import datetime, date
 
-from pony.orm import core, dbschema, sqlbuilding, dbapiprovider
-from pony.orm.core import log_orm, DatabaseError
+from pony.orm import dbschema, sqlbuilding, dbapiprovider
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
-from pony.utils import timestamp2datetime
 from pony.orm.sqlbuilding import Value
 
 class PGColumn(dbschema.Column):

@@ -1,4 +1,3 @@
-from pony.utils import throw, is_utf8
 from pony.orm import core
 from pony.orm.dbapiprovider import Pool, ProgrammingError
 from pony.orm.dbproviders._postgres import *

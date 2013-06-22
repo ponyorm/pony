@@ -10,7 +10,7 @@ import cx_Oracle
 from pony.orm import core, dbschema, sqlbuilding, dbapiprovider, sqltranslation
 from pony.orm.core import log_orm, log_sql, DatabaseError
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, get_version_tuple
-from pony.utils import is_utf8, throw
+from pony.utils import throw
 
 trigger_template = """
 create trigger %s

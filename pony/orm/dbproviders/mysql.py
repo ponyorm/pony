@@ -12,7 +12,7 @@ from pony.orm import dbschema
 from pony.orm import dbapiprovider
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, get_version_tuple
 from pony.orm.sqltranslation import SQLTranslator
-from pony.orm.sqlbuilding import Value, SQLBuilder, join
+from pony.orm.sqlbuilding import SQLBuilder, join
 
 class MySQLColumn(dbschema.Column):
     auto_template = '%(type)s PRIMARY KEY AUTO_INCREMENT'

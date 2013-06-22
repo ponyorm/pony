@@ -1,4 +1,3 @@
-import sys, threading
 from operator import attrgetter
 from decimal import Decimal
 from datetime import date, datetime

@@ -1,15 +1,14 @@
-import os.path, weakref
+import os.path
 import sqlite3 as sqlite
-from thread import get_ident
 from threading import Lock, Thread
 from Queue import Queue
 from decimal import Decimal
-from datetime import datetime, date, time
+from datetime import datetime, date
 from time import strptime
 
 from pony.orm import dbschema, sqltranslation, dbapiprovider
 from pony.orm.sqlbuilding import SQLBuilder, join
-from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
+from pony.orm.dbapiprovider import DBAPIProvider, Pool
 from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple_decorator, absolutize_path, throw
 
 class SQLiteForeignKey(dbschema.ForeignKey):

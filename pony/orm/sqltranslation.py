@@ -1,4 +1,4 @@
-import __builtin__, types, sys, decimal, re
+import types, sys, re
 from itertools import izip, count
 from types import NoneType
 from compiler import ast
@@ -14,8 +14,7 @@ from pony.orm.ormtypes import \
     string_types, numeric_types, comparable_types, SetType, FuncType, MethodType, \
     get_normalized_type_of, normalize_type, coerce_types, are_comparable_types
 from pony.orm import core
-from pony.orm.core import ERDiagramError, EntityMeta, Set, JOIN, AsciiStr, OptimizationFailed, \
-                          Attribute, DescWrapper
+from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper
 
 def check_comparable(left_monad, right_monad, op='=='):
     t1, t2 = left_monad.type, right_monad.type

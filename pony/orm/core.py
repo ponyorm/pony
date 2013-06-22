@@ -1,11 +1,10 @@
 from __future__ import with_statement
 
-import __builtin__, re, sys, types, inspect, logging
+import re, sys, types, inspect, logging
 from compiler import ast, parse
 from cPickle import loads, dumps
 from operator import attrgetter, itemgetter
 from itertools import count as _count, ifilter, ifilterfalse, imap, izip, chain, starmap
-from collections import defaultdict
 from time import time
 import datetime
 from threading import Lock, currentThread as current_thread, _MainThread
@@ -16,14 +15,14 @@ import pony
 from pony import options
 from pony.orm.decompiling import decompile
 from pony.orm.ormtypes import AsciiStr, LongStr, LongUnicode, numeric_types, get_normalized_type_of
-from pony.orm.asttranslation import create_extractors, ast2src, TranslationError
+from pony.orm.asttranslation import create_extractors, TranslationError
 from pony.orm.dbapiprovider import (
     DBAPIProvider, DBException, RowNotFound, MultipleRowsFound, TooManyRowsFound,
     Warning, Error, InterfaceError, DatabaseError, DataError, OperationalError,
     IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
 from pony.utils import (
-    localbase, simple_decorator, decorator_with_params, cut_traceback, throw,
+    localbase, simple_decorator, cut_traceback, throw,
     import_module, parse_expr, is_ident, count, avg as _avg, tostring, strjoin,
     copy_func_attrs
     )
