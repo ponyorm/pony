@@ -2270,13 +2270,19 @@ class EntityMeta(type):
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
 
         pkval, avdict = entity._normalize_args_(kwargs, False)
+        rbits = 0
         for attr in avdict:
             if attr.is_collection: throw(TypeError,
                 'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
+            bit = entity._bits_.get(attr)
+            if bit is not None: rbits |= bit
         try:
             objects = entity._find_in_cache_(pkval, avdict)
         except KeyError:  # not found in cache, can exist in db
             objects = entity._find_in_db_(avdict, max_fetch_count)
+        if rbits:
+            for obj in objects:
+                if obj._rbits_ is not None: obj._rbits_ |= rbits
         return objects
     def _find_in_cache_(entity, pkval, avdict):
         cache = entity._get_cache_()
