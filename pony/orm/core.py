@@ -2449,7 +2449,7 @@ class EntityMeta(type):
         cached_sql = sql, adapter, attr_offsets
         entity._find_sql_cache_[query_key] = cached_sql
         return cached_sql
-    def _fetch_objects(entity, cursor, attr_offsets, max_fetch_count=None):
+    def _fetch_objects(entity, cursor, attr_offsets, max_fetch_count=None, rbits=None):
         if max_fetch_count is None: max_fetch_count = options.MAX_FETCH_COUNT
         if max_fetch_count is not None:
             rows = cursor.fetchmany(max_fetch_count + 1)
@@ -2470,6 +2470,8 @@ class EntityMeta(type):
                 if obj._status_ in del_statuses: continue
                 obj._db_set_(avdict)
                 objects.append(obj)
+        if rbits is not None:
+            for obj in objects: obj._rbits_ |= rbits
         return objects
     def _parse_row_(entity, row, attr_offsets):
         discr_attr = entity._discriminator_attr_
@@ -3750,7 +3752,7 @@ class Query(object):
             cursor = query._database._exec_sql(sql, arguments)
             if isinstance(translator.expr_type, EntityMeta):
                 entity = translator.expr_type
-                result = entity._fetch_objects(cursor, attr_offsets)
+                result = entity._fetch_objects(cursor, attr_offsets, rbits=translator.tableref.rbits)
             elif len(translator.row_layout) == 1:
                 func, slice_or_offset, src = translator.row_layout[0]
                 result = list(starmap(func, cursor.fetchall()))

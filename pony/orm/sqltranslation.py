@@ -687,6 +687,7 @@ class TableRef(object):
         tableref.entity = entity
         tableref.joined = False
         tableref.can_affect_distinct = True
+        tableref.rbits = 0
     def make_join(tableref, pk_only=False):
         entity = tableref.entity
         if not tableref.joined:
@@ -711,6 +712,7 @@ class JoinedTableRef(object):
         assert isinstance(tableref.entity, EntityMeta)
         tableref.joined = False
         tableref.can_affect_distinct = False
+        tableref.rbits = 0
     def make_join(tableref, pk_only=False):
         entity = tableref.entity
         pk_only = pk_only and not entity._discriminator_attr_
@@ -1192,6 +1194,9 @@ class ObjectMixin(MonadMixin):
         entity = monad.type
         try: attr = entity._adict_[name]
         except KeyError: throw(AttributeError)
+        if hasattr(monad, 'tableref'):
+            bit = entity._bits_.get(attr)
+            if bit is not None: monad.tableref.rbits |= bit
         if not attr.is_collection:
             return translator.AttrMonad.new(monad, attr)
         else:
