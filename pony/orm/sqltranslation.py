@@ -468,7 +468,7 @@ class SQLTranslator(ASTTranslator):
         else:
             for node in nodes:
                 monad = node.monad
-                if isinstance(monad, translator.AndMonad): cond_monads = if_.monad.operands
+                if isinstance(monad, translator.AndMonad): cond_monads = monad.operands
                 else: cond_monads = [ monad ]
                 for m in cond_monads:
                     if not m.aggregated: translator.conditions.extend(m.getsql())

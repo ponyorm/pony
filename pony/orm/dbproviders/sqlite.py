@@ -171,11 +171,6 @@ def _init_connection(con):
     con.text_factory = _text_factory
     con.create_function('power', 2, pow)
 
-def unexpected_args(attr, args):
-    throw(TypeError,
-        'Unexpected positional argument%s for attribute %s: %r'
-        % ((args > 1 and 's' or ''), attr, ', '.join(map(repr, args))))
-
 mem_queue = Queue()
 
 class Local(localbase):

@@ -57,6 +57,11 @@ def wrap_dbapi_exceptions(func, provider, *args, **kwargs):
     except dbapi_module.Error, e: raise Error(e)
     except dbapi_module.Warning, e: raise Warning(e)
 
+def unexpected_args(attr, args):
+    throw(TypeError,
+        'Unexpected positional argument%s for attribute %s: %r'
+        % ((args > 1 and 's' or ''), attr, ', '.join(map(repr, args))))
+
 version_re = re.compile('[0-9\.]+')
 
 def get_version_tuple(s):
@@ -297,10 +302,10 @@ class IntConverter(Converter):
         Converter.init(converter, kwargs)
         min_val = kwargs.pop('min', None)
         if min_val is not None and not isinstance(min_val, (int, long)):
-            throw(TypeError, "'min' argument for attribute %s must be int. Got: %r" % (attr, min_val))
+            throw(TypeError, "'min' argument for attribute %s must be int. Got: %r" % (converter.attr, min_val))
         max_val = kwargs.pop('max', None)
         if max_val is not None and not isinstance(max_val, (int, long)):
-            throw(TypeError, "'max' argument for attribute %s must be int. Got: %r" % (attr, max_val))
+            throw(TypeError, "'max' argument for attribute %s must be int. Got: %r" % (converter.attr, max_val))
         converter.min_val = min_val
         converter.max_val = max_val
     def validate(converter, val):
@@ -331,12 +336,12 @@ class RealConverter(Converter):
         if min_val is not None:
             try: min_val = float(min_val)
             except ValueError:
-                throw(TypeError, "Invalid value for 'min' argument for attribute %s: %r" % (attr, min_val))
+                throw(TypeError, "Invalid value for 'min' argument for attribute %s: %r" % (converter.attr, min_val))
         max_val = kwargs.pop('max', None)
         if max_val is not None:
             try: max_val = float(max_val)
             except ValueError:
-                throw(TypeError, "Invalid value for 'max' argument for attribute %s: %r" % (attr, max_val))
+                throw(TypeError, "Invalid value for 'max' argument for attribute %s: %r" % (converter.attr, max_val))
         converter.min_val = min_val
         converter.max_val = max_val
         converter.tolerance = kwargs.pop('tolerance', converter.default_tolerance)
