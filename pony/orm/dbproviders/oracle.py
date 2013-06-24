@@ -208,6 +208,14 @@ class OraProvider(DBAPIProvider):
         assert row is not None
         provider.server_version = get_version_tuple(row[0])
 
+    def should_reconnect(provider, exc):
+        reconnect_error_codes = (
+            3113,  # ORA-03113: end-of-file on communication channel
+            3114,  # ORA-03114: not connected to ORACLE
+            )
+        return isinstance(exc, cx_Oracle.OperationalError) \
+               and exc.args[0].code in reconnect_error_codes
+
     def get_default_entity_table_name(provider, entity):
         return DBAPIProvider.get_default_entity_table_name(provider, entity).upper()
 

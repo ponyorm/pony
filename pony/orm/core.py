@@ -129,6 +129,7 @@ class MultipleObjectsFoundError(OrmError): pass
 class TooManyObjectsFoundError(OrmError): pass
 class OperationWithDeletedObjectError(OrmError): pass
 class TransactionError(OrmError): pass
+class ConnectionClosedError(TransactionError): pass
 
 class TransactionIntegrityError(TransactionError):
     def __init__(exc, msg, original_exc=None):
@@ -341,6 +342,7 @@ class Database(object):
     def get_connection(database):
         cache = database._get_cache()
         cache.flush()
+        assert cache.connection is not None
         return cache.connection
     def _get_cache(database):
         cache = local.db2cache.get(database)
@@ -348,8 +350,7 @@ class Database(object):
         if not local.db_context_counter and not (
                 pony.MODE == 'INTERACTIVE' and current_thread().__class__ is _MainThread
             ): throw(TransactionError, 'db_session is required when working with the database')
-        connection = database.provider.connect()
-        cache = local.db2cache[database] = Cache(database, connection)
+        cache = local.db2cache[database] = Cache(database)
         return cache
     @cut_traceback
     def flush(database):
@@ -365,8 +366,8 @@ class Database(object):
     @cut_traceback
     def execute(database, sql, globals=None, locals=None):
         database._get_cache().flush()
-        return database._execute(sql, globals, locals, 2)
-    def _execute(database, sql, globals, locals, frame_depth):
+        return database._exec_raw_sql(sql, globals, locals, 2)
+    def _exec_raw_sql(database, sql, globals, locals, frame_depth):
         sql = sql[:]  # sql = templating.plainstr(sql)
         if globals is None:
             assert locals is None
@@ -375,20 +376,12 @@ class Database(object):
             locals = sys._getframe(frame_depth).f_locals
         provider = database.provider
         adapted_sql, code = adapt_sql(sql, provider.paramstyle)
-        values = eval(code, globals, locals)
-        if values is None: values = ()
-        cache = database._get_cache()
-        if not cache.optimistic: cache.flush()
-        cursor = cache.connection.cursor()
-        if debug: log_sql(adapted_sql, values)
-        t = time()
-        provider.execute(cursor, adapted_sql, values)
-        database._update_local_stat(sql, t)
-        return cursor
+        arguments = eval(code, globals, locals)
+        return database._exec_sql(sql, arguments)
     @cut_traceback
     def select(database, sql, globals=None, locals=None, frame_depth=0):
         if not select_re.match(sql): sql = 'select ' + sql
-        cursor = database._execute(sql, globals, locals, frame_depth + 2)
+        cursor = database._exec_raw_sql(sql, globals, locals, frame_depth + 2)
         max_fetch_count = options.MAX_FETCH_COUNT
         if max_fetch_count is not None:
             result = cursor.fetchmany(max_fetch_count)
@@ -414,7 +407,7 @@ class Database(object):
     @cut_traceback
     def exists(database, sql, globals=None, locals=None):
         if not select_re.match(sql): sql = 'select ' + sql
-        cursor = database._execute(sql, globals, locals, 2)
+        cursor = database._exec_raw_sql(sql, globals, locals, 2)
         result = cursor.fetchone()
         return bool(result)
     @cut_traceback
@@ -431,8 +424,7 @@ class Database(object):
         else: sql, adapter = cached_sql
         arguments = adapter(kwargs.values())  # order of values same as order of keys
         cache = database._get_cache()
-        if cache.optimistic:
-            cache.switch_to_pessimistic_mode()
+        if cache.optimistic: cache.flush()
         if returning is None:
             cursor = database._exec_sql(sql, arguments)
             return getattr(cursor, 'lastrowid', None)
@@ -444,10 +436,21 @@ class Database(object):
     def _exec_sql(database, sql, arguments=None, returning_id=False):
         cache = database._get_cache()
         if not cache.saving and not cache.optimistic and cache.modified: cache.flush()
-        cursor = cache.connection.cursor()
+        connection = cache.connection or cache.establish_connection()
+        cursor = connection.cursor()
         if debug: log_sql(sql, arguments)
+        provider = database.provider
         t = time()
-        new_id = database.provider.execute(cursor, sql, arguments, returning_id)
+        try: new_id = provider.execute(cursor, sql, arguments, returning_id)
+        except Exception, e:
+            if not provider.should_reconnect(e.original_exc): raise
+            log_orm('CONNECTION FAILED: %s' % e.original_exc)
+            cache.connection = None
+            provider.drop(connection)
+            connection = cache.establish_connection()
+            cursor = connection.cursor()
+            t = time()
+            new_id = provider.execute(cursor, sql, arguments, returning_id)
         database._update_local_stat(sql, t)
         if not returning_id: return cursor
         if type(new_id) is long: new_id = int(new_id)
@@ -2348,7 +2351,7 @@ class EntityMeta(type):
     def _find_by_sql_(entity, max_fetch_count, sql, globals, locals, frame_depth):
         if not isinstance(sql, basestring): throw(TypeError)
         database = entity._database_
-        cursor = database._execute(sql, globals, locals, frame_depth+1)
+        cursor = database._exec_raw_sql(sql, globals, locals, frame_depth+1)
 
         col_names = [ column_info[0].upper() for column_info in cursor.description ]
         attr_offsets = {}
@@ -3266,13 +3269,11 @@ class Entity(object):
         else: assert False
 
 class Cache(object):
-    def __init__(cache, database, connection):
+    def __init__(cache, database):
         cache.is_alive = True
-        cache.database = database
-        cache.connection = connection
         cache.num = next_num()
-        if database.optimistic: cache.switch_to_optimistic_mode()
-        else: cache.switch_to_pessimistic_mode()
+        cache.database = database
+        cache.optimistic = database.optimistic
         cache.ignore_none = True  # todo : get from provider
         cache.indexes = {}
         cache.seeds = {}
@@ -3285,11 +3286,24 @@ class Cache(object):
         cache.query_results = {}
         cache.modified = False
         cache.saving = False
-    def switch_to_optimistic_mode(cache):
-        cache.optimistic = True
+        cache.connection = cache.establish_connection(False)
+    def establish_connection(cache, reestablish=True):
+        if reestablish:
+            assert not cache.connection
+            if not cache.optimistic: throw(ConnectionClosedError,
+                'Pessimistic transaction cannot be continued because database connection failed')
+            elif cache.saving: throw(ConnectionClosedError,
+                'Optimistic transaction cannot be completed because database connection failed during saving changes')
+            log_orm('RECONNECT')
         provider = cache.database.provider
-        provider.set_optimistic_mode(cache.connection)
+        connection = provider.connect()
+        cache.connection = connection
+        if cache.optimistic: provider.set_optimistic_mode(connection)
+        else: provider.set_pessimistic_mode(connection)
+        return connection
     def switch_to_pessimistic_mode(cache):
+        assert cache.optimistic
+        connection = cache.connection or cache.establish_connection()
         cache.optimistic = False
         provider = cache.database.provider
         provider.set_pessimistic_mode(cache.connection)
@@ -3297,7 +3311,7 @@ class Cache(object):
         assert cache.is_alive
         database = cache.database
         provider = database.provider
-        connection = cache.connection
+        connection = cache.connection or cache.establish_connection()
         try:
             if cache.optimistic:
                 if debug: log_orm('OPTIMISTIC ROLLBACK')
@@ -3318,8 +3332,11 @@ class Cache(object):
             if modified or not cache.optimistic:
                 if debug: log_orm('COMMIT')
                 provider.commit(connection)
-            if database.optimistic: cache.switch_to_optimistic_mode()
-            else: cache.switch_to_pessimistic_mode()
+            if database.optimistic:
+                cache.optimistic = True
+                provider.set_optimistic_mode(connection)
+            elif cache.optimistic:
+                cache.switch_to_pessimistic_mode()
         except:
             cache.rollback()
             raise
@@ -3330,6 +3347,7 @@ class Cache(object):
         cache.is_alive = False
         provider = database.provider
         connection = cache.connection
+        if connection is None: return
         cache.connection = None
         try:
             if debug: log_orm('ROLLBACK')
@@ -3351,11 +3369,12 @@ class Cache(object):
         cache.is_alive = False
         provider = database.provider
         connection = cache.connection
+        if connection is None: return
         cache.connection = None
         if debug: log_orm('RELEASE_CONNECTION')
         provider.release(connection)
     def flush(cache):
-        cache.switch_to_pessimistic_mode()
+        if cache.optimistic: cache.switch_to_pessimistic_mode()
         if cache.modified: cache.save()
     def save(cache):
         assert cache.is_alive

@@ -73,6 +73,9 @@ class PyGreSQLProvider(PGProvider):
         provider.server_version = connection._cnx.server_version
         provider.table_if_not_exists_syntax = provider.server_version >= 90100
 
+    def should_reconnect(provider, exc):
+        return isinstance(exc, pgdb.OperationalError) and exc.sqlstate is None
+
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
         (unicode, PGUnicodeConverter),

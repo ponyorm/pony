@@ -131,6 +131,9 @@ class DBAPIProvider(object):
         builder = provider.sqlbuilder_cls(provider, ast)
         return builder.sql, builder.adapter
 
+    def should_reconnect(provider, exc):
+        return False
+
     @wrap_dbapi_exceptions
     def connect(provider):
         return provider.pool.connect()

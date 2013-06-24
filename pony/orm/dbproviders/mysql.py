@@ -109,6 +109,9 @@ class MySQLProvider(DBAPIProvider):
         if provider.server_version >= (5, 6, 4):
             provider.max_time_precision = 6
 
+    def should_reconnect(provider, exc):
+        return isinstance(exc, MySQLdb.OperationalError) and exc.args[0] == 2006
+
     def get_pool(provider, *args, **kwargs):
         if 'conv' not in kwargs:
             conv = MySQLdb.converters.conversions.copy()
