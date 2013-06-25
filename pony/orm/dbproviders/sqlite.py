@@ -260,9 +260,7 @@ class SqliteMemoryDbThread(Thread):
             if x is None: break
             lock, func, args, kwargs, result_holder = x
             try: result = func(*args, **kwargs)
-            except Exception, e:
-                result_holder.append(e)
-                del e
+            except Exception, e: result_holder.append(e)
             else: result_holder.append(result)
             if lock is not None: lock.release()
 
