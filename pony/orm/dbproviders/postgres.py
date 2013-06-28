@@ -13,8 +13,8 @@ class PsycopgTable(PGTable):
                 provider.rollback(connection)
                 raise
             if core.debug:
-                log_orm('ALREADY EXISTS: %s' % e.args[0])
-                log_orm('ROLLBACK')
+                core.log_orm('ALREADY EXISTS: %s' % e.args[0])
+                core.log_orm('ROLLBACK')
             provider.rollback(connection)
         else: provider.commit(connection)
 
