@@ -128,6 +128,8 @@ class Table(object):
     def add_column(table, column_name, sql_type, is_not_null=None):
         return table.schema.column_class(column_name, table, sql_type, is_not_null)
     def add_index(table, index_name, columns, is_pk=False, is_unique=None, m2m=False):
+        assert index_name is not False
+        if index_name is True: index_name = None
         if index_name is None and not is_pk:
             provider = table.schema.provider
             index_name = provider.get_default_index_name(table.name, (column.name for column in columns),
@@ -136,8 +138,8 @@ class Table(object):
         if index and index.name == index_name and index.is_pk == is_pk and index.is_unique == is_unique:
             return index
         return table.schema.index_class(index_name, table, columns, is_pk, is_unique)
-    def add_foreign_key(table, fk_name, child_columns, parent_table, parent_columns):
-        return table.schema.fk_class(fk_name, table, child_columns, parent_table, parent_columns)
+    def add_foreign_key(table, fk_name, child_columns, parent_table, parent_columns, index_name=None):
+        return table.schema.fk_class(fk_name, table, child_columns, parent_table, parent_columns, index_name)
 
 class Column(object):
     auto_template = '%(type)s PRIMARY KEY AUTOINCREMENT'
@@ -258,7 +260,7 @@ class Index(Constraint):
         return ' '.join(cmd)
 
 class ForeignKey(Constraint):
-    def __init__(foreign_key, name, child_table, child_columns, parent_table, parent_columns):
+    def __init__(foreign_key, name, child_table, child_columns, parent_table, parent_columns, index_name):
         schema = parent_table.schema
         if schema is not child_table.schema: throw(DBSchemaError,
             'Parent and child tables of foreign_key cannot belong to different schemata')
@@ -285,11 +287,12 @@ class ForeignKey(Constraint):
         foreign_key.child_table = child_table
         foreign_key.child_columns = child_columns
 
-        child_columns_len = len(child_columns)
-        for columns in child_table.indexes:
-            if columns[:child_columns_len] == child_columns: break
-        else: child_table.add_index(None, child_columns, is_pk=False,
-                                    is_unique=False, m2m=bool(child_table.m2m))
+        if index_name is not False:
+            child_columns_len = len(child_columns)
+            for columns in child_table.indexes:
+                if columns[:child_columns_len] == child_columns: break
+            else: child_table.add_index(index_name, child_columns, is_pk=False,
+                                        is_unique=False, m2m=bool(child_table.m2m))
     def get_sql(foreign_key):
         return foreign_key._get_create_sql(inside_table=True)
     def get_create_command(foreign_key):

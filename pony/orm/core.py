@@ -572,7 +572,9 @@ class Database(object):
             for key in entity._keys_:
                 column_names = []
                 for attr in key: column_names.extend(attr.columns)
-                table.add_index(None, get_columns(table, column_names), is_unique=True)
+                if len(key) == 1: index_name = key[0].index
+                else: index_name = None
+                table.add_index(index_name, get_columns(table, column_names), is_unique=True)
             columns = []
             columns_without_pk = []
             converters = []
@@ -599,7 +601,7 @@ class Database(object):
                     m2m_table = schema.tables[attr.table]
                     parent_columns = get_columns(table, entity._pk_columns_)
                     child_columns = get_columns(m2m_table, reverse.columns)
-                    m2m_table.add_foreign_key(None, child_columns, table, parent_columns)
+                    m2m_table.add_foreign_key(None, child_columns, table, parent_columns, attr.index)
                     if attr.symmetric:
                         child_columns = get_columns(m2m_table, attr.reverse_columns)
                         m2m_table.add_foreign_key(None, child_columns, table, parent_columns)
@@ -608,7 +610,10 @@ class Database(object):
                     parent_table = schema.tables[rentity._table_]
                     parent_columns = get_columns(parent_table, rentity._pk_columns_)
                     child_columns = get_columns(table, attr.columns)
-                    table.add_foreign_key(None, child_columns, parent_table, parent_columns)
+                    table.add_foreign_key(None, child_columns, parent_table, parent_columns, attr.index)
+                elif attr.index and attr.columns:
+                    columns = tuple(map(table.column_dict.__getitem__, attr.columns))
+                    table.add_index(attr.index, columns, is_unique=attr.is_unique)
 
         if create_tables: schema.create_tables()
 
@@ -669,7 +674,7 @@ class Attribute(object):
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
-                'cascade_delete'
+                'cascade_delete', 'index'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
@@ -728,6 +733,7 @@ class Attribute(object):
                     throw(TypeError, "Items of parameter 'columns' must be strings. Got: %r" % attr.columns)
             if len(attr.columns) == 1: attr.column = attr.columns[0]
         else: attr.columns = []
+        attr.index = kwargs.pop('index', None)
         attr.col_paths = []
         attr._columns_checked = False
         attr.composite_keys = []
