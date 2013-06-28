@@ -30,13 +30,12 @@ class OraTable(dbschema.Table):
             cursor = connection.cursor()
             try: provider.execute(cursor, sql)
             except DatabaseError, e:
-                if e.original_exc.args[0].code == 955:
-                    if core.debug: log_orm('ALREADY EXISTS: %s' % e.args[0].message)
-                    if not i:
-                        if len(commands) > 1:
-                            log_orm('SKIP FURTHER DDL COMMANDS FOR TABLE %s\n' % table.name)
-                        return
-                else: raise
+                if e.original_exc.args[0].code != 955: raise
+                if core.debug: log_orm('ALREADY EXISTS: %s' % e.args[0].message)
+                if i: continue
+                if len(commands) > 1:
+                    log_orm('SKIP FURTHER DDL COMMANDS FOR TABLE %s\n' % table.name)
+                return
     def get_create_commands(table, created_tables=None):
         result = dbschema.Table.get_create_commands(table, created_tables)
         for column in table.column_list:
@@ -192,8 +191,10 @@ class OraDatetimeConverter(dbapiprovider.DatetimeConverter):
 class OraProvider(DBAPIProvider):
     dialect = 'Oracle'
     paramstyle = 'named'
+    max_name_len = 30
 
     table_if_not_exists_syntax = False
+    index_if_not_exists_syntax = False
 
     dbapi_module = cx_Oracle
     dbschema_cls = OraSchema
@@ -227,6 +228,9 @@ class OraProvider(DBAPIProvider):
 
     def get_default_m2m_column_names(provider, entity):
         return [ column.upper() for column in DBAPIProvider.get_default_m2m_column_names(provider, entity) ]
+
+    def get_default_index_name(*args, **kwargs):
+        return DBAPIProvider.get_default_index_name(*args, **kwargs).upper()
 
     @wrap_dbapi_exceptions
     def execute(provider, cursor, sql, arguments=None, returning_id=False):

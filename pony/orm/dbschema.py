@@ -12,6 +12,7 @@ class DBSchema(object):
         schema.indent = '  '
         schema.command_separator = ';\n'
         schema.uppercase = uppercase
+        schema.names = {}
     def column_list(schema, columns):
         quote_name = schema.provider.quote_name
         return '(%s)' % ', '.join(quote_name(column.name) for column in columns)
@@ -57,7 +58,10 @@ class Table(object):
     def __init__(table, name, schema):
         if name in schema.tables:
             throw(DBSchemaError, "Table %r already exists in database schema" % name)
+        if name in schema.names:
+            throw(DBSchemaError, "Table %r cannot be created, name is already in use" % name)
         schema.tables[name] = table
+        schema.names[name] = table
         table.schema = schema
         table.name = name
         table.column_list = []
@@ -86,7 +90,7 @@ class Table(object):
         case = schema.case
         provider = schema.provider
         quote_name = provider.quote_name
-        if_not_exists = provider.table_if_not_exists_syntax
+        if_not_exists = provider.table_if_not_exists_syntax and provider.index_if_not_exists_syntax
         cmd = []
         if not if_not_exists: cmd.append(case('CREATE TABLE %s (') % quote_name(table.name))
         else: cmd.append(case('CREATE TABLE IF NOT EXISTS %s (') % quote_name(table.name))
@@ -107,6 +111,12 @@ class Table(object):
         cmd.append(')')
         cmd = '\n'.join(cmd)
         result = [ cmd ]
+
+        for index in table.indexes.values():
+            if index.is_pk or index.is_unique: continue
+            assert index.name is not None
+            result.append(index.get_create_command())
+
         for child_table in table.child_tables:
             if child_table not in created_tables: continue
             for foreign_key in child_table.foreign_keys.values():
@@ -117,7 +127,11 @@ class Table(object):
         return result
     def add_column(table, column_name, sql_type, is_not_null=None):
         return table.schema.column_class(column_name, table, sql_type, is_not_null)
-    def add_index(table, index_name, columns, is_pk=False, is_unique=None):
+    def add_index(table, index_name, columns, is_pk=False, is_unique=None, m2m=False):
+        if index_name is None and not is_pk:
+            provider = table.schema.provider
+            index_name = provider.get_default_index_name(table.name, (column.name for column in columns),
+                                                         is_pk=is_pk, is_unique=is_unique, m2m=m2m)
         index = table.indexes.get(columns)
         if index and index.name == index_name and index.is_pk == is_pk and index.is_unique == is_unique:
             return index
@@ -173,8 +187,10 @@ class Column(object):
 class Constraint(object):
     def __init__(constraint, name, schema):
         if name is not None:
+            assert name not in schema.names
             if name in schema.constraints: throw(DBSchemaError,
                 "Constraint with name %r already exists" % name)
+            schema.names[name] = constraint
             schema.constraints[name] = constraint
         constraint.schema = schema
         constraint.name = name
@@ -197,11 +213,14 @@ class Index(Constraint):
             elif not is_unique: throw(DBSchemaError,
                 "Incompatible combination of is_unique=False and is_pk=True")
         elif is_unique is None: is_unique = False
+        schema = table.schema
+        if name is not None and name in schema.names:
+            throw(DBSchemaError, 'Index %s cannot be created, name is already in use')
+        Constraint.__init__(index, name, schema)
         for column in columns:
             column.is_pk = len(columns) == 1 and is_pk
             column.is_pk_part = bool(is_pk)
             column.is_unique = is_unique and len(columns) == 1
-        Constraint.__init__(index, name, table.schema)
         table.indexes[columns] = index
         index.table = table
         index.columns = columns
@@ -223,6 +242,8 @@ class Index(Constraint):
             append(case('CREATE'))
             if index.is_unique: append(case('UNIQUE'))
             append(case('INDEX'))
+            if schema.provider.index_if_not_exists_syntax:
+                append(case('IF NOT EXISTS'))
             append(quote_name(index.name))
             append(case('ON'))
             append(quote_name(index.table.name))
@@ -252,15 +273,23 @@ class ForeignKey(Constraint):
         if child_columns in child_table.foreign_keys:
             if len(child_columns) == 1: throw(DBSchemaError, 'Foreign key for column %r already defined' % child_columns[0].name)
             else: throw(DBSchemaError, 'Foreign key for columns (%s) already defined' % ', '.join(repr(column.name) for column in child_columns))
+        if name is not None and name in schema.names:
+            throw(DBSchemaError, 'Foreign key %s cannot be created, name is already in use')
+        Constraint.__init__(foreign_key, name, schema)
         child_table.foreign_keys[child_columns] = foreign_key
         if child_table is not parent_table:
             child_table.parent_tables.add(parent_table)
             parent_table.child_tables.add(child_table)
-        Constraint.__init__(foreign_key, name, schema)
         foreign_key.parent_table = parent_table
         foreign_key.parent_columns = parent_columns
         foreign_key.child_table = child_table
         foreign_key.child_columns = child_columns
+
+        child_columns_len = len(child_columns)
+        for columns in child_table.indexes:
+            if columns[:child_columns_len] == child_columns: break
+        else: child_table.add_index(None, child_columns, is_pk=False,
+                                    is_unique=False, m2m=bool(child_table.m2m))
     def get_sql(foreign_key):
         return foreign_key._get_create_sql(inside_table=True)
     def get_create_command(foreign_key):

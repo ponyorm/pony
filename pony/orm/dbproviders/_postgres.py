@@ -72,6 +72,8 @@ class PGDatetimeConverter(dbapiprovider.DatetimeConverter):
 class PGProvider(DBAPIProvider):
     dialect = 'PostgreSQL'
     paramstyle = 'pyformat'
+    max_name_len = 63
+    index_if_not_exists_syntax = False
 
     dbapi_module = None  # pgdb or psycopg2
     dbschema_cls = PGSchema

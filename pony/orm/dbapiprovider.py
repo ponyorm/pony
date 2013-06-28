@@ -74,10 +74,13 @@ class DBAPIProvider(object):
     paramstyle = 'qmark'
     quote_char = '"'
     max_params_count = 200
+    max_name_len = 128
 
     table_if_not_exists_syntax = True
+    index_if_not_exists_syntax = True
     max_time_precision = default_time_precision = 6
 
+    dialect = None
     dbapi_module = None
     dbschema_cls = None
     translator_cls = None
@@ -119,6 +122,16 @@ class DBAPIProvider(object):
         else:
             prefix = entity.__name__.lower() + '_'
             return [ prefix + column for column in columns ]
+
+    def get_default_index_name(provider, table_name, column_names, is_pk=False, is_unique=False, m2m=False):
+        if is_pk: index_name = 'pk_%s' % table_name
+        else:
+            if is_unique: template = 'unq_%(tname)s__%(cnames)s'
+            elif m2m: template = 'idx_%(tname)s'
+            else: template = 'idx_%(tname)s__%(cnames)s'
+            index_name = template % dict(tname=table_name,
+                                         cnames='_'.join(name for name in column_names))
+        return index_name[:provider.max_name_len].lower()
 
     def quote_name(provider, name):
         quote_char = provider.quote_char

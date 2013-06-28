@@ -89,6 +89,8 @@ class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
 
 class SQLiteProvider(DBAPIProvider):
     dialect = 'SQLite'
+    max_name_len = 1024
+
     dbapi_module = sqlite
     dbschema_cls = SQLiteSchema
     translator_cls = SQLiteTranslator
