@@ -1,4 +1,3 @@
-from pony.utils import throw, is_utf8
 from pony.orm import core
 from pony.orm.dbapiprovider import Pool, ProgrammingError
 from pony.orm.dbproviders._postgres import *
@@ -14,8 +13,8 @@ class PsycopgTable(PGTable):
                 provider.rollback(connection)
                 raise
             if core.debug:
-                log_orm('ALREADY EXISTS: %s' % e.args[0])
-                log_orm('ROLLBACK')
+                core.log_orm('ALREADY EXISTS: %s' % e.args[0])
+                core.log_orm('ROLLBACK')
             provider.rollback(connection)
         else: provider.commit(connection)
 
@@ -37,6 +36,10 @@ class PsycopgProvider(PGProvider):
     def inspect_connection(provider, connection):
         provider.server_version = connection.server_version
         provider.table_if_not_exists_syntax = provider.server_version >= 90100
+
+    def should_reconnect(provider, exc):
+        return isinstance(exc, psycopg2.OperationalError) \
+               and exc.pgcode is exc.pgerror is exc.cursor is None
 
     def get_pool(provider, *args, **kwargs):
         return PsycopgPool(provider.dbapi_module, *args, **kwargs)

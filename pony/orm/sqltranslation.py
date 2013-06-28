@@ -1,4 +1,4 @@
-import __builtin__, types, sys, decimal, re
+import types, sys, re
 from itertools import izip, count
 from types import NoneType
 from compiler import ast
@@ -14,8 +14,7 @@ from pony.orm.ormtypes import \
     string_types, numeric_types, comparable_types, SetType, FuncType, MethodType, \
     get_normalized_type_of, normalize_type, coerce_types, are_comparable_types
 from pony.orm import core
-from pony.orm.core import ERDiagramError, EntityMeta, Set, JOIN, AsciiStr, OptimizationFailed, \
-                          Attribute, DescWrapper
+from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper
 
 def check_comparable(left_monad, right_monad, op='=='):
     t1, t2 = left_monad.type, right_monad.type
@@ -469,7 +468,7 @@ class SQLTranslator(ASTTranslator):
         else:
             for node in nodes:
                 monad = node.monad
-                if isinstance(monad, translator.AndMonad): cond_monads = if_.monad.operands
+                if isinstance(monad, translator.AndMonad): cond_monads = monad.operands
                 else: cond_monads = [ monad ]
                 for m in cond_monads:
                     if not m.aggregated: translator.conditions.extend(m.getsql())
@@ -687,6 +686,7 @@ class TableRef(object):
         tableref.entity = entity
         tableref.joined = False
         tableref.can_affect_distinct = True
+        tableref.rbits = 0
     def make_join(tableref, pk_only=False):
         entity = tableref.entity
         if not tableref.joined:
@@ -711,6 +711,7 @@ class JoinedTableRef(object):
         assert isinstance(tableref.entity, EntityMeta)
         tableref.joined = False
         tableref.can_affect_distinct = False
+        tableref.rbits = 0
     def make_join(tableref, pk_only=False):
         entity = tableref.entity
         pk_only = pk_only and not entity._discriminator_attr_
@@ -1192,6 +1193,9 @@ class ObjectMixin(MonadMixin):
         entity = monad.type
         try: attr = entity._adict_[name]
         except KeyError: throw(AttributeError)
+        if hasattr(monad, 'tableref'):
+            bit = entity._bits_.get(attr)
+            if bit is not None: monad.tableref.rbits |= bit
         if not attr.is_collection:
             return translator.AttrMonad.new(monad, attr)
         else:

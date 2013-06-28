@@ -1,11 +1,9 @@
 from decimal import Decimal
-from datetime import datetime, date, time
+from datetime import datetime, date
 
-from pony.orm import core, dbschema, sqlbuilding, dbapiprovider
-from pony.orm.core import log_orm, DatabaseError
+from pony.orm import dbschema, sqlbuilding, dbapiprovider
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
-from pony.utils import timestamp2datetime
 from pony.orm.sqlbuilding import Value
 
 class PGColumn(dbschema.Column):
@@ -74,6 +72,8 @@ class PGDatetimeConverter(dbapiprovider.DatetimeConverter):
 class PGProvider(DBAPIProvider):
     dialect = 'PostgreSQL'
     paramstyle = 'pyformat'
+    max_name_len = 63
+    index_if_not_exists_syntax = False
 
     dbapi_module = None  # pgdb or psycopg2
     dbschema_cls = PGSchema
@@ -93,21 +93,15 @@ class PGProvider(DBAPIProvider):
         return [ column.lower() for column in DBAPIProvider.get_default_m2m_column_names(provider, entity) ]
 
     @wrap_dbapi_exceptions
-    def execute(provider, cursor, sql, arguments=None):
+    def execute(provider, cursor, sql, arguments=None, returning_id=False):
         if isinstance(sql, unicode): sql = sql.encode('utf8')
-        if arguments is None: cursor.execute(sql)
-        else: cursor.execute(sql, arguments)
-
-    @wrap_dbapi_exceptions
-    def executemany(provider, cursor, sql, arguments_list):
-        if isinstance(sql, unicode): sql = sql.encode('utf8')
-        cursor.executemany(sql, arguments_list)
-
-    @wrap_dbapi_exceptions
-    def execute_returning_id(provider, cursor, sql, arguments):
-        if isinstance(sql, unicode): sql = sql.encode('utf8')
-        cursor.execute(sql, arguments)
-        return cursor.fetchone()[0]
+        if type(arguments) is list:
+            assert arguments and not returning_id
+            cursor.executemany(sql, arguments)
+        else:
+            if arguments is None: cursor.execute(sql)
+            else: cursor.execute(sql, arguments)
+            if returning_id: return cursor.fetchone()[0]
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),

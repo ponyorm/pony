@@ -1,11 +1,10 @@
 from __future__ import with_statement
 
-import __builtin__, re, sys, types, inspect, logging
+import re, sys, types, inspect, logging
 from compiler import ast, parse
 from cPickle import loads, dumps
 from operator import attrgetter, itemgetter
 from itertools import count as _count, ifilter, ifilterfalse, imap, izip, chain, starmap
-from collections import defaultdict
 from time import time
 import datetime
 from threading import Lock, currentThread as current_thread, _MainThread
@@ -16,14 +15,14 @@ import pony
 from pony import options
 from pony.orm.decompiling import decompile
 from pony.orm.ormtypes import AsciiStr, LongStr, LongUnicode, numeric_types, get_normalized_type_of
-from pony.orm.asttranslation import create_extractors, ast2src, TranslationError
+from pony.orm.asttranslation import create_extractors, TranslationError
 from pony.orm.dbapiprovider import (
-    DBException, RowNotFound, MultipleRowsFound, TooManyRowsFound,
+    DBAPIProvider, DBException, RowNotFound, MultipleRowsFound, TooManyRowsFound,
     Warning, Error, InterfaceError, DatabaseError, DataError, OperationalError,
     IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
 from pony.utils import (
-    localbase, simple_decorator, decorator_with_params, cut_traceback, throw,
+    localbase, simple_decorator, cut_traceback, throw,
     import_module, parse_expr, is_ident, count, avg as _avg, tostring, strjoin,
     copy_func_attrs
     )
@@ -87,20 +86,16 @@ def log_orm(msg):
         print
 
 def log_sql(sql, arguments=None):
+    if type(arguments) is list:
+        sql = 'EXECUTEMANY (%d)\n%s' % (len(arguments), sql)
     if logging.root.handlers:
         sql_logger.log(orm_log_level, sql)  # arguments can hold sensitive information
     else:
         print sql
-        if arguments: print args2str(arguments)
-        print
-
-def log_sql_many(sql, arguments_list):
-    if logging.root.handlers:
-        sql_logger.log(orm_log_level, 'EXECUTEMANY\n' + sql)  # arguments can hold sensitive information
-    else:
-        print 'EXECUTEMANY\n' + sql
-        for arguments in arguments_list:
-            print args2str(arguments)
+        if not arguments: pass
+        elif type(arguments) is list:
+            for args in arguments: print args2str(args)
+        else: print args2str(arguments)
         print
 
 def args2str(args):
@@ -134,6 +129,7 @@ class MultipleObjectsFoundError(OrmError): pass
 class TooManyObjectsFoundError(OrmError): pass
 class OperationWithDeletedObjectError(OrmError): pass
 class TransactionError(OrmError): pass
+class ConnectionClosedError(TransactionError): pass
 
 class TransactionIntegrityError(TransactionError):
     def __init__(exc, msg, original_exc=None):
@@ -293,11 +289,16 @@ class Database(object):
     def __deepcopy__(self, memo):
         return self  # Database cannot be cloned by deepcopy()
     @cut_traceback
-    def __init__(self, provider_name, *args, **kwargs):
+    def __init__(self, provider, *args, **kwargs):
         # First argument cannot be named 'database', because 'database' can be in kwargs
-        if not isinstance(provider_name, basestring): throw(TypeError)
-        provider_module = import_module('pony.orm.dbproviders.' + provider_name)
-        self.provider = provider = provider_module.provider_cls(*args, **kwargs)
+        if isinstance(provider, type) and issubclass(provider, DBAPIProvider):
+            provider_cls = provider
+        else:
+            if not isinstance(provider, basestring): throw(TypeError)
+            provider_module = import_module('pony.orm.dbproviders.' + provider)
+            provider_cls = provider_module.provider_cls
+
+        self.provider = provider = provider_cls(*args, **kwargs)
 
         self.priority = 0
         self.optimistic = True
@@ -341,6 +342,7 @@ class Database(object):
     def get_connection(database):
         cache = database._get_cache()
         cache.flush()
+        assert cache.connection is not None
         return cache.connection
     def _get_cache(database):
         cache = local.db2cache.get(database)
@@ -348,8 +350,7 @@ class Database(object):
         if not local.db_context_counter and not (
                 pony.MODE == 'INTERACTIVE' and current_thread().__class__ is _MainThread
             ): throw(TransactionError, 'db_session is required when working with the database')
-        connection = database.provider.connect()
-        cache = local.db2cache[database] = Cache(database, connection)
+        cache = local.db2cache[database] = Cache(database)
         return cache
     @cut_traceback
     def flush(database):
@@ -365,8 +366,8 @@ class Database(object):
     @cut_traceback
     def execute(database, sql, globals=None, locals=None):
         database._get_cache().flush()
-        return database._execute(sql, globals, locals, 2)
-    def _execute(database, sql, globals, locals, frame_depth):
+        return database._exec_raw_sql(sql, globals, locals, 2)
+    def _exec_raw_sql(database, sql, globals, locals, frame_depth):
         sql = sql[:]  # sql = templating.plainstr(sql)
         if globals is None:
             assert locals is None
@@ -375,20 +376,12 @@ class Database(object):
             locals = sys._getframe(frame_depth).f_locals
         provider = database.provider
         adapted_sql, code = adapt_sql(sql, provider.paramstyle)
-        values = eval(code, globals, locals)
-        if values is None: values = ()
-        cache = database._get_cache()
-        if not cache.optimistic: cache.flush()
-        cursor = cache.connection.cursor()
-        if debug: log_sql(adapted_sql, values)
-        t = time()
-        provider.execute(cursor, adapted_sql, values)
-        database._update_local_stat(sql, t)
-        return cursor
+        arguments = eval(code, globals, locals)
+        return database._exec_sql(sql, arguments)
     @cut_traceback
     def select(database, sql, globals=None, locals=None, frame_depth=0):
         if not select_re.match(sql): sql = 'select ' + sql
-        cursor = database._execute(sql, globals, locals, frame_depth + 2)
+        cursor = database._exec_raw_sql(sql, globals, locals, frame_depth + 2)
         max_fetch_count = options.MAX_FETCH_COUNT
         if max_fetch_count is not None:
             result = cursor.fetchmany(max_fetch_count)
@@ -414,7 +407,7 @@ class Database(object):
     @cut_traceback
     def exists(database, sql, globals=None, locals=None):
         if not select_re.match(sql): sql = 'select ' + sql
-        cursor = database._execute(sql, globals, locals, 2)
+        cursor = database._exec_raw_sql(sql, globals, locals, 2)
         result = cursor.fetchone()
         return bool(result)
     @cut_traceback
@@ -431,47 +424,37 @@ class Database(object):
         else: sql, adapter = cached_sql
         arguments = adapter(kwargs.values())  # order of values same as order of keys
         cache = database._get_cache()
-        if cache.optimistic:
-            cache.switch_to_pessimistic_mode()
+        if cache.optimistic: cache.flush()
         if returning is None:
             cursor = database._exec_sql(sql, arguments)
             return getattr(cursor, 'lastrowid', None)
-        new_id = database._exec_sql_returning_id(sql, arguments)
+        new_id = database._exec_sql(sql, arguments, returning_id=True)
         return new_id
     def _ast2sql(database, sql_ast):
         sql, adapter = database.provider.ast2sql(sql_ast)
         return sql, adapter
-    def _exec_sql(database, sql, arguments=None, autoflush=True):
+    def _exec_sql(database, sql, arguments=None, returning_id=False):
         cache = database._get_cache()
-        if autoflush and not cache.optimistic and cache.modified: cache.flush()
-        cursor = cache.connection.cursor()
+        if not cache.saving and not cache.optimistic and cache.modified: cache.flush()
+        connection = cache.connection or cache.establish_connection()
+        cursor = connection.cursor()
         if debug: log_sql(sql, arguments)
+        provider = database.provider
         t = time()
-        if arguments is None: database.provider.execute(cursor, sql)
-        else: database.provider.execute(cursor, sql, arguments)
+        try: new_id = provider.execute(cursor, sql, arguments, returning_id)
+        except Exception, e:
+            if not provider.should_reconnect(e.original_exc): raise
+            log_orm('CONNECTION FAILED: %s' % e.original_exc)
+            cache.connection = None
+            provider.drop(connection)
+            connection = cache.establish_connection()
+            cursor = connection.cursor()
+            t = time()
+            new_id = provider.execute(cursor, sql, arguments, returning_id)
         database._update_local_stat(sql, t)
-        return cursor
-    def _exec_sql_returning_id(database, sql, arguments, autoflush=True):
-        cache = database._get_cache()
-        if autoflush and not cache.optimistic and cache.modified: cache.flush()
-        cursor = cache.connection.cursor()
-        if debug: log_sql(sql, arguments)
-        t = time()
-        new_id = database.provider.execute_returning_id(cursor, sql, arguments)
-        database._update_local_stat(sql, t)
+        if not returning_id: return cursor
         if type(new_id) is long: new_id = int(new_id)
         return new_id
-    def _exec_sql_many(database, sql, arguments_list, autoflush=True):
-        if len(arguments_list) == 1:
-            return database._exec_sql(sql, arguments_list[0], autoflush)
-        cache = database._get_cache()
-        if autoflush and not cache.optimistic and cache.modified: cache.flush()
-        cursor = cache.connection.cursor()
-        if debug: log_sql_many(sql, arguments_list)
-        t = time()
-        database.provider.executemany(cursor, sql, arguments_list)
-        database._update_local_stat(sql, t)
-        return cursor
     @cut_traceback
     def generate_mapping(database, filename=None, check_tables=False, create_tables=False):
         if create_tables and check_tables: throw(TypeError,
@@ -589,7 +572,9 @@ class Database(object):
             for key in entity._keys_:
                 column_names = []
                 for attr in key: column_names.extend(attr.columns)
-                table.add_index(None, get_columns(table, column_names), is_unique=True)
+                if len(key) == 1: index_name = key[0].index
+                else: index_name = None
+                table.add_index(index_name, get_columns(table, column_names), is_unique=True)
             columns = []
             columns_without_pk = []
             converters = []
@@ -616,7 +601,7 @@ class Database(object):
                     m2m_table = schema.tables[attr.table]
                     parent_columns = get_columns(table, entity._pk_columns_)
                     child_columns = get_columns(m2m_table, reverse.columns)
-                    m2m_table.add_foreign_key(None, child_columns, table, parent_columns)
+                    m2m_table.add_foreign_key(None, child_columns, table, parent_columns, attr.index)
                     if attr.symmetric:
                         child_columns = get_columns(m2m_table, attr.reverse_columns)
                         m2m_table.add_foreign_key(None, child_columns, table, parent_columns)
@@ -625,7 +610,10 @@ class Database(object):
                     parent_table = schema.tables[rentity._table_]
                     parent_columns = get_columns(parent_table, rentity._pk_columns_)
                     child_columns = get_columns(table, attr.columns)
-                    table.add_foreign_key(None, child_columns, parent_table, parent_columns)
+                    table.add_foreign_key(None, child_columns, parent_table, parent_columns, attr.index)
+                elif attr.index and attr.columns:
+                    columns = tuple(map(table.column_dict.__getitem__, attr.columns))
+                    table.add_index(attr.index, columns, is_unique=attr.is_unique)
 
         if create_tables: schema.create_tables()
 
@@ -686,7 +674,7 @@ class Attribute(object):
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
-                'cascade_delete'
+                'cascade_delete', 'index'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
@@ -745,6 +733,7 @@ class Attribute(object):
                     throw(TypeError, "Items of parameter 'columns' must be strings. Got: %r" % attr.columns)
             if len(attr.columns) == 1: attr.column = attr.columns[0]
         else: attr.columns = []
+        attr.index = kwargs.pop('index', None)
         attr.col_paths = []
         attr._columns_checked = False
         attr.composite_keys = []
@@ -1630,6 +1619,7 @@ class Set(Collection):
         attr._columns_checked = True
         return reverse.columns
     def remove_m2m(attr, removed):
+        assert removed
         entity = attr.entity
         database = entity._database_
         cached_sql = attr.cached_remove_m2m_sql
@@ -1652,8 +1642,9 @@ class Set(Collection):
         else: sql, adapter = cached_sql
         arguments_list = [ adapter(obj._get_raw_pkval_() + robj._get_raw_pkval_())
                            for obj, robj in removed ]
-        database._exec_sql_many(sql, arguments_list, autoflush=False)
+        database._exec_sql(sql, arguments_list)
     def add_m2m(attr, added):
+        assert added
         entity = attr.entity
         database = entity._database_
         cached_sql = attr.cached_add_m2m_sql
@@ -1674,7 +1665,7 @@ class Set(Collection):
         else: sql, adapter = cached_sql
         arguments_list = [ adapter(obj._get_raw_pkval_() + robj._get_raw_pkval_())
                            for obj, robj in added ]
-        database._exec_sql_many(sql, arguments_list, autoflush=False)
+        database._exec_sql(sql, arguments_list)
 
 def unpickle_setwrapper(obj, attrname, items):
     attr = getattr(obj.__class__, attrname)
@@ -1696,7 +1687,7 @@ class SetWrapper(object):
         return unpickle_setwrapper, (wrapper._obj_, wrapper._attr_.name, wrapper.copy())
     @cut_traceback
     def copy(wrapper):
-        if not wrapper._obj_._cache_.is_alive: throw_db_session_is_over(obj)
+        if not wrapper._obj_._cache_.is_alive: throw_db_session_is_over(wrapper._obj_)
         return wrapper._attr_.copy(wrapper._obj_)
     @cut_traceback
     def __repr__(wrapper):
@@ -1880,7 +1871,7 @@ class Multiset(object):
         return unpickle_multiset, (multiset._obj_, multiset._attrnames_, multiset._items_)
     @cut_traceback
     def distinct(multiset):
-        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         return multiset._items_.copy()
     @cut_traceback
     def __repr__(multiset):
@@ -1893,24 +1884,24 @@ class Multiset(object):
                                  '.'.join(multiset._attrnames_), size_str)
     @cut_traceback
     def __str__(multiset):
-        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         return '%s(%s)' % (multiset.__class__.__name__, str(multiset._items_))
     @cut_traceback
     def __nonzero__(multiset):
-        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         return bool(multiset._items_)
     @cut_traceback
     def __len__(multiset):
-        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         return _sum(multiset._items_.values())
     @cut_traceback
     def __iter__(multiset):
-        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         for item, cnt in multiset._items_.iteritems():
             for i in range(cnt): yield item
     @cut_traceback
     def __eq__(multiset, other):
-        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         if isinstance(other, Multiset):
             return multiset._items_ == other._items_
         if isinstance(other, dict):
@@ -1923,7 +1914,7 @@ class Multiset(object):
         return not multiset.__eq__(other)
     @cut_traceback
     def __contains__(multiset, item):
-        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(obj)
+        if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         return item in multiset._items_
 
 ##class List(Collection): pass
@@ -2287,13 +2278,19 @@ class EntityMeta(type):
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
 
         pkval, avdict = entity._normalize_args_(kwargs, False)
+        rbits = 0
         for attr in avdict:
             if attr.is_collection: throw(TypeError,
                 'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
+            bit = entity._bits_.get(attr)
+            if bit is not None: rbits |= bit
         try:
             objects = entity._find_in_cache_(pkval, avdict)
         except KeyError:  # not found in cache, can exist in db
             objects = entity._find_in_db_(avdict, max_fetch_count)
+        if rbits:
+            for obj in objects:
+                if obj._rbits_ is not None: obj._rbits_ |= rbits
         return objects
     def _find_in_cache_(entity, pkval, avdict):
         cache = entity._get_cache_()
@@ -2360,7 +2357,7 @@ class EntityMeta(type):
     def _find_by_sql_(entity, max_fetch_count, sql, globals, locals, frame_depth):
         if not isinstance(sql, basestring): throw(TypeError)
         database = entity._database_
-        cursor = database._execute(sql, globals, locals, frame_depth+1)
+        cursor = database._exec_raw_sql(sql, globals, locals, frame_depth+1)
 
         col_names = [ column_info[0].upper() for column_info in cursor.description ]
         attr_offsets = {}
@@ -2466,7 +2463,7 @@ class EntityMeta(type):
         cached_sql = sql, adapter, attr_offsets
         entity._find_sql_cache_[query_key] = cached_sql
         return cached_sql
-    def _fetch_objects(entity, cursor, attr_offsets, max_fetch_count=None):
+    def _fetch_objects(entity, cursor, attr_offsets, max_fetch_count=None, rbits=None):
         if max_fetch_count is None: max_fetch_count = options.MAX_FETCH_COUNT
         if max_fetch_count is not None:
             rows = cursor.fetchmany(max_fetch_count + 1)
@@ -2487,6 +2484,8 @@ class EntityMeta(type):
                 if obj._status_ in del_statuses: continue
                 obj._db_set_(avdict)
                 objects.append(obj)
+        if rbits is not None:
+            for obj in objects: obj._rbits_ |= rbits
         return objects
     def _parse_row_(entity, row, attr_offsets):
         discr_attr = entity._discriminator_attr_
@@ -2528,7 +2527,9 @@ class EntityMeta(type):
     def _query_from_lambda_(entity, lambda_func, globals, locals):
         if type(lambda_func) is types.FunctionType:
             names, argsname, keyargsname, defaults = inspect.getargspec(lambda_func)
-            if len(names) > 1: throw(TypeError)
+            if len(names) != 1: throw(TypeError,
+                'Lambda query requires exactly one parameter name, like %s.select(lambda %s: ...). '
+                'Got: %d parameters' % (entity.__name__, entity.__name__[0].lower(), len(names)))
             if argsname or keyargsname: throw(TypeError)
             if defaults: throw(TypeError)
             code_key = id(lambda_func.func_code)
@@ -3129,8 +3130,8 @@ class Entity(object):
         else: sql, adapter = cached_sql
         arguments = adapter(values)
         try:
-            if auto_pk: new_id = database._exec_sql_returning_id(sql, arguments, autoflush=False)
-            else: database._exec_sql(sql, arguments, autoflush=False)
+            if auto_pk: new_id = database._exec_sql(sql, arguments, returning_id=True)
+            else: database._exec_sql(sql, arguments)
         except IntegrityError, e:
             msg = " ".join(tostring(arg) for arg in e.args)
             throw(TransactionIntegrityError,
@@ -3202,7 +3203,7 @@ class Entity(object):
                 obj._update_sql_cache_[query_key] = sql, adapter
             else: sql, adapter = cached_sql
             arguments = adapter(values)
-            cursor = database._exec_sql(sql, arguments, autoflush=False)
+            cursor = database._exec_sql(sql, arguments)
             if cursor.rowcount != 1:
                 throw(UnrepeatableReadError, 'Object %r was updated outside of current transaction' % obj)
         obj._status_ = 'saved'
@@ -3242,7 +3243,7 @@ class Entity(object):
             obj._lock_sql_cache_[query_key] = sql, adapter
         else: sql, adapter = cached_sql
         arguments = adapter(values)
-        cursor = database._exec_sql(sql, arguments, autoflush=False)
+        cursor = database._exec_sql(sql, arguments)
         row = cursor.fetchone()
         if row is None: throw(UnrepeatableReadError, 'Object %r was updated outside of current transaction' % obj)
         obj._status_ = 'loaded'
@@ -3258,9 +3259,10 @@ class Entity(object):
         else: sql, adapter = cached_sql
         values = obj._get_raw_pkval_()
         arguments = adapter(values)
-        database._exec_sql(sql, arguments, autoflush=False)
+        database._exec_sql(sql, arguments)
     def _save_(obj, dependent_objects=None):
-        assert obj._cache_.is_alive
+        cache = obj._cache_
+        assert cache.is_alive and cache.saving
         status = obj._status_
         if status in ('loaded', 'saved', 'cancelled'): return
         if status in ('created', 'updated'):
@@ -3273,13 +3275,11 @@ class Entity(object):
         else: assert False
 
 class Cache(object):
-    def __init__(cache, database, connection):
+    def __init__(cache, database):
         cache.is_alive = True
-        cache.database = database
-        cache.connection = connection
         cache.num = next_num()
-        if database.optimistic: cache.switch_to_optimistic_mode()
-        else: cache.switch_to_pessimistic_mode()
+        cache.database = database
+        cache.optimistic = database.optimistic
         cache.ignore_none = True  # todo : get from provider
         cache.indexes = {}
         cache.seeds = {}
@@ -3291,11 +3291,25 @@ class Cache(object):
         cache.to_be_checked = []
         cache.query_results = {}
         cache.modified = False
-    def switch_to_optimistic_mode(cache):
-        cache.optimistic = True
+        cache.saving = False
+        cache.connection = cache.establish_connection(False)
+    def establish_connection(cache, reestablish=True):
+        if reestablish:
+            assert not cache.connection
+            if not cache.optimistic: throw(ConnectionClosedError,
+                'Pessimistic transaction cannot be continued because database connection failed')
+            elif cache.saving: throw(ConnectionClosedError,
+                'Optimistic transaction cannot be completed because database connection failed during saving changes')
+            log_orm('RECONNECT')
         provider = cache.database.provider
-        provider.set_optimistic_mode(cache.connection)
+        connection = provider.connect()
+        cache.connection = connection
+        if cache.optimistic: provider.set_optimistic_mode(connection)
+        else: provider.set_pessimistic_mode(connection)
+        return connection
     def switch_to_pessimistic_mode(cache):
+        assert cache.optimistic
+        connection = cache.connection or cache.establish_connection()
         cache.optimistic = False
         provider = cache.database.provider
         provider.set_pessimistic_mode(cache.connection)
@@ -3303,7 +3317,7 @@ class Cache(object):
         assert cache.is_alive
         database = cache.database
         provider = database.provider
-        connection = cache.connection
+        connection = cache.connection or cache.establish_connection()
         try:
             if cache.optimistic:
                 if debug: log_orm('OPTIMISTIC ROLLBACK')
@@ -3324,8 +3338,11 @@ class Cache(object):
             if modified or not cache.optimistic:
                 if debug: log_orm('COMMIT')
                 provider.commit(connection)
-            if database.optimistic: cache.switch_to_optimistic_mode()
-            else: cache.switch_to_pessimistic_mode()
+            if database.optimistic:
+                cache.optimistic = True
+                provider.set_optimistic_mode(connection)
+            elif cache.optimistic:
+                cache.switch_to_pessimistic_mode()
         except:
             cache.rollback()
             raise
@@ -3336,6 +3353,7 @@ class Cache(object):
         cache.is_alive = False
         provider = database.provider
         connection = cache.connection
+        if connection is None: return
         cache.connection = None
         try:
             if debug: log_orm('ROLLBACK')
@@ -3357,41 +3375,47 @@ class Cache(object):
         cache.is_alive = False
         provider = database.provider
         connection = cache.connection
+        if connection is None: return
         cache.connection = None
         if debug: log_orm('RELEASE_CONNECTION')
         provider.release(connection)
     def flush(cache):
-        cache.switch_to_pessimistic_mode()
+        if cache.optimistic: cache.switch_to_pessimistic_mode()
         if cache.modified: cache.save()
     def save(cache):
         assert cache.is_alive
         if not cache.modified: return
         if not (cache.created or cache.updated or cache.deleted or cache.modified_collections): return
-        cache.query_results.clear()
-        modified_m2m = cache.calc_modified_m2m()
-        for attr, (added, removed) in modified_m2m.iteritems():
-            if not removed: continue
-            attr.remove_m2m(removed)
-        for obj in cache.to_be_checked:
-            obj._save_()
-        for attr, (added, removed) in modified_m2m.iteritems():
-            if not added: continue
-            attr.add_m2m(added)
+        assert cache.saving == False
+        cache.saving = True
+        try:
+            cache.query_results.clear()
+            modified_m2m = cache.calc_modified_m2m()
+            for attr, (added, removed) in modified_m2m.iteritems():
+                if not removed: continue
+                attr.remove_m2m(removed)
+            for obj in cache.to_be_checked:
+                obj._save_()
+            for attr, (added, removed) in modified_m2m.iteritems():
+                if not added: continue
+                attr.add_m2m(added)
 
-        cache.created.clear()
-        cache.updated.clear()
+            cache.created.clear()
+            cache.updated.clear()
 
-        indexes = cache.indexes
-        for obj in cache.deleted:
-            pkval = obj._pkval_
-            pk = obj.__class__.__dict__['_pk_']
-            index = indexes[pk]
-            index.pop(pkval)
+            indexes = cache.indexes
+            for obj in cache.deleted:
+                pkval = obj._pkval_
+                pk = obj.__class__.__dict__['_pk_']
+                index = indexes[pk]
+                index.pop(pkval)
 
-        cache.deleted[:] = []
-        cache.modified_collections.clear()
-        cache.to_be_checked[:] = []
-        cache.modified = False
+            cache.deleted[:] = []
+            cache.modified_collections.clear()
+            cache.to_be_checked[:] = []
+            cache.modified = False
+        finally:
+            cache.saving = False
     def calc_modified_m2m(cache):
         modified_m2m = {}
         for attr, objects in sorted(cache.modified_collections.iteritems(),
@@ -3546,7 +3570,7 @@ class DBSessionContextManager(object):
                         with self: return old_func(*args, **kwargs)
                     except Exception, e:
                         if not isinstance(e, self.retry_exceptions): raise
-                raise e
+                raise
             return copy_func_attrs(new_func, old_func, 'db_session')
         return self.__class__(**kwargs)
     def __enter__(self):
@@ -3578,7 +3602,9 @@ def with_transaction(*args, **kwargs):
 def db_decorator(func, *args, **kwargs):
     web = sys.modules.get('pony.web')
     allowed_exceptions = web and [ web.HttpRedirect ] or []
-    try: return _with_transaction(func, args, kwargs, allowed_exceptions)
+    try:
+        with db_session(allowed_exceptions=allowed_exceptions):
+            return func(*args, **kwargs)
     except (ObjectNotFound, RowNotFound):
         if web: throw(web.Http404NotFound)
         raise
@@ -3760,7 +3786,7 @@ class Query(object):
             cursor = query._database._exec_sql(sql, arguments)
             if isinstance(translator.expr_type, EntityMeta):
                 entity = translator.expr_type
-                result = entity._fetch_objects(cursor, attr_offsets)
+                result = entity._fetch_objects(cursor, attr_offsets, rbits=translator.tableref.rbits)
             elif len(translator.row_layout) == 1:
                 func, slice_or_offset, src = translator.row_layout[0]
                 result = list(starmap(func, cursor.fetchall()))

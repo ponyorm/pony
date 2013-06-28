@@ -57,6 +57,11 @@ def wrap_dbapi_exceptions(func, provider, *args, **kwargs):
     except dbapi_module.Error, e: raise Error(e)
     except dbapi_module.Warning, e: raise Warning(e)
 
+def unexpected_args(attr, args):
+    throw(TypeError,
+        'Unexpected positional argument%s for attribute %s: %r'
+        % ((args > 1 and 's' or ''), attr, ', '.join(map(repr, args))))
+
 version_re = re.compile('[0-9\.]+')
 
 def get_version_tuple(s):
@@ -69,10 +74,13 @@ class DBAPIProvider(object):
     paramstyle = 'qmark'
     quote_char = '"'
     max_params_count = 200
+    max_name_len = 128
 
     table_if_not_exists_syntax = True
+    index_if_not_exists_syntax = True
     max_time_precision = default_time_precision = 6
 
+    dialect = None
     dbapi_module = None
     dbschema_cls = None
     translator_cls = None
@@ -115,6 +123,16 @@ class DBAPIProvider(object):
             prefix = entity.__name__.lower() + '_'
             return [ prefix + column for column in columns ]
 
+    def get_default_index_name(provider, table_name, column_names, is_pk=False, is_unique=False, m2m=False):
+        if is_pk: index_name = 'pk_%s' % table_name
+        else:
+            if is_unique: template = 'unq_%(tname)s__%(cnames)s'
+            elif m2m: template = 'idx_%(tname)s'
+            else: template = 'idx_%(tname)s__%(cnames)s'
+            index_name = template % dict(tname=table_name,
+                                         cnames='_'.join(name for name in column_names))
+        return index_name[:provider.max_name_len].lower()
+
     def quote_name(provider, name):
         quote_char = provider.quote_char
         if isinstance(name, basestring):
@@ -125,6 +143,9 @@ class DBAPIProvider(object):
     def ast2sql(provider, ast):
         builder = provider.sqlbuilder_cls(provider, ast)
         return builder.sql, builder.adapter
+
+    def should_reconnect(provider, exc):
+        return False
 
     @wrap_dbapi_exceptions
     def connect(provider):
@@ -139,18 +160,14 @@ class DBAPIProvider(object):
         return provider.pool.drop(connection)
 
     @wrap_dbapi_exceptions
-    def execute(provider, cursor, sql, arguments=None):
-        if arguments is None: cursor.execute(sql)
-        else: cursor.execute(sql, arguments)
-
-    @wrap_dbapi_exceptions
-    def executemany(provider, cursor, sql, arguments_list):
-        cursor.executemany(sql, arguments_list)
-
-    @wrap_dbapi_exceptions
-    def execute_returning_id(provider, cursor, sql, arguments):
-        cursor.execute(sql, arguments)
-        return cursor.lastrowid
+    def execute(provider, cursor, sql, arguments=None, returning_id=False):
+        if type(arguments) is list:
+            assert arguments and not returning_id
+            cursor.executemany(sql, arguments)
+        else:
+            if arguments is None: cursor.execute(sql)
+            else: cursor.execute(sql, arguments)
+            if returning_id: return cursor.lastrowid
 
     @wrap_dbapi_exceptions
     def commit(provider, connection):
@@ -301,10 +318,10 @@ class IntConverter(Converter):
         Converter.init(converter, kwargs)
         min_val = kwargs.pop('min', None)
         if min_val is not None and not isinstance(min_val, (int, long)):
-            throw(TypeError, "'min' argument for attribute %s must be int. Got: %r" % (attr, min_val))
+            throw(TypeError, "'min' argument for attribute %s must be int. Got: %r" % (converter.attr, min_val))
         max_val = kwargs.pop('max', None)
         if max_val is not None and not isinstance(max_val, (int, long)):
-            throw(TypeError, "'max' argument for attribute %s must be int. Got: %r" % (attr, max_val))
+            throw(TypeError, "'max' argument for attribute %s must be int. Got: %r" % (converter.attr, max_val))
         converter.min_val = min_val
         converter.max_val = max_val
     def validate(converter, val):
@@ -335,12 +352,12 @@ class RealConverter(Converter):
         if min_val is not None:
             try: min_val = float(min_val)
             except ValueError:
-                throw(TypeError, "Invalid value for 'min' argument for attribute %s: %r" % (attr, min_val))
+                throw(TypeError, "Invalid value for 'min' argument for attribute %s: %r" % (converter.attr, min_val))
         max_val = kwargs.pop('max', None)
         if max_val is not None:
             try: max_val = float(max_val)
             except ValueError:
-                throw(TypeError, "Invalid value for 'max' argument for attribute %s: %r" % (attr, max_val))
+                throw(TypeError, "Invalid value for 'max' argument for attribute %s: %r" % (converter.attr, max_val))
         converter.min_val = min_val
         converter.max_val = max_val
         converter.tolerance = kwargs.pop('tolerance', converter.default_tolerance)

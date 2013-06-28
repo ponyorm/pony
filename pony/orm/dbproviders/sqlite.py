@@ -1,15 +1,14 @@
-import os.path, weakref
+import os.path
 import sqlite3 as sqlite
-from thread import get_ident
 from threading import Lock, Thread
 from Queue import Queue
 from decimal import Decimal
-from datetime import datetime, date, time
+from datetime import datetime, date
 from time import strptime
 
 from pony.orm import dbschema, sqltranslation, dbapiprovider
 from pony.orm.sqlbuilding import SQLBuilder, join
-from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
+from pony.orm.dbapiprovider import DBAPIProvider, Pool
 from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple_decorator, absolutize_path, throw
 
 class SQLiteForeignKey(dbschema.ForeignKey):
@@ -90,6 +89,8 @@ class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
 
 class SQLiteProvider(DBAPIProvider):
     dialect = 'SQLite'
+    max_name_len = 1024
+
     dbapi_module = sqlite
     dbschema_cls = SQLiteSchema
     translator_cls = SQLiteTranslator
@@ -171,11 +172,6 @@ def _text_factory(s):
 def _init_connection(con):
     con.text_factory = _text_factory
     con.create_function('power', 2, pow)
-
-def unexpected_args(attr, args):
-    throw(TypeError,
-        'Unexpected positional argument%s for attribute %s: %r'
-        % ((args > 1 and 's' or ''), attr, ', '.join(map(repr, args))))
 
 mem_queue = Queue()
 
@@ -266,9 +262,7 @@ class SqliteMemoryDbThread(Thread):
             if x is None: break
             lock, func, args, kwargs, result_holder = x
             try: result = func(*args, **kwargs)
-            except Exception, e:
-                result_holder.append(e)
-                del e
+            except Exception, e: result_holder.append(e)
             else: result_holder.append(result)
             if lock is not None: lock.release()
 

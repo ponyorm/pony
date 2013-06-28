@@ -1,9 +1,8 @@
 #coding: cp1251
 
-import re, os, os.path, sys, time, datetime, types, linecache
+import re, os, os.path, sys, datetime, types, linecache
 
-from itertools import imap, ifilter, count as _count
-from operator import itemgetter
+from itertools import count as _count
 from inspect import isfunction, ismethod
 from time import strptime
 from os import urandom

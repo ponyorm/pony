@@ -10,7 +10,7 @@ import cx_Oracle
 from pony.orm import core, dbschema, sqlbuilding, dbapiprovider, sqltranslation
 from pony.orm.core import log_orm, log_sql, DatabaseError
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, get_version_tuple
-from pony.utils import is_utf8, throw
+from pony.utils import throw
 
 trigger_template = """
 create trigger %s
@@ -30,13 +30,12 @@ class OraTable(dbschema.Table):
             cursor = connection.cursor()
             try: provider.execute(cursor, sql)
             except DatabaseError, e:
-                if e.original_exc.args[0].code == 955:
-                    if core.debug: log_orm('ALREADY EXISTS: %s' % e.args[0].message)
-                    if not i:
-                        if len(commands) > 1:
-                            log_orm('SKIP FURTHER DDL COMMANDS FOR TABLE %s\n' % table.name)
-                        return
-                else: raise
+                if e.original_exc.args[0].code != 955: raise
+                if core.debug: log_orm('ALREADY EXISTS: %s' % e.args[0].message)
+                if i: continue
+                if len(commands) > 1:
+                    log_orm('SKIP FURTHER DDL COMMANDS FOR TABLE %s\n' % table.name)
+                return
     def get_create_commands(table, created_tables=None):
         result = dbschema.Table.get_create_commands(table, created_tables)
         for column in table.column_list:
@@ -192,8 +191,10 @@ class OraDatetimeConverter(dbapiprovider.DatetimeConverter):
 class OraProvider(DBAPIProvider):
     dialect = 'Oracle'
     paramstyle = 'named'
+    max_name_len = 30
 
     table_if_not_exists_syntax = False
+    index_if_not_exists_syntax = False
 
     dbapi_module = cx_Oracle
     dbschema_cls = OraSchema
@@ -208,6 +209,14 @@ class OraProvider(DBAPIProvider):
         assert row is not None
         provider.server_version = get_version_tuple(row[0])
 
+    def should_reconnect(provider, exc):
+        reconnect_error_codes = (
+            3113,  # ORA-03113: end-of-file on communication channel
+            3114,  # ORA-03114: not connected to ORACLE
+            )
+        return isinstance(exc, cx_Oracle.OperationalError) \
+               and exc.args[0].code in reconnect_error_codes
+
     def get_default_entity_table_name(provider, entity):
         return DBAPIProvider.get_default_entity_table_name(provider, entity).upper()
 
@@ -220,25 +229,25 @@ class OraProvider(DBAPIProvider):
     def get_default_m2m_column_names(provider, entity):
         return [ column.upper() for column in DBAPIProvider.get_default_m2m_column_names(provider, entity) ]
 
-    @wrap_dbapi_exceptions
-    def execute(provider, cursor, sql, arguments=None):
-        if arguments is not None:
-            set_input_sizes(cursor, arguments)
-            cursor.execute(sql, arguments)
-        else: cursor.execute(sql)
+    def get_default_index_name(*args, **kwargs):
+        return DBAPIProvider.get_default_index_name(*args, **kwargs).upper()
 
     @wrap_dbapi_exceptions
-    def executemany(provider, cursor, sql, arguments_list):
-        set_input_sizes(cursor, arguments_list[0])
-        cursor.executemany(sql, arguments_list)
-
-    @wrap_dbapi_exceptions
-    def execute_returning_id(provider, cursor, sql, arguments):
-        set_input_sizes(cursor, arguments)
-        var = cursor.var(cx_Oracle.STRING, 40, cursor.arraysize, outconverter=int)
-        arguments['new_id'] = var
-        cursor.execute(sql, arguments)
-        return var.getvalue()
+    def execute(provider, cursor, sql, arguments=None, returning_id=False):
+        if type(arguments) is list:
+            assert arguments and not returning_id
+            set_input_sizes(cursor, arguments[0])
+            cursor.executemany(sql, arguments)
+        else:
+            if arguments is not None: set_input_sizes(cursor, arguments)
+            if returning_id:
+                var = cursor.var(cx_Oracle.STRING, 40, cursor.arraysize, outconverter=int)
+                arguments['new_id'] = var
+                if arguments is None: cursor.execute(sql)
+                else: cursor.execute(sql, arguments)
+                return var.getvalue()
+            if arguments is None: cursor.execute(sql)
+            else: cursor.execute(sql, arguments)
 
     converter_classes = [
         (bool, OraBoolConverter),
@@ -324,4 +333,4 @@ def set_input_sizes(cursor, arguments):
     elif type(arguments) is tuple:
         input_sizes = map(get_inputsize, arguments)
         cursor.setinputsizes(*input_sizes)
-    else: assert False
+    else: assert False, type(arguments)
