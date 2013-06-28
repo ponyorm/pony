@@ -2619,6 +2619,7 @@ class EntityMeta(type):
                 if not attr.reverse: throw(NotImplementedError)
                 vals = raw_pkval[i:i+len(attr.columns)]
                 val = attr.py_type._get_by_raw_pkval_(vals)
+                i += len(attr.columns)
             pkval.append(val)
         if not entity._pk_is_composite_: pkval = pkval[0]
         else: pkval = tuple(pkval)
