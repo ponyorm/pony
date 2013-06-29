@@ -28,6 +28,16 @@ class PsycopgPool(Pool):
             if 'client_encoding' not in pool.kwargs:
                 pool.con.set_client_encoding('UTF8')
         return pool.con
+    def release(pool, con):
+        assert con is pool.con
+        try:
+            con.rollback()
+            con.autocommit = True
+            cursor = con.cursor()
+            cursor.execute('DISCARD ALL')
+        except:
+            pool.drop(con)
+            raise
 
 class PsycopgProvider(PGProvider):
     dbapi_module = psycopg2
