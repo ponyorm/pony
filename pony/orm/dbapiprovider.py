@@ -221,7 +221,7 @@ class Pool(localbase):
         assert con is pool.con
         try: con.rollback()
         except:
-            pool.close(con)
+            pool.drop(con)
             raise
     def drop(pool, con):
         assert con is pool.con
