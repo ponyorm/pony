@@ -315,15 +315,15 @@ class Database(object):
 
         self.global_stats = {}
         self.global_stats_lock = Lock()
-        self.dblocal = DbLocal()
+        self._dblocal = DbLocal()
     @property
     def last_sql(database):
-        return database.dblocal.last_sql
+        return database._dblocal.last_sql
     @property
     def local_stats(database):
-        return database.dblocal.stats
+        return database._dblocal.stats
     def _update_local_stat(database, sql, query_start_time):
-        dblocal = database.dblocal
+        dblocal = database._dblocal
         dblocal.last_sql = sql
         stats = dblocal.stats
         stat = stats.get(sql)
@@ -333,11 +333,11 @@ class Database(object):
         setdefault = database.global_stats.setdefault
         database.global_stats_lock.acquire()
         try:
-            for sql, stat in database.dblocal.stats.iteritems():
+            for sql, stat in database._dblocal.stats.iteritems():
                 global_stat = setdefault(sql, stat)
                 if global_stat is not stat: global_stat.merge(stat)
         finally: database.global_stats_lock.release()
-        database.dblocal.stats.clear()
+        database._dblocal.stats.clear()
     @cut_traceback
     def get_connection(database):
         cache = database._get_cache()
@@ -3801,7 +3801,7 @@ class Query(object):
             if query_key is not None:
                 query._cache.query_results[query_key] = result
         else:
-            stats = query._database.dblocal.stats
+            stats = query._database._dblocal.stats
             stat = stats.get(sql)
             if stat is not None: stat.cache_count += 1
             else: stats[sql] = QueryStat(sql)
