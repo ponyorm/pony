@@ -5,7 +5,7 @@ from testutils import *
 
 class TestAttribute(unittest.TestCase):
 
-    @raises_exception(TypeError, "Unknown option 'another_option'")
+    @raises_exception(TypeError, "Attribute Entity1.id has unknown option 'another_option'")
     def test_attribute1(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):

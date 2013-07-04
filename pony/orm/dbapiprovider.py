@@ -237,7 +237,7 @@ class Converter(object):
         if attr is None: return
         kwargs = attr.kwargs.copy()
         converter.init(kwargs)
-        for option in kwargs: throw(TypeError, 'Unknown option %r' % option)
+        for option in kwargs: throw(TypeError, 'Attribute %s has unknown option %r' % (attr, option))
     def init(converter, kwargs):
         attr = converter.attr
         if attr and attr.args: unexpected_args(attr, attr.args)
