@@ -11,19 +11,19 @@ import time
 db = Database('sqlite', 'alldatatypes.sqlite', create_db=True)
 
 class AllDataTypes(db.Entity):
-    a_bool1 = Required(bool)
-    a_bool2 = Required(bool)
-    a_unicode = Required(unicode)
-    a_str = Required(str, encoding='cp1251')
-    a_long_unicode = Required(LongUnicode)
-    a_long_str = Required(LongStr, encoding='cp1251')
-    a_int = Required(int)
-    a_long = Required(long)
-    a_float = Required(float)
-    a_decimal = Required(Decimal)
-    a_buffer = Required(buffer)
-    a_datetime = Required(datetime)
-    a_date = Required(date)
+    bool1_attr = Required(bool)
+    bool2_attr = Required(bool)
+    unicode_attr = Required(unicode)
+    str_attr = Required(str, encoding='cp1251')
+    long_unicode_attr = Required(LongUnicode)
+    long_str_attr = Required(LongStr, encoding='cp1251')
+    int_attr = Required(int)
+    long_attr = Required(long)
+    float_attr = Required(float)
+    decimal_attr = Required(Decimal)
+    buffer_attr = Required(buffer)
+    datetime_attr = Required(datetime)
+    date_attr = Required(date)
 
 sql_debug(True)
 db.generate_mapping(create_tables=True)
@@ -31,16 +31,19 @@ sql_debug(False)  # sql_debug(True) can result in long delay due to enormous pri
 
 s = "".join(map(chr, range(256))) * 1000
 
-fields = dict(a_bool1=True, a_bool2=False,
-              a_unicode=u"Юникод",
-              a_str="Строка",
-              a_long_unicode = u"Юникод" * 100000,
-              a_long_str = "Строка" * 100000,
-              a_int=-2000000,
-              a_long=123456789123456789,
-              a_float=3.1415927, a_decimal=Decimal("0.1"),
-              a_buffer=buffer(s),
-              a_datetime=datetime.now(), a_date=date.today())
+fields = dict(bool1_attr=True,
+              bool2_attr=False,
+              unicode_attr=u"Юникод",
+              str_attr="Строка",
+              long_unicode_attr = u"Юникод" * 100000,
+              long_str_attr = "Строка" * 100000,
+              int_attr=-2000000,
+              long_attr=123456789123456789,
+              float_attr=3.1415927,
+              decimal_attr=Decimal("0.1"),
+              buffer_attr=buffer(s),
+              datetime_attr=datetime.now(),
+              date_attr=date.today())
 
 for obj in AllDataTypes.select():
     obj.delete()
@@ -63,7 +66,7 @@ for name, value in fields.items():
     if value!=value2: print 'py=', repr(value), 'db=', repr(value2)
     else: print
 
-for i, (ch1, ch2) in enumerate(zip(s, str(e2.a_buffer))):
+for i, (ch1, ch2) in enumerate(zip(s, str(e2.buffer_attr))):
     if ch1 <> ch2: print i, repr(ch1), repr(ch2), ch1, ch2
 
 commit()
