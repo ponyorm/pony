@@ -456,9 +456,9 @@ class Database(object):
         if type(new_id) is long: new_id = int(new_id)
         return new_id
     @cut_traceback
-    def generate_mapping(database, filename=None, check_tables=False, create_tables=False):
-        if create_tables and check_tables: throw(TypeError,
-            "Parameters 'check_tables' and 'create_tables' cannot be set to True at the same time")
+    def generate_mapping(database, filename=None, check_tables=None, create_tables=False):
+        if check_tables is not None:
+            deprecated("Parameter 'check_tables' of generate_mapping() is deprecated. Now Pony always checks tables on mapping generation.")
         if local.db_context_counter: throw(MappingError,
             "generate_mapping() couldn't be used inside @db_session")
         database.rollback()
@@ -616,8 +616,6 @@ class Database(object):
                     table.add_index(attr.index, columns, is_unique=attr.is_unique)
 
         if create_tables: schema.create_tables()
-
-        if not check_tables and not create_tables: return
 
         local.db_context_counter = True
         try:

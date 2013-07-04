@@ -16,7 +16,7 @@ class TestColumnsMapping(unittest.TestCase):
         sql = "drop table if exists Student;"
         with db_session:
             db.get_connection().executescript(sql)
-        db.generate_mapping(check_tables=True)
+        db.generate_mapping()
 
     # no exception if table was specified
     def test_table_check2(self):
@@ -31,7 +31,7 @@ class TestColumnsMapping(unittest.TestCase):
         """
         with db_session:
             db.get_connection().executescript(sql)
-        db.generate_mapping(check_tables=True)
+        db.generate_mapping()
         self.assertEqual(db.schema.tables['Student'].column_list[0].name, 'name')
 
     # raise exception if specified mapping table is not found
@@ -41,7 +41,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Student(db.Entity):
             _table_ = 'Table1'
             name = PrimaryKey(str)
-        db.generate_mapping(check_tables=True)
+        db.generate_mapping()
 
     # no exception if table was specified
     def test_table_check4(self):
@@ -57,7 +57,7 @@ class TestColumnsMapping(unittest.TestCase):
         """
         with db_session:
             db.get_connection().executescript(sql)
-        db.generate_mapping(check_tables=True)
+        db.generate_mapping()
         self.assertEqual(db.schema.tables['Table1'].column_list[0].name, 'name')
 
     # 'id' field created if primary key is not defined
@@ -74,7 +74,7 @@ class TestColumnsMapping(unittest.TestCase):
         """
         with db_session:
             db.get_connection().executescript(sql)
-        db.generate_mapping(check_tables=True)
+        db.generate_mapping()
 
     # 'id' field created if primary key is not defined
     def test_table_check6(self):
@@ -90,7 +90,7 @@ class TestColumnsMapping(unittest.TestCase):
         """
         with db_session:
             db.get_connection().executescript(sql)
-        db.generate_mapping(check_tables=True)
+        db.generate_mapping()
         self.assertEqual(db.schema.tables['Student'].column_list[0].name, 'id')
 
     @raises_exception(DBSchemaError, "Column 'name' already exists in table 'Student'")
@@ -108,7 +108,7 @@ class TestColumnsMapping(unittest.TestCase):
         """
         with db_session:
             db.get_connection().executescript(sql)
-        db.generate_mapping(check_tables=True)
+        db.generate_mapping()
         self.assert_(False)
 
     # user can specify column name for an attribute
@@ -124,7 +124,7 @@ class TestColumnsMapping(unittest.TestCase):
         """
         with db_session:
             db.get_connection().executescript(sql)
-        db.generate_mapping(check_tables=True)
+        db.generate_mapping()
         self.assertEqual(db.schema.tables['Student'].column_list[0].name, 'name1')
 
     # Required-Required raises exception
@@ -138,7 +138,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Required(Entity1)
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping()
 
     # no exception Optional-Required
     def test_relations2(self):
@@ -149,7 +149,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Required(Entity1)
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
 
     # no exception Optional-Required(column)
     def test_relations3(self):
@@ -160,7 +160,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
 
     def test_relations4(self):
         db = Database('sqlite', ':memory:')
@@ -170,7 +170,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1, column='a')
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
         self.assertEqual(Entity1.attr1.columns, ['attr1'])
         self.assertEqual(Entity2.attr2.columns, ['a'])
 
@@ -183,7 +183,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
 
     # no exception Optional-Optional(column)
     def test_relations6(self):
@@ -194,7 +194,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
 
     def test_relations7(self):
         db = Database('sqlite', ':memory:')
@@ -204,7 +204,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1, column='a1')
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
         self.assertEqual(Entity1.attr1.columns, ['a'])
         self.assertEqual(Entity2.attr2.columns, ['a1'])
 
@@ -216,7 +216,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
         column_list = db.schema.tables['Entity2'].column_list
         self.assertEqual(len(column_list), 2)
         self.assertEqual(column_list[0].name, 'id')
@@ -232,7 +232,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
         column_list = db.schema.tables['Entity2'].column_list
         self.assertEqual(len(column_list), 3)
         self.assertEqual(column_list[0].name, 'id')
@@ -247,7 +247,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
         self.assertEqual(Entity1.attr1.columns, ['attr1'])
         self.assertEqual(Entity2.attr2.columns, [])
 
@@ -259,7 +259,7 @@ class TestColumnsMapping(unittest.TestCase):
         class Entity1(db.Entity):
             id = PrimaryKey(int)
             attr1 = Optional(Entity2)
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
         self.assertEqual(Entity1.attr1.columns, ['attr1'])
         self.assertEqual(Entity2.attr2.columns, [])
 

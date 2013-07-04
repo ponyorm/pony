@@ -44,7 +44,6 @@ class Student(db.Entity):
 sql_debug(True)  # Output all SQL queries to stdout
 
 db.generate_mapping(create_tables=True)
-# db.generate_mapping(check_tables=True)
 
 @db_session
 def populate_database():

@@ -31,7 +31,7 @@ class TestDiag(unittest.TestCase):
         class Entity1(db.Entity):
             id = PrimaryKey(int)
             attr1 = Required('Entity2')
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping()
 
     @raises_exception(TypeError, 'Entity1._table_ property must be a string. Got: 123')
     def test_diagram3(self):
@@ -39,7 +39,7 @@ class TestDiag(unittest.TestCase):
         class Entity1(db.Entity):
             _table_ = 123
             id = PrimaryKey(int)
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping()
 
     def test_diagram4(self):
         db = Database('sqlite', ':memory:')
@@ -49,7 +49,7 @@ class TestDiag(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Set(Entity1, table='Table1')
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
 
     def test_diagram5(self):
         db = Database('sqlite', ':memory:')
@@ -59,7 +59,7 @@ class TestDiag(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Required(Entity1)
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
 
     @raises_exception(MappingError, "Parameter 'table' for Entity1.attr1 and Entity2.attr2 do not match")
     def test_diagram6(self):
@@ -70,7 +70,7 @@ class TestDiag(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Set(Entity1, table='Table2')
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping()
 
     @raises_exception(MappingError, "Table name 'Table1' is already in use")
     def test_diagram7(self):
@@ -82,7 +82,7 @@ class TestDiag(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Set(Entity1, table='Table1')
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping()
 
     def test_diagram8(self):
         db = Database('sqlite', ':memory:')
@@ -92,7 +92,7 @@ class TestDiag(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Set(Entity1)
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
         m2m_table = db.schema.tables['Entity1_Entity2']
         col_names = set([ col.name for col in m2m_table.column_list ])
         self.assertEquals(col_names, set(['entity1', 'entity2']))
@@ -108,7 +108,7 @@ class TestDiag(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Set(Entity1)
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
         m2m_table = db.schema.tables['Entity1_Entity2']
         col_names = set([ col.name for col in m2m_table.column_list ])
         self.assertEquals(col_names, set(['entity1_a', 'entity1_b', 'entity2']))
@@ -123,7 +123,7 @@ class TestDiag(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Set(Entity1, columns=['x', 'y'])
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
 
     @raises_exception(MappingError, 'Invalid number of columns for Entity2.attr2')
     def test_diagram11(self):
@@ -136,7 +136,7 @@ class TestDiag(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Set(Entity1, columns=['x'])
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping()
 
     @raises_exception(ERDiagramError, 'Base Entity does not belong to any database')
     def test_diagram12(self):

@@ -55,7 +55,6 @@ class Category(db.Entity):
 sql_debug(True)
 
 db.generate_mapping(create_tables=True)
-# db.generate_mapping(check_tables=True)
 
 # Order states
 CREATED = 'CREATED'
