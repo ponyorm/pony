@@ -6,11 +6,9 @@ from pony.orm.core import *
 import time
 
 #db = Database('oracle', 'presentation/pony@localhost')
-#db = Database('postgres', user='pony', password='magic', host='localhost', database='presentation')
+#db = Database('postgres', user='presentation', password='pony', host='localhost', database='cyrillic')
 #db = Database('mysql', user='pony', passwd='magic', host='localhost', db='test')
 db = Database('sqlite', 'alldatatypes.sqlite', create_db=True)
-
-sql_debug(False)  # sql_debug(True) can result in long delay due to enormous print
 
 class AllDataTypes(db.Entity):
     a_bool1 = Required(bool)
@@ -27,7 +25,9 @@ class AllDataTypes(db.Entity):
     a_datetime = Required(datetime)
     a_date = Required(date)
 
+sql_debug(True)
 db.generate_mapping(create_tables=True)
+sql_debug(False)  # sql_debug(True) can result in long delay due to enormous print
 
 s = "".join(map(chr, range(256))) * 1000
 
@@ -42,7 +42,8 @@ fields = dict(a_bool1=True, a_bool2=False,
               a_buffer=buffer(s),
               a_datetime=datetime.now(), a_date=date.today())
 
-db.execute('delete from %s' % db.provider.quote_name('AllDataTypes'))
+for obj in AllDataTypes.select():
+    obj.delete()
 commit()
 
 t1 = time.time()
