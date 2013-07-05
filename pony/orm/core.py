@@ -9,7 +9,6 @@ from time import time
 import datetime
 from threading import Lock, currentThread as current_thread, _MainThread
 from __builtin__ import min as _min, max as _max, sum as _sum
-import warnings
 
 import pony
 from pony import options
@@ -22,7 +21,7 @@ from pony.orm.dbapiprovider import (
     IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
 from pony.utils import (
-    localbase, simple_decorator, cut_traceback, throw,
+    localbase, simple_decorator, cut_traceback, throw, deprecated,
     import_module, parse_expr, is_ident, count, avg as _avg, tostring, strjoin,
     copy_func_attrs
     )
@@ -64,14 +63,6 @@ debug = False
 def sql_debug(value):
     global debug
     debug = value
-
-class PonyDeprecationWarning(DeprecationWarning):
-    pass
-
-def deprecated(message):
-    warnings.warn(message, PonyDeprecationWarning, stacklevel=3)
-
-warnings.simplefilter('once', PonyDeprecationWarning)
 
 orm_logger = logging.getLogger('pony.orm')
 sql_logger = logging.getLogger('pony.orm.sql')

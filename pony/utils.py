@@ -1,6 +1,6 @@
 #coding: cp1251
 
-import re, os, os.path, sys, datetime, types, linecache
+import re, os, os.path, sys, datetime, types, linecache, warnings
 
 from itertools import count as _count
 from inspect import isfunction, ismethod
@@ -25,6 +25,14 @@ except ImportError: etree = None
 
 if pony.MODE.startswith('GAE-'): localbase = object
 else: from threading import local as localbase
+
+class PonyDeprecationWarning(DeprecationWarning):
+    pass
+
+def deprecated(message):
+    warnings.warn(message, PonyDeprecationWarning, stacklevel=3)
+
+warnings.simplefilter('once', PonyDeprecationWarning)
 
 def copy_func_attrs(new_func, old_func, decorator_name=None):
     if new_func is not old_func:
