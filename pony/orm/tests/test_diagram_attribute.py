@@ -5,12 +5,12 @@ from testutils import *
 
 class TestAttribute(unittest.TestCase):
 
-    @raises_exception(TypeError, "Unknown option 'another_option'")
+    @raises_exception(TypeError, "Attribute Entity1.id has unknown option 'another_option'")
     def test_attribute1(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
             id = PrimaryKey(int, another_option=3)
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
 
     @raises_exception(TypeError, 'Cannot link attribute to Entity class. Must use Entity subclass instead')
     def test_attribute2(self):
@@ -206,7 +206,7 @@ class TestAttribute(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
 
     def test_columns2(self):
         db = Database('sqlite', ':memory:')
@@ -225,21 +225,21 @@ class TestAttribute(unittest.TestCase):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
             id = PrimaryKey(int, columns=['a', 'b'])
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
 
     @raises_exception(TypeError, "Parameter 'columns' must be a list. Got: set(['a'])'")
     def test_columns6(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
             id = PrimaryKey(int, columns=set(['a']))
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
 
     @raises_exception(TypeError, "Parameter 'column' must be a string. Got: 4")
     def test_columns7(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
             id = PrimaryKey(int, column=4)
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
 
     def test_columns8(self):
         db = Database('sqlite', ':memory:')
@@ -263,7 +263,7 @@ class TestAttribute(unittest.TestCase):
             PrimaryKey(a, b)
         class Entity2(db.Entity):
             attr2 = Required(Entity1, columns=['x', 'y', 'z'])
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
 
     @raises_exception(MappingError, 'Invalid number of columns specified for Entity2.attr2')
     def test_columns10(self):
@@ -275,7 +275,7 @@ class TestAttribute(unittest.TestCase):
             PrimaryKey(a, b)
         class Entity2(db.Entity):
             attr2 = Required(Entity1, column='x')
-        db.generate_mapping(check_tables=False)
+        db.generate_mapping(create_tables=True)
 
     @raises_exception(TypeError, "Items of parameter 'columns' must be strings. Got: [1, 2]")
     def test_columns11(self):
@@ -349,10 +349,10 @@ class TestAttribute(unittest.TestCase):
         db.generate_mapping(create_tables=True)
 
     def test_columns21(self):
-        db = Database('sqlite', ':memory:')
+        db = TestDatabase('sqlite', ':memory:')
         class Entity1(db.Entity):
             attr1 = Set('Entity1', reverse='attr1', table=['db1', 'T1'])
-        db.generate_mapping()
+        db.generate_mapping(create_tables=True)
 
 if __name__ == '__main__':
     unittest.main()

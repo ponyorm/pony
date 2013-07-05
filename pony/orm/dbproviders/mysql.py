@@ -1,5 +1,6 @@
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
+from uuid import UUID
 
 import warnings
 warnings.filterwarnings('ignore', '^Table.+already exists$', Warning, '^pony\\.orm\\.dbapiprovider$')
@@ -91,6 +92,10 @@ class MySQLBlobConverter(dbapiprovider.BlobConverter):
     def sql_type(converter):
         return 'LONGBLOB'
 
+class MySQLUuidConverter(dbapiprovider.UuidConverter):
+    def sql_type(converter):
+        return 'BINARY(16)'
+
 class MySQLProvider(DBAPIProvider):
     dialect = 'MySQL'
     paramstyle = 'format'
@@ -116,7 +121,8 @@ class MySQLProvider(DBAPIProvider):
         (Decimal, dbapiprovider.DecimalConverter),
         (buffer, MySQLBlobConverter),
         (datetime, dbapiprovider.DatetimeConverter),
-        (date, dbapiprovider.DateConverter)
+        (date, dbapiprovider.DateConverter),
+        (UUID, MySQLUuidConverter),
     ]
 
     def inspect_connection(provider, connection):

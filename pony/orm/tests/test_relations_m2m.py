@@ -95,7 +95,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
 #        insert into Subject values ('Subj2');
 #        insert into Group_Subject values (1, 101, 'Subj1');
 #        """)
-#        self.db.generate_mapping(check_tables=True)
+#        self.db.generate_mapping()
 #        local.session = DBSession()
 #    def tearDown(self):
 #        self.db.release()

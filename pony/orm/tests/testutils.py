@@ -57,7 +57,8 @@ class TestDatabase(Database):
     def __init__(self, provider_name, *args, **kwargs):
         kwargs['pony_check_connection'] = False
         kwargs['pony_pool_mockup'] = TestPool()
-        provider_name = self.real_provider_name
+        if self.real_provider_name is not None:
+            provider_name = self.real_provider_name
         provider_module = import_module('pony.orm.dbproviders.' + provider_name)
         provider_cls = provider_module.provider_cls
         raw_server_version = self.raw_server_version
@@ -88,5 +89,5 @@ class TestDatabase(Database):
         database.sql = sql
         database.arguments = arguments
         return test_cursor
-    def generate_mapping(database, filename=None, check_tables=False, create_tables=False):
-        return Database.generate_mapping(database, filename)
+    def generate_mapping(database, filename=None, create_tables=False):
+        return Database.generate_mapping(database, filename, create_tables=False)

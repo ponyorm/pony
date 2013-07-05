@@ -29,7 +29,6 @@ class OrderItem(db.Entity):
 
 sql_debug(True)
 db.generate_mapping(create_tables=True)
-# db.generate_mapping(check_tables=True)
 
 def populate_database():
     c1 = Customer(name='John Smith', email='john@example.com')

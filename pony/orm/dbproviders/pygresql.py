@@ -1,7 +1,9 @@
 import re
 from itertools import imap
 from binascii import unhexlify
+from uuid import UUID
 
+from pony.orm import core
 from pony.orm.dbapiprovider import ProgrammingError
 from pony.orm.dbproviders._postgres import *
 
@@ -15,8 +17,8 @@ class PyGreSQLTable(PGTable):
                 provider.rollback(connection)
                 raise
             if core.debug:
-                log_orm('ALREADY EXISTS: %s' % e.args[0])
-                log_orm('ROLLBACK')
+                core.log_orm('ALREADY EXISTS: %s' % e.args[0])
+                core.log_orm('ROLLBACK')
             provider.rollback(connection)
         else: provider.commit(connection)
 
@@ -86,7 +88,8 @@ class PyGreSQLProvider(PGProvider):
         (Decimal, dbapiprovider.DecimalConverter),
         (buffer, PyGreSQLBlobConverter),
         (datetime, PyGreSQLDatetimeConverter),
-        (date, PyGreSQLDateConverter)
+        (date, PyGreSQLDateConverter),
+        (UUID, PGUuidConverter),
     ]
 
 provider_cls = PyGreSQLProvider

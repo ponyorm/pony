@@ -1,9 +1,12 @@
+import psycopg2
+from psycopg2 import extensions
+
+import psycopg2.extras
+psycopg2.extras.register_uuid()
+
 from pony.orm import core
 from pony.orm.dbapiprovider import Pool, ProgrammingError
 from pony.orm.dbproviders._postgres import *
-
-import psycopg2
-from psycopg2 import extensions
 
 class PsycopgTable(PGTable):
     def create(table, provider, connection, created_tables=None):
@@ -28,6 +31,16 @@ class PsycopgPool(Pool):
             if 'client_encoding' not in pool.kwargs:
                 pool.con.set_client_encoding('UTF8')
         return pool.con
+    def release(pool, con):
+        assert con is pool.con
+        try:
+            con.rollback()
+            con.autocommit = True
+            cursor = con.cursor()
+            cursor.execute('DISCARD ALL')
+        except:
+            pool.drop(con)
+            raise
 
 class PsycopgProvider(PGProvider):
     dbapi_module = psycopg2

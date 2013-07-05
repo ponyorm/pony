@@ -9,7 +9,6 @@ from time import time
 import datetime
 from threading import Lock, currentThread as current_thread, _MainThread
 from __builtin__ import min as _min, max as _max, sum as _sum
-import warnings
 
 import pony
 from pony import options
@@ -22,7 +21,7 @@ from pony.orm.dbapiprovider import (
     IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
 from pony.utils import (
-    localbase, simple_decorator, cut_traceback, throw,
+    localbase, simple_decorator, cut_traceback, throw, deprecated,
     import_module, parse_expr, is_ident, count, avg as _avg, tostring, strjoin,
     copy_func_attrs
     )
@@ -64,14 +63,6 @@ debug = False
 def sql_debug(value):
     global debug
     debug = value
-
-class PonyDeprecationWarning(DeprecationWarning):
-    pass
-
-def deprecated(message):
-    warnings.warn(message, PonyDeprecationWarning, stacklevel=3)
-
-warnings.simplefilter('once', PonyDeprecationWarning)
 
 orm_logger = logging.getLogger('pony.orm')
 sql_logger = logging.getLogger('pony.orm.sql')
@@ -295,6 +286,8 @@ class Database(object):
             provider_cls = provider
         else:
             if not isinstance(provider, basestring): throw(TypeError)
+            if provider == 'pygresql':
+                deprecated(4, 'Pony discontinues support of PyGreSQL module. Please use psycopg2 instead.')
             provider_module = import_module('pony.orm.dbproviders.' + provider)
             provider_cls = provider_module.provider_cls
 
@@ -315,15 +308,15 @@ class Database(object):
 
         self.global_stats = {}
         self.global_stats_lock = Lock()
-        self.dblocal = DbLocal()
+        self._dblocal = DbLocal()
     @property
     def last_sql(database):
-        return database.dblocal.last_sql
+        return database._dblocal.last_sql
     @property
     def local_stats(database):
-        return database.dblocal.stats
+        return database._dblocal.stats
     def _update_local_stat(database, sql, query_start_time):
-        dblocal = database.dblocal
+        dblocal = database._dblocal
         dblocal.last_sql = sql
         stats = dblocal.stats
         stat = stats.get(sql)
@@ -333,11 +326,11 @@ class Database(object):
         setdefault = database.global_stats.setdefault
         database.global_stats_lock.acquire()
         try:
-            for sql, stat in database.dblocal.stats.iteritems():
+            for sql, stat in database._dblocal.stats.iteritems():
                 global_stat = setdefault(sql, stat)
                 if global_stat is not stat: global_stat.merge(stat)
         finally: database.global_stats_lock.release()
-        database.dblocal.stats.clear()
+        database._dblocal.stats.clear()
     @cut_traceback
     def get_connection(database):
         cache = database._get_cache()
@@ -456,9 +449,10 @@ class Database(object):
         if type(new_id) is long: new_id = int(new_id)
         return new_id
     @cut_traceback
-    def generate_mapping(database, filename=None, check_tables=False, create_tables=False):
-        if create_tables and check_tables: throw(TypeError,
-            "Parameters 'check_tables' and 'create_tables' cannot be set to True at the same time")
+    def generate_mapping(database, filename=None, check_tables=None, create_tables=False):
+        if check_tables is not None:
+            deprecated(4, "Parameter 'check_tables' of generate_mapping() is deprecated. "
+                          "Now Pony always checks tables on mapping generation.")
         if local.db_context_counter: throw(MappingError,
             "generate_mapping() couldn't be used inside @db_session")
         database.rollback()
@@ -552,7 +546,7 @@ class Database(object):
                         if attr.nullable is False: throw(ERDiagramError,
                             'Attribute %s must be nullable due to single-table inheritance' % attr)
                         attr.nullable = True
-                    columns = attr.get_columns()
+                    columns = attr.get_columns()  # initializes attr.converters
                     if not attr.reverse and attr.default is not None:
                         assert len(attr.converters) == 1
                         if not callable(attr.default): attr.default = attr.check(attr.default)
@@ -616,8 +610,6 @@ class Database(object):
                     table.add_index(attr.index, columns, is_unique=attr.is_unique)
 
         if create_tables: schema.create_tables()
-
-        if not check_tables and not create_tables: return
 
         local.db_context_counter = True
         try:
@@ -3596,7 +3588,7 @@ class DBSessionContextManager(object):
 db_session = DBSessionContextManager()
 
 def with_transaction(*args, **kwargs):
-    deprecated("@with_transaction decorator is deprecated, use @db_session decorator instead")
+    deprecated(3, "@with_transaction decorator is deprecated, use @db_session decorator instead")
     return db_session(*args, **kwargs)
 
 @simple_decorator
@@ -3801,7 +3793,7 @@ class Query(object):
             if query_key is not None:
                 query._cache.query_results[query_key] = result
         else:
-            stats = query._database.dblocal.stats
+            stats = query._database._dblocal.stats
             stat = stats.get(sql)
             if stat is not None: stat.cache_count += 1
             else: stats[sql] = QueryStat(sql)

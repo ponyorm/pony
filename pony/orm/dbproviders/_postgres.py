@@ -1,5 +1,6 @@
 from decimal import Decimal
 from datetime import datetime, date
+from uuid import UUID
 
 from pony.orm import dbschema, sqlbuilding, dbapiprovider
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
@@ -69,6 +70,10 @@ class PGBlobConverter(dbapiprovider.BlobConverter):
 class PGDatetimeConverter(dbapiprovider.DatetimeConverter):
     sql_type_name = 'TIMESTAMP'
 
+class PGUuidConverter(dbapiprovider.UuidConverter):
+    def py2sql(converter, val):
+        return val
+    
 class PGProvider(DBAPIProvider):
     dialect = 'PostgreSQL'
     paramstyle = 'pyformat'
@@ -113,5 +118,6 @@ class PGProvider(DBAPIProvider):
         (Decimal, dbapiprovider.DecimalConverter),
         (buffer, PGBlobConverter),
         (datetime, PGDatetimeConverter),
-        (date, dbapiprovider.DateConverter)
+        (date, dbapiprovider.DateConverter),
+        (UUID, PGUuidConverter),
     ]

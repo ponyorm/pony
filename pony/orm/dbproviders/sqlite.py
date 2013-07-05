@@ -5,6 +5,7 @@ from Queue import Queue
 from decimal import Decimal
 from datetime import datetime, date
 from time import strptime
+from uuid import UUID
 
 from pony.orm import dbschema, sqltranslation, dbapiprovider
 from pony.orm.sqlbuilding import SQLBuilder, join
@@ -107,7 +108,8 @@ class SQLiteProvider(DBAPIProvider):
         (Decimal, SQLiteDecimalConverter),
         (buffer, dbapiprovider.BlobConverter),
         (datetime, SQLiteDatetimeConverter),
-        (date, SQLiteDateConverter)
+        (date, SQLiteDateConverter),
+        (UUID, dbapiprovider.UuidConverter),
     ]
 
     def get_pool(provider, filename, create_db=False):
