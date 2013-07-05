@@ -1,6 +1,7 @@
 import re
 from itertools import imap
 from binascii import unhexlify
+from uuid import UUID
 
 from pony.orm import core
 from pony.orm.dbapiprovider import ProgrammingError
@@ -87,7 +88,8 @@ class PyGreSQLProvider(PGProvider):
         (Decimal, dbapiprovider.DecimalConverter),
         (buffer, PyGreSQLBlobConverter),
         (datetime, PyGreSQLDatetimeConverter),
-        (date, PyGreSQLDateConverter)
+        (date, PyGreSQLDateConverter),
+        (UUID, PGUuidConverter),
     ]
 
 provider_cls = PyGreSQLProvider

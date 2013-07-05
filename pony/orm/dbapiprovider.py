@@ -1,5 +1,6 @@
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time
+from uuid import uuid4, UUID
 import re
 
 from pony.utils import is_utf8, simple_decorator, throw, localbase
@@ -514,3 +515,26 @@ class DatetimeConverter(Converter):
         if not attr or precision == attr.entity._database_.provider.default_time_precision:
             return converter.sql_type_name
         return converter.sql_type_name + '(%d)' % precision
+
+class UuidConverter(Converter):
+    def __init__(converter, py_type, attr=None):
+        if attr is not None and attr.auto:
+            attr.auto = False
+            if not attr.default: attr.default = uuid4
+        Converter.__init__(converter, py_type, attr)
+    def validate(converter, val):
+        if isinstance(val, UUID): return val
+        if isinstance(val, buffer): return UUID(bytes=val)
+        if isinstance(val, basestring):
+            if len(val) == 16: return UUID(bytes=val)
+            return UUID(hex=val)
+        if isinstance(val, int): return UUID(int=val)
+        if converter.attr is not None:
+            throw(ValueError, 'Value type of attribute %s must be UUID. Got: %r'
+                               % (converter.attr, type(val)))
+        else: throw(ValueError, 'Expected UUID value, got: %r' % type(val))
+    def py2sql(converter, val):
+        return buffer(val.bytes)
+    sql2py = validate
+    def sql_type(converter):
+        return "UUID"

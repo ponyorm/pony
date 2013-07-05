@@ -2,13 +2,14 @@
 
 from datetime import date, datetime
 from decimal import Decimal
+from uuid import UUID, uuid4
 from pony.orm.core import *
 import time
 
 #db = Database('oracle', 'presentation/pony@localhost')
-#db = Database('postgres', user='presentation', password='pony', host='localhost', database='cyrillic')
-#db = Database('mysql', user='pony', passwd='magic', host='localhost', db='test')
-db = Database('sqlite', 'alldatatypes.sqlite', create_db=True)
+db = Database('pygresql', user='presentation', password='pony', host='localhost', database='cyrillic')
+#db = Database('mysql', user='presentation', passwd='pony', host='localhost', db='test')
+#db = Database('sqlite', 'alldatatypes.sqlite', create_db=True)
 
 class AllDataTypes(db.Entity):
     bool1_attr = Required(bool)
@@ -24,6 +25,7 @@ class AllDataTypes(db.Entity):
     buffer_attr = Required(buffer)
     datetime_attr = Required(datetime)
     date_attr = Required(date)
+    uuid_attr = Required(UUID)
 
 sql_debug(True)
 db.generate_mapping(create_tables=True)
@@ -43,7 +45,8 @@ fields = dict(bool1_attr=True,
               decimal_attr=Decimal("0.1"),
               buffer_attr=buffer(s),
               datetime_attr=datetime.now(),
-              date_attr=date.today())
+              date_attr=date.today(),
+              uuid_attr=uuid4())
 
 for obj in AllDataTypes.select():
     obj.delete()

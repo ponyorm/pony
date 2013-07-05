@@ -4,6 +4,7 @@ os.environ["NLS_LANG"] = "AMERICAN_AMERICA.UTF8"
 from types import NoneType
 from datetime import date, datetime
 from decimal import Decimal
+from uuid import UUID
 
 import cx_Oracle
 
@@ -188,6 +189,10 @@ class OraDateConverter(dbapiprovider.DateConverter):
 class OraDatetimeConverter(dbapiprovider.DatetimeConverter):
     sql_type_name = 'TIMESTAMP'
 
+class OraUuidConverter(dbapiprovider.UuidConverter):
+    def sql_type(converter):
+        return 'RAW(16)'
+
 class OraProvider(DBAPIProvider):
     dialect = 'Oracle'
     paramstyle = 'named'
@@ -258,7 +263,8 @@ class OraProvider(DBAPIProvider):
         (Decimal, OraDecimalConverter),
         (buffer, OraBlobConverter),
         (datetime, OraDatetimeConverter),
-        (date, OraDateConverter)
+        (date, OraDateConverter),
+        (UUID, OraUuidConverter),
     ]
 
     def get_pool(provider, *args, **kwargs):
