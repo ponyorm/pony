@@ -449,7 +449,8 @@ class Database(object):
     @cut_traceback
     def generate_mapping(database, filename=None, check_tables=None, create_tables=False):
         if check_tables is not None:
-            deprecated("Parameter 'check_tables' of generate_mapping() is deprecated. Now Pony always checks tables on mapping generation.")
+            deprecated(4, "Parameter 'check_tables' of generate_mapping() is deprecated. "
+                          "Now Pony always checks tables on mapping generation.")
         if local.db_context_counter: throw(MappingError,
             "generate_mapping() couldn't be used inside @db_session")
         database.rollback()
@@ -3585,7 +3586,7 @@ class DBSessionContextManager(object):
 db_session = DBSessionContextManager()
 
 def with_transaction(*args, **kwargs):
-    deprecated("@with_transaction decorator is deprecated, use @db_session decorator instead")
+    deprecated(3, "@with_transaction decorator is deprecated, use @db_session decorator instead")
     return db_session(*args, **kwargs)
 
 @simple_decorator

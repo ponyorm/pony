@@ -29,8 +29,8 @@ else: from threading import local as localbase
 class PonyDeprecationWarning(DeprecationWarning):
     pass
 
-def deprecated(message):
-    warnings.warn(message, PonyDeprecationWarning, stacklevel=3)
+def deprecated(stacklevel, message):
+    warnings.warn(message, PonyDeprecationWarning, stacklevel)
 
 warnings.simplefilter('once', PonyDeprecationWarning)
 
