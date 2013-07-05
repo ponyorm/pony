@@ -552,7 +552,7 @@ class Database(object):
                         if attr.nullable is False: throw(ERDiagramError,
                             'Attribute %s must be nullable due to single-table inheritance' % attr)
                         attr.nullable = True
-                    columns = attr.get_columns()
+                    columns = attr.get_columns()  # initializes attr.converters
                     if not attr.reverse and attr.default is not None:
                         assert len(attr.converters) == 1
                         if not callable(attr.default): attr.default = attr.check(attr.default)
