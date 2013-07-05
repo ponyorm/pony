@@ -1,11 +1,12 @@
+import psycopg2
+from psycopg2 import extensions
+
+import psycopg2.extras
+psycopg2.extras.register_uuid()
+
 from pony.orm import core
 from pony.orm.dbapiprovider import Pool, ProgrammingError
 from pony.orm.dbproviders._postgres import *
-
-import psycopg2
-from psycopg2 import extensions
-import psycopg2.extras
-psycopg2.extras.register_uuid()
 
 class PsycopgTable(PGTable):
     def create(table, provider, connection, created_tables=None):
