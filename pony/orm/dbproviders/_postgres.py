@@ -38,6 +38,8 @@ class PGSQLBuilder(sqlbuilding.SQLBuilder):
         return result
     def TO_INT(builder, expr):
         return '(', builder(expr), ')::int'
+    def DATE(builder, expr):
+        return '(', builder(expr), ')::date'
 
 class PGUnicodeConverter(dbapiprovider.UnicodeConverter):
     def py2sql(converter, val):

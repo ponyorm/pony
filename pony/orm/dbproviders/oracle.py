@@ -125,6 +125,8 @@ class OraBuilder(sqlbuilding.SQLBuilder):
         assert False
         if not offset: return 'LIMIT ', builder(limit), '\n'
         else: return 'LIMIT ', builder(limit), ' OFFSET ', builder(offset), '\n'
+    def DATE(builder, expr):
+        return 'TRUNC(', builder(expr), ')'
 
 class OraBoolConverter(dbapiprovider.BoolConverter):
     def sql2py(converter, val):
