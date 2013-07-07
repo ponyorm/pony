@@ -1026,6 +1026,10 @@ class DateMixin(MonadMixin):
 class DatetimeMixin(DateMixin):
     def mixin_init(monad):
         assert monad.type is datetime
+    def call_date(monad):
+        translator = monad.translator
+        sql = [ 'DATE', monad.getsql()[0] ]
+        return translator.ExprMonad.new(translator, date, sql)
     attr_hour = datetime_attr_factory('HOUR')
     attr_minute = datetime_attr_factory('MINUTE')
     attr_second = datetime_attr_factory('SECOND')

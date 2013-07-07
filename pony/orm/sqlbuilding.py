@@ -445,6 +445,8 @@ class SQLBuilder(object):
         return 'CURRENT_DATE'
     def NOW(builder):
         return 'CURRENT_TIMESTAMP'
+    def DATE(builder, expr):
+        return 'DATE(', builder(expr) ,')'
     def YEAR(builder, expr):
         return 'EXTRACT(YEAR FROM ', builder(expr), ')'
     def MONTH(builder, expr):
