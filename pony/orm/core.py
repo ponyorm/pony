@@ -810,6 +810,7 @@ class Attribute(object):
                         vrepr = repr(val)
                         if len(vrepr) > 100: vrepr = vrepr[:97] + '...'
                         raise ValueError('Value for attribute %s cannot be converted to unicode: %s' % (attr, vrepr))
+            if type(val) is attr.py_type: return val
             return attr.py_type(val)
 
         if not isinstance(val, reverse.entity):
@@ -1956,6 +1957,9 @@ class EntityMeta(type):
         if entity.__name__ in database.entities:
             throw(ERDiagramError, 'Entity %s already exists' % entity.__name__)
         assert entity.__name__ not in database.__dict__
+
+        if database.schema is not None: throw(ERDiagramError,
+            'Cannot define entity %r: database maping has already been generated' % entity.__name__)
 
         entity._id_ = next_entity_id()
         direct_bases = [ c for c in entity.__bases__ if issubclass(c, Entity) and c.__name__ != 'Entity' ]
