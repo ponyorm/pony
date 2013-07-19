@@ -810,6 +810,7 @@ class Attribute(object):
                         vrepr = repr(val)
                         if len(vrepr) > 100: vrepr = vrepr[:97] + '...'
                         raise ValueError('Value for attribute %s cannot be converted to unicode: %s' % (attr, vrepr))
+            if type(val) is attr.py_type: return val
             return attr.py_type(val)
 
         if not isinstance(val, reverse.entity):
