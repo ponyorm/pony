@@ -1959,7 +1959,7 @@ class EntityMeta(type):
         assert entity.__name__ not in database.__dict__
 
         if database.schema is not None: throw(ERDiagramError,
-            'Cannot define entity %r: database maping has already been generated' % entity.__name__)
+            'Cannot define entity %r: database mapping has already been generated' % entity.__name__)
 
         entity._id_ = next_entity_id()
         direct_bases = [ c for c in entity.__bases__ if issubclass(c, Entity) and c.__name__ != 'Entity' ]
