@@ -1958,6 +1958,9 @@ class EntityMeta(type):
             throw(ERDiagramError, 'Entity %s already exists' % entity.__name__)
         assert entity.__name__ not in database.__dict__
 
+        if database.schema is not None: throw(ERDiagramError,
+            'Cannot define entity %r: database maping has already been generated' % entity.__name__)
+
         entity._id_ = next_entity_id()
         direct_bases = [ c for c in entity.__bases__ if issubclass(c, Entity) and c.__name__ != 'Entity' ]
         entity._direct_bases_ = direct_bases
