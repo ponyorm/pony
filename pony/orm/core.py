@@ -872,9 +872,9 @@ class Attribute(object):
     @cut_traceback
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
+        if attr.pk_offset is not None: return attr.get(obj)
         if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         result = attr.get(obj)
-        if attr.pk_offset is not None: return result
         bit = obj._bits_[attr]
         wbits = obj._wbits_
         if wbits is not None and not wbits & bit: obj._rbits_ |= bit
