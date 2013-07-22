@@ -1410,7 +1410,8 @@ class Set(Collection):
                     phantoms = setdata2 - items
                     phantoms.difference_update(setdata2.added)
                     if phantoms: throw(UnrepeatableReadError,
-                        'Phantom object %r disappeared from collection %r.%s' % (phantoms.pop(), obj, attr.name))
+                        'Phantom object %s disappeared from collection %s.%s'
+                        % (safe_repr(phantoms.pop()), safe_repr(obj), attr.name))
                 items -= setdata2
                 items.difference_update(setdata2.removed)
                 setdata2 |= items
@@ -1548,7 +1549,8 @@ class Set(Collection):
             if setdata is NOT_LOADED:
                 setdata = obj._vals_[attr.name] = SetData()
             elif setdata.is_fully_loaded:
-                throw(UnrepeatableReadError, 'Phantom object %r appeared in collection %r.%s' % (item, obj, attr.name))
+                throw(UnrepeatableReadError, 'Phantom object %s appeared in collection %s.%s'
+                                             % (safe_repr(item), safe_repr(obj), attr.name))
             setdata.add(item)
     def reverse_remove(attr, objects, item, undo_funcs):
         undo = []
@@ -1873,7 +1875,7 @@ class Multiset(object):
             if size == 1: size_str = ' (1 item)'
             else: size_str = ' (%d items)' % size
         else: size_str = ''
-        return '<%s %s.%s%s>' % (multiset.__class__.__name__, multiset._obj_,
+        return '<%s %r.%s%s>' % (multiset.__class__.__name__, multiset._obj_,
                                  '.'.join(multiset._attrnames_), size_str)
     @cut_traceback
     def __str__(multiset):
@@ -2519,7 +2521,8 @@ class EntityMeta(type):
             result = entity._fetch_objects(cursor, attr_offsets)
             if len(result) < len(batch):
                 for obj in result:
-                    if obj not in batch: throw(UnrepeatableReadError, '%s disappeared' % obj)
+                    if obj not in batch: throw(UnrepeatableReadError,
+                                               'Phantom object %s disappeared' % safe_repr(obj))
     def _query_from_lambda_(entity, lambda_func, globals, locals):
         if type(lambda_func) is types.FunctionType:
             names, argsname, keyargsname, defaults = inspect.getargspec(lambda_func)
@@ -2697,10 +2700,10 @@ del_statuses = set(['deleted', 'cancelled'])
 created_or_deleted_statuses = set(['created']) | del_statuses
 
 def throw_object_was_deleted(obj):
-    throw(OperationWithDeletedObjectError, '%s was deleted' % obj)
+    throw(OperationWithDeletedObjectError, '%s was deleted' % safe_repr(obj))
 
 def throw_db_session_is_over(obj):
-    throw(TransactionRolledBack, 'Object %s cannot be used after the database session is over' % obj)
+    throw(TransactionRolledBack, 'Object %s cannot be used after the database session is over' % safe_repr(obj))
 
 def unpickle_entity(d):
     entity = d.pop('__class__')
@@ -2719,15 +2722,18 @@ def unpickle_entity(d):
     obj._db_set_(avdict, unpickling=True)
     return obj
 
+def safe_repr(obj):
+    return Entity.__repr__(obj)
+
 class Entity(object):
     __metaclass__ = EntityMeta
     __slots__ = '_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '__weakref__'
     def __reduce__(obj):
         if obj._status_ in del_statuses: throw(
-            OperationWithDeletedObjectError, 'Deleted object %s cannot be pickled' % obj)
+            OperationWithDeletedObjectError, 'Deleted object %s cannot be pickled' % safe_repr(obj))
         if obj._status_ in ('created', 'updated'): throw(
             OrmError, '%s object %s has to be stored in DB before it can be pickled'
-                      % (obj._status_.capitalize(), obj))
+                      % (obj._status_.capitalize(), safe_repr(obj)))
         d = {'__class__' : obj.__class__}
         adict = obj._adict_
         for attrname, val in obj._vals_.iteritems():
@@ -2802,7 +2808,7 @@ class Entity(object):
         entity = obj.__class__
         database = entity._database_
         if cache is not database._get_cache():
-            throw(TransactionError, "Object %s doesn't belong to current transaction" % obj)
+            throw(TransactionError, "Object %s doesn't belong to current transaction" % safe_repr(obj))
         pk = entity.__dict__['_pk_']
         seeds = cache.seeds[pk]
         max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
@@ -2815,7 +2821,8 @@ class Entity(object):
         arguments = adapter(value_dict)
         cursor = database._exec_sql(sql, arguments)
         objects = entity._fetch_objects(cursor, attr_offsets)
-        if obj not in objects: throw(UnrepeatableReadError, '%s disappeared' % obj)
+        if obj not in objects: throw(UnrepeatableReadError,
+                                     'Phantom object %s disappeared' % safe_repr(obj))
     def _db_set_(obj, avdict, unpickling=False):
         assert obj._status_ not in created_or_deleted_statuses
         if not avdict: return
@@ -3202,7 +3209,7 @@ class Entity(object):
             arguments = adapter(values)
             cursor = database._exec_sql(sql, arguments)
             if cursor.rowcount != 1:
-                throw(UnrepeatableReadError, 'Object %r was updated outside of current transaction' % obj)
+                throw(UnrepeatableReadError, 'Object %s was updated outside of current transaction' % safe_repr(obj))
         obj._status_ = 'saved'
         obj._rbits_ |= obj._wbits_
         obj._wbits_ = 0
@@ -3242,7 +3249,8 @@ class Entity(object):
         arguments = adapter(values)
         cursor = database._exec_sql(sql, arguments)
         row = cursor.fetchone()
-        if row is None: throw(UnrepeatableReadError, 'Object %r was updated outside of current transaction' % obj)
+        if row is None: throw(UnrepeatableReadError,
+                              'Object %s was updated outside of current transaction' % safe_repr(obj))
         obj._status_ = 'loaded'
     def _save_deleted_(obj):
         database = obj._database_
