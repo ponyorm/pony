@@ -211,6 +211,10 @@ class SQLBuilder(object):
             indent = builder.indent_spaces * builder.indent
             return '(\n', result, indent + ')'
         return result
+    def SELECT_FOR_UPDATE(builder, nowait, *sections):
+        assert not builder.indent
+        result = builder.SELECT(*sections)
+        return result, 'FOR UPDATE NOWAIT\n' if nowait else 'FOR UPDATE\n'
     def EXISTS(builder, *sections):
         result = builder.subquery(*sections)
         indent = builder.indent_spaces * builder.indent

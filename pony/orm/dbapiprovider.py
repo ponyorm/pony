@@ -76,6 +76,7 @@ class DBAPIProvider(object):
     table_if_not_exists_syntax = True
     index_if_not_exists_syntax = True
     max_time_precision = default_time_precision = 6
+    select_for_update_nowait_syntax = True
 
     dialect = None
     dbapi_module = None

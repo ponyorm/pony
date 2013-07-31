@@ -3734,6 +3734,7 @@ class Query(object):
         elif not isinstance(origin, EntityMeta):
             if node.src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
             else: throw(TypeError, 'Cannot iterate over non-entity object %s' % node.src)
+        query._origin = origin
         database = origin._database_
         if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
         if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
@@ -3763,15 +3764,18 @@ class Query(object):
             database._translator_cache[query._key] = translator
         query._translator = translator
         query._filters = []
+        query._for_update = query._nowait = False
     def __reduce__(query):
         return unpickle_query, (query._fetch(),)
     def _construct_sql_and_arguments(query, range=None, distinct=None, aggr_func_name=None):
         translator = query._translator
-        sql_key = query._key + (range, distinct, aggr_func_name, options.INNER_JOIN_SYNTAX)
+        sql_key = query._key + (range, distinct, aggr_func_name, query._for_update, query._nowait,
+                                options.INNER_JOIN_SYNTAX)
         database = query._database
         cache_entry = database._constructed_sql_cache.get(sql_key)
         if cache_entry is None:
-            sql_ast, attr_offsets = translator.construct_sql_ast(range, distinct, aggr_func_name)
+            sql_ast, attr_offsets = translator.construct_sql_ast(
+                range, distinct, aggr_func_name, query._for_update, query._nowait)
             cache = database._get_cache()
             sql, adapter = database.provider.ast2sql(sql_ast)
             cache_entry = sql, adapter, attr_offsets
@@ -3789,9 +3793,32 @@ class Query(object):
         translator = query._translator
         sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(range, distinct)
         cache = query._cache
+        database = query._database
+        if query._for_update:
+            cache.flush()
+            if database.provider.dialect == 'SQLite':
+                # Emulation of SELECT FOR UPDATE functionality. Since SQLite doesn't have table locks
+                # we need to obtain database-level lock, and in order to do this we have to start
+                # a transaction and obtain PENDING lock. But pysqlite doesn't start a transaction
+                # on SELECT statement, and doesn't provide a way to check if transaction was already
+                # started. If we send BEGIN IMMEDIATE manually, pysqlite will do implicit commit
+                # of previous changes and will start a new transaction, which is not what we want.
+                # Fake UPDATE is needed to ensure that pysqlite starts a transaction if it wasn't
+                # already started.
+
+                entity = query._origin
+                lock_sql = getattr(entity, '_lock_sql_', None)
+                if lock_sql is None:
+                    some_column = entity._pk_columns_[0]
+                    lock_ast = [ 'UPDATE', entity._table_,
+                                 [ (some_column, [ 'COLUMN', entity._table_, some_column ]) ],
+                                 [ 'WHERE', [ 'EQ', [ 'VALUE', 0 ], [ 'VALUE', 1 ] ] ] ]
+                    lock_sql, adapter = database.provider.ast2sql(lock_ast)
+                    entity._lock_sql_ = lock_sql
+                database._exec_sql(lock_sql)
         try: result = cache.query_results[query_key]
         except KeyError:
-            cursor = query._database._exec_sql(sql, arguments)
+            cursor = database._exec_sql(sql, arguments)
             if isinstance(translator.expr_type, EntityMeta):
                 entity = translator.expr_type
                 result = entity._fetch_objects(cursor, attr_offsets, rbits=translator.tableref.rbits)
@@ -3808,7 +3835,7 @@ class Query(object):
             if query_key is not None:
                 query._cache.query_results[query_key] = result
         else:
-            stats = query._database._dblocal.stats
+            stats = database._dblocal.stats
             stat = stats.get(sql)
             if stat is not None: stat.cache_count += 1
             else: stats[sql] = QueryStat(sql)
@@ -4026,6 +4053,14 @@ class Query(object):
     @cut_traceback
     def count(query):
         return query._aggregate('COUNT')
+    @cut_traceback
+    def for_update(query, nowait=False):
+        provider = query._database.provider
+        if nowait and not provider.select_for_update_nowait_syntax: throw(TranslationError,
+            '%s provider does not support SELECT FOR UPDATE NOWAIT syntax' % provider.dialect)
+        query._for_update = True
+        query._nowait = nowait
+        return query
 
 def strcut(s, width):
     if len(s) <= width:

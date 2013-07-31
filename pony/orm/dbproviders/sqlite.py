@@ -27,6 +27,9 @@ class SQLiteTranslator(sqltranslation.SQLTranslator):
 
 class SQLiteBuilder(SQLBuilder):
     dialect = 'SQLite'
+    def SELECT_FOR_UPDATE(builder, nowait, *sections):
+        assert not builder.indent and not nowait
+        return builder.SELECT(*sections)
     def TODAY(builder):
         return "date('now', 'localtime')"
     def NOW(builder):
@@ -91,6 +94,7 @@ class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
 class SQLiteProvider(DBAPIProvider):
     dialect = 'SQLite'
     max_name_len = 1024
+    select_for_update_nowait_syntax = False
 
     dbapi_module = sqlite
     dbschema_cls = SQLiteSchema
