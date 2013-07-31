@@ -3315,7 +3315,7 @@ class Cache(object):
         if cache.optimistic: provider.set_optimistic_mode(connection)
         else: provider.set_pessimistic_mode(connection)
         return connection
-    def switch_to_pessimistic_mode(cache):
+    def _switch_to_pessimistic_mode(cache):
         assert cache.optimistic
         connection = cache.connection or cache.establish_connection()
         cache.optimistic = False
@@ -3350,7 +3350,7 @@ class Cache(object):
                 cache.optimistic = True
                 provider.set_optimistic_mode(connection)
             elif cache.optimistic:
-                cache.switch_to_pessimistic_mode()
+                cache._switch_to_pessimistic_mode()
         except:
             cache.rollback()
             raise
@@ -3388,7 +3388,7 @@ class Cache(object):
         if debug: log_orm('RELEASE_CONNECTION')
         provider.release(connection)
     def flush(cache):
-        if cache.optimistic: cache.switch_to_pessimistic_mode()
+        if cache.optimistic: cache._switch_to_pessimistic_mode()
         if cache.modified: cache.save()
     def save(cache):
         assert cache.is_alive
@@ -3398,7 +3398,7 @@ class Cache(object):
         cache.saving = True
         try:
             cache.query_results.clear()
-            modified_m2m = cache.calc_modified_m2m()
+            modified_m2m = cache._calc_modified_m2m()
             for attr, (added, removed) in modified_m2m.iteritems():
                 if not removed: continue
                 attr.remove_m2m(removed)
@@ -3424,7 +3424,7 @@ class Cache(object):
             cache.modified = False
         finally:
             cache.saving = False
-    def calc_modified_m2m(cache):
+    def _calc_modified_m2m(cache):
         modified_m2m = {}
         for attr, objects in sorted(cache.modified_collections.iteritems(),
                                     key=lambda (attr, objects): (attr.entity.__name__, attr.name)):
@@ -3940,12 +3940,12 @@ class Query(object):
                     prev_vartypes = query._translator.vartypes
                     translator_cls = query._translator.__class__
                     translator = translator_cls(tree, prev_extractors, prev_vartypes, left_join=True, optimize=name_path)
-                    translator = query.reapply_filters(translator)
+                    translator = query._reapply_filters(translator)
             query._database._translator_cache[new_key] = translator
         query._key = new_key
         query._translator = translator
         return query
-    def reapply_filters(query, translator):
+    def _reapply_filters(query, translator):
         for tup in query._filters:
             if len(tup) == 2:
                 numbers, args = tup
