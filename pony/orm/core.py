@@ -16,9 +16,8 @@ from pony.orm.decompiling import decompile
 from pony.orm.ormtypes import AsciiStr, LongStr, LongUnicode, numeric_types, get_normalized_type_of
 from pony.orm.asttranslation import create_extractors, TranslationError
 from pony.orm.dbapiprovider import (
-    DBAPIProvider, DBException, RowNotFound, MultipleRowsFound, TooManyRowsFound,
-    Warning, Error, InterfaceError, DatabaseError, DataError, OperationalError,
-    IntegrityError, InternalError, ProgrammingError, NotSupportedError
+    DBAPIProvider, DBException, Warning, Error, InterfaceError, DatabaseError, DataError,
+    OperationalError, IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
 from pony.utils import (
     localbase, simple_decorator, cut_traceback, throw, deprecated,
@@ -105,6 +104,10 @@ class DBSchemaError(OrmError): pass
 class MappingError(OrmError): pass
 class ConstraintError(OrmError): pass
 class CacheIndexError(OrmError): pass
+
+class RowNotFound(OrmError): pass
+class MultipleRowsFound(OrmError): pass
+class TooManyRowsFound(OrmError): pass
 
 class ObjectNotFound(OrmError):
     def __init__(exc, entity, pkval):

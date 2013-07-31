@@ -13,10 +13,6 @@ class DBException(Exception):
         Exception.__init__(exc, *args)
         exc.original_exc = original_exc
 
-class RowNotFound(DBException): pass
-class MultipleRowsFound(DBException): pass
-class TooManyRowsFound(DBException): pass
-
 ##StandardError
 ##        |__Warning
 ##        |__Error
