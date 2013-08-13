@@ -55,7 +55,7 @@ from weakref import ref
 
 import pony
 from pony import options
-from pony.utils import simple_decorator
+from pony.utils import decorator
 
 class Node(object):
     __slots__ = 'prev', 'next', 'key', 'value', 'expire', 'access', '__weakref__'
@@ -83,7 +83,7 @@ def normalize(key, value="", expire=None):
         elif expire <= MONTH * 100: raise ValueError('Invalid expire value: %d' % expire)
     return key, value, expire
 
-@simple_decorator
+@decorator
 def with_lock(func, cache, *args, **kwargs):
     cache._lock.acquire()
     try: return func(cache, *args, **kwargs)

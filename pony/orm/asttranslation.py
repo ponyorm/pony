@@ -1,6 +1,7 @@
 from compiler import ast
+from functools import update_wrapper
 
-from pony.utils import copy_func_attrs, throw
+from pony.utils import throw
 
 class TranslationError(Exception): pass
 
@@ -42,7 +43,7 @@ def priority(p):
             for child in node.getChildNodes():
                 if getattr(child, 'priority', 0) >= p: child.src = '(%s)' % child.src
             return func(translator, node)
-        return copy_func_attrs(new_func, func)
+        return update_wrapper(new_func, func)
     return decorator
 
 def binop_src(op, node):

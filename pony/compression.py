@@ -4,7 +4,7 @@ from gzip import GzipFile
 from zlib import compress
 
 import pony
-from pony.utils import simple_decorator
+from pony.utils import decorator
 
 compressable_mime_types = set("""
     application/javascript
@@ -19,7 +19,7 @@ compressable_mime_types = set("""
 
 min_compressed_length = 500
 
-@simple_decorator
+@decorator
 def compression_middleware(app, environ):
     status, headers, content = app(environ)
 

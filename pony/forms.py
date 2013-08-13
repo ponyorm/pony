@@ -25,19 +25,17 @@ class FormMeta(type):
         return super(FormMeta, meta).__new__(meta, name, bases, dict)
 
 @decorator
-def _form_init_decorator(__init__):
-    def new_init(form, *args, **kwargs):
-        try: init_counter = form._init_counter
-        except AttributeError:
-            if form.__class__ is not Form: Form.__init__.original_func(form)
-            object.__setattr__(form, '_init_args', cPickle.dumps((args, kwargs), 2))
-            object.__setattr__(form, '_init_counter', 1)
-        else: object.__setattr__(form, '_init_counter', init_counter+1)
-        try: __init__(form, *args, **kwargs)
-        finally:
-            init_counter = form._init_counter
-            object.__setattr__(form, '_init_counter', init_counter-1)
-    return new_init
+def _form_init_decorator(__init__, form, *args, **kwargs):
+    try: init_counter = form._init_counter
+    except AttributeError:
+        if form.__class__ is not Form: Form.__init__.original_func(form)
+        object.__setattr__(form, '_init_args', cPickle.dumps((args, kwargs), 2))
+        object.__setattr__(form, '_init_counter', 1)
+    else: object.__setattr__(form, '_init_counter', init_counter+1)
+    try: __init__(form, *args, **kwargs)
+    finally:
+        init_counter = form._init_counter
+        object.__setattr__(form, '_init_counter', init_counter-1)
 
 http_303_incompatible_browsers = []
 

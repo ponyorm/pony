@@ -6,7 +6,7 @@ from urllib import unquote_plus
 
 import pony
 from pony import options, utils, httputils
-from pony.utils import detect_source_encoding, is_ident, tostring, pos2lineno, getlines, getlines2, simple_decorator
+from pony.utils import detect_source_encoding, is_ident, tostring, pos2lineno, getlines, getlines2, decorator
 from pony.templating import html, cycle, htmljoin, Html, StrHtml, ParseError
 
 def restore_escapes(s):
@@ -248,7 +248,7 @@ else:
 
     import bdb
 
-    @simple_decorator
+    @decorator
     def debugging_decorator(func, *args, **kwargs):
         if options.DEBUG:
             web = sys.modules.get('pony.web')
@@ -267,7 +267,7 @@ else:
     debug_re = re.compile(r'(?:(?<=\?|&)|^)debug(?:=([^&]*))?&?')
     expr_re = re.compile(r'(?:(?<=\?|&)|^)expr(?:=([^&]*))?&?')
 
-    @simple_decorator
+    @decorator
     def debugging_middleware(app, environ):
         if not options.DEBUG: return app(environ)
         query = environ.get('QUERY_STRING', '')

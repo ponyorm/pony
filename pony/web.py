@@ -8,7 +8,7 @@ from bdb import BdbQuit
 import pony
 
 from pony import routing, autoreload, auth, httputils, options, middleware
-from pony.utils import simple_decorator, decorator_with_params, tostring, localbase
+from pony.utils import decorator, decorator_with_params, tostring, localbase
 from pony.templating import html, Html, StrHtml
 from pony.postprocessing import postprocess
 from pony.logging2 import log, log_exc, DEBUG, INFO, WARNING
@@ -192,7 +192,7 @@ def set_cookie(name, value, expires=None, max_age=None, path=None, domain=None,
     httputils.set_cookie(local.response.cookies,
                         name, value, expires, max_age, path, domain, secure, http_only, comment, version)
 
-@simple_decorator
+@decorator
 def no_cookies(func, *args, **kwargs):
     local.no_cookies = True
     return func(*args, **kwargs)
@@ -226,7 +226,7 @@ def get_static_file(path, dir=None, max_age=10):
     if method == 'HEAD': return ''
     return file(fname, 'rb')
 
-@simple_decorator
+@decorator
 def normalize_result_decorator(func, *args, **kwargs):
     content, headers = normalize_result(func(*args, **kwargs), local.response.headers)
     local.response.headers = headers

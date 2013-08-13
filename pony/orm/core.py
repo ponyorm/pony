@@ -20,9 +20,8 @@ from pony.orm.dbapiprovider import (
     OperationalError, IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
 from pony.utils import (
-    localbase, simple_decorator, cut_traceback, throw, deprecated,
+    localbase, decorator, cut_traceback, throw, deprecated,
     import_module, parse_expr, is_ident, count, avg as _avg, tostring, strjoin,
-    copy_func_attrs
     )
 
 __all__ = '''
@@ -3607,15 +3606,15 @@ class DBSessionContextManager(object):
         if len(args) == 1:
             if kwargs: throw(TypeError)
             self.is_decorator = True
-            old_func = args[0]
-            def new_func(*args, **kwargs):
+            func = args[0]
+            def new_func(func, *args, **kwargs):
                 for i in xrange(self.retry):
                     try:
-                        with self: return old_func(*args, **kwargs)
+                        with self: return func(*args, **kwargs)
                     except Exception, e:
                         if not isinstance(e, self.retry_exceptions): raise
                 raise
-            return copy_func_attrs(new_func, old_func, 'db_session')
+            return decorator(new_func, func)
         return self.__class__(**kwargs)
     def __enter__(self):
         if not self.is_decorator and self.retry != 1: throw(TypeError,
@@ -3642,7 +3641,7 @@ def with_transaction(*args, **kwargs):
     deprecated(3, "@with_transaction decorator is deprecated, use @db_session decorator instead")
     return db_session(*args, **kwargs)
 
-@simple_decorator
+@decorator
 def db_decorator(func, *args, **kwargs):
     web = sys.modules.get('pony.web')
     allowed_exceptions = web and [ web.HttpRedirect ] or []
@@ -3680,8 +3679,8 @@ def select(gen, frame_depth=0, left_join=False):
         tree = string2ast(query_string)
         if not isinstance(tree, ast.GenExpr): throw(TypeError)
         code_key = query_string
-        globals = sys._getframe(frame_depth+2).f_globals
-        locals = sys._getframe(frame_depth+2).f_locals
+        globals = sys._getframe(frame_depth+3).f_globals
+        locals = sys._getframe(frame_depth+3).f_locals
     else: throw(TypeError)
     return Query(code_key, tree.code, globals, locals, left_join)
 

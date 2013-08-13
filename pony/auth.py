@@ -9,7 +9,7 @@ from pony.thirdparty import simplejson
 
 import pony
 from pony import options, httputils
-from pony.utils import compress, decompress, simple_decorator, localbase
+from pony.utils import compress, decompress, decorator, localbase
 from pony.logging2 import log_exc
 
 hash = pony.options.HASH_ALGORITHM
@@ -279,14 +279,14 @@ if not pony.MODE.startswith('GAE-'):
     from Queue import Queue
     queue = Queue()
 
-    @simple_decorator
+    @decorator
     def exec_in_auth_thread(f, *args, **kwargs):
         result_holder = []
         queue.put((local.lock, f, args, kwargs, result_holder))
         local.lock.acquire()
         return result_holder[0]
 
-    @simple_decorator
+    @decorator
     def exec_async(f, *args, **kwargs):
         queue.put((None, f, args, kwargs, None))
 

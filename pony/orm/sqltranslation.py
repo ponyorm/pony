@@ -6,9 +6,10 @@ from decimal import Decimal
 from datetime import date, datetime
 from cPickle import loads, dumps
 from copy import deepcopy
+from functools import update_wrapper
 
 from pony import options
-from pony.utils import avg, copy_func_attrs, is_ident, throw
+from pony.utils import avg, is_ident, throw
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
     string_types, numeric_types, comparable_types, SetType, FuncType, MethodType, \
@@ -784,7 +785,7 @@ def wrap_monad_method(cls_name, func):
     def wrapper(monad, *args, **kwargs):
         method = getattr(monad.translator, overrider_name, func)
         return method(monad, *args, **kwargs)
-    return copy_func_attrs(wrapper, func)
+    return update_wrapper(wrapper, func)
 
 class MonadMeta(type):
     def __new__(meta, cls_name, bases, cls_dict):

@@ -2,7 +2,7 @@ import itertools, sys, os.path, threading, inspect, re, weakref, textwrap, copy_
 
 import pony
 from pony import options, i18n, utils
-from pony.utils import read_text_file, is_ident, decorator, decorator_with_params, get_mtime, make_offsets, pos2lineno, getline
+from pony.utils import read_text_file, is_ident, get_mtime, make_offsets, pos2lineno, getline
 
 try: from pony import _templating
 except ImportError: pass
@@ -193,7 +193,6 @@ def htmltag(_name_, _attrs_=None, **_attrs2_):
 
 ################################################################################
 
-@decorator
 def lazy(func):
     func.__lazy__ = True
     return func

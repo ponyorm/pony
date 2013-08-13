@@ -3,7 +3,7 @@ from datetime import datetime, date, time
 from uuid import uuid4, UUID
 import re
 
-from pony.utils import is_utf8, simple_decorator, throw, localbase
+from pony.utils import is_utf8, decorator, throw, localbase
 from pony.converting import str2date, str2datetime
 from pony.orm.ormtypes import LongStr, LongUnicode
 
@@ -36,7 +36,7 @@ class     InternalError(DatabaseError): pass
 class     ProgrammingError(DatabaseError): pass
 class     NotSupportedError(DatabaseError): pass
 
-@simple_decorator
+@decorator
 def wrap_dbapi_exceptions(func, provider, *args, **kwargs):
     dbapi_module = provider.dbapi_module
     try: return func(provider, *args, **kwargs)

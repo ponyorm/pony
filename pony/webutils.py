@@ -88,8 +88,8 @@ def img(*args, **kwargs):
     return img_template % (href, description, description)
 
 @decorator_with_params
-def component(old_func, css=None, js=None):
-    def new_func(*args, **kwargs):
+def component(css=None, js=None):
+    def new_dec(func, *args, **kwargs):
         response = local.response
         if css is not None:
             if isinstance(css, (basestring, tuple)):
@@ -99,8 +99,8 @@ def component(old_func, css=None, js=None):
             if isinstance(js, basestring):
                   response.add_scripts([ js ])
             else: response.add_scripts(js)
-        return old_func(*args, **kwargs)
-    return new_func
+        return func(*args, **kwargs)
+    return new_dec
 
 @component(css='/pony/static/css/rounded-corners.css')
 def rounded(markup, **attrs):
