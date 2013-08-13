@@ -215,13 +215,12 @@ GROUP BY "item"."order"
 
 >>> select((order, sum(order.items.price * order.items.quantity)) for order in Order if order.id == 123)
 
-SELECT "order"."id", (
-    SELECT coalesce(SUM(("orderitem-1"."price" * "orderitem-1"."quantity")), 0)
-    FROM "OrderItem" "orderitem-1"
-    WHERE "order"."id" = "orderitem-1"."order"
-    )
+SELECT "order"."id", coalesce(SUM(("orderitem-1"."price" * "orderitem-1"."quantity")), 0)
 FROM "Order" "order"
+  LEFT JOIN "OrderItem" "orderitem-1"
+    ON "order"."id" = "orderitem-1"."order"
 WHERE "order"."id" = 123
+GROUP BY "order"."id"
 
 >>> select((item.order, item.order.total_price, sum(item.price * item.quantity)) for item in OrderItem if item.order.total_price < sum(item.price * item.quantity))
 

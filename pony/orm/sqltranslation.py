@@ -2003,21 +2003,32 @@ class NumericSetExprMonad(SetMixin, Monad):
     def aggregate(monad, func_name):
         translator = monad.translator
         subquery = Subquery(translator.subquery)
-        expr = [ monad.sqlop, monad.left.getsql(subquery), monad.right.getsql(subquery) ]
+        expr = monad.getsql(subquery)[0]
+        translator.aggregated_subquery_paths.add(monad.tableref.name_path)
         outer_cond = subquery.from_ast[1].pop()
         if outer_cond[0] == 'AND': subquery.outer_conditions = outer_cond[1:]
         else: subquery.outer_conditions = [ outer_cond ]
-        if func_name == 'AVG': result_type = float
-        else: result_type = monad.type.item_type
-        return translator.ExprMonad.new(translator, result_type,
-            [ 'SELECT', [ 'AGGREGATES', [ func_name, monad.getsql(subquery)[0] ] ],
-              subquery.from_ast,
-              [ 'WHERE' ] + subquery.outer_conditions + subquery.conditions ])
+        result_type = float if func_name == 'AVG' else monad.type.item_type
+        if translator.optimize != monad.tableref.name_path:
+            sql_ast = [ 'SELECT', [ 'AGGREGATES', [ func_name, expr ] ],
+                        subquery.from_ast,
+                        [ 'WHERE' ] + subquery.outer_conditions + subquery.conditions ]
+            result = translator.ExprMonad.new(translator, result_type, sql_ast)
+            result.nogroup = True
+        else:
+            if not translator.from_optimized:
+                from_ast = subquery.from_ast[1:]
+                from_ast[0] = from_ast[0] + [ sqland(subquery.outer_conditions) ]
+                translator.subquery.from_ast.extend(from_ast)
+                translator.from_optimized = True
+            sql_ast = [ func_name, expr ]
+            result = translator.ExprMonad.new(translator, result_type, sql_ast)
+            result.aggregated = True
+        return result
     def getsql(monad, subquery=None):
         if subquery is None: subquery = monad.translator.subquery
-        left = monad.left
+        left, right = monad.left, monad.right
         left_expr = left.getsql(subquery)[0]
-        right = monad.right
         right_expr = right.getsql(subquery)[0]
         if isinstance(left, NumericMixin): left_path = ''
         else: left_path = left.tableref.name_path + '-'
