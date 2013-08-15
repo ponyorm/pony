@@ -370,7 +370,7 @@ class Database(object):
         provider = database.provider
         adapted_sql, code = adapt_sql(sql, provider.paramstyle)
         arguments = eval(code, globals, locals)
-        return database._exec_sql(sql, arguments)
+        return database._exec_sql(adapted_sql, arguments)
     @cut_traceback
     def select(database, sql, globals=None, locals=None, frame_depth=0):
         if not select_re.match(sql): sql = 'select ' + sql
