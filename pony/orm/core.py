@@ -297,7 +297,7 @@ class Database(object):
         self.provider = provider = provider_cls(*args, **kwargs)
 
         self.priority = 0
-        self.optimistic = True
+        self.optimistic = False
         self._insert_cache = {}
 
         # ER-diagram related stuff:
