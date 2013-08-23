@@ -3435,9 +3435,11 @@ class Cache(object):
             if reverse in modified_m2m: continue
             added, removed = modified_m2m.setdefault(attr, (set(), set()))
             for obj in objects:
-                setdata = obj._vals_.pop(attr.name)
+                setdata = obj._vals_[attr.name]
                 for obj2 in setdata.added: added.add((obj, obj2))
                 for obj2 in setdata.removed: removed.add((obj, obj2))
+                if obj._status_ == 'deleted': del obj._vals_[attr.name]
+                else: setdata.added = setdata.removed = EMPTY
         cache.modified_collections.clear()
         return modified_m2m
     def update_simple_index(cache, obj, attr, old_val, new_val, undo):
