@@ -3,7 +3,7 @@ from datetime import datetime, date, time
 from uuid import uuid4, UUID
 import re
 
-from pony.utils import is_utf8, simple_decorator, throw, localbase
+from pony.utils import is_utf8, decorator, throw, localbase
 from pony.converting import str2date, str2datetime
 from pony.orm.ormtypes import LongStr, LongUnicode
 
@@ -12,10 +12,6 @@ class DBException(Exception):
         args = args or getattr(original_exc, 'args', ())
         Exception.__init__(exc, *args)
         exc.original_exc = original_exc
-
-class RowNotFound(DBException): pass
-class MultipleRowsFound(DBException): pass
-class TooManyRowsFound(DBException): pass
 
 ##StandardError
 ##        |__Warning
@@ -40,7 +36,7 @@ class     InternalError(DatabaseError): pass
 class     ProgrammingError(DatabaseError): pass
 class     NotSupportedError(DatabaseError): pass
 
-@simple_decorator
+@decorator
 def wrap_dbapi_exceptions(func, provider, *args, **kwargs):
     dbapi_module = provider.dbapi_module
     try: return func(provider, *args, **kwargs)
@@ -80,6 +76,7 @@ class DBAPIProvider(object):
     table_if_not_exists_syntax = True
     index_if_not_exists_syntax = True
     max_time_precision = default_time_precision = 6
+    select_for_update_nowait_syntax = True
 
     dialect = None
     dbapi_module = None
@@ -198,10 +195,7 @@ class DBAPIProvider(object):
     def get_pool(provider, *args, **kwargs):
         return Pool(provider.dbapi_module, *args, **kwargs)
 
-    def set_optimistic_mode(provider, connection):
-        pass
-
-    def set_pessimistic_mode(provider, connection):
+    def set_transaction_mode(provider, connection, optimistic):
         pass
 
     def start_optimistic_save(provider, connection):

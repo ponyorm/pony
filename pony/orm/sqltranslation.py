@@ -6,9 +6,10 @@ from decimal import Decimal
 from datetime import date, datetime
 from cPickle import loads, dumps
 from copy import deepcopy
+from functools import update_wrapper
 
 from pony import options
-from pony.utils import avg, copy_func_attrs, is_ident, throw
+from pony.utils import avg, is_ident, throw
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
     string_types, numeric_types, comparable_types, SetType, FuncType, MethodType, \
@@ -346,11 +347,12 @@ class SQLTranslator(ASTTranslator):
         if translator.groupby_monads: return False
         if len(translator.aggregated_subquery_paths) != 1: return False
         return iter(translator.aggregated_subquery_paths).next()
-    def construct_sql_ast(translator, range=None, distinct=None, aggr_func_name=None):
+    def construct_sql_ast(translator, range=None, distinct=None, aggr_func_name=None, for_update=False, nowait=False):
         attr_offsets = None
         if distinct is None: distinct = translator.distinct
         ast_transformer = lambda ast: ast
-        sql_ast = [ 'SELECT' ]
+        if not for_update: sql_ast = [ 'SELECT' ]
+        else: sql_ast = [ 'SELECT_FOR_UPDATE', nowait ]
         if aggr_func_name:
             expr_type = translator.expr_type
             if not isinstance(expr_type, EntityMeta):
@@ -783,7 +785,7 @@ def wrap_monad_method(cls_name, func):
     def wrapper(monad, *args, **kwargs):
         method = getattr(monad.translator, overrider_name, func)
         return method(monad, *args, **kwargs)
-    return copy_func_attrs(wrapper, func)
+    return update_wrapper(wrapper, func)
 
 class MonadMeta(type):
     def __new__(meta, cls_name, bases, cls_dict):

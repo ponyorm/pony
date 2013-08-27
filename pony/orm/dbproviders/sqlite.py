@@ -10,7 +10,7 @@ from uuid import UUID
 from pony.orm import dbschema, sqltranslation, dbapiprovider
 from pony.orm.sqlbuilding import SQLBuilder, join
 from pony.orm.dbapiprovider import DBAPIProvider, Pool
-from pony.utils import localbase, datetime2timestamp, timestamp2datetime, simple_decorator, absolutize_path, throw
+from pony.utils import localbase, datetime2timestamp, timestamp2datetime, decorator, absolutize_path, throw
 
 class SQLiteForeignKey(dbschema.ForeignKey):
     def get_create_command(foreign_key):
@@ -27,6 +27,9 @@ class SQLiteTranslator(sqltranslation.SQLTranslator):
 
 class SQLiteBuilder(SQLBuilder):
     dialect = 'SQLite'
+    def SELECT_FOR_UPDATE(builder, nowait, *sections):
+        assert not builder.indent and not nowait
+        return builder.SELECT(*sections)
     def TODAY(builder):
         return "date('now', 'localtime')"
     def NOW(builder):
@@ -91,6 +94,7 @@ class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
 class SQLiteProvider(DBAPIProvider):
     dialect = 'SQLite'
     max_name_len = 1024
+    select_for_update_nowait_syntax = False
 
     dbapi_module = sqlite
     dbschema_cls = SQLiteSchema
@@ -120,13 +124,14 @@ class SQLiteProvider(DBAPIProvider):
             # Database instance is created
 
             # the list of frames:
-            # 4 - user code: db = Database(...)
-            # 3 - cut_exception decorator
+            # 5 - user code: db = Database(...)
+            # 4 - cut_traceback decorator wrapper
+            # 3 - cut_traceback decorator
             # 2 - pony.orm.Database.__init__()
             # 1 - pony.dbapiprovider.DBAPIProvider.__init__()
             # 0 - pony.dbproviders.sqlite.get_pool()
 
-            filename = absolutize_path(filename, frame_depth=4)
+            filename = absolutize_path(filename, frame_depth=5)
             return SQLitePool(filename, create_db)
 
 provider_cls = SQLiteProvider
@@ -184,7 +189,7 @@ class Local(localbase):
 
 local = Local()
 
-@simple_decorator
+@decorator
 def in_dedicated_thread(func, *args, **kwargs):
     result_holder = []
     mem_queue.put((local.lock, func, args, kwargs, result_holder))

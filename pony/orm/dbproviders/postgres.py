@@ -57,13 +57,13 @@ class PsycopgProvider(PGProvider):
     def get_pool(provider, *args, **kwargs):
         return PsycopgPool(provider.dbapi_module, *args, **kwargs)
 
-    def set_optimistic_mode(provider, connection):
-        if core.debug: core.log_orm('SET AUTOCOMMIT = ON')
-        connection.autocommit = True
-
-    def set_pessimistic_mode(provider, connection):
-        if core.debug: core.log_orm('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
-        connection.set_isolation_level(extensions.ISOLATION_LEVEL_READ_COMMITTED)
+    def set_transaction_mode(provider, connection, optimistic):
+        if optimistic:
+            if core.debug: core.log_orm('SET AUTOCOMMIT = ON')
+            connection.autocommit = True
+        else:
+            if core.debug: core.log_orm('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
+            connection.set_isolation_level(extensions.ISOLATION_LEVEL_READ_COMMITTED)
 
     def start_optimistic_save(provider, connection):
         if core.debug: core.log_orm('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')

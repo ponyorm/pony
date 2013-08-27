@@ -10,6 +10,7 @@ from codecs import BOM_UTF8, BOM_LE, BOM_BE
 from locale import getpreferredencoding
 from bisect import bisect
 from copy import deepcopy, _deepcopy_dispatch
+from functools import update_wrapper
 
 # deepcopy instance method patch for Python < 2.7:
 if types.MethodType not in _deepcopy_dispatch:
@@ -19,6 +20,8 @@ if types.MethodType not in _deepcopy_dispatch:
 
 import pony
 from pony import options
+
+from pony.thirdparty.decorator import decorator as _decorator
 
 try: from pony.thirdparty import etree
 except ImportError: etree = None
@@ -34,70 +37,80 @@ def deprecated(stacklevel, message):
 
 warnings.simplefilter('once', PonyDeprecationWarning)
 
-def copy_func_attrs(new_func, old_func, decorator_name=None):
-    if new_func is not old_func:
-        if not isfunction(old_func) and not ismethod(old_func):
-            throw(TypeError, 'Decorated object must be function or method. Got: %r' % old_func)
-        new_func.__name__ = old_func.__name__
-        new_func.__doc__ = old_func.__doc__
-        new_func.__module__ = old_func.__module__
-        d = old_func.__dict__.copy()
-        d.update(new_func.__dict__)
-        new_func.__dict__.update(d)
-        if not hasattr(old_func, 'original_func'):
-            new_func.original_func = old_func
-    if not hasattr(new_func, 'decorators'):
-        new_func.decorators = getattr(old_func, 'decorators', set()).copy()
-    if decorator_name: new_func.decorators.add(decorator_name)
-    return new_func
+def _improved_decorator(caller, func):
+    if isfunction(func):
+        return _decorator(caller, func)
+    def pony_wrapper(*args, **kwargs):
+        return caller(func, *args, **kwargs)
+    return pony_wrapper
 
-def simple_decorator(old_dec):
-    def new_dec(old_func):
-        def pony_wrapper(*args, **kwargs):
-            return old_dec(old_func, *args, **kwargs)
-        return copy_func_attrs(pony_wrapper, old_func, old_dec.__name__)
-    return copy_func_attrs(new_dec, old_dec, 'simple_decorator')
+def decorator(caller, func=None):
+    if func is not None:
+        return _improved_decorator(caller, func)
+    def new_decorator(func):
+        return _improved_decorator(caller, func)
+    if isfunction(caller):
+        update_wrapper(new_decorator, caller)
+    return new_decorator
 
-@simple_decorator
-def decorator(old_dec, old_func):
-    new_func = old_dec(old_func)
-    return copy_func_attrs(new_func, old_func, old_dec.__name__)
+##def simple_decorator(dec):
+##    def new_dec(func):
+##        def pony_wrapper(*args, **kwargs):
+##            return dec(func, *args, **kwargs)
+##        return copy_func_attrs(pony_wrapper, func, dec.__name__)
+##    return copy_func_attrs(new_dec, dec, 'simple_decorator')
 
-@simple_decorator
-def decorator_with_params(old_dec, *args, **kwargs):
-    if len(args) == 1 and not kwargs:
-        old_func = args[0]
-        new_func = old_dec(old_func)
-        return copy_func_attrs(new_func, old_func, old_dec.__name__)
-    def parameterized_decorator(old_func):
-        new_func = old_dec(old_func, *args, **kwargs)
-        return copy_func_attrs(new_func, old_func, old_dec.__name__)
+##@simple_decorator
+##def decorator_with_params(dec, *args, **kwargs):
+##    if len(args) == 1 and not kwargs:
+##        func = args[0]
+##        new_func = dec(func)
+##        return copy_func_attrs(new_func, func, dec.__name__)
+##    def parameterized_decorator(old_func):
+##        new_func = dec(func, *args, **kwargs)
+##        return copy_func_attrs(new_func, func, dec.__name__)
+##    return parameterized_decorator
+
+def decorator_with_params(dec):
+    def parameterized_decorator(*args, **kwargs):
+        if len(args) == 1 and isfunction(args[0]) and not kwargs:
+            return decorator(dec(), args[0])
+        return decorator(dec(*args, **kwargs))
     return parameterized_decorator
 
+@decorator_with_params
+def with_headers(**headers):
+    def new_dec(func, *args, **kwargs):
+        print 'headers:', headers
+        return func(*args, **kwargs)
+    return new_dec
+
+@with_headers(x=10, y=20)
+def mul(a, b):
+    return a * b
+
 @decorator
-def cut_traceback(old_func):
-    def new_func(*args, **kwargs):
-        if not (pony.MODE == 'INTERACTIVE' and options.CUT_TRACEBACK):
-            return old_func(*args, **kwargs)
+def cut_traceback(func, *args, **kwargs):
+    if not (pony.MODE == 'INTERACTIVE' and options.CUT_TRACEBACK):
+        return func(*args, **kwargs)
+
+    try: return func(*args, **kwargs)
+    except Exception:
+        exc_type, exc, tb = sys.exc_info()
+        last_pony_tb = None
         try:
-            return old_func(*args, **kwargs)
-        except Exception:
-            exc_type, exc, tb = sys.exc_info()
-            last_pony_tb = None
-            try:
-                while tb.tb_next:
-                    module_name = tb.tb_frame.f_globals['__name__']
-                    if module_name == 'pony' or (module_name is not None  # may be None during import
-                                                 and module_name.startswith('pony.')):
-                        last_pony_tb = tb
-                    tb = tb.tb_next
-                if last_pony_tb is None: raise
-                if tb.tb_frame.f_globals['__name__'] == 'pony.utils' and tb.tb_frame.f_code.co_name == 'throw':
-                    raise exc_type, exc, last_pony_tb
-                raise exc  # Set "pony.options.CUT_TRACEBACK = False" to see full traceback
-            finally:
-                del tb, last_pony_tb
-    return new_func
+            while tb.tb_next:
+                module_name = tb.tb_frame.f_globals['__name__']
+                if module_name == 'pony' or (module_name is not None  # may be None during import
+                                             and module_name.startswith('pony.')):
+                    last_pony_tb = tb
+                tb = tb.tb_next
+            if last_pony_tb is None: raise
+            if tb.tb_frame.f_globals.get('__name__') == 'pony.utils' and tb.tb_frame.f_code.co_name == 'throw':
+                raise exc_type, exc, last_pony_tb
+            raise exc  # Set "pony.options.CUT_TRACEBACK = False" to see full traceback
+        finally:
+            del tb, last_pony_tb
 
 def throw(exc_type, *args, **kwargs):
     if isinstance(exc_type, Exception):
@@ -112,7 +125,7 @@ def throw(exc_type, *args, **kwargs):
 _cache = {}
 MAX_CACHE_SIZE = 1000
 
-@simple_decorator
+@decorator
 def cached(f, *args, **kwargs):
     key = (f, args, tuple(sorted(kwargs.items())))
     value = _cache.get(key)
