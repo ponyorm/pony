@@ -3337,22 +3337,21 @@ class Cache(object):
         if reestablish:
             assert not cache.connection
             if not cache.optimistic: throw(ConnectionClosedError,
-                'Pessimistic transaction cannot be continued because database connection failed')
+                'Transaction cannot be continued because database connection failed')
             elif cache.saving: throw(ConnectionClosedError,
                 'Optimistic transaction cannot be completed because database connection failed during saving changes')
             log_orm('RECONNECT')
         provider = cache.database.provider
         connection = provider.connect()
         cache.connection = connection
-        if cache.optimistic: provider.set_optimistic_mode(connection)
-        else: provider.set_pessimistic_mode(connection)
+        provider.set_transaction_mode(connection, cache.optimistic)
         return connection
-    def _switch_to_pessimistic_mode(cache):
+    def _switch_from_optimistic_mode(cache):
         assert cache.optimistic
         connection = cache.connection or cache.establish_connection()
         cache.optimistic = False
         provider = cache.database.provider
-        provider.set_pessimistic_mode(cache.connection)
+        provider.set_transaction_mode(cache.connection, optimistic=False)
     def commit(cache):
         assert cache.is_alive
         database = cache.database
@@ -3380,9 +3379,9 @@ class Cache(object):
                 provider.commit(connection)
             if database.optimistic:
                 cache.optimistic = True
-                provider.set_optimistic_mode(connection)
+                provider.set_transaction_mode(connection, optimistic=True)
             elif cache.optimistic:
-                cache._switch_to_pessimistic_mode()
+                cache._switch_from_optimistic_mode()
         except:
             cache.rollback()
             raise
@@ -3421,7 +3420,7 @@ class Cache(object):
         provider.release(connection)
     def flush(cache):
         if cache.changing: return
-        if cache.optimistic: cache._switch_to_pessimistic_mode()
+        if cache.optimistic: cache._switch_from_optimistic_mode()
         if cache.modified: cache.save()
     def save(cache):
         assert cache.is_alive

@@ -195,10 +195,7 @@ class DBAPIProvider(object):
     def get_pool(provider, *args, **kwargs):
         return Pool(provider.dbapi_module, *args, **kwargs)
 
-    def set_optimistic_mode(provider, connection):
-        pass
-
-    def set_pessimistic_mode(provider, connection):
+    def set_transaction_mode(provider, connection, optimistic):
         pass
 
     def start_optimistic_save(provider, connection):
