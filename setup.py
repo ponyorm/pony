@@ -42,7 +42,8 @@ packages = [
     "pony.orm",
     "pony.orm.dbproviders",
     "pony.orm.examples",
-    "pony.orm.tests"
+    "pony.orm.tests",
+    "pony.thirdparty"
 ]
 
 download_url = "http://pypi.python.org/pypi/pony/"
