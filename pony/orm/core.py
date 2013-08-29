@@ -517,14 +517,20 @@ class Database(object):
                     elif reverse.table: table_name = attr.table = reverse.table
                     else:
                         table_name = provider.get_default_m2m_table_name(attr, reverse)
-                        attr.table = reverse.table = table_name
 
                     m2m_table = schema.tables.get(table_name)
                     if m2m_table is not None:
-                        if m2m_table.entities or m2m_table.m2m:
+                        if not attr.table:
+                            seq = _count(2)
+                            while m2m_table is not None:
+                                new_table_name = table_name + '_%d' % seq.next()
+                                m2m_table = schema.tables.get(new_table_name)
+                            table_name = new_table_name
+                        elif m2m_table.entities or m2m_table.m2m:
                             if isinstance(table_name, tuple): table_name = '.'.join(table_name)
                             throw(MappingError, "Table name '%s' is already in use" % table_name)
-                        throw(NotImplementedError)
+                        else: throw(NotImplementedError)
+                    attr.table = reverse.table = table_name
                     m2m_table = schema.add_table(table_name)
                     m2m_columns_1 = attr.get_m2m_columns(is_reverse=False)
                     m2m_columns_2 = reverse.get_m2m_columns(is_reverse=True)
