@@ -911,7 +911,7 @@ class Attribute(object):
                 if new_val == pkval[attr.pk_offset]: return
             elif new_val == pkval: return
             throw(TypeError, 'Cannot change value of primary key')
-        cache.changing += 1
+        cache.noflush += 1
         try:
             old_val =  obj._vals_.get(attr.name, NOT_LOADED)
             if old_val is NOT_LOADED and reverse and not reverse.is_collection:
@@ -973,7 +973,7 @@ class Attribute(object):
                     for undo_func in reversed(undo_funcs): undo_func()
                 raise
         finally:
-            cache.changing -= 1
+            cache.noflush -= 1
     def db_set(attr, obj, new_dbval, is_reverse_call=False):
         cache = obj._cache_
         assert cache.is_alive
@@ -1491,7 +1491,7 @@ class Set(Collection):
         cache = obj._cache_
         if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        cache.changing += 1
+        cache.noflush += 1
         try:
             new_items = attr.check(new_items, obj)
             reverse = attr.reverse
@@ -1530,7 +1530,7 @@ class Set(Collection):
             cache.modified = True
             cache.modified_collections.setdefault(attr, set()).add(obj)
         finally:
-            cache.changing -= 1
+            cache.noflush -= 1
     def __delete__(attr, obj):
         throw(NotImplementedError)
     def reverse_add(attr, objects, item, undo_funcs):
@@ -1783,7 +1783,7 @@ class SetWrapper(object):
         cache = obj._cache_
         if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        cache.changing += 1
+        cache.noflush += 1
         try:
             attr = wrapper._attr_
             reverse = attr.reverse
@@ -1810,7 +1810,7 @@ class SetWrapper(object):
             cache.modified = True
             cache.modified_collections.setdefault(attr, set()).add(obj)
         finally:
-            cache.changing -= 1
+            cache.noflush -= 1
     @cut_traceback
     def __iadd__(wrapper, items):
         wrapper.add(items)
@@ -1821,7 +1821,7 @@ class SetWrapper(object):
         cache = obj._cache_
         if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        cache.changing += 1
+        cache.noflush += 1
         try:
             attr = wrapper._attr_
             reverse = attr.reverse
@@ -1848,7 +1848,7 @@ class SetWrapper(object):
             cache.modified = True
             cache.modified_collections.setdefault(attr, set()).add(obj)
         finally:
-            cache.changing -= 1
+            cache.noflush -= 1
     @cut_traceback
     def __isub__(wrapper, items):
         wrapper.remove(items)
@@ -2601,7 +2601,7 @@ class EntityMeta(type):
         else:
             obj.__class__ = entity
             return obj
-        cache.changing += 1
+        cache.noflush += 1
         try:
             obj = object.__new__(entity)
             obj._dbvals_ = {}
@@ -2632,7 +2632,7 @@ class EntityMeta(type):
             else: assert False
             return obj
         finally:
-            cache.changing -= 1
+            cache.noflush -= 1
     def _get_by_raw_pkval_(entity, raw_pkval):
         i = 0
         pkval = []
@@ -2777,7 +2777,7 @@ class Entity(object):
         pkval, avdict = entity._normalize_args_(kwargs, True)
         undo_funcs = []
         cache = entity._get_cache_()
-        cache.changing += 1
+        cache.noflush += 1
         try:
             indexes = {}
             for attr in entity._simple_keys_:
@@ -2813,7 +2813,7 @@ class Entity(object):
             cache.to_be_checked.append(obj)
             return obj
         finally:
-            cache.changing -= 1
+            cache.noflush -= 1
     def _get_raw_pkval_(obj):
         pkval = obj._pkval_
         if not obj._pk_is_composite_:
@@ -2919,7 +2919,7 @@ class Entity(object):
         is_recursive_call = undo_funcs is not None
         if not is_recursive_call: undo_funcs = []
         cache = obj._cache_
-        cache.changing += 1
+        cache.noflush += 1
         try:
             get_val = obj._vals_.get
             undo_list = []
@@ -3008,7 +3008,7 @@ class Entity(object):
                     for undo_func in reversed(undo_funcs): undo_func()
                 raise
         finally:
-            cache.changing -= 1
+            cache.noflush -= 1
     @cut_traceback
     def delete(obj):
         if not obj._cache_.is_alive: throw_db_session_is_over(obj)
@@ -3018,7 +3018,7 @@ class Entity(object):
         cache = obj._cache_
         if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        cache.changing += 1
+        cache.noflush += 1
         try:
             avdict, collection_avdict = obj._keyargs_to_avdicts_(kwargs)
             status = obj._status_
@@ -3091,7 +3091,7 @@ class Entity(object):
                 raise
             obj._vals_.update((attr.name, new_val) for attr, new_val in avdict.iteritems())
         finally:
-            cache.changing -= 1
+            cache.noflush -= 1
     def _keyargs_to_avdicts_(obj, kwargs):
         avdict, collection_avdict = {}, {}
         get = obj._adict_.get
@@ -3331,7 +3331,7 @@ class Cache(object):
         cache.created = set()
         cache.deleted = []
         cache.updated = set()
-        cache.changing = 0
+        cache.noflush = 0
         cache.modified_collections = {}
         cache.to_be_checked = []
         cache.query_results = {}
@@ -3424,7 +3424,7 @@ class Cache(object):
         if debug: log_orm('RELEASE_CONNECTION')
         provider.release(connection)
     def flush(cache):
-        if cache.changing: return
+        if cache.noflush: return
         if cache.optimistic: cache._switch_from_optimistic_mode()
         if cache.modified: cache.save()
     def save(cache):
