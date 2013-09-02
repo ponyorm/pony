@@ -3125,6 +3125,21 @@ class Entity(object):
             if bit is None: continue
             if not bit & mask: continue
             yield attr
+    def _construct_optimistic_criteria_(obj):
+        optimistic_columns = []
+        optimistic_converters = []
+        optimistic_values = []
+        for attr in obj._attrs_with_bit_(obj._rbits_):
+            if not attr.columns: continue
+            dbval = obj._dbvals_.get(attr.name, NOT_LOADED)
+            assert dbval is not NOT_LOADED
+            optimistic_columns.extend(attr.columns)
+            if dbval is not None:
+                optimistic_converters.extend(attr.converters)
+            else:
+                optimistic_converters.extend(None for converter in attr.converters)
+            optimistic_values.extend(attr.get_raw_values(dbval))
+        return optimistic_columns, optimistic_converters, optimistic_values
     def _save_principal_objects_(obj, dependent_objects):
         if dependent_objects is None: dependent_objects = []
         elif obj in dependent_objects:
@@ -3216,20 +3231,13 @@ class Entity(object):
             for attr in obj._pk_attrs_:
                 val = obj._vals_[attr.name]
                 values.extend(attr.get_raw_values(val))
-            optimistic_check_columns = []
-            optimistic_check_converters = []
             if obj._cache_.optimistic:
-                for attr in obj._attrs_with_bit_(obj._rbits_):
-                    if not attr.columns: continue
-                    dbval = obj._dbvals_.get(attr.name, NOT_LOADED)
-                    assert dbval is not NOT_LOADED
-                    optimistic_check_columns.extend(attr.columns)
-                    if dbval is not None:
-                        optimistic_check_converters.extend(attr.converters)
-                    else:
-                        optimistic_check_converters.extend(None for converter in attr.converters)
-                    values.extend(attr.get_raw_values(dbval))
-            query_key = (tuple(update_columns), tuple(optimistic_check_columns), tuple(converter is not None for converter in optimistic_check_converters))
+                optimistic_columns, optimistic_converters, optimistic_values = \
+                    obj._construct_optimistic_criteria_()
+                values.extend(optimistic_values)
+            else: optimistic_columns = optimistic_converters = ()
+            query_key = (tuple(update_columns), tuple(optimistic_columns),
+                         tuple(converter is not None for converter in optimistic_converters))
             database = obj._database_
             cached_sql = obj._update_sql_cache_.get(query_key)
             if cached_sql is None:
@@ -3244,7 +3252,8 @@ class Entity(object):
                 pk_columns = obj._pk_columns_
                 pk_converters = obj._pk_converters_
                 params_count = populate_criteria_list(where_list, pk_columns, pk_converters, params_count)
-                populate_criteria_list(where_list, optimistic_check_columns, optimistic_check_converters, params_count)
+                if optimistic_columns:
+                    populate_criteria_list(where_list, optimistic_columns, optimistic_converters, params_count)
                 sql_ast = [ 'UPDATE', obj._table_, zip(update_columns, update_params), where_list ]
                 sql, adapter = database._ast2sql(sql_ast)
                 obj._update_sql_cache_[query_key] = sql, adapter
@@ -3269,22 +3278,16 @@ class Entity(object):
         for attr in obj._pk_attrs_:
             val = obj._vals_[attr.name]
             values.extend(attr.get_raw_values(val))
-        optimistic_check_columns = []
-        optimistic_check_converters = []
-        for attr in obj._attrs_with_bit_(obj._rbits_):
-            if not attr.columns: continue
-            dbval = obj._dbvals_.get(attr.name, NOT_LOADED)
-            assert dbval is not NOT_LOADED
-            optimistic_check_columns.extend(attr.columns)
-            optimistic_check_converters.extend(attr.converters)
-            values.extend(attr.get_raw_values(dbval))
-        query_key = tuple(optimistic_check_columns)
+        optimistic_columns, optimistic_converters, optimistic_values = \
+            obj._construct_optimistic_criteria_()
+        values.extend(optimistic_values)
+        query_key = tuple(optimistic_columns)
         database = obj._database_
         cached_sql = obj._to_be_checked_sql_cache_.get(query_key)
         if cached_sql is None:
             where_list = [ 'WHERE' ]
             params_count = populate_criteria_list(where_list, obj._pk_columns_, obj._pk_converters_)
-            populate_criteria_list(where_list, optimistic_check_columns, optimistic_check_converters, params_count)
+            populate_criteria_list(where_list, optimistic_columns, optimistic_converters, params_count)
             sql_ast = [ 'SELECT', [ 'ALL', [ 'VALUE', 1 ]], [ 'FROM', [ None, 'TABLE', obj._table_ ] ], where_list ]
             sql, adapter = database._ast2sql(sql_ast)
             obj._to_be_checked_sql_cache_[query_key] = sql, adapter
