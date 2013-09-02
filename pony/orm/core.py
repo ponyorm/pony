@@ -926,7 +926,7 @@ class Attribute(object):
                 obj._wbits_ = wbits | obj._bits_[attr]
                 if status != 'updated':
                     if status in ('loaded', 'saved'): cache.to_be_checked.append(obj)
-                    else: assert status == 'locked'
+                    else: assert status == 'to_be_checked'
                     obj._status_ = 'updated'
                     cache.modified = True
                     cache.updated.add(obj)
@@ -2123,7 +2123,7 @@ class EntityMeta(type):
         entity._find_sql_cache_ = {}
         entity._batchload_sql_cache_ = {}
         entity._update_sql_cache_ = {}
-        entity._lock_sql_cache_ = {}
+        entity._to_be_checked_sql_cache_ = {}
 
         entity._propagation_mixin_ = None
         entity._set_wrapper_subclass_ = None
@@ -2726,7 +2726,7 @@ def populate_criteria_list(criteria_list, columns, converters, params_count=0, t
         params_count += 1
     return params_count
 
-statuses = set(['created', 'loaded', 'updated', 'deleted', 'cancelled', 'saved', 'locked'])
+statuses = set(['created', 'loaded', 'updated', 'deleted', 'cancelled', 'saved', 'to_be_checked'])
 del_statuses = set(['deleted', 'cancelled'])
 created_or_deleted_statuses = set(['created']) | del_statuses
 
@@ -3003,7 +3003,7 @@ class Entity(object):
                 else:
                     if status == 'updated': cache.updated.remove(obj)
                     elif status in ('loaded', 'saved'): cache.to_be_checked.append(obj)
-                    else: assert status == 'locked'
+                    else: assert status == 'to_be_checked'
                     obj._status_ = 'deleted'
                     cache.modified = True
                     cache.deleted.append(obj)
@@ -3042,7 +3042,7 @@ class Entity(object):
                         cache.modified = True
                         cache.updated.add(obj)
                         if status in ('loaded', 'saved'): cache.to_be_checked.append(obj)
-                        else: assert status == 'locked'
+                        else: assert status == 'to_be_checked'
                 if not collection_avdict:
                     for attr in avdict:
                         if attr.reverse or attr.is_part_of_unique_index: break
@@ -3115,7 +3115,7 @@ class Entity(object):
         cache = obj._cache_
         if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ not in ('loaded', 'saved'): return
-        obj._status_ = 'locked'
+        obj._status_ = 'to_be_checked'
         cache.to_be_checked.append(obj)
     @classmethod
     def _attrs_with_bit_(entity, mask=-1):
@@ -3260,7 +3260,7 @@ class Entity(object):
             val = obj._vals_.get(attr.name, NOT_LOADED)
             if val is NOT_LOADED: assert attr.name not in obj._dbvals_
             else: obj._dbvals_[attr.name] = val
-    def _save_locked_(obj):
+    def _save_to_be_checked_(obj):
         assert obj._wbits_ == 0
         if not obj._cache_.optimistic:
             obj._status_ = 'loaded'
@@ -3280,14 +3280,14 @@ class Entity(object):
             values.extend(attr.get_raw_values(dbval))
         query_key = tuple(optimistic_check_columns)
         database = obj._database_
-        cached_sql = obj._lock_sql_cache_.get(query_key)
+        cached_sql = obj._to_be_checked_sql_cache_.get(query_key)
         if cached_sql is None:
             where_list = [ 'WHERE' ]
             params_count = populate_criteria_list(where_list, obj._pk_columns_, obj._pk_converters_)
             populate_criteria_list(where_list, optimistic_check_columns, optimistic_check_converters, params_count)
             sql_ast = [ 'SELECT', [ 'ALL', [ 'VALUE', 1 ]], [ 'FROM', [ None, 'TABLE', obj._table_ ] ], where_list ]
             sql, adapter = database._ast2sql(sql_ast)
-            obj._lock_sql_cache_[query_key] = sql, adapter
+            obj._to_be_checked_sql_cache_[query_key] = sql, adapter
         else: sql, adapter = cached_sql
         arguments = adapter(values)
         cursor = database._exec_sql(sql, arguments)
@@ -3319,7 +3319,7 @@ class Entity(object):
         if status == 'created': obj._save_created_()
         elif status == 'updated': obj._save_updated_()
         elif status == 'deleted': obj._save_deleted_()
-        elif status == 'locked': obj._save_locked_()
+        elif status == 'to_be_checked': obj._save_to_be_checked_()
         else: assert False
 
 class Cache(object):
