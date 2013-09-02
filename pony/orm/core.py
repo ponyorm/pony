@@ -2119,10 +2119,10 @@ class EntityMeta(type):
 
         entity._cached_create_sql_ = None
         entity._cached_create_sql_auto_pk_ = None
-        entity._cached_delete_sql_ = None
         entity._find_sql_cache_ = {}
         entity._batchload_sql_cache_ = {}
         entity._update_sql_cache_ = {}
+        entity._delete_sql_cache_ = {}
         entity._to_be_checked_sql_cache_ = {}
 
         entity._propagation_mixin_ = None
@@ -3299,16 +3299,25 @@ class Entity(object):
                               'Object %s was updated outside of current transaction' % safe_repr(obj))
         obj._status_ = 'loaded'
     def _save_deleted_(obj):
+        values = []
+        values.extend(obj._get_raw_pkval_())
+        if obj._cache_.optimistic:
+            optimistic_columns, optimistic_converters, optimistic_values = \
+                obj._construct_optimistic_criteria_()
+            values.extend(optimistic_values)
+        else: optimistic_columns = optimistic_converters = ()
+        query_key = (tuple(optimistic_columns), tuple(converter is not None for converter in optimistic_converters))
         database = obj._database_
-        cached_sql = obj._cached_delete_sql_
+        cached_sql = obj._delete_sql_cache_.get(query_key)
         if cached_sql is None:
             where_list = [ 'WHERE' ]
-            populate_criteria_list(where_list, obj._pk_columns_, obj._pk_converters_)
+            params_count = populate_criteria_list(where_list, obj._pk_columns_, obj._pk_converters_)
+            if optimistic_columns:
+                populate_criteria_list(where_list, optimistic_columns, optimistic_converters, params_count)
             sql_ast = [ 'DELETE', obj._table_, where_list ]
             sql, adapter = database._ast2sql(sql_ast)
-            obj.__class__._cached_delete_sql_ = sql, adapter
+            obj.__class__._delete_sql_cache_[query_key] = sql, adapter
         else: sql, adapter = cached_sql
-        values = obj._get_raw_pkval_()
         arguments = adapter(values)
         database._exec_sql(sql, arguments)
     def _save_(obj, dependent_objects=None):
