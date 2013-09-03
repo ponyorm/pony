@@ -2278,7 +2278,6 @@ class EntityMeta(type):
         if not (isinstance(func, types.FunctionType)
                 or isinstance(func, basestring) and lambda_re.match(func)):
             throw(TypeError, 'Lambda function or its text representation expected. Got: %r' % func)
-        elif not isinstance(func, types.FunctionType): throw(TypeError)
         globals = sys._getframe(3).f_globals
         locals = sys._getframe(3).f_locals
         return entity._query_from_lambda_(func, globals, locals)

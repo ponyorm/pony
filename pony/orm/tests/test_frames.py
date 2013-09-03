@@ -24,9 +24,21 @@ class TestFrames(unittest.TestCase):
         self.assertEquals(p, Person[3])
 
     @db_session
+    def test_get_2(self):
+        x = 23
+        p = Person.get('lambda p: p.age > x')
+        self.assertEquals(p, Person[3])
+
+    @db_session
     def test_select(self):
         x = 20
         result = Person.select(lambda p: p.age > x)[:]
+        self.assertEquals(set(result), set([Person[1], Person[3]]))
+
+    @db_session
+    def test_select_2(self):
+        x = 20
+        result = Person.select('lambda p: p.age > x')[:]
         self.assertEquals(set(result), set([Person[1], Person[3]]))
 
     @db_session
@@ -37,12 +49,25 @@ class TestFrames(unittest.TestCase):
         self.assertEquals(result, [Person[3], Person[1]])
 
     @db_session
+    def test_order_by_2(self):
+        x = 20
+        y = -1
+        result = Person.select('lambda p: p.age > x').order_by('p.age * y')[:]
+        self.assertEquals(result, [Person[3], Person[1]])
+
+    @db_session
     def test_filter(self):
         x = 20
         y = 'M'
         result = Person.select(lambda p: p.age > x).filter(lambda p: p.name.startswith(y))[:]
         self.assertEquals(result, [Person[3]])
 
+    @db_session
+    def test_filter_2(self):
+        x = 20
+        y = 'M'
+        result = Person.select('lambda p: p.age > x').filter('p.name.startswith(y)')[:]
+        self.assertEquals(result, [Person[3]])
 
 if __name__ == '__main__':
     unittest.main()
