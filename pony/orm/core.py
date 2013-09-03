@@ -2488,7 +2488,7 @@ class EntityMeta(type):
         cached_sql = sql, adapter, attr_offsets
         entity._find_sql_cache_[query_key] = cached_sql
         return cached_sql
-    def _fetch_objects(entity, cursor, attr_offsets, max_fetch_count=None, rbits=None):
+    def _fetch_objects(entity, cursor, attr_offsets, max_fetch_count=None, rbits=None, for_update=False):
         if max_fetch_count is None: max_fetch_count = options.MAX_FETCH_COUNT
         if max_fetch_count is not None:
             rows = cursor.fetchmany(max_fetch_count + 1)
@@ -2500,12 +2500,12 @@ class EntityMeta(type):
         else: rows = cursor.fetchall()
         objects = []
         if attr_offsets is None:
-            objects = [ entity._get_by_raw_pkval_(row) for row in rows ]
+            objects = [ entity._get_by_raw_pkval_(row, for_update) for row in rows ]
             entity._load_many_(objects)
         else:
             for row in rows:
                 real_entity_subclass, pkval, avdict = entity._parse_row_(row, attr_offsets)
-                obj = real_entity_subclass._new_(pkval, 'loaded')
+                obj = real_entity_subclass._new_(pkval, 'loaded', for_update)
                 if obj._status_ in del_statuses: continue
                 obj._db_set_(avdict)
                 objects.append(obj)
@@ -2585,59 +2585,62 @@ class EntityMeta(type):
         database = entity._database_
         if database is None: throw(TransactionError)
         return database._get_cache()
-    def _new_(entity, pkval, status, undo_funcs=None):
+    def _new_(entity, pkval, status, for_update=False, undo_funcs=None):
         cache = entity._get_cache_()
         pk = entity.__dict__['_pk_']
         index = cache.indexes.setdefault(pk, {})
         if pkval is None: obj = None
         else: obj = index.get(pkval)
+
         if obj is None: pass
         elif status == 'created':
             if entity._pk_is_composite_: pkval = ', '.join(str(item) for item in pkval)
             throw(CacheIndexError, 'Cannot create %s: instance with primary key %s already exists'
                              % (obj.__class__.__name__, pkval))
-        elif obj.__class__ is entity: return obj
-        elif issubclass(obj.__class__, entity): return obj
+        elif obj.__class__ is entity: pass
+        elif issubclass(obj.__class__, entity): pass
         elif not issubclass(entity, obj.__class__): throw(TransactionError,
             'Unexpected class change from %s to %s for object with primary key %r' %
             (obj.__class__, entity, obj._pkval_))
         elif obj._rbits_ or obj._wbits_: throw(NotImplementedError)
-        else:
-            obj.__class__ = entity
-            return obj
-        cache.noflush += 1
-        try:
-            obj = object.__new__(entity)
-            obj._dbvals_ = {}
-            obj._vals_ = {}
-            obj._cache_ = cache
-            obj._status_ = status
-            obj._pkval_ = pkval
-            if pkval is not None:
-                index[pkval] = obj
-                obj._newid_ = None
-            else: obj._newid_ = next_new_instance_id()
-            if obj._pk_is_composite_: pairs = zip(pk, pkval)
-            else: pairs = ((pk, pkval),)
-            if status == 'loaded':
-                assert undo_funcs is None
-                obj._rbits_ = obj._wbits_ = 0
-                for attr, val in pairs:
-                    obj._vals_[attr.name] = val
-                    if attr.reverse: attr.db_update_reverse(obj, NOT_LOADED, val)
-                seeds = cache.seeds.setdefault(pk, set())
-                seeds.add(obj)
-            elif status == 'created':
-                assert undo_funcs is not None
-                obj._rbits_ = obj._wbits_ = None
-                for attr, val in pairs:
-                    obj._vals_[attr.name] = val
-                    if attr.reverse: attr.update_reverse(obj, NOT_LOADED, val, undo_funcs)
-            else: assert False
-            return obj
-        finally:
-            cache.noflush -= 1
-    def _get_by_raw_pkval_(entity, raw_pkval):
+        else: obj.__class__ = entity
+
+        if obj is None:
+            cache.noflush += 1
+            try:
+                obj = object.__new__(entity)
+                obj._dbvals_ = {}
+                obj._vals_ = {}
+                obj._cache_ = cache
+                obj._status_ = status
+                obj._pkval_ = pkval
+                if pkval is not None:
+                    index[pkval] = obj
+                    obj._newid_ = None
+                else: obj._newid_ = next_new_instance_id()
+                if obj._pk_is_composite_: pairs = zip(pk, pkval)
+                else: pairs = ((pk, pkval),)
+                if status == 'loaded':
+                    assert undo_funcs is None
+                    obj._rbits_ = obj._wbits_ = 0
+                    for attr, val in pairs:
+                        obj._vals_[attr.name] = val
+                        if attr.reverse: attr.db_update_reverse(obj, NOT_LOADED, val)
+                    seeds = cache.seeds.setdefault(pk, set())
+                    seeds.add(obj)
+                elif status == 'created':
+                    assert undo_funcs is not None
+                    obj._rbits_ = obj._wbits_ = None
+                    for attr, val in pairs:
+                        obj._vals_[attr.name] = val
+                        if attr.reverse: attr.update_reverse(obj, NOT_LOADED, val, undo_funcs)
+                else: assert False
+            finally:
+                cache.noflush -= 1
+        if for_update:
+            cache.for_update.add(obj)
+        return obj
+    def _get_by_raw_pkval_(entity, raw_pkval, for_update=False):
         i = 0
         pkval = []
         for attr in entity._pk_attrs_:
@@ -2654,7 +2657,7 @@ class EntityMeta(type):
             pkval.append(val)
         if not entity._pk_is_composite_: pkval = pkval[0]
         else: pkval = tuple(pkval)
-        obj = entity._new_(pkval, 'loaded')
+        obj = entity._new_(pkval, 'loaded', for_update)
         assert obj._status_ != 'cancelled'
         return obj
     def _get_propagation_mixin_(entity):
@@ -2797,7 +2800,7 @@ class Entity(object):
                                      % (entity.__name__, vals, attr_names))
                 indexes[attrs] = vals
             try:
-                obj = entity._new_(pkval, 'created', undo_funcs)
+                obj = entity._new_(pkval, 'created', undo_funcs=undo_funcs)
                 for attr, val in avdict.iteritems():
                     if attr.pk_offset is not None: continue
                     elif not attr.is_collection:
@@ -3231,7 +3234,8 @@ class Entity(object):
             for attr in obj._pk_attrs_:
                 val = obj._vals_[attr.name]
                 values.extend(attr.get_raw_values(val))
-            if obj._cache_.optimistic:
+            cache = obj._cache_
+            if cache.optimistic or obj not in cache.for_update:
                 optimistic_columns, optimistic_converters, optimistic_values = \
                     obj._construct_optimistic_criteria_()
                 values.extend(optimistic_values)
@@ -3301,7 +3305,8 @@ class Entity(object):
     def _save_deleted_(obj):
         values = []
         values.extend(obj._get_raw_pkval_())
-        if obj._cache_.optimistic:
+        cache = obj._cache_
+        if cache.optimistic or obj not in cache.for_update:
             optimistic_columns, optimistic_converters, optimistic_values = \
                 obj._construct_optimistic_criteria_()
             values.extend(optimistic_values)
@@ -3347,6 +3352,7 @@ class Cache(object):
         cache.created = set()
         cache.deleted = []
         cache.updated = set()
+        cache.for_update = set()
         cache.noflush = 0
         cache.modified_collections = {}
         cache.to_be_checked = []
@@ -3395,6 +3401,7 @@ class Cache(object):
                     if debug: log_orm('START OPTIMISTIC SAVE')
                     provider.start_optimistic_save(connection)
                 cache.save()
+            cache.for_update.clear()
             if modified or not cache.optimistic:
                 if debug: log_orm('COMMIT')
                 provider.commit(connection)
@@ -3876,7 +3883,8 @@ class Query(object):
             cursor = database._exec_sql(sql, arguments)
             if isinstance(translator.expr_type, EntityMeta):
                 entity = translator.expr_type
-                result = entity._fetch_objects(cursor, attr_offsets, rbits=translator.tableref.rbits)
+                result = entity._fetch_objects(cursor, attr_offsets, rbits=translator.tableref.rbits,
+                                               for_update=query._for_update)
             elif len(translator.row_layout) == 1:
                 func, slice_or_offset, src = translator.row_layout[0]
                 result = list(starmap(func, cursor.fetchall()))
