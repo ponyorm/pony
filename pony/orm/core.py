@@ -2257,8 +2257,8 @@ class EntityMeta(type):
                 throw(TypeError, 'Positional argument must be lambda function or its text source. '
                                  'Got: %s.get(%r)' % (entity.__name__, first_arg))
 
-            globals = sys._getframe(2).f_globals
-            locals = sys._getframe(2).f_locals
+            globals = sys._getframe(3).f_globals
+            locals = sys._getframe(3).f_locals
             return entity._query_from_lambda_(first_arg, globals, locals).get()
 
         objects = entity._find_(1, kwargs)  # can throw MultipleObjectsFoundError
@@ -2279,8 +2279,8 @@ class EntityMeta(type):
                 or isinstance(func, basestring) and lambda_re.match(func)):
             throw(TypeError, 'Lambda function or its text representation expected. Got: %r' % func)
         elif not isinstance(func, types.FunctionType): throw(TypeError)
-        globals = sys._getframe(2).f_globals
-        locals = sys._getframe(2).f_locals
+        globals = sys._getframe(3).f_globals
+        locals = sys._getframe(3).f_locals
         return entity._query_from_lambda_(func, globals, locals)
     @cut_traceback
     def select_by_sql(entity, sql, globals=None, locals=None):
@@ -3955,8 +3955,8 @@ class Query(object):
             query._translator = translator
             return query
 
-        globals = sys._getframe(2).f_globals
-        locals = sys._getframe(2).f_locals
+        globals = sys._getframe(3).f_globals
+        locals = sys._getframe(3).f_locals
         if strings:
             expr_text = func_id = args[0]
             func_ast = string2ast(expr_text)
@@ -4018,8 +4018,8 @@ class Query(object):
         return translator
     @cut_traceback
     def filter(query, func):
-        globals = sys._getframe(2).f_globals
-        locals = sys._getframe(2).f_locals
+        globals = sys._getframe(3).f_globals
+        locals = sys._getframe(3).f_locals
         if isinstance(func, basestring):
             func_id = func
             func_ast = string2ast(func)
