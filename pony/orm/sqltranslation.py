@@ -1886,7 +1886,7 @@ class AttrSetMonad(SetMixin, Monad):
             optimized = True
             if not translator.from_optimized:
                 from_ast = monad.subquery.from_ast[1:]
-                from_ast[0] = from_ast[0] + subquery.outer_conditions
+                from_ast[0] = from_ast[0] + [ sqland(subquery.outer_conditions) ]
                 translator.subquery.from_ast.extend(from_ast)
                 translator.from_optimized = True
         else: sql_ast = [ 'SELECT', [ 'AGGREGATES', make_aggr(subquery.expr_list) ],
@@ -1963,7 +1963,9 @@ class AttrSetMonad(SetMixin, Monad):
         if not attr.reverse and not attr.is_required:
             subquery.conditions.extend([ 'IS_NOT_NULL', expr ] for expr in subquery.expr_list)
         if subquery is not translator.subquery:
-            subquery.outer_conditions = [ subquery.from_ast[1].pop() ]
+            outer_cond = subquery.from_ast[1].pop()
+            if outer_cond[0] == 'AND': subquery.outer_conditions = outer_cond[1:]
+            else: subquery.outer_conditions = [ outer_cond ]
         monad.subquery = subquery
         return subquery
     def getsql(monad, subquery=None):
@@ -1996,7 +1998,9 @@ class NumericSetExprMonad(SetMixin, Monad):
         translator = monad.translator
         subquery = Subquery(translator.subquery)
         expr = [ monad.sqlop, monad.left.getsql(subquery), monad.right.getsql(subquery) ]
-        subquery.outer_conditions = [ subquery.from_ast[1].pop() ]
+        outer_cond = subquery.from_ast[1].pop()
+        if outer_cond[0] == 'AND': subquery.outer_conditions = outer_cond[1:]
+        else: subquery.outer_conditions = [ outer_cond ]
         if func_name == 'AVG': result_type = float
         else: result_type = monad.type.item_type
         return translator.ExprMonad.new(translator, result_type,
