@@ -14,6 +14,7 @@ from pony.orm.core import log_orm, log_sql, OperationalError
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, get_version_tuple
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import SQLBuilder, join
+from pony.utils import throw
 
 class MySQLTable(dbschema.Table):
     def create(table, provider, connection, created_tables=None):
@@ -151,6 +152,28 @@ class MySQLProvider(DBAPIProvider):
             kwargs['charset'] = 'utf8'
         kwargs['client_flag'] = kwargs.get('client_flag', 0) | CLIENT.FOUND_ROWS 
         return Pool(MySQLdb, *args, **kwargs)
+
+    def table_exists(provider, connection, table_name):
+        db_name, table_name = provider.split_table_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM information_schema.tables '
+                       'WHERE table_schema=%s and table_name=%s',
+                       [ db_name, table_name ])
+        return cursor.fetchone() is not None
+
+    def disable_fk_checks_if_necessary(provider, connection):
+        cursor = connection.cursor()
+        cursor.execute("SHOW VARIABLES LIKE 'foreign_key_checks'")
+        fk = cursor.fetchone()
+        if fk is not None: fk = (fk[1] == 'ON')
+        if fk: cursor.execute('SET foreign_key_checks = 0')
+        return bool(fk)
+
+    def enable_fk_checks_if_necessary(provider, connection, fk):
+        assert type(fk) is bool, fk
+        if fk:
+            cursor = connection.cursor()
+            cursor.execute('SET foreign_key_checks = 1')
 
 provider_cls = MySQLProvider
 

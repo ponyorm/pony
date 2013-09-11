@@ -32,8 +32,9 @@ __all__ = '''
     Warning Error InterfaceError DatabaseError DataError OperationalError
     IntegrityError InternalError ProgrammingError NotSupportedError
 
-    OrmError ERDiagramError DBSchemaError MappingError ConstraintError CacheIndexError ObjectNotFound
-    MultipleObjectsFoundError TooManyObjectsFoundError OperationWithDeletedObjectError
+    OrmError ERDiagramError DBSchemaError MappingError
+    TableNotExists TableIsNotEmpty ConstraintError CacheIndexError
+    ObjectNotFound MultipleObjectsFoundError TooManyObjectsFoundError OperationWithDeletedObjectError
     TransactionError TransactionIntegrityError IsolationError CommitException RollbackException
     UnrepeatableReadError UnresolvableCyclicDependency UnexpectedError
 
@@ -100,6 +101,10 @@ class OrmError(Exception): pass
 class ERDiagramError(OrmError): pass
 class DBSchemaError(OrmError): pass
 class MappingError(OrmError): pass
+
+class TableNotExists(OrmError): pass
+class TableIsNotEmpty(OrmError): pass
+
 class ConstraintError(OrmError): pass
 class CacheIndexError(OrmError): pass
 
@@ -726,6 +731,43 @@ class Database(object):
                 database._exec_sql(sql)
         finally: local.db_context_counter = False
         database.rollback()
+    @cut_traceback
+    @db_session(ddl=True)
+    def drop_table(database, table_name, if_exists=False, with_all_data=False):
+        if isinstance(table_name, EntityMeta):
+            entity = table_name
+            table_name = entity._table_
+        elif isinstance(table_name, Set):
+            attr = table_name
+            if attr.reverse.is_collection: table_name = attr.table
+            else: table_name = attr.entity._table_
+        elif isinstance(table_name, Attribute): throw(TypeError,
+            "Attribute %s is not Set and doesn't have corresponding table" % table_name)
+        database._drop_tables([ table_name ], if_exists, with_all_data)
+    @cut_traceback
+    @db_session(ddl=True)
+    def drop_all_tables(database, with_all_data=False):
+        if database.schema is None: throw(ERDiagramError, 'No mapping was generated for the database')
+        database._drop_tables(database.schema.tables, True, with_all_data)
+    def _drop_tables(database, table_names, if_exists, with_all_data):
+        connection = database.get_connection()
+        provider = database.provider
+        existed_tables = []
+        for table_name in table_names:
+            if provider.table_exists(connection, table_name): existed_tables.append(table_name)
+            elif not if_exists: throw(TableNotExists, 'Table %s does not exists' % table_name)
+        if not with_all_data:
+            for table_name in existed_tables:
+                if provider.table_has_data(connection, table_name): throw(TableIsNotEmpty,
+                    'Cannot drop table %s because it is not empty. Specify option '
+                    'with_all_data=True if you want to drop table with all data' % table_name)
+        state = provider.disable_fk_checks_if_necessary(connection)
+        try:
+            for table_name in existed_tables:
+                if debug: log_orm('DROPPING TABLE %s' % table_name)
+                provider.drop_table(connection, table_name)
+        finally:
+            provider.enable_fk_checks_if_necessary(connection, state)
 
 class DbLocal(localbase):
     def __init__(dblocal):
@@ -1827,6 +1869,12 @@ class Set(Collection):
         arguments_list = [ adapter(obj._get_raw_pkval_() + robj._get_raw_pkval_())
                            for obj, robj in added ]
         database._exec_sql(sql, arguments_list)
+    @cut_traceback
+    @db_session(ddl=True)
+    def drop_table(attr, with_all_data=False):
+        if attr.reverse.is_collection: table_name = attr.table
+        else: table_name = attr.entity._table_
+        attr.entity._database_._drop_tables([ table_name ], True, with_all_data)
 
 def unpickle_setwrapper(obj, attrname, items):
     attr = getattr(obj.__class__, attrname)
@@ -2864,6 +2912,7 @@ class EntityMeta(type):
             result_cls = type(cls_name, (SetWrapper, mixin), {})
             entity._set_wrapper_subclass_ = result_cls
         return result_cls
+    @cut_traceback
     def describe(entity):
         result = []
         parents = ','.join(cls.__name__ for cls in entity.__bases__)
@@ -2874,6 +2923,10 @@ class EntityMeta(type):
             result.append('# attrs introduced in %s' % entity.__name__)
         result.extend(attr.describe() for attr in entity._new_attrs_)
         return '\n    '.join(result)
+    @cut_traceback
+    @db_session(ddl=True)
+    def drop_table(entity, with_all_data=False):
+        entity._database_._drop_tables([ entity._table_ ], True, with_all_data)
 
 def populate_criteria_list(criteria_list, columns, converters, params_count=0, table_alias=None):
     assert len(columns) == len(converters)

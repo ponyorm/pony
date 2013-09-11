@@ -6,6 +6,7 @@ from pony.orm import dbschema, sqlbuilding, dbapiprovider
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import Value
+from pony.utils import throw
 
 class PGColumn(dbschema.Column):
     auto_template = 'SERIAL PRIMARY KEY'
@@ -111,6 +112,25 @@ class PGProvider(DBAPIProvider):
             if arguments is None: cursor.execute(sql)
             else: cursor.execute(sql, arguments)
             if returning_id: return cursor.fetchone()[0]
+
+    def table_exists(provider, connection, table_name):
+        schema_name, table_name = provider.split_table_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = %s '
+                       'AND tablename = %s', (schema_name, table_name))
+        return cursor.fetchone() is not None
+    
+    def table_has_data(provider, connection, table_name):
+        table_name = provider.quote_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM %s LIMIT 1' % table_name)
+        return cursor.fetchone() is not None
+
+    def drop_table(provider, connection, table_name):
+        table_name = provider.quote_name(table_name)
+        cursor = connection.cursor()
+        sql = 'DROP TABLE %s CASCADE' % table_name
+        cursor.execute(sql)
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),

@@ -294,6 +294,25 @@ class OraProvider(DBAPIProvider):
         kwargs.setdefault('increment', 1)
         return OraPool(**kwargs)
 
+    def table_exists(provider, connection, table_name):
+        owner_name, table_name = provider.split_table_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM all_tables WHERE owner = :o AND table_name = :tn',
+                       dict(o=owner_name, tn=table_name))
+        return cursor.fetchone() is not None
+
+    def table_has_data(provider, connection, table_name):
+        table_name = provider.quote_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM %s WHERE ROWNUM = 1' % table_name)
+        return cursor.fetchone() is not None
+
+    def drop_table(provider, connection, table_name):
+        table_name = provider.quote_name(table_name)
+        cursor = connection.cursor()
+        sql = 'DROP TABLE %s CASCADE CONSTRAINTS' % table_name
+        cursor.execute(sql)
+
 provider_cls = OraProvider
 
 def to_int_or_decimal(val):

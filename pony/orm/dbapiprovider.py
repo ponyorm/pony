@@ -215,6 +215,26 @@ class DBAPIProvider(object):
     def start_optimistic_save(provider, connection):
         pass
 
+    def table_exists(provider, connection, table_name):
+        throw(NotImplementedError)
+
+    def table_has_data(provider, connection, table_name):
+        table_name = provider.quote_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM %s LIMIT 1' % table_name)
+        return cursor.fetchone() is not None
+
+    def disable_fk_checks_if_necessary(provider, connection):
+        pass
+
+    def enable_fk_checks_if_necessary(provider, connection, prev_state):
+        pass
+
+    def drop_table(provider, connection, table_name):
+        table_name = provider.quote_name(table_name)
+        cursor = connection.cursor()
+        sql = 'DROP TABLE %s' % table_name
+        cursor.execute(sql)
 
 class Pool(localbase):
     def __init__(pool, dbapi_module, *args, **kwargs): # called separately in each thread

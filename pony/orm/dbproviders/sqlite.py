@@ -136,6 +136,31 @@ class SQLiteProvider(DBAPIProvider):
             filename = absolutize_path(filename, frame_depth=5)
             return SQLitePool(filename, create_db)
 
+    def table_exists(provider, connection, table_name):
+        db_name, table_name = provider.split_table_name(table_name)
+        if db_name is None: catalog_name = 'sqlite_master'
+        else: catalog_name = (db_name, 'sqlite_master')
+        catalog_name = provider.quote_name(catalog_name)
+        cursor = connection.cursor()
+        sql = "SELECT 1 FROM %s WHERE type='table' AND name=?" % catalog_name
+        cursor.execute(sql, [ table_name ])
+        return cursor.fetchone() is not None
+
+    def disable_fk_checks_if_necessary(provider, connection):
+        cursor = connection.cursor()
+        cursor.execute('PRAGMA foreign_keys')
+        fk = cursor.fetchone()
+        if fk is not None:
+            fk = fk[0]
+            if fk: cursor.execute('PRAGMA foreign_keys = false')
+        return bool(fk)
+
+    def enable_fk_checks_if_necessary(provider, connection, fk):
+        assert type(fk) is bool, fk
+        if fk:
+            cursor = connection.cursor()
+            cursor.execute('PRAGMA foreign_keys = true')
+
 provider_cls = SQLiteProvider
 
 class SQLitePool(Pool):
