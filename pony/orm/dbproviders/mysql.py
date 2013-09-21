@@ -7,7 +7,7 @@ warnings.filterwarnings('ignore', '^Table.+already exists$', Warning, '^pony\\.o
 
 import MySQLdb
 import MySQLdb.converters
-from MySQLdb.constants import FIELD_TYPE, FLAG
+from MySQLdb.constants import FIELD_TYPE, FLAG, CLIENT
 
 from pony.orm import core, dbschema, dbapiprovider
 from pony.orm.core import log_orm, log_sql, OperationalError
@@ -148,6 +148,7 @@ class MySQLProvider(DBAPIProvider):
             kwargs['conv'] = conv
         if 'charset' not in kwargs:
             kwargs['charset'] = 'utf8'
+        kwargs['client_flag'] = kwargs.get('client_flag', 0) | CLIENT.FOUND_ROWS 
         return Pool(MySQLdb, *args, **kwargs)
 
 provider_cls = MySQLProvider
