@@ -3635,7 +3635,7 @@ class DBSessionContextManager(object):
             if exc_type is None:
                 commit()
                 return
-            assert isinstance(exc_value, exc_type)
+            # assert isinstance(exc_value, exc_type)  # does not work in Python 2.6 for string exceptions
             allowed_exceptions = self.allowed_exceptions
             if callable(allowed_exceptions): allowed = allowed_exceptions(exc_value)
             else: allowed = isinstance(exc_value, tuple(allowed_exceptions))
