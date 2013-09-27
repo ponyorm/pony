@@ -192,7 +192,7 @@ class SQLBuilder(object):
                  ') VALUES (', join(', ', [builder(value) for value in values]), ')' ]
     def UPDATE(builder, table_name, pairs, where=None):
         return [ 'UPDATE ', builder.quote_name(table_name), '\nSET ',
-                 join(', ', [ (builder.quote_name(name), '=', builder(param)) for name, param in pairs]),
+                 join(', ', [ (builder.quote_name(name), ' = ', builder(param)) for name, param in pairs]),
                  where and [ '\n', builder(where) ] or [] ]
     def DELETE(builder, table_name, where=None):
         result = [ 'DELETE FROM ', builder.quote_name(table_name) ]

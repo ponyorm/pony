@@ -338,5 +338,39 @@ SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
 FROM "STUDENT" "s"
 WHERE "s"."GROUP" = 1
 
+>>> select(c for c in Course if count(c.students) > 3)
 
+SELECT "c"."name", "c"."semester"
+FROM "Course" "c"
+  LEFT JOIN "Course_Student" "t-1"
+    ON "c"."name" = "t-1"."course_name" AND "c"."semester" = "t-1"."course_semester"
+GROUP BY "c"."name", "c"."semester"
+HAVING COUNT(DISTINCT "t-1"."student") > 3
 
+Oracle:
+
+SELECT "c"."NAME", "c"."SEMESTER"
+FROM "COURSE" "c"
+  LEFT JOIN "COURSE_STUDENT" "t-1"
+    ON "c"."NAME" = "t-1"."COURSE_NAME" AND "c"."SEMESTER" = "t-1"."COURSE_SEMESTER"
+GROUP BY "c"."NAME", "c"."SEMESTER"
+HAVING COUNT(DISTINCT "t-1"."STUDENT") > 3
+
+>>> select(s for s in Student if count(s.courses) > 3)
+
+SELECT "s"."id"
+FROM "Student" "s"
+  LEFT JOIN "Course_Student" "t-1"
+    ON "s"."id" = "t-1"."student"
+GROUP BY "s"."id"
+HAVING COUNT("t-1"."ROWID") > 3
+
+Oracle:
+
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE (
+    SELECT COUNT(*)
+    FROM "COURSE_STUDENT" "t-1"
+    WHERE "s"."ID" = "t-1"."STUDENT"
+    ) > 3

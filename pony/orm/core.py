@@ -926,7 +926,7 @@ class Attribute(object):
                 obj._wbits_ = wbits | obj._bits_[attr]
                 if status != 'updated':
                     if status in ('loaded', 'saved'): cache.to_be_checked.append(obj)
-                    else: assert status == 'locked'
+                    else: assert status == 'to_be_checked'
                     obj._status_ = 'updated'
                     cache.modified = True
                     cache.updated.add(obj)
@@ -2119,11 +2119,11 @@ class EntityMeta(type):
 
         entity._cached_create_sql_ = None
         entity._cached_create_sql_auto_pk_ = None
-        entity._cached_delete_sql_ = None
         entity._find_sql_cache_ = {}
         entity._batchload_sql_cache_ = {}
         entity._update_sql_cache_ = {}
-        entity._lock_sql_cache_ = {}
+        entity._delete_sql_cache_ = {}
+        entity._to_be_checked_sql_cache_ = {}
 
         entity._propagation_mixin_ = None
         entity._set_wrapper_subclass_ = None
@@ -2488,7 +2488,7 @@ class EntityMeta(type):
         cached_sql = sql, adapter, attr_offsets
         entity._find_sql_cache_[query_key] = cached_sql
         return cached_sql
-    def _fetch_objects(entity, cursor, attr_offsets, max_fetch_count=None, rbits=None):
+    def _fetch_objects(entity, cursor, attr_offsets, max_fetch_count=None, rbits=None, for_update=False):
         if max_fetch_count is None: max_fetch_count = options.MAX_FETCH_COUNT
         if max_fetch_count is not None:
             rows = cursor.fetchmany(max_fetch_count + 1)
@@ -2500,12 +2500,12 @@ class EntityMeta(type):
         else: rows = cursor.fetchall()
         objects = []
         if attr_offsets is None:
-            objects = [ entity._get_by_raw_pkval_(row) for row in rows ]
+            objects = [ entity._get_by_raw_pkval_(row, for_update) for row in rows ]
             entity._load_many_(objects)
         else:
             for row in rows:
                 real_entity_subclass, pkval, avdict = entity._parse_row_(row, attr_offsets)
-                obj = real_entity_subclass._new_(pkval, 'loaded')
+                obj = real_entity_subclass._new_(pkval, 'loaded', for_update)
                 if obj._status_ in del_statuses: continue
                 obj._db_set_(avdict)
                 objects.append(obj)
@@ -2585,59 +2585,62 @@ class EntityMeta(type):
         database = entity._database_
         if database is None: throw(TransactionError)
         return database._get_cache()
-    def _new_(entity, pkval, status, undo_funcs=None):
+    def _new_(entity, pkval, status, for_update=False, undo_funcs=None):
         cache = entity._get_cache_()
         pk = entity.__dict__['_pk_']
         index = cache.indexes.setdefault(pk, {})
         if pkval is None: obj = None
         else: obj = index.get(pkval)
+
         if obj is None: pass
         elif status == 'created':
             if entity._pk_is_composite_: pkval = ', '.join(str(item) for item in pkval)
             throw(CacheIndexError, 'Cannot create %s: instance with primary key %s already exists'
                              % (obj.__class__.__name__, pkval))
-        elif obj.__class__ is entity: return obj
-        elif issubclass(obj.__class__, entity): return obj
+        elif obj.__class__ is entity: pass
+        elif issubclass(obj.__class__, entity): pass
         elif not issubclass(entity, obj.__class__): throw(TransactionError,
             'Unexpected class change from %s to %s for object with primary key %r' %
             (obj.__class__, entity, obj._pkval_))
         elif obj._rbits_ or obj._wbits_: throw(NotImplementedError)
-        else:
-            obj.__class__ = entity
-            return obj
-        cache.noflush += 1
-        try:
-            obj = object.__new__(entity)
-            obj._dbvals_ = {}
-            obj._vals_ = {}
-            obj._cache_ = cache
-            obj._status_ = status
-            obj._pkval_ = pkval
-            if pkval is not None:
-                index[pkval] = obj
-                obj._newid_ = None
-            else: obj._newid_ = next_new_instance_id()
-            if obj._pk_is_composite_: pairs = zip(pk, pkval)
-            else: pairs = ((pk, pkval),)
-            if status == 'loaded':
-                assert undo_funcs is None
-                obj._rbits_ = obj._wbits_ = 0
-                for attr, val in pairs:
-                    obj._vals_[attr.name] = val
-                    if attr.reverse: attr.db_update_reverse(obj, NOT_LOADED, val)
-                seeds = cache.seeds.setdefault(pk, set())
-                seeds.add(obj)
-            elif status == 'created':
-                assert undo_funcs is not None
-                obj._rbits_ = obj._wbits_ = None
-                for attr, val in pairs:
-                    obj._vals_[attr.name] = val
-                    if attr.reverse: attr.update_reverse(obj, NOT_LOADED, val, undo_funcs)
-            else: assert False
-            return obj
-        finally:
-            cache.noflush -= 1
-    def _get_by_raw_pkval_(entity, raw_pkval):
+        else: obj.__class__ = entity
+
+        if obj is None:
+            cache.noflush += 1
+            try:
+                obj = object.__new__(entity)
+                obj._dbvals_ = {}
+                obj._vals_ = {}
+                obj._cache_ = cache
+                obj._status_ = status
+                obj._pkval_ = pkval
+                if pkval is not None:
+                    index[pkval] = obj
+                    obj._newid_ = None
+                else: obj._newid_ = next_new_instance_id()
+                if obj._pk_is_composite_: pairs = zip(pk, pkval)
+                else: pairs = ((pk, pkval),)
+                if status == 'loaded':
+                    assert undo_funcs is None
+                    obj._rbits_ = obj._wbits_ = 0
+                    for attr, val in pairs:
+                        obj._vals_[attr.name] = val
+                        if attr.reverse: attr.db_update_reverse(obj, NOT_LOADED, val)
+                    seeds = cache.seeds.setdefault(pk, set())
+                    seeds.add(obj)
+                elif status == 'created':
+                    assert undo_funcs is not None
+                    obj._rbits_ = obj._wbits_ = None
+                    for attr, val in pairs:
+                        obj._vals_[attr.name] = val
+                        if attr.reverse: attr.update_reverse(obj, NOT_LOADED, val, undo_funcs)
+                else: assert False
+            finally:
+                cache.noflush -= 1
+        if for_update:
+            cache.for_update.add(obj)
+        return obj
+    def _get_by_raw_pkval_(entity, raw_pkval, for_update=False):
         i = 0
         pkval = []
         for attr in entity._pk_attrs_:
@@ -2654,7 +2657,7 @@ class EntityMeta(type):
             pkval.append(val)
         if not entity._pk_is_composite_: pkval = pkval[0]
         else: pkval = tuple(pkval)
-        obj = entity._new_(pkval, 'loaded')
+        obj = entity._new_(pkval, 'loaded', for_update)
         assert obj._status_ != 'cancelled'
         return obj
     def _get_propagation_mixin_(entity):
@@ -2726,7 +2729,7 @@ def populate_criteria_list(criteria_list, columns, converters, params_count=0, t
         params_count += 1
     return params_count
 
-statuses = set(['created', 'loaded', 'updated', 'deleted', 'cancelled', 'saved', 'locked'])
+statuses = set(['created', 'loaded', 'updated', 'deleted', 'cancelled', 'saved', 'to_be_checked'])
 del_statuses = set(['deleted', 'cancelled'])
 created_or_deleted_statuses = set(['created']) | del_statuses
 
@@ -2797,7 +2800,7 @@ class Entity(object):
                                      % (entity.__name__, vals, attr_names))
                 indexes[attrs] = vals
             try:
-                obj = entity._new_(pkval, 'created', undo_funcs)
+                obj = entity._new_(pkval, 'created', undo_funcs=undo_funcs)
                 for attr, val in avdict.iteritems():
                     if attr.pk_offset is not None: continue
                     elif not attr.is_collection:
@@ -3003,7 +3006,7 @@ class Entity(object):
                 else:
                     if status == 'updated': cache.updated.remove(obj)
                     elif status in ('loaded', 'saved'): cache.to_be_checked.append(obj)
-                    else: assert status == 'locked'
+                    else: assert status == 'to_be_checked'
                     obj._status_ = 'deleted'
                     cache.modified = True
                     cache.deleted.append(obj)
@@ -3042,7 +3045,7 @@ class Entity(object):
                         cache.modified = True
                         cache.updated.add(obj)
                         if status in ('loaded', 'saved'): cache.to_be_checked.append(obj)
-                        else: assert status == 'locked'
+                        else: assert status == 'to_be_checked'
                 if not collection_avdict:
                     for attr in avdict:
                         if attr.reverse or attr.is_part_of_unique_index: break
@@ -3115,7 +3118,7 @@ class Entity(object):
         cache = obj._cache_
         if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ not in ('loaded', 'saved'): return
-        obj._status_ = 'locked'
+        obj._status_ = 'to_be_checked'
         cache.to_be_checked.append(obj)
     @classmethod
     def _attrs_with_bit_(entity, mask=-1):
@@ -3125,6 +3128,21 @@ class Entity(object):
             if bit is None: continue
             if not bit & mask: continue
             yield attr
+    def _construct_optimistic_criteria_(obj):
+        optimistic_columns = []
+        optimistic_converters = []
+        optimistic_values = []
+        for attr in obj._attrs_with_bit_(obj._rbits_):
+            if not attr.columns: continue
+            dbval = obj._dbvals_.get(attr.name, NOT_LOADED)
+            assert dbval is not NOT_LOADED
+            optimistic_columns.extend(attr.columns)
+            if dbval is not None:
+                optimistic_converters.extend(attr.converters)
+            else:
+                optimistic_converters.extend(None for converter in attr.converters)
+            optimistic_values.extend(attr.get_raw_values(dbval))
+        return optimistic_columns, optimistic_converters, optimistic_values
     def _save_principal_objects_(obj, dependent_objects):
         if dependent_objects is None: dependent_objects = []
         elif obj in dependent_objects:
@@ -3216,20 +3234,14 @@ class Entity(object):
             for attr in obj._pk_attrs_:
                 val = obj._vals_[attr.name]
                 values.extend(attr.get_raw_values(val))
-            optimistic_check_columns = []
-            optimistic_check_converters = []
-            if obj._cache_.optimistic:
-                for attr in obj._attrs_with_bit_(obj._rbits_):
-                    if not attr.columns: continue
-                    dbval = obj._dbvals_.get(attr.name, NOT_LOADED)
-                    assert dbval is not NOT_LOADED
-                    optimistic_check_columns.extend(attr.columns)
-                    if dbval is not None:
-                        optimistic_check_converters.extend(attr.converters)
-                    else:
-                        optimistic_check_converters.extend(None for converter in attr.converters)
-                    values.extend(attr.get_raw_values(dbval))
-            query_key = (tuple(update_columns), tuple(optimistic_check_columns), tuple(converter is not None for converter in optimistic_check_converters))
+            cache = obj._cache_
+            if cache.optimistic or obj not in cache.for_update:
+                optimistic_columns, optimistic_converters, optimistic_values = \
+                    obj._construct_optimistic_criteria_()
+                values.extend(optimistic_values)
+            else: optimistic_columns = optimistic_converters = ()
+            query_key = (tuple(update_columns), tuple(optimistic_columns),
+                         tuple(converter is not None for converter in optimistic_converters))
             database = obj._database_
             cached_sql = obj._update_sql_cache_.get(query_key)
             if cached_sql is None:
@@ -3244,7 +3256,8 @@ class Entity(object):
                 pk_columns = obj._pk_columns_
                 pk_converters = obj._pk_converters_
                 params_count = populate_criteria_list(where_list, pk_columns, pk_converters, params_count)
-                populate_criteria_list(where_list, optimistic_check_columns, optimistic_check_converters, params_count)
+                if optimistic_columns:
+                    populate_criteria_list(where_list, optimistic_columns, optimistic_converters, params_count)
                 sql_ast = [ 'UPDATE', obj._table_, zip(update_columns, update_params), where_list ]
                 sql, adapter = database._ast2sql(sql_ast)
                 obj._update_sql_cache_[query_key] = sql, adapter
@@ -3260,7 +3273,7 @@ class Entity(object):
             val = obj._vals_.get(attr.name, NOT_LOADED)
             if val is NOT_LOADED: assert attr.name not in obj._dbvals_
             else: obj._dbvals_[attr.name] = val
-    def _save_locked_(obj):
+    def _save_to_be_checked_(obj):
         assert obj._wbits_ == 0
         if not obj._cache_.optimistic:
             obj._status_ = 'loaded'
@@ -3269,25 +3282,19 @@ class Entity(object):
         for attr in obj._pk_attrs_:
             val = obj._vals_[attr.name]
             values.extend(attr.get_raw_values(val))
-        optimistic_check_columns = []
-        optimistic_check_converters = []
-        for attr in obj._attrs_with_bit_(obj._rbits_):
-            if not attr.columns: continue
-            dbval = obj._dbvals_.get(attr.name, NOT_LOADED)
-            assert dbval is not NOT_LOADED
-            optimistic_check_columns.extend(attr.columns)
-            optimistic_check_converters.extend(attr.converters)
-            values.extend(attr.get_raw_values(dbval))
-        query_key = tuple(optimistic_check_columns)
+        optimistic_columns, optimistic_converters, optimistic_values = \
+            obj._construct_optimistic_criteria_()
+        values.extend(optimistic_values)
+        query_key = tuple(optimistic_columns)
         database = obj._database_
-        cached_sql = obj._lock_sql_cache_.get(query_key)
+        cached_sql = obj._to_be_checked_sql_cache_.get(query_key)
         if cached_sql is None:
             where_list = [ 'WHERE' ]
             params_count = populate_criteria_list(where_list, obj._pk_columns_, obj._pk_converters_)
-            populate_criteria_list(where_list, optimistic_check_columns, optimistic_check_converters, params_count)
+            populate_criteria_list(where_list, optimistic_columns, optimistic_converters, params_count)
             sql_ast = [ 'SELECT', [ 'ALL', [ 'VALUE', 1 ]], [ 'FROM', [ None, 'TABLE', obj._table_ ] ], where_list ]
             sql, adapter = database._ast2sql(sql_ast)
-            obj._lock_sql_cache_[query_key] = sql, adapter
+            obj._to_be_checked_sql_cache_[query_key] = sql, adapter
         else: sql, adapter = cached_sql
         arguments = adapter(values)
         cursor = database._exec_sql(sql, arguments)
@@ -3296,16 +3303,26 @@ class Entity(object):
                               'Object %s was updated outside of current transaction' % safe_repr(obj))
         obj._status_ = 'loaded'
     def _save_deleted_(obj):
+        values = []
+        values.extend(obj._get_raw_pkval_())
+        cache = obj._cache_
+        if cache.optimistic or obj not in cache.for_update:
+            optimistic_columns, optimistic_converters, optimistic_values = \
+                obj._construct_optimistic_criteria_()
+            values.extend(optimistic_values)
+        else: optimistic_columns = optimistic_converters = ()
+        query_key = (tuple(optimistic_columns), tuple(converter is not None for converter in optimistic_converters))
         database = obj._database_
-        cached_sql = obj._cached_delete_sql_
+        cached_sql = obj._delete_sql_cache_.get(query_key)
         if cached_sql is None:
             where_list = [ 'WHERE' ]
-            populate_criteria_list(where_list, obj._pk_columns_, obj._pk_converters_)
+            params_count = populate_criteria_list(where_list, obj._pk_columns_, obj._pk_converters_)
+            if optimistic_columns:
+                populate_criteria_list(where_list, optimistic_columns, optimistic_converters, params_count)
             sql_ast = [ 'DELETE', obj._table_, where_list ]
             sql, adapter = database._ast2sql(sql_ast)
-            obj.__class__._cached_delete_sql_ = sql, adapter
+            obj.__class__._delete_sql_cache_[query_key] = sql, adapter
         else: sql, adapter = cached_sql
-        values = obj._get_raw_pkval_()
         arguments = adapter(values)
         database._exec_sql(sql, arguments)
     def _save_(obj, dependent_objects=None):
@@ -3319,7 +3336,7 @@ class Entity(object):
         if status == 'created': obj._save_created_()
         elif status == 'updated': obj._save_updated_()
         elif status == 'deleted': obj._save_deleted_()
-        elif status == 'locked': obj._save_locked_()
+        elif status == 'to_be_checked': obj._save_to_be_checked_()
         else: assert False
 
 class Cache(object):
@@ -3335,6 +3352,7 @@ class Cache(object):
         cache.created = set()
         cache.deleted = []
         cache.updated = set()
+        cache.for_update = set()
         cache.noflush = 0
         cache.modified_collections = {}
         cache.to_be_checked = []
@@ -3383,6 +3401,7 @@ class Cache(object):
                     if debug: log_orm('START OPTIMISTIC SAVE')
                     provider.start_optimistic_save(connection)
                 cache.save()
+            cache.for_update.clear()
             if modified or not cache.optimistic:
                 if debug: log_orm('COMMIT')
                 provider.commit(connection)
@@ -3635,7 +3654,7 @@ class DBSessionContextManager(object):
             if exc_type is None:
                 commit()
                 return
-            assert isinstance(exc_value, exc_type)
+            # assert isinstance(exc_value, exc_type)  # does not work in Python 2.6 for string exceptions
             allowed_exceptions = self.allowed_exceptions
             if callable(allowed_exceptions): allowed = allowed_exceptions(exc_value)
             else: allowed = isinstance(exc_value, tuple(allowed_exceptions))
@@ -3864,7 +3883,8 @@ class Query(object):
             cursor = database._exec_sql(sql, arguments)
             if isinstance(translator.expr_type, EntityMeta):
                 entity = translator.expr_type
-                result = entity._fetch_objects(cursor, attr_offsets, rbits=translator.tableref.rbits)
+                result = entity._fetch_objects(cursor, attr_offsets, rbits=translator.tableref.rbits,
+                                               for_update=query._for_update)
             elif len(translator.row_layout) == 1:
                 func, slice_or_offset, src = translator.row_layout[0]
                 result = list(starmap(func, cursor.fetchall()))

@@ -329,7 +329,9 @@ class TestSQLTranslator(unittest.TestCase):
     def test_hint_join1(self):
         result = set(select(s for s in Student if JOIN(max(s.courses.credits) == 3)))
         self.assertEquals(result, set([Student[2]]))
-
+    def test_hint_join2(self):
+        result = set(select(c for c in Course if JOIN(len(c.students) == 1)))
+        self.assertEquals(result, set([Course['Math', 1], Course['Economics', 1]]))
 
 
 if __name__ == "__main__":
