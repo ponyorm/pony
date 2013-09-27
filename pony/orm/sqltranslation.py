@@ -96,8 +96,13 @@ class SQLTranslator(ASTTranslator):
             value = node.name == 'True' and True or False
             monad = translator.ConstMonad.new(translator, value)
         elif tt is tuple:
-            monad = translator.ListMonad(translator, [ ParamMonad.new(translator, item_type, (src, i))
-                                                       for i, item_type in enumerate(t) ])
+            params = []
+            for i, item_type in enumerate(t):
+                if item_type is NoneType:
+                    throw(TypeError, 'Expression %r should not contain None values' % src)
+                param = ParamMonad.new(translator, item_type, (src, i))
+                params.append(param)
+            monad = translator.ListMonad(translator, params)
         else:
             monad = translator.ParamMonad.new(translator, t, src)
         node.monad = monad
