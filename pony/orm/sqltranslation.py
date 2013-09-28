@@ -65,7 +65,7 @@ class SQLTranslator(ASTTranslator):
     row_value_syntax = True
 
     def default_post(translator, node):
-        throw(NotImplementedError)
+        throw(NotImplementedError)  # pragma: no cover
 
     def dispatch(translator, node):
         if hasattr(node, 'monad'): return  # monad already assigned somehow
@@ -79,7 +79,7 @@ class SQLTranslator(ASTTranslator):
         elif tt is SetType:
             if isinstance(t.item_type, EntityMeta):
                 monad = translator.EntityMonad(translator, t.item_type)
-            else: throw(NotImplementedError)
+            else: throw(NotImplementedError)  # pragma: no cover
         elif tt is FuncType:
             func = t.func
             if func not in translator.special_functions:
@@ -274,7 +274,7 @@ class SQLTranslator(ASTTranslator):
             elif isinstance(monad, translator.AttrSetMonad):
                 entity = monad.type.item_type
                 tableref = monad.make_tableref(translator.subquery)
-            else: assert False
+            else: assert False  # pragma: no cover
             translator.tableref = tableref
             pk_only = parent_translator is not None or translator.aggregated
             alias, pk_columns = tableref.make_join(pk_only=pk_only)
@@ -452,7 +452,7 @@ class SQLTranslator(ASTTranslator):
             elif isinstance(x, Attribute):
                 attr = x
                 desc_wrapper = lambda column: column
-            else: assert False, x
+            else: assert False, x  # pragma: no cover
             if entity._adict_.get(attr.name) is not attr: throw(TypeError,
                 'Attribute %s does not belong to Entity %s' % (attr, entity.__name__))
             if attr.is_collection: throw(TypeError,
@@ -870,7 +870,7 @@ class Monad(object):
             if expr_type not in comparable_types:
                 throw(TypeError, "Function '%s' cannot be applied to type %r in {EXPR}"
                                  % (func_name, type2str(expr_type)))
-        else: assert False
+        else: assert False  # pragma: no cover
         expr = monad.getsql()
         if len(expr) == 1: expr = expr[0]
         elif translator.row_value_syntax == True: expr = ['ROW'] + expr
@@ -1242,7 +1242,7 @@ class AttrMonad(Monad):
         elif type is datetime: cls = translator.DatetimeAttrMonad
         elif type is buffer: cls = translator.BufferAttrMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectAttrMonad
-        else: throw(NotImplementedError, type)
+        else: throw(NotImplementedError, type)  # pragma: no cover
         return cls(parent, attr, *args, **kwargs)
     def __new__(cls, *args):
         if cls is AttrMonad: assert False, 'Abstract class'
@@ -1295,7 +1295,7 @@ class ParamMonad(Monad):
         elif type is datetime: cls = translator.DatetimeParamMonad
         elif type is buffer: cls = translator.BufferParamMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectParamMonad
-        else: throw(NotImplementedError, type)
+        else: throw(NotImplementedError, type)  # pragma: no cover
         result = cls(translator, type, src)
         result.aggregated = False
         return result
@@ -1323,7 +1323,7 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
         assert len(monad.params) == len(entity._pk_converters_)
         return [ [ 'PARAM', param, converter ] for param, converter in zip(monad.params, entity._pk_converters_) ]
     def requires_distinct(monad, joined=False):
-        assert False
+        assert False  # pragma: no cover
 
 class StringParamMonad(StringMixin, ParamMonad): pass
 class NumericParamMonad(NumericMixin, ParamMonad): pass
@@ -1338,7 +1338,7 @@ class ExprMonad(Monad):
         elif type in string_types: cls = translator.StringExprMonad
         elif type is date: cls = translator.DateExprMonad
         elif type is datetime: cls = translator.DatetimeExprMonad
-        else: throw(NotImplementedError, type)
+        else: throw(NotImplementedError, type)  # pragma: no cover
         return cls(translator, type, sql)
     def __new__(cls, *args):
         if cls is ExprMonad: assert False, 'Abstract class'
@@ -1364,7 +1364,7 @@ class ConstMonad(Monad):
         elif value_type is datetime: cls = translator.DatetimeConstMonad
         elif value_type is NoneType: cls = translator.NoneMonad
         elif value_type is buffer: cls = translator.BufferConstMonad
-        else: throw(NotImplementedError, value_type)
+        else: throw(NotImplementedError, value_type)  # pragma: no cover
         result = cls(translator, value)
         result.aggregated = False
         return result
@@ -1465,7 +1465,7 @@ class CmpMonad(BoolMonad):
             return [ sqland([ [ 'EQ', a, b ] for (a, b) in zip(left_sql, right_sql) ]) ]
         if op == '!=':
             return [ sqlor([ [ 'NE', a, b ] for (a, b) in zip(left_sql, right_sql) ]) ]
-        assert False
+        assert False  # pragma: no cover
 
 class LogicalBinOpMonad(BoolMonad):
     def __init__(monad, operands):
@@ -1805,7 +1805,7 @@ class AttrSetMonad(SetMixin, Monad):
                           [ 'FROM', [ 't', 'SELECT', [
                               [ 'DISTINCT' ] + expr_list, from_ast,
                               [ 'WHERE' ] + outer_conditions + inner_conditions ] ] ] ]
-        else: throw(NotImplementedError)  # Never happens
+        else: throw(NotImplementedError)  # pragma: no cover
         if sql_ast: optimized = False
         elif translator.hint_join:
             sql_ast, optimized = monad._joined_subselect(make_aggr, extra_grouping, coalesce_to_zero=True)
@@ -1829,7 +1829,7 @@ class AttrSetMonad(SetMixin, Monad):
             if item_type not in comparable_types: throw(TypeError,
                 "Function %s() expects query or items of comparable type, got %r in {EXPR}"
                 % (func_name.lower(), type2str(item_type)))
-        else: assert False
+        else: assert False  # pragma: no cover
 
         if monad.forced_distinct and func_name in ('SUM', 'AVG'):
             make_aggr = lambda expr_list: [ func_name ] + expr_list + [ True ]
@@ -1865,7 +1865,7 @@ class AttrSetMonad(SetMixin, Monad):
         translator = monad.translator
         if isinstance(parent, ObjectMixin): parent_tableref = parent.tableref
         elif isinstance(parent, translator.AttrSetMonad): parent_tableref = parent.make_tableref(subquery)
-        else: assert False
+        else: assert False  # pragma: no cover
         if attr.reverse:
             name_path = parent_tableref.name_path + '-' + attr.name
             monad.tableref = subquery.get_tableref(name_path) \
@@ -2157,10 +2157,10 @@ class QuerySetMonad(SetMixin, Monad):
                     sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ],
                                 [ 'FROM', [ alias, 'SELECT', [
                                   [ 'DISTINCT' ] + sub.expr_columns, from_ast, where_ast ] ] ] ]
-            else: assert False
+            else: assert False  # pragma: no cover
         elif len(sub.expr_columns) == 1:
             select_ast = [ 'AGGREGATES', [ 'COUNT', 'DISTINCT', sub.expr_columns[0] ] ]
-        else: throw(NotImplementedError)
+        else: throw(NotImplementedError)  # pragma: no cover
 
         from_ast[:] = sub.subquery.from_ast[:]
         where_ast[:] = [ 'WHERE' ] + sub.conditions
@@ -2196,7 +2196,7 @@ class QuerySetMonad(SetMixin, Monad):
             if expr_type not in comparable_types: throw(TypeError,
                 "Function %s() cannot be applied to type %r in {EXPR}"
                 % (func_name.lower(), type2str(expr_type)))
-        else: assert False
+        else: assert False  # pragma: no cover
         assert len(sub.expr_columns) == 1
         select_ast = [ 'AGGREGATES', [ func_name, sub.expr_columns[0] ] ]
         sql_ast = [ 'SELECT', select_ast, from_ast, where_ast ]
