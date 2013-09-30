@@ -21,7 +21,7 @@ from pony.orm.dbapiprovider import (
     )
 from pony.utils import (
     localbase, decorator, cut_traceback, throw, deprecated,
-    import_module, parse_expr, is_ident, count, avg as _avg, tostring, strjoin,
+    import_module, parse_expr, is_ident, count, avg as _avg, distinct as _distinct, tostring, strjoin,
     )
 
 __all__ = '''
@@ -49,7 +49,7 @@ __all__ = '''
 
     select left_join get exists
 
-    count sum min max avg
+    count sum min max avg distinct
 
     desc
 
@@ -1864,12 +1864,6 @@ class SetWrapper(object):
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         wrapper._attr_.__set__(obj, None)
 
-def iter2dict(iter):
-    d = {}
-    for item in iter:
-        d[item] = d.get(item, 0) + 1
-    return d
-
 def unpickle_multiset(obj, attrnames, items):
     entity = obj.__class__
     for name in attrnames:
@@ -1889,7 +1883,7 @@ class Multiset(object):
         multiset._obj_ = obj
         multiset._attrnames_ = attrnames
         if type(items) is dict: multiset._items_ = items
-        else: multiset._items_ = iter2dict(items)
+        else: multiset._items_ = _distinct(items)
     def __reduce__(multiset):
         return unpickle_multiset, (multiset._obj_, multiset._attrnames_, multiset._items_)
     @cut_traceback
@@ -1932,7 +1926,7 @@ class Multiset(object):
             return multiset._items_ == other
         if hasattr(other, 'keys'):
             return multiset._items_ == dict(other)
-        return multiset._items_ == iter2dict(other)
+        return multiset._items_ == _distinct(other)
     @cut_traceback
     def __ne__(multiset, other):
         return not multiset.__eq__(other)
@@ -3764,6 +3758,8 @@ sum = make_aggrfunc(_sum)
 min = make_aggrfunc(_min)
 max = make_aggrfunc(_max)
 avg = make_aggrfunc(_avg)
+
+distinct = make_aggrfunc(_distinct)
 
 @cut_traceback
 def exists(gen, frame_depth=0):

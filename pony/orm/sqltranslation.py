@@ -9,7 +9,7 @@ from copy import deepcopy
 from functools import update_wrapper
 
 from pony import options
-from pony.utils import avg, is_ident, throw
+from pony.utils import avg, distinct, is_ident, throw
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
     string_types, numeric_types, comparable_types, SetType, FuncType, MethodType, \
@@ -883,7 +883,10 @@ class Monad(object):
                     % translator.dialect)
         if func_name == 'AVG': result_type = float
         else: result_type = expr_type
-        result = translator.ExprMonad.new(translator, result_type, [ func_name, expr ])
+        aggr_ast = [ func_name, expr ]
+        if getattr(monad, 'forced_distinct', False) and func_name in ('SUM', 'AVG'):
+            aggr_ast.append(True)
+        result = translator.ExprMonad.new(translator, result_type, aggr_ast)
         result.aggregated = True
         return result
     def __call__(monad, *args, **kwargs): throw(TypeError)
@@ -1605,6 +1608,16 @@ class FuncAvgMonad(FuncMonad):
     def call(monad, x):
         return x.aggregate('AVG')
 
+class FuncDistinctMonad(FuncMonad):
+    func = distinct, core.distinct
+    def call(monad, x):
+        if isinstance(x, SetMixin): return x.call_distinct()
+        if not isinstance(x, NumericMixin): throw(TypeError)
+        result = object.__new__(x.__class__)
+        result.__dict__.update(x.__dict__)
+        result.forced_distinct = True
+        return result
+
 class FuncMinMonad(FuncMonad):
     func = min, core.min
     def call(monad, *args):
@@ -1679,7 +1692,12 @@ class JoinMonad(Monad):
 special_functions[JOIN] = JoinMonad
 
 class SetMixin(MonadMixin):
-    pass
+    forced_distinct = False
+    def call_distinct(monad):
+        new_monad = object.__new__(monad.__class__)
+        new_monad.__dict__.update(monad.__dict__)
+        new_monad.forced_distinct = True
+        return new_monad
 
 def make_attrset_binop(op, sqlop):
     def attrset_binop(monad, monad2):
@@ -1696,12 +1714,6 @@ class AttrSetMonad(SetMixin, Monad):
         monad.attr = attr
         monad.subquery = None
         monad.tableref = None
-        monad.forced_distinct = False
-    def call_distinct(monad):
-        new_monad = object.__new__(monad.__class__)
-        new_monad.__dict__.update(monad.__dict__)
-        new_monad.forced_distinct = True
-        return new_monad
     def cmp(monad, op, monad2):
         translator = monad.translator
         if type(monad2.type) is SetType \
@@ -2013,8 +2025,10 @@ class NumericSetExprMonad(SetMixin, Monad):
         if outer_cond[0] == 'AND': subquery.outer_conditions = outer_cond[1:]
         else: subquery.outer_conditions = [ outer_cond ]
         result_type = float if func_name == 'AVG' else monad.type.item_type
+        aggr_ast = [ func_name, expr ]
+        if monad.forced_distinct and func_name in ('SUM', 'AVG'): aggr_ast.append(True)
         if translator.optimize != monad.tableref.name_path:
-            sql_ast = [ 'SELECT', [ 'AGGREGATES', [ func_name, expr ] ],
+            sql_ast = [ 'SELECT', [ 'AGGREGATES', aggr_ast ],
                         subquery.from_ast,
                         [ 'WHERE' ] + subquery.outer_conditions + subquery.conditions ]
             result = translator.ExprMonad.new(translator, result_type, sql_ast)
@@ -2025,7 +2039,7 @@ class NumericSetExprMonad(SetMixin, Monad):
                 from_ast[0] = from_ast[0] + [ sqland(subquery.outer_conditions) ]
                 translator.subquery.from_ast.extend(from_ast)
                 translator.from_optimized = True
-            sql_ast = [ func_name, expr ]
+            sql_ast = aggr_ast
             result = translator.ExprMonad.new(translator, result_type, sql_ast)
             result.aggregated = True
         return result
@@ -2213,7 +2227,9 @@ class QuerySetMonad(SetMixin, Monad):
                 % (func_name.lower(), type2str(expr_type)))
         else: assert False  # pragma: no cover
         assert len(sub.expr_columns) == 1
-        select_ast = [ 'AGGREGATES', [ func_name, sub.expr_columns[0] ] ]
+        aggr_ast = [ func_name, sub.expr_columns[0] ]
+        if monad.forced_distinct and func_name in ('SUM', 'AVG'): aggr_ast.append(True)
+        select_ast = [ 'AGGREGATES', aggr_ast ]
         sql_ast = [ 'SELECT', select_ast, from_ast, where_ast ]
         result_type = func_name == 'AVG' and float or expr_type
         return translator.ExprMonad.new(translator, result_type, sql_ast)

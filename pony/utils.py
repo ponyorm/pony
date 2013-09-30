@@ -9,6 +9,7 @@ from os import urandom
 from codecs import BOM_UTF8, BOM_LE, BOM_BE
 from locale import getpreferredencoding
 from bisect import bisect
+from collections import defaultdict
 from copy import deepcopy, _deepcopy_dispatch
 from functools import update_wrapper
 
@@ -475,6 +476,12 @@ def avg(iter):
         count += 1
     if not count: return None
     return sum / count
+
+def distinct(iter):
+    d = defaultdict(int)
+    for item in iter:
+        d[item] = d[item] + 1
+    return d
 
 def is_utf8(encoding):
     return encoding.upper().replace('_', '').replace('-', '') in ('UTF8', 'UTF', 'U8')
