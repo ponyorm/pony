@@ -1908,7 +1908,8 @@ class Multiset(object):
     @cut_traceback
     def __str__(multiset):
         if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(multiset._obj_)
-        return '%s(%s)' % (multiset.__class__.__name__, str(multiset._items_))
+        items_str = '{%s}' % ', '.join('%r: %r' % pair for pair in sorted(multiset._items_.iteritems()))
+        return '%s(%s)' % (multiset.__class__.__name__, items_str)
     @cut_traceback
     def __nonzero__(multiset):
         if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(multiset._obj_)
