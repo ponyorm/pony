@@ -2834,6 +2834,31 @@ class Entity(object):
             else: raw_pkval += val._get_raw_pkval_()
         return tuple(raw_pkval)
     @cut_traceback
+    def __lt__(entity, other):
+        return entity._cmp_(other) < 0
+    @cut_traceback
+    def __le__(entity, other):
+        return entity._cmp_(other) <= 0
+    @cut_traceback
+    def __gt__(entity, other):
+        return entity._cmp_(other) > 0
+    @cut_traceback
+    def __ge__(entity, other):
+        return entity._cmp_(other) >= 0
+    def _cmp_(entity, other):
+        if entity is other: return 0
+        if isinstance(other, Entity):
+            pkval = entity._pkval_
+            other_pkval = other._pkval_
+            if pkval is not None:
+                if other_pkval is None: return -1
+                result = cmp(pkval, other_pkval)
+            else:
+                if other_pkval is not None: return 1
+                result = cmp(entity._newid_, other._newid_)
+            if result: return result
+        return cmp(id(entity), id(other))
+    @cut_traceback
     def __repr__(obj):
         pkval = obj._pkval_
         if pkval is None: return '%s[new:%d]' % (obj.__class__.__name__, obj._newid_)
