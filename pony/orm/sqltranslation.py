@@ -509,8 +509,10 @@ class SQLTranslator(ASTTranslator):
             translator.dispatch(right)
             if op.endswith('in'): monad = right.monad.contains(left.monad, op == 'not in')
             else: monad = left.monad.cmp(op, right.monad)
-            monad.aggregated = getattr(left.monad, 'aggregated', False) or getattr(right.monad, 'aggregated', False)
-            monad.nogroup = getattr(left.monad, 'nogroup', False) or getattr(right.monad, 'nogroup', False)
+            if not hasattr(monad, 'aggregated'):
+                monad.aggregated = getattr(left.monad, 'aggregated', False) or getattr(right.monad, 'aggregated', False)
+            if not hasattr(monad, 'nogroup'):
+                monad.nogroup = getattr(left.monad, 'nogroup', False) or getattr(right.monad, 'nogroup', False)
             if monad.aggregated and monad.nogroup: throw(NotImplementedError,
                 "Aggregation functions with different semantics cannot be mixed. Got: {EXPR}")
             monads.append(monad)
@@ -1717,14 +1719,16 @@ class AttrSetMonad(SetMixin, Monad):
             conditions = subquery.outer_conditions + subquery.conditions
             if len(expr_list) == 1:
                 subquery_ast = [ 'SELECT', [ 'ALL' ] + expr_list, from_ast, [ 'WHERE' ] + conditions ]
-                return translator.BoolExprMonad(translator, [ sqlop, item.getsql()[0], subquery_ast ])
+                sql_ast = [ sqlop, item.getsql()[0], subquery_ast ]
             elif translator.row_value_syntax:
                 subquery_ast = [ 'SELECT', [ 'ALL' ] + expr_list, from_ast, [ 'WHERE' ] + conditions ]
-                return translator.BoolExprMonad(translator, [ sqlop, [ 'ROW' ] + item.getsql(), subquery_ast ])
+                sql_ast = [ sqlop, [ 'ROW' ] + item.getsql(), subquery_ast ]
             else:
                 conditions += [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item.getsql(), expr_list) ]
-                subquery_ast = [ not_in and 'NOT_EXISTS' or 'EXISTS', from_ast, [ 'WHERE' ] + conditions ]
-                return translator.BoolExprMonad(translator, subquery_ast)
+                sql_ast = [ not_in and 'NOT_EXISTS' or 'EXISTS', from_ast, [ 'WHERE' ] + conditions ]
+            result = translator.BoolExprMonad(translator, sql_ast)
+            result.nogroup = True
+            return result
         elif not not_in:
             translator.distinct = True
             tableref = monad.make_tableref(translator.subquery)
