@@ -271,14 +271,14 @@ FROM "Student" "s"
 GROUP BY "s"."group"
 HAVING MAX("s"."gpa") < 4
 
->>> select((s.group, avg(s.gpa)) for s in Student) .order_by(lambda: avg(s.gpa))
+>>> select((s.group, avg(s.gpa)) for s in Student).order_by(lambda: avg(s.gpa))
 
 SELECT "s"."group", AVG("s"."gpa")
 FROM "Student" "s"
 GROUP BY "s"."group"
 ORDER BY AVG("s"."gpa")
 
->>> select((s.group, avg(s.gpa)) for s in Student) .order_by(lambda: desc(avg(s.gpa)))
+>>> select((s.group, avg(s.gpa)) for s in Student).order_by(lambda: desc(avg(s.gpa)))
 
 SELECT "s"."group", AVG("s"."gpa")
 FROM "Student" "s"
