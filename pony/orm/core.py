@@ -2252,20 +2252,14 @@ class EntityMeta(type):
         assert len(objects) == 1
         return objects[0]
     @cut_traceback
+    def exists(entity, *args, **kwargs):
+        if args: return entity._query_from_args_(3, args, kwargs).exists()
+        try: objects = entity._find_(1, kwargs)
+        except MultipleObjectsFoundError: return True
+        return bool(objects)
+    @cut_traceback
     def get(entity, *args, **kwargs):
-        if args:
-            if len(args) > 1: throw(TypeError, 'Only one positional argument expected')
-            if kwargs: throw(TypeError, 'If positional argument presented, no keyword arguments expected')
-            first_arg = args[0]
-            if not (isinstance(first_arg, types.FunctionType)
-                    or isinstance(first_arg, basestring) and lambda_re.match(first_arg)):
-                throw(TypeError, 'Positional argument must be lambda function or its text source. '
-                                 'Got: %s.get(%r)' % (entity.__name__, first_arg))
-
-            globals = sys._getframe(3).f_globals
-            locals = sys._getframe(3).f_locals
-            return entity._query_from_lambda_(first_arg, globals, locals).get()
-
+        if args: return entity._query_from_args_(3, args, kwargs).get()
         objects = entity._find_(1, kwargs)  # can throw MultipleObjectsFoundError
         if not objects: return None
         assert len(objects) == 1
@@ -2545,6 +2539,17 @@ class EntityMeta(type):
                 for obj in result:
                     if obj not in batch: throw(UnrepeatableReadError,
                                                'Phantom object %s disappeared' % safe_repr(obj))
+    def _query_from_args_(entity, frame_depth, args, kwargs):
+        if len(args) > 1: throw(TypeError, 'Only one positional argument expected')
+        if kwargs: throw(TypeError, 'If positional argument presented, no keyword arguments expected')
+        first_arg = args[0]
+        if not (isinstance(first_arg, types.FunctionType)
+                or isinstance(first_arg, basestring) and lambda_re.match(first_arg)):
+            throw(TypeError, 'Positional argument must be lambda function or its text source. '
+                             'Got: %s.get(%r)' % (entity.__name__, first_arg))
+        globals = sys._getframe(frame_depth+1).f_globals
+        locals = sys._getframe(frame_depth+1).f_locals
+        return entity._query_from_lambda_(first_arg, globals, locals)
     def _query_from_lambda_(entity, lambda_func, globals, locals):
         if type(lambda_func) is types.FunctionType:
             names, argsname, keyargsname, defaults = inspect.getargspec(lambda_func)

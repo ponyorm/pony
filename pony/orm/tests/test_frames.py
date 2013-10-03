@@ -78,6 +78,18 @@ class TestFrames(unittest.TestCase):
         self.assertEqual(p, Person[3])
 
     @db_session
+    def test_entity_exists(self):
+        x = 23
+        result = Person.exists(lambda p: p.age > x)
+        self.assertTrue(result)
+
+    @db_session
+    def test_entity_exists_str(self):
+        x = 23
+        result = Person.exists('lambda p: p.age > x')
+        self.assertTrue(result)
+
+    @db_session
     def test_entity_select(self):
         x = 20
         result = Person.select(lambda p: p.age > x)[:]
