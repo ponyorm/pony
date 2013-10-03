@@ -18,25 +18,73 @@ with db_session:
 class TestFrames(unittest.TestCase):
 
     @db_session
+    def test_select(self):
+        x = 20
+        result = select(p.id for p in Person if p.age > x)[:]
+        self.assertEquals(set(result), set([1, 3]))
+
+    @db_session
+    def test_select_str(self):
+        x = 20
+        result = select('p.id for p in Person if p.age > x')[:]
+        self.assertEquals(set(result), set([1, 3]))
+
+    @db_session
+    def test_left_join(self):
+        x = 20
+        result = left_join(p.id for p in Person if p.age > x)[:]
+        self.assertEquals(set(result), set([1, 3]))
+
+    @db_session
+    def test_left_join_str(self):
+        x = 20
+        result = left_join('p.id for p in Person if p.age > x')[:]
+        self.assertEquals(set(result), set([1, 3]))
+
+    @db_session
     def test_get(self):
+        x = 23
+        result = get(p.id for p in Person if p.age > x)
+        self.assertEquals(result, 3)
+
+    @db_session
+    def test_get_str(self):
+        x = 23
+        result = get('p.id for p in Person if p.age > x')
+        self.assertEquals(result, 3)
+
+    @db_session
+    def test_exists(self):
+        x = 23
+        result = exists(p for p in Person if p.age > x)
+        self.assertEquals(result, True)
+
+    @db_session
+    def test_exists_str(self):
+        x = 23
+        result = exists('p for p in Person if p.age > x')
+        self.assertEquals(result, True)
+
+    @db_session
+    def test_entity_get(self):
         x = 23
         p = Person.get(lambda p: p.age > x)
         self.assertEquals(p, Person[3])
 
     @db_session
-    def test_get_2(self):
+    def test_entity_get_str(self):
         x = 23
         p = Person.get('lambda p: p.age > x')
         self.assertEquals(p, Person[3])
 
     @db_session
-    def test_select(self):
+    def test_entity_select(self):
         x = 20
         result = Person.select(lambda p: p.age > x)[:]
         self.assertEquals(set(result), set([Person[1], Person[3]]))
 
     @db_session
-    def test_select_2(self):
+    def test_entity_select_str(self):
         x = 20
         result = Person.select('lambda p: p.age > x')[:]
         self.assertEquals(set(result), set([Person[1], Person[3]]))
@@ -49,7 +97,7 @@ class TestFrames(unittest.TestCase):
         self.assertEquals(result, [Person[3], Person[1]])
 
     @db_session
-    def test_order_by_2(self):
+    def test_order_by_str(self):
         x = 20
         y = -1
         result = Person.select('lambda p: p.age > x').order_by('p.age * y')[:]
@@ -63,7 +111,7 @@ class TestFrames(unittest.TestCase):
         self.assertEquals(result, [Person[3]])
 
     @db_session
-    def test_filter_2(self):
+    def test_filter_str(self):
         x = 20
         y = 'M'
         result = Person.select('lambda p: p.age > x').filter('p.name.startswith(y)')[:]

@@ -3733,11 +3733,11 @@ def select(gen, frame_depth=0, left_join=False):
 
 @cut_traceback
 def left_join(gen, frame_depth=0):
-    return select(gen, frame_depth=frame_depth+2, left_join=True)
+    return select(gen, frame_depth=frame_depth+3, left_join=True)
 
 @cut_traceback
 def get(gen):
-    return select(gen, frame_depth=2).get()
+    return select(gen, frame_depth=3).get()
 
 def make_aggrfunc(std_func):
     def aggrfunc(*args, **kwargs):
@@ -3763,7 +3763,7 @@ distinct = make_aggrfunc(_distinct)
 
 @cut_traceback
 def exists(gen, frame_depth=0):
-    return select(gen, frame_depth=frame_depth+2).exists()
+    return select(gen, frame_depth=frame_depth+3).exists()
 
 def JOIN(expr):
     return expr
