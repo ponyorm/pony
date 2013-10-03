@@ -3404,16 +3404,16 @@ class Cache(object):
         database = cache.database
         provider = database.provider
         connection = cache.connection or cache.establish_connection()
-        try:
-            if cache.optimistic:
+        if cache.optimistic:
+            try:
                 if debug: log_orm('OPTIMISTIC ROLLBACK')
                 provider.rollback(connection)
-        except:
-            cache.is_alive = False
-            cache.connection = None
-            x = local.db2cache.pop(database); assert x is cache
-            provider.drop(connection)
-            raise
+            except:
+                cache.is_alive = False
+                cache.connection = None
+                x = local.db2cache.pop(database); assert x is cache
+                provider.drop(connection)
+                raise
         try:
             modified = cache.modified
             if modified:
