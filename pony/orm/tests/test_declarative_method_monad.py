@@ -80,11 +80,11 @@ class TestMethodMonad(unittest.TestCase):
 
     def test8(self):
         result = select(s for s in Student if s.name.upper() == "JOE")[:]
-        self.assertEquals(result, [Student[1]])
+        self.assertEqual(result, [Student[1]])
 
     def test9(self):
         result = select(s for s in Student if s.name.lower() == "joe")[:]
-        self.assertEquals(result, [Student[1]])
+        self.assertEqual(result, [Student[1]])
 
     @raises_exception(AttributeError, "'unicode' object has no attribute 'unknown'")
     def test10(self):

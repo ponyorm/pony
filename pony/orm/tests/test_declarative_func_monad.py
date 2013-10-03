@@ -54,16 +54,16 @@ class TestFuncMonad(unittest.TestCase):
         db_session.__exit__()
     def test_minmax1(self):
         result = set(select(s for s in Student if max(s.id, 3) == 3 ))
-        self.assertEquals(result, set([Student[1], Student[2], Student[3]]))
+        self.assertEqual(result, set([Student[1], Student[2], Student[3]]))
     def test_minmax2(self):
         result = set(select(s for s in Student if min(s.id, 3) == 3 ))
-        self.assertEquals(result, set([Student[4], Student[5], Student[3]]))
+        self.assertEqual(result, set([Student[4], Student[5], Student[3]]))
     def test_minmax3(self):
         result = set(select(s for s in Student if max(s.name, "CC") == "CC" ))
-        self.assertEquals(result, set([Student[1], Student[2], Student[3]]))
+        self.assertEqual(result, set([Student[1], Student[2], Student[3]]))
     def test_minmax4(self):
         result = set(select(s for s in Student if min(s.name, "CC") == "CC" ))
-        self.assertEquals(result, set([Student[4], Student[5], Student[3]]))
+        self.assertEqual(result, set([Student[4], Student[5], Student[3]]))
     @raises_exception(TypeError)
     def test_minmax5(self):
         x = chr(128)
@@ -76,7 +76,7 @@ class TestFuncMonad(unittest.TestCase):
         result = set(select(s for s in Student if min(s.phd, 2) == 2 ))
     def test_date_func1(self):
         result = set(select(s for s in Student if s.dob >= date(1983, 3, 3)))
-        self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
+        self.assertEqual(result, set([Student[3], Student[4], Student[5]]))
     @raises_exception(ExprEvalError, "date(1983, 'three', 3) raises TypeError: an integer is required")
     def test_date_func2(self):
         result = set(select(s for s in Student if s.dob >= date(1983, 'three', 3)))
@@ -86,13 +86,13 @@ class TestFuncMonad(unittest.TestCase):
     #     result = set(select(s for s in Student if s.dob >= date(1983, d, 3)))
     def test_datetime_func1(self):
         result = set(select(s for s in Student if s.last_visit >= date(2011, 3, 3)))
-        self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
+        self.assertEqual(result, set([Student[3], Student[4], Student[5]]))
     def test_datetime_func2(self):
         result = set(select(s for s in Student if s.last_visit >= datetime(2011, 3, 3)))
-        self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
+        self.assertEqual(result, set([Student[3], Student[4], Student[5]]))
     def test_datetime_func3(self):
         result = set(select(s for s in Student if s.last_visit >= datetime(2011, 3, 3, 13, 13, 13)))
-        self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
+        self.assertEqual(result, set([Student[3], Student[4], Student[5]]))
     @raises_exception(ExprEvalError, "date(1983, 'three', 3) raises TypeError: an integer is required")
     def test_datetime_func4(self):
         result = set(select(s for s in Student if s.last_visit >= date(1983, 'three', 3)))
@@ -102,16 +102,16 @@ class TestFuncMonad(unittest.TestCase):
     #     result = set(select(s for s in Student if s.last_visit >= date(1983, d, 3)))
     def test_datetime_now1(self):
         result = set(select(s for s in Student if s.dob < date.today()))
-        self.assertEquals(result, set([Student[1], Student[2], Student[3], Student[4], Student[5]]))
+        self.assertEqual(result, set([Student[1], Student[2], Student[3], Student[4], Student[5]]))
     @raises_exception(ExprEvalError, "1 < datetime.now() raises TypeError: can't compare datetime.datetime to int")
     def test_datetime_now2(self):
         select(s for s in Student if 1 < datetime.now())
     def test_datetime_now3(self):
         result = set(select(s for s in Student if s.dob < datetime.today()))
-        self.assertEquals(result, set([Student[1], Student[2], Student[3], Student[4], Student[5]]))
+        self.assertEqual(result, set([Student[1], Student[2], Student[3], Student[4], Student[5]]))
     def test_decimal_func(self):
         result = set(select(s for s in Student if s.scholarship >= Decimal("303.3")))
-        self.assertEquals(result, set([Student[3], Student[4], Student[5]]))
+        self.assertEqual(result, set([Student[3], Student[4], Student[5]]))
 
 if __name__ == '__main__':
     unittest.main()

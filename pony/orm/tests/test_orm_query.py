@@ -67,16 +67,16 @@ class TestQuery(unittest.TestCase):
         self.assert_(True)
     def test2(self):
         avg_gpa = avg(s.gpa for s in Student)
-        self.assertEquals(avg_gpa, Decimal('3.2'))
+        self.assertEqual(avg_gpa, Decimal('3.2'))
     def test21(self):
         avg_gpa = avg(s.gpa for s in Student if s.id < 0)
-        self.assertEquals(avg_gpa, None)
+        self.assertEqual(avg_gpa, None)
     def test3(self):
         sum_ss = sum(s.scholarship for s in Student)
-        self.assertEquals(sum_ss, 300)
+        self.assertEqual(sum_ss, 300)
     def test31(self):
         sum_ss = sum(s.scholarship for s in Student if s.id < 0)
-        self.assertEquals(sum_ss, 0)
+        self.assertEqual(sum_ss, 0)
     @raises_exception(TranslationError, "'avg' is valid for numeric attributes only")
     def test4(self):
         avg(s.name for s in Student)
@@ -85,31 +85,31 @@ class TestQuery(unittest.TestCase):
     def test5(self):
         c = self.wrapper()
         c = self.wrapper()
-        self.assertEquals(c, 2)
+        self.assertEqual(c, 2)
     def test6(self):
         c = count(s.scholarship for s in Student if s.scholarship > 0)
-        self.assertEquals(c, 2)
+        self.assertEqual(c, 2)
     def test7(self):
         s = get(s.scholarship for s in Student if s.id == 3)
-        self.assertEquals(s, 200)
+        self.assertEqual(s, 200)
     def test8(self):
         s = get(s.scholarship for s in Student if s.id == 4)
-        self.assertEquals(s, None)
+        self.assertEqual(s, None)
     def test9(self):
         s = select(s for s in Student if s.id == 4).exists()
-        self.assertEquals(s, False)
+        self.assertEqual(s, False)
     def test10(self):
         r = min(s.scholarship for s in Student)
-        self.assertEquals(r, 100)
+        self.assertEqual(r, 100)
     def test11(self):
         r = min(s.scholarship for s in Student if s.id < 2)
-        self.assertEquals(r, None)
+        self.assertEqual(r, None)
     def test12(self):
         r = max(s.scholarship for s in Student)
-        self.assertEquals(r, 200)
+        self.assertEqual(r, 200)
     def test13(self):
         r = max(s.dob.year for s in Student)
-        self.assertEquals(r, 2001)
+        self.assertEqual(r, 2001)
 
 if __name__ == '__main__':
     unittest.main()

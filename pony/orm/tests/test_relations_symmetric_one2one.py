@@ -30,20 +30,20 @@ class TestSymmetric(unittest.TestCase):
         p5 = Person[5]
         p1.spouse = p5
         commit()
-        self.assertEquals(p1._vals_.get('spouse'), p5)
-        self.assertEquals(p5._vals_.get('spouse'), p1)
-        self.assertEquals(p2._vals_.get('spouse'), None)
+        self.assertEqual(p1._vals_.get('spouse'), p5)
+        self.assertEqual(p5._vals_.get('spouse'), p1)
+        self.assertEqual(p2._vals_.get('spouse'), None)
         data = db.select('spouse from person order by id')
-        self.assertEquals([5, None, 4, 3, 1], data)
+        self.assertEqual([5, None, 4, 3, 1], data)
     def test2(self):
         p1 = Person[1]
         p2 = Person[2]
         p1.spouse = None
         commit()
-        self.assertEquals(p1._vals_.get('spouse'), None)
-        self.assertEquals(p2._vals_.get('spouse'), None)
+        self.assertEqual(p1._vals_.get('spouse'), None)
+        self.assertEqual(p2._vals_.get('spouse'), None)
         data = db.select('spouse from person order by id')
-        self.assertEquals([None, None, 4, 3, None], data)
+        self.assertEqual([None, None, 4, 3, None], data)
     def test3(self):
         p1 = Person[1]
         p2 = Person[2]
@@ -51,15 +51,15 @@ class TestSymmetric(unittest.TestCase):
         p4 = Person[4]
         p1.spouse = p3
         commit()
-        self.assertEquals(p1._vals_.get('spouse'), p3)
-        self.assertEquals(p2._vals_.get('spouse'), None)
-        self.assertEquals(p3._vals_.get('spouse'), p1)
-        self.assertEquals(p4._vals_.get('spouse'), None)
+        self.assertEqual(p1._vals_.get('spouse'), p3)
+        self.assertEqual(p2._vals_.get('spouse'), None)
+        self.assertEqual(p3._vals_.get('spouse'), p1)
+        self.assertEqual(p4._vals_.get('spouse'), None)
         data = db.select('spouse from person order by id')
-        self.assertEquals([3, None, 1, None, None], data)
+        self.assertEqual([3, None, 1, None, None], data)
     def test4(self):
         persons = set(select(p for p in Person if p.spouse.name in ('B', 'D')))
-        self.assertEquals(persons, set([Person[1], Person[3]]))
+        self.assertEqual(persons, set([Person[1], Person[3]]))
     @raises_exception(UnrepeatableReadError, 'Value of Person.spouse for Person[1] was updated outside of current transaction')
     def test5(self):
         db.execute('update person set spouse = 3 where id = 2')
@@ -73,7 +73,7 @@ class TestSymmetric(unittest.TestCase):
         p2 = Person[2]
         p2.name
         p1.spouse
-        self.assertEquals(p2._vals_.get('spouse'), p1)
+        self.assertEqual(p2._vals_.get('spouse'), p1)
 
 if __name__ == '__main__':
     unittest.main()
