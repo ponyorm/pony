@@ -2352,6 +2352,13 @@ class EntityMeta(type):
                         return filtered_objects
                     else: throw(NotImplementedError)
         if obj is not None:
+            if obj._discriminator_:
+                if obj._subclasses_:
+                    cls = obj.__class__
+                    if not issubclass(entity, cls) and not issubclass(cls, entity): return []
+                    seeds = cache.seeds.get(entity.__dict__['_pk_'])
+                    if seeds and obj in seeds: obj._load_()
+                if not isinstance(obj, entity): return []
             if obj._status_ == 'deleted': return []
             for attr, val in avdict.iteritems():
                 if val != attr.__get__(obj):
