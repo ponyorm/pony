@@ -3385,7 +3385,7 @@ class Cache(object):
         cache.num = next_num()
         cache.database = database
         cache.optimistic = database.optimistic
-        cache.ignore_none = True  # todo : get from provider
+        cache.ignore_none = database.provider.ignore_none
         cache.indexes = {}
         cache.seeds = {}
         cache.collection_statistics = {}

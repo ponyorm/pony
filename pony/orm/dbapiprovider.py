@@ -72,7 +72,7 @@ class DBAPIProvider(object):
     quote_char = '"'
     max_params_count = 200
     max_name_len = 128
-
+    ignore_none = True
     table_if_not_exists_syntax = True
     index_if_not_exists_syntax = True
     max_time_precision = default_time_precision = 6

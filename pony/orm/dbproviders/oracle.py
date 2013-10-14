@@ -199,7 +199,6 @@ class OraProvider(DBAPIProvider):
     dialect = 'Oracle'
     paramstyle = 'named'
     max_name_len = 30
-
     table_if_not_exists_syntax = False
     index_if_not_exists_syntax = False
 
