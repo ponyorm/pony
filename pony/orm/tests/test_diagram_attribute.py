@@ -354,5 +354,24 @@ class TestAttribute(unittest.TestCase):
             attr1 = Set('Entity1', reverse='attr1', table=['db1', 'T1'])
         db.generate_mapping(create_tables=True)
 
+    def test_nullable1(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Optional(unicode, unique=True)
+        db.generate_mapping(create_tables=True)
+        self.assertEqual(Entity1.a.nullable, True)
+
+    def test_nullable2(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Optional(unicode, unique=True)
+        db.generate_mapping(create_tables=True)
+        with db_session:
+            Entity1()
+            commit()
+            Entity1()
+            commit()
+        self.assert_(True)
+
 if __name__ == '__main__':
     unittest.main()
