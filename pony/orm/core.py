@@ -2805,7 +2805,7 @@ class Entity(object):
             for attr in entity._simple_keys_:
                 val = avdict[attr]
                 if val in cache.indexes.setdefault(attr, {}): throw(CacheIndexError,
-                    'Cannot create %s: value %s for key %s already exists' % (entity.__name__, val, attr.name))
+                    'Cannot create %s: value %r for key %s already exists' % (entity.__name__, val, attr.name))
                 indexes[attr] = val
             for attrs in entity._composite_keys_:
                 vals = tuple(map(avdict.__getitem__, attrs))
