@@ -550,14 +550,6 @@ class Database(object):
                     m2m_table.m2m.add(attr)
                     m2m_table.m2m.add(reverse)
                 else:
-                    if schema.dialect == 'Oracle' and attr.is_string and not attr.is_required:
-                        if attr.nullable is False: throw(ERDiagramError,
-                            'In Oracle, optional string attribute %s must be nullable' % attr)
-                        attr.nullable = True
-                    if entity._root_ is not entity:
-                        if attr.nullable is False: throw(ERDiagramError,
-                            'Attribute %s must be nullable due to single-table inheritance' % attr)
-                        attr.nullable = True
                     columns = attr.get_columns()  # initializes attr.converters
                     if not attr.reverse and attr.default is not None:
                         assert len(attr.converters) == 1
@@ -678,7 +670,7 @@ class Attribute(object):
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
-                'cascade_delete', 'index'
+                'cascade_delete', 'index', 'original_default'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
@@ -761,15 +753,28 @@ class Attribute(object):
                 if attr.nullable is False:
                     throw(TypeError, 'Optional attribute with non-string type %s must be nullable' % attr)
                 attr.nullable = True
+            elif entity._database_.provider.dialect == 'Oracle':
+                if attr.nullable is False: throw(ERDiagramError,
+                    'In Oracle, optional string attribute %s must be nullable' % attr)
+                attr.nullable = True
+        if entity._root_ is not entity:
+            if attr.nullable is False: throw(ERDiagramError,
+                'Attribute %s must be nullable due to single-table inheritance' % attr)
+            attr.nullable = True
 
-        try: attr.default = attr.kwargs.pop('default')
-        except KeyError: attr.default = '' if attr.is_string and not attr.is_required else None
-        else:
+        if 'default' in attr.kwargs:
+            attr.default = attr.original_default = attr.kwargs.pop('default')
             if attr.is_required:
-                if attr.default is None:
-                    throw(TypeError, 'Default value for required attribute %s cannot be None' % attr)
-                if attr.default == '':
-                    throw(TypeError, 'Default value for required attribute %s cannot be empty string' % attr)
+                if attr.default is None: throw(TypeError,
+                    'Default value for required attribute %s cannot be None' % attr)
+                if attr.default == '': throw(TypeError,
+                    'Default value for required attribute %s cannot be empty string' % attr)
+            elif attr.default is None and not attr.nullable: throw(TypeError,
+                'Default value for non-nullable attribute %s cannot be set to None' % attr)
+        elif attr.is_string and not attr.is_required and not attr.nullable:
+            attr.default = ''
+        else:
+            attr.default = None
 
         if attr.py_type == float:
             if attr.pk_offset is not None:
@@ -1986,6 +1991,8 @@ class EntityMeta(type):
         if database.schema is not None: throw(ERDiagramError,
             'Cannot define entity %r: database mapping has already been generated' % entity.__name__)
 
+        entity._database_ = database
+
         entity._id_ = next_entity_id()
         direct_bases = [ c for c in entity.__bases__ if issubclass(c, Entity) and c.__name__ != 'Entity' ]
         entity._direct_bases_ = direct_bases
@@ -2050,6 +2057,8 @@ class EntityMeta(type):
                     if attr.nullable is False:
                         throw(TypeError, 'Optional attribute %s must be nullable, because it is part of composite key' % attr)
                     attr.nullable = True
+                    if attr.is_string and attr.default == '' and not hasattr(attr, 'original_default'):
+                        attr.default = None
 
         primary_keys = set(key for key, is_pk in keys.items() if is_pk)
         if direct_bases:
@@ -2107,7 +2116,6 @@ class EntityMeta(type):
                         'Each part of table name must be a string. Got: %r' % name_part)
                 entity._table_ = table_name = tuple(table_name)
 
-        entity._database_ = database
         database.entities[entity.__name__] = entity
         setattr(database, entity.__name__, entity)
         entity._link_reverse_attrs_()
