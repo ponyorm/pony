@@ -2804,11 +2804,13 @@ class Entity(object):
             indexes = {}
             for attr in entity._simple_keys_:
                 val = avdict[attr]
+                if val is None and cache.ignore_none: continue
                 if val in cache.indexes.setdefault(attr, {}): throw(CacheIndexError,
                     'Cannot create %s: value %r for key %s already exists' % (entity.__name__, val, attr.name))
                 indexes[attr] = val
             for attrs in entity._composite_keys_:
                 vals = tuple(map(avdict.__getitem__, attrs))
+                if cache.ignore_none and None in vals: continue
                 if vals in cache.indexes.setdefault(attrs, {}):
                     attr_names = ', '.join(attr.name for attr in attrs)
                     throw(CacheIndexError, 'Cannot create %s: value %s for composite key (%s) already exists'
