@@ -3663,45 +3663,64 @@ def _release():
     assert not local.db2cache
 
 class DBSessionContextManager(object):
-    def __init__(self, retry=1, retry_exceptions=(TransactionError,), allowed_exceptions=()):
-        if retry is not 1 and (type(retry) is not int or retry < 0): throw(TypeError)
+    def __init__(self, retry=0, retry_exceptions=(TransactionError,), allowed_exceptions=()):
+        if retry is not 0:
+            if type(retry) is not int: throw(TypeError,
+                "'retry' parameter of db_session must be of integer type. Got: %s" % type(retry))
+            if retry < 0: throw(TypeError,
+                "'retry' parameter of db_session must not be negative. Got: %d" % retry)
+        if not callable(allowed_exceptions) and not callable(retry_exceptions):
+            for e in allowed_exceptions:
+                if e in retry_exceptions: throw(TypeError,
+                    'The same exception %s cannot be specified in both '
+                    'allowed and retry exception lists simultaneously' % e.__name__)
         self.retry = retry
         self.retry_exceptions = retry_exceptions
         self.allowed_exceptions = allowed_exceptions
-        self.is_decorator = False
     def __call__(self, *args, **kwargs):
         if not args and not kwargs: return self
-        if len(args) > 1: throw(TypeError)
-        if len(args) == 1:
-            if kwargs: throw(TypeError)
-            self.is_decorator = True
-            func = args[0]
-            def new_func(func, *args, **kwargs):
-                for i in xrange(self.retry):
+        if len(args) > 1: throw(TypeError,
+            'Pass only keyword arguments to db_session or use db_session as decorator')
+        if not args: return self.__class__(**kwargs)
+        if kwargs: throw(TypeError,
+            'Pass only keyword arguments to db_session or use db_session as decorator')
+        func = args[0]
+        def new_func(func, *args, **kwargs):
+            try:
+                for i in xrange(self.retry+1):
+                    local.db_context_counter += 1
+                    exc_type = exc_value = exc_tb = None
                     try:
-                        with self: return func(*args, **kwargs)
-                    except Exception, e:
-                        if not isinstance(e, self.retry_exceptions): raise
-                raise
-            return decorator(new_func, func)
-        return self.__class__(**kwargs)
+                        try: return func(*args, **kwargs)
+                        except Exception:
+                            exc_type, exc_value, exc_tb = sys.exc_info()  # exc_value can be None in Python 2.6
+                            retry_exceptions = self.retry_exceptions
+                            if not callable(retry_exceptions):
+                                do_retry = issubclass(exc_type, tuple(retry_exceptions))
+                            else:
+                                do_retry = exc_value is not None and retry_exceptions(exc_value)
+                            if not do_retry: raise
+                    finally: self.__exit__(exc_type, exc_value, exc_tb)
+                raise exc_type, exc_value, exc_tb
+            finally: del exc_tb
+        return decorator(new_func, func)
     def __enter__(self):
-        if not self.is_decorator and self.retry != 1: throw(TypeError,
+        if self.retry is not 0: throw(TypeError,
             "@db_session can accept 'retry' parameter only when used as decorator and not as context manager")
         local.db_context_counter += 1
     def __exit__(self, exc_type=None, exc_value=None, traceback=None):
         local.db_context_counter -= 1
         if local.db_context_counter: return
         try:
-            if exc_type is None:
-                commit()
-                return
-            # assert isinstance(exc_value, exc_type)  # does not work in Python 2.6 for string exceptions
-            allowed_exceptions = self.allowed_exceptions
-            if callable(allowed_exceptions): allowed = allowed_exceptions(exc_value)
-            else: allowed = isinstance(exc_value, tuple(allowed_exceptions))
-            if allowed: commit()
-            else: rollback()
+            if exc_type is None: commit()  # exc_value can be None in Python 2.6 even if exc_type is not None
+            else:
+                allowed_exceptions = self.allowed_exceptions
+                if not callable(allowed_exceptions):
+                    allowed = issubclass(exc_type, tuple(allowed_exceptions))
+                else:
+                    allowed = exc_value is not None and allowed_exceptions(exc_value)
+                if allowed: commit()
+                else: rollback()
         finally: _release()
 
 db_session = DBSessionContextManager()
