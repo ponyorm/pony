@@ -3663,7 +3663,7 @@ def _release():
     assert not local.db2cache
 
 class DBSessionContextManager(object):
-    def __init__(self, retry=0, retry_exceptions=(TransactionError,), allowed_exceptions=()):
+    def __init__(self, retry=0, retry_exceptions=(TransactionError,), allowed_exceptions=(), ddl=False):
         if retry is not 0:
             if type(retry) is not int: throw(TypeError,
                 "'retry' parameter of db_session must be of integer type. Got: %s" % type(retry))
@@ -3677,6 +3677,7 @@ class DBSessionContextManager(object):
         self.retry = retry
         self.retry_exceptions = retry_exceptions
         self.allowed_exceptions = allowed_exceptions
+        self.ddl = ddl
     def __call__(self, *args, **kwargs):
         if not args and not kwargs: return self
         if len(args) > 1: throw(TypeError,
@@ -3686,6 +3687,9 @@ class DBSessionContextManager(object):
             'Pass only keyword arguments to db_session or use db_session as decorator')
         func = args[0]
         def new_func(func, *args, **kwargs):
+            if self.ddl and local.db_context_counter:
+                if isinstance(func, types.FunctionType): func = func.__name__ + '()'
+                throw(TransactionError, '%s cannot be called inside of db_session' % func)
             try:
                 for i in xrange(self.retry+1):
                     local.db_context_counter += 1
@@ -3707,6 +3711,8 @@ class DBSessionContextManager(object):
     def __enter__(self):
         if self.retry is not 0: throw(TypeError,
             "@db_session can accept 'retry' parameter only when used as decorator and not as context manager")
+        if self.ddl: throw(TypeError,
+            "@db_session can accept 'ddl' parameter only when used as decorator and not as context manager")
         local.db_context_counter += 1
     def __exit__(self, exc_type=None, exc_value=None, traceback=None):
         local.db_context_counter -= 1

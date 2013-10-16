@@ -233,8 +233,8 @@ class TestQuery(unittest.TestCase):
         with db_session:
             self.assertEqual(count(x for x in self.X), 3)
 
-    @raises_exception(TypeError, "@db_session can accept 'retry' parameter only "
-                                 "when used as decorator and not as context manager")
+    @raises_exception(TypeError, "@db_session can accept 'retry' parameter "
+                      "only when used as decorator and not as context manager")
     def test_db_session_manager_2(self):
         with db_session(retry=3):
             self.X(a=3, b=3)
@@ -260,6 +260,26 @@ class TestQuery(unittest.TestCase):
                 self.assertEqual(count(x for x in self.X), 3)
         else:
             self.fail()
+
+    @raises_exception(TypeError, "@db_session can accept 'ddl' parameter "
+                      "only when used as decorator and not as context manager")
+    def test_db_session_ddl_1(self):
+        with db_session(ddl=True):
+            pass
+
+    @raises_exception(TransactionError, "test() cannot be called inside of db_session")
+    def test_db_session_ddl_2(self):
+        @db_session(ddl=True)
+        def test():
+            pass
+        with db_session:
+            test()
+
+    def test_db_session_ddl_3(self):
+        @db_session(ddl=True)
+        def test():
+            pass
+        test()
 
 if __name__ == '__main__':
     unittest.main()
