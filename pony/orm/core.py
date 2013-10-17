@@ -289,51 +289,6 @@ def _release():
     for cache in _get_caches(): cache.release()
     assert not local.db2cache
 
-class DbLocal(localbase):
-    def __init__(dblocal):
-        dblocal.stats = {}
-        dblocal.last_sql = None
-
-class QueryStat(object):
-    def __init__(stat, sql, query_start_time=None):
-        if query_start_time is not None:
-            query_end_time = time()
-            duration = query_end_time - query_start_time
-            stat.min_time = stat.max_time = stat.sum_time = duration
-            stat.db_count = 1
-            stat.cache_count = 0
-        else:
-            stat.min_time = stat.max_time = stat.sum_time = None
-            stat.db_count = 0
-            stat.cache_count = 1
-        stat.sql = sql
-    def query_executed(stat, query_start_time):
-        query_end_time = time()
-        duration = query_end_time - query_start_time
-        if stat.db_count:
-            stat.min_time = _min(stat.min_time, duration)
-            stat.max_time = _max(stat.max_time, duration)
-            stat.sum_time += duration
-        else: stat.min_time = stat.max_time = stat.sum_time = duration
-        stat.db_count += 1
-    def merge(stat, stat2):
-        assert stat.sql == stat2.sql
-        if not stat2.db_count: pass
-        elif stat.db_count:
-            stat.min_time = _min(stat.min_time, stat2.min_time)
-            stat.max_time = _max(stat.max_time, stat2.max_time)
-            stat.sum_time += stat2.sum_time
-        else:
-            stat.min_time = stat2.min_time
-            stat.max_time = stat2.max_time
-            stat.sum_time = stat2.sum_time
-        stat.db_count += stat2.db_count
-        stat.cache_count += stat2.cache_count
-    @property
-    def avg_time(stat):
-        if not stat.db_count: return None
-        return stat.sum_time / stat.db_count
-
 select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class DBSessionContextManager(object):
@@ -772,6 +727,51 @@ class Database(object):
                 database._exec_sql(sql)
         finally: local.db_context_counter = False
         database.rollback()
+
+class DbLocal(localbase):
+    def __init__(dblocal):
+        dblocal.stats = {}
+        dblocal.last_sql = None
+
+class QueryStat(object):
+    def __init__(stat, sql, query_start_time=None):
+        if query_start_time is not None:
+            query_end_time = time()
+            duration = query_end_time - query_start_time
+            stat.min_time = stat.max_time = stat.sum_time = duration
+            stat.db_count = 1
+            stat.cache_count = 0
+        else:
+            stat.min_time = stat.max_time = stat.sum_time = None
+            stat.db_count = 0
+            stat.cache_count = 1
+        stat.sql = sql
+    def query_executed(stat, query_start_time):
+        query_end_time = time()
+        duration = query_end_time - query_start_time
+        if stat.db_count:
+            stat.min_time = _min(stat.min_time, duration)
+            stat.max_time = _max(stat.max_time, duration)
+            stat.sum_time += duration
+        else: stat.min_time = stat.max_time = stat.sum_time = duration
+        stat.db_count += 1
+    def merge(stat, stat2):
+        assert stat.sql == stat2.sql
+        if not stat2.db_count: pass
+        elif stat.db_count:
+            stat.min_time = _min(stat.min_time, stat2.min_time)
+            stat.max_time = _max(stat.max_time, stat2.max_time)
+            stat.sum_time += stat2.sum_time
+        else:
+            stat.min_time = stat2.min_time
+            stat.max_time = stat2.max_time
+            stat.sum_time = stat2.sum_time
+        stat.db_count += stat2.db_count
+        stat.cache_count += stat2.cache_count
+    @property
+    def avg_time(stat):
+        if not stat.db_count: return None
+        return stat.sum_time / stat.db_count
 
 ###############################################################################
 
