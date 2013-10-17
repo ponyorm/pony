@@ -278,6 +278,90 @@ class QueryStat(object):
 
 select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
+class DBSessionContextManager(object):
+    def __init__(self, retry=0, retry_exceptions=(TransactionError,), allowed_exceptions=(), ddl=False):
+        if retry is not 0:
+            if type(retry) is not int: throw(TypeError,
+                "'retry' parameter of db_session must be of integer type. Got: %s" % type(retry))
+            if retry < 0: throw(TypeError,
+                "'retry' parameter of db_session must not be negative. Got: %d" % retry)
+        if not callable(allowed_exceptions) and not callable(retry_exceptions):
+            for e in allowed_exceptions:
+                if e in retry_exceptions: throw(TypeError,
+                    'The same exception %s cannot be specified in both '
+                    'allowed and retry exception lists simultaneously' % e.__name__)
+        self.retry = retry
+        self.retry_exceptions = retry_exceptions
+        self.allowed_exceptions = allowed_exceptions
+        self.ddl = ddl
+    def __call__(self, *args, **kwargs):
+        if not args and not kwargs: return self
+        if len(args) > 1: throw(TypeError,
+            'Pass only keyword arguments to db_session or use db_session as decorator')
+        if not args: return self.__class__(**kwargs)
+        if kwargs: throw(TypeError,
+            'Pass only keyword arguments to db_session or use db_session as decorator')
+        func = args[0]
+        def new_func(func, *args, **kwargs):
+            if self.ddl and local.db_context_counter:
+                if isinstance(func, types.FunctionType): func = func.__name__ + '()'
+                throw(TransactionError, '%s cannot be called inside of db_session' % func)
+            try:
+                for i in xrange(self.retry+1):
+                    local.db_context_counter += 1
+                    exc_type = exc_value = exc_tb = None
+                    try:
+                        try: return func(*args, **kwargs)
+                        except Exception:
+                            exc_type, exc_value, exc_tb = sys.exc_info()  # exc_value can be None in Python 2.6
+                            retry_exceptions = self.retry_exceptions
+                            if not callable(retry_exceptions):
+                                do_retry = issubclass(exc_type, tuple(retry_exceptions))
+                            else:
+                                do_retry = exc_value is not None and retry_exceptions(exc_value)
+                            if not do_retry: raise
+                    finally: self.__exit__(exc_type, exc_value, exc_tb)
+                raise exc_type, exc_value, exc_tb
+            finally: del exc_tb
+        return decorator(new_func, func)
+    def __enter__(self):
+        if self.retry is not 0: throw(TypeError,
+            "@db_session can accept 'retry' parameter only when used as decorator and not as context manager")
+        if self.ddl: throw(TypeError,
+            "@db_session can accept 'ddl' parameter only when used as decorator and not as context manager")
+        local.db_context_counter += 1
+    def __exit__(self, exc_type=None, exc_value=None, traceback=None):
+        local.db_context_counter -= 1
+        if local.db_context_counter: return
+        try:
+            if exc_type is None: commit()  # exc_value can be None in Python 2.6 even if exc_type is not None
+            else:
+                allowed_exceptions = self.allowed_exceptions
+                if not callable(allowed_exceptions):
+                    allowed = issubclass(exc_type, tuple(allowed_exceptions))
+                else:
+                    allowed = exc_value is not None and allowed_exceptions(exc_value)
+                if allowed: commit()
+                else: rollback()
+        finally: _release()
+
+db_session = DBSessionContextManager()
+
+def with_transaction(*args, **kwargs):
+    deprecated(3, "@with_transaction decorator is deprecated, use @db_session decorator instead")
+    return db_session(*args, **kwargs)
+
+@decorator
+def db_decorator(func, *args, **kwargs):
+    web = sys.modules.get('pony.web')
+    allowed_exceptions = web and [ web.HttpRedirect ] or []
+    try:
+        with db_session(allowed_exceptions=allowed_exceptions):
+            return func(*args, **kwargs)
+    except (ObjectNotFound, RowNotFound):
+        if web: throw(web.Http404NotFound)
+        raise
+
 class Database(object):
     def __deepcopy__(self, memo):
         return self  # Database cannot be cloned by deepcopy()
@@ -3661,90 +3745,6 @@ def rollback():
 def _release():
     for cache in _get_caches(): cache.release()
     assert not local.db2cache
-
-class DBSessionContextManager(object):
-    def __init__(self, retry=0, retry_exceptions=(TransactionError,), allowed_exceptions=(), ddl=False):
-        if retry is not 0:
-            if type(retry) is not int: throw(TypeError,
-                "'retry' parameter of db_session must be of integer type. Got: %s" % type(retry))
-            if retry < 0: throw(TypeError,
-                "'retry' parameter of db_session must not be negative. Got: %d" % retry)
-        if not callable(allowed_exceptions) and not callable(retry_exceptions):
-            for e in allowed_exceptions:
-                if e in retry_exceptions: throw(TypeError,
-                    'The same exception %s cannot be specified in both '
-                    'allowed and retry exception lists simultaneously' % e.__name__)
-        self.retry = retry
-        self.retry_exceptions = retry_exceptions
-        self.allowed_exceptions = allowed_exceptions
-        self.ddl = ddl
-    def __call__(self, *args, **kwargs):
-        if not args and not kwargs: return self
-        if len(args) > 1: throw(TypeError,
-            'Pass only keyword arguments to db_session or use db_session as decorator')
-        if not args: return self.__class__(**kwargs)
-        if kwargs: throw(TypeError,
-            'Pass only keyword arguments to db_session or use db_session as decorator')
-        func = args[0]
-        def new_func(func, *args, **kwargs):
-            if self.ddl and local.db_context_counter:
-                if isinstance(func, types.FunctionType): func = func.__name__ + '()'
-                throw(TransactionError, '%s cannot be called inside of db_session' % func)
-            try:
-                for i in xrange(self.retry+1):
-                    local.db_context_counter += 1
-                    exc_type = exc_value = exc_tb = None
-                    try:
-                        try: return func(*args, **kwargs)
-                        except Exception:
-                            exc_type, exc_value, exc_tb = sys.exc_info()  # exc_value can be None in Python 2.6
-                            retry_exceptions = self.retry_exceptions
-                            if not callable(retry_exceptions):
-                                do_retry = issubclass(exc_type, tuple(retry_exceptions))
-                            else:
-                                do_retry = exc_value is not None and retry_exceptions(exc_value)
-                            if not do_retry: raise
-                    finally: self.__exit__(exc_type, exc_value, exc_tb)
-                raise exc_type, exc_value, exc_tb
-            finally: del exc_tb
-        return decorator(new_func, func)
-    def __enter__(self):
-        if self.retry is not 0: throw(TypeError,
-            "@db_session can accept 'retry' parameter only when used as decorator and not as context manager")
-        if self.ddl: throw(TypeError,
-            "@db_session can accept 'ddl' parameter only when used as decorator and not as context manager")
-        local.db_context_counter += 1
-    def __exit__(self, exc_type=None, exc_value=None, traceback=None):
-        local.db_context_counter -= 1
-        if local.db_context_counter: return
-        try:
-            if exc_type is None: commit()  # exc_value can be None in Python 2.6 even if exc_type is not None
-            else:
-                allowed_exceptions = self.allowed_exceptions
-                if not callable(allowed_exceptions):
-                    allowed = issubclass(exc_type, tuple(allowed_exceptions))
-                else:
-                    allowed = exc_value is not None and allowed_exceptions(exc_value)
-                if allowed: commit()
-                else: rollback()
-        finally: _release()
-
-db_session = DBSessionContextManager()
-
-def with_transaction(*args, **kwargs):
-    deprecated(3, "@with_transaction decorator is deprecated, use @db_session decorator instead")
-    return db_session(*args, **kwargs)
-
-@decorator
-def db_decorator(func, *args, **kwargs):
-    web = sys.modules.get('pony.web')
-    allowed_exceptions = web and [ web.HttpRedirect ] or []
-    try:
-        with db_session(allowed_exceptions=allowed_exceptions):
-            return func(*args, **kwargs)
-    except (ObjectNotFound, RowNotFound):
-        if web: throw(web.Http404NotFound)
-        raise
 
 ###############################################################################
 
