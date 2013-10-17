@@ -96,6 +96,7 @@ def cut_traceback(func, *args, **kwargs):
         return func(*args, **kwargs)
 
     try: return func(*args, **kwargs)
+    except AssertionError: raise
     except Exception:
         exc_type, exc, tb = sys.exc_info()
         last_pony_tb = None
