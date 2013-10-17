@@ -231,6 +231,64 @@ class Local(localbase):
 
 local = Local()
 
+def _get_caches():
+    return list(sorted((cache for cache in local.db2cache.values()),
+                       reverse=True, key=lambda cache : (cache.database.priority, cache.num)))
+
+@cut_traceback
+def flush():
+    for cache in _get_caches(): cache.flush()
+
+def reraise(exc_class, exceptions):
+    try:
+        cls, exc, tb = exceptions[0]
+        msg = " ".join(tostring(arg) for arg in exc.args)
+        if not issubclass(cls, TransactionError):
+            msg = '%s: %s' % (cls.__name__, msg)
+        raise exc_class, exc_class(msg, exceptions), tb
+    finally: del tb
+
+@cut_traceback
+def commit():
+    caches = _get_caches()
+    if not caches: return
+    primary_cache = caches[0]
+    other_caches = caches[1:]
+    exceptions = []
+    try:
+        try: primary_cache.commit()
+        except:
+            exceptions.append(sys.exc_info())
+            for cache in other_caches:
+                try: cache.rollback()
+                except: exceptions.append(sys.exc_info())
+            reraise(CommitException, exceptions)
+        else:
+            for cache in other_caches:
+                try: cache.commit()
+                except: exceptions.append(sys.exc_info())
+            if exceptions:
+                reraise(PartialCommitException, exceptions)
+    finally:
+        del exceptions
+
+@cut_traceback
+def rollback():
+    exceptions = []
+    try:
+        for cache in _get_caches():
+            try: cache.rollback()
+            except: exceptions.append(sys.exc_info())
+        if exceptions:
+            reraise(RollbackException, exceptions)
+        assert not local.db2cache
+    finally:
+        del exceptions
+
+def _release():
+    for cache in _get_caches(): cache.release()
+    assert not local.db2cache
+
 class DbLocal(localbase):
     def __init__(dblocal):
         dblocal.stats = {}
@@ -3687,64 +3745,6 @@ class Cache(object):
                 throw(TransactionIntegrityError, '%s with unique index (%s) already exists: %s'
                                  % (obj2.__class__.__name__, ', '.join(attr.name for attr in attrs), key_str))
         index.pop(currents, None)
-
-def _get_caches():
-    return list(sorted((cache for cache in local.db2cache.values()),
-                       reverse=True, key=lambda cache : (cache.database.priority, cache.num)))
-
-@cut_traceback
-def flush():
-    for cache in _get_caches(): cache.flush()
-
-def reraise(exc_class, exceptions):
-    try:
-        cls, exc, tb = exceptions[0]
-        msg = " ".join(tostring(arg) for arg in exc.args)
-        if not issubclass(cls, TransactionError):
-            msg = '%s: %s' % (cls.__name__, msg)
-        raise exc_class, exc_class(msg, exceptions), tb
-    finally: del tb
-
-@cut_traceback
-def commit():
-    caches = _get_caches()
-    if not caches: return
-    primary_cache = caches[0]
-    other_caches = caches[1:]
-    exceptions = []
-    try:
-        try: primary_cache.commit()
-        except:
-            exceptions.append(sys.exc_info())
-            for cache in other_caches:
-                try: cache.rollback()
-                except: exceptions.append(sys.exc_info())
-            reraise(CommitException, exceptions)
-        else:
-            for cache in other_caches:
-                try: cache.commit()
-                except: exceptions.append(sys.exc_info())
-            if exceptions:
-                reraise(PartialCommitException, exceptions)
-    finally:
-        del exceptions
-
-@cut_traceback
-def rollback():
-    exceptions = []
-    try:
-        for cache in _get_caches():
-            try: cache.rollback()
-            except: exceptions.append(sys.exc_info())
-        if exceptions:
-            reraise(RollbackException, exceptions)
-        assert not local.db2cache
-    finally:
-        del exceptions
-
-def _release():
-    for cache in _get_caches(): cache.release()
-    assert not local.db2cache
 
 ###############################################################################
 
