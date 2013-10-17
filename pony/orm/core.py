@@ -72,7 +72,6 @@ def log_orm(msg):
         orm_logger.log(orm_log_level, msg)
     else:
         print msg
-        print
 
 def log_sql(sql, arguments=None):
     if type(arguments) is list:
