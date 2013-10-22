@@ -161,6 +161,23 @@ class MySQLProvider(DBAPIProvider):
                        [ db_name, table_name ])
         return cursor.fetchone() is not None
 
+    def index_exists(provider, connection, table_name, index_name):
+        db_name, table_name = provider.split_table_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM information_schema.statistics '
+                       'WHERE table_schema=%s and table_name=%s and index_name=%s',
+                       [ db_name, table_name, index_name ])
+        return cursor.fetchone() is not None
+
+    def fk_exists(provider, connection, table_name, fk_name):
+        db_name, table_name = provider.split_table_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM information_schema.table_constraints '
+                       'WHERE table_schema=%s and table_name=%s '
+                       "and constraint_type='FOREIGN KEY' and constraint_name=%s",
+                       [ db_name, table_name, fk_name ])
+        return cursor.fetchone() is not None
+
     def disable_fk_checks_if_necessary(provider, connection):
         cursor = connection.cursor()
         cursor.execute("SHOW VARIABLES LIKE 'foreign_key_checks'")

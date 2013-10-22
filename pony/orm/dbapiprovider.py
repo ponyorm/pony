@@ -222,6 +222,12 @@ class DBAPIProvider(object):
     def table_exists(provider, connection, table_name):
         throw(NotImplementedError)
 
+    def index_exists(provider, connection, table_name, index_name):
+        throw(NotImplementedError)
+
+    def fk_exists(provider, connection, table_name, fk_name):
+        throw(NotImplementedError)
+
     def table_has_data(provider, connection, table_name):
         table_name = provider.quote_name(table_name)
         cursor = connection.cursor()

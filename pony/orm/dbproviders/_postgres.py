@@ -120,6 +120,25 @@ class PGProvider(DBAPIProvider):
                        'AND tablename = %s', (schema_name, table_name))
         return cursor.fetchone() is not None
     
+    def index_exists(provider, connection, table_name, index_name):
+        schema_name, table_name = provider.split_table_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM pg_catalog.pg_indexes WHERE schemaname = %s '
+                       'AND tablename = %s AND indexname = %s',
+                       [ schema_name, table_name, index_name ])
+        return cursor.fetchone() is not None
+
+    def fk_exists(provider, connection, table_name, fk_name):
+        schema_name, table_name = provider.split_table_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM pg_class cls '
+                       'JOIN pg_namespace ns ON cls.relnamespace = ns.oid '
+                       'JOIN pg_constraint con ON con.conrelid = cls.oid '
+                       'WHERE ns.nspname = %s AND cls.relname = %s '
+                       "AND con.contype = 'f' AND con.conname = %s",
+                       [ schema_name, table_name, fk_name ])
+        return cursor.fetchone() is not None
+
     def table_has_data(provider, connection, table_name):
         table_name = provider.quote_name(table_name)
         cursor = connection.cursor()

@@ -138,14 +138,29 @@ class SQLiteProvider(DBAPIProvider):
             return SQLitePool(filename, create_db)
 
     def table_exists(provider, connection, table_name):
+        return provider._exists(connection, table_name)
+
+    def index_exists(provider, connection, table_name, index_name):
+        return provider._exists(connection, table_name, index_name)
+
+    def _exists(provider, connection, table_name, index_name=None):
         db_name, table_name = provider.split_table_name(table_name)
+
         if db_name is None: catalog_name = 'sqlite_master'
         else: catalog_name = (db_name, 'sqlite_master')
         catalog_name = provider.quote_name(catalog_name)
+
         cursor = connection.cursor()
+        if index_name is not None:
+            sql = "SELECT 1 FROM %s WHERE type='index' AND name=?" % catalog_name
+            cursor.execute(sql, [ index_name ])
+        else:
         sql = "SELECT 1 FROM %s WHERE type='table' AND name=?" % catalog_name
         cursor.execute(sql, [ table_name ])
         return cursor.fetchone() is not None
+
+    def fk_exists(provider, connection, table_name, fk_name):
+        assert False
 
     def disable_fk_checks_if_necessary(provider, connection):
         cursor = connection.cursor()

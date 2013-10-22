@@ -304,6 +304,24 @@ class OraProvider(DBAPIProvider):
                        dict(o=owner_name, tn=table_name))
         return cursor.fetchone() is not None
 
+    def index_exists(provider, connection, table_name, index_name):
+        owner_name, table_name = provider.split_table_name(table_name)
+        if not isinstance(index_name, basestring): throw(NotImplementedError)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM all_indexes WHERE owner = :io '
+                       'AND index_name = :i AND table_owner = :to AND table_name = :t',
+                       dict(o=i_owner_name, i=index_name, to=t_owner_name, t=table_name))
+        return cursor.fetchone() is not None
+
+    def fk_exists(provider, connection, table_name, fk_name):
+        owner_name, table_name = provider.split_table_name(table_name)
+        if not isinstance(fk_name, basestring): throw(NotImplementedError)
+        cursor = connection.cursor()
+        cursor.execute("SELECT 1 FROM user_constraints WHERE constraint_type = 'R' "
+                       'AND table_name = :tn AND constraint_name = :cn AND owner = :on'
+                       dict(tn=table_name, cn=fk_name, on=owner_name))
+        return cursor.fetchone() is not None
+
     def table_has_data(provider, connection, table_name):
         table_name = provider.quote_name(table_name)
         cursor = connection.cursor()
