@@ -18,6 +18,7 @@ class SQLiteForeignKey(dbschema.ForeignKey):
 
 class SQLiteSchema(dbschema.DBSchema):
     dialect = 'SQLite'
+    named_foreign_keys = False
     fk_class = SQLiteForeignKey
 
 class SQLiteTranslator(sqltranslation.SQLTranslator):

@@ -5,6 +5,7 @@ from pony.utils import throw
 class DBSchema(object):
     dialect = None
     inline_fk_syntax = True
+    named_foreign_keys = True
     def __init__(schema, provider, uppercase=True):
         schema.provider = provider
         schema.tables = {}
@@ -103,10 +104,11 @@ class Table(object):
             if not index.is_unique: continue
             if len(index.columns) == 1: continue
             cmd.append(index.get_sql() + ',')
-        for foreign_key in table.foreign_keys.values():
-            if schema.inline_fk_syntax and len(foreign_key.child_columns) == 1: continue
-            if not foreign_key.parent_table in created_tables: continue
-            cmd.append(foreign_key.get_sql() + ',')
+        if not schema.named_foreign_keys:
+            for foreign_key in table.foreign_keys.values():
+                if schema.inline_fk_syntax and len(foreign_key.child_columns) == 1: continue
+                if schema.dialect != 'SQLite' and foreign_key.parent_table not in created_tables: continue
+                cmd.append(foreign_key.get_sql() + ',')
         cmd[-1] = cmd[-1][:-1]
         cmd.append(')')
         cmd = '\n'.join(cmd)
@@ -117,12 +119,17 @@ class Table(object):
             assert index.name is not None
             result.append(index.get_create_command())
 
-        for child_table in table.child_tables:
-            if child_table not in created_tables: continue
-            for foreign_key in child_table.foreign_keys.values():
-                if foreign_key.parent_table is not table: continue
+        if schema.named_foreign_keys:
+            for foreign_key in table.foreign_keys.values():
+                if foreign_key.parent_table not in created_tables: continue
                 cmd = foreign_key.get_create_command()
                 if cmd is not None: result.append(cmd)
+            for child_table in table.child_tables:
+                if child_table not in created_tables: continue
+                for foreign_key in child_table.foreign_keys.values():
+                    if foreign_key.parent_table is not table: continue
+                    cmd = foreign_key.get_create_command()
+                    if cmd is not None: result.append(cmd)
         created_tables.add(table)
         return result
     def add_column(table, column_name, sql_type, is_not_null=None):
@@ -139,6 +146,10 @@ class Table(object):
             return index
         return table.schema.index_class(index_name, table, columns, is_pk, is_unique)
     def add_foreign_key(table, fk_name, child_columns, parent_table, parent_columns, index_name=None):
+        if fk_name is None:
+            provider = table.schema.provider
+            child_column_names = tuple(column.name for column in child_columns)
+            fk_name = provider.get_default_fk_name(table.name, parent_table.name, child_column_names)
         return table.schema.fk_class(fk_name, table, child_columns, parent_table, parent_columns, index_name)
 
 class Column(object):
@@ -176,7 +187,7 @@ class Column(object):
             else:
                 if column.is_unique: append(case('UNIQUE'))
                 if column.is_not_null: append(case('NOT NULL'))
-        if schema.inline_fk_syntax:
+        if schema.inline_fk_syntax and not schema.named_foreign_keys:
             foreign_key = table.foreign_keys.get((column,))
             if foreign_key is not None:
                 parent_table = foreign_key.parent_table
@@ -276,7 +287,7 @@ class ForeignKey(Constraint):
             if len(child_columns) == 1: throw(DBSchemaError, 'Foreign key for column %r already defined' % child_columns[0].name)
             else: throw(DBSchemaError, 'Foreign key for columns (%s) already defined' % ', '.join(repr(column.name) for column in child_columns))
         if name is not None and name in schema.names:
-            throw(DBSchemaError, 'Foreign key %s cannot be created, name is already in use')
+            throw(DBSchemaError, 'Foreign key %s cannot be created, name is already in use' % name)
         Constraint.__init__(foreign_key, name, schema)
         child_table.foreign_keys[child_columns] = foreign_key
         if child_table is not parent_table:

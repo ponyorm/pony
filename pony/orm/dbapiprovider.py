@@ -134,6 +134,10 @@ class DBAPIProvider(object):
                                          cnames='_'.join(name for name in column_names))
         return index_name[:provider.max_name_len].lower()
 
+    def get_default_fk_name(provider, child_table_name, parent_table_name, child_column_names):
+        fk_name = 'fk_%s__%s' % (child_table_name, '__'.join(child_column_names))
+        return fk_name[:provider.max_name_len].lower()
+
     def split_table_name(provider, table_name):
         if isinstance(table_name, basestring): return provider.default_schema_name, table_name
         if not table_name: throw(TypeError, 'Invalid table name: %r' % table_name)

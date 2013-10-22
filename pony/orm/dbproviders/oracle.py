@@ -240,6 +240,9 @@ class OraProvider(DBAPIProvider):
     def get_default_index_name(*args, **kwargs):
         return DBAPIProvider.get_default_index_name(*args, **kwargs).upper()
 
+    def get_default_fk_name(*args, **kwargs):
+        return DBAPIProvider.get_default_fk_name(*args, **kwargs).upper()
+
     @wrap_dbapi_exceptions
     def execute(provider, cursor, sql, arguments=None, returning_id=False):
         if type(arguments) is list:
