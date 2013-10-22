@@ -539,7 +539,7 @@ class Database(object):
         try: new_id = provider.execute(cursor, sql, arguments, returning_id)
         except Exception, e:
             if not provider.should_reconnect(e.original_exc): raise
-            log_orm('CONNECTION FAILED: %s' % e.original_exc)
+            if debug: log_orm('CONNECTION FAILED: %s' % e.original_exc)
             cache.connection = None
             provider.drop(connection)
             connection = cache.establish_connection()
@@ -3550,7 +3550,7 @@ class Cache(object):
                 'Transaction cannot be continued because database connection failed')
             elif cache.saving: throw(ConnectionClosedError,
                 'Optimistic transaction cannot be completed because database connection failed during saving changes')
-            log_orm('RECONNECT')
+            if debug: log_orm('RECONNECT')
         provider = cache.database.provider
         connection = provider.connect()
         cache.connection = connection
