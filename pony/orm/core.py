@@ -556,21 +556,15 @@ class Database(object):
         if type(new_id) is long: new_id = int(new_id)
         return new_id
     @cut_traceback
-    def generate_mapping(database, filename=None, check_tables=None, create_tables=False):
-        if check_tables is not None:
-            deprecated(4, "Parameter 'check_tables' of generate_mapping() is deprecated. "
-                          "Now Pony always checks tables on mapping generation.")
-        if local.db_context_counter: throw(MappingError,
-            "generate_mapping() couldn't be used inside @db_session")
-        database.rollback()
-
-        def get_columns(table, column_names):
-            return tuple(map(table.column_dict.__getitem__, column_names))
-
+    @db_session(ddl=True)
+    def generate_mapping(database, filename=None, check_tables=True, create_tables=False):
         if database.schema: throw(MappingError, 'Mapping was already generated')
         if filename is not None: throw(NotImplementedError)
         for entity_name in database._unmapped_attrs:
             throw(ERDiagramError, 'Entity definition %s was not found' % entity_name)
+
+        def get_columns(table, column_names):
+            return tuple(map(table.column_dict.__getitem__, column_names))
 
         provider = database.provider
         schema = database.schema = provider.dbschema_cls(provider)
@@ -714,10 +708,11 @@ class Database(object):
                     columns = tuple(map(table.column_dict.__getitem__, attr.columns))
                     table.add_index(attr.index, columns, is_unique=attr.is_unique)
 
-        if create_tables: schema.create_tables()
+        if create_tables:
+            connection = database.get_connection()
+            schema.create_tables(provider, connection)
 
-        local.db_context_counter = True
-        try:
+        if check_tables:
             for table in schema.tables.values():
                 if isinstance(table.name, tuple): alias = table.name[-1]
                 elif isinstance(table.name, basestring): alias = table.name
@@ -729,8 +724,7 @@ class Database(object):
                           ]
                 sql, adapter = database._ast2sql(sql_ast)
                 database._exec_sql(sql)
-        finally: local.db_context_counter = False
-        database.rollback()
+
     @cut_traceback
     @db_session(ddl=True)
     def drop_table(database, table_name, if_exists=False, with_all_data=False):
@@ -768,6 +762,12 @@ class Database(object):
                 provider.drop_table(connection, table_name)
         finally:
             provider.enable_fk_checks_if_necessary(connection, state)
+    @cut_traceback
+    @db_session(ddl=True)
+    def create_tables(database):
+        if database.schema is None: throw(ERDiagramError, 'No mapping was generated for the database')
+        connection = database.get_connection()
+        database.schema.create_tables(database.provider, connection)
 
 class DbLocal(localbase):
     def __init__(dblocal):

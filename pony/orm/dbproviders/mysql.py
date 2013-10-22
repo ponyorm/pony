@@ -16,28 +16,12 @@ from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import SQLBuilder, join
 from pony.utils import throw
 
-class MySQLTable(dbschema.Table):
-    def create(table, provider, connection, created_tables=None):
-        commands = table.get_create_commands(created_tables)
-        for i, sql in enumerate(commands):
-            if core.debug: log_sql(sql)
-            cursor = connection.cursor()
-            try: provider.execute(cursor, sql)
-            except OperationalError, e:
-                if e.original_exc.args[0] != 1050: raise
-                if core.debug: log_orm('ALREADY EXISTS: %s' % e)
-                if i: continue
-                if len(commands) > 1:
-                    log_orm('SKIP FURTHER DDL COMMANDS FOR TABLE %s\n' % table.name)
-                return
-
 class MySQLColumn(dbschema.Column):
     auto_template = '%(type)s PRIMARY KEY AUTO_INCREMENT'
 
 class MySQLSchema(dbschema.DBSchema):
     dialect = 'MySQL'
     inline_fk_syntax = False
-    table_class = MySQLTable
     column_class = MySQLColumn
 
 class MySQLTranslator(SQLTranslator):

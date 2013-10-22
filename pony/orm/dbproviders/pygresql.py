@@ -9,22 +9,6 @@ from pony.orm.dbproviders._postgres import *
 
 import pgdb
 
-class PyGreSQLTable(PGTable):
-    def create(table, provider, connection, created_tables=None):
-        try: dbschema.Table.create(table, provider, connection, created_tables)
-        except ProgrammingError, e:
-            if getattr(e.original_exc, 'sqlstate', '42P07') != '42P07':
-                provider.rollback(connection)
-                raise
-            if core.debug:
-                core.log_orm('ALREADY EXISTS: %s' % e.args[0])
-                core.log_orm('ROLLBACK')
-            provider.rollback(connection)
-        else: provider.commit(connection)
-
-class PyGreSQLSchema(PGSchema):
-    table_class = PyGreSQLTable
-
 char2oct = {}
 for i in range(256):
     ch = chr(i)
@@ -68,7 +52,6 @@ class PyGreSQLDatetimeConverter(PGDatetimeConverter):
 
 class PyGreSQLProvider(PGProvider):
     dbapi_module = pgdb
-    dbschema_cls = PyGreSQLSchema
     sqlbuilder_cls = PyGreSQLBuilder
 
     def inspect_connection(provider, connection):

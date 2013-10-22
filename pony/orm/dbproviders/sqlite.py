@@ -14,7 +14,7 @@ from pony.utils import localbase, datetime2timestamp, timestamp2datetime, decora
 
 class SQLiteForeignKey(dbschema.ForeignKey):
     def get_create_command(foreign_key):
-        return None
+        assert False
 
 class SQLiteSchema(dbschema.DBSchema):
     dialect = 'SQLite'
@@ -155,8 +155,8 @@ class SQLiteProvider(DBAPIProvider):
             sql = "SELECT 1 FROM %s WHERE type='index' AND name=?" % catalog_name
             cursor.execute(sql, [ index_name ])
         else:
-        sql = "SELECT 1 FROM %s WHERE type='table' AND name=?" % catalog_name
-        cursor.execute(sql, [ table_name ])
+            sql = "SELECT 1 FROM %s WHERE type='table' AND name=?" % catalog_name
+            cursor.execute(sql, [ table_name ])
         return cursor.fetchone() is not None
 
     def fk_exists(provider, connection, table_name, fk_name):

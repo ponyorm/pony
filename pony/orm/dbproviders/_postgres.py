@@ -11,12 +11,8 @@ from pony.utils import throw
 class PGColumn(dbschema.Column):
     auto_template = 'SERIAL PRIMARY KEY'
 
-class PGTable(dbschema.Table):
-    pass
-
 class PGSchema(dbschema.DBSchema):
     dialect = 'PostgreSQL'
-    table_class = PGTable
     column_class = PGColumn
 
 class PGTranslator(SQLTranslator):
