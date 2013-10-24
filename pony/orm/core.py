@@ -1984,6 +1984,11 @@ class SetWrapper(object):
     @cut_traceback
     def create(wrapper, **kwargs):
         attr = wrapper._attr_
+        reverse = attr.reverse
+        if reverse.name in kwargs: throw(TypeError,
+            'When using %s.%s.create(), %r attribute should not be passed explicitly'
+            % (attr.entity.__name__, attr.name, reverse.name))
+        kwargs[reverse.name] = wrapper._obj_
         item_type = attr.py_type
         item = item_type(**kwargs)
         wrapper.add(item)
