@@ -207,13 +207,15 @@ class OraProvider(DBAPIProvider):
     translator_cls = OraTranslator
     sqlbuilder_cls = OraBuilder
 
+    name_before_table = 'owner'
+
     def inspect_connection(provider, connection):
-        sql = "select version from product_component_version where product like 'Oracle Database %'"
         cursor = connection.cursor()
-        cursor.execute(sql)
-        row = cursor.fetchone()
-        assert row is not None
-        provider.server_version = get_version_tuple(row[0])
+        cursor.execute('SELECT version FROM product_component_version '
+                       "WHERE product LIKE 'Oracle Database %'")
+        provider.server_version = get_version_tuple(cursor.fetchone()[0])
+        cursor.execute("SELECT sys_context( 'userenv', 'current_schema' ) FROM DUAL")
+        provider.default_schema_name = cursor.fetchone()[0]
 
     def should_reconnect(provider, exc):
         reconnect_error_codes = (

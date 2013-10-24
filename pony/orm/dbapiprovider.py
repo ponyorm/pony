@@ -84,6 +84,9 @@ class DBAPIProvider(object):
     translator_cls = None
     sqlbuilder_cls = None
 
+    name_before_table = 'schema_name'
+    default_schema_name = None
+
     def __init__(provider, *args, **kwargs):
         pool_mockup = kwargs.pop('pony_pool_mockup', None)
         if pool_mockup: provider.pool = pool_mockup
@@ -130,6 +133,17 @@ class DBAPIProvider(object):
             index_name = template % dict(tname=table_name,
                                          cnames='_'.join(name for name in column_names))
         return index_name[:provider.max_name_len].lower()
+
+    def split_table_name(provider, table_name):
+        if isinstance(table_name, basestring): return provider.default_schema_name, table_name
+        if not table_name: throw(TypeError, 'Invalid table name: %r' % table_name)
+        if len(table_name) != 2:
+            size = len(table_name)
+            throw(TypeError, '%s qualified table name must have two components: '
+                             '%s and table_name. Got %d component%s: %s'
+                             % (provider.dialect, provider.name_before_table,
+                                size, 's' if size != 1 else '', table_name))
+        return table_name[0], table_name[1]
 
     def quote_name(provider, name):
         quote_char = provider.quote_char

@@ -87,6 +87,8 @@ class PGProvider(DBAPIProvider):
     translator_cls = PGTranslator
     sqlbuilder_cls = PGSQLBuilder  # pygresql redefines this to PyGreSQLBuilder
 
+    default_schema_name = 'public'
+
     def get_default_entity_table_name(provider, entity):
         return DBAPIProvider.get_default_entity_table_name(provider, entity).lower()
 

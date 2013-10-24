@@ -101,6 +101,8 @@ class SQLiteProvider(DBAPIProvider):
     translator_cls = SQLiteTranslator
     sqlbuilder_cls = SQLiteBuilder
 
+    name_before_table = 'db_name'
+
     server_version = sqlite.sqlite_version_info
 
     converter_classes = [

@@ -133,6 +133,8 @@ class MySQLProvider(DBAPIProvider):
         provider.server_version = get_version_tuple(row[0])
         if provider.server_version >= (5, 6, 4):
             provider.max_time_precision = 6
+        cursor.execute('select database()')
+        provider.default_schema_name = cursor.fetchone()[0]
 
     def should_reconnect(provider, exc):
         return isinstance(exc, MySQLdb.OperationalError) and exc.args[0] == 2006
