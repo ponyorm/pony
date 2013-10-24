@@ -440,6 +440,12 @@ class Database(object):
         cache.flush()
         assert cache.connection is not None
         return cache.connection
+    @cut_traceback
+    def disconnect(database):
+        if local.db_context_counter: throw(TransactionError, 'disconnect() cannot be called inside of db_sesison')
+        cache = local.db2cache.get(database)
+        if cache is not None: cache.rollback(close_connection=True)
+        database.provider.pool.disconnect()
     def _get_cache(database):
         cache = local.db2cache.get(database)
         if cache is not None: return cache

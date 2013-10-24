@@ -272,6 +272,10 @@ class Pool(localbase):
         assert con is pool.con
         pool.con = None
         con.close()
+    def disconnect(pool):
+        con = pool.con
+        pool.con = None
+        if con is not None: con.close()
 
 class Converter(object):
     def __deepcopy__(converter, memo):

@@ -377,6 +377,8 @@ class OraPool(object):
         pool._pool.release(con)
     def drop(pool, con):
         pool._pool.drop(con)
+    def disconnect(pool):
+        pass
 
 def get_inputsize(arg):
     if isinstance(arg, datetime):
