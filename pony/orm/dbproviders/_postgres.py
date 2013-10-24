@@ -86,18 +86,9 @@ class PGProvider(DBAPIProvider):
 
     default_schema_name = 'public'
 
-    def get_default_entity_table_name(provider, entity):
-        return DBAPIProvider.get_default_entity_table_name(provider, entity).lower()
-
-    def get_default_m2m_table_name(provider, attr, reverse):
-        return DBAPIProvider.get_default_m2m_table_name(provider, attr, reverse).lower()
-
-    def get_default_column_names(provider, attr, reverse_pk_columns=None):
-        return [ column.lower() for column in DBAPIProvider.get_default_column_names(provider, attr, reverse_pk_columns) ]
-
-    def get_default_m2m_column_names(provider, entity):
-        return [ column.lower() for column in DBAPIProvider.get_default_m2m_column_names(provider, entity) ]
-
+    def normalize_name(provider, name):
+        return name[:provider.max_name_len].lower()
+    
     @wrap_dbapi_exceptions
     def execute(provider, cursor, sql, arguments=None, returning_id=False):
         if isinstance(sql, unicode): sql = sql.encode('utf8')

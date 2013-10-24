@@ -737,19 +737,26 @@ class Database(object):
             else: table_name = attr.entity._table_
         elif isinstance(table_name, Attribute): throw(TypeError,
             "Attribute %s is not Set and doesn't have corresponding table" % table_name)
-        database._drop_tables([ table_name ], if_exists, with_all_data)
+        database._drop_tables([ table_name ], if_exists, with_all_data, try_normalized=True)
     @cut_traceback
     @db_session(ddl=True)
     def drop_all_tables(database, with_all_data=False):
         if database.schema is None: throw(ERDiagramError, 'No mapping was generated for the database')
         database._drop_tables(database.schema.tables, True, with_all_data)
-    def _drop_tables(database, table_names, if_exists, with_all_data):
+    def _drop_tables(database, table_names, if_exists, with_all_data, try_normalized=False):
         connection = database.get_connection()
         provider = database.provider
         existed_tables = []
         for table_name in table_names:
             if provider.table_exists(connection, table_name): existed_tables.append(table_name)
-            elif not if_exists: throw(TableNotExists, 'Table %s does not exists' % table_name)
+            elif not if_exists:
+                if try_normalized:
+                    normalized_table_name = provider.normalize_name(table_name)
+                    if normalized_table_name != table_name \
+                    and provider.table_exists(connection, normalized_table_name):
+                        throw(TableNotExists, 'Table %s does not exists (probably you meant table %s)'
+                                              % (table_name, normalized_table_name))
+                throw(TableNotExists, 'Table %s does not exists' % table_name)
         if not with_all_data:
             for table_name in existed_tables:
                 if provider.table_has_data(connection, table_name): throw(TableIsNotEmpty,
