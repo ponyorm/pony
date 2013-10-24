@@ -14,21 +14,7 @@ from pony.orm.core import log_orm, log_sql, OperationalError
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, get_version_tuple
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import SQLBuilder, join
-
-class MySQLTable(dbschema.Table):
-    def create(table, provider, connection, created_tables=None):
-        commands = table.get_create_commands(created_tables)
-        for i, sql in enumerate(commands):
-            if core.debug: log_sql(sql)
-            cursor = connection.cursor()
-            try: provider.execute(cursor, sql)
-            except OperationalError, e:
-                if e.original_exc.args[0] != 1050: raise
-                if core.debug: log_orm('ALREADY EXISTS: %s' % e)
-                if i: continue
-                if len(commands) > 1:
-                    log_orm('SKIP FURTHER DDL COMMANDS FOR TABLE %s\n' % table.name)
-                return
+from pony.utils import throw
 
 class MySQLColumn(dbschema.Column):
     auto_template = '%(type)s PRIMARY KEY AUTO_INCREMENT'
@@ -36,7 +22,6 @@ class MySQLColumn(dbschema.Column):
 class MySQLSchema(dbschema.DBSchema):
     dialect = 'MySQL'
     inline_fk_syntax = False
-    table_class = MySQLTable
     column_class = MySQLColumn
 
 class MySQLTranslator(SQLTranslator):
@@ -104,7 +89,6 @@ class MySQLProvider(DBAPIProvider):
     table_if_not_exists_syntax = True
     index_if_not_exists_syntax = False
     select_for_update_nowait_syntax = False
-
     max_time_precision = default_time_precision = 0
 
     dbapi_module = MySQLdb
@@ -134,6 +118,8 @@ class MySQLProvider(DBAPIProvider):
         provider.server_version = get_version_tuple(row[0])
         if provider.server_version >= (5, 6, 4):
             provider.max_time_precision = 6
+        cursor.execute('select database()')
+        provider.default_schema_name = cursor.fetchone()[0]
 
     def should_reconnect(provider, exc):
         return isinstance(exc, MySQLdb.OperationalError) and exc.args[0] == 2006
@@ -150,6 +136,45 @@ class MySQLProvider(DBAPIProvider):
             kwargs['charset'] = 'utf8'
         kwargs['client_flag'] = kwargs.get('client_flag', 0) | CLIENT.FOUND_ROWS 
         return Pool(MySQLdb, *args, **kwargs)
+
+    def table_exists(provider, connection, table_name):
+        db_name, table_name = provider.split_table_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM information_schema.tables '
+                       'WHERE table_schema=%s and table_name=%s',
+                       [ db_name, table_name ])
+        return cursor.fetchone() is not None
+
+    def index_exists(provider, connection, table_name, index_name):
+        db_name, table_name = provider.split_table_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM information_schema.statistics '
+                       'WHERE table_schema=%s and table_name=%s and index_name=%s',
+                       [ db_name, table_name, index_name ])
+        return cursor.fetchone() is not None
+
+    def fk_exists(provider, connection, table_name, fk_name):
+        db_name, table_name = provider.split_table_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM information_schema.table_constraints '
+                       'WHERE table_schema=%s and table_name=%s '
+                       "and constraint_type='FOREIGN KEY' and constraint_name=%s",
+                       [ db_name, table_name, fk_name ])
+        return cursor.fetchone() is not None
+
+    def disable_fk_checks_if_necessary(provider, connection):
+        cursor = connection.cursor()
+        cursor.execute("SHOW VARIABLES LIKE 'foreign_key_checks'")
+        fk = cursor.fetchone()
+        if fk is not None: fk = (fk[1] == 'ON')
+        if fk: cursor.execute('SET foreign_key_checks = 0')
+        return bool(fk)
+
+    def enable_fk_checks_if_necessary(provider, connection, fk):
+        assert type(fk) is bool, fk
+        if fk:
+            cursor = connection.cursor()
+            cursor.execute('SET foreign_key_checks = 1')
 
 provider_cls = MySQLProvider
 

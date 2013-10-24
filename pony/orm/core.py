@@ -21,7 +21,7 @@ from pony.orm.dbapiprovider import (
     )
 from pony.utils import (
     localbase, decorator, cut_traceback, throw, deprecated,
-    import_module, parse_expr, is_ident, count, avg as _avg, tostring, strjoin,
+    import_module, parse_expr, is_ident, count, avg as _avg, distinct as _distinct, tostring, strjoin,
     )
 
 __all__ = '''
@@ -32,8 +32,9 @@ __all__ = '''
     Warning Error InterfaceError DatabaseError DataError OperationalError
     IntegrityError InternalError ProgrammingError NotSupportedError
 
-    OrmError ERDiagramError DBSchemaError MappingError ConstraintError CacheIndexError ObjectNotFound
-    MultipleObjectsFoundError TooManyObjectsFoundError OperationWithDeletedObjectError
+    OrmError ERDiagramError DBSchemaError MappingError
+    TableNotExists TableIsNotEmpty ConstraintError CacheIndexError
+    ObjectNotFound MultipleObjectsFoundError TooManyObjectsFoundError OperationWithDeletedObjectError
     TransactionError TransactionIntegrityError IsolationError CommitException RollbackException
     UnrepeatableReadError UnresolvableCyclicDependency UnexpectedError
 
@@ -49,7 +50,7 @@ __all__ = '''
 
     select left_join get exists
 
-    count sum min max avg
+    count sum min max avg distinct
 
     desc
 
@@ -72,7 +73,6 @@ def log_orm(msg):
         orm_logger.log(orm_log_level, msg)
     else:
         print msg
-        print
 
 def log_sql(sql, arguments=None):
     if type(arguments) is list:
@@ -101,6 +101,10 @@ class OrmError(Exception): pass
 class ERDiagramError(OrmError): pass
 class DBSchemaError(OrmError): pass
 class MappingError(OrmError): pass
+
+class TableNotExists(OrmError): pass
+class TableIsNotEmpty(OrmError): pass
+
 class ConstraintError(OrmError): pass
 class CacheIndexError(OrmError): pass
 
@@ -231,52 +235,149 @@ class Local(localbase):
 
 local = Local()
 
-class DbLocal(localbase):
-    def __init__(dblocal):
-        dblocal.stats = {}
-        dblocal.last_sql = None
+def _get_caches():
+    return list(sorted((cache for cache in local.db2cache.values()),
+                       reverse=True, key=lambda cache : (cache.database.priority, cache.num)))
 
-class QueryStat(object):
-    def __init__(stat, sql, query_start_time=None):
-        if query_start_time is not None:
-            query_end_time = time()
-            duration = query_end_time - query_start_time
-            stat.min_time = stat.max_time = stat.sum_time = duration
-            stat.db_count = 1
-            stat.cache_count = 0
+@cut_traceback
+def flush():
+    for cache in _get_caches(): cache.flush()
+
+def reraise(exc_class, exceptions):
+    try:
+        cls, exc, tb = exceptions[0]
+        msg = " ".join(tostring(arg) for arg in exc.args)
+        if not issubclass(cls, TransactionError):
+            msg = '%s: %s' % (cls.__name__, msg)
+        raise exc_class, exc_class(msg, exceptions), tb
+    finally: del tb
+
+@cut_traceback
+def commit():
+    caches = _get_caches()
+    if not caches: return
+    primary_cache = caches[0]
+    other_caches = caches[1:]
+    exceptions = []
+    try:
+        try: primary_cache.commit()
+        except:
+            exceptions.append(sys.exc_info())
+            for cache in other_caches:
+                try: cache.rollback()
+                except: exceptions.append(sys.exc_info())
+            reraise(CommitException, exceptions)
         else:
-            stat.min_time = stat.max_time = stat.sum_time = None
-            stat.db_count = 0
-            stat.cache_count = 1
-        stat.sql = sql
-    def query_executed(stat, query_start_time):
-        query_end_time = time()
-        duration = query_end_time - query_start_time
-        if stat.db_count:
-            stat.min_time = _min(stat.min_time, duration)
-            stat.max_time = _max(stat.max_time, duration)
-            stat.sum_time += duration
-        else: stat.min_time = stat.max_time = stat.sum_time = duration
-        stat.db_count += 1
-    def merge(stat, stat2):
-        assert stat.sql == stat2.sql
-        if not stat2.db_count: pass
-        elif stat.db_count:
-            stat.min_time = _min(stat.min_time, stat2.min_time)
-            stat.max_time = _max(stat.max_time, stat2.max_time)
-            stat.sum_time += stat2.sum_time
-        else:
-            stat.min_time = stat2.min_time
-            stat.max_time = stat2.max_time
-            stat.sum_time = stat2.sum_time
-        stat.db_count += stat2.db_count
-        stat.cache_count += stat2.cache_count
-    @property
-    def avg_time(stat):
-        if not stat.db_count: return None
-        return stat.sum_time / stat.db_count
+            for cache in other_caches:
+                try: cache.commit()
+                except: exceptions.append(sys.exc_info())
+            if exceptions:
+                reraise(PartialCommitException, exceptions)
+    finally:
+        del exceptions
+
+@cut_traceback
+def rollback():
+    exceptions = []
+    try:
+        for cache in _get_caches():
+            try: cache.rollback()
+            except: exceptions.append(sys.exc_info())
+        if exceptions:
+            reraise(RollbackException, exceptions)
+        assert not local.db2cache
+    finally:
+        del exceptions
+
+def _release():
+    for cache in _get_caches(): cache.release()
+    assert not local.db2cache
 
 select_re = re.compile(r'\s*select\b', re.IGNORECASE)
+
+class DBSessionContextManager(object):
+    def __init__(self, retry=0, retry_exceptions=(TransactionError,), allowed_exceptions=(), ddl=False):
+        if retry is not 0:
+            if type(retry) is not int: throw(TypeError,
+                "'retry' parameter of db_session must be of integer type. Got: %s" % type(retry))
+            if retry < 0: throw(TypeError,
+                "'retry' parameter of db_session must not be negative. Got: %d" % retry)
+        if not callable(allowed_exceptions) and not callable(retry_exceptions):
+            for e in allowed_exceptions:
+                if e in retry_exceptions: throw(TypeError,
+                    'The same exception %s cannot be specified in both '
+                    'allowed and retry exception lists simultaneously' % e.__name__)
+        self.retry = retry
+        self.retry_exceptions = retry_exceptions
+        self.allowed_exceptions = allowed_exceptions
+        self.ddl = ddl
+    def __call__(self, *args, **kwargs):
+        if not args and not kwargs: return self
+        if len(args) > 1: throw(TypeError,
+            'Pass only keyword arguments to db_session or use db_session as decorator')
+        if not args: return self.__class__(**kwargs)
+        if kwargs: throw(TypeError,
+            'Pass only keyword arguments to db_session or use db_session as decorator')
+        func = args[0]
+        def new_func(func, *args, **kwargs):
+            if self.ddl and local.db_context_counter:
+                if isinstance(func, types.FunctionType): func = func.__name__ + '()'
+                throw(TransactionError, '%s cannot be called inside of db_session' % func)
+            try:
+                for i in xrange(self.retry+1):
+                    local.db_context_counter += 1
+                    exc_type = exc_value = exc_tb = None
+                    try:
+                        try: return func(*args, **kwargs)
+                        except Exception:
+                            exc_type, exc_value, exc_tb = sys.exc_info()  # exc_value can be None in Python 2.6
+                            retry_exceptions = self.retry_exceptions
+                            if not callable(retry_exceptions):
+                                do_retry = issubclass(exc_type, tuple(retry_exceptions))
+                            else:
+                                do_retry = exc_value is not None and retry_exceptions(exc_value)
+                            if not do_retry: raise
+                    finally: self.__exit__(exc_type, exc_value, exc_tb)
+                raise exc_type, exc_value, exc_tb
+            finally: del exc_tb
+        return decorator(new_func, func)
+    def __enter__(self):
+        if self.retry is not 0: throw(TypeError,
+            "@db_session can accept 'retry' parameter only when used as decorator and not as context manager")
+        if self.ddl: throw(TypeError,
+            "@db_session can accept 'ddl' parameter only when used as decorator and not as context manager")
+        local.db_context_counter += 1
+    def __exit__(self, exc_type=None, exc_value=None, traceback=None):
+        local.db_context_counter -= 1
+        if local.db_context_counter: return
+        try:
+            if exc_type is None: commit()  # exc_value can be None in Python 2.6 even if exc_type is not None
+            else:
+                allowed_exceptions = self.allowed_exceptions
+                if not callable(allowed_exceptions):
+                    allowed = issubclass(exc_type, tuple(allowed_exceptions))
+                else:
+                    allowed = exc_value is not None and allowed_exceptions(exc_value)
+                if allowed: commit()
+                else: rollback()
+        finally: _release()
+
+db_session = DBSessionContextManager()
+
+def with_transaction(*args, **kwargs):
+    deprecated(3, "@with_transaction decorator is deprecated, use @db_session decorator instead")
+    return db_session(*args, **kwargs)
+
+@decorator
+def db_decorator(func, *args, **kwargs):
+    web = sys.modules.get('pony.web')
+    allowed_exceptions = web and [ web.HttpRedirect ] or []
+    try:
+        with db_session(allowed_exceptions=allowed_exceptions):
+            return func(*args, **kwargs)
+    except (ObjectNotFound, RowNotFound):
+        if web: throw(web.Http404NotFound)
+        raise
 
 class Database(object):
     def __deepcopy__(self, memo):
@@ -339,6 +440,12 @@ class Database(object):
         cache.flush()
         assert cache.connection is not None
         return cache.connection
+    @cut_traceback
+    def disconnect(database):
+        if local.db_context_counter: throw(TransactionError, 'disconnect() cannot be called inside of db_sesison')
+        cache = local.db2cache.get(database)
+        if cache is not None: cache.rollback(close_connection=True)
+        database.provider.pool.disconnect()
     def _get_cache(database):
         cache = local.db2cache.get(database)
         if cache is not None: return cache
@@ -443,7 +550,7 @@ class Database(object):
         try: new_id = provider.execute(cursor, sql, arguments, returning_id)
         except Exception, e:
             if not provider.should_reconnect(e.original_exc): raise
-            log_orm('CONNECTION FAILED: %s' % e.original_exc)
+            if debug: log_orm('CONNECTION FAILED: %s' % e.original_exc)
             cache.connection = None
             provider.drop(connection)
             connection = cache.establish_connection()
@@ -455,21 +562,15 @@ class Database(object):
         if type(new_id) is long: new_id = int(new_id)
         return new_id
     @cut_traceback
-    def generate_mapping(database, filename=None, check_tables=None, create_tables=False):
-        if check_tables is not None:
-            deprecated(4, "Parameter 'check_tables' of generate_mapping() is deprecated. "
-                          "Now Pony always checks tables on mapping generation.")
-        if local.db_context_counter: throw(MappingError,
-            "generate_mapping() couldn't be used inside @db_session")
-        database.rollback()
-
-        def get_columns(table, column_names):
-            return tuple(map(table.column_dict.__getitem__, column_names))
-
+    @db_session(ddl=True)
+    def generate_mapping(database, filename=None, check_tables=True, create_tables=False):
         if database.schema: throw(MappingError, 'Mapping was already generated')
         if filename is not None: throw(NotImplementedError)
         for entity_name in database._unmapped_attrs:
             throw(ERDiagramError, 'Entity definition %s was not found' % entity_name)
+
+        def get_columns(table, column_names):
+            return tuple(map(table.column_dict.__getitem__, column_names))
 
         provider = database.provider
         schema = database.schema = provider.dbschema_cls(provider)
@@ -550,14 +651,6 @@ class Database(object):
                     m2m_table.m2m.add(attr)
                     m2m_table.m2m.add(reverse)
                 else:
-                    if schema.dialect == 'Oracle' and attr.is_string and not attr.is_required:
-                        if attr.nullable is False: throw(ERDiagramError,
-                            'In Oracle, optional string attribute %s must be nullable' % attr)
-                        attr.nullable = True
-                    if entity._root_ is not entity:
-                        if attr.nullable is False: throw(ERDiagramError,
-                            'Attribute %s must be nullable due to single-table inheritance' % attr)
-                        attr.nullable = True
                     columns = attr.get_columns()  # initializes attr.converters
                     if not attr.reverse and attr.default is not None:
                         assert len(attr.converters) == 1
@@ -621,10 +714,11 @@ class Database(object):
                     columns = tuple(map(table.column_dict.__getitem__, attr.columns))
                     table.add_index(attr.index, columns, is_unique=attr.is_unique)
 
-        if create_tables: schema.create_tables()
+        if create_tables:
+            connection = database.get_connection()
+            schema.create_tables(provider, connection)
 
-        local.db_context_counter = True
-        try:
+        if check_tables:
             for table in schema.tables.values():
                 if isinstance(table.name, tuple): alias = table.name[-1]
                 elif isinstance(table.name, basestring): alias = table.name
@@ -636,8 +730,102 @@ class Database(object):
                           ]
                 sql, adapter = database._ast2sql(sql_ast)
                 database._exec_sql(sql)
-        finally: local.db_context_counter = False
-        database.rollback()
+
+    @cut_traceback
+    @db_session(ddl=True)
+    def drop_table(database, table_name, if_exists=False, with_all_data=False):
+        if isinstance(table_name, EntityMeta):
+            entity = table_name
+            table_name = entity._table_
+        elif isinstance(table_name, Set):
+            attr = table_name
+            if attr.reverse.is_collection: table_name = attr.table
+            else: table_name = attr.entity._table_
+        elif isinstance(table_name, Attribute): throw(TypeError,
+            "Attribute %s is not Set and doesn't have corresponding table" % table_name)
+        database._drop_tables([ table_name ], if_exists, with_all_data, try_normalized=True)
+    @cut_traceback
+    @db_session(ddl=True)
+    def drop_all_tables(database, with_all_data=False):
+        if database.schema is None: throw(ERDiagramError, 'No mapping was generated for the database')
+        database._drop_tables(database.schema.tables, True, with_all_data)
+    def _drop_tables(database, table_names, if_exists, with_all_data, try_normalized=False):
+        connection = database.get_connection()
+        provider = database.provider
+        existed_tables = []
+        for table_name in table_names:
+            if provider.table_exists(connection, table_name): existed_tables.append(table_name)
+            elif not if_exists:
+                if try_normalized:
+                    normalized_table_name = provider.normalize_name(table_name)
+                    if normalized_table_name != table_name \
+                    and provider.table_exists(connection, normalized_table_name):
+                        throw(TableNotExists, 'Table %s does not exists (probably you meant table %s)'
+                                              % (table_name, normalized_table_name))
+                throw(TableNotExists, 'Table %s does not exists' % table_name)
+        if not with_all_data:
+            for table_name in existed_tables:
+                if provider.table_has_data(connection, table_name): throw(TableIsNotEmpty,
+                    'Cannot drop table %s because it is not empty. Specify option '
+                    'with_all_data=True if you want to drop table with all data' % table_name)
+        state = provider.disable_fk_checks_if_necessary(connection)
+        try:
+            for table_name in existed_tables:
+                if debug: log_orm('DROPPING TABLE %s' % table_name)
+                provider.drop_table(connection, table_name)
+        finally:
+            provider.enable_fk_checks_if_necessary(connection, state)
+    @cut_traceback
+    @db_session(ddl=True)
+    def create_tables(database):
+        if database.schema is None: throw(ERDiagramError, 'No mapping was generated for the database')
+        connection = database.get_connection()
+        database.schema.create_tables(database.provider, connection)
+
+class DbLocal(localbase):
+    def __init__(dblocal):
+        dblocal.stats = {}
+        dblocal.last_sql = None
+
+class QueryStat(object):
+    def __init__(stat, sql, query_start_time=None):
+        if query_start_time is not None:
+            query_end_time = time()
+            duration = query_end_time - query_start_time
+            stat.min_time = stat.max_time = stat.sum_time = duration
+            stat.db_count = 1
+            stat.cache_count = 0
+        else:
+            stat.min_time = stat.max_time = stat.sum_time = None
+            stat.db_count = 0
+            stat.cache_count = 1
+        stat.sql = sql
+    def query_executed(stat, query_start_time):
+        query_end_time = time()
+        duration = query_end_time - query_start_time
+        if stat.db_count:
+            stat.min_time = _min(stat.min_time, duration)
+            stat.max_time = _max(stat.max_time, duration)
+            stat.sum_time += duration
+        else: stat.min_time = stat.max_time = stat.sum_time = duration
+        stat.db_count += 1
+    def merge(stat, stat2):
+        assert stat.sql == stat2.sql
+        if not stat2.db_count: pass
+        elif stat.db_count:
+            stat.min_time = _min(stat.min_time, stat2.min_time)
+            stat.max_time = _max(stat.max_time, stat2.max_time)
+            stat.sum_time += stat2.sum_time
+        else:
+            stat.min_time = stat2.min_time
+            stat.max_time = stat2.max_time
+            stat.sum_time = stat2.sum_time
+        stat.db_count += stat2.db_count
+        stat.cache_count += stat2.cache_count
+    @property
+    def avg_time(stat):
+        if not stat.db_count: return None
+        return stat.sum_time / stat.db_count
 
 ###############################################################################
 
@@ -678,7 +866,7 @@ class Attribute(object):
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
-                'cascade_delete', 'index'
+                'cascade_delete', 'index', 'original_default'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
@@ -761,15 +949,28 @@ class Attribute(object):
                 if attr.nullable is False:
                     throw(TypeError, 'Optional attribute with non-string type %s must be nullable' % attr)
                 attr.nullable = True
+            elif entity._database_.provider.dialect == 'Oracle':
+                if attr.nullable is False: throw(ERDiagramError,
+                    'In Oracle, optional string attribute %s must be nullable' % attr)
+                attr.nullable = True
+        if entity._root_ is not entity:
+            if attr.nullable is False: throw(ERDiagramError,
+                'Attribute %s must be nullable due to single-table inheritance' % attr)
+            attr.nullable = True
 
-        try: attr.default = attr.kwargs.pop('default')
-        except KeyError: attr.default = '' if attr.is_string and not attr.is_required else None
-        else:
+        if 'default' in attr.kwargs:
+            attr.default = attr.original_default = attr.kwargs.pop('default')
             if attr.is_required:
-                if attr.default is None:
-                    throw(TypeError, 'Default value for required attribute %s cannot be None' % attr)
-                if attr.default == '':
-                    throw(TypeError, 'Default value for required attribute %s cannot be empty string' % attr)
+                if attr.default is None: throw(TypeError,
+                    'Default value for required attribute %s cannot be None' % attr)
+                if attr.default == '': throw(TypeError,
+                    'Default value for required attribute %s cannot be empty string' % attr)
+            elif attr.default is None and not attr.nullable: throw(TypeError,
+                'Default value for non-nullable attribute %s cannot be set to None' % attr)
+        elif attr.is_string and not attr.is_required and not attr.nullable:
+            attr.default = ''
+        else:
+            attr.default = None
 
         if attr.py_type == float:
             if attr.pk_offset is not None:
@@ -1681,6 +1882,12 @@ class Set(Collection):
         arguments_list = [ adapter(obj._get_raw_pkval_() + robj._get_raw_pkval_())
                            for obj, robj in added ]
         database._exec_sql(sql, arguments_list)
+    @cut_traceback
+    @db_session(ddl=True)
+    def drop_table(attr, with_all_data=False):
+        if attr.reverse.is_collection: table_name = attr.table
+        else: table_name = attr.entity._table_
+        attr.entity._database_._drop_tables([ table_name ], True, with_all_data)
 
 def unpickle_setwrapper(obj, attrname, items):
     attr = getattr(obj.__class__, attrname)
@@ -1864,12 +2071,6 @@ class SetWrapper(object):
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         wrapper._attr_.__set__(obj, None)
 
-def iter2dict(iter):
-    d = {}
-    for item in iter:
-        d[item] = d.get(item, 0) + 1
-    return d
-
 def unpickle_multiset(obj, attrnames, items):
     entity = obj.__class__
     for name in attrnames:
@@ -1889,7 +2090,7 @@ class Multiset(object):
         multiset._obj_ = obj
         multiset._attrnames_ = attrnames
         if type(items) is dict: multiset._items_ = items
-        else: multiset._items_ = iter2dict(items)
+        else: multiset._items_ = _distinct(items)
     def __reduce__(multiset):
         return unpickle_multiset, (multiset._obj_, multiset._attrnames_, multiset._items_)
     @cut_traceback
@@ -1908,7 +2109,8 @@ class Multiset(object):
     @cut_traceback
     def __str__(multiset):
         if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(multiset._obj_)
-        return '%s(%s)' % (multiset.__class__.__name__, str(multiset._items_))
+        items_str = '{%s}' % ', '.join('%r: %r' % pair for pair in sorted(multiset._items_.iteritems()))
+        return '%s(%s)' % (multiset.__class__.__name__, items_str)
     @cut_traceback
     def __nonzero__(multiset):
         if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(multiset._obj_)
@@ -1931,7 +2133,7 @@ class Multiset(object):
             return multiset._items_ == other
         if hasattr(other, 'keys'):
             return multiset._items_ == dict(other)
-        return multiset._items_ == iter2dict(other)
+        return multiset._items_ == _distinct(other)
     @cut_traceback
     def __ne__(multiset, other):
         return not multiset.__eq__(other)
@@ -1990,6 +2192,8 @@ class EntityMeta(type):
 
         if database.schema is not None: throw(ERDiagramError,
             'Cannot define entity %r: database mapping has already been generated' % entity.__name__)
+
+        entity._database_ = database
 
         entity._id_ = next_entity_id()
         direct_bases = [ c for c in entity.__bases__ if issubclass(c, Entity) and c.__name__ != 'Entity' ]
@@ -2055,6 +2259,8 @@ class EntityMeta(type):
                     if attr.nullable is False:
                         throw(TypeError, 'Optional attribute %s must be nullable, because it is part of composite key' % attr)
                     attr.nullable = True
+                    if attr.is_string and attr.default == '' and not hasattr(attr, 'original_default'):
+                        attr.default = None
 
         primary_keys = set(key for key, is_pk in keys.items() if is_pk)
         if direct_bases:
@@ -2112,7 +2318,6 @@ class EntityMeta(type):
                         'Each part of table name must be a string. Got: %r' % name_part)
                 entity._table_ = table_name = tuple(table_name)
 
-        entity._database_ = database
         database.entities[entity.__name__] = entity
         setattr(database, entity.__name__, entity)
         entity._link_reverse_attrs_()
@@ -2257,20 +2462,14 @@ class EntityMeta(type):
         assert len(objects) == 1
         return objects[0]
     @cut_traceback
+    def exists(entity, *args, **kwargs):
+        if args: return entity._query_from_args_(3, args, kwargs).exists()
+        try: objects = entity._find_(1, kwargs)
+        except MultipleObjectsFoundError: return True
+        return bool(objects)
+    @cut_traceback
     def get(entity, *args, **kwargs):
-        if args:
-            if len(args) > 1: throw(TypeError, 'Only one positional argument expected')
-            if kwargs: throw(TypeError, 'If positional argument presented, no keyword arguments expected')
-            first_arg = args[0]
-            if not (isinstance(first_arg, types.FunctionType)
-                    or isinstance(first_arg, basestring) and lambda_re.match(first_arg)):
-                throw(TypeError, 'Positional argument must be lambda function or its text source. '
-                                 'Got: %s.get(%r)' % (entity.__name__, first_arg))
-
-            globals = sys._getframe(3).f_globals
-            locals = sys._getframe(3).f_locals
-            return entity._query_from_lambda_(first_arg, globals, locals).get()
-
+        if args: return entity._query_from_args_(3, args, kwargs).get()
         objects = entity._find_(1, kwargs)  # can throw MultipleObjectsFoundError
         if not objects: return None
         assert len(objects) == 1
@@ -2363,6 +2562,13 @@ class EntityMeta(type):
                         return filtered_objects
                     else: throw(NotImplementedError)
         if obj is not None:
+            if obj._discriminator_:
+                if obj._subclasses_:
+                    cls = obj.__class__
+                    if not issubclass(entity, cls) and not issubclass(cls, entity): return []
+                    seeds = cache.seeds.get(entity.__dict__['_pk_'])
+                    if seeds and obj in seeds: obj._load_()
+                if not isinstance(obj, entity): return []
             if obj._status_ == 'deleted': return []
             for attr, val in avdict.iteritems():
                 if val != attr.__get__(obj):
@@ -2550,6 +2756,17 @@ class EntityMeta(type):
                 for obj in result:
                     if obj not in batch: throw(UnrepeatableReadError,
                                                'Phantom object %s disappeared' % safe_repr(obj))
+    def _query_from_args_(entity, frame_depth, args, kwargs):
+        if len(args) > 1: throw(TypeError, 'Only one positional argument expected')
+        if kwargs: throw(TypeError, 'If positional argument presented, no keyword arguments expected')
+        first_arg = args[0]
+        if not (isinstance(first_arg, types.FunctionType)
+                or isinstance(first_arg, basestring) and lambda_re.match(first_arg)):
+            throw(TypeError, 'Positional argument must be lambda function or its text source. '
+                             'Got: %s.get(%r)' % (entity.__name__, first_arg))
+        globals = sys._getframe(frame_depth+1).f_globals
+        locals = sys._getframe(frame_depth+1).f_locals
+        return entity._query_from_lambda_(first_arg, globals, locals)
     def _query_from_lambda_(entity, lambda_func, globals, locals):
         if type(lambda_func) is types.FunctionType:
             names, argsname, keyargsname, defaults = inspect.getargspec(lambda_func)
@@ -2708,6 +2925,7 @@ class EntityMeta(type):
             result_cls = type(cls_name, (SetWrapper, mixin), {})
             entity._set_wrapper_subclass_ = result_cls
         return result_cls
+    @cut_traceback
     def describe(entity):
         result = []
         parents = ','.join(cls.__name__ for cls in entity.__bases__)
@@ -2718,6 +2936,10 @@ class EntityMeta(type):
             result.append('# attrs introduced in %s' % entity.__name__)
         result.extend(attr.describe() for attr in entity._new_attrs_)
         return '\n    '.join(result)
+    @cut_traceback
+    @db_session(ddl=True)
+    def drop_table(entity, with_all_data=False):
+        entity._database_._drop_tables([ entity._table_ ], True, with_all_data)
 
 def populate_criteria_list(criteria_list, columns, converters, params_count=0, table_alias=None):
     assert len(columns) == len(converters)
@@ -2789,11 +3011,13 @@ class Entity(object):
             indexes = {}
             for attr in entity._simple_keys_:
                 val = avdict[attr]
+                if val is None and cache.ignore_none: continue
                 if val in cache.indexes.setdefault(attr, {}): throw(CacheIndexError,
-                    'Cannot create %s: value %s for key %s already exists' % (entity.__name__, val, attr.name))
+                    'Cannot create %s: value %r for key %s already exists' % (entity.__name__, val, attr.name))
                 indexes[attr] = val
             for attrs in entity._composite_keys_:
                 vals = tuple(map(avdict.__getitem__, attrs))
+                if cache.ignore_none and None in vals: continue
                 if vals in cache.indexes.setdefault(attrs, {}):
                     attr_names = ', '.join(attr.name for attr in attrs)
                     throw(CacheIndexError, 'Cannot create %s: value %s for composite key (%s) already exists'
@@ -2833,6 +3057,31 @@ class Entity(object):
             if not attr.reverse: append(val)
             else: raw_pkval += val._get_raw_pkval_()
         return tuple(raw_pkval)
+    @cut_traceback
+    def __lt__(entity, other):
+        return entity._cmp_(other) < 0
+    @cut_traceback
+    def __le__(entity, other):
+        return entity._cmp_(other) <= 0
+    @cut_traceback
+    def __gt__(entity, other):
+        return entity._cmp_(other) > 0
+    @cut_traceback
+    def __ge__(entity, other):
+        return entity._cmp_(other) >= 0
+    def _cmp_(entity, other):
+        if entity is other: return 0
+        if isinstance(other, Entity):
+            pkval = entity._pkval_
+            other_pkval = other._pkval_
+            if pkval is not None:
+                if other_pkval is None: return -1
+                result = cmp(pkval, other_pkval)
+            else:
+                if other_pkval is not None: return 1
+                result = cmp(entity._newid_, other._newid_)
+            if result: return result
+        return cmp(id(entity), id(other))
     @cut_traceback
     def __repr__(obj):
         pkval = obj._pkval_
@@ -3345,7 +3594,7 @@ class Cache(object):
         cache.num = next_num()
         cache.database = database
         cache.optimistic = database.optimistic
-        cache.ignore_none = True  # todo : get from provider
+        cache.ignore_none = database.provider.ignore_none
         cache.indexes = {}
         cache.seeds = {}
         cache.collection_statistics = {}
@@ -3367,7 +3616,7 @@ class Cache(object):
                 'Transaction cannot be continued because database connection failed')
             elif cache.saving: throw(ConnectionClosedError,
                 'Optimistic transaction cannot be completed because database connection failed during saving changes')
-            log_orm('RECONNECT')
+            if debug: log_orm('RECONNECT')
         provider = cache.database.provider
         connection = provider.connect()
         cache.connection = connection
@@ -3384,16 +3633,16 @@ class Cache(object):
         database = cache.database
         provider = database.provider
         connection = cache.connection or cache.establish_connection()
-        try:
-            if cache.optimistic:
+        if cache.optimistic:
+            try:
                 if debug: log_orm('OPTIMISTIC ROLLBACK')
                 provider.rollback(connection)
-        except:
-            cache.is_alive = False
-            cache.connection = None
-            x = local.db2cache.pop(database); assert x is cache
-            provider.drop(connection)
-            raise
+            except:
+                cache.is_alive = False
+                cache.connection = None
+                x = local.db2cache.pop(database); assert x is cache
+                provider.drop(connection)
+                raise
         try:
             modified = cache.modified
             if modified:
@@ -3562,123 +3811,6 @@ class Cache(object):
                                  % (obj2.__class__.__name__, ', '.join(attr.name for attr in attrs), key_str))
         index.pop(currents, None)
 
-def _get_caches():
-    return list(sorted((cache for cache in local.db2cache.values()),
-                       reverse=True, key=lambda cache : (cache.database.priority, cache.num)))
-
-@cut_traceback
-def flush():
-    for cache in _get_caches(): cache.flush()
-
-def reraise(exc_class, exceptions):
-    try:
-        cls, exc, tb = exceptions[0]
-        msg = " ".join(tostring(arg) for arg in exc.args)
-        if not issubclass(cls, TransactionError):
-            msg = '%s: %s' % (cls.__name__, msg)
-        raise exc_class, exc_class(msg, exceptions), tb
-    finally: del tb
-
-@cut_traceback
-def commit():
-    caches = _get_caches()
-    if not caches: return
-    primary_cache = caches[0]
-    other_caches = caches[1:]
-    exceptions = []
-    try:
-        try: primary_cache.commit()
-        except:
-            exceptions.append(sys.exc_info())
-            for cache in other_caches:
-                try: cache.rollback()
-                except: exceptions.append(sys.exc_info())
-            reraise(CommitException, exceptions)
-        else:
-            for cache in other_caches:
-                try: cache.commit()
-                except: exceptions.append(sys.exc_info())
-            if exceptions:
-                reraise(PartialCommitException, exceptions)
-    finally:
-        del exceptions
-
-@cut_traceback
-def rollback():
-    exceptions = []
-    try:
-        for cache in _get_caches():
-            try: cache.rollback()
-            except: exceptions.append(sys.exc_info())
-        if exceptions:
-            reraise(RollbackException, exceptions)
-        assert not local.db2cache
-    finally:
-        del exceptions
-
-def _release():
-    for cache in _get_caches(): cache.release()
-    assert not local.db2cache
-
-class DBSessionContextManager(object):
-    def __init__(self, retry=1, retry_exceptions=(TransactionError,), allowed_exceptions=()):
-        if retry is not 1 and (type(retry) is not int or retry < 0): throw(TypeError)
-        self.retry = retry
-        self.retry_exceptions = retry_exceptions
-        self.allowed_exceptions = allowed_exceptions
-        self.is_decorator = False
-    def __call__(self, *args, **kwargs):
-        if not args and not kwargs: return self
-        if len(args) > 1: throw(TypeError)
-        if len(args) == 1:
-            if kwargs: throw(TypeError)
-            self.is_decorator = True
-            func = args[0]
-            def new_func(func, *args, **kwargs):
-                for i in xrange(self.retry):
-                    try:
-                        with self: return func(*args, **kwargs)
-                    except Exception, e:
-                        if not isinstance(e, self.retry_exceptions): raise
-                raise
-            return decorator(new_func, func)
-        return self.__class__(**kwargs)
-    def __enter__(self):
-        if not self.is_decorator and self.retry != 1: throw(TypeError,
-            "@db_session can accept 'retry' parameter only when used as decorator and not as context manager")
-        local.db_context_counter += 1
-    def __exit__(self, exc_type=None, exc_value=None, traceback=None):
-        local.db_context_counter -= 1
-        if local.db_context_counter: return
-        try:
-            if exc_type is None:
-                commit()
-                return
-            # assert isinstance(exc_value, exc_type)  # does not work in Python 2.6 for string exceptions
-            allowed_exceptions = self.allowed_exceptions
-            if callable(allowed_exceptions): allowed = allowed_exceptions(exc_value)
-            else: allowed = isinstance(exc_value, tuple(allowed_exceptions))
-            if allowed: commit()
-            else: rollback()
-        finally: _release()
-
-db_session = DBSessionContextManager()
-
-def with_transaction(*args, **kwargs):
-    deprecated(3, "@with_transaction decorator is deprecated, use @db_session decorator instead")
-    return db_session(*args, **kwargs)
-
-@decorator
-def db_decorator(func, *args, **kwargs):
-    web = sys.modules.get('pony.web')
-    allowed_exceptions = web and [ web.HttpRedirect ] or []
-    try:
-        with db_session(allowed_exceptions=allowed_exceptions):
-            return func(*args, **kwargs)
-    except (ObjectNotFound, RowNotFound):
-        if web: throw(web.Http404NotFound)
-        raise
-
 ###############################################################################
 
 def string2ast(s):
@@ -3713,11 +3845,11 @@ def select(gen, frame_depth=0, left_join=False):
 
 @cut_traceback
 def left_join(gen, frame_depth=0):
-    return select(gen, frame_depth=frame_depth+2, left_join=True)
+    return select(gen, frame_depth=frame_depth+3, left_join=True)
 
 @cut_traceback
 def get(gen):
-    return select(gen, frame_depth=2).get()
+    return select(gen, frame_depth=3).get()
 
 def make_aggrfunc(std_func):
     def aggrfunc(*args, **kwargs):
@@ -3739,9 +3871,11 @@ min = make_aggrfunc(_min)
 max = make_aggrfunc(_max)
 avg = make_aggrfunc(_avg)
 
+distinct = make_aggrfunc(_distinct)
+
 @cut_traceback
 def exists(gen, frame_depth=0):
-    return select(gen, frame_depth=frame_depth+2).exists()
+    return select(gen, frame_depth=frame_depth+3).exists()
 
 def JOIN(expr):
     return expr

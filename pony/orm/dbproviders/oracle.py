@@ -8,54 +8,80 @@ from uuid import UUID
 
 import cx_Oracle
 
-from pony.orm import core, dbschema, sqlbuilding, dbapiprovider, sqltranslation
+from pony.orm import core, sqlbuilding, dbapiprovider, sqltranslation
 from pony.orm.core import log_orm, log_sql, DatabaseError
+from pony.orm.dbschema import DBSchema, DBObject, Table, Column
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, get_version_tuple
 from pony.utils import throw
 
-trigger_template = """
-create trigger %s
-  before insert on %s
-  for each row
-begin
-  if :new.%s is null then
-    select %s.nextval into :new.%s from dual;
-  end if;
-end;"""
-
-class OraTable(dbschema.Table):
-    def create(table, provider, connection, created_tables=None):
-        commands = table.get_create_commands(created_tables)
-        for i, sql in enumerate(commands):
-            if core.debug: log_sql(sql)
-            cursor = connection.cursor()
-            try: provider.execute(cursor, sql)
-            except DatabaseError, e:
-                if e.original_exc.args[0].code != 955: raise
-                if core.debug: log_orm('ALREADY EXISTS: %s' % e.args[0].message)
-                if i: continue
-                if len(commands) > 1:
-                    log_orm('SKIP FURTHER DDL COMMANDS FOR TABLE %s\n' % table.name)
-                return
-    def get_create_commands(table, created_tables=None):
-        result = dbschema.Table.get_create_commands(table, created_tables)
+class OraTable(Table):
+    def get_objects_to_create(table, created_tables=None):
+        result = Table.get_objects_to_create(table, created_tables)
         for column in table.column_list:
             if column.is_pk == 'auto':
-                quote_name = table.schema.provider.quote_name
-                case = table.schema.case
-                seq_name = quote_name(table.name + '_SEQ')
-                result.append(case('create sequence %s nocache') % seq_name)
-                table_name = quote_name(table.name)
-                trigger_name = quote_name(table.name + '_BI')  # Before Insert
-                column_name = quote_name(column.name)
-                result.append(case(trigger_template) % (trigger_name, table_name, column_name, seq_name, column_name))
+                sequence = OraSequence(table)
+                trigger = OraTrigger(table, column, sequence)
+                result.extend((sequence, trigger))
                 break
         return result
 
-class OraColumn(dbschema.Column):
+class OraSequence(DBObject):
+    def __init__(sequence, table):
+        sequence.table = table
+        table_name = table.name
+        if isinstance(table_name, basestring): sequence.name = table_name + '_SEQ'
+        else: sequence.name = tuple(table_name[:-1]) + (table_name[0] + '_SEQ',)
+    def exists(sequence, provider, connection):
+        owner_name, sequence_name = provider.split_table_name(sequence.name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM all_sequences '
+                       'WHERE sequence_owner = :so and sequence_name = :sn',
+                       dict(so=owner_name, sn=sequence_name))
+        return cursor.fetchone() is not None
+    def get_create_command(sequence):
+        schema = sequence.table.schema
+        seq_name = schema.provider.quote_name(sequence.name)
+        return schema.case('CREATE SEQUENCE %s NOCACHE') % seq_name
+        
+trigger_template = """
+CREATE TRIGGER %s
+  BEFORE INSERT ON %s
+  FOR EACH ROW
+BEGIN
+  IF :new.%s IS NULL THEN
+    SELECT %s.nextval INTO :new.%s FROM DUAL;
+  END IF;
+END;""".strip()
+
+class OraTrigger(DBObject):
+    def __init__(trigger, table, column, sequence):
+        trigger.table = table
+        trigger.column = column
+        trigger.sequence = sequence
+        table_name = table.name
+        if not isinstance(table_name, basestring): table_name = table_name[-1]
+        trigger.name = table_name + '_BI' # Before Insert
+    def exists(trigger, provider, connection):
+        owner_name, table_name = provider.split_table_name(trigger.table.name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM all_triggers '
+                       'WHERE table_name = :tbn AND table_owner = :o '
+                       'AND trigger_name = :trn AND owner = :o',
+                       dict(tbn=table_name, trn=trigger.name, o=owner_name))
+        return cursor.fetchone() is not None
+    def get_create_command(trigger):
+        schema = trigger.table.schema
+        quote_name = schema.provider.quote_name
+        trigger_name = quote_name(trigger.name)  
+        table_name = quote_name(trigger.table.name)
+        column_name = quote_name(trigger.column.name)
+        seq_name = quote_name(trigger.sequence.name)
+        return schema.case(trigger_template) % (trigger_name, table_name, column_name, seq_name, column_name)
+
+class OraColumn(Column):
     auto_template = None
 
-class OraSchema(dbschema.DBSchema):
+class OraSchema(DBSchema):
     dialect = 'Oracle'
     table_class = OraTable
     column_class = OraColumn
@@ -199,7 +225,6 @@ class OraProvider(DBAPIProvider):
     dialect = 'Oracle'
     paramstyle = 'named'
     max_name_len = 30
-
     table_if_not_exists_syntax = False
     index_if_not_exists_syntax = False
 
@@ -208,13 +233,15 @@ class OraProvider(DBAPIProvider):
     translator_cls = OraTranslator
     sqlbuilder_cls = OraBuilder
 
+    name_before_table = 'owner'
+
     def inspect_connection(provider, connection):
-        sql = "select version from product_component_version where product like 'Oracle Database %'"
         cursor = connection.cursor()
-        cursor.execute(sql)
-        row = cursor.fetchone()
-        assert row is not None
-        provider.server_version = get_version_tuple(row[0])
+        cursor.execute('SELECT version FROM product_component_version '
+                       "WHERE product LIKE 'Oracle Database %'")
+        provider.server_version = get_version_tuple(cursor.fetchone()[0])
+        cursor.execute("SELECT sys_context( 'userenv', 'current_schema' ) FROM DUAL")
+        provider.default_schema_name = cursor.fetchone()[0]
 
     def should_reconnect(provider, exc):
         reconnect_error_codes = (
@@ -224,20 +251,8 @@ class OraProvider(DBAPIProvider):
         return isinstance(exc, cx_Oracle.OperationalError) \
                and exc.args[0].code in reconnect_error_codes
 
-    def get_default_entity_table_name(provider, entity):
-        return DBAPIProvider.get_default_entity_table_name(provider, entity).upper()
-
-    def get_default_m2m_table_name(provider, attr, reverse):
-        return DBAPIProvider.get_default_m2m_table_name(provider, attr, reverse).upper()
-
-    def get_default_column_names(provider, attr, reverse_pk_columns=None):
-        return [ column.upper() for column in DBAPIProvider.get_default_column_names(provider, attr, reverse_pk_columns) ]
-
-    def get_default_m2m_column_names(provider, entity):
-        return [ column.upper() for column in DBAPIProvider.get_default_m2m_column_names(provider, entity) ]
-
-    def get_default_index_name(*args, **kwargs):
-        return DBAPIProvider.get_default_index_name(*args, **kwargs).upper()
+    def normalize_name(provider, name):
+        return name[:provider.max_name_len].upper()
 
     @wrap_dbapi_exceptions
     def execute(provider, cursor, sql, arguments=None, returning_id=False):
@@ -293,6 +308,43 @@ class OraProvider(DBAPIProvider):
         kwargs.setdefault('increment', 1)
         return OraPool(**kwargs)
 
+    def table_exists(provider, connection, table_name):
+        owner_name, table_name = provider.split_table_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM all_tables WHERE owner = :o AND table_name = :tn',
+                       dict(o=owner_name, tn=table_name))
+        return cursor.fetchone() is not None
+
+    def index_exists(provider, connection, table_name, index_name):
+        owner_name, table_name = provider.split_table_name(table_name)
+        if not isinstance(index_name, basestring): throw(NotImplementedError)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM all_indexes WHERE owner = :o '
+                       'AND index_name = :i AND table_owner = :o AND table_name = :t',
+                       dict(o=owner_name, i=index_name, t=table_name))
+        return cursor.fetchone() is not None
+
+    def fk_exists(provider, connection, table_name, fk_name):
+        owner_name, table_name = provider.split_table_name(table_name)
+        if not isinstance(fk_name, basestring): throw(NotImplementedError)
+        cursor = connection.cursor()
+        cursor.execute("SELECT 1 FROM user_constraints WHERE constraint_type = 'R' "
+                       'AND table_name = :tn AND constraint_name = :cn AND owner = :o',
+                       dict(tn=table_name, cn=fk_name, o=owner_name))
+        return cursor.fetchone() is not None
+
+    def table_has_data(provider, connection, table_name):
+        table_name = provider.quote_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM %s WHERE ROWNUM = 1' % table_name)
+        return cursor.fetchone() is not None
+
+    def drop_table(provider, connection, table_name):
+        table_name = provider.quote_name(table_name)
+        cursor = connection.cursor()
+        sql = 'DROP TABLE %s CASCADE CONSTRAINTS' % table_name
+        cursor.execute(sql)
+
 provider_cls = OraProvider
 
 def to_int_or_decimal(val):
@@ -325,6 +377,8 @@ class OraPool(object):
         pool._pool.release(con)
     def drop(pool, con):
         pool._pool.drop(con)
+    def disconnect(pool):
+        pass
 
 def get_inputsize(arg):
     if isinstance(arg, datetime):

@@ -31,31 +31,31 @@ class TestDate(unittest.TestCase):
         self.assert_(True)
     def test_date_year(self):
         result = select(e for e in Entity1 if e.b.year > 2009)
-        self.assertEquals(len(result), 2)
+        self.assertEqual(len(result), 2)
     def test_date_month(self):
         result = select(e for e in Entity1 if e.b.month == 10)
-        self.assertEquals(len(result), 2)
+        self.assertEqual(len(result), 2)
     def test_date_day(self):
         result = select(e for e in Entity1 if e.b.day == 22)
-        self.assertEquals(len(result), 1)
+        self.assertEqual(len(result), 1)
     def test_datetime_year(self):
         result = select(e for e in Entity1 if e.c.year > 2009)
-        self.assertEquals(len(result), 2)
+        self.assertEqual(len(result), 2)
     def test_datetime_month(self):
         result = select(e for e in Entity1 if e.c.month == 10)
-        self.assertEquals(len(result), 2)
+        self.assertEqual(len(result), 2)
     def test_datetime_day(self):
         result = select(e for e in Entity1 if e.c.day == 22)
-        self.assertEquals(len(result), 1)
+        self.assertEqual(len(result), 1)
     def test_datetime_hour(self):
         result = select(e for e in Entity1 if e.c.hour == 10)
-        self.assertEquals(len(result), 3)
+        self.assertEqual(len(result), 3)
     def test_datetime_minute(self):
         result = select(e for e in Entity1 if e.c.minute == 20)
-        self.assertEquals(len(result), 2)
+        self.assertEqual(len(result), 2)
     def test_datetime_second(self):
         result = select(e for e in Entity1 if e.c.second == 30)
-        self.assertEquals(len(result), 1)
+        self.assertEqual(len(result), 1)
 
 if __name__ == '__main__':
     unittest.main()

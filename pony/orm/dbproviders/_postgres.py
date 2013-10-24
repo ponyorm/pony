@@ -6,16 +6,13 @@ from pony.orm import dbschema, sqlbuilding, dbapiprovider
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import Value
+from pony.utils import throw
 
 class PGColumn(dbschema.Column):
     auto_template = 'SERIAL PRIMARY KEY'
 
-class PGTable(dbschema.Table):
-    pass
-
 class PGSchema(dbschema.DBSchema):
     dialect = 'PostgreSQL'
-    table_class = PGTable
     column_class = PGColumn
 
 class PGTranslator(SQLTranslator):
@@ -87,18 +84,11 @@ class PGProvider(DBAPIProvider):
     translator_cls = PGTranslator
     sqlbuilder_cls = PGSQLBuilder  # pygresql redefines this to PyGreSQLBuilder
 
-    def get_default_entity_table_name(provider, entity):
-        return DBAPIProvider.get_default_entity_table_name(provider, entity).lower()
+    default_schema_name = 'public'
 
-    def get_default_m2m_table_name(provider, attr, reverse):
-        return DBAPIProvider.get_default_m2m_table_name(provider, attr, reverse).lower()
-
-    def get_default_column_names(provider, attr, reverse_pk_columns=None):
-        return [ column.lower() for column in DBAPIProvider.get_default_column_names(provider, attr, reverse_pk_columns) ]
-
-    def get_default_m2m_column_names(provider, entity):
-        return [ column.lower() for column in DBAPIProvider.get_default_m2m_column_names(provider, entity) ]
-
+    def normalize_name(provider, name):
+        return name[:provider.max_name_len].lower()
+    
     @wrap_dbapi_exceptions
     def execute(provider, cursor, sql, arguments=None, returning_id=False):
         if isinstance(sql, unicode): sql = sql.encode('utf8')
@@ -109,6 +99,44 @@ class PGProvider(DBAPIProvider):
             if arguments is None: cursor.execute(sql)
             else: cursor.execute(sql, arguments)
             if returning_id: return cursor.fetchone()[0]
+
+    def table_exists(provider, connection, table_name):
+        schema_name, table_name = provider.split_table_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = %s '
+                       'AND tablename = %s', (schema_name, table_name))
+        return cursor.fetchone() is not None
+    
+    def index_exists(provider, connection, table_name, index_name):
+        schema_name, table_name = provider.split_table_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM pg_catalog.pg_indexes WHERE schemaname = %s '
+                       'AND tablename = %s AND indexname = %s',
+                       [ schema_name, table_name, index_name ])
+        return cursor.fetchone() is not None
+
+    def fk_exists(provider, connection, table_name, fk_name):
+        schema_name, table_name = provider.split_table_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM pg_class cls '
+                       'JOIN pg_namespace ns ON cls.relnamespace = ns.oid '
+                       'JOIN pg_constraint con ON con.conrelid = cls.oid '
+                       'WHERE ns.nspname = %s AND cls.relname = %s '
+                       "AND con.contype = 'f' AND con.conname = %s",
+                       [ schema_name, table_name, fk_name ])
+        return cursor.fetchone() is not None
+
+    def table_has_data(provider, connection, table_name):
+        table_name = provider.quote_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM %s LIMIT 1' % table_name)
+        return cursor.fetchone() is not None
+
+    def drop_table(provider, connection, table_name):
+        table_name = provider.quote_name(table_name)
+        cursor = connection.cursor()
+        sql = 'DROP TABLE %s CASCADE' % table_name
+        cursor.execute(sql)
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),

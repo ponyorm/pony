@@ -72,7 +72,7 @@ class DBAPIProvider(object):
     quote_char = '"'
     max_params_count = 200
     max_name_len = 128
-
+    ignore_none = True
     table_if_not_exists_syntax = True
     index_if_not_exists_syntax = True
     max_time_precision = default_time_precision = 6
@@ -83,6 +83,9 @@ class DBAPIProvider(object):
     dbschema_cls = None
     translator_cls = None
     sqlbuilder_cls = None
+
+    name_before_table = 'schema_name'
+    default_schema_name = None
 
     def __init__(provider, *args, **kwargs):
         pool_mockup = kwargs.pop('pony_pool_mockup', None)
@@ -95,31 +98,37 @@ class DBAPIProvider(object):
     def inspect_connection(provider, connection):
         pass
 
+    def normalize_name(provider, name):
+        return name[:provider.max_name_len]
+
     def get_default_entity_table_name(provider, entity):
-        return entity.__name__
+        return provider.normalize_name(entity.__name__)
 
     def get_default_m2m_table_name(provider, attr, reverse):
         if attr.symmetric:
             assert reverse is attr
             return attr.entity.__name__ + '_' + attr.name
-        return attr.entity.__name__ + '_' + reverse.entity.__name__
+        name = attr.entity.__name__ + '_' + reverse.entity.__name__
+        return provider.normalize_name(name)
 
     def get_default_column_names(provider, attr, reverse_pk_columns=None):
+        normalize = provider.normalize_name
         if reverse_pk_columns is None:
-            return [ attr.name ]
+            return [ normalize(attr.name) ]
         elif len(reverse_pk_columns) == 1:
-            return [ attr.name ]
+            return [ normalize(attr.name) ]
         else:
             prefix = attr.name + '_'
-            return [ prefix + column for column in reverse_pk_columns ]
+            return [ normalize(prefix + column) for column in reverse_pk_columns ]
 
     def get_default_m2m_column_names(provider, entity):
+        normalize = provider.normalize_name
         columns = entity._get_pk_columns_()
         if len(columns) == 1:
-            return [ entity.__name__.lower() ]
+            return [ normalize(entity.__name__.lower()) ]
         else:
             prefix = entity.__name__.lower() + '_'
-            return [ prefix + column for column in columns ]
+            return [ normalize(prefix + column) for column in columns ]
 
     def get_default_index_name(provider, table_name, column_names, is_pk=False, is_unique=False, m2m=False):
         if is_pk: index_name = 'pk_%s' % table_name
@@ -129,7 +138,22 @@ class DBAPIProvider(object):
             else: template = 'idx_%(tname)s__%(cnames)s'
             index_name = template % dict(tname=table_name,
                                          cnames='_'.join(name for name in column_names))
-        return index_name[:provider.max_name_len].lower()
+        return provider.normalize_name(index_name.lower())
+
+    def get_default_fk_name(provider, child_table_name, parent_table_name, child_column_names):
+        fk_name = 'fk_%s__%s' % (child_table_name, '__'.join(child_column_names))
+        return provider.normalize_name(fk_name.lower())
+
+    def split_table_name(provider, table_name):
+        if isinstance(table_name, basestring): return provider.default_schema_name, table_name
+        if not table_name: throw(TypeError, 'Invalid table name: %r' % table_name)
+        if len(table_name) != 2:
+            size = len(table_name)
+            throw(TypeError, '%s qualified table name must have two components: '
+                             '%s and table_name. Got %d component%s: %s'
+                             % (provider.dialect, provider.name_before_table,
+                                size, 's' if size != 1 else '', table_name))
+        return table_name[0], table_name[1]
 
     def quote_name(provider, name):
         quote_char = provider.quote_char
@@ -201,6 +225,32 @@ class DBAPIProvider(object):
     def start_optimistic_save(provider, connection):
         pass
 
+    def table_exists(provider, connection, table_name):
+        throw(NotImplementedError)
+
+    def index_exists(provider, connection, table_name, index_name):
+        throw(NotImplementedError)
+
+    def fk_exists(provider, connection, table_name, fk_name):
+        throw(NotImplementedError)
+
+    def table_has_data(provider, connection, table_name):
+        table_name = provider.quote_name(table_name)
+        cursor = connection.cursor()
+        cursor.execute('SELECT 1 FROM %s LIMIT 1' % table_name)
+        return cursor.fetchone() is not None
+
+    def disable_fk_checks_if_necessary(provider, connection):
+        pass
+
+    def enable_fk_checks_if_necessary(provider, connection, prev_state):
+        pass
+
+    def drop_table(provider, connection, table_name):
+        table_name = provider.quote_name(table_name)
+        cursor = connection.cursor()
+        sql = 'DROP TABLE %s' % table_name
+        cursor.execute(sql)
 
 class Pool(localbase):
     def __init__(pool, dbapi_module, *args, **kwargs): # called separately in each thread
@@ -222,6 +272,10 @@ class Pool(localbase):
         assert con is pool.con
         pool.con = None
         con.close()
+    def disconnect(pool):
+        con = pool.con
+        pool.con = None
+        if con is not None: con.close()
 
 class Converter(object):
     def __deepcopy__(converter, memo):

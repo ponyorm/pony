@@ -14,10 +14,11 @@ from pony.utils import localbase, datetime2timestamp, timestamp2datetime, decora
 
 class SQLiteForeignKey(dbschema.ForeignKey):
     def get_create_command(foreign_key):
-        return None
+        assert False
 
 class SQLiteSchema(dbschema.DBSchema):
     dialect = 'SQLite'
+    named_foreign_keys = False
     fk_class = SQLiteForeignKey
 
 class SQLiteTranslator(sqltranslation.SQLTranslator):
@@ -101,6 +102,8 @@ class SQLiteProvider(DBAPIProvider):
     translator_cls = SQLiteTranslator
     sqlbuilder_cls = SQLiteBuilder
 
+    name_before_table = 'db_name'
+
     server_version = sqlite.sqlite_version_info
 
     converter_classes = [
@@ -133,6 +136,46 @@ class SQLiteProvider(DBAPIProvider):
 
             filename = absolutize_path(filename, frame_depth=5)
             return SQLitePool(filename, create_db)
+
+    def table_exists(provider, connection, table_name):
+        return provider._exists(connection, table_name)
+
+    def index_exists(provider, connection, table_name, index_name):
+        return provider._exists(connection, table_name, index_name)
+
+    def _exists(provider, connection, table_name, index_name=None):
+        db_name, table_name = provider.split_table_name(table_name)
+
+        if db_name is None: catalog_name = 'sqlite_master'
+        else: catalog_name = (db_name, 'sqlite_master')
+        catalog_name = provider.quote_name(catalog_name)
+
+        cursor = connection.cursor()
+        if index_name is not None:
+            sql = "SELECT 1 FROM %s WHERE type='index' AND name=?" % catalog_name
+            cursor.execute(sql, [ index_name ])
+        else:
+            sql = "SELECT 1 FROM %s WHERE type='table' AND name=?" % catalog_name
+            cursor.execute(sql, [ table_name ])
+        return cursor.fetchone() is not None
+
+    def fk_exists(provider, connection, table_name, fk_name):
+        assert False
+
+    def disable_fk_checks_if_necessary(provider, connection):
+        cursor = connection.cursor()
+        cursor.execute('PRAGMA foreign_keys')
+        fk = cursor.fetchone()
+        if fk is not None:
+            fk = fk[0]
+            if fk: cursor.execute('PRAGMA foreign_keys = false')
+        return bool(fk)
+
+    def enable_fk_checks_if_necessary(provider, connection, fk):
+        assert type(fk) is bool, fk
+        if fk:
+            cursor = connection.cursor()
+            cursor.execute('PRAGMA foreign_keys = true')
 
 provider_cls = SQLiteProvider
 

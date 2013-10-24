@@ -5,12 +5,13 @@ from pony.utils import throw
 class DBSchema(object):
     dialect = None
     inline_fk_syntax = True
+    named_foreign_keys = True
     def __init__(schema, provider, uppercase=True):
         schema.provider = provider
         schema.tables = {}
         schema.constraints = {}
         schema.indent = '  '
-        schema.command_separator = ';\n'
+        schema.command_separator = ';\n\n'
         schema.uppercase = uppercase
         schema.names = {}
     def column_list(schema, columns):
@@ -39,22 +40,24 @@ class DBSchema(object):
         created_tables = set()
         commands = []
         for table in schema.order_tables_to_create():
-            commands.extend(table.get_create_commands(created_tables))
+            for db_object in table.get_objects_to_create(created_tables):
+                commands.append(db_object.get_create_command())
         return schema.command_separator.join(commands)
-    def create_tables(schema):
-        provider = schema.provider
-        connection = provider.connect()
+    def create_tables(schema, provider, connection):
         created_tables = set()
-        try:
-            for table in schema.order_tables_to_create():
-                table.create(provider, connection, created_tables)
-        except:
-            provider.drop(connection)
-            raise
-        connection.commit()
-        provider.release(connection)
+        for table in schema.order_tables_to_create():
+            for db_object in table.get_objects_to_create(created_tables):
+                if not db_object.exists(provider, connection):
+                    db_object.create(provider, connection)
 
-class Table(object):
+class DBObject(object):
+    def create(table, provider, connection):
+        sql = table.get_create_command()
+        if core.debug: log_sql(sql)
+        cursor = connection.cursor()
+        provider.execute(cursor, sql)
+
+class Table(DBObject):
     def __init__(table, name, schema):
         if name in schema.tables:
             throw(DBSchemaError, "Table %r already exists in database schema" % name)
@@ -78,51 +81,50 @@ class Table(object):
         if isinstance(table_name, tuple):
             table_name = '.'.join(table_name)
         return '<Table(%s)>' % table_name
-    def create(table, provider, connection, created_tables=None):
-        commands = table.get_create_commands(created_tables)
-        for sql in commands:
-            if core.debug: log_sql(sql)
-            cursor = connection.cursor()
-            provider.execute(cursor, sql)
-    def get_create_commands(table, created_tables=None):
-        if created_tables is None: created_tables = set()
+    def exists(table, provider, connection):
+        return provider.table_exists(connection, table.name)
+    def get_create_command(table):
         schema = table.schema
         case = schema.case
         provider = schema.provider
         quote_name = provider.quote_name
-        if_not_exists = provider.table_if_not_exists_syntax and provider.index_if_not_exists_syntax
+        if_not_exists = False # provider.table_if_not_exists_syntax and provider.index_if_not_exists_syntax
         cmd = []
         if not if_not_exists: cmd.append(case('CREATE TABLE %s (') % quote_name(table.name))
         else: cmd.append(case('CREATE TABLE IF NOT EXISTS %s (') % quote_name(table.name))
         for column in table.column_list:
-            cmd.append(schema.indent + column.get_sql(created_tables) + ',')
+            cmd.append(schema.indent + column.get_sql() + ',')
         if len(table.pk_index.columns) > 1:
             cmd.append(schema.indent + table.pk_index.get_sql() + ',')
         for index in table.indexes.values():
             if index.is_pk: continue
             if not index.is_unique: continue
             if len(index.columns) == 1: continue
-            cmd.append(index.get_sql() + ',')
-        for foreign_key in table.foreign_keys.values():
-            if schema.inline_fk_syntax and len(foreign_key.child_columns) == 1: continue
-            if not foreign_key.parent_table in created_tables: continue
-            cmd.append(foreign_key.get_sql() + ',')
+            cmd.append(schema.indent+index.get_sql() + ',')
+        if not schema.named_foreign_keys:
+            for foreign_key in table.foreign_keys.values():
+                if schema.inline_fk_syntax and len(foreign_key.child_columns) == 1: continue
+                cmd.append(schema.indent+foreign_key.get_sql() + ',')
         cmd[-1] = cmd[-1][:-1]
         cmd.append(')')
-        cmd = '\n'.join(cmd)
-        result = [ cmd ]
-
+        return '\n'.join(cmd)
+    def get_objects_to_create(table, created_tables=None):
+        if created_tables is None: created_tables = set()
+        result = [ table ]
         for index in table.indexes.values():
             if index.is_pk or index.is_unique: continue
             assert index.name is not None
-            result.append(index.get_create_command())
-
-        for child_table in table.child_tables:
-            if child_table not in created_tables: continue
-            for foreign_key in child_table.foreign_keys.values():
-                if foreign_key.parent_table is not table: continue
-                cmd = foreign_key.get_create_command()
-                if cmd is not None: result.append(cmd)
+            result.append(index)
+        schema = table.schema
+        if schema.named_foreign_keys:
+            for foreign_key in table.foreign_keys.values():
+                if foreign_key.parent_table not in created_tables: continue
+                result.append(foreign_key)
+            for child_table in table.child_tables:
+                if child_table not in created_tables: continue
+                for foreign_key in child_table.foreign_keys.values():
+                    if foreign_key.parent_table is not table: continue
+                    result.append(foreign_key)
         created_tables.add(table)
         return result
     def add_column(table, column_name, sql_type, is_not_null=None):
@@ -139,6 +141,10 @@ class Table(object):
             return index
         return table.schema.index_class(index_name, table, columns, is_pk, is_unique)
     def add_foreign_key(table, fk_name, child_columns, parent_table, parent_columns, index_name=None):
+        if fk_name is None:
+            provider = table.schema.provider
+            child_column_names = tuple(column.name for column in child_columns)
+            fk_name = provider.get_default_fk_name(table.name, parent_table.name, child_column_names)
         return table.schema.fk_class(fk_name, table, child_columns, parent_table, parent_columns, index_name)
 
 class Column(object):
@@ -157,8 +163,7 @@ class Column(object):
         column.is_unique = False
     def __repr__(column):
         return '<Column(%s.%s)>' % (column.table.name, column.name)
-    def get_sql(column, created_tables=None):
-        if created_tables is None: created_tables = set()
+    def get_sql(column):
         table = column.table
         schema = table.schema
         quote_name = schema.provider.quote_name
@@ -176,17 +181,16 @@ class Column(object):
             else:
                 if column.is_unique: append(case('UNIQUE'))
                 if column.is_not_null: append(case('NOT NULL'))
-        if schema.inline_fk_syntax:
+        if schema.inline_fk_syntax and not schema.named_foreign_keys:
             foreign_key = table.foreign_keys.get((column,))
             if foreign_key is not None:
                 parent_table = foreign_key.parent_table
-                if parent_table in created_tables or parent_table is table:
-                    append(case('REFERENCES'))
-                    append(quote_name(parent_table.name))
-                    append(schema.column_list(foreign_key.parent_columns))
+                append(case('REFERENCES'))
+                append(quote_name(parent_table.name))
+                append(schema.column_list(foreign_key.parent_columns))
         return ' '.join(result)
 
-class Constraint(object):
+class Constraint(DBObject):
     def __init__(constraint, name, schema):
         if name is not None:
             assert name not in schema.names
@@ -228,6 +232,8 @@ class Index(Constraint):
         index.columns = columns
         index.is_pk = is_pk
         index.is_unique = is_unique
+    def exists(index, provider, connection):
+        return provider.index_exists(connection, index.table.name, index.name)
     def get_sql(index):
         return index._get_create_sql(inside_table=True)
     def get_create_command(index):
@@ -244,8 +250,8 @@ class Index(Constraint):
             append(case('CREATE'))
             if index.is_unique: append(case('UNIQUE'))
             append(case('INDEX'))
-            if schema.provider.index_if_not_exists_syntax:
-                append(case('IF NOT EXISTS'))
+            # if schema.provider.index_if_not_exists_syntax:
+            #     append(case('IF NOT EXISTS'))
             append(quote_name(index.name))
             append(case('ON'))
             append(quote_name(index.table.name))
@@ -276,7 +282,7 @@ class ForeignKey(Constraint):
             if len(child_columns) == 1: throw(DBSchemaError, 'Foreign key for column %r already defined' % child_columns[0].name)
             else: throw(DBSchemaError, 'Foreign key for columns (%s) already defined' % ', '.join(repr(column.name) for column in child_columns))
         if name is not None and name in schema.names:
-            throw(DBSchemaError, 'Foreign key %s cannot be created, name is already in use')
+            throw(DBSchemaError, 'Foreign key %s cannot be created, name is already in use' % name)
         Constraint.__init__(foreign_key, name, schema)
         child_table.foreign_keys[child_columns] = foreign_key
         if child_table is not parent_table:
@@ -293,6 +299,8 @@ class ForeignKey(Constraint):
                 if columns[:child_columns_len] == child_columns: break
             else: child_table.add_index(index_name, child_columns, is_pk=False,
                                         is_unique=False, m2m=bool(child_table.m2m))
+    def exists(foreign_key, provider, connection):
+        return provider.fk_exists(connection, foreign_key.child_table.name, foreign_key.name)
     def get_sql(foreign_key):
         return foreign_key._get_create_sql(inside_table=True)
     def get_create_command(foreign_key):
@@ -307,7 +315,7 @@ class ForeignKey(Constraint):
             append(case('ALTER TABLE'))
             append(quote_name(foreign_key.child_table.name))
             append(case('ADD'))
-        if foreign_key.name:
+        if schema.named_foreign_keys and foreign_key.name:
             append(case('CONSTRAINT'))
             append(quote_name(foreign_key.name))
         append(case('FOREIGN KEY'))

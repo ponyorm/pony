@@ -57,12 +57,12 @@ class TestObjectFlatMonad(unittest.TestCase):
     @db_session
     def test1(self):
         result = set(select(s.groups for s in Subject if len(s.name) == 4))
-        self.assertEquals(result, set([Group[41], Group[42]]))
+        self.assertEqual(result, set([Group[41], Group[42]]))
 
     @db_session
     def test2(self):
         result = set(select(g.students for g in Group if g.department == 102))
-        self.assertEquals(result, set([Student[5], Student[4]]))
+        self.assertEqual(result, set([Student[5], Student[4]]))
 
 if __name__ == '__main__':
     unittest.main()
