@@ -100,11 +100,11 @@ class Table(DBObject):
             if index.is_pk: continue
             if not index.is_unique: continue
             if len(index.columns) == 1: continue
-            cmd.append(index.get_sql() + ',')
+            cmd.append(schema.indent+index.get_sql() + ',')
         if not schema.named_foreign_keys:
             for foreign_key in table.foreign_keys.values():
                 if schema.inline_fk_syntax and len(foreign_key.child_columns) == 1: continue
-                cmd.append(foreign_key.get_sql() + ',')
+                cmd.append(schema.indent+foreign_key.get_sql() + ',')
         cmd[-1] = cmd[-1][:-1]
         cmd.append(')')
         return '\n'.join(cmd)
@@ -315,7 +315,7 @@ class ForeignKey(Constraint):
             append(case('ALTER TABLE'))
             append(quote_name(foreign_key.child_table.name))
             append(case('ADD'))
-        if foreign_key.name:
+        if schema.named_foreign_keys and foreign_key.name:
             append(case('CONSTRAINT'))
             append(quote_name(foreign_key.name))
         append(case('FOREIGN KEY'))
