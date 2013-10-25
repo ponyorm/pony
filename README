@@ -1,5 +1,6 @@
 Pony Object-Relational Mapper
------------------------------
+==================================
+
 Pony is an object-relational mapper. The most interesting feature of Pony is its ability to write queries to the database using generator expressions. Pony works with entities which are mapped to a SQL database. Using generator syntax for writing queries allows the user to formulate very eloquent queries. It increases the level of abstraction and allows a programmer to concentrate on the business logic of the application. For this purpose Pony analyzes the abstract syntax tree of a generator and translates it to its SQL equivalent.
 
 Following is an example of a query in Pony:
@@ -9,12 +10,16 @@ Following is an example of a query in Pony:
 Pony translates queries to SQL using a specific database dialect. Currently Pony works with SQLite, MySQL, PostgreSQL and Oracle databases.
 
 The package pony.orm.examples contains several examples.
-Documenation is available at http://ponyorm.com
+Documenation is available at [http://doc.ponyorm.com](http://doc.ponyorm.com)
+
+We are looking forward to your comments and suggestions at our mailing list [http://ponyorm-list.ponyorm.com](http://ponyorm-list.ponyorm.com)
 
 License
----------
+-----------
+
 Pony ORM is released under the GNU Affero General Public License version 3. 
 http://www.gnu.org/licenses/agpl
 
 Copyright (c) 2006-2013 Alexander Kozlovsky, Alexey Malashkevich. All rights reserved. 
 team (at) ponyorm.com
+
