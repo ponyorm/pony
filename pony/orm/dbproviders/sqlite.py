@@ -222,6 +222,8 @@ def _text_factory(s):
 def _init_connection(con):
     con.text_factory = _text_factory
     con.create_function('power', 2, pow)
+    if sqlite.sqlite_version_info >= (3, 6, 19):
+        con.execute('PRAGMA foreign_keys = true')
 
 mem_queue = Queue()
 

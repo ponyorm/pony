@@ -2,7 +2,7 @@ from distutils.core import setup
 import sys
 
 name = "pony"
-version = "0.4.8"
+version = "0.4.9"
 description = "Pony Object-Relational Mapper"
 long_description = """Pony is an object-relational mapper. The most interesting feature of Pony is its ability to write queries to the database using generator expressions. Pony works with entities which are mapped to a SQL database. Using generator syntax for writing queries allows the user to formulate very eloquent queries. It increases the level of abstraction and allows a programmer to concentrate on the business logic of the application. For this purpose Pony analyzes the abstract syntax tree of a generator and translates it to its SQL equivalent.
 
