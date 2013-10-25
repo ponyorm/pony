@@ -33,7 +33,7 @@ __all__ = '''
     IntegrityError InternalError ProgrammingError NotSupportedError
 
     OrmError ERDiagramError DBSchemaError MappingError
-    TableNotExists TableIsNotEmpty ConstraintError CacheIndexError
+    TableDoesNotExist TableIsNotEmpty ConstraintError CacheIndexError
     ObjectNotFound MultipleObjectsFoundError TooManyObjectsFoundError OperationWithDeletedObjectError
     TransactionError TransactionIntegrityError IsolationError CommitException RollbackException
     UnrepeatableReadError UnresolvableCyclicDependency UnexpectedError
@@ -102,7 +102,7 @@ class ERDiagramError(OrmError): pass
 class DBSchemaError(OrmError): pass
 class MappingError(OrmError): pass
 
-class TableNotExists(OrmError): pass
+class TableDoesNotExist(OrmError): pass
 class TableIsNotEmpty(OrmError): pass
 
 class ConstraintError(OrmError): pass
@@ -760,9 +760,9 @@ class Database(object):
                     normalized_table_name = provider.normalize_name(table_name)
                     if normalized_table_name != table_name \
                     and provider.table_exists(connection, normalized_table_name):
-                        throw(TableNotExists, 'Table %s does not exists (probably you meant table %s)'
-                                              % (table_name, normalized_table_name))
-                throw(TableNotExists, 'Table %s does not exists' % table_name)
+                        throw(TableDoesNotExist, 'Table %s does not exist (probably you meant table %s)'
+                                                 % (table_name, normalized_table_name))
+                throw(TableDoesNotExist, 'Table %s does not exist' % table_name)
         if not with_all_data:
             for table_name in existed_tables:
                 if provider.table_has_data(connection, table_name): throw(TableIsNotEmpty,
