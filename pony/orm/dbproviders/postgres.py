@@ -9,6 +9,7 @@ import psycopg2.extras
 psycopg2.extras.register_uuid()
 
 from pony.orm import core, dbschema, sqlbuilding, dbapiprovider
+from pony.orm.core import log_orm
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, ProgrammingError, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import Value
@@ -127,16 +128,16 @@ class PGProvider(DBAPIProvider):
     def get_pool(provider, *args, **kwargs):
         return PGPool(provider.dbapi_module, *args, **kwargs)
 
-    def set_transaction_mode(provider, connection, optimistic):
-        if optimistic:
-            if core.debug: core.log_orm('SET AUTOCOMMIT = ON')
-            connection.autocommit = True
-        else:
-            if core.debug: core.log_orm('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
-            connection.set_isolation_level(extensions.ISOLATION_LEVEL_READ_COMMITTED)
+    @wrap_dbapi_exceptions
+    def connect(provider):
+        connection = provider.pool.connect()
+        if core.debug: log_orm('SET AUTOCOMMIT = ON')
+        connection.autocommit = True
+        return connection
 
-    def start_optimistic_save(provider, connection):
-        if core.debug: core.log_orm('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
+    @wrap_dbapi_exceptions
+    def set_transaction_mode(provider, connection):
+        if core.debug: log_orm('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
         connection.set_isolation_level(extensions.ISOLATION_LEVEL_READ_COMMITTED)
 
     @wrap_dbapi_exceptions

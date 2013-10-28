@@ -175,6 +175,10 @@ class DBAPIProvider(object):
         return provider.pool.connect()
 
     @wrap_dbapi_exceptions
+    def set_transaction_mode(provider, connection):
+        pass
+
+    @wrap_dbapi_exceptions
     def commit(provider, connection):
         connection.commit()
 
@@ -223,12 +227,6 @@ class DBAPIProvider(object):
 
     def get_pool(provider, *args, **kwargs):
         return Pool(provider.dbapi_module, *args, **kwargs)
-
-    def set_transaction_mode(provider, connection, optimistic):
-        pass
-
-    def start_optimistic_save(provider, connection):
-        pass
 
     def table_exists(provider, connection, table_name):
         throw(NotImplementedError)

@@ -402,7 +402,6 @@ class Database(object):
         self.provider = provider = provider_cls(*args, **kwargs)
 
         self.priority = 0
-        self.optimistic = False
         self._insert_cache = {}
 
         # ER-diagram related stuff:
@@ -530,8 +529,7 @@ class Database(object):
             database._insert_cache[query_key] = cached_sql
         else: sql, adapter = cached_sql
         arguments = adapter(kwargs.values())  # order of values same as order of keys
-        cache = database._get_cache()
-        if cache.optimistic: cache.flush()
+        database._get_cache().flush()
         if returning is not None:
             return database._exec_sql(sql, arguments, returning_id=True)
         cursor = database._exec_sql(sql, arguments)
@@ -541,7 +539,7 @@ class Database(object):
         return sql, adapter
     def _exec_sql(database, sql, arguments=None, returning_id=False):
         cache = database._get_cache()
-        if not cache.noflush_counter and not cache.optimistic and cache.modified: cache.flush()
+        if not cache.noflush_counter and cache.modified: cache.flush()
         connection = cache.connection or cache.establish_connection()
         cursor = connection.cursor()
         if debug: log_sql(sql, arguments)
@@ -3621,7 +3619,7 @@ class Entity(object):
                 val = obj._vals_[attr.name]
                 values.extend(attr.get_raw_values(val))
             cache = obj._cache_
-            if cache.optimistic or obj not in cache.for_update:
+            if obj not in cache.for_update:
                 optimistic_columns, optimistic_converters, optimistic_values = \
                     obj._construct_optimistic_criteria_()
                 values.extend(optimistic_values)
@@ -3663,7 +3661,7 @@ class Entity(object):
         values = []
         values.extend(obj._get_raw_pkval_())
         cache = obj._cache_
-        if cache.optimistic or obj not in cache.for_update:
+        if obj not in cache.for_update:
             optimistic_columns, optimistic_converters, optimistic_values = \
                 obj._construct_optimistic_criteria_()
             values.extend(optimistic_values)
@@ -3703,7 +3701,7 @@ class Cache(object):
         cache.is_alive = True
         cache.num = next_num()
         cache.database = database
-        cache.optimistic = database.optimistic
+        cache.in_transaction = False
         cache.ignore_none = database.provider.ignore_none
         cache.indexes = {}
         cache.seeds = {}
@@ -3719,53 +3717,27 @@ class Cache(object):
     def establish_connection(cache, reestablish=True):
         if reestablish:
             assert not cache.connection
-            if not cache.optimistic: throw(ConnectionClosedError,
+            if cache.in_transaction: throw(ConnectionClosedError,
                 'Transaction cannot be continued because database connection failed')
-            elif cache.noflush_counter: throw(ConnectionClosedError,
-                'Optimistic transaction cannot be completed because database connection failed during saving changes')
             if debug: log_orm('RECONNECT')
         provider = cache.database.provider
         connection = provider.connect()
+        provider.set_transaction_mode(connection)
+        cache.in_transaction = False
         cache.connection = connection
-        provider.set_transaction_mode(connection, cache.optimistic)
         return connection
-    def _switch_from_optimistic_mode(cache):
-        assert cache.optimistic
-        connection = cache.connection or cache.establish_connection()
-        cache.optimistic = False
-        provider = cache.database.provider
-        provider.set_transaction_mode(cache.connection, optimistic=False)
     def commit(cache):
         assert cache.is_alive
         database = cache.database
         provider = database.provider
         connection = cache.connection or cache.establish_connection()
-        if cache.optimistic:
-            try:
-                if debug: log_orm('OPTIMISTIC ROLLBACK')
-                provider.rollback(connection)
-            except:
-                cache.is_alive = False
-                cache.connection = None
-                x = local.db2cache.pop(database); assert x is cache
-                provider.drop(connection)
-                raise
         try:
-            modified = cache.modified
-            if modified:
-                if cache.optimistic:
-                    if debug: log_orm('START OPTIMISTIC SAVE')
-                    provider.start_optimistic_save(connection)
-                cache.save()
+            if cache.modified: cache.flush()
             cache.for_update.clear()
-            if modified or not cache.optimistic:
+            if cache.in_transaction:
                 if debug: log_orm('COMMIT')
                 provider.commit(connection)
-            if database.optimistic:
-                cache.optimistic = True
-                provider.set_transaction_mode(connection, optimistic=True)
-            elif cache.optimistic:
-                cache._switch_from_optimistic_mode()
+                cache.in_transaction = False
         except:
             cache.rollback()
             raise
@@ -3788,7 +3760,7 @@ class Cache(object):
             provider.drop(connection)
             raise
     def release(cache):
-        assert cache.is_alive
+        assert cache.is_alive and not cache.in_transaction
         database = cache.database
         x = local.db2cache.pop(database); assert x is cache
         cache.is_alive = False
@@ -3799,7 +3771,7 @@ class Cache(object):
         if debug: log_orm('RELEASE_CONNECTION')
         provider.release(connection)
     def close(cache):
-        assert cache.is_alive
+        assert cache.is_alive and not cache.in_transaction
         database = cache.database
         x = local.db2cache.pop(database); assert x is cache
         cache.is_alive = False
@@ -3809,17 +3781,18 @@ class Cache(object):
         cache.connection = None
         if debug: log_orm('CLOSE_CONNECTION')
         provider.drop(connection)
-    def flush(cache):
-        if cache.noflush_counter: return
-        if cache.optimistic: cache._switch_from_optimistic_mode()
-        if cache.modified: cache.save()
     @contextmanager
     def flush_disabled(cache):
         cache.noflush_counter += 1
         try: yield
         finally: cache.noflush_counter -= 1
-    def save(cache):
+    def flush(cache):
+        if cache.noflush_counter: return
         assert cache.is_alive
+        if not cache.in_transaction:
+            connection = cache.connection or cache.establish_connection()
+            cache.database.provider.set_transaction_mode(connection)
+            cache.in_transaction = True
         if not cache.modified: return
         with cache.flush_disabled():
             cache.query_results.clear()
