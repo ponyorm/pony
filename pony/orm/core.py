@@ -9,6 +9,7 @@ from time import time
 import datetime
 from threading import Lock, currentThread as current_thread, _MainThread
 from __builtin__ import min as _min, max as _max, sum as _sum
+from contextlib import contextmanager
 
 import pony
 from pony import options
@@ -527,15 +528,12 @@ class Database(object):
         arguments = adapter(kwargs.values())  # order of values same as order of keys
         cache = database._get_cache()
         if cache.optimistic: cache.flush()
-        cache.noflush += 1
-        try:
+        with cache.flush_disabled():
             if returning is None:
                 cursor = database._exec_sql(sql, arguments)
                 return getattr(cursor, 'lastrowid', None)
             new_id = database._exec_sql(sql, arguments, returning_id=True)
             return new_id
-        finally:
-            cache.noflush -= 1
     def _ast2sql(database, sql_ast):
         sql, adapter = database.provider.ast2sql(sql_ast)
         return sql, adapter
@@ -1117,8 +1115,7 @@ class Attribute(object):
                 if new_val == pkval[attr.pk_offset]: return
             elif new_val == pkval: return
             throw(TypeError, 'Cannot change value of primary key')
-        cache.noflush += 1
-        try:
+        with cache.flush_disabled():
             old_val =  obj._vals_.get(attr.name, NOT_LOADED)
             if old_val is NOT_LOADED and reverse and not reverse.is_collection:
                 old_val = attr.load(obj)
@@ -1178,8 +1175,6 @@ class Attribute(object):
                 if not is_reverse_call:
                     for undo_func in reversed(undo_funcs): undo_func()
                 raise
-        finally:
-            cache.noflush -= 1
     def db_set(attr, obj, new_dbval, is_reverse_call=False):
         cache = obj._cache_
         assert cache.is_alive
@@ -1707,8 +1702,7 @@ class Set(Collection):
         cache = obj._cache_
         if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        cache.noflush += 1
-        try:
+        with cache.flush_disabled():
             new_items = attr.check(new_items, obj)
             reverse = attr.reverse
             if not reverse: throw(NotImplementedError)
@@ -1749,8 +1743,6 @@ class Set(Collection):
                 else: setdata.removed = to_remove  # removed may be None
             cache.modified = True
             cache.modified_collections.setdefault(attr, set()).add(obj)
-        finally:
-            cache.noflush -= 1
     def __delete__(attr, obj):
         throw(NotImplementedError)
     def reverse_add(attr, objects, item, undo_funcs):
@@ -2025,9 +2017,8 @@ class SetWrapper(object):
             attr.cached_count_sql = sql, adapter
         else: sql, adapter = cached_sql
         arguments = adapter(obj._get_raw_pkval_())
-        cache.noflush += 1
-        try: cursor = database._exec_sql(sql, arguments)
-        finally: cache.noflush -= 1
+        with cache.flush_disabled():
+            cursor = database._exec_sql(sql, arguments)
         setdata.count = cursor.fetchone()[0]
         if setdata.added: setdata.count += len(setdata.added)
         if setdata.removed: setdata.count -= len(setdata.removed)
@@ -2093,8 +2084,7 @@ class SetWrapper(object):
         cache = obj._cache_
         if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        cache.noflush += 1
-        try:
+        with cache.flush_disabled():
             attr = wrapper._attr_
             reverse = attr.reverse
             if not reverse: throw(NotImplementedError)
@@ -2123,8 +2113,6 @@ class SetWrapper(object):
 
             cache.modified = True
             cache.modified_collections.setdefault(attr, set()).add(obj)
-        finally:
-            cache.noflush -= 1
     @cut_traceback
     def __iadd__(wrapper, items):
         wrapper.add(items)
@@ -2135,8 +2123,7 @@ class SetWrapper(object):
         cache = obj._cache_
         if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        cache.noflush += 1
-        try:
+        with cache.flush_disabled():
             attr = wrapper._attr_
             reverse = attr.reverse
             if not reverse: throw(NotImplementedError)
@@ -2166,8 +2153,6 @@ class SetWrapper(object):
 
             cache.modified = True
             cache.modified_collections.setdefault(attr, set()).add(obj)
-        finally:
-            cache.noflush -= 1
     @cut_traceback
     def __isub__(wrapper, items):
         wrapper.remove(items)
@@ -2931,8 +2916,7 @@ class EntityMeta(type):
         else: obj.__class__ = entity
 
         if obj is None:
-            cache.noflush += 1
-            try:
+            with cache.flush_disabled():
                 obj = object.__new__(entity)
                 obj._dbvals_ = {}
                 obj._vals_ = {}
@@ -2960,8 +2944,6 @@ class EntityMeta(type):
                         obj._vals_[attr.name] = val
                         if attr.reverse: attr.update_reverse(obj, NOT_LOADED, val, undo_funcs)
                 else: assert False
-            finally:
-                cache.noflush -= 1
         if for_update:
             cache.for_update.add(obj)
         return obj
@@ -3114,8 +3096,7 @@ class Entity(object):
         pkval, avdict = entity._normalize_args_(kwargs, True)
         undo_funcs = []
         cache = entity._get_cache_()
-        cache.noflush += 1
-        try:
+        with cache.flush_disabled():
             indexes = {}
             for attr in entity._simple_keys_:
                 val = avdict[attr]
@@ -3151,8 +3132,6 @@ class Entity(object):
             cache.created.add(obj)
             cache.to_be_checked.append(obj)
             return obj
-        finally:
-            cache.noflush -= 1
     def _get_raw_pkval_(obj):
         pkval = obj._pkval_
         if not obj._pk_is_composite_:
@@ -3283,8 +3262,7 @@ class Entity(object):
         is_recursive_call = undo_funcs is not None
         if not is_recursive_call: undo_funcs = []
         cache = obj._cache_
-        cache.noflush += 1
-        try:
+        with cache.flush_disabled():
             get_val = obj._vals_.get
             undo_list = []
             undo_dict = {}
@@ -3371,8 +3349,6 @@ class Entity(object):
                 if not is_recursive_call:
                     for undo_func in reversed(undo_funcs): undo_func()
                 raise
-        finally:
-            cache.noflush -= 1
     @cut_traceback
     def delete(obj):
         if not obj._cache_.is_alive: throw_db_session_is_over(obj)
@@ -3382,8 +3358,7 @@ class Entity(object):
         cache = obj._cache_
         if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        cache.noflush += 1
-        try:
+        with cache.flush_disabled():
             avdict, collection_avdict = obj._keyargs_to_avdicts_(kwargs)
             status = obj._status_
             wbits = obj._wbits_
@@ -3454,8 +3429,6 @@ class Entity(object):
                 for undo_func in undo_funcs: undo_func()
                 raise
             obj._vals_.update((attr.name, new_val) for attr, new_val in avdict.iteritems())
-        finally:
-            cache.noflush -= 1
     def _keyargs_to_avdicts_(obj, kwargs):
         avdict, collection_avdict = {}, {}
         get = obj._adict_.get
@@ -3710,7 +3683,7 @@ class Cache(object):
         cache.deleted = []
         cache.updated = set()
         cache.for_update = set()
-        cache.noflush = 0
+        cache.noflush_counter = 0
         cache.modified_collections = {}
         cache.to_be_checked = []
         cache.query_results = {}
@@ -3804,9 +3777,14 @@ class Cache(object):
         if debug: log_orm('RELEASE_CONNECTION')
         provider.release(connection)
     def flush(cache):
-        if cache.noflush: return
+        if cache.noflush_counter: return
         if cache.optimistic: cache._switch_from_optimistic_mode()
         if cache.modified: cache.save()
+    @contextmanager
+    def flush_disabled(cache):
+        cache.noflush_counter += 1
+        try: yield
+        finally: cache.noflush_counter -= 1
     def save(cache):
         assert cache.is_alive
         if not cache.modified: return
