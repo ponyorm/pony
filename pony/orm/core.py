@@ -539,7 +539,7 @@ class Database(object):
         return sql, adapter
     def _exec_sql(database, sql, arguments=None, returning_id=False):
         cache = database._get_cache()
-        if not cache.saving and not cache.optimistic and cache.modified: cache.flush()
+        if not cache.noflush_counter and not cache.optimistic and cache.modified: cache.flush()
         connection = cache.connection or cache.establish_connection()
         cursor = connection.cursor()
         if debug: log_sql(sql, arguments)
@@ -3657,7 +3657,7 @@ class Entity(object):
         database._exec_sql(sql, arguments)
     def _save_(obj, dependent_objects=None):
         cache = obj._cache_
-        assert cache.is_alive and cache.saving
+        assert cache.is_alive
         status = obj._status_
         if status in ('loaded', 'saved', 'cancelled'): return
         if status in ('created', 'updated'):
@@ -3688,14 +3688,13 @@ class Cache(object):
         cache.to_be_checked = []
         cache.query_results = {}
         cache.modified = False
-        cache.saving = False
         cache.connection = cache.establish_connection(False)
     def establish_connection(cache, reestablish=True):
         if reestablish:
             assert not cache.connection
             if not cache.optimistic: throw(ConnectionClosedError,
                 'Transaction cannot be continued because database connection failed')
-            elif cache.saving: throw(ConnectionClosedError,
+            elif cache.noflush_counter: throw(ConnectionClosedError,
                 'Optimistic transaction cannot be completed because database connection failed during saving changes')
             if debug: log_orm('RECONNECT')
         provider = cache.database.provider
@@ -3789,9 +3788,7 @@ class Cache(object):
         assert cache.is_alive
         if not cache.modified: return
         if not (cache.created or cache.updated or cache.deleted or cache.modified_collections): return
-        assert cache.saving == False
-        cache.saving = True
-        try:
+        with cache.flush_disabled():
             cache.query_results.clear()
             modified_m2m = cache._calc_modified_m2m()
             for attr, (added, removed) in modified_m2m.iteritems():
@@ -3817,8 +3814,6 @@ class Cache(object):
             cache.modified_collections.clear()
             cache.to_be_checked[:] = []
             cache.modified = False
-        finally:
-            cache.saving = False
     def _calc_modified_m2m(cache):
         modified_m2m = {}
         for attr, objects in sorted(cache.modified_collections.iteritems(),
