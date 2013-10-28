@@ -528,12 +528,10 @@ class Database(object):
         arguments = adapter(kwargs.values())  # order of values same as order of keys
         cache = database._get_cache()
         if cache.optimistic: cache.flush()
-        with cache.flush_disabled():
-            if returning is None:
-                cursor = database._exec_sql(sql, arguments)
-                return getattr(cursor, 'lastrowid', None)
-            new_id = database._exec_sql(sql, arguments, returning_id=True)
-            return new_id
+        if returning is not None:
+            return database._exec_sql(sql, arguments, returning_id=True)
+        cursor = database._exec_sql(sql, arguments)
+        return getattr(cursor, 'lastrowid', None)
     def _ast2sql(database, sql_ast):
         sql, adapter = database.provider.ast2sql(sql_ast)
         return sql, adapter
