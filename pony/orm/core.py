@@ -717,7 +717,6 @@ class Database(object):
         if create_tables:
             connection = database.get_connection()
             schema.create_tables(provider, connection)
-
         if check_tables:
             for table in schema.tables.values():
                 if isinstance(table.name, tuple): alias = table.name[-1]
@@ -730,7 +729,9 @@ class Database(object):
                           ]
                 sql, adapter = database._ast2sql(sql_ast)
                 database._exec_sql(sql)
-
+        cache = local.db2cache.get(database)
+        if cache is not None: cache.rollback(close_connection=True)
+        database.provider.pool.disconnect()
     @cut_traceback
     @db_session(ddl=True)
     def drop_table(database, table_name, if_exists=False, with_all_data=False):
