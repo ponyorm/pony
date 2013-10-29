@@ -1030,7 +1030,7 @@ class Attribute(object):
             throw(ConstraintError, 'Value of attribute %s must be an instance of %s. Got: %s'
                                   % (attr, reverse.entity.__name__, val))
         if obj is not None: cache = obj._cache_
-        else: cache = entity._get_cache_()
+        else: cache = entity._database_._get_cache()
         if cache is not val._cache_:
             throw(TransactionError, 'An attempt to mix objects belongs to different caches')
         return val
@@ -1536,7 +1536,7 @@ class Set(Collection):
                     throw(TypeError, 'Item of collection %s.%s must be an instance of %s. Got: %r'
                                     % (entity.__name__, attr.name, rentity.__name__, item))
         if obj is not None: cache = obj._cache_
-        else: cache = entity._get_cache_()
+        else: cache = entity._database_._get_cache()
         for item in items:
             if item._cache_ is not cache:
                 throw(TransactionError, 'An attempt to mix objects belongs to different caches')
@@ -2611,7 +2611,7 @@ class EntityMeta(type):
                 if obj._rbits_ is not None: obj._rbits_ |= rbits
         return objects
     def _find_in_cache_(entity, pkval, avdict):
-        cache = entity._get_cache_()
+        cache = entity._database_._get_cache()
         obj = None
         if pkval is not None:
             index = cache.indexes.get(entity.__dict__['_pk_'])
@@ -2892,12 +2892,8 @@ class EntityMeta(type):
         assert '.0' not in locals
         locals['.0'] = entity
         return Query(code_key, inner_expr, globals, locals)
-    def _get_cache_(entity):
-        database = entity._database_
-        if database is None: throw(TransactionError)
-        return database._get_cache()
     def _new_(entity, pkval, status, for_update=False, undo_funcs=None):
-        cache = entity._get_cache_()
+        cache = entity._database_._get_cache()
         pk = entity.__dict__['_pk_']
         index = cache.indexes.setdefault(pk, {})
         if pkval is None: obj = None
@@ -3054,7 +3050,7 @@ def throw_db_session_is_over(obj):
 
 def unpickle_entity(d):
     entity = d.pop('__class__')
-    cache = entity._get_cache_()
+    cache = entity._database_._get_cache()
     pk = entity.__dict__['_pk_']
     if not entity._pk_is_composite_: pkval = d.get(pk.name)
     else: pkval = tuple(d[attr.name] for attr in entity._pk_attrs_)
@@ -3096,7 +3092,7 @@ class Entity(object):
 
         pkval, avdict = entity._normalize_args_(kwargs, True)
         undo_funcs = []
-        cache = entity._get_cache_()
+        cache = entity._database_._get_cache()
         with cache.flush_disabled():
             indexes = {}
             for attr in entity._simple_keys_:
