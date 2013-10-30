@@ -29,10 +29,14 @@ class TestConnection(object):
         pass
     def rollback(con):
         pass
+    def cursor(con):
+        return test_cursor
 
 class TestCursor(object):
     def __init__(cursor):
         cursor.description = []
+    def execute(cursor, sql, args=None):
+        pass
     def fetchone(cursor):
         return None
     def fetchmany(cursor, size):

@@ -98,6 +98,7 @@ class PGPool(Pool):
             con.autocommit = True
             cursor = con.cursor()
             cursor.execute('DISCARD ALL')
+            con.autocommit = False
         except:
             pool.drop(con)
             raise
@@ -131,16 +132,22 @@ class PGProvider(DBAPIProvider):
         return PGPool(provider.dbapi_module, *args, **kwargs)
 
     @wrap_dbapi_exceptions
-    def connect(provider):
-        connection = provider.pool.connect()
-        if core.debug: log_orm('SET AUTOCOMMIT = ON')
-        connection.autocommit = True
-        return connection
-
-    @wrap_dbapi_exceptions
-    def set_transaction_mode(provider, connection):
-        if core.debug: log_orm('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
-        connection.set_isolation_level(extensions.ISOLATION_LEVEL_READ_COMMITTED)
+    def set_transaction_mode(provider, connection, cache):
+        assert not cache.in_transaction
+        if cache.immediate and connection.autocommit:
+            connection.autocommit = False
+            if core.debug: log_orm('SWITCH FROM AUTOCOMMIT TO TRANSACTION MODE')
+        db_session = cache.db_session
+        if db_session is not None and db_session.serializable:
+            cursor = connection.cursor()
+            sql = 'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE'
+            if core.debug: log_orm(sql)
+            cursor.execute(sql)
+        elif not cache.immediate and not connection.autocommit:
+            connection.autocommit = True
+            if core.debug: log_orm('SWITCH TO AUTOCOMMIT MODE')
+        if db_session is not None and (db_session.serializable or db_session.ddl):
+            cache.in_transaction = True
 
     @wrap_dbapi_exceptions
     def execute(provider, cursor, sql, arguments=None, returning_id=False):

@@ -176,7 +176,7 @@ class DBAPIProvider(object):
         return provider.pool.connect()
 
     @wrap_dbapi_exceptions
-    def set_transaction_mode(provider, connection):
+    def set_transaction_mode(provider, connection, cache):
         pass
 
     @wrap_dbapi_exceptions
@@ -192,10 +192,13 @@ class DBAPIProvider(object):
         connection.rollback()
 
     @wrap_dbapi_exceptions
-    def release(provider, connection):
+    def release(provider, connection, cache=None):
         core = pony.orm.core
-        if core.debug: core.log_orm('RELEASE CONNECTION')
-        provider.pool.release(connection)
+        if cache is not None and cache.db_session is not None and cache.db_session.ddl:
+            provider.drop(connection)
+        else:
+            if core.debug: core.log_orm('RELEASE CONNECTION')
+            provider.pool.release(connection)
 
     @wrap_dbapi_exceptions
     def drop(provider, connection):
@@ -254,10 +257,10 @@ class DBAPIProvider(object):
         cursor.execute('SELECT 1 FROM %s LIMIT 1' % table_name)
         return cursor.fetchone() is not None
 
-    def disable_fk_checks_if_necessary(provider, connection):
+    def disable_fk_checks(provider, connection):
         pass
 
-    def enable_fk_checks_if_necessary(provider, connection, prev_state):
+    def enable_fk_checks(provider, connection, prev_state):
         pass
 
     def drop_table(provider, connection, table_name):
@@ -286,7 +289,7 @@ class Pool(localbase):
             pool.drop(con)
             raise
     def drop(pool, con):
-        assert con is pool.con
+        assert con is pool.con, (con, pool.con)
         pool.con = None
         con.close()
     def disconnect(pool):

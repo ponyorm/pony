@@ -296,22 +296,26 @@ def rollback():
 select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class DBSessionContextManager(object):
-    __slots__ = 'retry', 'retry_exceptions', 'allowed_exceptions', 'ddl'
-    def __init__(self, retry=0, retry_exceptions=(TransactionError,), allowed_exceptions=(), ddl=False):
+    __slots__ = 'retry', 'retry_exceptions', 'allowed_exceptions', 'immediate', 'ddl', 'serializable'
+    def __init__(self, retry=0, immediate=False, ddl=False, serializable=False,
+                 retry_exceptions=(TransactionError,), allowed_exceptions=()):
         if retry is not 0:
             if type(retry) is not int: throw(TypeError,
                 "'retry' parameter of db_session must be of integer type. Got: %s" % type(retry))
             if retry < 0: throw(TypeError,
                 "'retry' parameter of db_session must not be negative. Got: %d" % retry)
+            if ddl: throw(TypeError, "'ddl' and 'retry' parameters of db_session cannot be used together")
         if not callable(allowed_exceptions) and not callable(retry_exceptions):
             for e in allowed_exceptions:
                 if e in retry_exceptions: throw(TypeError,
                     'The same exception %s cannot be specified in both '
                     'allowed and retry exception lists simultaneously' % e.__name__)
         self.retry = retry
+        self.ddl = ddl
+        self.serializable = serializable
+        self.immediate = immediate or ddl or serializable
         self.retry_exceptions = retry_exceptions
         self.allowed_exceptions = allowed_exceptions
-        self.ddl = ddl
     def __call__(self, *args, **kwargs):
         if not args and not kwargs: return self
         if len(args) > 1: throw(TypeError,
@@ -324,6 +328,7 @@ class DBSessionContextManager(object):
             if self.ddl and local.db_context_counter:
                 if isinstance(func, types.FunctionType): func = func.__name__ + '()'
                 throw(TransactionError, '%s cannot be called inside of db_session' % func)
+            exc_tb = None
             try:
                 for i in xrange(self.retry+1):
                     self._enter()
@@ -352,6 +357,8 @@ class DBSessionContextManager(object):
         if local.db_session is None:
             assert not local.db_context_counter
             local.db_session = self
+        elif self.serializable and not local.db_session.serializable: throw(TransactionError,
+            'Cannot start serializable transaction inside non-serializable transaction')
         local.db_context_counter += 1
     def __exit__(self, exc_type=None, exc_value=None, traceback=None):
         local.db_context_counter -= 1
@@ -448,7 +455,10 @@ class Database(object):
     @cut_traceback
     def get_connection(database):
         cache = database._get_cache()
-        cache.flush()
+        if not cache.in_transaction:
+            cache.immediate = True
+            cache.prepare_connection_for_query_execution()
+            cache.in_transaction = True
         connection = cache.connection
         assert connection is not None
         return connection
@@ -479,7 +489,6 @@ class Database(object):
         if cache is not None: cache.rollback()
     @cut_traceback
     def execute(database, sql, globals=None, locals=None):
-        database._get_cache().flush()
         return database._exec_raw_sql(sql, globals, locals, frame_depth=3)
     def _exec_raw_sql(database, sql, globals, locals, frame_depth):
         sql = sql[:]  # sql = templating.plainstr(sql)
@@ -535,7 +544,6 @@ class Database(object):
             database._insert_cache[query_key] = cached_sql
         else: sql, adapter = cached_sql
         arguments = adapter(kwargs.values())  # order of values same as order of keys
-        database._get_cache().flush()
         if returning is not None:
             return database._exec_sql(sql, arguments, returning_id=True)
         cursor = database._exec_sql(sql, arguments)
@@ -545,28 +553,24 @@ class Database(object):
         return sql, adapter
     def _exec_sql(database, sql, arguments=None, returning_id=False):
         cache = database._get_cache()
-        if not cache.noflush_counter and cache.modified: cache.flush()
-        connection = cache.connection or cache.establish_connection()
+        connection = cache.prepare_connection_for_query_execution()
         cursor = connection.cursor()
         if debug: log_sql(sql, arguments)
         provider = database.provider
         t = time()
         try: new_id = provider.execute(cursor, sql, arguments, returning_id)
         except Exception, e:
-            if not provider.should_reconnect(e.original_exc): raise
-            if debug: log_orm('CONNECTION FAILED: %s' % e.original_exc)
-            cache.connection = None
-            provider.drop(connection)
-            connection = cache.establish_connection()
+            connection = cache.reconnect(e)
             cursor = connection.cursor()
+            if debug: log_sql(sql, arguments)
             t = time()
             new_id = provider.execute(cursor, sql, arguments, returning_id)
+        if cache.immediate: cache.in_transaction = True
         database._update_local_stat(sql, t)
         if not returning_id: return cursor
         if type(new_id) is long: new_id = int(new_id)
         return new_id
     @cut_traceback
-    @db_session(ddl=True)
     def generate_mapping(database, filename=None, check_tables=True, create_tables=False):
         if database.schema: throw(MappingError, 'Mapping was already generated')
         if filename is not None: throw(NotImplementedError)
@@ -718,26 +722,8 @@ class Database(object):
                     columns = tuple(map(table.column_dict.__getitem__, attr.columns))
                     table.add_index(attr.index, columns, is_unique=attr.is_unique)
 
-        if create_tables:
-            connection = database.get_connection()
-            schema.create_tables(provider, connection)
-        if check_tables:
-            for table in schema.tables.values():
-                if isinstance(table.name, tuple): alias = table.name[-1]
-                elif isinstance(table.name, basestring): alias = table.name
-                else: assert False
-                sql_ast = [ 'SELECT',
-                            [ 'ALL', ] + [ [ 'COLUMN', alias, column.name ] for column in table.column_list ],
-                            [ 'FROM', [ alias, 'TABLE', table.name ] ],
-                            [ 'WHERE', [ 'EQ', [ 'VALUE', 0 ], [ 'VALUE', 1 ] ] ]
-                          ]
-                sql, adapter = database._ast2sql(sql_ast)
-                database._exec_sql(sql)
-        cache = local.db2cache.get(database)
-        if cache is not None:
-            cache.commit()
-            cache.close()
-        else: provider.disconnect()
+        if create_tables: database.create_tables(check_tables)
+        elif check_tables: database.check_tables()
     @cut_traceback
     @db_session(ddl=True)
     def drop_table(database, table_name, if_exists=False, with_all_data=False):
@@ -757,7 +743,8 @@ class Database(object):
         if database.schema is None: throw(ERDiagramError, 'No mapping was generated for the database')
         database._drop_tables(database.schema.tables, True, with_all_data)
     def _drop_tables(database, table_names, if_exists, with_all_data, try_normalized=False):
-        connection = database.get_connection()
+        cache = database._get_cache()
+        connection = cache.prepare_connection_for_query_execution()
         provider = database.provider
         existed_tables = []
         for table_name in table_names:
@@ -775,19 +762,22 @@ class Database(object):
                 if provider.table_has_data(connection, table_name): throw(TableIsNotEmpty,
                     'Cannot drop table %s because it is not empty. Specify option '
                     'with_all_data=True if you want to drop table with all data' % table_name)
-        state = provider.disable_fk_checks_if_necessary(connection)
-        try:
-            for table_name in existed_tables:
-                if debug: log_orm('DROPPING TABLE %s' % table_name)
-                provider.drop_table(connection, table_name)
-        finally:
-            provider.enable_fk_checks_if_necessary(connection, state)
+        for table_name in existed_tables:
+            if debug: log_orm('DROPPING TABLE %s' % table_name)
+            provider.drop_table(connection, table_name)
     @cut_traceback
     @db_session(ddl=True)
-    def create_tables(database):
+    def create_tables(database, check_tables=False):
         if database.schema is None: throw(ERDiagramError, 'No mapping was generated for the database')
-        connection = database.get_connection()
+        cache = database._get_cache()
+        connection = cache.prepare_connection_for_query_execution()
         database.schema.create_tables(database.provider, connection)
+        if check_tables: database.schema.check_tables(database.provider, connection)
+    @db_session()
+    def check_tables(database):
+        cache = database._get_cache()
+        connection = cache.prepare_connection_for_query_execution()
+        database.schema.check_tables(database.provider, connection)
 
 class DbLocal(localbase):
     def __init__(dblocal):
@@ -2752,6 +2742,7 @@ class EntityMeta(type):
         single_row = (max_fetch_count == 1)
         sql, adapter, attr_offsets = entity._construct_sql_(query_attrs, not single_row, for_update, nowait)
         arguments = adapter(avdict)
+        if for_update: database._get_cache().immediate = True
         cursor = database._exec_sql(sql, arguments)
         objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count, for_update=for_update)
         return objects
@@ -3017,6 +3008,7 @@ class EntityMeta(type):
                         if attr.reverse: attr.update_reverse(obj, NOT_LOADED, val, undo_funcs)
                 else: assert False
         if for_update:
+            assert cache.in_transaction
             cache.for_update.add(obj)
         return obj
     def _get_by_raw_pkval_(entity, raw_pkval, for_update=False):
@@ -3707,7 +3699,6 @@ class Cache(object):
         cache.is_alive = True
         cache.num = next_num()
         cache.database = database
-        cache.in_transaction = False
         cache.ignore_none = database.provider.ignore_none
         cache.indexes = {}
         cache.seeds = {}
@@ -3719,30 +3710,68 @@ class Cache(object):
         cache.objects_to_save = []
         cache.query_results = {}
         cache.modified = False
-        cache.connection = cache.establish_connection(False)
-    def establish_connection(cache, reestablish=True):
-        if reestablish:
-            assert not cache.connection
-            if cache.in_transaction: throw(ConnectionClosedError,
-                'Transaction cannot be continued because database connection failed')
-            if debug: log_orm('RECONNECT')
+        db_session = local.db_session
+        cache.db_session = db_session
+        cache.immediate = db_session is not None and db_session.immediate
+        cache.connection = None
+        cache.in_transaction = False
+        cache.saved_fk_state = None
+    def connect(cache):
+        assert cache.connection is None
+        if cache.in_transaction: throw(ConnectionClosedError,
+            'Transaction cannot be continued because database connection failed')
         provider = cache.database.provider
         connection = provider.connect()
-        provider.set_transaction_mode(connection)
-        cache.in_transaction = False
+        try: provider.set_transaction_mode(connection, cache)  # can set cache.in_transaction
+        except:
+            provider.drop(connection)
+            raise
         cache.connection = connection
+        return connection
+    def reconnect(cache, exc):
+        provider = cache.database.provider
+        if exc is not None:
+            exc = getattr(exc, 'original_exc', exc)
+            if not provider.should_reconnect(exc): raise
+            if debug: log_orm('CONNECTION FAILED: %s' % exc)
+            connection = cache.connection
+            assert connection is not None
+            cache.connection = None
+            provider.drop(connection)
+        else: assert cache.connection is None
+        return cache.connect()
+    def prepare_connection_for_query_execution(cache):
+        db_session = local.db_session
+        if db_session is not None and cache.db_session is None:
+            # This situation can arise when a transaction was started
+            # in the interactive mode, outside of the db_session
+            if cache.in_transaction or cache.modified:
+                local.db_session = None
+                try: cache.commit()
+                finally: local.db_session = db_session
+            cache.db_session = db_session
+            cache.immediate = cache.immediate or db_session.immediate
+        else: assert cache.db_session is db_session, (cache.db_session, db_session)
+        connection = cache.connection
+        if connection is None: connection = cache.connect()
+        elif cache.immediate and not cache.in_transaction:
+            provider = cache.database.provider
+            try: provider.set_transaction_mode(connection, cache)  # can set cache.in_transaction
+            except Exception, e: connection = cache.reconnect(e)
+        if not cache.noflush_counter and cache.modified: cache.flush()
         return connection
     def commit(cache):
         assert cache.is_alive
         database = cache.database
         provider = database.provider
-        connection = cache.connection or cache.establish_connection()
         try:
             if cache.modified: cache.flush()
-            cache.for_update.clear()
             if cache.in_transaction:
-                provider.commit(connection)
+                assert cache.connection is not None
+                provider.commit(cache.connection)
                 cache.in_transaction = False
+            cache.for_update.clear()
+            cache.immediate = True
         except:
             cache.rollback()
             raise
@@ -3755,12 +3784,11 @@ class Cache(object):
         connection = cache.connection
         if connection is None: return
         cache.connection = None
-        try:
-            provider.rollback(connection)
-            provider.release(connection)
+        try: provider.rollback(connection)
         except:
             provider.drop(connection)
             raise
+        else: provider.release(connection, cache)
     def release(cache):
         assert cache.is_alive and not cache.in_transaction
         database = cache.database
@@ -3770,7 +3798,7 @@ class Cache(object):
         connection = cache.connection
         if connection is None: return
         cache.connection = None
-        provider.release(connection)
+        provider.release(connection, cache)
     def close(cache):
         assert cache.is_alive and not cache.in_transaction
         database = cache.database
@@ -3789,11 +3817,9 @@ class Cache(object):
     def flush(cache):
         if cache.noflush_counter: return
         assert cache.is_alive
-        if not cache.in_transaction:
-            connection = cache.connection or cache.establish_connection()
-            cache.database.provider.set_transaction_mode(connection)
-            cache.in_transaction = True
+        if not cache.immediate: cache.immediate = True
         if not cache.modified: return
+
         with cache.flush_disabled():
             cache.query_results.clear()
             modified_m2m = cache._calc_modified_m2m()
@@ -4074,29 +4100,8 @@ class Query(object):
         translator = query._translator
         sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(range, distinct)
         cache = query._cache
-        database = query._database
-        if query._for_update:
-            cache.flush()
-            if database.provider.dialect == 'SQLite':
-                # Emulation of SELECT FOR UPDATE functionality. Since SQLite doesn't have table locks
-                # we need to obtain database-level lock, and in order to do this we have to start
-                # a transaction and obtain PENDING lock. But pysqlite doesn't start a transaction
-                # on SELECT statement, and doesn't provide a way to check if transaction was already
-                # started. If we send BEGIN IMMEDIATE manually, pysqlite will do implicit commit
-                # of previous changes and will start a new transaction, which is not what we want.
-                # Fake UPDATE is needed to ensure that pysqlite starts a transaction if it wasn't
-                # already started.
-
-                entity = query._origin
-                lock_sql = getattr(entity, '_lock_sql_', None)
-                if lock_sql is None:
-                    some_column = entity._pk_columns_[0]
-                    lock_ast = [ 'UPDATE', entity._table_,
-                                 [ (some_column, [ 'COLUMN', entity._table_, some_column ]) ],
-                                 [ 'WHERE', [ 'EQ', [ 'VALUE', 0 ], [ 'VALUE', 1 ] ] ] ]
-                    lock_sql, adapter = database.provider.ast2sql(lock_ast)
-                    entity._lock_sql_ = lock_sql
-                database._exec_sql(lock_sql)
+        database = cache.database
+        if query._for_update: cache.immediate = True
         try: result = cache.query_results[query_key]
         except KeyError:
             cursor = database._exec_sql(sql, arguments)

@@ -7,8 +7,9 @@ from time import strptime
 from uuid import UUID
 
 from pony.orm import core, dbschema, sqltranslation, dbapiprovider
+from pony.orm.core import log_orm
 from pony.orm.sqlbuilding import SQLBuilder, join
-from pony.orm.dbapiprovider import DBAPIProvider, Pool
+from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
 from pony.utils import localbase, datetime2timestamp, timestamp2datetime, decorator, absolutize_path, throw
 
 class SQLiteForeignKey(dbschema.ForeignKey):
@@ -120,6 +121,45 @@ class SQLiteProvider(DBAPIProvider):
         (UUID, dbapiprovider.UuidConverter),
     ]
 
+    @wrap_dbapi_exceptions
+    def set_transaction_mode(provider, connection, cache):
+        assert not cache.in_transaction
+        cursor = connection.cursor()
+
+        db_session = cache.db_session
+        if db_session is not None and db_session.ddl:
+            cursor.execute('PRAGMA foreign_keys')
+            fk = cursor.fetchone()
+            if fk is not None: fk = fk[0]
+            if fk:
+                sql = 'PRAGMA foreign_keys = false'
+                if core.debug: log_orm(sql)
+                cursor.execute(sql)
+            cache.saved_fk_state = bool(fk)
+            cache.in_transaction = True
+
+        if cache.immediate:
+            sql = 'BEGIN IMMEDIATE TRANSACTION'
+            if core.debug: log_orm(sql)
+            cursor.execute(sql)
+            cache.in_transaction = True
+        elif core.debug: log_orm('SWITCH TO AUTOCOMMIT MODE')
+
+    @wrap_dbapi_exceptions
+    def release(provider, connection, cache=None):
+        if cache is not None:
+            db_session = cache.db_session
+            if db_session is not None and db_session.ddl and cache.saved_fk_state:
+                try:
+                    cursor = connection.cursor()
+                    sql = 'PRAGMA foreign_keys = true'
+                    if core.debug: log_orm(sql)
+                    cursor.execute(sql)
+                except:
+                    provider.pool.drop(connection)
+                    raise
+        DBAPIProvider.release(provider, connection, cache)
+
     def get_pool(provider, filename, create_db=False):
         if filename != ':memory:':
             # When relative filename is specified, it is considered
@@ -161,21 +201,6 @@ class SQLiteProvider(DBAPIProvider):
     def fk_exists(provider, connection, table_name, fk_name):
         assert False
 
-    def disable_fk_checks_if_necessary(provider, connection):
-        cursor = connection.cursor()
-        cursor.execute('PRAGMA foreign_keys')
-        fk = cursor.fetchone()
-        if fk is not None:
-            fk = fk[0]
-            if fk: cursor.execute('PRAGMA foreign_keys = false')
-        return bool(fk)
-
-    def enable_fk_checks_if_necessary(provider, connection, fk):
-        assert type(fk) is bool, fk
-        if fk:
-            cursor = connection.cursor()
-            cursor.execute('PRAGMA foreign_keys = true')
-
 provider_cls = SQLiteProvider
 
 def _text_factory(s):
@@ -195,7 +220,7 @@ class SQLitePool(Pool):
         if filename != ':memory:' and not pool.create_db and not os.path.exists(filename):
             throw(IOError, "Database file is not found: %r" % filename)
         if core.debug: log_orm('GET NEW CONNECTION')
-        pool.con = con = sqlite.connect(filename)
+        pool.con = con = sqlite.connect(filename, isolation_level=None)
         con.text_factory = _text_factory
         con.create_function('power', 2, pow)
         con.create_function('rand', 0, random)

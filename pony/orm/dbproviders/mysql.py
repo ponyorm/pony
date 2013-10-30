@@ -137,6 +137,45 @@ class MySQLProvider(DBAPIProvider):
         kwargs['client_flag'] = kwargs.get('client_flag', 0) | CLIENT.FOUND_ROWS 
         return Pool(MySQLdb, *args, **kwargs)
 
+    @wrap_dbapi_exceptions
+    def set_transaction_mode(provider, connection, cache):
+        assert not cache.in_transaction
+        db_session = cache.db_session
+        if db_session is not None and db_session.ddl:
+            cursor = connection.cursor()
+            cursor.execute("SHOW VARIABLES LIKE 'foreign_key_checks'")
+            fk = cursor.fetchone()
+            if fk is not None: fk = (fk[1] == 'ON')
+            if fk:
+                sql = 'SET foreign_key_checks = 0'
+                if core.debug: log_orm(sql)
+                cursor.execute(sql)
+            cache.saved_fk_state = bool(fk)
+            cache.in_transaction = True
+        cache.immediate = True
+        if db_session is not None and db_session.serializable:
+            cursor = connection.cursor()
+            sql = 'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE'
+            if core.debug: log_orm(sql)
+            cursor.execute(sql)
+            cache.in_transaction = True
+
+    @wrap_dbapi_exceptions
+    def release(provider, connection, cache=None):
+        if cache is not None:
+            db_session = cache.db_session
+            if db_session is not None and db_session.ddl and cache.saved_fk_state:
+                try:
+                    cursor = connection.cursor()
+                    sql = 'SET foreign_key_checks = 1'
+                    if core.debug: log_orm(sql)
+                    cursor.execute(sql)
+                except:
+                    provider.pool.drop(connection)
+                    raise
+        DBAPIProvider.release(provider, connection, cache)
+
+
     def table_exists(provider, connection, table_name):
         db_name, table_name = provider.split_table_name(table_name)
         cursor = connection.cursor()
@@ -161,20 +200,6 @@ class MySQLProvider(DBAPIProvider):
                        "and constraint_type='FOREIGN KEY' and constraint_name=%s",
                        [ db_name, table_name, fk_name ])
         return cursor.fetchone() is not None
-
-    def disable_fk_checks_if_necessary(provider, connection):
-        cursor = connection.cursor()
-        cursor.execute("SHOW VARIABLES LIKE 'foreign_key_checks'")
-        fk = cursor.fetchone()
-        if fk is not None: fk = (fk[1] == 'ON')
-        if fk: cursor.execute('SET foreign_key_checks = 0')
-        return bool(fk)
-
-    def enable_fk_checks_if_necessary(provider, connection, fk):
-        assert type(fk) is bool, fk
-        if fk:
-            cursor = connection.cursor()
-            cursor.execute('SET foreign_key_checks = 1')
 
 provider_cls = MySQLProvider
 
