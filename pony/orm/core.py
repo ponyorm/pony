@@ -2663,7 +2663,7 @@ class EntityMeta(type):
                     seeds = cache.seeds.get(entity.__dict__['_pk_'])
                     if seeds and obj in seeds: obj._load_()
                 if not isinstance(obj, entity): return []
-            if obj._status_ == 'deleted': return []
+            if obj._status_ == 'marked_to_delete': return []
             for attr, val in avdict.iteritems():
                 if val != attr.__get__(obj):
                     return []
@@ -3038,12 +3038,14 @@ def populate_criteria_list(criteria_list, columns, converters, params_count=0, t
         params_count += 1
     return params_count
 
-statuses = set(['created', 'loaded', 'updated', 'deleted', 'cancelled', 'saved'])
-del_statuses = set(['deleted', 'cancelled'])
+statuses = set(['created', 'loaded', 'updated', 'marked_to_delete', 'cancelled', 'saved'])
+del_statuses = set(['marked_to_delete', 'cancelled'])
 created_or_deleted_statuses = set(['created']) | del_statuses
 
 def throw_object_was_deleted(obj):
-    throw(OperationWithDeletedObjectError, '%s was deleted' % safe_repr(obj))
+    assert obj._status_ in del_statuses
+    throw(OperationWithDeletedObjectError, '%s was %s'
+          % (safe_repr(obj), obj._status_.replace('_', ' ')))
 
 def throw_db_session_is_over(obj):
     throw(TransactionRolledBack, 'Object %s cannot be used after the database session is over' % safe_repr(obj))
@@ -3340,7 +3342,7 @@ class Entity(object):
                     else:
                         assert status in ('loaded', 'saved')
                         cache.objects_to_save.append(obj)
-                    obj._status_ = 'deleted'
+                    obj._status_ = 'marked_to_delete'
                     cache.modified = True
                     cache.deleted.append(obj)
             except:
@@ -3627,7 +3629,7 @@ class Entity(object):
 
         if status == 'created': obj._save_created_()
         elif status == 'updated': obj._save_updated_()
-        elif status == 'deleted': obj._save_deleted_()
+        elif status == 'marked_to_delete': obj._save_deleted_()
         else: assert False
 
 class Cache(object):
@@ -3803,7 +3805,7 @@ class Cache(object):
                     for obj2 in setdata.added: added.add((obj, obj2))
                 if setdata.removed:
                     for obj2 in setdata.removed: removed.add((obj, obj2))
-                if obj._status_ == 'deleted': del obj._vals_[attr.name]
+                if obj._status_ == 'marked_to_delete': del obj._vals_[attr.name]
                 else: setdata.added = setdata.removed = None
         cache.modified_collections.clear()
         return modified_m2m
