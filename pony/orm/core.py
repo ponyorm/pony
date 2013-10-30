@@ -1127,7 +1127,7 @@ class Attribute(object):
                 if status != 'updated':
                     assert status in ('loaded', 'saved')
                     obj._status_ = 'updated'
-                    cache.to_be_checked.append(obj)
+                    cache.objects_to_save.append(obj)
                     cache.modified = True
                     cache.updated.add(obj)
             if not attr.reverse and not attr.is_part_of_unique_index:
@@ -1140,9 +1140,9 @@ class Attribute(object):
                 obj._wbits_ = wbits
                 if wbits == 0: cache.updated.remove(obj)
                 if status in ('loaded', 'saved'):
-                    to_be_checked = cache.to_be_checked
-                    if to_be_checked and to_be_checked[-1] is obj: to_be_checked.pop()
-                    assert obj not in to_be_checked
+                    objects_to_save = cache.objects_to_save
+                    if objects_to_save and objects_to_save[-1] is obj: objects_to_save.pop()
+                    assert obj not in objects_to_save
                 obj._vals_[attr.name] = old_val
                 for index, old_key, new_key in undo:
                     if new_key is NO_UNDO_NEEDED: pass
@@ -3127,7 +3127,7 @@ class Entity(object):
                 cache.indexes[key][vals] = obj
             cache.modified = True
             cache.created.add(obj)
-            cache.to_be_checked.append(obj)
+            cache.objects_to_save.append(obj)
             return obj
     def _get_raw_pkval_(obj):
         pkval = obj._pkval_
@@ -3266,9 +3266,9 @@ class Entity(object):
             def undo_func():
                 obj._status_ = status
                 if status in ('loaded', 'saved'):
-                    to_be_checked = cache.to_be_checked
-                    if to_be_checked and to_be_checked[-1] is obj: to_be_checked.pop()
-                    assert obj not in to_be_checked
+                    objects_to_save = cache.objects_to_save
+                    if objects_to_save and objects_to_save[-1] is obj: objects_to_save.pop()
+                    assert obj not in objects_to_save
                 obj._vals_.update((attr.name, val) for attr, val in undo_dict.iteritems())
                 for index, old_key in undo_list: index[old_key] = obj
             undo_funcs.append(undo_func)
@@ -3339,7 +3339,7 @@ class Entity(object):
                     if status == 'updated': cache.updated.remove(obj)
                     else:
                         assert status in ('loaded', 'saved')
-                        cache.to_be_checked.append(obj)
+                        cache.objects_to_save.append(obj)
                     obj._status_ = 'deleted'
                     cache.modified = True
                     cache.deleted.append(obj)
@@ -3375,7 +3375,7 @@ class Entity(object):
                         cache.modified = True
                         cache.updated.add(obj)
                         assert status in ('loaded', 'saved')
-                        cache.to_be_checked.append(obj)
+                        cache.objects_to_save.append(obj)
                 if not collection_avdict:
                     for attr in avdict:
                         if attr.reverse or attr.is_part_of_unique_index: break
@@ -3389,9 +3389,9 @@ class Entity(object):
                 obj._wbits_ = wbits
                 if wbits == 0: cache.updated.remove(obj)
                 if status in ('loaded', 'saved'):
-                    to_be_checked = cache.to_be_checked
-                    if to_be_checked and to_be_checked[-1] is obj: to_be_checked.pop()
-                    assert obj not in to_be_checked
+                    objects_to_save = cache.objects_to_save
+                    if objects_to_save and objects_to_save[-1] is obj: objects_to_save.pop()
+                    assert obj not in objects_to_save
                 for index, old_key, new_key in undo:
                     if new_key is NO_UNDO_NEEDED: pass
                     else: del index[new_key]
@@ -3646,7 +3646,7 @@ class Cache(object):
         cache.for_update = set()
         cache.noflush_counter = 0
         cache.modified_collections = {}
-        cache.to_be_checked = []
+        cache.objects_to_save = []
         cache.query_results = {}
         cache.modified = False
         cache.connection = cache.establish_connection(False)
@@ -3762,7 +3762,7 @@ class Cache(object):
             for attr, (added, removed) in modified_m2m.iteritems():
                 if not removed: continue
                 attr.remove_m2m(removed)
-            for obj in cache.to_be_checked:
+            for obj in cache.objects_to_save:
                 obj._save_()
             for attr, (added, removed) in modified_m2m.iteritems():
                 if not added: continue
@@ -3780,7 +3780,7 @@ class Cache(object):
 
             cache.deleted[:] = []
             cache.modified_collections.clear()
-            cache.to_be_checked[:] = []
+            cache.objects_to_save[:] = []
             cache.modified = False
     def _calc_modified_m2m(cache):
         modified_m2m = {}
