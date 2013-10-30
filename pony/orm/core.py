@@ -1727,21 +1727,21 @@ class Set(Collection):
             except:
                 for undo_func in reversed(undo_funcs): undo_func()
                 raise
-            setdata.clear()
-            setdata |= new_items
-            if setdata.count is not None: setdata.count = len(new_items)
-            added = setdata.added
-            removed = setdata.removed
-            if to_add:
-                if removed: (to_add, setdata.removed) = (to_add - removed, removed - to_add)
-                if added: added |= to_add
-                else: setdata.added = to_add  # added may be None
-            if to_remove:
-                if added: (to_remove, setdata.added) = (to_remove - added, added - to_remove)
-                if removed: removed |= to_remove
-                else: setdata.removed = to_remove  # removed may be None
-            cache.modified = True
-            cache.modified_collections.setdefault(attr, set()).add(obj)
+        setdata.clear()
+        setdata |= new_items
+        if setdata.count is not None: setdata.count = len(new_items)
+        added = setdata.added
+        removed = setdata.removed
+        if to_add:
+            if removed: (to_add, setdata.removed) = (to_add - removed, removed - to_add)
+            if added: added |= to_add
+            else: setdata.added = to_add  # added may be None
+        if to_remove:
+            if added: (to_remove, setdata.added) = (to_remove - added, added - to_remove)
+            if removed: removed |= to_remove
+            else: setdata.removed = to_remove  # removed may be None
+        cache.modified_collections.setdefault(attr, set()).add(obj)
+        cache.modified = True
     def __delete__(attr, obj):
         throw(NotImplementedError)
     def reverse_add(attr, objects, item, undo_funcs):
@@ -2102,16 +2102,16 @@ class SetWrapper(object):
             except:
                 for undo_func in reversed(undo_funcs): undo_func()
                 raise
-            setdata |= new_items
-            if setdata.count is not None: setdata.count += len(new_items)
-            added = setdata.added
-            removed = setdata.removed
-            if removed: (new_items, setdata.removed) = (new_items-removed, removed-new_items)
-            if added: added |= new_items
-            else: setdata.added = new_items  # added may be None
+        setdata |= new_items
+        if setdata.count is not None: setdata.count += len(new_items)
+        added = setdata.added
+        removed = setdata.removed
+        if removed: (new_items, setdata.removed) = (new_items-removed, removed-new_items)
+        if added: added |= new_items
+        else: setdata.added = new_items  # added may be None
 
-            cache.modified = True
-            cache.modified_collections.setdefault(attr, set()).add(obj)
+        cache.modified_collections.setdefault(attr, set()).add(obj)
+        cache.modified = True
     @cut_traceback
     def __iadd__(wrapper, items):
         wrapper.add(items)
@@ -2142,16 +2142,16 @@ class SetWrapper(object):
             except:
                 for undo_func in reversed(undo_funcs): undo_func()
                 raise
-            setdata -= items
-            if setdata.count is not None: setdata.count -= len(items)
-            added = setdata.added
-            removed = setdata.removed
-            if added: (items, setdata.added) = (items - added, added - items)
-            if removed: removed |= items
-            else: setdata.removed = items  # removed may be None
+        setdata -= items
+        if setdata.count is not None: setdata.count -= len(items)
+        added = setdata.added
+        removed = setdata.removed
+        if added: (items, setdata.added) = (items - added, added - items)
+        if removed: removed |= items
+        else: setdata.removed = items  # removed may be None
 
-            cache.modified = True
-            cache.modified_collections.setdefault(attr, set()).add(obj)
+        cache.modified_collections.setdefault(attr, set()).add(obj)
+        cache.modified = True
     @cut_traceback
     def __isub__(wrapper, items):
         wrapper.remove(items)
@@ -3120,14 +3120,14 @@ class Entity(object):
             except:
                 for undo_func in reversed(undo_funcs): undo_func()
                 raise
-            if pkval is not None:
-                pk = entity.__dict__['_pk_']
-                cache.indexes[pk][pkval] = obj
-            for key, vals in indexes.iteritems():
-                cache.indexes[key][vals] = obj
-            cache.modified = True
-            cache.objects_to_save.append(obj)
-            return obj
+        if pkval is not None:
+            pk = entity.__dict__['_pk_']
+            cache.indexes[pk][pkval] = obj
+        for key, vals in indexes.iteritems():
+            cache.indexes[key][vals] = obj
+        cache.objects_to_save.append(obj)
+        cache.modified = True
+        return obj
     def _get_raw_pkval_(obj):
         pkval = obj._pkval_
         if not obj._pk_is_composite_:
@@ -3419,7 +3419,7 @@ class Entity(object):
             except:
                 for undo_func in undo_funcs: undo_func()
                 raise
-            obj._vals_.update((attr.name, new_val) for attr, new_val in avdict.iteritems())
+        obj._vals_.update((attr.name, new_val) for attr, new_val in avdict.iteritems())
     def _keyargs_to_avdicts_(obj, kwargs):
         avdict, collection_avdict = {}, {}
         get = obj._adict_.get
