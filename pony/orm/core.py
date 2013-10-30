@@ -1129,7 +1129,6 @@ class Attribute(object):
                     obj._status_ = 'updated'
                     cache.objects_to_save.append(obj)
                     cache.modified = True
-                    cache.updated.add(obj)
             if not attr.reverse and not attr.is_part_of_unique_index:
                 obj._vals_[attr.name] = new_val
                 return
@@ -1138,7 +1137,6 @@ class Attribute(object):
             def undo_func():
                 obj._status_ = status
                 obj._wbits_ = wbits
-                if wbits == 0: cache.updated.remove(obj)
                 if status in ('loaded', 'saved'):
                     objects_to_save = cache.objects_to_save
                     if objects_to_save and objects_to_save[-1] is obj: objects_to_save.pop()
@@ -3038,8 +3036,8 @@ def populate_criteria_list(criteria_list, columns, converters, params_count=0, t
         params_count += 1
     return params_count
 
-statuses = set(['created', 'loaded', 'updated', 'marked_to_delete', 'cancelled', 'saved'])
-del_statuses = set(['marked_to_delete', 'cancelled'])
+statuses = set(['created', 'cancelled', 'loaded', 'updated', 'saved', 'marked_to_delete', 'deleted'])
+del_statuses = set(['marked_to_delete', 'deleted', 'cancelled'])
 created_or_deleted_statuses = set(['created']) | del_statuses
 
 def throw_object_was_deleted(obj):
@@ -3128,7 +3126,6 @@ class Entity(object):
             for key, vals in indexes.iteritems():
                 cache.indexes[key][vals] = obj
             cache.modified = True
-            cache.created.add(obj)
             cache.objects_to_save.append(obj)
             return obj
     def _get_raw_pkval_(obj):
@@ -3326,8 +3323,6 @@ class Entity(object):
 
                 if status == 'created':
                     obj._status_ = 'cancelled'
-                    assert obj in cache.created
-                    cache.created.remove(obj)
                     for attr in obj._attrs_:
                         if attr.pk_offset is not None: continue
                         obj._vals_.pop(attr.name, None)
@@ -3338,13 +3333,11 @@ class Entity(object):
                         pk = obj.__class__.__dict__['_pk_']
                         del cache.indexes[pk][obj._pkval_]
                 else:
-                    if status == 'updated': cache.updated.remove(obj)
-                    else:
+                    if status != 'updated':
                         assert status in ('loaded', 'saved')
                         cache.objects_to_save.append(obj)
                     obj._status_ = 'marked_to_delete'
                     cache.modified = True
-                    cache.deleted.append(obj)
             except:
                 if not is_recursive_call:
                     for undo_func in reversed(undo_funcs): undo_func()
@@ -3375,7 +3368,6 @@ class Entity(object):
                     if status != 'updated':
                         obj._status_ = 'updated'
                         cache.modified = True
-                        cache.updated.add(obj)
                         assert status in ('loaded', 'saved')
                         cache.objects_to_save.append(obj)
                 if not collection_avdict:
@@ -3389,7 +3381,6 @@ class Entity(object):
             def undo_func():
                 obj._status_ = status
                 obj._wbits_ = wbits
-                if wbits == 0: cache.updated.remove(obj)
                 if status in ('loaded', 'saved'):
                     objects_to_save = cache.objects_to_save
                     if objects_to_save and objects_to_save[-1] is obj: objects_to_save.pop()
@@ -3619,6 +3610,9 @@ class Entity(object):
         else: sql, adapter = cached_sql
         arguments = adapter(values)
         database._exec_sql(sql, arguments)
+        obj._status_ = 'deleted'
+        pk = obj.__class__.__dict__['_pk_']
+        cache.indexes[pk].pop(obj._pkval_)
     def _save_(obj, dependent_objects=None):
         cache = obj._cache_
         assert cache.is_alive
@@ -3642,9 +3636,6 @@ class Cache(object):
         cache.indexes = {}
         cache.seeds = {}
         cache.collection_statistics = {}
-        cache.created = set()
-        cache.deleted = []
-        cache.updated = set()
         cache.for_update = set()
         cache.noflush_counter = 0
         cache.modified_collections = {}
@@ -3757,7 +3748,6 @@ class Cache(object):
     def save(cache):
         assert cache.is_alive
         if not cache.modified: return
-        if not (cache.created or cache.updated or cache.deleted or cache.modified_collections): return
         with cache.flush_disabled():
             cache.query_results.clear()
             modified_m2m = cache._calc_modified_m2m()
@@ -3769,21 +3759,9 @@ class Cache(object):
             for attr, (added, removed) in modified_m2m.iteritems():
                 if not added: continue
                 attr.add_m2m(added)
-
-            cache.created.clear()
-            cache.updated.clear()
-
-            indexes = cache.indexes
-            for obj in cache.deleted:
-                pkval = obj._pkval_
-                pk = obj.__class__.__dict__['_pk_']
-                index = indexes[pk]
-                index.pop(pkval)
-
-            cache.deleted[:] = []
-            cache.modified_collections.clear()
-            cache.objects_to_save[:] = []
-            cache.modified = False
+        cache.modified_collections.clear()
+        cache.objects_to_save[:] = []
+        cache.modified = False
     def _calc_modified_m2m(cache):
         modified_m2m = {}
         for attr, objects in sorted(cache.modified_collections.iteritems(),
