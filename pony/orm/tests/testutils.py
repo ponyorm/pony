@@ -49,6 +49,8 @@ class TestPool(object):
         pass
     def drop(pool, con):
         pass
+    def disconnect(pool):
+        pass
 
 class TestDatabase(Database):
     real_provider_name = None

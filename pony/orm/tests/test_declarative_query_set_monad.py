@@ -121,6 +121,10 @@ class TestQuerySetMonad(unittest.TestCase):
         result = set(select(g for g in Group if select(s.scholarship for s in g.students).avg() == 50))
         self.assertEqual(result, set([Group[1]]))
 
+    def test_exists(self):
+        result = set(select(g for g in Group if exists(s for s in g.students if s.name == 'S1')))
+        self.assertEqual(result, set([Group[1]]))
+
     def test_negate(self):
         result = set(select(g for g in Group if not(s.scholarship for s in Student if s.group == g)))
         self.assertEqual(result, set([]))

@@ -212,6 +212,8 @@ class MemPool(object):
     def drop(mempool, con):
         assert con is mempool.con
         con.rollback()
+    def disconnect(mempool):
+        pass
     def __del__(mempool):
         con = mempool.con
         if con is None: con.close()
