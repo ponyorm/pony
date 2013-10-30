@@ -491,16 +491,14 @@ class Database(object):
             result = cursor.fetchmany(max_fetch_count)
             if cursor.fetchone() is not None: throw(TooManyRowsFound)
         else: result = cursor.fetchall()
-        if len(cursor.description) == 1: result = map(itemgetter(0), result)
-        else:
-            row_class = type("row", (tuple,), {})
-            for i, column_info in enumerate(cursor.description):
-                column_name = column_info[0]
-                if not is_ident(column_name): continue
-                if hasattr(tuple, column_name) and column_name.startswith('__'): continue
-                setattr(row_class, column_name, property(itemgetter(i)))
-            result = [ row_class(row) for row in result ]
-        return result
+        if len(cursor.description) == 1: return map(itemgetter(0), result)
+        row_class = type("row", (tuple,), {})
+        for i, column_info in enumerate(cursor.description):
+            column_name = column_info[0]
+            if not is_ident(column_name): continue
+            if hasattr(tuple, column_name) and column_name.startswith('__'): continue
+            setattr(row_class, column_name, property(itemgetter(i)))
+        return [ row_class(row) for row in result ]
     @cut_traceback
     def get(database, sql, globals=None, locals=None):
         rows = database.select(sql, globals, locals, frame_depth=3)
