@@ -93,5 +93,35 @@ class TestManyToManyNonComposite(unittest.TestCase):
             self.assertEqual(db_subjects , ['Subj3', 'Subj4'])
             self.assertEqual(Group[101].subjects, set([Subject['Subj3'], Subject['Subj4']]))
 
+    def test_6(self):
+        db, Group, Subject = self.db, self.Group, self.Subject
+
+        with db_session:
+            g = Group.get(number=101)
+            s = Subject.get(name='Subj3')
+            g.subjects.add(s)
+            g.subjects.remove(s)
+            last_sql = db.last_sql
+
+        with db_session:
+            self.assertEqual(db.last_sql, last_sql)  # assert no DELETE statement on commit
+            db_subjects = db.select('subject from Group_Subject where "group" = 101')
+            self.assertEqual(db_subjects , ['Subj1', 'Subj2'])
+
+    def test_7(self):
+        db, Group, Subject = self.db, self.Group, self.Subject
+
+        with db_session:
+            g = Group.get(number=101)
+            s = Subject.get(name='Subj1')
+            g.subjects.remove(s)
+            g.subjects.add(s)
+            last_sql = db.last_sql
+
+        with db_session:
+            self.assertEqual(db.last_sql, last_sql)  # assert no INSERT statement on commit
+            db_subjects = db.select('subject from Group_Subject where "group" = 101')
+            self.assertEqual(db_subjects , ['Subj1', 'Subj2'])
+
 if __name__ == "__main__":
     unittest.main()
