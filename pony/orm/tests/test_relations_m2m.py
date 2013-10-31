@@ -32,15 +32,14 @@ class TestManyToManyNonComposite(unittest.TestCase):
         rollback()
         db_session.__exit__()
     def test_add_remove(self):
-        g = Group.get(number=101)
-        subjects = Subject.select()[:]
-        g.subjects.remove(subjects[:2])
-        g.subjects.add(subjects[-2:])
-        commit()
-        rollback()
-        self.assertEqual(Group[101].subjects, set([Subject['Subj3'], Subject['Subj4']]))
+        with db_session:
+            g = Group.get(number=101)
+            s1, s2, s3, s4 = Subject.select()[:]
+            g.subjects.remove([s1, s2])
+            g.subjects.add([s3, s4])
         db_subjects = db.select('subject from Group_Subject where "group" = 101')
         self.assertEqual(db_subjects , ['Subj3', 'Subj4'])
+        self.assertEqual(Group[101].subjects, set([Subject['Subj3'], Subject['Subj4']]))
 
 if __name__ == "__main__":
     unittest.main()
