@@ -36,6 +36,54 @@ class TestManyToManyNonComposite(unittest.TestCase):
 
         with db_session:
             g = Group.get(number=101)
+            s = Subject.get(name='Subj1')
+            g.subjects.add(s)
+
+        with db_session:
+            db_subjects = db.select('subject from Group_Subject where "group" = 101')
+            self.assertEqual(db_subjects , ['Subj1', 'Subj2'])
+
+    def test_2(self):
+        db, Group, Subject = self.db, self.Group, self.Subject
+
+        with db_session:
+            g = Group.get(number=101)
+            s = Subject.get(name='Subj3')
+            g.subjects.add(s)
+
+        with db_session:
+            db_subjects = db.select('subject from Group_Subject where "group" = 101')
+            self.assertEqual(db_subjects , ['Subj1', 'Subj2', 'Subj3'])
+
+    def test_3(self):
+        db, Group, Subject = self.db, self.Group, self.Subject
+
+        with db_session:
+            g = Group.get(number=101)
+            s = Subject.get(name='Subj3')
+            g.subjects.remove(s)
+
+        with db_session:
+            db_subjects = db.select('subject from Group_Subject where "group" = 101')
+            self.assertEqual(db_subjects , ['Subj1', 'Subj2'])
+
+    def test_4(self):
+        db, Group, Subject = self.db, self.Group, self.Subject
+
+        with db_session:
+            g = Group.get(number=101)
+            s = Subject.get(name='Subj2')
+            g.subjects.remove(s)
+
+        with db_session:
+            db_subjects = db.select('subject from Group_Subject where "group" = 101')
+            self.assertEqual(db_subjects , ['Subj1'])
+
+    def test_5(self):
+        db, Group, Subject = self.db, self.Group, self.Subject
+
+        with db_session:
+            g = Group.get(number=101)
             s1, s2, s3, s4 = Subject.select()[:]
             g.subjects.remove([s1, s2])
             g.subjects.add([s3, s4])
