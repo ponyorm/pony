@@ -2007,11 +2007,10 @@ class SetWrapper(object):
             if not reverse: throw(NotImplementedError)
             new_items = attr.check(new_items, obj)
             setdata = obj._vals_.get(attr.name, NOT_LOADED)
-            if setdata is not NOT_LOADED:
-                new_items.difference_update(setdata)
+            if setdata is not NOT_LOADED: new_items -= setdata
             if setdata is NOT_LOADED or not setdata.is_fully_loaded:
                 setdata = attr.load(obj, new_items)
-            new_items.difference_update(setdata)
+            new_items -= setdata
             undo_funcs = []
             try:
                 if not reverse.is_collection:
@@ -2020,10 +2019,17 @@ class SetWrapper(object):
             except:
                 for undo_func in reversed(undo_funcs): undo_func()
                 raise
-            setdata.update(new_items)
-            if setdata.added is EMPTY: setdata.added = new_items
-            else: setdata.added.update(new_items)
-            if setdata.removed is not EMPTY: setdata.removed -= new_items
+            setdata |= new_items
+            added = setdata.added
+            removed = setdata.removed
+
+            if removed:
+                if added: added |= new_items - removed
+                else: setdata.added = new_items - removed  # added may be EMPTY
+                removed -= new_items
+            elif added: added |= new_items
+            else: setdata.added = new_items  # added may be EMPTY
+
             cache.modified = True
             cache.modified_collections.setdefault(attr, set()).add(obj)
         finally:
@@ -2045,8 +2051,8 @@ class SetWrapper(object):
             if not reverse: throw(NotImplementedError)
             items = attr.check(items, obj)
             setdata = obj._vals_.get(attr.name, NOT_LOADED)
-            if setdata is not NOT_LOADED:
-                items.difference_update(setdata.removed)
+            if setdata is not NOT_LOADED and setdata.removed:
+                items -= setdata.removed
             if not items: return
             if setdata is NOT_LOADED or not setdata.is_fully_loaded:
                 setdata = attr.load(obj, items)
@@ -2059,9 +2065,16 @@ class SetWrapper(object):
                 for undo_func in reversed(undo_funcs): undo_func()
                 raise
             setdata -= items
-            if setdata.added is not EMPTY: setdata.added -= items
-            if setdata.removed is EMPTY: setdata.removed = items
-            else: setdata.removed.update(items)
+            added = setdata.added
+            removed = setdata.removed
+
+            if added:
+                if removed: removed |= items - added
+                else: setdata.removed = items - added  # removed may be EMPTY
+                added -= items
+            elif removed: removed |= items
+            else: setdata.removed = items  # removed may be EMPTY
+
             cache.modified = True
             cache.modified_collections.setdefault(attr, set()).add(obj)
         finally:
