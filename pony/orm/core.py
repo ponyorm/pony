@@ -2006,6 +2006,7 @@ class SetWrapper(object):
             reverse = attr.reverse
             if not reverse: throw(NotImplementedError)
             new_items = attr.check(new_items, obj)
+            if not new_items: return
             setdata = obj._vals_.get(attr.name, NOT_LOADED)
             if setdata is not NOT_LOADED: new_items -= setdata
             if setdata is NOT_LOADED or not setdata.is_fully_loaded:
@@ -2014,8 +2015,8 @@ class SetWrapper(object):
             undo_funcs = []
             try:
                 if not reverse.is_collection:
-                      for item in new_items - setdata: reverse.__set__(item, obj, undo_funcs)
-                else: reverse.reverse_add(new_items - setdata, obj, undo_funcs)
+                      for item in new_items: reverse.__set__(item, obj, undo_funcs)
+                else: reverse.reverse_add(new_items, obj, undo_funcs)
             except:
                 for undo_func in reversed(undo_funcs): undo_func()
                 raise
@@ -2056,11 +2057,12 @@ class SetWrapper(object):
             if not items: return
             if setdata is NOT_LOADED or not setdata.is_fully_loaded:
                 setdata = attr.load(obj, items)
+            items &= setdata
             undo_funcs = []
             try:
                 if not reverse.is_collection:
-                    for item in (items & setdata): reverse.__set__(item, None, undo_funcs)
-                else: reverse.reverse_remove(items & setdata, obj, undo_funcs)
+                    for item in items: reverse.__set__(item, None, undo_funcs)
+                else: reverse.reverse_remove(items, obj, undo_funcs)
             except:
                 for undo_func in reversed(undo_funcs): undo_func()
                 raise
