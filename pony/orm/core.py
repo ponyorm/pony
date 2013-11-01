@@ -1707,10 +1707,10 @@ class Set(Collection):
                 if obj._status_ == 'created':
                     setdata = obj._vals_[attr.name] = SetData()
                     setdata.is_fully_loaded = True
-                    if not new_items: return
                 else: setdata = attr.load(obj)
             elif not setdata.is_fully_loaded: setdata = attr.load(obj)
-            to_add = set(ifilterfalse(setdata.__contains__, new_items))
+            if new_items == setdata: return
+            to_add = new_items - setdata
             to_remove = setdata - new_items
             if undo_funcs is None: undo_funcs = []
             try:
@@ -1724,15 +1724,17 @@ class Set(Collection):
                 for undo_func in reversed(undo_funcs): undo_func()
                 raise
             setdata.clear()
-            setdata.update(new_items)
+            setdata |= new_items
+            added = setdata.added
+            removed = setdata.removed
             if to_add:
-                if setdata.added is EMPTY: setdata.added = to_add
-                else: setdata.added.update(to_add)
-                if setdata.removed is not EMPTY: setdata.removed -= to_add
+                if removed: (to_add, setdata.removed) = (to_add - removed, removed - to_add)
+                if added: added |= to_add
+                else: setdata.added = to_add  # added may be EMPTY
             if to_remove:
-                if setdata.removed is EMPTY: setdata.removed = to_remove
-                else: setdata.removed.update(to_remove)
-                if setdata.added is not EMPTY: setdata.added -= to_remove
+                if added: (to_remove, setdata.added) = (to_remove - added, added - to_remove)
+                if removed: removed |= to_remove
+                else: setdata.removed = to_remove  # removed may be EMPTY
             cache.modified = True
             cache.modified_collections.setdefault(attr, set()).add(obj)
         finally:
@@ -2006,6 +2008,7 @@ class SetWrapper(object):
             reverse = attr.reverse
             if not reverse: throw(NotImplementedError)
             new_items = attr.check(new_items, obj)
+            if not new_items: return
             setdata = obj._vals_.get(attr.name, NOT_LOADED)
             if setdata is not NOT_LOADED: new_items -= setdata
             if setdata is NOT_LOADED or not setdata.is_fully_loaded:
@@ -2014,20 +2017,16 @@ class SetWrapper(object):
             undo_funcs = []
             try:
                 if not reverse.is_collection:
-                      for item in new_items - setdata: reverse.__set__(item, obj, undo_funcs)
-                else: reverse.reverse_add(new_items - setdata, obj, undo_funcs)
+                      for item in new_items: reverse.__set__(item, obj, undo_funcs)
+                else: reverse.reverse_add(new_items, obj, undo_funcs)
             except:
                 for undo_func in reversed(undo_funcs): undo_func()
                 raise
             setdata |= new_items
             added = setdata.added
             removed = setdata.removed
-
-            if removed:
-                if added: added |= new_items - removed
-                else: setdata.added = new_items - removed  # added may be EMPTY
-                removed -= new_items
-            elif added: added |= new_items
+            if removed: (new_items, setdata.removed) = (new_items-removed, removed-new_items)
+            if added: added |= new_items
             else: setdata.added = new_items  # added may be EMPTY
 
             cache.modified = True
@@ -2056,23 +2055,20 @@ class SetWrapper(object):
             if not items: return
             if setdata is NOT_LOADED or not setdata.is_fully_loaded:
                 setdata = attr.load(obj, items)
+            items &= setdata
             undo_funcs = []
             try:
                 if not reverse.is_collection:
-                    for item in (items & setdata): reverse.__set__(item, None, undo_funcs)
-                else: reverse.reverse_remove(items & setdata, obj, undo_funcs)
+                    for item in items: reverse.__set__(item, None, undo_funcs)
+                else: reverse.reverse_remove(items, obj, undo_funcs)
             except:
                 for undo_func in reversed(undo_funcs): undo_func()
                 raise
             setdata -= items
             added = setdata.added
             removed = setdata.removed
-
-            if added:
-                if removed: removed |= items - added
-                else: setdata.removed = items - added  # removed may be EMPTY
-                added -= items
-            elif removed: removed |= items
+            if added: (items, setdata.added) = (items - added, added - items)
+            if removed: removed |= items
             else: setdata.removed = items  # removed may be EMPTY
 
             cache.modified = True

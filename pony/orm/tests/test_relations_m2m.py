@@ -123,5 +123,78 @@ class TestManyToManyNonComposite(unittest.TestCase):
             db_subjects = db.select('subject from Group_Subject where "group" = 101')
             self.assertEqual(db_subjects , ['Subj1', 'Subj2'])
 
+    def test_8(self):
+        db, Group, Subject = self.db, self.Group, self.Subject
+
+        with db_session:
+            g = Group.get(number=101)
+            s1 = Subject.get(name='Subj1')
+            s2 = Subject.get(name='Subj2')
+            g.subjects.clear()
+            g.subjects.add([s1, s2])
+            last_sql = db.last_sql
+
+        with db_session:
+            self.assertEqual(db.last_sql, last_sql)  # assert no INSERT statement on commit
+            db_subjects = db.select('subject from Group_Subject where "group" = 101')
+            self.assertEqual(db_subjects , ['Subj1', 'Subj2'])
+
+    def test_9(self):
+        db, Group, Subject = self.db, self.Group, self.Subject
+
+        with db_session:
+            g2 = Group.get(number=102)
+            s1 = Subject.get(name='Subj1')
+            g2.subjects.add(s1)
+            g2.subjects.clear()
+            last_sql = db.last_sql
+
+        with db_session:
+            self.assertEqual(db.last_sql, last_sql)  # assert no DELETE statement on commit
+            db_subjects = db.select('subject from Group_Subject where "group" = 102')
+            self.assertEqual(db_subjects , [])
+
+    def test_10(self):
+        db, Group, Subject = self.db, self.Group, self.Subject
+
+        with db_session:
+            g = Group.get(number=101)
+            s1, s2, s3, s4 = Subject.select()[:]
+            g.subjects = [ s2, s3 ]
+
+        with db_session:
+            db_subjects = db.select('subject from Group_Subject where "group" = 101')
+            self.assertEqual(db_subjects , ['Subj2', 'Subj3'])
+
+    def test_11(self):
+        db, Group, Subject = self.db, self.Group, self.Subject
+
+        with db_session:
+            g = Group.get(number=101)
+            s1, s2, s3, s4 = Subject.select()[:]
+            g.subjects.remove(s2)
+            g.subjects = [ s1, s2 ]
+            last_sql = db.last_sql
+
+        with db_session:
+            self.assertEqual(db.last_sql, last_sql)  # assert no INSERT statement on commit
+            db_subjects = db.select('subject from Group_Subject where "group" = 101')
+            self.assertEqual(db_subjects , ['Subj1', 'Subj2'])
+
+    def test_12(self):
+        db, Group, Subject = self.db, self.Group, self.Subject
+
+        with db_session:
+            g = Group.get(number=101)
+            s1, s2, s3, s4 = Subject.select()[:]
+            g.subjects.add(s3)
+            g.subjects = [ s1, s2 ]
+            last_sql = db.last_sql
+
+        with db_session:
+            self.assertEqual(db.last_sql, last_sql)  # assert no DELETE statement on commit
+            db_subjects = db.select('subject from Group_Subject where "group" = 101')
+            self.assertEqual(db_subjects , ['Subj1', 'Subj2'])
+
 if __name__ == "__main__":
     unittest.main()
