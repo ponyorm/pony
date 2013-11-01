@@ -2023,12 +2023,8 @@ class SetWrapper(object):
             setdata |= new_items
             added = setdata.added
             removed = setdata.removed
-
-            if removed:
-                if added: added |= new_items - removed
-                else: setdata.added = new_items - removed  # added may be EMPTY
-                removed -= new_items
-            elif added: added |= new_items
+            if removed: (new_items, setdata.removed) = (new_items-removed, removed-new_items)
+            if added: added |= new_items
             else: setdata.added = new_items  # added may be EMPTY
 
             cache.modified = True
@@ -2069,12 +2065,8 @@ class SetWrapper(object):
             setdata -= items
             added = setdata.added
             removed = setdata.removed
-
-            if added:
-                if removed: removed |= items - added
-                else: setdata.removed = items - added  # removed may be EMPTY
-                added -= items
-            elif removed: removed |= items
+            if added: (items, setdata.added) = (items - added, added - items)
+            if removed: removed |= items
             else: setdata.removed = items  # removed may be EMPTY
 
             cache.modified = True
