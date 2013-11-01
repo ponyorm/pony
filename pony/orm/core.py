@@ -1707,10 +1707,10 @@ class Set(Collection):
                 if obj._status_ == 'created':
                     setdata = obj._vals_[attr.name] = SetData()
                     setdata.is_fully_loaded = True
-                    if not new_items: return
                 else: setdata = attr.load(obj)
             elif not setdata.is_fully_loaded: setdata = attr.load(obj)
-            to_add = set(ifilterfalse(setdata.__contains__, new_items))
+            if new_items == setdata: return
+            to_add = new_items - setdata
             to_remove = setdata - new_items
             if undo_funcs is None: undo_funcs = []
             try:
@@ -1724,15 +1724,17 @@ class Set(Collection):
                 for undo_func in reversed(undo_funcs): undo_func()
                 raise
             setdata.clear()
-            setdata.update(new_items)
+            setdata |= new_items
+            added = setdata.added
+            removed = setdata.removed
             if to_add:
-                if setdata.added is EMPTY: setdata.added = to_add
-                else: setdata.added.update(to_add)
-                if setdata.removed is not EMPTY: setdata.removed -= to_add
+                if removed: (to_add, setdata.removed) = (to_add - removed, removed - to_add)
+                if added: added |= to_add
+                else: setdata.added = to_add  # added may be EMPTY
             if to_remove:
-                if setdata.removed is EMPTY: setdata.removed = to_remove
-                else: setdata.removed.update(to_remove)
-                if setdata.added is not EMPTY: setdata.added -= to_remove
+                if added: (to_remove, setdata.added) = (to_remove - added, added - to_remove)
+                if removed: removed |= to_remove
+                else: setdata.removed = to_remove  # removed may be EMPTY
             cache.modified = True
             cache.modified_collections.setdefault(attr, set()).add(obj)
         finally:
