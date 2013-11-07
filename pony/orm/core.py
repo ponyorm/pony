@@ -1426,7 +1426,7 @@ class PrimaryKey(Required):
 class Collection(Attribute):
     __slots__ = 'table', 'wrapper_class', 'symmetric', 'reverse_column', 'reverse_columns', \
                 'nplus1_threshold', 'cached_load_sql', 'cached_add_m2m_sql', 'cached_remove_m2m_sql', \
-                'cached_count_sql'
+                'cached_count_sql', 'cached_empty_sql'
     def __init__(attr, py_type, *args, **kwargs):
         if attr.__class__ is Collection: throw(TypeError, "'Collection' is abstract type")
         table = kwargs.pop('table', None)  # TODO: rename table to link_table or m2m_table
@@ -1465,6 +1465,7 @@ class Collection(Attribute):
         attr.cached_add_m2m_sql = None
         attr.cached_remove_m2m_sql = None
         attr.cached_count_sql = None
+        attr.cached_empty_sql = None
     def _init_(attr, entity, name):
         Attribute._init_(attr, entity, name)
         if attr.is_unique: throw(TypeError,
@@ -1936,6 +1937,35 @@ class SetWrapper(object):
         if setdata: return True
         if not setdata.is_fully_loaded: setdata = attr.load(obj)
         return bool(setdata)
+    @cut_traceback
+    def is_empty(wrapper):
+        attr = wrapper._attr_
+        obj = wrapper._obj_
+        if not obj._cache_.is_alive: throw_db_session_is_over(obj)
+        if obj._status_ in del_statuses: throw_object_was_deleted(obj)
+        setdata = obj._vals_.get(attr.name, NOT_LOADED)
+        if setdata is NOT_LOADED: pass
+        elif setdata.is_fully_loaded: return not setdata
+        elif setdata: return False
+        entity = attr.entity
+        reverse = attr.reverse
+        database = entity._database_
+        cached_sql = attr.cached_empty_sql
+        if cached_sql is None:
+            where_list = [ 'WHERE' ]
+            for i, (column, converter) in enumerate(zip(reverse.columns, reverse.converters)):
+                where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', i, converter ] ])
+            if not reverse.is_collection: table_name = reverse.entity._table_
+            else: table_name = attr.table
+            sql_ast = [ 'SELECT', [ 'ALL', [ 'VALUE', 1 ] ],
+                                  [ 'FROM', [ None, 'TABLE', table_name ] ], where_list,
+                                  [ 'LIMIT', [ 'VALUE', 1 ] ] ]
+            sql, adapter = database._ast2sql(sql_ast)
+            attr.cached_empty_sql = sql, adapter
+        else: sql, adapter = cached_sql
+        arguments = adapter(obj._get_raw_pkval_())
+        cursor = database._exec_sql(sql, arguments)
+        return cursor.fetchone() is None
     @cut_traceback
     def __len__(wrapper):
         attr = wrapper._attr_
