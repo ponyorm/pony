@@ -1747,23 +1747,22 @@ class Set(Collection):
         objects_with_modified_collections = cache.modified_collections.setdefault(attr, set())
         for obj in objects:
             setdata = obj._vals_.get(attr.name, NOT_LOADED)
-            if setdata is NOT_LOADED:
-                setdata = obj._vals_[attr.name] = SetData()
+            if setdata is NOT_LOADED: setdata = obj._vals_[attr.name] = SetData()
+            else: assert item not in setdata
             if setdata.added is EMPTY: setdata.added = set()
-            elif item in setdata.added: raise AssertionError
-            in_setdata = item in setdata
+            else: assert item not in setdata.added
             in_removed = item in setdata.removed
             was_modified_earlier = obj in objects_with_modified_collections
-            undo.append((obj, in_setdata, in_removed, was_modified_earlier))
-            if not in_setdata: setdata.add(item)
+            undo.append((obj, in_removed, was_modified_earlier))
+            setdata.add(item)
             setdata.added.add(item)
             if in_removed: setdata.removed.remove(item)
             objects_with_modified_collections.add(obj)
         def undo_func():
-            for obj, in_setdata, in_removed, was_modified_earlier in undo:
+            for obj, in_removed, was_modified_earlier in undo:
                 setdata = obj._vals_[attr.name]
                 setdata.added.remove(item)
-                if not in_setdata: setdata.remove(item)
+                setdata.remove(item)
                 if in_removed: setdata.removed.add(item)
                 if not was_modified_earlier: objects_with_modified_collections.remove(obj)
         undo_funcs.append(undo_func)
@@ -1782,24 +1781,23 @@ class Set(Collection):
         objects_with_modified_collections = cache.modified_collections.setdefault(attr, set())
         for obj in objects:
             setdata = obj._vals_.get(attr.name, NOT_LOADED)
-            if setdata is NOT_LOADED:
-                setdata = obj._vals_[attr.name] = SetData()
+            assert setdata is not NOT_LOADED
+            assert item in setdata
             if setdata.removed is EMPTY: setdata.removed = set()
-            elif item in setdata.removed: raise AssertionError
-            in_setdata = item in setdata
+            else: assert item not in setdata.removed
             in_added = item in setdata.added
             was_modified_earlier = obj in objects_with_modified_collections
-            undo.append((obj, in_setdata, in_added, was_modified_earlier))
+            undo.append((obj, in_added, was_modified_earlier))
             objects_with_modified_collections.add(obj)
-            if in_setdata: setdata.remove(item)
+            setdata.remove(item)
             if in_added: setdata.added.remove(item)
             if item._status_ not in ('created', 'cancelled'):
                 setdata.removed.add(item)
         def undo_func():
-            for obj, in_setdata, in_removed, was_modified_earlier in undo:
+            for obj, in_removed, was_modified_earlier in undo:
                 setdata = obj._vals_[attr.name]
                 if in_added: setdata.added.add(item)
-                if in_setdata: setdata.add(item)
+                setdata.add(item)
                 setdata.removed.discard(item)
                 if not was_modified_earlier: objects_with_modified_collections.remove(obj)
         undo_funcs.append(undo_func)
