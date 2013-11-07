@@ -23,3 +23,5 @@ http://www.gnu.org/licenses/agpl
 Copyright (c) 2006-2013 Alexander Kozlovsky, Alexey Malashkevich. All rights reserved. 
 team (at) ponyorm.com
 
+Please send your questions, comments and suggestions to our mailing list [http://ponyorm-list.ponyorm.com](http://ponyorm-list.ponyorm.com)
+
