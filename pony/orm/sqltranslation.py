@@ -140,9 +140,10 @@ class SQLTranslator(ASTTranslator):
                 else: monad.nogroup = False
             if monad.aggregated:
                 translator.aggregated = True
-                if monad.nogroup and not isinstance(monad, ListMonad):
-                    throw(NotImplementedError,
-                          'Aggregation functions with different semantics cannot be mixed. Got: %s' % ast2src(node))
+                if monad.nogroup:
+                    if isinstance(monad, ListMonad): pass
+                    elif isinstance(monad, AndMonad): pass
+                    else: throw(TranslationError, 'Too complex aggregation, expressions cannot be combined: %s' % ast2src(node))
             return monad
 
     def __init__(translator, tree, extractors, vartypes, parent_translator=None, left_join=False, optimize=None):
@@ -533,8 +534,8 @@ class SQLTranslator(ASTTranslator):
                 monad.aggregated = getattr(left.monad, 'aggregated', False) or getattr(right.monad, 'aggregated', False)
             if not hasattr(monad, 'nogroup'):
                 monad.nogroup = getattr(left.monad, 'nogroup', False) or getattr(right.monad, 'nogroup', False)
-            if monad.aggregated and monad.nogroup: throw(NotImplementedError,
-                "Aggregation functions with different semantics cannot be mixed. Got: {EXPR}")
+            if monad.aggregated and monad.nogroup: throw(TranslationError,
+                'Too complex aggregation, expressions cannot be combined: {EXPR}')
             monads.append(monad)
             left = right
         translator.inside_not = inside_not
