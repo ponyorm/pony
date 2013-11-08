@@ -1562,11 +1562,17 @@ class Set(Collection):
         nplus1_threshold = attr.nplus1_threshold
         prefetching = not attr.lazy and nplus1_threshold is not None and counter >= nplus1_threshold
 
-        if items and (attr.lazy or not setdata):
-            items_to_load = [ item for item in items
-                              if item not in setdata and item not in setdata.removed ]
-            if not items_to_load: return setdata
+        if items:
+            if not reverse.is_collection:
+                rname = reverse.name
+                items = set(item for item in items if rname not in item._vals_)
+            else:
+                items = set(items)
+                items -= setdata
+                if setdata.removed: items -= setdata.removed
+            if not items: return setdata
 
+        if items and (attr.lazy or not setdata):
             value_dict = dict(enumerate(items))
             if not reverse.is_collection:
                 sql, adapter, attr_offsets = rentity._construct_batchload_sql_(len(items))
@@ -1575,7 +1581,7 @@ class Set(Collection):
                 items = rentity._fetch_objects(cursor, attr_offsets)
                 return setdata
             
-            items_count = len(items_to_load)            
+            items_count = len(items)
             sql, adapter = attr.construct_sql_m2m(1, items_count)
             value_dict[items_count] = obj
             arguments = adapter(value_dict)
