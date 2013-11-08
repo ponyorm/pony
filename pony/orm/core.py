@@ -1485,13 +1485,11 @@ class Collection(Attribute):
     def set(attr, obj, val, fromdb=False):
         assert False, 'Abstract method'
 
-EMPTY = ()
-
 class SetData(set):
     __slots__ = 'is_fully_loaded', 'added', 'removed'
     def __init__(setdata):
         setdata.is_fully_loaded = False
-        setdata.added = setdata.removed = EMPTY
+        setdata.added = setdata.removed = None
 
 def construct_criteria_list(alias, columns, converters, row_value_syntax, count=1, start=0):
     assert count > 0
@@ -1632,12 +1630,12 @@ class Set(Collection):
                 if setdata2 is NOT_LOADED: setdata2 = obj._vals_[attr.name] = SetData()
                 else:
                     phantoms = setdata2 - items
-                    phantoms.difference_update(setdata2.added)
+                    if setdata2.added: phantoms -= setdata2.added
                     if phantoms: throw(UnrepeatableReadError,
                         'Phantom object %s disappeared from collection %s.%s'
                         % (safe_repr(phantoms.pop()), safe_repr(obj), attr.name))
                 items -= setdata2
-                items.difference_update(setdata2.removed)
+                if setdata2.removed: items -= setdata2.removed
                 setdata2 |= items
                 reverse.db_reverse_add(items, obj2)
 
@@ -1684,7 +1682,7 @@ class Set(Collection):
         if setdata is NOT_LOADED or not setdata.is_fully_loaded: setdata = attr.load(obj)
         reverse = attr.reverse
         if not reverse.is_collection and reverse.pk_offset is None:
-            added = setdata.added
+            added = setdata.added or ()
             for item in setdata:
                 if item not in added: item._rbits_ |= item._bits_[reverse]
         return set(setdata)
@@ -1736,11 +1734,11 @@ class Set(Collection):
             if to_add:
                 if removed: (to_add, setdata.removed) = (to_add - removed, removed - to_add)
                 if added: added |= to_add
-                else: setdata.added = to_add  # added may be EMPTY
+                else: setdata.added = to_add  # added may be None
             if to_remove:
                 if added: (to_remove, setdata.added) = (to_remove - added, added - to_remove)
                 if removed: removed |= to_remove
-                else: setdata.removed = to_remove  # removed may be EMPTY
+                else: setdata.removed = to_remove  # removed may be None
             cache.modified = True
             cache.modified_collections.setdefault(attr, set()).add(obj)
         finally:
@@ -1755,9 +1753,9 @@ class Set(Collection):
             setdata = obj._vals_.get(attr.name, NOT_LOADED)
             if setdata is NOT_LOADED: setdata = obj._vals_[attr.name] = SetData()
             else: assert item not in setdata
-            if setdata.added is EMPTY: setdata.added = set()
+            if setdata.added is None: setdata.added = set()
             else: assert item not in setdata.added
-            in_removed = item in setdata.removed
+            in_removed = setdata.removed and item in setdata.removed
             was_modified_earlier = obj in objects_with_modified_collections
             undo.append((obj, in_removed, was_modified_earlier))
             setdata.add(item)
@@ -1789,9 +1787,9 @@ class Set(Collection):
             setdata = obj._vals_.get(attr.name, NOT_LOADED)
             assert setdata is not NOT_LOADED
             assert item in setdata
-            if setdata.removed is EMPTY: setdata.removed = set()
+            if setdata.removed is None: setdata.removed = set()
             else: assert item not in setdata.removed
-            in_added = item in setdata.added
+            in_added = setdata.added and item in setdata.added
             was_modified_earlier = obj in objects_with_modified_collections
             undo.append((obj, in_added, was_modified_earlier))
             objects_with_modified_collections.add(obj)
@@ -2030,7 +2028,7 @@ class SetWrapper(object):
             removed = setdata.removed
             if removed: (new_items, setdata.removed) = (new_items-removed, removed-new_items)
             if added: added |= new_items
-            else: setdata.added = new_items  # added may be EMPTY
+            else: setdata.added = new_items  # added may be None
 
             cache.modified = True
             cache.modified_collections.setdefault(attr, set()).add(obj)
@@ -2072,7 +2070,7 @@ class SetWrapper(object):
             removed = setdata.removed
             if added: (items, setdata.added) = (items - added, added - items)
             if removed: removed |= items
-            else: setdata.removed = items  # removed may be EMPTY
+            else: setdata.removed = items  # removed may be None
 
             cache.modified = True
             cache.modified_collections.setdefault(attr, set()).add(obj)
@@ -3763,10 +3761,12 @@ class Cache(object):
             added, removed = modified_m2m.setdefault(attr, (set(), set()))
             for obj in objects:
                 setdata = obj._vals_[attr.name]
-                for obj2 in setdata.added: added.add((obj, obj2))
-                for obj2 in setdata.removed: removed.add((obj, obj2))
+                if setdata.added:
+                    for obj2 in setdata.added: added.add((obj, obj2))
+                if setdata.removed:
+                    for obj2 in setdata.removed: removed.add((obj, obj2))
                 if obj._status_ == 'deleted': del obj._vals_[attr.name]
-                else: setdata.added = setdata.removed = EMPTY
+                else: setdata.added = setdata.removed = None
         cache.modified_collections.clear()
         return modified_m2m
     def update_simple_index(cache, obj, attr, old_val, new_val, undo):
