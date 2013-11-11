@@ -1547,8 +1547,8 @@ class Set(Collection):
         return items
     def load(attr, obj, items=None):
         assert obj._status_ not in del_statuses
-        setdata = obj._vals_.get(attr.name, NOT_LOADED)
-        if setdata is NOT_LOADED: setdata = obj._vals_[attr.name] = SetData()
+        setdata = obj._vals_.get(attr.name)
+        if setdata is None: setdata = obj._vals_[attr.name] = SetData()
         elif setdata.is_fully_loaded: return setdata
         entity = attr.entity
         reverse = attr.reverse
@@ -1601,8 +1601,8 @@ class Set(Collection):
             for obj2 in pk_index.itervalues():
                 if obj2 is obj: continue
                 if obj2._status_ in created_or_deleted_statuses: continue
-                setdata2 = obj2._vals_.get(attr.name, NOT_LOADED)
-                if setdata2 is NOT_LOADED: setdata2 = obj2._vals_[attr.name] = SetData()
+                setdata2 = obj2._vals_.get(attr.name)
+                if setdata2 is None: setdata2 = obj2._vals_[attr.name] = SetData()
                 elif setdata2.is_fully_loaded: continue
                 objects.append(obj2)
                 setdata_list.append(setdata2)
@@ -1630,8 +1630,8 @@ class Set(Collection):
                     items.add(item)
             else: d[obj] = set(imap(rentity._get_by_raw_pkval_, cursor.fetchall()))
             for obj2, items in d.iteritems():
-                setdata2 = obj2._vals_.get(attr.name, NOT_LOADED)
-                if setdata2 is NOT_LOADED: setdata2 = obj._vals_[attr.name] = SetData()
+                setdata2 = obj2._vals_.get(attr.name)
+                if setdata2 is None: setdata2 = obj._vals_[attr.name] = SetData()
                 else:
                     phantoms = setdata2 - items
                     if setdata2.added: phantoms -= setdata2.added
@@ -1684,8 +1684,8 @@ class Set(Collection):
         return sql, adapter
     def copy(attr, obj):
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        setdata = obj._vals_.get(attr.name, NOT_LOADED)
-        if setdata is NOT_LOADED or not setdata.is_fully_loaded: setdata = attr.load(obj)
+        setdata = obj._vals_.get(attr.name)
+        if setdata is None or not setdata.is_fully_loaded: setdata = attr.load(obj)
         reverse = attr.reverse
         if not reverse.is_collection and reverse.pk_offset is None:
             added = setdata.added or ()
@@ -1712,8 +1712,8 @@ class Set(Collection):
             new_items = attr.check(new_items, obj)
             reverse = attr.reverse
             if not reverse: throw(NotImplementedError)
-            setdata = obj._vals_.get(attr.name, NOT_LOADED)
-            if setdata is NOT_LOADED:
+            setdata = obj._vals_.get(attr.name)
+            if setdata is None:
                 if obj._status_ == 'created':
                     setdata = obj._vals_[attr.name] = SetData()
                     setdata.is_fully_loaded = True
@@ -1758,8 +1758,8 @@ class Set(Collection):
         cache = item._cache_
         objects_with_modified_collections = cache.modified_collections.setdefault(attr, set())
         for obj in objects:
-            setdata = obj._vals_.get(attr.name, NOT_LOADED)
-            if setdata is NOT_LOADED: setdata = obj._vals_[attr.name] = SetData()
+            setdata = obj._vals_.get(attr.name)
+            if setdata is None: setdata = obj._vals_[attr.name] = SetData()
             else: assert item not in setdata
             if setdata.added is None: setdata.added = set()
             else: assert item not in setdata.added
@@ -1782,20 +1782,18 @@ class Set(Collection):
         undo_funcs.append(undo_func)
     def db_reverse_add(attr, objects, item):
         for obj in objects:
-            setdata = obj._vals_.get(attr.name, NOT_LOADED)
-            if setdata is NOT_LOADED:
-                setdata = obj._vals_[attr.name] = SetData()
-            elif setdata.is_fully_loaded:
-                throw(UnrepeatableReadError, 'Phantom object %s appeared in collection %s.%s'
-                                             % (safe_repr(item), safe_repr(obj), attr.name))
+            setdata = obj._vals_.get(attr.name)
+            if setdata is None: setdata = obj._vals_[attr.name] = SetData()
+            elif setdata.is_fully_loaded: throw(UnrepeatableReadError,
+                'Phantom object %s appeared in collection %s.%s' % (safe_repr(item), safe_repr(obj), attr.name))
             setdata.add(item)
     def reverse_remove(attr, objects, item, undo_funcs):
         undo = []
         cache = item._cache_
         objects_with_modified_collections = cache.modified_collections.setdefault(attr, set())
         for obj in objects:
-            setdata = obj._vals_.get(attr.name, NOT_LOADED)
-            assert setdata is not NOT_LOADED
+            setdata = obj._vals_.get(attr.name)
+            assert setdata is not None
             assert item in setdata
             if setdata.removed is None: setdata.removed = set()
             else: assert item not in setdata.removed
@@ -1909,8 +1907,8 @@ def unpickle_setwrapper(obj, attrname, items):
     attr = getattr(obj.__class__, attrname)
     wrapper_cls = attr.py_type._get_set_wrapper_subclass_()
     wrapper = wrapper_cls(obj, attr)
-    setdata = obj._vals_.get(attr.name, NOT_LOADED)
-    if setdata is NOT_LOADED: setdata = obj._vals_[attr.name] = SetData()
+    setdata = obj._vals_.get(attr.name)
+    if setdata is None: setdata = obj._vals_[attr.name] = SetData()
     setdata.is_fully_loaded = True
     setdata.count = len(setdata)
     return wrapper
@@ -1942,8 +1940,8 @@ class SetWrapper(object):
         obj = wrapper._obj_
         if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        setdata = obj._vals_.get(attr.name, NOT_LOADED)
-        if setdata is NOT_LOADED: setdata = attr.load(obj)
+        setdata = obj._vals_.get(attr.name)
+        if setdata is None: setdata = attr.load(obj)
         if setdata: return True
         if not setdata.is_fully_loaded: setdata = attr.load(obj)
         return bool(setdata)
@@ -1953,8 +1951,8 @@ class SetWrapper(object):
         obj = wrapper._obj_
         if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        setdata = obj._vals_.get(attr.name, NOT_LOADED)
-        if setdata is NOT_LOADED: setdata = obj._vals_[attr.name] = SetData()
+        setdata = obj._vals_.get(attr.name)
+        if setdata is None: setdata = obj._vals_[attr.name] = SetData()
         elif setdata.is_fully_loaded: return not setdata
         elif setdata: return False
         elif setdata.count is not None: return not setdata.count
@@ -1998,8 +1996,8 @@ class SetWrapper(object):
         obj = wrapper._obj_
         if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        setdata = obj._vals_.get(attr.name, NOT_LOADED)
-        if setdata is NOT_LOADED or not setdata.is_fully_loaded: setdata = attr.load(obj)
+        setdata = obj._vals_.get(attr.name)
+        if setdata is None or not setdata.is_fully_loaded: setdata = attr.load(obj)
         return len(setdata)
     @cut_traceback
     def count(wrapper):
@@ -2008,8 +2006,8 @@ class SetWrapper(object):
         cache = obj._cache_
         if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        setdata = obj._vals_.get(attr.name, NOT_LOADED)
-        if setdata is NOT_LOADED: setdata = obj._vals_[attr.name] = SetData()
+        setdata = obj._vals_.get(attr.name)
+        if setdata is None: setdata = obj._vals_[attr.name] = SetData()
         elif setdata.count is not None: return setdata.count
         entity = attr.entity
         reverse = attr.reverse
@@ -2071,8 +2069,8 @@ class SetWrapper(object):
             if wbits is not None and not wbits & bit: item._rbits_ |= bit
 
             return obj is obj2
-        setdata = obj._vals_.get(attr.name, NOT_LOADED)
-        if setdata is not NOT_LOADED:
+        setdata = obj._vals_.get(attr.name)
+        if setdata is not None:
             if item in setdata: return True
             if setdata.is_fully_loaded: return False
         setdata = attr.load(obj, (item,))
@@ -2102,9 +2100,9 @@ class SetWrapper(object):
             if not reverse: throw(NotImplementedError)
             new_items = attr.check(new_items, obj)
             if not new_items: return
-            setdata = obj._vals_.get(attr.name, NOT_LOADED)
-            if setdata is not NOT_LOADED: new_items -= setdata
-            if setdata is NOT_LOADED or not setdata.is_fully_loaded:
+            setdata = obj._vals_.get(attr.name)
+            if setdata is not None: new_items -= setdata
+            if setdata is None or not setdata.is_fully_loaded:
                 setdata = attr.load(obj, new_items)
             new_items -= setdata
             undo_funcs = []
@@ -2143,11 +2141,11 @@ class SetWrapper(object):
             reverse = attr.reverse
             if not reverse: throw(NotImplementedError)
             items = attr.check(items, obj)
-            setdata = obj._vals_.get(attr.name, NOT_LOADED)
-            if setdata is not NOT_LOADED and setdata.removed:
+            setdata = obj._vals_.get(attr.name)
+            if setdata is not None and setdata.removed:
                 items -= setdata.removed
             if not items: return
-            if setdata is NOT_LOADED or not setdata.is_fully_loaded:
+            if setdata is None or not setdata.is_fully_loaded:
                 setdata = attr.load(obj, items)
             items &= setdata
             undo_funcs = []
