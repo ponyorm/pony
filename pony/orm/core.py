@@ -290,13 +290,10 @@ def rollback():
     finally:
         del exceptions
 
-def _release():
-    for cache in _get_caches(): cache.release()
-    assert not local.db2cache
-
 select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class DBSessionContextManager(object):
+    __slots__ = 'retry', 'retry_exceptions', 'allowed_exceptions', 'ddl'
     def __init__(self, retry=0, retry_exceptions=(TransactionError,), allowed_exceptions=(), ddl=False):
         if retry is not 0:
             if type(retry) is not int: throw(TypeError,
@@ -351,17 +348,22 @@ class DBSessionContextManager(object):
     def __exit__(self, exc_type=None, exc_value=None, traceback=None):
         local.db_context_counter -= 1
         if local.db_context_counter: return
-        try:
-            if exc_type is None: commit()  # exc_value can be None in Python 2.6 even if exc_type is not None
-            else:
-                allowed_exceptions = self.allowed_exceptions
-                if not callable(allowed_exceptions):
-                    allowed = issubclass(exc_type, tuple(allowed_exceptions))
-                else:
-                    allowed = exc_value is not None and allowed_exceptions(exc_value)
-                if allowed: commit()
-                else: rollback()
-        finally: _release()
+
+        if exc_type is None: can_commit = True
+        elif not callable(self.allowed_exceptions):
+            can_commit = issubclass(exc_type, tuple(self.allowed_exceptions))
+        else:
+            # exc_value can be None in Python 2.6 even if exc_type is not None
+            try: can_commit = exc_value is not None and self.allowed_exceptions(exc_value)
+            except:
+                rollback()
+                raise
+
+        if can_commit:
+            commit()
+            for cache in _get_caches(): cache.release()
+            assert not local.db2cache
+        else: rollback()
 
 db_session = DBSessionContextManager()
 
