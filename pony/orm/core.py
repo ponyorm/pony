@@ -235,6 +235,7 @@ class Local(localbase):
     def __init__(local):
         local.db2cache = {}
         local.db_context_counter = 0
+        local.db_session = None
 
 local = Local()
 
@@ -325,7 +326,7 @@ class DBSessionContextManager(object):
                 throw(TransactionError, '%s cannot be called inside of db_session' % func)
             try:
                 for i in xrange(self.retry+1):
-                    local.db_context_counter += 1
+                    self._enter()
                     exc_type = exc_value = exc_tb = None
                     try:
                         try: return func(*args, **kwargs)
@@ -346,26 +347,32 @@ class DBSessionContextManager(object):
             "@db_session can accept 'retry' parameter only when used as decorator and not as context manager")
         if self.ddl: throw(TypeError,
             "@db_session can accept 'ddl' parameter only when used as decorator and not as context manager")
+        self._enter()
+    def _enter(self):
+        if local.db_session is None:
+            assert not local.db_context_counter
+            local.db_session = self
         local.db_context_counter += 1
     def __exit__(self, exc_type=None, exc_value=None, traceback=None):
         local.db_context_counter -= 1
         if local.db_context_counter: return
-
-        if exc_type is None: can_commit = True
-        elif not callable(self.allowed_exceptions):
-            can_commit = issubclass(exc_type, tuple(self.allowed_exceptions))
-        else:
-            # exc_value can be None in Python 2.6 even if exc_type is not None
-            try: can_commit = exc_value is not None and self.allowed_exceptions(exc_value)
-            except:
-                rollback()
-                raise
-
-        if can_commit:
-            commit()
-            for cache in _get_caches(): cache.release()
-            assert not local.db2cache
-        else: rollback()
+        assert local.db_session is self
+        try:
+            if exc_type is None: can_commit = True
+            elif not callable(self.allowed_exceptions):
+                can_commit = issubclass(exc_type, tuple(self.allowed_exceptions))
+            else:
+                # exc_value can be None in Python 2.6 even if exc_type is not None
+                try: can_commit = exc_value is not None and self.allowed_exceptions(exc_value)
+                except:
+                    rollback()
+                    raise
+            if can_commit:
+                commit()
+                for cache in _get_caches(): cache.release()
+                assert not local.db2cache
+            else: rollback()
+        finally: local.db_session = None
 
 db_session = DBSessionContextManager()
 
