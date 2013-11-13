@@ -445,8 +445,9 @@ class Database(object):
     def disconnect(database):
         if local.db_context_counter: throw(TransactionError, 'disconnect() cannot be called inside of db_sesison')
         cache = local.db2cache.get(database)
-        if cache is not None: cache.rollback(close_connection=True)
-        database.provider.pool.disconnect()
+        if cache is not None: cache.rollback()
+        if debug: log_orm('DISCONNECT')
+        database.provider.disconnect()
     def _get_cache(database):
         cache = local.db2cache.get(database)
         if cache is not None: return cache
@@ -726,8 +727,10 @@ class Database(object):
                 sql, adapter = database._ast2sql(sql_ast)
                 database._exec_sql(sql)
         cache = local.db2cache.get(database)
-        if cache is not None: cache.rollback(close_connection=True)
-        database.provider.pool.disconnect()
+        if cache is not None:
+            cache.commit()
+            cache.close()
+        else: provider.disconnect()
     @cut_traceback
     @db_session(ddl=True)
     def drop_table(database, table_name, if_exists=False, with_all_data=False):
@@ -3740,7 +3743,7 @@ class Cache(object):
         except:
             cache.rollback()
             raise
-    def rollback(cache, close_connection=False):
+    def rollback(cache):
         assert cache.is_alive
         database = cache.database
         x = local.db2cache.pop(database); assert x is cache
@@ -3752,16 +3755,12 @@ class Cache(object):
         try:
             if debug: log_orm('ROLLBACK')
             provider.rollback(connection)
-            if not close_connection:
-                if debug: log_orm('RELEASE_CONNECTION')
-                provider.release(connection)
+            if debug: log_orm('RELEASE_CONNECTION')
+            provider.release(connection)
         except:
             if debug: log_orm('CLOSE_CONNECTION')
             provider.drop(connection)
             raise
-        if close_connection:
-            if debug: log_orm('CLOSE_CONNECTION')
-            provider.drop(connection)
     def release(cache):
         assert cache.is_alive
         database = cache.database
@@ -3773,6 +3772,17 @@ class Cache(object):
         cache.connection = None
         if debug: log_orm('RELEASE_CONNECTION')
         provider.release(connection)
+    def close(cache):
+        assert cache.is_alive
+        database = cache.database
+        x = local.db2cache.pop(database); assert x is cache
+        cache.is_alive = False
+        provider = database.provider
+        connection = cache.connection
+        if connection is None: return
+        cache.connection = None
+        if debug: log_orm('CLOSE_CONNECTION')
+        provider.drop(connection)
     def flush(cache):
         if cache.noflush_counter: return
         if cache.optimistic: cache._switch_from_optimistic_mode()

@@ -182,6 +182,10 @@ class DBAPIProvider(object):
         return provider.pool.drop(connection)
 
     @wrap_dbapi_exceptions
+    def disconnect(provider):
+        return provider.pool.disconnect()
+
+    @wrap_dbapi_exceptions
     def execute(provider, cursor, sql, arguments=None, returning_id=False):
         if type(arguments) is list:
             assert arguments and not returning_id
