@@ -174,6 +174,14 @@ class DBAPIProvider(object):
         return provider.pool.connect()
 
     @wrap_dbapi_exceptions
+    def commit(provider, connection):
+        connection.commit()
+
+    @wrap_dbapi_exceptions
+    def rollback(provider, connection):
+        connection.rollback()
+
+    @wrap_dbapi_exceptions
     def release(provider, connection):
         return provider.pool.release(connection)
 
@@ -194,14 +202,6 @@ class DBAPIProvider(object):
             if arguments is None: cursor.execute(sql)
             else: cursor.execute(sql, arguments)
             if returning_id: return cursor.lastrowid
-
-    @wrap_dbapi_exceptions
-    def commit(provider, connection):
-        connection.commit()
-
-    @wrap_dbapi_exceptions
-    def rollback(provider, connection):
-        connection.rollback()
 
     converter_classes = []
 
