@@ -196,5 +196,39 @@ class TestManyToManyNonComposite(unittest.TestCase):
             db_subjects = db.select('subject from Group_Subject where "group" = 101')
             self.assertEqual(db_subjects , ['Subj1', 'Subj2'])
 
+    def test_13(self):
+        db, Group, Subject = self.db, self.Group, self.Subject
+
+        with db_session:
+            g1 = Group[101]
+            s1 = Subject['Subj1']
+            self.assertTrue(s1 in g1.subjects)
+
+            group_setdata = g1._vals_['subjects']
+            self.assertTrue(s1 in group_setdata)
+            self.assertEqual(group_setdata.added, None)
+            self.assertEqual(group_setdata.removed, None)
+            
+            subj_setdata = s1._vals_['groups']
+            self.assertTrue(g1 in subj_setdata)
+            self.assertEqual(subj_setdata.added, None)
+            self.assertEqual(subj_setdata.removed, None)
+
+            g1.subjects.remove(s1)
+            self.assertTrue(s1 not in group_setdata)
+            self.assertEqual(group_setdata.added, None)
+            self.assertEqual(group_setdata.removed, set([ s1 ]))
+            self.assertTrue(g1 not in subj_setdata)
+            self.assertEqual(subj_setdata.added, None)
+            self.assertEqual(subj_setdata.removed, set([ g1 ]))
+            
+            g1.subjects.add(s1)
+            self.assertTrue(s1 in group_setdata)
+            self.assertEqual(group_setdata.added, set())
+            self.assertEqual(group_setdata.removed, set())
+            self.assertTrue(g1 in subj_setdata)
+            self.assertEqual(subj_setdata.added, set())
+            self.assertEqual(subj_setdata.removed, set())
+
 if __name__ == "__main__":
     unittest.main()

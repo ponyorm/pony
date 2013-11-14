@@ -158,7 +158,7 @@ def populate_database():
     OrderItem(order=o5, product=p1, price=Decimal('284.00'), quantity=1)
     OrderItem(order=o5, product=p2, price=Decimal('478.50'), quantity=1)
 
-
+@db_session
 def test_queries():
 
     print 'All USA customers'
@@ -315,6 +315,7 @@ def test_queries():
 
 
 if __name__ == '__main__':
-    if Customer.select().first() is None:
-        populate_database()
+    with db_session:
+        if Customer.select().first() is None:
+            populate_database()
     test_queries()

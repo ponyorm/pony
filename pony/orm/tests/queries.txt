@@ -230,6 +230,21 @@ WHERE "item"."order" = "order-1"."id"
 GROUP BY "item"."order", "order-1"."total_price"
 HAVING "order-1"."total_price" < coalesce(SUM(("item"."price" * "item"."quantity")), 0)
 
+>>> select(c for c in Customer for p in c.orders.items.product if 'Tablets' in p.categories.name and count(p) > 1)
+
+SELECT DISTINCT "c"."id"
+FROM "Customer" "c", "Order" "order-1", "OrderItem" "orderitem-1"
+WHERE 'Tablets' IN (
+    SELECT "category-1"."name"
+    FROM "Category_Product" "t-1", "Category" "category-1"
+    WHERE "orderitem-1"."product" = "t-1"."product"
+      AND "t-1"."category" = "category-1"."id"
+    )
+  AND "c"."id" = "order-1"."customer"
+  AND "order-1"."id" = "orderitem-1"."order"
+GROUP BY "c"."id"
+HAVING COUNT(DISTINCT "orderitem-1"."product") > 1
+
 Schema:
 pony.orm.examples.presentation
 
