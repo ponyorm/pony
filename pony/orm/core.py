@@ -4330,6 +4330,11 @@ class Query(object):
         start = offset or 0
         stop = start + limit
         return query[start:stop]
+    @cut_traceback
+    def page(query, pagenum, pagesize=10):
+        start = (pagenum - 1) * pagesize
+        stop = pagenum * pagesize
+        return query[start:stop]
     def _aggregate(query, aggr_func_name):
         translator = query._translator
         sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(aggr_func_name=aggr_func_name)
