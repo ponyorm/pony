@@ -464,6 +464,7 @@ def count(*args, **kwargs):
     if kwargs: return _count(*args, **kwargs)
     if len(args) != 1: return _count(*args)
     arg = args[0]
+    if hasattr(arg, 'count'): return arg.count()
     try: it = iter(arg)
     except TypeError: return _count(arg)
     return len(set(it))

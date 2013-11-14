@@ -196,39 +196,109 @@ class TestManyToManyNonComposite(unittest.TestCase):
             db_subjects = db.select('subject from Group_Subject where "group" = 101')
             self.assertEqual(db_subjects , ['Subj1', 'Subj2'])
 
+    @db_session
     def test_13(self):
         db, Group, Subject = self.db, self.Group, self.Subject
 
-        with db_session:
-            g1 = Group[101]
-            s1 = Subject['Subj1']
-            self.assertTrue(s1 in g1.subjects)
+        g1 = Group[101]
+        s1 = Subject['Subj1']
+        self.assertTrue(s1 in g1.subjects)
 
-            group_setdata = g1._vals_['subjects']
-            self.assertTrue(s1 in group_setdata)
-            self.assertEqual(group_setdata.added, None)
-            self.assertEqual(group_setdata.removed, None)
-            
-            subj_setdata = s1._vals_['groups']
-            self.assertTrue(g1 in subj_setdata)
-            self.assertEqual(subj_setdata.added, None)
-            self.assertEqual(subj_setdata.removed, None)
+        group_setdata = g1._vals_['subjects']
+        self.assertTrue(s1 in group_setdata)
+        self.assertEqual(group_setdata.added, None)
+        self.assertEqual(group_setdata.removed, None)
+        
+        subj_setdata = s1._vals_['groups']
+        self.assertTrue(g1 in subj_setdata)
+        self.assertEqual(subj_setdata.added, None)
+        self.assertEqual(subj_setdata.removed, None)
 
-            g1.subjects.remove(s1)
-            self.assertTrue(s1 not in group_setdata)
-            self.assertEqual(group_setdata.added, None)
-            self.assertEqual(group_setdata.removed, set([ s1 ]))
-            self.assertTrue(g1 not in subj_setdata)
-            self.assertEqual(subj_setdata.added, None)
-            self.assertEqual(subj_setdata.removed, set([ g1 ]))
-            
-            g1.subjects.add(s1)
-            self.assertTrue(s1 in group_setdata)
-            self.assertEqual(group_setdata.added, set())
-            self.assertEqual(group_setdata.removed, set())
-            self.assertTrue(g1 in subj_setdata)
-            self.assertEqual(subj_setdata.added, set())
-            self.assertEqual(subj_setdata.removed, set())
+        g1.subjects.remove(s1)
+        self.assertTrue(s1 not in group_setdata)
+        self.assertEqual(group_setdata.added, None)
+        self.assertEqual(group_setdata.removed, set([ s1 ]))
+        self.assertTrue(g1 not in subj_setdata)
+        self.assertEqual(subj_setdata.added, None)
+        self.assertEqual(subj_setdata.removed, set([ g1 ]))
+        
+        g1.subjects.add(s1)
+        self.assertTrue(s1 in group_setdata)
+        self.assertEqual(group_setdata.added, set())
+        self.assertEqual(group_setdata.removed, set())
+        self.assertTrue(g1 in subj_setdata)
+        self.assertEqual(subj_setdata.added, set())
+        self.assertEqual(subj_setdata.removed, set())
+
+    @db_session
+    def test_14(self):
+        db, Group, Subject = self.db, self.Group, self.Subject
+
+        g = Group[101]
+        e = g.subjects.is_empty()
+        self.assertEquals(e, False)
+
+        db._dblocal.last_sql = None
+        e = g.subjects.is_empty()  # should take result from the cache
+        self.assertEquals(e, False)
+        self.assertEquals(db.last_sql, None)
+
+        g = Group[102]
+        e = g.subjects.is_empty()  # should take SQL from the SQL cache
+        self.assertEquals(e, True)
+
+        db._dblocal.last_sql = None
+        e = g.subjects.is_empty()  # should take result from the cache
+        self.assertEquals(e, True)
+        self.assertEquals(db.last_sql, None)
+
+    @db_session
+    def test_15(self):
+        db, Group = self.db, self.Group
+
+        g = Group[101]
+        c = len(g.subjects)
+        self.assertEquals(c, 2)
+        db._dblocal.last_sql = None
+        e = g.subjects.is_empty()  # should take result from the cache
+        self.assertEquals(e, False)
+        self.assertEquals(db.last_sql, None)
+        
+        g = Group[102]
+        c = len(g.subjects)
+        self.assertEquals(c, 0)
+        db._dblocal.last_sql = None
+        e = g.subjects.is_empty()  # should take result from the cache
+        self.assertEquals(e, True)
+        self.assertEquals(db.last_sql, None)
+
+    @db_session
+    def test_16(self):
+        db, Group, Subject = self.db, self.Group, self.Subject
+
+        g = Group[101]
+        s1 = Subject['Subj1']
+        s3 = Subject['Subj3']
+        c = g.subjects.count()
+        self.assertEquals(c, 2)
+
+        db._dblocal.last_sql = None
+        c = g.subjects.count()  # should take count from the cache
+        self.assertEquals(c, 2)
+        self.assertEquals(db.last_sql, None)
+
+        g.subjects.add(s3)
+        db._dblocal.last_sql = None
+        c = g.subjects.count()  # should take modified count from the cache
+        self.assertEquals(c, 3)
+        self.assertEquals(db.last_sql, None)
+
+        g.subjects.remove(s1)
+        db._dblocal.last_sql = None
+        c = g.subjects.count()  # should take modified count from the cache
+        self.assertEquals(c, 2)
+        self.assertEquals(db.last_sql, None)
+
 
 if __name__ == "__main__":
     unittest.main()
