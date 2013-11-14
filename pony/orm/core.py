@@ -483,7 +483,7 @@ class Database(object):
     @cut_traceback
     def select(database, sql, globals=None, locals=None, frame_depth=0):
         if not select_re.match(sql): sql = 'select ' + sql
-        cursor = database._exec_raw_sql(sql, globals, locals, frame_depth + 2)
+        cursor = database._exec_raw_sql(sql, globals, locals, frame_depth + 3)
         max_fetch_count = options.MAX_FETCH_COUNT
         if max_fetch_count is not None:
             result = cursor.fetchmany(max_fetch_count)
@@ -501,7 +501,7 @@ class Database(object):
         return result
     @cut_traceback
     def get(database, sql, globals=None, locals=None):
-        rows = database.select(sql, globals, locals, 2)
+        rows = database.select(sql, globals, locals, frame_depth=3)
         if not rows: throw(RowNotFound)
         if len(rows) > 1: throw(MultipleRowsFound)
         row = rows[0]

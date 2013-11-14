@@ -129,5 +129,17 @@ class TestFrames(unittest.TestCase):
         result = Person.select('lambda p: p.age > x').filter('p.name.startswith(y)')[:]
         self.assertEqual(result, [Person[3]])
 
+    @db_session
+    def test_db_select(self):
+        x = 20
+        result = db.select('name from Person where age > $x order by name')
+        self.assertEqual(result, ['John', 'Mike'])
+
+    @db_session
+    def test_db_get(self):
+        x = 18
+        result = db.get('name from Person where age = $x')
+        self.assertEqual(result, 'Mary')
+
 if __name__ == '__main__':
     unittest.main()
