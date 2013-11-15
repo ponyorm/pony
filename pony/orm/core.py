@@ -468,7 +468,7 @@ class Database(object):
     @cut_traceback
     def execute(database, sql, globals=None, locals=None):
         database._get_cache().flush()
-        return database._exec_raw_sql(sql, globals, locals, 2)
+        return database._exec_raw_sql(sql, globals, locals, frame_depth=3)
     def _exec_raw_sql(database, sql, globals, locals, frame_depth):
         sql = sql[:]  # sql = templating.plainstr(sql)
         if globals is None:
@@ -509,7 +509,7 @@ class Database(object):
     @cut_traceback
     def exists(database, sql, globals=None, locals=None):
         if not select_re.match(sql): sql = 'select ' + sql
-        cursor = database._exec_raw_sql(sql, globals, locals, 2)
+        cursor = database._exec_raw_sql(sql, globals, locals, frame_depth=3)
         result = cursor.fetchone()
         return bool(result)
     @cut_traceback
@@ -2571,20 +2571,20 @@ class EntityMeta(type):
         return objects[0]
     @cut_traceback
     def exists(entity, *args, **kwargs):
-        if args: return entity._query_from_args_(3, args, kwargs).exists()
+        if args: return entity._query_from_args_(args, kwargs, frame_depth=3).exists()
         try: objects = entity._find_(1, kwargs)
         except MultipleObjectsFoundError: return True
         return bool(objects)
     @cut_traceback
     def get(entity, *args, **kwargs):
-        if args: return entity._query_from_args_(3, args, kwargs).get()
+        if args: return entity._query_from_args_(args, kwargs, frame_depth=3).get()
         objects = entity._find_(1, kwargs)  # can throw MultipleObjectsFoundError
         if not objects: return None
         assert len(objects) == 1
         return objects[0]
     @cut_traceback
     def get_by_sql(entity, sql, globals=None, locals=None):
-        objects = entity._find_by_sql_(1, sql, globals, locals, 2)  # can throw MultipleObjectsFoundError
+        objects = entity._find_by_sql_(1, sql, globals, locals, frame_depth=3)  # can throw MultipleObjectsFoundError
         if not objects: return None
         assert len(objects) == 1
         return objects[0]
@@ -2600,7 +2600,7 @@ class EntityMeta(type):
         return entity._query_from_lambda_(func, globals, locals)
     @cut_traceback
     def select_by_sql(entity, sql, globals=None, locals=None):
-        return entity._find_by_sql_(None, sql, globals, locals, 2)
+        return entity._find_by_sql_(None, sql, globals, locals, frame_depth=3)
     @cut_traceback
     def order_by(entity, *args):
         query = Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
@@ -2864,7 +2864,7 @@ class EntityMeta(type):
                 for obj in result:
                     if obj not in batch: throw(UnrepeatableReadError,
                                                'Phantom object %s disappeared' % safe_repr(obj))
-    def _query_from_args_(entity, frame_depth, args, kwargs):
+    def _query_from_args_(entity, args, kwargs, frame_depth):
         if len(args) > 1: throw(TypeError, 'Only one positional argument expected')
         if kwargs: throw(TypeError, 'If positional argument presented, no keyword arguments expected')
         first_arg = args[0]

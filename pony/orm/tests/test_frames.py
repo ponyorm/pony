@@ -78,6 +78,18 @@ class TestFrames(unittest.TestCase):
         self.assertEqual(p, Person[3])
 
     @db_session
+    def test_entity_get_by_sql(self):
+        x = 25
+        p = Person.get_by_sql('select * from Person where age = $x')
+        self.assertEqual(p, Person[3])
+
+    @db_session
+    def test_entity_select_by_sql(self):
+        x = 25
+        p = Person.select_by_sql('select * from Person where age = $x')
+        self.assertEqual(p, [ Person[3] ])
+
+    @db_session
     def test_entity_exists(self):
         x = 23
         result = Person.exists(lambda p: p.age > x)
@@ -140,6 +152,18 @@ class TestFrames(unittest.TestCase):
         x = 18
         result = db.get('name from Person where age = $x')
         self.assertEqual(result, 'Mary')
+
+    @db_session
+    def test_db_execute(self):
+        x = 18
+        result = db.execute('select name from Person where age = $x').fetchone()
+        self.assertEqual(result, ('Mary',))
+
+    @db_session
+    def test_db_exists(self):
+        x = 18
+        result = db.exists('name from Person where age = $x')
+        self.assertEqual(result, True)
 
 if __name__ == '__main__':
     unittest.main()
