@@ -178,12 +178,6 @@ provider_cls = SQLiteProvider
 def _text_factory(s):
     return s.decode('utf8', 'replace')
 
-def _init_connection(con):
-    con.text_factory = _text_factory
-    con.create_function('power', 2, pow)
-    if sqlite.sqlite_version_info >= (3, 6, 19):
-        con.execute('PRAGMA foreign_keys = true')
-
 class SQLitePool(Pool):
     def __init__(pool, filename, create_db): # called separately in each thread
         pool.filename = filename
@@ -196,7 +190,10 @@ class SQLitePool(Pool):
         if filename != ':memory:' and not pool.create_db and not os.path.exists(filename):
             throw(IOError, "Database file is not found: %r" % filename)
         pool.con = con = sqlite.connect(filename)
-        _init_connection(con)
+        con.text_factory = _text_factory
+        con.create_function('power', 2, pow)
+        if sqlite.sqlite_version_info >= (3, 6, 19):
+            con.execute('PRAGMA foreign_keys = true')
         return con
     def disconnect(pool):
         if pool.filename != ':memory:':
