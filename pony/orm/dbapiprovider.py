@@ -95,6 +95,7 @@ class DBAPIProvider(object):
         provider.inspect_connection(connection)
         provider.release(connection)
 
+    @wrap_dbapi_exceptions
     def inspect_connection(provider, connection):
         pass
 

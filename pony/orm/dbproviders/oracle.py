@@ -250,6 +250,7 @@ class OraProvider(DBAPIProvider):
         (UUID, OraUuidConverter),
     ]
 
+    @wrap_dbapi_exceptions
     def inspect_connection(provider, connection):
         cursor = connection.cursor()
         cursor.execute('SELECT version FROM product_component_version '

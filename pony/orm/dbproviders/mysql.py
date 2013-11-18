@@ -11,7 +11,7 @@ from MySQLdb.constants import FIELD_TYPE, FLAG, CLIENT
 
 from pony.orm import core, dbschema, dbapiprovider
 from pony.orm.core import log_orm, log_sql, OperationalError
-from pony.orm.dbapiprovider import DBAPIProvider, Pool, get_version_tuple
+from pony.orm.dbapiprovider import DBAPIProvider, Pool, get_version_tuple, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import SQLBuilder, join
 from pony.utils import throw
@@ -109,6 +109,7 @@ class MySQLProvider(DBAPIProvider):
         (UUID, MySQLUuidConverter),
     ]
 
+    @wrap_dbapi_exceptions
     def inspect_connection(provider, connection):
         cursor = connection.cursor()
         cursor.execute('select version()')
