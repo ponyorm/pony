@@ -2662,9 +2662,8 @@ class EntityMeta(type):
                 'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
             bit = entity._bits_.get(attr)
             if bit is not None: rbits |= bit
-        try:
-            objects = entity._find_in_cache_(pkval, avdict)
-        except KeyError:  # not found in cache, can exist in db
+        objects = entity._find_in_cache_(pkval, avdict)
+        if objects is None:
             objects = entity._find_in_db_(avdict, max_fetch_count)
         if rbits:
             for obj in objects:
@@ -2728,7 +2727,7 @@ class EntityMeta(type):
                 if val != attr.__get__(obj):
                     return []
             return [ obj ]
-        throw(KeyError)  # not found in cache, can exist in db
+        return None
     def _find_in_db_(entity, avdict, max_fetch_count=None):
         if max_fetch_count is None: max_fetch_count = options.MAX_FETCH_COUNT
         database = entity._database_
