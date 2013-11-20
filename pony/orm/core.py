@@ -2567,6 +2567,14 @@ class EntityMeta(type):
         assert len(objects) == 1
         return objects[0]
     @cut_traceback
+    def get_for_update(entity, *args, **kwargs):
+        nowait = kwargs.pop('nowait', False)
+        if args: return entity._query_from_args_(args, kwargs, frame_depth=3).for_update(nowait).get()
+        objects = entity._find_(1, kwargs, True, nowait)  # can throw MultipleObjectsFoundError
+        if not objects: return None
+        assert len(objects) == 1
+        return objects[0]
+    @cut_traceback
     def get_by_sql(entity, sql, globals=None, locals=None):
         objects = entity._find_by_sql_(1, sql, globals, locals, frame_depth=3)  # can throw MultipleObjectsFoundError
         if not objects: return None
@@ -2651,10 +2659,9 @@ class EntityMeta(type):
     def order_by(entity, *args):
         query = Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
         return query.order_by(*args)
-    def _find_(entity, max_fetch_count, kwargs):
+    def _find_(entity, max_fetch_count, kwargs, for_update=False, nowait=False):
         if entity._database_.schema is None:
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
-
         pkval, avdict = entity._normalize_args_(kwargs, False)
         rbits = 0
         for attr in avdict:
@@ -2662,14 +2669,14 @@ class EntityMeta(type):
                 'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
             bit = entity._bits_.get(attr)
             if bit is not None: rbits |= bit
-        objects = entity._find_in_cache_(pkval, avdict)
+        objects = entity._find_in_cache_(pkval, avdict, for_update)
         if objects is None:
-            objects = entity._find_in_db_(avdict, max_fetch_count)
+            objects = entity._find_in_db_(avdict, max_fetch_count, for_update, nowait)
         if rbits:
             for obj in objects:
                 if obj._rbits_ is not None: obj._rbits_ |= rbits
         return objects
-    def _find_in_cache_(entity, pkval, avdict):
+    def _find_in_cache_(entity, pkval, avdict, for_update=False):
         cache = entity._database_._get_cache()
         obj = None
         if pkval is not None:
@@ -2710,7 +2717,10 @@ class EntityMeta(type):
                         for obj in reverse.__get__(val):
                             for attr, val in avdict.iteritems():
                                 if val != attr.get(obj): break
-                            else: filtered_objects.append(obj)
+                            else:
+                                if for_update and obj not in cache.for_update:
+                                    return None  # object is found, but it is not locked
+                                filtered_objects.append(obj)
                         filtered_objects.sort(key=entity._get_raw_pkval_)
                         return filtered_objects
                     else: throw(NotImplementedError)
@@ -2726,17 +2736,19 @@ class EntityMeta(type):
             for attr, val in avdict.iteritems():
                 if val != attr.__get__(obj):
                     return []
+            if for_update and obj not in cache.for_update:
+                return None  # object is found, but it is not locked
             return [ obj ]
         return None
-    def _find_in_db_(entity, avdict, max_fetch_count=None):
+    def _find_in_db_(entity, avdict, max_fetch_count=None, for_update=False, nowait=False):
         if max_fetch_count is None: max_fetch_count = options.MAX_FETCH_COUNT
         database = entity._database_
         query_attrs = tuple((attr, value is None) for attr, value in sorted(avdict.iteritems()))
         single_row = (max_fetch_count == 1)
-        sql, adapter, attr_offsets = entity._construct_sql_(query_attrs, order_by_pk=not single_row)
+        sql, adapter, attr_offsets = entity._construct_sql_(query_attrs, not single_row, for_update, nowait)
         arguments = adapter(avdict)
         cursor = database._exec_sql(sql, arguments)
-        objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count)
+        objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count, for_update=for_update)
         return objects
     def _find_by_sql_(entity, max_fetch_count, sql, globals, locals, frame_depth):
         if not isinstance(sql, basestring): throw(TypeError)
@@ -2807,8 +2819,9 @@ class EntityMeta(type):
         cached_sql = sql, adapter, attr_offsets
         entity._batchload_sql_cache_[query_key] = cached_sql
         return cached_sql
-    def _construct_sql_(entity, query_attrs, order_by_pk=False):
-        query_key = query_attrs, order_by_pk
+    def _construct_sql_(entity, query_attrs, order_by_pk=False, for_update=False, nowait=False):
+        if nowait: assert for_update
+        query_key = query_attrs, order_by_pk, for_update, nowait
         cached_sql = entity._find_sql_cache_.get(query_key)
         if cached_sql is not None: return cached_sql
         table_name = entity._table_
@@ -2838,7 +2851,8 @@ class EntityMeta(type):
                     for i, (column, converter) in enumerate(zip(attr.columns, attr_entity._pk_converters_)):
                         where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (attr, i), converter ] ])
 
-        sql_ast = [ 'SELECT', select_list, from_list, where_list ]
+        if not for_update: sql_ast = [ 'SELECT', select_list, from_list, where_list ]
+        else: sql_ast = [ 'SELECT_FOR_UPDATE', bool(nowait), select_list, from_list, where_list ]
         if order_by_pk: sql_ast.append([ 'ORDER_BY' ] + [ [ 'COLUMN', None, column ] for column in entity._pk_columns_ ])
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
