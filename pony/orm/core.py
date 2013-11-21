@@ -439,8 +439,9 @@ class Database(object):
     def get_connection(database):
         cache = database._get_cache()
         cache.flush()
-        assert cache.connection is not None
-        return cache.connection
+        connection = cache.connection
+        assert connection is not None
+        return connection
     @cut_traceback
     def disconnect(database):
         if local.db_context_counter: throw(TransactionError, 'disconnect() cannot be called inside of db_sesison')
