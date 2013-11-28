@@ -3,6 +3,7 @@ from datetime import datetime, date, time
 from uuid import uuid4, UUID
 import re
 
+import pony
 from pony.utils import is_utf8, decorator, throw, localbase
 from pony.converting import str2date, str2datetime
 from pony.orm.ormtypes import LongStr, LongUnicode
@@ -262,8 +263,11 @@ class Pool(localbase):
         pool.kwargs = kwargs
         pool.con = None
     def connect(pool):
+        core = pony.orm.core
         if pool.con is None:
+            if core.debug: core.log_orm('GET NEW CONNECTION')
             pool.con = pool.dbapi_module.connect(*pool.args, **pool.kwargs)
+        elif core.debug: core.log_orm('GET CONNECTION FROM THE LOCAL POOL')
         return pool.con
     def release(pool, con):
         assert con is pool.con

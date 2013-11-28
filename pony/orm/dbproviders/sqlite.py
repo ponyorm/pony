@@ -6,7 +6,7 @@ from random import random
 from time import strptime
 from uuid import UUID
 
-from pony.orm import dbschema, sqltranslation, dbapiprovider
+from pony.orm import core, dbschema, sqltranslation, dbapiprovider
 from pony.orm.sqlbuilding import SQLBuilder, join
 from pony.orm.dbapiprovider import DBAPIProvider, Pool
 from pony.utils import localbase, datetime2timestamp, timestamp2datetime, decorator, absolutize_path, throw
@@ -188,10 +188,13 @@ class SQLitePool(Pool):
         pool.con = None
     def connect(pool):
         con = pool.con
-        if con is not None: return con
+        if con is not None:
+            if core.debug: core.log_orm('GET CONNECTION FROM THE LOCAL POOL')
+            return con
         filename = pool.filename
         if filename != ':memory:' and not pool.create_db and not os.path.exists(filename):
             throw(IOError, "Database file is not found: %r" % filename)
+        if core.debug: log_orm('GET NEW CONNECTION')
         pool.con = con = sqlite.connect(filename)
         con.text_factory = _text_factory
         con.create_function('power', 2, pow)

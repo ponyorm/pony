@@ -373,6 +373,7 @@ class OraPool(object):
     def __init__(pool, **kwargs):
         pool._pool = cx_Oracle.SessionPool(**kwargs)
     def connect(pool):
+        if core.debug: log_orm('GET CONNECTION')
         con = pool._pool.acquire()
         con.outputtypehandler = output_type_handler
         return con
