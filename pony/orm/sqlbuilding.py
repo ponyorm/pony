@@ -463,3 +463,5 @@ class SQLBuilder(object):
         return 'EXTRACT(MINUTE FROM ', builder(expr), ')'
     def SECOND(builder, expr):
         return 'EXTRACT(SECOND FROM ', builder(expr), ')'
+    def RANDOM(builder):
+        return 'RAND()'

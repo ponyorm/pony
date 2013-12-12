@@ -2,6 +2,7 @@ import os.path
 import sqlite3 as sqlite
 from decimal import Decimal
 from datetime import datetime, date
+from random import random
 from time import strptime
 from uuid import UUID
 
@@ -55,6 +56,8 @@ class SQLiteBuilder(SQLBuilder):
         elif len(args) == 1: fname = 'MAX'
         else: fname = 'max'
         return fname, '(',  join(', ', map(builder, args)), ')'
+    def RANDOM(builder):
+        return 'rand()'  # return '(random() / 9223372036854775807.0 + 1.0) / 2.0'
 
 class SQLiteStrConverter(dbapiprovider.StrConverter):
     def py2sql(converter, val):
@@ -192,6 +195,7 @@ class SQLitePool(Pool):
         pool.con = con = sqlite.connect(filename)
         con.text_factory = _text_factory
         con.create_function('power', 2, pow)
+        con.create_function('rand', 0, random)
         if sqlite.sqlite_version_info >= (3, 6, 19):
             con.execute('PRAGMA foreign_keys = true')
         return con
