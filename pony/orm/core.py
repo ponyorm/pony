@@ -522,7 +522,7 @@ class Database(object):
         if returning is not None: query_key = query_key + (returning,)
         cached_sql = database._insert_cache.get(query_key)
         if cached_sql is None:
-            ast = [ 'INSERT', table_name, kwargs.keys(), [ [ 'PARAM', i ] for i in range(len(kwargs)) ], returning ]
+            ast = [ 'INSERT', table_name, kwargs.keys(), [ [ 'PARAM', i ] for i in xrange(len(kwargs)) ], returning ]
             sql, adapter = database._ast2sql(ast)
             cached_sql = sql, adapter
             database._insert_cache[query_key] = cached_sql
@@ -1073,7 +1073,7 @@ class Attribute(object):
                                   for i, (column, converter) in enumerate(izip(pk_columns, pk_converters)) ]
                 sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
                 sql, adapter = database._ast2sql(sql_ast)
-                offsets = tuple(range(len(attr.columns)))
+                offsets = tuple(xrange(len(attr.columns)))
                 attr.lazy_sql_cache = sql, adapter, offsets
             else: sql, adapter, offsets = attr.lazy_sql_cache
             arguments = adapter(obj._get_raw_pkval_())
@@ -2216,7 +2216,7 @@ class Multiset(object):
     def __iter__(multiset):
         if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         for item, cnt in multiset._items_.iteritems():
-            for i in range(cnt): yield item
+            for i in xrange(cnt): yield item
     @cut_traceback
     def __eq__(multiset, other):
         if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(multiset._obj_)
@@ -2697,7 +2697,7 @@ class EntityMeta(type):
                 used_columns.add(offset)
             else: attr_offsets[attr] = offsets
         if len(used_columns) < len(col_names):
-            for i in range(len(col_names)):
+            for i in xrange(len(col_names)):
                 if i not in used_columns: throw(NameError,
                     'Column %s does not belong to entity %s' % (cursor.description[i][0], entity.__name__))
         for attr in entity._pk_attrs_:
@@ -4089,7 +4089,7 @@ class Query(object):
         translator = query._translator
         if translator.order: pass
         elif type(translator.expr_type) is tuple:
-            query = query.order_by(*[i+1 for i in range(len(query._translator.expr_type))])
+            query = query.order_by(*[i+1 for i in xrange(len(query._translator.expr_type))])
         else:
             query = query.order_by(1)
         objects = query[:1]

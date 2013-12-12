@@ -1343,7 +1343,7 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
     def __init__(monad, translator, entity, src):
         assert translator.database is entity._database_
         ParamMonad.__init__(monad, translator, entity, src)
-        monad.params = tuple((src, i) for i in range(len(entity._pk_converters_)))
+        monad.params = tuple((src, i) for i in xrange(len(entity._pk_converters_)))
     def getsql(monad, subquery=None):
         entity = monad.type
         assert len(monad.params) == len(entity._pk_converters_)
