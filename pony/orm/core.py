@@ -1098,7 +1098,7 @@ class Attribute(object):
         val = obj._vals_.get(attr.name, NOT_LOADED)
         if val is NOT_LOADED: val = attr.load(obj)
         if val is None: return val
-        if attr.reverse and val._discriminator_ and val._subclasses_:
+        if attr.reverse and val._discriminator_ is not None and val._subclasses_:
             seeds = obj._cache_.seeds.get(val.__class__.__dict__['_pk_'])
             if seeds and val in seeds: val._load_()
         return val
@@ -2429,7 +2429,7 @@ class EntityMeta(type):
 
         if '_discriminator_' not in entity.__dict__:
             entity._discriminator_ = None
-        if entity._discriminator_ and not entity._discriminator_attr_:
+        if entity._discriminator_ is not None and not entity._discriminator_attr_:
             Discriminator.create_default_attr(entity)
         if entity._discriminator_attr_:
             entity._discriminator_attr_.process_entity_inheritance(entity)
@@ -2655,7 +2655,7 @@ class EntityMeta(type):
                         return filtered_objects
                     else: throw(NotImplementedError)
         if obj is not None:
-            if obj._discriminator_:
+            if obj._discriminator_ is not None:
                 if obj._subclasses_:
                     cls = obj.__class__
                     if not issubclass(entity, cls) and not issubclass(cls, entity): return []
@@ -4064,7 +4064,7 @@ class Query(object):
                                  for func, slice_or_offset, src in translator.row_layout)
                            for sql_row in cursor.fetchall() ]
                 for i, t in enumerate(translator.expr_type):
-                    if isinstance(t, EntityMeta) and t._discriminator_ and t._subclasses_:
+                    if isinstance(t, EntityMeta) and t._discriminator_ is not None and t._subclasses_:
                         t._load_many_(row[i] for row in result)
             if query_key is not None:
                 query._cache.query_results[query_key] = result
