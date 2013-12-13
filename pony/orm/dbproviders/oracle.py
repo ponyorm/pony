@@ -153,6 +153,8 @@ class OraBuilder(sqlbuilding.SQLBuilder):
         else: return 'LIMIT ', builder(limit), ' OFFSET ', builder(offset), '\n'
     def DATE(builder, expr):
         return 'TRUNC(', builder(expr), ')'
+    def RANDOM(builder):
+        return 'dbms_random.value'
 
 class OraBoolConverter(dbapiprovider.BoolConverter):
     def sql2py(converter, val):

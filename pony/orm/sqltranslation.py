@@ -4,6 +4,7 @@ from types import NoneType
 from compiler import ast
 from decimal import Decimal
 from datetime import date, datetime
+from random import random
 from cPickle import loads, dumps
 from copy import deepcopy
 from functools import update_wrapper
@@ -169,6 +170,7 @@ class SQLTranslator(ASTTranslator):
         translator.inside_expr = False
         translator.inside_not = False
         translator.hint_join = False
+        translator.query_result_is_cacheable = True
         translator.aggregated_subquery_paths = set()
         for i, qual in enumerate(tree.quals):
             assign = qual.assign
@@ -554,6 +556,9 @@ class SQLTranslator(ASTTranslator):
     def postName(translator, node):
         name = node.name
         tableref = translator.subquery.get_tableref(name)
+        if tableref is None and name == 'random':
+            translator.query_result_is_cacheable = False
+            return translator.RandomMonad(translator)
         assert tableref is not None
         return translator.ObjectIterMonad(translator, tableref, tableref.entity)
     def postAdd(translator, node):
@@ -1343,7 +1348,7 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
     def __init__(monad, translator, entity, src):
         assert translator.database is entity._database_
         ParamMonad.__init__(monad, translator, entity, src)
-        monad.params = tuple((src, i) for i in range(len(entity._pk_converters_)))
+        monad.params = tuple((src, i) for i in xrange(len(entity._pk_converters_)))
     def getsql(monad, subquery=None):
         entity = monad.type
         assert len(monad.params) == len(entity._pk_converters_)
@@ -1711,6 +1716,15 @@ class JoinMonad(Monad):
         monad.translator.hint_join = monad.hint_join_prev
         return x
 special_functions[JOIN] = JoinMonad
+
+class RandomMonad(Monad):
+    def __init__(monad, translator):
+        Monad.__init__(monad, translator, '<function>')
+    def __call__(monad):
+        return NumericExprMonad(monad.translator, float, [ 'RANDOM' ])
+    def getattr(monad, attrname):
+        if attrname == 'random': return RandomMonad(monad.translator)
+        return Monad.getattr(monad, attrname)
 
 class SetMixin(MonadMixin):
     forced_distinct = False

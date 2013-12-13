@@ -43,6 +43,8 @@ class PGSQLBuilder(sqlbuilding.SQLBuilder):
         return '(', builder(expr), ')::int'
     def DATE(builder, expr):
         return '(', builder(expr), ')::date'
+    def RANDOM(builder):
+        return 'random()'
 
 class PGUnicodeConverter(dbapiprovider.UnicodeConverter):
     def py2sql(converter, val):

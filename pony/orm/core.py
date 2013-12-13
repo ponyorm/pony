@@ -7,6 +7,7 @@ from operator import attrgetter, itemgetter
 from itertools import count as _count, ifilter, ifilterfalse, imap, izip, chain, starmap
 from time import time
 import datetime
+from random import shuffle, randint
 from threading import Lock, currentThread as current_thread, _MainThread
 from __builtin__ import min as _min, max as _max, sum as _sum
 from contextlib import contextmanager
@@ -522,7 +523,7 @@ class Database(object):
         if returning is not None: query_key = query_key + (returning,)
         cached_sql = database._insert_cache.get(query_key)
         if cached_sql is None:
-            ast = [ 'INSERT', table_name, kwargs.keys(), [ [ 'PARAM', i ] for i in range(len(kwargs)) ], returning ]
+            ast = [ 'INSERT', table_name, kwargs.keys(), [ [ 'PARAM', i ] for i in xrange(len(kwargs)) ], returning ]
             sql, adapter = database._ast2sql(ast)
             cached_sql = sql, adapter
             database._insert_cache[query_key] = cached_sql
@@ -1073,7 +1074,7 @@ class Attribute(object):
                                   for i, (column, converter) in enumerate(izip(pk_columns, pk_converters)) ]
                 sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
                 sql, adapter = database._ast2sql(sql_ast)
-                offsets = tuple(range(len(attr.columns)))
+                offsets = tuple(xrange(len(attr.columns)))
                 attr.lazy_sql_cache = sql, adapter, offsets
             else: sql, adapter, offsets = attr.lazy_sql_cache
             arguments = adapter(obj._get_raw_pkval_())
@@ -1098,7 +1099,7 @@ class Attribute(object):
         val = obj._vals_.get(attr.name, NOT_LOADED)
         if val is NOT_LOADED: val = attr.load(obj)
         if val is None: return val
-        if attr.reverse and val._discriminator_ and val._subclasses_:
+        if attr.reverse and val._discriminator_ is not None and val._subclasses_:
             seeds = obj._cache_.seeds.get(val.__class__.__dict__['_pk_'])
             if seeds and val in seeds: val._load_()
         return val
@@ -1570,18 +1571,17 @@ class Set(Collection):
             if not items: return setdata
 
         if items and (attr.lazy or not setdata):
-            value_dict = dict(enumerate(items))
+            items = list(items)
             if not reverse.is_collection:
                 sql, adapter, attr_offsets = rentity._construct_batchload_sql_(len(items))
-                arguments = adapter(value_dict)
+                arguments = adapter(items)
                 cursor = database._exec_sql(sql, arguments)
                 items = rentity._fetch_objects(cursor, attr_offsets)
                 return setdata
-            
-            items_count = len(items)
-            sql, adapter = attr.construct_sql_m2m(1, items_count)
-            value_dict[items_count] = obj
-            arguments = adapter(value_dict)
+
+            sql, adapter = attr.construct_sql_m2m(1, len(items))
+            items.append(obj)
+            arguments = adapter(items)
             cursor = database._exec_sql(sql, arguments)
             loaded_items = set(imap(rentity._get_by_raw_pkval_, cursor.fetchall()))
             setdata |= loaded_items
@@ -1603,16 +1603,14 @@ class Set(Collection):
                 setdata_list.append(setdata2)
                 if len(objects) >= max_batch_size: break
 
-        value_dict = dict(enumerate(objects))
-
         if not reverse.is_collection:
             sql, adapter, attr_offsets = rentity._construct_batchload_sql_(len(objects), reverse)
-            arguments = adapter(value_dict)
+            arguments = adapter(objects)
             cursor = database._exec_sql(sql, arguments)
             items = rentity._fetch_objects(cursor, attr_offsets)
         else:
             sql, adapter = attr.construct_sql_m2m(len(objects))
-            arguments = adapter(value_dict)
+            arguments = adapter(objects)
             cursor = database._exec_sql(sql, arguments)
             pk_len = len(entity._pk_columns_)
             d = {}
@@ -2216,7 +2214,7 @@ class Multiset(object):
     def __iter__(multiset):
         if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         for item, cnt in multiset._items_.iteritems():
-            for i in range(cnt): yield item
+            for i in xrange(cnt): yield item
     @cut_traceback
     def __eq__(multiset, other):
         if not multiset._obj_._cache_.is_alive: throw_db_session_is_over(multiset._obj_)
@@ -2417,6 +2415,7 @@ class EntityMeta(type):
 
         entity._cached_create_sql_ = None
         entity._cached_create_sql_auto_pk_ = None
+        entity._cached_max_id_sql_ = None
         entity._find_sql_cache_ = {}
         entity._batchload_sql_cache_ = {}
         entity._update_sql_cache_ = {}
@@ -2429,7 +2428,7 @@ class EntityMeta(type):
 
         if '_discriminator_' not in entity.__dict__:
             entity._discriminator_ = None
-        if entity._discriminator_ and not entity._discriminator_attr_:
+        if entity._discriminator_ is not None and not entity._discriminator_attr_:
             Discriminator.create_default_attr(entity)
         if entity._discriminator_attr_:
             entity._discriminator_attr_.process_entity_inheritance(entity)
@@ -2587,6 +2586,68 @@ class EntityMeta(type):
     def select_by_sql(entity, sql, globals=None, locals=None):
         return entity._find_by_sql_(None, sql, globals, locals, frame_depth=3)
     @cut_traceback
+    def select_random(entity, limit):
+        pk = entity.__dict__['_pk_']
+        if type(pk.py_type) is not type or not issubclass(pk.py_type, int) \
+           or entity._discriminator_ is not None and entity._root_ is not entity:
+            return entity.select().random(limit)
+        database = entity._database_
+        cache = database._get_cache()
+        if cache.modified: cache.flush()
+        max_id = cache.max_id_cache.get(pk)
+        if max_id is None:
+            max_id_sql = entity._cached_max_id_sql_
+            if max_id_sql is None:
+                sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'MAX', [ 'COLUMN', None, pk.column ] ] ],
+                                      [ 'FROM', [ None, 'TABLE', entity._table_ ] ] ]
+                max_id_sql, adapter = database._ast2sql(sql_ast)
+                entity._cached_max_id_sql_ = max_id_sql
+            cursor = database._exec_sql(max_id_sql)
+            max_id = cursor.fetchone()[0]
+            cache.max_id_cache[pk] = max_id
+        if max_id is None: return []
+        if max_id <= limit * 2: return entity.select().random(limit)
+        index = cache.indexes.setdefault(pk, {})
+        result = []
+        tried_ids = set()
+        found_in_cache = False
+        for i in xrange(5):
+            ids = []
+            n = (limit - len(result)) * (i+1)
+            for j in xrange(n * 2):
+                id = randint(1, max_id)
+                if id in tried_ids: continue
+                if id in ids: continue
+                obj = index.get(id)
+                if obj is not None:
+                    found_in_cache = True
+                    tried_ids.add(id)
+                    result.append(obj)
+                    n -= 1
+                else: ids.append(id)
+                if len(ids) >= n: break
+
+            if len(result) >= limit: break
+            if not ids: continue
+            sql, adapter, attr_offsets = entity._construct_batchload_sql_(len(ids))
+            arguments = adapter([ (id,) for id in ids ])
+            cursor = database._exec_sql(sql, arguments)
+            objects = entity._fetch_objects(cursor, attr_offsets)
+            result.extend(objects)
+            tried_ids.update(ids)
+            if len(result) >= limit: break
+
+        if len(result) < limit: return entity.select().random(limit)
+        
+        result = result[:limit]
+        if entity._discriminator_ is not None and entity._subclasses_:
+            seeds = cache.seeds.get(pk)
+            if seeds:
+                for obj in result:
+                    if obj in seeds: obj._load_()
+        if found_in_cache: shuffle(result)
+        return result
+    @cut_traceback
     def order_by(entity, *args):
         query = Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
         return query.order_by(*args)
@@ -2655,7 +2716,7 @@ class EntityMeta(type):
                         return filtered_objects
                     else: throw(NotImplementedError)
         if obj is not None:
-            if obj._discriminator_:
+            if obj._discriminator_ is not None:
                 if obj._subclasses_:
                     cls = obj.__class__
                     if not issubclass(entity, cls) and not issubclass(cls, entity): return []
@@ -2697,7 +2758,7 @@ class EntityMeta(type):
                 used_columns.add(offset)
             else: attr_offsets[attr] = offsets
         if len(used_columns) < len(col_names):
-            for i in range(len(col_names)):
+            for i in xrange(len(col_names)):
                 if i not in used_columns: throw(NameError,
                     'Column %s does not belong to entity %s' % (cursor.description[i][0], entity.__name__))
         for attr in entity._pk_attrs_:
@@ -2741,8 +2802,6 @@ class EntityMeta(type):
             converters = attr.converters
         row_value_syntax = entity._database_.provider.translator_cls.row_value_syntax
         criteria_list = construct_criteria_list(None, columns, converters, row_value_syntax, batch_size)
-        discr_criteria = entity._construct_discriminator_criteria_()
-        if discr_criteria: criteria_list.insert(0, discr_criteria)
         sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
@@ -2841,8 +2900,7 @@ class EntityMeta(type):
             batch = objects[:max_batch_size]
             objects = objects[max_batch_size:]
             sql, adapter, attr_offsets = entity._construct_batchload_sql_(len(batch))
-            value_dict = dict(enumerate(batch))
-            arguments = adapter(value_dict)
+            arguments = adapter(batch)
             cursor = database._exec_sql(sql, arguments)
             result = entity._fetch_objects(cursor, attr_offsets)
             if len(result) < len(batch):
@@ -3188,8 +3246,7 @@ class Entity(object):
             if len(objects) >= max_batch_size: break
             if seed is not obj: objects.append(seed)
         sql, adapter, attr_offsets = entity._construct_batchload_sql_(len(objects))
-        value_dict = dict(enumerate(objects))
-        arguments = adapter(value_dict)
+        arguments = adapter(objects)
         cursor = database._exec_sql(sql, arguments)
         objects = entity._fetch_objects(cursor, attr_offsets)
         if obj not in objects: throw(UnrepeatableReadError,
@@ -3636,6 +3693,7 @@ class Cache(object):
         cache.ignore_none = database.provider.ignore_none
         cache.indexes = {}
         cache.seeds = {}
+        cache.max_id_cache = {}
         cache.collection_statistics = {}
         cache.for_update = set()
         cache.noflush_counter = 0
@@ -3760,6 +3818,7 @@ class Cache(object):
             for attr, (added, removed) in modified_m2m.iteritems():
                 if not added: continue
                 attr.add_m2m(added)
+        cache.max_id_cache.clear()
         cache.modified_collections.clear()
         cache.objects_to_save[:] = []
         cache.modified = False
@@ -4015,12 +4074,14 @@ class Query(object):
             database._constructed_sql_cache[sql_key] = cache_entry
         else: sql, adapter, attr_offsets = cache_entry
         arguments = adapter(query._vars)
-        arguments_type = type(arguments)
-        if arguments_type is tuple: arguments_key = arguments
-        elif arguments_type is dict: arguments_key = tuple(sorted(arguments.iteritems()))
-        try: hash(arguments_key)
-        except: query_key = None  # arguments are unhashable
-        else: query_key = sql_key + (arguments_key)
+        if query._translator.query_result_is_cacheable:
+            arguments_type = type(arguments)
+            if arguments_type is tuple: arguments_key = arguments
+            elif arguments_type is dict: arguments_key = tuple(sorted(arguments.iteritems()))
+            try: hash(arguments_key)
+            except: query_key = None  # arguments are unhashable
+            else: query_key = sql_key + (arguments_key)
+        else: query_key = None
         return sql, arguments, attr_offsets, query_key
     def _fetch(query, range=None, distinct=None):
         translator = query._translator
@@ -4064,7 +4125,7 @@ class Query(object):
                                  for func, slice_or_offset, src in translator.row_layout)
                            for sql_row in cursor.fetchall() ]
                 for i, t in enumerate(translator.expr_type):
-                    if isinstance(t, EntityMeta) and t._discriminator_ and t._subclasses_:
+                    if isinstance(t, EntityMeta) and t._discriminator_ is not None and t._subclasses_:
                         t._load_many_(row[i] for row in result)
             if query_key is not None:
                 query._cache.query_results[query_key] = result
@@ -4089,7 +4150,7 @@ class Query(object):
         translator = query._translator
         if translator.order: pass
         elif type(translator.expr_type) is tuple:
-            query = query.order_by(*[i+1 for i in range(len(query._translator.expr_type))])
+            query = query.order_by(*[i+1 for i in xrange(len(query._translator.expr_type))])
         else:
             query = query.order_by(1)
         objects = query[:1]
@@ -4300,6 +4361,8 @@ class Query(object):
         query._for_update = True
         query._nowait = nowait
         return query
+    def random(query, limit):
+        return query.order_by('random()')[:limit]
 
 def strcut(s, width):
     if len(s) <= width:

@@ -152,7 +152,7 @@ class FunctionMaker(object):
             src += '\n' # this is needed in old versions of Python
         try:
             # print src
-            code = compile(src, '<string>', 'single')
+            code = compile(src, '<auto generated wrapper of %s() function>' % self.name, 'single')
             # print >> sys.stderr, 'Compiling %s' % src
             exec code in evaldict
         except:
