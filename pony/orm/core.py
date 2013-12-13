@@ -2738,8 +2738,6 @@ class EntityMeta(type):
             converters = attr.converters
         row_value_syntax = entity._database_.provider.translator_cls.row_value_syntax
         criteria_list = construct_criteria_list(None, columns, converters, row_value_syntax, batch_size)
-        discr_criteria = entity._construct_discriminator_criteria_()
-        if discr_criteria: criteria_list.insert(0, discr_criteria)
         sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
