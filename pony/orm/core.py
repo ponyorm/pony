@@ -1570,18 +1570,17 @@ class Set(Collection):
             if not items: return setdata
 
         if items and (attr.lazy or not setdata):
-            value_dict = dict(enumerate(items))
+            items = list(items)
             if not reverse.is_collection:
                 sql, adapter, attr_offsets = rentity._construct_batchload_sql_(len(items))
-                arguments = adapter(value_dict)
+                arguments = adapter(items)
                 cursor = database._exec_sql(sql, arguments)
                 items = rentity._fetch_objects(cursor, attr_offsets)
                 return setdata
-            
-            items_count = len(items)
-            sql, adapter = attr.construct_sql_m2m(1, items_count)
-            value_dict[items_count] = obj
-            arguments = adapter(value_dict)
+
+            sql, adapter = attr.construct_sql_m2m(1, len(items))
+            items.append(obj)
+            arguments = adapter(items)
             cursor = database._exec_sql(sql, arguments)
             loaded_items = set(imap(rentity._get_by_raw_pkval_, cursor.fetchall()))
             setdata |= loaded_items
@@ -1603,16 +1602,14 @@ class Set(Collection):
                 setdata_list.append(setdata2)
                 if len(objects) >= max_batch_size: break
 
-        value_dict = dict(enumerate(objects))
-
         if not reverse.is_collection:
             sql, adapter, attr_offsets = rentity._construct_batchload_sql_(len(objects), reverse)
-            arguments = adapter(value_dict)
+            arguments = adapter(objects)
             cursor = database._exec_sql(sql, arguments)
             items = rentity._fetch_objects(cursor, attr_offsets)
         else:
             sql, adapter = attr.construct_sql_m2m(len(objects))
-            arguments = adapter(value_dict)
+            arguments = adapter(objects)
             cursor = database._exec_sql(sql, arguments)
             pk_len = len(entity._pk_columns_)
             d = {}
@@ -2841,8 +2838,7 @@ class EntityMeta(type):
             batch = objects[:max_batch_size]
             objects = objects[max_batch_size:]
             sql, adapter, attr_offsets = entity._construct_batchload_sql_(len(batch))
-            value_dict = dict(enumerate(batch))
-            arguments = adapter(value_dict)
+            arguments = adapter(batch)
             cursor = database._exec_sql(sql, arguments)
             result = entity._fetch_objects(cursor, attr_offsets)
             if len(result) < len(batch):
@@ -3188,8 +3184,7 @@ class Entity(object):
             if len(objects) >= max_batch_size: break
             if seed is not obj: objects.append(seed)
         sql, adapter, attr_offsets = entity._construct_batchload_sql_(len(objects))
-        value_dict = dict(enumerate(objects))
-        arguments = adapter(value_dict)
+        arguments = adapter(objects)
         cursor = database._exec_sql(sql, arguments)
         objects = entity._fetch_objects(cursor, attr_offsets)
         if obj not in objects: throw(UnrepeatableReadError,
