@@ -60,10 +60,11 @@ __all__ = '''
     '''.split()
 
 debug = False
+suppress_debug_change = False
 
 def sql_debug(value):
     global debug
-    debug = value
+    if not suppress_debug_change: debug = value
 
 orm_logger = logging.getLogger('pony.orm')
 sql_logger = logging.getLogger('pony.orm.sql')

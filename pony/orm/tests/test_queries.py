@@ -6,6 +6,8 @@ from pony import orm
 from pony.orm import core
 from pony.orm.tests import testutils
 
+core.suppress_debug_change = True
+
 directive_re = re.compile(r'(\w+)(\s+[0-9\.]+)?:')
 directive = module_name = None
 statements = []
@@ -51,7 +53,6 @@ def do_test(provider_name, raw_server_version):
         unavailable_providers.add(provider_name)
         return
     module = sys.modules[module_name]
-    core.debug = orm.debug = False
     globals = vars(module).copy()
     with orm.db_session:
         for statement in statements[:-1]:
