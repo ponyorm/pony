@@ -181,22 +181,32 @@ class DBAPIProvider(object):
 
     @wrap_dbapi_exceptions
     def commit(provider, connection):
+        core = pony.orm.core
+        if core.debug: core.log_orm('COMMIT')
         connection.commit()
 
     @wrap_dbapi_exceptions
     def rollback(provider, connection):
+        core = pony.orm.core
+        if core.debug: core.log_orm('ROLLBACK')
         connection.rollback()
 
     @wrap_dbapi_exceptions
     def release(provider, connection):
+        core = pony.orm.core
+        if core.debug: core.log_orm('RELEASE CONNECTION')
         provider.pool.release(connection)
 
     @wrap_dbapi_exceptions
     def drop(provider, connection):
+        core = pony.orm.core
+        if core.debug: core.log_orm('CLOSE CONNECTION')
         provider.pool.drop(connection)
 
     @wrap_dbapi_exceptions
     def disconnect(provider):
+        core = pony.orm.core
+        if core.debug: core.log_orm('DISCONNECT')
         provider.pool.disconnect()
 
     @wrap_dbapi_exceptions

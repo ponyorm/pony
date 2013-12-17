@@ -457,7 +457,6 @@ class Database(object):
         if local.db_context_counter: throw(TransactionError, 'disconnect() cannot be called inside of db_sesison')
         cache = local.db2cache.get(database)
         if cache is not None: cache.rollback()
-        if debug: log_orm('DISCONNECT')
         database.provider.disconnect()
     def _get_cache(database):
         cache = local.db2cache.get(database)
@@ -3742,7 +3741,6 @@ class Cache(object):
             if cache.modified: cache.flush()
             cache.for_update.clear()
             if cache.in_transaction:
-                if debug: log_orm('COMMIT')
                 provider.commit(connection)
                 cache.in_transaction = False
         except:
@@ -3758,12 +3756,9 @@ class Cache(object):
         if connection is None: return
         cache.connection = None
         try:
-            if debug: log_orm('ROLLBACK')
             provider.rollback(connection)
-            if debug: log_orm('RELEASE_CONNECTION')
             provider.release(connection)
         except:
-            if debug: log_orm('CLOSE_CONNECTION')
             provider.drop(connection)
             raise
     def release(cache):
@@ -3775,7 +3770,6 @@ class Cache(object):
         connection = cache.connection
         if connection is None: return
         cache.connection = None
-        if debug: log_orm('RELEASE_CONNECTION')
         provider.release(connection)
     def close(cache):
         assert cache.is_alive and not cache.in_transaction
@@ -3786,7 +3780,6 @@ class Cache(object):
         connection = cache.connection
         if connection is None: return
         cache.connection = None
-        if debug: log_orm('CLOSE_CONNECTION')
         provider.drop(connection)
     @contextmanager
     def flush_disabled(cache):
