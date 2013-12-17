@@ -184,15 +184,15 @@ class DBAPIProvider(object):
 
     @wrap_dbapi_exceptions
     def release(provider, connection):
-        return provider.pool.release(connection)
+        provider.pool.release(connection)
 
     @wrap_dbapi_exceptions
     def drop(provider, connection):
-        return provider.pool.drop(connection)
+        provider.pool.drop(connection)
 
     @wrap_dbapi_exceptions
     def disconnect(provider):
-        return provider.pool.disconnect()
+        provider.pool.disconnect()
 
     @wrap_dbapi_exceptions
     def execute(provider, cursor, sql, arguments=None, returning_id=False):
