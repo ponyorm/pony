@@ -374,8 +374,10 @@ class SQLTranslator(ASTTranslator):
         attr_offsets = None
         if distinct is None: distinct = translator.distinct
         ast_transformer = lambda ast: ast
-        if not for_update: sql_ast = [ 'SELECT' ]
-        else: sql_ast = [ 'SELECT_FOR_UPDATE', nowait ]
+        if for_update:
+            sql_ast = [ 'SELECT_FOR_UPDATE', nowait ]
+            translator.query_result_is_cacheable = False
+        else: sql_ast = [ 'SELECT' ]
         if aggr_func_name:
             expr_type = translator.expr_type
             if not isinstance(expr_type, EntityMeta):
