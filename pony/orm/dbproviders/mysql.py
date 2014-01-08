@@ -55,9 +55,9 @@ class MySQLBuilder(SQLBuilder):
 
 def _string_sql_type(converter):
     db_encoding = converter.db_encoding or 'utf8'
-    if converter.max_len:
-        return 'VARCHAR(%d) CHARACTER SET %s' % (converter.max_len, db_encoding)
-    return 'LONGTEXT CHARACTER SET %s' % db_encoding
+    result = 'VARCHAR(%d)' % converter.max_len if converter.max_len else 'LONGTEXT'
+    if converter.db_encoding: result += ' CHARACTER SET %s' % converter.db_encoding
+    return result
 
 class MySQLUnicodeConverter(dbapiprovider.UnicodeConverter):
     sql_type = _string_sql_type
