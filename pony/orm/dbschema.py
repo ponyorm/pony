@@ -49,6 +49,20 @@ class DBSchema(object):
             for db_object in table.get_objects_to_create(created_tables):
                 if not db_object.exists(provider, connection):
                     db_object.create(provider, connection)
+    def check_tables(schema, provider, connection):
+        cursor = connection.cursor()
+        for table in schema.tables.values():
+            if isinstance(table.name, tuple): alias = table.name[-1]
+            elif isinstance(table.name, basestring): alias = table.name
+            else: assert False
+            sql_ast = [ 'SELECT',
+                        [ 'ALL', ] + [ [ 'COLUMN', alias, column.name ] for column in table.column_list ],
+                        [ 'FROM', [ alias, 'TABLE', table.name ] ],
+                        [ 'WHERE', [ 'EQ', [ 'VALUE', 0 ], [ 'VALUE', 1 ] ] ]
+                      ]
+            sql, adapter = provider.ast2sql(sql_ast)
+            if core.debug: log_sql(sql)
+            provider.execute(cursor, sql)
 
 class DBObject(object):
     def create(table, provider, connection):

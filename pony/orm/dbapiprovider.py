@@ -3,6 +3,7 @@ from datetime import datetime, date, time
 from uuid import uuid4, UUID
 import re
 
+import pony
 from pony.utils import is_utf8, decorator, throw, localbase
 from pony.converting import str2date, str2datetime
 from pony.orm.ormtypes import LongStr, LongUnicode
@@ -95,6 +96,7 @@ class DBAPIProvider(object):
         provider.inspect_connection(connection)
         provider.release(connection)
 
+    @wrap_dbapi_exceptions
     def inspect_connection(provider, connection):
         pass
 
@@ -174,24 +176,41 @@ class DBAPIProvider(object):
         return provider.pool.connect()
 
     @wrap_dbapi_exceptions
+    def set_transaction_mode(provider, connection, cache):
+        pass
+
+    @wrap_dbapi_exceptions
     def commit(provider, connection):
+        core = pony.orm.core
+        if core.debug: core.log_orm('COMMIT')
         connection.commit()
 
     @wrap_dbapi_exceptions
     def rollback(provider, connection):
+        core = pony.orm.core
+        if core.debug: core.log_orm('ROLLBACK')
         connection.rollback()
 
     @wrap_dbapi_exceptions
-    def release(provider, connection):
-        return provider.pool.release(connection)
+    def release(provider, connection, cache=None):
+        core = pony.orm.core
+        if cache is not None and cache.db_session is not None and cache.db_session.ddl:
+            provider.drop(connection)
+        else:
+            if core.debug: core.log_orm('RELEASE CONNECTION')
+            provider.pool.release(connection)
 
     @wrap_dbapi_exceptions
     def drop(provider, connection):
-        return provider.pool.drop(connection)
+        core = pony.orm.core
+        if core.debug: core.log_orm('CLOSE CONNECTION')
+        provider.pool.drop(connection)
 
     @wrap_dbapi_exceptions
     def disconnect(provider):
-        return provider.pool.disconnect()
+        core = pony.orm.core
+        if core.debug: core.log_orm('DISCONNECT')
+        provider.pool.disconnect()
 
     @wrap_dbapi_exceptions
     def execute(provider, cursor, sql, arguments=None, returning_id=False):
@@ -223,12 +242,6 @@ class DBAPIProvider(object):
     def get_pool(provider, *args, **kwargs):
         return Pool(provider.dbapi_module, *args, **kwargs)
 
-    def set_transaction_mode(provider, connection, optimistic):
-        pass
-
-    def start_optimistic_save(provider, connection):
-        pass
-
     def table_exists(provider, connection, table_name):
         throw(NotImplementedError)
 
@@ -244,10 +257,10 @@ class DBAPIProvider(object):
         cursor.execute('SELECT 1 FROM %s LIMIT 1' % table_name)
         return cursor.fetchone() is not None
 
-    def disable_fk_checks_if_necessary(provider, connection):
+    def disable_fk_checks(provider, connection):
         pass
 
-    def enable_fk_checks_if_necessary(provider, connection, prev_state):
+    def enable_fk_checks(provider, connection, prev_state):
         pass
 
     def drop_table(provider, connection, table_name):
@@ -263,8 +276,11 @@ class Pool(localbase):
         pool.kwargs = kwargs
         pool.con = None
     def connect(pool):
+        core = pony.orm.core
         if pool.con is None:
+            if core.debug: core.log_orm('GET NEW CONNECTION')
             pool.con = pool.dbapi_module.connect(*pool.args, **pool.kwargs)
+        elif core.debug: core.log_orm('GET CONNECTION FROM THE LOCAL POOL')
         return pool.con
     def release(pool, con):
         assert con is pool.con
@@ -273,7 +289,7 @@ class Pool(localbase):
             pool.drop(con)
             raise
     def drop(pool, con):
-        assert con is pool.con
+        assert con is pool.con, (con, pool.con)
         pool.con = None
         con.close()
     def disconnect(pool):

@@ -250,6 +250,7 @@ class OraProvider(DBAPIProvider):
         (UUID, OraUuidConverter),
     ]
 
+    @wrap_dbapi_exceptions
     def inspect_connection(provider, connection):
         cursor = connection.cursor()
         cursor.execute('SELECT version FROM product_component_version '
@@ -268,6 +269,19 @@ class OraProvider(DBAPIProvider):
 
     def normalize_name(provider, name):
         return name[:provider.max_name_len].upper()
+
+    @wrap_dbapi_exceptions
+    def set_transaction_mode(provider, connection, cache):
+        assert not cache.in_transaction
+        db_session = cache.db_session
+        if db_session is not None and db_session.serializable:
+            cursor = connection.cursor()
+            sql = 'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE'
+            if core.debug: log_orm(sql)
+            cursor.execute(sql)
+        cache.immediate = True
+        if db_session is not None and (db_session.serializable or db_session.ddl):
+            cache.in_transaction = True
 
     @wrap_dbapi_exceptions
     def execute(provider, cursor, sql, arguments=None, returning_id=False):
@@ -372,6 +386,7 @@ class OraPool(object):
     def __init__(pool, **kwargs):
         pool._pool = cx_Oracle.SessionPool(**kwargs)
     def connect(pool):
+        if core.debug: log_orm('GET CONNECTION')
         con = pool._pool.acquire()
         con.outputtypehandler = output_type_handler
         return con

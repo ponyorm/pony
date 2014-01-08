@@ -9,6 +9,7 @@ import psycopg2.extras
 psycopg2.extras.register_uuid()
 
 from pony.orm import core, dbschema, sqlbuilding, dbapiprovider
+from pony.orm.core import log_orm
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, ProgrammingError, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import Value
@@ -84,9 +85,11 @@ class PGUuidConverter(dbapiprovider.UuidConverter):
 class PGPool(Pool):
     def connect(pool):
         if pool.con is None:
+            if core.debug: log_orm('GET NEW CONNECTION')
             pool.con = pool.dbapi_module.connect(*pool.args, **pool.kwargs)
             if 'client_encoding' not in pool.kwargs:
                 pool.con.set_client_encoding('UTF8')
+        elif core.debug: log_orm('GET CONNECTION FROM THE LOCAL POOL')
         return pool.con
     def release(pool, con):
         assert con is pool.con
@@ -95,6 +98,7 @@ class PGPool(Pool):
             con.autocommit = True
             cursor = con.cursor()
             cursor.execute('DISCARD ALL')
+            con.autocommit = False
         except:
             pool.drop(con)
             raise
@@ -114,7 +118,8 @@ class PGProvider(DBAPIProvider):
 
     def normalize_name(provider, name):
         return name[:provider.max_name_len].lower()
-    
+
+    @wrap_dbapi_exceptions
     def inspect_connection(provider, connection):
         provider.server_version = connection.server_version
         provider.table_if_not_exists_syntax = provider.server_version >= 90100
@@ -126,17 +131,23 @@ class PGProvider(DBAPIProvider):
     def get_pool(provider, *args, **kwargs):
         return PGPool(provider.dbapi_module, *args, **kwargs)
 
-    def set_transaction_mode(provider, connection, optimistic):
-        if optimistic:
-            if core.debug: core.log_orm('SET AUTOCOMMIT = ON')
+    @wrap_dbapi_exceptions
+    def set_transaction_mode(provider, connection, cache):
+        assert not cache.in_transaction
+        if cache.immediate and connection.autocommit:
+            connection.autocommit = False
+            if core.debug: log_orm('SWITCH FROM AUTOCOMMIT TO TRANSACTION MODE')
+        db_session = cache.db_session
+        if db_session is not None and db_session.serializable:
+            cursor = connection.cursor()
+            sql = 'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE'
+            if core.debug: log_orm(sql)
+            cursor.execute(sql)
+        elif not cache.immediate and not connection.autocommit:
             connection.autocommit = True
-        else:
-            if core.debug: core.log_orm('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
-            connection.set_isolation_level(extensions.ISOLATION_LEVEL_READ_COMMITTED)
-
-    def start_optimistic_save(provider, connection):
-        if core.debug: core.log_orm('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
-        connection.set_isolation_level(extensions.ISOLATION_LEVEL_READ_COMMITTED)
+            if core.debug: log_orm('SWITCH TO AUTOCOMMIT MODE')
+        if db_session is not None and (db_session.serializable or db_session.ddl):
+            cache.in_transaction = True
 
     @wrap_dbapi_exceptions
     def execute(provider, cursor, sql, arguments=None, returning_id=False):

@@ -1,4 +1,4 @@
-symbols = [ 'SELECT', 'INSERT', 'UPDATE', 'DELETE',
+symbols = [ 'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'SELECT_FOR_UPDATE',
             'FROM', 'INNER_JOIN', 'LEFT_JOIN', 'WHERE', 'GROUP_BY', 'HAVING',
             'UNION', 'INTERSECT', 'EXCEPT',
             'ORDER_BY', 'LIMIT', 'ASC', 'DESC',
