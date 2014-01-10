@@ -1096,7 +1096,7 @@ class Attribute(object):
         val = obj._vals_.get(attr.name, NOT_LOADED)
         if val is NOT_LOADED: val = attr.load(obj)
         if val is None: return val
-        if attr.reverse and val._discriminator_ is not None and val._subclasses_:
+        if attr.reverse and val._subclasses_:
             seeds = obj._cache_.seeds[val._pk_attrs_]
             if val in seeds: val._load_()
         return val
@@ -2643,7 +2643,7 @@ class EntityMeta(type):
         if len(result) < limit: return entity.select().random(limit)
         
         result = result[:limit]
-        if entity._discriminator_ is not None and entity._subclasses_:
+        if entity._subclasses_:
             seeds = cache.seeds[entity._pk_attrs_]
             if seeds:
                 for obj in result:
@@ -4097,8 +4097,7 @@ class Query(object):
                                  for func, slice_or_offset, src in translator.row_layout)
                            for sql_row in cursor.fetchall() ]
                 for i, t in enumerate(translator.expr_type):
-                    if isinstance(t, EntityMeta) and t._discriminator_ is not None and t._subclasses_:
-                        t._load_many_(row[i] for row in result)
+                    if isinstance(t, EntityMeta) and t._subclasses_: t._load_many_(row[i] for row in result)
             if query_key is not None:
                 query._cache.query_results[query_key] = result
         else:
