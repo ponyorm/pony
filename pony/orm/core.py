@@ -2416,7 +2416,6 @@ class EntityMeta(type):
         entity._batchload_sql_cache_ = {}
         entity._update_sql_cache_ = {}
         entity._delete_sql_cache_ = {}
-        entity._to_be_checked_sql_cache_ = {}
 
         entity._propagation_mixin_ = None
         entity._set_wrapper_subclass_ = None
