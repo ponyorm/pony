@@ -11,6 +11,7 @@ from random import shuffle, randint
 from threading import Lock, currentThread as current_thread, _MainThread
 from __builtin__ import min as _min, max as _max, sum as _sum
 from contextlib import contextmanager
+from collections import defaultdict
 
 import pony
 from pony import options
@@ -1587,7 +1588,7 @@ class Set(Collection):
         objects = [ obj ]
         setdata_list = [ setdata ]
         if prefetching:
-            pk_index = cache.indexes.get(entity._pk_attrs_)
+            pk_index = cache.indexes[entity._pk_attrs_]
             max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
             for obj2 in pk_index.itervalues():
                 if obj2 is obj: continue
@@ -2609,7 +2610,7 @@ class EntityMeta(type):
             cache.max_id_cache[pk] = max_id
         if max_id is None: return []
         if max_id <= limit * 2: return entity.select().random(limit)
-        index = cache.indexes.setdefault(entity._pk_attrs_, {})
+        index = cache.indexes[entity._pk_attrs_]
         result = []
         tried_ids = set()
         found_in_cache = False
@@ -2672,23 +2673,21 @@ class EntityMeta(type):
         return objects
     def _find_in_cache_(entity, pkval, avdict, for_update=False):
         cache = entity._database_._get_cache()
+        indexes = cache.indexes
         obj = None
-        if pkval is not None:
-            index = cache.indexes.get(entity._pk_attrs_)
-            if index is not None: obj = index.get(pkval)
+        if pkval is not None: obj = indexes[entity._pk_attrs_].get(pkval)
         if obj is None:
-            for attr in ifilter(avdict.__contains__, entity._simple_keys_):
-                index = cache.indexes.get(attr)
-                if index is None: continue
-                val = avdict[attr]
-                obj = index.get(val)
-                if obj is not None: break
+            for attr in entity._simple_keys_:
+                val = avdict.get(attr)
+                if val is not None:
+                    obj = indexes[attr].get(val)
+                    if obj is not None: break
         if obj is None:
             NOT_FOUND = object()
             for attrs in entity._composite_keys_:
                 vals = tuple(avdict.get(attr, NOT_FOUND) for attr in attrs)
                 if NOT_FOUND in vals: continue
-                index = cache.indexes.get(attrs)
+                index = indexes.get(attrs)
                 if index is None: continue
                 obj = index.get(vals)
                 if obj is not None: break
@@ -2958,7 +2957,7 @@ class EntityMeta(type):
     def _new_(entity, pkval, status, for_update=False, undo_funcs=None):
         cache = entity._database_._get_cache()
         pk_attrs = entity._pk_attrs_
-        index = cache.indexes.setdefault(pk_attrs, {})
+        index = cache.indexes[pk_attrs]
         if pkval is None: obj = None
         else: obj = index.get(pkval)
 
@@ -3158,22 +3157,23 @@ class Entity(object):
         pkval, avdict = entity._normalize_args_(kwargs, True)
         undo_funcs = []
         cache = entity._database_._get_cache()
+        indexes = cache.indexes
+        indexes_update = {}
         with cache.flush_disabled():
-            indexes = {}
             for attr in entity._simple_keys_:
                 val = avdict[attr]
                 if val is None and cache.ignore_none: continue
-                if val in cache.indexes.setdefault(attr, {}): throw(CacheIndexError,
+                if val in indexes[attr]: throw(CacheIndexError,
                     'Cannot create %s: value %r for key %s already exists' % (entity.__name__, val, attr.name))
-                indexes[attr] = val
+                indexes_update[attr] = val
             for attrs in entity._composite_keys_:
                 vals = tuple(map(avdict.__getitem__, attrs))
                 if cache.ignore_none and None in vals: continue
-                if vals in cache.indexes.setdefault(attrs, {}):
+                if vals in indexes[attrs]:
                     attr_names = ', '.join(attr.name for attr in attrs)
                     throw(CacheIndexError, 'Cannot create %s: value %s for composite key (%s) already exists'
                                      % (entity.__name__, vals, attr_names))
-                indexes[attrs] = vals
+                indexes_update[attrs] = vals
             try:
                 obj = entity._new_(pkval, 'created', undo_funcs=undo_funcs)
                 for attr, val in avdict.iteritems():
@@ -3185,10 +3185,8 @@ class Entity(object):
             except:
                 for undo_func in reversed(undo_funcs): undo_func()
                 raise
-        if pkval is not None:
-            cache.indexes[entity._pk_attrs_][pkval] = obj
-        for key, vals in indexes.iteritems():
-            cache.indexes[key][vals] = obj
+        if pkval is not None: indexes[entity._pk_attrs_][pkval] = obj
+        for key, vals in indexes_update.iteritems(): indexes[key][vals] = obj
         cache.objects_to_save.append(obj)
         cache.modified = True
         return obj
@@ -3361,12 +3359,12 @@ class Entity(object):
                                                      % (obj, attr.name, attr))
                     else: throw(NotImplementedError)
 
+                indexes = cache.indexes
                 for attr in obj._simple_keys_:
                     val = get_val(attr.name, NOT_LOADED)
                     if val is NOT_LOADED: continue
                     if val is None and cache.ignore_none: continue
-                    index = cache.indexes.get(attr)
-                    if index is None: continue
+                    index = indexes[attr]
                     obj2 = index.pop(val)
                     assert obj2 is obj
                     undo_list.append((index, val))
@@ -3375,8 +3373,7 @@ class Entity(object):
                     vals = tuple(get_val(a.name, NOT_LOADED) for a in attrs)
                     if NOT_LOADED in vals: continue
                     if cache.ignore_none and None in vals: continue
-                    index = cache.indexes.get(attrs)
-                    if index is None: continue
+                    index = indexes[attrs]
                     obj2 = index.pop(vals)
                     assert obj2 is obj
                     undo_list.append((index, vals))
@@ -3390,7 +3387,7 @@ class Entity(object):
                             mc = cache.modified_collections.get(attr)
                             if mc is not None: mc.discard(obj)
                     if obj._pkval_ is not None:
-                        del cache.indexes[obj._pk_attrs_][obj._pkval_]
+                        del indexes[obj._pk_attrs_][obj._pkval_]
                 else:
                     if status != 'updated':
                         assert status in ('loaded', 'saved')
@@ -3580,7 +3577,7 @@ class Entity(object):
 
         if auto_pk:
             pk_attrs = obj._pk_attrs_
-            index = obj._cache_.indexes.setdefault(pk_attrs, {})
+            index = obj._cache_.indexes[pk_attrs]
             obj2 = index.setdefault(new_id, obj)
             if obj2 is not obj: throw(TransactionIntegrityError,
                 'Newly auto-generated id value %s was already used in transaction cache for another object' % new_id)
@@ -3689,7 +3686,7 @@ class Cache(object):
         cache.num = next_num()
         cache.database = database
         cache.ignore_none = database.provider.ignore_none
-        cache.indexes = {}
+        cache.indexes = defaultdict(dict)
         cache.seeds = {}
         cache.max_id_cache = {}
         cache.collection_statistics = {}
@@ -3851,8 +3848,7 @@ class Cache(object):
         return modified_m2m
     def update_simple_index(cache, obj, attr, old_val, new_val, undo):
         assert old_val != new_val
-        index = cache.indexes.get(attr)
-        if index is None: index = cache.indexes[attr] = {}
+        index = cache.indexes[attr]
         if new_val is None and cache.ignore_none: new_val = NO_UNDO_NEEDED
         else:
             obj2 = index.setdefault(new_val, obj)
@@ -3864,8 +3860,7 @@ class Cache(object):
         undo.append((index, old_val, new_val))
     def db_update_simple_index(cache, obj, attr, old_dbval, new_dbval):
         assert old_dbval != new_dbval
-        index = cache.indexes.get(attr)
-        if index is None: index = cache.indexes[attr] = {}
+        index = cache.indexes[attr]
         if new_dbval is NOT_LOADED: pass
         elif new_dbval is None and cache.ignore_none: pass
         else:
@@ -3884,8 +3879,7 @@ class Cache(object):
         if vals is NO_UNDO_NEEDED: pass
         elif NOT_LOADED in vals: vals = NO_UNDO_NEEDED
         if currents is NO_UNDO_NEEDED and vals is NO_UNDO_NEEDED: return
-        index = cache.indexes.get(attrs)
-        if index is None: index = cache.indexes[attrs] = {}
+        index = cache.indexes[attrs]
         if vals is NO_UNDO_NEEDED: pass
         else:
             obj2 = index.setdefault(vals, obj)
@@ -3897,8 +3891,7 @@ class Cache(object):
         else: del index[currents]
         undo.append((index, currents, vals))
     def db_update_composite_index(cache, obj, attrs, currents, vals):
-        index = cache.indexes.get(attrs)
-        if index is None: index = cache.indexes[attrs] = {}
+        index = cache.indexes[attrs]
         if NOT_LOADED in vals: pass
         elif None in vals and cache.ignore_none: pass
         else:
