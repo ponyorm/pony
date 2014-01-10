@@ -1097,8 +1097,8 @@ class Attribute(object):
         if val is NOT_LOADED: val = attr.load(obj)
         if val is None: return val
         if attr.reverse and val._discriminator_ is not None and val._subclasses_:
-            seeds = obj._cache_.seeds.get(val._pk_attrs_)
-            if seeds and val in seeds: val._load_()
+            seeds = obj._cache_.seeds[val._pk_attrs_]
+            if val in seeds: val._load_()
         return val
     @cut_traceback
     def __set__(attr, obj, new_val, undo_funcs=None):
@@ -2644,7 +2644,7 @@ class EntityMeta(type):
         
         result = result[:limit]
         if entity._discriminator_ is not None and entity._subclasses_:
-            seeds = cache.seeds.get(entity._pk_attrs_)
+            seeds = cache.seeds[entity._pk_attrs_]
             if seeds:
                 for obj in result:
                     if obj in seeds: obj._load_()
@@ -2722,8 +2722,8 @@ class EntityMeta(type):
                 if obj._subclasses_:
                     cls = obj.__class__
                     if not issubclass(entity, cls) and not issubclass(cls, entity): return []
-                    seeds = cache.seeds.get(entity._pk_attrs_)
-                    if seeds and obj in seeds: obj._load_()
+                    seeds = cache.seeds[entity._pk_attrs_]
+                    if obj in seeds: obj._load_()
                 if not isinstance(obj, entity): return []
             if obj._status_ == 'marked_to_delete': return []
             for attr, val in avdict.iteritems():
@@ -2896,7 +2896,7 @@ class EntityMeta(type):
     def _load_many_(entity, objects):
         database = entity._database_
         cache = database._get_cache()
-        seeds = cache.seeds.get(entity._pk_attrs_)
+        seeds = cache.seeds[entity._pk_attrs_]
         if not seeds: return
         objects = set(obj for obj in objects if obj in seeds)
         objects = sorted(objects, key=attrgetter('_pkval_'))
@@ -2994,8 +2994,7 @@ class EntityMeta(type):
                     for attr, val in pairs:
                         obj._vals_[attr.name] = val
                         if attr.reverse: attr.db_update_reverse(obj, NOT_LOADED, val)
-                    seeds = cache.seeds.setdefault(pk_attrs, set())
-                    seeds.add(obj)
+                    cache.seeds[pk_attrs].add(obj)
                 elif status == 'created':
                     assert undo_funcs is not None
                     obj._rbits_ = obj._wbits_ = None
@@ -3258,8 +3257,7 @@ class Entity(object):
 
         cache = obj._cache_
         assert cache.is_alive
-        seeds = cache.seeds.setdefault(obj._pk_attrs_, set())
-        seeds.discard(obj)
+        cache.seeds[obj._pk_attrs_].discard(obj)
 
         get_val = obj._vals_.get
         get_dbval = obj._dbvals_.get
@@ -3687,7 +3685,7 @@ class Cache(object):
         cache.database = database
         cache.ignore_none = database.provider.ignore_none
         cache.indexes = defaultdict(dict)
-        cache.seeds = {}
+        cache.seeds = defaultdict(set)
         cache.max_id_cache = {}
         cache.collection_statistics = {}
         cache.for_update = set()
