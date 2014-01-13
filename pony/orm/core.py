@@ -1383,7 +1383,7 @@ def composite_key(*attrs):
         attr.is_part_of_unique_index = True
         attr.composite_keys.append((attrs, i))
     cls_dict = sys._getframe(1).f_locals
-    composite_keys = cls_dict.setdefault('_keys_', {})
+    composite_keys = cls_dict.setdefault('_key_dict_', {})
     composite_keys[attrs] = False
 
 class PrimaryKey(Required):
@@ -1412,7 +1412,7 @@ class PrimaryKey(Required):
         for i, attr in enumerate(attrs):
             attr.is_part_of_unique_index = True
             attr.composite_keys.append((attrs, i))
-        keys = cls_dict.setdefault('_keys_', {})
+        keys = cls_dict.setdefault('_key_dict_', {})
         keys[attrs] = True
         return None
 
@@ -2330,7 +2330,7 @@ class EntityMeta(type):
             new_attrs.append(attr)
         new_attrs.sort(key=attrgetter('id'))
 
-        keys = entity.__dict__.get('_keys_', {})
+        keys = entity.__dict__.get('_key_dict_', {})
         for attr in new_attrs:
             if attr.is_unique: keys[(attr,)] = isinstance(attr, PrimaryKey)
         for key, is_pk in keys.items():
