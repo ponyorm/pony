@@ -39,13 +39,14 @@ class TestOneToMany(unittest.TestCase):
         rollback()
         db_session.__exit__()
 
-    @raises_exception(ConstraintError, 'Attribute Student.group cannot be set to None')
+    @raises_exception(ConstraintError, 'Attribute Student[1].group is required')
     def test_1(self):
         self.Student[1].group = None
 
-    @raises_exception(ConstraintError, 'Attribute Student.group cannot be set to None')
+    @raises_exception(ConstraintError, 'Attribute Student[1].group is required')
     def test_2(self):
-        Group = self.Group
+        Student, Group = self.Student, self.Group
+        Student[2].delete()  # in order to make exception text deterministic
         Group[101].students = Group[102].students
 
     def test_3(self):

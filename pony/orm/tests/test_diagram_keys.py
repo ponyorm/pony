@@ -118,6 +118,54 @@ class TestKeys(unittest.TestCase):
             b = Optional(int)
             PrimaryKey(a, b)
 
+    @raises_exception(TypeError, 'PrimaryKey attribute Entity1.a cannot be of type float')
+    def test_float_pk(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = PrimaryKey(float)
+
+    @raises_exception(TypeError, 'Attribute Entity1.b of type float cannot be part of primary key')
+    def test_float_composite_pk(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required(int)
+            b = Required(float)
+            PrimaryKey(a, b)
+
+    @raises_exception(TypeError, 'Attribute Entity1.b of type float cannot be part of unique index')
+    def test_float_composite_key(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required(int)
+            b = Required(float)
+            composite_key(a, b)
+
+    @raises_exception(TypeError, 'Unique attribute Entity1.a cannot be of type float')
+    def test_float_unique(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required(float, unique=True)
+
+    @raises_exception(TypeError, 'PrimaryKey attribute Entity1.a cannot be volatile')
+    def test_volatile_pk(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = PrimaryKey(int, volatile=True)
+
+    @raises_exception(TypeError, 'Set attribute Entity1.b cannot be volatile')
+    def test_volatile_set(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = PrimaryKey(int)
+            b = Set('Entity2', volatile=True)
+
+    @raises_exception(TypeError, 'Volatile attribute Entity1.b cannot be part of primary key')
+    def test_volatile_composite_pk(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required(int)
+            b = Required(int, volatile=True)
+            PrimaryKey(a, b)
 
 if __name__ == '__main__':
     unittest.main()

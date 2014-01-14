@@ -861,7 +861,7 @@ next_attr_id = _count(1).next
 
 class Attribute(object):
     __slots__ = 'nullable', 'is_required', 'is_discriminator', 'is_unique', 'is_part_of_unique_index', \
-                'is_pk', 'is_collection', 'is_ref', 'is_basic', 'is_string', \
+                'is_pk', 'is_collection', 'is_ref', 'is_basic', 'is_string', 'is_volatile', \
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
@@ -930,6 +930,7 @@ class Attribute(object):
         attr.composite_keys = []
         attr.lazy = kwargs.pop('lazy', getattr(py_type, 'lazy', False))
         attr.lazy_sql_cache = None
+        attr.is_volatile = kwargs.pop('volatile', False)
         attr.kwargs = kwargs
         attr.converters = []
     def _init_(attr, entity, name):
@@ -971,11 +972,12 @@ class Attribute(object):
         else:
             attr.default = None
 
+        # composite keys will be checked later inside EntityMeta.__init__
         if attr.py_type == float:
-            if attr.pk_offset is not None:
-                throw(TypeError, 'Primary key attribute %s cannot be of type float' % attr)
-            elif attr.is_unique:
-                throw(TypeError, 'Unique attribute %s cannot be of type float' % attr)
+            if attr.is_pk: throw(TypeError, 'PrimaryKey attribute %s cannot be of type float' % attr)
+            elif attr.is_unique: throw(TypeError, 'Unique attribute %s cannot be of type float' % attr)
+        if attr.is_volatile and (attr.is_pk or attr.is_collection): throw(TypeError,
+            '%s attribute %s cannot be volatile' % (attr.__class__.__name__, attr))
     def linked(attr):
         reverse = attr.reverse
         if attr.cascade_delete is None:
@@ -1087,7 +1089,7 @@ class Attribute(object):
         if attr.pk_offset is not None: return attr.get(obj)
         if not obj._cache_.is_alive: throw_db_session_is_over(obj)
         result = attr.get(obj)
-        bit = obj._bits_[attr]
+        bit = obj._bits_except_volatile_[attr]
         wbits = obj._wbits_
         if wbits is not None and not wbits & bit: obj._rbits_ |= bit
         return result
@@ -1313,14 +1315,12 @@ class Optional(Attribute):
 class Required(Attribute):
     __slots__ = []
     def check(attr, val, obj=None, entity=None, from_db=False):
-        val = Attribute.check(attr, val, obj, entity, from_db)  # val may be changed to None here
-        if val == '' or val is None and not attr.auto:
-            if entity is not None: pass
-            elif obj is not None: entity = obj.__class__
-            else: entity = attr.entity
+        if val == '' \
+        or val is None and not attr.auto \
+        or val is DEFAULT and attr.default in (None, '') and not attr.auto and not attr.is_volatile:
             if obj is None: throw(ConstraintError, 'Attribute %s is required' % attr)
-            else: throw(ConstraintError, 'Attribute %s of %r is required' % (attr, obj))
-        return val
+            throw(ConstraintError, 'Attribute %r.%s is required' % (obj, attr.name))
+        return Attribute.check(attr, val, obj, entity, from_db)
 
 class Discriminator(Required):
     __slots__ = [ 'code2cls' ]
@@ -1682,7 +1682,7 @@ class Set(Collection):
             added = setdata.added or ()
             for item in setdata:
                 if item in added: continue
-                bit = item._bits_[reverse]
+                bit = item._bits_except_volatile_[reverse]
                 assert item._wbits_ is not None
                 if not item._wbits_ & bit: item._rbits_ |= bit
         return set(setdata)
@@ -2056,7 +2056,7 @@ class SetWrapper(object):
             if obj2 is NOT_LOADED: obj2 = reverse.load(item)
             wbits = item._wbits_
             if wbits is not None:
-                bit = item._bits_[reverse]
+                bit = item._bits_except_volatile_[reverse]
                 if not wbits & bit: item._rbits_ |= bit
             return obj is obj2
 
@@ -2342,12 +2342,13 @@ class EntityMeta(type):
             for attr in key:
                 if attr.entity is not entity: throw(ERDiagramError,
                     'Invalid use of attribute %s in entity %s' % (attr, entity.__name__))
+                key_type = 'primary key' if is_pk else 'unique index'
                 if attr.is_collection or attr.is_discriminator or (is_pk and not attr.is_required and not attr.auto):
-                    throw(TypeError, '%s attribute %s cannot be part of %s'
-                                    % (attr.__class__.__name__, attr, is_pk and 'primary key' or 'unique index'))
+                    throw(TypeError, '%s attribute %s cannot be part of %s' % (attr.__class__.__name__, attr, key_type))
                 if isinstance(attr.py_type, type) and issubclass(attr.py_type, float):
-                    throw(TypeError, 'Attribute %s of type float cannot be part of %s'
-                                    % (attr, is_pk and 'primary key' or 'unique index'))
+                    throw(TypeError, 'Attribute %s of type float cannot be part of %s' % (attr, key_type))
+                if is_pk and attr.is_volatile:
+                    throw(TypeError, 'Volatile attribute %s cannot be part of primary key' % attr)
                 if not attr.is_required:
                     if attr.nullable is False:
                         throw(TypeError, 'Optional attribute %s must be nullable, because it is part of composite key' % attr)
@@ -2391,14 +2392,19 @@ class EntityMeta(type):
             base._subclass_attrs_.update(new_attrs)
 
         entity._bits_ = {}
+        entity._bits_except_volatile_ = {}
         next_offset = _count().next
-        all_bits = 0
+        all_bits = all_bits_except_volatile = 0
         for attr in entity._attrs_:
             if attr.is_collection or attr.is_discriminator or attr.pk_offset is not None: bit = 0
             else: bit = 1 << next_offset()
             all_bits |= bit
             entity._bits_[attr] = bit
+            if attr.is_volatile: bit = 0
+            all_bits_except_volatile |= bit
+            entity._bits_except_volatile_[attr] = bit
         entity._all_bits_ = all_bits
+        entity._all_bits_except_volatile_ = all_bits_except_volatile
 
         try: table_name = entity.__dict__['_table_']
         except KeyError: entity._table_ = None
@@ -3593,7 +3599,7 @@ class Entity(object):
             obj._newid_ = None
 
         obj._status_ = 'saved'
-        obj._rbits_ = obj._all_bits_
+        obj._rbits_ = obj._all_bits_except_volatile_
         obj._wbits_ = 0
         bits = obj._bits_
         for attr in obj._attrs_:
@@ -3644,7 +3650,7 @@ class Entity(object):
             if cursor.rowcount != 1:
                 throw(OptimisticCheckError, 'Object %s was updated outside of current transaction' % safe_repr(obj))
         obj._status_ = 'saved'
-        obj._rbits_ |= obj._wbits_
+        obj._rbits_ |= obj._wbits_ & obj._all_bits_except_volatile_
         obj._wbits_ = 0
         for attr in obj._attrs_with_bit_():
             val = obj._vals_.get(attr.name, NOT_LOADED)
