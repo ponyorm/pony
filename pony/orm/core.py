@@ -2663,17 +2663,22 @@ class EntityMeta(type):
         if entity._database_.schema is None:
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
         pkval, avdict = entity._normalize_args_(kwargs, False)
-        rbits = 0
         for attr in avdict:
             if attr.is_collection:
                 throw(TypeError, 'Collection attribute %s cannot be specified as search criteria' % attr)
-            bit = entity._bits_.get(attr)
-            if bit is not None: rbits |= bit
         objects = entity._find_in_cache_(pkval, avdict, for_update)
         if objects is None:
             objects = entity._find_in_db_(avdict, max_fetch_count, for_update, nowait)
+        rbits_dict = {}
+        get_rbits = rbits_dict.get
         for obj in objects:
-            if obj._rbits_ is not None: obj._rbits_ |= rbits
+            wbits = obj._wbits_
+            if wbits is None: continue
+            rbits = get_rbits(obj.__class__)
+            if rbits is None:
+                rbits = sum(imap(obj._bits_.__getitem__, avdict))
+                rbits_dict[obj.__class__] = rbits
+            obj._rbits_ |= rbits & ~wbits
         return objects
     def _find_in_cache_(entity, pkval, avdict, for_update=False):
         cache = entity._database_._get_cache()
