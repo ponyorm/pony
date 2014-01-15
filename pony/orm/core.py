@@ -2669,16 +2669,7 @@ class EntityMeta(type):
         objects = entity._find_in_cache_(pkval, avdict, for_update)
         if objects is None:
             objects = entity._find_in_db_(avdict, max_fetch_count, for_update, nowait)
-        rbits_dict = {}
-        get_rbits = rbits_dict.get
-        for obj in objects:
-            wbits = obj._wbits_
-            if wbits is None: continue
-            rbits = get_rbits(obj.__class__)
-            if rbits is None:
-                rbits = sum(imap(obj._bits_.__getitem__, avdict))
-                rbits_dict[obj.__class__] = rbits
-            obj._rbits_ |= rbits & ~wbits
+        entity._set_rbits(objects, avdict)
         return objects
     def _find_in_cache_(entity, pkval, avdict, for_update=False):
         cache = entity._database_._get_cache()
@@ -2862,7 +2853,7 @@ class EntityMeta(type):
         cached_sql = sql, adapter, attr_offsets
         entity._find_sql_cache_[query_key] = cached_sql
         return cached_sql
-    def _fetch_objects(entity, cursor, attr_offsets, max_fetch_count=None, rbits=None, for_update=False):
+    def _fetch_objects(entity, cursor, attr_offsets, max_fetch_count=None, for_update=False, used_attrs=()):
         if max_fetch_count is None: max_fetch_count = options.MAX_FETCH_COUNT
         if max_fetch_count is not None:
             rows = cursor.fetchmany(max_fetch_count + 1)
@@ -2883,9 +2874,19 @@ class EntityMeta(type):
                 if obj._status_ in del_statuses: continue
                 obj._db_set_(avdict)
                 objects.append(obj)
-        if rbits is not None:
-            for obj in objects: obj._rbits_ |= rbits
+        if used_attrs: entity._set_rbits(objects, used_attrs)
         return objects
+    def _set_rbits(entity, objects, attrs):
+        rbits_dict = {}
+        get_rbits = rbits_dict.get
+        for obj in objects:
+            wbits = obj._wbits_
+            if wbits is None: continue
+            rbits = get_rbits(obj.__class__)
+            if rbits is None:
+                rbits = sum(imap(obj._bits_.__getitem__, attrs))
+                rbits_dict[obj.__class__] = rbits
+            obj._rbits_ |= rbits & ~wbits
     def _parse_row_(entity, row, attr_offsets):
         discr_attr = entity._discriminator_attr_
         if not discr_attr: real_entity_subclass = entity
@@ -4093,8 +4094,8 @@ class Query(object):
             cursor = database._exec_sql(sql, arguments)
             if isinstance(translator.expr_type, EntityMeta):
                 entity = translator.expr_type
-                result = entity._fetch_objects(cursor, attr_offsets, rbits=translator.tableref.rbits,
-                                               for_update=query._for_update)
+                result = entity._fetch_objects(cursor, attr_offsets, for_update=query._for_update,
+                                               used_attrs=translator.tableref.used_attrs)
             elif len(translator.row_layout) == 1:
                 func, slice_or_offset, src = translator.row_layout[0]
                 result = list(starmap(func, cursor.fetchall()))
