@@ -2671,9 +2671,8 @@ class EntityMeta(type):
         objects = entity._find_in_cache_(pkval, avdict, for_update)
         if objects is None:
             objects = entity._find_in_db_(avdict, max_fetch_count, for_update, nowait)
-        if rbits:
-            for obj in objects:
-                if obj._rbits_ is not None: obj._rbits_ |= rbits
+        for obj in objects:
+            if obj._rbits_ is not None: obj._rbits_ |= rbits
         return objects
     def _find_in_cache_(entity, pkval, avdict, for_update=False):
         cache = entity._database_._get_cache()
