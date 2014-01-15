@@ -2664,8 +2664,8 @@ class EntityMeta(type):
         pkval, avdict = entity._normalize_args_(kwargs, False)
         rbits = 0
         for attr in avdict:
-            if attr.is_collection: throw(TypeError,
-                'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
+            if attr.is_collection:
+                throw(TypeError, 'Collection attribute %s cannot be specified as search criteria' % attr)
             bit = entity._bits_.get(attr)
             if bit is not None: rbits |= bit
         objects = entity._find_in_cache_(pkval, avdict, for_update)

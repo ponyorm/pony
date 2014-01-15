@@ -1,4 +1,5 @@
 import unittest
+from testutils import raises_exception
 from model1 import *
 
 class TestCollections(unittest.TestCase):
@@ -13,6 +14,11 @@ class TestCollections(unittest.TestCase):
         g = Group.get(number='4145')
         self.assert_(bool(g.students) == True)
         self.assert_(len(g.students) == 3)
+
+    @db_session
+    @raises_exception(TypeError, 'Collection attribute Group.students cannot be specified as search criteria')
+    def test_get_by_collection_error(self):
+        Group.get(students=[])
 
 # replace collection items when the old ones are not fully loaded
 ##>>> from pony.examples.orm.students01.model import *
