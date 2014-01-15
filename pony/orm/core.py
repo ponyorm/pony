@@ -1342,6 +1342,7 @@ class Discriminator(Required):
         entity._attrs_.append(attr)
         entity._new_attrs_.append(attr)
         entity._adict_['classtype'] = attr
+        entity._bits_[attr] = 0
         type.__setattr__(entity, 'classtype', attr)
         attr.process_entity_inheritance(entity)
     def process_entity_inheritance(attr, entity):
@@ -2393,10 +2394,10 @@ class EntityMeta(type):
         next_offset = _count().next
         all_bits = 0
         for attr in entity._attrs_:
-            if attr.is_collection or attr.is_discriminator or attr.pk_offset is not None: continue
-            next_bit = 1 << next_offset()
-            entity._bits_[attr] = next_bit
-            all_bits |= next_bit
+            if attr.is_collection or attr.is_discriminator or attr.pk_offset is not None: bit = 0
+            else: bit = 1 << next_offset()
+            all_bits |= bit
+            entity._bits_[attr] = bit
         entity._all_bits_ = all_bits
 
         try: table_name = entity.__dict__['_table_']
@@ -3495,10 +3496,7 @@ class Entity(object):
     def _attrs_with_bit_(entity, mask=-1):
         get_bit = entity._bits_.get
         for attr in entity._attrs_:
-            bit = get_bit(attr)
-            if bit is None: continue
-            if not bit & mask: continue
-            yield attr
+            if get_bit(attr) & mask: yield attr
     def _construct_optimistic_criteria_(obj):
         optimistic_columns = []
         optimistic_converters = []
