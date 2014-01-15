@@ -1680,7 +1680,10 @@ class Set(Collection):
         if not reverse.is_collection and reverse.pk_offset is None:
             added = setdata.added or ()
             for item in setdata:
-                if item not in added: item._rbits_ |= item._bits_[reverse]
+                if item in added: continue
+                bit = item._bits_[reverse]
+                assert item._wbits_ is not None
+                if not item._wbits_ & bit: item._rbits_ |= bit
         return set(setdata)
     @cut_traceback
     def __get__(attr, obj, cls=None):
