@@ -129,5 +129,24 @@ class TestOneToMany(unittest.TestCase):
         self.assertEquals(c, 1)
         self.assertTrue(db.last_sql is not None)
 
+    def test_7_rbits(self):
+        Group, Student = self.Group, self.Student
+        g = Group[101]
+
+        s1 = Student[1]
+        self.assertEquals(s1._rbits_, 0)
+        self.assertTrue(s1 in g.students)
+        self.assertEquals(s1._rbits_, Student._bits_[Student.group])
+
+        s3 = Student[3]
+        self.assertEquals(s3._rbits_, 0)
+        self.assertTrue(s3 not in g.students)
+        self.assertEquals(s3._rbits_, Student._bits_[Student.group])
+
+        s5 = Student(id=5, name='Student5', group=g)
+        self.assertEquals(s5._rbits_, None)
+        self.assertTrue(s5 in g.students)
+        self.assertEquals(s5._rbits_, None)
+
 if __name__ == '__main__':
     unittest.main()

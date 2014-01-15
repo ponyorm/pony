@@ -2048,16 +2048,17 @@ class SetWrapper(object):
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
         if not isinstance(item, attr.py_type): return False
+
         reverse = attr.reverse
         if not reverse.is_collection:
             obj2 = item._vals_.get(reverse.name, NOT_LOADED)
             if obj2 is NOT_LOADED: obj2 = reverse.load(item)
-            bit = item._bits_[reverse]
-
             wbits = item._wbits_
-            if wbits is not None and not wbits & bit: item._rbits_ |= bit
-
+            if wbits is not None:
+                bit = item._bits_[reverse]
+                if not wbits & bit: item._rbits_ |= bit
             return obj is obj2
+
         setdata = obj._vals_.get(attr.name)
         if setdata is not None:
             if item in setdata: return True
