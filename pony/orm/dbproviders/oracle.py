@@ -129,7 +129,7 @@ class OraBuilder(sqlbuilding.SQLBuilder):
             builder.indent += 1
             result.extend(builder.subquery(*sections))
             builder.indent -= 1
-            result.extend((indent, ') WHERE ROWNUM <= ', builder(limit)))
+            result.extend((indent, ') WHERE ROWNUM <= ', builder(limit), '\n'))
         else:
             indent2 = indent + builder.indent_spaces
             result = [ 'SELECT * FROM (\n', indent2, 'SELECT t.*, ROWNUM "row-num" FROM (\n' ]
@@ -142,7 +142,7 @@ class OraBuilder(sqlbuilding.SQLBuilder):
                 total_limit = [ 'VALUE', limit[1] + offset[1] ]
                 result.extend(('WHERE ROWNUM <= ', builder(total_limit), '\n'))
             else: result.extend(('WHERE ROWNUM <= ', builder(limit), ' + ', builder(offset), '\n'))
-            result.extend((indent, ') WHERE "row-num" > ', builder(offset)))
+            result.extend((indent, ') WHERE "row-num" > ', builder(offset), '\n'))
         if builder.indent:
             indent = builder.indent_spaces * builder.indent
             return '(\n', result, indent + ')'
