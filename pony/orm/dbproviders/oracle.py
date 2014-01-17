@@ -9,7 +9,7 @@ from uuid import UUID
 import cx_Oracle
 
 from pony.orm import core, sqlbuilding, dbapiprovider, sqltranslation
-from pony.orm.core import log_orm, log_sql, DatabaseError
+from pony.orm.core import log_orm, log_sql, DatabaseError, TranslationError
 from pony.orm.dbschema import DBSchema, DBObject, Table, Column
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, get_version_tuple
 from pony.utils import throw
@@ -114,6 +114,30 @@ class OraBuilder(sqlbuilding.SQLBuilder):
         if returning is not None:
             result.extend((' RETURNING ', builder.quote_name(returning), ' INTO :new_id'))
         return result
+    def SELECT_FOR_UPDATE(builder, nowait, *sections):
+        assert not builder.indent
+        last_section = sections[-1]
+        if last_section[0] != 'LIMIT':
+            return builder.SELECT(*sections), 'FOR UPDATE NOWAIT\n' if nowait else 'FOR UPDATE\n'
+
+        from_section = sections[1]
+        assert from_section[0] == 'FROM'
+        if len(from_section) > 2: throw(NotImplementedError,
+            'Table joins are not supported for Oracle queries which have both FOR UPDATE and ROWNUM')
+
+        order_by_section = None
+        for section in sections:
+            if section[0] == 'ORDER_BY': order_by_section = section
+
+        table_ast = from_section[1]
+        assert len(table_ast) == 3 and table_ast[1] == 'TABLE'
+        table_alias = table_ast[0]
+        rowid = [ 'COLUMN', table_alias, 'ROWID' ]
+        sql_ast = [ 'SELECT', sections[0], [ 'FROM', table_ast ], [ 'WHERE', [ 'IN', rowid,
+                    ('SELECT', [ 'ROWID', ['AS', rowid, 'row-id' ] ]) + sections[1:] ] ] ]
+        if order_by_section: sql_ast.append(order_by_section)
+        result = builder(sql_ast)
+        return result, 'FOR UPDATE NOWAIT\n' if nowait else 'FOR UPDATE\n'
     def SELECT(builder, *sections):
         last_section = sections[-1]
         limit = offset = None
@@ -123,16 +147,24 @@ class OraBuilder(sqlbuilding.SQLBuilder):
             sections = sections[:-1]
         result = builder.subquery(*sections)
         indent = builder.indent_spaces * builder.indent
+
+        if sections[0][0] == 'ROWID':
+            indent0 = builder.indent_spaces
+            x = 't."row-id"'
+        else:
+            indent0 = ''
+            x = 't.*'
+            
         if not limit: pass
         elif not offset:
-            result = [ 'SELECT * FROM (\n' ]
+            result = [ indent0, 'SELECT * FROM (\n' ]
             builder.indent += 1
             result.extend(builder.subquery(*sections))
             builder.indent -= 1
             result.extend((indent, ') WHERE ROWNUM <= ', builder(limit), '\n'))
         else:
             indent2 = indent + builder.indent_spaces
-            result = [ 'SELECT * FROM (\n', indent2, 'SELECT t.*, ROWNUM "row-num" FROM (\n' ]
+            result = [ indent0, 'SELECT %s FROM (\n' % x, indent2, 'SELECT t.*, ROWNUM "row-num" FROM (\n' ]
             builder.indent += 2
             result.extend(builder.subquery(*sections))
             builder.indent -= 2
@@ -142,15 +174,15 @@ class OraBuilder(sqlbuilding.SQLBuilder):
                 total_limit = [ 'VALUE', limit[1] + offset[1] ]
                 result.extend(('WHERE ROWNUM <= ', builder(total_limit), '\n'))
             else: result.extend(('WHERE ROWNUM <= ', builder(limit), ' + ', builder(offset), '\n'))
-            result.extend((indent, ') WHERE "row-num" > ', builder(offset), '\n'))
+            result.extend((indent, ') t WHERE "row-num" > ', builder(offset), '\n'))
         if builder.indent:
             indent = builder.indent_spaces * builder.indent
             return '(\n', result, indent + ')'
         return result
+    def ROWID(builder, *expr_list):
+        return builder.ALL(*expr_list)
     def LIMIT(builder, limit, offset=None):
         assert False
-        if not offset: return 'LIMIT ', builder(limit), '\n'
-        else: return 'LIMIT ', builder(limit), ' OFFSET ', builder(offset), '\n'
     def DATE(builder, expr):
         return 'TRUNC(', builder(expr), ')'
     def RANDOM(builder):
