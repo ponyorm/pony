@@ -389,6 +389,24 @@ WHERE (
     WHERE "s"."ID" = "t-1"."STUDENT"
     ) > 3
 
+>>> select(s for s in Student).for_update()[:3]
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "Student" "s"
+LIMIT 3
+
+Oracle:
+
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE "s"."ROWID" IN (
+    SELECT * FROM (
+        SELECT "s"."ROWID" AS "row-id"
+        FROM "STUDENT" "s"
+    ) WHERE ROWNUM <= 3
+    )
+FOR UPDATE
+
 >>> select(s for s in Student).order_by(Student.name).for_update()[:3]
 
 SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
@@ -398,9 +416,57 @@ LIMIT 3
 
 Oracle:
 
-SELECT * FROM (
-    SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
-    FROM "STUDENT" "s"
-    ORDER BY "s"."NAME"
-) WHERE ROWNUM <= 3
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE "s"."ROWID" IN (
+    SELECT * FROM (
+        SELECT "s"."ROWID" AS "row-id"
+        FROM "STUDENT" "s"
+        ORDER BY "s"."NAME"
+    ) WHERE ROWNUM <= 3
+    )
+ORDER BY "s"."NAME"
+FOR UPDATE
+
+>>> select(s for s in Student).order_by(Student.name).for_update()[3:6]
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "Student" "s"
+ORDER BY "s"."name"
+LIMIT 3 OFFSET 3
+
+Oracle:
+
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE "s"."ROWID" IN (
+    SELECT t."row-id" FROM (
+        SELECT t.*, ROWNUM "row-num" FROM (
+            SELECT "s"."ROWID" AS "row-id"
+            FROM "STUDENT" "s"
+            ORDER BY "s"."NAME"
+        ) t WHERE ROWNUM <= 6
+    ) t WHERE "row-num" > 3
+    )
+ORDER BY "s"."NAME"
+FOR UPDATE
+
+>>> select(s for s in Student).for_update()[3:6]
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "Student" "s"
+LIMIT 3 OFFSET 3
+
+Oracle:
+
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE "s"."ROWID" IN (
+    SELECT t."row-id" FROM (
+        SELECT t.*, ROWNUM "row-num" FROM (
+            SELECT "s"."ROWID" AS "row-id"
+            FROM "STUDENT" "s"
+        ) t WHERE ROWNUM <= 6
+    ) t WHERE "row-num" > 3
+    )
 FOR UPDATE
