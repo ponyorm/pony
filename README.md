@@ -9,6 +9,8 @@ Following is an example of a query in Pony:
 
 Pony translates queries to SQL using a specific database dialect. Currently Pony works with SQLite, MySQL, PostgreSQL and Oracle databases.
 
+Pony ORM also include the ER Diagram Editor which is a great tool for prototyping. You can create your ER diagram online at [https://editor.ponyorm.com](https://editor.ponyorm.com), generate the database schema based on the diagram and start working with the database using declarative queries in seconds.
+
 The package pony.orm.examples contains several examples.
 Documenation is available at [http://doc.ponyorm.com](http://doc.ponyorm.com)
 
@@ -17,11 +19,9 @@ We are looking forward to your comments and suggestions at our mailing list [htt
 License
 -----------
 
-Pony ORM is released under the GNU Affero General Public License version 3. 
-http://www.gnu.org/licenses/agpl
+Pony ORM is released under multiple licenses, check [ponyorm.com](http://ponyorm.com/license-and-pricing.html) for more information.
 
-Copyright (c) 2006-2013 Alexander Kozlovsky, Alexey Malashkevich. All rights reserved. 
+Copyright (c) 2014 Alexander Kozlovsky, Alexey Malashkevich. All rights reserved. 
 team (at) ponyorm.com
 
 Please send your questions, comments and suggestions to our mailing list [http://ponyorm-list.ponyorm.com](http://ponyorm-list.ponyorm.com)
-
