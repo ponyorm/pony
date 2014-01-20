@@ -190,6 +190,8 @@ class SQLBuilder(object):
         return [ 'INSERT INTO ', builder.quote_name(table_name), ' (',
                  join(', ', [builder.quote_name(column) for column in columns ]),
                  ') VALUES (', join(', ', [builder(value) for value in values]), ')' ]
+    def DEFAULT(builder):
+        return 'DEFAULT'
     def UPDATE(builder, table_name, pairs, where=None):
         return [ 'UPDATE ', builder.quote_name(table_name), '\nSET ',
                  join(', ', [ (builder.quote_name(name), ' = ', builder(param)) for name, param in pairs]),

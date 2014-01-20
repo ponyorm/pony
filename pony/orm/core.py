@@ -2415,11 +2415,10 @@ class EntityMeta(type):
         setattr(database, entity.__name__, entity)
         entity._link_reverse_attrs_()
 
-        entity._cached_create_sql_ = None
-        entity._cached_create_sql_auto_pk_ = None
         entity._cached_max_id_sql_ = None
         entity._find_sql_cache_ = {}
         entity._batchload_sql_cache_ = {}
+        entity._insert_sql_cache_ = {}
         entity._update_sql_cache_ = {}
         entity._delete_sql_cache_ = {}
 
@@ -3537,35 +3536,39 @@ class Entity(object):
                 val._save_(dependent_objects)
                 assert val._status_ == 'saved'
     def _save_created_(obj):
-        values = []
         auto_pk = (obj._pkval_ is None)
+        attrs = []
+        values = []
         for attr in obj._attrs_:
-            if not attr.columns: continue
             if attr.is_collection: continue
-            val = obj._vals_[attr.name]
             if auto_pk and attr.is_pk: continue
-            values.extend(attr.get_raw_values(val))
+            if not attr.columns: continue
+            val = obj._vals_[attr.name]
+            if val is not None:
+                attrs.append(attr)
+                values.extend(attr.get_raw_values(val))
+        attrs = tuple(attrs)
+
         database = obj._database_
-        if auto_pk: cached_sql = obj._cached_create_sql_auto_pk_
-        else: cached_sql = obj._cached_create_sql_
+        cached_sql = obj._insert_sql_cache_.get(attrs)
         if cached_sql is None:
-            entity = obj.__class__
-            if auto_pk:
-                columns = entity._columns_without_pk_
-                converters = entity._converters_without_pk_
-            else:
-                columns = entity._columns_
-                converters = entity._converters_
+            columns = []
+            converters = []
+            for attr in attrs:
+                columns.extend(attr.columns)
+                converters.extend(attr.converters)
             assert len(columns) == len(converters)
             params = [ [ 'PARAM', i,  converter ] for i, converter in enumerate(converters) ]
-            sql_ast = [ 'INSERT', entity._table_, columns, params ]
-            if auto_pk:
-                assert len(entity._pk_columns_) == 1
-                sql_ast.append(obj._pk_columns_[0])
+            entity = obj.__class__
+            if not columns and database.provider.dialect == 'Oracle':
+                sql_ast = [ 'INSERT', entity._table_, obj._pk_columns_,
+                            [ [ 'DEFAULT' ] for column in obj._pk_columns_ ] ]
+            else: sql_ast = [ 'INSERT', entity._table_, columns, params ]
+            if auto_pk: sql_ast.append(entity._pk_columns_[0])
             sql, adapter = database._ast2sql(sql_ast)
-            if auto_pk: entity._cached_create_sql_auto_pk_ = sql, adapter
-            else: entity._cached_create_sql_ = sql, adapter
+            entity._insert_sql_cache_[attrs] = sql, adapter
         else: sql, adapter = cached_sql
+
         arguments = adapter(values)
         try:
             if auto_pk: new_id = database._exec_sql(sql, arguments, returning_id=True)
