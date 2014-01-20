@@ -674,6 +674,8 @@ class Database(object):
                             'sql_type cannot be specified for composite attribute %s' % attr)
                         for (column_name, converter) in zip(columns, attr.converters):
                             table.add_column(column_name, converter.sql_type(), not attr.nullable)
+            entity._attrs_with_columns_ = [ attr for attr in entity._attrs_
+                                                 if not attr.is_collection and attr.columns ]
             if not table.pk_index:
                 if len(entity._pk_columns_) == 1 and entity._pk_attrs_[0].auto: is_pk = "auto"
                 else: is_pk = True
@@ -688,8 +690,7 @@ class Database(object):
             columns_without_pk = []
             converters = []
             converters_without_pk = []
-            for attr in entity._attrs_:
-                if attr.is_collection: continue
+            for attr in entity._attrs_with_columns_:
                 columns.extend(attr.columns)  # todo: inheritance
                 converters.extend(attr.converters)
                 if not attr.is_pk:
@@ -2757,9 +2758,7 @@ class EntityMeta(type):
         col_names = [ column_info[0].upper() for column_info in cursor.description ]
         attr_offsets = {}
         used_columns = set()
-        for attr in entity._attrs_:
-            if attr.is_collection: continue
-            if not attr.columns: continue
+        for attr in entity._attrs_with_columns_:
             offsets = []
             for column in attr.columns:
                 try: offset = col_names.index(column.upper())
@@ -3545,10 +3544,8 @@ class Entity(object):
         auto_pk = (obj._pkval_ is None)
         attrs = []
         values = []
-        for attr in obj._attrs_:
-            if attr.is_collection: continue
+        for attr in obj._attrs_with_columns_:
             if auto_pk and attr.is_pk: continue
-            if not attr.columns: continue
             val = obj._vals_[attr.name]
             if val is not None:
                 attrs.append(attr)
