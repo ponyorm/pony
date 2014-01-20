@@ -3516,10 +3516,9 @@ class Entity(object):
             dbval = obj._dbvals_.get(attr.name, NOT_LOADED)
             assert dbval is not NOT_LOADED
             optimistic_columns.extend(attr.columns)
-            if dbval is not None:
-                optimistic_converters.extend(attr.converters)
-            else:
-                optimistic_converters.extend(None for converter in attr.converters)
+            if dbval is not None: converters = attr.converters
+            else: converters = repeat(None, len(attr.converters))
+            optimistic_converters.extend(converters)
             optimistic_values.extend(attr.get_raw_values(dbval))
         return optimistic_columns, optimistic_converters, optimistic_values
     def _save_principal_objects_(obj, dependent_objects):
