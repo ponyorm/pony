@@ -21,7 +21,11 @@ License
 
 Pony ORM is released under multiple licenses, check [ponyorm.com](http://ponyorm.com/license-and-pricing.html) for more information.
 
-Copyright (c) 2014 Alexander Kozlovsky, Alexey Malashkevich. All rights reserved. 
+Pony ORM documentation is licensed under a Creative Commons Attribution-ShareAlike 3.0 Unported License.
+
+By editing or otherwise contributing to Pony ORM documentation, you agree to license any text you change or contribute under the CC BY-SA license.
+
+Copyright (c) 2014 Pony ORM, LLC. All rights reserved.
 team (at) ponyorm.com
 
 Please send your questions, comments and suggestions to our mailing list [http://ponyorm-list.ponyorm.com](http://ponyorm-list.ponyorm.com)
