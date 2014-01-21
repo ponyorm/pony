@@ -3503,18 +3503,16 @@ class Entity(object):
             else: collection_avdict[attr] = new_val
         return avdict, collection_avdict
     @classmethod
-    def _attrs_with_bit_(entity, mask=-1):
+    def _attrs_with_bit_(entity, attrs, mask=-1):
         get_bit = entity._bits_.get
-        for attr in entity._attrs_:
+        for attr in attrs:
             if get_bit(attr) & mask: yield attr
     def _construct_optimistic_criteria_(obj):
         optimistic_columns = []
         optimistic_converters = []
         optimistic_values = []
-        for attr in obj._attrs_with_bit_(obj._rbits_):
-            if not attr.columns: continue
-            dbval = obj._dbvals_.get(attr.name, NOT_LOADED)
-            assert dbval is not NOT_LOADED
+        for attr in obj._attrs_with_bit_(obj._attrs_with_columns_, obj._rbits_):
+            dbval = obj._dbvals_[attr.name]
             optimistic_columns.extend(attr.columns)
             if dbval is not None: converters = attr.converters
             else: converters = repeat(None, len(attr.converters))
@@ -3528,17 +3526,14 @@ class Entity(object):
             throw(UnresolvableCyclicDependency, 'Cannot save cyclic chain: ' + chain)
         dependent_objects.append(obj)
         status = obj._status_
-        if status == 'created': attr_iter = obj._attrs_with_bit_()
-        elif status == 'updated': attr_iter = obj._attrs_with_bit_(obj._wbits_)
+        if status == 'created': attrs = obj._attrs_with_columns_
+        elif status == 'updated': attrs = obj._attrs_with_bit_(obj._attrs_with_columns_, obj._wbits_)
         else: assert False
-        for attr in attr_iter:
-            val = obj._vals_[attr.name]
+        for attr in attrs:
             if not attr.reverse: continue
-            if not attr.columns: continue
-            if val is None: continue
-            if val._status_ == 'created':
+            val = obj._vals_[attr.name]
+            if val is not None and val._status_ == 'created':
                 val._save_(dependent_objects)
-                assert val._status_ == 'saved'
     def _save_created_(obj):
         auto_pk = (obj._pkval_ is None)
         attrs = []
@@ -3598,14 +3593,13 @@ class Entity(object):
         obj._rbits_ = obj._all_bits_except_volatile_
         obj._wbits_ = 0
         bits = obj._bits_
-        for attr in obj._attrs_:
+        for attr in obj._attrs_with_columns_:
             if attr not in bits: continue
             obj._dbvals_[attr.name] = obj._vals_[attr.name]
     def _save_updated_(obj):
         update_columns = []
         values = []
-        for attr in obj._attrs_with_bit_(obj._wbits_):
-            if not attr.columns: continue
+        for attr in obj._attrs_with_bit_(obj._attrs_with_columns_, obj._wbits_):
             update_columns.extend(attr.columns)
             val = obj._vals_[attr.name]
             values.extend(attr.get_raw_values(val))
@@ -3625,8 +3619,7 @@ class Entity(object):
             cached_sql = obj._update_sql_cache_.get(query_key)
             if cached_sql is None:
                 update_converters = []
-                for attr in obj._attrs_with_bit_(obj._wbits_):
-                    if not attr.columns: continue
+                for attr in obj._attrs_with_bit_(obj._attrs_with_columns_, obj._wbits_):
                     update_converters.extend(attr.converters)
                 assert len(update_columns) == len(update_converters)
                 update_params = [ [ 'PARAM', i, converter ] for i, converter in enumerate(update_converters) ]
@@ -3648,10 +3641,11 @@ class Entity(object):
         obj._status_ = 'saved'
         obj._rbits_ |= obj._wbits_ & obj._all_bits_except_volatile_
         obj._wbits_ = 0
-        for attr in obj._attrs_with_bit_():
-            val = obj._vals_.get(attr.name, NOT_LOADED)
-            if val is NOT_LOADED: assert attr.name not in obj._dbvals_
-            else: obj._dbvals_[attr.name] = val
+        vals = obj._vals_
+        dbvals = obj._dbvals_
+        for attr in obj._attrs_with_columns_:
+            n = attr.name
+            if n in vals: dbvals[n] = vals[n]
     def _save_deleted_(obj):
         values = []
         values.extend(obj._get_raw_pkval_())
