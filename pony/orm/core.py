@@ -1182,7 +1182,7 @@ class Attribute(object):
         assert obj._status_ not in created_or_deleted_statuses
         assert attr.pk_offset is None
         if new_dbval is NOT_LOADED: assert is_reverse_call
-        old_dbval = obj._dbvals_.get(attr.name, NOT_LOADED)
+        old_dbval = obj._dbvals_.get(attr, NOT_LOADED)
 
         if attr.py_type is float:
             if old_dbval is NOT_LOADED: pass
@@ -1198,8 +1198,8 @@ class Attribute(object):
                 'Value of %s.%s for %s was updated outside of current transaction%s'
                 % (obj.__class__.__name__, attr.name, obj, diff))
 
-        if new_dbval is NOT_LOADED: obj._dbvals_.pop(attr.name, None)
-        else: obj._dbvals_[attr.name] = new_dbval
+        if new_dbval is NOT_LOADED: obj._dbvals_.pop(attr, None)
+        else: obj._dbvals_[attr] = new_dbval
 
         wbit = bool(obj._wbits_ & bit)
         if not wbit:
@@ -3279,7 +3279,7 @@ class Entity(object):
         for attr, new_dbval in avdict.items():
             assert attr.pk_offset is None
             assert new_dbval is not NOT_LOADED
-            old_dbval = get_dbval(attr.name, NOT_LOADED)
+            old_dbval = get_dbval(attr, NOT_LOADED)
             if unpickling and old_dbval is not NOT_LOADED:
                 del avdict[attr]
                 continue
@@ -3298,7 +3298,7 @@ class Entity(object):
                 % (obj.__class__.__name__, attr.name, obj, old_dbval, new_dbval))
 
             if attr.reverse: attr.db_update_reverse(obj, old_dbval, new_dbval)
-            obj._dbvals_[attr.name] = new_dbval
+            obj._dbvals_[attr] = new_dbval
             if wbits & bit: del avdict[attr]
             if attr.is_unique:
                 old_val = get_val(attr, NOT_LOADED)
@@ -3506,7 +3506,7 @@ class Entity(object):
         optimistic_converters = []
         optimistic_values = []
         for attr in obj._attrs_with_bit_(obj._attrs_with_columns_, obj._rbits_):
-            dbval = obj._dbvals_[attr.name]
+            dbval = obj._dbvals_[attr]
             optimistic_columns.extend(attr.columns)
             if dbval is not None: converters = attr.converters
             else: converters = repeat(None, len(attr.converters))
@@ -3589,7 +3589,7 @@ class Entity(object):
         bits = obj._bits_
         for attr in obj._attrs_with_columns_:
             if attr not in bits: continue
-            obj._dbvals_[attr.name] = obj._vals_[attr]
+            obj._dbvals_[attr] = obj._vals_[attr]
     def _save_updated_(obj):
         update_columns = []
         values = []
