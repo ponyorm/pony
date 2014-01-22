@@ -1742,14 +1742,14 @@ class Set(Collection):
             if added: (to_remove, setdata.added) = (to_remove - added, added - to_remove)
             if removed: removed |= to_remove
             else: setdata.removed = to_remove  # removed may be None
-        cache.modified_collections.setdefault(attr, set()).add(obj)
+        cache.modified_collections[attr].add(obj)
         cache.modified = True
     def __delete__(attr, obj):
         throw(NotImplementedError)
     def reverse_add(attr, objects, item, undo_funcs):
         undo = []
         cache = item._cache_
-        objects_with_modified_collections = cache.modified_collections.setdefault(attr, set())
+        objects_with_modified_collections = cache.modified_collections[attr]
         for obj in objects:
             setdata = obj._vals_.get(attr.name)
             if setdata is None: setdata = obj._vals_[attr.name] = SetData()
@@ -1783,7 +1783,7 @@ class Set(Collection):
     def reverse_remove(attr, objects, item, undo_funcs):
         undo = []
         cache = item._cache_
-        objects_with_modified_collections = cache.modified_collections.setdefault(attr, set())
+        objects_with_modified_collections = cache.modified_collections[attr]
         for obj in objects:
             setdata = obj._vals_.get(attr.name)
             assert setdata is not None
@@ -2113,7 +2113,7 @@ class SetWrapper(object):
         if added: added |= new_items
         else: setdata.added = new_items  # added may be None
 
-        cache.modified_collections.setdefault(attr, set()).add(obj)
+        cache.modified_collections[attr].add(obj)
         cache.modified = True
     @cut_traceback
     def __iadd__(wrapper, items):
@@ -2153,7 +2153,7 @@ class SetWrapper(object):
         if removed: removed |= items
         else: setdata.removed = items  # removed may be None
 
-        cache.modified_collections.setdefault(attr, set()).add(obj)
+        cache.modified_collections[attr].add(obj)
         cache.modified = True
     @cut_traceback
     def __isub__(wrapper, items):
@@ -3396,9 +3396,7 @@ class Entity(object):
                     for attr in obj._attrs_:
                         if attr.pk_offset is not None: continue
                         obj._vals_.pop(attr.name, None)
-                        if attr.is_collection:
-                            mc = cache.modified_collections.get(attr)
-                            if mc is not None: mc.discard(obj)
+                        if attr.is_collection: cache.modified_collections[attr].discard(obj)                            
                     if obj._pkval_ is not None:
                         del indexes[obj._pk_attrs_][obj._pkval_]
                 else:
@@ -3697,7 +3695,7 @@ class Cache(object):
         cache.collection_statistics = {}
         cache.for_update = set()
         cache.noflush_counter = 0
-        cache.modified_collections = {}
+        cache.modified_collections = defaultdict(set)
         cache.objects_to_save = []
         cache.query_results = {}
         cache.modified = False
