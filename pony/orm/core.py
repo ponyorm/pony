@@ -839,11 +839,6 @@ class DefaultValueType(object):
 
 DEFAULT = DefaultValueType()
 
-class NoUndoNeededValueType(object):
-    def __repr__(self): return 'NO_UNDO_NEEDED'
-
-NO_UNDO_NEEDED = NoUndoNeededValueType()
-
 class DescWrapper(object):
     def __init__(self, attr):
         self.attr = attr
@@ -1143,22 +1138,19 @@ class Attribute(object):
                     assert obj not in objects_to_save
                 obj._vals_[attr] = old_val
                 for index, old_key, new_key in undo:
-                    if new_key is NO_UNDO_NEEDED: pass
-                    else: del index[new_key]
-                    if old_key is NO_UNDO_NEEDED: pass
-                    else: index[old_key] = obj
+                    if new_key is not None: del index[new_key]
+                    if old_key is not None: index[old_key] = obj
             undo_funcs.append(undo_func)
             if old_val == new_val: return
             try:
                 if attr.is_unique:
                     cache.update_simple_index(obj, attr, old_val, new_val, undo)
                 for attrs, i in attr.composite_keys:
-                    get = obj._vals_.get
-                    vals = [ get(a, NOT_LOADED) for a in attrs ]
-                    currents = tuple(vals)
+                    vals = map(obj._vals_.get, attrs)
+                    prev_vals = tuple(vals)
                     vals[i] = new_val
-                    vals = tuple(vals)
-                    cache.update_composite_index(obj, attrs, currents, vals, undo)
+                    new_vals = tuple(vals)
+                    cache.update_composite_index(obj, attrs, prev_vals, new_vals, undo)
 
                 obj._vals_[attr] = new_val
 
@@ -1207,7 +1199,7 @@ class Attribute(object):
                 cache = obj._cache_
                 if attr.is_unique: cache.db_update_simple_index(obj, attr, old_val, new_dbval)
                 for attrs, i in attr.composite_keys:
-                    vals = [ obj._vals_.get(a, NOT_LOADED) for a in attrs ]
+                    vals = map(obj._vals_.get, attrs)
                     old_vals = tuple(vals)
                     vals[i] = new_dbval
                     new_vals = tuple(vals)
@@ -2686,13 +2678,12 @@ class EntityMeta(type):
                     obj = indexes[attr].get(val)
                     if obj is not None: break
         if obj is None:
-            NOT_FOUND = object()
             for attrs in entity._composite_keys_:
-                vals = tuple(avdict.get(attr, NOT_FOUND) for attr in attrs)
-                if NOT_FOUND in vals: continue
+                vals = map(avdict.get, attrs)
+                if None in vals: continue
                 index = indexes.get(attrs)
                 if index is None: continue
-                obj = index.get(vals)
+                obj = index.get(tuple(vals))
                 if obj is not None: break
         if obj is None:
             for attr, val in avdict.iteritems():
@@ -3171,13 +3162,14 @@ class Entity(object):
         with cache.flush_disabled():
             for attr in entity._simple_keys_:
                 val = avdict[attr]
-                if val is None and cache.ignore_none: continue
+                if val is None: continue
                 if val in indexes[attr]: throw(CacheIndexError,
                     'Cannot create %s: value %r for key %s already exists' % (entity.__name__, val, attr.name))
                 indexes_update[attr] = val
             for attrs in entity._composite_keys_:
-                vals = tuple(map(avdict.__getitem__, attrs))
-                if cache.ignore_none and None in vals: continue
+                vals = map(avdict.__getitem__, attrs)
+                if None in vals: continue
+                vals = tuple(vals)
                 if vals in indexes[attrs]:
                     attr_names = ', '.join(attr.name for attr in attrs)
                     throw(CacheIndexError, 'Cannot create %s: value %s for composite key (%s) already exists'
@@ -3298,23 +3290,20 @@ class Entity(object):
             obj._dbvals_[attr] = new_dbval
             if wbits & bit: del avdict[attr]
             if attr.is_unique:
-                old_val = get_val(attr, NOT_LOADED)
+                old_val = get_val(attr)
                 if old_val != new_dbval:
                     cache.db_update_simple_index(obj, attr, old_val, new_dbval)
 
-        NOT_FOUND = object()
         for attrs in obj._composite_keys_:
             for attr in attrs:
                 if attr in avdict: break
             else: continue
-            vals = [ get_val(a, NOT_LOADED) for a in attrs ]
-            currents = tuple(vals)
+            vals = map(get_val, attrs)
+            prev_vals = tuple(vals)
             for i, attr in enumerate(attrs):
-                new_dbval = avdict.get(attr, NOT_FOUND)
-                if new_dbval is NOT_FOUND: continue
-                vals[i] = new_dbval
-            vals = tuple(vals)
-            cache.db_update_composite_index(obj, attrs, currents, vals)
+                if attr in avdict: vals[i] = avdict[attr]
+            new_vals = tuple(vals)
+            cache.db_update_composite_index(obj, attrs, prev_vals, new_vals)
 
         for attr, new_dbval in avdict.iteritems():
             obj._vals_[attr] = new_dbval
@@ -3366,19 +3355,18 @@ class Entity(object):
 
                 indexes = cache.indexes
                 for attr in obj._simple_keys_:
-                    if val not in obj._vals_: continue
                     val = get_val(attr)
-                    if val is None and cache.ignore_none: continue
+                    if val is None: continue
                     index = indexes[attr]
                     obj2 = index.pop(val)
                     assert obj2 is obj
                     undo_list.append((index, val))
 
                 for attrs in obj._composite_keys_:
-                    vals = tuple(get_val(a, NOT_LOADED) for a in attrs)
-                    if NOT_LOADED in vals: continue
-                    if cache.ignore_none and None in vals: continue
+                    vals = map(get_val, attrs)
+                    if None in vals: continue
                     index = indexes[attrs]
+                    vals = tuple(vals)
                     obj2 = index.pop(vals)
                     assert obj2 is obj
                     undo_list.append((index, vals))
@@ -3443,33 +3431,27 @@ class Entity(object):
                     if objects_to_save and objects_to_save[-1] is obj: objects_to_save.pop()
                     assert obj not in objects_to_save
                 for index, old_key, new_key in undo:
-                    if new_key is NO_UNDO_NEEDED: pass
-                    else: del index[new_key]
-                    if old_key is NO_UNDO_NEEDED: pass
-                    else: index[old_key] = obj
-            NOT_FOUND = object()
+                    if new_key is not None: del index[new_key]
+                    if old_key is not None: index[old_key] = obj
             try:
                 for attr in obj._simple_keys_:
-                    new_val = avdict.get(attr, NOT_FOUND)
-                    if new_val is NOT_FOUND: continue
-                    old_val = get_val(attr, NOT_LOADED)
-                    if old_val == new_val: continue
-                    cache.update_simple_index(obj, attr, old_val, new_val, undo)
+                    if attr not in avdict: continue
+                    new_val = avdict[attr]
+                    old_val = get_val(attr)
+                    if old_val != new_val: cache.update_simple_index(obj, attr, old_val, new_val, undo)
                 for attrs in obj._composite_keys_:
                     for attr in attrs:
                         if attr in avdict: break
                     else: continue
-                    vals = [ get_val(a, NOT_LOADED) for a in attrs ]
-                    currents = tuple(vals)
+                    vals = maps(get_val, attrs)
+                    prev_vals = tuple(vals)
                     for i, attr in enumerate(attrs):
-                        new_val = avdict.get(attr, NOT_FOUND)
-                        if new_val is NOT_FOUND: continue
-                        vals[i] = new_val
-                    vals = tuple(vals)
-                    cache.update_composite_index(obj, attrs, currents, vals, undo)
+                        if attr in avdict: vals[i] = avdict[attr]
+                    new_vals = tuple(vals)
+                    cache.update_composite_index(obj, attrs, prev_vals, new_vals, undo)
                 for attr, new_val in avdict.iteritems():
                     if not attr.reverse: continue
-                    old_val = get_val(attr, NOT_LOADED)
+                    old_val = get_val(attr)
                     attr.update_reverse(obj, old_val, new_val, undo_funcs)
                 for attr, new_val in collection_avdict.iteritems():
                     attr.__set__(obj, new_val, undo_funcs)
@@ -3675,7 +3657,6 @@ class Cache(object):
         cache.is_alive = True
         cache.num = next_num()
         cache.database = database
-        cache.ignore_none = database.provider.ignore_none
         cache.indexes = defaultdict(dict)
         cache.seeds = defaultdict(set)
         cache.max_id_cache = {}
@@ -3839,58 +3820,44 @@ class Cache(object):
     def update_simple_index(cache, obj, attr, old_val, new_val, undo):
         assert old_val != new_val
         index = cache.indexes[attr]
-        if new_val is None and cache.ignore_none: new_val = NO_UNDO_NEEDED
-        else:
+        if new_val is not None:
             obj2 = index.setdefault(new_val, obj)
             if obj2 is not obj: throw(CacheIndexError, 'Cannot update %s.%s: %s with key %s already exists'
                                                  % (obj.__class__.__name__, attr.name, obj2, new_val))
-        if old_val is NOT_LOADED: old_val = NO_UNDO_NEEDED
-        elif old_val is None and cache.ignore_none: old_val = NO_UNDO_NEEDED
-        else: del index[old_val]
+        if old_val is not None: del index[old_val]
         undo.append((index, old_val, new_val))
     def db_update_simple_index(cache, obj, attr, old_dbval, new_dbval):
         assert old_dbval != new_dbval
         index = cache.indexes[attr]
-        if new_dbval is NOT_LOADED: pass
-        elif new_dbval is None and cache.ignore_none: pass
-        else:
+        if new_dbval is not None:
             obj2 = index.setdefault(new_dbval, obj)
             if obj2 is not obj: throw(TransactionIntegrityError,
                 '%s with unique index %s.%s already exists: %s'
                 % (obj2.__class__.__name__, obj.__class__.__name__, attr.name, new_dbval))
                 # attribute which was created or updated lately clashes with one stored in database
         index.pop(old_dbval, None)
-    def update_composite_index(cache, obj, attrs, currents, vals, undo):
-        if cache.ignore_none:
-            if None in currents: currents = NO_UNDO_NEEDED
-            if None in vals: vals = NO_UNDO_NEEDED
-        if currents is NO_UNDO_NEEDED: pass
-        elif NOT_LOADED in currents: currents = NO_UNDO_NEEDED
-        if vals is NO_UNDO_NEEDED: pass
-        elif NOT_LOADED in vals: vals = NO_UNDO_NEEDED
-        if currents is NO_UNDO_NEEDED and vals is NO_UNDO_NEEDED: return
+    def update_composite_index(cache, obj, attrs, prev_vals, new_vals, undo):
+        if None in prev_vals: prev_vals = None
+        if None in new_vals: new_vals = None
+        if prev_vals is None and new_vals is None: return
         index = cache.indexes[attrs]
-        if vals is NO_UNDO_NEEDED: pass
-        else:
-            obj2 = index.setdefault(vals, obj)
+        if new_vals is not None:
+            obj2 = index.setdefault(new_vals, obj)
             if obj2 is not obj:
                 attr_names = ', '.join(attr.name for attr in attrs)
                 throw(CacheIndexError, 'Cannot update %r: composite key (%s) with value %s already exists for %r'
-                                 % (obj, attr_names, vals, obj2))
-        if currents is NO_UNDO_NEEDED: pass
-        else: del index[currents]
-        undo.append((index, currents, vals))
-    def db_update_composite_index(cache, obj, attrs, currents, vals):
+                                 % (obj, attr_names, new_vals, obj2))
+        if prev_vals is not None: del index[prev_vals]
+        undo.append((index, prev_vals, new_vals))
+    def db_update_composite_index(cache, obj, attrs, prev_vals, new_vals):
         index = cache.indexes[attrs]
-        if NOT_LOADED in vals: pass
-        elif None in vals and cache.ignore_none: pass
-        else:
-            obj2 = index.setdefault(vals, obj)
+        if None not in new_vals:
+            obj2 = index.setdefault(new_vals, obj)
             if obj2 is not obj:
-                key_str = ', '.join(repr(item) for item in vals)
+                key_str = ', '.join(repr(item) for item in new_vals)
                 throw(TransactionIntegrityError, '%s with unique index (%s) already exists: %s'
                                  % (obj2.__class__.__name__, ', '.join(attr.name for attr in attrs), key_str))
-        index.pop(currents, None)
+        index.pop(prev_vals, None)
 
 ###############################################################################
 
