@@ -1557,7 +1557,8 @@ class Set(Collection):
 
         counter = cache.collection_statistics.setdefault(attr, 0)
         nplus1_threshold = attr.nplus1_threshold
-        prefetching = not attr.lazy and nplus1_threshold is not None and counter >= nplus1_threshold
+        prefetching = not attr.lazy and nplus1_threshold is not None \
+                      and (counter >= nplus1_threshold or cache.noflush_counter)
 
         if items:
             if not reverse.is_collection:
