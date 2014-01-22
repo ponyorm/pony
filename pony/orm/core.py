@@ -1096,10 +1096,8 @@ class Attribute(object):
         return result
     def get(attr, obj):
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        val = obj._vals_.get(attr, NOT_LOADED)
-        if val is NOT_LOADED: val = attr.load(obj)
-        if val is None: return val
-        if attr.reverse and val._subclasses_:
+        val = obj._vals_[attr] if attr in obj._vals_ else attr.load(obj)
+        if val is not None and attr.reverse and val._subclasses_:
             seeds = obj._cache_.seeds[val._pk_attrs_]
             if val in seeds: val._load_()
         return val
@@ -2053,8 +2051,7 @@ class SetWrapper(object):
 
         reverse = attr.reverse
         if not reverse.is_collection:
-            obj2 = item._vals_.get(reverse, NOT_LOADED)
-            if obj2 is NOT_LOADED: obj2 = reverse.load(item)
+            obj2 = item._vals_[reverse] if reverse in item._vals_ else reverse.load(item)
             wbits = item._wbits_
             if wbits is not None:
                 bit = item._bits_except_volatile_[reverse]
@@ -3343,10 +3340,8 @@ class Entity(object):
                     reverse = attr.reverse
                     if not reverse: continue
                     if not attr.is_collection:
-                        val = get_val(attr, NOT_LOADED)
-                        if val is None: continue
                         if not reverse.is_collection:
-                            if val is NOT_LOADED: val = attr.load(obj)
+                            val = get_val(attr) if attr in obj._vals_ else attr.load(obj)
                             if val is None: continue
                             if attr.cascade_delete: val._delete_()
                             elif not reverse.is_required: reverse.__set__(val, None, undo_funcs)
@@ -3354,8 +3349,9 @@ class Entity(object):
                                                          "and 'cascade_delete' option of %s is not set"
                                                          % (obj, attr.name, attr))
                         elif isinstance(reverse, Set):
-                            if val is NOT_LOADED: pass
-                            else: reverse.reverse_remove((val,), obj, undo_funcs)
+                            if attr not in obj._vals_: continue
+                            val = get_val(attr)
+                            reverse.reverse_remove((val,), obj, undo_funcs)
                         else: throw(NotImplementedError)
                     elif isinstance(attr, Set):
                         set_wrapper = attr.__get__(obj)
@@ -3370,8 +3366,8 @@ class Entity(object):
 
                 indexes = cache.indexes
                 for attr in obj._simple_keys_:
-                    val = get_val(attr, NOT_LOADED)
-                    if val is NOT_LOADED: continue
+                    if val not in obj._vals_: continue
+                    val = get_val(attr)
                     if val is None and cache.ignore_none: continue
                     index = indexes[attr]
                     obj2 = index.pop(val)
@@ -3420,9 +3416,8 @@ class Entity(object):
             get_val = obj._vals_.get
             if avdict:
                 for attr in avdict:
-                    old_val = get_val(attr, NOT_LOADED)
-                    if old_val is NOT_LOADED and attr.reverse and not attr.reverse.is_collection:
-                        attr.load(obj)
+                    if attr not in obj._vals_ and attr.reverse and not attr.reverse.is_collection:
+                        attr.load(obj)  # loading of one-to-one relations
                 if wbits is not None:
                     new_wbits = wbits
                     for attr in avdict: new_wbits |= obj._bits_[attr]
@@ -3489,12 +3484,10 @@ class Entity(object):
             attr = get(name)
             if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
             new_val = attr.check(new_val, obj, from_db=False)
-            if not attr.is_collection:
-                if attr.pk_offset is not None:
-                    old_val = obj._vals_.get(attr, NOT_LOADED)
-                    if old_val != new_val: throw(TypeError, 'Cannot change value of primary key attribute %s' % attr.name)
-                else: avdict[attr] = new_val
-            else: collection_avdict[attr] = new_val
+            if attr.is_collection: collection_avdict[attr] = new_val
+            elif attr.pk_offset is None: avdict[attr] = new_val
+            elif obj._vals_.get(attr, new_val) != new_val:
+                throw(TypeError, 'Cannot change value of primary key attribute %s' % attr.name)
         return avdict, collection_avdict
     @classmethod
     def _attrs_with_bit_(entity, attrs, mask=-1):
