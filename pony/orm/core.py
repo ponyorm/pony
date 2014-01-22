@@ -1136,7 +1136,8 @@ class Attribute(object):
                     objects_to_save = cache.objects_to_save
                     if objects_to_save and objects_to_save[-1] is obj: objects_to_save.pop()
                     assert obj not in objects_to_save
-                obj._vals_[attr] = old_val
+                if old_val is NOT_LOADED: obj._vals_.pop(attr)
+                else: obj._vals_[attr] = old_val
                 for index, old_key, new_key in undo:
                     if new_key is not None: del index[new_key]
                     if old_key is not None: index[old_key] = obj
