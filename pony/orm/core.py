@@ -3332,14 +3332,12 @@ class Entity(object):
         with cache.flush_disabled():
             get_val = obj._vals_.get
             undo_list = []
-            undo_dict = {}
             def undo_func():
                 obj._status_ = status
                 if status in ('loaded', 'saved'):
                     objects_to_save = cache.objects_to_save
                     if objects_to_save and objects_to_save[-1] is obj: objects_to_save.pop()
                     assert obj not in objects_to_save
-                obj._vals_.update((attr.name, val) for attr, val in undo_dict.iteritems())
                 for index, old_key in undo_list: index[old_key] = obj
             undo_funcs.append(undo_func)
             try:
@@ -3393,12 +3391,11 @@ class Entity(object):
 
                 if status == 'created':
                     obj._status_ = 'cancelled'
-                    for attr in obj._attrs_:
-                        if attr.pk_offset is not None: continue
-                        obj._vals_.pop(attr.name, None)
-                        if attr.is_collection: cache.modified_collections[attr].discard(obj)                            
                     if obj._pkval_ is not None:
-                        del indexes[obj._pk_attrs_][obj._pkval_]
+                        pk_index = indexes[obj._pk_attrs_]
+                        obj2 = pk_index.pop(obj._pkval_)
+                        assert obj2 is obj
+                        undo_list.append((pk_index, obj._pkval_))
                 else:
                     if status != 'updated':
                         assert status in ('loaded', 'saved')
