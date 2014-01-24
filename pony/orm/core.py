@@ -3543,7 +3543,7 @@ class Entity(object):
         except IntegrityError, e:
             msg = " ".join(tostring(arg) for arg in e.args)
             throw(TransactionIntegrityError,
-                  'Object %r cannot be stored in the database (probably it already exists). %s: %s'
+                  'Object %r cannot be stored in the database. %s: %s'
                   % (obj, e.__class__.__name__, msg), e)
         except DatabaseError, e:
             msg = " ".join(tostring(arg) for arg in e.args)
