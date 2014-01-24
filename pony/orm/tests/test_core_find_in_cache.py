@@ -48,7 +48,7 @@ with db_session:
 
 def is_seed(entity, pk):
     cache = entity._database_._get_cache()
-    return pk in [ obj._pk_ for obj in cache.seeds[entity.__dict__['_pk_']] ]
+    return pk in [ obj._pk_ for obj in cache.seeds[entity._pk_attrs_] ]
 
 class TestInheritance(unittest.TestCase):
     def setUp(self):

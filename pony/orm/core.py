@@ -11,6 +11,7 @@ from random import shuffle, randint
 from threading import Lock, currentThread as current_thread, _MainThread
 from __builtin__ import min as _min, max as _max, sum as _sum
 from contextlib import contextmanager
+from collections import defaultdict
 
 import pony
 from pony import options
@@ -674,7 +675,7 @@ class Database(object):
                         for (column_name, converter) in zip(columns, attr.converters):
                             table.add_column(column_name, converter.sql_type(), not attr.nullable)
             if not table.pk_index:
-                if len(entity._pk_columns_) == 1 and entity.__dict__['_pk_'].auto: is_pk = "auto"
+                if len(entity._pk_columns_) == 1 and entity._pk_attrs_[0].auto: is_pk = "auto"
                 else: is_pk = True
                 table.add_index(None, get_columns(table, entity._pk_columns_), is_pk)
             for key in entity._keys_:
@@ -1095,9 +1096,9 @@ class Attribute(object):
         val = obj._vals_.get(attr.name, NOT_LOADED)
         if val is NOT_LOADED: val = attr.load(obj)
         if val is None: return val
-        if attr.reverse and val._discriminator_ is not None and val._subclasses_:
-            seeds = obj._cache_.seeds.get(val.__class__.__dict__['_pk_'])
-            if seeds and val in seeds: val._load_()
+        if attr.reverse and val._subclasses_:
+            seeds = obj._cache_.seeds[val._pk_attrs_]
+            if val in seeds: val._load_()
         return val
     @cut_traceback
     def __set__(attr, obj, new_val, undo_funcs=None):
@@ -1341,6 +1342,7 @@ class Discriminator(Required):
         entity._attrs_.append(attr)
         entity._new_attrs_.append(attr)
         entity._adict_['classtype'] = attr
+        entity._bits_[attr] = 0
         type.__setattr__(entity, 'classtype', attr)
         attr.process_entity_inheritance(entity)
     def process_entity_inheritance(attr, entity):
@@ -1382,7 +1384,7 @@ def composite_key(*attrs):
         attr.is_part_of_unique_index = True
         attr.composite_keys.append((attrs, i))
     cls_dict = sys._getframe(1).f_locals
-    composite_keys = cls_dict.setdefault('_keys_', {})
+    composite_keys = cls_dict.setdefault('_key_dict_', {})
     composite_keys[attrs] = False
 
 class PrimaryKey(Required):
@@ -1411,7 +1413,7 @@ class PrimaryKey(Required):
         for i, attr in enumerate(attrs):
             attr.is_part_of_unique_index = True
             attr.composite_keys.append((attrs, i))
-        keys = cls_dict.setdefault('_keys_', {})
+        keys = cls_dict.setdefault('_key_dict_', {})
         keys[attrs] = True
         return None
 
@@ -1587,7 +1589,7 @@ class Set(Collection):
         objects = [ obj ]
         setdata_list = [ setdata ]
         if prefetching:
-            pk_index = cache.indexes.get(entity.__dict__['_pk_'])
+            pk_index = cache.indexes[entity._pk_attrs_]
             max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
             for obj2 in pk_index.itervalues():
                 if obj2 is obj: continue
@@ -1679,7 +1681,10 @@ class Set(Collection):
         if not reverse.is_collection and reverse.pk_offset is None:
             added = setdata.added or ()
             for item in setdata:
-                if item not in added: item._rbits_ |= item._bits_[reverse]
+                if item in added: continue
+                bit = item._bits_[reverse]
+                assert item._wbits_ is not None
+                if not item._wbits_ & bit: item._rbits_ |= bit
         return set(setdata)
     @cut_traceback
     def __get__(attr, obj, cls=None):
@@ -2044,16 +2049,17 @@ class SetWrapper(object):
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
         if not isinstance(item, attr.py_type): return False
+
         reverse = attr.reverse
         if not reverse.is_collection:
             obj2 = item._vals_.get(reverse.name, NOT_LOADED)
             if obj2 is NOT_LOADED: obj2 = reverse.load(item)
-            bit = item._bits_[reverse]
-
             wbits = item._wbits_
-            if wbits is not None and not wbits & bit: item._rbits_ |= bit
-
+            if wbits is not None:
+                bit = item._bits_[reverse]
+                if not wbits & bit: item._rbits_ |= bit
             return obj is obj2
+
         setdata = obj._vals_.get(attr.name)
         if setdata is not None:
             if item in setdata: return True
@@ -2329,7 +2335,7 @@ class EntityMeta(type):
             new_attrs.append(attr)
         new_attrs.sort(key=attrgetter('id'))
 
-        keys = entity.__dict__.get('_keys_', {})
+        keys = entity.__dict__.get('_key_dict_', {})
         for attr in new_attrs:
             if attr.is_unique: keys[(attr,)] = isinstance(attr, PrimaryKey)
         for key, is_pk in keys.items():
@@ -2388,10 +2394,10 @@ class EntityMeta(type):
         next_offset = _count().next
         all_bits = 0
         for attr in entity._attrs_:
-            if attr.is_collection or attr.is_discriminator or attr.pk_offset is not None: continue
-            next_bit = 1 << next_offset()
-            entity._bits_[attr] = next_bit
-            all_bits |= next_bit
+            if attr.is_collection or attr.is_discriminator or attr.pk_offset is not None: bit = 0
+            else: bit = 1 << next_offset()
+            all_bits |= bit
+            entity._bits_[attr] = bit
         entity._all_bits_ = all_bits
 
         try: table_name = entity.__dict__['_table_']
@@ -2416,7 +2422,6 @@ class EntityMeta(type):
         entity._batchload_sql_cache_ = {}
         entity._update_sql_cache_ = {}
         entity._delete_sql_cache_ = {}
-        entity._to_be_checked_sql_cache_ = {}
 
         entity._propagation_mixin_ = None
         entity._set_wrapper_subclass_ = None
@@ -2531,12 +2536,11 @@ class EntityMeta(type):
                 attr = get(name)
                 if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
                 avdict[attr] = attr.check(val, None, entity, from_db=False)
-        pk = entity.__dict__['_pk_']
         if entity._pk_is_composite_:
-            pkval = map(avdict.get, pk)
+            pkval = map(avdict.get, entity._pk_attrs_)
             if None in pkval: pkval = None
             else: pkval = tuple(pkval)
-        else: pkval = avdict.get(pk)
+        else: pkval = avdict.get(entity._pk_attrs_[0])
         return pkval, avdict
     @cut_traceback
     def __getitem__(entity, key):
@@ -2591,9 +2595,9 @@ class EntityMeta(type):
         return entity._find_by_sql_(None, sql, globals, locals, frame_depth=3)
     @cut_traceback
     def select_random(entity, limit):
-        pk = entity.__dict__['_pk_']
-        if type(pk.py_type) is not type or not issubclass(pk.py_type, int) \
-           or entity._discriminator_ is not None and entity._root_ is not entity:
+        if entity._pk_is_composite_: return entity.select().random(limit)
+        pk = entity._pk_attrs_[0]
+        if not issubclass(pk.py_type, int) or entity._discriminator_ is not None and entity._root_ is not entity:
             return entity.select().random(limit)
         database = entity._database_
         cache = database._get_cache()
@@ -2611,7 +2615,7 @@ class EntityMeta(type):
             cache.max_id_cache[pk] = max_id
         if max_id is None: return []
         if max_id <= limit * 2: return entity.select().random(limit)
-        index = cache.indexes.setdefault(pk, {})
+        index = cache.indexes[entity._pk_attrs_]
         result = []
         tried_ids = set()
         found_in_cache = False
@@ -2644,8 +2648,8 @@ class EntityMeta(type):
         if len(result) < limit: return entity.select().random(limit)
         
         result = result[:limit]
-        if entity._discriminator_ is not None and entity._subclasses_:
-            seeds = cache.seeds.get(pk)
+        if entity._subclasses_:
+            seeds = cache.seeds[entity._pk_attrs_]
             if seeds:
                 for obj in result:
                     if obj in seeds: obj._load_()
@@ -2659,38 +2663,31 @@ class EntityMeta(type):
         if entity._database_.schema is None:
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
         pkval, avdict = entity._normalize_args_(kwargs, False)
-        rbits = 0
         for attr in avdict:
-            if attr.is_collection: throw(TypeError,
-                'Collection attribute %s.%s cannot be specified as search criteria' % (attr.entity.__name__, attr.name))
-            bit = entity._bits_.get(attr)
-            if bit is not None: rbits |= bit
+            if attr.is_collection:
+                throw(TypeError, 'Collection attribute %s cannot be specified as search criteria' % attr)
         objects = entity._find_in_cache_(pkval, avdict, for_update)
         if objects is None:
             objects = entity._find_in_db_(avdict, max_fetch_count, for_update, nowait)
-        if rbits:
-            for obj in objects:
-                if obj._rbits_ is not None: obj._rbits_ |= rbits
+        entity._set_rbits(objects, avdict)
         return objects
     def _find_in_cache_(entity, pkval, avdict, for_update=False):
         cache = entity._database_._get_cache()
+        indexes = cache.indexes
         obj = None
-        if pkval is not None:
-            index = cache.indexes.get(entity.__dict__['_pk_'])
-            if index is not None: obj = index.get(pkval)
+        if pkval is not None: obj = indexes[entity._pk_attrs_].get(pkval)
         if obj is None:
-            for attr in ifilter(avdict.__contains__, entity._simple_keys_):
-                index = cache.indexes.get(attr)
-                if index is None: continue
-                val = avdict[attr]
-                obj = index.get(val)
-                if obj is not None: break
+            for attr in entity._simple_keys_:
+                val = avdict.get(attr)
+                if val is not None:
+                    obj = indexes[attr].get(val)
+                    if obj is not None: break
         if obj is None:
             NOT_FOUND = object()
             for attrs in entity._composite_keys_:
                 vals = tuple(avdict.get(attr, NOT_FOUND) for attr in attrs)
                 if NOT_FOUND in vals: continue
-                index = cache.indexes.get(attrs)
+                index = indexes.get(attrs)
                 if index is None: continue
                 obj = index.get(vals)
                 if obj is not None: break
@@ -2725,8 +2722,8 @@ class EntityMeta(type):
                 if obj._subclasses_:
                     cls = obj.__class__
                     if not issubclass(entity, cls) and not issubclass(cls, entity): return []
-                    seeds = cache.seeds.get(entity.__dict__['_pk_'])
-                    if seeds and obj in seeds: obj._load_()
+                    seeds = cache.seeds[entity._pk_attrs_]
+                    if obj in seeds: obj._load_()
                 if not isinstance(obj, entity): return []
             if obj._status_ == 'marked_to_delete': return []
             for attr, val in avdict.iteritems():
@@ -2856,7 +2853,7 @@ class EntityMeta(type):
         cached_sql = sql, adapter, attr_offsets
         entity._find_sql_cache_[query_key] = cached_sql
         return cached_sql
-    def _fetch_objects(entity, cursor, attr_offsets, max_fetch_count=None, rbits=None, for_update=False):
+    def _fetch_objects(entity, cursor, attr_offsets, max_fetch_count=None, for_update=False, used_attrs=()):
         if max_fetch_count is None: max_fetch_count = options.MAX_FETCH_COUNT
         if max_fetch_count is not None:
             rows = cursor.fetchmany(max_fetch_count + 1)
@@ -2877,9 +2874,19 @@ class EntityMeta(type):
                 if obj._status_ in del_statuses: continue
                 obj._db_set_(avdict)
                 objects.append(obj)
-        if rbits is not None:
-            for obj in objects: obj._rbits_ |= rbits
+        if used_attrs: entity._set_rbits(objects, used_attrs)
         return objects
+    def _set_rbits(entity, objects, attrs):
+        rbits_dict = {}
+        get_rbits = rbits_dict.get
+        for obj in objects:
+            wbits = obj._wbits_
+            if wbits is None: continue
+            rbits = get_rbits(obj.__class__)
+            if rbits is None:
+                rbits = sum(imap(obj._bits_.__getitem__, attrs))
+                rbits_dict[obj.__class__] = rbits
+            obj._rbits_ |= rbits & ~wbits
     def _parse_row_(entity, row, attr_offsets):
         discr_attr = entity._discriminator_attr_
         if not discr_attr: real_entity_subclass = entity
@@ -2893,15 +2900,13 @@ class EntityMeta(type):
             offsets = attr_offsets.get(attr)
             if offsets is None or attr.is_discriminator: continue
             avdict[attr] = attr.parse_value(row, offsets)
-        pk = entity.__dict__['_pk_']
-        if not entity._pk_is_composite_: pkval = avdict.pop(pk, None)
-        else: pkval = tuple(avdict.pop(attr, None) for attr in pk)
+        if not entity._pk_is_composite_: pkval = avdict.pop(entity._pk_attrs_[0], None)
+        else: pkval = tuple(avdict.pop(attr, None) for attr in entity._pk_attrs_)
         return real_entity_subclass, pkval, avdict
     def _load_many_(entity, objects):
         database = entity._database_
         cache = database._get_cache()
-        pk = entity.__dict__['_pk_']
-        seeds = cache.seeds.get(pk)
+        seeds = cache.seeds[entity._pk_attrs_]
         if not seeds: return
         objects = set(obj for obj in objects if obj in seeds)
         objects = sorted(objects, key=attrgetter('_pkval_'))
@@ -2961,8 +2966,8 @@ class EntityMeta(type):
         return Query(code_key, inner_expr, globals, locals)
     def _new_(entity, pkval, status, for_update=False, undo_funcs=None):
         cache = entity._database_._get_cache()
-        pk = entity.__dict__['_pk_']
-        index = cache.indexes.setdefault(pk, {})
+        pk_attrs = entity._pk_attrs_
+        index = cache.indexes[pk_attrs]
         if pkval is None: obj = None
         else: obj = index.get(pkval)
 
@@ -2991,16 +2996,15 @@ class EntityMeta(type):
                     index[pkval] = obj
                     obj._newid_ = None
                 else: obj._newid_ = next_new_instance_id()
-                if obj._pk_is_composite_: pairs = zip(pk, pkval)
-                else: pairs = ((pk, pkval),)
+                if obj._pk_is_composite_: pairs = zip(pk_attrs, pkval)
+                else: pairs = ((pk_attrs[0], pkval),)
                 if status == 'loaded':
                     assert undo_funcs is None
                     obj._rbits_ = obj._wbits_ = 0
                     for attr, val in pairs:
                         obj._vals_[attr.name] = val
                         if attr.reverse: attr.db_update_reverse(obj, NOT_LOADED, val)
-                    seeds = cache.seeds.setdefault(pk, set())
-                    seeds.add(obj)
+                    cache.seeds[pk_attrs].add(obj)
                 elif status == 'created':
                     assert undo_funcs is not None
                     obj._rbits_ = obj._wbits_ = None
@@ -3121,8 +3125,7 @@ def throw_db_session_is_over(obj):
 def unpickle_entity(d):
     entity = d.pop('__class__')
     cache = entity._database_._get_cache()
-    pk = entity.__dict__['_pk_']
-    if not entity._pk_is_composite_: pkval = d.get(pk.name)
+    if not entity._pk_is_composite_: pkval = d.get(entity._pk_attrs_[0].name)
     else: pkval = tuple(d[attr.name] for attr in entity._pk_attrs_)
     assert pkval is not None
     obj = entity._new_(pkval, 'loaded')
@@ -3163,22 +3166,23 @@ class Entity(object):
         pkval, avdict = entity._normalize_args_(kwargs, True)
         undo_funcs = []
         cache = entity._database_._get_cache()
+        indexes = cache.indexes
+        indexes_update = {}
         with cache.flush_disabled():
-            indexes = {}
             for attr in entity._simple_keys_:
                 val = avdict[attr]
                 if val is None and cache.ignore_none: continue
-                if val in cache.indexes.setdefault(attr, {}): throw(CacheIndexError,
+                if val in indexes[attr]: throw(CacheIndexError,
                     'Cannot create %s: value %r for key %s already exists' % (entity.__name__, val, attr.name))
-                indexes[attr] = val
+                indexes_update[attr] = val
             for attrs in entity._composite_keys_:
                 vals = tuple(map(avdict.__getitem__, attrs))
                 if cache.ignore_none and None in vals: continue
-                if vals in cache.indexes.setdefault(attrs, {}):
+                if vals in indexes[attrs]:
                     attr_names = ', '.join(attr.name for attr in attrs)
                     throw(CacheIndexError, 'Cannot create %s: value %s for composite key (%s) already exists'
                                      % (entity.__name__, vals, attr_names))
-                indexes[attrs] = vals
+                indexes_update[attrs] = vals
             try:
                 obj = entity._new_(pkval, 'created', undo_funcs=undo_funcs)
                 for attr, val in avdict.iteritems():
@@ -3190,19 +3194,15 @@ class Entity(object):
             except:
                 for undo_func in reversed(undo_funcs): undo_func()
                 raise
-        if pkval is not None:
-            pk = entity.__dict__['_pk_']
-            cache.indexes[pk][pkval] = obj
-        for key, vals in indexes.iteritems():
-            cache.indexes[key][vals] = obj
+        if pkval is not None: indexes[entity._pk_attrs_][pkval] = obj
+        for key, vals in indexes_update.iteritems(): indexes[key][vals] = obj
         cache.objects_to_save.append(obj)
         cache.modified = True
         return obj
     def _get_raw_pkval_(obj):
         pkval = obj._pkval_
         if not obj._pk_is_composite_:
-            pk = obj.__class__.__dict__['_pk_']
-            if not pk.reverse: return (pkval,)
+            if not obj._pk_attrs_[0].reverse: return (pkval,)
             else: return pkval._get_raw_pkval_()
         raw_pkval = []
         append = raw_pkval.append
@@ -3249,8 +3249,7 @@ class Entity(object):
         database = entity._database_
         if cache is not database._get_cache():
             throw(TransactionError, "Object %s doesn't belong to current transaction" % safe_repr(obj))
-        pk = entity.__dict__['_pk_']
-        seeds = cache.seeds[pk]
+        seeds = cache.seeds[entity._pk_attrs_]
         max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
         objects = [ obj ]
         for seed in seeds:
@@ -3268,9 +3267,7 @@ class Entity(object):
 
         cache = obj._cache_
         assert cache.is_alive
-        pk = obj.__class__.__dict__['_pk_']
-        seeds = cache.seeds.setdefault(pk, set())
-        seeds.discard(obj)
+        cache.seeds[obj._pk_attrs_].discard(obj)
 
         get_val = obj._vals_.get
         get_dbval = obj._dbvals_.get
@@ -3370,12 +3367,12 @@ class Entity(object):
                                                      % (obj, attr.name, attr))
                     else: throw(NotImplementedError)
 
+                indexes = cache.indexes
                 for attr in obj._simple_keys_:
                     val = get_val(attr.name, NOT_LOADED)
                     if val is NOT_LOADED: continue
                     if val is None and cache.ignore_none: continue
-                    index = cache.indexes.get(attr)
-                    if index is None: continue
+                    index = indexes[attr]
                     obj2 = index.pop(val)
                     assert obj2 is obj
                     undo_list.append((index, val))
@@ -3384,8 +3381,7 @@ class Entity(object):
                     vals = tuple(get_val(a.name, NOT_LOADED) for a in attrs)
                     if NOT_LOADED in vals: continue
                     if cache.ignore_none and None in vals: continue
-                    index = cache.indexes.get(attrs)
-                    if index is None: continue
+                    index = indexes[attrs]
                     obj2 = index.pop(vals)
                     assert obj2 is obj
                     undo_list.append((index, vals))
@@ -3399,8 +3395,7 @@ class Entity(object):
                             mc = cache.modified_collections.get(attr)
                             if mc is not None: mc.discard(obj)
                     if obj._pkval_ is not None:
-                        pk = obj.__class__.__dict__['_pk_']
-                        del cache.indexes[pk][obj._pkval_]
+                        del indexes[obj._pk_attrs_][obj._pkval_]
                 else:
                     if status != 'updated':
                         assert status in ('loaded', 'saved')
@@ -3507,10 +3502,7 @@ class Entity(object):
     def _attrs_with_bit_(entity, mask=-1):
         get_bit = entity._bits_.get
         for attr in entity._attrs_:
-            bit = get_bit(attr)
-            if bit is None: continue
-            if not bit & mask: continue
-            yield attr
+            if get_bit(attr) & mask: yield attr
     def _construct_optimistic_criteria_(obj):
         optimistic_columns = []
         optimistic_converters = []
@@ -3547,7 +3539,6 @@ class Entity(object):
     def _save_created_(obj):
         values = []
         auto_pk = (obj._pkval_ is None)
-        if auto_pk: pk = obj.__class__.__dict__['_pk_']
         for attr in obj._attrs_:
             if not attr.columns: continue
             if attr.is_collection: continue
@@ -3570,7 +3561,6 @@ class Entity(object):
             sql_ast = [ 'INSERT', entity._table_, columns, params ]
             if auto_pk:
                 assert len(entity._pk_columns_) == 1
-                assert pk.auto
                 sql_ast.append(obj._pk_columns_[0])
             sql, adapter = database._ast2sql(sql_ast)
             if auto_pk: entity._cached_create_sql_auto_pk_ = sql, adapter
@@ -3591,11 +3581,12 @@ class Entity(object):
                                    % (obj, e.__class__.__name__, msg), e)
 
         if auto_pk:
-            index = obj._cache_.indexes.setdefault(pk, {})
+            pk_attrs = obj._pk_attrs_
+            index = obj._cache_.indexes[pk_attrs]
             obj2 = index.setdefault(new_id, obj)
             if obj2 is not obj: throw(TransactionIntegrityError,
                 'Newly auto-generated id value %s was already used in transaction cache for another object' % new_id)
-            obj._pkval_ = obj._vals_[pk.name] = new_id
+            obj._pkval_ = obj._vals_[pk_attrs[0].name] = new_id
             obj._newid_ = None
 
         obj._status_ = 'saved'
@@ -3680,8 +3671,7 @@ class Entity(object):
         arguments = adapter(values)
         database._exec_sql(sql, arguments)
         obj._status_ = 'deleted'
-        pk = obj.__class__.__dict__['_pk_']
-        cache.indexes[pk].pop(obj._pkval_)
+        cache.indexes[obj._pk_attrs_].pop(obj._pkval_)
     def _save_(obj, dependent_objects=None):
         cache = obj._cache_
         assert cache.is_alive
@@ -3701,8 +3691,8 @@ class Cache(object):
         cache.num = next_num()
         cache.database = database
         cache.ignore_none = database.provider.ignore_none
-        cache.indexes = {}
-        cache.seeds = {}
+        cache.indexes = defaultdict(dict)
+        cache.seeds = defaultdict(set)
         cache.max_id_cache = {}
         cache.collection_statistics = {}
         cache.for_update = set()
@@ -3863,8 +3853,7 @@ class Cache(object):
         return modified_m2m
     def update_simple_index(cache, obj, attr, old_val, new_val, undo):
         assert old_val != new_val
-        index = cache.indexes.get(attr)
-        if index is None: index = cache.indexes[attr] = {}
+        index = cache.indexes[attr]
         if new_val is None and cache.ignore_none: new_val = NO_UNDO_NEEDED
         else:
             obj2 = index.setdefault(new_val, obj)
@@ -3876,8 +3865,7 @@ class Cache(object):
         undo.append((index, old_val, new_val))
     def db_update_simple_index(cache, obj, attr, old_dbval, new_dbval):
         assert old_dbval != new_dbval
-        index = cache.indexes.get(attr)
-        if index is None: index = cache.indexes[attr] = {}
+        index = cache.indexes[attr]
         if new_dbval is NOT_LOADED: pass
         elif new_dbval is None and cache.ignore_none: pass
         else:
@@ -3896,8 +3884,7 @@ class Cache(object):
         if vals is NO_UNDO_NEEDED: pass
         elif NOT_LOADED in vals: vals = NO_UNDO_NEEDED
         if currents is NO_UNDO_NEEDED and vals is NO_UNDO_NEEDED: return
-        index = cache.indexes.get(attrs)
-        if index is None: index = cache.indexes[attrs] = {}
+        index = cache.indexes[attrs]
         if vals is NO_UNDO_NEEDED: pass
         else:
             obj2 = index.setdefault(vals, obj)
@@ -3909,8 +3896,7 @@ class Cache(object):
         else: del index[currents]
         undo.append((index, currents, vals))
     def db_update_composite_index(cache, obj, attrs, currents, vals):
-        index = cache.indexes.get(attrs)
-        if index is None: index = cache.indexes[attrs] = {}
+        index = cache.indexes[attrs]
         if NOT_LOADED in vals: pass
         elif None in vals and cache.ignore_none: pass
         else:
@@ -4108,8 +4094,8 @@ class Query(object):
             cursor = database._exec_sql(sql, arguments)
             if isinstance(translator.expr_type, EntityMeta):
                 entity = translator.expr_type
-                result = entity._fetch_objects(cursor, attr_offsets, rbits=translator.tableref.rbits,
-                                               for_update=query._for_update)
+                result = entity._fetch_objects(cursor, attr_offsets, for_update=query._for_update,
+                                               used_attrs=translator.tableref.used_attrs)
             elif len(translator.row_layout) == 1:
                 func, slice_or_offset, src = translator.row_layout[0]
                 result = list(starmap(func, cursor.fetchall()))
@@ -4118,8 +4104,7 @@ class Query(object):
                                  for func, slice_or_offset, src in translator.row_layout)
                            for sql_row in cursor.fetchall() ]
                 for i, t in enumerate(translator.expr_type):
-                    if isinstance(t, EntityMeta) and t._discriminator_ is not None and t._subclasses_:
-                        t._load_many_(row[i] for row in result)
+                    if isinstance(t, EntityMeta) and t._subclasses_: t._load_many_(row[i] for row in result)
             if query_key is not None:
                 query._cache.query_results[query_key] = result
         else:
