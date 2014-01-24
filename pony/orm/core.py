@@ -38,7 +38,7 @@ __all__ = '''
     TableDoesNotExist TableIsNotEmpty ConstraintError CacheIndexError
     ObjectNotFound MultipleObjectsFoundError TooManyObjectsFoundError OperationWithDeletedObjectError
     TransactionError TransactionIntegrityError IsolationError CommitException RollbackException
-    UnrepeatableReadError UnresolvableCyclicDependency UnexpectedError
+    UnrepeatableReadError OptimisticCheckError UnresolvableCyclicDependency UnexpectedError
 
     TranslationError ExprEvalError
 
@@ -154,6 +154,7 @@ class RollbackException(TransactionError):
 class TransactionRolledBack(TransactionError): pass
 class IsolationError(TransactionError): pass
 class   UnrepeatableReadError(IsolationError): pass
+class   OptimisticCheckError(IsolationError): pass
 class UnresolvableCyclicDependency(TransactionError): pass
 
 class UnexpectedError(TransactionError):
@@ -3647,7 +3648,7 @@ class Entity(object):
             arguments = adapter(values)
             cursor = database._exec_sql(sql, arguments)
             if cursor.rowcount != 1:
-                throw(UnrepeatableReadError, 'Object %s was updated outside of current transaction' % safe_repr(obj))
+                throw(OptimisticCheckError, 'Object %s was updated outside of current transaction' % safe_repr(obj))
         obj._status_ = 'saved'
         obj._rbits_ |= obj._wbits_
         obj._wbits_ = 0
