@@ -3504,6 +3504,26 @@ class Entity(object):
             val = obj._vals_[attr]
             if val is not None and val._status_ == 'created':
                 val._save_(dependent_objects)
+    def _update_dbvals_(obj, after_create):
+        bits = obj._bits_
+        vals = obj._vals_
+        dbvals = obj._dbvals_
+        indexes = obj._cache_.indexes
+        for attr in obj._attrs_with_columns_:
+            if not bits.get(attr): continue
+            if attr not in vals: continue
+            val = vals[attr]
+            if attr.is_volatile:
+                if val is not None:
+                    if attr.is_unique: indexes[attr].pop(val, None)
+                    for key, i in attr.composite_keys:
+                        keyval = tuple(map(vals.get, key))
+                        indexes[key].pop(keyval, None)
+                del vals[attr]
+            elif after_create and val is None:
+                obj._rbits_ &= ~bits[attr]
+                del vals[attr]
+            else: dbvals[attr] = val
     def _save_created_(obj):
         auto_pk = (obj._pkval_ is None)
         attrs = []
@@ -3562,10 +3582,7 @@ class Entity(object):
         obj._status_ = 'saved'
         obj._rbits_ = obj._all_bits_except_volatile_
         obj._wbits_ = 0
-        bits = obj._bits_
-        for attr in obj._attrs_with_columns_:
-            if attr not in bits: continue
-            obj._dbvals_[attr] = obj._vals_[attr]
+        obj._update_dbvals_(True)
     def _save_updated_(obj):
         update_columns = []
         values = []
@@ -3611,10 +3628,7 @@ class Entity(object):
         obj._status_ = 'saved'
         obj._rbits_ |= obj._wbits_ & obj._all_bits_except_volatile_
         obj._wbits_ = 0
-        vals = obj._vals_
-        dbvals = obj._dbvals_
-        for attr in obj._attrs_with_columns_:
-            if attr in vals: dbvals[attr] = vals[attr]
+        obj._update_dbvals_(False)
     def _save_deleted_(obj):
         values = []
         values.extend(obj._get_raw_pkval_())
