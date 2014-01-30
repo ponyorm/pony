@@ -1554,7 +1554,7 @@ class Set(Collection):
 
         counter = cache.collection_statistics.setdefault(attr, 0)
         nplus1_threshold = attr.nplus1_threshold
-        prefetching = not attr.lazy and nplus1_threshold is not None \
+        prefetching = options.PREFETCHING and not attr.lazy and nplus1_threshold is not None \
                       and (counter >= nplus1_threshold or cache.noflush_counter)
 
         if items:
@@ -3251,9 +3251,10 @@ class Entity(object):
         seeds = cache.seeds[entity._pk_attrs_]
         max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
         objects = [ obj ]
-        for seed in seeds:
-            if len(objects) >= max_batch_size: break
-            if seed is not obj: objects.append(seed)
+        if options.PREFETCHING:
+            for seed in seeds:
+                if len(objects) >= max_batch_size: break
+                if seed is not obj: objects.append(seed)
         sql, adapter, attr_offsets = entity._construct_batchload_sql_(len(objects))
         arguments = adapter(objects)
         cursor = database._exec_sql(sql, arguments)
