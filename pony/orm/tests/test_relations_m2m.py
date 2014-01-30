@@ -204,12 +204,12 @@ class TestManyToManyNonComposite(unittest.TestCase):
         s1 = Subject['Subj1']
         self.assertTrue(s1 in g1.subjects)
 
-        group_setdata = g1._vals_['subjects']
+        group_setdata = g1._vals_[Group.subjects]
         self.assertTrue(s1 in group_setdata)
         self.assertEqual(group_setdata.added, None)
         self.assertEqual(group_setdata.removed, None)
         
-        subj_setdata = s1._vals_['groups']
+        subj_setdata = s1._vals_[Subject.groups]
         self.assertTrue(g1 in subj_setdata)
         self.assertEqual(subj_setdata.added, None)
         self.assertEqual(subj_setdata.removed, None)

@@ -36,9 +36,9 @@ class PGSQLBuilder(sqlbuilding.SQLBuilder):
     dialect = 'PostgreSQL'
     make_value = PGValue
     def INSERT(builder, table_name, columns, values, returning=None):
-        result = sqlbuilding.SQLBuilder.INSERT(builder, table_name, columns, values)
-        if returning is not None:
-            result.extend([' RETURNING ', builder.quote_name(returning) ])
+        if not values: result = [ 'INSERT INTO ', builder.quote_name(table_name) ,' DEFAULT VALUES' ]
+        else: result = sqlbuilding.SQLBuilder.INSERT(builder, table_name, columns, values)
+        if returning is not None: result.extend([' RETURNING ', builder.quote_name(returning) ])
         return result
     def TO_INT(builder, expr):
         return '(', builder(expr), ')::int'

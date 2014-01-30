@@ -31,6 +31,9 @@ class SQLiteBuilder(SQLBuilder):
     def SELECT_FOR_UPDATE(builder, nowait, *sections):
         assert not builder.indent and not nowait
         return builder.SELECT(*sections)
+    def INSERT(builder, table_name, columns, values, returning=None):
+        if not values: return 'INSERT INTO %s DEFAULT VALUES' % builder.quote_name(table_name)
+        return SQLBuilder.INSERT(builder, table_name, columns, values, returning)
     def TODAY(builder):
         return "date('now', 'localtime')"
     def NOW(builder):

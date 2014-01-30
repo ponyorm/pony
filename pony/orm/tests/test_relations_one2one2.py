@@ -37,8 +37,8 @@ class TestOneToOne2(unittest.TestCase):
     def test_1(self):
         Male[3].wife = Female[3]
 
-        self.assertEqual(Male[3]._vals_['wife'], Female[3])
-        self.assertEqual(Female[3]._vals_['husband'], Male[3])
+        self.assertEqual(Male[3]._vals_[Male.wife], Female[3])
+        self.assertEqual(Female[3]._vals_[Female.husband], Male[3])
         commit()
         wives = db.select('wife from male order by male.id')
         self.assertEqual([1, 2, 3], wives)
@@ -47,8 +47,8 @@ class TestOneToOne2(unittest.TestCase):
     def test_2(self):
         Female[3].husband = Male[3]
 
-        self.assertEqual(Male[3]._vals_['wife'], Female[3])
-        self.assertEqual(Female[3]._vals_['husband'], Male[3])
+        self.assertEqual(Male[3]._vals_[Male.wife], Female[3])
+        self.assertEqual(Female[3]._vals_[Female.husband], Male[3])
         commit()
         wives = db.select('wife from male order by male.id')
         self.assertEqual([1, 2, 3], wives)
@@ -57,8 +57,8 @@ class TestOneToOne2(unittest.TestCase):
     def test_3(self):
         Male[1].wife = None
 
-        self.assertEqual(Male[1]._vals_['wife'], None)
-        self.assertEqual(Female[1]._vals_['husband'], None)
+        self.assertEqual(Male[1]._vals_[Male.wife], None)
+        self.assertEqual(Female[1]._vals_[Female.husband], None)
         commit()
         wives = db.select('wife from male order by male.id')
         self.assertEqual([None, 2, None], wives)
@@ -67,8 +67,8 @@ class TestOneToOne2(unittest.TestCase):
     def test_4(self):
         Female[1].husband = None
 
-        self.assertEqual(Male[1]._vals_['wife'], None)
-        self.assertEqual(Female[1]._vals_['husband'], None)
+        self.assertEqual(Male[1]._vals_[Male.wife], None)
+        self.assertEqual(Female[1]._vals_[Female.husband], None)
         commit()
         wives = db.select('wife from male order by male.id')
         self.assertEqual([None, 2, None], wives)
@@ -77,9 +77,9 @@ class TestOneToOne2(unittest.TestCase):
     def test_5(self):
         Male[1].wife = Female[3]
 
-        self.assertEqual(Male[1]._vals_['wife'], Female[3])
-        self.assertEqual(Female[1]._vals_['husband'], None)
-        self.assertEqual(Female[3]._vals_['husband'], Male[1])
+        self.assertEqual(Male[1]._vals_[Male.wife], Female[3])
+        self.assertEqual(Female[1]._vals_[Female.husband], None)
+        self.assertEqual(Female[3]._vals_[Female.husband], Male[1])
         commit()
         wives = db.select('wife from male order by male.id')
         self.assertEqual([3, 2, None], wives)
@@ -88,9 +88,9 @@ class TestOneToOne2(unittest.TestCase):
     def test_6(self):
         Female[3].husband = Male[1]
 
-        self.assertEqual(Male[1]._vals_['wife'], Female[3])
-        self.assertEqual(Female[1]._vals_['husband'], None)
-        self.assertEqual(Female[3]._vals_['husband'], Male[1])
+        self.assertEqual(Male[1]._vals_[Male.wife], Female[3])
+        self.assertEqual(Female[1]._vals_[Female.husband], None)
+        self.assertEqual(Female[3]._vals_[Female.husband], Male[1])
         commit()
         wives = db.select('wife from male order by male.id')
         self.assertEqual([3, 2, None], wives)
@@ -99,10 +99,10 @@ class TestOneToOne2(unittest.TestCase):
     def test_7(self):
         Male[1].wife = Female[2]
 
-        self.assertEqual(Male[1]._vals_['wife'], Female[2])
-        self.assertEqual(Male[2]._vals_['wife'], None)
-        self.assertEqual(Female[1]._vals_['husband'], None)
-        self.assertEqual(Female[2]._vals_['husband'], Male[1])
+        self.assertEqual(Male[1]._vals_[Male.wife], Female[2])
+        self.assertEqual(Male[2]._vals_[Male.wife], None)
+        self.assertEqual(Female[1]._vals_[Female.husband], None)
+        self.assertEqual(Female[2]._vals_[Female.husband], Male[1])
         commit()
         wives = db.select('wife from male order by male.id')
         self.assertEqual([2, None, None], wives)
@@ -111,10 +111,10 @@ class TestOneToOne2(unittest.TestCase):
     def test_8(self):
         Female[2].husband = Male[1]
 
-        self.assertEqual(Male[1]._vals_['wife'], Female[2])
-        self.assertEqual(Male[2]._vals_['wife'], None)
-        self.assertEqual(Female[1]._vals_['husband'], None)
-        self.assertEqual(Female[2]._vals_['husband'], Male[1])
+        self.assertEqual(Male[1]._vals_[Male.wife], Female[2])
+        self.assertEqual(Male[2]._vals_[Male.wife], None)
+        self.assertEqual(Female[1]._vals_[Female.husband], None)
+        self.assertEqual(Female[2]._vals_[Female.husband], Male[1])
         commit()
         wives = db.select('wife from male order by male.id')
         self.assertEqual([2, None, None], wives)
@@ -131,7 +131,7 @@ class TestOneToOne2(unittest.TestCase):
         m1 = Male[1]
         f1 = Female[1]
         f1.name
-        self.assert_('wife' not in m1._vals_)
+        self.assert_(Male.wife not in m1._vals_)
 
 
 if __name__ == '__main__':
