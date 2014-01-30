@@ -668,7 +668,7 @@ class Database(object):
                     assert len(columns) == len(attr.converters)
                     if len(columns) == 1:
                         sql_type = attr.sql_type or attr.converters[0].sql_type()
-                        table.add_column(columns[0], sql_type, not attr.nullable)
+                        table.add_column(columns[0], sql_type, not attr.nullable, attr.sql_default)
                     else:
                         if attr.sql_type is not None: throw(NotImplementedError,
                             'sql_type cannot be specified for composite attribute %s' % attr)
@@ -861,7 +861,7 @@ class Attribute(object):
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
-                'cascade_delete', 'index', 'original_default'
+                'cascade_delete', 'index', 'original_default', 'sql_default'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
@@ -927,6 +927,7 @@ class Attribute(object):
         attr.lazy = kwargs.pop('lazy', getattr(py_type, 'lazy', False))
         attr.lazy_sql_cache = None
         attr.is_volatile = kwargs.pop('volatile', False)
+        attr.sql_default = kwargs.pop('sql_default', None)
         attr.kwargs = kwargs
         attr.converters = []
     def _init_(attr, entity, name):
@@ -967,6 +968,10 @@ class Attribute(object):
             attr.default = ''
         else:
             attr.default = None
+
+        if attr.sql_default not in (None, True, False) and not isinstance(attr.sql_default, basestring):
+            throw(TypeError, "'sql_default' option of %s attribute must be of string or bool type. Got: %s"
+                             % (attr, attr.sql_default))
 
         # composite keys will be checked later inside EntityMeta.__init__
         if attr.py_type == float:
@@ -1309,7 +1314,8 @@ class Required(Attribute):
     def check(attr, val, obj=None, entity=None, from_db=False):
         if val == '' \
         or val is None and not attr.auto \
-        or val is DEFAULT and attr.default in (None, '') and not attr.auto and not attr.is_volatile:
+        or val is DEFAULT and attr.default in (None, '') \
+                and not attr.auto and not attr.is_volatile and not attr.sql_default:
             if obj is None: throw(ConstraintError, 'Attribute %s is required' % attr)
             throw(ConstraintError, 'Attribute %r.%s is required' % (obj, attr.name))
         return Attribute.check(attr, val, obj, entity, from_db)
