@@ -827,6 +827,213 @@ class QueryStat(object):
         if not stat.db_count: return None
         return stat.sum_time / stat.db_count
 
+class Cache(object):
+    def __init__(cache, database):
+        cache.is_alive = True
+        cache.num = next_num()
+        cache.database = database
+        cache.indexes = defaultdict(dict)
+        cache.seeds = defaultdict(set)
+        cache.max_id_cache = {}
+        cache.collection_statistics = {}
+        cache.for_update = set()
+        cache.noflush_counter = 0
+        cache.modified_collections = defaultdict(set)
+        cache.objects_to_save = []
+        cache.query_results = {}
+        cache.modified = False
+        db_session = local.db_session
+        cache.db_session = db_session
+        cache.immediate = db_session is not None and db_session.immediate
+        cache.connection = None
+        cache.in_transaction = False
+        cache.saved_fk_state = None
+    def connect(cache):
+        assert cache.connection is None
+        if cache.in_transaction: throw(ConnectionClosedError,
+            'Transaction cannot be continued because database connection failed')
+        provider = cache.database.provider
+        connection = provider.connect()
+        try: provider.set_transaction_mode(connection, cache)  # can set cache.in_transaction
+        except:
+            provider.drop(connection)
+            raise
+        cache.connection = connection
+        return connection
+    def reconnect(cache, exc):
+        provider = cache.database.provider
+        if exc is not None:
+            exc = getattr(exc, 'original_exc', exc)
+            if not provider.should_reconnect(exc): raise
+            if debug: log_orm('CONNECTION FAILED: %s' % exc)
+            connection = cache.connection
+            assert connection is not None
+            cache.connection = None
+            provider.drop(connection)
+        else: assert cache.connection is None
+        return cache.connect()
+    def prepare_connection_for_query_execution(cache):
+        db_session = local.db_session
+        if db_session is not None and cache.db_session is None:
+            # This situation can arise when a transaction was started
+            # in the interactive mode, outside of the db_session
+            if cache.in_transaction or cache.modified:
+                local.db_session = None
+                try: cache.commit()
+                finally: local.db_session = db_session
+            cache.db_session = db_session
+            cache.immediate = cache.immediate or db_session.immediate
+        else: assert cache.db_session is db_session, (cache.db_session, db_session)
+        connection = cache.connection
+        if connection is None: connection = cache.connect()
+        elif cache.immediate and not cache.in_transaction:
+            provider = cache.database.provider
+            try: provider.set_transaction_mode(connection, cache)  # can set cache.in_transaction
+            except Exception, e: connection = cache.reconnect(e)
+        if not cache.noflush_counter and cache.modified: cache.flush()
+        return connection
+    def commit(cache):
+        assert cache.is_alive
+        database = cache.database
+        provider = database.provider
+        try:
+            if cache.modified: cache.flush()
+            if cache.in_transaction:
+                assert cache.connection is not None
+                provider.commit(cache.connection)
+                cache.in_transaction = False
+            cache.for_update.clear()
+            cache.immediate = True
+        except:
+            cache.rollback()
+            raise
+    def rollback(cache):
+        assert cache.is_alive
+        database = cache.database
+        x = local.db2cache.pop(database); assert x is cache
+        cache.is_alive = False
+        provider = database.provider
+        connection = cache.connection
+        if connection is None: return
+        cache.connection = None
+        try: provider.rollback(connection)
+        except:
+            provider.drop(connection)
+            raise
+        else: provider.release(connection, cache)
+    def release(cache):
+        assert cache.is_alive and not cache.in_transaction
+        database = cache.database
+        x = local.db2cache.pop(database); assert x is cache
+        cache.is_alive = False
+        provider = database.provider
+        connection = cache.connection
+        if connection is None: return
+        cache.connection = None
+        provider.release(connection, cache)
+    def close(cache):
+        assert cache.is_alive and not cache.in_transaction
+        database = cache.database
+        x = local.db2cache.pop(database); assert x is cache
+        cache.is_alive = False
+        provider = database.provider
+        connection = cache.connection
+        if connection is None: return
+        cache.connection = None
+        provider.drop(connection)
+    @contextmanager
+    def flush_disabled(cache):
+        cache.noflush_counter += 1
+        try: yield
+        finally: cache.noflush_counter -= 1
+    def flush(cache):
+        if cache.noflush_counter: return
+        assert cache.is_alive
+        if not cache.immediate: cache.immediate = True
+        if not cache.modified: return
+
+        with cache.flush_disabled():
+            cache.query_results.clear()
+            modified_m2m = cache._calc_modified_m2m()
+            for attr, (added, removed) in modified_m2m.iteritems():
+                if not removed: continue
+                attr.remove_m2m(removed)
+            for obj in cache.objects_to_save:
+                obj._save_()
+            for attr, (added, removed) in modified_m2m.iteritems():
+                if not added: continue
+                attr.add_m2m(added)
+        cache.max_id_cache.clear()
+        cache.modified_collections.clear()
+        cache.objects_to_save[:] = []
+        cache.modified = False
+    def _calc_modified_m2m(cache):
+        modified_m2m = {}
+        for attr, objects in sorted(cache.modified_collections.iteritems(),
+                                    key=lambda (attr, objects): (attr.entity.__name__, attr.name)):
+            if not isinstance(attr, Set): throw(NotImplementedError)
+            reverse = attr.reverse
+            if not reverse.is_collection:
+                for obj in objects:
+                    setdata = obj._vals_[attr]
+                    setdata.added = setdata.removed = None
+                continue
+
+            if not isinstance(reverse, Set): throw(NotImplementedError)
+            if reverse in modified_m2m: continue
+            added, removed = modified_m2m.setdefault(attr, (set(), set()))
+            for obj in objects:
+                setdata = obj._vals_[attr]
+                if setdata.added:
+                    for obj2 in setdata.added: added.add((obj, obj2))
+                if setdata.removed:
+                    for obj2 in setdata.removed: removed.add((obj, obj2))
+                if obj._status_ == 'marked_to_delete': del obj._vals_[attr]
+                else: setdata.added = setdata.removed = None
+        cache.modified_collections.clear()
+        return modified_m2m
+    def update_simple_index(cache, obj, attr, old_val, new_val, undo):
+        assert old_val != new_val
+        index = cache.indexes[attr]
+        if new_val is not None:
+            obj2 = index.setdefault(new_val, obj)
+            if obj2 is not obj: throw(CacheIndexError, 'Cannot update %s.%s: %s with key %s already exists'
+                                                 % (obj.__class__.__name__, attr.name, obj2, new_val))
+        if old_val is not None: del index[old_val]
+        undo.append((index, old_val, new_val))
+    def db_update_simple_index(cache, obj, attr, old_dbval, new_dbval):
+        assert old_dbval != new_dbval
+        index = cache.indexes[attr]
+        if new_dbval is not None:
+            obj2 = index.setdefault(new_dbval, obj)
+            if obj2 is not obj: throw(TransactionIntegrityError,
+                '%s with unique index %s.%s already exists: %s'
+                % (obj2.__class__.__name__, obj.__class__.__name__, attr.name, new_dbval))
+                # attribute which was created or updated lately clashes with one stored in database
+        index.pop(old_dbval, None)
+    def update_composite_index(cache, obj, attrs, prev_vals, new_vals, undo):
+        if None in prev_vals: prev_vals = None
+        if None in new_vals: new_vals = None
+        if prev_vals is None and new_vals is None: return
+        index = cache.indexes[attrs]
+        if new_vals is not None:
+            obj2 = index.setdefault(new_vals, obj)
+            if obj2 is not obj:
+                attr_names = ', '.join(attr.name for attr in attrs)
+                throw(CacheIndexError, 'Cannot update %r: composite key (%s) with value %s already exists for %r'
+                                 % (obj, attr_names, new_vals, obj2))
+        if prev_vals is not None: del index[prev_vals]
+        undo.append((index, prev_vals, new_vals))
+    def db_update_composite_index(cache, obj, attrs, prev_vals, new_vals):
+        index = cache.indexes[attrs]
+        if None not in new_vals:
+            obj2 = index.setdefault(new_vals, obj)
+            if obj2 is not obj:
+                key_str = ', '.join(repr(item) for item in new_vals)
+                throw(TransactionIntegrityError, '%s with unique index (%s) already exists: %s'
+                                 % (obj2.__class__.__name__, ', '.join(attr.name for attr in attrs), key_str))
+        index.pop(prev_vals, None)
+
 ###############################################################################
 
 class NotLoadedValueType(object):
@@ -3673,215 +3880,6 @@ class Entity(object):
         elif status == 'updated': obj._save_updated_()
         elif status == 'marked_to_delete': obj._save_deleted_()
         else: assert False
-
-class Cache(object):
-    def __init__(cache, database):
-        cache.is_alive = True
-        cache.num = next_num()
-        cache.database = database
-        cache.indexes = defaultdict(dict)
-        cache.seeds = defaultdict(set)
-        cache.max_id_cache = {}
-        cache.collection_statistics = {}
-        cache.for_update = set()
-        cache.noflush_counter = 0
-        cache.modified_collections = defaultdict(set)
-        cache.objects_to_save = []
-        cache.query_results = {}
-        cache.modified = False
-        db_session = local.db_session
-        cache.db_session = db_session
-        cache.immediate = db_session is not None and db_session.immediate
-        cache.connection = None
-        cache.in_transaction = False
-        cache.saved_fk_state = None
-    def connect(cache):
-        assert cache.connection is None
-        if cache.in_transaction: throw(ConnectionClosedError,
-            'Transaction cannot be continued because database connection failed')
-        provider = cache.database.provider
-        connection = provider.connect()
-        try: provider.set_transaction_mode(connection, cache)  # can set cache.in_transaction
-        except:
-            provider.drop(connection)
-            raise
-        cache.connection = connection
-        return connection
-    def reconnect(cache, exc):
-        provider = cache.database.provider
-        if exc is not None:
-            exc = getattr(exc, 'original_exc', exc)
-            if not provider.should_reconnect(exc): raise
-            if debug: log_orm('CONNECTION FAILED: %s' % exc)
-            connection = cache.connection
-            assert connection is not None
-            cache.connection = None
-            provider.drop(connection)
-        else: assert cache.connection is None
-        return cache.connect()
-    def prepare_connection_for_query_execution(cache):
-        db_session = local.db_session
-        if db_session is not None and cache.db_session is None:
-            # This situation can arise when a transaction was started
-            # in the interactive mode, outside of the db_session
-            if cache.in_transaction or cache.modified:
-                local.db_session = None
-                try: cache.commit()
-                finally: local.db_session = db_session
-            cache.db_session = db_session
-            cache.immediate = cache.immediate or db_session.immediate
-        else: assert cache.db_session is db_session, (cache.db_session, db_session)
-        connection = cache.connection
-        if connection is None: connection = cache.connect()
-        elif cache.immediate and not cache.in_transaction:
-            provider = cache.database.provider
-            try: provider.set_transaction_mode(connection, cache)  # can set cache.in_transaction
-            except Exception, e: connection = cache.reconnect(e)
-        if not cache.noflush_counter and cache.modified: cache.flush()
-        return connection
-    def commit(cache):
-        assert cache.is_alive
-        database = cache.database
-        provider = database.provider
-        try:
-            if cache.modified: cache.flush()
-            if cache.in_transaction:
-                assert cache.connection is not None
-                provider.commit(cache.connection)
-                cache.in_transaction = False
-            cache.for_update.clear()
-            cache.immediate = True
-        except:
-            cache.rollback()
-            raise
-    def rollback(cache):
-        assert cache.is_alive
-        database = cache.database
-        x = local.db2cache.pop(database); assert x is cache
-        cache.is_alive = False
-        provider = database.provider
-        connection = cache.connection
-        if connection is None: return
-        cache.connection = None
-        try: provider.rollback(connection)
-        except:
-            provider.drop(connection)
-            raise
-        else: provider.release(connection, cache)
-    def release(cache):
-        assert cache.is_alive and not cache.in_transaction
-        database = cache.database
-        x = local.db2cache.pop(database); assert x is cache
-        cache.is_alive = False
-        provider = database.provider
-        connection = cache.connection
-        if connection is None: return
-        cache.connection = None
-        provider.release(connection, cache)
-    def close(cache):
-        assert cache.is_alive and not cache.in_transaction
-        database = cache.database
-        x = local.db2cache.pop(database); assert x is cache
-        cache.is_alive = False
-        provider = database.provider
-        connection = cache.connection
-        if connection is None: return
-        cache.connection = None
-        provider.drop(connection)
-    @contextmanager
-    def flush_disabled(cache):
-        cache.noflush_counter += 1
-        try: yield
-        finally: cache.noflush_counter -= 1
-    def flush(cache):
-        if cache.noflush_counter: return
-        assert cache.is_alive
-        if not cache.immediate: cache.immediate = True
-        if not cache.modified: return
-
-        with cache.flush_disabled():
-            cache.query_results.clear()
-            modified_m2m = cache._calc_modified_m2m()
-            for attr, (added, removed) in modified_m2m.iteritems():
-                if not removed: continue
-                attr.remove_m2m(removed)
-            for obj in cache.objects_to_save:
-                obj._save_()
-            for attr, (added, removed) in modified_m2m.iteritems():
-                if not added: continue
-                attr.add_m2m(added)
-        cache.max_id_cache.clear()
-        cache.modified_collections.clear()
-        cache.objects_to_save[:] = []
-        cache.modified = False
-    def _calc_modified_m2m(cache):
-        modified_m2m = {}
-        for attr, objects in sorted(cache.modified_collections.iteritems(),
-                                    key=lambda (attr, objects): (attr.entity.__name__, attr.name)):
-            if not isinstance(attr, Set): throw(NotImplementedError)
-            reverse = attr.reverse
-            if not reverse.is_collection:
-                for obj in objects:
-                    setdata = obj._vals_[attr]
-                    setdata.added = setdata.removed = None
-                continue
-
-            if not isinstance(reverse, Set): throw(NotImplementedError)
-            if reverse in modified_m2m: continue
-            added, removed = modified_m2m.setdefault(attr, (set(), set()))
-            for obj in objects:
-                setdata = obj._vals_[attr]
-                if setdata.added:
-                    for obj2 in setdata.added: added.add((obj, obj2))
-                if setdata.removed:
-                    for obj2 in setdata.removed: removed.add((obj, obj2))
-                if obj._status_ == 'marked_to_delete': del obj._vals_[attr]
-                else: setdata.added = setdata.removed = None
-        cache.modified_collections.clear()
-        return modified_m2m
-    def update_simple_index(cache, obj, attr, old_val, new_val, undo):
-        assert old_val != new_val
-        index = cache.indexes[attr]
-        if new_val is not None:
-            obj2 = index.setdefault(new_val, obj)
-            if obj2 is not obj: throw(CacheIndexError, 'Cannot update %s.%s: %s with key %s already exists'
-                                                 % (obj.__class__.__name__, attr.name, obj2, new_val))
-        if old_val is not None: del index[old_val]
-        undo.append((index, old_val, new_val))
-    def db_update_simple_index(cache, obj, attr, old_dbval, new_dbval):
-        assert old_dbval != new_dbval
-        index = cache.indexes[attr]
-        if new_dbval is not None:
-            obj2 = index.setdefault(new_dbval, obj)
-            if obj2 is not obj: throw(TransactionIntegrityError,
-                '%s with unique index %s.%s already exists: %s'
-                % (obj2.__class__.__name__, obj.__class__.__name__, attr.name, new_dbval))
-                # attribute which was created or updated lately clashes with one stored in database
-        index.pop(old_dbval, None)
-    def update_composite_index(cache, obj, attrs, prev_vals, new_vals, undo):
-        if None in prev_vals: prev_vals = None
-        if None in new_vals: new_vals = None
-        if prev_vals is None and new_vals is None: return
-        index = cache.indexes[attrs]
-        if new_vals is not None:
-            obj2 = index.setdefault(new_vals, obj)
-            if obj2 is not obj:
-                attr_names = ', '.join(attr.name for attr in attrs)
-                throw(CacheIndexError, 'Cannot update %r: composite key (%s) with value %s already exists for %r'
-                                 % (obj, attr_names, new_vals, obj2))
-        if prev_vals is not None: del index[prev_vals]
-        undo.append((index, prev_vals, new_vals))
-    def db_update_composite_index(cache, obj, attrs, prev_vals, new_vals):
-        index = cache.indexes[attrs]
-        if None not in new_vals:
-            obj2 = index.setdefault(new_vals, obj)
-            if obj2 is not obj:
-                key_str = ', '.join(repr(item) for item in new_vals)
-                throw(TransactionIntegrityError, '%s with unique index (%s) already exists: %s'
-                                 % (obj2.__class__.__name__, ', '.join(attr.name for attr in attrs), key_str))
-        index.pop(prev_vals, None)
-
-###############################################################################
 
 def string2ast(s):
     result = string2ast_cache.get(s)
