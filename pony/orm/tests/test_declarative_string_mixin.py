@@ -105,6 +105,9 @@ class TestStringMixin(unittest.TestCase):
         result = set(select(s for s in Student if x in s.name))
         self.assertEqual(result, set([Student[2], Student[4]]))
 
+    def test18(self):
+        result = set(select(s for s in Student if 'o' not in s.name))
+        self.assertEqual(result, set([Student[1], Student[3], Student[5]]))
 
 if __name__ == '__main__':
     unittest.main()

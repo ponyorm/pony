@@ -1184,7 +1184,7 @@ class StringMixin(MonadMixin):
             item_sql = [ 'VALUE', '%%%s%%' % item.value ]
         else:
             item_sql = [ 'CONCAT', [ 'VALUE', '%' ], item.getsql()[0], [ 'VALUE', '%' ] ]
-        sql = [ 'LIKE', monad.getsql()[0], item_sql ]
+        sql = [ 'NOT_LIKE' if not_in else 'LIKE', monad.getsql()[0], item_sql ]
         return translator.BoolExprMonad(translator, sql)
     call_upper = make_string_func('UPPER')
     call_lower = make_string_func('LOWER')
