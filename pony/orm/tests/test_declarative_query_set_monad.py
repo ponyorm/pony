@@ -147,7 +147,7 @@ class TestQuerySetMonad(unittest.TestCase):
 
     def test_hint_join_3(self):
         result = set(select(s for s in Student if JOIN(s.scholarship in
-                        select(s.scholarship + 100 for s in Student if s.name <> 'S2'))))
+                        select(s.scholarship + 100 for s in Student if s.name != 'S2'))))
         self.assertEqual(result, set([Student[2]]))
 
     def test_hint_join_4(self):
