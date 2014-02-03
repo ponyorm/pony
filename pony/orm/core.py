@@ -4027,8 +4027,13 @@ class Query(object):
                 except OptimizationFailed: translator.optimization_failed = True
             database._translator_cache[query._key] = translator
         query._translator = translator
-        query._filters = []
+        query._filters = ()
         query._for_update = query._nowait = False
+    def _clone(query, **kwargs):
+        new_query = object.__new__(Query)
+        new_query.__dict__.update(query.__dict__)
+        new_query.__dict__.update(kwargs)
+        return new_query
     def __reduce__(query):
         return unpickle_query, (query._fetch(),)
     def _construct_sql_and_arguments(query, range=None, distinct=None, aggr_func_name=None):
@@ -4142,16 +4147,14 @@ class Query(object):
             throw(TypeError, 'When argument of order_by() method is string or lambda, it must be the only argument')
 
         if numbers or attributes:
-            query._filters.append((numbers, args))
+            new_filters = query._filters + ((numbers, args),)
             new_key = query._key + (args,)
-            translator = query._database._translator_cache.get(new_key)
-            if translator is None:
-                if numbers: translator = query._translator.order_by_numbers(args)
-                else: translator = query._translator.order_by_attributes(args)
-                query._database._translator_cache[new_key] = translator
-            query._key = new_key
-            query._translator = translator
-            return query
+            new_translator = query._database._translator_cache.get(new_key)
+            if new_translator is None:
+                if numbers: new_translator = query._translator.order_by_numbers(args)
+                else: new_translator = query._translator.order_by_attributes(args)
+                query._database._translator_cache[new_key] = new_translator
+            return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
 
         globals = sys._getframe(3).f_globals
         locals = sys._getframe(3).f_locals
@@ -4169,12 +4172,11 @@ class Query(object):
         else: assert False
         return query._process_lambda(func_id, func_ast, globals, locals, order_by=True)
     def _without_order_by(query):
-        query._key = query._key[:3]
-        database = query._database
-        translator = database._translator_cache.get(query._key)
-        assert translator is not None  # Translator for query without order_by must be in cache already
-        query._translator = translator
-        return query
+        key = query._key[:3]
+        translator = query._database._translator_cache.get(query._key)
+        assert translator is not None  # Translator for query without order_by should be in cache already
+        # fixme: select(...).order_by(...).for_update().without_order_by()
+        return query._clone(_key=key, _translator=translator)
     def _process_lambda(query, func_id, func_ast, globals, locals, order_by):
         extractors, varnames, func_ast = create_extractors(func_id, func_ast, query._translator.subquery)
         if extractors:
@@ -4185,25 +4187,24 @@ class Query(object):
                     'Meaning of expression %s has changed during query translation' % name)
             sorted_vartypes = tuple(map(vartypes.__getitem__, varnames))
         else: vars, vartypes, sorted_vartypes = {}, {}, ()
-        query._filters.append((order_by, func_ast, extractors, vartypes))
         new_key = query._key + ((order_by and 'order_by' or 'filter', func_id, sorted_vartypes),)
-        translator = query._database._translator_cache.get(new_key)
-        if translator is None:
+        new_filters = query._filters + ((order_by, func_ast, extractors, vartypes),)
+        new_translator = query._database._translator_cache.get(new_key)
+        if new_translator is None:
             prev_optimized = query._translator.optimize
-            translator = query._translator.apply_lambda(order_by, func_ast, extractors, vartypes)
+            new_translator = query._translator.apply_lambda(order_by, func_ast, extractors, vartypes)
             if not prev_optimized:
-                name_path = translator.can_be_optimized()
+                name_path = new_translator.can_be_optimized()
                 if name_path:
                     tree = loads(query._pickled_tree)  # tree = deepcopy(tree)
                     prev_extractors = query._translator.extractors
                     prev_vartypes = query._translator.vartypes
                     translator_cls = query._translator.__class__
-                    translator = translator_cls(tree, prev_extractors, prev_vartypes, left_join=True, optimize=name_path)
-                    translator = query._reapply_filters(translator)
-            query._database._translator_cache[new_key] = translator
-        query._key = new_key
-        query._translator = translator
-        return query
+                    new_translator = translator_cls(tree, prev_extractors, prev_vartypes,
+                                                    left_join=True, optimize=name_path)
+                    new_translator = query._reapply_filters(new_translator)
+            query._database._translator_cache[new_key] = new_translator
+        return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
     def _reapply_filters(query, translator):
         for tup in query._filters:
             if len(tup) == 2:
@@ -4295,9 +4296,7 @@ class Query(object):
         provider = query._database.provider
         if nowait and not provider.select_for_update_nowait_syntax: throw(TranslationError,
             '%s provider does not support SELECT FOR UPDATE NOWAIT syntax' % provider.dialect)
-        query._for_update = True
-        query._nowait = nowait
-        return query
+        return query._clone(_for_update=True, _nowait=nowait)
     def random(query, limit):
         return query.order_by('random()')[:limit]
 
