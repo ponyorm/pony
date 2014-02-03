@@ -4012,7 +4012,7 @@ class Query(object):
         query._vars = vars
         query._key = code_key, tuple(map(vartypes.__getitem__, varnames)), left_join
         query._database = database
-        query._cache = database._get_cache()
+        query._session_cache = database._get_cache()
 
         translator = database._translator_cache.get(query._key)
         if translator is None:
@@ -4058,7 +4058,7 @@ class Query(object):
     def _fetch(query, range=None, distinct=None):
         translator = query._translator
         sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(range, distinct)
-        cache = query._cache
+        cache = query._session_cache
         database = cache.database
         if query._for_update: cache.immediate = True
         try: result = cache.query_results[query_key]
@@ -4078,7 +4078,7 @@ class Query(object):
                 for i, t in enumerate(translator.expr_type):
                     if isinstance(t, EntityMeta) and t._subclasses_: t._load_many_(row[i] for row in result)
             if query_key is not None:
-                query._cache.query_results[query_key] = result
+                query._session_cache.query_results[query_key] = result
         else:
             stats = database._dblocal.stats
             stat = stats.get(sql)
@@ -4121,7 +4121,7 @@ class Query(object):
         new_query._aggr_func_name = 'EXISTS'
         new_query._aggr_select = [ 'ALL', [ 'VALUE', 1 ] ]
         sql, arguments, attr_offsets, query_key = new_query._construct_sql_and_arguments(range=(0, 1))
-        cache = new_query._cache
+        cache = new_query._session_cache
         try: result = cache.query_results[query_key]
         except KeyError:
             cursor = new_query._database._exec_sql(sql, arguments)
@@ -4271,7 +4271,7 @@ class Query(object):
     def _aggregate(query, aggr_func_name):
         translator = query._translator
         sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(aggr_func_name=aggr_func_name)
-        cache = query._cache
+        cache = query._session_cache
         try: result = cache.query_results[query_key]
         except KeyError:
             cursor = query._database._exec_sql(sql, arguments)
