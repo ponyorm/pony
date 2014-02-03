@@ -4114,21 +4114,8 @@ class Query(object):
         return query._fetch(distinct=True)
     @cut_traceback
     def exists(query):
-        # new_query = query._clone()
-        new_query = object.__new__(Query)
-        new_query.__dict__.update(query.__dict__)
-
-        new_query._aggr_func_name = 'EXISTS'
-        new_query._aggr_select = [ 'ALL', [ 'VALUE', 1 ] ]
-        sql, arguments, attr_offsets, query_key = new_query._construct_sql_and_arguments(range=(0, 1))
-        cache = new_query._session_cache
-        try: result = cache.query_results[query_key]
-        except KeyError:
-            cursor = new_query._database._exec_sql(sql, arguments)
-            row = cursor.fetchone()
-            result = row is not None
-            if query_key is not None: cache.query_results[query_key] = result
-        return result
+        objects = query[:1]
+        return bool(objects)
     @cut_traceback
     def __len__(query):
         return len(query._fetch())
