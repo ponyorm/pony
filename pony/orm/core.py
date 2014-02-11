@@ -3142,11 +3142,11 @@ class EntityMeta(type):
             cond_expr, external_names = decompile(lambda_func)
         elif isinstance(lambda_func, basestring):
             code_key = lambda_func
-            lambda_expr = string2ast(lambda_func)
-            if not isinstance(lambda_expr, ast.Lambda):
+            lambda_ast = string2ast(lambda_func)
+            if not isinstance(lambda_ast, ast.Lambda):
                 throw(TypeError, 'Lambda function is expected. Got: %s' % lambda_func)
-            names = get_lambda_args(lambda_expr)
-            cond_expr = lambda_expr.code
+            names = get_lambda_args(lambda_ast)
+            cond_expr = lambda_ast.code
         else: assert False
 
         if len(names) != 1: throw(TypeError,
