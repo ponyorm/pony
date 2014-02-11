@@ -444,6 +444,10 @@ class SQLTranslator(ASTTranslator):
 
         sql_ast = ast_transformer(sql_ast)
         return sql_ast, attr_offsets
+    def without_order(translator):
+        translator = translator.shallow_copy()
+        translator.order = []
+        return translator
     def order_by_numbers(translator, numbers):
         if 0 in numbers: throw(ValueError, 'Numeric arguments of order_by() method must be non-zero')
         translator = translator.shallow_copy()

@@ -4130,7 +4130,11 @@ class Query(object):
         if not args: throw(TypeError, 'order_by() method requires at least one argument')
         if args[0] is None:
             if len(args) > 1: throw(TypeError, 'When first argument of order_by() method is None, it must be the only argument')
-            return query._without_order_by()
+            tup = ((),)
+            new_key = query._key + tup
+            new_filters = query._filters + tup
+            new_translator = query._translator.without_order()
+            return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
 
         attributes = functions = strings = numbers = False
         for arg in args:
@@ -4145,8 +4149,8 @@ class Query(object):
             throw(TypeError, 'When argument of order_by() method is string or lambda, it must be the only argument')
 
         if numbers or attributes:
-            new_filters = query._filters + ((numbers, args),)
             new_key = query._key + (args,)
+            new_filters = query._filters + ((numbers, args),)
             new_translator = query._database._translator_cache.get(new_key)
             if new_translator is None:
                 if numbers: new_translator = query._translator.order_by_numbers(args)
@@ -4158,12 +4162,6 @@ class Query(object):
         locals = sys._getframe(3).f_locals
         func = args[0]
         return query._process_lambda(func, globals, locals, order_by=True)
-    def _without_order_by(query):
-        key = query._key[:3]
-        translator = query._database._translator_cache.get(query._key)
-        assert translator is not None  # Translator for query without order_by should be in cache already
-        # fixme: select(...).order_by(...).for_update().without_order_by()
-        return query._clone(_key=key, _translator=translator)
     def _process_lambda(query, func, globals, locals, order_by):
         argnames = ()
         if isinstance(func, basestring):
@@ -4218,7 +4216,10 @@ class Query(object):
         return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
     def _reapply_filters(query, translator):
         for tup in query._filters:
-            if len(tup) == 2:
+            if not tup:
+                translator = translator.without_order()
+                continue
+            elif len(tup) == 2:
                 numbers, args = tup
                 if numbers: translator = translator.order_by_numbers(args)
                 else: translator = translator.order_by_attributes(args)
