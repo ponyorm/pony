@@ -3128,12 +3128,11 @@ class EntityMeta(type):
     def _query_from_args_(entity, args, kwargs, frame_depth):
         if len(args) > 1: throw(TypeError, 'Only one positional argument expected')
         if kwargs: throw(TypeError, 'If positional argument presented, no keyword arguments expected')
-        first_arg = args[0]
-        if not (isinstance(first_arg, types.FunctionType)
-                or isinstance(first_arg, basestring) and lambda_re.match(first_arg)):
+        func = args[0]
+        if not (type(func) is types.FunctionType or isinstance(func, basestring) and lambda_re.match(func)):
             throw(TypeError, 'Positional argument must be lambda function or its text source. '
-                             'Got: %s.get(%r)' % (entity.__name__, first_arg))
-        return entity._query_from_lambda_(first_arg, frame_depth+1)
+                             'Got: %s.get(%r)' % (entity.__name__, func))
+        return entity._query_from_lambda_(func, frame_depth+1)
     def _query_from_lambda_(entity, lambda_func, frame_depth):
         globals = sys._getframe(frame_depth+1).f_globals
         locals = sys._getframe(frame_depth+1).f_locals
