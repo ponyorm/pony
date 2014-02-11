@@ -1,6 +1,6 @@
 from __future__ import with_statement
 
-import re, sys, types, inspect, logging
+import re, sys, types, logging
 from compiler import ast, parse
 from cPickle import loads, dumps
 from operator import attrgetter, itemgetter
@@ -23,7 +23,7 @@ from pony.orm.dbapiprovider import (
     OperationalError, IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
 from pony.utils import (
-    localbase, decorator, cut_traceback, throw, deprecated,
+    localbase, decorator, cut_traceback, throw, get_lambda_args, deprecated,
     import_module, parse_expr, is_ident, count, avg as _avg, distinct as _distinct, tostring, strjoin,
     )
 
@@ -3141,12 +3141,10 @@ class EntityMeta(type):
         return entity._query_from_lambda_(first_arg, globals, locals)
     def _query_from_lambda_(entity, lambda_func, globals, locals):
         if type(lambda_func) is types.FunctionType:
-            names, argsname, keyargsname, defaults = inspect.getargspec(lambda_func)
+            names = get_lambda_args(lambda_func)
             if len(names) != 1: throw(TypeError,
                 'Lambda query requires exactly one parameter name, like %s.select(lambda %s: ...). '
                 'Got: %d parameters' % (entity.__name__, entity.__name__[0].lower(), len(names)))
-            if argsname or keyargsname: throw(TypeError)
-            if defaults: throw(TypeError)
             code_key = id(lambda_func.func_code)
             name = names[0]
             cond_expr, external_names = decompile(lambda_func)
@@ -4172,9 +4170,10 @@ class Query(object):
             func_ast = string2ast(func)
             if isinstance(func_ast, ast.Lambda): func_ast = func_ast.code
         elif type(func) is types.FunctionType:
-            for name in func.func_code.co_varnames:
-                if name not in query._translator.subquery:
-                    throw(TranslationError, 'Unknown name %s' % name)
+            names = get_lambda_args(func)
+            subquery = query._translator.subquery
+            for name in names:
+                if name not in subquery: throw(TranslationError, 'Unknown name %s' % name)
             func_id = id(func.func_code)
             func_ast = decompile(func)[0]
         elif not order_by: throw(TypeError,

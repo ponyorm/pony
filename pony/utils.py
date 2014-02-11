@@ -3,7 +3,7 @@
 import re, os, os.path, sys, datetime, types, linecache, warnings
 
 from itertools import count as _count
-from inspect import isfunction, ismethod
+from inspect import isfunction, ismethod, getargspec
 from time import strptime
 from os import urandom
 from codecs import BOM_UTF8, BOM_LE, BOM_BE
@@ -123,6 +123,18 @@ def throw(exc_type, *args, **kwargs):
         raise exc
     else:
         raise exc  # Set "pony.options.CUT_TRACEBACK = False" to see full traceback
+
+lambda_args_cache = {}
+
+def get_lambda_args(func):
+    names = lambda_args_cache.get(func)
+    if names is not None: return names
+    names, argsname, keyargsname, defaults = getargspec(func)
+    if argsname: throw(TypeError, '*%s is not supported' % argsname)
+    if keyargsname: throw(TypeError, '**%s is not supported' % keyargsname)
+    if defaults: throw(TypeError, 'Defaults are not supported')
+    lambda_args_cache[func] = names
+    return names
 
 _cache = {}
 MAX_CACHE_SIZE = 1000
