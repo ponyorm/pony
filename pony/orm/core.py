@@ -2793,12 +2793,9 @@ class EntityMeta(type):
     def select(entity, func=None):
         if func is None:
             return Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
-        if not (isinstance(func, types.FunctionType)
-                or isinstance(func, basestring) and lambda_re.match(func)):
+        if not (type(func) is types.FunctionType or isinstance(func, basestring) and lambda_re.match(func)):
             throw(TypeError, 'Lambda function or its text representation expected. Got: %r' % func)
-        globals = sys._getframe(3).f_globals
-        locals = sys._getframe(3).f_locals
-        return entity._query_from_lambda_(func, globals, locals)
+        return entity._query_from_lambda_(func, frame_depth=3)
     @cut_traceback
     def select_by_sql(entity, sql, globals=None, locals=None):
         return entity._find_by_sql_(None, sql, globals, locals, frame_depth=3)
@@ -3136,30 +3133,27 @@ class EntityMeta(type):
                 or isinstance(first_arg, basestring) and lambda_re.match(first_arg)):
             throw(TypeError, 'Positional argument must be lambda function or its text source. '
                              'Got: %s.get(%r)' % (entity.__name__, first_arg))
+        return entity._query_from_lambda_(first_arg, frame_depth+1)
+    def _query_from_lambda_(entity, lambda_func, frame_depth):
         globals = sys._getframe(frame_depth+1).f_globals
         locals = sys._getframe(frame_depth+1).f_locals
-        return entity._query_from_lambda_(first_arg, globals, locals)
-    def _query_from_lambda_(entity, lambda_func, globals, locals):
         if type(lambda_func) is types.FunctionType:
             names = get_lambda_args(lambda_func)
-            if len(names) != 1: throw(TypeError,
-                'Lambda query requires exactly one parameter name, like %s.select(lambda %s: ...). '
-                'Got: %d parameters' % (entity.__name__, entity.__name__[0].lower(), len(names)))
             code_key = id(lambda_func.func_code)
-            name = names[0]
             cond_expr, external_names = decompile(lambda_func)
         elif isinstance(lambda_func, basestring):
-            lambda_text = lambda_func
-            lambda_expr = string2ast(lambda_text)
-            if not isinstance(lambda_expr, ast.Lambda): throw(TypeError)
-            if len(lambda_expr.argnames) != 1: throw(TypeError)
-            if lambda_expr.varargs: throw(TypeError)
-            if lambda_expr.kwargs: throw(TypeError)
-            if lambda_expr.defaults: throw(TypeError)
-            code_key = lambda_text
-            name = lambda_expr.argnames[0]
+            code_key = lambda_func
+            lambda_expr = string2ast(lambda_func)
+            if not isinstance(lambda_expr, ast.Lambda):
+                throw(TypeError, 'Lambda function is expected. Got: %s' % lambda_func)
+            names = get_lambda_args(lambda_expr)
             cond_expr = lambda_expr.code
         else: assert False
+
+        if len(names) != 1: throw(TypeError,
+            'Lambda query requires exactly one parameter name, like %s.select(lambda %s: ...). '
+            'Got: %d parameters' % (entity.__name__, entity.__name__[0].lower(), len(names)))
+        name = names[0]
 
         if_expr = ast.GenExprIf(cond_expr)
         for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name('.0'), [ if_expr ])

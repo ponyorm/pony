@@ -12,6 +12,7 @@ from bisect import bisect
 from collections import defaultdict
 from copy import deepcopy, _deepcopy_dispatch
 from functools import update_wrapper
+from compiler import ast
 
 # deepcopy instance method patch for Python < 2.7:
 if types.MethodType not in _deepcopy_dispatch:
@@ -129,9 +130,18 @@ lambda_args_cache = {}
 def get_lambda_args(func):
     names = lambda_args_cache.get(func)
     if names is not None: return names
-    names, argsname, keyargsname, defaults = getargspec(func)
+    if type(func) is types.FunctionType:
+        names, argsname, kwname, defaults = getargspec(func)
+    elif isinstance(func, ast.Lambda):
+        names = func.argnames
+        if func.kwargs: names, kwname = names[:-1], names[-1]
+        else: kwname = None
+        if func.varargs: names, argsname = names[:-1], names[-1]
+        else: argsname = None
+        defaults = func.defaults
+    else: assert False
     if argsname: throw(TypeError, '*%s is not supported' % argsname)
-    if keyargsname: throw(TypeError, '**%s is not supported' % keyargsname)
+    if kwname: throw(TypeError, '**%s is not supported' % kwname)
     if defaults: throw(TypeError, 'Defaults are not supported')
     lambda_args_cache[func] = names
     return names
