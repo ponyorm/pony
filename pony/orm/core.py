@@ -4020,9 +4020,11 @@ class Query(object):
         query._translator = translator
         query._filters = ()
         query._for_update = query._nowait = False
+        query._result = None
     def _clone(query, **kwargs):
         new_query = object.__new__(Query)
         new_query.__dict__.update(query.__dict__)
+        new_query._result = None
         new_query.__dict__.update(kwargs)
         return new_query
     def __reduce__(query):
@@ -4053,6 +4055,9 @@ class Query(object):
         return sql, arguments, attr_offsets, query_key
     def _fetch(query, range=None, distinct=None):
         translator = query._translator
+        if query._result is not None:
+            return QueryResult(query._result, translator.expr_type, translator.col_names)
+
         sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(range, distinct)
         cache = query._session_cache
         database = cache.database
@@ -4080,6 +4085,8 @@ class Query(object):
             stat = stats.get(sql)
             if stat is not None: stat.cache_count += 1
             else: stats[sql] = QueryStat(sql)
+
+        query._result = result
         return QueryResult(result, translator.expr_type, translator.col_names)
     @cut_traceback
     def show(query, width=None):
