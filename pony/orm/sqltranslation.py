@@ -451,6 +451,7 @@ class SQLTranslator(ASTTranslator):
         expr_monad = translator.tree.expr.monad
         if isinstance(expr_monad, translator.ListMonad): monads = expr_monad.items
         else: monads = (expr_monad,)
+        new_order = []
         for i in numbers:
             try: monad = monads[abs(i)-1]
             except IndexError:
@@ -461,7 +462,8 @@ class SQLTranslator(ASTTranslator):
                     "Invalid index of order_by() method: %d "
                     "(query result is single list of elements and has only one 'column')" % i)
             for pos in monad.orderby_columns:
-                order.append(i < 0 and [ 'DESC', [ 'VALUE', pos ] ] or [ 'VALUE', pos ])
+                new_order.append(i < 0 and [ 'DESC', [ 'VALUE', pos ] ] or [ 'VALUE', pos ])
+        order[:0] = new_order
         return translator
     def order_by_attributes(translator, attrs):
         entity = translator.expr_type
@@ -471,6 +473,7 @@ class SQLTranslator(ASTTranslator):
         translator = translator.shallow_copy()
         order = translator.order = translator.order[:]  # only order will be changed
         alias = translator.alias
+        new_order = []
         for x in attrs:
             if isinstance(x, DescWrapper):
                 attr = x.attr
@@ -484,7 +487,8 @@ class SQLTranslator(ASTTranslator):
             if attr.is_collection: throw(TypeError,
                 'Collection attribute %s cannot be used for ordering' % attr)
             for column in attr.columns:
-                order.append(desc_wrapper([ 'COLUMN', alias, column]))
+                new_order.append(desc_wrapper([ 'COLUMN', alias, column]))
+        order[:0] = new_order
         return translator
     def apply_lambda(translator, order_by, func_ast, argnames, extractors, vartypes):
         prev_optimized = translator.optimize
@@ -498,13 +502,15 @@ class SQLTranslator(ASTTranslator):
         if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
         else: nodes = (func_ast,)
         if order_by:
+            new_order = []
             for node in nodes:
                 if isinstance(node.monad, translator.SetMixin):
                     t = node.monad.type.item_type
                     if isinstance(type(t), type): t = t.__name__
                     throw(TranslationError, 'Set of %s (%s) cannot be used for ordering'
                                             % (t, ast2src(node)))
-                translator.order.extend(node.monad.getsql())
+                new_order.extend(node.monad.getsql())
+            translator.order[:0] = new_order
         else:
             for node in nodes:
                 monad = node.monad
