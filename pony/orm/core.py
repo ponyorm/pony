@@ -4158,22 +4158,30 @@ class Query(object):
         # fixme: select(...).order_by(...).for_update().without_order_by()
         return query._clone(_key=key, _translator=translator)
     def _process_lambda(query, func, globals, locals, order_by):
+        argnames = ()
         if isinstance(func, basestring):
             func_id = func
             func_ast = string2ast(func)
-            if isinstance(func_ast, ast.Lambda): func_ast = func_ast.code
+            if isinstance(func_ast, ast.Lambda):
+                argnames = get_lambda_args(func_ast)
+                func_ast = func_ast.code
         elif type(func) is types.FunctionType:
-            names = get_lambda_args(func)
+            argnames = get_lambda_args(func)
             subquery = query._translator.subquery
-            for name in names:
-                if name not in subquery: throw(TranslationError, 'Unknown name %s' % name)
             func_id = id(func.func_code)
             func_ast = decompile(func)[0]
         elif not order_by: throw(TypeError,
             'Argument of filter() method must be a lambda functon or its text. Got: %r' % func)
         else: assert False
-        
-        extractors, varnames, func_ast = create_extractors(func_id, func_ast, query._translator.subquery)
+
+        if argnames:
+            expr_type = query._translator.expr_type
+            expr_count = len(expr_type) if type(expr_type) is tuple else 1
+            if len(argnames) != expr_count:
+                throw(TypeError, 'Incorrect number of lambda arguments. '
+                                 'Expected: %d, got: %d' % (expr_count, len(argnames)))
+
+        extractors, varnames, func_ast = create_extractors(func_id, func_ast, argnames or query._translator.subquery)
         if extractors:
             vars, vartypes = extract_vars(extractors, globals, locals)
             query_vars = query._vars
@@ -4184,11 +4192,11 @@ class Query(object):
         else: vars, vartypes, sorted_vartypes = {}, {}, ()
 
         new_key = query._key + ((order_by and 'order_by' or 'filter', func_id, sorted_vartypes),)
-        new_filters = query._filters + ((order_by, func_ast, extractors, vartypes),)
+        new_filters = query._filters + ((order_by, func_ast, argnames, extractors, vartypes),)
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
             prev_optimized = query._translator.optimize
-            new_translator = query._translator.apply_lambda(order_by, func_ast, extractors, vartypes)
+            new_translator = query._translator.apply_lambda(order_by, func_ast, argnames, extractors, vartypes)
             if not prev_optimized:
                 name_path = new_translator.can_be_optimized()
                 if name_path:
@@ -4208,8 +4216,8 @@ class Query(object):
                 if numbers: translator = translator.order_by_numbers(args)
                 else: translator = translator.order_by_attributes(args)
                 continue
-            order_by, func_ast, extractors, vartypes = tup
-            translator = translator.apply_lambda(order_by, func_ast, extractors, vartypes)
+            order_by, func_ast, argnames, extractors, vartypes = tup
+            translator = translator.apply_lambda(order_by, func_ast, argnames, extractors, vartypes)
         return translator
     @cut_traceback
     def filter(query, func):

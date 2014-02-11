@@ -151,6 +151,7 @@ class SQLTranslator(ASTTranslator):
         assert isinstance(tree, ast.GenExprInner), tree
         ASTTranslator.__init__(translator, tree)
         translator.database = None
+        translator.argnames = None
         translator.extractors = extractors
         translator.vartypes = vartypes
         translator.parent = parent_translator
@@ -485,13 +486,14 @@ class SQLTranslator(ASTTranslator):
             for column in attr.columns:
                 order.append(desc_wrapper([ 'COLUMN', alias, column]))
         return translator
-    def apply_lambda(translator, order_by, func_ast, extractors, vartypes):
+    def apply_lambda(translator, order_by, func_ast, argnames, extractors, vartypes):
         prev_optimized = translator.optimize
         translator = deepcopy(translator)
         pickled_func_ast = dumps(func_ast, 2)
         func_ast = loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
         translator.extractors.update(extractors)
         translator.vartypes.update(vartypes)
+        translator.argnames = list(argnames)
         translator.dispatch(func_ast)
         if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
         else: nodes = (func_ast,)
@@ -557,6 +559,14 @@ class SQLTranslator(ASTTranslator):
         return translator.ListMonad(translator, [ item.monad for item in node.nodes ])
     def postName(translator, node):
         name = node.name
+        argnames = translator.argnames
+        if translator.argnames and name in translator.argnames:
+            i = translator.argnames.index(name)
+            expr_monad = translator.tree.expr.monad
+            if isinstance(expr_monad, translator.ListMonad):
+                return expr_monad.items[i]
+            assert i == 0
+            return expr_monad
         tableref = translator.subquery.get_tableref(name)
         if tableref is None and name == 'random':
             translator.query_result_is_cacheable = False
