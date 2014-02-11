@@ -4158,26 +4158,29 @@ class Query(object):
 
         globals = sys._getframe(3).f_globals
         locals = sys._getframe(3).f_locals
-        if strings:
-            expr_text = func_id = args[0]
-            func_ast = string2ast(expr_text)
-            if isinstance(func_ast, ast.Lambda): func_ast = func_ast.code
-        elif functions:
-            func = args[0]
-            for name in func.func_code.co_varnames:
-                if name not in query._translator.subquery:
-                    throw(TranslationError, 'Unknown name %s' % name)
-            func_id = id(func.func_code)
-            func_ast = decompile(func)[0]
-        else: assert False
-        return query._process_lambda(func_id, func_ast, globals, locals, order_by=True)
+        func = args[0]
+        return query._process_lambda(func, globals, locals, order_by=True)
     def _without_order_by(query):
         key = query._key[:3]
         translator = query._database._translator_cache.get(query._key)
         assert translator is not None  # Translator for query without order_by should be in cache already
         # fixme: select(...).order_by(...).for_update().without_order_by()
         return query._clone(_key=key, _translator=translator)
-    def _process_lambda(query, func_id, func_ast, globals, locals, order_by):
+    def _process_lambda(query, func, globals, locals, order_by):
+        if isinstance(func, basestring):
+            func_id = func
+            func_ast = string2ast(func)
+            if isinstance(func_ast, ast.Lambda): func_ast = func_ast.code
+        elif type(func) is types.FunctionType:
+            for name in func.func_code.co_varnames:
+                if name not in query._translator.subquery:
+                    throw(TranslationError, 'Unknown name %s' % name)
+            func_id = id(func.func_code)
+            func_ast = decompile(func)[0]
+        elif not order_by: throw(TypeError,
+            'Argument of filter() method must be a lambda functon or its text. Got: %r' % func)
+        else: assert False
+        
         extractors, varnames, func_ast = create_extractors(func_id, func_ast, query._translator.subquery)
         if extractors:
             vars, vartypes = extract_vars(extractors, globals, locals)
@@ -4187,6 +4190,7 @@ class Query(object):
                     'Meaning of expression %s has changed during query translation' % name)
             sorted_vartypes = tuple(map(vartypes.__getitem__, varnames))
         else: vars, vartypes, sorted_vartypes = {}, {}, ()
+
         new_key = query._key + ((order_by and 'order_by' or 'filter', func_id, sorted_vartypes),)
         new_filters = query._filters + ((order_by, func_ast, extractors, vartypes),)
         new_translator = query._database._translator_cache.get(new_key)
@@ -4219,18 +4223,7 @@ class Query(object):
     def filter(query, func):
         globals = sys._getframe(3).f_globals
         locals = sys._getframe(3).f_locals
-        if isinstance(func, basestring):
-            func_id = func
-            func_ast = string2ast(func)
-            if isinstance(func_ast, ast.Lambda): func_ast = func_ast.code
-        elif type(func) is types.FunctionType:
-            for name in func.func_code.co_varnames:
-                if name not in query._translator.subquery:
-                    throw(TranslationError, 'Unknown name %s' % name)
-            func_id = id(func.func_code)
-            func_ast = decompile(func)[0]
-        else: throw(TypeError, 'Argument of filter() method must be a lambda functon or its text. Got: %r' % func)
-        return query._process_lambda(func_id, func_ast, globals, locals, order_by=False)
+        return query._process_lambda(func, globals, locals, order_by=False)
     @cut_traceback
     def __getitem__(query, key):
         if isinstance(key, slice):
