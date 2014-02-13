@@ -4,7 +4,7 @@ import re, sys, types, inspect, logging
 from compiler import ast, parse
 from cPickle import loads, dumps
 from operator import attrgetter, itemgetter
-from itertools import count as _count, ifilter, ifilterfalse, imap, izip, chain, starmap
+from itertools import count as _count, ifilter, ifilterfalse, imap, izip, chain, starmap, repeat
 from time import time
 import datetime
 from random import shuffle, randint
