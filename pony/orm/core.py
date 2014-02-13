@@ -4019,6 +4019,7 @@ class Query(object):
             database._translator_cache[query._key] = translator
         query._translator = translator
         query._filters = ()
+        query._next_kwarg_id = 0
         query._for_update = query._nowait = False
         query._result = None
     def _clone(query, **kwargs):
@@ -4149,7 +4150,7 @@ class Query(object):
             throw(TypeError, 'When argument of order_by() method is string or lambda, it must be the only argument')
 
         if numbers or attributes:
-            new_key = query._key + (args,)
+            new_key = query._key + ('order_by', args,)
             new_filters = query._filters + ((numbers, args),)
             new_translator = query._database._translator_cache.get(new_key)
             if new_translator is None:
@@ -4218,20 +4219,47 @@ class Query(object):
         for tup in query._filters:
             if not tup:
                 translator = translator.without_order()
-                continue
+            elif len(tup) == 1:
+                attrnames = tup[0]
+                translator.apply_kwfilters(attrnames)
             elif len(tup) == 2:
                 numbers, args = tup
                 if numbers: translator = translator.order_by_numbers(args)
                 else: translator = translator.order_by_attributes(args)
-                continue
-            order_by, func_ast, argnames, extractors, vartypes = tup
-            translator = translator.apply_lambda(order_by, func_ast, argnames, extractors, vartypes)
+            else:
+                order_by, func_ast, argnames, extractors, vartypes = tup
+                translator = translator.apply_lambda(order_by, func_ast, argnames, extractors, vartypes)
         return translator
     @cut_traceback
-    def filter(query, func):
-        globals = sys._getframe(3).f_globals
-        locals = sys._getframe(3).f_locals
-        return query._process_lambda(func, globals, locals, order_by=False)
+    def filter(query, *args, **kwargs):
+        if args:
+            if len(args) > 1: throw(TypeError, 'Only one positional argument is supported')
+            if kwargs: throw(TypeError, 'Keyword arguments cannot be specified together with positional arguments')
+            func = args[0]
+            globals = sys._getframe(3).f_globals
+            locals = sys._getframe(3).f_locals
+            return query._process_lambda(func, globals, locals, order_by=False)
+        if not kwargs: return query
+        attrnames = []
+        value_dict = {}
+        next_id = query._next_kwarg_id
+        for attr in sorted(kwargs):
+            value = kwargs[attr]
+            id = next_id
+            next_id += 1
+            attrnames.append((attr, id, value is None))
+            value_dict[id] = value
+        attrnames = tuple(attrnames)
+        new_key = query._key + ('filter', attrnames)
+        new_filters = query._filters + (attrnames,)
+        new_translator = query._database._translator_cache.get(new_key)
+        if new_translator is None:
+            new_translator = query._translator.apply_kwfilters(attrnames)
+            query._database._translator_cache[new_key] = new_translator
+        new_query = query._clone(_key=new_key, _filters=new_filters, _translator=new_translator,
+                                 _next_kwargs_id=next_id)
+        new_query._vars.update(value_dict)
+        return new_query
     @cut_traceback
     def __getitem__(query, key):
         if isinstance(key, slice):

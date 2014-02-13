@@ -494,6 +494,29 @@ class SQLTranslator(ASTTranslator):
                 new_order.append(desc_wrapper([ 'COLUMN', alias, column]))
         order[:0] = new_order
         return translator
+    def apply_kwfilters(translator, attrnames):
+        entity = translator.expr_type
+        if not isinstance(entity, EntityMeta):
+            throw(TypeError, 'Keyword arguments are not allowed when query result is not entity objects')
+        if translator.aggregated: throw(NotImplementedError, 'Aggregated query cannot be filtered this way')
+        translator = deepcopy(translator)
+        expr_monad = translator.tree.expr.monad
+        monads = []
+        none_monad = translator.NoneMonad(translator)
+        for attrname, id, is_none in attrnames:
+            attr = entity._adict_.get(attrname)
+            if attr is None: throw(AttributeError,
+                'Entity %s does not have attribute %s' % (entity.__name__, attrname))
+            if attr.is_collection: throw(TypeError,
+                '%s attribute %s cannot be used as a keyword argument for filtering'
+                % (attr.__class__.__name__, attr.name))
+            attr_monad = expr_monad.getattr(attrname)
+            if is_none: monads.append(CmpMonad('is', attr_monad, none_monad))
+            else:
+                param_monad = translator.ParamMonad.new(translator, attr.py_type, id)
+                monads.append(CmpMonad('==', attr_monad, param_monad))
+        for m in monads: translator.conditions.extend(m.getsql())
+        return translator
     def apply_lambda(translator, order_by, func_ast, argnames, extractors, vartypes):
         prev_optimized = translator.optimize
         translator = deepcopy(translator)
@@ -1496,7 +1519,7 @@ class CmpMonad(BoolMonad):
         monad.op = op
         monad.left = left
         monad.right = right
-        monad.aggregated = left.aggregated or right.aggregated
+        monad.aggregated = getattr(left, 'aggregated', False) or getattr(right, 'aggregated', False)
     def negate(monad):
         return monad.translator.CmpMonad(cmp_negate[monad.op], monad.left, monad.right)
     def getsql(monad, subquery=None):
