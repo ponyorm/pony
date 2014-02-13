@@ -4003,7 +4003,6 @@ class Query(object):
         query._vars = vars
         query._key = code_key, tuple(map(vartypes.__getitem__, varnames)), left_join
         query._database = database
-        query._session_cache = database._get_cache()
 
         translator = database._translator_cache.get(query._key)
         if translator is None:
@@ -4060,8 +4059,8 @@ class Query(object):
             return QueryResult(query._result, translator.expr_type, translator.col_names)
 
         sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(range, distinct)
-        cache = query._session_cache
-        database = cache.database
+        database = query._database
+        cache = database._get_cache()
         if query._for_update: cache.immediate = True
         try: result = cache.query_results[query_key]
         except KeyError:
@@ -4079,8 +4078,7 @@ class Query(object):
                            for sql_row in cursor.fetchall() ]
                 for i, t in enumerate(translator.expr_type):
                     if isinstance(t, EntityMeta) and t._subclasses_: t._load_many_(row[i] for row in result)
-            if query_key is not None:
-                query._session_cache.query_results[query_key] = result
+            if query_key is not None: cache.query_results[query_key] = result
         else:
             stats = database._dblocal.stats
             stat = stats.get(sql)
@@ -4288,7 +4286,7 @@ class Query(object):
     def _aggregate(query, aggr_func_name):
         translator = query._translator
         sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(aggr_func_name=aggr_func_name)
-        cache = query._session_cache
+        cache = query._database._get_cache()
         try: result = cache.query_results[query_key]
         except KeyError:
             cursor = query._database._exec_sql(sql, arguments)
