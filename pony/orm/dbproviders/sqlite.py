@@ -170,13 +170,14 @@ class SQLiteProvider(DBAPIProvider):
             # Database instance is created
 
             # the list of frames:
-            # 5 - user code: db = Database(...)
-            # 4 - cut_traceback decorator wrapper
-            # 3 - cut_traceback decorator
-            # 2 - pony.orm.Database.__init__()
+            # 6 - user code: db = Database(...)
+            # 5 - cut_traceback decorator wrapper
+            # 4 - cut_traceback decorator
+            # 3 - pony.orm.Database.__init__() / .bind()
+            # 2 - pony.orm.Database._bind()
             # 1 - pony.dbapiprovider.DBAPIProvider.__init__()
             # 0 - pony.dbproviders.sqlite.get_pool()
-            filename = absolutize_path(filename, frame_depth=5)
+            filename = absolutize_path(filename, frame_depth=6)
         return SQLitePool(filename, create_db)
 
     def table_exists(provider, connection, table_name):

@@ -404,19 +404,8 @@ class Database(object):
     def __deepcopy__(self, memo):
         return self  # Database cannot be cloned by deepcopy()
     @cut_traceback
-    def __init__(self, provider, *args, **kwargs):
-        # First argument cannot be named 'database', because 'database' can be in kwargs
-        if isinstance(provider, type) and issubclass(provider, DBAPIProvider):
-            provider_cls = provider
-        else:
-            if not isinstance(provider, basestring): throw(TypeError)
-            if provider == 'pygresql': throw(TypeError,
-                'Pony no longer supports PyGreSQL module. Please use psycopg2 instead.')
-            provider_module = import_module('pony.orm.dbproviders.' + provider)
-            provider_cls = provider_module.provider_cls
-
-        self.provider = provider = provider_cls(*args, **kwargs)
-
+    def __init__(self, *args, **kwargs):
+        # argument 'self' cannot be named 'database', because 'database' can be in kwargs
         self.priority = 0
         self._insert_cache = {}
 
@@ -429,9 +418,32 @@ class Database(object):
         self.Entity = type.__new__(EntityMeta, 'Entity', (Entity,), {})
         self.Entity._database_ = self
 
+        # Statistics-related stuff:
         self.global_stats = {}
         self.global_stats_lock = Lock()
         self._dblocal = DbLocal()
+
+        self.provider = None
+        if args or kwargs: self._bind(*args, **kwargs)
+    @cut_traceback
+    def bind(self, *args, **kwargs):
+        self._bind(*args, **kwargs)
+    def _bind(self, *args, **kwargs):
+        # argument 'self' cannot be named 'database', because 'database' can be in kwargs
+        if self.provider is not None:
+            throw(TypeError, 'Database object was already bound to %s provider' % self.provider.dialect)
+        if not args:
+            throw(TypeError, 'Database provider should be specified as a first positional argument')
+        provider, args = args[0], args[1:]
+        if isinstance(provider, type) and issubclass(provider, DBAPIProvider):
+            provider_cls = provider
+        else:
+            if not isinstance(provider, basestring): throw(TypeError)
+            if provider == 'pygresql': throw(TypeError,
+                'Pony no longer supports PyGreSQL module. Please use psycopg2 instead.')
+            provider_module = import_module('pony.orm.dbproviders.' + provider)
+            provider_cls = provider_module.provider_cls
+        self.provider = provider = provider_cls(*args, **kwargs)
     @property
     def last_sql(database):
         return database._dblocal.last_sql
@@ -466,11 +478,14 @@ class Database(object):
         return connection
     @cut_traceback
     def disconnect(database):
+        provider = database.provider
+        if provider is None: return
         if local.db_context_counter: throw(TransactionError, 'disconnect() cannot be called inside of db_sesison')
         cache = local.db2cache.get(database)
         if cache is not None: cache.rollback()
-        database.provider.disconnect()
+        provider.disconnect()
     def _get_cache(database):
+        if database.provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
         cache = local.db2cache.get(database)
         if cache is not None: return cache
         if not local.db_context_counter and not (
@@ -493,13 +508,14 @@ class Database(object):
     def execute(database, sql, globals=None, locals=None):
         return database._exec_raw_sql(sql, globals, locals, frame_depth=3)
     def _exec_raw_sql(database, sql, globals, locals, frame_depth):
+        provider = database.provider
+        if provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
         sql = sql[:]  # sql = templating.plainstr(sql)
         if globals is None:
             assert locals is None
             frame_depth += 1
             globals = sys._getframe(frame_depth).f_globals
             locals = sys._getframe(frame_depth).f_locals
-        provider = database.provider
         adapted_sql, code = adapt_sql(sql, provider.paramstyle)
         arguments = eval(code, globals, locals)
         return database._exec_sql(adapted_sql, arguments)
@@ -535,6 +551,7 @@ class Database(object):
         return bool(result)
     @cut_traceback
     def insert(database, table_name, returning=None, **kwargs):
+        if database.provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
         table_name = table_name[:]  # table_name = templating.plainstr(table_name)
         query_key = (table_name,) + tuple(kwargs)  # keys are not sorted deliberately!!
         if returning is not None: query_key = query_key + (returning,)
@@ -574,6 +591,8 @@ class Database(object):
         return new_id
     @cut_traceback
     def generate_mapping(database, filename=None, check_tables=True, create_tables=False):
+        provider = database.provider
+        if provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
         if database.schema: throw(MappingError, 'Mapping was already generated')
         if filename is not None: throw(NotImplementedError)
         for entity_name in database._unmapped_attrs:
@@ -582,7 +601,6 @@ class Database(object):
         def get_columns(table, column_names):
             return tuple(map(table.column_dict.__getitem__, column_names))
 
-        provider = database.provider
         schema = database.schema = provider.dbschema_cls(provider)
         entities = list(sorted(database.entities.values(), key=attrgetter('_id_')))
         for entity in entities:
@@ -661,6 +679,16 @@ class Database(object):
                     m2m_table.m2m.add(attr)
                     m2m_table.m2m.add(reverse)
                 else:
+                    if attr.is_required: pass
+                    elif not attr.is_string:
+                        if attr.nullable is False:
+                            throw(TypeError, 'Optional attribute with non-string type %s must be nullable' % attr)
+                        attr.nullable = True
+                    elif entity._database_.provider.dialect == 'Oracle':
+                        if attr.nullable is False: throw(ERDiagramError,
+                            'In Oracle, optional string attribute %s must be nullable' % attr)
+                        attr.nullable = True
+
                     columns = attr.get_columns()  # initializes attr.converters
                     if not attr.reverse and attr.default is not None:
                         assert len(attr.converters) == 1
@@ -751,6 +779,9 @@ class Database(object):
         provider = database.provider
         existed_tables = []
         for table_name in table_names:
+            if table_name is None:
+                if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
+                else: throw(TypeError, 'Table name cannot be None')
             if provider.table_exists(connection, table_name): existed_tables.append(table_name)
             elif not if_exists:
                 if try_normalized:
@@ -771,14 +802,15 @@ class Database(object):
     @cut_traceback
     @db_session(ddl=True)
     def create_tables(database, check_tables=False):
-        if database.schema is None: throw(ERDiagramError, 'No mapping was generated for the database')
         cache = database._get_cache()
+        if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
         connection = cache.prepare_connection_for_query_execution()
         database.schema.create_tables(database.provider, connection)
         if check_tables: database.schema.check_tables(database.provider, connection)
     @db_session()
     def check_tables(database):
         cache = database._get_cache()
+        if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
         connection = cache.prepare_connection_for_query_execution()
         database.schema.check_tables(database.provider, connection)
 
@@ -1149,14 +1181,6 @@ class Attribute(object):
         if not attr.is_required:
             if attr.is_unique and attr.nullable is False:
                 throw(TypeError, 'Optional unique attribute %s must be nullable' % attr)
-            if not attr.is_string:
-                if attr.nullable is False:
-                    throw(TypeError, 'Optional attribute with non-string type %s must be nullable' % attr)
-                attr.nullable = True
-            elif entity._database_.provider.dialect == 'Oracle':
-                if attr.nullable is False: throw(ERDiagramError,
-                    'In Oracle, optional string attribute %s must be nullable' % attr)
-                attr.nullable = True
         if entity._root_ is not entity:
             if attr.nullable is False: throw(ERDiagramError,
                 'Attribute %s must be nullable due to single-table inheritance' % attr)
