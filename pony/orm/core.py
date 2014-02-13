@@ -410,8 +410,8 @@ class Database(object):
             provider_cls = provider
         else:
             if not isinstance(provider, basestring): throw(TypeError)
-            if provider == 'pygresql':
-                deprecated(4, 'Pony discontinues support of PyGreSQL module. Please use psycopg2 instead.')
+            if provider == 'pygresql': throw(TypeError,
+                'Pony no longer supports PyGreSQL module. Please use psycopg2 instead.')
             provider_module = import_module('pony.orm.dbproviders.' + provider)
             provider_cls = provider_module.provider_cls
 
