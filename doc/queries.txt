@@ -1,2 +1,149 @@
-﻿Queries - TBD
+﻿Queries
 ===============
+
+Pony provides a very convenient way to query the database using the generator expression syntax.
+
+Pony ORM top level functions used to query the database
+--------------------------------------------------------------------
+
+.. py:function:: select(gen)
+
+   Returns an instance of the :py:class:`Query` object. If necessary, you can apply any :py:class:`Query` method to the result, e.g. :py:meth:`Query.order_by` or :py:meth:`Query.count`. If you just need to get a list of objects you can either iterate over the result or get a full slice::
+
+       c = select(p for p in Product).count()
+
+       for p in select(p for p in Product):
+           ...
+
+       prod_list = select(p for p in Product)
+
+.. py:function:: get(gen)
+
+.. py:function:: left_join(gen)
+
+.. py:function:: count(gen)
+
+.. py:function:: min(gen)
+
+.. py:function:: max(gen)
+
+.. py:function:: sum(gen)
+
+.. py:function:: avg(gen)
+
+.. py:function:: exists(gen)
+
+
+Entity class methods
+----------------------
+
+.. class:: Entity
+
+   .. py:method:: []
+
+   .. py:method:: describe()
+
+   .. py:method:: drop_table(with_all_data=False)
+
+   .. py:method:: exists(lambda)
+                  exists(**kwargs)
+
+   .. py:method:: get(lambda)
+                  get(**kwargs)
+
+   .. py:method:: get_by_sql(sql, globals=None, locals=None)
+
+   .. py:method:: get_for_update(lambda)
+                  get_for_update(**kwargs)
+
+   .. py:method:: order_by(pos1 [, pos2, ...])
+                  order_by(attr1 [, attr2, ...])
+                  order_by(lambda)
+                  order_by(str)
+
+   .. py:method:: select(lambda)
+
+   .. py:method:: select_by_sql(sql, globals=None, locals=None)
+
+   .. py:method:: select_random(limit)
+
+
+Entity instance methods
+----------------------------
+
+.. py:method:: delete()
+
+.. py:method:: set(**kwargs)
+
+
+Query methods
+-------------------
+
+.. class:: Query
+
+   .. py:method:: []
+
+   .. py:method:: avg()
+
+   .. py:method:: count()
+
+   .. py:method:: distinct()
+
+   .. py:method:: exists()
+
+   .. py:method:: filter(lambda)
+
+      The ``filter()`` method of the ``Query`` object is used for filtering the result of a query. The conditions which are passed as parameters to the ``filter()`` method will be translated into the WHERE section of the resulting SQL query.
+
+      Before Pony ORM release 0.5 the ``filter()`` method affected the underlying query updating the query in-place, but since the release 0.5 it creates and returns a new Query object with the applied conditions.
+
+      The ``select()`` function can return a list of single elements or a list of tuples::
+
+          select(p for p in Product)
+          select((p1, p2) for p1 in Product for p2 in Product if p1.name == p2.name and p1 != p2)
+          select((p.name, count(p.orders)) for p in Product)
+
+      The number of ``filter()`` arguments should correspond to the query result. The ``filter()`` method can receive a lambda expression with a condition:
+
+          q = select(p for p in Product)
+          q2 = q.filter(lambda x: x.price > 100)
+
+          q = select((p.name, p.price) for p in Product)
+          q2 = q.filter(lambda n, p: n.name.startswith("A") and p > 100)
+
+      Also the ``filter()`` method can receive a text string where you can specify just the expression::
+
+          q = select(p for p in Product)
+          x = 100
+          q2 = q.filter("p.price > x")
+
+      Another way to filter the query result is to pass parameters in the form of named arguments::
+
+          q = select(p for p in Product)
+          q2 = q.filter(price=100, name="iPod")
+
+
+   .. py:method:: first()
+
+   .. py:method:: for_update(nowait=False)
+
+   .. py:method:: get()
+
+   .. py:method:: limit(limit, offset=None)
+
+   .. py:method:: max()
+
+   .. py:method:: min()
+
+   .. py:method:: order_by(pos1 [, pos2, ...])
+                  order_by(attr1 [, attr2, ...])
+                  order_by(lambda)
+                  order_by(str)
+
+   .. py:method:: page(pagenum, pagesize=10)
+
+   .. py:method:: random(limit)
+
+   .. py:method:: show()
+
+   .. py:method:: sum()
