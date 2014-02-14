@@ -1,3 +1,64 @@
-﻿Collections - TBD
-===================
+﻿Collections (to-many relationships)
+======================================
 
+
+
+Collection declaration
+------------------------------
+
+.. class:: Set
+
+   During the declaration of ``Set`` attribute of an entity you can specify the following options:
+
+   .. py:attribute:: nplus1_threshold
+
+   .. py:attribute:: table
+
+      For many-to-many relationships only
+
+   .. py:attribute:: symmetric
+
+   .. py:attribute:: lazy
+
+   .. py:attribute:: column/columns
+
+   .. py:attribute:: reverse
+
+   .. py:attribute:: reverse_column
+
+   .. py:attribute:: reverse_columns
+
+   .. py:attribute:: cascade_delete
+
+
+Collection instance methods
+------------------------------------
+
+.. class:: Set
+   .. py:method:: add(item)
+                  add(iter)
+
+   .. py:method:: clear()
+
+   .. py:method:: copy()
+
+   .. py:method:: count()
+
+   .. py:method:: create(**kwargs)
+
+   .. py:method:: is_empty()
+
+   .. py:method:: remove(item)
+                  remove(iter)
+
+
+Attribute lifting
+-----------------------
+
+
+Multisets
+-------------------
+
+
+Pickling collections
+-----------------------
