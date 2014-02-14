@@ -109,6 +109,9 @@ class MySQLProvider(DBAPIProvider):
         (UUID, MySQLUuidConverter),
     ]
 
+    def normalize_name(provider, name):
+        return name[:provider.max_name_len].lower()
+
     @wrap_dbapi_exceptions
     def inspect_connection(provider, connection):
         cursor = connection.cursor()
@@ -176,30 +179,40 @@ class MySQLProvider(DBAPIProvider):
         DBAPIProvider.release(provider, connection, cache)
 
 
-    def table_exists(provider, connection, table_name):
+    def table_exists(provider, connection, table_name, case_sensitive=True):
         db_name, table_name = provider.split_table_name(table_name)
         cursor = connection.cursor()
-        cursor.execute('SELECT 1 FROM information_schema.tables '
-                       'WHERE table_schema=%s and table_name=%s',
-                       [ db_name, table_name ])
-        return cursor.fetchone() is not None
+        if case_sensitive: sql = 'SELECT table_name FROM information_schema.tables ' \
+                                 'WHERE table_schema=%s and table_name=%s'
+        else: sql = 'SELECT table_name FROM information_schema.tables ' \
+                    'WHERE table_schema=%s and UPPER(table_name)=UPPER(%s)'
+        cursor.execute(sql, [ db_name, table_name ])
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
 
-    def index_exists(provider, connection, table_name, index_name):
+    def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
         db_name, table_name = provider.split_table_name(table_name)
+        if case_sensitive: sql = 'SELECT index_name FROM information_schema.statistics ' \
+                                 'WHERE table_schema=%s and table_name=%s and index_name=%s'
+        else: sql = 'SELECT index_name FROM information_schema.statistics ' \
+                    'WHERE table_schema=%s and table_name=%s and UPPER(index_name)=UPPER(%s)'
         cursor = connection.cursor()
-        cursor.execute('SELECT 1 FROM information_schema.statistics '
-                       'WHERE table_schema=%s and table_name=%s and index_name=%s',
-                       [ db_name, table_name, index_name ])
-        return cursor.fetchone() is not None
+        cursor.execute(sql, [ db_name, table_name, index_name ])
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
 
-    def fk_exists(provider, connection, table_name, fk_name):
+    def fk_exists(provider, connection, table_name, fk_name, case_sensitive=True):
         db_name, table_name = provider.split_table_name(table_name)
+        if case_sensitive: sql = 'SELECT constraint_name FROM information_schema.table_constraints ' \
+                                 'WHERE table_schema=%s and table_name=%s ' \
+                                 "and constraint_type='FOREIGN KEY' and constraint_name=%s"
+        else: sql = 'SELECT constraint_name FROM information_schema.table_constraints ' \
+                    'WHERE table_schema=%s and table_name=%s ' \
+                    "and constraint_type='FOREIGN KEY' and UPPER(constraint_name)=UPPER(%s)"
         cursor = connection.cursor()
-        cursor.execute('SELECT 1 FROM information_schema.table_constraints '
-                       'WHERE table_schema=%s and table_name=%s '
-                       "and constraint_type='FOREIGN KEY' and constraint_name=%s",
-                       [ db_name, table_name, fk_name ])
-        return cursor.fetchone() is not None
+        cursor.execute(sql, [ db_name, table_name, fk_name ])
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
 
 provider_cls = MySQLProvider
 

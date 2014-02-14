@@ -160,31 +160,44 @@ class PGProvider(DBAPIProvider):
             else: cursor.execute(sql, arguments)
             if returning_id: return cursor.fetchone()[0]
 
-    def table_exists(provider, connection, table_name):
+    def table_exists(provider, connection, table_name, case_sensitive=True):
         schema_name, table_name = provider.split_table_name(table_name)
         cursor = connection.cursor()
-        cursor.execute('SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = %s '
-                       'AND tablename = %s', (schema_name, table_name))
-        return cursor.fetchone() is not None
+        if case_sensitive: sql = 'SELECT tablename FROM pg_catalog.pg_tables ' \
+                                 'WHERE schemaname = %s AND tablename = %s'
+        else: sql = 'SELECT tablename FROM pg_catalog.pg_tables ' \
+                    'WHERE schemaname = %s AND lower(tablename) = lower(%s)'
+        cursor.execute(sql, (schema_name, table_name))
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
     
-    def index_exists(provider, connection, table_name, index_name):
+    def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
         schema_name, table_name = provider.split_table_name(table_name)
         cursor = connection.cursor()
-        cursor.execute('SELECT 1 FROM pg_catalog.pg_indexes WHERE schemaname = %s '
-                       'AND tablename = %s AND indexname = %s',
-                       [ schema_name, table_name, index_name ])
-        return cursor.fetchone() is not None
+        if case_sensitive: sql = 'SELECT indexname FROM pg_catalog.pg_indexes ' \
+                                'WHERE schemaname = %s AND tablename = %s AND indexname = %s'
+        else: sql = 'SELECT indexname FROM pg_catalog.pg_indexes ' \
+                    'WHERE schemaname = %s AND tablename = %s AND lower(indexname) = lower(%s)'
+        cursor.execute(sql, [ schema_name, table_name, index_name ])
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
 
-    def fk_exists(provider, connection, table_name, fk_name):
+    def fk_exists(provider, connection, table_name, fk_name, case_sensitive=True):
         schema_name, table_name = provider.split_table_name(table_name)
+        if case_sensitive: sql = 'SELECT con.conname FROM pg_class cls ' \
+                                 'JOIN pg_namespace ns ON cls.relnamespace = ns.oid ' \
+                                 'JOIN pg_constraint con ON con.conrelid = cls.oid ' \
+                                 'WHERE ns.nspname = %s AND cls.relname = %s ' \
+                                 "AND con.contype = 'f' AND con.conname = %s"
+        else: sql = 'SELECT con.conname FROM pg_class cls ' \
+                    'JOIN pg_namespace ns ON cls.relnamespace = ns.oid ' \
+                    'JOIN pg_constraint con ON con.conrelid = cls.oid ' \
+                    'WHERE ns.nspname = %s AND cls.relname = %s ' \
+                    "AND con.contype = 'f' AND lower(con.conname) = lower(%s)"
         cursor = connection.cursor()
-        cursor.execute('SELECT 1 FROM pg_class cls '
-                       'JOIN pg_namespace ns ON cls.relnamespace = ns.oid '
-                       'JOIN pg_constraint con ON con.conrelid = cls.oid '
-                       'WHERE ns.nspname = %s AND cls.relname = %s '
-                       "AND con.contype = 'f' AND con.conname = %s",
-                       [ schema_name, table_name, fk_name ])
-        return cursor.fetchone() is not None
+        cursor.execute(sql, [ schema_name, table_name, fk_name ])
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
 
     def table_has_data(provider, connection, table_name):
         table_name = provider.quote_name(table_name)

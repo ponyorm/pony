@@ -60,7 +60,7 @@ class TestDatabase(Database):
     real_provider_name = None
     raw_server_version = None
     sql = None
-    def __init__(self, provider_name, *args, **kwargs):
+    def bind(self, provider_name, *args, **kwargs):
         kwargs['pony_check_connection'] = False
         kwargs['pony_pool_mockup'] = TestPool()
         if self.real_provider_name is not None:
@@ -87,7 +87,7 @@ class TestDatabase(Database):
                 pass
         TestProvider.server_version = server_version
 
-        Database.__init__(self, TestProvider, *args, **kwargs)
+        Database.bind(self, TestProvider, *args, **kwargs)
     def _execute(database, sql, globals, locals, frame_depth):
         assert False
     def _exec_sql(database, sql, arguments=None, returning_id=False):

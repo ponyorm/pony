@@ -1,6 +1,6 @@
 from __future__ import with_statement
 
-import re, sys, types, inspect, logging
+import re, sys, types, logging
 from compiler import ast, parse
 from cPickle import loads, dumps
 from operator import attrgetter, itemgetter
@@ -23,7 +23,7 @@ from pony.orm.dbapiprovider import (
     OperationalError, IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
 from pony.utils import (
-    localbase, decorator, cut_traceback, throw, deprecated,
+    localbase, decorator, cut_traceback, throw, get_lambda_args, deprecated,
     import_module, parse_expr, is_ident, count, avg as _avg, distinct as _distinct, tostring, strjoin,
     )
 
@@ -404,19 +404,8 @@ class Database(object):
     def __deepcopy__(self, memo):
         return self  # Database cannot be cloned by deepcopy()
     @cut_traceback
-    def __init__(self, provider, *args, **kwargs):
-        # First argument cannot be named 'database', because 'database' can be in kwargs
-        if isinstance(provider, type) and issubclass(provider, DBAPIProvider):
-            provider_cls = provider
-        else:
-            if not isinstance(provider, basestring): throw(TypeError)
-            if provider == 'pygresql':
-                deprecated(4, 'Pony discontinues support of PyGreSQL module. Please use psycopg2 instead.')
-            provider_module = import_module('pony.orm.dbproviders.' + provider)
-            provider_cls = provider_module.provider_cls
-
-        self.provider = provider = provider_cls(*args, **kwargs)
-
+    def __init__(self, *args, **kwargs):
+        # argument 'self' cannot be named 'database', because 'database' can be in kwargs
         self.priority = 0
         self._insert_cache = {}
 
@@ -429,9 +418,32 @@ class Database(object):
         self.Entity = type.__new__(EntityMeta, 'Entity', (Entity,), {})
         self.Entity._database_ = self
 
+        # Statistics-related stuff:
         self.global_stats = {}
         self.global_stats_lock = Lock()
         self._dblocal = DbLocal()
+
+        self.provider = None
+        if args or kwargs: self._bind(*args, **kwargs)
+    @cut_traceback
+    def bind(self, *args, **kwargs):
+        self._bind(*args, **kwargs)
+    def _bind(self, *args, **kwargs):
+        # argument 'self' cannot be named 'database', because 'database' can be in kwargs
+        if self.provider is not None:
+            throw(TypeError, 'Database object was already bound to %s provider' % self.provider.dialect)
+        if not args:
+            throw(TypeError, 'Database provider should be specified as a first positional argument')
+        provider, args = args[0], args[1:]
+        if isinstance(provider, type) and issubclass(provider, DBAPIProvider):
+            provider_cls = provider
+        else:
+            if not isinstance(provider, basestring): throw(TypeError)
+            if provider == 'pygresql': throw(TypeError,
+                'Pony no longer supports PyGreSQL module. Please use psycopg2 instead.')
+            provider_module = import_module('pony.orm.dbproviders.' + provider)
+            provider_cls = provider_module.provider_cls
+        self.provider = provider = provider_cls(*args, **kwargs)
     @property
     def last_sql(database):
         return database._dblocal.last_sql
@@ -466,11 +478,14 @@ class Database(object):
         return connection
     @cut_traceback
     def disconnect(database):
+        provider = database.provider
+        if provider is None: return
         if local.db_context_counter: throw(TransactionError, 'disconnect() cannot be called inside of db_sesison')
         cache = local.db2cache.get(database)
         if cache is not None: cache.rollback()
-        database.provider.disconnect()
+        provider.disconnect()
     def _get_cache(database):
+        if database.provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
         cache = local.db2cache.get(database)
         if cache is not None: return cache
         if not local.db_context_counter and not (
@@ -493,13 +508,14 @@ class Database(object):
     def execute(database, sql, globals=None, locals=None):
         return database._exec_raw_sql(sql, globals, locals, frame_depth=3)
     def _exec_raw_sql(database, sql, globals, locals, frame_depth):
+        provider = database.provider
+        if provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
         sql = sql[:]  # sql = templating.plainstr(sql)
         if globals is None:
             assert locals is None
             frame_depth += 1
             globals = sys._getframe(frame_depth).f_globals
             locals = sys._getframe(frame_depth).f_locals
-        provider = database.provider
         adapted_sql, code = adapt_sql(sql, provider.paramstyle)
         arguments = eval(code, globals, locals)
         return database._exec_sql(adapted_sql, arguments)
@@ -535,6 +551,7 @@ class Database(object):
         return bool(result)
     @cut_traceback
     def insert(database, table_name, returning=None, **kwargs):
+        if database.provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
         table_name = table_name[:]  # table_name = templating.plainstr(table_name)
         query_key = (table_name,) + tuple(kwargs)  # keys are not sorted deliberately!!
         if returning is not None: query_key = query_key + (returning,)
@@ -574,6 +591,8 @@ class Database(object):
         return new_id
     @cut_traceback
     def generate_mapping(database, filename=None, check_tables=True, create_tables=False):
+        provider = database.provider
+        if provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
         if database.schema: throw(MappingError, 'Mapping was already generated')
         if filename is not None: throw(NotImplementedError)
         for entity_name in database._unmapped_attrs:
@@ -582,7 +601,6 @@ class Database(object):
         def get_columns(table, column_names):
             return tuple(map(table.column_dict.__getitem__, column_names))
 
-        provider = database.provider
         schema = database.schema = provider.dbschema_cls(provider)
         entities = list(sorted(database.entities.values(), key=attrgetter('_id_')))
         for entity in entities:
@@ -661,6 +679,16 @@ class Database(object):
                     m2m_table.m2m.add(attr)
                     m2m_table.m2m.add(reverse)
                 else:
+                    if attr.is_required: pass
+                    elif not attr.is_string:
+                        if attr.nullable is False:
+                            throw(TypeError, 'Optional attribute with non-string type %s must be nullable' % attr)
+                        attr.nullable = True
+                    elif entity._database_.provider.dialect == 'Oracle':
+                        if attr.nullable is False: throw(ERDiagramError,
+                            'In Oracle, optional string attribute %s must be nullable' % attr)
+                        attr.nullable = True
+
                     columns = attr.get_columns()  # initializes attr.converters
                     if not attr.reverse and attr.default is not None:
                         assert len(attr.converters) == 1
@@ -751,6 +779,9 @@ class Database(object):
         provider = database.provider
         existed_tables = []
         for table_name in table_names:
+            if table_name is None:
+                if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
+                else: throw(TypeError, 'Table name cannot be None')
             if provider.table_exists(connection, table_name): existed_tables.append(table_name)
             elif not if_exists:
                 if try_normalized:
@@ -771,14 +802,15 @@ class Database(object):
     @cut_traceback
     @db_session(ddl=True)
     def create_tables(database, check_tables=False):
-        if database.schema is None: throw(ERDiagramError, 'No mapping was generated for the database')
         cache = database._get_cache()
+        if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
         connection = cache.prepare_connection_for_query_execution()
         database.schema.create_tables(database.provider, connection)
         if check_tables: database.schema.check_tables(database.provider, connection)
     @db_session()
     def check_tables(database):
         cache = database._get_cache()
+        if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
         connection = cache.prepare_connection_for_query_execution()
         database.schema.check_tables(database.provider, connection)
 
@@ -1149,14 +1181,6 @@ class Attribute(object):
         if not attr.is_required:
             if attr.is_unique and attr.nullable is False:
                 throw(TypeError, 'Optional unique attribute %s must be nullable' % attr)
-            if not attr.is_string:
-                if attr.nullable is False:
-                    throw(TypeError, 'Optional attribute with non-string type %s must be nullable' % attr)
-                attr.nullable = True
-            elif entity._database_.provider.dialect == 'Oracle':
-                if attr.nullable is False: throw(ERDiagramError,
-                    'In Oracle, optional string attribute %s must be nullable' % attr)
-                attr.nullable = True
         if entity._root_ is not entity:
             if attr.nullable is False: throw(ERDiagramError,
                 'Attribute %s must be nullable due to single-table inheritance' % attr)
@@ -2793,12 +2817,9 @@ class EntityMeta(type):
     def select(entity, func=None):
         if func is None:
             return Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
-        if not (isinstance(func, types.FunctionType)
-                or isinstance(func, basestring) and lambda_re.match(func)):
+        if not (type(func) is types.FunctionType or isinstance(func, basestring) and lambda_re.match(func)):
             throw(TypeError, 'Lambda function or its text representation expected. Got: %r' % func)
-        globals = sys._getframe(3).f_globals
-        locals = sys._getframe(3).f_locals
-        return entity._query_from_lambda_(func, globals, locals)
+        return entity._query_from_lambda_(func, frame_depth=3)
     @cut_traceback
     def select_by_sql(entity, sql, globals=None, locals=None):
         return entity._find_by_sql_(None, sql, globals, locals, frame_depth=3)
@@ -3131,37 +3152,31 @@ class EntityMeta(type):
     def _query_from_args_(entity, args, kwargs, frame_depth):
         if len(args) > 1: throw(TypeError, 'Only one positional argument expected')
         if kwargs: throw(TypeError, 'If positional argument presented, no keyword arguments expected')
-        first_arg = args[0]
-        if not (isinstance(first_arg, types.FunctionType)
-                or isinstance(first_arg, basestring) and lambda_re.match(first_arg)):
+        func = args[0]
+        if not (type(func) is types.FunctionType or isinstance(func, basestring) and lambda_re.match(func)):
             throw(TypeError, 'Positional argument must be lambda function or its text source. '
-                             'Got: %s.get(%r)' % (entity.__name__, first_arg))
+                             'Got: %s.get(%r)' % (entity.__name__, func))
+        return entity._query_from_lambda_(func, frame_depth+1)
+    def _query_from_lambda_(entity, lambda_func, frame_depth):
         globals = sys._getframe(frame_depth+1).f_globals
         locals = sys._getframe(frame_depth+1).f_locals
-        return entity._query_from_lambda_(first_arg, globals, locals)
-    def _query_from_lambda_(entity, lambda_func, globals, locals):
         if type(lambda_func) is types.FunctionType:
-            names, argsname, keyargsname, defaults = inspect.getargspec(lambda_func)
-            if len(names) != 1: throw(TypeError,
-                'Lambda query requires exactly one parameter name, like %s.select(lambda %s: ...). '
-                'Got: %d parameters' % (entity.__name__, entity.__name__[0].lower(), len(names)))
-            if argsname or keyargsname: throw(TypeError)
-            if defaults: throw(TypeError)
+            names = get_lambda_args(lambda_func)
             code_key = id(lambda_func.func_code)
-            name = names[0]
             cond_expr, external_names = decompile(lambda_func)
         elif isinstance(lambda_func, basestring):
-            lambda_text = lambda_func
-            lambda_expr = string2ast(lambda_text)
-            if not isinstance(lambda_expr, ast.Lambda): throw(TypeError)
-            if len(lambda_expr.argnames) != 1: throw(TypeError)
-            if lambda_expr.varargs: throw(TypeError)
-            if lambda_expr.kwargs: throw(TypeError)
-            if lambda_expr.defaults: throw(TypeError)
-            code_key = lambda_text
-            name = lambda_expr.argnames[0]
-            cond_expr = lambda_expr.code
+            code_key = lambda_func
+            lambda_ast = string2ast(lambda_func)
+            if not isinstance(lambda_ast, ast.Lambda):
+                throw(TypeError, 'Lambda function is expected. Got: %s' % lambda_func)
+            names = get_lambda_args(lambda_ast)
+            cond_expr = lambda_ast.code
         else: assert False
+
+        if len(names) != 1: throw(TypeError,
+            'Lambda query requires exactly one parameter name, like %s.select(lambda %s: ...). '
+            'Got: %d parameters' % (entity.__name__, entity.__name__[0].lower(), len(names)))
+        name = names[0]
 
         if_expr = ast.GenExprIf(cond_expr)
         for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name('.0'), [ if_expr ])
@@ -4012,7 +4027,6 @@ class Query(object):
         query._vars = vars
         query._key = code_key, tuple(map(vartypes.__getitem__, varnames)), left_join
         query._database = database
-        query._cache = database._get_cache()
 
         translator = database._translator_cache.get(query._key)
         if translator is None:
@@ -4027,8 +4041,16 @@ class Query(object):
                 except OptimizationFailed: translator.optimization_failed = True
             database._translator_cache[query._key] = translator
         query._translator = translator
-        query._filters = []
+        query._filters = ()
+        query._next_kwarg_id = 0
         query._for_update = query._nowait = False
+        query._result = None
+    def _clone(query, **kwargs):
+        new_query = object.__new__(Query)
+        new_query.__dict__.update(query.__dict__)
+        new_query._result = None
+        new_query.__dict__.update(kwargs)
+        return new_query
     def __reduce__(query):
         return unpickle_query, (query._fetch(),)
     def _construct_sql_and_arguments(query, range=None, distinct=None, aggr_func_name=None):
@@ -4057,9 +4079,12 @@ class Query(object):
         return sql, arguments, attr_offsets, query_key
     def _fetch(query, range=None, distinct=None):
         translator = query._translator
+        if query._result is not None:
+            return QueryResult(query._result, translator.expr_type, translator.col_names)
+
         sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(range, distinct)
-        cache = query._cache
-        database = cache.database
+        database = query._database
+        cache = database._get_cache()
         if query._for_update: cache.immediate = True
         try: result = cache.query_results[query_key]
         except KeyError:
@@ -4077,13 +4102,14 @@ class Query(object):
                            for sql_row in cursor.fetchall() ]
                 for i, t in enumerate(translator.expr_type):
                     if isinstance(t, EntityMeta) and t._subclasses_: t._load_many_(row[i] for row in result)
-            if query_key is not None:
-                query._cache.query_results[query_key] = result
+            if query_key is not None: cache.query_results[query_key] = result
         else:
             stats = database._dblocal.stats
             stat = stats.get(sql)
             if stat is not None: stat.cache_count += 1
             else: stats[sql] = QueryStat(sql)
+
+        query._result = result
         return QueryResult(result, translator.expr_type, translator.col_names)
     @cut_traceback
     def show(query, width=None):
@@ -4114,21 +4140,8 @@ class Query(object):
         return query._fetch(distinct=True)
     @cut_traceback
     def exists(query):
-        # new_query = query._clone()
-        new_query = object.__new__(Query)
-        new_query.__dict__.update(query.__dict__)
-
-        new_query._aggr_func_name = 'EXISTS'
-        new_query._aggr_select = [ 'ALL', [ 'VALUE', 1 ] ]
-        sql, arguments, attr_offsets, query_key = new_query._construct_sql_and_arguments(range=(0, 1))
-        cache = new_query._cache
-        try: result = cache.query_results[query_key]
-        except KeyError:
-            cursor = new_query._database._exec_sql(sql, arguments)
-            row = cursor.fetchone()
-            result = row is not None
-            if query_key is not None: cache.query_results[query_key] = result
-        return result
+        objects = query[:1]
+        return bool(objects)
     @cut_traceback
     def __len__(query):
         return len(query._fetch())
@@ -4140,7 +4153,11 @@ class Query(object):
         if not args: throw(TypeError, 'order_by() method requires at least one argument')
         if args[0] is None:
             if len(args) > 1: throw(TypeError, 'When first argument of order_by() method is None, it must be the only argument')
-            return query._without_order_by()
+            tup = ((),)
+            new_key = query._key + tup
+            new_filters = query._filters + tup
+            new_translator = query._translator.without_order()
+            return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
 
         attributes = functions = strings = numbers = False
         for arg in args:
@@ -4155,41 +4172,44 @@ class Query(object):
             throw(TypeError, 'When argument of order_by() method is string or lambda, it must be the only argument')
 
         if numbers or attributes:
-            query._filters.append((numbers, args))
-            new_key = query._key + (args,)
-            translator = query._database._translator_cache.get(new_key)
-            if translator is None:
-                if numbers: translator = query._translator.order_by_numbers(args)
-                else: translator = query._translator.order_by_attributes(args)
-                query._database._translator_cache[new_key] = translator
-            query._key = new_key
-            query._translator = translator
-            return query
+            new_key = query._key + ('order_by', args,)
+            new_filters = query._filters + ((numbers, args),)
+            new_translator = query._database._translator_cache.get(new_key)
+            if new_translator is None:
+                if numbers: new_translator = query._translator.order_by_numbers(args)
+                else: new_translator = query._translator.order_by_attributes(args)
+                query._database._translator_cache[new_key] = new_translator
+            return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
 
         globals = sys._getframe(3).f_globals
         locals = sys._getframe(3).f_locals
-        if strings:
-            expr_text = func_id = args[0]
-            func_ast = string2ast(expr_text)
-            if isinstance(func_ast, ast.Lambda): func_ast = func_ast.code
-        elif functions:
-            func = args[0]
-            for name in func.func_code.co_varnames:
-                if name not in query._translator.subquery:
-                    throw(TranslationError, 'Unknown name %s' % name)
+        func = args[0]
+        return query._process_lambda(func, globals, locals, order_by=True)
+    def _process_lambda(query, func, globals, locals, order_by):
+        argnames = ()
+        if isinstance(func, basestring):
+            func_id = func
+            func_ast = string2ast(func)
+            if isinstance(func_ast, ast.Lambda):
+                argnames = get_lambda_args(func_ast)
+                func_ast = func_ast.code
+        elif type(func) is types.FunctionType:
+            argnames = get_lambda_args(func)
+            subquery = query._translator.subquery
             func_id = id(func.func_code)
             func_ast = decompile(func)[0]
+        elif not order_by: throw(TypeError,
+            'Argument of filter() method must be a lambda functon or its text. Got: %r' % func)
         else: assert False
-        return query._process_lambda(func_id, func_ast, globals, locals, order_by=True)
-    def _without_order_by(query):
-        query._key = query._key[:3]
-        database = query._database
-        translator = database._translator_cache.get(query._key)
-        assert translator is not None  # Translator for query without order_by must be in cache already
-        query._translator = translator
-        return query
-    def _process_lambda(query, func_id, func_ast, globals, locals, order_by):
-        extractors, varnames, func_ast = create_extractors(func_id, func_ast, query._translator.subquery)
+
+        if argnames:
+            expr_type = query._translator.expr_type
+            expr_count = len(expr_type) if type(expr_type) is tuple else 1
+            if len(argnames) != expr_count:
+                throw(TypeError, 'Incorrect number of lambda arguments. '
+                                 'Expected: %d, got: %d' % (expr_count, len(argnames)))
+
+        extractors, varnames, func_ast = create_extractors(func_id, func_ast, argnames or query._translator.subquery)
         if extractors:
             vars, vartypes = extract_vars(extractors, globals, locals)
             query_vars = query._vars
@@ -4198,56 +4218,75 @@ class Query(object):
                     'Meaning of expression %s has changed during query translation' % name)
             sorted_vartypes = tuple(map(vartypes.__getitem__, varnames))
         else: vars, vartypes, sorted_vartypes = {}, {}, ()
-        query._filters.append((order_by, func_ast, extractors, vartypes))
+
         new_key = query._key + ((order_by and 'order_by' or 'filter', func_id, sorted_vartypes),)
-        translator = query._database._translator_cache.get(new_key)
-        if translator is None:
+        new_filters = query._filters + ((order_by, func_ast, argnames, extractors, vartypes),)
+        new_translator = query._database._translator_cache.get(new_key)
+        if new_translator is None:
             prev_optimized = query._translator.optimize
-            translator = query._translator.apply_lambda(order_by, func_ast, extractors, vartypes)
+            new_translator = query._translator.apply_lambda(order_by, func_ast, argnames, extractors, vartypes)
             if not prev_optimized:
-                name_path = translator.can_be_optimized()
+                name_path = new_translator.can_be_optimized()
                 if name_path:
                     tree = loads(query._pickled_tree)  # tree = deepcopy(tree)
                     prev_extractors = query._translator.extractors
                     prev_vartypes = query._translator.vartypes
                     translator_cls = query._translator.__class__
-                    translator = translator_cls(tree, prev_extractors, prev_vartypes, left_join=True, optimize=name_path)
-                    translator = query._reapply_filters(translator)
-            query._database._translator_cache[new_key] = translator
-        query._key = new_key
-        query._translator = translator
-        return query
+                    new_translator = translator_cls(tree, prev_extractors, prev_vartypes,
+                                                    left_join=True, optimize=name_path)
+                    new_translator = query._reapply_filters(new_translator)
+            query._database._translator_cache[new_key] = new_translator
+        return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
     def _reapply_filters(query, translator):
         for tup in query._filters:
-            if len(tup) == 2:
+            if not tup:
+                translator = translator.without_order()
+            elif len(tup) == 1:
+                attrnames = tup[0]
+                translator.apply_kwfilters(attrnames)
+            elif len(tup) == 2:
                 numbers, args = tup
                 if numbers: translator = translator.order_by_numbers(args)
                 else: translator = translator.order_by_attributes(args)
-                continue
-            order_by, func_ast, extractors, vartypes = tup
-            translator = translator.apply_lambda(order_by, func_ast, extractors, vartypes)
+            else:
+                order_by, func_ast, argnames, extractors, vartypes = tup
+                translator = translator.apply_lambda(order_by, func_ast, argnames, extractors, vartypes)
         return translator
     @cut_traceback
-    def filter(query, func):
-        globals = sys._getframe(3).f_globals
-        locals = sys._getframe(3).f_locals
-        if isinstance(func, basestring):
-            func_id = func
-            func_ast = string2ast(func)
-            if isinstance(func_ast, ast.Lambda): func_ast = func_ast.code
-        elif type(func) is types.FunctionType:
-            for name in func.func_code.co_varnames:
-                if name not in query._translator.subquery:
-                    throw(TranslationError, 'Unknown name %s' % name)
-            func_id = id(func.func_code)
-            func_ast = decompile(func)[0]
-        else: throw(TypeError, 'Argument of filter() method must be a lambda functon or its text. Got: %r' % func)
-        return query._process_lambda(func_id, func_ast, globals, locals, order_by=False)
+    def filter(query, *args, **kwargs):
+        if args:
+            if len(args) > 1: throw(TypeError, 'Only one positional argument is supported')
+            if kwargs: throw(TypeError, 'Keyword arguments cannot be specified together with positional arguments')
+            func = args[0]
+            globals = sys._getframe(3).f_globals
+            locals = sys._getframe(3).f_locals
+            return query._process_lambda(func, globals, locals, order_by=False)
+        if not kwargs: return query
+        attrnames = []
+        value_dict = {}
+        next_id = query._next_kwarg_id
+        for attr in sorted(kwargs):
+            value = kwargs[attr]
+            id = next_id
+            next_id += 1
+            attrnames.append((attr, id, value is None))
+            value_dict[id] = value
+        attrnames = tuple(attrnames)
+        new_key = query._key + ('filter', attrnames)
+        new_filters = query._filters + (attrnames,)
+        new_translator = query._database._translator_cache.get(new_key)
+        if new_translator is None:
+            new_translator = query._translator.apply_kwfilters(attrnames)
+            query._database._translator_cache[new_key] = new_translator
+        new_query = query._clone(_key=new_key, _filters=new_filters, _translator=new_translator,
+                                 _next_kwargs_id=next_id)
+        new_query._vars.update(value_dict)
+        return new_query
     @cut_traceback
     def __getitem__(query, key):
         if isinstance(key, slice):
             step = key.step
-            if step is not None and step <> 1: throw(TypeError, "Parameter 'step' of slice object is not allowed here")
+            if step is not None and step != 1: throw(TypeError, "Parameter 'step' of slice object is not allowed here")
             start = key.start
             if start is None: start = 0
             elif start < 0: throw(TypeError, "Parameter 'start' of slice object cannot be negative")
@@ -4271,7 +4310,7 @@ class Query(object):
     def _aggregate(query, aggr_func_name):
         translator = query._translator
         sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(aggr_func_name=aggr_func_name)
-        cache = query._cache
+        cache = query._database._get_cache()
         try: result = cache.query_results[query_key]
         except KeyError:
             cursor = query._database._exec_sql(sql, arguments)
@@ -4308,9 +4347,7 @@ class Query(object):
         provider = query._database.provider
         if nowait and not provider.select_for_update_nowait_syntax: throw(TranslationError,
             '%s provider does not support SELECT FOR UPDATE NOWAIT syntax' % provider.dialect)
-        query._for_update = True
-        query._nowait = nowait
-        return query
+        return query._clone(_for_update=True, _nowait=nowait)
     def random(query, limit):
         return query.order_by('random()')[:limit]
 

@@ -241,13 +241,13 @@ class DBAPIProvider(object):
     def get_pool(provider, *args, **kwargs):
         return Pool(provider.dbapi_module, *args, **kwargs)
 
-    def table_exists(provider, connection, table_name):
+    def table_exists(provider, connection, table_name, case_sensitive=True):
         throw(NotImplementedError)
 
-    def index_exists(provider, connection, table_name, index_name):
+    def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
         throw(NotImplementedError)
 
-    def fk_exists(provider, connection, table_name, fk_name):
+    def fk_exists(provider, connection, table_name, fk_name, case_sensitive=True):
         throw(NotImplementedError)
 
     def table_has_data(provider, connection, table_name):

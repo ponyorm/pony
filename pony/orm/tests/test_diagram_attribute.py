@@ -348,12 +348,6 @@ class TestAttribute(unittest.TestCase):
             attr1 = Set('Entity1', reverse='attr1', table=[1, 'T1'])
         db.generate_mapping(create_tables=True)
 
-    def test_columns21(self):
-        db = TestDatabase('sqlite', ':memory:')
-        class Entity1(db.Entity):
-            attr1 = Set('Entity1', reverse='attr1', table=['db1', 'T1'])
-        db.generate_mapping(create_tables=True)
-
     def test_nullable1(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):

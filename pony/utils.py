@@ -3,7 +3,7 @@
 import re, os, os.path, sys, datetime, types, linecache, warnings
 
 from itertools import count as _count
-from inspect import isfunction, ismethod
+from inspect import isfunction, ismethod, getargspec
 from time import strptime
 from os import urandom
 from codecs import BOM_UTF8, BOM_LE, BOM_BE
@@ -12,6 +12,7 @@ from bisect import bisect
 from collections import defaultdict
 from copy import deepcopy, _deepcopy_dispatch
 from functools import update_wrapper
+from compiler import ast
 
 # deepcopy instance method patch for Python < 2.7:
 if types.MethodType not in _deepcopy_dispatch:
@@ -123,6 +124,27 @@ def throw(exc_type, *args, **kwargs):
         raise exc
     else:
         raise exc  # Set "pony.options.CUT_TRACEBACK = False" to see full traceback
+
+lambda_args_cache = {}
+
+def get_lambda_args(func):
+    names = lambda_args_cache.get(func)
+    if names is not None: return names
+    if type(func) is types.FunctionType:
+        names, argsname, kwname, defaults = getargspec(func)
+    elif isinstance(func, ast.Lambda):
+        names = func.argnames
+        if func.kwargs: names, kwname = names[:-1], names[-1]
+        else: kwname = None
+        if func.varargs: names, argsname = names[:-1], names[-1]
+        else: argsname = None
+        defaults = func.defaults
+    else: assert False
+    if argsname: throw(TypeError, '*%s is not supported' % argsname)
+    if kwname: throw(TypeError, '**%s is not supported' % kwname)
+    if defaults: throw(TypeError, 'Defaults are not supported')
+    lambda_args_cache[func] = names
+    return names
 
 _cache = {}
 MAX_CACHE_SIZE = 1000

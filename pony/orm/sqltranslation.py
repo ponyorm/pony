@@ -151,6 +151,7 @@ class SQLTranslator(ASTTranslator):
         assert isinstance(tree, ast.GenExprInner), tree
         ASTTranslator.__init__(translator, tree)
         translator.database = None
+        translator.argnames = None
         translator.extractors = extractors
         translator.vartypes = vartypes
         translator.parent = parent_translator
@@ -443,6 +444,10 @@ class SQLTranslator(ASTTranslator):
 
         sql_ast = ast_transformer(sql_ast)
         return sql_ast, attr_offsets
+    def without_order(translator):
+        translator = translator.shallow_copy()
+        translator.order = []
+        return translator
     def order_by_numbers(translator, numbers):
         if 0 in numbers: throw(ValueError, 'Numeric arguments of order_by() method must be non-zero')
         translator = translator.shallow_copy()
@@ -450,6 +455,7 @@ class SQLTranslator(ASTTranslator):
         expr_monad = translator.tree.expr.monad
         if isinstance(expr_monad, translator.ListMonad): monads = expr_monad.items
         else: monads = (expr_monad,)
+        new_order = []
         for i in numbers:
             try: monad = monads[abs(i)-1]
             except IndexError:
@@ -460,7 +466,8 @@ class SQLTranslator(ASTTranslator):
                     "Invalid index of order_by() method: %d "
                     "(query result is single list of elements and has only one 'column')" % i)
             for pos in monad.orderby_columns:
-                order.append(i < 0 and [ 'DESC', [ 'VALUE', pos ] ] or [ 'VALUE', pos ])
+                new_order.append(i < 0 and [ 'DESC', [ 'VALUE', pos ] ] or [ 'VALUE', pos ])
+        order[:0] = new_order
         return translator
     def order_by_attributes(translator, attrs):
         entity = translator.expr_type
@@ -470,6 +477,7 @@ class SQLTranslator(ASTTranslator):
         translator = translator.shallow_copy()
         order = translator.order = translator.order[:]  # only order will be changed
         alias = translator.alias
+        new_order = []
         for x in attrs:
             if isinstance(x, DescWrapper):
                 attr = x.attr
@@ -483,26 +491,53 @@ class SQLTranslator(ASTTranslator):
             if attr.is_collection: throw(TypeError,
                 'Collection attribute %s cannot be used for ordering' % attr)
             for column in attr.columns:
-                order.append(desc_wrapper([ 'COLUMN', alias, column]))
+                new_order.append(desc_wrapper([ 'COLUMN', alias, column]))
+        order[:0] = new_order
         return translator
-    def apply_lambda(translator, order_by, func_ast, extractors, vartypes):
+    def apply_kwfilters(translator, attrnames):
+        entity = translator.expr_type
+        if not isinstance(entity, EntityMeta):
+            throw(TypeError, 'Keyword arguments are not allowed when query result is not entity objects')
+        if translator.aggregated: throw(NotImplementedError, 'Aggregated query cannot be filtered this way')
+        translator = deepcopy(translator)
+        expr_monad = translator.tree.expr.monad
+        monads = []
+        none_monad = translator.NoneMonad(translator)
+        for attrname, id, is_none in attrnames:
+            attr = entity._adict_.get(attrname)
+            if attr is None: throw(AttributeError,
+                'Entity %s does not have attribute %s' % (entity.__name__, attrname))
+            if attr.is_collection: throw(TypeError,
+                '%s attribute %s cannot be used as a keyword argument for filtering'
+                % (attr.__class__.__name__, attr.name))
+            attr_monad = expr_monad.getattr(attrname)
+            if is_none: monads.append(CmpMonad('is', attr_monad, none_monad))
+            else:
+                param_monad = translator.ParamMonad.new(translator, attr.py_type, id)
+                monads.append(CmpMonad('==', attr_monad, param_monad))
+        for m in monads: translator.conditions.extend(m.getsql())
+        return translator
+    def apply_lambda(translator, order_by, func_ast, argnames, extractors, vartypes):
         prev_optimized = translator.optimize
         translator = deepcopy(translator)
         pickled_func_ast = dumps(func_ast, 2)
         func_ast = loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
         translator.extractors.update(extractors)
         translator.vartypes.update(vartypes)
+        translator.argnames = list(argnames)
         translator.dispatch(func_ast)
         if isinstance(func_ast, ast.Tuple): nodes = func_ast.nodes
         else: nodes = (func_ast,)
         if order_by:
+            new_order = []
             for node in nodes:
                 if isinstance(node.monad, translator.SetMixin):
                     t = node.monad.type.item_type
                     if isinstance(type(t), type): t = t.__name__
                     throw(TranslationError, 'Set of %s (%s) cannot be used for ordering'
                                             % (t, ast2src(node)))
-                translator.order.extend(node.monad.getsql())
+                new_order.extend(node.monad.getsql())
+            translator.order[:0] = new_order
         else:
             for node in nodes:
                 monad = node.monad
@@ -557,6 +592,14 @@ class SQLTranslator(ASTTranslator):
         return translator.ListMonad(translator, [ item.monad for item in node.nodes ])
     def postName(translator, node):
         name = node.name
+        argnames = translator.argnames
+        if translator.argnames and name in translator.argnames:
+            i = translator.argnames.index(name)
+            expr_monad = translator.tree.expr.monad
+            if isinstance(expr_monad, translator.ListMonad):
+                return expr_monad.items[i]
+            assert i == 0
+            return expr_monad
         tableref = translator.subquery.get_tableref(name)
         if tableref is None and name == 'random':
             translator.query_result_is_cacheable = False
@@ -1476,7 +1519,7 @@ class CmpMonad(BoolMonad):
         monad.op = op
         monad.left = left
         monad.right = right
-        monad.aggregated = left.aggregated or right.aggregated
+        monad.aggregated = getattr(left, 'aggregated', False) or getattr(right, 'aggregated', False)
     def negate(monad):
         return monad.translator.CmpMonad(cmp_negate[monad.op], monad.left, monad.right)
     def getsql(monad, subquery=None):

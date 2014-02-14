@@ -3,10 +3,7 @@ from datetime import date
 
 from pony.orm.core import *
 
-db = Database('sqlite', 'presentation.sqlite', create_db=True)
-#db = Database('mysql', host="localhost", user="presentation", passwd="pony", db="presentation")
-#db = Database('postgres', user='presentation', password='pony', host='localhost', database='presentation')
-#db = Database('oracle', 'presentation/pony@localhost')
+db = Database()
 
 class Department(db.Entity):
     number = PrimaryKey(int, auto=True)
@@ -42,6 +39,11 @@ class Student(db.Entity):
     courses = Set(Course)
 
 sql_debug(True)  # Output all SQL queries to stdout
+
+db.bind('sqlite', 'presentation.sqlite', create_db=True)
+#db.bind('mysql', host="localhost", user="presentation", passwd="pony", db="presentation")
+#db.bind('postgres', user='presentation', password='pony', host='localhost', database='presentation')
+#db.bind('oracle', 'presentation/pony@localhost')
 
 db.generate_mapping(create_tables=True)
 
