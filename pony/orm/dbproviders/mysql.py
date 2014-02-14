@@ -109,6 +109,9 @@ class MySQLProvider(DBAPIProvider):
         (UUID, MySQLUuidConverter),
     ]
 
+    def normalize_name(provider, name):
+        return name[:provider.max_name_len].lower()
+
     @wrap_dbapi_exceptions
     def inspect_connection(provider, connection):
         cursor = connection.cursor()
