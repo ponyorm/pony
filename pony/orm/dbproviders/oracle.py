@@ -26,18 +26,22 @@ class OraTable(Table):
         return result
 
 class OraSequence(DBObject):
+    typename = 'Sequence'
     def __init__(sequence, table):
         sequence.table = table
         table_name = table.name
         if isinstance(table_name, basestring): sequence.name = table_name + '_SEQ'
         else: sequence.name = tuple(table_name[:-1]) + (table_name[0] + '_SEQ',)
-    def exists(sequence, provider, connection):
+    def exists(sequence, provider, connection, case_sensitive=True):
+        if case_sensitive: sql = 'SELECT sequence_name FROM all_sequences ' \
+                                 'WHERE sequence_owner = :so and sequence_name = :sn'
+        else: sql = 'SELECT sequence_name FROM all_sequences ' \
+                    'WHERE sequence_owner = :so and upper(sequence_name) = upper(:sn)'
         owner_name, sequence_name = provider.split_table_name(sequence.name)
         cursor = connection.cursor()
-        cursor.execute('SELECT 1 FROM all_sequences '
-                       'WHERE sequence_owner = :so and sequence_name = :sn',
-                       dict(so=owner_name, sn=sequence_name))
-        return cursor.fetchone() is not None
+        cursor.execute(sql, dict(so=owner_name, sn=sequence_name))
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
     def get_create_command(sequence):
         schema = sequence.table.schema
         seq_name = schema.provider.quote_name(sequence.name)
@@ -54,6 +58,7 @@ BEGIN
 END;""".strip()
 
 class OraTrigger(DBObject):
+    typename = 'Trigger'
     def __init__(trigger, table, column, sequence):
         trigger.table = table
         trigger.column = column
@@ -61,14 +66,18 @@ class OraTrigger(DBObject):
         table_name = table.name
         if not isinstance(table_name, basestring): table_name = table_name[-1]
         trigger.name = table_name + '_BI' # Before Insert
-    def exists(trigger, provider, connection):
+    def exists(trigger, provider, connection, case_sensitive=True):
+        if case_sensitive: sql = 'SELECT trigger_name FROM all_triggers ' \
+                                 'WHERE table_name = :tbn AND table_owner = :o ' \
+                                 'AND trigger_name = :trn AND owner = :o'
+        else: sql = 'SELECT trigger_name FROM all_triggers ' \
+                    'WHERE table_name = :tbn AND table_owner = :o ' \
+                    'AND upper(trigger_name) = upper(:trn) AND owner = :o'
         owner_name, table_name = provider.split_table_name(trigger.table.name)
         cursor = connection.cursor()
-        cursor.execute('SELECT 1 FROM all_triggers '
-                       'WHERE table_name = :tbn AND table_owner = :o '
-                       'AND trigger_name = :trn AND owner = :o',
-                       dict(tbn=table_name, trn=trigger.name, o=owner_name))
-        return cursor.fetchone() is not None
+        cursor.execute(sql, dict(tbn=table_name, trn=trigger.name, o=owner_name))
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
     def get_create_command(trigger):
         schema = trigger.table.schema
         quote_name = schema.provider.quote_name
@@ -356,30 +365,39 @@ class OraProvider(DBAPIProvider):
         kwargs.setdefault('increment', 1)
         return OraPool(**kwargs)
 
-    def table_exists(provider, connection, table_name):
+    def table_exists(provider, connection, table_name, case_sensitive=True):
         owner_name, table_name = provider.split_table_name(table_name)
         cursor = connection.cursor()
-        cursor.execute('SELECT 1 FROM all_tables WHERE owner = :o AND table_name = :tn',
-                       dict(o=owner_name, tn=table_name))
-        return cursor.fetchone() is not None
+        if case_sensitive: sql = 'SELECT table_name FROM all_tables WHERE owner = :o AND table_name = :tn'
+        else: sql = 'SELECT table_name FROM all_tables WHERE owner = :o AND upper(table_name) = upper(:tn)'
+        cursor.execute(sql, dict(o=owner_name, tn=table_name))
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
 
-    def index_exists(provider, connection, table_name, index_name):
+    def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
         owner_name, table_name = provider.split_table_name(table_name)
         if not isinstance(index_name, basestring): throw(NotImplementedError)
+        if case_sensitive: sql = 'SELECT index_name FROM all_indexes WHERE owner = :o ' \
+                                 'AND index_name = :i AND table_owner = :o AND table_name = :t'
+        else: sql = 'SELECT index_name FROM all_indexes WHERE owner = :o ' \
+                    'AND upper(index_name) = upper(:i) AND table_owner = :o AND table_name = :t'
         cursor = connection.cursor()
-        cursor.execute('SELECT 1 FROM all_indexes WHERE owner = :o '
-                       'AND index_name = :i AND table_owner = :o AND table_name = :t',
-                       dict(o=owner_name, i=index_name, t=table_name))
-        return cursor.fetchone() is not None
+        cursor.execute(sql, dict(o=owner_name, i=index_name, t=table_name))
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
 
-    def fk_exists(provider, connection, table_name, fk_name):
+    def fk_exists(provider, connection, table_name, fk_name, case_sensitive=True):
         owner_name, table_name = provider.split_table_name(table_name)
         if not isinstance(fk_name, basestring): throw(NotImplementedError)
+        if case_sensitive:
+            sql = "SELECT constraint_name FROM user_constraints WHERE constraint_type = 'R' " \
+                  'AND table_name = :tn AND constraint_name = :cn AND owner = :o'
+        else: sql = "SELECT constraint_name FROM user_constraints WHERE constraint_type = 'R' " \
+                    'AND table_name = :tn AND upper(constraint_name) = upper(:cn) AND owner = :o'
         cursor = connection.cursor()
-        cursor.execute("SELECT 1 FROM user_constraints WHERE constraint_type = 'R' "
-                       'AND table_name = :tn AND constraint_name = :cn AND owner = :o',
-                       dict(tn=table_name, cn=fk_name, o=owner_name))
-        return cursor.fetchone() is not None
+        cursor.execute(sql, dict(tn=table_name, cn=fk_name, o=owner_name))
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
 
     def table_has_data(provider, connection, table_name):
         table_name = provider.quote_name(table_name)

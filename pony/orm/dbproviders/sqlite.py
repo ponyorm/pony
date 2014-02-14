@@ -180,13 +180,13 @@ class SQLiteProvider(DBAPIProvider):
             filename = absolutize_path(filename, frame_depth=6)
         return SQLitePool(filename, create_db)
 
-    def table_exists(provider, connection, table_name):
-        return provider._exists(connection, table_name)
+    def table_exists(provider, connection, table_name, case_sensitive=True):
+        return provider._exists(connection, table_name, None, case_sensitive)
 
-    def index_exists(provider, connection, table_name, index_name):
-        return provider._exists(connection, table_name, index_name)
+    def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
+        return provider._exists(connection, table_name, index_name, case_sensitive)
 
-    def _exists(provider, connection, table_name, index_name=None):
+    def _exists(provider, connection, table_name, index_name=None, case_sensitive=True):
         db_name, table_name = provider.split_table_name(table_name)
 
         if db_name is None: catalog_name = 'sqlite_master'
@@ -195,12 +195,15 @@ class SQLiteProvider(DBAPIProvider):
 
         cursor = connection.cursor()
         if index_name is not None:
-            sql = "SELECT 1 FROM %s WHERE type='index' AND name=?" % catalog_name
+            sql = "SELECT name FROM %s WHERE type='index' AND name=?" % catalog_name
+            if not case_sensitive: sql += ' COLLATE NOCASE'
             cursor.execute(sql, [ index_name ])
         else:
-            sql = "SELECT 1 FROM %s WHERE type='table' AND name=?" % catalog_name
+            sql = "SELECT name FROM %s WHERE type='table' AND name=?" % catalog_name
+            if not case_sensitive: sql += ' COLLATE NOCASE'
             cursor.execute(sql, [ table_name ])
-        return cursor.fetchone() is not None
+        row = cursor.fetchone()
+        return row[0] if row is not None else None
 
     def fk_exists(provider, connection, table_name, fk_name):
         assert False

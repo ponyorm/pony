@@ -47,8 +47,15 @@ class DBSchema(object):
         created_tables = set()
         for table in schema.order_tables_to_create():
             for db_object in table.get_objects_to_create(created_tables):
-                if not db_object.exists(provider, connection):
-                    db_object.create(provider, connection)
+                name = db_object.exists(provider, connection, case_sensitive=False)
+                if name is None: db_object.create(provider, connection)
+                elif name != db_object.name:
+                    quote_name = schema.provider.quote_name
+                    n1, n2 = quote_name(db_object.name), quote_name(name)
+                    tn1, tn2 = db_object.typename, db_object.typename.lower()
+                    throw(DBSchemaError, '%s %s cannot be created, because %s %s ' \
+                                         '(with a different letter case) already exists in the database. ' \
+                                         'Try to delete %s %s first.' % (tn1, n1, tn2, n2, n2, tn2))
     def check_tables(schema, provider, connection):
         cursor = connection.cursor()
         for table in schema.tables.values():
@@ -72,6 +79,7 @@ class DBObject(object):
         provider.execute(cursor, sql)
 
 class Table(DBObject):
+    typename = 'Table'
     def __init__(table, name, schema):
         if name in schema.tables:
             throw(DBSchemaError, "Table %r already exists in database schema" % name)
@@ -95,8 +103,8 @@ class Table(DBObject):
         if isinstance(table_name, tuple):
             table_name = '.'.join(table_name)
         return '<Table(%s)>' % table_name
-    def exists(table, provider, connection):
-        return provider.table_exists(connection, table.name)
+    def exists(table, provider, connection, case_sensitive=True):
+        return provider.table_exists(connection, table.name, case_sensitive)
     def get_create_command(table):
         schema = table.schema
         case = schema.case
@@ -220,6 +228,7 @@ class Constraint(DBObject):
         constraint.name = name
 
 class Index(Constraint):
+    typename = 'Index'
     def __init__(index, name, table, columns, is_pk=False, is_unique=None):
         assert len(columns) > 0
         for column in columns:
@@ -250,8 +259,8 @@ class Index(Constraint):
         index.columns = columns
         index.is_pk = is_pk
         index.is_unique = is_unique
-    def exists(index, provider, connection):
-        return provider.index_exists(connection, index.table.name, index.name)
+    def exists(index, provider, connection, case_sensitive=True):
+        return provider.index_exists(connection, index.table.name, index.name, case_sensitive)
     def get_sql(index):
         return index._get_create_sql(inside_table=True)
     def get_create_command(index):
@@ -284,6 +293,7 @@ class Index(Constraint):
         return ' '.join(cmd)
 
 class ForeignKey(Constraint):
+    typename = 'Foreign key'
     def __init__(foreign_key, name, child_table, child_columns, parent_table, parent_columns, index_name):
         schema = parent_table.schema
         if schema is not child_table.schema: throw(DBSchemaError,
@@ -317,8 +327,8 @@ class ForeignKey(Constraint):
                 if columns[:child_columns_len] == child_columns: break
             else: child_table.add_index(index_name, child_columns, is_pk=False,
                                         is_unique=False, m2m=bool(child_table.m2m))
-    def exists(foreign_key, provider, connection):
-        return provider.fk_exists(connection, foreign_key.child_table.name, foreign_key.name)
+    def exists(foreign_key, provider, connection, case_sensitive=True):
+        return provider.fk_exists(connection, foreign_key.child_table.name, foreign_key.name, case_sensitive)
     def get_sql(foreign_key):
         return foreign_key._get_create_sql(inside_table=True)
     def get_create_command(foreign_key):
