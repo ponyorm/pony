@@ -45,7 +45,11 @@ class Course(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
+@db_session
 def populate_database():
+    if Person.select().first():
+        return # already populated
+
     p = Person(name='Person1', ssn='SSN1')
     g = Group(number=123)
     prof = Professor(name='Professor1', salary=1000, position='position1', ssn='SSN5')
@@ -63,20 +67,20 @@ def show_all_persons():
         print
 
 if __name__ == '__main__':
-    if not Person.select().first():
-        populate_database()
+    populate_database()
     # show_all_persons()
 
     sql_debug(True)
 
-    s1 = Student.get(name='Student1')
-    if s1 is None:
-        print 'Student1 not found'
-    else:
-        mentor = s1.mentor
-        print mentor.name, 'is mentor of Student1'
-        print 'Is he assistant?', isinstance(mentor, Assistant)
-    print
+    with db_session:
+        s1 = Student.get(name='Student1')
+        if s1 is None:
+            print 'Student1 not found'
+        else:
+            mentor = s1.mentor
+            print mentor.name, 'is mentor of Student1'
+            print 'Is he assistant?', isinstance(mentor, Assistant)
+        print
 
-    for s in Student.select(lambda s: s.mentor.salary == 1000):
-        print s.name
+        for s in Student.select(lambda s: s.mentor.salary == 1000):
+            print s.name
