@@ -63,20 +63,21 @@ def show_all_persons():
         print
 
 if __name__ == '__main__':
-    if not Person.select().first():
-        populate_database()
-    # show_all_persons()
-
-    sql_debug(True)
-
-    s1 = Student.get(name='Student1')
-    if s1 is None:
-        print 'Student1 not found'
-    else:
-        mentor = s1.mentor
-        print mentor.name, 'is mentor of Student1'
-        print 'Is he assistant?', isinstance(mentor, Assistant)
-    print
-
-    for s in Student.select(lambda s: s.mentor.salary == 1000):
-        print s.name
+    with db_session:
+        if not Person.select().first():
+            populate_database()
+        # show_all_persons()
+    
+        sql_debug(True)
+    
+        s1 = Student.get(name='Student1')
+        if s1 is None:
+            print 'Student1 not found'
+        else:
+            mentor = s1.mentor
+            print mentor.name, 'is mentor of Student1'
+            print 'Is he assistant?', isinstance(mentor, Assistant)
+        print
+    
+        for s in Student.select(lambda s: s.mentor.salary == 1000):
+            print s.name
