@@ -1259,9 +1259,14 @@ class Attribute(object):
             if type(val) is attr.py_type: return val
             return attr.py_type(val)
 
-        if not isinstance(val, reverse.entity):
-            throw(ConstraintError, 'Value of attribute %s must be an instance of %s. Got: %s'
-                                  % (attr, reverse.entity.__name__, val))
+        rentity = reverse.entity
+        if not isinstance(val, rentity):
+            if type(val) is not tuple: val = (val,)
+            if len(val) != len(rentity._pk_columns_): throw(ConstraintError,
+                'Invalid number of columns were specified for attribute %s. Expected: %d, got: %d'
+                % (attr, len(rentity._pk_columns_), len(val)))
+            return rentity._get_by_raw_pkval_(val)
+
         if obj is not None: cache = obj._session_cache_
         else: cache = entity._database_._get_cache()
         if cache is not val._session_cache_:
