@@ -494,7 +494,7 @@ class SQLTranslator(ASTTranslator):
                 new_order.append(desc_wrapper([ 'COLUMN', alias, column]))
         order[:0] = new_order
         return translator
-    def apply_kwfilters(translator, attrnames):
+    def apply_kwfilters(translator, filterattrs):
         entity = translator.expr_type
         if not isinstance(entity, EntityMeta):
             throw(TypeError, 'Keyword arguments are not allowed when query result is not entity objects')
@@ -503,14 +503,8 @@ class SQLTranslator(ASTTranslator):
         expr_monad = translator.tree.expr.monad
         monads = []
         none_monad = translator.NoneMonad(translator)
-        for attrname, id, is_none in attrnames:
-            attr = entity._adict_.get(attrname)
-            if attr is None: throw(AttributeError,
-                'Entity %s does not have attribute %s' % (entity.__name__, attrname))
-            if attr.is_collection: throw(TypeError,
-                '%s attribute %s cannot be used as a keyword argument for filtering'
-                % (attr.__class__.__name__, attr.name))
-            attr_monad = expr_monad.getattr(attrname)
+        for attr, id, is_none in filterattrs:
+            attr_monad = expr_monad.getattr(attr.name)
             if is_none: monads.append(CmpMonad('is', attr_monad, none_monad))
             else:
                 param_monad = translator.ParamMonad.new(translator, attr.py_type, id)
