@@ -9,11 +9,11 @@ from pony.utils import datetime2timestamp, throw
 class AstError(Exception): pass
 
 class Param(object):
-    __slots__ = 'style', 'id', 'key', 'py2sql'
-    def __init__(param, paramstyle, id, key, converter=None):
+    __slots__ = 'style', 'id', 'paramkey', 'py2sql'
+    def __init__(param, paramstyle, id, paramkey, converter=None):
         param.style = paramstyle
         param.id = id
-        param.key = key
+        param.paramkey = paramkey
         param.py2sql = converter and converter.py2sql or (lambda val: val)
     def __unicode__(param):
         paramstyle = param.style
@@ -24,7 +24,7 @@ class Param(object):
         elif paramstyle == 'pyformat': return u'%%(p%d)s' % param.id
         else: throw(NotImplementedError)
     def __repr__(param):
-        return '%s(%r)' % (param.__class__.__name__, param.key)
+        return '%s(%r)' % (param.__class__.__name__, param.paramkey)
 
 class Value(object):
     __slots__ = 'paramstyle', 'value'
@@ -119,20 +119,16 @@ def indentable(method):
 
 def convert(values, params):
     for param in params:
-        key = param.key
-        if type(key) is tuple:
-            key, i = key
-            if type(key) is tuple:
-                key, j = key
-                tup = values[key]
-                obj = tup[j]
-                value = obj._get_raw_pkval_()[i]
-            else:
-                obj_or_tuple = values[key]
-                if type(obj_or_tuple) is tuple: value = obj_or_tuple[i]
-                else: value = obj_or_tuple._get_raw_pkval_()[i]
-        else: value = values[key]
-        if value is not None: value = param.py2sql(value)
+        varkey, i, j = param.paramkey
+        value = values[varkey]
+        if i is not None:
+            assert type(value) is tuple
+            value = value[i]
+        if j is not None:
+            assert type(type(value)).__name__ == 'EntityMeta'
+            value = value._get_raw_pkval_()[j]
+        if value is not None:  # can value be None at all?
+            value = param.py2sql(value)
         yield value
 
 class SQLBuilder(object):
@@ -164,7 +160,7 @@ class SQLBuilder(object):
                 return dict(('p%d' % param.id, value) for param, value in zip(params, convert(values, params)))
         else: throw(NotImplementedError, paramstyle)
         builder.params = params
-        builder.layout = tuple(param.key for param in params)
+        builder.layout = tuple(param.paramkey for param in params)
         builder.adapter = adapter
     def __call__(builder, ast):
         if isinstance(ast, basestring):
@@ -322,12 +318,12 @@ class SQLBuilder(object):
     def COLUMN(builder, table_alias, col_name):
         if table_alias: return [ '%s.%s' % (builder.quote_name(table_alias), builder.quote_name(col_name)) ]
         else: return [ '%s' % (builder.quote_name(col_name)) ]
-    def PARAM(builder, key, converter=None):
+    def PARAM(builder, paramkey, converter=None):
         keys = builder.keys
-        param = keys.get(key)
+        param = keys.get(paramkey)
         if param is None:
-            param = Param(builder.paramstyle, len(keys) + 1, key, converter)
-            keys[key] = param
+            param = Param(builder.paramstyle, len(keys) + 1, paramkey, converter)
+            keys[paramkey] = param
         return [ param ]
     def ROW(builder, *items):
         return '(', join(', ', map(builder, items)), ')'

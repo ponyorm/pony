@@ -557,7 +557,8 @@ class Database(object):
         if returning is not None: query_key = query_key + (returning,)
         cached_sql = database._insert_cache.get(query_key)
         if cached_sql is None:
-            ast = [ 'INSERT', table_name, kwargs.keys(), [ [ 'PARAM', i ] for i in xrange(len(kwargs)) ], returning ]
+            ast = [ 'INSERT', table_name, kwargs.keys(),
+                    [ [ 'PARAM', (i, None, None) ] for i in xrange(len(kwargs)) ], returning ]
             sql, adapter = database._ast2sql(ast)
             cached_sql = sql, adapter
             database._insert_cache[query_key] = cached_sql
@@ -1306,7 +1307,7 @@ class Attribute(object):
                 from_list = [ 'FROM', [ None, 'TABLE', entity._table_ ] ]
                 pk_columns = entity._pk_columns_
                 pk_converters = entity._pk_converters_
-                criteria_list = [ [ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', i, converter ] ]
+                criteria_list = [ [ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (i, None, None), converter ] ]
                                   for i, (column, converter) in enumerate(izip(pk_columns, pk_converters)) ]
                 sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
                 sql, adapter = database._ast2sql(sql_ast)
@@ -1726,23 +1727,23 @@ class SetData(set):
 def construct_criteria_list(alias, columns, converters, row_value_syntax, count=1, start=0):
     assert count > 0
     if count == 1:
-        return [ [ 'EQ', [ 'COLUMN', alias, column ], [ 'PARAM', (start, i), converter ] ]
-                 for i, (column, converter) in enumerate(izip(columns, converters)) ]
+        return [ [ 'EQ', [ 'COLUMN', alias, column ], [ 'PARAM', (start, None, j), converter ] ]
+                 for j, (column, converter) in enumerate(izip(columns, converters)) ]
     if len(columns) == 1:
         column = columns[0]
         converter = converters[0]
-        param_list = [ [ 'PARAM', (i+start, 0), converter ] for i in xrange(count) ]
+        param_list = [ [ 'PARAM', (i+start, None, 0), converter ] for i in xrange(count) ]
         condition = [ 'IN', [ 'COLUMN', alias, column ], param_list ]
         return [ condition ]
     elif row_value_syntax:
         row = [ 'ROW' ] + [ [ 'COLUMN', alias, column ] for column in columns ]
-        param_list = [ [ 'ROW' ] + [ [ 'PARAM', (i+start, j), converter ]
+        param_list = [ [ 'ROW' ] + [ [ 'PARAM', (i+start, None, j), converter ]
                                      for j, converter in enumerate(converters) ]
                        for i in xrange(count) ]
         condition = [ 'IN', row, param_list ]
         return [ condition ]
     else:
-        conditions = [ [ 'AND' ] + [ [ 'EQ', [ 'COLUMN', alias, column ], [ 'PARAM', (i+start, j), converter ] ]
+        conditions = [ [ 'AND' ] + [ [ 'EQ', [ 'COLUMN', alias, column ], [ 'PARAM', (i+start, None, j), converter ] ]
                                      for j, (column, converter) in enumerate(izip(columns, converters)) ]
                        for i in xrange(count) ]
         return [ [ 'OR' ] + conditions ]
@@ -2090,7 +2091,7 @@ class Set(Collection):
                 columns = reverse.columns + attr.columns
                 converters = reverse.converters + attr.converters
             for i, (column, converter) in enumerate(zip(columns, converters)):
-                where_list.append([ 'EQ', ['COLUMN', None, column], [ 'PARAM', i, converter ] ])
+                where_list.append([ 'EQ', ['COLUMN', None, column], [ 'PARAM', (i, None, None), converter ] ])
             sql_ast = [ 'DELETE', table_name, where_list ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_remove_m2m_sql = sql, adapter
@@ -2113,7 +2114,7 @@ class Set(Collection):
             else:
                 columns = reverse.columns + attr.columns
                 converters = reverse.converters + attr.converters
-            params = [ [ 'PARAM', i, converter ] for i, converter in enumerate(converters) ]
+            params = [ [ 'PARAM', (i, None, None), converter ] for i, converter in enumerate(converters) ]
             sql_ast = [ 'INSERT', table_name, columns, params ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_add_m2m_sql = sql, adapter
@@ -2189,7 +2190,7 @@ class SetWrapper(object):
         if cached_sql is None:
             where_list = [ 'WHERE' ]
             for i, (column, converter) in enumerate(zip(reverse.columns, reverse.converters)):
-                where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', i, converter ] ])
+                where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (i, None, None), converter ] ])
             if not reverse.is_collection:
                 table_name = rentity._table_
                 select_list, attr_offsets = rentity._construct_select_clause_()
@@ -2241,7 +2242,7 @@ class SetWrapper(object):
         if cached_sql is None:
             where_list = [ 'WHERE' ]
             for i, (column, converter) in enumerate(zip(reverse.columns, reverse.converters)):
-                where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', i, converter ] ])
+                where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (i, None, None), converter ] ])
             if not reverse.is_collection: table_name = reverse.entity._table_
             else: table_name = attr.table
             sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ],
@@ -3066,7 +3067,7 @@ class EntityMeta(type):
                 if attr_is_none: where_list.append([ 'IS_NULL', [ 'COLUMN', None, attr.column ] ])
                 else:
                     if len(attr.converters) > 1: throw(NotImplementedError)
-                    where_list.append([ 'EQ', [ 'COLUMN', None, attr.column ], [ 'PARAM', attr, attr.converters[0] ] ])
+                    where_list.append([ 'EQ', [ 'COLUMN', None, attr.column ], [ 'PARAM', (attr, None, None), attr.converters[0] ] ])
             elif not attr.columns: throw(NotImplementedError)
             else:
                 attr_entity = attr.py_type; assert attr_entity == attr.reverse.entity
@@ -3074,8 +3075,8 @@ class EntityMeta(type):
                     for column in attr.columns:
                         where_list.append([ 'IS_NULL', [ 'COLUMN', None, column ] ])
                 else:
-                    for i, (column, converter) in enumerate(zip(attr.columns, attr_entity._pk_converters_)):
-                        where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (attr, i), converter ] ])
+                    for j, (column, converter) in enumerate(zip(attr.columns, attr_entity._pk_converters_)):
+                        where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (attr, None, j), converter ] ])
 
         if not for_update: sql_ast = [ 'SELECT', select_list, from_list, where_list ]
         else: sql_ast = [ 'SELECT_FOR_UPDATE', bool(nowait), select_list, from_list, where_list ]
@@ -3330,7 +3331,8 @@ def populate_criteria_list(criteria_list, columns, converters, params_count=0, t
     assert len(columns) == len(converters)
     for column, converter in zip(columns, converters):
         if converter is not None:
-            criteria_list.append([ 'EQ', [ 'COLUMN', table_alias, column ], [ 'PARAM', params_count, converter ] ])
+            criteria_list.append([ 'EQ', [ 'COLUMN', table_alias, column ],
+                                         [ 'PARAM', (params_count, None, None), converter ] ])
         else:
             criteria_list.append([ 'IS_NULL', [ 'COLUMN', None, column ] ])
         params_count += 1
@@ -3779,7 +3781,7 @@ class Entity(object):
                 columns.extend(attr.columns)
                 converters.extend(attr.converters)
             assert len(columns) == len(converters)
-            params = [ [ 'PARAM', i,  converter ] for i, converter in enumerate(converters) ]
+            params = [ [ 'PARAM', (i, None, None),  converter ] for i, converter in enumerate(converters) ]
             entity = obj.__class__
             if not columns and database.provider.dialect == 'Oracle':
                 sql_ast = [ 'INSERT', entity._table_, obj._pk_columns_,
@@ -3843,7 +3845,7 @@ class Entity(object):
                 for attr in obj._attrs_with_bit_(obj._attrs_with_columns_, obj._wbits_):
                     update_converters.extend(attr.converters)
                 assert len(update_columns) == len(update_converters)
-                update_params = [ [ 'PARAM', i, converter ] for i, converter in enumerate(update_converters) ]
+                update_params = [ [ 'PARAM', (i, None, None), converter ] for i, converter in enumerate(update_converters) ]
                 params_count = len(update_params)
                 where_list = [ 'WHERE' ]
                 pk_columns = obj._pk_columns_
@@ -3980,7 +3982,8 @@ def desc(expr):
 def extract_vars(extractors, globals, locals):
     vars = {}
     vartypes = {}
-    for src, code in extractors.iteritems():
+    for key, code in extractors.iteritems():
+        filter_num, src = key
         if src == '.0': value = locals['.0']
         else:
             try: value = eval(code, globals, locals)
@@ -3988,7 +3991,7 @@ def extract_vars(extractors, globals, locals):
             if src == 'None' and value is not None: throw(TranslationError)
             if src == 'True' and value is not True: throw(TranslationError)
             if src == 'False' and value is not False: throw(TranslationError)
-        try: vartypes[src] = get_normalized_type_of(value)
+        try: vartypes[key] = get_normalized_type_of(value)
         except TypeError:
             if not isinstance(value, dict):
                 unsupported = False
@@ -3999,8 +4002,8 @@ def extract_vars(extractors, globals, locals):
                 typename = type(value).__name__
                 if src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
                 throw(TypeError, 'Expression %s has unsupported type %r' % (src, typename))
-            vartypes[src] = get_normalized_type_of(value)
-        vars[src] = value
+            vartypes[key] = get_normalized_type_of(value)
+        vars[key] = value
     return vars, vartypes
 
 def unpickle_query(query_result):
@@ -4009,11 +4012,11 @@ def unpickle_query(query_result):
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
-        extractors, varnames, tree = create_extractors(code_key, tree)
+        extractors, varnames, tree = create_extractors(code_key, tree, 0)
         vars, vartypes = extract_vars(extractors, globals, locals)
 
         node = tree.quals[0].iter
-        origin = vars[node.src]
+        origin = vars[0, node.src]
         if isinstance(origin, EntityIter): origin = origin.entity
         elif not isinstance(origin, EntityMeta):
             if node.src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
@@ -4214,13 +4217,11 @@ class Query(object):
                 throw(TypeError, 'Incorrect number of lambda arguments. '
                                  'Expected: %d, got: %d' % (expr_count, len(argnames)))
 
-        extractors, varnames, func_ast = create_extractors(func_id, func_ast, argnames or query._translator.subquery)
+        filter_num = len(query._filters) + 1
+        extractors, varnames, func_ast = create_extractors(func_id, func_ast, filter_num, argnames or query._translator.subquery)
         if extractors:
             vars, vartypes = extract_vars(extractors, globals, locals)
-            query_vars = query._vars
-            for name, value in vars.iteritems():
-                if query_vars.setdefault(name, value) != value: throw(TranslationError,
-                    'Meaning of expression %s has changed during query translation' % name)
+            query._vars.update(vars)
             sorted_vartypes = tuple(map(vartypes.__getitem__, varnames))
         else: vars, vartypes, sorted_vartypes = {}, {}, ()
 
@@ -4229,7 +4230,7 @@ class Query(object):
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
             prev_optimized = query._translator.optimize
-            new_translator = query._translator.apply_lambda(order_by, func_ast, argnames, extractors, vartypes)
+            new_translator = query._translator.apply_lambda(filter_num, order_by, func_ast, argnames, extractors, vartypes)
             if not prev_optimized:
                 name_path = new_translator.can_be_optimized()
                 if name_path:

@@ -72,8 +72,8 @@ class SQLTranslator(ASTTranslator):
         if hasattr(node, 'monad'): return  # monad already assigned somehow
         if not getattr(node, 'external', False) or getattr(node, 'constant', False):
             return ASTTranslator.dispatch(translator, node)  # default route
-        src = node.src
-        t = translator.vartypes[src]
+        varkey = translator.filter_num, node.src
+        t = translator.vartypes[varkey]
         tt = type(t)
         if t is NoneType:
             monad = translator.ConstMonad.new(translator, None)
@@ -100,12 +100,12 @@ class SQLTranslator(ASTTranslator):
             params = []
             for i, item_type in enumerate(t):
                 if item_type is NoneType:
-                    throw(TypeError, 'Expression %r should not contain None values' % src)
-                param = ParamMonad.new(translator, item_type, (src, i))
+                    throw(TypeError, 'Expression %r should not contain None values' % node.src)
+                param = ParamMonad.new(translator, item_type, (varkey, i, None))
                 params.append(param)
             monad = translator.ListMonad(translator, params)
         else:
-            monad = translator.ParamMonad.new(translator, t, src)
+            monad = translator.ParamMonad.new(translator, t, (varkey, None, None))
         node.monad = monad
 
     def call(translator, method, node):
@@ -152,6 +152,7 @@ class SQLTranslator(ASTTranslator):
         ASTTranslator.__init__(translator, tree)
         translator.database = None
         translator.argnames = None
+        translator.filter_num = 0
         translator.extractors = extractors
         translator.vartypes = vartypes
         translator.parent = parent_translator
@@ -190,7 +191,7 @@ class SQLTranslator(ASTTranslator):
                 entity = monad.type.item_type
                 tablerefs[name] = TableRef(subquery, name, entity)
             elif src:
-                iterable = translator.vartypes[src]
+                iterable = translator.vartypes[0, src]
                 if not isinstance(iterable, SetType): throw(TranslationError,
                     'Inside declarative query, iterator must be entity. '
                     'Got: for %s in %s' % (name, ast2src(qual.iter)))
@@ -511,11 +512,12 @@ class SQLTranslator(ASTTranslator):
                 monads.append(CmpMonad('==', attr_monad, param_monad))
         for m in monads: translator.conditions.extend(m.getsql())
         return translator
-    def apply_lambda(translator, order_by, func_ast, argnames, extractors, vartypes):
+    def apply_lambda(translator, filter_num, order_by, func_ast, argnames, extractors, vartypes):
         prev_optimized = translator.optimize
         translator = deepcopy(translator)
         pickled_func_ast = dumps(func_ast, 2)
         func_ast = loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
+        translator.filter_num = filter_num
         translator.extractors.update(extractors)
         translator.vartypes.update(vartypes)
         translator.argnames = list(argnames)
@@ -1355,7 +1357,7 @@ class BufferAttrMonad(BufferMixin, AttrMonad): pass
 
 class ParamMonad(Monad):
     @staticmethod
-    def new(translator, type, src):
+    def new(translator, type, paramkey):
         type = normalize_type(type)
         if type in numeric_types: cls = translator.NumericParamMonad
         elif type in string_types: cls = translator.StringParamMonad
@@ -1364,28 +1366,30 @@ class ParamMonad(Monad):
         elif type is buffer: cls = translator.BufferParamMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectParamMonad
         else: throw(NotImplementedError, type)  # pragma: no cover
-        result = cls(translator, type, src)
+        result = cls(translator, type, paramkey)
         result.aggregated = False
         return result
     def __new__(cls, *args):
         if cls is ParamMonad: assert False, 'Abstract class'
         return Monad.__new__(cls)
-    def __init__(monad, translator, type, src):
+    def __init__(monad, translator, type, paramkey):
         type = normalize_type(type)
         Monad.__init__(monad, translator, type)
-        monad.src = src
+        monad.paramkey = paramkey
         if not isinstance(type, EntityMeta):
             provider = translator.database.provider
             monad.converter = provider.get_converter_by_py_type(type)
         else: monad.converter = None
     def getsql(monad, subquery=None):
-        return [ [ 'PARAM', monad.src, monad.converter ] ]
+        return [ [ 'PARAM', monad.paramkey, monad.converter ] ]
 
 class ObjectParamMonad(ObjectMixin, ParamMonad):
-    def __init__(monad, translator, entity, src):
+    def __init__(monad, translator, entity, paramkey):
         assert translator.database is entity._database_
-        ParamMonad.__init__(monad, translator, entity, src)
-        monad.params = tuple((src, i) for i in xrange(len(entity._pk_converters_)))
+        ParamMonad.__init__(monad, translator, entity, paramkey)
+        varkey, i, j = paramkey
+        assert j is None
+        monad.params = tuple((varkey, i, j) for j in xrange(len(entity._pk_converters_)))
     def getsql(monad, subquery=None):
         entity = monad.type
         assert len(monad.params) == len(entity._pk_converters_)
