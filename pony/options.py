@@ -60,7 +60,7 @@ CONSOLE_ENCODING = None
 
 # db options
 PREFETCHING = True
-MAX_FETCH_COUNT = 1000
+MAX_FETCH_COUNT = None
 
 # used for select(...).show()
 CONSOLE_WIDTH = 80
