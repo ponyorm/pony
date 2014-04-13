@@ -332,6 +332,22 @@ class TestSQLTranslator(unittest.TestCase):
     def test_hint_join2(self):
         result = set(select(c for c in Course if JOIN(len(c.students) == 1)))
         self.assertEqual(result, set([Course['Math', 1], Course['Economics', 1]]))
+    def test_tuple_param(self):
+        x = Student[1], Student[2]
+        result = set(select(s for s in Student if s not in x))
+        self.assertEqual(result, set([Student[3]]))
+    @raises_exception(TypeError, "Expression 'x' should not contain None values")        
+    def test_tuple_param_2(self):
+        x = Student[1], None
+        result = set(select(s for s in Student if s not in x))
+        self.assertEqual(result, set([Student[3]]))
+    @raises_exception(TypeError, "Function 'f' cannot be used inside query")
+    def test_unknown_func(self):
+        def f(x): return x
+        select(s for s in Student if f(s))
+    def test_method_monad(self):
+        result = set(select(s for s in Student if s not in Student.select(lambda s: s.scholarship > 0)))
+        self.assertEqual(result, set([Student[1]]))
 
 
 if __name__ == "__main__":

@@ -4020,7 +4020,7 @@ class Query(object):
         if isinstance(origin, EntityIter): origin = origin.entity
         elif not isinstance(origin, EntityMeta):
             if node.src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
-            else: throw(TypeError, 'Cannot iterate over non-entity object %s' % node.src)
+            throw(TypeError, 'Cannot iterate over non-entity object %s' % node.src)
         query._origin = origin
         database = origin._database_
         if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
