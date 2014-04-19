@@ -596,14 +596,16 @@ class Database(object):
         if provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
         if database.schema: throw(MappingError, 'Mapping was already generated')
         if filename is not None: throw(NotImplementedError)
+        schema = database.schema = provider.dbschema_cls(provider)
+        entities = list(sorted(database.entities.values(), key=attrgetter('_id_')))
+        for entity in entities:
+            entity._link_reverse_attrs_()
         for entity_name in database._unmapped_attrs:
             throw(ERDiagramError, 'Entity definition %s was not found' % entity_name)
 
         def get_columns(table, column_names):
             return tuple(map(table.column_dict.__getitem__, column_names))
 
-        schema = database.schema = provider.dbschema_cls(provider)
-        entities = list(sorted(database.entities.values(), key=attrgetter('_id_')))
         for entity in entities:
             entity._get_pk_columns_()
             table_name = entity._table_
@@ -2653,7 +2655,6 @@ class EntityMeta(type):
 
         database.entities[entity.__name__] = entity
         setattr(database, entity.__name__, entity)
-        entity._link_reverse_attrs_()
 
         entity._cached_max_id_sql_ = None
         entity._find_sql_cache_ = {}
@@ -2741,7 +2742,7 @@ class EntityMeta(type):
             attr2.linked()
             unmapped_attrs.discard(attr2)
         for attr in unmapped_attrs:
-            throw(ERDiagramError, 'Reverse attribute for %s.%s was not found' % (attr.entity.__name__, attr.name))
+            throw(ERDiagramError, 'Reverse attribute for %s.%s not found' % (attr.entity.__name__, attr.name))
     def _get_pk_columns_(entity):
         if entity._pk_columns_ is not None: return entity._pk_columns_
         pk_columns = []

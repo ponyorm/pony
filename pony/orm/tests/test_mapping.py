@@ -129,7 +129,7 @@ class TestColumnsMapping(unittest.TestCase):
 
     # Required-Required raises exception
     @raises_exception(ERDiagramError,
-        'At least one attribute of one-to-one relationship Entity2.attr2 - Entity1.attr1 must be optional')
+        'At least one attribute of one-to-one relationship Entity1.attr1 - Entity2.attr2 must be optional')
     def test_relations1(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):

@@ -24,6 +24,7 @@ class TestDiag(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
+        db.generate_mapping()
 
     @raises_exception(ERDiagramError, 'Entity definition Entity2 was not found')
     def test_diagram2(self):
