@@ -598,6 +598,8 @@ class Database(object):
         schema = database.schema = provider.dbschema_cls(provider)
         entities = list(sorted(database.entities.values(), key=attrgetter('_id_')))
         for entity in entities:
+            entity._resolve_attr_types_()
+        for entity in entities:
             entity._link_reverse_attrs_()
 
         def get_columns(table, column_names):
@@ -1119,16 +1121,14 @@ class Attribute(object):
         if attr.is_pk: attr.pk_offset = 0
         else: attr.pk_offset = None
         attr.id = next_attr_id()
-        if not isinstance(py_type, basestring) and not isinstance(py_type, type):
+        if not isinstance(py_type, (type, basestring, types.FunctionType)):
             if py_type is datetime: throw(TypeError,
                 'datetime is the module and cannot be used as attribute type. Use datetime.datetime instead')
             throw(TypeError, 'Incorrect type of attribute: %r' % py_type)
-        if py_type == 'Entity' or (isinstance(py_type, EntityMeta) and py_type.__name__ == 'Entity'):
-            throw(TypeError, 'Cannot link attribute to Entity class. Must use Entity subclass instead')
         attr.py_type = py_type
         attr.is_string = type(py_type) is type and issubclass(py_type, basestring)
         attr.is_collection = isinstance(attr, Collection)
-        attr.is_relation = isinstance(attr.py_type, (EntityMeta, basestring))
+        attr.is_relation = isinstance(attr.py_type, (EntityMeta, basestring, types.FunctionType))
         attr.is_basic = not attr.is_collection and not attr.is_relation
         attr.sql_type = kwargs.pop('sql_type', None)
         attr.entity = attr.name = None
@@ -1140,7 +1140,7 @@ class Attribute(object):
         if not attr.reverse: pass
         elif not isinstance(attr.reverse, (basestring, Attribute)):
             throw(TypeError, "Value of 'reverse' option must be name of reverse attribute). Got: %r" % attr.reverse)
-        elif not isinstance(attr.py_type, (basestring, EntityMeta)):
+        elif not attr.is_relation:
             throw(TypeError, 'Reverse option cannot be set for this type: %r' % attr.py_type)
 
         attr.column = kwargs.pop('column', None)
@@ -2678,7 +2678,7 @@ class EntityMeta(type):
         for_expr = ast.GenExprFor(ast.AssName(iter_name, 'OP_ASSIGN'), ast.Name('.0'), [])
         inner_expr = ast.GenExprInner(ast.Name(iter_name), [ for_expr ])
         entity._default_genexpr_ = inner_expr
-    def _link_reverse_attrs_(entity):
+    def _resolve_attr_types_(entity):
         database = entity._database_
         for attr in entity._new_attrs_:
             py_type = attr.py_type
@@ -2687,7 +2687,18 @@ class EntityMeta(type):
                 if rentity is None:
                     throw(ERDiagramError, 'Entity definition %s was not found' % py_type)
                 attr.py_type = py_type = rentity
-            elif not issubclass(py_type, Entity): continue
+            elif isinstance(py_type, types.FunctionType):
+                rentity = py_type()
+                if not isinstance(rentity, EntityMeta): throw(TypeError,
+                    'Invalid type of attribute %s: expected entity class, got %r' % (attr, rentity))
+                attr.py_type = py_type = rentity
+            if isinstance(py_type, EntityMeta) and py_type.__name__ == 'Entity': throw(TypeError,
+                'Cannot link attribute %s to abstract Entity class. Use specific Entity subclass instead' % attr)
+    def _link_reverse_attrs_(entity):
+        database = entity._database_
+        for attr in entity._new_attrs_:
+            py_type = attr.py_type
+            if not issubclass(py_type, Entity): continue
 
             entity2 = py_type
             if entity2._database_ is not database:
@@ -2720,13 +2731,11 @@ class EntityMeta(type):
                 else: throw(ERDiagramError, 'Reverse attribute for %s not found' % attr)
 
             type2 = attr2.py_type
-            msg = 'Inconsistent reverse attributes %s and %s'
-            if isinstance(type2, basestring):
-                if type2 != entity.__name__: throw(ERDiagramError, msg % (attr, attr2))
-                attr2.py_type = entity
-            elif type2 != entity: throw(ERDiagramError, msg % (attr, attr2))
+            if type2 != entity:
+                throw(ERDiagramError, 'Inconsistent reverse attributes %s and %s' % (attr, attr2))
             reverse2 = attr2.reverse
-            if reverse2 not in (None, attr, attr.name): throw(ERDiagramError, msg % (attr,attr2))
+            if reverse2 not in (None, attr, attr.name):
+                throw(ERDiagramError, 'Inconsistent reverse attributes %s and %s' % (attr, attr2))
 
             if attr.is_required and attr2.is_required: throw(ERDiagramError,
                 "At least one attribute of one-to-one relationship %s - %s must be optional" % (attr, attr2))
