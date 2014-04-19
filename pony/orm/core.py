@@ -1097,7 +1097,7 @@ next_attr_id = _count(1).next
 
 class Attribute(object):
     __slots__ = 'nullable', 'is_required', 'is_discriminator', 'is_unique', 'is_part_of_unique_index', \
-                'is_pk', 'is_collection', 'is_ref', 'is_basic', 'is_string', 'is_volatile', \
+                'is_pk', 'is_collection', 'is_relation', 'is_basic', 'is_string', 'is_volatile', \
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
@@ -1129,8 +1129,8 @@ class Attribute(object):
         attr.py_type = py_type
         attr.is_string = type(py_type) is type and issubclass(py_type, basestring)
         attr.is_collection = isinstance(attr, Collection)
-        attr.is_ref = not attr.is_collection and isinstance(attr.py_type, (EntityMeta, basestring))
-        attr.is_basic = not attr.is_collection and not attr.is_ref
+        attr.is_relation = isinstance(attr.py_type, (EntityMeta, basestring))
+        attr.is_basic = not attr.is_collection and not attr.is_relation
         attr.sql_type = kwargs.pop('sql_type', None)
         attr.entity = attr.name = None
         attr.args = args
