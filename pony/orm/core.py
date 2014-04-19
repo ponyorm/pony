@@ -413,7 +413,6 @@ class Database(object):
         self._translator_cache = {}
         self._constructed_sql_cache = {}
         self.entities = {}
-        self._unmapped_attrs = {}
         self.schema = None
         self.Entity = type.__new__(EntityMeta, 'Entity', (Entity,), {})
         self.Entity._database_ = self
@@ -600,8 +599,6 @@ class Database(object):
         entities = list(sorted(database.entities.values(), key=attrgetter('_id_')))
         for entity in entities:
             entity._link_reverse_attrs_()
-        for entity_name in database._unmapped_attrs:
-            throw(ERDiagramError, 'Entity definition %s was not found' % entity_name)
 
         def get_columns(table, column_names):
             return tuple(map(table.column_dict.__getitem__, column_names))
@@ -2683,15 +2680,13 @@ class EntityMeta(type):
         entity._default_genexpr_ = inner_expr
     def _link_reverse_attrs_(entity):
         database = entity._database_
-        unmapped_attrs = database._unmapped_attrs.pop(entity.__name__, set())
         for attr in entity._new_attrs_:
             py_type = attr.py_type
             if isinstance(py_type, basestring):
-                entity2 = database.entities.get(py_type)
-                if entity2 is None:
-                    database._unmapped_attrs.setdefault(py_type, set()).add(attr)
-                    continue
-                attr.py_type = py_type = entity2
+                rentity = database.entities.get(py_type)
+                if rentity is None:
+                    throw(ERDiagramError, 'Entity definition %s was not found' % py_type)
+                attr.py_type = py_type = rentity
             elif not issubclass(py_type, Entity): continue
 
             entity2 = py_type
@@ -2740,9 +2735,6 @@ class EntityMeta(type):
             attr2.reverse = attr
             attr.linked()
             attr2.linked()
-            unmapped_attrs.discard(attr2)
-        for attr in unmapped_attrs:
-            throw(ERDiagramError, 'Reverse attribute for %s.%s not found' % (attr.entity.__name__, attr.name))
     def _get_pk_columns_(entity):
         if entity._pk_columns_ is not None: return entity._pk_columns_
         pk_columns = []
