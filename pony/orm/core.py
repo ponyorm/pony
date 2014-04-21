@@ -1331,9 +1331,10 @@ class Attribute(object):
         if wbits is not None and not wbits & bit: obj._rbits_ |= bit
         return result
     def get(attr, obj):
-        if obj._status_ in del_statuses: throw_object_was_deleted(obj)
+        if attr.pk_offset is None and obj._status_ in ('deleted', 'cancelled'):
+            throw_object_was_deleted(obj)
         val = obj._vals_[attr] if attr in obj._vals_ else attr.load(obj)
-        if val is not None and attr.reverse and val._subclasses_:
+        if val is not None and attr.reverse and val._subclasses_ and val._status_ not in ('deleted', 'cancelled'):
             seeds = obj._session_cache_.seeds[val._pk_attrs_]
             if val in seeds: val._load_()
         return val
