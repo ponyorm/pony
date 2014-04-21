@@ -986,6 +986,9 @@ class SessionCache(object):
         if not cache.immediate: cache.immediate = True
         if not cache.modified: return
 
+        for obj in cache.objects_to_save:  # can grow during iteration
+            if obj is not None: obj._before_save_()
+
         with cache.flush_disabled():
             cache.query_results.clear()
             modified_m2m = cache._calc_modified_m2m()
@@ -3935,6 +3938,17 @@ class Entity(object):
         elif status == 'updated': obj._save_updated_()
         elif status == 'marked_to_delete': obj._save_deleted_()
         else: assert False
+    def _before_save_(obj):
+        status = obj._status_
+        if status == 'created': obj.before_insert()
+        elif status == 'updated': obj.before_update()
+        elif status == 'marked_to_delete': obj.before_delete()
+    def before_insert(obj):
+        pass
+    def before_update(obj):
+        pass
+    def before_delete(obj):
+        pass
 
 def string2ast(s):
     result = string2ast_cache.get(s)
