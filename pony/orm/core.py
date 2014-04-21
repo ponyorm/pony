@@ -993,7 +993,7 @@ class SessionCache(object):
                 if not removed: continue
                 attr.remove_m2m(removed)
             for obj in cache.objects_to_save:
-                obj._save_()
+                if obj is not None: obj._save_()
             for attr, (added, removed) in modified_m2m.iteritems():
                 if not added: continue
                 attr.add_m2m(added)
@@ -1358,12 +1358,15 @@ class Attribute(object):
                 old_val = attr.load(obj)
             status = obj._status_
             wbits = obj._wbits_
+            objects_to_save = cache.objects_to_save
             if wbits is not None:
                 obj._wbits_ = wbits | obj._bits_[attr]
                 if status != 'updated':
                     assert status in ('loaded', 'saved')
+                    assert obj._save_pos_ is None
                     obj._status_ = 'updated'
-                    cache.objects_to_save.append(obj)
+                    obj._save_pos_ = len(objects_to_save)
+                    objects_to_save.append(obj)
                     cache.modified = True
             if not attr.reverse and not attr.is_part_of_unique_index:
                 obj._vals_[attr] = new_val
@@ -1374,9 +1377,11 @@ class Attribute(object):
                 obj._status_ = status
                 obj._wbits_ = wbits
                 if status in ('loaded', 'saved'):
-                    objects_to_save = cache.objects_to_save
-                    if objects_to_save and objects_to_save[-1] is obj: objects_to_save.pop()
-                    assert obj not in objects_to_save
+                    assert objects_to_save
+                    obj2 = objects_to_save.pop()
+                    assert obj2 is obj and obj._save_pos_ == len(objects_to_save)
+                    obj._save_pos_ = None
+
                 if old_val is NOT_LOADED: obj._vals_.pop(attr)
                 else: obj._vals_[attr] = old_val
                 for index, old_key, new_key in undo:
@@ -3216,11 +3221,12 @@ class EntityMeta(type):
         if obj is None:
             with cache.flush_disabled():
                 obj = object.__new__(entity)
-                obj._dbvals_ = {}
-                obj._vals_ = {}
-                obj._session_cache_ = cache
-                obj._status_ = status
                 obj._pkval_ = pkval
+                obj._status_ = status
+                obj._vals_ = {}
+                obj._dbvals_ = {}
+                obj._save_pos_ = None
+                obj._session_cache_ = cache
                 if pkval is not None:
                     index[pkval] = obj
                     obj._newid_ = None
@@ -3373,7 +3379,7 @@ def safe_repr(obj):
 
 class Entity(object):
     __metaclass__ = EntityMeta
-    __slots__ = '_session_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '__weakref__'
+    __slots__ = '_session_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '_save_pos_', '__weakref__'
     def __reduce__(obj):
         if obj._status_ in del_statuses: throw(
             OperationWithDeletedObjectError, 'Deleted object %s cannot be pickled' % safe_repr(obj))
@@ -3426,7 +3432,9 @@ class Entity(object):
                 raise
         if pkval is not None: indexes[entity._pk_attrs_][pkval] = obj
         for key, vals in indexes_update.iteritems(): indexes[key][vals] = obj
-        cache.objects_to_save.append(obj)
+        objects_to_save = cache.objects_to_save
+        obj._save_pos_ = len(objects_to_save)
+        objects_to_save.append(obj)
         cache.modified = True
         return obj
     def _get_raw_pkval_(obj):
@@ -3555,13 +3563,21 @@ class Entity(object):
         with cache.flush_disabled():
             get_val = obj._vals_.get
             undo_list = []
+            objects_to_save = cache.objects_to_save
+            save_pos = obj._save_pos_
+
             def undo_func():
+                if obj._status_ == 'marked_to_delete':
+                    assert objects_to_save
+                    obj2 = objects_to_save.pop()
+                    assert obj2 is obj
+                    if save_pos is not None:
+                        assert objects_to_save[save_pos] is None
+                        objects_to_save[save_pos] = obj
+                    obj._save_pos_ = save_pos
                 obj._status_ = status
-                if status in ('loaded', 'saved'):
-                    objects_to_save = cache.objects_to_save
-                    if objects_to_save and objects_to_save[-1] is obj: objects_to_save.pop()
-                    assert obj not in objects_to_save
                 for index, old_key in undo_list: index[old_key] = obj
+
             undo_funcs.append(undo_func)
             try:
                 for attr in obj._attrs_:
@@ -3611,6 +3627,9 @@ class Entity(object):
                     undo_list.append((index, vals))
 
                 if status == 'created':
+                    assert save_pos is not None
+                    objects_to_save[save_pos] = None
+                    obj._save_pos_ = None
                     obj._status_ = 'cancelled'
                     if obj._pkval_ is not None:
                         pk_index = indexes[obj._pk_attrs_]
@@ -3618,9 +3637,14 @@ class Entity(object):
                         assert obj2 is obj
                         undo_list.append((pk_index, obj._pkval_))
                 else:
-                    if status != 'updated':
+                    if status == 'updated':
+                        assert save_pos is not None
+                        objects_to_save[save_pos] = None
+                    else:
                         assert status in ('loaded', 'saved')
-                        cache.objects_to_save.append(obj)
+                        assert save_pos is None
+                    obj._save_pos_ = len(objects_to_save)
+                    objects_to_save.append(obj)
                     obj._status_ = 'marked_to_delete'
                     cache.modified = True
             except:
@@ -3641,6 +3665,7 @@ class Entity(object):
             status = obj._status_
             wbits = obj._wbits_
             get_val = obj._vals_.get
+            objects_to_save = cache.objects_to_save
             if avdict:
                 for attr in avdict:
                     if attr not in obj._vals_ and attr.reverse and not attr.reverse.is_collection:
@@ -3650,10 +3675,12 @@ class Entity(object):
                     for attr in avdict: new_wbits |= obj._bits_[attr]
                     obj._wbits_ = new_wbits
                     if status != 'updated':
-                        obj._status_ = 'updated'
-                        cache.modified = True
                         assert status in ('loaded', 'saved')
-                        cache.objects_to_save.append(obj)
+                        assert obj._save_pos_ is None
+                        obj._status_ = 'updated'
+                        obj._save_pos_ = len(objects_to_save)
+                        objects_to_save.append(obj)
+                        cache.modified = True
                 if not collection_avdict:
                     for attr in avdict:
                         if attr.reverse or attr.is_part_of_unique_index: break
@@ -3666,9 +3693,10 @@ class Entity(object):
                 obj._status_ = status
                 obj._wbits_ = wbits
                 if status in ('loaded', 'saved'):
-                    objects_to_save = cache.objects_to_save
-                    if objects_to_save and objects_to_save[-1] is obj: objects_to_save.pop()
-                    assert obj not in objects_to_save
+                    assert objects_to_save
+                    obj2 = objects_to_save.pop()
+                    assert obj2 is obj and obj._save_pos_ == len(objects_to_save)
+                    obj._save_pos_ = None
                 for index, old_key, new_key in undo:
                     if new_key is not None: del index[new_key]
                     if old_key is not None: index[old_key] = obj
@@ -3897,9 +3925,11 @@ class Entity(object):
         assert cache.is_alive
         status = obj._status_
         if status in ('loaded', 'saved', 'cancelled'): return
+
         if status in ('created', 'updated'):
             obj._save_principal_objects_(dependent_objects)
 
+        obj._save_pos_ = None
         if status == 'created': obj._save_created_()
         elif status == 'updated': obj._save_updated_()
         elif status == 'marked_to_delete': obj._save_deleted_()
