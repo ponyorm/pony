@@ -4291,7 +4291,7 @@ class Query(object):
             query._database._translator_cache[new_key] = new_translator
         return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
     def _reapply_filters(query, translator):
-        for tup in query._filters:
+        for i, tup in enumerate(query._filters):
             if not tup:
                 translator = translator.without_order()
             elif len(tup) == 1:
@@ -4303,7 +4303,7 @@ class Query(object):
                 else: translator = translator.order_by_attributes(args)
             else:
                 order_by, func_ast, argnames, extractors, vartypes = tup
-                translator = translator.apply_lambda(order_by, func_ast, argnames, extractors, vartypes)
+                translator = translator.apply_lambda(i+1, order_by, func_ast, argnames, extractors, vartypes)
         return translator
     @cut_traceback
     def filter(query, *args, **kwargs):
