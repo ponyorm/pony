@@ -4211,7 +4211,10 @@ class Query(object):
             tup = ((),)
             new_key = query._key + tup
             new_filters = query._filters + tup
-            new_translator = query._translator.without_order()
+            new_translator = query._database._translator_cache.get(new_key)
+            if new_translator is None:
+                new_translator = query._translator.without_order()
+                query._database._translator_cache[new_key] = new_translator
             return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
 
         attributes = functions = strings = numbers = False

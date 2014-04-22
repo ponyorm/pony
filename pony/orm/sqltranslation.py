@@ -342,10 +342,6 @@ class SQLTranslator(ASTTranslator):
                     offset += 1
             translator.row_layout = row_layout
             translator.col_names = [ src for func, slice_or_offset, src in translator.row_layout ]
-    def shallow_copy(translator):
-        new_translator = object.__new__(translator.__class__)
-        new_translator.__dict__.update(translator.__dict__)
-        return new_translator
     def shallow_copy_of_subquery_ast(translator, move_outer_conditions=True):
         subquery_ast, attr_offsets = translator.construct_sql_ast(distinct=False, is_not_null_checks=True)
         assert attr_offsets is None
@@ -446,12 +442,12 @@ class SQLTranslator(ASTTranslator):
         sql_ast = ast_transformer(sql_ast)
         return sql_ast, attr_offsets
     def without_order(translator):
-        translator = translator.shallow_copy()
+        translator = deepcopy(translator)
         translator.order = []
         return translator
     def order_by_numbers(translator, numbers):
         if 0 in numbers: throw(ValueError, 'Numeric arguments of order_by() method must be non-zero')
-        translator = translator.shallow_copy()
+        translator = deepcopy(translator)
         order = translator.order = translator.order[:]  # only order will be changed
         expr_monad = translator.tree.expr.monad
         if isinstance(expr_monad, translator.ListMonad): monads = expr_monad.items
@@ -475,7 +471,7 @@ class SQLTranslator(ASTTranslator):
         if not isinstance(entity, EntityMeta): throw(NotImplementedError,
             'Ordering by attributes is limited to queries which return simple list of objects. '
             'Try use other forms of ordering (by tuple element numbers or by full-blown lambda expr).')
-        translator = translator.shallow_copy()
+        translator = deepcopy(translator)
         order = translator.order = translator.order[:]  # only order will be changed
         alias = translator.alias
         new_order = []
