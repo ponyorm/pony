@@ -495,7 +495,6 @@ class SQLTranslator(ASTTranslator):
         entity = translator.expr_type
         if not isinstance(entity, EntityMeta):
             throw(TypeError, 'Keyword arguments are not allowed when query result is not entity objects')
-        if translator.aggregated: throw(NotImplementedError, 'Aggregated query cannot be filtered this way')
         translator = deepcopy(translator)
         expr_monad = translator.tree.expr.monad
         monads = []
