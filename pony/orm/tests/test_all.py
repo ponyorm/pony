@@ -38,6 +38,7 @@ from test_core_find_in_cache import *
 from test_db_session import *
 from test_lazy import *
 from test_query import *
+from test_filter import *
 
 #from new_tests import *
 

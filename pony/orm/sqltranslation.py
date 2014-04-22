@@ -508,7 +508,7 @@ class SQLTranslator(ASTTranslator):
             attr_monad = expr_monad.getattr(attr.name)
             if is_none: monads.append(CmpMonad('is', attr_monad, none_monad))
             else:
-                param_monad = translator.ParamMonad.new(translator, attr.py_type, id)
+                param_monad = translator.ParamMonad.new(translator, attr.py_type, (id, None, None))
                 monads.append(CmpMonad('==', attr_monad, param_monad))
         for m in monads: translator.conditions.extend(m.getsql())
         return translator
