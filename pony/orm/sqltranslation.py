@@ -509,7 +509,6 @@ class SQLTranslator(ASTTranslator):
         for m in monads: translator.conditions.extend(m.getsql())
         return translator
     def apply_lambda(translator, filter_num, order_by, func_ast, argnames, extractors, vartypes):
-        prev_optimized = translator.optimize
         translator = deepcopy(translator)
         pickled_func_ast = dumps(func_ast, 2)
         func_ast = loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
