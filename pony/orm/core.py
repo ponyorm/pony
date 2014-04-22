@@ -4343,7 +4343,7 @@ class Query(object):
 
         filterattrs = tuple(filterattrs)
         new_key = query._key + ('filter', filterattrs)
-        new_filters = query._filters + (filterattrs,)
+        new_filters = query._filters + ((filterattrs,),)
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
             new_translator = query._translator.apply_kwfilters(filterattrs)
