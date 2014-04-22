@@ -4345,7 +4345,7 @@ class Query(object):
             new_translator = query._translator.apply_kwfilters(filterattrs)
             query._database._translator_cache[new_key] = new_translator
         new_query = query._clone(_key=new_key, _filters=new_filters, _translator=new_translator,
-                                 _next_kwargs_id=next_id)
+                                 _next_kwarg_id=next_id)
         new_query._vars.update(value_dict)
         return new_query
     @cut_traceback
