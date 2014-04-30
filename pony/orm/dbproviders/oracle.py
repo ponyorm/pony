@@ -230,8 +230,8 @@ class OraStrConverter(dbapiprovider.StrConverter):
             val = val.read()
             if converter.utf8: return val
             val = val.decode('utf8')
-        assert isinstance(val, unicode)
-        val = val.encode(converter.encoding, 'replace')
+        if isinstance(val, unicode):
+            val = val.encode(converter.encoding, 'replace')
         return val
     sql_type = _string_sql_type
 
