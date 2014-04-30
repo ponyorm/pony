@@ -149,8 +149,8 @@ class Table(DBObject):
                     result.append(foreign_key)
         created_tables.add(table)
         return result
-    def add_column(table, column_name, sql_type, is_not_null=None, sql_default=None):
-        return table.schema.column_class(column_name, table, sql_type, is_not_null, sql_default)
+    def add_column(table, column_name, sql_type, converter, is_not_null=None, sql_default=None):
+        return table.schema.column_class(column_name, table, sql_type, converter, is_not_null, sql_default)
     def add_index(table, index_name, columns, is_pk=False, is_unique=None, m2m=False):
         assert index_name is not False
         if index_name is True: index_name = None
@@ -171,7 +171,7 @@ class Table(DBObject):
 
 class Column(object):
     auto_template = '%(type)s PRIMARY KEY AUTOINCREMENT'
-    def __init__(column, name, table, sql_type, is_not_null=None, sql_default=None):
+    def __init__(column, name, table, sql_type, converter, is_not_null=None, sql_default=None):
         if name in table.column_dict:
             throw(DBSchemaError, "Column %r already exists in table %r" % (name, table.name))
         table.column_dict[name] = column
@@ -179,6 +179,7 @@ class Column(object):
         column.table = table
         column.name = name
         column.sql_type = sql_type
+        column.converter = converter
         column.is_not_null = is_not_null
         column.sql_default = sql_default
         column.is_pk = False

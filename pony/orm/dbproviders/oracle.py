@@ -19,7 +19,8 @@ class OraTable(Table):
         result = Table.get_objects_to_create(table, created_tables)
         for column in table.column_list:
             if column.is_pk == 'auto':
-                sequence = OraSequence(table)
+                sequence_name = column.converter.attr.kwargs.get('sequence_name')
+                sequence = OraSequence(table, sequence_name)
                 trigger = OraTrigger(table, column, sequence)
                 result.extend((sequence, trigger))
                 break
@@ -27,10 +28,11 @@ class OraTable(Table):
 
 class OraSequence(DBObject):
     typename = 'Sequence'
-    def __init__(sequence, table):
+    def __init__(sequence, table, name=None):
         sequence.table = table
         table_name = table.name
-        if isinstance(table_name, basestring): sequence.name = table_name + '_SEQ'
+        if name is not None: sequence.name = name
+        elif isinstance(table_name, basestring): sequence.name = table_name + '_SEQ'
         else: sequence.name = tuple(table_name[:-1]) + (table_name[0] + '_SEQ',)
     def exists(sequence, provider, connection, case_sensitive=True):
         if case_sensitive: sql = 'SELECT sequence_name FROM all_sequences ' \
@@ -234,6 +236,10 @@ class OraStrConverter(dbapiprovider.StrConverter):
     sql_type = _string_sql_type
 
 class OraIntConverter(dbapiprovider.IntConverter):
+    def init(self, kwargs):
+        sequence_name = kwargs.pop('sequence_name', None)
+        if sequence_name is not None and not (self.attr.auto and self.attr.is_pk):
+            throw(TypeError, "Parameter 'sequence_name' can be used only for PrimaryKey attributes with auto=True")
     def sql_type(converter):
         return 'NUMBER(38)'
 
