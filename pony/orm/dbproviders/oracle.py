@@ -237,6 +237,7 @@ class OraStrConverter(dbapiprovider.StrConverter):
 
 class OraIntConverter(dbapiprovider.IntConverter):
     def init(self, kwargs):
+        dbapiprovider.IntConverter.init(self, kwargs)
         sequence_name = kwargs.pop('sequence_name', None)
         if sequence_name is not None and not (self.attr.auto and self.attr.is_pk):
             throw(TypeError, "Parameter 'sequence_name' can be used only for PrimaryKey attributes with auto=True")
