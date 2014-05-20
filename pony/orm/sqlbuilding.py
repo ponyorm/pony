@@ -372,7 +372,7 @@ class SQLBuilder(object):
     def NOT_BETWEEN(builder, expr1, expr2, expr3):
         return builder(expr1), ' NOT BETWEEN ', builder(expr2), ' AND ', builder(expr3)
     def IN(builder, expr1, x):
-        if not x: throw(AstError, 'Empty IN clause')
+        if not x: return '0 = 1'
         if len(x) >= 1 and x[0] == 'SELECT':
             return builder(expr1), ' IN ', builder(x)
         expr_list = [ builder(expr) for expr in x ]
