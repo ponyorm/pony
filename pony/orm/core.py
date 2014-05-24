@@ -152,7 +152,9 @@ class RollbackException(TransactionError):
         Exception.__init__(exc, msg)
         exc.exceptions = exceptions
 
-class TransactionRolledBack(TransactionError): pass
+class DatabaseSessionIsOver(TransactionError): pass
+TransactionRolledBack = DatabaseSessionIsOver
+
 class IsolationError(TransactionError): pass
 class   UnrepeatableReadError(IsolationError): pass
 class   OptimisticCheckError(IsolationError): pass
@@ -3361,7 +3363,7 @@ def throw_object_was_deleted(obj):
           % (safe_repr(obj), obj._status_.replace('_', ' ')))
 
 def throw_db_session_is_over(obj):
-    throw(TransactionRolledBack, 'Object %s cannot be used after the database session is over' % safe_repr(obj))
+    throw(DatabaseSessionIsOver, 'Object %s cannot be used after the database session is over' % safe_repr(obj))
 
 def unpickle_entity(d):
     entity = d.pop('__class__')
