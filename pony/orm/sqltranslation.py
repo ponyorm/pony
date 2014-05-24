@@ -591,11 +591,14 @@ class SQLTranslator(ASTTranslator):
             assert i == 0
             return expr_monad
         tableref = translator.subquery.get_tableref(name)
-        if tableref is None and name == 'random':
+        if tableref is not None:
+            return translator.ObjectIterMonad(translator, tableref, tableref.entity)
+        elif name == 'random':
             translator.query_result_is_cacheable = False
             return translator.RandomMonad(translator)
-        assert tableref is not None
-        return translator.ObjectIterMonad(translator, tableref, tableref.entity)
+        elif name == 'count':
+            return translator.FuncCountMonad(translator)
+        else: assert False
     def postAdd(translator, node):
         return node.left.monad + node.right.monad
     def postSub(translator, node):

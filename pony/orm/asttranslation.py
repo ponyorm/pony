@@ -244,7 +244,7 @@ class PreTranslator(ASTTranslator):
         name = node.name
         for context in translator.contexts:
             if name in context: return
-        if name == 'random': return
+        if name in ('count', 'random'): return
         node.external = name not in translator.additional_internal_names
     def postConst(translator, node):
         node.external = node.constant = True
