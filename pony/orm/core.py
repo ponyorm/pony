@@ -1292,6 +1292,7 @@ class Attribute(object):
             else: val = attr.py_type._get_by_raw_pkval_(vals)
         return val
     def load(attr, obj):
+        if not obj._session_cache_.is_alive: throw_db_session_is_over(obj)
         if not attr.columns:
             reverse = attr.reverse
             assert reverse is not None and reverse.columns
@@ -1330,7 +1331,6 @@ class Attribute(object):
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
         if attr.pk_offset is not None: return attr.get(obj)
-        if not obj._session_cache_.is_alive: throw_db_session_is_over(obj)
         result = attr.get(obj)
         bit = obj._bits_except_volatile_[attr]
         wbits = obj._wbits_
@@ -1786,6 +1786,8 @@ class Set(Collection):
                 throw(TransactionError, 'An attempt to mix objects belongs to different caches')
         return items
     def load(attr, obj, items=None):
+        cache = obj._session_cache_
+        if not cache.is_alive: throw_db_session_is_over(obj)
         assert obj._status_ not in del_statuses
         setdata = obj._vals_.get(attr)
         if setdata is None: setdata = obj._vals_[attr] = SetData()
@@ -1794,8 +1796,6 @@ class Set(Collection):
         reverse = attr.reverse
         rentity = reverse.entity
         if not reverse: throw(NotImplementedError)
-        cache = obj._session_cache_
-        assert cache.is_alive
         database = obj._database_
         if cache is not database._get_cache():
             throw(TransactionError, "Transaction of object %s belongs to different thread")
@@ -1935,7 +1935,6 @@ class Set(Collection):
     @cut_traceback
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
-        if not obj._session_cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         rentity = attr.py_type
         wrapper_class = rentity._get_set_wrapper_subclass_()
@@ -2161,7 +2160,6 @@ class SetWrapper(object):
         return unpickle_setwrapper, (wrapper._obj_, wrapper._attr_.name, wrapper.copy())
     @cut_traceback
     def copy(wrapper):
-        if not wrapper._obj_._session_cache_.is_alive: throw_db_session_is_over(wrapper._obj_)
         return wrapper._attr_.copy(wrapper._obj_)
     @cut_traceback
     def __repr__(wrapper):
@@ -2175,7 +2173,6 @@ class SetWrapper(object):
     def __nonzero__(wrapper):
         attr = wrapper._attr_
         obj = wrapper._obj_
-        if not obj._session_cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         setdata = obj._vals_.get(attr)
         if setdata is None: setdata = attr.load(obj)
@@ -2186,7 +2183,6 @@ class SetWrapper(object):
     def is_empty(wrapper):
         attr = wrapper._attr_
         obj = wrapper._obj_
-        if not obj._session_cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         setdata = obj._vals_.get(attr)
         if setdata is None: setdata = obj._vals_[attr] = SetData()
@@ -2231,7 +2227,6 @@ class SetWrapper(object):
     def __len__(wrapper):
         attr = wrapper._attr_
         obj = wrapper._obj_
-        if not obj._session_cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         setdata = obj._vals_.get(attr)
         if setdata is None or not setdata.is_fully_loaded: setdata = attr.load(obj)
@@ -2241,7 +2236,6 @@ class SetWrapper(object):
         attr = wrapper._attr_
         obj = wrapper._obj_
         cache = obj._session_cache_
-        if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         setdata = obj._vals_.get(attr)
         if setdata is None: setdata = obj._vals_[attr] = SetData()
@@ -2291,7 +2285,6 @@ class SetWrapper(object):
     @cut_traceback
     def __contains__(wrapper, item):
         obj = wrapper._obj_
-        if not obj._session_cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
         if not isinstance(item, attr.py_type): return False
@@ -2433,7 +2426,6 @@ class Multiset(object):
         return unpickle_multiset, (multiset._obj_, multiset._attrnames_, multiset._items_)
     @cut_traceback
     def distinct(multiset):
-        if not multiset._obj_._session_cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         return multiset._items_.copy()
     @cut_traceback
     def __repr__(multiset):
@@ -2446,25 +2438,20 @@ class Multiset(object):
                                  '.'.join(multiset._attrnames_), size_str)
     @cut_traceback
     def __str__(multiset):
-        if not multiset._obj_._session_cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         items_str = '{%s}' % ', '.join('%r: %r' % pair for pair in sorted(multiset._items_.iteritems()))
         return '%s(%s)' % (multiset.__class__.__name__, items_str)
     @cut_traceback
     def __nonzero__(multiset):
-        if not multiset._obj_._session_cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         return bool(multiset._items_)
     @cut_traceback
     def __len__(multiset):
-        if not multiset._obj_._session_cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         return _sum(multiset._items_.values())
     @cut_traceback
     def __iter__(multiset):
-        if not multiset._obj_._session_cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         for item, cnt in multiset._items_.iteritems():
             for i in xrange(cnt): yield item
     @cut_traceback
     def __eq__(multiset, other):
-        if not multiset._obj_._session_cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         if isinstance(other, Multiset):
             return multiset._items_ == other._items_
         if isinstance(other, dict):
@@ -2477,7 +2464,6 @@ class Multiset(object):
         return not multiset.__eq__(other)
     @cut_traceback
     def __contains__(multiset, item):
-        if not multiset._obj_._session_cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         return item in multiset._items_
 
 ##class List(Collection): pass
