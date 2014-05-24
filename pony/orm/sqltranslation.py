@@ -353,8 +353,15 @@ class SQLTranslator(ASTTranslator):
         from_ast = subquery_ast[2][:]
         assert from_ast[0] == 'FROM'
 
-        if len(subquery_ast) == 3: where_ast = [ 'WHERE' ]
-        else: where_ast = subquery_ast[3][:]
+        if len(subquery_ast) == 3:
+            where_ast = [ 'WHERE' ]
+            other_ast = []
+        elif subquery_ast[3][0] != 'WHERE':
+            where_ast = [ 'WHERE' ]
+            other_ast = subquery_ast[3:]
+        else:
+            where_ast = subquery_ast[3][:]
+            other_ast = subquery_ast[4:]
 
         if move_outer_conditions and len(from_ast[1]) == 4:
             outer_conditions = from_ast[1][-1]
@@ -362,7 +369,7 @@ class SQLTranslator(ASTTranslator):
             if outer_conditions[0] == 'AND': where_ast[1:1] = outer_conditions[1:]
             else: where_ast.insert(1, outer_conditions)
 
-        return [ 'SELECT', select_ast, from_ast, where_ast ] + subquery_ast[4:]
+        return [ 'SELECT', select_ast, from_ast, where_ast ] + other_ast
     def can_be_optimized(translator):
         if translator.groupby_monads: return False
         if len(translator.aggregated_subquery_paths) != 1: return False

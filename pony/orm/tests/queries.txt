@@ -547,3 +547,14 @@ Oracle:
 SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
 FROM "STUDENT" "s"
 WHERE "s"."TEL" IS NULL
+
+>>> select(s.name for s in Student if s.name in (s.name for s in Student if count() > 1))[:]
+
+SELECT DISTINCT "s"."name"
+FROM "Student" "s"
+WHERE "s"."name" IN (
+    SELECT "s"."name"
+    FROM "Student" "s"
+    GROUP BY "s"."name"
+    HAVING COUNT(*) > 1
+    )
