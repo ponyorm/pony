@@ -163,6 +163,9 @@ class DBAPIProvider(object):
             return quote_char + name + quote_char
         return '.'.join(provider.quote_name(item) for item in name)
 
+    def normalize_vars(provider, vars, vartypes):
+        pass
+
     def ast2sql(provider, ast):
         builder = provider.sqlbuilder_cls(provider, ast)
         return builder.sql, builder.adapter

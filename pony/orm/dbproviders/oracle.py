@@ -318,6 +318,12 @@ class OraProvider(DBAPIProvider):
     def normalize_name(provider, name):
         return name[:provider.max_name_len].upper()
 
+    def normalize_vars(provider, vars, vartypes):
+        for name, value in vars.iteritems():
+            if value == '':
+                vars[name] = None
+                vartypes[name] = NoneType
+
     @wrap_dbapi_exceptions
     def set_transaction_mode(provider, connection, cache):
         assert not cache.in_transaction

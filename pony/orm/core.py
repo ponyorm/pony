@@ -4071,13 +4071,7 @@ class Query(object):
         database = origin._database_
         if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
         if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
-
-        if database.provider.dialect == 'Oracle':
-            for name, value in vars.iteritems():
-                if value == '':
-                    vars[name] = None
-                    vartypes[name] = type(None)
-
+        database.provider.normalize_vars(vars, vartypes)
         query._vars = vars
         query._key = code_key, tuple(map(vartypes.__getitem__, varnames)), left_join
         query._database = database
@@ -4270,6 +4264,7 @@ class Query(object):
         extractors, varnames, func_ast = create_extractors(func_id, func_ast, filter_num, argnames or query._translator.subquery)
         if extractors:
             vars, vartypes = extract_vars(extractors, globals, locals)
+            query._database.provider.normalize_vars(vars, vartypes)
             query._vars.update(vars)
             sorted_vartypes = tuple(map(vartypes.__getitem__, varnames))
         else: vars, vartypes, sorted_vartypes = {}, {}, ()

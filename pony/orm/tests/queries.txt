@@ -516,3 +516,34 @@ SELECT DISTINCT "s"."id", COUNT(DISTINCT case when ("t-1"."course_name", "t-1"."
 FROM "student" "s", "course_student" "t-1"
 WHERE "s"."id" = "t-1"."student"
 GROUP BY "s"."id"
+
+>>> x = '123'
+>>> select(s for s in Student if s.tel == x)[:]
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "Student" "s"
+WHERE "s"."tel" = ?
+
+Oracle:
+
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE "s"."TEL" = :p1
+
+>>> x = ''
+>>> select(s for s in Student if s.tel == x)[:]
+
+Oracle:
+
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE "s"."TEL" IS NULL
+
+>>> x = ''
+>>> select(s for s in Student).filter(lambda s: s.tel == x)[:]
+
+Oracle:
+
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE "s"."TEL" IS NULL
