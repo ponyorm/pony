@@ -907,15 +907,17 @@ class Monad(object):
         elif translator.dialect == 'PostgreSQL':
             row = [ 'ROW' ] + expr
             expr = [ 'CASE', None, [ [ [ 'IS_NULL', row ], [ 'VALUE', None ] ] ], row ]
-        elif translator.row_value_syntax == True and translator.dialect != 'Oracle':
-            expr = ['ROW'] + expr
-        elif translator.dialect == 'SQLite':
+        # elif translator.dialect == 'PostgreSQL':  # another way
+        #     alias, pk_columns = monad.tableref.make_join(pk_only=False)
+        #     expr = [ 'COLUMN', alias, 'ctid' ]
+        elif translator.dialect in ('SQLite', 'Oracle'):
             alias, pk_columns = monad.tableref.make_join(pk_only=False)
             expr = [ 'COLUMN', alias, 'ROWID' ]
+        # elif translator.row_value_syntax == True:  # doesn't work in MySQL
+        #     expr = ['ROW'] + expr
         else: throw(NotImplementedError,
                     '%s database provider does not support entities '
-                    'with composite primary keys inside aggregate functions. Got: {EXPR} '
-                    '(you can suggest us how to write SQL for this query)'
+                    'with composite primary keys inside aggregate functions. Got: {EXPR}'
                     % translator.dialect)
         result = translator.ExprMonad.new(translator, int, [ 'COUNT', count_kind, expr ])
         result.aggregated = True
