@@ -3713,7 +3713,7 @@ class Entity(object):
                     for attr in attrs:
                         if attr in avdict: break
                     else: continue
-                    vals = maps(get_val, attrs)
+                    vals = map(get_val, attrs)
                     prev_vals = tuple(vals)
                     for i, attr in enumerate(attrs):
                         if attr in avdict: vals[i] = avdict[attr]
