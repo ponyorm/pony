@@ -38,10 +38,12 @@ __all__ = '''
     OrmError ERDiagramError DBSchemaError MappingError
     TableDoesNotExist TableIsNotEmpty ConstraintError CacheIndexError
     ObjectNotFound MultipleObjectsFoundError TooManyObjectsFoundError OperationWithDeletedObjectError
-    TransactionError TransactionIntegrityError IsolationError CommitException RollbackException
-    UnrepeatableReadError OptimisticCheckError UnresolvableCyclicDependency UnexpectedError
+    TransactionError ConnectionClosedError TransactionIntegrityError IsolationError CommitException RollbackException
+    UnrepeatableReadError OptimisticCheckError UnresolvableCyclicDependency UnexpectedError DatabaseSessionIsOver
 
     TranslationError ExprEvalError
+
+    RowNotFound MultipleRowsFound TooManyRowsFound
 
     Database sql_debug show
 
