@@ -381,13 +381,12 @@ HAVING COUNT("t-1"."ROWID") > 3
 
 Oracle:
 
-SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+SELECT "s"."ID"
 FROM "STUDENT" "s"
-WHERE (
-    SELECT COUNT(*)
-    FROM "COURSE_STUDENT" "t-1"
-    WHERE "s"."ID" = "t-1"."STUDENT"
-    ) > 3
+  LEFT JOIN "COURSE_STUDENT" "t-1"
+    ON "s"."ID" = "t-1"."STUDENT"
+GROUP BY "s"."ID"
+HAVING COUNT("t-1"."ROWID") > 3
 
 >>> select(s for s in Student).for_update()[:3]
 
@@ -470,3 +469,91 @@ WHERE "s"."ROWID" IN (
     ) t WHERE "row-num" > 3
     )
 FOR UPDATE
+
+>>> select((g, count(s)) for g in Group for s in g.students)
+
+SELECT "g"."number", COUNT(DISTINCT "s"."id")
+FROM "Group" "g", "Student" "s"
+WHERE "g"."number" = "s"."group"
+GROUP BY "g"."number"
+
+Oracle:
+
+SELECT "g"."NUMBER", COUNT(DISTINCT "s"."ID")
+FROM "GROUP" "g", "STUDENT" "s"
+WHERE "g"."NUMBER" = "s"."GROUP"
+GROUP BY "g"."NUMBER"
+
+PostgreSQL:
+
+SELECT "g"."number", COUNT(DISTINCT "s"."id")
+FROM "group" "g", "student" "s"
+WHERE "g"."number" = "s"."group"
+GROUP BY "g"."number"
+
+>>> select((s, count(c)) for s in Student for c in s.courses)
+
+SELECT DISTINCT "s"."id", COUNT(DISTINCT "c"."ROWID")
+FROM "Student" "s", "Course_Student" "t-1", "Course" "c"
+WHERE "s"."id" = "t-1"."student"
+  AND "t-1"."course_name" = "c"."name"
+  AND "t-1"."course_semester" = "c"."semester"
+GROUP BY "s"."id"
+
+Oracle:
+
+SELECT DISTINCT "s"."ID", COUNT(DISTINCT "c"."ROWID")
+FROM "STUDENT" "s", "COURSE_STUDENT" "t-1", "COURSE" "c"
+WHERE "s"."ID" = "t-1"."STUDENT"
+  AND "t-1"."COURSE_NAME" = "c"."NAME"
+  AND "t-1"."COURSE_SEMESTER" = "c"."SEMESTER"
+GROUP BY "s"."ID"
+
+PostgreSQL:
+
+SELECT DISTINCT "s"."id", COUNT(DISTINCT case when ("t-1"."course_name", "t-1"."course_semester") IS NULL then null else ("t-1"."course_name", "t-1"."course_semester") end)
+FROM "student" "s", "course_student" "t-1"
+WHERE "s"."id" = "t-1"."student"
+GROUP BY "s"."id"
+
+>>> x = '123'
+>>> select(s for s in Student if s.tel == x)[:]
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "Student" "s"
+WHERE "s"."tel" = ?
+
+Oracle:
+
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE "s"."TEL" = :p1
+
+>>> x = ''
+>>> select(s for s in Student if s.tel == x)[:]
+
+Oracle:
+
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE "s"."TEL" IS NULL
+
+>>> x = ''
+>>> select(s for s in Student).filter(lambda s: s.tel == x)[:]
+
+Oracle:
+
+SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+FROM "STUDENT" "s"
+WHERE "s"."TEL" IS NULL
+
+>>> select(s.name for s in Student if s.name in (s.name for s in Student if count() > 1))[:]
+
+SELECT DISTINCT "s"."name"
+FROM "Student" "s"
+WHERE "s"."name" IN (
+    SELECT "s"."name"
+    FROM "Student" "s"
+    GROUP BY "s"."name"
+    HAVING COUNT(*) > 1
+    )

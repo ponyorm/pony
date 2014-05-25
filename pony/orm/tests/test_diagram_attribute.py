@@ -12,12 +12,13 @@ class TestAttribute(unittest.TestCase):
             id = PrimaryKey(int, another_option=3)
         db.generate_mapping(create_tables=True)
 
-    @raises_exception(TypeError, 'Cannot link attribute to Entity class. Must use Entity subclass instead')
+    @raises_exception(TypeError, 'Cannot link attribute Entity1.b to abstract Entity class. Use specific Entity subclass instead')
     def test_attribute2(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
             id = PrimaryKey(int)
             b = Required(db.Entity)
+        db.generate_mapping()
 
     @raises_exception(TypeError, 'Default value for required attribute Entity1.b cannot be None')
     def test_attribute3(self):
@@ -34,6 +35,7 @@ class TestAttribute(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
+        db.generate_mapping(create_tables=True)
         self.assertEqual(Entity1.attr1.reverse, Entity2.attr2)
 
     def test_attribute5(self):
@@ -99,7 +101,7 @@ class TestAttribute(unittest.TestCase):
         class Entity1(db.Entity):
             id = Optional(str)
 
-    @raises_exception(ERDiagramError, "Reverse attribute for Entity1.attr1 was not found")
+    @raises_exception(ERDiagramError, "Reverse attribute for Entity1.attr1 not found")
     def test_attribute13(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
@@ -107,6 +109,7 @@ class TestAttribute(unittest.TestCase):
             attr1 = Required('Entity2')
         class Entity2(db.Entity):
             id = PrimaryKey(int)
+        db.generate_mapping()
 
     @raises_exception(ERDiagramError, "Reverse attribute Entity1.attr1 not found")
     def test_attribute14(self):
@@ -116,6 +119,7 @@ class TestAttribute(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Required(Entity1, reverse='attr1')
+        db.generate_mapping()
 
     @raises_exception(ERDiagramError, "Inconsistent reverse attributes Entity3.attr3 and Entity2.attr2")
     def test_attribute15(self):
@@ -129,6 +133,7 @@ class TestAttribute(unittest.TestCase):
         class Entity3(db.Entity):
             id = PrimaryKey(int)
             attr3 = Required(Entity2, reverse='attr2')
+        db.generate_mapping()
 
     @raises_exception(ERDiagramError, "Inconsistent reverse attributes Entity3.attr3 and Entity2.attr2")
     def test_attribute16(self):
@@ -142,6 +147,7 @@ class TestAttribute(unittest.TestCase):
         class Entity3(db.Entity):
             id = PrimaryKey(int)
             attr3 = Required(Entity2, reverse=Entity2.attr2)
+        db.generate_mapping()
 
     @raises_exception(ERDiagramError, 'Reverse attribute for Entity2.attr2 not found')
     def test_attribute18(self):
@@ -151,8 +157,9 @@ class TestAttribute(unittest.TestCase):
         class Entity2(db.Entity):
             id = PrimaryKey(int)
             attr2 = Required('Entity1')
+        db.generate_mapping()
 
-    @raises_exception(ERDiagramError, 'Ambiguous reverse attribute for Entity2.c')
+    @raises_exception(ERDiagramError, 'Ambiguous reverse attribute for Entity1.a')
     def test_attribute19(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
@@ -163,17 +170,19 @@ class TestAttribute(unittest.TestCase):
             id = PrimaryKey(int)
             c = Set(Entity1)
             d = Set(Entity1)
+        db.generate_mapping()
 
-    @raises_exception(ERDiagramError, 'Ambiguous reverse attribute for Entity2.c')
+    @raises_exception(ERDiagramError, 'Ambiguous reverse attribute for Entity1.c')
     def test_attribute20(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
             id = PrimaryKey(int)
-            a = Required('Entity2', reverse='c')
-            b = Optional('Entity2', reverse='c')
+            c = Set('Entity2')
         class Entity2(db.Entity):
             id = PrimaryKey(int)
-            c = Set(Entity1)
+            a = Required(Entity1, reverse='c')
+            b = Optional(Entity1, reverse='c')
+        db.generate_mapping()
 
     def test_attribute21(self):
         db = Database('sqlite', ':memory:')
@@ -196,6 +205,28 @@ class TestAttribute(unittest.TestCase):
             id = PrimaryKey(int)
             c = Set(Entity1, reverse='a')
             d = Set(Entity1)
+
+    @raises_exception(ERDiagramError, 'Inconsistent reverse attributes Entity1.a and Entity2.b')
+    def test_attribute23(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required('Entity2', reverse='b')
+        class Entity2(db.Entity):
+            b = Optional('Entity3')
+        class Entity3(db.Entity):
+            c = Required('Entity2')
+        db.generate_mapping()
+
+    @raises_exception(ERDiagramError, 'Inconsistent reverse attributes Entity1.a and Entity2.c')
+    def test_attribute23(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required('Entity2', reverse='c')
+            b = Required('Entity2', reverse='d')
+        class Entity2(db.Entity):
+            c = Optional('Entity1', reverse='b')
+            d = Optional('Entity1', reverse='a')
+        db.generate_mapping()
 
     @raises_exception(TypeError, "Parameters 'column' and 'columns' cannot be specified simultaneously")
     def test_columns1(self):
@@ -366,6 +397,36 @@ class TestAttribute(unittest.TestCase):
             Entity1()
             commit()
         self.assert_(True)
+
+    def test_lambda_1(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required(lambda: db.Entity2)
+        class Entity2(db.Entity):
+            b = Set(lambda: db.Entity1)
+        db.generate_mapping(create_tables=True)
+        self.assertEqual(Entity1.a.py_type, Entity2)
+        self.assertEqual(Entity2.b.py_type, Entity1)
+
+    @raises_exception(TypeError, "Invalid type of attribute Entity1.a: expected entity class, got 'Entity2'")
+    def test_lambda_2(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required(lambda: 'Entity2')
+        class Entity2(db.Entity):
+            b = Set(lambda: db.Entity1)
+        db.generate_mapping(create_tables=True)
+
+    @raises_exception(ERDiagramError, 'Interrelated entities must belong to same database. '
+                                      'Entities Entity1 and Entity2 belongs to different databases')
+    def test_lambda_3(self):
+        db1 = Database('sqlite', ':memory:')
+        class Entity1(db1.Entity):
+            a = Required(lambda: db2.Entity2)
+        db2 = Database('sqlite', ':memory:')
+        class Entity2(db2.Entity):
+            b = Set(lambda: db1.Entity1)
+        db1.generate_mapping(create_tables=True)
 
 if __name__ == '__main__':
     unittest.main()

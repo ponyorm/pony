@@ -112,6 +112,12 @@ class TestFuncMonad(unittest.TestCase):
     def test_decimal_func(self):
         result = set(select(s for s in Student if s.scholarship >= Decimal("303.3")))
         self.assertEqual(result, set([Student[3], Student[4], Student[5]]))
+    def test_concat_1(self):
+        result = set(select(concat(s.name, ':', s.dob.year, ':', s.scholarship) for s in Student))
+        self.assertEqual(result, set(['AA:1981:0', 'BB:1982:202.2', 'CC:1983:303.3', 'DD:1984:404.4', 'EE:1985:505.5']))
+    @raises_exception(TranslationError, 'Invalid argument of concat() function: g.students')
+    def test_concat_2(self):
+        result = set(select(concat(g.number, g.students) for g in Group))
 
 if __name__ == '__main__':
     unittest.main()

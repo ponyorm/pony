@@ -26,7 +26,7 @@ class DBSchema(object):
     def order_tables_to_create(schema):
         tables = []
         created_tables = set()
-        tables_to_create = set(schema.tables.values())
+        tables_to_create = sorted(schema.tables.itervalues(), key=lambda table: table.name)
         while tables_to_create:
             for table in tables_to_create:
                 if table.parent_tables.issubset(created_tables):
@@ -58,7 +58,7 @@ class DBSchema(object):
                                          'Try to delete %s %s first.' % (tn1, n1, tn2, n2, n2, tn2))
     def check_tables(schema, provider, connection):
         cursor = connection.cursor()
-        for table in schema.tables.values():
+        for table in sorted(schema.tables.itervalues(), key=lambda table: table.name):
             if isinstance(table.name, tuple): alias = table.name[-1]
             elif isinstance(table.name, basestring): alias = table.name
             else: assert False
@@ -118,13 +118,13 @@ class Table(DBObject):
             cmd.append(schema.indent + column.get_sql() + ',')
         if len(table.pk_index.columns) > 1:
             cmd.append(schema.indent + table.pk_index.get_sql() + ',')
-        for index in table.indexes.values():
+        for index in sorted(table.indexes.itervalues(), key=lambda index: index.name):
             if index.is_pk: continue
             if not index.is_unique: continue
             if len(index.columns) == 1: continue
             cmd.append(schema.indent+index.get_sql() + ',')
         if not schema.named_foreign_keys:
-            for foreign_key in table.foreign_keys.values():
+            for foreign_key in sorted(table.foreign_keys.itervalues(), key=lambda fk: fk.name):
                 if schema.inline_fk_syntax and len(foreign_key.child_columns) == 1: continue
                 cmd.append(schema.indent+foreign_key.get_sql() + ',')
         cmd[-1] = cmd[-1][:-1]
@@ -133,24 +133,24 @@ class Table(DBObject):
     def get_objects_to_create(table, created_tables=None):
         if created_tables is None: created_tables = set()
         result = [ table ]
-        for index in table.indexes.values():
+        for index in sorted(table.indexes.itervalues(), key=lambda index: index.name):
             if index.is_pk or index.is_unique: continue
             assert index.name is not None
             result.append(index)
         schema = table.schema
         if schema.named_foreign_keys:
-            for foreign_key in table.foreign_keys.values():
+            for foreign_key in sorted(table.foreign_keys.itervalues(), key=lambda fk: fk.name):
                 if foreign_key.parent_table not in created_tables: continue
                 result.append(foreign_key)
             for child_table in table.child_tables:
                 if child_table not in created_tables: continue
-                for foreign_key in child_table.foreign_keys.values():
+                for foreign_key in sorted(child_table.foreign_keys.itervalues(), key=lambda fk: fk.name):
                     if foreign_key.parent_table is not table: continue
                     result.append(foreign_key)
         created_tables.add(table)
         return result
-    def add_column(table, column_name, sql_type, is_not_null=None, sql_default=None):
-        return table.schema.column_class(column_name, table, sql_type, is_not_null, sql_default)
+    def add_column(table, column_name, sql_type, converter, is_not_null=None, sql_default=None):
+        return table.schema.column_class(column_name, table, sql_type, converter, is_not_null, sql_default)
     def add_index(table, index_name, columns, is_pk=False, is_unique=None, m2m=False):
         assert index_name is not False
         if index_name is True: index_name = None
@@ -171,7 +171,7 @@ class Table(DBObject):
 
 class Column(object):
     auto_template = '%(type)s PRIMARY KEY AUTOINCREMENT'
-    def __init__(column, name, table, sql_type, is_not_null=None, sql_default=None):
+    def __init__(column, name, table, sql_type, converter, is_not_null=None, sql_default=None):
         if name in table.column_dict:
             throw(DBSchemaError, "Column %r already exists in table %r" % (name, table.name))
         table.column_dict[name] = column
@@ -179,6 +179,7 @@ class Column(object):
         column.table = table
         column.name = name
         column.sql_type = sql_type
+        column.converter = converter
         column.is_not_null = is_not_null
         column.sql_default = sql_default
         column.is_pk = False

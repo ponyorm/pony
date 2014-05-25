@@ -23,8 +23,8 @@ from pony.orm.dbapiprovider import (
     OperationalError, IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
 from pony.utils import (
-    localbase, decorator, cut_traceback, throw, get_lambda_args, deprecated,
-    import_module, parse_expr, is_ident, count, avg as _avg, distinct as _distinct, tostring, strjoin,
+    localbase, decorator, cut_traceback, throw, get_lambda_args, deprecated, import_module, parse_expr,
+    is_ident, count, avg as _avg, distinct as _distinct, tostring, strjoin, concat
     )
 
 __all__ = '''
@@ -38,10 +38,12 @@ __all__ = '''
     OrmError ERDiagramError DBSchemaError MappingError
     TableDoesNotExist TableIsNotEmpty ConstraintError CacheIndexError
     ObjectNotFound MultipleObjectsFoundError TooManyObjectsFoundError OperationWithDeletedObjectError
-    TransactionError TransactionIntegrityError IsolationError CommitException RollbackException
-    UnrepeatableReadError OptimisticCheckError UnresolvableCyclicDependency UnexpectedError
+    TransactionError ConnectionClosedError TransactionIntegrityError IsolationError CommitException RollbackException
+    UnrepeatableReadError OptimisticCheckError UnresolvableCyclicDependency UnexpectedError DatabaseSessionIsOver
 
     TranslationError ExprEvalError
+
+    RowNotFound MultipleRowsFound TooManyRowsFound
 
     Database sql_debug show
 
@@ -56,6 +58,8 @@ __all__ = '''
     count sum min max avg distinct
 
     desc
+
+    concat
 
     JOIN
     '''.split()
@@ -152,7 +156,9 @@ class RollbackException(TransactionError):
         Exception.__init__(exc, msg)
         exc.exceptions = exceptions
 
-class TransactionRolledBack(TransactionError): pass
+class DatabaseSessionIsOver(TransactionError): pass
+TransactionRolledBack = DatabaseSessionIsOver
+
 class IsolationError(TransactionError): pass
 class   UnrepeatableReadError(IsolationError): pass
 class   OptimisticCheckError(IsolationError): pass
@@ -413,7 +419,6 @@ class Database(object):
         self._translator_cache = {}
         self._constructed_sql_cache = {}
         self.entities = {}
-        self._unmapped_attrs = {}
         self.schema = None
         self.Entity = type.__new__(EntityMeta, 'Entity', (Entity,), {})
         self.Entity._database_ = self
@@ -557,7 +562,8 @@ class Database(object):
         if returning is not None: query_key = query_key + (returning,)
         cached_sql = database._insert_cache.get(query_key)
         if cached_sql is None:
-            ast = [ 'INSERT', table_name, kwargs.keys(), [ [ 'PARAM', i ] for i in xrange(len(kwargs)) ], returning ]
+            ast = [ 'INSERT', table_name, kwargs.keys(),
+                    [ [ 'PARAM', (i, None, None) ] for i in xrange(len(kwargs)) ], returning ]
             sql, adapter = database._ast2sql(ast)
             cached_sql = sql, adapter
             database._insert_cache[query_key] = cached_sql
@@ -595,14 +601,16 @@ class Database(object):
         if provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
         if database.schema: throw(MappingError, 'Mapping was already generated')
         if filename is not None: throw(NotImplementedError)
-        for entity_name in database._unmapped_attrs:
-            throw(ERDiagramError, 'Entity definition %s was not found' % entity_name)
+        schema = database.schema = provider.dbschema_cls(provider)
+        entities = list(sorted(database.entities.values(), key=attrgetter('_id_')))
+        for entity in entities:
+            entity._resolve_attr_types_()
+        for entity in entities:
+            entity._link_reverse_attrs_()
 
         def get_columns(table, column_names):
             return tuple(map(table.column_dict.__getitem__, column_names))
 
-        schema = database.schema = provider.dbschema_cls(provider)
-        entities = list(sorted(database.entities.values(), key=attrgetter('_id_')))
         for entity in entities:
             entity._get_pk_columns_()
             table_name = entity._table_
@@ -674,7 +682,7 @@ class Database(object):
                     assert len(m2m_columns_1) == len(reverse.converters)
                     assert len(m2m_columns_2) == len(attr.converters)
                     for column_name, converter in zip(m2m_columns_1 + m2m_columns_2, reverse.converters + attr.converters):
-                        m2m_table.add_column(column_name, converter.sql_type(), True)
+                        m2m_table.add_column(column_name, converter.sql_type(), converter, True)
                     m2m_table.add_index(None, tuple(m2m_table.column_list), is_pk=True)
                     m2m_table.m2m.add(attr)
                     m2m_table.m2m.add(reverse)
@@ -695,13 +703,14 @@ class Database(object):
                         if not callable(attr.default): attr.default = attr.check(attr.default)
                     assert len(columns) == len(attr.converters)
                     if len(columns) == 1:
-                        sql_type = attr.sql_type or attr.converters[0].sql_type()
-                        table.add_column(columns[0], sql_type, not attr.nullable, attr.sql_default)
+                        converter = attr.converters[0]
+                        sql_type = attr.sql_type or converter.sql_type()
+                        table.add_column(columns[0], sql_type, converter, not attr.nullable, attr.sql_default)
                     else:
                         if attr.sql_type is not None: throw(NotImplementedError,
                             'sql_type cannot be specified for composite attribute %s' % attr)
                         for (column_name, converter) in zip(columns, attr.converters):
-                            table.add_column(column_name, converter.sql_type(), not attr.nullable)
+                            table.add_column(column_name, converter.sql_type(), converter, not attr.nullable)
             entity._attrs_with_columns_ = [ attr for attr in entity._attrs_
                                                  if not attr.is_collection and attr.columns ]
             if not table.pk_index:
@@ -984,6 +993,9 @@ class SessionCache(object):
         if not cache.immediate: cache.immediate = True
         if not cache.modified: return
 
+        for obj in cache.objects_to_save:  # can grow during iteration
+            if obj is not None: obj._before_save_()
+
         with cache.flush_disabled():
             cache.query_results.clear()
             modified_m2m = cache._calc_modified_m2m()
@@ -991,7 +1003,7 @@ class SessionCache(object):
                 if not removed: continue
                 attr.remove_m2m(removed)
             for obj in cache.objects_to_save:
-                obj._save_()
+                if obj is not None: obj._save_()
             for attr, (added, removed) in modified_m2m.iteritems():
                 if not added: continue
                 attr.add_m2m(added)
@@ -1096,7 +1108,7 @@ next_attr_id = _count(1).next
 
 class Attribute(object):
     __slots__ = 'nullable', 'is_required', 'is_discriminator', 'is_unique', 'is_part_of_unique_index', \
-                'is_pk', 'is_collection', 'is_ref', 'is_basic', 'is_string', 'is_volatile', \
+                'is_pk', 'is_collection', 'is_relation', 'is_basic', 'is_string', 'is_volatile', \
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
@@ -1119,17 +1131,15 @@ class Attribute(object):
         if attr.is_pk: attr.pk_offset = 0
         else: attr.pk_offset = None
         attr.id = next_attr_id()
-        if not isinstance(py_type, basestring) and not isinstance(py_type, type):
+        if not isinstance(py_type, (type, basestring, types.FunctionType)):
             if py_type is datetime: throw(TypeError,
                 'datetime is the module and cannot be used as attribute type. Use datetime.datetime instead')
             throw(TypeError, 'Incorrect type of attribute: %r' % py_type)
-        if py_type == 'Entity' or (isinstance(py_type, EntityMeta) and py_type.__name__ == 'Entity'):
-            throw(TypeError, 'Cannot link attribute to Entity class. Must use Entity subclass instead')
         attr.py_type = py_type
         attr.is_string = type(py_type) is type and issubclass(py_type, basestring)
         attr.is_collection = isinstance(attr, Collection)
-        attr.is_ref = not attr.is_collection and isinstance(attr.py_type, (EntityMeta, basestring))
-        attr.is_basic = not attr.is_collection and not attr.is_ref
+        attr.is_relation = isinstance(attr.py_type, (EntityMeta, basestring, types.FunctionType))
+        attr.is_basic = not attr.is_collection and not attr.is_relation
         attr.sql_type = kwargs.pop('sql_type', None)
         attr.entity = attr.name = None
         attr.args = args
@@ -1140,7 +1150,7 @@ class Attribute(object):
         if not attr.reverse: pass
         elif not isinstance(attr.reverse, (basestring, Attribute)):
             throw(TypeError, "Value of 'reverse' option must be name of reverse attribute). Got: %r" % attr.reverse)
-        elif not isinstance(attr.py_type, (basestring, EntityMeta)):
+        elif not attr.is_relation:
             throw(TypeError, 'Reverse option cannot be set for this type: %r' % attr.py_type)
 
         attr.column = kwargs.pop('column', None)
@@ -1259,9 +1269,14 @@ class Attribute(object):
             if type(val) is attr.py_type: return val
             return attr.py_type(val)
 
-        if not isinstance(val, reverse.entity):
-            throw(ConstraintError, 'Value of attribute %s must be an instance of %s. Got: %s'
-                                  % (attr, reverse.entity.__name__, val))
+        rentity = reverse.entity
+        if not isinstance(val, rentity):
+            if type(val) is not tuple: val = (val,)
+            if len(val) != len(rentity._pk_columns_): throw(ConstraintError,
+                'Invalid number of columns were specified for attribute %s. Expected: %d, got: %d'
+                % (attr, len(rentity._pk_columns_), len(val)))
+            return rentity._get_by_raw_pkval_(val)
+
         if obj is not None: cache = obj._session_cache_
         else: cache = entity._database_._get_cache()
         if cache is not val._session_cache_:
@@ -1281,6 +1296,8 @@ class Attribute(object):
             else: val = attr.py_type._get_by_raw_pkval_(vals)
         return val
     def load(attr, obj):
+        if not obj._session_cache_.is_alive: throw(DatabaseSessionIsOver,
+            'Cannot load attribute %s.%s: the database session is over' % (safe_repr(obj), attr.name))
         if not attr.columns:
             reverse = attr.reverse
             assert reverse is not None and reverse.columns
@@ -1301,7 +1318,7 @@ class Attribute(object):
                 from_list = [ 'FROM', [ None, 'TABLE', entity._table_ ] ]
                 pk_columns = entity._pk_columns_
                 pk_converters = entity._pk_converters_
-                criteria_list = [ [ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', i, converter ] ]
+                criteria_list = [ [ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (i, None, None), converter ] ]
                                   for i, (column, converter) in enumerate(izip(pk_columns, pk_converters)) ]
                 sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
                 sql, adapter = database._ast2sql(sql_ast)
@@ -1319,23 +1336,24 @@ class Attribute(object):
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
         if attr.pk_offset is not None: return attr.get(obj)
-        if not obj._session_cache_.is_alive: throw_db_session_is_over(obj)
         result = attr.get(obj)
         bit = obj._bits_except_volatile_[attr]
         wbits = obj._wbits_
         if wbits is not None and not wbits & bit: obj._rbits_ |= bit
         return result
     def get(attr, obj):
-        if obj._status_ in del_statuses: throw_object_was_deleted(obj)
+        if attr.pk_offset is None and obj._status_ in ('deleted', 'cancelled'):
+            throw_object_was_deleted(obj)
         val = obj._vals_[attr] if attr in obj._vals_ else attr.load(obj)
-        if val is not None and attr.reverse and val._subclasses_:
+        if val is not None and attr.reverse and val._subclasses_ and val._status_ not in ('deleted', 'cancelled'):
             seeds = obj._session_cache_.seeds[val._pk_attrs_]
             if val in seeds: val._load_()
         return val
     @cut_traceback
     def __set__(attr, obj, new_val, undo_funcs=None):
         cache = obj._session_cache_
-        if not cache.is_alive: throw_db_session_is_over(obj)
+        if not cache.is_alive: throw(DatabaseSessionIsOver,
+            'Cannot assign new value to attribute %s.%s: the database session is over' % (safe_repr(obj), attr.name))
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         is_reverse_call = undo_funcs is not None
         reverse = attr.reverse
@@ -1353,12 +1371,15 @@ class Attribute(object):
                 old_val = attr.load(obj)
             status = obj._status_
             wbits = obj._wbits_
+            objects_to_save = cache.objects_to_save
             if wbits is not None:
                 obj._wbits_ = wbits | obj._bits_[attr]
                 if status != 'updated':
                     assert status in ('loaded', 'saved')
+                    assert obj._save_pos_ is None
                     obj._status_ = 'updated'
-                    cache.objects_to_save.append(obj)
+                    obj._save_pos_ = len(objects_to_save)
+                    objects_to_save.append(obj)
                     cache.modified = True
             if not attr.reverse and not attr.is_part_of_unique_index:
                 obj._vals_[attr] = new_val
@@ -1369,9 +1390,11 @@ class Attribute(object):
                 obj._status_ = status
                 obj._wbits_ = wbits
                 if status in ('loaded', 'saved'):
-                    objects_to_save = cache.objects_to_save
-                    if objects_to_save and objects_to_save[-1] is obj: objects_to_save.pop()
-                    assert obj not in objects_to_save
+                    assert objects_to_save
+                    obj2 = objects_to_save.pop()
+                    assert obj2 is obj and obj._save_pos_ == len(objects_to_save)
+                    obj._save_pos_ = None
+
                 if old_val is NOT_LOADED: obj._vals_.pop(attr)
                 else: obj._vals_[attr] = old_val
                 for index, old_key, new_key in undo:
@@ -1721,23 +1744,23 @@ class SetData(set):
 def construct_criteria_list(alias, columns, converters, row_value_syntax, count=1, start=0):
     assert count > 0
     if count == 1:
-        return [ [ 'EQ', [ 'COLUMN', alias, column ], [ 'PARAM', (start, i), converter ] ]
-                 for i, (column, converter) in enumerate(izip(columns, converters)) ]
+        return [ [ 'EQ', [ 'COLUMN', alias, column ], [ 'PARAM', (start, None, j), converter ] ]
+                 for j, (column, converter) in enumerate(izip(columns, converters)) ]
     if len(columns) == 1:
         column = columns[0]
         converter = converters[0]
-        param_list = [ [ 'PARAM', (i+start, 0), converter ] for i in xrange(count) ]
+        param_list = [ [ 'PARAM', (i+start, None, 0), converter ] for i in xrange(count) ]
         condition = [ 'IN', [ 'COLUMN', alias, column ], param_list ]
         return [ condition ]
     elif row_value_syntax:
         row = [ 'ROW' ] + [ [ 'COLUMN', alias, column ] for column in columns ]
-        param_list = [ [ 'ROW' ] + [ [ 'PARAM', (i+start, j), converter ]
+        param_list = [ [ 'ROW' ] + [ [ 'PARAM', (i+start, None, j), converter ]
                                      for j, converter in enumerate(converters) ]
                        for i in xrange(count) ]
         condition = [ 'IN', row, param_list ]
         return [ condition ]
     else:
-        conditions = [ [ 'AND' ] + [ [ 'EQ', [ 'COLUMN', alias, column ], [ 'PARAM', (i+start, j), converter ] ]
+        conditions = [ [ 'AND' ] + [ [ 'EQ', [ 'COLUMN', alias, column ], [ 'PARAM', (i+start, None, j), converter ] ]
                                      for j, (column, converter) in enumerate(izip(columns, converters)) ]
                        for i in xrange(count) ]
         return [ [ 'OR' ] + conditions ]
@@ -1769,6 +1792,9 @@ class Set(Collection):
                 throw(TransactionError, 'An attempt to mix objects belongs to different caches')
         return items
     def load(attr, obj, items=None):
+        cache = obj._session_cache_
+        if not cache.is_alive: throw(DatabaseSessionIsOver,
+            'Cannot load collection %s.%s: the database session is over' % (safe_repr(obj), attr.name))
         assert obj._status_ not in del_statuses
         setdata = obj._vals_.get(attr)
         if setdata is None: setdata = obj._vals_[attr] = SetData()
@@ -1777,8 +1803,6 @@ class Set(Collection):
         reverse = attr.reverse
         rentity = reverse.entity
         if not reverse: throw(NotImplementedError)
-        cache = obj._session_cache_
-        assert cache.is_alive
         database = obj._database_
         if cache is not database._get_cache():
             throw(TransactionError, "Transaction of object %s belongs to different thread")
@@ -1918,7 +1942,6 @@ class Set(Collection):
     @cut_traceback
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
-        if not obj._session_cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         rentity = attr.py_type
         wrapper_class = rentity._get_set_wrapper_subclass_()
@@ -1928,7 +1951,8 @@ class Set(Collection):
         if isinstance(new_items, SetWrapper) and new_items._obj_ is obj and new_items._attr_ is attr:
             return  # after += or -=
         cache = obj._session_cache_
-        if not cache.is_alive: throw_db_session_is_over(obj)
+        if not cache.is_alive: throw(DatabaseSessionIsOver,
+            'Cannot change collection %s.%s: the database session is over' % (safe_repr(obj), attr))
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         with cache.flush_disabled():
             new_items = attr.check(new_items, obj)
@@ -2085,7 +2109,7 @@ class Set(Collection):
                 columns = reverse.columns + attr.columns
                 converters = reverse.converters + attr.converters
             for i, (column, converter) in enumerate(zip(columns, converters)):
-                where_list.append([ 'EQ', ['COLUMN', None, column], [ 'PARAM', i, converter ] ])
+                where_list.append([ 'EQ', ['COLUMN', None, column], [ 'PARAM', (i, None, None), converter ] ])
             sql_ast = [ 'DELETE', table_name, where_list ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_remove_m2m_sql = sql, adapter
@@ -2108,7 +2132,7 @@ class Set(Collection):
             else:
                 columns = reverse.columns + attr.columns
                 converters = reverse.converters + attr.converters
-            params = [ [ 'PARAM', i, converter ] for i, converter in enumerate(converters) ]
+            params = [ [ 'PARAM', (i, None, None), converter ] for i, converter in enumerate(converters) ]
             sql_ast = [ 'INSERT', table_name, columns, params ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_add_m2m_sql = sql, adapter
@@ -2144,21 +2168,19 @@ class SetWrapper(object):
         return unpickle_setwrapper, (wrapper._obj_, wrapper._attr_.name, wrapper.copy())
     @cut_traceback
     def copy(wrapper):
-        if not wrapper._obj_._session_cache_.is_alive: throw_db_session_is_over(wrapper._obj_)
         return wrapper._attr_.copy(wrapper._obj_)
     @cut_traceback
     def __repr__(wrapper):
         return '<%s %r.%s>' % (wrapper.__class__.__name__, wrapper._obj_, wrapper._attr_.name)
     @cut_traceback
     def __str__(wrapper):
-        if not wrapper._obj_._session_cache_.is_alive: content = '-'
+        if not wrapper._obj_._session_cache_.is_alive: content = '...'
         else: content = ', '.join(imap(str, wrapper))
         return '%s([%s])' % (wrapper.__class__.__name__, content)
     @cut_traceback
     def __nonzero__(wrapper):
         attr = wrapper._attr_
         obj = wrapper._obj_
-        if not obj._session_cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         setdata = obj._vals_.get(attr)
         if setdata is None: setdata = attr.load(obj)
@@ -2169,7 +2191,6 @@ class SetWrapper(object):
     def is_empty(wrapper):
         attr = wrapper._attr_
         obj = wrapper._obj_
-        if not obj._session_cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         setdata = obj._vals_.get(attr)
         if setdata is None: setdata = obj._vals_[attr] = SetData()
@@ -2184,7 +2205,7 @@ class SetWrapper(object):
         if cached_sql is None:
             where_list = [ 'WHERE' ]
             for i, (column, converter) in enumerate(zip(reverse.columns, reverse.converters)):
-                where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', i, converter ] ])
+                where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (i, None, None), converter ] ])
             if not reverse.is_collection:
                 table_name = rentity._table_
                 select_list, attr_offsets = rentity._construct_select_clause_()
@@ -2214,7 +2235,6 @@ class SetWrapper(object):
     def __len__(wrapper):
         attr = wrapper._attr_
         obj = wrapper._obj_
-        if not obj._session_cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         setdata = obj._vals_.get(attr)
         if setdata is None or not setdata.is_fully_loaded: setdata = attr.load(obj)
@@ -2224,7 +2244,6 @@ class SetWrapper(object):
         attr = wrapper._attr_
         obj = wrapper._obj_
         cache = obj._session_cache_
-        if not cache.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         setdata = obj._vals_.get(attr)
         if setdata is None: setdata = obj._vals_[attr] = SetData()
@@ -2236,7 +2255,7 @@ class SetWrapper(object):
         if cached_sql is None:
             where_list = [ 'WHERE' ]
             for i, (column, converter) in enumerate(zip(reverse.columns, reverse.converters)):
-                where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', i, converter ] ])
+                where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (i, None, None), converter ] ])
             if not reverse.is_collection: table_name = reverse.entity._table_
             else: table_name = attr.table
             sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ],
@@ -2274,7 +2293,6 @@ class SetWrapper(object):
     @cut_traceback
     def __contains__(wrapper, item):
         obj = wrapper._obj_
-        if not obj._session_cache_.is_alive: throw_db_session_is_over(obj)
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
         if not isinstance(item, attr.py_type): return False
@@ -2309,11 +2327,12 @@ class SetWrapper(object):
     @cut_traceback
     def add(wrapper, new_items):
         obj = wrapper._obj_
+        attr = wrapper._attr_
         cache = obj._session_cache_
-        if not cache.is_alive: throw_db_session_is_over(obj)
+        if not cache.is_alive: throw(DatabaseSessionIsOver,
+            'Cannot change collection %s.%s: the database session is over' % (safe_repr(obj), attr))
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         with cache.flush_disabled():
-            attr = wrapper._attr_
             reverse = attr.reverse
             if not reverse: throw(NotImplementedError)
             new_items = attr.check(new_items, obj)
@@ -2348,11 +2367,12 @@ class SetWrapper(object):
     @cut_traceback
     def remove(wrapper, items):
         obj = wrapper._obj_
+        attr = wrapper._attr_
         cache = obj._session_cache_
-        if not cache.is_alive: throw_db_session_is_over(obj)
+        if not cache.is_alive: throw(DatabaseSessionIsOver,
+            'Cannot change collection %s.%s: the database session is over' % (safe_repr(obj), attr))
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         with cache.flush_disabled():
-            attr = wrapper._attr_
             reverse = attr.reverse
             if not reverse: throw(NotImplementedError)
             items = attr.check(items, obj)
@@ -2388,9 +2408,11 @@ class SetWrapper(object):
     @cut_traceback
     def clear(wrapper):
         obj = wrapper._obj_
-        if not obj._session_cache_.is_alive: throw_db_session_is_over(obj)
+        attr = wrapper._attr_
+        if not obj._session_cache_.is_alive: throw(DatabaseSessionIsOver,
+            'Cannot change collection %s.%s: the database session is over' % (safe_repr(obj), attr))
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        wrapper._attr_.__set__(obj, None)
+        attr.__set__(obj, None)
 
 def unpickle_multiset(obj, attrnames, items):
     entity = obj.__class__
@@ -2416,7 +2438,6 @@ class Multiset(object):
         return unpickle_multiset, (multiset._obj_, multiset._attrnames_, multiset._items_)
     @cut_traceback
     def distinct(multiset):
-        if not multiset._obj_._session_cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         return multiset._items_.copy()
     @cut_traceback
     def __repr__(multiset):
@@ -2429,25 +2450,20 @@ class Multiset(object):
                                  '.'.join(multiset._attrnames_), size_str)
     @cut_traceback
     def __str__(multiset):
-        if not multiset._obj_._session_cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         items_str = '{%s}' % ', '.join('%r: %r' % pair for pair in sorted(multiset._items_.iteritems()))
         return '%s(%s)' % (multiset.__class__.__name__, items_str)
     @cut_traceback
     def __nonzero__(multiset):
-        if not multiset._obj_._session_cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         return bool(multiset._items_)
     @cut_traceback
     def __len__(multiset):
-        if not multiset._obj_._session_cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         return _sum(multiset._items_.values())
     @cut_traceback
     def __iter__(multiset):
-        if not multiset._obj_._session_cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         for item, cnt in multiset._items_.iteritems():
             for i in xrange(cnt): yield item
     @cut_traceback
     def __eq__(multiset, other):
-        if not multiset._obj_._session_cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         if isinstance(other, Multiset):
             return multiset._items_ == other._items_
         if isinstance(other, dict):
@@ -2460,7 +2476,6 @@ class Multiset(object):
         return not multiset.__eq__(other)
     @cut_traceback
     def __contains__(multiset, item):
-        if not multiset._obj_._session_cache_.is_alive: throw_db_session_is_over(multiset._obj_)
         return item in multiset._items_
 
 ##class List(Collection): pass
@@ -2647,7 +2662,6 @@ class EntityMeta(type):
 
         database.entities[entity.__name__] = entity
         setattr(database, entity.__name__, entity)
-        entity._link_reverse_attrs_()
 
         entity._cached_max_id_sql_ = None
         entity._find_sql_cache_ = {}
@@ -2674,18 +2688,27 @@ class EntityMeta(type):
         for_expr = ast.GenExprFor(ast.AssName(iter_name, 'OP_ASSIGN'), ast.Name('.0'), [])
         inner_expr = ast.GenExprInner(ast.Name(iter_name), [ for_expr ])
         entity._default_genexpr_ = inner_expr
-    def _link_reverse_attrs_(entity):
+    def _resolve_attr_types_(entity):
         database = entity._database_
-        unmapped_attrs = database._unmapped_attrs.pop(entity.__name__, set())
         for attr in entity._new_attrs_:
             py_type = attr.py_type
             if isinstance(py_type, basestring):
-                entity2 = database.entities.get(py_type)
-                if entity2 is None:
-                    database._unmapped_attrs.setdefault(py_type, set()).add(attr)
-                    continue
-                attr.py_type = py_type = entity2
-            elif not issubclass(py_type, Entity): continue
+                rentity = database.entities.get(py_type)
+                if rentity is None:
+                    throw(ERDiagramError, 'Entity definition %s was not found' % py_type)
+                attr.py_type = py_type = rentity
+            elif isinstance(py_type, types.FunctionType):
+                rentity = py_type()
+                if not isinstance(rentity, EntityMeta): throw(TypeError,
+                    'Invalid type of attribute %s: expected entity class, got %r' % (attr, rentity))
+                attr.py_type = py_type = rentity
+            if isinstance(py_type, EntityMeta) and py_type.__name__ == 'Entity': throw(TypeError,
+                'Cannot link attribute %s to abstract Entity class. Use specific Entity subclass instead' % attr)
+    def _link_reverse_attrs_(entity):
+        database = entity._database_
+        for attr in entity._new_attrs_:
+            py_type = attr.py_type
+            if not issubclass(py_type, Entity): continue
 
             entity2 = py_type
             if entity2._database_ is not database:
@@ -2718,13 +2741,11 @@ class EntityMeta(type):
                 else: throw(ERDiagramError, 'Reverse attribute for %s not found' % attr)
 
             type2 = attr2.py_type
-            msg = 'Inconsistent reverse attributes %s and %s'
-            if isinstance(type2, basestring):
-                if type2 != entity.__name__: throw(ERDiagramError, msg % (attr, attr2))
-                attr2.py_type = entity
-            elif type2 != entity: throw(ERDiagramError, msg % (attr, attr2))
+            if type2 != entity:
+                throw(ERDiagramError, 'Inconsistent reverse attributes %s and %s' % (attr, attr2))
             reverse2 = attr2.reverse
-            if reverse2 not in (None, attr, attr.name): throw(ERDiagramError, msg % (attr,attr2))
+            if reverse2 not in (None, attr, attr.name):
+                throw(ERDiagramError, 'Inconsistent reverse attributes %s and %s' % (attr, attr2))
 
             if attr.is_required and attr2.is_required: throw(ERDiagramError,
                 "At least one attribute of one-to-one relationship %s - %s must be optional" % (attr, attr2))
@@ -2733,9 +2754,6 @@ class EntityMeta(type):
             attr2.reverse = attr
             attr.linked()
             attr2.linked()
-            unmapped_attrs.discard(attr2)
-        for attr in unmapped_attrs:
-            throw(ERDiagramError, 'Reverse attribute for %s.%s was not found' % (attr.entity.__name__, attr.name))
     def _get_pk_columns_(entity):
         if entity._pk_columns_ is not None: return entity._pk_columns_
         pk_columns = []
@@ -2765,7 +2783,7 @@ class EntityMeta(type):
                 avdict[attr] = attr.check(val, None, entity, from_db=False)
         else:
             get = entity._adict_.get
-            for name, val in kwargs.items():
+            for name, val in kwargs.iteritems():
                 attr = get(name)
                 if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
                 avdict[attr] = attr.check(val, None, entity, from_db=False)
@@ -3061,7 +3079,7 @@ class EntityMeta(type):
                 if attr_is_none: where_list.append([ 'IS_NULL', [ 'COLUMN', None, attr.column ] ])
                 else:
                     if len(attr.converters) > 1: throw(NotImplementedError)
-                    where_list.append([ 'EQ', [ 'COLUMN', None, attr.column ], [ 'PARAM', attr, attr.converters[0] ] ])
+                    where_list.append([ 'EQ', [ 'COLUMN', None, attr.column ], [ 'PARAM', (attr, None, None), attr.converters[0] ] ])
             elif not attr.columns: throw(NotImplementedError)
             else:
                 attr_entity = attr.py_type; assert attr_entity == attr.reverse.entity
@@ -3069,8 +3087,8 @@ class EntityMeta(type):
                     for column in attr.columns:
                         where_list.append([ 'IS_NULL', [ 'COLUMN', None, column ] ])
                 else:
-                    for i, (column, converter) in enumerate(zip(attr.columns, attr_entity._pk_converters_)):
-                        where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (attr, i), converter ] ])
+                    for j, (column, converter) in enumerate(zip(attr.columns, attr_entity._pk_converters_)):
+                        where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (attr, None, j), converter ] ])
 
         if not for_update: sql_ast = [ 'SELECT', select_list, from_list, where_list ]
         else: sql_ast = [ 'SELECT_FOR_UPDATE', bool(nowait), select_list, from_list, where_list ]
@@ -3208,11 +3226,12 @@ class EntityMeta(type):
         if obj is None:
             with cache.flush_disabled():
                 obj = object.__new__(entity)
-                obj._dbvals_ = {}
-                obj._vals_ = {}
-                obj._session_cache_ = cache
-                obj._status_ = status
                 obj._pkval_ = pkval
+                obj._status_ = status
+                obj._vals_ = {}
+                obj._dbvals_ = {}
+                obj._save_pos_ = None
+                obj._session_cache_ = cache
                 if pkval is not None:
                     index[pkval] = obj
                     obj._newid_ = None
@@ -3325,7 +3344,8 @@ def populate_criteria_list(criteria_list, columns, converters, params_count=0, t
     assert len(columns) == len(converters)
     for column, converter in zip(columns, converters):
         if converter is not None:
-            criteria_list.append([ 'EQ', [ 'COLUMN', table_alias, column ], [ 'PARAM', params_count, converter ] ])
+            criteria_list.append([ 'EQ', [ 'COLUMN', table_alias, column ],
+                                         [ 'PARAM', (params_count, None, None), converter ] ])
         else:
             criteria_list.append([ 'IS_NULL', [ 'COLUMN', None, column ] ])
         params_count += 1
@@ -3339,9 +3359,6 @@ def throw_object_was_deleted(obj):
     assert obj._status_ in del_statuses
     throw(OperationWithDeletedObjectError, '%s was %s'
           % (safe_repr(obj), obj._status_.replace('_', ' ')))
-
-def throw_db_session_is_over(obj):
-    throw(TransactionRolledBack, 'Object %s cannot be used after the database session is over' % safe_repr(obj))
 
 def unpickle_entity(d):
     entity = d.pop('__class__')
@@ -3364,7 +3381,7 @@ def safe_repr(obj):
 
 class Entity(object):
     __metaclass__ = EntityMeta
-    __slots__ = '_session_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '__weakref__'
+    __slots__ = '_session_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '_save_pos_', '__weakref__'
     def __reduce__(obj):
         if obj._status_ in del_statuses: throw(
             OperationWithDeletedObjectError, 'Deleted object %s cannot be pickled' % safe_repr(obj))
@@ -3417,7 +3434,9 @@ class Entity(object):
                 raise
         if pkval is not None: indexes[entity._pk_attrs_][pkval] = obj
         for key, vals in indexes_update.iteritems(): indexes[key][vals] = obj
-        cache.objects_to_save.append(obj)
+        objects_to_save = cache.objects_to_save
+        obj._save_pos_ = len(objects_to_save)
+        objects_to_save.append(obj)
         cache.modified = True
         return obj
     def _get_raw_pkval_(obj):
@@ -3465,7 +3484,8 @@ class Entity(object):
         return '%s[%s]' % (obj.__class__.__name__, pkval)
     def _load_(obj):
         cache = obj._session_cache_
-        if not cache.is_alive: throw_db_session_is_over(obj)
+        if not cache.is_alive: throw(DatabaseSessionIsOver,
+            'Cannot load object %s: the database session is over' % safe_repr(obj))
         entity = obj.__class__
         database = entity._database_
         if cache is not database._get_cache():
@@ -3546,13 +3566,21 @@ class Entity(object):
         with cache.flush_disabled():
             get_val = obj._vals_.get
             undo_list = []
+            objects_to_save = cache.objects_to_save
+            save_pos = obj._save_pos_
+
             def undo_func():
+                if obj._status_ == 'marked_to_delete':
+                    assert objects_to_save
+                    obj2 = objects_to_save.pop()
+                    assert obj2 is obj
+                    if save_pos is not None:
+                        assert objects_to_save[save_pos] is None
+                        objects_to_save[save_pos] = obj
+                    obj._save_pos_ = save_pos
                 obj._status_ = status
-                if status in ('loaded', 'saved'):
-                    objects_to_save = cache.objects_to_save
-                    if objects_to_save and objects_to_save[-1] is obj: objects_to_save.pop()
-                    assert obj not in objects_to_save
                 for index, old_key in undo_list: index[old_key] = obj
+
             undo_funcs.append(undo_func)
             try:
                 for attr in obj._attrs_:
@@ -3602,6 +3630,9 @@ class Entity(object):
                     undo_list.append((index, vals))
 
                 if status == 'created':
+                    assert save_pos is not None
+                    objects_to_save[save_pos] = None
+                    obj._save_pos_ = None
                     obj._status_ = 'cancelled'
                     if obj._pkval_ is not None:
                         pk_index = indexes[obj._pk_attrs_]
@@ -3609,9 +3640,14 @@ class Entity(object):
                         assert obj2 is obj
                         undo_list.append((pk_index, obj._pkval_))
                 else:
-                    if status != 'updated':
+                    if status == 'updated':
+                        assert save_pos is not None
+                        objects_to_save[save_pos] = None
+                    else:
                         assert status in ('loaded', 'saved')
-                        cache.objects_to_save.append(obj)
+                        assert save_pos is None
+                    obj._save_pos_ = len(objects_to_save)
+                    objects_to_save.append(obj)
                     obj._status_ = 'marked_to_delete'
                     cache.modified = True
             except:
@@ -3620,18 +3656,21 @@ class Entity(object):
                 raise
     @cut_traceback
     def delete(obj):
-        if not obj._session_cache_.is_alive: throw_db_session_is_over(obj)
+        if not obj._session_cache_.is_alive: throw(DatabaseSessionIsOver,
+            'Cannot delete object %s: the database session is over' % safe_repr(obj))
         obj._delete_()
     @cut_traceback
     def set(obj, **kwargs):
         cache = obj._session_cache_
-        if not cache.is_alive: throw_db_session_is_over(obj)
+        if not cache.is_alive: throw(DatabaseSessionIsOver,
+            'Cannot change object %s: the database session is over' % safe_repr(obj))
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         with cache.flush_disabled():
             avdict, collection_avdict = obj._keyargs_to_avdicts_(kwargs)
             status = obj._status_
             wbits = obj._wbits_
             get_val = obj._vals_.get
+            objects_to_save = cache.objects_to_save
             if avdict:
                 for attr in avdict:
                     if attr not in obj._vals_ and attr.reverse and not attr.reverse.is_collection:
@@ -3641,10 +3680,12 @@ class Entity(object):
                     for attr in avdict: new_wbits |= obj._bits_[attr]
                     obj._wbits_ = new_wbits
                     if status != 'updated':
-                        obj._status_ = 'updated'
-                        cache.modified = True
                         assert status in ('loaded', 'saved')
-                        cache.objects_to_save.append(obj)
+                        assert obj._save_pos_ is None
+                        obj._status_ = 'updated'
+                        obj._save_pos_ = len(objects_to_save)
+                        objects_to_save.append(obj)
+                        cache.modified = True
                 if not collection_avdict:
                     for attr in avdict:
                         if attr.reverse or attr.is_part_of_unique_index: break
@@ -3657,9 +3698,10 @@ class Entity(object):
                 obj._status_ = status
                 obj._wbits_ = wbits
                 if status in ('loaded', 'saved'):
-                    objects_to_save = cache.objects_to_save
-                    if objects_to_save and objects_to_save[-1] is obj: objects_to_save.pop()
-                    assert obj not in objects_to_save
+                    assert objects_to_save
+                    obj2 = objects_to_save.pop()
+                    assert obj2 is obj and obj._save_pos_ == len(objects_to_save)
+                    obj._save_pos_ = None
                 for index, old_key, new_key in undo:
                     if new_key is not None: del index[new_key]
                     if old_key is not None: index[old_key] = obj
@@ -3673,7 +3715,7 @@ class Entity(object):
                     for attr in attrs:
                         if attr in avdict: break
                     else: continue
-                    vals = maps(get_val, attrs)
+                    vals = map(get_val, attrs)
                     prev_vals = tuple(vals)
                     for i, attr in enumerate(attrs):
                         if attr in avdict: vals[i] = avdict[attr]
@@ -3774,7 +3816,7 @@ class Entity(object):
                 columns.extend(attr.columns)
                 converters.extend(attr.converters)
             assert len(columns) == len(converters)
-            params = [ [ 'PARAM', i,  converter ] for i, converter in enumerate(converters) ]
+            params = [ [ 'PARAM', (i, None, None),  converter ] for i, converter in enumerate(converters) ]
             entity = obj.__class__
             if not columns and database.provider.dialect == 'Oracle':
                 sql_ast = [ 'INSERT', entity._table_, obj._pk_columns_,
@@ -3838,7 +3880,7 @@ class Entity(object):
                 for attr in obj._attrs_with_bit_(obj._attrs_with_columns_, obj._wbits_):
                     update_converters.extend(attr.converters)
                 assert len(update_columns) == len(update_converters)
-                update_params = [ [ 'PARAM', i, converter ] for i, converter in enumerate(update_converters) ]
+                update_params = [ [ 'PARAM', (i, None, None), converter ] for i, converter in enumerate(update_converters) ]
                 params_count = len(update_params)
                 where_list = [ 'WHERE' ]
                 pk_columns = obj._pk_columns_
@@ -3888,13 +3930,26 @@ class Entity(object):
         assert cache.is_alive
         status = obj._status_
         if status in ('loaded', 'saved', 'cancelled'): return
+
         if status in ('created', 'updated'):
             obj._save_principal_objects_(dependent_objects)
 
+        obj._save_pos_ = None
         if status == 'created': obj._save_created_()
         elif status == 'updated': obj._save_updated_()
         elif status == 'marked_to_delete': obj._save_deleted_()
         else: assert False
+    def _before_save_(obj):
+        status = obj._status_
+        if status == 'created': obj.before_insert()
+        elif status == 'updated': obj.before_update()
+        elif status == 'marked_to_delete': obj.before_delete()
+    def before_insert(obj):
+        pass
+    def before_update(obj):
+        pass
+    def before_delete(obj):
+        pass
 
 def string2ast(s):
     result = string2ast_cache.get(s)
@@ -3975,7 +4030,8 @@ def desc(expr):
 def extract_vars(extractors, globals, locals):
     vars = {}
     vartypes = {}
-    for src, code in extractors.iteritems():
+    for key, code in extractors.iteritems():
+        filter_num, src = key
         if src == '.0': value = locals['.0']
         else:
             try: value = eval(code, globals, locals)
@@ -3983,7 +4039,7 @@ def extract_vars(extractors, globals, locals):
             if src == 'None' and value is not None: throw(TranslationError)
             if src == 'True' and value is not True: throw(TranslationError)
             if src == 'False' and value is not False: throw(TranslationError)
-        try: vartypes[src] = get_normalized_type_of(value)
+        try: vartypes[key] = get_normalized_type_of(value)
         except TypeError:
             if not isinstance(value, dict):
                 unsupported = False
@@ -3994,8 +4050,8 @@ def extract_vars(extractors, globals, locals):
                 typename = type(value).__name__
                 if src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
                 throw(TypeError, 'Expression %s has unsupported type %r' % (src, typename))
-            vartypes[src] = get_normalized_type_of(value)
-        vars[src] = value
+            vartypes[key] = get_normalized_type_of(value)
+        vars[key] = value
     return vars, vartypes
 
 def unpickle_query(query_result):
@@ -4004,26 +4060,20 @@ def unpickle_query(query_result):
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
-        extractors, varnames, tree = create_extractors(code_key, tree)
+        extractors, varnames, tree = create_extractors(code_key, tree, 0)
         vars, vartypes = extract_vars(extractors, globals, locals)
 
         node = tree.quals[0].iter
-        origin = vars[node.src]
+        origin = vars[0, node.src]
         if isinstance(origin, EntityIter): origin = origin.entity
         elif not isinstance(origin, EntityMeta):
             if node.src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
-            else: throw(TypeError, 'Cannot iterate over non-entity object %s' % node.src)
+            throw(TypeError, 'Cannot iterate over non-entity object %s' % node.src)
         query._origin = origin
         database = origin._database_
         if database is None: throw(TranslationError, 'Entity %s is not mapped to a database' % origin.__name__)
         if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
-
-        if database.provider.dialect == 'Oracle':
-            for name, value in vars.iteritems():
-                if value == '':
-                    vars[name] = None
-                    vartypes[name] = type(None)
-
+        database.provider.normalize_vars(vars, vartypes)
         query._vars = vars
         query._key = code_key, tuple(map(vartypes.__getitem__, varnames)), left_join
         query._database = database
@@ -4156,7 +4206,10 @@ class Query(object):
             tup = ((),)
             new_key = query._key + tup
             new_filters = query._filters + tup
-            new_translator = query._translator.without_order()
+            new_translator = query._database._translator_cache.get(new_key)
+            if new_translator is None:
+                new_translator = query._translator.without_order()
+                query._database._translator_cache[new_key] = new_translator
             return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
 
         attributes = functions = strings = numbers = False
@@ -4209,13 +4262,12 @@ class Query(object):
                 throw(TypeError, 'Incorrect number of lambda arguments. '
                                  'Expected: %d, got: %d' % (expr_count, len(argnames)))
 
-        extractors, varnames, func_ast = create_extractors(func_id, func_ast, argnames or query._translator.subquery)
+        filter_num = len(query._filters) + 1
+        extractors, varnames, func_ast = create_extractors(func_id, func_ast, filter_num, argnames or query._translator.subquery)
         if extractors:
             vars, vartypes = extract_vars(extractors, globals, locals)
-            query_vars = query._vars
-            for name, value in vars.iteritems():
-                if query_vars.setdefault(name, value) != value: throw(TranslationError,
-                    'Meaning of expression %s has changed during query translation' % name)
+            query._database.provider.normalize_vars(vars, vartypes)
+            query._vars.update(vars)
             sorted_vartypes = tuple(map(vartypes.__getitem__, varnames))
         else: vars, vartypes, sorted_vartypes = {}, {}, ()
 
@@ -4224,7 +4276,7 @@ class Query(object):
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
             prev_optimized = query._translator.optimize
-            new_translator = query._translator.apply_lambda(order_by, func_ast, argnames, extractors, vartypes)
+            new_translator = query._translator.apply_lambda(filter_num, order_by, func_ast, argnames, extractors, vartypes)
             if not prev_optimized:
                 name_path = new_translator.can_be_optimized()
                 if name_path:
@@ -4235,10 +4287,11 @@ class Query(object):
                     new_translator = translator_cls(tree, prev_extractors, prev_vartypes,
                                                     left_join=True, optimize=name_path)
                     new_translator = query._reapply_filters(new_translator)
+                    new_translator = new_translator.apply_lambda(filter_num, order_by, func_ast, argnames, extractors, vartypes)
             query._database._translator_cache[new_key] = new_translator
         return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
     def _reapply_filters(query, translator):
-        for tup in query._filters:
+        for i, tup in enumerate(query._filters):
             if not tup:
                 translator = translator.without_order()
             elif len(tup) == 1:
@@ -4250,7 +4303,7 @@ class Query(object):
                 else: translator = translator.order_by_attributes(args)
             else:
                 order_by, func_ast, argnames, extractors, vartypes = tup
-                translator = translator.apply_lambda(order_by, func_ast, argnames, extractors, vartypes)
+                translator = translator.apply_lambda(i+1, order_by, func_ast, argnames, extractors, vartypes)
         return translator
     @cut_traceback
     def filter(query, *args, **kwargs):
@@ -4262,24 +4315,37 @@ class Query(object):
             locals = sys._getframe(3).f_locals
             return query._process_lambda(func, globals, locals, order_by=False)
         if not kwargs: return query
-        attrnames = []
+
+        entity = query._translator.expr_type
+        if not isinstance(entity, EntityMeta): throw(TypeError,
+            'Keyword arguments are not allowed: since query result type is not an entity, filter() method can accept only lambda')
+
+        get = entity._adict_.get
+        filterattrs = []
         value_dict = {}
         next_id = query._next_kwarg_id
-        for attr in sorted(kwargs):
-            value = kwargs[attr]
+        for attrname, val in sorted(kwargs.iteritems()):
+            attr = get(attrname)
+            if attr is None: throw(AttributeError,
+                'Entity %s does not have attribute %s' % (entity.__name__, attrname))
+            if attr.is_collection: throw(TypeError,
+                '%s attribute %s cannot be used as a keyword argument for filtering'
+                % (attr.__class__.__name__, attr))
+            val = attr.check(val, None, entity, from_db=False)
             id = next_id
             next_id += 1
-            attrnames.append((attr, id, value is None))
-            value_dict[id] = value
-        attrnames = tuple(attrnames)
-        new_key = query._key + ('filter', attrnames)
-        new_filters = query._filters + (attrnames,)
+            filterattrs.append((attr, id, val is None))
+            value_dict[id] = val
+
+        filterattrs = tuple(filterattrs)
+        new_key = query._key + ('filter', filterattrs)
+        new_filters = query._filters + ((filterattrs,),)
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
-            new_translator = query._translator.apply_kwfilters(attrnames)
+            new_translator = query._translator.apply_kwfilters(filterattrs)
             query._database._translator_cache[new_key] = new_translator
         new_query = query._clone(_key=new_key, _filters=new_filters, _translator=new_translator,
-                                 _next_kwargs_id=next_id)
+                                 _next_kwarg_id=next_id)
         new_query._vars.update(value_dict)
         return new_query
     @cut_traceback

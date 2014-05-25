@@ -244,14 +244,14 @@ class PreTranslator(ASTTranslator):
         name = node.name
         for context in translator.contexts:
             if name in context: return
-        if name == 'random': return
+        if name in ('count', 'random'): return
         node.external = name not in translator.additional_internal_names
     def postConst(translator, node):
         node.external = node.constant = True
 
 extractors_cache = {}
 
-def create_extractors(code_key, tree, additional_internal_names=()):
+def create_extractors(code_key, tree, filter_num, additional_internal_names=()):
     result = extractors_cache.get(code_key)
     if result is None:
         pretranslator = PreTranslator(tree, additional_internal_names)
@@ -260,7 +260,7 @@ def create_extractors(code_key, tree, additional_internal_names=()):
             src = node.src = ast2src(node)
             if src == '.0': code = None
             else: code = compile(src, src, 'eval')
-            extractors[src] = code
+            extractors[filter_num, src] = code
         varnames = list(sorted(extractors))
         result = extractors_cache[code_key] = extractors, varnames, tree
     return result
