@@ -507,5 +507,8 @@ def distinct(iter):
         d[item] = d[item] + 1
     return d
 
+def concat(*args):
+    return ''.join(map('%s'.__mod__, args))
+
 def is_utf8(encoding):
     return encoding.upper().replace('_', '').replace('-', '') in ('UTF8', 'UTF', 'U8')

@@ -23,8 +23,8 @@ from pony.orm.dbapiprovider import (
     OperationalError, IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
 from pony.utils import (
-    localbase, decorator, cut_traceback, throw, get_lambda_args, deprecated,
-    import_module, parse_expr, is_ident, count, avg as _avg, distinct as _distinct, tostring, strjoin,
+    localbase, decorator, cut_traceback, throw, get_lambda_args, deprecated, import_module, parse_expr,
+    is_ident, count, avg as _avg, distinct as _distinct, tostring, strjoin, concat
     )
 
 __all__ = '''
@@ -58,6 +58,8 @@ __all__ = '''
     count sum min max avg distinct
 
     desc
+
+    concat
 
     JOIN
     '''.split()

@@ -10,7 +10,7 @@ from copy import deepcopy
 from functools import update_wrapper
 
 from pony import options
-from pony.utils import avg, distinct, is_ident, throw
+from pony.utils import avg, distinct, is_ident, throw, concat
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
     string_types, numeric_types, comparable_types, SetType, FuncType, MethodType, \
@@ -56,7 +56,7 @@ def join_tables(alias1, alias2, columns1, columns2):
     return sqland([ [ 'EQ', [ 'COLUMN', alias1, c1 ], [ 'COLUMN', alias2, c2 ] ] for c1, c2 in izip(columns1, columns2) ])
 
 def type2str(t):
-    if isinstance(t, tuple): return 'list'
+    if type(t) is tuple: return 'list'
     if type(t) is SetType: return 'Set of ' + type2str(t.item_type)
     try: return t.__name__
     except: return str(t)
@@ -1650,6 +1650,24 @@ class FuncDatetimeMonad(FuncDateMonad):
     def call_now(monad):
         translator = monad.translator
         return translator.DatetimeExprMonad(translator, datetime, [ 'NOW' ])
+
+class FuncConcatMonad(FuncMonad):
+    func = concat
+    def call(monad, *args):
+        if len(args) < 2: throw(TranslationError, 'concat() function requires at least two arguments')
+        translator = args[0].translator
+        s = u = False
+        result_ast = [ 'CONCAT' ]
+        for arg in args:
+            t = arg.type
+            if isinstance(t, EntityMeta) or type(t) in (tuple, SetType):
+                throw(TranslationError, 'Invalid argument of concat() function: %s' % ast2src(arg.node))
+            if t is str: s = True
+            elif t is u: u = True
+            result_ast.extend(arg.getsql())
+        if s and u: throw(TranslationError, 'Mixing str and unicode in {EXPR}')
+        result_type = str if s else unicode
+        return translator.ExprMonad.new(translator, result_type, result_ast)
 
 class FuncLenMonad(FuncMonad):
     func = len
