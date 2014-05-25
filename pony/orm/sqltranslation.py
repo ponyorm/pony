@@ -1878,10 +1878,13 @@ class AttrSetMonad(SetMixin, Monad):
         elif len(expr_list) == 1:
             make_aggr = lambda expr_list: [ 'COUNT', 'DISTINCT' ] + expr_list
         elif translator.dialect == 'Oracle':
-            if monad.tableref.name_path == translator.optimize: raise OptimizationFailed
-            extra_grouping = True
-            if translator.hint_join: make_aggr = lambda expr_list: [ 'COUNT', 'ALL' ]
-            else: make_aggr = lambda expr_list: [ 'COUNT', 'ALL', [ 'COUNT', 'ALL' ] ]
+            if monad.tableref.name_path == translator.optimize:
+                alias, pk_columns = monad.tableref.make_join(pk_only=True)
+                make_aggr = lambda expr_list: [ 'COUNT', 'DISTINCT' if distinct else 'ALL', [ 'COLUMN', alias, 'ROWID' ] ]
+            else:
+                extra_grouping = True
+                if translator.hint_join: make_aggr = lambda expr_list: [ 'COUNT', 'ALL' ]
+                else: make_aggr = lambda expr_list: [ 'COUNT', 'ALL', [ 'COUNT', 'ALL' ] ]
         elif translator.dialect == 'PostgreSQL':
             row = [ 'ROW' ] + expr_list
             expr = [ 'CASE', None, [ [ [ 'IS_NULL', row ], [ 'VALUE', None ] ] ], row ]

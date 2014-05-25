@@ -381,13 +381,12 @@ HAVING COUNT("t-1"."ROWID") > 3
 
 Oracle:
 
-SELECT "s"."ID", "s"."NAME", "s"."DOB", "s"."TEL", "s"."GPA", "s"."GROUP"
+SELECT "s"."ID"
 FROM "STUDENT" "s"
-WHERE (
-    SELECT COUNT(*)
-    FROM "COURSE_STUDENT" "t-1"
-    WHERE "s"."ID" = "t-1"."STUDENT"
-    ) > 3
+  LEFT JOIN "COURSE_STUDENT" "t-1"
+    ON "s"."ID" = "t-1"."STUDENT"
+GROUP BY "s"."ID"
+HAVING COUNT("t-1"."ROWID") > 3
 
 >>> select(s for s in Student).for_update()[:3]
 
