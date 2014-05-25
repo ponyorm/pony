@@ -470,3 +470,49 @@ WHERE "s"."ROWID" IN (
     ) t WHERE "row-num" > 3
     )
 FOR UPDATE
+
+>>> select((g, count(s)) for g in Group for s in g.students)
+
+SELECT "g"."number", COUNT(DISTINCT "s"."id")
+FROM "Group" "g", "Student" "s"
+WHERE "g"."number" = "s"."group"
+GROUP BY "g"."number"
+
+Oracle:
+
+SELECT "g"."NUMBER", COUNT(DISTINCT "s"."ID")
+FROM "GROUP" "g", "STUDENT" "s"
+WHERE "g"."NUMBER" = "s"."GROUP"
+GROUP BY "g"."NUMBER"
+
+PostgreSQL:
+
+SELECT "g"."number", COUNT(DISTINCT "s"."id")
+FROM "group" "g", "student" "s"
+WHERE "g"."number" = "s"."group"
+GROUP BY "g"."number"
+
+>>> select((s, count(c)) for s in Student for c in s.courses)
+
+SELECT DISTINCT "s"."id", COUNT(DISTINCT "c"."ROWID")
+FROM "Student" "s", "Course_Student" "t-1", "Course" "c"
+WHERE "s"."id" = "t-1"."student"
+  AND "t-1"."course_name" = "c"."name"
+  AND "t-1"."course_semester" = "c"."semester"
+GROUP BY "s"."id"
+
+Oracle:
+
+SELECT DISTINCT "s"."ID", COUNT(DISTINCT "c"."ROWID")
+FROM "STUDENT" "s", "COURSE_STUDENT" "t-1", "COURSE" "c"
+WHERE "s"."ID" = "t-1"."STUDENT"
+  AND "t-1"."COURSE_NAME" = "c"."NAME"
+  AND "t-1"."COURSE_SEMESTER" = "c"."SEMESTER"
+GROUP BY "s"."ID"
+
+PostgreSQL:
+
+SELECT DISTINCT "s"."id", COUNT(DISTINCT case when ("t-1"."course_name", "t-1"."course_semester") IS NULL then null else ("t-1"."course_name", "t-1"."course_semester") end)
+FROM "student" "s", "course_student" "t-1"
+WHERE "s"."id" = "t-1"."student"
+GROUP BY "s"."id"

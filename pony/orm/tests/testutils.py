@@ -25,6 +25,10 @@ def flatten(x):
     return result
 
 class TestConnection(object):
+    def __init__(con, database):
+        con.database = database
+        if database and database.provider_name == 'postgres':
+            con.autocommit = True
     def commit(con):
         pass
     def rollback(con):
@@ -47,8 +51,10 @@ class TestCursor(object):
 test_cursor = TestCursor()
 
 class TestPool(object):
+    def __init__(pool, database):
+        pool.database = database
     def connect(pool):
-        return TestConnection()
+        return TestConnection(pool.database)
     def release(pool, con):
         pass
     def drop(pool, con):
@@ -61,10 +67,9 @@ class TestDatabase(Database):
     raw_server_version = None
     sql = None
     def bind(self, provider_name, *args, **kwargs):
-        kwargs['pony_check_connection'] = False
-        kwargs['pony_pool_mockup'] = TestPool()
         if self.real_provider_name is not None:
             provider_name = self.real_provider_name
+        self.provider_name = provider_name
         provider_module = import_module('pony.orm.dbproviders.' + provider_name)
         provider_cls = provider_module.provider_cls
         raw_server_version = self.raw_server_version
@@ -87,6 +92,8 @@ class TestDatabase(Database):
                 pass
         TestProvider.server_version = server_version
 
+        kwargs['pony_check_connection'] = False
+        kwargs['pony_pool_mockup'] = TestPool(self)
         Database.bind(self, TestProvider, *args, **kwargs)
     def _execute(database, sql, globals, locals, frame_depth):
         assert False
@@ -95,5 +102,5 @@ class TestDatabase(Database):
         database.sql = sql
         database.arguments = arguments
         return test_cursor
-    def generate_mapping(database, filename=None, create_tables=False):
+    def generate_mapping(database, filename=None, check_tables=True, create_tables=False):
         return Database.generate_mapping(database, filename, create_tables=False)
