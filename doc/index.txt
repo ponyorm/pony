@@ -26,8 +26,6 @@ In this query, we would like to retrieve all customers with total purchases grea
 
 Not every object-relational mapper offers such a convenient query syntax. In addition to ease of use, Pony ensures efficient work with data. Queries are translated into SQL that is executed quickly and efficiently. Depending on the DBMS, the syntax of the generating SQL may differ in order to take full advantage of the chosen database. The query code written in Python will look the same regardless of the DBMS, which ensures the application’s portability.
 
-Pony allows any programmer to write complex and effective queries against a database, even without being an expert in SQL. At the same time, Pony does not "fight" with SQL – if a programmer needs to write a query in pure SQL, for example to call up a stored procedure, he can easily do this from within Pony. 
+Pony allows any programmer to write complex and effective queries against a database, even without being an expert in SQL. At the same time, Pony does not "fight" with SQL – if a programmer needs to write a query in pure SQL, for example to call up a stored procedure, they can easily do this from within Pony. The basic objective of Pony is to simplify the development of web applications. A typical scenario in which Pony is used is generation of a dynamic web page.
 
-The basic objective of Pony is to simplify the development of web applications. A typical scenario in which Pony is used is generation of a dynamic web page. In this situation, usually no more than a few thousand objects are extracted from the database at a time - often even fewer. Pony is ideally suited to work effectively in this context. Pony is not intended for situations that require a simultaneous processing of hundreds of thousands, or millions of rows of a database. In these cases, it is better to use pure SQL or the ORM SQLAlchemy.
-
-Currently Pony ORM is being developed by two people: Alexander Kozlovsky and Alexey Malashkevich. Authors can be reached by the email: team (at) ponyorm.com. Thanks to Ilya Naoumov for helping with the documentation.
+Pony ORM team can be reached by the email: team (at) ponyorm.com.

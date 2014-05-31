@@ -91,11 +91,11 @@ or::
 
 	select((s.group, count(s)) for s in Student if s.group.dept.number == 44)
 
-.. note:: Either of the listed queries will provide the same result, but Pony translated them differently in SQL. If, as in the first request, aggregative function includes a collection, then Pony will translate it into a subquery. In the second case, when the aggregative function includes a single object instead of a collection, a subquery will not be created, but rather grouping will be used in the main query. In many database systems, subqueries process longer compared to queries with grouping, thus the second option of query creation is preferred.
+In the first example the aggregate function ``count`` receives a collection and Pony will translate it into a subquery (although Pony will try to optimize the query and replace it with ``LEFT JOIN``).
 
-So, for a fast query, the "smallest" object type from the query should be used for the "for" cycle, while all other objects should be taken through the chain of attributes. In this case, although we want to receive groups in an answer, the student is the "smallest" object that should be taken into an account, and thus the cycle should be done for the student, and the group will be taken as an attribute of the student.
+In the second example, the function ``count`` receives a single object instead of a collection. In this case Pony will add a ``GROUP BY`` section to the SQL query and the grouping will be done on the ``s.group`` attribute.
 
-.. note:: There are two types of COUNT function in SQL: COUNT (column) and COUNT (DISTINCT column). If a column is not a primary key, then in majority of the cases we will want to use the COUNT (DISTINCT column) type, as the type without DISTINCT counts duplicate values several times, which means that it basically ignores the true content of a column and is simply calculating the amount of cells in a table with value other than NULL. This often leads to errors in query creation in SQL. Pony introduces DISTINCT automatically, if it understands that the column might include duplicate values; therefore Pony only has one function COUNT.
+If you use the ``count()`` function without arguments, this will be translated to ``COUNT(*)``. If you specify an argument, it will be translated to ``COUNT(DISTINCT column)``
 
 
 Conditional COUNT
