@@ -10,12 +10,16 @@ Pony ORM top level functions used to query the database
 
    Returns an instance of the :py:class:`Query` object. If necessary, you can apply any :py:class:`Query` method to the result, e.g. :py:meth:`Query.order_by` or :py:meth:`Query.count`. If you just need to get a list of objects you can either iterate over the result or get a full slice::
 
-       c = select(p for p in Product).count()
-
        for p in select(p for p in Product):
            ...
 
-       prod_list = select(p for p in Product)
+       prod_list = select(p for p in Product)[:]
+
+   The ``select()`` function can return a list of single elements or a list of tuples::
+
+       select(p for p in Product)
+       select((p1, p2) for p1 in Product for p2 in Product if p1.name == p2.name and p1 != p2)
+       select((p.name, count(p.orders)) for p in Product)
 
 .. py:function:: get(gen)
 
@@ -67,13 +71,52 @@ Entity class methods
 
    .. py:method:: select_random(limit)
 
+      Select the ``limit`` random objects. This method uses the algorithm that can be much more effective than using ``ORDER BY RANDOM()`` SQL construct. The method uses the following algorithm:
+
+      1. Determine max id from the table.
+
+      2. Generate random ids in the range (0, max_id]
+
+      3. Retrieve objects by those random ids. If an object with generated id does not exist (e.g. it was deleted), then select another random id and retry.
+
+      Repeat the steps 2-3 as many times as necessary to retrieve the specified amount of objects.
+
+      This algorithm doesn't affect performance even when working with a large number of table rows. However this method also has some limitations:
+
+      * The primary key must be a sequential id of an integer type.
+
+      * The number of "gaps" between existing ids (the count of deleted objects) should be relatively small.
+
+      The ``select_random()`` method can be used if your query does not have any criteria to select specific objects. If such criteria is necessary, then you can use the ``random()`` method of the Query object.
+
 
 Entity instance methods
 ----------------------------
 
 .. py:method:: delete()
 
+   Deletes the object. The object will be marked as deleted and will be deleted from the database on the operation ``flush()`` which is issued automatically on committing the current transaction, exiting from the most outer ``db_session`` or before sending next query to the database.
+
 .. py:method:: set(**kwargs)
+
+   Assign new values to several object attributes at once::
+
+       Customer[123].set(email='new@example.com', address='New address')
+
+   This method also can be convenient when you want to assign new values from a dictionary::
+
+       d = {'email': 'new@example.com', 'address': 'New address'}
+       Customer[123].set(**d)
+
+
+Entity instance hooks
+-----------------------------------
+
+.. py:method:: before_insert
+
+.. py:method:: before_update
+
+.. py:method:: before_delete
 
 
 Query methods
@@ -92,18 +135,13 @@ Query methods
    .. py:method:: exists()
 
    .. py:method:: filter(lambda)
+                  filter(str)
 
       The ``filter()`` method of the ``Query`` object is used for filtering the result of a query. The conditions which are passed as parameters to the ``filter()`` method will be translated into the WHERE section of the resulting SQL query.
 
       Before Pony ORM release 0.5 the ``filter()`` method affected the underlying query updating the query in-place, but since the release 0.5 it creates and returns a new Query object with the applied conditions.
 
-      The ``select()`` function can return a list of single elements or a list of tuples::
-
-          select(p for p in Product)
-          select((p1, p2) for p1 in Product for p2 in Product if p1.name == p2.name and p1 != p2)
-          select((p.name, count(p.orders)) for p in Product)
-
-      The number of ``filter()`` arguments should correspond to the query result. The ``filter()`` method can receive a lambda expression with a condition:
+      The number of ``filter()`` arguments should correspond to the query result. The ``filter()`` method can receive a lambda expression with a condition::
 
           q = select(p for p in Product)
           q2 = q.filter(lambda x: x.price > 100)
@@ -142,8 +180,26 @@ Query methods
 
    .. py:method:: page(pagenum, pagesize=10)
 
+      Pagination is used when you need to display results of a query divided into multiple pages. The page number starts with 1. This method returns a slice [start:stop] where ``start = (pagenum - 1) * pagesize``, ``stop = pagenum * pagesize``.
+
    .. py:method:: random(limit)
+
+      Select the ``limit`` random objects from the database. This method will be translated using the ``ORDER BY RANDOM()`` SQL expression. The entity class method ``select_random()`` provides better performance, although doesn't allow to specify query conditions.
 
    .. py:method:: show()
 
+   Print the results of a query to the console. The result is formatted in the form of a table. This method doesn't display attributes to-many because it would require additional query to the database and could be bulky.
+
    .. py:method:: sum()
+
+   Return the sum of all selected items. Can be applied to the queries which return a single numeric expression only. Example::
+
+   select(o.total_price for o in Order).sum()
+
+   If the query returns no items, the ``sum()`` method returns 0.
+
+
+Functions which can be used inside of the Query
+----------------------------------------------------------------
+
+min, max, avg, sum, count, len, concat, abs, random, select, exists

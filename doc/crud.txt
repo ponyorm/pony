@@ -179,6 +179,10 @@ or in a line, using the ``set()`` method::
     order = Order[123]
     order.set(state = "Shipped", date_shipped = datetime.now())
 
+The ``set()`` method can be convenient when you need to update several object attributes at once from a dictionary::
+
+    order.set(**dict_with_new_values)
+
 In the future, Pony will be augmented with an option to perform a bulk update (updating multiple objects on the disk without loading them to the cache):: 
 
     update(p.set(price=price * 1.1) for p in Product 

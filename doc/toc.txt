@@ -9,8 +9,8 @@ Pony ORM
 
    index
    firststeps
+   database
    entities
-   database    
    crud
    collections
    queries
