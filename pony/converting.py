@@ -109,7 +109,7 @@ date_re_list = [ re.compile('^%s$'%s, re.UNICODE) for s in date_str_list ]
 time_str = r'(?P<hh>\d{1,2})(?:[:. ](?P<mm>\d{1,2})(?:[:. ](?P<ss>\d{1,2}))?)?\s*(?P<ampm>[ap][m])?'
 time_re = re.compile('^%s$'%time_str)
 
-datetime_re_list = [ re.compile('^%s(?: %s)?$' % (date_str, time_str), re.UNICODE) for date_str in date_str_list ]
+datetime_re_list = [ re.compile('^%s(?:[t ]%s)?$' % (date_str, time_str), re.UNICODE) for date_str in date_str_list ]
 
 month_lists = [
     "jan feb mar apr may jun jul aug sep oct nov dec".split(),
