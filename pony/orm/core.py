@@ -3598,6 +3598,7 @@ class Entity(object):
                         elif isinstance(reverse, Set):
                             if attr not in obj._vals_: continue
                             val = get_val(attr)
+                            if val is None: continue
                             reverse.reverse_remove((val,), obj, undo_funcs)
                         else: throw(NotImplementedError)
                     elif isinstance(attr, Set):
