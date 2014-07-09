@@ -2983,7 +2983,7 @@ class EntityMeta(type):
     def _find_in_db_(entity, avdict, max_fetch_count=None, for_update=False, nowait=False):
         if max_fetch_count is None: max_fetch_count = options.MAX_FETCH_COUNT
         database = entity._database_
-        query_attrs = tuple((attr, value is None) for attr, value in sorted(avdict.iteritems()))
+        query_attrs = dict((attr, value is None) for attr, value in avdict.iteritems())
         single_row = (max_fetch_count == 1)
         sql, adapter, attr_offsets = entity._construct_sql_(query_attrs, not single_row, for_update, nowait)
         arguments = adapter(avdict)
@@ -3017,14 +3017,14 @@ class EntityMeta(type):
 
         objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count)
         return objects
-    def _construct_select_clause_(entity, alias=None, distinct=False):
+    def _construct_select_clause_(entity, alias=None, distinct=False, query_attrs=()):
         attr_offsets = {}
         select_list = distinct and [ 'DISTINCT' ] or [ 'ALL' ]
         root = entity._root_
         for attr in chain(root._attrs_, root._subclass_attrs_):
             if attr.is_collection: continue
             if not attr.columns: continue
-            if attr.lazy: continue
+            if attr.lazy and attr not in query_attrs: continue
             attr_offsets[attr] = offsets = []
             for column in attr.columns:
                 offsets.append(len(select_list) - 1)
@@ -3060,21 +3060,22 @@ class EntityMeta(type):
         return cached_sql
     def _construct_sql_(entity, query_attrs, order_by_pk=False, for_update=False, nowait=False):
         if nowait: assert for_update
-        query_key = query_attrs, order_by_pk, for_update, nowait
+        sorted_query_attrs = tuple(sorted(query_attrs.items()))
+        query_key = sorted_query_attrs, order_by_pk, for_update, nowait
         cached_sql = entity._find_sql_cache_.get(query_key)
         if cached_sql is not None: return cached_sql
         table_name = entity._table_
-        select_list, attr_offsets = entity._construct_select_clause_()
+        select_list, attr_offsets = entity._construct_select_clause_(query_attrs=query_attrs)
         from_list = [ 'FROM', [ None, 'TABLE', table_name ]]
         where_list = [ 'WHERE' ]
         values = []
 
         discr_attr = entity._discriminator_attr_
-        if discr_attr and (discr_attr, False) not in query_attrs:
+        if discr_attr and query_attrs.get(discr_attr) != False:
             discr_criteria = entity._construct_discriminator_criteria_()
             if discr_criteria: where_list.append(discr_criteria)
 
-        for attr, attr_is_none in query_attrs:
+        for attr, attr_is_none in sorted_query_attrs:
             if not attr.reverse:
                 if attr_is_none: where_list.append([ 'IS_NULL', [ 'COLUMN', None, attr.column ] ])
                 else:
