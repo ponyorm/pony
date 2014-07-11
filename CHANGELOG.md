@@ -1,6 +1,19 @@
-# Pony ORM Release 0.5 (2014-05-31)
+# Pony ORM Release 0.5.1 (2014-07-11)
 
-## Changes since 0.4.9
+## Changes/features:
+
+Before this release, if a text attribute was defined without the max length specified (e.g. `name = Required(unicode)`), Pony set the maximum length equal to 200 and used SQL type `VARCHAR(200)`. Actually, PostgreSQL and SQLite do not require specifying the maximum length for strings. Starting with this release such text attributes are declared as `TEXT` in SQLite and PostgreSQL. In these DBMSes, the `TEXT` datatype has the same performance as `VARCHAR(N)` and doesn't have arbitrary length restrictions.
+
+For other DBMSes default varchar limit was increased up to 255 in MySQL and to 1000 in Oracle.
+
+## Bugfixes:
+
+* Correct parsing of datetime values with T separator between date and time
+* Entity.delete() bug fixed
+* Lazy attribute loading bug fixed
+
+
+# Pony ORM Release 0.5 (2014-05-31)
 
 * New transaction model ([link](http://blog.ponyorm.com/?p=125))
 * New method `Query.filter()` allows step-by-step query construction ([link](http://doc.ponyorm.com/queries.html?highlight=filter#Query.filter))
@@ -13,7 +26,7 @@
 * Ability to specify `sequence_name='seq_name'` for PrimaryKey attributes for Oracle database
 * Ability to create new entity instances specifying the value of the primary key instead of the object
 * Ability to read entity object attributes outside of the db_session
-* Ability to use lambdas as a reference to an entity in relationship attribute declarations ([link](http://doc.ponyorm.com/entities.html?highlight=lambda#relationships))
+* Ability to use lambdas as a reference to an entitys in relationship attribute declarations ([link](http://doc.ponyorm.com/entities.html?highlight=lambda#relationships))
 * The names of tables, indexes and constraints in the database creation script now are sorted in the alphabetical order
 * In MySQL and PostgreSQL Pony converts the table names to the lower case. In Oracle – to the upper case. In SQLite leaves as is.
 * The option `options.MAX_FETCH_COUNT` is set to `None` by default now
