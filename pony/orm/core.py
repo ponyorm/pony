@@ -4144,7 +4144,7 @@ class Query(object):
             if isinstance(translator.expr_type, EntityMeta):
                 entity = translator.expr_type
                 result = entity._fetch_objects(cursor, attr_offsets, for_update=query._for_update,
-                                               used_attrs=translator.tableref.used_attrs)
+                                               used_attrs=translator.get_used_attrs())
             elif len(translator.row_layout) == 1:
                 func, slice_or_offset, src = translator.row_layout[0]
                 result = list(starmap(func, cursor.fetchall()))

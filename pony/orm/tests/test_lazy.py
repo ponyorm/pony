@@ -37,3 +37,26 @@ class TestLazy(unittest.TestCase):
         self.assertIn(X.b, x1._vals_)
         self.assertNotIn(X.b, x2._vals_)
         self.assertNotIn(X.b, x3._vals_)
+
+    @db_session
+    def test_lazy_3(self):  # coverage of https://github.com/ponyorm/pony/issues/49
+        X = self.X
+        x1 = X.get(b='first')
+        self.assertTrue(X._bits_[X.b] & x1._rbits_)
+        self.assertIn(X.b, x1._vals_)
+
+    @db_session
+    def test_lazy_4(self):  # coverage of https://github.com/ponyorm/pony/issues/49
+        X = self.X
+        result = select(x for x in X if x.b == 'first')[:]
+        for x in result:
+            self.assertTrue(X._bits_[X.b] & x._rbits_)
+            self.assertIn(X.b, x._vals_)
+
+    @db_session
+    def test_lazy_5(self):  # coverage of https://github.com/ponyorm/pony/issues/49
+        X = self.X
+        result = select(x for x in X if x.b == 'first' if count() > 0)[:]
+        for x in result:
+            self.assertFalse(X._bits_[X.b] & x._rbits_)
+            self.assertNotIn(X.b, x._vals_)
