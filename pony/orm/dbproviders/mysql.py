@@ -89,6 +89,7 @@ class MySQLProvider(DBAPIProvider):
     index_if_not_exists_syntax = False
     select_for_update_nowait_syntax = False
     max_time_precision = default_time_precision = 0
+    varchar_default_max_len = 255
 
     dbapi_module = MySQLdb
     dbschema_cls = MySQLSchema

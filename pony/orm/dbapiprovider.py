@@ -78,6 +78,9 @@ class DBAPIProvider(object):
     max_time_precision = default_time_precision = 6
     select_for_update_nowait_syntax = True
 
+    # SQLite and PostgreSQL does not limit varchar max length.
+    varchar_default_max_len = None
+
     dialect = None
     dbapi_module = None
     dbschema_cls = None
@@ -340,7 +343,7 @@ class BasestringConverter(Converter):
         else: max_len = attr.args[0]
         if issubclass(attr.py_type, (LongStr, LongUnicode)):
             if max_len is not None: throw(TypeError, 'Max length is not supported for CLOBs')
-        elif max_len is None: max_len = 200
+        elif max_len is None: max_len = converter.provider.varchar_default_max_len
         elif not isinstance(max_len, (int, long)):
             throw(TypeError, 'Max length argument must be int. Got: %r' % max_len)
         converter.max_len = max_len
