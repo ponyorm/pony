@@ -405,7 +405,8 @@ class SQLTranslator(ASTTranslator):
             if aggr_ast: select_ast = [ 'AGGREGATES', aggr_ast ]
         elif isinstance(translator.expr_type, EntityMeta) and not translator.parent \
              and not translator.aggregated and not translator.optimize:
-            select_ast, attr_offsets = translator.expr_type._construct_select_clause_(translator.alias, distinct)
+            select_ast, attr_offsets = translator.expr_type._construct_select_clause_(
+                                            translator.alias, distinct, translator.tableref.used_attrs)
         else: select_ast = [ distinct and 'DISTINCT' or 'ALL' ] + translator.expr_columns
         sql_ast.append(select_ast)
         sql_ast.append(translator.subquery.from_ast)
@@ -448,6 +449,10 @@ class SQLTranslator(ASTTranslator):
 
         sql_ast = ast_transformer(sql_ast)
         return sql_ast, attr_offsets
+    def get_used_attrs(translator):
+        if isinstance(translator.expr_type, EntityMeta) and not translator.aggregated and not translator.optimize:
+            return translator.tableref.used_attrs
+        return ()
     def without_order(translator):
         translator = deepcopy(translator)
         translator.order = []

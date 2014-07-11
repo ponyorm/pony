@@ -78,6 +78,9 @@ class DBAPIProvider(object):
     max_time_precision = default_time_precision = 6
     select_for_update_nowait_syntax = True
 
+    # SQLite and PostgreSQL does not limit varchar max length.
+    varchar_default_max_len = None
+
     dialect = None
     dbapi_module = None
     dbschema_cls = None
@@ -234,12 +237,12 @@ class DBAPIProvider(object):
 
     def get_converter_by_py_type(provider, py_type):
         converter_cls = provider._get_converter_type_by_py_type(py_type)
-        return converter_cls(py_type)
+        return converter_cls(provider, py_type)
 
     def get_converter_by_attr(provider, attr):
         py_type = attr.py_type
         converter_cls = provider._get_converter_type_by_py_type(py_type)
-        return converter_cls(py_type, attr)
+        return converter_cls(provider, py_type, attr)
 
     def get_pool(provider, *args, **kwargs):
         return Pool(provider.dbapi_module, *args, **kwargs)
@@ -302,7 +305,8 @@ class Pool(localbase):
 class Converter(object):
     def __deepcopy__(converter, memo):
         return converter  # Converter instances are "immutable"
-    def __init__(converter, py_type, attr=None):
+    def __init__(converter, provider, py_type, attr=None):
+        converter.provider = provider
         converter.py_type = py_type
         converter.attr = attr
         if attr is None: return
@@ -328,10 +332,10 @@ class BoolConverter(Converter):
         return "BOOLEAN"
 
 class BasestringConverter(Converter):
-    def __init__(converter, py_type, attr=None):
+    def __init__(converter, provider, py_type, attr=None):
         converter.max_len = None
         converter.db_encoding = None
-        Converter.__init__(converter, py_type, attr)
+        Converter.__init__(converter, provider, py_type, attr)
     def init(converter, kwargs):
         attr = converter.attr
         if not attr.args: max_len = None
@@ -339,7 +343,7 @@ class BasestringConverter(Converter):
         else: max_len = attr.args[0]
         if issubclass(attr.py_type, (LongStr, LongUnicode)):
             if max_len is not None: throw(TypeError, 'Max length is not supported for CLOBs')
-        elif max_len is None: max_len = 200
+        elif max_len is None: max_len = converter.provider.varchar_default_max_len
         elif not isinstance(max_len, (int, long)):
             throw(TypeError, 'Max length argument must be int. Got: %r' % max_len)
         converter.max_len = max_len
@@ -365,9 +369,9 @@ class UnicodeConverter(BasestringConverter):
         return BasestringConverter.validate(converter, val)
 
 class StrConverter(BasestringConverter):
-    def __init__(converter, py_type, attr=None):
+    def __init__(converter, provider, py_type, attr=None):
         converter.encoding = 'ascii'  # for the case when attr is None
-        BasestringConverter.__init__(converter, py_type, attr)
+        BasestringConverter.__init__(converter, provider, py_type, attr)
         converter.utf8 = is_utf8(converter.encoding)
     def init(converter, kwargs):
         BasestringConverter.init(converter, kwargs)
@@ -456,9 +460,9 @@ class RealConverter(Converter):
         return 'REAL'
 
 class DecimalConverter(Converter):
-    def __init__(converter, py_type, attr=None):
+    def __init__(converter, provider, py_type, attr=None):
         converter.exp = None  # for the case when attr is None
-        Converter.__init__(converter, py_type, attr)
+        Converter.__init__(converter, provider, py_type, attr)
     def init(converter, kwargs):
         attr = converter.attr
         args = attr.args
@@ -543,9 +547,9 @@ class DateConverter(Converter):
 
 class DatetimeConverter(Converter):
     sql_type_name = 'DATETIME'
-    def __init__(converter, py_type, attr=None):
+    def __init__(converter, provider, py_type, attr=None):
         converter.precision = None  # for the case when attr is None
-        Converter.__init__(converter, py_type, attr)
+        Converter.__init__(converter, provider, py_type, attr)
     def init(converter, kwargs):
         attr = converter.attr
         args = attr.args        
@@ -587,11 +591,11 @@ class DatetimeConverter(Converter):
         return converter.sql_type_name + '(%d)' % precision
 
 class UuidConverter(Converter):
-    def __init__(converter, py_type, attr=None):
+    def __init__(converter, provider, py_type, attr=None):
         if attr is not None and attr.auto:
             attr.auto = False
             if not attr.default: attr.default = uuid4
-        Converter.__init__(converter, py_type, attr)
+        Converter.__init__(converter, provider, py_type, attr)
     def validate(converter, val):
         if isinstance(val, UUID): return val
         if isinstance(val, buffer): return UUID(bytes=val)

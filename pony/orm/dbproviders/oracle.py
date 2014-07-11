@@ -277,6 +277,7 @@ class OraProvider(DBAPIProvider):
     max_name_len = 30
     table_if_not_exists_syntax = False
     index_if_not_exists_syntax = False
+    varchar_default_max_len = 1000
 
     dbapi_module = cx_Oracle
     dbschema_cls = OraSchema
