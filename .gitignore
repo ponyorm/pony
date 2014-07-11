@@ -1,6 +1,7 @@
 *.pyc
 *.sqlite
-/pony/tests/.coverage
-/pony/tests/coverage.bat
-/pony/tests/htmlcov/*.*
+.idea
+/pony/orm/tests/.coverage
+/pony/orm/tests/coverage.bat
+/pony/orm/tests/htmlcov/*.*
 /MANIFEST
