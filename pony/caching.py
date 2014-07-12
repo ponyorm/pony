@@ -85,9 +85,8 @@ def normalize(key, value="", expire=None):
 
 @decorator
 def with_lock(func, cache, *args, **kwargs):
-    cache._lock.acquire()
-    try: return func(cache, *args, **kwargs)
-    finally: cache._lock.release()
+    with cache._lock:
+        return func(cache, *args, **kwargs)
 
 DEFAULT_MAX_DATA_SIZE = 64*1024*1024  # 64 Megabytes
 

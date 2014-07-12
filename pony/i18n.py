@@ -57,8 +57,7 @@ def reload():
     global last_check_time
     now = time()
     if abs(now - last_check_time) <= options.RELOADING_CHECK_INTERVAL: return
-    lock.acquire()
-    try:
+    with lock:
         if abs(now - last_check_time) <= options.RELOADING_CHECK_INTERVAL: return
         last_check_time = now
         changed = {}
@@ -88,7 +87,6 @@ def reload():
         finally: log(type='RELOAD:end', severity=DEBUG,
                      text=erroneous and 'Reloaded with errors' or 'Reloaded successfully',
                      success=not erroneous, erroneous=erroneous)
-    finally: lock.release()
 
 def parse(lines):
     d = {}

@@ -287,11 +287,9 @@ class TkThread(threading.Thread):
     def run(self):
         global tk_thread
         time.sleep(.5)
-        tk_lock.acquire()
-        try:
+        with tk_lock:
             if tk_thread: return
             tk_thread = self
-        finally: tk_lock.release()
         try:
             self.root = Tk()
             self.window = TkMainWindow(self.root)
@@ -300,11 +298,9 @@ class TkThread(threading.Thread):
             self.window.check_data()
             self.root.mainloop()
         finally:
-            tk_lock.acquire()
-            try:
+            with tk_lock:
                 assert tk_thread is self
                 tk_thread = None
-            finally: tk_lock.release()
 
 def show_gui():
     if tk_thread: return

@@ -462,12 +462,10 @@ class Database(object):
         else: stats[sql] = QueryStat(sql, query_start_time)
     def merge_local_stats(database):
         setdefault = database.global_stats.setdefault
-        database.global_stats_lock.acquire()
-        try:
+        with database.global_stats_lock:
             for sql, stat in database._dblocal.stats.iteritems():
                 global_stat = setdefault(sql, stat)
                 if global_stat is not stat: global_stat.merge(stat)
-        finally: database.global_stats_lock.release()
         database._dblocal.stats.clear()
     @cut_traceback
     def get_connection(database):

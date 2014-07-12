@@ -184,8 +184,7 @@ class Route(object):
     def register(route):
         url_map = route._get_url_map()
         qdict = dict(route.qlist)
-        registry_lock.acquire()
-        try:
+        with registry_lock:
             for route, _, _ in get_routes(route.path, qdict, route.method, route.host, route.port):
                 if url_map != route._get_url_map() or route.method != route.method: continue
                 if pony.MODE != 'INTERACTIVE':
@@ -201,7 +200,6 @@ class Route(object):
             route.list.insert(0, route)
             if route.system and route not in system_routes: system_routes.append(route)
             else: user_routes.append(route)
-        finally: registry_lock.release()
 
 def get_routes(path, qdict, method, host, port):
     # registry_lock.acquire()
@@ -404,16 +402,12 @@ def remove(x, method=None, host=None, port=None):
     if isinstance(x, basestring):
         path, qlist = split_url(x, strict_parsing=True)
         qdict = dict(qlist)
-        registry_lock.acquire()
-        try:
+        with registry_lock:
             for route, _, _ in get_routes(path, qdict, method, host, port): _remove(route)
-        finally: registry_lock.release()
     elif hasattr(x, 'routes'):
         assert host is None and port is None
-        registry_lock.acquire()
-        try:
+        with registry_lock:
             for route in list(x.routes): _remove(route)
-        finally: registry_lock.release()
     else: raise ValueError('This object is not bound to url: %r' % x)
 
 def _remove(route):
@@ -425,12 +419,10 @@ def _remove(route):
 
 @on_reload
 def clear():
-    registry_lock.acquire()
-    try:
+    with registry_lock:
         _clear(*registry)
         for route in system_routes: route.register()
         del(user_routes[:])
-    finally: registry_lock.release()
 
 def _clear(dict, list1, list2):
     url_cache.clear()
