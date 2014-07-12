@@ -100,7 +100,8 @@ class Memcache(object):
         list.prev = list.next = list
         list.access = int(gettime())
         cache._data_size = 0
-        if not isinstance(max_data_size, int): raise TypeError, 'Max data size must be int. Got: %s' % type(max_data_size).__name__
+        if not isinstance(max_data_size, int):
+            raise TypeError('Max data size must be int. Got: %s' % type(max_data_size).__name__)
         cache.max_data_size = max_data_size
         cache._stat_get_hits = cache._stat_get_misses = cache._stat_evictions = 0
         cache._stat_cmd_get = cache._stat_cmd_set = 0

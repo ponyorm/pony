@@ -582,7 +582,7 @@ class Database(object):
         provider = database.provider
         t = time()
         try: new_id = provider.execute(cursor, sql, arguments, returning_id)
-        except Exception, e:
+        except Exception as e:
             connection = cache.reconnect(e)
             cursor = connection.cursor()
             if debug: log_sql(sql, arguments)
@@ -928,7 +928,7 @@ class SessionCache(object):
         elif cache.immediate and not cache.in_transaction:
             provider = cache.database.provider
             try: provider.set_transaction_mode(connection, cache)  # can set cache.in_transaction
-            except Exception, e: connection = cache.reconnect(e)
+            except Exception as e: connection = cache.reconnect(e)
         if not cache.noflush_counter and cache.modified: cache.flush()
         return connection
     def commit(cache):
@@ -1260,7 +1260,7 @@ class Attribute(object):
                     try:
                         if from_db: return converter.sql2py(val)
                         else: return converter.validate(val)
-                    except UnicodeDecodeError, e:
+                    except UnicodeDecodeError as e:
                         vrepr = repr(val)
                         if len(vrepr) > 100: vrepr = vrepr[:97] + '...'
                         raise ValueError('Value for attribute %s cannot be converted to unicode: %s' % (attr, vrepr))
@@ -3867,12 +3867,12 @@ class Entity(object):
         try:
             if auto_pk: new_id = database._exec_sql(sql, arguments, returning_id=True)
             else: database._exec_sql(sql, arguments)
-        except IntegrityError, e:
+        except IntegrityError as e:
             msg = " ".join(tostring(arg) for arg in e.args)
             throw(TransactionIntegrityError,
                   'Object %r cannot be stored in the database. %s: %s'
                   % (obj, e.__class__.__name__, msg), e)
-        except DatabaseError, e:
+        except DatabaseError as e:
             msg = " ".join(tostring(arg) for arg in e.args)
             throw(UnexpectedError, 'Object %r cannot be stored in the database. %s: %s'
                                    % (obj, e.__class__.__name__, msg), e)
@@ -4092,7 +4092,7 @@ def extract_vars(extractors, globals, locals, cells=None):
         if src == '.0': value = locals['.0']
         else:
             try: value = eval(code, globals, locals)
-            except Exception, cause: raise ExprEvalError(src, cause)
+            except Exception as cause: raise ExprEvalError(src, cause)
             if src == 'None' and value is not None: throw(TranslationError)
             if src == 'True' and value is not True: throw(TranslationError)
             if src == 'False' and value is not False: throw(TranslationError)

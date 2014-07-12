@@ -46,7 +46,7 @@ def do_test(provider_name, raw_server_version):
     core.Database = orm.Database = testutils.TestDatabase
     sys.modules.pop(module_name, None)
     try: __import__(module_name)
-    except ImportError, e:
+    except ImportError as e:
         print()
         print('ImportError for database provider %s:\n%s' % (provider_name, e))
         print()

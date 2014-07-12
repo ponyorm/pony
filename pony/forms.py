@@ -461,7 +461,7 @@ class Text(BaseWidget):
                 field._auto_error_text = html('@{Invalid data}')
                 return None
         try: return str2py(value, field.type)
-        except ValidationError, e:
+        except ValidationError as e:
             err_msg = e.args[0]
             translated_msg = html('@{%s}' % err_msg)  # possible template injection?
             field._auto_error_text = translated_msg

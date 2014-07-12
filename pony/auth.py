@@ -40,7 +40,7 @@ class Session(object):
         else: session.__dict__[attr] = value
     def __delattr__(session, attr):
         try: del session.__dict__[attr]
-        except KeyError: raise AttributeError, attr
+        except KeyError: raise AttributeError(attr)
     def __contains__(session, key):
         return key in session.__dict__
     def __iter__(session):

@@ -7,7 +7,7 @@ def raises_exception(exc_class, msg=None):
             try:
                 func(self, *args, **kwargs)
                 self.assert_(False, "expected exception %s wasn't raised" % exc_class.__name__)
-            except exc_class, e:
+            except exc_class as e:
                 if not e.args: self.assertEqual(msg, None)
                 elif msg is not None:
                     self.assertEqual(e.args[0], msg, "incorrect exception message. expected '%s', got '%s'" % (msg, e.args[0]))

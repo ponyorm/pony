@@ -218,7 +218,7 @@ if LOG_TO_SQLITE:
         def execute_query(thread, sql, params, result, lock):
             try:
                 try: cursor = thread.connection.execute(sql, params)
-                except Exception, e:
+                except Exception as e:
                     result.append(e); return
                 for row in cursor:
                     record = cPickle.loads(str(row[-1]).decode('zip'))

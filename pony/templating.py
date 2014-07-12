@@ -897,7 +897,7 @@ def markup_from_file_i18n(str_cls, filename, encoding=None):
         for lang in http.request.languages:
             i18n_filename = '%s-%s%s' % (root, lang, ext)
             try: return markup_from_file(str_cls, i18n_filename, encoding)
-            except OSError, IOError: pass
+            except (OSError, IOError): pass
     return markup_from_file(str_cls, filename, encoding)
 
 def _template(str_cls, default_ext, text=None, filename=None, globals=None, locals=None, encoding=None, keep_indent=None):

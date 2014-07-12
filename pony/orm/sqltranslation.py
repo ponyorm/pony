@@ -1010,7 +1010,7 @@ class MethodMonad(Monad):
     def __call__(monad, *args, **kwargs):
         method = getattr(monad.parent, 'call_' + monad.attrname)
         try: return method(*args, **kwargs)
-        except TypeError, exc: reraise_improved_typeerror(exc, method.__name__, monad.attrname)
+        except TypeError as exc: reraise_improved_typeerror(exc, method.__name__, monad.attrname)
 
     def contains(monad, item, not_in=False): raise_forgot_parentheses(monad)
     def nonzero(monad): raise_forgot_parentheses(monad)
@@ -1611,7 +1611,7 @@ class FuncMonad(Monad):
         for value in kwargs.values():
             assert isinstance(value, translator.Monad)
         try: return monad.call(*args, **kwargs)
-        except TypeError, exc:
+        except TypeError as exc:
             func = monad.func
             if type(func) is tuple: func = func[0]
             reraise_improved_typeerror(exc, 'call', func.__name__)

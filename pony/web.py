@@ -141,7 +141,7 @@ def url(func, *args, **kwargs):
     routes = getattr(func, 'routes')
     if routes is None: raise ValueError('Cannot create url for this object :%s' % func)
     try: keyparams = func.dummy_func(*args, **kwargs).copy()
-    except TypeError, e: raise TypeError(e.args[0].replace('<lambda>', func.__name__, 1))
+    except TypeError as e: raise TypeError(e.args[0].replace('<lambda>', func.__name__, 1))
     names, argsname, keyargsname, defaults, converters = func.argspec
     indexparams = map(keyparams.pop, names)
     indexparams.extend(keyparams.pop(argsname, ()))
@@ -365,7 +365,7 @@ def app(environ):
             finally:
                 if auth.local.ticket and not request.form_processed and request.form_processed is not None:
                     auth.unexpire_ticket()
-        except HttpException, e:
+        except HttpException as e:
             status, headers, result = e.status, e.headers, e.content
             result, headers = normalize_result(result, headers)
         except BdbQuit: raise
@@ -559,7 +559,7 @@ class Http(object):
             except UnicodeDecodeError: raise Http400BadRequest
         elif hasattr(key, '__iter__'): # sequence of field names
             return tuple(map(self.__getitem__, key))
-        else: raise KeyError, key
+        else: raise KeyError(key)
 
     class _Params(object):
         def __getattr__(self, attr): return local.request.params.get(attr)

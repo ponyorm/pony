@@ -512,7 +512,7 @@ def test():
         ast1 = compiler.parse(line).node.nodes[0].expr
         ast1.code.quals[0].iter.name = outmost_iterable_name
         try: ast2 = Decompiler(code).ast
-        except Exception, e:
+        except Exception as e:
             print()
             print(line)
             print()
