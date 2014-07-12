@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import types
 from compiler import ast
 from itertools import izip
@@ -95,7 +97,7 @@ class Decompiler(object):
                     else: arg = [oparg]
                 else: arg = []
                 opname = opnames[op].replace('+', '_')
-                # print opname, arg, decompiler.stack
+                # print(opname, arg, decompiler.stack)
                 method = getattr(decompiler, opname, None)
                 if method is None: throw(NotImplementedError('Unsupported operation: %s' % opname))
                 decompiler.pos = i
@@ -511,24 +513,24 @@ def test():
         ast1.code.quals[0].iter.name = outmost_iterable_name
         try: ast2 = Decompiler(code).ast
         except Exception, e:
-            print
-            print line
-            print
-            print ast1
-            print
+            print()
+            print(line)
+            print()
+            print(ast1)
+            print()
             dis.dis(code)
             raise
         if str(ast1) != str(ast2):
-            print
-            print line
-            print
-            print ast1
-            print
-            print ast2
-            print
+            print()
+            print(line)
+            print()
+            print(ast1)
+            print()
+            print(ast2)
+            print()
             dis.dis(code)
             break
-        else: print 'OK: %s' % line
-    else: print 'Done!'
+        else: print('OK: %s' % line)
+    else: print('Done!')
 
 if __name__ == '__main__': test()

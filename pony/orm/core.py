@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import re, sys, types, logging
 from compiler import ast, parse
 from cPickle import loads, dumps
@@ -78,7 +80,7 @@ def log_orm(msg):
     if logging.root.handlers:
         orm_logger.log(orm_log_level, msg)
     else:
-        print msg
+        print(msg)
 
 def log_sql(sql, arguments=None):
     if type(arguments) is list:
@@ -86,12 +88,12 @@ def log_sql(sql, arguments=None):
     if logging.root.handlers:
         sql_logger.log(orm_log_level, sql)  # arguments can hold sensitive information
     else:
-        print sql
+        print(sql)
         if not arguments: pass
         elif type(arguments) is list:
-            for args in arguments: print args2str(args)
-        else: print args2str(arguments)
-        print
+            for args in arguments: print(args2str(args))
+        else: print(args2str(arguments))
+        print()
 
 def args2str(args):
     if isinstance(args, (tuple, list)):
@@ -4534,24 +4536,24 @@ class QueryResult(list):
             for col_num, max_len in remaining_columns.items():
                 width_dict[col_num] = base_len
 
-        print strjoin('|', (strcut(colname, width_dict[i]) for i, colname in enumerate(col_names)))
-        print strjoin('+', ('-' * width_dict[i] for i in xrange(len(col_names))))
+        print(strjoin('|', (strcut(colname, width_dict[i]) for i, colname in enumerate(col_names))))
+        print(strjoin('+', ('-' * width_dict[i] for i in xrange(len(col_names)))))
         for row in rows:
-            print strjoin('|', (strcut(item, width_dict[i]) for i, item in enumerate(row)))
+            print(strjoin('|', (strcut(item, width_dict[i]) for i, item in enumerate(row))))
 
 @cut_traceback
 def show(entity):
     x = entity
     if isinstance(x, EntityMeta):
-        print x.describe()
+        print(x.describe())
     elif isinstance(x, Entity):
-        print 'instance of ' + x.__class__.__name__
+        print('instance of ' + x.__class__.__name__)
         # width = options.CONSOLE_WIDTH
         # for attr in x._attrs_:
         #     if attr.is_collection or attr.lazy: continue
         #     value = str(attr.__get__(x)).replace('\n', ' ')
-        #     print '  %s: %s' % (attr.name, strcut(value, width-len(attr.name)-4))
-        # print
+        #     print('  %s: %s' % (attr.name, strcut(value, width-len(attr.name)-4)))
+        # print()
         QueryResult([ x ], x.__class__, None).show()
     elif isinstance(x, (basestring, types.GeneratorType)):
         select(x).show()

@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 from decimal import Decimal
 from datetime import datetime
 
@@ -161,126 +163,126 @@ def populate_database():
 @db_session
 def test_queries():
 
-    print 'All USA customers'
-    print
+    print('All USA customers')
+    print()
     result = select(c for c in Customer if c.country == 'USA')[:]
 
-    print result
-    print
+    print(result)
+    print()
 
-    print 'The number of customers for each country'
-    print
+    print('The number of customers for each country')
+    print()
     result = select((c.country, count(c)) for c in Customer)[:]
 
-    print result
-    print
+    print(result)
+    print()
 
-    print 'Max product price'
-    print
+    print('Max product price')
+    print()
     result = max(p.price for p in Product)
 
-    print result
-    print
+    print(result)
+    print()
 
-    print 'Max SSD price'
-    print
+    print('Max SSD price')
+    print()
     result = max(p.price for p in Product for cat in p.categories if cat.name == 'Solid State Drives')
 
-    print result
-    print
+    print(result)
+    print()
 
-    print 'Three most expensive products:'
-    print
+    print('Three most expensive products:')
+    print()
     result = select(p for p in Product).order_by(desc(Product.price))[:3]
 
-    print result
-    print
+    print(result)
+    print()
 
-    print 'Out of stock products'
-    print
+    print('Out of stock products')
+    print()
     result = select(p for p in Product if p.quantity == 0)[:]
 
-    print result
-    print
+    print(result)
+    print()
 
-    print 'Most popular product'
-    print
+    print('Most popular product')
+    print()
     result = select(p for p in Product).order_by(lambda p: desc(sum(p.order_items.quantity))).first()
 
-    print result
-    print
+    print(result)
+    print()
 
-    print 'Products that have never been ordered'
-    print
+    print('Products that have never been ordered')
+    print()
     result = select(p for p in Product if not p.order_items)[:]
 
-    print result
-    print
+    print(result)
+    print()
 
-    print 'Customers who made several orders'
-    print
+    print('Customers who made several orders')
+    print()
     result = select(c for c in Customer if count(c.orders) > 1)[:]
 
-    print result
-    print
+    print(result)
+    print()
 
-    print 'Three most valuable customers'
-    print
+    print('Three most valuable customers')
+    print()
     result = select(c for c in Customer).order_by(lambda c: desc(sum(c.orders.total_price)))[:3]
     
-    print result
-    print
+    print(result)
+    print()
 
-    print 'Customers whose orders were shipped'
-    print
+    print('Customers whose orders were shipped')
+    print()
     result = select(c for c in Customer if SHIPPED in c.orders.state)[:]
 
-    print result
-    print
+    print(result)
+    print()
 
-    print 'The same query with the INNER JOIN instead of IN'
-    print
+    print('The same query with the INNER JOIN instead of IN')
+    print()
     result = select(c for c in Customer if JOIN(SHIPPED in c.orders.state))[:]
 
-    print result
-    print
+    print(result)
+    print()
 
-    print 'Customers with no orders'
-    print
+    print('Customers with no orders')
+    print()
     result = select(c for c in Customer if not c.orders)[:]
 
-    print result
-    print
+    print(result)
+    print()
 
-    print 'The same query with the LEFT JOIN instead of NOT EXISTS'
-    print
+    print('The same query with the LEFT JOIN instead of NOT EXISTS')
+    print()
     result = left_join(c for c in Customer for o in c.orders if o is None)[:]
 
-    print result
-    print
+    print(result)
+    print()
 
-    print 'Customers which ordered several different tablets'
-    print
+    print('Customers which ordered several different tablets')
+    print()
     result = select(c for c in Customer
                       for p in c.orders.items.product
                       if 'Tablets' in p.categories.name and count(p) > 1)[:]
 
-    print result
-    print
+    print(result)
+    print()
 
-    print 'Customers which ordered several products from the same category'
-    print
+    print('Customers which ordered several products from the same category')
+    print()
     result = select((customer, category.name)
                     for customer in Customer
                     for product in customer.orders.items.product
                     for category in product.categories
                     if count(product) > 1)[:]    
 
-    print result
-    print
+    print(result)
+    print()
 
-    print 'Customers which ordered several products from the same category in the same order'
-    print
+    print('Customers which ordered several products from the same category in the same order')
+    print()
     result = select((customer, order, category.name)
                     for customer in Customer
                     for order in customer.orders
@@ -288,30 +290,30 @@ def test_queries():
                     for category in product.categories
                     if count(product) > 1)[:]
 
-    print result
-    print
+    print(result)
+    print()
 
-    print 'Products whose price varies over time'
-    print
+    print('Products whose price varies over time')
+    print()
     result = select(p.name for p in Product if count(p.order_items.price) > 1)[:]
 
-    print result
-    print
+    print(result)
+    print()
 
-    print 'The same query, but with min and max price for each product'
-    print
+    print('The same query, but with min and max price for each product')
+    print()
     result = select((p.name, min(p.order_items.price), max(p.order_items.price))
                     for p in Product if count(p.order_items.price) > 1)[:]
 
-    print result
-    print
+    print(result)
+    print()
 
-    print 'Orders with a discount (order total price < sum of order item prices)'
-    print
+    print('Orders with a discount (order total price < sum of order item prices)')
+    print()
     result = select(o for o in Order if o.total_price < sum(o.items.price * o.items.quantity))[:]
 
-    print result
-    print
+    print(result)
+    print()
 
 
 if __name__ == '__main__':
