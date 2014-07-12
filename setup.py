@@ -50,8 +50,8 @@ download_url = "http://pypi.python.org/pypi/pony/"
 
 def main():
     python_version = sys.version_info
-    if python_version < (2, 5) or python_version >= (2, 8):
-        s = "Sorry, but %s %s requires Python version 2.5, 2.6 or 2.7. You have version %s"
+    if python_version < (2, 6) or python_version >= (2, 8):
+        s = "Sorry, but %s %s requires Python version 2.6 or 2.7. You have version %s"
         print s % (name, version, python_version.split(' ', 1)[0])
         sys.exit(1)
 
