@@ -1,5 +1,3 @@
-from __future__ import with_statement
-
 import unittest
 from datetime import date, datetime
 from pony.orm.core import *

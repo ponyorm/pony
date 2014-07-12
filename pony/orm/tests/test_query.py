@@ -1,5 +1,3 @@
-from __future__ import with_statement
-
 import unittest
 from datetime import date
 from decimal import Decimal

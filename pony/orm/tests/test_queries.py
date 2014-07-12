@@ -1,5 +1,3 @@
-from __future__ import with_statement
-
 import re, os, os.path, sys, imp
 
 from pony import orm

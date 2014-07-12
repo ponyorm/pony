@@ -1,5 +1,3 @@
-from __future__ import with_statement
-
 import re, sys, types, logging
 from compiler import ast, parse
 from cPickle import loads, dumps

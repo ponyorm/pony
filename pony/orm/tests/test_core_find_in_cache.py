@@ -1,5 +1,3 @@
-from __future__ import with_statement
-
 import unittest
 from pony.orm.tests.testutils import raises_exception
 from pony.orm import *

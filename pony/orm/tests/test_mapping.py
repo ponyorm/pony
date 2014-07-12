@@ -1,5 +1,3 @@
-from __future__ import with_statement
-
 import unittest
 from pony.orm.core import *
 from pony.orm.dbschema import DBSchemaError
