@@ -29,7 +29,7 @@ class TestDBSession(unittest.TestCase):
         db_session(1, 2, 3, a=10, b=20)
 
     def test_db_session_3(self):
-        self.assertIs(db_session, db_session())
+        self.assertTrue(db_session is db_session())
 
     def test_db_session_4(self):
         with db_session:
@@ -332,7 +332,7 @@ class TestDBSessionScope(unittest.TestCase):
     def test5(self):
         with db_session:
             g1 = Group[1]
-        self.assertAlmostEquals(str(g1.students), 'StudentSet([...])')
+        self.assertEqual(str(g1.students), 'StudentSet([...])')
     @raises_exception(DatabaseSessionIsOver, 'Cannot load collection Group[1].students: the database session is over')
     def test6(self):
         with db_session:

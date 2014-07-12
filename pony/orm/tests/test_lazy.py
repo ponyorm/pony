@@ -19,8 +19,8 @@ class TestLazy(unittest.TestCase):
     def test_lazy_1(self):
         X = self.X
         x1 = X[1]
-        self.assertIn(X.a, x1._vals_)
-        self.assertNotIn(X.b, x1._vals_)
+        self.assertTrue(X.a in x1._vals_)
+        self.assertTrue(X.b not in x1._vals_)
         b = x1.b
         self.assertEquals(b, 'first')
 
@@ -30,20 +30,20 @@ class TestLazy(unittest.TestCase):
         x1 = X[1]
         x2 = X[2]
         x3 = X[3]
-        self.assertNotIn(X.b, x1._vals_)
-        self.assertNotIn(X.b, x2._vals_)
-        self.assertNotIn(X.b, x3._vals_)
+        self.assertTrue(X.b not in x1._vals_)
+        self.assertTrue(X.b not in x2._vals_)
+        self.assertTrue(X.b not in x3._vals_)
         b = x1.b
-        self.assertIn(X.b, x1._vals_)
-        self.assertNotIn(X.b, x2._vals_)
-        self.assertNotIn(X.b, x3._vals_)
+        self.assertTrue(X.b in x1._vals_)
+        self.assertTrue(X.b not in x2._vals_)
+        self.assertTrue(X.b not in x3._vals_)
 
     @db_session
     def test_lazy_3(self):  # coverage of https://github.com/ponyorm/pony/issues/49
         X = self.X
         x1 = X.get(b='first')
         self.assertTrue(X._bits_[X.b] & x1._rbits_)
-        self.assertIn(X.b, x1._vals_)
+        self.assertTrue(X.b, x1._vals_)
 
     @db_session
     def test_lazy_4(self):  # coverage of https://github.com/ponyorm/pony/issues/49
@@ -51,7 +51,7 @@ class TestLazy(unittest.TestCase):
         result = select(x for x in X if x.b == 'first')[:]
         for x in result:
             self.assertTrue(X._bits_[X.b] & x._rbits_)
-            self.assertIn(X.b, x._vals_)
+            self.assertTrue(X.b in x._vals_)
 
     @db_session
     def test_lazy_5(self):  # coverage of https://github.com/ponyorm/pony/issues/49
@@ -59,4 +59,4 @@ class TestLazy(unittest.TestCase):
         result = select(x for x in X if x.b == 'first' if count() > 0)[:]
         for x in result:
             self.assertFalse(X._bits_[X.b] & x._rbits_)
-            self.assertNotIn(X.b, x._vals_)
+            self.assertTrue(X.b not in x._vals_)
