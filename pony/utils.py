@@ -80,17 +80,6 @@ def decorator_with_params(dec):
         return decorator(dec(*args, **kwargs))
     return parameterized_decorator
 
-@decorator_with_params
-def with_headers(**headers):
-    def new_dec(func, *args, **kwargs):
-        print 'headers:', headers
-        return func(*args, **kwargs)
-    return new_dec
-
-@with_headers(x=10, y=20)
-def mul(a, b):
-    return a * b
-
 @decorator
 def cut_traceback(func, *args, **kwargs):
     if not (pony.MODE == 'INTERACTIVE' and options.CUT_TRACEBACK):
