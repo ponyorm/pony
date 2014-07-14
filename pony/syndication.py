@@ -1,17 +1,21 @@
 import time, rfc822
 
-from pony.thirdparty import etree
-from pony.thirdparty.etree import Element, SubElement, tostring
+from xml.etree.cElementTree import Element, SubElement, tostring
+from xml.etree.ElementTree import _namespace_map
 
 from pony.templating import Html, StrHtml
 
 ns = 'http://www.w3.org/2005/Atom'
-nsmap = getattr(etree, '_namespace_map', {})
-nsmap.setdefault(ns, 'atom')
+_namespace_map.setdefault(ns, 'atom')
 
-nsmap_keyargs = {}
-if getattr(etree, 'LXML_VERSION', (0, 0, 0, 0)) >= (1, 3, 7, 0):
-    nsmap_keyargs = {'nsmap': {'atom':ns}}
+# nsmap_keyargs = {}
+# if getattr(etree, 'LXML_VERSION', (0, 0, 0, 0)) >= (1, 3, 7, 0):
+#     nsmap_keyargs = {'nsmap': {'atom':ns}}
+
+atomtags_cache = {}
+
+def atomtag(tag):
+    return nstags_cache.get(tag) or nstags_cache.setdefault(tag, '{%s}%s' % (ns, tag))
 
 def utc(dt):
     if getattr(dt, 'tzinfo', None) is None: return dt
@@ -30,10 +34,10 @@ def atom_author(author):
         except TypeError: raise TypeError('Inappropriate author value: %r' % author)
         author = (list(author) + [ None, None ])[:3]
     name, uri, email = author
-    result = Element('{http://www.w3.org/2005/Atom}author')
-    if name: SubElement(result, '{http://www.w3.org/2005/Atom}name').text = name
-    if uri: SubElement(result, '{http://www.w3.org/2005/Atom}uri').text = uri
-    if email: SubElement(result, '{http://www.w3.org/2005/Atom}email').text = email
+    result = Element(atomtag('author'))
+    if name: SubElement(result, atomtag('name')).text = name
+    if uri: SubElement(result, atomtag('uri')).text = uri
+    if email: SubElement(result, atomtag('email')).text = email
     return result
 
 def rss2_author(author):
@@ -81,27 +85,27 @@ class Feed(object):
     def atom(feed, pretty_print=True):
         indent = pretty_print and '\n  ' or ''
 
-        xml = Element('{http://www.w3.org/2005/Atom}feed', **nsmap_keyargs)
+        xml = Element(atomtag('feed')) #, **nsmap_keyargs) # lxml
         xml.text = indent
         if feed.base: xml.set('{http://www.w3.org/XML/1998/namespace}base', feed.base)
         if feed.language: xml.set('{http://www.w3.org/XML/1998/namespace}lang', feed.language)
 
-        title = SubElement(xml, '{http://www.w3.org/2005/Atom}title')
+        title = SubElement(xml, atomtag('title'))
         set_atom_text(title, feed.title)
 
         if feed.subtitle:
-            subtitle = SubElement(xml, '{http://www.w3.org/2005/Atom}summary')
+            subtitle = SubElement(xml, atomtag('summary'))
             set_atom_text(subtitle, feed.subtitle)
 
-        link = SubElement(xml, '{http://www.w3.org/2005/Atom}link', href=feed.link)
+        link = SubElement(xml, atomtag('link'), href=feed.link)
 
         if feed.feed_link:
-            feed_link = SubElement(xml, '{http://www.w3.org/2005/Atom}link', rel='self', href=feed.feed_link)
+            feed_link = SubElement(xml, atomtag('link'), rel='self', href=feed.feed_link)
 
-        updated = SubElement(xml, '{http://www.w3.org/2005/Atom}updated')
+        updated = SubElement(xml, atomtag('updated'))
         updated.text = atom_date(feed.updated)
 
-        id = SubElement(xml, '{http://www.w3.org/2005/Atom}id')
+        id = SubElement(xml, atomtag('id'))
         id.text = feed.id
 
         if feed.author:
@@ -109,15 +113,15 @@ class Feed(object):
             xml.append(author)
 
         if feed.rights:
-            rights = SubElement(xml, '{http://www.w3.org/2005/Atom}rights')
+            rights = SubElement(xml, atomtag('rights'))
             set_atom_text(rights, feed.rights)
 
         if feed.icon:
-            icon = SubElement(xml, '{http://www.w3.org/2005/Atom}icon')
+            icon = SubElement(xml, atomtag('icon'))
             icon.text = feed.icon
 
         if feed.logo:
-            logo = SubElement(xml, '{http://www.w3.org/2005/Atom}logo')
+            logo = SubElement(xml, atomtag('logo'))
             logo.text = feed.logo
 
         for entry in feed.entries:
@@ -184,33 +188,33 @@ class Entry(object):
     def atom(entry, pretty_print=True):
         indent = pretty_print and '\n    ' or ''
 
-        xml = Element('{http://www.w3.org/2005/Atom}entry', **nsmap_keyargs)
+        xml = Element(atomtag('entry')) #, **nsmap_keyargs) # lxml
         xml.text = indent
         if entry.base: xml.set('{http://www.w3.org/XML/1998/namespace}base', entry.base)
         if entry.language: xml.set('{http://www.w3.org/XML/1998/namespace}lang', entry.language)
 
-        link = SubElement(xml, '{http://www.w3.org/2005/Atom}link', href=entry.link)
+        link = SubElement(xml, atomtag('link'), href=entry.link)
 
-        title = SubElement(xml, '{http://www.w3.org/2005/Atom}title')
+        title = SubElement(xml, atomtag('title'))
         set_atom_text(title, entry.title)
 
-        updated = SubElement(xml, '{http://www.w3.org/2005/Atom}updated')
+        updated = SubElement(xml, atomtag('updated'))
         updated.text = atom_date(entry.updated)
 
-        id = SubElement(xml, '{http://www.w3.org/2005/Atom}id')
+        id = SubElement(xml, atomtag('id'))
         id.text = entry.id
 
         if entry.summary:
-            summary = SubElement(xml, '{http://www.w3.org/2005/Atom}summary')
+            summary = SubElement(xml, atomtag('summary'))
             set_atom_text(summary, entry.summary)
 
         if entry.content:
-            content = SubElement(xml, '{http://www.w3.org/2005/Atom}content')
+            content = SubElement(xml, atomtag('content'))
             set_atom_text(content, entry.content)
 
         if entry.enclosure:
             href, media_type, length = entry.enclosure
-            enclosure = SubElement(xml, '{http://www.w3.org/2005/Atom}link',
+            enclosure = SubElement(xml, atomtag('link'),
                                    rel='enclosure', href=href, type=media_type, length=length)
 
         if entry.author:
@@ -218,11 +222,11 @@ class Entry(object):
             xml.append(author)
 
         if entry.rights:
-            rights = SubElement(xml, '{http://www.w3.org/2005/Atom}rights')
+            rights = SubElement(xml, atomtag('rights'))
             set_atom_text(rights, entry.rights)
 
         if entry.published:
-            published = SubElement(xml, '{http://www.w3.org/2005/Atom}published')
+            published = SubElement(xml, atomtag('published'))
             published.text = atom_date(entry.published)
 
         for child in xml: child.tail = indent

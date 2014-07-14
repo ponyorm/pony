@@ -13,6 +13,7 @@ from collections import defaultdict
 from copy import deepcopy, _deepcopy_dispatch
 from functools import update_wrapper
 from compiler import ast
+from xml.etree import cElementTree
 
 # deepcopy instance method patch for Python < 2.7:
 if types.MethodType not in _deepcopy_dispatch:
@@ -24,9 +25,6 @@ import pony
 from pony import options
 
 from pony.thirdparty.decorator import decorator as _decorator
-
-try: from pony.thirdparty import etree
-except ImportError: etree = None
 
 if pony.MODE.startswith('GAE-'): localbase = object
 else: from threading import local as localbase
@@ -409,7 +407,7 @@ def tostring(x):
     if hasattr(x, '__unicode__'):
         try: return unicode(x)
         except: pass
-    if etree is not None and hasattr(x, 'makeelement'): return etree.tostring(x)
+    if hasattr(x, 'makeelement'): return cElementTree.tostring(x)
     try: return str(x)
     except: pass
     try: return repr(x)
