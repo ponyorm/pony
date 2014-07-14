@@ -1,11 +1,9 @@
-import re, os, os.path, sys, threading, hmac, cPickle
+import re, os, os.path, sys, threading, hmac, cPickle, json
 from base64 import b64encode, b64decode
 from binascii import hexlify
 from random import random
 from time import time, sleep
 from urllib import quote_plus, unquote_plus
-
-from pony.thirdparty import simplejson
 
 import pony
 from pony import options, httputils
@@ -264,13 +262,13 @@ def unexpire_ticket():
 
 def loads(s):
     type = options.COOKIE_SERIALIZATION_TYPE
-    if type == 'json': return simplejson.loads(decompress(s))
+    if type == 'json': return json.loads(decompress(s))
     elif type == 'pickle': return cPickle.loads(decompress(s))
     else: raise TypeError("Incorrect value of pony.options.COOKIE_SERIALIZATION_TYPE (must be 'json' or 'pickle')")
 
 def dumps(obj):
     type = options.COOKIE_SERIALIZATION_TYPE
-    if type == 'json': return compress(simplejson.dumps(obj, separators=(',', ':')))
+    if type == 'json': return compress(json.dumps(obj, separators=(',', ':')))
     elif type == 'pickle': return compress(cPickle.dumps(obj, 2))
     else: raise TypeError("Incorrect value of pony.options.COOKIE_SERIALIZATION_TYPE (must be 'json' or 'pickle')")
 

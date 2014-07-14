@@ -1,6 +1,6 @@
 #coding: cp1251
 
-import re, os, os.path, sys, datetime, types, linecache, warnings
+import re, os, os.path, sys, datetime, types, linecache, warnings, json
 
 from itertools import count as _count
 from inspect import isfunction, ismethod, getargspec
@@ -317,9 +317,8 @@ def markdown(s):
 
 class JsonString(unicode): pass
 
-def json(obj, **kwargs):
-    from pony.thirdparty import simplejson
-    result = JsonString(simplejson.dumps(obj, **kwargs))
+def json_result(obj, **kwargs):
+    result = JsonString(json.dumps(obj, **kwargs))
     result.media_type = 'application/json'
     if 'encoding' in kwargs: result.charset = kwargs['encoding']
     return result

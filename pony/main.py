@@ -3,7 +3,6 @@ import pony
 if pony.MODE in ('INTERACTIVE', 'CHERRYPY'):
     import pony.patches.interactive
 
-from pony.utils import markdown, json
 from pony.templating import Html, cycle, template, html
 from pony.autoreload import use_autoreload, USE_AUTORELOAD
 from pony.auth import get_user, set_user, get_session
