@@ -50,8 +50,7 @@ def binop_src(op, node):
     return op.join((node.left.src, node.right.src))
 
 def ast2src(tree):
-    try: PythonTranslator(tree)
-    except NotImplementedError: return repr(tree)
+    PythonTranslator(tree)
     return tree.src
 
 class PythonTranslator(ASTTranslator):
@@ -115,6 +114,9 @@ class PythonTranslator(ASTTranslator):
     @priority(5)
     def postDiv(translator, node):
         return binop_src(' / ', node)
+    @priority(5)
+    def postFloorDiv(translator, node):
+        return binop_src(' // ', node)
     @priority(5)
     def postMod(translator, node):
         return binop_src(' % ', node)

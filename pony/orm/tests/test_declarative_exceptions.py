@@ -1,3 +1,5 @@
+from __future__ import division
+
 import unittest
 from datetime import date
 from decimal import Decimal
@@ -244,12 +246,16 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     def test60(self):
         a = 1
         select(s for s in Student if s.name > 1 / a - 3)
-    @raises_exception(TypeError, "Incomparable types 'unicode' and 'int' in expression: s.name > -a")
+    @raises_exception(TypeError, "Incomparable types 'unicode' and 'int' in expression: s.name > 1 // a - 3")
     def test61(self):
+        a = 1
+        select(s for s in Student if s.name > 1 // a - 3)
+    @raises_exception(TypeError, "Incomparable types 'unicode' and 'int' in expression: s.name > -a")
+    def test62(self):
         a = 1
         select(s for s in Student if s.name > -a)
     @raises_exception(TypeError, "Incomparable types 'unicode' and 'list' in expression: s.name == [1, (2,)]")
-    def test62(self):
+    def test63(self):
         select(s for s in Student if s.name == [1, (2,)])
 
 if __name__ == '__main__':
