@@ -1,4 +1,6 @@
-from pony.decompiler import *
+from __future__ import print_function, division 
+
+from pony.orm.decompiling import *
 import compiler
 
 # test entities
@@ -20,8 +22,8 @@ class TestDecompiler:
         expected = str(compiler.parse(expr))
         result = self.add_framing(str(decompile_to_ast(eval(expr))))
         if result != expected:
-            print 'result = ' + result
-            print 'expected = ' + expected
+            print('result = ' + result)
+            print('expected = ' + expected)
             raise Exception('Test failed')
 
     def add_framing(self, result):
@@ -181,7 +183,7 @@ def main():
     for attr in dir(t):
         if attr.startswith('test_'):
             getattr(t, attr)()
-            print attr + ' done.'
+            print(attr + ' done.')
 
 if __name__ == '__main__':
       main()

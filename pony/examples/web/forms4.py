@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 from pony.main import *
 
 use_autoreload()
@@ -16,7 +18,7 @@ class MyForm(Form):
         elif age > 120: self.age.error_text = "Must not be greater then 120"
     def on_submit(self):
         http.session['fname'] = self.first_name.value
-        print self.first_name.value
+        print(self.first_name.value)
 
 @http('/')
 def index():

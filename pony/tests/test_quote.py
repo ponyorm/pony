@@ -1,5 +1,7 @@
 # -*- encoding: cp1251 -*-
 
+from __future__ import print_function, division
+
 from pony.templating import quote, Html, StrHtml
 
 class C1(object):
@@ -37,13 +39,13 @@ def test_quote():
     for i, (input, expected1, expected2) in enumerate(data):
         result = quote(input)
         if result != expected1:
-            print i, 1, `input`, `expected1`, `result`
+            print(i, 1, repr(input), repr(expected1), repr(result))
             assert False
         result = quote(input, True)
         if result != expected2:
-            print i, 2, `input`, `expected2`, `result`
+            print(i, 2, repr(input), repr(expected2), repr(result))
             assert False
-    print 'Test passed!'
+    print('Test passed!')
 
 if __name__ == '__main__':
     test_quote()

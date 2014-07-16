@@ -1,4 +1,4 @@
-from __future__ import division
+from __future__ import print_function, division
 
 import time, threading, os.path, glob
 from math import sin, cos, sqrt, exp
@@ -177,7 +177,7 @@ class CaptchaThread(threading.Thread):
             map = generate_map()
             if pony.shutdown: return
             maps.append(map)
-            if main: print i+1
+            if main: print(i+1)
             # fname = os.path.join(dir, 'map-%d' % (i+1))
             # file(fname, 'wb').write(map.encode('zip'))
         maps.pop(0)
@@ -188,6 +188,6 @@ captcha_thread.start()
 if __name__ == '__main__':
     captcha_thread.join()
     for i in range(20):
-        print '.',
+        print('.', end='')
         text, img = generate_captcha()
         img.save('captcha-%02d-%s.jpg' % (i+1, text))

@@ -16,7 +16,7 @@
     >>> cache.get('k2')
     'v2'
     >>> from time import sleep; sleep(10)
-    >>> print cache.get('k2')
+    >>> print(cache.get('k2'))
     None
     >>> cache.items()
     [('k4', 'v4'), ('k3', 'v3'), ('k1', 'v1')]
@@ -26,7 +26,7 @@
     False
     >>> cache.items()
     [('k5', 'v5'), ('k4', 'v4'), ('k3', 'v3'), ('k1', 'v1')]
-    >>> print cache.incr('x')
+    >>> print(cache.incr('x'))
     None
     >>> cache.set('x', '100')
     True

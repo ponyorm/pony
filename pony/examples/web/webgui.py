@@ -1,4 +1,5 @@
 # -*- coding: cp1251 -*-
+from __future__ import print_function
 
 from pony.main import *
 from pony import utils
@@ -97,8 +98,8 @@ def load(since_last_start=True):
     return data
 
 def load_fragment(frm=None, to=None):
-    print frm
-    print to
+    print(frm)
+    print(to)
     params = "type like 'HTTP:%' and type not in ('HTTP:response', 'HTTP:stop')"
     if frm is not None:
         data = search_log(-(MAX_ROW_COUNT + 1), frm, params)

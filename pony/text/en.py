@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import re, os.path
 
 from pony.utils import read_text_file
@@ -74,6 +76,6 @@ if __name__ == '__main__':
         if not line or line.isspace(): continue
         word, expected = line.split()
         s = stem(word)
-        if s != expected: print 'failed: %s (expected: %s, got: %s)' % (word, expected, s)
-    print 'done'
+        if s != expected: print('failed: %s (expected: %s, got: %s)' % (word, expected, s))
+    print('done')
     raw_input()

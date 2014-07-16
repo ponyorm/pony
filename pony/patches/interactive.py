@@ -5,7 +5,7 @@ from pony.utils import restore_escapes
 def displayhook(x):
     if x is None: return
     __builtin__._ = None
-    print restore_escapes(repr(x))
+    print(restore_escapes(repr(x)))
     __builtin__._ = x
 
 old_displayhook = sys.displayhook

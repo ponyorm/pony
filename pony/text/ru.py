@@ -1,4 +1,5 @@
 # coding: cp1251
+from __future__ import print_function
 
 import re, os.path
 
@@ -117,14 +118,14 @@ if __name__ == '__main__':
         words.append(word)
         a = snowball_stem(word)
         b = fast_stem(word)
-        if not (a == b == expected): print word, expected, a, b
+        if not (a == b == expected): print(word, expected, a, b)
 
     import timeit
     t1 = timeit.Timer('[ stem(word) for word in words ]', 'from __main__ import snowball_stem as stem, words')
     t2 = timeit.Timer('[ stem(word) for word in words ]', 'from __main__ import fast_stem as stem, words')
     t3 = timeit.Timer('[ stem(word) for word in words ]', 'from __main__ import basic_stem as stem, words')
-    print min(t1.repeat(5, 1000))
-    print min(t2.repeat(5, 1000))
-    print min(t3.repeat(5, 1000))
+    print(min(t1.repeat(5, 1000)))
+    print(min(t2.repeat(5, 1000)))
+    print(min(t3.repeat(5, 1000)))
 
     raw_input()

@@ -1,4 +1,5 @@
 #coding: cp1251
+from __future__ import print_function
 
 from datetime import date, datetime
 from decimal import Decimal
@@ -7,9 +8,9 @@ from pony.orm.core import *
 import time
 
 #db = Database('oracle', 'presentation/pony@localhost')
-db = Database('postgres', user='presentation', password='pony', host='localhost', database='cyrillic')
+#db = Database('postgres', user='presentation', password='pony', host='localhost', database='cyrillic')
 #db = Database('mysql', user='presentation', passwd='pony', host='localhost', db='test')
-#db = Database('sqlite', 'alldatatypes.sqlite', create_db=True)
+db = Database('sqlite', 'alldatatypes.sqlite', create_db=True)
 
 class AllDataTypes(db.Entity):
     bool1_attr = Required(bool)
@@ -66,13 +67,12 @@ with db_session:
 
     for name, value in fields.items():
         value2 = getattr(e2, name)
-        print value==value2, name,
-        if value!=value2: print 'py=', repr(value), 'db=', repr(value2)
-        else: print
+        if value==value2: print(True, name)
+        else: print(False, name, 'py=', repr(value), 'db=', repr(value2))
 
     for i, (ch1, ch2) in enumerate(zip(s, str(e2.buffer_attr))):
-        if ch1 <> ch2: print i, repr(ch1), repr(ch2), ch1, ch2
+        if ch1 <> ch2: print(i, repr(ch1), repr(ch2), ch1, ch2)
 
     commit()
 
-    print t2-t1, t3-t2
+    print(t2-t1, t3-t2)
