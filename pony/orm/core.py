@@ -1012,7 +1012,7 @@ class SessionCache(object):
     def _calc_modified_m2m(cache):
         modified_m2m = {}
         for attr, objects in sorted(cache.modified_collections.iteritems(),
-                                    key=lambda (attr, objects): (attr.entity.__name__, attr.name)):
+                                    key=lambda pair: (pair[0].entity.__name__, pair[0].name)):
             if not isinstance(attr, Set): throw(NotImplementedError)
             reverse = attr.reverse
             if not reverse.is_collection:
