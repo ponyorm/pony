@@ -9,7 +9,7 @@ But it seems clearer to write checkers that use the AST to detect
 errors.
 """
 
-from compiler import ast, walk
+from . import ast, walk
 
 def check(tree, multi=None):
     v = SyntaxErrorChecker(multi)
