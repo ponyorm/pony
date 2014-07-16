@@ -1,3 +1,5 @@
+from __future__ import division
+
 import types, sys, re
 from itertools import izip, count
 from types import NoneType
@@ -619,6 +621,8 @@ class SQLTranslator(ASTTranslator):
         return node.left.monad * node.right.monad
     def postDiv(translator, node):
         return node.left.monad / node.right.monad
+    def postFloorDiv(translator, node):
+        return node.left.monad // node.right.monad
     def postPower(translator, node):
         return node.left.monad ** node.right.monad
     def postUnarySub(translator, node):
@@ -972,7 +976,8 @@ class Monad(object):
     def __add__(monad, monad2): throw(TypeError)
     def __sub__(monad, monad2): throw(TypeError)
     def __mul__(monad, monad2): throw(TypeError)
-    def __div__(monad, monad2): throw(TypeError)
+    def __truediv__(monad, monad2): throw(TypeError)
+    def __floordiv__(monad, monad2): throw(TypeError)
     def __pow__(monad, monad2): throw(TypeError)
     def __neg__(monad): throw(TypeError)
     def abs(monad): throw(TypeError)
@@ -1021,7 +1026,8 @@ class MethodMonad(Monad):
     def __add__(monad, monad2): raise_forgot_parentheses(monad)
     def __sub__(monad, monad2): raise_forgot_parentheses(monad)
     def __mul__(monad, monad2): raise_forgot_parentheses(monad)
-    def __div__(monad, monad2): raise_forgot_parentheses(monad)
+    def __truediv__(monad, monad2): raise_forgot_parentheses(monad)
+    def __floordiv__(monad, monad2): raise_forgot_parentheses(monad)
     def __pow__(monad, monad2): raise_forgot_parentheses(monad)
 
     def __neg__(monad): raise_forgot_parentheses(monad)
@@ -1080,7 +1086,8 @@ class NumericMixin(MonadMixin):
     __add__ = make_numeric_binop('+', 'ADD')
     __sub__ = make_numeric_binop('-', 'SUB')
     __mul__ = make_numeric_binop('*', 'MUL')
-    __div__ = make_numeric_binop('/', 'DIV')
+    __truediv__ = make_numeric_binop('/', 'DIV')
+    __floordiv__ = make_numeric_binop('//', 'FLOORDIV')
     def __pow__(monad, monad2):
         translator = monad.translator
         if not isinstance(monad2, translator.NumericMixin):
@@ -2105,7 +2112,8 @@ class AttrSetMonad(SetMixin, Monad):
     __add__ = make_attrset_binop('+', 'ADD')
     __sub__ = make_attrset_binop('-', 'SUB')
     __mul__ = make_attrset_binop('*', 'MUL')
-    __div__ = make_attrset_binop('/', 'DIV')
+    __truediv__ = make_attrset_binop('/', 'DIV')
+    __floordiv__ = make_attrset_binop('//', 'FLOORDIV')
 
 def make_numericset_binop(op, sqlop):
     def numericset_binop(monad, monad2):
@@ -2168,7 +2176,8 @@ class NumericSetExprMonad(SetMixin, Monad):
     __add__ = make_numericset_binop('+', 'ADD')
     __sub__ = make_numericset_binop('-', 'SUB')
     __mul__ = make_numericset_binop('*', 'MUL')
-    __div__ = make_numericset_binop('/', 'DIV')
+    __truediv__ = make_numericset_binop('/', 'DIV')
+    __floordiv__ = make_numericset_binop('//', 'FLOORDIV')
 
 class QuerySetMonad(SetMixin, Monad):
     nogroup = True

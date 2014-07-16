@@ -350,6 +350,7 @@ class SQLBuilder(object):
     SUB = make_binary_op(' - ', True)
     MUL = make_binary_op(' * ', True)
     DIV = make_binary_op(' / ', True)
+    FLOORDIV = make_binary_op(' / ', True)
 
     def CONCAT(builder, *args):
         return '(',  join(' || ', map(builder, args)), ')'
