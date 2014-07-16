@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import types
 from types import NoneType
 from decimal import Decimal

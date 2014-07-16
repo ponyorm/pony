@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time
 from uuid import uuid4, UUID

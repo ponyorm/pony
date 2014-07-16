@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import unittest
 from testutils import *
 from pony.orm.core import *

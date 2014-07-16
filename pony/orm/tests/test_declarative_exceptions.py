@@ -242,7 +242,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     def test59(self): ###
         a = 1
         select(s for s in Student if s.name > ~a)
-    @raises_exception(TypeError, "Incomparable types 'unicode' and 'int' in expression: s.name > 1 / a - 3")
+    @raises_exception(TypeError, "Incomparable types 'unicode' and 'float' in expression: s.name > 1 / a - 3")
     def test60(self):
         a = 1
         select(s for s in Student if s.name > 1 / a - 3)

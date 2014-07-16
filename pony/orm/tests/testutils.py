@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 from pony.orm.core import Database
 from pony.utils import import_module
 

@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 from operator import attrgetter
 from decimal import Decimal
 from datetime import date, datetime

@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import unittest
 from datetime import date
 from decimal import Decimal
