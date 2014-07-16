@@ -120,7 +120,7 @@ class HttpResponse(object):
         response.base_stylesheets = []
         response.component_stylesheets = []
         response.scripts = []
-        response.next_id = imap('id_%d'.__mod__, count()).next
+        response.id_counter = imap('id_%d'.__mod__, count())
     def add_base_stylesheets(response, links):
         stylesheets = response.base_stylesheets
         for link in links:

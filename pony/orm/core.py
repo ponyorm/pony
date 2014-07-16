@@ -237,7 +237,7 @@ def adapt_sql(sql, paramstyle):
     adapted_sql_cache[(sql, paramstyle)] = result
     return result
 
-next_num = _count().next
+num_counter = _count()
 
 class Local(localbase):
     def __init__(local):
@@ -660,9 +660,9 @@ class Database(object):
                     m2m_table = schema.tables.get(table_name)
                     if m2m_table is not None:
                         if not attr.table:
-                            seq = _count(2)
+                            seq_counter = _count(2)
                             while m2m_table is not None:
-                                new_table_name = table_name + '_%d' % seq.next()
+                                new_table_name = table_name + '_%d' % next(seq_counter)
                                 m2m_table = schema.tables.get(new_table_name)
                             table_name = new_table_name
                         elif m2m_table.entities or m2m_table.m2m:
@@ -869,7 +869,7 @@ class QueryStat(object):
 class SessionCache(object):
     def __init__(cache, database):
         cache.is_alive = True
-        cache.num = next_num()
+        cache.num = next(num_counter)
         cache.database = database
         cache.indexes = defaultdict(dict)
         cache.seeds = defaultdict(set)
@@ -1102,7 +1102,7 @@ class DescWrapper(object):
     def __hash__(self):
         return hash(self.attr) + 1
 
-next_attr_id = _count(1).next
+attr_id_counter = _count(1)
 
 class Attribute(object):
     __slots__ = 'nullable', 'is_required', 'is_discriminator', 'is_unique', 'is_part_of_unique_index', \
@@ -1128,7 +1128,7 @@ class Attribute(object):
         attr.is_pk = isinstance(attr, PrimaryKey)
         if attr.is_pk: attr.pk_offset = 0
         else: attr.pk_offset = None
-        attr.id = next_attr_id()
+        attr.id = next(attr_id_counter)
         if not isinstance(py_type, (type, basestring, types.FunctionType)):
             if py_type is datetime: throw(TypeError,
                 'datetime is the module and cannot be used as attribute type. Use datetime.datetime instead')
@@ -2487,8 +2487,8 @@ class EntityIter(object):
         throw(TypeError, 'Use select(...) function or %s.select(...) method for iteration'
                          % self.entity.__name__)
 
-next_entity_id = _count(1).next
-next_new_instance_id = _count(1).next
+entity_id_counter = _count(1)
+new_instance_id_counter = _count(1)
 
 select_re = re.compile(r'select\b', re.IGNORECASE)
 lambda_re = re.compile(r'lambda\b')
@@ -2529,7 +2529,7 @@ class EntityMeta(type):
 
         entity._database_ = database
 
-        entity._id_ = next_entity_id()
+        entity._id_ = next(entity_id_counter)
         direct_bases = [ c for c in entity.__bases__ if issubclass(c, Entity) and c.__name__ != 'Entity' ]
         entity._direct_bases_ = direct_bases
         all_bases = entity._all_bases_ = set()
@@ -2637,11 +2637,11 @@ class EntityMeta(type):
 
         entity._bits_ = {}
         entity._bits_except_volatile_ = {}
-        next_offset = _count().next
+        offset_counter = _count()
         all_bits = all_bits_except_volatile = 0
         for attr in entity._attrs_:
             if attr.is_collection or attr.is_discriminator or attr.pk_offset is not None: bit = 0
-            else: bit = 1 << next_offset()
+            else: bit = 1 << next(offset_counter)
             all_bits |= bit
             entity._bits_[attr] = bit
             if attr.is_volatile: bit = 0
@@ -3238,7 +3238,7 @@ class EntityMeta(type):
                 if pkval is not None:
                     index[pkval] = obj
                     obj._newid_ = None
-                else: obj._newid_ = next_new_instance_id()
+                else: obj._newid_ = next(new_instance_id_counter)
                 if obj._pk_is_composite_: pairs = zip(pk_attrs, pkval)
                 else: pairs = ((pk_attrs[0], pkval),)
                 if status == 'loaded':

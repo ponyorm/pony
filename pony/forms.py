@@ -348,7 +348,7 @@ class Reset(Submit):
 
 class BaseWidget(HtmlField):
     def __init__(field, label=None, required=None, value=None, **attrs):
-        if 'id' not in attrs: attrs['id'] = http.response.next_id()
+        if 'id' not in attrs: attrs['id'] = next(http.response.id_counter)
         HtmlField.__init__(field, value, **attrs)
         field.required = required
         field._error_text = None

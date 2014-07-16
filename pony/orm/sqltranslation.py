@@ -373,7 +373,7 @@ class SQLTranslator(ASTTranslator):
     def can_be_optimized(translator):
         if translator.groupby_monads: return False
         if len(translator.aggregated_subquery_paths) != 1: return False
-        return iter(translator.aggregated_subquery_paths).next()
+        return next(iter(translator.aggregated_subquery_paths))
     def construct_sql_ast(translator, range=None, distinct=None, aggr_func_name=None, for_update=False, nowait=False,
                           is_not_null_checks=False):
         attr_offsets = None
@@ -2050,7 +2050,7 @@ class AttrSetMonad(SetMixin, Monad):
                     expr = [ 'AS', column_ast, cname ]
                     new_name = cname
                 else:
-                    new_name = 'expr-%d' % translator.subquery.expr_counter.next()
+                    new_name = 'expr-%d' % next(translator.subquery.expr_counter)
                     col_mapping[tname, cname] = new_name
                     expr = [ 'AS', column_ast, new_name ]
                 inner_columns.append(expr)
@@ -2070,7 +2070,7 @@ class AttrSetMonad(SetMixin, Monad):
         for column_ast in groupby_columns:
             assert column_ast[0] == 'COLUMN'
             subquery_columns.append([ 'AS', column_ast, column_ast[2] ])
-        expr_name = 'expr-%d' % translator.subquery.expr_counter.next()
+        expr_name = 'expr-%d' % next(translator.subquery.expr_counter)
         subquery_columns.append([ 'AS', make_aggr(expr_list), expr_name ])
         subquery_ast = [ subquery_columns, from_ast ]
         if inner_conditions and not extra_grouping:
@@ -2200,7 +2200,6 @@ class QuerySetMonad(SetMixin, Monad):
                 subquery.left_join = True
                 subquery.from_ast[0] = 'LEFT_JOIN'
             col_names = set()
-            next = subquery.expr_counter.next
             new_names = []
             exprs = []
 
@@ -2213,7 +2212,7 @@ class QuerySetMonad(SetMixin, Monad):
                         new_names.append(col_name)
                         select_ast[i] = [ 'AS', column_ast, col_name ]
                         continue
-                new_name = 'expr-%d' % next()
+                new_name = 'expr-%d' % next(subquery.expr_counter)
                 new_names.append(new_name)
                 select_ast[i] = [ 'AS', column_ast, new_name ]
 

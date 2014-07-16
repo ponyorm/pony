@@ -71,7 +71,7 @@ def flat_conditions(conditions):
 
 def join(delimiter, items):
     items = iter(items)
-    try: result = [ items.next() ]
+    try: result = [ next(items) ]
     except StopIteration: return []
     for item in items:
         result.append(delimiter)

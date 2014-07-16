@@ -79,7 +79,7 @@ _do_mainloop = False  # sets to True by pony.web.start_http_server()
 def mainloop():
     if not _do_mainloop: return
     if MODE not in ('CHERRYPY', 'FCGI-FLUP'): return
-    if mainloop_counter.next(): return
+    if next(mainloop_counter): return
     try:
         while True:
             if shutdown: break
@@ -94,5 +94,5 @@ shutdown_counter = count()
 def _shutdown():
     global shutdown
     shutdown = True
-    if shutdown_counter.next(): return
+    if next(shutdown_counter): return
     for func in reversed(shutdown_list): func()

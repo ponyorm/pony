@@ -125,10 +125,9 @@ class tabs(object):
         self.attrs = attrs
         self._tabs = []
     def tab(self, name, markup, **attrs):
-        if id not in attrs: attrs['id'] = http.response.next_id()
+        if id not in attrs: attrs['id'] = next(http.response.id_counter)
         self._tabs.append((name, markup, attrs))
     def __unicode__(self):
-        next_id = http.response.next_id
         result = [htmltag('div', {'class':'pony-tabs clearfix'}, **self.attrs), Html('\n<ul>\n') ]
         for name, markup, attrs in self._tabs:
             result.append(Html('<li><a href="#%s"><span>%s</span></a>\n') % (attrs['id'], name))

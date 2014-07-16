@@ -75,7 +75,7 @@ def generate_captcha():
 
     if maps:
         map = choice(maps)
-        next = iter(map).next
+        chars = iter(map)
 
         img2 = Image.new(MODE, (WIDTH, HEIGHT), BLACK)
         pix2 = img2.load()
@@ -85,8 +85,8 @@ def generate_captcha():
             for x in xrange:
                 color_sum = BLACK
                 for q in qrange:
-                    xchar = next()
-                    ychar = next()
+                    xchar = next(chars)
+                    ychar = next(chars)
                     if xchar == '\x00' == ychar: continue
                     x2 = x + ord(xchar) - 128
                     y2 = y + ord(ychar) - 128
