@@ -12,7 +12,7 @@ from bisect import bisect
 from collections import defaultdict
 from copy import deepcopy, _deepcopy_dispatch
 from functools import update_wrapper
-from compiler import ast
+from pony.thirdparty.compiler import ast
 from xml.etree import cElementTree
 
 # deepcopy instance method patch for Python < 2.7:

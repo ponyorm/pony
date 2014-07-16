@@ -1,7 +1,6 @@
 from __future__ import print_function, division
 
 import re, sys, types, logging
-from compiler import ast, parse
 from cPickle import loads, dumps
 from operator import attrgetter, itemgetter
 from itertools import count as _count, ifilter, ifilterfalse, imap, izip, chain, starmap, repeat
@@ -12,6 +11,8 @@ from threading import Lock, currentThread as current_thread, _MainThread
 from __builtin__ import min as _min, max as _max, sum as _sum
 from contextlib import contextmanager
 from collections import defaultdict
+
+from pony.thirdparty.compiler import ast, parse
 
 import pony
 from pony import options

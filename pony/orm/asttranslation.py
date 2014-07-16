@@ -1,7 +1,8 @@
 from __future__ import print_function, division
 
-from compiler import ast
 from functools import update_wrapper
+
+from pony.thirdparty.compiler import ast
 
 from pony.utils import throw
 

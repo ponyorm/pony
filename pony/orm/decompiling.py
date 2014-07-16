@@ -1,10 +1,11 @@
 from __future__ import print_function, division
 
 import types
-from compiler import ast
 from itertools import izip
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
 from opcode import hasconst, hasname, hasjrel, haslocal, hascompare, hasfree
+
+from pony.thirdparty.compiler import ast, parse
 
 from pony.utils import throw
 
@@ -503,13 +504,13 @@ def test():
     import sys
     if sys.version[:3] > '2.4': outmost_iterable_name = '.0'
     else: outmost_iterable_name = '[outmost-iterable]'
-    import dis, compiler
+    import dis
     for line in test_lines.split('\n'):
         if not line or line.isspace(): continue
         line = line.strip()
         if line.startswith('#'): continue
         code = compile(line, '<?>', 'eval').co_consts[0]
-        ast1 = compiler.parse(line).node.nodes[0].expr
+        ast1 = parse(line).node.nodes[0].expr
         ast1.code.quals[0].iter.name = outmost_iterable_name
         try: ast2 = Decompiler(code).ast
         except Exception as e:

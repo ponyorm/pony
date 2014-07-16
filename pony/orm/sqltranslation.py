@@ -3,13 +3,14 @@ from __future__ import print_function, division
 import types, sys, re
 from itertools import izip, count
 from types import NoneType
-from compiler import ast
 from decimal import Decimal
 from datetime import date, datetime
 from random import random
 from cPickle import loads, dumps
 from copy import deepcopy
 from functools import update_wrapper
+
+from pony.thirdparty.compiler import ast
 
 from pony import options
 from pony.utils import avg, distinct, is_ident, throw, concat

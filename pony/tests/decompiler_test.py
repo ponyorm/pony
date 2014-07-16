@@ -1,7 +1,8 @@
 from __future__ import print_function, division 
 
+from pony.thirdparty import compiler
+
 from pony.orm.decompiling import *
-import compiler
 
 # test entities
 
