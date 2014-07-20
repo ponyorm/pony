@@ -1430,7 +1430,6 @@ class Transformer:
 _doc_nodes = [
     symbol.expr_stmt,
     symbol.testlist,
-    symbol.testlist_safe,
     symbol.test,
     symbol.or_test,
     symbol.and_test,
@@ -1445,6 +1444,8 @@ _doc_nodes = [
     symbol.factor,
     symbol.power,
     ]
+if hasattr(symbol, 'testlist_safe'):
+    _doc_nodes.append(symbol.testlist_safe)
 
 # comp_op: '<' | '>' | '=' | '>=' | '<=' | '<>' | '!=' | '=='
 #             | 'in' | 'not' 'in' | 'is' | 'is' 'not'
@@ -1467,7 +1468,6 @@ _legal_node_types = [
     symbol.simple_stmt,
     symbol.compound_stmt,
     symbol.expr_stmt,
-    symbol.print_stmt,
     symbol.del_stmt,
     symbol.pass_stmt,
     symbol.break_stmt,
@@ -1476,7 +1476,6 @@ _legal_node_types = [
     symbol.raise_stmt,
     symbol.import_stmt,
     symbol.global_stmt,
-    symbol.exec_stmt,
     symbol.assert_stmt,
     symbol.if_stmt,
     symbol.while_stmt,
@@ -1485,7 +1484,6 @@ _legal_node_types = [
     symbol.with_stmt,
     symbol.suite,
     symbol.testlist,
-    symbol.testlist_safe,
     symbol.test,
     symbol.and_test,
     symbol.not_test,
@@ -1506,6 +1504,12 @@ if hasattr(symbol, 'yield_stmt'):
     _legal_node_types.append(symbol.yield_stmt)
 if hasattr(symbol, 'yield_expr'):
     _legal_node_types.append(symbol.yield_expr)
+if hasattr(symbol, 'print_stmt'):
+    _legal_node_types.append(symbol.print_stmt)
+if hasattr(symbol, 'exec_stmt'):
+    _legal_node_types.append(symbol.print_stmt)
+if hasattr(symbol, 'testlist_safe'):
+    _legal_node_types.append(symbol.testlist_safe)
 
 _assign_types = [
     symbol.test,

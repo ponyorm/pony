@@ -388,7 +388,7 @@ class SymbolVisitor:
 
     # prune if statements if tests are false
 
-    _const_types = types.StringType, types.IntType, types.FloatType
+    _const_types = bytes, str, int, float
 
     def visitIf(self, node, scope):
         for test, body in node.tests:
