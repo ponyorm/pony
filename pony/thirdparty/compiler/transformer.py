@@ -32,6 +32,12 @@ import parser
 import symbol
 import token
 
+# Python 2.6 compatibility fix
+if not hasattr(symbol, 'testlist_comp'): symbol.testlist_comp = symbol.testlist_gexp
+if not hasattr(symbol, 'comp_iter'): symbol.comp_iter = symbol.gen_iter
+if not hasattr(symbol, 'comp_for'): symbol.comp_for = symbol.gen_for
+if not hasattr(symbol, 'comp_if'): symbol.comp_if = symbol.gen_if
+
 class WalkerError(Exception):
     pass
 
@@ -589,6 +595,8 @@ class Transformer:
             test = self.com_node(nodelist[0])
             return self.com_generator_expression(test, nodelist[1])
         return self.testlist(nodelist)
+
+    testlist_gexp = testlist_comp  # Python 2.6 compatibility fix
 
     def test(self, nodelist):
         # or_test ['if' or_test 'else' test] | lambdef
