@@ -34,8 +34,7 @@ class FutureParser:
                 if name in self.features:
                     self.found[name] = 1
                 else:
-                    raise SyntaxError, \
-                          "future feature %s is not defined" % name
+                    raise SyntaxError("future feature %s is not defined" % name)
             stmt.valid_future = 1
             return 1
         return 0
@@ -52,7 +51,7 @@ class BadFutureParser:
             return
         if node.modname != "__future__":
             return
-        raise SyntaxError, "invalid future statement " + repr(node)
+        raise SyntaxError("invalid future statement " + repr(node))
 
 def find_futures(node):
     p1 = FutureParser()

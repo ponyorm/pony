@@ -51,7 +51,7 @@ def compileFile(filename, display=0):
 def compile(source, filename, mode, flags=None, dont_inherit=None):
     """Replacement for builtin compile() function"""
     if flags is not None or dont_inherit is not None:
-        raise RuntimeError, "not implemented yet"
+        raise RuntimeError("not implemented yet")
 
     if mode == "single":
         gen = Interactive(source, filename)
@@ -60,8 +60,7 @@ def compile(source, filename, mode, flags=None, dont_inherit=None):
     elif mode == "eval":
         gen = Expression(source, filename)
     else:
-        raise ValueError("compile() 3rd arg must be 'exec' or "
-                         "'eval' or 'single'")
+        raise ValueError("compile() 3rd arg must be 'exec' or 'eval' or 'single'")
     gen.compile()
     return gen.code
 
@@ -232,9 +231,9 @@ class CodeGenerator:
             assert getattr(self, 'NameFinder')
             assert getattr(self, 'FunctionGen')
             assert getattr(self, 'ClassGen')
-        except AssertionError, msg:
+        except AssertionError as msg:
             intro = "Bad class construction for %s" % self.__class__.__name__
-            raise AssertionError, intro
+            raise AssertionError(intro)
 
     def _setupGraphDelegation(self):
         self.emit = self.graph.emit
@@ -259,7 +258,7 @@ class CodeGenerator:
         return s.scopes
 
     def get_module(self):
-        raise RuntimeError, "should be implemented by subclasses"
+        raise RuntimeError("should be implemented by subclasses")
 
     # Next five methods handle name access
 
@@ -293,8 +292,7 @@ class CodeGenerator:
         elif scope == SC_FREE or scope == SC_CELL:
             self.emit(prefix + '_DEREF', name)
         else:
-            raise RuntimeError, "unsupported scope for var %s: %d" % \
-                  (name, scope)
+            raise RuntimeError("unsupported scope for var %s: %d" % (name, scope))
 
     def _implicitNameOp(self, prefix, name):
         """Emit name ops for names generated implicitly by for loops
@@ -483,15 +481,13 @@ class CodeGenerator:
 
     def visitBreak(self, node):
         if not self.setups:
-            raise SyntaxError, "'break' outside loop (%s, %d)" % \
-                  (node.filename, node.lineno)
+            raise SyntaxError("'break' outside loop (%s, %d)" % (node.filename, node.lineno))
         self.set_lineno(node)
         self.emit('BREAK_LOOP')
 
     def visitContinue(self, node):
         if not self.setups:
-            raise SyntaxError, "'continue' outside loop (%s, %d)" % \
-                  (node.filename, node.lineno)
+            raise SyntaxError("'continue' outside loop (%s, %d)" % (node.filename, node.lineno))
         kind, block = self.setups.top()
         if kind == LOOP:
             self.set_lineno(node)
@@ -507,13 +503,12 @@ class CodeGenerator:
                 if kind == LOOP:
                     break
             if kind != LOOP:
-                raise SyntaxError, "'continue' outside loop (%s, %d)" % \
-                      (node.filename, node.lineno)
+                raise SyntaxError("'continue' outside loop (%s, %d)" % (node.filename, node.lineno))
             self.emit('CONTINUE_LOOP', loop_block)
             self.nextBlock()
         elif kind == END_FINALLY:
             msg = "'continue' not allowed inside 'finally' clause (%s, %d)"
-            raise SyntaxError, msg % (node.filename, node.lineno)
+            raise SyntaxError(msg % (node.filename, node.lineno))
 
     def visitTest(self, node, jump):
         end = self.newBlock()
@@ -1491,7 +1486,7 @@ def generateArgList(arglist):
             extra.extend(misc.flatten(elt))
             count = count + 1
         else:
-            raise ValueError, "unexpect argument type:", elt
+            raise ValueError("unexpect argument type: %r" % type(elt))
     return args + extra, count
 
 def findOp(node):
@@ -1507,7 +1502,7 @@ class OpFinder:
         if self.op is None:
             self.op = node.flags
         elif self.op != node.flags:
-            raise ValueError, "mixed ops in stmt"
+            raise ValueError("mixed ops in stmt")
     visitAssAttr = visitAssName
     visitSubscript = visitAssName
 

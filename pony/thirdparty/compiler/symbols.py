@@ -53,8 +53,7 @@ class Scope:
         if name in self.uses or name in self.defs:
             pass # XXX warn about global following def/use
         if name in self.params:
-            raise SyntaxError, "%s in %s is global and parameter" % \
-                  (name, self.name)
+            raise SyntaxError("%s in %s is global and parameter" % (name, self.name))
         self.globals[name] = 1
         self.module.add_def(name)
 
