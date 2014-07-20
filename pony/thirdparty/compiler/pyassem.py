@@ -1,5 +1,7 @@
 """A flow graph representation for Python bytecode"""
 
+from __future__ import print_function
+
 import dis
 import types
 import sys
@@ -18,11 +20,11 @@ class FlowGraph:
     def startBlock(self, block):
         if self._debug:
             if self.current:
-                print "end", repr(self.current)
-                print "    next", self.current.next
-                print "    prev", self.current.prev
-                print "   ", self.current.get_children()
-            print repr(block)
+                print("end", repr(self.current))
+                print("    next", self.current.next)
+                print("    prev", self.current.prev)
+                print("   ", self.current.get_children())
+            print(repr(block))
         self.current = block
 
     def nextBlock(self, block=None):
@@ -67,7 +69,7 @@ class FlowGraph:
 
     def emit(self, *inst):
         if self._debug:
-            print "\t", inst
+            print("\t", inst)
         if len(inst) == 2 and isinstance(inst[1], Block):
             self.current.addOutEdge(inst[1])
         self.current.emit(inst)
@@ -321,12 +323,12 @@ class PyFlowGraph(FlowGraph):
         for t in self.insts:
             opname = t[0]
             if opname == "SET_LINENO":
-                print
+                print()
             if len(t) == 1:
-                print "\t", "%3d" % pc, opname
+                print("\t", "%3d" % pc, opname)
                 pc = pc + 1
             else:
-                print "\t", "%3d" % pc, opname, t[1]
+                print("\t", "%3d" % pc, opname, t[1])
                 pc = pc + 3
         if io:
             sys.stdout = save
@@ -516,8 +518,8 @@ class PyFlowGraph(FlowGraph):
                 try:
                     lnotab.addCode(self.opnum[opname], lo, hi)
                 except ValueError:
-                    print opname, oparg
-                    print self.opnum[opname], lo, hi
+                    print(opname, oparg)
+                    print(self.opnum[opname], lo, hi)
                     raise
         self.stage = DONE
 
@@ -659,7 +661,7 @@ class StackDepthTracker:
         for i in insts:
             opname = i[0]
             if debug:
-                print i,
+                print(i, end=' ')
             delta = self.effect.get(opname, None)
             if delta is not None:
                 depth = depth + delta
@@ -678,7 +680,7 @@ class StackDepthTracker:
             if depth > maxDepth:
                 maxDepth = depth
             if debug:
-                print depth, maxDepth
+                print(depth, maxDepth)
         return maxDepth
 
     effect = {

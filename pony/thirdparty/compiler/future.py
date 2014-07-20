@@ -2,6 +2,8 @@
 
 """
 
+from __future__ import print_function
+
 from . import ast, walk
 
 def is_future(stmt):
@@ -65,9 +67,9 @@ if __name__ == "__main__":
     from compiler import parseFile, walk
 
     for file in sys.argv[1:]:
-        print file
+        print(file)
         tree = parseFile(file)
         v = FutureParser()
         walk(tree, v)
-        print v.found
-        print
+        print(v.found)
+        print()
