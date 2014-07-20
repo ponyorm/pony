@@ -16,17 +16,19 @@ class DBException(Exception):
         Exception.__init__(exc, *args)
         exc.original_exc = original_exc
 
-##StandardError
-##        |__Warning
-##        |__Error
-##           |__InterfaceError
-##           |__DatabaseError
-##              |__DataError
-##              |__OperationalError
-##              |__IntegrityError
-##              |__InternalError
-##              |__ProgrammingError
-##              |__NotSupportedError
+# Exception inheritance layout of DBAPI 2.0-compatible provider:
+#
+# Exception
+#   Warning
+#   Error
+#     InterfaceError
+#     DatabaseError
+#       DataError
+#       OperationalError
+#       IntegrityError
+#       InternalError
+#       ProgrammingError
+#       NotSupportedError
 
 class Warning(DBException): pass
 class Error(DBException): pass
