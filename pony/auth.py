@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function
+
 import re, os, os.path, sys, threading, hmac, cPickle, json
 from base64 import b64encode, b64decode
 from binascii import hexlify

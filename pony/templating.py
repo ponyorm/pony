@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function
+
 import itertools, sys, os.path, threading, inspect, re, weakref, textwrap, copy_reg
 
 import pony

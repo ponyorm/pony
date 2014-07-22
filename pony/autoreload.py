@@ -1,5 +1,7 @@
 # coding: cp1251
 
+from __future__ import absolute_import, print_function
+
 import itertools, linecache, sys, time, os, imp, traceback
 
 from os.path import abspath, basename, dirname, exists, splitext

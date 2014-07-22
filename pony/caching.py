@@ -48,6 +48,8 @@
     [('k4', 'v4_new'), ('k3', 'v3'), ('x', '91'), ('k5', 'v5'), ('k1', 'v1')]
 """
 
+from __future__ import absolute_import, print_function
+
 from heapq import heappush, heappop, heapify
 from threading import Lock
 from time import time as gettime

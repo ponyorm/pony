@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
 from uuid import UUID

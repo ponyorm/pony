@@ -1,4 +1,7 @@
 # -*- encoding: cp1251 -*-
+
+from __future__ import absolute_import, print_function
+
 import re, threading, os.path, copy, cPickle
 
 from operator import attrgetter

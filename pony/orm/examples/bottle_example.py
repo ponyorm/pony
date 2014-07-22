@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function
+
 from bottle import default_app, install, route, request, redirect, run, template
 
 # Import eStore model http://editor.ponyorm.com/user/pony/eStore

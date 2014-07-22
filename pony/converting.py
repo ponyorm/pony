@@ -1,5 +1,7 @@
 # coding: cp1251
 
+from __future__ import absolute_import, print_function
+
 import re, datetime
 
 from pony.utils import is_ident

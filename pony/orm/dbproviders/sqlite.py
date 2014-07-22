@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+
 import os.path
 import sqlite3 as sqlite
 from decimal import Decimal

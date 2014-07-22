@@ -1,6 +1,6 @@
 # -*- encoding: cp1251 -*-
 
-from __future__ import print_function, division
+from __future__ import absolute_import, print_function, division
 
 from pony.templating import quote, Html, StrHtml
 

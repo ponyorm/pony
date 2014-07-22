@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function, division
+
 import os, binascii
 
 from pony.caching import session_memcache as memcache

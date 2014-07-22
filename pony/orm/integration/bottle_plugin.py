@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function, division
+
 from bottle import HTTPResponse, HTTPError
 from pony.orm.core import db_session
 

@@ -1,5 +1,7 @@
 # coding: cp1251
 
+from __future__ import absolute_import, print_function, division
+
 import re
 
 token_re = re.compile(r'\w+', re.UNICODE)

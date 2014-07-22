@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+
 import os
 os.environ["NLS_LANG"] = "AMERICAN_AMERICA.UTF8"
 

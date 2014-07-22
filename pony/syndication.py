@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function
+
 import time, rfc822
 
 from xml.etree.cElementTree import Element, SubElement, tostring

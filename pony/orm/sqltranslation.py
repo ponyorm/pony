@@ -1,4 +1,4 @@
-from __future__ import print_function, division
+from __future__ import absolute_import, print_function, division
 
 import types, sys, re
 from itertools import izip, count

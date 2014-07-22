@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function
+
 import re, threading, os.path, sys, cgi, urllib, Cookie, cPickle, time
 
 from cStringIO import StringIO

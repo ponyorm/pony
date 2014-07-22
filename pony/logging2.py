@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function
+
 import cPickle, os, os.path, Queue, random, re, sys, traceback, threading, time, warnings
 from thread import get_ident
 from itertools import count

@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function
+
 import pony
 
 from pony.utils import decorator_with_params, tostring

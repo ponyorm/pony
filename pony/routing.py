@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function
+
 import re, threading, inspect, warnings, urllib
 
 from itertools import izip

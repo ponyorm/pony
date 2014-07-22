@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function
+
 from xml.etree.cElementTree import Element, SubElement, tostring
 from xml.etree.ElementTree import _namespace_map
 

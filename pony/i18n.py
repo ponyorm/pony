@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function
+
 import re, os, threading
 from itertools import izip, count, chain
 from time import time

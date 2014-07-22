@@ -1,5 +1,7 @@
 #coding: cp1251
 
+from __future__ import absolute_import, print_function
+
 import re, os, os.path, sys, datetime, types, linecache, warnings, json
 
 from itertools import count as _count

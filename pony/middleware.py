@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function
+
 from pony.autoreload import on_reload
 from pony.compression import compression_middleware
 from pony.debugging import debugging_middleware, debugging_decorator

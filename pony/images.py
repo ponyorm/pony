@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function
+
 from cStringIO import StringIO
 from binascii import unhexlify
 
