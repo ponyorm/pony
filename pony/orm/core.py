@@ -1406,9 +1406,9 @@ class Attribute(object):
             try:
                 if attr.is_unique:
                     cache.update_simple_index(obj, attr, old_val, new_val, undo)
-                get = obj._vals_.get
+                get_val = obj._vals_.get
                 for attrs, i in attr.composite_keys:
-                    vals = [ get(attr) for attr in attrs ]
+                    vals = [ get_val(attr) for attr in attrs ]
                     prev_vals = tuple(vals)
                     vals[i] = new_val
                     new_vals = tuple(vals)
@@ -1460,9 +1460,9 @@ class Attribute(object):
             if attr.is_part_of_unique_index:
                 cache = obj._session_cache_
                 if attr.is_unique: cache.db_update_simple_index(obj, attr, old_val, new_dbval)
-                get = obj._vals_.get
+                get_val = obj._vals_.get
                 for attrs, i in attr.composite_keys:
-                    vals = [ get(attr) for attr in attrs ]
+                    vals = [ get_val(attr) for attr in attrs ]
                     old_vals = tuple(vals)
                     vals[i] = new_dbval
                     new_vals = tuple(vals)
@@ -2788,14 +2788,14 @@ class EntityMeta(type):
                 val = kwargs.get(attr.name, DEFAULT)
                 avdict[attr] = attr.check(val, None, entity, from_db=False)
         else:
-            get = entity._adict_.get
+            get_attr = entity._adict_.get
             for name, val in kwargs.iteritems():
-                attr = get(name)
+                attr = get_attr(name)
                 if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
                 avdict[attr] = attr.check(val, None, entity, from_db=False)
         if entity._pk_is_composite_:
-            get = avdict.get
-            pkval = tuple(get(attr) for attr in entity._pk_attrs_)
+            get_val = avdict.get
+            pkval = tuple(get_val(attr) for attr in entity._pk_attrs_)
             if None in pkval: pkval = None
         else: pkval = avdict.get(entity._pk_attrs_[0])
         return pkval, avdict
@@ -2938,8 +2938,8 @@ class EntityMeta(type):
                     if obj is not None: break
         if obj is None:
             for attrs in entity._composite_keys_:
-                get = avdict.get
-                vals = tuple(get(attr) for attr in attrs)
+                get_val = avdict.get
+                vals = tuple(get_val(attr) for attr in attrs)
                 if None in vals: continue
                 index = indexes.get(attrs)
                 if index is None: continue
@@ -3773,9 +3773,9 @@ class Entity(object):
         obj._vals_.update(avdict)
     def _keyargs_to_avdicts_(obj, kwargs):
         avdict, collection_avdict = {}, {}
-        get = obj._adict_.get
+        get_attr = obj._adict_.get
         for name, new_val in kwargs.items():
-            attr = get(name)
+            attr = get_attr(name)
             if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
             new_val = attr.check(new_val, obj, from_db=False)
             if attr.is_collection: collection_avdict[attr] = new_val
@@ -3827,9 +3827,9 @@ class Entity(object):
             if attr.is_volatile:
                 if val is not None:
                     if attr.is_unique: indexes[attr].pop(val, None)
-                    get = vals.get
+                    get_val = vals.get
                     for key, i in attr.composite_keys:
-                        keyval = tuple(get(attr) for attr in key)
+                        keyval = tuple(get_val(attr) for attr in key)
                         indexes[key].pop(keyval, None)
                 del vals[attr]
             elif after_create and val is None:
@@ -4383,12 +4383,12 @@ class Query(object):
         if not isinstance(entity, EntityMeta): throw(TypeError,
             'Keyword arguments are not allowed: since query result type is not an entity, filter() method can accept only lambda')
 
-        get = entity._adict_.get
+        get_attr = entity._adict_.get
         filterattrs = []
         value_dict = {}
         next_id = query._next_kwarg_id
         for attrname, val in sorted(kwargs.iteritems()):
-            attr = get(attrname)
+            attr = get_attr(attrname)
             if attr is None: throw(AttributeError,
                 'Entity %s does not have attribute %s' % (entity.__name__, attrname))
             if attr.is_collection: throw(TypeError,
