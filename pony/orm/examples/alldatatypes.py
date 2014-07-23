@@ -72,7 +72,7 @@ with db_session:
         else: print(False, name, 'py=', repr(value), 'db=', repr(value2))
 
     for i, (ch1, ch2) in enumerate(zip(s, str(e2.buffer_attr))):
-        if ch1 <> ch2: print(i, repr(ch1), repr(ch2), ch1, ch2)
+        if ch1 != ch2: print(i, repr(ch1), repr(ch2), ch1, ch2)
 
     commit()
 
