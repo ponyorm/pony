@@ -1,6 +1,7 @@
 """A flow graph representation for Python bytecode"""
 
 from __future__ import print_function
+from pony.py23compat import imap
 
 import dis
 import types
@@ -182,9 +183,8 @@ class Block:
             return "<block id=%d>" % (self.bid)
 
     def __str__(self):
-        insts = map(str, self.insts)
-        return "<block %s %d:\n%s>" % (self.label, self.bid,
-                                       '\n'.join(insts))
+        insts = imap(str, self.insts)
+        return "<block %s %d:\n%s>" % (self.label, self.bid, '\n'.join(insts))
 
     def emit(self, inst):
         op = inst[0]
@@ -198,9 +198,9 @@ class Block:
 
     def addNext(self, block):
         self.next.append(block)
-        assert len(self.next) == 1, map(str, self.next)
+        assert len(self.next) == 1, list(imap(str, self.next))
         block.prev.append(self)
-        assert len(block.prev) == 1, map(str, block.prev)
+        assert len(block.prev) == 1, list(imap(str, block.prev))
 
     _uncond_transfer = ('RETURN_VALUE', 'RAISE_VARARGS',
                         'JUMP_ABSOLUTE', 'JUMP_FORWARD', 'CONTINUE_LOOP',
@@ -649,7 +649,7 @@ class LineAddrTable:
         return ''.join(self.code)
 
     def getTable(self):
-        return ''.join(map(chr, self.lnotab))
+        return ''.join(imap(chr, self.lnotab))
 
 class StackDepthTracker:
     # XXX 1. need to keep track of stack depth on jumps

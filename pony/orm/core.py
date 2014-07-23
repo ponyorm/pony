@@ -1,9 +1,10 @@
 from __future__ import absolute_import, print_function, division
+from pony.py23compat import izip, imap
 
 import re, sys, types, logging
 from cPickle import loads, dumps
 from operator import attrgetter, itemgetter
-from itertools import count as _count, ifilter, ifilterfalse, imap, izip, chain, starmap, repeat
+from itertools import count as _count, chain, starmap, repeat
 from time import time
 import datetime
 from random import shuffle, randint
@@ -98,7 +99,7 @@ def log_sql(sql, arguments=None):
 
 def args2str(args):
     if isinstance(args, (tuple, list)):
-        return '[%s]' % ', '.join(map(repr, args))
+        return '[%s]' % ', '.join(imap(repr, args))
     elif isinstance(args, dict):
         return '{%s}' % ', '.join('%s:%s' % (repr(key), repr(val)) for key, val in sorted(args.iteritems()))
 
@@ -124,7 +125,7 @@ class TooManyRowsFound(OrmError): pass
 class ObjectNotFound(OrmError):
     def __init__(exc, entity, pkval):
         if type(pkval) is tuple:
-            pkval = ','.join(map(repr, pkval))
+            pkval = ','.join(imap(repr, pkval))
         else: pkval = repr(pkval)
         msg = '%s[%s]' % (entity.__name__, pkval)
         OrmError.__init__(exc, msg)
@@ -532,7 +533,7 @@ class Database(object):
             result = cursor.fetchmany(max_fetch_count)
             if cursor.fetchone() is not None: throw(TooManyRowsFound)
         else: result = cursor.fetchall()
-        if len(cursor.description) == 1: return map(itemgetter(0), result)
+        if len(cursor.description) == 1: return [ row[0] for row in result ]
         row_class = type("row", (tuple,), {})
         for i, column_info in enumerate(cursor.description):
             column_name = column_info[0]
@@ -608,7 +609,8 @@ class Database(object):
             entity._link_reverse_attrs_()
 
         def get_columns(table, column_names):
-            return tuple(map(table.column_dict.__getitem__, column_names))
+            column_dict = table.column_dict
+            return tuple(column_dict[name] for name in column_names)
 
         for entity in entities:
             entity._get_pk_columns_()
@@ -680,7 +682,7 @@ class Database(object):
                         throw(MappingError, "Invalid number of reverse columns for symmetric attribute %s" % attr)
                     assert len(m2m_columns_1) == len(reverse.converters)
                     assert len(m2m_columns_2) == len(attr.converters)
-                    for column_name, converter in zip(m2m_columns_1 + m2m_columns_2, reverse.converters + attr.converters):
+                    for column_name, converter in izip(m2m_columns_1 + m2m_columns_2, reverse.converters + attr.converters):
                         m2m_table.add_column(column_name, converter.sql_type(), converter, True)
                     m2m_table.add_index(None, tuple(m2m_table.column_list), is_pk=True)
                     m2m_table.m2m.add(attr)
@@ -708,7 +710,7 @@ class Database(object):
                     else:
                         if attr.sql_type is not None: throw(NotImplementedError,
                             'sql_type cannot be specified for composite attribute %s' % attr)
-                        for (column_name, converter) in zip(columns, attr.converters):
+                        for (column_name, converter) in izip(columns, attr.converters):
                             table.add_column(column_name, converter.sql_type(), converter, not attr.nullable)
             entity._attrs_with_columns_ = [ attr for attr in entity._attrs_
                                                  if not attr.is_collection and attr.columns ]
@@ -758,7 +760,7 @@ class Database(object):
                     child_columns = get_columns(table, attr.columns)
                     table.add_foreign_key(None, child_columns, parent_table, parent_columns, attr.index)
                 elif attr.index and attr.columns:
-                    columns = tuple(map(table.column_dict.__getitem__, attr.columns))
+                    columns = tuple(imap(table.column_dict.__getitem__, attr.columns))
                     table.add_index(attr.index, columns, is_unique=attr.is_unique)
 
         if create_tables: database.create_tables(check_tables)
@@ -1288,7 +1290,7 @@ class Attribute(object):
             offset = offsets[0]
             val = attr.check(row[offset], None, attr.entity, from_db=True)
         else:
-            vals = map(row.__getitem__, offsets)
+            vals = [ row[offset] for offset in offsets ]
             if None in vals:
                 assert len(set(vals)) == 1
                 val = None
@@ -1404,8 +1406,9 @@ class Attribute(object):
             try:
                 if attr.is_unique:
                     cache.update_simple_index(obj, attr, old_val, new_val, undo)
+                get = obj._vals_.get
                 for attrs, i in attr.composite_keys:
-                    vals = map(obj._vals_.get, attrs)
+                    vals = [ get(attr) for attr in attrs ]
                     prev_vals = tuple(vals)
                     vals[i] = new_val
                     new_vals = tuple(vals)
@@ -1457,8 +1460,9 @@ class Attribute(object):
             if attr.is_part_of_unique_index:
                 cache = obj._session_cache_
                 if attr.is_unique: cache.db_update_simple_index(obj, attr, old_val, new_dbval)
+                get = obj._vals_.get
                 for attrs, i in attr.composite_keys:
-                    vals = map(obj._vals_.get, attrs)
+                    vals = [ get(attr) for attr in attrs ]
                     old_vals = tuple(vals)
                     vals[i] = new_dbval
                     new_vals = tuple(vals)
@@ -1550,7 +1554,7 @@ class Attribute(object):
         t = attr.py_type
         if isinstance(t, type): t = t.__name__
         options = []
-        if attr.args: options.append(', '.join(map(str, attr.args)))
+        if attr.args: options.append(', '.join(imap(str, attr.args)))
         if attr.auto: options.append('auto=True')
         if not isinstance(attr, PrimaryKey) and attr.is_unique: options.append('unique=True')
         if attr.default is not None: options.append('default=%s' % attr.default)
@@ -2107,7 +2111,7 @@ class Set(Collection):
             else:
                 columns = reverse.columns + attr.columns
                 converters = reverse.converters + attr.converters
-            for i, (column, converter) in enumerate(zip(columns, converters)):
+            for i, (column, converter) in enumerate(izip(columns, converters)):
                 where_list.append([ 'EQ', ['COLUMN', None, column], [ 'PARAM', (i, None, None), converter ] ])
             sql_ast = [ 'DELETE', table_name, where_list ]
             sql, adapter = database._ast2sql(sql_ast)
@@ -2203,7 +2207,7 @@ class SetWrapper(object):
         cached_sql = attr.cached_empty_sql
         if cached_sql is None:
             where_list = [ 'WHERE' ]
-            for i, (column, converter) in enumerate(zip(reverse.columns, reverse.converters)):
+            for i, (column, converter) in enumerate(izip(reverse.columns, reverse.converters)):
                 where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (i, None, None), converter ] ])
             if not reverse.is_collection:
                 table_name = rentity._table_
@@ -2253,7 +2257,7 @@ class SetWrapper(object):
         cached_sql = attr.cached_count_sql
         if cached_sql is None:
             where_list = [ 'WHERE' ]
-            for i, (column, converter) in enumerate(zip(reverse.columns, reverse.converters)):
+            for i, (column, converter) in enumerate(izip(reverse.columns, reverse.converters)):
                 where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (i, None, None), converter ] ])
             if not reverse.is_collection: table_name = reverse.entity._table_
             else: table_name = attr.table
@@ -2778,8 +2782,8 @@ class EntityMeta(type):
     def _normalize_args_(entity, kwargs, setdefault=False):
         avdict = {}
         if setdefault:
-            for name in ifilterfalse(entity._adict_.__contains__, kwargs):
-                throw(TypeError, 'Unknown attribute %r' % name)
+            for name in kwargs:
+                if name not in entity._adict_: throw(TypeError, 'Unknown attribute %r' % name)
             for attr in entity._attrs_:
                 val = kwargs.get(attr.name, DEFAULT)
                 avdict[attr] = attr.check(val, None, entity, from_db=False)
@@ -2790,9 +2794,9 @@ class EntityMeta(type):
                 if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
                 avdict[attr] = attr.check(val, None, entity, from_db=False)
         if entity._pk_is_composite_:
-            pkval = map(avdict.get, entity._pk_attrs_)
+            get = avdict.get
+            pkval = tuple(get(attr) for attr in entity._pk_attrs_)
             if None in pkval: pkval = None
-            else: pkval = tuple(pkval)
         else: pkval = avdict.get(entity._pk_attrs_[0])
         return pkval, avdict
     @cut_traceback
@@ -2934,11 +2938,12 @@ class EntityMeta(type):
                     if obj is not None: break
         if obj is None:
             for attrs in entity._composite_keys_:
-                vals = map(avdict.get, attrs)
+                get = avdict.get
+                vals = tuple(get(attr) for attr in attrs)
                 if None in vals: continue
                 index = indexes.get(attrs)
                 if index is None: continue
-                obj = index.get(tuple(vals))
+                obj = index.get(vals)
                 if obj is not None: break
         if obj is None:
             for attr, val in avdict.iteritems():
@@ -3090,7 +3095,7 @@ class EntityMeta(type):
                     for column in attr.columns:
                         where_list.append([ 'IS_NULL', [ 'COLUMN', None, column ] ])
                 else:
-                    for j, (column, converter) in enumerate(zip(attr.columns, attr_entity._pk_converters_)):
+                    for j, (column, converter) in enumerate(izip(attr.columns, attr_entity._pk_converters_)):
                         where_list.append([ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (attr, None, j), converter ] ])
 
         if not for_update: sql_ast = [ 'SELECT', select_list, from_list, where_list ]
@@ -3240,7 +3245,7 @@ class EntityMeta(type):
                     index[pkval] = obj
                     obj._newid_ = None
                 else: obj._newid_ = next(new_instance_id_counter)
-                if obj._pk_is_composite_: pairs = zip(pk_attrs, pkval)
+                if obj._pk_is_composite_: pairs = izip(pk_attrs, pkval)
                 else: pairs = ((pk_attrs[0], pkval),)
                 if status == 'loaded':
                     assert undo_funcs is None
@@ -3378,7 +3383,7 @@ class EntityMeta(type):
 
 def populate_criteria_list(criteria_list, columns, converters, params_count=0, table_alias=None):
     assert len(columns) == len(converters)
-    for column, converter in zip(columns, converters):
+    for column, converter in izip(columns, converters):
         if converter is not None:
             criteria_list.append([ 'EQ', [ 'COLUMN', table_alias, column ],
                                          [ 'PARAM', (params_count, None, None), converter ] ])
@@ -3449,9 +3454,8 @@ class Entity(object):
                     'Cannot create %s: value %r for key %s already exists' % (entity.__name__, val, attr.name))
                 indexes_update[attr] = val
             for attrs in entity._composite_keys_:
-                vals = map(avdict.__getitem__, attrs)
+                vals = tuple(avdict[attr] for attr in attrs)
                 if None in vals: continue
-                vals = tuple(vals)
                 if vals in indexes[attrs]:
                     attr_names = ', '.join(attr.name for attr in attrs)
                     throw(CacheIndexError, 'Cannot create %s: value %s for composite key (%s) already exists'
@@ -3481,10 +3485,10 @@ class Entity(object):
             if not obj._pk_attrs_[0].reverse: return (pkval,)
             else: return pkval._get_raw_pkval_()
         raw_pkval = []
-        append = raw_pkval.append
-        for attr, val in zip(obj._pk_attrs_, pkval):
+        append, extend = raw_pkval.append, raw_pkval.extend
+        for attr, val in izip(obj._pk_attrs_, pkval):
             if not attr.reverse: append(val)
-            else: raw_pkval += val._get_raw_pkval_()
+            else: extend(val._get_raw_pkval_())
         return tuple(raw_pkval)
     @cut_traceback
     def __lt__(entity, other):
@@ -3515,7 +3519,7 @@ class Entity(object):
     def __repr__(obj):
         pkval = obj._pkval_
         if pkval is None: return '%s[new:%d]' % (obj.__class__.__name__, obj._newid_)
-        if obj._pk_is_composite_: pkval = ','.join(map(repr, pkval))
+        if obj._pk_is_composite_: pkval = ','.join(imap(repr, pkval))
         else: pkval = repr(pkval)
         return '%s[%s]' % (obj.__class__.__name__, pkval)
     def _load_(obj):
@@ -3584,7 +3588,7 @@ class Entity(object):
             for attr in attrs:
                 if attr in avdict: break
             else: continue
-            vals = map(get_val, attrs)
+            vals = [ get_val(attr) for attr in attrs ]
             prev_vals = tuple(vals)
             for i, attr in enumerate(attrs):
                 if attr in avdict: vals[i] = avdict[attr]
@@ -3658,10 +3662,9 @@ class Entity(object):
                     undo_list.append((index, val))
 
                 for attrs in obj._composite_keys_:
-                    vals = map(get_val, attrs)
+                    vals = tuple(get_val(attr) for attr in attrs)
                     if None in vals: continue
                     index = indexes[attrs]
-                    vals = tuple(vals)
                     obj2 = index.pop(vals)
                     assert obj2 is obj
                     undo_list.append((index, vals))
@@ -3752,7 +3755,7 @@ class Entity(object):
                     for attr in attrs:
                         if attr in avdict: break
                     else: continue
-                    vals = map(get_val, attrs)
+                    vals = [ get_val(attr) for attr in attrs ]
                     prev_vals = tuple(vals)
                     for i, attr in enumerate(attrs):
                         if attr in avdict: vals[i] = avdict[attr]
@@ -3824,8 +3827,9 @@ class Entity(object):
             if attr.is_volatile:
                 if val is not None:
                     if attr.is_unique: indexes[attr].pop(val, None)
+                    get = vals.get
                     for key, i in attr.composite_keys:
-                        keyval = tuple(map(vals.get, key))
+                        keyval = tuple(get(attr) for attr in key)
                         indexes[key].pop(keyval, None)
                 del vals[attr]
             elif after_create and val is None:
@@ -3925,7 +3929,7 @@ class Entity(object):
                 params_count = populate_criteria_list(where_list, pk_columns, pk_converters, params_count)
                 if optimistic_columns:
                     populate_criteria_list(where_list, optimistic_columns, optimistic_converters, params_count)
-                sql_ast = [ 'UPDATE', obj._table_, zip(update_columns, update_params), where_list ]
+                sql_ast = [ 'UPDATE', obj._table_, list(izip(update_columns, update_params)), where_list ]
                 sql, adapter = database._ast2sql(sql_ast)
                 obj._update_sql_cache_[query_key] = sql, adapter
             else: sql, adapter = cached_sql
@@ -4133,7 +4137,7 @@ class Query(object):
         if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
         database.provider.normalize_vars(vars, vartypes)
         query._vars = vars
-        query._key = code_key, tuple(map(vartypes.__getitem__, varnames)), left_join
+        query._key = code_key, tuple(vartypes[name] for name in varnames), left_join
         query._database = database
 
         translator = database._translator_cache.get(query._key)
@@ -4327,7 +4331,7 @@ class Query(object):
             vars, vartypes = extract_vars(extractors, globals, locals, cells)
             query._database.provider.normalize_vars(vars, vartypes)
             query._vars.update(vars)
-            sorted_vartypes = tuple(map(vartypes.__getitem__, varnames))
+            sorted_vartypes = tuple(vartypes[name] for name in varnames)
         else: vars, vartypes, sorted_vartypes = {}, {}, ()
 
         new_key = query._key + ((order_by and 'order_by' or 'filter', func_id, sorted_vartypes),)
@@ -4509,11 +4513,11 @@ class QueryResult(list):
             col_names = [ attr.name for attr in entity._attrs_
                                     if not attr.is_collection and not attr.lazy ][:max_columns]
             row_maker = attrgetter(*col_names)
-            rows = [ map(to_str, row_maker(obj)) for obj in result ]
+            rows = [ tuple(to_str(value) for value in row_maker(obj)) for obj in result  ]
         elif len(col_names) == 1:
             rows = [ (to_str(obj),) for obj in result ]
         else:
-            rows = [ map(to_str, row) for row in result ]
+            rows = [ tuple(to_str(value) for value in row) for row in result ]
 
         remaining_columns = {}
         for col_num, colname in enumerate(col_names):

@@ -1,11 +1,12 @@
 # -*- encoding: cp1251 -*-
 
 from __future__ import absolute_import, print_function
+from pony.py23compat import izip
 
 import re, threading, os.path, copy, cPickle
 
 from operator import attrgetter
-from itertools import count, izip, cycle
+from itertools import count, cycle
 import datetime
 
 from pony import auth
@@ -749,7 +750,7 @@ class Composite(BaseWidget):
         fields = [ field for field in composite.fields if not isinstance(field, Submit) ]
         if len(fields) != len(values): raise TypeError(
             'Expected sequence of %d values. Got: %d' % (len(fields), len(values)))
-        for field, value in zip(fields, values): field.value = value
+        for field, value in izip(fields, values): field.value = value
     value = property(_get_value, _set_value)
 ##  def _get_label(composite, colon=True, required=False):
 ##      return BaseWidget._get_label(composite, colon, required)

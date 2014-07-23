@@ -1,9 +1,10 @@
 from __future__ import absolute_import, print_function
+from pony.py23compat import izip
 
 import re, threading, os.path, sys, cgi, urllib, Cookie, cPickle, time
 
 from cStringIO import StringIO
-from itertools import imap, count
+from itertools import count
 from operator import attrgetter
 from bdb import BdbQuit
 
@@ -122,7 +123,7 @@ class HttpResponse(object):
         response.base_stylesheets = []
         response.component_stylesheets = []
         response.scripts = []
-        response.id_counter = imap('id_%d'.__mod__, count())
+        response.id_counter = ('id_%d' % i for i in count())
     def add_base_stylesheets(response, links):
         stylesheets = response.base_stylesheets
         for link in links:
@@ -145,7 +146,7 @@ def url(func, *args, **kwargs):
     try: keyparams = func.dummy_func(*args, **kwargs).copy()
     except TypeError as e: raise TypeError(e.args[0].replace('<lambda>', func.__name__, 1))
     names, argsname, keyargsname, defaults, converters = func.argspec
-    indexparams = map(keyparams.pop, names)
+    indexparams = [ keyparams.pop(name) for name in names ]
     indexparams.extend(keyparams.pop(argsname, ()))
     keyparams.update(keyparams.pop(keyargsname, {}))
     try:
@@ -307,7 +308,7 @@ def invoke(url):
 
     names, argsname, keyargsname, defaults, converters = route.func.argspec
     params = request.params
-    params.update(zip(names, args))
+    params.update(izip(names, args))
     params.update(kwargs)
 
     middlewared_func = middleware.decorator_wrap(normalize_result_decorator(route.func))
@@ -560,7 +561,7 @@ class Http(object):
             try: return result.decode('utf8')
             except UnicodeDecodeError: raise Http400BadRequest
         elif hasattr(key, '__iter__'): # sequence of field names
-            return tuple(map(self.__getitem__, key))
+            return tuple(self[fieldname] for fieldname in key)
         else: raise KeyError(key)
 
     class _Params(object):

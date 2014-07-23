@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+from pony.py23compat import imap
 
 import os.path
 import sqlite3 as sqlite
@@ -56,12 +57,12 @@ class SQLiteBuilder(SQLBuilder):
         if len(args) == 0: assert False
         elif len(args) == 1: fname = 'MIN'
         else: fname = 'min'
-        return fname, '(',  join(', ', map(builder, args)), ')'
+        return fname, '(',  join(', ', imap(builder, args)), ')'
     def MAX(builder, *args):
         if len(args) == 0: assert False
         elif len(args) == 1: fname = 'MAX'
         else: fname = 'max'
-        return fname, '(',  join(', ', map(builder, args)), ')'
+        return fname, '(',  join(', ', imap(builder, args)), ')'
     def RANDOM(builder):
         return 'rand()'  # return '(random() / 9223372036854775807.0 + 1.0) / 2.0'
 

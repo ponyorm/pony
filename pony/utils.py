@@ -1,6 +1,7 @@
 #coding: cp1251
 
 from __future__ import absolute_import, print_function
+from pony.py23compat import imap
 
 import re, os, os.path, sys, datetime, types, linecache, warnings, json
 
@@ -335,7 +336,7 @@ def guid2str(guid):
     """
     assert isinstance(guid, buffer) and len(guid) == 16
     guid = str(guid)
-    return '%s-%s-%s-%s-%s' % tuple(map(hexlify, (
+    return '%s-%s-%s-%s-%s' % tuple(imap(hexlify, (
         guid[3::-1], guid[5:3:-1], guid[7:5:-1], guid[8:10], guid[10:])))
 
 def str2guid(s):
@@ -345,7 +346,7 @@ def str2guid(s):
     'ff19966f868b11d0b42d00c04fc964ff'
     """
     assert isinstance(s, basestring) and len(s) == 36
-    a, b, c, d, e = map(unhexlify, (s[:8],s[9:13],s[14:18],s[19:23],s[24:]))
+    a, b, c, d, e = imap(unhexlify, (s[:8],s[9:13],s[14:18],s[19:23],s[24:]))
     reverse = slice(-1, None, -1)
     return buffer(''.join((a[reverse], b[reverse], c[reverse], d, e)))
 
@@ -496,7 +497,7 @@ def distinct(iter):
     return d
 
 def concat(*args):
-    return ''.join(map('%s'.__mod__, args))
+    return ''.join(tostring(arg) for arg in args)
 
 def is_utf8(encoding):
     return encoding.upper().replace('_', '').replace('-', '') in ('UTF8', 'UTF', 'U8')

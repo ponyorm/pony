@@ -1,7 +1,7 @@
 from __future__ import absolute_import, print_function, division
+from pony.py23compat import izip
 
 import types
-from itertools import izip
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
 from opcode import hasconst, hasname, hasjrel, haslocal, hascompare, hasfree
 

@@ -1,7 +1,8 @@
 from __future__ import absolute_import, print_function, division
+from pony.py23compat import izip
 
 import types, sys, re
-from itertools import izip, count
+from itertools import count
 from types import NoneType
 from decimal import Decimal
 from datetime import date, datetime
@@ -1056,9 +1057,9 @@ class ListMonad(Monad):
             if not_in: sql = [ 'NOT_IN', left_sql[0], [ item.getsql()[0] for item in monad.items ] ]
             else: sql = [ 'IN', left_sql[0], [ item.getsql()[0] for item in monad.items ] ]
         elif not_in:
-            sql = sqland([ sqlor([ [ 'NE', a, b ]  for a, b in zip(left_sql, item.getsql()) ]) for item in monad.items ])
+            sql = sqland([ sqlor([ [ 'NE', a, b ]  for a, b in izip(left_sql, item.getsql()) ]) for item in monad.items ])
         else:
-            sql = sqlor([ sqland([ [ 'EQ', a, b ]  for a, b in zip(left_sql, item.getsql()) ]) for item in monad.items ])
+            sql = sqlor([ sqland([ [ 'EQ', a, b ]  for a, b in izip(left_sql, item.getsql()) ]) for item in monad.items ])
         return translator.BoolExprMonad(translator, sql)
 
 class BufferMixin(MonadMixin):
@@ -1412,7 +1413,7 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
     def getsql(monad, subquery=None):
         entity = monad.type
         assert len(monad.params) == len(entity._pk_converters_)
-        return [ [ 'PARAM', param, converter ] for param, converter in zip(monad.params, entity._pk_converters_) ]
+        return [ [ 'PARAM', param, converter ] for param, converter in izip(monad.params, entity._pk_converters_) ]
     def requires_distinct(monad, joined=False):
         assert False  # pragma: no cover
 
@@ -1553,9 +1554,9 @@ class CmpMonad(BoolMonad):
             assert len(left_sql) == len(right_sql) == 1
             return [ [ cmp_ops[op], left_sql[0], right_sql[0] ] ]
         if op == '==':
-            return [ sqland([ [ 'EQ', a, b ] for (a, b) in zip(left_sql, right_sql) ]) ]
+            return [ sqland([ [ 'EQ', a, b ] for a, b in izip(left_sql, right_sql) ]) ]
         if op == '!=':
-            return [ sqlor([ [ 'NE', a, b ] for (a, b) in zip(left_sql, right_sql) ]) ]
+            return [ sqlor([ [ 'NE', a, b ] for a, b in izip(left_sql, right_sql) ]) ]
         assert False  # pragma: no cover
 
 class LogicalBinOpMonad(BoolMonad):
@@ -1642,7 +1643,7 @@ class FuncDateMonad(FuncMonad):
     func = date
     def call(monad, year, month, day):
         translator = monad.translator
-        for x, name in zip((year, month, day), ('year', 'month', 'day')):
+        for x, name in izip((year, month, day), ('year', 'month', 'day')):
             if not isinstance(x, translator.NumericMixin) or x.type is not int: throw(TypeError,
                 "'%s' argument of date(year, month, day) function must be of 'int' type. Got: %r" % (name, type2str(x.type)))
             if not isinstance(x, translator.ConstMonad): throw(NotImplementedError)
@@ -1655,7 +1656,7 @@ class FuncDatetimeMonad(FuncDateMonad):
     func = datetime
     def call(monad, *args):
         translator = monad.translator
-        for x, name in zip(args, ('year', 'month', 'day', 'hour', 'minute', 'second', 'microsecond')):
+        for x, name in izip(args, ('year', 'month', 'day', 'hour', 'minute', 'second', 'microsecond')):
             if not isinstance(x, translator.NumericMixin) or x.type is not int: throw(TypeError,
                 "'%s' argument of datetime(...) function must be of 'int' type. Got: %r" % (name, type2str(x.type)))
             if not isinstance(x, translator.ConstMonad): throw(NotImplementedError)
@@ -1858,7 +1859,7 @@ class AttrSetMonad(SetMixin, Monad):
             translator.distinct = True
             tableref = monad.make_tableref(translator.subquery)
             expr_list = monad.make_expr_list()
-            expr_ast = sqland([ [ 'EQ', expr1, expr2 ]  for expr1, expr2 in zip(expr_list, item.getsql()) ])
+            expr_ast = sqland([ [ 'EQ', expr1, expr2 ]  for expr1, expr2 in izip(expr_list, item.getsql()) ])
             return translator.BoolExprMonad(translator, expr_ast)
         else:
             subquery = Subquery(translator.subquery)
@@ -1870,7 +1871,7 @@ class AttrSetMonad(SetMixin, Monad):
             from_ast = translator.subquery.from_ast
             from_ast[0] = 'LEFT_JOIN'
             from_ast.extend(subquery.from_ast[1:])
-            conditions = [ [ 'EQ', [ 'COLUMN', alias, column ], expr ]  for column, expr in zip(columns, item.getsql()) ]
+            conditions = [ [ 'EQ', [ 'COLUMN', alias, column ], expr ]  for column, expr in izip(columns, item.getsql()) ]
             conditions.extend(subquery.conditions)
             from_ast[-1][-1] = sqland([ from_ast[-1][-1] ] + conditions)
             expr_ast = sqland([ [ 'IS_NULL', expr ] for expr in expr_list ])

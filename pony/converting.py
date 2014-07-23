@@ -1,6 +1,7 @@
 # coding: cp1251
 
 from __future__ import absolute_import, print_function
+from pony.py23compat import izip, imap
 
 import re, datetime
 
@@ -11,10 +12,10 @@ class ValidationError(ValueError):
 
 def check_ip(s):
     s = s.strip()
-    list = map(int, s.split('.'))
-    if len(list) != 4: raise ValueError
-    for number in list:
-        if not 0 <= number <= 255: raise ValueError
+    items = s.split('.')
+    if len(items) != 4: raise ValueError()
+    for item in items:
+        if not 0 <= int(item) <= 255: raise ValueError
     return s
 
 def check_positive(s):
@@ -30,13 +31,13 @@ isbn_re = re.compile(r'(?:\d[ -]?)+x?')
 
 def isbn10_checksum(digits):
     if len(digits) != 9: raise ValueError
-    reminder = sum(digit*coef for digit, coef in zip(map(int, digits), xrange(10, 1, -1))) % 11
+    reminder = sum(digit*coef for digit, coef in izip(imap(int, digits), xrange(10, 1, -1))) % 11
     if reminder == 1: return 'X'
     return reminder and str(11 - reminder) or '0'
 
 def isbn13_checksum(digits):
     if len(digits) != 12: raise ValueError
-    reminder = sum(digit*coef for digit, coef in zip(map(int, digits), (1, 3)*6)) % 10
+    reminder = sum(digit*coef for digit, coef in izip(imap(int, digits), (1, 3)*6)) % 10
     return reminder and str(10 - reminder) or '0'
 
 def check_isbn(s, convert_to=None):

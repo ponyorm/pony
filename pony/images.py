@@ -1,4 +1,5 @@
 from __future__ import absolute_import, print_function
+from pony.py23compat import imap
 
 from cStringIO import StringIO
 from binascii import unhexlify
@@ -17,7 +18,7 @@ def _decode_color(color):
     size = len(color)
     if size in (3, 4): color = ''.join(char+char for char in color)
     elif size not in (6, 8): raise ValueError
-    try: return tuple(map(ord, unhexlify(color)))
+    try: return tuple(imap(ord, unhexlify(color)))
     except: raise ValueError
 
 def _decode_png_colors(color1, color2):

@@ -1,10 +1,10 @@
 from __future__ import absolute_import, print_function, division
+from pony.py23compat import izip
 
 import types
 from types import NoneType
 from decimal import Decimal
 from datetime import date, datetime
-from itertools import izip
 from uuid import UUID
 
 from pony.utils import throw

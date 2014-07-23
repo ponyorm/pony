@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+from pony.py23compat import imap
 
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
@@ -32,7 +33,7 @@ class MySQLTranslator(SQLTranslator):
 class MySQLBuilder(SQLBuilder):
     dialect = 'MySQL'
     def CONCAT(builder, *args):
-        return 'concat(',  join(', ', map(builder, args)), ')'
+        return 'concat(',  join(', ', imap(builder, args)), ')'
     def TRIM(builder, expr, chars=None):
         if chars is None: return 'trim(', builder(expr), ')'
         return 'trim(both ', builder(chars), ' from ' ,builder(expr), ')'
@@ -222,13 +223,13 @@ provider_cls = MySQLProvider
 def str2datetime(s):
     if 19 < len(s) < 26: s += '000000'[:26-len(s)]
     s = s.replace('-', ' ').replace(':', ' ').replace('.', ' ').replace('T', ' ')
-    return datetime(*map(int, s.split()))
+    return datetime(*imap(int, s.split()))
 
 def str2timedelta(s):
     if '.' in s:
         s, fractional = s.split('.')
         microseconds = int((fractional + '000000')[:6])
     else: microseconds = 0
-    h, m, s = map(int, s.split(':'))
+    h, m, s = imap(int, s.split(':'))
     td = timedelta(hours=abs(h), minutes=m, seconds=s, microseconds=microseconds)
     return -td if h < 0 else td

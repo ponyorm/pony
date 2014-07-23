@@ -83,7 +83,7 @@ class TestDatabase(Database):
             elif provider_name == 'mysql': raw_server_version = '5.6.11'
             else: assert False, provider_name
 
-        t = map(int, raw_server_version.split('.'))
+        t = [ int(component) for component in raw_server_version.split('.') ]
         if len(t) == 2: t.append(0)
         server_version = tuple(t)
         if provider_name in ('postgres', 'pygresql'):

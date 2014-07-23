@@ -1,8 +1,7 @@
 from __future__ import absolute_import, print_function
+from pony.py23compat import izip
 
 import re, threading, inspect, warnings, urllib
-
-from itertools import izip
 from operator import itemgetter
 
 import pony
@@ -254,7 +253,7 @@ def get_routes(path, qdict, method, host, port):
                 if not x[-1][0]: n += 1
                 priority += n
                 assert len(params) == len(groups)
-                for param, value in zip(params, groups):
+                for param, value in izip(params, groups):
                     if isinstance(param, int): args[param] = value
                     elif isinstance(param, basestring): kwargs[param] = value
                     else: assert False
@@ -294,7 +293,7 @@ def get_routes(path, qdict, method, host, port):
                     if not x[-1][0]: n += 1
                     priority += n
                     assert len(params) == len(groups)
-                    for param, value in zip(params, groups):
+                    for param, value in izip(params, groups):
                         if isinstance(param, int): args[param] = value
                         elif isinstance(param, basestring):
                             kwargs[param] = value
@@ -319,9 +318,9 @@ def get_routes(path, qdict, method, host, port):
                         arglist.extend(path[len(route.parsed_path):])
                     result.append((route, arglist, kwargs, priority, len(non_used_query_params)))
     if result:
-        x = max(map(itemgetter(3), result))
+        x = max(tup[3] for tup in result)
         result = [ tup for tup in result if tup[3] == x ]
-        x = min(map(itemgetter(4), result))
+        x = min(tup[4] for tup in result)
         result = [ tup[:3] for tup in result if tup[4] == x ]
     return result
 

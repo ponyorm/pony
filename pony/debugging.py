@@ -3,7 +3,7 @@ from __future__ import absolute_import, print_function
 import re, sys, os.path, threading, cStringIO, weakref, inspect, keyword, linecache, traceback
 
 from repr import Repr
-from itertools import izip, count
+from itertools import count
 from urllib import unquote_plus
 
 import pony

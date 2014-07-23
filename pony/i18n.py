@@ -1,7 +1,8 @@
 from __future__ import absolute_import, print_function
+from pony.py23compat import izip
 
 import re, os, threading
-from itertools import izip, count, chain
+from itertools import count, chain
 from time import time
 from glob import glob
 from os.path import join, exists
@@ -28,10 +29,9 @@ def translate(key, params, lang_list):
     for lang in chain(lang_list, (None,)):
         try: params_order, lstr = d2[lang]
         except KeyError: continue
-        ordered_params = map(params.__getitem__, params_order)
+        ordered_params = [ params[i] for i in params_order ]
         ordered_params.reverse()
-        return u"".join(not flag and value or ordered_params.pop()
-                        for flag, value in lstr)
+        return u"".join(ordered_params.pop() if flag else value for flag, value in lstr)
     assert False
 
 def reg_trans_file(filename):
@@ -151,14 +151,14 @@ def check_params(key_params_list, key_lineno, lstr, lstr_lineno, lang_code):
                                        if match.group() != '$$' ]
     if len(key_params_list) != len(lstr_params_list): raise I18nParseError(
         "Parameters count in line %d doesn't match with line %d" % (key_lineno, lstr_lineno))
-    for a, b in zip(sorted(key_params_list), sorted(lstr_params_list)):
+    for a, b in izip(sorted(key_params_list), sorted(lstr_params_list)):
         if a != b: raise I18nParseError("Unknown parameter in line %d: %s (translation for %s)"
                                         % (lstr_lineno, b, lang_code))
 
 def get_params_order(key_pieces, lstr_pieces):
     key_params = [ value for flag, value in key_pieces if flag ]
     lstr_params = [ value for flag, value in lstr_pieces if flag ]
-    return map(key_params.index, lstr_params)
+    return [ key_params.index(value) for value in lstr_params ]
 
 def init():
     translations.clear()

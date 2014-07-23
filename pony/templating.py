@@ -1,4 +1,5 @@
 from __future__ import absolute_import, print_function
+from pony.py23compat import izip
 
 import itertools, sys, os.path, threading, inspect, re, weakref, textwrap, copy_reg
 
@@ -618,11 +619,11 @@ class ForElement(SyntaxElement):
         for i, item in enumerate(list):
             if i and elem.separator:
                 result.append(elem.separator.eval(globals, locals))
-            for name, value in zip(elem.var_names, item): locals[name] = value
+            for name, value in izip(elem.var_names, item): locals[name] = value
             locals['for'] = i, len(list)
             for _, code in elem.assignments: exec code in globals, locals
             result.append(elem.markup.eval(globals, locals))
-        for name, old_value in zip(all_var_names, old_values):
+        for name, old_value in izip(all_var_names, old_values):
             if old_value is not_found: del locals[name]
             else: locals[name] = old_value
         return elem.empty.join(result)

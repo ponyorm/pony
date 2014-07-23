@@ -1,4 +1,5 @@
 from __future__ import print_function
+from pony.py23compat import izip
 
 import imp
 import os
@@ -568,7 +569,7 @@ class CodeGenerator:
         self.emit('BUILD_LIST', 0)
 
         stack = []
-        for i, for_ in zip(range(len(node.quals)), node.quals):
+        for i, for_ in izip(range(len(node.quals)), node.quals):
             start, anchor = self.visit(for_)
             cont = None
             for if_ in for_.ifs:
@@ -592,7 +593,7 @@ class CodeGenerator:
         self.emit('BUILD_SET', 0)
 
         stack = []
-        for i, for_ in zip(range(len(node.quals)), node.quals):
+        for i, for_ in izip(range(len(node.quals)), node.quals):
             start, anchor = self.visit(for_)
             cont = None
             for if_ in for_.ifs:
@@ -616,7 +617,7 @@ class CodeGenerator:
         self.emit('BUILD_MAP', 0)
 
         stack = []
-        for i, for_ in zip(range(len(node.quals)), node.quals):
+        for i, for_ in izip(range(len(node.quals)), node.quals):
             start, anchor = self.visit(for_)
             cont = None
             for if_ in for_.ifs:
@@ -683,7 +684,7 @@ class CodeGenerator:
         # setup list
 
         stack = []
-        for i, for_ in zip(range(len(node.quals)), node.quals):
+        for i, for_ in izip(range(len(node.quals)), node.quals):
             start, anchor, end = self.visit(for_)
             cont = None
             for if_ in for_.ifs:

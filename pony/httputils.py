@@ -102,7 +102,7 @@ def split_url(url, strict_parsing=False):
     else: p, qlist = url, []
     components = p.split('/')
     if not components[0]: components = components[1:]
-    path = map(unquote, components)
+    path = [ unquote(component) for component in components ]
     return path, qlist
 
 def parse_address(address):
