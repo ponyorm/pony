@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, imap
+from pony.py23compat import izip, imap, itervalues
 
 import re, sys, types, logging
 from cPickle import loads, dumps
@@ -1847,7 +1847,7 @@ class Set(Collection):
         if prefetching:
             pk_index = cache.indexes[entity._pk_attrs_]
             max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
-            for obj2 in pk_index.itervalues():
+            for obj2 in itervalues(pk_index):
                 if obj2 is obj: continue
                 if obj2._status_ in created_or_deleted_statuses: continue
                 setdata2 = obj2._vals_.get(attr)
@@ -2445,7 +2445,7 @@ class Multiset(object):
     @cut_traceback
     def __repr__(multiset):
         if multiset._obj_._session_cache_.is_alive:
-            size = _sum(multiset._items_.itervalues())
+            size = _sum(itervalues(multiset._items_))
             if size == 1: size_str = ' (1 item)'
             else: size_str = ' (%d items)' % size
         else: size_str = ''

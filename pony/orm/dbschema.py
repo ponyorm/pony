@@ -1,4 +1,5 @@
 from __future__ import absolute_import, print_function, division
+from pony.py23compat import itervalues
 
 from pony.orm import core
 from pony.orm.core import log_sql, DBSchemaError
@@ -28,7 +29,7 @@ class DBSchema(object):
     def order_tables_to_create(schema):
         tables = []
         created_tables = set()
-        tables_to_create = sorted(schema.tables.itervalues(), key=lambda table: table.name)
+        tables_to_create = sorted(itervalues(schema.tables), key=lambda table: table.name)
         while tables_to_create:
             for table in tables_to_create:
                 if table.parent_tables.issubset(created_tables):
@@ -60,7 +61,7 @@ class DBSchema(object):
                                          'Try to delete %s %s first.' % (tn1, n1, tn2, n2, n2, tn2))
     def check_tables(schema, provider, connection):
         cursor = connection.cursor()
-        for table in sorted(schema.tables.itervalues(), key=lambda table: table.name):
+        for table in sorted(itervalues(schema.tables), key=lambda table: table.name):
             if isinstance(table.name, tuple): alias = table.name[-1]
             elif isinstance(table.name, basestring): alias = table.name
             else: assert False
@@ -120,13 +121,13 @@ class Table(DBObject):
             cmd.append(schema.indent + column.get_sql() + ',')
         if len(table.pk_index.columns) > 1:
             cmd.append(schema.indent + table.pk_index.get_sql() + ',')
-        for index in sorted(table.indexes.itervalues(), key=lambda index: index.name):
+        for index in sorted(itervalues(table.indexes), key=lambda index: index.name):
             if index.is_pk: continue
             if not index.is_unique: continue
             if len(index.columns) == 1: continue
             cmd.append(schema.indent+index.get_sql() + ',')
         if not schema.named_foreign_keys:
-            for foreign_key in sorted(table.foreign_keys.itervalues(), key=lambda fk: fk.name):
+            for foreign_key in sorted(itervalues(table.foreign_keys), key=lambda fk: fk.name):
                 if schema.inline_fk_syntax and len(foreign_key.child_columns) == 1: continue
                 cmd.append(schema.indent+foreign_key.get_sql() + ',')
         cmd[-1] = cmd[-1][:-1]
@@ -135,18 +136,18 @@ class Table(DBObject):
     def get_objects_to_create(table, created_tables=None):
         if created_tables is None: created_tables = set()
         result = [ table ]
-        for index in sorted(table.indexes.itervalues(), key=lambda index: index.name):
+        for index in sorted(itervalues(table.indexes), key=lambda index: index.name):
             if index.is_pk or index.is_unique: continue
             assert index.name is not None
             result.append(index)
         schema = table.schema
         if schema.named_foreign_keys:
-            for foreign_key in sorted(table.foreign_keys.itervalues(), key=lambda fk: fk.name):
+            for foreign_key in sorted(itervalues(table.foreign_keys), key=lambda fk: fk.name):
                 if foreign_key.parent_table not in created_tables: continue
                 result.append(foreign_key)
             for child_table in table.child_tables:
                 if child_table not in created_tables: continue
-                for foreign_key in sorted(child_table.foreign_keys.itervalues(), key=lambda fk: fk.name):
+                for foreign_key in sorted(itervalues(child_table.foreign_keys), key=lambda fk: fk.name):
                     if foreign_key.parent_table is not table: continue
                     result.append(foreign_key)
         created_tables.add(table)

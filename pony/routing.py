@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function
-from pony.py23compat import izip
+from pony.py23compat import izip, itervalues
 
 import re, threading, inspect, warnings, urllib
 from operator import itemgetter
@@ -431,6 +431,6 @@ def _clear(dict, list1, list2):
     list1[:] = []
     for route in list2: route.func.routes.remove(route)
     list2[:] = []
-    for inner_dict, list1, list2 in dict.itervalues():
+    for inner_dict, list1, list2 in itervalues(dict):
         _clear(inner_dict, list1, list2)
     dict.clear()

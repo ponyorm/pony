@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, imap
+from pony.py23compat import izip, imap, itervalues
 
 from operator import attrgetter
 from decimal import Decimal
@@ -154,11 +154,11 @@ class SQLBuilder(object):
             def adapter(values):
                 return tuple(convert(values, params))
         elif paramstyle == 'numeric':
-            params = tuple(param for param in sorted(builder.keys.itervalues(), key=attrgetter('id')))
+            params = tuple(param for param in sorted(itervalues(builder.keys), key=attrgetter('id')))
             def adapter(values):
                 return tuple(convert(values, params))
         elif paramstyle in ('named', 'pyformat'):
-            params = tuple(param for param in sorted(builder.keys.itervalues(), key=attrgetter('id')))
+            params = tuple(param for param in sorted(itervalues(builder.keys), key=attrgetter('id')))
             def adapter(values):
                 return dict(('p%d' % param.id, value) for param, value in izip(params, convert(values, params)))
         else: throw(NotImplementedError, paramstyle)

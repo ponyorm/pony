@@ -49,6 +49,7 @@
 """
 
 from __future__ import absolute_import, print_function
+from pony.py23compat import itervalues
 
 from heapq import heappush, heappop, heapify
 from threading import Lock
@@ -319,7 +320,7 @@ class Memcache(object):
         cache._dict.clear()
         cache._heap = []
         cache._list.prev = cache._list.next = cache._list
-        for node in cache._dict.itervalues():
+        for node in itervalues(cache._dict):
             node.prev = node.next = None
     @with_lock
     def get_stats(cache):
