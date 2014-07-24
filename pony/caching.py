@@ -49,7 +49,7 @@
 """
 
 from __future__ import absolute_import, print_function
-from pony.py23compat import itervalues
+from pony.py23compat import itervalues, iteritems
 
 from heapq import heappush, heappop, heapify
 from threading import Lock
@@ -220,7 +220,7 @@ class Memcache(object):
     set = with_lock(_set)
     @with_lock
     def set_multi(cache, mapping, time=0, key_prefix=''):
-        for key, value in mapping.iteritems():
+        for key, value in iteritems(mapping):
             cache._set(key_prefix + key, value, time)
         return []
     def _add(cache, key, value, time=0):
@@ -238,7 +238,7 @@ class Memcache(object):
     @with_lock
     def add_multi(cache, mapping, time=0, key_prefix=''):
         result = []
-        for key, value in mapping.iteritems():
+        for key, value in iteritems(mapping):
             if not cache._add(key_prefix + key, value, time):
                 result.append(key)
         return result
@@ -255,7 +255,7 @@ class Memcache(object):
     @with_lock
     def replace_multi(cache, mapping, time=0, key_prefix=''):
         result = []
-        for key, value in mapping.iteritems():
+        for key, value in iteritems(mapping):
             if not cache._replace(key_prefix + key, value, time):
                 result.append(key)
         return result

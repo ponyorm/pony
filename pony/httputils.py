@@ -1,4 +1,5 @@
 from __future__ import absolute_import, print_function, division
+from pony.py23compat import iteritems
 
 import re, mimetypes
 
@@ -78,7 +79,7 @@ def parse_accept_language(s):
                     except: pass
             lang = lang.strip()
             if lang: languages[lang] = max(q, languages.get(lang))
-    languages = sorted((q, lang) for lang, q in languages.iteritems())
+    languages = sorted((q, lang) for lang, q in iteritems(languages))
     languages.reverse()
     return [ lang for q, lang in languages ]
 

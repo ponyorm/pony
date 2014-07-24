@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+from pony.py23compat import iteritems
 
 import os
 os.environ["NLS_LANG"] = "AMERICAN_AMERICA.UTF8"
@@ -322,7 +323,7 @@ class OraProvider(DBAPIProvider):
         return name[:provider.max_name_len].upper()
 
     def normalize_vars(provider, vars, vartypes):
-        for name, value in vars.iteritems():
+        for name, value in iteritems(vars):
             if value == '':
                 vars[name] = None
                 vartypes[name] = NoneType
@@ -471,7 +472,7 @@ def get_inputsize(arg):
 def set_input_sizes(cursor, arguments):
     if type(arguments) is dict:
         input_sizes = {}
-        for name, arg in arguments.iteritems():
+        for name, arg in iteritems(arguments):
             size = get_inputsize(arg)
             if size is not None: input_sizes[name] = size
         cursor.setinputsizes(**input_sizes)

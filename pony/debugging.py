@@ -1,4 +1,5 @@
 from __future__ import absolute_import, print_function
+from pony.py23compat import iteritems
 
 import re, sys, os.path, threading, cStringIO, weakref, inspect, keyword, linecache, traceback
 
@@ -275,7 +276,7 @@ else:
         query = environ.get('QUERY_STRING', '')
         if not debug_re.search(query): return app(environ)
 
-        env = dict((key, value) for key, value in environ.iteritems()
+        env = dict((key, value) for key, value in iteritems(environ)
                                 if isinstance(key, basestring) and isinstance(value, basestring))
         env['wsgi.version'] = environ['wsgi.version']
         env['wsgi.url_scheme'] = environ['wsgi.url_scheme']

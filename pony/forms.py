@@ -1,7 +1,7 @@
 # -*- encoding: cp1251 -*-
 
 from __future__ import absolute_import, print_function
-from pony.py23compat import izip
+from pony.py23compat import izip, iteritems
 
 import re, threading, os.path, copy, cPickle
 
@@ -87,7 +87,7 @@ class Form(object):
         object.__setattr__(form, '_error_text', None)
         object.__setattr__(form, '_request', http.request)
         object.__setattr__(form, 'attrs', dict((name.lower(), str(value))
-                                               for name, value in attrs.iteritems()))
+                                               for name, value in iteritems(attrs)))
         object.__setattr__(form, 'fields', [])
         object.__setattr__(form, 'hidden_fields', [])
         object.__setattr__(form, 'submit_fields', [])

@@ -1,7 +1,7 @@
 # coding: cp1251
 
 from __future__ import absolute_import, print_function
-from pony.py23compat import izip, imap
+from pony.py23compat import izip, imap, iteritems
 
 import re, datetime
 
@@ -137,7 +137,7 @@ def str2date(s):
     day = dict['day']
     month = dict.get('month')
     if month is None:
-        for key, value in month_dict.iteritems():
+        for key, value in iteritems(month_dict):
             if key in s: month = value; break
         else: raise ValueError('Unrecognized date format')
     return datetime.date(int(year), int(month), int(day))
@@ -161,7 +161,7 @@ def str2datetime(s):
     day = dict['day']
     month = dict.get('month')
     if month is None:
-        for key, value in month_dict.iteritems():
+        for key, value in iteritems(month_dict):
             if key in s: month = value; break
         else: raise ValueError('Unrecognized datetime format')
     hh, mm, ss = dict.get('hh'), dict.get('mm'), dict.get('ss')

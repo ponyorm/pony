@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function
-from pony.py23compat import izip
+from pony.py23compat import izip, iteritems
 
 import re, os, threading
 from itertools import count, chain
@@ -48,7 +48,7 @@ def load(filename):
     return trans
 
 def update(trans1, trans2):
-    for key, d2 in trans2.iteritems():
+    for key, d2 in iteritems(trans2):
         trans1.setdefault(key, {}).update(d2)
 
 last_check_time = 0
