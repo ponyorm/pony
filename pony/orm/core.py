@@ -398,7 +398,7 @@ def with_transaction(*args, **kwargs):
 @decorator
 def db_decorator(func, *args, **kwargs):
     web = sys.modules.get('pony.web')
-    allowed_exceptions = web and [ web.HttpRedirect ] or []
+    allowed_exceptions = [ web.HttpRedirect ] if web else []
     try:
         with db_session(allowed_exceptions=allowed_exceptions):
             return func(*args, **kwargs)
@@ -1232,7 +1232,7 @@ class Attribute(object):
                 "because reverse attribute %s is collection" % (attr, reverse))
     @cut_traceback
     def __repr__(attr):
-        owner_name = not attr.entity and '?' or attr.entity.__name__
+        owner_name = attr.entity.__name__ if attr.entity else '?'
         return '%s.%s' % (owner_name, attr.name or '?')
     def check(attr, val, obj=None, entity=None, from_db=False):
         if val is None:
@@ -2625,7 +2625,7 @@ class EntityMeta(type):
         entity._pk_columns_ = None
         entity._pk_attrs_ = pk_attrs
         entity._pk_is_composite_ = len(pk_attrs) > 1
-        entity._pk_ = len(pk_attrs) > 1 and pk_attrs or pk_attrs[0]
+        entity._pk_ = pk_attrs if len(pk_attrs) > 1 else pk_attrs[0]
         entity._keys_ = [ key for key, is_pk in keys.items() if not is_pk ]
         entity._simple_keys_ = [ key[0] for key in entity._keys_ if len(key) == 1 ]
         entity._composite_keys_ = [ key for key in entity._keys_ if len(key) > 1 ]
@@ -3024,7 +3024,7 @@ class EntityMeta(type):
         return objects
     def _construct_select_clause_(entity, alias=None, distinct=False, query_attrs=()):
         attr_offsets = {}
-        select_list = distinct and [ 'DISTINCT' ] or [ 'ALL' ]
+        select_list = [ 'DISTINCT' ] if distinct else [ 'ALL' ]
         root = entity._root_
         for attr in chain(root._attrs_, root._subclass_attrs_):
             if attr.is_collection: continue
@@ -4332,7 +4332,7 @@ class Query(object):
             sorted_vartypes = tuple(vartypes[name] for name in varnames)
         else: vars, vartypes, sorted_vartypes = {}, {}, ()
 
-        new_key = query._key + ((order_by and 'order_by' or 'filter', func_id, sorted_vartypes),)
+        new_key = query._key + (('order_by' if order_by else 'filter', func_id, sorted_vartypes),)
         new_filters = query._filters + ((order_by, func_ast, argnames, extractors, vartypes),)
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:

@@ -43,8 +43,8 @@ def reload(modules, changed_module, filename):
         log_exc()
         raise
     finally:
-        log(type='RELOAD:end', severity=DEBUG,
-            text=success and 'Reloaded successfully' or 'Reloaded with errors', success=success)
+        log(type='RELOAD:end', severity=DEBUG, success=success,
+            text='Reloaded successfully' if success else 'Reloaded with errors')
         reloading = False
 
 reloading_exception = None

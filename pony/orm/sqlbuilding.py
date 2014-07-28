@@ -17,7 +17,7 @@ class Param(object):
         param.style = paramstyle
         param.id = id
         param.paramkey = paramkey
-        param.py2sql = converter and converter.py2sql or (lambda val: val)
+        param.py2sql = converter.py2sql if converter else (lambda val: val)
     def __unicode__(param):
         paramstyle = param.style
         if paramstyle == 'qmark': return u'?'

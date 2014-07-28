@@ -99,7 +99,7 @@ class SQLTranslator(ASTTranslator):
             if obj.__class__.__dict__.get(func.__name__) is not func: throw(NotImplementedError)
             monad = translator.MethodMonad(translator, entity_monad, func.__name__)
         elif isinstance(node, ast.Name) and node.name in ('True', 'False'):
-            value = node.name == 'True' and True or False
+            value = True if node.name == 'True' else False
             monad = translator.ConstMonad.new(translator, value)
         elif tt is tuple:
             params = []
@@ -412,7 +412,7 @@ class SQLTranslator(ASTTranslator):
              and not translator.aggregated and not translator.optimize:
             select_ast, attr_offsets = translator.expr_type._construct_select_clause_(
                                             translator.alias, distinct, translator.tableref.used_attrs)
-        else: select_ast = [ distinct and 'DISTINCT' or 'ALL' ] + translator.expr_columns
+        else: select_ast = [ 'DISTINCT' if distinct else 'ALL' ] + translator.expr_columns
         sql_ast.append(select_ast)
         sql_ast.append(translator.subquery.from_ast)
 
@@ -847,11 +847,11 @@ class JoinedTableRef(object):
             join_cond = join_tables(parent_alias, alias, left_pk_columns, attr.reverse.columns)
             subquery.from_ast.append([ alias, 'TABLE', entity._table_, join_cond ])
         else:
-            right_m2m_columns = attr.symmetric and attr.reverse_columns or attr.columns
+            right_m2m_columns = attr.reverse_columns if attr.symmetric else attr.columns
             if not tableref.joined:
                 m2m_table = attr.table
                 m2m_alias = subquery.get_short_alias(None, 't')
-                reverse_columns = attr.symmetric and attr.columns or attr.reverse.columns
+                reverse_columns = attr.columns if attr.symmetric else attr.reverse.columns
                 m2m_join_cond = join_tables(parent_alias, m2m_alias, left_pk_columns, reverse_columns)
                 subquery.from_ast.append([ m2m_alias, 'TABLE', m2m_table, m2m_join_cond ])
                 if pk_only:
@@ -999,7 +999,7 @@ def reraise_improved_typeerror(exc, func_name, orig_func_name):
     what, takes, given = match.groups()
     takes, given = int(takes), int(given)
     if takes: what = '%s %d' % (what, takes-1)
-    plural = takes > 2 and 's' or ''
+    plural = 's' if takes > 2 else ''
     new_msg = '%s() takes %s argument%s (%d given)' % (orig_func_name, what, plural, given-1)
     exc.args = (new_msg,)
     throw(exc)
@@ -1839,7 +1839,7 @@ class AttrSetMonad(SetMixin, Monad):
         translator = monad.translator
         check_comparable(item, monad, 'in')
         if not translator.hint_join:
-            sqlop = not_in and 'NOT_IN' or 'IN'
+            sqlop = 'NOT_IN' if not_in else 'IN'
             subquery = monad._subselect()
             expr_list = subquery.expr_list
             from_ast = subquery.from_ast
@@ -1852,7 +1852,7 @@ class AttrSetMonad(SetMixin, Monad):
                 sql_ast = [ sqlop, [ 'ROW' ] + item.getsql(), subquery_ast ]
             else:
                 conditions += [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item.getsql(), expr_list) ]
-                sql_ast = [ not_in and 'NOT_EXISTS' or 'EXISTS', from_ast, [ 'WHERE' ] + conditions ]
+                sql_ast = [ 'NOT_EXISTS' if not_in else 'EXISTS', from_ast, [ 'WHERE' ] + conditions ]
             result = translator.BoolExprMonad(translator, sql_ast)
             result.nogroup = True
             return result
@@ -1975,7 +1975,7 @@ class AttrSetMonad(SetMixin, Monad):
         else:
             sql_ast, optimized = monad._aggregated_scalar_subselect(make_aggr)
 
-        result_type = func_name == 'AVG' and float or item_type
+        result_type = float if func_name == 'AVG' else item_type
         translator.aggregated_subquery_paths.add(monad.tableref.name_path)
         result = translator.ExprMonad.new(monad.translator, result_type, sql_ast)
         if optimized: result.aggregated = True
@@ -2237,12 +2237,12 @@ class QuerySetMonad(SetMixin, Monad):
             else: sql_ast = [ 'EQ', [ 'VALUE', 1 ], [ 'VALUE', 1 ] ]
         else:
             if len(item_columns) == 1:
-                sql_ast = [ not_in and 'NOT_IN' or 'IN', item_columns[0], subquery_ast ]
+                sql_ast = [ 'NOT_IN' if not_in else 'IN', item_columns[0], subquery_ast ]
             elif translator.row_value_syntax:
-                sql_ast = [ not_in and 'NOT_IN' or 'IN', [ 'ROW' ] + item_columns, subquery_ast ]
+                sql_ast = [ 'NOT_IN' if not_in else 'IN', [ 'ROW' ] + item_columns, subquery_ast ]
             else:
                 where_ast += [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item_columns, select_ast[1:]) ]
-                sql_ast = [ not_in and 'NOT_EXISTS' or 'EXISTS' ] + subquery_ast[2:]
+                sql_ast = [ 'NOT_EXISTS' if not_in else 'EXISTS' ] + subquery_ast[2:]
         return translator.BoolExprMonad(translator, sql_ast)
     def nonzero(monad):
         subquery_ast = monad.subtranslator.shallow_copy_of_subquery_ast()
@@ -2316,7 +2316,7 @@ class QuerySetMonad(SetMixin, Monad):
         if monad.forced_distinct and func_name in ('SUM', 'AVG'): aggr_ast.append(True)
         select_ast = [ 'AGGREGATES', aggr_ast ]
         sql_ast = [ 'SELECT', select_ast, from_ast, where_ast ]
-        result_type = func_name == 'AVG' and float or expr_type
+        result_type = float if func_name == 'AVG' else expr_type
         return translator.ExprMonad.new(translator, result_type, sql_ast)
     def call_count(monad):
         return monad.count()

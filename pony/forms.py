@@ -218,7 +218,7 @@ class Form(object):
             if isinstance(f, File):
                 attrs['enctype'] = 'multipart/form-data'
                 break
-        error_class = form.error_text and 'has-error' or ''
+        error_class = 'has-error' if form.error_text else ''
         return htmltag('form', attrs, method=form.method, accept_charset='UTF-8',
                        _class=('pony ' + error_class).strip())
     @property
@@ -394,7 +394,7 @@ class BaseWidget(HtmlField):
         if not field._label: return ''
         if not (required and field.required): required_html = ''
         else: required_html = Html('<sup class="required">*</sup>')
-        colon_html = colon and Html('<span class="colon">:</span>') or ''
+        colon_html = Html('<span class="colon">:</span>') if colon else ''
         return Html('<label for="%s">%s%s%s</label>') % (
             field.attrs['id'], field._label, required_html, colon_html)
     def _set_label(field, label):

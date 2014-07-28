@@ -159,8 +159,8 @@ class PythonTranslator(ASTTranslator):
         return '%s[%s]' % (node.expr.src, key)
     def postSlice(translator, node):
         node.priority = 2
-        lower = node.lower is not None and node.lower.src or ''
-        upper = node.upper is not None and node.upper.src or ''
+        lower = node.lower.src if node.lower is not None else ''
+        upper = node.upper.src if node.upper is not None else ''
         return '%s[%s:%s]' % (node.expr.src, lower, upper)
     def postSliceobj(translator, node):
         return ':'.join(item.src for item in node.nodes)

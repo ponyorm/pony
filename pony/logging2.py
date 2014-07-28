@@ -147,7 +147,7 @@ if LOG_TO_SQLITE:
             params.append(start_from)
             if max_count > 0: criteria += ' and id < ?'
             else: criteria += ' and id > ?'
-        direction = max_count > 0 and 'desc' or ''
+        direction = 'desc' if max_count > 0 else ''
         params.append(abs(max_count))
         sql = 'select * from log where %s order by id %s limit ?' % (criteria, direction)
         result = []

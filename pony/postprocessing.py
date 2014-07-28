@@ -17,7 +17,8 @@ def css_link(link):
     if isinstance(link, basestring): link = (link,)
     elif len(link) > 3: raise TypeError('too many parameters for CSS reference')
     href, media, cond = (link + (None, None))[:3]
-    result = '<link rel="stylesheet" href="%s" type="text/css"%s>' % (href, media and ' media="%s"' % media or '')
+    result = '<link rel="stylesheet" href="%s" type="text/css"%s>' \
+             % (href, ' media="%s"' % media if media else '')
     if cond: result = '<!--[%s]>%s<![endif]-->' % (cond, result)
     return StrHtml(result)
 

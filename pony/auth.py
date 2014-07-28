@@ -95,7 +95,7 @@ def load(environ, cookies=None):
     morsel = cookies.get(options.COOKIE_NAME)
     local.ip = ip = environ.get('REMOTE_ADDR')
     local.user_agent = user_agent = environ.get('HTTP_USER_AGENT')
-    local.cookie_value = cookie_value = morsel and morsel.value or None
+    local.cookie_value = cookie_value = morsel.value if morsel else None
     if not cookie_value: return
     now = int(time()) // 60
     try:
@@ -139,7 +139,7 @@ def load(environ, cookies=None):
 def set_longlife_session():
     if local.user is not None:
         data = dumps(local.user)
-        ip = local.remember_ip and local.ip or None
+        ip = local.ip if local.remember_ip else None
         id, rnd = _create_longlife_session(data, ip)
         local.longlife_key = '%x+%s' % (id, b64encode(rnd))
         local.longlife_session = True

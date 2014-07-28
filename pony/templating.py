@@ -399,7 +399,7 @@ class SyntaxElement(object):
         raise ParseError("Unexpected '%s' statement" % name, elem.source, errpos)
     def _check_statement(elem, item):
         cmd_name, expr, markup_args = item[2:]
-        end_of_expr = markup_args and markup_args[0][0] or elem.end
+        end_of_expr = markup_args[0][0] if markup_args else elem.end
         if cmd_name in ('if', 'elif', 'for'):
             if not expr: raise ParseError("'%s' statement must contain expression" % cmd_name, elem.source, end_of_expr)
         elif cmd_name in ('else', 'sep', 'separator', 'try'):
@@ -683,7 +683,7 @@ class I18nElement(SyntaxElement):
         elem.markup = Markup(source, markup_args[0])
         if len(markup_args) > 1: raise ParseError('Unexpected markup block', source, markup_args[1][0])
         elem.items = [ item for item in elem.markup.content if not isinstance(item, basestring) ]
-        key_list = [ not isinstance(item, basestring) and '$#' or item.replace('$', '$$')
+        key_list = [ '$#' if not isinstance(item, basestring) else item.replace('$', '$$')
                      for item in elem.markup.content ]
         elem.key = ' '.join(''.join(key_list).split())
     def eval(elem, globals, locals=None):
@@ -789,13 +789,13 @@ def cycle(*args):
         if len(args) > 3: raise TypeError('@cycle() function got too many arguments')
         current, total = _cycle_check(args[2:])
         i, j, markup = args
-        return (current % j == i - 1) and markup() or ''
+        return markup() if current % j == i - 1 else ''
     else:
         if len(args) > 2: raise TypeError('@cycle() function got too many arguments')
         current, total = _cycle_check(args[1:])
         i, markup = args
-        if i > 0: return (current == i - 1) and markup() or ''
-        elif i < 0: return (i == current - total) and markup() or ''
+        if i > 0: return markup() if current == i - 1 else ''
+        elif i < 0: return markup() if i == current - total else ''
         else: raise TypeError('@cycle first argument cannot be 0')
 
 try: __builtins__['cycle'] = cycle

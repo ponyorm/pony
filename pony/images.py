@@ -41,7 +41,7 @@ def _circle_image(radius, color, bgcolor):
     except: raise ValueError
     if not 2 <= radius <= 100: raise ValueError
     if len(color) != len(bgcolor): raise ValueError
-    mode = len(color)==3 and 'RGB' or 'RGBA'
+    mode = 'RGB' if len(color) == 3 else 'RGBA'
 
     quarter = Image.new(mode, (radius*4, radius*4), bgcolor)
     draw = ImageDraw.Draw(quarter)
@@ -175,13 +175,13 @@ def _line(format, horiz, data):
         if color2 is not None:
             color2 = _decode_color(color2)
             if len(color) != len(color2): raise http.NotFound
-        if mode is None: mode = len(color)==3 and 'RGB' or 'RGBA'
+        if mode is None: mode = 'RGB' if len(color) == 3 else 'RGBA'
         elif mode == 'RGB' and len(color) != 3: raise http.NotFound
         elif mode == 'RGBA' and len(color) != 4: raise http.NotFound
         segments.append((length, color, color2))
     if not 0 < total_length <= 10000: raise http.NotFound
     if format == 'GIF' and mode == 'RGBA': raise http.NotFound
-    img = Image.new(mode, (total_length, 1), mode=='RGB' and (0, 0, 0) or (0, 0, 0, 255))
+    img = Image.new(mode, (total_length, 1), (0, 0, 0) if mode=='RGB' else (0, 0, 0, 255))
     draw = ImageDraw.Draw(img)
     start = 0
     for length, color, color2 in segments:
@@ -226,7 +226,7 @@ def pixel_png(color='00000000'):
     if not PIL: raise http.NotFound
     try:
         color = _decode_color(color)
-        mode = len(color)==6 and 'RGB' or 'RGBA'
+        mode = 'RGB' if len(color) == 6 else 'RGBA'
         img = Image.new(mode, (1, 1), color)
         io = StringIO()
         img.save(io, 'PNG')
@@ -256,10 +256,10 @@ def pixel_gif(color=None):
 @cached
 def tab_png(width=300, height=200, radius=5, topcolor=None, bottomcolor=None, bordercolor=None, backcolor=None):
     if not PIL: raise http.NotFound
-    topcolor = topcolor and _decode_color(topcolor) or (255, 255, 255, 255)
-    bottomcolor = bottomcolor and _decode_color(bottomcolor) or (217, 234, 244, 255)
-    bordercolor = bordercolor and _decode_color(bordercolor) or (60, 85, 107, 255)
-    backcolor = backcolor and _decode_color(backcolor) or (255, 255, 255, 0)
+    topcolor =  _decode_color(topcolor) if topcolor else (255, 255, 255, 255)
+    bottomcolor = _decode_color(bottomcolor) if bottomcolor else (217, 234, 244, 255)
+    bordercolor = _decode_color(bordercolor) if bordercolor else (60, 85, 107, 255)
+    backcolor = _decode_color(backcolor) if backcolor else (255, 255, 255, 0)
     gradients = []
     for i, color in _calc_colors(height/8, topcolor, bottomcolor): gradients.append(color)
 

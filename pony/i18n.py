@@ -86,16 +86,15 @@ def reload():
                             log_exc()
                     trans_files[i] = fname, new_mtime, trans
                 update(translations, trans)
-        finally: log(type='RELOAD:end', severity=DEBUG,
-                     text=erroneous and 'Reloaded with errors' or 'Reloaded successfully',
-                     success=not erroneous, erroneous=erroneous)
+        finally: log(type='RELOAD:end', severity=DEBUG, success=not erroneous, erroneous=erroneous,
+                     text='Reloaded with errors' if erroneous else 'Reloaded successfully')
 
 def parse(lines):
     d = {}
     for kstr, lstr_list in read_phrases(lines):
         key_lineno, key_line = kstr
         key_pieces = transform_string(key_line)
-        key = ''.join(flag and '$#' or value for flag, value in key_pieces)
+        key = ''.join('$#' if flag else value for flag, value in key_pieces)
         key = ' '.join(key.split())
         key_params_list = [ match.group() for match in param_re.finditer(key_line)
                                           if match.group() != '$$' ]

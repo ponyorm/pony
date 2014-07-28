@@ -46,7 +46,7 @@ class Route(object):
                 if port is not None: raise TypeError('Duplicate port specification')
                 host, port = host.split(':')
         route.host = host
-        route.port = port and int(port) or None
+        route.port = int(port) if port else None
         route.path, route.qlist = split_url(url, strict_parsing=True)
         route.redirect = redirect
         route.headers = dict([ (name.replace('_', '-').title(), value) for name, value in headers.items() ])
@@ -69,7 +69,7 @@ class Route(object):
     def getargspec(func):
         original_func = getattr(func, 'original_func', func)
         names, argsname, keyargsname, defaults = inspect.getargspec(original_func)
-        defaults = defaults and list(defaults) or []
+        defaults = list(defaults) if defaults else []
         diff = len(names) - len(defaults)
         converters = {}
         try:
@@ -173,10 +173,10 @@ class Route(object):
     def _get_url_map(route):
         result = {}
         for i, (is_param, x) in enumerate(route.parsed_path):
-            if is_param: result[i] = isinstance(x, list) and x[0] or '/'
+            if is_param: result[i] = x[0] if isinstance(x, list) else '/'
             else: result[i] = ''
         for name, is_param, x in route.parsed_query:
-            if is_param: result[name] = isinstance(x, list) and x[0] or '/'
+            if is_param: result[name] = x[0] if isinstance(x, list) else '/'
             else: result[name] = ''
         if route.star: result['$*'] = len(route.parsed_path)
         if route.host: result[('host',)] = route.host
@@ -390,7 +390,7 @@ def build_url(route, keyparams, indexparams, host, port, script_name):
         for i, value in enumerate(indexparams):
             if i not in used_indexparams and value != defaults[i-diff]: raise PathError(errmsg)
 
-    url = q and '?'.join((p, q)) or p
+    url = '?'.join((p, q)) if q else p
     result = '/'.join((script_name, url))
     if route.host is None or route.host == host:
         if route.port is None or route.port == port: return result

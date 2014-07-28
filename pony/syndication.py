@@ -85,7 +85,7 @@ class Feed(object):
     def __str__(feed):
         return tostring(feed.atom())
     def atom(feed, pretty_print=True):
-        indent = pretty_print and '\n  ' or ''
+        indent = '\n  ' if pretty_print else ''
 
         xml = Element(atomtag('feed')) #, **nsmap_keyargs) # lxml
         xml.text = indent
@@ -132,18 +132,18 @@ class Feed(object):
             xml.append(entry_xml)
 
         for child in xml: child.tail = indent
-        xml[-1].tail = pretty_print and '\n' or ''
+        xml[-1].tail = '\n' if pretty_print else ''
         return xml
     def rss2(feed, pretty_print=True):
-        indent = pretty_print and '\n    ' or ''
-        indent2 = pretty_print and '\n      ' or ''
+        indent = '\n    ' if pretty_print else ''
+        indent2 = '\n      ' if pretty_print else ''
 
         rss = Element('rss', version='2.0')
-        rss.text = pretty_print and '\n  ' or ''
+        rss.text = '\n  ' if pretty_print else ''
 
         channel = SubElement(rss, 'channel')
         channel.text = indent
-        channel.tail = pretty_print and '\n' or ''
+        channel.tail = '\n' if pretty_print else ''
 
         set_rss2_text(SubElement(channel, 'title'), feed.title)
         set_rss2_text(SubElement(channel, 'description'), feed.subtitle or '')
@@ -158,7 +158,7 @@ class Feed(object):
             SubElement(image, 'title').text = ''
             SubElement(image, 'link').text = feed.link
             for child in image: child.tail = indent2
-            image[-1].tail = pretty_print and '\n    ' or ''
+            image[-1].tail = '\n    ' if pretty_print else ''
 
         for entry in feed.entries:
             item = entry.rss2(pretty_print)
@@ -166,7 +166,7 @@ class Feed(object):
             channel.append(item)
 
         for child in channel: child.tail = indent
-        channel[-1].tail = pretty_print and '\n  ' or ''
+        channel[-1].tail = '\n  ' if pretty_print else ''
         return rss
 
 class Entry(object):
@@ -188,7 +188,7 @@ class Entry(object):
     def __str__(entry):
         return tostring(entry.atom())
     def atom(entry, pretty_print=True):
-        indent = pretty_print and '\n    ' or ''
+        indent = '\n    ' if pretty_print else ''
 
         xml = Element(atomtag('entry')) #, **nsmap_keyargs) # lxml
         xml.text = indent
@@ -232,21 +232,21 @@ class Entry(object):
             published.text = atom_date(entry.published)
 
         for child in xml: child.tail = indent
-        xml[-1].tail = pretty_print and '\n' or ''
+        xml[-1].tail = '\n' if pretty_print else ''
         return xml
     def rss2(entry, pretty_print=True):
-        indent = pretty_print and '\n      ' or ''
+        indent = '\n      ' if pretty_print else ''
         item = Element('item')
         item.text = indent
         set_rss2_text(SubElement(item, 'title'), entry.title)
         set_rss2_text(SubElement(item, 'description'), entry.summary or entry.content)
         SubElement(item, 'link').text = entry.link
-        SubElement(item, 'guid', isPermaLink=(entry.id == entry.link and 'true' or 'false')).text = entry.id
+        SubElement(item, 'guid', isPermaLink=(entry.id == 'true' if entry.link else 'false')).text = entry.id
         if entry.enclosure:
             href, media_type, length = entry.enclosure
             SubElement(item, 'enclosure', url=href, type=media_type, length=length)
         if entry.author: SubElement(item, 'author').text = rss2_author(entry.author)
         if entry.published: SubElement(item, 'pubDate').text = rss2_date(entry.published)
         for child in item: child.tail = indent
-        item[-1].tail = pretty_print and '\n' or ''
+        item[-1].tail = '\n' if pretty_print else ''
         return item
