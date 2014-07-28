@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip
+from pony.py23compat import izip, xrange
 
 import types
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
@@ -162,11 +162,11 @@ class Decompiler(object):
         pop = decompiler.stack.pop
         kwarg, posarg = divmod(argc, 256)
         args = []
-        for i in range(kwarg):
+        for i in xrange(kwarg):
             arg = pop()
             key = pop().value
             args.append(ast.Keyword(key, arg))
-        for i in range(posarg): args.append(pop())
+        for i in xrange(posarg): args.append(pop())
         args.reverse()
         tos = pop()
         if isinstance(tos, ast.GenExpr):

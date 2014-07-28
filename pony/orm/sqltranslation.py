@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip
+from pony.py23compat import izip, xrange
 
 import types, sys, re
 from itertools import count
@@ -274,7 +274,7 @@ class SQLTranslator(ASTTranslator):
         expr_type = monad.type
         if isinstance(expr_type, SetType): expr_type = expr_type.item_type
         if isinstance(expr_type, EntityMeta):
-            monad.orderby_columns = range(1, len(expr_type._pk_columns_)+1)
+            monad.orderby_columns = list(xrange(1, len(expr_type._pk_columns_)+1))
             if monad.aggregated: throw(TranslationError)
             if translator.aggregated: translator.groupby_monads = [ monad ]
             else: translator.distinct |= monad.requires_distinct()
@@ -335,7 +335,7 @@ class SQLTranslator(ASTTranslator):
                         if None in values: return None
                         return constructor(values)
                     row_layout.append((func, slice(offset, next_offset), ast2src(m.node)))
-                    m.orderby_columns = range(offset+1, next_offset+1)
+                    m.orderby_columns = list(xrange(offset+1, next_offset+1))
                     offset = next_offset
                 else:
                     converter = provider.get_converter_by_py_type(expr_type)

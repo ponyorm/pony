@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, imap, iteritems, itervalues
+from pony.py23compat import izip, imap, iteritems, itervalues, xrange
 
 import re, sys, types, logging
 from cPickle import loads, dumps

@@ -4,8 +4,9 @@ PY2 = sys.version_info[0] == 2
 
 if PY2:
     from itertools import izip, imap
+    xrange = xrange
 else:
-    izip, imap = zip, map
+    izip, imap, xrange = zip, map, range
 
 if PY2:
     def iteritems(dict):

@@ -1,7 +1,7 @@
 # coding: cp1251
 
 from __future__ import absolute_import, print_function
-from pony.py23compat import izip, imap, iteritems
+from pony.py23compat import izip, imap, iteritems, xrange
 
 import re, datetime
 
