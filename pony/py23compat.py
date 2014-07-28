@@ -3,7 +3,7 @@ import sys
 PY2 = sys.version_info[0] == 2
 
 if PY2:
-    from itertools import izip, imap
+    from future_builtins import zip as izip, map as imap
     xrange = xrange
 else:
     izip, imap, xrange = zip, map, range
