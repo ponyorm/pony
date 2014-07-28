@@ -3,7 +3,6 @@ from pony.py23compat import izip
 
 import types, sys, re
 from itertools import count
-from types import NoneType
 from decimal import Decimal
 from datetime import date, datetime
 from random import random
@@ -21,6 +20,8 @@ from pony.orm.ormtypes import \
     get_normalized_type_of, normalize_type, coerce_types, are_comparable_types
 from pony.orm import core
 from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper
+
+NoneType = type(None)
 
 def check_comparable(left_monad, right_monad, op='=='):
     t1, t2 = left_monad.type, right_monad.type

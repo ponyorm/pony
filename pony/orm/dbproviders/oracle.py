@@ -4,7 +4,6 @@ from pony.py23compat import iteritems
 import os
 os.environ["NLS_LANG"] = "AMERICAN_AMERICA.UTF8"
 
-from types import NoneType
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
@@ -16,6 +15,8 @@ from pony.orm.core import log_orm, log_sql, DatabaseError, TranslationError
 from pony.orm.dbschema import DBSchema, DBObject, Table, Column
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, get_version_tuple
 from pony.utils import throw
+
+NoneType = type(None)
 
 class OraTable(Table):
     def get_objects_to_create(table, created_tables=None):
