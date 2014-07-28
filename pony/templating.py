@@ -138,18 +138,18 @@ class Wrapper(object):
     def __unicode__(self):
         return quote(self.value, self.unicode_replace)
     def __repr__(self):
-        return quote(`self.value`)
+        return quote(repr(self.value))
     def __getitem__(self, key):
         return _wrap(self.value[key], self.unicode_replace)
 
 class StrWrapper(str):
     def __repr__(self):
-        return quote(`self.original_value`)
+        return quote(repr(self.original_value))
 
 class UnicodeWrapper(unicode):
     __slots__ = [ 'original_value' ]
     def __repr__(self):
-        return quote(`self.original_value`)
+        return quote(repr(self.original_value))
 
 try: _templating
 except NameError: pass
