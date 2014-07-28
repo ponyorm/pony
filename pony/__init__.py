@@ -1,12 +1,9 @@
 from __future__ import absolute_import, print_function
 
-import sys, time, threading, random
+import sys
 from os.path import dirname
-from itertools import count
 
 __version__ = '0.5.2-dev'
-
-uid = str(random.randint(1, 1000000))
 
 def detect_mode():
     try: import google.appengine
@@ -41,58 +38,3 @@ if MAIN_FILE is not None: MAIN_DIR = dirname(MAIN_FILE)
 else: MAIN_DIR = None
 
 PONY_DIR = dirname(__file__)
-
-shutdown = False
-
-shutdown_list = []
-
-def on_shutdown(func):
-    if func not in shutdown_list: shutdown_list.append(func)
-    return func
-
-exception_in_main = None  # sets to exception instance by use_autoreload()
-
-def exitfunc():
-    mainloop()
-    _shutdown()
-    if sys.platform == 'win32' and MODE == 'CHERRYPY' and exception_in_main:
-        # If a script is started in Windows by double-clicking
-        # and a problem occurs, then the following code will
-        # prevent the console window from closing immediately.
-        # This only works if use_autoreload() has been called
-        print('\nPress Enter to exit...')
-        raw_input()
-    prev_func()
-
-if MODE in ('INTERACTIVE', 'GAE-SERVER', 'GAE-LOCAL'): pass
-elif hasattr(threading, '_shutdown'):
-    prev_func = threading._shutdown
-    threading._shutdown = exitfunc
-else:
-    prev_func = sys.exitfunc
-    sys.exitfunc = exitfunc
-
-mainloop_counter = count()
-
-_do_mainloop = False  # sets to True by pony.web.start_http_server()
-
-def mainloop():
-    if not _do_mainloop: return
-    if MODE not in ('CHERRYPY', 'FCGI-FLUP'): return
-    if next(mainloop_counter): return
-    try:
-        while True:
-            if shutdown: break
-            time.sleep(1)
-    except:
-        try: log_exc = logging2.log_exc
-        except NameError: pass
-        else: log_exc()
-
-shutdown_counter = count()
-
-def _shutdown():
-    global shutdown
-    shutdown = True
-    if next(shutdown_counter): return
-    for func in reversed(shutdown_list): func()
