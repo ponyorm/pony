@@ -33,16 +33,15 @@ def reload(modules, changed_module, filename):
     log(type='RELOAD:begin', prefix='RELOADING: ', text=shortened_filename(filename), severity=ERROR,
         module=changed_module.__name__, modules=dict((m.__name__, m.__file__) for m in modules))
     try:
-        try:
-            for clear_func in clear_funcs: clear_func()
-            mtimes.clear()
-            linecache.checkcache()
-            for m in modules: sys.modules.pop(m.__name__, None)
-            load_main()
-        except Exception:
-            success = False
-            log_exc()
-            raise
+        for clear_func in clear_funcs: clear_func()
+        mtimes.clear()
+        linecache.checkcache()
+        for m in modules: sys.modules.pop(m.__name__, None)
+        load_main()
+    except Exception:
+        success = False
+        log_exc()
+        raise
     finally:
         log(type='RELOAD:end', severity=DEBUG,
             text=success and 'Reloaded successfully' or 'Reloaded with errors', success=success)

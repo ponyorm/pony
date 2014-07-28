@@ -273,20 +273,19 @@ def commit():
     primary_cache = caches[0]
     other_caches = caches[1:]
     exceptions = []
-    try:
-        try: primary_cache.commit()
-        except:
-            exceptions.append(sys.exc_info())
-            for cache in other_caches:
-                try: cache.rollback()
-                except: exceptions.append(sys.exc_info())
-            reraise(CommitException, exceptions)
-        else:
-            for cache in other_caches:
-                try: cache.commit()
-                except: exceptions.append(sys.exc_info())
-            if exceptions:
-                reraise(PartialCommitException, exceptions)
+    try: primary_cache.commit()
+    except:
+        exceptions.append(sys.exc_info())
+        for cache in other_caches:
+            try: cache.rollback()
+            except: exceptions.append(sys.exc_info())
+        reraise(CommitException, exceptions)
+    else:
+        for cache in other_caches:
+            try: cache.commit()
+            except: exceptions.append(sys.exc_info())
+        if exceptions:
+            reraise(PartialCommitException, exceptions)
     finally:
         del exceptions
 
@@ -343,16 +342,15 @@ class DBSessionContextManager(object):
                 for i in xrange(self.retry+1):
                     self._enter()
                     exc_type = exc_value = exc_tb = None
-                    try:
-                        try: return func(*args, **kwargs)
-                        except Exception:
-                            exc_type, exc_value, exc_tb = sys.exc_info()  # exc_value can be None in Python 2.6
-                            retry_exceptions = self.retry_exceptions
-                            if not callable(retry_exceptions):
-                                do_retry = issubclass(exc_type, tuple(retry_exceptions))
-                            else:
-                                do_retry = exc_value is not None and retry_exceptions(exc_value)
-                            if not do_retry: raise
+                    try: return func(*args, **kwargs)
+                    except Exception:
+                        exc_type, exc_value, exc_tb = sys.exc_info()  # exc_value can be None in Python 2.6
+                        retry_exceptions = self.retry_exceptions
+                        if not callable(retry_exceptions):
+                            do_retry = issubclass(exc_type, tuple(retry_exceptions))
+                        else:
+                            do_retry = exc_value is not None and retry_exceptions(exc_value)
+                        if not do_retry: raise
                     finally: self.__exit__(exc_type, exc_value, exc_tb)
                 raise exc_type, exc_value, exc_tb
             finally: del exc_tb
