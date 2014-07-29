@@ -2610,7 +2610,9 @@ class EntityMeta(type):
         if len(primary_keys) > 1: throw(ERDiagramError, 'Only one primary key can be defined in each entity class')
         elif not primary_keys:
             if hasattr(entity, 'id'): throw(ERDiagramError,
-                "Cannot create primary key for %s automatically because name 'id' is alredy in use" % entity.__name__)
+                "Cannot create default primary key attribute for %s because name 'id' is already in use."
+                " Please create a PrimaryKey attribute for entity %s or rename the 'id' attribute"
+                % (entity.__name__, entity.__name__))
             attr = PrimaryKey(int, auto=True)
             attr._init_(entity, 'id')
             type.__setattr__(entity, 'id', attr)  # entity.id = attr

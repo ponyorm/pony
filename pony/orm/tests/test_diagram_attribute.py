@@ -95,7 +95,8 @@ class TestAttribute(unittest.TestCase):
             b = Required(str)
             composite_key(Entity1.a, b)
 
-    @raises_exception(ERDiagramError, "Cannot create primary key for Entity1 automatically because name 'id' is alredy in use")
+    @raises_exception(ERDiagramError, "Cannot create default primary key attribute for Entity1 because name 'id' is already in use."
+                                      " Please create a PrimaryKey attribute for entity Entity1 or rename the 'id' attribute")
     def test_attribute12(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
