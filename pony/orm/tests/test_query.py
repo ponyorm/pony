@@ -129,6 +129,21 @@ class TestQuery(unittest.TestCase):
     def test_first3(self):
         q = select(s for s in Student)
         self.assertEqual(q.first(), Student[1])
+    @db_session
+    def test_closures_1(self):
+        def find_by_gpa(gpa):
+            return lambda s: s.gpa > gpa
+        fn = find_by_gpa(Decimal('3.1'))
+        students = list(Student.select(fn))
+        self.assertEqual(students, [ Student[2], Student[3] ])
+    @db_session
+    def test_closures_2(self):
+        def find_by_gpa(gpa):
+            return lambda s: s.gpa > gpa
+        fn = find_by_gpa(Decimal('3.1'))
+        q = select(s for s in Student)
+        q = q.filter(fn)
+        self.assertEqual(list(q), [ Student[2], Student[3] ])
 
 if __name__ == '__main__':
     unittest.main()

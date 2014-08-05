@@ -1,5 +1,6 @@
 import types
 from compiler import ast
+from itertools import izip
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
 from opcode import hasconst, hasname, hasjrel, haslocal, hascompare, hasfree
 
@@ -13,10 +14,13 @@ ast_cache = {}
 codeobjects = {}
 
 def decompile(x):
+    cells = {}
     t = type(x)
     if t is types.CodeType: codeobject = x
     elif t is types.GeneratorType: codeobject = x.gi_frame.f_code
-    elif t is types.FunctionType: codeobject = x.func_code
+    elif t is types.FunctionType:
+        codeobject = x.func_code
+        if x.func_closure: cells = dict(izip(codeobject.co_freevars, x.func_closure))
     else: throw(TypeError)
     key = id(codeobject)
     result = ast_cache.get(key)
@@ -25,7 +29,7 @@ def decompile(x):
         decompiler = Decompiler(codeobject)
         result = decompiler.ast, decompiler.external_names
         ast_cache[key] = result
-    return result
+    return result + (cells,)
 
 def simplify(clause):
     if isinstance(clause, ast.And):

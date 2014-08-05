@@ -3182,7 +3182,7 @@ class EntityMeta(type):
         if type(lambda_func) is types.FunctionType:
             names = get_lambda_args(lambda_func)
             code_key = id(lambda_func.func_code)
-            cond_expr, external_names = decompile(lambda_func)
+            cond_expr, external_names, cells = decompile(lambda_func)
         elif isinstance(lambda_func, basestring):
             code_key = lambda_func
             lambda_ast = string2ast(lambda_func)
@@ -3190,6 +3190,7 @@ class EntityMeta(type):
                 throw(TypeError, 'Lambda function is expected. Got: %s' % lambda_func)
             names = get_lambda_args(lambda_ast)
             cond_expr = lambda_ast.code
+            cells = None
         else: assert False
 
         if len(names) != 1: throw(TypeError,
@@ -3203,7 +3204,7 @@ class EntityMeta(type):
         locals = locals.copy()
         assert '.0' not in locals
         locals['.0'] = entity
-        return Query(code_key, inner_expr, globals, locals)
+        return Query(code_key, inner_expr, globals, locals, cells)
     def _new_(entity, pkval, status, for_update=False, undo_funcs=None):
         cache = entity._database_._get_cache()
         pk_attrs = entity._pk_attrs_
@@ -3969,7 +3970,7 @@ def string2ast(s):
 @cut_traceback
 def select(gen, frame_depth=0, left_join=False):
     if isinstance(gen, types.GeneratorType):
-        tree, external_names = decompile(gen)
+        tree, external_names, cells = decompile(gen)
         code_key = id(gen.gi_frame.f_code)
         globals = gen.gi_frame.f_globals
         locals = gen.gi_frame.f_locals
@@ -3980,8 +3981,9 @@ def select(gen, frame_depth=0, left_join=False):
         code_key = query_string
         globals = sys._getframe(frame_depth+3).f_globals
         locals = sys._getframe(frame_depth+3).f_locals
+        cells = None
     else: throw(TypeError)
-    return Query(code_key, tree.code, globals, locals, left_join)
+    return Query(code_key, tree.code, globals, locals, cells, left_join)
 
 @cut_traceback
 def left_join(gen, frame_depth=0):
@@ -4029,7 +4031,11 @@ def desc(expr):
         return 'desc(%s)' % expr
     return expr
 
-def extract_vars(extractors, globals, locals):
+def extract_vars(extractors, globals, locals, cells=None):
+    if cells:
+        locals = locals.copy()
+        for name, cell in cells.items():
+            locals[name] = cell.cell_contents
     vars = {}
     vartypes = {}
     for key, code in extractors.iteritems():
@@ -4060,10 +4066,10 @@ def unpickle_query(query_result):
     return query_result
 
 class Query(object):
-    def __init__(query, code_key, tree, globals, locals, left_join=False):
+    def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
         extractors, varnames, tree = create_extractors(code_key, tree, 0)
-        vars, vartypes = extract_vars(extractors, globals, locals)
+        vars, vartypes = extract_vars(extractors, globals, locals, cells)
 
         node = tree.quals[0].iter
         origin = vars[0, node.src]
@@ -4248,11 +4254,12 @@ class Query(object):
             if isinstance(func_ast, ast.Lambda):
                 argnames = get_lambda_args(func_ast)
                 func_ast = func_ast.code
+            cells = None
         elif type(func) is types.FunctionType:
             argnames = get_lambda_args(func)
             subquery = query._translator.subquery
             func_id = id(func.func_code)
-            func_ast = decompile(func)[0]
+            func_ast, external_names, cells = decompile(func)
         elif not order_by: throw(TypeError,
             'Argument of filter() method must be a lambda functon or its text. Got: %r' % func)
         else: assert False
@@ -4267,7 +4274,7 @@ class Query(object):
         filter_num = len(query._filters) + 1
         extractors, varnames, func_ast = create_extractors(func_id, func_ast, filter_num, argnames or query._translator.subquery)
         if extractors:
-            vars, vartypes = extract_vars(extractors, globals, locals)
+            vars, vartypes = extract_vars(extractors, globals, locals, cells)
             query._database.provider.normalize_vars(vars, vartypes)
             query._vars.update(vars)
             sorted_vartypes = tuple(map(vartypes.__getitem__, varnames))
