@@ -120,15 +120,15 @@ class TestQuery(unittest.TestCase):
     @db_session
     def test_first1(self):
         q = select(s for s in Student).order_by(Student.gpa)
-        self.assertEquals(q.first(), Student[1])
+        self.assertEqual(q.first(), Student[1])
     @db_session
     def test_first2(self):
         q = select((s.name, s.group) for s in Student)
-        self.assertEquals(q.first(), ('S1', Group[1]))
+        self.assertEqual(q.first(), ('S1', Group[1]))
     @db_session
     def test_first3(self):
         q = select(s for s in Student)
-        self.assertEquals(q.first(), Student[1])
+        self.assertEqual(q.first(), Student[1])
 
 if __name__ == '__main__':
     unittest.main()

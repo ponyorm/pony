@@ -22,7 +22,7 @@ class TestLazy(unittest.TestCase):
         self.assertTrue(X.a in x1._vals_)
         self.assertTrue(X.b not in x1._vals_)
         b = x1.b
-        self.assertEquals(b, 'first')
+        self.assertEqual(b, 'first')
 
     @db_session
     def test_lazy_2(self):

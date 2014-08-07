@@ -49,13 +49,13 @@ class TestCRUD(unittest.TestCase):
     def test_set1(self):
         s1 = Student[1]
         s1.set(name='New name', scholarship=100)
-        self.assertEquals(s1.name, 'New name')
-        self.assertEquals(s1.scholarship, 100)
+        self.assertEqual(s1.name, 'New name')
+        self.assertEqual(s1.scholarship, 100)
     def test_set2(self):
         g1 = Group[1]
         s3 = Student[3]
         g1.set(students=[s3])
-        self.assertEquals(s3.group, Group[1])
+        self.assertEqual(s3.group, Group[1])
     def test_set3(self):
         c1 = Course[1]
         c1.set(name='Algebra', semester=3)

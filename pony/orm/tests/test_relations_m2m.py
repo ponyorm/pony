@@ -236,21 +236,21 @@ class TestManyToManyNonComposite(unittest.TestCase):
 
         g = Group[101]
         e = g.subjects.is_empty()
-        self.assertEquals(e, False)
+        self.assertEqual(e, False)
 
         db._dblocal.last_sql = None
         e = g.subjects.is_empty()  # should take result from the cache
-        self.assertEquals(e, False)
-        self.assertEquals(db.last_sql, None)
+        self.assertEqual(e, False)
+        self.assertEqual(db.last_sql, None)
 
         g = Group[102]
         e = g.subjects.is_empty()  # should take SQL from the SQL cache
-        self.assertEquals(e, True)
+        self.assertEqual(e, True)
 
         db._dblocal.last_sql = None
         e = g.subjects.is_empty()  # should take result from the cache
-        self.assertEquals(e, True)
-        self.assertEquals(db.last_sql, None)
+        self.assertEqual(e, True)
+        self.assertEqual(db.last_sql, None)
 
     @db_session
     def test_15(self):
@@ -258,19 +258,19 @@ class TestManyToManyNonComposite(unittest.TestCase):
 
         g = Group[101]
         c = len(g.subjects)
-        self.assertEquals(c, 2)
+        self.assertEqual(c, 2)
         db._dblocal.last_sql = None
         e = g.subjects.is_empty()  # should take result from the cache
-        self.assertEquals(e, False)
-        self.assertEquals(db.last_sql, None)
+        self.assertEqual(e, False)
+        self.assertEqual(db.last_sql, None)
         
         g = Group[102]
         c = len(g.subjects)
-        self.assertEquals(c, 0)
+        self.assertEqual(c, 0)
         db._dblocal.last_sql = None
         e = g.subjects.is_empty()  # should take result from the cache
-        self.assertEquals(e, True)
-        self.assertEquals(db.last_sql, None)
+        self.assertEqual(e, True)
+        self.assertEqual(db.last_sql, None)
 
     @db_session
     def test_16(self):
@@ -280,24 +280,24 @@ class TestManyToManyNonComposite(unittest.TestCase):
         s1 = Subject['Subj1']
         s3 = Subject['Subj3']
         c = g.subjects.count()
-        self.assertEquals(c, 2)
+        self.assertEqual(c, 2)
 
         db._dblocal.last_sql = None
         c = g.subjects.count()  # should take count from the cache
-        self.assertEquals(c, 2)
-        self.assertEquals(db.last_sql, None)
+        self.assertEqual(c, 2)
+        self.assertEqual(db.last_sql, None)
 
         g.subjects.add(s3)
         db._dblocal.last_sql = None
         c = g.subjects.count()  # should take modified count from the cache
-        self.assertEquals(c, 3)
-        self.assertEquals(db.last_sql, None)
+        self.assertEqual(c, 3)
+        self.assertEqual(db.last_sql, None)
 
         g.subjects.remove(s1)
         db._dblocal.last_sql = None
         c = g.subjects.count()  # should take modified count from the cache
-        self.assertEquals(c, 2)
-        self.assertEquals(db.last_sql, None)
+        self.assertEqual(c, 2)
+        self.assertEqual(db.last_sql, None)
 
 
 if __name__ == "__main__":

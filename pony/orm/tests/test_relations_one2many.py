@@ -57,55 +57,55 @@ class TestOneToMany(unittest.TestCase):
         db._dblocal.last_sql = None
         g.students.add(s3)
         # Group.students.load should not attempt to load s3 from db
-        self.assertEquals(db.last_sql, None)
+        self.assertEqual(db.last_sql, None)
 
     def test_4(self):
         db, Group, Student = self.db, self.Group, self.Student
 
         g = Group[101]
         e = g.students.is_empty()
-        self.assertEquals(e, False)
+        self.assertEqual(e, False)
 
         db._dblocal.last_sql = None
         e = g.students.is_empty()  # should take result from the cache
-        self.assertEquals(e, False)
-        self.assertEquals(db.last_sql, None)
+        self.assertEqual(e, False)
+        self.assertEqual(db.last_sql, None)
 
         g = Group[103]
         e = g.students.is_empty()  # should take SQL from the SQL cache
-        self.assertEquals(e, True)
+        self.assertEqual(e, True)
 
         db._dblocal.last_sql = None
         e = g.students.is_empty()  # should take result from the cache
-        self.assertEquals(e, True)
-        self.assertEquals(db.last_sql, None)
+        self.assertEqual(e, True)
+        self.assertEqual(db.last_sql, None)
 
     def test_5(self):
         db, Group = self.db, self.Group
 
         g = Group[101]
         c = len(g.students)
-        self.assertEquals(c, 2)
+        self.assertEqual(c, 2)
         db._dblocal.last_sql = None
         e = g.students.is_empty()  # should take result from the cache
-        self.assertEquals(e, False)
-        self.assertEquals(db.last_sql, None)
+        self.assertEqual(e, False)
+        self.assertEqual(db.last_sql, None)
         
         g = Group[102]
         c = g.students.count()
-        self.assertEquals(c, 2)
+        self.assertEqual(c, 2)
         db._dblocal.last_sql = None
         e = g.students.is_empty()  # should take result from the cache
-        self.assertEquals(e, False)
-        self.assertEquals(db.last_sql, None)
+        self.assertEqual(e, False)
+        self.assertEqual(db.last_sql, None)
 
         g = Group[103]
         c = len(g.students)
-        self.assertEquals(c, 0)
+        self.assertEqual(c, 0)
         db._dblocal.last_sql = None
         e = g.students.is_empty()  # should take result from the cache
-        self.assertEquals(e, True)
-        self.assertEquals(db.last_sql, None)
+        self.assertEqual(e, True)
+        self.assertEqual(db.last_sql, None)
 
     def test_6(self):
         db, Group, Student = self.db, self.Group, self.Student
@@ -113,21 +113,21 @@ class TestOneToMany(unittest.TestCase):
         g = Group[101]
         s3 = Student[3]
         c = g.students.count()
-        self.assertEquals(c, 2)
+        self.assertEqual(c, 2)
 
         db._dblocal.last_sql = None
         c = g.students.count()  # should take count from the cache
-        self.assertEquals(c, 2)
-        self.assertEquals(db.last_sql, None)
+        self.assertEqual(c, 2)
+        self.assertEqual(db.last_sql, None)
 
         g.students.add(s3)
         c = g.students.count()  # should take modified count from the cache
-        self.assertEquals(c, 3)
-        self.assertEquals(db.last_sql, None)
+        self.assertEqual(c, 3)
+        self.assertEqual(db.last_sql, None)
 
         g2 = Group[102]
         c = g2.students.count()  # should send query to the database
-        self.assertEquals(c, 1)
+        self.assertEqual(c, 1)
         self.assertTrue(db.last_sql is not None)
 
     def test_7_rbits(self):
@@ -135,19 +135,19 @@ class TestOneToMany(unittest.TestCase):
         g = Group[101]
 
         s1 = Student[1]
-        self.assertEquals(s1._rbits_, 0)
+        self.assertEqual(s1._rbits_, 0)
         self.assertTrue(s1 in g.students)
-        self.assertEquals(s1._rbits_, Student._bits_[Student.group])
+        self.assertEqual(s1._rbits_, Student._bits_[Student.group])
 
         s3 = Student[3]
-        self.assertEquals(s3._rbits_, 0)
+        self.assertEqual(s3._rbits_, 0)
         self.assertTrue(s3 not in g.students)
-        self.assertEquals(s3._rbits_, Student._bits_[Student.group])
+        self.assertEqual(s3._rbits_, Student._bits_[Student.group])
 
         s5 = Student(id=5, name='Student5', group=g)
-        self.assertEquals(s5._rbits_, None)
+        self.assertEqual(s5._rbits_, None)
         self.assertTrue(s5 in g.students)
-        self.assertEquals(s5._rbits_, None)
+        self.assertEqual(s5._rbits_, None)
 
 if __name__ == '__main__':
     unittest.main()
