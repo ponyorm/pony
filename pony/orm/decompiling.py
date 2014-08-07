@@ -1,8 +1,11 @@
+from __future__ import absolute_import, print_function, division
+from pony.py23compat import izip, xrange
+
 import types
-from compiler import ast
-from itertools import izip
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
 from opcode import hasconst, hasname, hasjrel, haslocal, hascompare, hasfree
+
+from pony.thirdparty.compiler import ast, parse
 
 from pony.utils import throw
 
@@ -95,7 +98,7 @@ class Decompiler(object):
                     else: arg = [oparg]
                 else: arg = []
                 opname = opnames[op].replace('+', '_')
-                # print opname, arg, decompiler.stack
+                # print(opname, arg, decompiler.stack)
                 method = getattr(decompiler, opname, None)
                 if method is None: throw(NotImplementedError('Unsupported operation: %s' % opname))
                 decompiler.pos = i
@@ -159,11 +162,11 @@ class Decompiler(object):
         pop = decompiler.stack.pop
         kwarg, posarg = divmod(argc, 256)
         args = []
-        for i in range(kwarg):
+        for i in xrange(kwarg):
             arg = pop()
             key = pop().value
             args.append(ast.Keyword(key, arg))
-        for i in range(posarg): args.append(pop())
+        for i in xrange(posarg): args.append(pop())
         args.reverse()
         tos = pop()
         if isinstance(tos, ast.GenExpr):
@@ -501,34 +504,34 @@ def test():
     import sys
     if sys.version[:3] > '2.4': outmost_iterable_name = '.0'
     else: outmost_iterable_name = '[outmost-iterable]'
-    import dis, compiler
+    import dis
     for line in test_lines.split('\n'):
         if not line or line.isspace(): continue
         line = line.strip()
         if line.startswith('#'): continue
         code = compile(line, '<?>', 'eval').co_consts[0]
-        ast1 = compiler.parse(line).node.nodes[0].expr
+        ast1 = parse(line).node.nodes[0].expr
         ast1.code.quals[0].iter.name = outmost_iterable_name
         try: ast2 = Decompiler(code).ast
-        except Exception, e:
-            print
-            print line
-            print
-            print ast1
-            print
+        except Exception as e:
+            print()
+            print(line)
+            print()
+            print(ast1)
+            print()
             dis.dis(code)
             raise
         if str(ast1) != str(ast2):
-            print
-            print line
-            print
-            print ast1
-            print
-            print ast2
-            print
+            print()
+            print(line)
+            print()
+            print(ast1)
+            print()
+            print(ast2)
+            print()
             dis.dis(code)
             break
-        else: print 'OK: %s' % line
-    else: print 'Done!'
+        else: print('OK: %s' % line)
+    else: print('Done!')
 
 if __name__ == '__main__': test()

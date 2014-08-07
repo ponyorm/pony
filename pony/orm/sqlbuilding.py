@@ -1,3 +1,6 @@
+from __future__ import absolute_import, print_function, division
+from pony.py23compat import izip, imap, itervalues
+
 from operator import attrgetter
 from decimal import Decimal
 from datetime import date, datetime
@@ -14,7 +17,7 @@ class Param(object):
         param.style = paramstyle
         param.id = id
         param.paramkey = paramkey
-        param.py2sql = converter and converter.py2sql or (lambda val: val)
+        param.py2sql = converter.py2sql if converter else (lambda val: val)
     def __unicode__(param):
         paramstyle = param.style
         if paramstyle == 'qmark': return u'?'
@@ -71,7 +74,7 @@ def flat_conditions(conditions):
 
 def join(delimiter, items):
     items = iter(items)
-    try: result = [ items.next() ]
+    try: result = [ next(items) ]
     except StopIteration: return []
     for item in items:
         result.append(delimiter)
@@ -145,19 +148,19 @@ class SQLBuilder(object):
         builder.keys = {}
         builder.inner_join_syntax = options.INNER_JOIN_SYNTAX
         builder.result = flat(builder(ast))
-        builder.sql = u''.join(map(unicode, builder.result)).rstrip('\n')
+        builder.sql = u''.join(imap(unicode, builder.result)).rstrip('\n')
         if paramstyle in ('qmark', 'format'):
             params = tuple(x for x in builder.result if isinstance(x, Param))
             def adapter(values):
                 return tuple(convert(values, params))
         elif paramstyle == 'numeric':
-            params = tuple(param for param in sorted(builder.keys.itervalues(), key=attrgetter('id')))
+            params = tuple(param for param in sorted(itervalues(builder.keys), key=attrgetter('id')))
             def adapter(values):
                 return tuple(convert(values, params))
         elif paramstyle in ('named', 'pyformat'):
-            params = tuple(param for param in sorted(builder.keys.itervalues(), key=attrgetter('id')))
+            params = tuple(param for param in sorted(itervalues(builder.keys), key=attrgetter('id')))
             def adapter(values):
-                return dict(('p%d' % param.id, value) for param, value in zip(params, convert(values, params)))
+                return dict(('p%d' % param.id, value) for param, value in izip(params, convert(values, params)))
         else: throw(NotImplementedError, paramstyle)
         builder.params = params
         builder.layout = tuple(param.paramkey for param in params)
@@ -326,7 +329,7 @@ class SQLBuilder(object):
             keys[paramkey] = param
         return [ param ]
     def ROW(builder, *items):
-        return '(', join(', ', map(builder, items)), ')'
+        return '(', join(', ', imap(builder, items)), ')'
     def VALUE(builder, value):
         return [ builder.make_value(builder.paramstyle, value) ]
     def AND(builder, *cond_list):
@@ -350,9 +353,10 @@ class SQLBuilder(object):
     SUB = make_binary_op(' - ', True)
     MUL = make_binary_op(' * ', True)
     DIV = make_binary_op(' / ', True)
+    FLOORDIV = make_binary_op(' / ', True)
 
     def CONCAT(builder, *args):
-        return '(',  join(' || ', map(builder, args)), ')'
+        return '(',  join(' || ', imap(builder, args)), ')'
     def NEG(builder, expr):
         return '-(', builder(expr), ')'
     def IS_NULL(builder, expr):
@@ -386,14 +390,14 @@ class SQLBuilder(object):
     def COUNT(builder, kind, *expr_list):
         if kind == 'ALL':
             if not expr_list: return ['COUNT(*)']
-            return 'COUNT(', join(', ', map(builder, expr_list)), ')'
+            return 'COUNT(', join(', ', imap(builder, expr_list)), ')'
         elif kind == 'DISTINCT':
             if not expr_list: throw(AstError, 'COUNT(DISTINCT) without argument')
             if len(expr_list) == 1: return 'COUNT(DISTINCT ', builder(expr_list[0]), ')'
             if builder.dialect == 'PostgreSQL':
                 return 'COUNT(DISTINCT ', builder.ROW(*expr_list), ')'
             elif builder.dialect == 'MySQL':
-                return 'COUNT(DISTINCT ', join(', ', map(builder, expr_list)), ')'
+                return 'COUNT(DISTINCT ', join(', ', imap(builder, expr_list)), ')'
             # Oracle and SQLite queries translated to completely different subquery syntax
             else: throw(NotImplementedError)  # This line must not be executed
         throw(AstError, 'Invalid COUNT kind (must be ALL or DISTINCT)')
@@ -407,17 +411,17 @@ class SQLBuilder(object):
     ABS = make_unary_func('abs')
     def COALESCE(builder, *args):
         if len(args) < 2: assert False
-        return 'coalesce(', join(', ', map(builder, args)), ')'
+        return 'coalesce(', join(', ', imap(builder, args)), ')'
     def MIN(builder, *args):
         if len(args) == 0: assert False
         elif len(args) == 1: fname = 'MIN'
         else: fname = 'least'
-        return fname, '(',  join(', ', map(builder, args)), ')'
+        return fname, '(',  join(', ', imap(builder, args)), ')'
     def MAX(builder, *args):
         if len(args) == 0: assert False
         elif len(args) == 1: fname = 'MAX'
         else: fname = 'greatest'
-        return fname, '(',  join(', ', map(builder, args)), ')'
+        return fname, '(',  join(', ', imap(builder, args)), ')'
     def SUBSTR(builder, expr, start, len=None):
         if len is None: return 'substr(', builder(expr), ', ', builder(start), ')'
         return 'substr(', builder(expr), ', ', builder(start), ', ', builder(len), ')'

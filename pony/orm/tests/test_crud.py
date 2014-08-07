@@ -1,4 +1,5 @@
-from __future__ import with_statement
+from __future__ import absolute_import, print_function, division
+
 from decimal import Decimal
 import unittest
 from pony.orm.core import *

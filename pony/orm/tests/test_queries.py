@@ -1,4 +1,4 @@
-from __future__ import with_statement
+from __future__ import absolute_import, print_function, division
 
 import re, os, os.path, sys, imp
 
@@ -15,11 +15,11 @@ lines = []
 
 def Schema(param):
     if not statement_used:
-        print
-        print 'Statement not used:'
-        print
-        print '\n'.join(statements)
-        print
+        print()
+        print('Statement not used:')
+        print()
+        print('\n'.join(statements))
+        print()
         sys.exit()
     assert len(lines) == 1
     global module_name
@@ -46,10 +46,10 @@ def do_test(provider_name, raw_server_version):
     core.Database = orm.Database = testutils.TestDatabase
     sys.modules.pop(module_name, None)
     try: __import__(module_name)
-    except ImportError, e:
-        print
-        print 'ImportError for database provider %s:\n%s' % (provider_name, e)
-        print
+    except ImportError as e:
+        print()
+        print('ImportError for database provider %s:\n%s' % (provider_name, e))
+        print()
         unavailable_providers.add(provider_name)
         return
     module = sys.modules[module_name]
@@ -68,16 +68,16 @@ def do_test(provider_name, raw_server_version):
             if isinstance(result, core.Query): result = list(result)
         sql = module.db.sql
     expected_sql = '\n'.join(lines)
-    if sql == expected_sql: print '+', provider_name, statements[-1]
+    if sql == expected_sql: print('+', provider_name, statements[-1])
     else:
-        print '-', provider_name, statements[-1]
-        print
-        print 'Expected:'
-        print expected_sql
-        print
-        print 'Got:'
-        print sql
-        print
+        print('-', provider_name, statements[-1])
+        print()
+        print('Expected:')
+        print(expected_sql)
+        print()
+        print('Got:')
+        print(sql)
+        print()
     global statement_used
     statement_used = True
 

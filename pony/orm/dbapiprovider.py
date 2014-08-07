@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function, division
+
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time
 from uuid import uuid4, UUID
@@ -14,17 +16,19 @@ class DBException(Exception):
         Exception.__init__(exc, *args)
         exc.original_exc = original_exc
 
-##StandardError
-##        |__Warning
-##        |__Error
-##           |__InterfaceError
-##           |__DatabaseError
-##              |__DataError
-##              |__OperationalError
-##              |__IntegrityError
-##              |__InternalError
-##              |__ProgrammingError
-##              |__NotSupportedError
+# Exception inheritance layout of DBAPI 2.0-compatible provider:
+#
+# Exception
+#   Warning
+#   Error
+#     InterfaceError
+#     DatabaseError
+#       DataError
+#       OperationalError
+#       IntegrityError
+#       InternalError
+#       ProgrammingError
+#       NotSupportedError
 
 class Warning(DBException): pass
 class Error(DBException): pass
@@ -41,31 +45,32 @@ class     NotSupportedError(DatabaseError): pass
 def wrap_dbapi_exceptions(func, provider, *args, **kwargs):
     dbapi_module = provider.dbapi_module
     try: return func(provider, *args, **kwargs)
-    except dbapi_module.NotSupportedError, e: raise NotSupportedError(e)
-    except dbapi_module.ProgrammingError, e: raise ProgrammingError(e)
-    except dbapi_module.InternalError, e: raise InternalError(e)
-    except dbapi_module.IntegrityError, e: raise IntegrityError(e)
-    except dbapi_module.OperationalError, e: raise OperationalError(e)
-    except dbapi_module.DataError, e: raise DataError(e)
-    except dbapi_module.DatabaseError, e: raise DatabaseError(e)
-    except dbapi_module.InterfaceError, e:
+    except dbapi_module.NotSupportedError as e: raise NotSupportedError(e)
+    except dbapi_module.ProgrammingError as e: raise ProgrammingError(e)
+    except dbapi_module.InternalError as e: raise InternalError(e)
+    except dbapi_module.IntegrityError as e: raise IntegrityError(e)
+    except dbapi_module.OperationalError as e: raise OperationalError(e)
+    except dbapi_module.DataError as e: raise DataError(e)
+    except dbapi_module.DatabaseError as e: raise DatabaseError(e)
+    except dbapi_module.InterfaceError as e:
         if e.args == (0, '') and getattr(dbapi_module, '__name__', None) == 'MySQLdb':
             throw(InterfaceError, e, 'MySQL server misconfiguration')
         raise InterfaceError(e)
-    except dbapi_module.Error, e: raise Error(e)
-    except dbapi_module.Warning, e: raise Warning(e)
+    except dbapi_module.Error as e: raise Error(e)
+    except dbapi_module.Warning as e: raise Warning(e)
 
 def unexpected_args(attr, args):
     throw(TypeError,
         'Unexpected positional argument%s for attribute %s: %r'
-        % ((args > 1 and 's' or ''), attr, ', '.join(map(repr, args))))
+        % ((args > 1 and 's' or ''), attr, ', '.join(repr(arg) for arg in args)))
 
 version_re = re.compile('[0-9\.]+')
 
 def get_version_tuple(s):
     m = version_re.match(s)
     if m is not None:
-        return tuple(map(int, m.group(0).split('.')))
+        components = m.group(0).split('.')
+        return tuple(int(component) for component in components)
     return None
 
 class DBAPIProvider(object):
@@ -507,7 +512,7 @@ class DecimalConverter(Converter):
             if float(s) != val: s = repr(val)
             val = Decimal(s)
         try: val = Decimal(val)
-        except InvalidOperation, exc:
+        except InvalidOperation as exc:
             throw(TypeError, 'Invalid value for attribute %s: %r' % (converter.attr, val))
         if converter.min_val is not None and val < converter.min_val:
             throw(ValueError, 'Value %r of attr %s is less than the minimum allowed value %r'

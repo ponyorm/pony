@@ -1,4 +1,4 @@
-from __future__ import with_statement
+from __future__ import absolute_import, print_function, division
 
 import unittest
 from datetime import date
@@ -169,7 +169,8 @@ class TestSQLTranslator2(unittest.TestCase):
         self.assertEqual(result, set([Student[2], Student[3], Student[4], Student[5], Student[6], Student[7]]))
     @raises_exception(TypeError, "Use select(...) function or Group.select(...) method for iteration")
     def test_exception1(self):
-        for g in Group: print g.number
+        for g in Group:
+            pass
     @raises_exception(MultipleObjectsFoundError, "Multiple objects were found. Use select(...) to retrieve them")
     def test_exception2(self):
          get(s for s in Student)

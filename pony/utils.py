@@ -1,6 +1,9 @@
 #coding: cp1251
 
-import re, os, os.path, sys, datetime, types, linecache, warnings
+from __future__ import absolute_import, print_function
+from pony.py23compat import imap
+
+import re, os, os.path, sys, datetime, types, linecache, warnings, json
 
 from itertools import count as _count
 from inspect import isfunction, ismethod, getargspec
@@ -12,7 +15,8 @@ from bisect import bisect
 from collections import defaultdict
 from copy import deepcopy, _deepcopy_dispatch
 from functools import update_wrapper
-from compiler import ast
+from pony.thirdparty.compiler import ast
+from xml.etree import cElementTree
 
 # deepcopy instance method patch for Python < 2.7:
 if types.MethodType not in _deepcopy_dispatch:
@@ -24,9 +28,6 @@ import pony
 from pony import options
 
 from pony.thirdparty.decorator import decorator as _decorator
-
-try: from pony.thirdparty import etree
-except ImportError: etree = None
 
 if pony.MODE.startswith('GAE-'): localbase = object
 else: from threading import local as localbase
@@ -79,17 +80,6 @@ def decorator_with_params(dec):
             return decorator(dec(), args[0])
         return decorator(dec(*args, **kwargs))
     return parameterized_decorator
-
-@decorator_with_params
-def with_headers(**headers):
-    def new_dec(func, *args, **kwargs):
-        print 'headers:', headers
-        return func(*args, **kwargs)
-    return new_dec
-
-@with_headers(x=10, y=20)
-def mul(a, b):
-    return a * b
 
 @decorator
 def cut_traceback(func, *args, **kwargs):
@@ -328,9 +318,8 @@ def markdown(s):
 
 class JsonString(unicode): pass
 
-def json(obj, **kwargs):
-    from pony.thirdparty import simplejson
-    result = JsonString(simplejson.dumps(obj, **kwargs))
+def json_result(obj, **kwargs):
+    result = JsonString(json.dumps(obj, **kwargs))
     result.media_type = 'application/json'
     if 'encoding' in kwargs: result.charset = kwargs['encoding']
     return result
@@ -347,7 +336,7 @@ def guid2str(guid):
     """
     assert isinstance(guid, buffer) and len(guid) == 16
     guid = str(guid)
-    return '%s-%s-%s-%s-%s' % tuple(map(hexlify, (
+    return '%s-%s-%s-%s-%s' % tuple(imap(hexlify, (
         guid[3::-1], guid[5:3:-1], guid[7:5:-1], guid[8:10], guid[10:])))
 
 def str2guid(s):
@@ -357,7 +346,7 @@ def str2guid(s):
     'ff19966f868b11d0b42d00c04fc964ff'
     """
     assert isinstance(s, basestring) and len(s) == 36
-    a, b, c, d, e = map(unhexlify, (s[:8],s[9:13],s[14:18],s[19:23],s[24:]))
+    a, b, c, d, e = imap(unhexlify, (s[:8],s[9:13],s[14:18],s[19:23],s[24:]))
     reverse = slice(-1, None, -1)
     return buffer(''.join((a[reverse], b[reverse], c[reverse], d, e)))
 
@@ -421,7 +410,7 @@ def tostring(x):
     if hasattr(x, '__unicode__'):
         try: return unicode(x)
         except: pass
-    if etree is not None and hasattr(x, 'makeelement'): return etree.tostring(x)
+    if hasattr(x, 'makeelement'): return cElementTree.tostring(x)
     try: return str(x)
     except: pass
     try: return repr(x)
@@ -508,7 +497,7 @@ def distinct(iter):
     return d
 
 def concat(*args):
-    return ''.join(map('%s'.__mod__, args))
+    return ''.join(tostring(arg) for arg in args)
 
 def is_utf8(encoding):
     return encoding.upper().replace('_', '').replace('-', '') in ('UTF8', 'UTF', 'U8')

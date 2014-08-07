@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function
+
 from decimal import Decimal
 from datetime import date
 
@@ -61,10 +63,10 @@ def populate_database():
 
 def show_all_persons():
     for obj in Person.select():
-        print obj
+        print(obj)
         for attr in obj._attrs_:
-            print attr.name, "=", attr.__get__(obj)
-        print
+            print(attr.name, "=", attr.__get__(obj))
+        print()
 
 if __name__ == '__main__':
     populate_database()
@@ -75,12 +77,12 @@ if __name__ == '__main__':
     with db_session:
         s1 = Student.get(name='Student1')
         if s1 is None:
-            print 'Student1 not found'
+            print('Student1 not found')
         else:
             mentor = s1.mentor
-            print mentor.name, 'is mentor of Student1'
-            print 'Is he assistant?', isinstance(mentor, Assistant)
-        print
+            print(mentor.name, 'is mentor of Student1')
+            print('Is he assistant?', isinstance(mentor, Assistant))
+        print()
 
         for s in Student.select(lambda s: s.mentor.salary == 1000):
-            print s.name
+            print(s.name)

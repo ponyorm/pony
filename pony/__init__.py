@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function
+
 import sys, time, threading, random
 from os.path import dirname
 from itertools import count
@@ -58,7 +60,7 @@ def exitfunc():
         # and a problem occurs, then the following code will
         # prevent the console window from closing immediately.
         # This only works if use_autoreload() has been called
-        print '\nPress Enter to exit...'
+        print('\nPress Enter to exit...')
         raw_input()
     prev_func()
 
@@ -77,7 +79,7 @@ _do_mainloop = False  # sets to True by pony.web.start_http_server()
 def mainloop():
     if not _do_mainloop: return
     if MODE not in ('CHERRYPY', 'FCGI-FLUP'): return
-    if mainloop_counter.next(): return
+    if next(mainloop_counter): return
     try:
         while True:
             if shutdown: break
@@ -92,5 +94,5 @@ shutdown_counter = count()
 def _shutdown():
     global shutdown
     shutdown = True
-    if shutdown_counter.next(): return
+    if next(shutdown_counter): return
     for func in reversed(shutdown_list): func()

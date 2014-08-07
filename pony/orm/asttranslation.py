@@ -1,5 +1,8 @@
-from compiler import ast
+from __future__ import absolute_import, print_function, division
+
 from functools import update_wrapper
+
+from pony.thirdparty.compiler import ast
 
 from pony.utils import throw
 
@@ -50,8 +53,7 @@ def binop_src(op, node):
     return op.join((node.left.src, node.right.src))
 
 def ast2src(tree):
-    try: PythonTranslator(tree)
-    except NotImplementedError: return repr(tree)
+    PythonTranslator(tree)
     return tree.src
 
 class PythonTranslator(ASTTranslator):
@@ -116,6 +118,9 @@ class PythonTranslator(ASTTranslator):
     def postDiv(translator, node):
         return binop_src(' / ', node)
     @priority(5)
+    def postFloorDiv(translator, node):
+        return binop_src(' // ', node)
+    @priority(5)
     def postMod(translator, node):
         return binop_src(' % ', node)
     @priority(4)
@@ -154,8 +159,8 @@ class PythonTranslator(ASTTranslator):
         return '%s[%s]' % (node.expr.src, key)
     def postSlice(translator, node):
         node.priority = 2
-        lower = node.lower is not None and node.lower.src or ''
-        upper = node.upper is not None and node.upper.src or ''
+        lower = node.lower.src if node.lower is not None else ''
+        upper = node.upper.src if node.upper is not None else ''
         return '%s[%s:%s]' % (node.expr.src, lower, upper)
     def postSliceobj(translator, node):
         return ':'.join(item.src for item in node.nodes)

@@ -1,4 +1,4 @@
-from __future__ import with_statement
+from __future__ import absolute_import, print_function, division
 
 import unittest
 from datetime import date
@@ -98,74 +98,74 @@ class TestDBSession(unittest.TestCase):
             pass
 
     def test_db_session_decorator_7(self):
-        counter = count().next
+        counter = count()
         @db_session(retry_exceptions=[ZeroDivisionError])
         def test():
-            counter()
+            next(counter)
             self.X(a=3, b=3)
             1/0
         try:
             test()
         except ZeroDivisionError:
-            self.assertEqual(counter(), 1)
+            self.assertEqual(next(counter), 1)
             with db_session:
                 self.assertEqual(count(x for x in self.X), 2)
         else:
             self.fail()
 
     def test_db_session_decorator_8(self):
-        counter = count().next
+        counter = count()
         @db_session(retry=1, retry_exceptions=[ZeroDivisionError])
         def test():
-            counter()
+            next(counter)
             self.X(a=3, b=3)
             1/0
         try:
             test()
         except ZeroDivisionError:
-            self.assertEqual(counter(), 2)
+            self.assertEqual(next(counter), 2)
             with db_session:
                 self.assertEqual(count(x for x in self.X), 2)
         else:
             self.fail()
 
     def test_db_session_decorator_9(self):
-        counter = count().next
+        counter = count()
         @db_session(retry=5, retry_exceptions=[ZeroDivisionError])
         def test():
-            counter()
+            next(counter)
             self.X(a=3, b=3)
             1/0
         try:
             test()
         except ZeroDivisionError:
-            self.assertEqual(counter(), 6)
+            self.assertEqual(next(counter), 6)
             with db_session:
                 self.assertEqual(count(x for x in self.X), 2)
         else:
             self.fail()
 
     def test_db_session_decorator_10(self):
-        counter = count().next
+        counter = count()
         @db_session(retry=3, retry_exceptions=[TypeError])
         def test():
-            counter()
+            next(counter)
             self.X(a=3, b=3)
             1/0
         try:
             test()
         except ZeroDivisionError:
-            self.assertEqual(counter(), 1)
+            self.assertEqual(next(counter), 1)
             with db_session:
                 self.assertEqual(count(x for x in self.X), 2)
         else:
             self.fail()
 
     def test_db_session_decorator_11(self):
-        counter = count().next
+        counter = count()
         @db_session(retry=5, retry_exceptions=[ZeroDivisionError])
         def test():
-            i = counter()
+            i = next(counter)
             self.X(a=3, b=3)
             if i < 2: 1/0
         try:
@@ -173,7 +173,7 @@ class TestDBSession(unittest.TestCase):
         except ZeroDivisionError:
             self.fail()
         else:
-            self.assertEqual(counter(), 3)
+            self.assertEqual(next(counter), 3)
             with db_session:
                 self.assertEqual(count(x for x in self.X), 3)
 
@@ -212,16 +212,16 @@ class TestDBSession(unittest.TestCase):
             self.fail()
 
     def test_db_session_decorator_15(self):
-        counter = count().next
+        counter = count()
         @db_session(retry=3, retry_exceptions=lambda e: isinstance(e, ZeroDivisionError))
         def test():
-            i = counter()
+            i = next(counter)
             self.X(a=3, b=3)
             1/0
         try:
             test()
         except ZeroDivisionError:
-            self.assertEqual(counter(), 4)
+            self.assertEqual(next(counter), 4)
             with db_session:
                 self.assertEqual(count(x for x in self.X), 2)
         else:

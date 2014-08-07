@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function
+
 from pony.orm.core import *
 from decimal import Decimal
 from datetime import date

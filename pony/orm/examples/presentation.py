@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function
+
 from decimal import Decimal
 from datetime import date
 
@@ -96,8 +98,8 @@ def populate_database():
 
 def print_students(students):
     for s in students:
-        print s.name
-    print
+        print(s.name)
+    print()
 
 @db_session
 def test_queries():
@@ -131,8 +133,8 @@ def test_queries():
     print_students(students)
 
 
-    print 'Average GPA is', avg(s.gpa for s in Student)
-    print
+    print('Average GPA is', avg(s.gpa for s in Student))
+    print()
 
 
     students = select(s for s in Student

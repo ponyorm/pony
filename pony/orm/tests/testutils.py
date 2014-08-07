@@ -1,3 +1,5 @@
+from __future__ import absolute_import, print_function, division
+
 from pony.orm.core import Database
 from pony.utils import import_module
 
@@ -7,7 +9,7 @@ def raises_exception(exc_class, msg=None):
             try:
                 func(self, *args, **kwargs)
                 self.assert_(False, "expected exception %s wasn't raised" % exc_class.__name__)
-            except exc_class, e:
+            except exc_class as e:
                 if not e.args: self.assertEqual(msg, None)
                 elif msg is not None:
                     self.assertEqual(e.args[0], msg, "incorrect exception message. expected '%s', got '%s'" % (msg, e.args[0]))
@@ -81,7 +83,7 @@ class TestDatabase(Database):
             elif provider_name == 'mysql': raw_server_version = '5.6.11'
             else: assert False, provider_name
 
-        t = map(int, raw_server_version.split('.'))
+        t = [ int(component) for component in raw_server_version.split('.') ]
         if len(t) == 2: t.append(0)
         server_version = tuple(t)
         if provider_name in ('postgres', 'pygresql'):
