@@ -2610,7 +2610,9 @@ class EntityMeta(type):
         if len(primary_keys) > 1: throw(ERDiagramError, 'Only one primary key can be defined in each entity class')
         elif not primary_keys:
             if hasattr(entity, 'id'): throw(ERDiagramError,
-                "Cannot create primary key for %s automatically because name 'id' is alredy in use" % entity.__name__)
+                "Cannot create default primary key attribute for %s because name 'id' is already in use."
+                " Please create a PrimaryKey attribute for entity %s or rename the 'id' attribute"
+                % (entity.__name__, entity.__name__))
             attr = PrimaryKey(int, auto=True)
             attr._init_(entity, 'id')
             type.__setattr__(entity, 'id', attr)  # entity.id = attr
@@ -2633,6 +2635,7 @@ class EntityMeta(type):
         entity._subclass_attrs_ = set()
         for base in entity._all_bases_:
             base._subclass_attrs_.update(new_attrs)
+        entity._attrnames_cache_ = {}
 
         entity._bits_ = {}
         entity._bits_except_volatile_ = {}
@@ -3182,7 +3185,7 @@ class EntityMeta(type):
         if type(lambda_func) is types.FunctionType:
             names = get_lambda_args(lambda_func)
             code_key = id(lambda_func.func_code)
-            cond_expr, external_names = decompile(lambda_func)
+            cond_expr, external_names, cells = decompile(lambda_func)
         elif isinstance(lambda_func, basestring):
             code_key = lambda_func
             lambda_ast = string2ast(lambda_func)
@@ -3190,6 +3193,7 @@ class EntityMeta(type):
                 throw(TypeError, 'Lambda function is expected. Got: %s' % lambda_func)
             names = get_lambda_args(lambda_ast)
             cond_expr = lambda_ast.code
+            cells = None
         else: assert False
 
         if len(names) != 1: throw(TypeError,
@@ -3203,7 +3207,7 @@ class EntityMeta(type):
         locals = locals.copy()
         assert '.0' not in locals
         locals['.0'] = entity
-        return Query(code_key, inner_expr, globals, locals)
+        return Query(code_key, inner_expr, globals, locals, cells)
     def _new_(entity, pkval, status, for_update=False, undo_funcs=None):
         cache = entity._database_._get_cache()
         pk_attrs = entity._pk_attrs_
@@ -3340,6 +3344,38 @@ class EntityMeta(type):
     @db_session(ddl=True)
     def drop_table(entity, with_all_data=False):
         entity._database_._drop_tables([ entity._table_ ], True, with_all_data)
+    def _get_attrs_(entity, only=None, exclude=None, with_collections=False, with_lazy=False):
+        if only and not isinstance(only, basestring): only = tuple(only)
+        if exclude and not isinstance(exclude, basestring): exclude = tuple(exclude)
+        key = (only, exclude, with_collections, with_lazy)
+        attrs = entity._attrnames_cache_.get(key)
+        if not attrs:
+            attrs = []
+            append = attrs.append
+            if only:
+                if isinstance(only, basestring): only = only.replace(',', ' ').split()
+                get_attr = entity._adict_.get
+                for attrname in only:
+                    attr = get_attr(attrname)
+                    if attr is None: throw(AttributeError,
+                        'Entity %s does not have attriute %s' % (entity.__name__, attrname))
+                    else: append(attr)
+            else:
+                for attr in entity._attrs_:
+                    if attr.is_collection:
+                        if with_collections: append(attr)
+                    elif attr.lazy:
+                        if with_lazy: append(attr)
+                    else: append(attr)
+            if exclude:
+                if isinstance(exclude, basestring): exclude = exclude.replace(',', ' ').split()
+                for attrname in exclude:
+                    if attrname not in entity._adict_: throw(AttributeError,
+                        'Entity %s does not have attriute %s' % (entity.__name__, attrname))
+                attrs = (attr for attr in attrs if attr.name not in exclude)
+            attrs = tuple(attrs)
+            entity._attrnames_cache_[key] = attrs
+        return attrs
 
 def populate_criteria_list(criteria_list, columns, converters, params_count=0, table_alias=None):
     assert len(columns) == len(converters)
@@ -3952,6 +3988,22 @@ class Entity(object):
         pass
     def before_delete(obj):
         pass
+    @cut_traceback
+    def to_dict(obj, only=None, exclude=None, with_collections=False, with_lazy=False, related_objects=False):
+        attrs = obj.__class__._get_attrs_(only, exclude, with_collections, with_lazy)
+        result = {}
+        for attr in attrs:
+            value = attr.__get__(obj)
+            if attr.is_collection:
+                if related_objects: value = sorted(value)
+                elif attr.reverse.entity._pk_is_composite_:
+                    value = sorted(item._get_raw_pkval_() for item in value)
+                else: value = sorted(item._get_raw_pkval_()[0] for item in value)
+            elif attr.is_relation and not related_objects:
+                value = value._get_raw_pkval_()
+                if not obj._pk_is_composite_: value = value[0]
+            result[attr.name] = value
+        return result                
 
 def string2ast(s):
     result = string2ast_cache.get(s)
@@ -3969,7 +4021,7 @@ def string2ast(s):
 @cut_traceback
 def select(gen, frame_depth=0, left_join=False):
     if isinstance(gen, types.GeneratorType):
-        tree, external_names = decompile(gen)
+        tree, external_names, cells = decompile(gen)
         code_key = id(gen.gi_frame.f_code)
         globals = gen.gi_frame.f_globals
         locals = gen.gi_frame.f_locals
@@ -3980,8 +4032,9 @@ def select(gen, frame_depth=0, left_join=False):
         code_key = query_string
         globals = sys._getframe(frame_depth+3).f_globals
         locals = sys._getframe(frame_depth+3).f_locals
+        cells = None
     else: throw(TypeError)
-    return Query(code_key, tree.code, globals, locals, left_join)
+    return Query(code_key, tree.code, globals, locals, cells, left_join)
 
 @cut_traceback
 def left_join(gen, frame_depth=0):
@@ -4029,7 +4082,11 @@ def desc(expr):
         return 'desc(%s)' % expr
     return expr
 
-def extract_vars(extractors, globals, locals):
+def extract_vars(extractors, globals, locals, cells=None):
+    if cells:
+        locals = locals.copy()
+        for name, cell in cells.items():
+            locals[name] = cell.cell_contents
     vars = {}
     vartypes = {}
     for key, code in extractors.iteritems():
@@ -4060,10 +4117,10 @@ def unpickle_query(query_result):
     return query_result
 
 class Query(object):
-    def __init__(query, code_key, tree, globals, locals, left_join=False):
+    def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
         extractors, varnames, tree = create_extractors(code_key, tree, 0)
-        vars, vartypes = extract_vars(extractors, globals, locals)
+        vars, vartypes = extract_vars(extractors, globals, locals, cells)
 
         node = tree.quals[0].iter
         origin = vars[0, node.src]
@@ -4248,11 +4305,12 @@ class Query(object):
             if isinstance(func_ast, ast.Lambda):
                 argnames = get_lambda_args(func_ast)
                 func_ast = func_ast.code
+            cells = None
         elif type(func) is types.FunctionType:
             argnames = get_lambda_args(func)
             subquery = query._translator.subquery
             func_id = id(func.func_code)
-            func_ast = decompile(func)[0]
+            func_ast, external_names, cells = decompile(func)
         elif not order_by: throw(TypeError,
             'Argument of filter() method must be a lambda functon or its text. Got: %r' % func)
         else: assert False
@@ -4267,7 +4325,7 @@ class Query(object):
         filter_num = len(query._filters) + 1
         extractors, varnames, func_ast = create_extractors(func_id, func_ast, filter_num, argnames or query._translator.subquery)
         if extractors:
-            vars, vartypes = extract_vars(extractors, globals, locals)
+            vars, vartypes = extract_vars(extractors, globals, locals, cells)
             query._database.provider.normalize_vars(vars, vartypes)
             query._vars.update(vars)
             sorted_vartypes = tuple(map(vartypes.__getitem__, varnames))

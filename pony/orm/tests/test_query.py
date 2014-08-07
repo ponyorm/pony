@@ -1,25 +1,149 @@
-import unittest
+from __future__ import with_statement
 
+import unittest
+from datetime import date
+from decimal import Decimal
+from pony.orm.core import *
 from testutils import *
-from model1 import *
+
+db = Database('sqlite', ':memory:')
+
+class Student(db.Entity):
+    name = Required(unicode)
+    scholarship = Optional(int)
+    gpa = Optional(Decimal,3,1)
+    group = Required('Group')
+    dob = Optional(date)
+
+class Group(db.Entity):
+    number = PrimaryKey(int)
+    students = Set(Student)
+
+db.generate_mapping(create_tables=True)
+
+with db_session:
+    g1 = Group(number=1)
+    Student(id=1, name='S1', group=g1, gpa=3.1)
+    Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 01, 01))
+    Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 01, 02))
 
 class TestQuery(unittest.TestCase):
+    def setUp(self):
+        rollback()
+        db_session.__enter__()
+    def tearDown(self):
+        rollback()
+        db_session.__exit__()
     @raises_exception(TypeError, 'Cannot iterate over non-entity object')
-    def test_query_1(self):
+    def test_exception_01(self):
         select(s for s in [])
     @raises_exception(TypeError, 'Cannot iterate over non-entity object X')
-    def test_query_2(self):
+    def test_exception_02(self):
         X = [1, 2, 3]
         select('x for x in X')
+    @raises_exception(TypeError, "Cannot iterate over non-entity object")
+    def test_exception_03(self):
+        g = Group[1]
+        select(s for s in g.students)
+    @raises_exception(ExprEvalError, "a raises NameError: name 'a' is not defined")
+    def test_exception_04(self):
+        select(a for s in Student)
+    @raises_exception(TypeError,"Incomparable types 'unicode' and 'list' in expression: s.name == x")
+    def test_exception_05(self):
+        x = ['A']
+        select(s for s in Student if s.name == x)
+    @raises_exception(TypeError,"Function 'f1' cannot be used inside query")
+    def test_exception_06(self):
+        def f1(x):
+            return x + 1
+        select(s for s in Student if f1(s.gpa) > 3)
+    @raises_exception(NotImplementedError, "m1(s.gpa, 1) > 3")
+    def test_exception_07(self):
+        class C1(object):
+            def method1(self, a, b):
+                return a + b
+        c = C1()
+        m1 = c.method1
+        select(s for s in Student if m1(s.gpa, 1) > 3)
+    @raises_exception(TypeError, "Expression x has unsupported type 'complex'")
+    def test_exception_08(self):
+        x = 1j
+        select(s for s in Student if s.gpa == x)
+    def test1(self):
+        select(g for g in Group for s in db.Student)
+        self.assert_(True)
+    def test2(self):
+        avg_gpa = avg(s.gpa for s in Student)
+        self.assertEqual(avg_gpa, Decimal('3.2'))
+    def test21(self):
+        avg_gpa = avg(s.gpa for s in Student if s.id < 0)
+        self.assertEqual(avg_gpa, None)
+    def test3(self):
+        sum_ss = sum(s.scholarship for s in Student)
+        self.assertEqual(sum_ss, 300)
+    def test31(self):
+        sum_ss = sum(s.scholarship for s in Student if s.id < 0)
+        self.assertEqual(sum_ss, 0)
+    @raises_exception(TranslationError, "'avg' is valid for numeric attributes only")
+    def test4(self):
+        avg(s.name for s in Student)
+    def wrapper(self):
+        return count(s for s in Student if s.scholarship > 0)
+    def test5(self):
+        c = self.wrapper()
+        c = self.wrapper()
+        self.assertEqual(c, 2)
+    def test6(self):
+        c = count(s.scholarship for s in Student if s.scholarship > 0)
+        self.assertEqual(c, 2)
+    def test7(self):
+        s = get(s.scholarship for s in Student if s.id == 3)
+        self.assertEqual(s, 200)
+    def test8(self):
+        s = get(s.scholarship for s in Student if s.id == 4)
+        self.assertEqual(s, None)
+    def test9(self):
+        s = select(s for s in Student if s.id == 4).exists()
+        self.assertEqual(s, False)
+    def test10(self):
+        r = min(s.scholarship for s in Student)
+        self.assertEqual(r, 100)
+    def test11(self):
+        r = min(s.scholarship for s in Student if s.id < 2)
+        self.assertEqual(r, None)
+    def test12(self):
+        r = max(s.scholarship for s in Student)
+        self.assertEqual(r, 200)
+    def test13(self):
+        r = max(s.dob.year for s in Student)
+        self.assertEqual(r, 2001)
     @db_session
     def test_first1(self):
-        q = select(s for s in Student).order_by(Student.record)
-        self.assertEquals(q.first(), Student[101])
+        q = select(s for s in Student).order_by(Student.gpa)
+        self.assertEqual(q.first(), Student[1])
     @db_session
     def test_first2(self):
         q = select((s.name, s.group) for s in Student)
-        self.assertEquals(q.first(), ('Alex', Group['4145']))
+        self.assertEqual(q.first(), ('S1', Group[1]))
     @db_session
     def test_first3(self):
         q = select(s for s in Student)
-        self.assertEquals(q.first(), Student[101])
+        self.assertEqual(q.first(), Student[1])
+    @db_session
+    def test_closures_1(self):
+        def find_by_gpa(gpa):
+            return lambda s: s.gpa > gpa
+        fn = find_by_gpa(Decimal('3.1'))
+        students = list(Student.select(fn))
+        self.assertEqual(students, [ Student[2], Student[3] ])
+    @db_session
+    def test_closures_2(self):
+        def find_by_gpa(gpa):
+            return lambda s: s.gpa > gpa
+        fn = find_by_gpa(Decimal('3.1'))
+        q = select(s for s in Student)
+        q = q.filter(fn)
+        self.assertEqual(list(q), [ Student[2], Student[3] ])
+
+if __name__ == '__main__':
+    unittest.main()

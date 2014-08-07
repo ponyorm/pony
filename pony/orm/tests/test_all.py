@@ -31,15 +31,15 @@ from test_declarative_exceptions import *
 from test_collections import *
 from test_sqlbuilding_formatstyles import *
 from test_sqlbuilding_sqlast import *
-from test_orm_query import *
+from test_query import *
 from test_frames import *
 from test_core_multiset import *
 from test_core_find_in_cache import *
 from test_db_session import *
 from test_lazy import *
-from test_query import *
 from test_filter import *
 from test_crud import *
+from test_to_dict import *
 
 #from new_tests import *
 

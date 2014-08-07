@@ -26,7 +26,7 @@ For other DBMSes default varchar limit was increased up to 255 in MySQL and to 1
 * Ability to specify `sequence_name='seq_name'` for PrimaryKey attributes for Oracle database
 * Ability to create new entity instances specifying the value of the primary key instead of the object
 * Ability to read entity object attributes outside of the db_session
-* Ability to use lambdas as a reference to an entitys in relationship attribute declarations ([link](http://doc.ponyorm.com/entities.html?highlight=lambda#relationships))
+* Ability to use lambdas as a reference to an entity in relationship attribute declarations ([link](http://doc.ponyorm.com/entities.html?highlight=lambda#relationships))
 * The names of tables, indexes and constraints in the database creation script now are sorted in the alphabetical order
 * In MySQL and PostgreSQL Pony converts the table names to the lower case. In Oracle – to the upper case. In SQLite leaves as is.
 * The option `options.MAX_FETCH_COUNT` is set to `None` by default now
