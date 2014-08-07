@@ -39,6 +39,7 @@ from test_db_session import *
 from test_lazy import *
 from test_filter import *
 from test_crud import *
+from test_to_dict import *
 
 #from new_tests import *
 

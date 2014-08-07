@@ -2635,6 +2635,7 @@ class EntityMeta(type):
         entity._subclass_attrs_ = set()
         for base in entity._all_bases_:
             base._subclass_attrs_.update(new_attrs)
+        entity._attrnames_cache_ = {}
 
         entity._bits_ = {}
         entity._bits_except_volatile_ = {}
@@ -3343,6 +3344,38 @@ class EntityMeta(type):
     @db_session(ddl=True)
     def drop_table(entity, with_all_data=False):
         entity._database_._drop_tables([ entity._table_ ], True, with_all_data)
+    def _get_attrs_(entity, only=None, exclude=None, with_collections=False, with_lazy=False):
+        if only and not isinstance(only, basestring): only = tuple(only)
+        if exclude and not isinstance(exclude, basestring): exclude = tuple(exclude)
+        key = (only, exclude, with_collections, with_lazy)
+        attrs = entity._attrnames_cache_.get(key)
+        if not attrs:
+            attrs = []
+            append = attrs.append
+            if only:
+                if isinstance(only, basestring): only = only.replace(',', ' ').split()
+                get_attr = entity._adict_.get
+                for attrname in only:
+                    attr = get_attr(attrname)
+                    if attr is None: throw(AttributeError,
+                        'Entity %s does not have attriute %s' % (entity.__name__, attrname))
+                    else: append(attr)
+            else:
+                for attr in entity._attrs_:
+                    if attr.is_collection:
+                        if with_collections: append(attr)
+                    elif attr.lazy:
+                        if with_lazy: append(attr)
+                    else: append(attr)
+            if exclude:
+                if isinstance(exclude, basestring): exclude = exclude.replace(',', ' ').split()
+                for attrname in exclude:
+                    if attrname not in entity._adict_: throw(AttributeError,
+                        'Entity %s does not have attriute %s' % (entity.__name__, attrname))
+                attrs = (attr for attr in attrs if attr.name not in exclude)
+            attrs = tuple(attrs)
+            entity._attrnames_cache_[key] = attrs
+        return attrs
 
 def populate_criteria_list(criteria_list, columns, converters, params_count=0, table_alias=None):
     assert len(columns) == len(converters)
@@ -3955,6 +3988,22 @@ class Entity(object):
         pass
     def before_delete(obj):
         pass
+    @cut_traceback
+    def to_dict(obj, only=None, exclude=None, with_collections=False, with_lazy=False, related_objects=False):
+        attrs = obj.__class__._get_attrs_(only, exclude, with_collections, with_lazy)
+        result = {}
+        for attr in attrs:
+            value = attr.__get__(obj)
+            if attr.is_collection:
+                if related_objects: value = sorted(value)
+                elif attr.reverse.entity._pk_is_composite_:
+                    value = sorted(item._get_raw_pkval_() for item in value)
+                else: value = sorted(item._get_raw_pkval_()[0] for item in value)
+            elif attr.is_relation and not related_objects:
+                value = value._get_raw_pkval_()
+                if not obj._pk_is_composite_: value = value[0]
+            result[attr.name] = value
+        return result                
 
 def string2ast(s):
     result = string2ast_cache.get(s)
