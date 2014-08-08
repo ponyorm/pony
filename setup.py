@@ -22,6 +22,9 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: Free for non-commercial use",
     "License :: OSI Approved :: GNU Affero General Public License v3",
+    "License :: Other/Proprietary License",
+    "License :: Free For Educational Use",
+    "License :: Free for non-commercial use",
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Topic :: Software Development :: Libraries",
@@ -31,7 +34,7 @@ classifiers = [
 author = "Alexander Kozlovsky, Alexey Malashkevich"
 author_email = "team@ponyorm.com"
 url = "http://ponyorm.com"
-lic = "AGPL"
+lic = "AGPL, Commercial, Free for educational and non-commercial use"
 
 modules = [
     "pony.__init__",
