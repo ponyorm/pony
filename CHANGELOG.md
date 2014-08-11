@@ -1,3 +1,17 @@
+# Pony ORM Release 0.5.2 (2014-08-11)
+
+This release is a step forward to Python 3 support. While the external API wasn't changed, the internals were significantly refactored to provide forward compatibility with Python 3. 
+
+## Changes/features:
+
+* New to_dict() method can be used to convert entity instance to dictionary. This method can be useful when you need to serialize an object to JSON or other format ([link](http://blog.ponyorm.com/2014/08/11/pony-orm-release-0-5-2/))
+
+## Bugfixes:
+
+* Now select() function and filter() method of the query object can accept lambdas with closures
+* Some minor bugs were fixed
+
+
 # Pony ORM Release 0.5.1 (2014-07-11)
 
 ## Changes/features:
@@ -15,7 +29,7 @@ For other DBMSes default varchar limit was increased up to 255 in MySQL and to 1
 
 # Pony ORM Release 0.5 (2014-05-31)
 
-* New transaction model ([link](http://blog.ponyorm.com/?p=125))
+* New transaction model ([link](http://blog.ponyorm.com/2014/02/14/pony-orm-release-0-5-beta/))
 * New method `Query.filter()` allows step-by-step query construction ([link](http://doc.ponyorm.com/queries.html?highlight=filter#Query.filter))
 * New method `Database.bind()` simplifies testing and allows using different settings for development and production ([link](http://doc.ponyorm.com/database.html#binding-the-database-object-to-a-specific-database))
 * New method `Query.page()` simplifies pagination ([link](http://doc.ponyorm.com/queries.html?highlight=filter#Query.page))
