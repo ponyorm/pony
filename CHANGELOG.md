@@ -1,3 +1,8 @@
+# Pony ORM Release 0.5.3 (2014-08-12)
+
+This release fixes the setup.py problem that was found after the previous release was uploaded to PyPI.
+
+
 # Pony ORM Release 0.5.2 (2014-08-11)
 
 This release is a step forward to Python 3 support. While the external API wasn't changed, the internals were significantly refactored to provide forward compatibility with Python 3. 

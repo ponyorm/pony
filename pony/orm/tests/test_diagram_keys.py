@@ -1,8 +1,9 @@
 from __future__ import absolute_import, print_function, division
 
 import unittest
+
 from pony.orm.core import *
-from testutils import *
+from pony.orm.tests.testutils import *
 
 class TestKeys(unittest.TestCase):
 

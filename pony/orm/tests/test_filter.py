@@ -1,7 +1,8 @@
 from __future__ import absolute_import, print_function, division
 
 import unittest
-from model1 import *
+
+from pony.orm.tests.model1 import *
 
 class TestFilter(unittest.TestCase):
     def setUp(self):

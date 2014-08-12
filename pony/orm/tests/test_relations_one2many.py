@@ -1,8 +1,9 @@
 from __future__ import absolute_import, print_function, division
 
 import unittest
-from testutils import *
+
 from pony.orm.core import *
+from pony.orm.tests.testutils import *
 
 class TestOneToMany(unittest.TestCase):
 

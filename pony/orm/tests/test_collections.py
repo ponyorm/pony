@@ -1,8 +1,9 @@
 from __future__ import absolute_import, print_function, division
 
 import unittest
-from testutils import raises_exception
-from model1 import *
+
+from pony.orm.tests.testutils import raises_exception
+from pony.orm.tests.model1 import *
 
 class TestCollections(unittest.TestCase):
 

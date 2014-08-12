@@ -1,9 +1,10 @@
 from __future__ import absolute_import, print_function, division
 
-from decimal import Decimal
 import unittest
+from decimal import Decimal
+
 from pony.orm.core import *
-from testutils import *
+from pony.orm.tests.testutils import *
 
 db = Database('sqlite', ':memory:')
 

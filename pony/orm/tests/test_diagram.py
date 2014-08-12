@@ -1,9 +1,10 @@
 from __future__ import absolute_import, print_function, division
 
 import unittest
+
 from pony.orm.core import *
 from pony.orm.core import Entity
-from testutils import *
+from pony.orm.tests.testutils import *
 
 class TestDiag(unittest.TestCase):
 
