@@ -2512,6 +2512,8 @@ class EntityMeta(type):
         entity._database_ = None
         if name == 'Entity': return
 
+        if not entity.__name__[:1].isupper():
+            throw(ERDiagramError, 'Entity class name should start with a capital letter. Got: %s' % entity.__name__)
         databases = set()
         for base_class in bases:
             if isinstance(base_class, EntityMeta):
