@@ -6,13 +6,21 @@ import sys
 name = "pony"
 version = "0.5.2"
 description = "Pony Object-Relational Mapper"
-long_description = """Pony is an object-relational mapper. The most interesting feature of Pony is its ability to write queries to the database using generator expressions. Pony works with entities which are mapped to a SQL database. Using generator syntax for writing queries allows the user to formulate very eloquent queries. It increases the level of abstraction and allows a programmer to concentrate on the business logic of the application. For this purpose Pony analyzes the abstract syntax tree of a generator and translates it to its SQL equivalent.
+long_description = """
+Pony is an object-relational mapper. The most interesting feature of Pony is
+its ability to write queries to the database using generator expressions.
+Pony works with entities which are mapped to a SQL database. Using generator
+syntax for writing queries allows the user to formulate very eloquent queries.
+It increases the level of abstraction and allows a programmer to concentrate
+on the business logic of the application. For this purpose Pony analyzes the
+abstract syntax tree of a generator and translates it to its SQL equivalent.
 
 Following is an example of a query in Pony:
 
     select(p for p in Product if p.name.startswith('A') and p.cost <= 1000)
 
-Pony translates queries to SQL using a specific database dialect. Currently Pony works with SQLite, MySQL, PostgreSQL and Oracle databases.
+Pony translates queries to SQL using a specific database dialect.
+Currently Pony works with SQLite, MySQL, PostgreSQL and Oracle databases.
 
 The package pony.orm.examples contains several examples.
 Documenation is available at http://ponyorm.com"""
