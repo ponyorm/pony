@@ -2,8 +2,9 @@ from __future__ import absolute_import, print_function, division
 
 import unittest
 from datetime import date, datetime
+
 from pony.orm.core import *
-from testutils import *
+from pony.orm.tests.testutils import *
 
 db = Database('sqlite', ':memory:')
 

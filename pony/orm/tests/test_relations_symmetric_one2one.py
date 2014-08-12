@@ -1,8 +1,9 @@
 from __future__ import absolute_import, print_function, division
 
 import unittest
+
 from pony.orm.core import *
-from testutils import raises_exception
+from pony.orm.tests.testutils import raises_exception
 
 db = Database('sqlite', ':memory:')
 

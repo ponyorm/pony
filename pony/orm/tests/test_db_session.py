@@ -6,7 +6,7 @@ from decimal import Decimal
 from itertools import count
 
 from pony.orm.core import *
-from testutils import *
+from pony.orm.tests.testutils import *
 
 class TestDBSession(unittest.TestCase):
     def setUp(self):
