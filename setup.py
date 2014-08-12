@@ -36,19 +36,15 @@ author_email = "team@ponyorm.com"
 url = "http://ponyorm.com"
 lic = "AGPL, Commercial, Free for educational and non-commercial use"
 
-modules = [
-    "pony.__init__",
-    "pony.converting",
-    "pony.options",
-    "pony.utils"
-]
-
 packages = [
+    "pony",
     "pony.orm",
     "pony.orm.dbproviders",
     "pony.orm.examples",
+    "pony.orm.integration",
     "pony.orm.tests",
-    "pony.thirdparty"
+    "pony.thirdparty",
+    "pony.thirdparty.compiler"
 ]
 
 download_url = "http://pypi.python.org/pypi/pony/"
@@ -71,8 +67,7 @@ def main():
         url=url,
         license=lic,
         packages=packages,
-        download_url=download_url,
-        py_modules=modules
+        download_url=download_url
     )
 
 if __name__ == "__main__":
