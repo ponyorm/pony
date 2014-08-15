@@ -3999,12 +3999,12 @@ class Entity(object):
             value = attr.__get__(obj)
             if attr.is_collection:
                 if related_objects: value = sorted(value)
-                elif attr.reverse.entity._pk_is_composite_:
+                elif len(attr.reverse.entity._pk_columns_) > 1:
                     value = sorted(item._get_raw_pkval_() for item in value)
                 else: value = sorted(item._get_raw_pkval_()[0] for item in value)
             elif attr.is_relation and not related_objects:
                 value = value._get_raw_pkval_()
-                if not obj._pk_is_composite_: value = value[0]
+                if len(value) == 1: value = value[0]
             result[attr.name] = value
         return result                
 
