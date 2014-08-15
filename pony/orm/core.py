@@ -2512,6 +2512,8 @@ class EntityMeta(type):
         entity._database_ = None
         if name == 'Entity': return
 
+        if not entity.__name__[:1].isupper():
+            throw(ERDiagramError, 'Entity class name should start with a capital letter. Got: %s' % entity.__name__)
         databases = set()
         for base_class in bases:
             if isinstance(base_class, EntityMeta):
@@ -3477,6 +3479,10 @@ class Entity(object):
         objects_to_save.append(obj)
         cache.modified = True
         return obj
+    def get_pk(obj):
+        pkval = obj._get_raw_pkval_()
+        if len(pkval) == 1: return pkval[0]
+        return pkval
     def _get_raw_pkval_(obj):
         pkval = obj._pkval_
         if not obj._pk_is_composite_:
@@ -3997,12 +4003,12 @@ class Entity(object):
             value = attr.__get__(obj)
             if attr.is_collection:
                 if related_objects: value = sorted(value)
-                elif attr.reverse.entity._pk_is_composite_:
+                elif len(attr.reverse.entity._pk_columns_) > 1:
                     value = sorted(item._get_raw_pkval_() for item in value)
                 else: value = sorted(item._get_raw_pkval_()[0] for item in value)
             elif attr.is_relation and not related_objects:
                 value = value._get_raw_pkval_()
-                if not obj._pk_is_composite_: value = value[0]
+                if len(value) == 1: value = value[0]
             result[attr.name] = value
         return result                
 

@@ -1678,7 +1678,7 @@ class FuncConcatMonad(FuncMonad):
             if isinstance(t, EntityMeta) or type(t) in (tuple, SetType):
                 throw(TranslationError, 'Invalid argument of concat() function: %s' % ast2src(arg.node))
             if t is str: s = True
-            elif t is u: u = True
+            elif t is unicode: u = True
             result_ast.extend(arg.getsql())
         if s and u: throw(TranslationError, 'Mixing str and unicode in {EXPR}')
         result_type = str if s else unicode

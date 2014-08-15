@@ -145,7 +145,14 @@ class TestDiag(unittest.TestCase):
     @raises_exception(ERDiagramError, 'Base Entity does not belong to any database')
     def test_diagram12(self):
         class Test(Entity):
-        	name = Required(unicode)
+            name = Required(unicode)
+
+    @raises_exception(ERDiagramError, 'Entity class name should start with a capital letter. Got: entity1')
+    def test_diagram13(self):
+        db = Database('sqlite', ':memory:')
+        class entity1(db.Entity):
+            a = Required(int)
+        db.generate_mapping()
 
 if __name__ == '__main__':
     unittest.main()
