@@ -3479,6 +3479,10 @@ class Entity(object):
         objects_to_save.append(obj)
         cache.modified = True
         return obj
+    def get_pk(obj):
+        pkval = obj._get_raw_pkval_()
+        if len(pkval) == 1: return pkval[0]
+        return pkval
     def _get_raw_pkval_(obj):
         pkval = obj._pkval_
         if not obj._pk_is_composite_:
