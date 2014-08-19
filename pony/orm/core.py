@@ -760,6 +760,7 @@ class Database(object):
                 elif attr.index and attr.columns:
                     columns = tuple(imap(table.column_dict.__getitem__, attr.columns))
                     table.add_index(attr.index, columns, is_unique=attr.is_unique)
+            entity._initialize_bits_()
 
         if create_tables: database.create_tables(check_tables)
         elif check_tables: database.check_tables()
@@ -1536,6 +1537,7 @@ class Attribute(object):
                 generate_columns()
             elif attr.columns: generate_columns()
             elif reverse.columns: pass
+            elif reverse.is_required: pass
             elif attr.entity.__name__ > reverse.entity.__name__: pass
             else: generate_columns()
         attr._columns_checked = True
@@ -1595,7 +1597,6 @@ class Discriminator(Required):
         entity._attrs_.append(attr)
         entity._new_attrs_.append(attr)
         entity._adict_['classtype'] = attr
-        entity._bits_[attr] = 0
         type.__setattr__(entity, 'classtype', attr)
         attr.process_entity_inheritance(entity)
     def process_entity_inheritance(attr, entity):
@@ -2640,21 +2641,6 @@ class EntityMeta(type):
             base._subclass_attrs_.update(new_attrs)
         entity._attrnames_cache_ = {}
 
-        entity._bits_ = {}
-        entity._bits_except_volatile_ = {}
-        offset_counter = _count()
-        all_bits = all_bits_except_volatile = 0
-        for attr in entity._attrs_:
-            if attr.is_collection or attr.is_discriminator or attr.pk_offset is not None: bit = 0
-            else: bit = 1 << next(offset_counter)
-            all_bits |= bit
-            entity._bits_[attr] = bit
-            if attr.is_volatile: bit = 0
-            all_bits_except_volatile |= bit
-            entity._bits_except_volatile_[attr] = bit
-        entity._all_bits_ = all_bits
-        entity._all_bits_except_volatile_ = all_bits_except_volatile
-
         try: table_name = entity.__dict__['_table_']
         except KeyError: entity._table_ = None
         else:
@@ -2694,6 +2680,22 @@ class EntityMeta(type):
         for_expr = ast.GenExprFor(ast.AssName(iter_name, 'OP_ASSIGN'), ast.Name('.0'), [])
         inner_expr = ast.GenExprInner(ast.Name(iter_name), [ for_expr ])
         entity._default_genexpr_ = inner_expr
+    def _initialize_bits_(entity):
+        entity._bits_ = {}
+        entity._bits_except_volatile_ = {}
+        offset_counter = _count()
+        all_bits = all_bits_except_volatile = 0
+        for attr in entity._attrs_:
+            if attr.is_collection or attr.is_discriminator or attr.pk_offset is not None: bit = 0
+            elif not attr.columns: bit = 0
+            else: bit = 1 << next(offset_counter)
+            all_bits |= bit
+            entity._bits_[attr] = bit
+            if attr.is_volatile: bit = 0
+            all_bits_except_volatile |= bit
+            entity._bits_except_volatile_[attr] = bit
+        entity._all_bits_ = all_bits
+        entity._all_bits_except_volatile_ = all_bits_except_volatile
     def _resolve_attr_types_(entity):
         database = entity._database_
         for attr in entity._new_attrs_:
@@ -2739,7 +2741,7 @@ class EntityMeta(type):
                     elif not reverse2:
                         if attr2 is attr: continue
                         candidates2.append(attr2)
-                msg = 'Ambiguous reverse attribute for %s'
+                msg = "Ambiguous reverse attribute for %s. Use the 'reverse' parameter for pointing to right attribute"
                 if len(candidates1) > 1: throw(ERDiagramError, msg % attr)
                 elif len(candidates1) == 1: attr2 = candidates1[0]
                 elif len(candidates2) > 1: throw(ERDiagramError, msg % attr)

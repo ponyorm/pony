@@ -826,7 +826,9 @@ class JoinedTableRef(object):
             if not attr.columns:
                 reverse = attr.reverse
                 assert reverse.columns and not reverse.is_collection
-                alias = subquery.get_short_alias(tableref.name_path, entity.__name__)
+                rentity = reverse.entity
+                pk_columns = rentity._pk_columns_
+                alias = subquery.get_short_alias(tableref.name_path, rentity.__name__)
                 join_cond = join_tables(parent_alias, alias, left_pk_columns, reverse.columns)
             else:
                 if attr.pk_offset is not None:
@@ -1298,6 +1300,12 @@ class StringMixin(MonadMixin):
 class ObjectMixin(MonadMixin):
     def mixin_init(monad):
         assert isinstance(monad.type, EntityMeta)
+    def negate(monad):
+        translator = monad.translator
+        return translator.CmpMonad('is', monad, translator.NoneMonad(translator))
+    def nonzero(monad):
+        translator = monad.translator
+        return translator.CmpMonad('is not', monad, translator.NoneMonad(translator))
     def getattr(monad, name):
         translator = monad.translator
         entity = monad.type
@@ -1351,11 +1359,18 @@ class AttrMonad(Monad):
         entity = attr.entity
         pk_only = attr.pk_offset is not None
         alias, parent_columns = monad.parent.tableref.make_join(pk_only)
-        if not pk_only: columns = attr.columns
-        elif not entity._pk_is_composite_: columns = parent_columns
-        else:
-            offset = attr.pk_columns_offset
-            columns = parent_columns[offset:offset+len(attr.columns)]
+        if pk_only:
+            if entity._pk_is_composite_:
+                offset = attr.pk_columns_offset
+                columns = parent_columns[offset:offset+len(attr.columns)]
+            else: columns = parent_columns
+        elif not attr.columns:
+            assert isinstance(monad, ObjectAttrMonad)
+            subquery = monad.translator.subquery
+            monad.translator.left_join = subquery.left_join = True
+            subquery.from_ast[0] = 'LEFT_JOIN'
+            alias, columns = monad.tableref.make_join()
+        else: columns = attr.columns
         return [ [ 'COLUMN', alias, column ] for column in columns ]
 
 class ObjectAttrMonad(ObjectMixin, AttrMonad):
