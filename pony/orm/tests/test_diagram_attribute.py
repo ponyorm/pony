@@ -163,7 +163,7 @@ class TestAttribute(unittest.TestCase):
             attr2 = Required('Entity1')
         db.generate_mapping()
 
-    @raises_exception(ERDiagramError, 'Ambiguous reverse attribute for Entity1.a')
+    @raises_exception(ERDiagramError, "Ambiguous reverse attribute for Entity1.a. Use the 'reverse' parameter for pointing to right attribute")
     def test_attribute19(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
@@ -176,7 +176,7 @@ class TestAttribute(unittest.TestCase):
             d = Set(Entity1)
         db.generate_mapping()
 
-    @raises_exception(ERDiagramError, 'Ambiguous reverse attribute for Entity1.c')
+    @raises_exception(ERDiagramError, "Ambiguous reverse attribute for Entity1.c. Use the 'reverse' parameter for pointing to right attribute")
     def test_attribute20(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):

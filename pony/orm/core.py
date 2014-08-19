@@ -2739,7 +2739,7 @@ class EntityMeta(type):
                     elif not reverse2:
                         if attr2 is attr: continue
                         candidates2.append(attr2)
-                msg = 'Ambiguous reverse attribute for %s'
+                msg = "Ambiguous reverse attribute for %s. Use the 'reverse' parameter for pointing to right attribute"
                 if len(candidates1) > 1: throw(ERDiagramError, msg % attr)
                 elif len(candidates1) == 1: attr2 = candidates1[0]
                 elif len(candidates2) > 1: throw(ERDiagramError, msg % attr)
