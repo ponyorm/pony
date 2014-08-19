@@ -32,5 +32,15 @@ class TestOneToOne3(unittest.TestCase):
             self.assertEqual(obj.url, 'http://example.com')
             self.assertEqual(obj.act_item1.regnum, 'r1')
 
+    def test_2(self):
+        with db_session:
+            select(r for r in self.db.CommonItem if r.act_item1 is None)[:]
+            sql = self.db.last_sql
+            self.assertEqual(sql, '''SELECT "r"."id", "r"."url"
+FROM "CommonItem" "r"
+  LEFT JOIN "ActItem1" "actitem1-1"
+    ON "r"."id" = "actitem1-1"."common_item"
+WHERE "actitem1-1"."id" IS NULL''')
+
 if __name__ == '__main__':
     unittest.main()
