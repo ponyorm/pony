@@ -383,6 +383,26 @@ class TestAttribute(unittest.TestCase):
             attr1 = Set('Entity1', reverse='attr1', table=[1, 'T1'])
         db.generate_mapping(create_tables=True)
 
+    def test_columns_21(self):
+        db = Database('sqlite', ':memory:')
+        class Stat(db.Entity):
+            webinarshow = Optional('WebinarShow')
+        class WebinarShow(db.Entity):
+            stats = Required('Stat')
+        db.generate_mapping(create_tables=True)
+        self.assertEqual(Stat.webinarshow.column, None)
+        self.assertEqual(WebinarShow.stats.column, 'stats')
+        
+    def test_columns_22(self):
+        db = Database('sqlite', ':memory:')
+        class ZStat(db.Entity):
+            webinarshow = Optional('WebinarShow')
+        class WebinarShow(db.Entity):
+            stats = Required('ZStat')
+        db.generate_mapping(create_tables=True)
+        self.assertEqual(ZStat.webinarshow.column, None)
+        self.assertEqual(WebinarShow.stats.column, 'stats')
+
     def test_nullable1(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):

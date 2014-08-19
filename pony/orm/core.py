@@ -1536,6 +1536,7 @@ class Attribute(object):
                 generate_columns()
             elif attr.columns: generate_columns()
             elif reverse.columns: pass
+            elif reverse.is_required: pass
             elif attr.entity.__name__ > reverse.entity.__name__: pass
             else: generate_columns()
         attr._columns_checked = True
