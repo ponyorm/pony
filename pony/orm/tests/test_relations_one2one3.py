@@ -42,5 +42,25 @@ FROM "CommonItem" "r"
     ON "r"."id" = "actitem1-1"."common_item"
 WHERE "actitem1-1"."id" IS NULL''')
 
+    def test_3(self):
+        with db_session:
+            select(r for r in self.db.CommonItem if not r.act_item1)[:]
+            sql = self.db.last_sql
+            self.assertEqual(sql, '''SELECT "r"."id", "r"."url"
+FROM "CommonItem" "r"
+  LEFT JOIN "ActItem1" "actitem1-1"
+    ON "r"."id" = "actitem1-1"."common_item"
+WHERE "actitem1-1"."id" IS NULL''')
+
+    def test_4(self):
+        with db_session:
+            select(r for r in self.db.CommonItem if r.act_item1)[:]
+            sql = self.db.last_sql
+            self.assertEqual(sql, '''SELECT "r"."id", "r"."url"
+FROM "CommonItem" "r"
+  LEFT JOIN "ActItem1" "actitem1-1"
+    ON "r"."id" = "actitem1-1"."common_item"
+WHERE "actitem1-1"."id" IS NOT NULL''')
+
 if __name__ == '__main__':
     unittest.main()

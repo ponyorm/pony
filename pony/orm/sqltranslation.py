@@ -1300,6 +1300,12 @@ class StringMixin(MonadMixin):
 class ObjectMixin(MonadMixin):
     def mixin_init(monad):
         assert isinstance(monad.type, EntityMeta)
+    def negate(monad):
+        translator = monad.translator
+        return translator.CmpMonad('is', monad, translator.NoneMonad(translator))
+    def nonzero(monad):
+        translator = monad.translator
+        return translator.CmpMonad('is not', monad, translator.NoneMonad(translator))
     def getattr(monad, name):
         translator = monad.translator
         entity = monad.type
