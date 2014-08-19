@@ -13,6 +13,7 @@ from pony.orm.tests.test_diagram_keys import *
 from pony.orm.tests.test_mapping import *
 from pony.orm.tests.test_relations_one2one1 import *
 from pony.orm.tests.test_relations_one2one2 import *
+from pony.orm.tests.test_relations_one2one3 import *
 from pony.orm.tests.test_relations_symmetric_one2one import *
 from pony.orm.tests.test_relations_symmetric_m2m import *
 from pony.orm.tests.test_relations_one2many import *
