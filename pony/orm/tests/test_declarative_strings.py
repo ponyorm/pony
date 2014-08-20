@@ -9,13 +9,15 @@ db = Database('sqlite', ':memory:')
 
 class Student(db.Entity):
     name = Required(unicode)
+    foo = Optional(unicode)
+    bar = Optional(unicode)
 
 db.generate_mapping(create_tables=True)
 
 with db_session:
-    Student(id=1, name="Jon")
-    Student(id=2, name=" Bob ")
-    Student(id=3, name=" Beth ")
+    Student(id=1, name="Jon", foo='Abcdef', bar='b%d')
+    Student(id=2, name=" Bob ", foo='Ab%def', bar='b%d')
+    Student(id=3, name=" Beth ", foo='Ab_def', bar='b%d')
     Student(id=4, name="Jonathan")
     Student(id=5, name="Pete")
 
@@ -128,6 +130,32 @@ class TestStringMethods(unittest.TestCase):
         x = 'on'
         result = set(select(s for s in Student if x not in s.name))
         self.assertEqual(result, set([Student[2], Student[3], Student[5]]))
+
+    def test_contains_5(self):
+        result = set(select(s for s in Student if '%' in s.foo))
+        self.assertEqual(result, set([Student[2]]))
+
+    def test_contains_6(self):
+        x = '%'
+        result = set(select(s for s in Student if x in s.foo))
+        self.assertEqual(result, set([Student[2]]))
+
+    def test_contains_7(self):
+        result = set(select(s for s in Student if '_' in s.foo))
+        self.assertEqual(result, set([Student[3]]))
+
+    def test_contains_8(self):
+        x = '_'
+        result = set(select(s for s in Student if x in s.foo))
+        self.assertEqual(result, set([Student[3]]))
+
+    def test_contains_9(self):
+        result = set(select(s for s in Student if s.foo in 'Abcdef'))
+        self.assertEqual(result, set([Student[1], Student[4], Student[5]]))
+
+    def test_contains_10(self):
+        result = set(select(s for s in Student if s.bar in s.foo))
+        self.assertEqual(result, set([Student[2], Student[4], Student[5]]))
 
     def test_startswith_1(self):
         students = set(select(s for s in Student if s.name.startswith('J')))
