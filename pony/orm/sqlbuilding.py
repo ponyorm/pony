@@ -445,6 +445,8 @@ class SQLBuilder(object):
     def RTRIM(builder, expr, chars=None):
         if chars is None: return 'rtrim(', builder(expr), ')'
         return 'rtrim(', builder(expr), ', ', builder(chars), ')'
+    def REPLACE(builder, str, from_, to):
+        return 'replace(', builder(str), ', ', builder(from_), ', ', builder(to), ')'
     def TO_INT(builder, expr):
         return 'CAST(', builder(expr), ' AS integer)'
     def TODAY(builder):

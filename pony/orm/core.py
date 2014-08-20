@@ -3986,6 +3986,8 @@ class Entity(object):
         elif status == 'updated': obj._save_updated_()
         elif status == 'marked_to_delete': obj._save_deleted_()
         else: assert False
+    def flush(obj):
+        with obj._session_cache_.flush_disabled(): obj._save_()
     def _before_save_(obj):
         status = obj._status_
         if status == 'created': obj.before_insert()

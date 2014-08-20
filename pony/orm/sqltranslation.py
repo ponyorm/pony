@@ -1240,45 +1240,44 @@ class StringMixin(MonadMixin):
         translator = monad.translator
         return translator.NumericExprMonad(translator, int, [ 'LENGTH', sql ])
     def contains(monad, item, not_in=False):
-        translator = monad.translator
         check_comparable(item, monad, 'LIKE')
-        if isinstance(item, translator.StringConstMonad):
-            item_sql = [ 'VALUE', '%%%s%%' % item.value ]
-        else:
-            item_sql = [ 'CONCAT', [ 'VALUE', '%' ], item.getsql()[0], [ 'VALUE', '%' ] ]
-        sql = [ 'NOT_LIKE' if not_in else 'LIKE', monad.getsql()[0], item_sql ]
-        return translator.BoolExprMonad(translator, sql)
+        return monad._like(item, before='%', after='%', not_like=not_in)
     call_upper = make_string_func('UPPER')
     call_lower = make_string_func('LOWER')
     def call_startswith(monad, arg):
-        translator = monad.translator
         if not are_comparable_types(monad.type, arg.type, None):
             if arg.type == 'METHOD': raise_forgot_parentheses(arg)
             throw(TypeError, 'Expected %r argument but got %r in expression {EXPR}'
                             % (type2str(monad.type), type2str(arg.type)))
-        if isinstance(arg, translator.StringConstMonad):
-            assert isinstance(arg.value, basestring)
-            arg_sql = [ 'VALUE', arg.value + '%' ]
-        else:
-            arg_sql = arg.getsql()[0]
-            arg_sql = [ 'CONCAT', arg_sql, [ 'VALUE', '%' ] ]
-        parent_sql = monad.getsql()[0]
-        sql = [ 'LIKE', parent_sql, arg_sql ]
-        return translator.BoolExprMonad(translator, sql)
+        return monad._like(arg, after='%')
     def call_endswith(monad, arg):
-        translator = monad.translator
         if not are_comparable_types(monad.type, arg.type, None):
             if arg.type == 'METHOD': raise_forgot_parentheses(arg)
             throw(TypeError, 'Expected %r argument but got %r in expression {EXPR}'
                             % (type2str(monad.type), type2str(arg.type)))
-        if isinstance(arg, translator.StringConstMonad):
-            assert isinstance(arg.value, basestring)
-            arg_sql = [ 'VALUE', '%' + arg.value ]
+        return monad._like(arg, before='%')
+    def _like(monad, item, before=None, after=None, not_like=False):
+        escape = False
+        translator = monad.translator
+        if isinstance(item, translator.StringConstMonad):
+            value = item.value
+            if '%' in value or '_' in value:
+                escape = True
+                value = value.replace('!', '!!').replace('%', '!%').replace('_', '!_')
+            if before: value = before + value
+            if after: value = value + after
+            item_sql = [ 'VALUE', value ]
         else:
-            arg_sql = arg.getsql()[0]
-            arg_sql = [ 'CONCAT', [ 'VALUE', '%' ], arg_sql ]
-        parent_sql = monad.getsql()[0]
-        sql = [ 'LIKE', parent_sql, arg_sql ]
+            escape = True
+            item_sql = item.getsql()[0]
+            item_sql = [ 'REPLACE', item_sql, [ 'VALUE', '!' ], [ 'VALUE', '!!' ] ]
+            item_sql = [ 'REPLACE', item_sql, [ 'VALUE', '%' ], [ 'VALUE', '!%' ] ]
+            item_sql = [ 'REPLACE', item_sql, [ 'VALUE', '_' ], [ 'VALUE', '!_' ] ]
+            if before and after: item_sql = [ 'CONCAT', [ 'VALUE', before ], item_sql, [ 'VALUE', after ] ]
+            elif before: item_sql = [ 'CONCAT', [ 'VALUE', before ], item_sql ]
+            elif after: item_sql = [ 'CONCAT', item_sql, [ 'VALUE', after ] ]
+        sql = [ 'NOT_LIKE' if not_like else 'LIKE', monad.getsql()[0], item_sql ]
+        if escape: sql.append([ 'VALUE', '!' ])
         return translator.BoolExprMonad(translator, sql)
     def strip(monad, chars, strip_type):
         translator = monad.translator

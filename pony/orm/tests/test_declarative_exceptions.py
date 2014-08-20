@@ -131,6 +131,9 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(TypeError, "'chars' argument must be of 'unicode' type in s.name.strip(1), got: 'int'")
     def test26(self):
         select(s.name for s in Student if s.name.strip(1))
+    @raises_exception(AttributeError, "'unicode' object has no attribute 'unknown'")
+    def test_attribute_error(self):
+        result = set(select(s for s in Student if s.name.unknown() == "joe"))
     @raises_exception(AttributeError, "s.group.foo")
     def test27(self):
         select(s.name for s in Student if s.group.foo.bar == 10)
