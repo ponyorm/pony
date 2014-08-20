@@ -43,6 +43,7 @@ from pony.orm.tests.test_lazy import *
 from pony.orm.tests.test_filter import *
 from pony.orm.tests.test_crud import *
 from pony.orm.tests.test_to_dict import *
+from pony.orm.tests.test_flush import *
 
 #from new_tests import *
 
