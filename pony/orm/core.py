@@ -3348,6 +3348,8 @@ class EntityMeta(type):
             result.extend(attr.describe() for attr in entity._base_attrs_)
             result.append('# attrs introduced in %s' % entity.__name__)
         result.extend(attr.describe() for attr in entity._new_attrs_)
+        if entity._pk_is_composite_:
+            result.append('PrimaryKey(%s)' % ', '.join(attr.name for attr in entity._pk_attrs_))
         return '\n    '.join(result)
     @cut_traceback
     @db_session(ddl=True)
