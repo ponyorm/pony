@@ -501,7 +501,7 @@ class SQLTranslator(ASTTranslator):
                 desc_wrapper = lambda column: column
             else: assert False, x  # pragma: no cover
             if entity._adict_.get(attr.name) is not attr: throw(TypeError,
-                'Attribute %s does not belong to Entity %s' % (attr, entity.__name__))
+                'Attribute %s does not belong to entity %s' % (attr, entity.__name__))
             if attr.is_collection: throw(TypeError,
                 'Collection attribute %s cannot be used for ordering' % attr)
             for column in attr.columns:
