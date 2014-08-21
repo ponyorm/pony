@@ -4395,6 +4395,7 @@ class Query(object):
         func = args[0]
         return query._process_lambda(func, globals, locals, order_by=True)
     def _process_lambda(query, func, globals, locals, order_by):
+        prev_translator = query._translator
         argnames = ()
         if isinstance(func, basestring):
             func_id = func
@@ -4405,7 +4406,7 @@ class Query(object):
             cells = None
         elif type(func) is types.FunctionType:
             argnames = get_lambda_args(func)
-            subquery = query._translator.subquery
+            subquery = prev_translator.subquery
             func_id = id(func.func_code)
             func_ast, external_names, cells = decompile(func)
         elif not order_by: throw(TypeError,
@@ -4413,14 +4414,14 @@ class Query(object):
         else: assert False
 
         if argnames:
-            expr_type = query._translator.expr_type
+            expr_type = prev_translator.expr_type
             expr_count = len(expr_type) if type(expr_type) is tuple else 1
             if len(argnames) != expr_count:
                 throw(TypeError, 'Incorrect number of lambda arguments. '
                                  'Expected: %d, got: %d' % (expr_count, len(argnames)))
 
         filter_num = len(query._filters) + 1
-        extractors, varnames, func_ast = create_extractors(func_id, func_ast, filter_num, argnames or query._translator.subquery)
+        extractors, varnames, func_ast = create_extractors(func_id, func_ast, filter_num, argnames or prev_translator.subquery)
         if extractors:
             vars, vartypes = extract_vars(extractors, globals, locals, cells)
             query._database.provider.normalize_vars(vars, vartypes)
@@ -4433,15 +4434,15 @@ class Query(object):
         new_filters = query._filters + ((order_by, func_ast, argnames, extractors, vartypes),)
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
-            prev_optimized = query._translator.optimize
-            new_translator = query._translator.apply_lambda(filter_num, order_by, func_ast, argnames, extractors, vartypes)
+            prev_optimized = prev_translator.optimize
+            new_translator = prev_translator.apply_lambda(filter_num, order_by, func_ast, argnames, extractors, vartypes)
             if not prev_optimized:
                 name_path = new_translator.can_be_optimized()
                 if name_path:
                     tree = loads(query._pickled_tree)  # tree = deepcopy(tree)
-                    prev_extractors = query._translator.extractors
-                    prev_vartypes = query._translator.vartypes
-                    translator_cls = query._translator.__class__
+                    prev_extractors = prev_translator.extractors
+                    prev_vartypes = prev_translator.vartypes
+                    translator_cls = prev_translator.__class__
                     new_translator = translator_cls(tree, prev_extractors, prev_vartypes,
                                                     left_join=True, optimize=name_path)
                     new_translator = query._reapply_filters(new_translator)
