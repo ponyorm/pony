@@ -2914,6 +2914,8 @@ class EntityMeta(type):
         return result
     @cut_traceback
     def order_by(entity, *args):
+        deprecated(5, "%s.order_by(...) method is deprecated, use %s.select().order_by(...) instead"
+                      % (entity.__name__, entity.__name__))
         query = Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
         return query.order_by(*args)
     def _find_(entity, max_fetch_count, kwargs, for_update=False, nowait=False):
