@@ -4214,6 +4214,7 @@ class Query(object):
         database = query._database
         cache = database._get_cache()
         if query._for_update: cache.immediate = True
+        cache.prepare_connection_for_query_execution()  # may clear cache.query_results
         try: result = cache.query_results[query_key]
         except KeyError:
             cursor = database._exec_sql(sql, arguments)
