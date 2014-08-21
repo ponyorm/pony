@@ -4154,7 +4154,7 @@ class Query(object):
 
         translator = database._translator_cache.get(query._key)
         if translator is None:
-            pickled_tree = query._pickled_tree = dumps(tree, 2)
+            pickled_tree = dumps(tree, 2)
             tree = loads(pickled_tree)  # tree = deepcopy(tree)
             translator_cls = database.provider.translator_cls
             translator = translator_cls(tree, extractors, vartypes, left_join=left_join)
@@ -4163,6 +4163,7 @@ class Query(object):
                 tree = loads(pickled_tree)  # tree = deepcopy(tree)
                 try: translator = translator_cls(tree, extractors, vartypes, left_join=True, optimize=name_path)
                 except OptimizationFailed: translator.optimization_failed = True
+            translator.pickled_tree = pickled_tree
             database._translator_cache[query._key] = translator
         query._translator = translator
         query._filters = ()
@@ -4439,7 +4440,7 @@ class Query(object):
             if not prev_optimized:
                 name_path = new_translator.can_be_optimized()
                 if name_path:
-                    tree = loads(query._pickled_tree)  # tree = deepcopy(tree)
+                    tree = loads(prev_translator.pickled_tree)  # tree = deepcopy(tree)
                     prev_extractors = prev_translator.extractors
                     prev_vartypes = prev_translator.vartypes
                     translator_cls = prev_translator.__class__
