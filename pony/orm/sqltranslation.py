@@ -88,9 +88,9 @@ class SQLTranslator(ASTTranslator):
             else: throw(NotImplementedError)  # pragma: no cover
         elif tt is FuncType:
             func = t.func
-            if func not in translator.special_functions:
-                throw(TypeError, 'Function %r cannot be used inside query' % func.__name__)
-            func_monad_class = special_functions[func]
+            func_monad_class = translator.special_functions.get(func)
+            if func_monad_class is None: throw(TypeError,
+                'Function %r cannot be used inside query' % func.__name__)
             monad = func_monad_class(translator)
         elif tt is MethodType:
             obj, func = t.obj, t.func
