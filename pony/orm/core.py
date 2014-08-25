@@ -1,15 +1,14 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import izip, imap, iteritems, itervalues, xrange
 
-import re, sys, types, logging
+import re, sys, types, logging, itertools, __builtin__
 from cPickle import loads, dumps
 from operator import attrgetter, itemgetter
-from itertools import count as _count, chain, starmap, repeat
+from itertools import chain, starmap, repeat
 from time import time
 import datetime
 from random import shuffle, randint
 from threading import Lock, currentThread as current_thread, _MainThread
-from __builtin__ import min as _min, max as _max, sum as _sum
 from contextlib import contextmanager
 from collections import defaultdict
 
@@ -24,9 +23,10 @@ from pony.orm.dbapiprovider import (
     DBAPIProvider, DBException, Warning, Error, InterfaceError, DatabaseError, DataError,
     OperationalError, IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
+from pony import utils
 from pony.utils import (
     localbase, decorator, cut_traceback, throw, get_lambda_args, deprecated, import_module, parse_expr,
-    is_ident, count, avg as _avg, distinct as _distinct, tostring, strjoin, concat
+    is_ident, tostring, strjoin, concat
     )
 
 __all__ = '''
@@ -239,7 +239,7 @@ def adapt_sql(sql, paramstyle):
     adapted_sql_cache[(sql, paramstyle)] = result
     return result
 
-num_counter = _count()
+num_counter = itertools.count()
 
 class Local(localbase):
     def __init__(local):
@@ -662,7 +662,7 @@ class Database(object):
                     m2m_table = schema.tables.get(table_name)
                     if m2m_table is not None:
                         if not attr.table:
-                            seq_counter = _count(2)
+                            seq_counter = itertools.count(2)
                             while m2m_table is not None:
                                 new_table_name = table_name + '_%d' % next(seq_counter)
                                 m2m_table = schema.tables.get(new_table_name)
@@ -846,8 +846,8 @@ class QueryStat(object):
         query_end_time = time()
         duration = query_end_time - query_start_time
         if stat.db_count:
-            stat.min_time = _min(stat.min_time, duration)
-            stat.max_time = _max(stat.max_time, duration)
+            stat.min_time = __builtin__.min(stat.min_time, duration)
+            stat.max_time = __builtin__.max(stat.max_time, duration)
             stat.sum_time += duration
         else: stat.min_time = stat.max_time = stat.sum_time = duration
         stat.db_count += 1
@@ -855,8 +855,8 @@ class QueryStat(object):
         assert stat.sql == stat2.sql
         if not stat2.db_count: pass
         elif stat.db_count:
-            stat.min_time = _min(stat.min_time, stat2.min_time)
-            stat.max_time = _max(stat.max_time, stat2.max_time)
+            stat.min_time = __builtin__.min(stat.min_time, stat2.min_time)
+            stat.max_time = __builtin__.max(stat.max_time, stat2.max_time)
             stat.sum_time += stat2.sum_time
         else:
             stat.min_time = stat2.min_time
@@ -1105,7 +1105,7 @@ class DescWrapper(object):
     def __hash__(self):
         return hash(self.attr) + 1
 
-attr_id_counter = _count(1)
+attr_id_counter = itertools.count(1)
 
 class Attribute(object):
     __slots__ = 'nullable', 'is_required', 'is_discriminator', 'is_unique', 'is_part_of_unique_index', \
@@ -2436,7 +2436,7 @@ class Multiset(object):
         multiset._obj_ = obj
         multiset._attrnames_ = attrnames
         if type(items) is dict: multiset._items_ = items
-        else: multiset._items_ = _distinct(items)
+        else: multiset._items_ = utils.distinct(items)
     def __reduce__(multiset):
         return unpickle_multiset, (multiset._obj_, multiset._attrnames_, multiset._items_)
     @cut_traceback
@@ -2445,7 +2445,7 @@ class Multiset(object):
     @cut_traceback
     def __repr__(multiset):
         if multiset._obj_._session_cache_.is_alive:
-            size = _sum(itervalues(multiset._items_))
+            size = __builtin__.sum(itervalues(multiset._items_))
             if size == 1: size_str = ' (1 item)'
             else: size_str = ' (%d items)' % size
         else: size_str = ''
@@ -2460,7 +2460,7 @@ class Multiset(object):
         return bool(multiset._items_)
     @cut_traceback
     def __len__(multiset):
-        return _sum(multiset._items_.values())
+        return __builtin__.sum(multiset._items_.values())
     @cut_traceback
     def __iter__(multiset):
         for item, cnt in iteritems(multiset._items_):
@@ -2473,7 +2473,7 @@ class Multiset(object):
             return multiset._items_ == other
         if hasattr(other, 'keys'):
             return multiset._items_ == dict(other)
-        return multiset._items_ == _distinct(other)
+        return multiset._items_ == utils.distinct(other)
     @cut_traceback
     def __ne__(multiset, other):
         return not multiset.__eq__(other)
@@ -2492,8 +2492,8 @@ class EntityIter(object):
         throw(TypeError, 'Use select(...) function or %s.select(...) method for iteration'
                          % self.entity.__name__)
 
-entity_id_counter = _count(1)
-new_instance_id_counter = _count(1)
+entity_id_counter = itertools.count(1)
+new_instance_id_counter = itertools.count(1)
 
 select_re = re.compile(r'select\b', re.IGNORECASE)
 lambda_re = re.compile(r'lambda\b')
@@ -2684,7 +2684,7 @@ class EntityMeta(type):
     def _initialize_bits_(entity):
         entity._bits_ = {}
         entity._bits_except_volatile_ = {}
-        offset_counter = _count()
+        offset_counter = itertools.count()
         all_bits = all_bits_except_volatile = 0
         for attr in entity._attrs_:
             if attr.is_collection or attr.is_discriminator or attr.pk_offset is not None: bit = 0
@@ -4075,13 +4075,13 @@ def make_aggrfunc(std_func):
     aggrfunc.__name__ = std_func.__name__
     return aggrfunc
 
-count = make_aggrfunc(count)
-sum = make_aggrfunc(_sum)
-min = make_aggrfunc(_min)
-max = make_aggrfunc(_max)
-avg = make_aggrfunc(_avg)
+count = make_aggrfunc(utils.count)
+sum = make_aggrfunc(__builtin__.sum)
+min = make_aggrfunc(__builtin__.min)
+max = make_aggrfunc(__builtin__.max)
+avg = make_aggrfunc(utils.avg)
 
-distinct = make_aggrfunc(_distinct)
+distinct = make_aggrfunc(utils.distinct)
 
 @cut_traceback
 def exists(gen, frame_depth=0):

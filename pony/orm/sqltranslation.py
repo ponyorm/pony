@@ -1,8 +1,7 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import izip, xrange
 
-import types, sys, re
-from itertools import count
+import types, sys, re, itertools
 from decimal import Decimal
 from datetime import date, datetime
 from random import random
@@ -12,8 +11,8 @@ from functools import update_wrapper
 
 from pony.thirdparty.compiler import ast
 
-from pony import options
-from pony.utils import avg, distinct, is_ident, throw, concat
+from pony import options, utils
+from pony.utils import is_ident, throw, concat
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
     string_types, numeric_types, comparable_types, SetType, FuncType, MethodType, \
@@ -749,7 +748,7 @@ class Subquery(object):
         subquery.tablerefs = {}
         if parent_subquery is None:
             subquery.alias_counters = {}
-            subquery.expr_counter = count(1)
+            subquery.expr_counter = itertools.count(1)
         else:
             subquery.alias_counters = parent_subquery.alias_counters.copy()
             subquery.expr_counter = parent_subquery.expr_counter
@@ -1704,7 +1703,7 @@ class FuncLenMonad(FuncMonad):
         return x.len()
 
 class FuncCountMonad(FuncMonad):
-    func = count, core.count
+    func = itertools.count, utils.count, core.count
     def call(monad, x=None):
         translator = monad.translator
         if isinstance(x, translator.StringConstMonad) and x.value == '*': x = None
@@ -1724,12 +1723,12 @@ class FuncSumMonad(FuncMonad):
         return x.aggregate('SUM')
 
 class FuncAvgMonad(FuncMonad):
-    func = avg, core.avg
+    func = utils.avg, core.avg
     def call(monad, x):
         return x.aggregate('AVG')
 
 class FuncDistinctMonad(FuncMonad):
-    func = distinct, core.distinct
+    func = utils.distinct, core.distinct
     def call(monad, x):
         if isinstance(x, SetMixin): return x.call_distinct()
         if not isinstance(x, NumericMixin): throw(TypeError)
