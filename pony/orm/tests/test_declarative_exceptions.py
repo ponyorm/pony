@@ -141,7 +141,8 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     def test28(self):
         g = Group[101]
         select(s for s in Student if s.name == g.dept.foo.bar)
-    @raises_exception(ExprEvalError, "date('2011', 1, 1) raises TypeError: an integer is required")
+    # @raises_exception(ExprEvalError, "date('2011', 1, 1) raises TypeError: an integer is required")
+    @raises_exception(TypeError, "'year' argument of date(year, month, day) function must be of 'int' type. Got: 'AsciiStr'")
     def test29(self):
         select(s for s in Student if s.dob < date('2011', 1, 1))
     @raises_exception(NotImplementedError, "date(s.id, 1, 1)")

@@ -1,13 +1,13 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import izip, imap, iteritems, itervalues, xrange
 
-import re, sys, types, logging, itertools, __builtin__
+import re, sys, types, datetime, logging, itertools, __builtin__
 from cPickle import loads, dumps
 from operator import attrgetter, itemgetter
 from itertools import chain, starmap, repeat
 from time import time
-import datetime
-from random import shuffle, randint
+from decimal import Decimal
+from random import shuffle, randint, random
 from threading import Lock, currentThread as current_thread, _MainThread
 from contextlib import contextmanager
 from collections import defaultdict
@@ -4136,7 +4136,8 @@ def unpickle_query(query_result):
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
-        extractors, varnames, tree = create_extractors(code_key, tree, 0)
+        extractors, varnames, tree = create_extractors(
+            code_key, tree, 0, globals, locals, special_functions, const_functions)
         vars, vartypes = extract_vars(extractors, globals, locals, cells)
 
         node = tree.quals[0].iter
@@ -4425,7 +4426,9 @@ class Query(object):
                                  'Expected: %d, got: %d' % (expr_count, len(argnames)))
 
         filter_num = len(query._filters) + 1
-        extractors, varnames, func_ast = create_extractors(func_id, func_ast, filter_num, argnames or prev_translator.subquery)
+        extractors, varnames, func_ast = create_extractors(
+            func_id, func_ast, filter_num, globals, locals, special_functions, const_functions,
+            argnames or prev_translator.subquery)
         if extractors:
             vars, vartypes = extract_vars(extractors, globals, locals, cells)
             query._database.provider.normalize_vars(vars, vartypes)
@@ -4667,3 +4670,6 @@ def show(entity):
     else:
         from pprint import pprint
         pprint(x)
+
+special_functions = set([ itertools.count, utils.count, count, random ])
+const_functions = set([ buffer, Decimal, datetime.datetime, datetime.date ])

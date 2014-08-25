@@ -78,7 +78,8 @@ class TestFuncMonad(unittest.TestCase):
     def test_date_func1(self):
         result = set(select(s for s in Student if s.dob >= date(1983, 3, 3)))
         self.assertEqual(result, set([Student[3], Student[4], Student[5]]))
-    @raises_exception(ExprEvalError, "date(1983, 'three', 3) raises TypeError: an integer is required")
+    # @raises_exception(ExprEvalError, "date(1983, 'three', 3) raises TypeError: an integer is required")
+    @raises_exception(TypeError, "'month' argument of date(year, month, day) function must be of 'int' type. Got: 'AsciiStr'")
     def test_date_func2(self):
         result = set(select(s for s in Student if s.dob >= date(1983, 'three', 3)))
     # @raises_exception(NotImplementedError)
@@ -94,9 +95,10 @@ class TestFuncMonad(unittest.TestCase):
     def test_datetime_func3(self):
         result = set(select(s for s in Student if s.last_visit >= datetime(2011, 3, 3, 13, 13, 13)))
         self.assertEqual(result, set([Student[3], Student[4], Student[5]]))
-    @raises_exception(ExprEvalError, "date(1983, 'three', 3) raises TypeError: an integer is required")
+    # @raises_exception(ExprEvalError, "datetime(1983, 'three', 3) raises TypeError: an integer is required")
+    @raises_exception(TypeError, "'month' argument of datetime(...) function must be of 'int' type. Got: 'AsciiStr'")
     def test_datetime_func4(self):
-        result = set(select(s for s in Student if s.last_visit >= date(1983, 'three', 3)))
+        result = set(select(s for s in Student if s.last_visit >= datetime(1983, 'three', 3)))
     # @raises_exception(NotImplementedError)
     # def test_datetime_func5(self):
     #     d = 3

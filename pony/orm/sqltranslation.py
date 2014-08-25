@@ -609,12 +609,7 @@ class SQLTranslator(ASTTranslator):
         tableref = translator.subquery.get_tableref(name)
         if tableref is not None:
             return translator.ObjectIterMonad(translator, tableref, tableref.entity)
-        elif name == 'random':
-            translator.query_result_is_cacheable = False
-            return translator.RandomMonad(translator)
-        elif name == 'count':
-            return translator.FuncCountMonad(translator)
-        else: assert False
+        else: assert False, name
     def postAdd(translator, node):
         return node.left.monad + node.right.monad
     def postSub(translator, node):
@@ -1810,14 +1805,13 @@ class JoinMonad(Monad):
         return x
 special_functions[JOIN] = JoinMonad
 
-class RandomMonad(Monad):
+class FuncRandomMonad(FuncMonad):
+    func = random
     def __init__(monad, translator):
-        Monad.__init__(monad, translator, '<function>')
+        FuncMonad.__init__(monad, translator)
+        translator.query_result_is_cacheable = False
     def __call__(monad):
         return NumericExprMonad(monad.translator, float, [ 'RANDOM' ])
-    def getattr(monad, attrname):
-        if attrname == 'random': return RandomMonad(monad.translator)
-        return Monad.getattr(monad, attrname)
 
 class SetMixin(MonadMixin):
     forced_distinct = False
