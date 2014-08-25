@@ -83,8 +83,9 @@ class Bag(object):
             elif attr.is_relation:
                 if process_related_objects:
                     bag._process_object(value, process_related=False)
-                value = value._get_raw_pkval_()
-                if len(value) == 1: value = value[0]
+                if value is not None:
+                    value = value._get_raw_pkval_()
+                    if len(value) == 1: value = value[0]
             d[attr.name] = value
         bag.dicts[entity][obj] = d
     @cut_traceback
