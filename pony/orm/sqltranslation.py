@@ -1663,13 +1663,16 @@ class FuncDateMonad(FuncMonad):
 
 class FuncDatetimeMonad(FuncDateMonad):
     func = datetime
-    def call(monad, *args):
+    def call(monad, year, month, day, hour=None, minute=None, second=None, microsecond=None):
+        args = year, month, day, hour, minute, second, microsecond
         translator = monad.translator
-        for x, name in izip(args, ('year', 'month', 'day', 'hour', 'minute', 'second', 'microsecond')):
-            if not isinstance(x, translator.NumericMixin) or x.type is not int: throw(TypeError,
-                "'%s' argument of datetime(...) function must be of 'int' type. Got: %r" % (name, type2str(x.type)))
-            if not isinstance(x, translator.ConstMonad): throw(NotImplementedError)
-        return translator.ConstMonad.new(translator, datetime(*tuple(arg.value for arg in args)))
+        for arg, name in izip(args, ('year', 'month', 'day', 'hour', 'minute', 'second', 'microsecond')):
+            if arg is None: continue
+            if not isinstance(arg, translator.NumericMixin) or arg.type is not int: throw(TypeError,
+                "'%s' argument of datetime(...) function must be of 'int' type. Got: %r" % (name, type2str(arg.type)))
+            if not isinstance(arg, translator.ConstMonad): throw(NotImplementedError)
+        value = datetime(*(arg.value if arg is not None else 0 for arg in args))
+        return translator.ConstMonad.new(translator, value)
     def call_now(monad):
         translator = monad.translator
         return translator.DatetimeExprMonad(translator, datetime, [ 'NOW' ])
