@@ -105,7 +105,7 @@ class SQLTranslator(ASTTranslator):
             params = []
             for i, item_type in enumerate(t):
                 if item_type is NoneType:
-                    throw(TypeError, 'Expression %r should not contain None values' % node.src)
+                    throw(TypeError, 'Expression `%s` should not contain None values' % node.src)
                 param = ParamMonad.new(translator, item_type, (varkey, i, None))
                 params.append(param)
             monad = translator.ListMonad(translator, params)

@@ -4125,7 +4125,7 @@ def extract_vars(extractors, globals, locals, cells=None):
             if unsupported:
                 typename = type(value).__name__
                 if src == '.0': throw(TypeError, 'Cannot iterate over non-entity object')
-                throw(TypeError, 'Expression %s has unsupported type %r' % (src, typename))
+                throw(TypeError, 'Expression `%s` has unsupported type %r' % (src, typename))
             vartypes[key] = get_normalized_type_of(value)
         vars[key] = value
     return vars, vartypes

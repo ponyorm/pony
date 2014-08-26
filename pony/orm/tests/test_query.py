@@ -66,7 +66,7 @@ class TestQuery(unittest.TestCase):
         c = C1()
         m1 = c.method1
         select(s for s in Student if m1(s.gpa, 1) > 3)
-    @raises_exception(TypeError, "Expression x has unsupported type 'complex'")
+    @raises_exception(TypeError, "Expression `x` has unsupported type 'complex'")
     def test_exception_08(self):
         x = 1j
         select(s for s in Student if s.gpa == x)
