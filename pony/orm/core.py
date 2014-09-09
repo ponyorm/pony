@@ -1375,10 +1375,10 @@ class Attribute(object):
             objects_to_save = cache.objects_to_save
             if wbits is not None:
                 obj._wbits_ = wbits | obj._bits_[attr]
-                if status != 'updated':
+                if status != 'modified':
                     assert status in ('loaded', 'saved')
                     assert obj._save_pos_ is None
-                    obj._status_ = 'updated'
+                    obj._status_ = 'modified'
                     obj._save_pos_ = len(objects_to_save)
                     objects_to_save.append(obj)
                     cache.modified = True
@@ -3399,7 +3399,7 @@ def populate_criteria_list(criteria_list, columns, converters, params_count=0, t
         params_count += 1
     return params_count
 
-statuses = set(['created', 'cancelled', 'loaded', 'updated', 'saved', 'marked_to_delete', 'deleted'])
+statuses = set(['created', 'cancelled', 'loaded', 'modified', 'saved', 'marked_to_delete', 'deleted'])
 del_statuses = set(['marked_to_delete', 'deleted', 'cancelled'])
 created_or_deleted_statuses = set(['created']) | del_statuses
 
@@ -3433,7 +3433,7 @@ class Entity(object):
     def __reduce__(obj):
         if obj._status_ in del_statuses: throw(
             OperationWithDeletedObjectError, 'Deleted object %s cannot be pickled' % safe_repr(obj))
-        if obj._status_ in ('created', 'updated'): throw(
+        if obj._status_ in ('created', 'modified'): throw(
             OrmError, '%s object %s has to be stored in DB before it can be pickled'
                       % (obj._status_.capitalize(), safe_repr(obj)))
         d = {'__class__' : obj.__class__}
@@ -3691,7 +3691,7 @@ class Entity(object):
                         assert obj2 is obj
                         undo_list.append((pk_index, obj._pkval_))
                 else:
-                    if status == 'updated':
+                    if status == 'modified':
                         assert save_pos is not None
                         objects_to_save[save_pos] = None
                     else:
@@ -3730,10 +3730,10 @@ class Entity(object):
                     new_wbits = wbits
                     for attr in avdict: new_wbits |= obj._bits_[attr]
                     obj._wbits_ = new_wbits
-                    if status != 'updated':
+                    if status != 'modified':
                         assert status in ('loaded', 'saved')
                         assert obj._save_pos_ is None
-                        obj._status_ = 'updated'
+                        obj._status_ = 'modified'
                         obj._save_pos_ = len(objects_to_save)
                         objects_to_save.append(obj)
                         cache.modified = True
@@ -3819,7 +3819,7 @@ class Entity(object):
         dependent_objects.append(obj)
         status = obj._status_
         if status == 'created': attrs = obj._attrs_with_columns_
-        elif status == 'updated': attrs = obj._attrs_with_bit_(obj._attrs_with_columns_, obj._wbits_)
+        elif status == 'modified': attrs = obj._attrs_with_bit_(obj._attrs_with_columns_, obj._wbits_)
         else: assert False
         for attr in attrs:
             if not attr.reverse: continue
@@ -3983,12 +3983,12 @@ class Entity(object):
         status = obj._status_
         if status in ('loaded', 'saved', 'cancelled'): return
 
-        if status in ('created', 'updated'):
+        if status in ('created', 'modified'):
             obj._save_principal_objects_(dependent_objects)
 
         obj._save_pos_ = None
         if status == 'created': obj._save_created_()
-        elif status == 'updated': obj._save_updated_()
+        elif status == 'modified': obj._save_updated_()
         elif status == 'marked_to_delete': obj._save_deleted_()
         else: assert False
     def flush(obj):
@@ -3996,7 +3996,7 @@ class Entity(object):
     def _before_save_(obj):
         status = obj._status_
         if status == 'created': obj.before_insert()
-        elif status == 'updated': obj.before_update()
+        elif status == 'modified': obj.before_update()
         elif status == 'marked_to_delete': obj.before_delete()
     def before_insert(obj):
         pass
