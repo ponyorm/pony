@@ -4010,7 +4010,7 @@ class Entity(object):
                 elif len(attr.reverse.entity._pk_columns_) > 1:
                     value = sorted(item._get_raw_pkval_() for item in value)
                 else: value = sorted(item._get_raw_pkval_()[0] for item in value)
-            elif attr.is_relation and not related_objects:
+            elif attr.is_relation and not related_objects and value is not None:
                 value = value._get_raw_pkval_()
                 if len(value) == 1: value = value[0]
             result[attr.name] = value

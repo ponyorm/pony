@@ -27,8 +27,10 @@ class TestOneToOne(unittest.TestCase):
             db.insert('male', id=2, name='M2', wife=2)
             db.insert('male', id=3, name='M3', wife=None)
         db_session.__enter__()
+
     def tearDown(self):
         db_session.__exit__()
+
     def test_1(self):
         Male[3].wife = Female[3]
 
@@ -37,6 +39,7 @@ class TestOneToOne(unittest.TestCase):
         commit()
         wives = db.select('wife from Male order by Male.id')
         self.assertEqual([1, 2, 3], wives)
+
     def test_2(self):
         Female[3].husband = Male[3]
 
@@ -45,6 +48,7 @@ class TestOneToOne(unittest.TestCase):
         commit()
         wives = db.select('wife from Male order by Male.id')
         self.assertEqual([1, 2, 3], wives)
+
     def test_3(self):
         Male[1].wife = None
 
@@ -53,6 +57,7 @@ class TestOneToOne(unittest.TestCase):
         commit()
         wives = db.select('wife from Male order by Male.id')
         self.assertEqual([None, 2, None], wives)
+
     def test_4(self):
         Female[1].husband = None
 
@@ -61,6 +66,7 @@ class TestOneToOne(unittest.TestCase):
         commit()
         wives = db.select('wife from Male order by Male.id')
         self.assertEqual([None, 2, None], wives)
+
     def test_5(self):
         Male[1].wife = Female[3]
 
@@ -70,6 +76,7 @@ class TestOneToOne(unittest.TestCase):
         commit()
         wives = db.select('wife from Male order by Male.id')
         self.assertEqual([3, 2, None], wives)
+
     def test_6(self):
         Female[3].husband = Male[1]
 
@@ -79,6 +86,7 @@ class TestOneToOne(unittest.TestCase):
         commit()
         wives = db.select('wife from Male order by Male.id')
         self.assertEqual([3, 2, None], wives)
+
     def test_7(self):
         Male[1].wife = Female[2]
 
@@ -89,6 +97,7 @@ class TestOneToOne(unittest.TestCase):
         commit()
         wives = db.select('wife from Male order by Male.id')
         self.assertEqual([2, None, None], wives)
+
     def test_8(self):
         Female[2].husband = Male[1]
 
@@ -99,6 +108,27 @@ class TestOneToOne(unittest.TestCase):
         commit()
         wives = db.select('wife from Male order by Male.id')
         self.assertEqual([2, None, None], wives)
+
+    def test_to_dict_1(self):
+        m = Male[1]
+        d = m.to_dict()
+        self.assertEqual(d, dict(id=1, name='M1', wife=1))
+
+    def test_to_dict_2(self):
+        m = Male[3]
+        d = m.to_dict()
+        self.assertEqual(d, dict(id=3, name='M3', wife=None))
+
+    def test_to_dict_3(self):
+        f = Female[1]
+        d = f.to_dict()
+        self.assertEqual(d, dict(id=1, name='F1', husband=1))
+
+    def test_to_dict_4(self):
+        f = Female[3]
+        d = f.to_dict()
+        self.assertEqual(d, dict(id=3, name='F3', husband=None))
+
 
 if __name__ == '__main__':
     unittest.main()
