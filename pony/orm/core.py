@@ -509,6 +509,7 @@ class Database(object):
         if cache is not None: cache.rollback()
     @cut_traceback
     def execute(database, sql, globals=None, locals=None):
+        database.get_connection()
         return database._exec_raw_sql(sql, globals, locals, frame_depth=3)
     def _exec_raw_sql(database, sql, globals, locals, frame_depth):
         provider = database.provider
