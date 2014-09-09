@@ -1376,7 +1376,7 @@ class Attribute(object):
             if wbits is not None:
                 obj._wbits_ = wbits | obj._bits_[attr]
                 if status != 'modified':
-                    assert status in ('loaded', 'saved')
+                    assert status in ('loaded', 'inserted', 'updated')
                     assert obj._save_pos_ is None
                     obj._status_ = 'modified'
                     obj._save_pos_ = len(objects_to_save)
@@ -1390,7 +1390,7 @@ class Attribute(object):
             def undo_func():
                 obj._status_ = status
                 obj._wbits_ = wbits
-                if status in ('loaded', 'saved'):
+                if status in ('loaded', 'inserted', 'updated'):
                     assert objects_to_save
                     obj2 = objects_to_save.pop()
                     assert obj2 is obj and obj._save_pos_ == len(objects_to_save)
@@ -3399,7 +3399,7 @@ def populate_criteria_list(criteria_list, columns, converters, params_count=0, t
         params_count += 1
     return params_count
 
-statuses = set(['created', 'cancelled', 'loaded', 'modified', 'saved', 'marked_to_delete', 'deleted'])
+statuses = set(['created', 'cancelled', 'loaded', 'modified', 'inserted', 'updated', 'marked_to_delete', 'deleted'])
 del_statuses = set(['marked_to_delete', 'deleted', 'cancelled'])
 created_or_deleted_statuses = set(['created']) | del_statuses
 
@@ -3695,7 +3695,7 @@ class Entity(object):
                         assert save_pos is not None
                         objects_to_save[save_pos] = None
                     else:
-                        assert status in ('loaded', 'saved')
+                        assert status in ('loaded', 'inserted', 'updated')
                         assert save_pos is None
                     obj._save_pos_ = len(objects_to_save)
                     objects_to_save.append(obj)
@@ -3731,7 +3731,7 @@ class Entity(object):
                     for attr in avdict: new_wbits |= obj._bits_[attr]
                     obj._wbits_ = new_wbits
                     if status != 'modified':
-                        assert status in ('loaded', 'saved')
+                        assert status in ('loaded', 'inserted', 'updated')
                         assert obj._save_pos_ is None
                         obj._status_ = 'modified'
                         obj._save_pos_ = len(objects_to_save)
@@ -3748,7 +3748,7 @@ class Entity(object):
             def undo_func():
                 obj._status_ = status
                 obj._wbits_ = wbits
-                if status in ('loaded', 'saved'):
+                if status in ('loaded', 'inserted', 'updated'):
                     assert objects_to_save
                     obj2 = objects_to_save.pop()
                     assert obj2 is obj and obj._save_pos_ == len(objects_to_save)
@@ -3902,7 +3902,7 @@ class Entity(object):
             obj._pkval_ = obj._vals_[pk_attrs[0]] = new_id
             obj._newid_ = None
 
-        obj._status_ = 'saved'
+        obj._status_ = 'inserted'
         obj._rbits_ = obj._all_bits_except_volatile_
         obj._wbits_ = 0
         obj._update_dbvals_(True)
@@ -3948,7 +3948,7 @@ class Entity(object):
             cursor = database._exec_sql(sql, arguments)
             if cursor.rowcount != 1:
                 throw(OptimisticCheckError, 'Object %s was updated outside of current transaction' % safe_repr(obj))
-        obj._status_ = 'saved'
+        obj._status_ = 'updated'
         obj._rbits_ |= obj._wbits_ & obj._all_bits_except_volatile_
         obj._wbits_ = 0
         obj._update_dbvals_(False)
@@ -3981,7 +3981,7 @@ class Entity(object):
         cache = obj._session_cache_
         assert cache.is_alive
         status = obj._status_
-        if status in ('loaded', 'saved', 'cancelled'): return
+        if status in ('loaded', 'inserted', 'updated', 'cancelled'): return
 
         if status in ('created', 'modified'):
             obj._save_principal_objects_(dependent_objects)
