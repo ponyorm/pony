@@ -1008,10 +1008,16 @@ class SessionCache(object):
             for attr, (added, removed) in iteritems(modified_m2m):
                 if not added: continue
                 attr.add_m2m(added)
+
+        saved_objects = [ (obj, obj._status_) for obj in cache.objects_to_save if obj is not None ]
+
         cache.max_id_cache.clear()
         cache.modified_collections.clear()
         cache.objects_to_save[:] = []
         cache.modified = False
+
+        for obj, status in saved_objects:
+            if obj is not None: obj._after_save_(status)
     def _calc_modified_m2m(cache):
         modified_m2m = {}
         for attr, objects in sorted(iteritems(cache.modified_collections),
@@ -4003,6 +4009,16 @@ class Entity(object):
     def before_update(obj):
         pass
     def before_delete(obj):
+        pass
+    def _after_save_(obj, status):
+        if status == 'inserted': obj.after_insert()
+        elif status == 'updated': obj.after_update()
+        elif status == 'deleted': obj.after_delete()
+    def after_insert(obj):
+        pass
+    def after_update(obj):
+        pass
+    def after_delete(obj):
         pass
     @cut_traceback
     def to_dict(obj, only=None, exclude=None, with_collections=False, with_lazy=False, related_objects=False):
