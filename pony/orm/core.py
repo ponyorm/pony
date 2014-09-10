@@ -4339,9 +4339,10 @@ class Query(object):
         if extractors:
             vars, vartypes = extract_vars(extractors, globals, locals, cells)
             query._database.provider.normalize_vars(vars, vartypes)
-            query._vars.update(vars)
+            new_query_vars = query._vars.copy()
+            new_query_vars.update(vars)
             sorted_vartypes = tuple(vartypes[name] for name in varnames)
-        else: vars, vartypes, sorted_vartypes = {}, {}, ()
+        else: new_query_vars, vartypes, sorted_vartypes = query._vars, {}, ()
 
         new_key = query._key + (('order_by' if order_by else 'filter', func_id, sorted_vartypes),)
         new_filters = query._filters + ((order_by, func_ast, argnames, extractors, vartypes),)
@@ -4361,7 +4362,7 @@ class Query(object):
                     new_translator = query._reapply_filters(new_translator)
                     new_translator = new_translator.apply_lambda(filter_num, order_by, func_ast, argnames, extractors, vartypes)
             query._database._translator_cache[new_key] = new_translator
-        return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
+        return query._clone(_vars=new_query_vars, _key=new_key, _filters=new_filters, _translator=new_translator)
     def _reapply_filters(query, translator):
         for i, tup in enumerate(query._filters):
             if not tup:
@@ -4417,7 +4418,7 @@ class Query(object):
             new_translator = query._translator.apply_kwfilters(filterattrs)
             query._database._translator_cache[new_key] = new_translator
         new_query = query._clone(_key=new_key, _filters=new_filters, _translator=new_translator,
-                                 _next_kwarg_id=next_id)
+                                 _next_kwarg_id=next_id, _vars=query._vars.copy())
         new_query._vars.update(value_dict)
         return new_query
     @cut_traceback
