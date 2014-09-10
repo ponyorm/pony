@@ -509,6 +509,7 @@ class Database(object):
         if cache is not None: cache.rollback()
     @cut_traceback
     def execute(database, sql, globals=None, locals=None):
+        database.get_connection()
         return database._exec_raw_sql(sql, globals, locals, frame_depth=3)
     def _exec_raw_sql(database, sql, globals, locals, frame_depth):
         provider = database.provider
@@ -4165,6 +4166,9 @@ class Query(object):
         query._next_kwarg_id = 0
         query._for_update = query._nowait = False
         query._result = None
+        query._prefetch = False
+        query._entities_to_prefetch = set()
+        query._attrs_to_prefetch_dict = defaultdict(set)
     def _clone(query, **kwargs):
         new_query = object.__new__(Query)
         new_query.__dict__.update(query.__dict__)
@@ -4230,7 +4234,86 @@ class Query(object):
             else: stats[sql] = QueryStat(sql)
 
         query._result = result
+        if query._prefetch: query._do_prefetch()
         return QueryResult(result, translator.expr_type, translator.col_names)
+    @cut_traceback
+    def prefetch(query, *args):
+        query = query._clone(_entities_to_prefetch=query._entities_to_prefetch.copy(),
+                             _attrs_to_prefetch_dict=query._attrs_to_prefetch_dict.copy())
+        query._prefetch = True
+        for arg in args:
+            if isinstance(arg, EntityMeta):
+                entity = arg
+                if query._database is not entity._database_: throw(TypeError,
+                    'Entity %s belongs to different database and cannot be prefetched' % entity.__name__)
+                query._entities_to_prefetch.add(entity)
+            elif isinstance(arg, Attribute):
+                attr = arg
+                entity = attr.entity
+                if query._database is not entity._database_: throw(TypeError,
+                    'Entity of attribute %s belongs to different database and cannot be prefetched' % attr)
+                if isinstance(attr.py_type, EntityMeta) or attr.lazy:
+                    query._attrs_to_prefetch_dict[entity].add(attr)
+            else: throw(TypeError, 'Argument of prefetch() query method must be entity class or attribute. '
+                                   'Got: %r' % arg)
+        return query
+    def _do_prefetch(query):
+        expr_type = query._translator.expr_type
+        object_list = []
+        object_set = set()
+        append_to_object_list = object_list.append
+        add_to_object_set = object_set.add
+
+        if isinstance(expr_type, EntityMeta):
+            for obj in query._result:
+                if obj not in object_set:
+                    add_to_object_set(obj)
+                    append_to_object_list(obj)
+        elif type(expr_type) is tuple:
+            indexes = [ i for i, t in enumerate(expr_type) if isinstance(t, EntityMeta) ]
+            for i in indexes:
+                for row in query._result:
+                    obj = row[i]
+                    if obj not in object_set:
+                        add_to_object_set(obj)
+                        append_to_object_list(obj)
+
+        cache = query._database._get_cache()
+        entities_to_prefetch = query._entities_to_prefetch
+        attrs_to_prefetch_dict = query._attrs_to_prefetch_dict
+        prefetching_attrs_cache = {}
+        for obj in object_list:
+            entity = obj.__class__
+            if obj in cache.seeds[entity._pk_attrs_]: obj._load_()
+
+            attrs_to_prefetch = attrs_to_prefetch_dict[entity]
+            all_attrs_to_prefetch = prefetching_attrs_cache.get(entity)
+            if all_attrs_to_prefetch is None:
+                all_attrs_to_prefetch = []
+                append = all_attrs_to_prefetch.append
+                for attr in obj._attrs_:
+                    if attr.is_collection:
+                        if attr in attrs_to_prefetch: append(attr)
+                    elif attr.is_relation:
+                        if attr in attrs_to_prefetch or attr.py_type in entities_to_prefetch: append(attr)
+                    elif attr.lazy:
+                        if attr in attrs_to_prefetch: append(attr)
+                prefetching_attrs_cache[entity] = all_attrs_to_prefetch
+
+            for attr in all_attrs_to_prefetch:
+                if attr.is_collection:
+                    if not isinstance(attr, Set): throw(NotImplementedError)
+                    for obj2 in attr.load(obj):
+                        if obj2 not in object_set:
+                            add_to_object_set(obj2)
+                            append_to_object_list(obj2)
+                elif attr.is_relation:
+                    obj2 = attr.get(obj)
+                    if obj2 is not None and obj2 not in object_set:
+                        add_to_object_set(obj2)
+                        append_to_object_list(obj2)
+                elif attr.lazy: attr.get(obj)
+                else: assert False
     @cut_traceback
     def show(query, width=None):
         query._fetch().show(width)
@@ -4338,9 +4421,10 @@ class Query(object):
         if extractors:
             vars, vartypes = extract_vars(extractors, globals, locals, cells)
             query._database.provider.normalize_vars(vars, vartypes)
-            query._vars.update(vars)
+            new_query_vars = query._vars.copy()
+            new_query_vars.update(vars)
             sorted_vartypes = tuple(vartypes[name] for name in varnames)
-        else: vars, vartypes, sorted_vartypes = {}, {}, ()
+        else: new_query_vars, vartypes, sorted_vartypes = query._vars, {}, ()
 
         new_key = query._key + (('order_by' if order_by else 'filter', func_id, sorted_vartypes),)
         new_filters = query._filters + ((order_by, func_ast, argnames, extractors, vartypes),)
@@ -4360,7 +4444,7 @@ class Query(object):
                     new_translator = query._reapply_filters(new_translator)
                     new_translator = new_translator.apply_lambda(filter_num, order_by, func_ast, argnames, extractors, vartypes)
             query._database._translator_cache[new_key] = new_translator
-        return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
+        return query._clone(_vars=new_query_vars, _key=new_key, _filters=new_filters, _translator=new_translator)
     def _reapply_filters(query, translator):
         for i, tup in enumerate(query._filters):
             if not tup:
@@ -4416,7 +4500,7 @@ class Query(object):
             new_translator = query._translator.apply_kwfilters(filterattrs)
             query._database._translator_cache[new_key] = new_translator
         new_query = query._clone(_key=new_key, _filters=new_filters, _translator=new_translator,
-                                 _next_kwarg_id=next_id)
+                                 _next_kwarg_id=next_id, _vars=query._vars.copy())
         new_query._vars.update(value_dict)
         return new_query
     @cut_traceback
