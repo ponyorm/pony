@@ -166,3 +166,8 @@ class TestToDict(unittest.TestCase):
         s1 = Student[1]
         d = s1.to_dict(only='id name group', exclude='dob group', with_collections=True, with_lazy=True)
         self.assertEqual(d, dict(id=1, name='S1'))
+
+    def test24(self):
+        c = Course(name='New Course')
+        d = c.to_dict()  # should do flush and get c.id from the database
+        self.assertEqual(d, dict(id=4, name='New Course'))

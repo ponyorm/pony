@@ -4002,6 +4002,7 @@ class Entity(object):
         pass
     @cut_traceback
     def to_dict(obj, only=None, exclude=None, with_collections=False, with_lazy=False, related_objects=False):
+        if obj._session_cache_.modified: obj._session_cache_.flush()
         attrs = obj.__class__._get_attrs_(only, exclude, with_collections, with_lazy)
         result = {}
         for attr in attrs:
