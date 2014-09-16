@@ -3,7 +3,8 @@
 from __future__ import absolute_import, print_function
 from pony.py23compat import izip, imap, iteritems, xrange
 
-import re, datetime
+import re
+from datetime import datetime, date, time
 
 from pony.utils import is_ident
 
@@ -140,7 +141,7 @@ def str2date(s):
         for key, value in iteritems(month_dict):
             if key in s: month = value; break
         else: raise ValueError('Unrecognized date format')
-    return datetime.date(int(year), int(month), int(day))
+    return date(int(year), int(month), int(day))
 
 def str2time(s):
     s = s.strip().lower()
@@ -152,7 +153,7 @@ def str2time(s):
         ss, mcs = ss.split('.', 1)
         if len('mcs') < 6: mcs = (mcs + '000000')[:6]
     else: mcs = 0
-    return datetime.time(int(hh), int(mm or 0), int(ss or 0), int(mcs))
+    return time(int(hh), int(mm or 0), int(ss or 0), int(mcs))
 
 def str2datetime(s):
     s = s.strip().lower()
@@ -175,7 +176,7 @@ def str2datetime(s):
         ss, mcs = ss.split('.', 1)
         if len('mcs') < 6: mcs = (mcs + '000000')[:6]
     else: mcs = 0
-    return datetime.datetime(int(year), int(month), int(day), int(hh), int(mm or 0), int(ss or 0), int(mcs))
+    return datetime(int(year), int(month), int(day), int(hh), int(mm or 0), int(ss or 0), int(mcs))
 
 converters = {
     int:  (int, unicode, 'Incorrect number'),
@@ -187,9 +188,9 @@ converters = {
     'ISBN': (check_isbn, unicode, 'Incorrect ISBN'),
     'email': (check_email, unicode, 'Incorrect e-mail address'),
     'rfc2822_email': (check_rfc2822_email, unicode, 'Must be correct e-mail address'),
-    datetime.date: (str2date, unicode, 'Must be correct date (mm/dd/yyyy or dd.mm.yyyy)'),
-    datetime.time: (str2time, unicode, 'Must be correct time (hh:mm or hh:mm:ss)'),
-    datetime.datetime: (str2datetime, unicode, 'Must be correct date & time'),
+    date: (str2date, unicode, 'Must be correct date (mm/dd/yyyy or dd.mm.yyyy)'),
+    time: (str2time, unicode, 'Must be correct time (hh:mm or hh:mm:ss)'),
+    datetime: (str2datetime, unicode, 'Must be correct date & time'),
     }
 
 def str2py(value, type):
