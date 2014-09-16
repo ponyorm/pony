@@ -110,7 +110,7 @@ date_str_list = [
     ]
 date_re_list = [ re.compile('^%s$'%s, re.UNICODE) for s in date_str_list ]
 
-time_str = r'(?P<hh>\d{1,2})(?:[:. ](?P<mm>\d{1,2})(?:[:. ](?P<ss>\d{1,2}(?:\.\d{1,6})?))?)?\s*(?P<ampm>[ap][m])?'
+time_str = r'(?P<hh>\d{1,2})(?:[:. ](?P<mm>\d{1,2})(?:[:. ](?P<ss>\d{1,2}(?:\.\d{1,6})?))?)?\s*(?P<ampm>am|pm|a\.m\.|p\.m\.)?'
 time_re = re.compile('^%s$'%time_str)
 
 datetime_re_list = [ re.compile('^%s(?:[t ]%s)?$' % (date_str, time_str), re.UNICODE) for date_str in date_str_list ]
@@ -148,7 +148,7 @@ def str2time(s):
     match = time_re.match(s)
     if match is None: raise ValueError('Unrecognized time format')
     hh, mm, ss, ampm = match.groups()
-    if ampm == 'pm': hh = int(hh) + 12
+    if ampm in ('pm', 'p.m.'): hh = int(hh) + 12
     if ss is not None and '.' in ss:
         ss, mcs = ss.split('.', 1)
         if len('mcs') < 6: mcs = (mcs + '000000')[:6]
@@ -171,7 +171,7 @@ def str2datetime(s):
         else: raise ValueError('Unrecognized datetime format')
     hh, mm, ss = dict.get('hh'), dict.get('mm'), dict.get('ss')
     if hh is None: hh, mm, ss = 12, 00, 00
-    elif dict.get('ampm') == 'pm': hh = int(hh) + 12
+    elif dict.get('ampm') in ('pm', 'p.m.'): hh = int(hh) + 12
     if ss is not None and '.' in ss:
         ss, mcs = ss.split('.', 1)
         if len('mcs') < 6: mcs = (mcs + '000000')[:6]
