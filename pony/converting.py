@@ -112,13 +112,21 @@ date_re_list = [ re.compile('^%s$'%s, re.UNICODE) for s in date_str_list ]
 
 time_str = r'''
     (?P<hh>\d{1,2})  # hours
-    (?:[:. ]  # separator between hours and minutes
+    (?: \s* [hu] \s* )?  # optional hours suffix
+    (?:
+        (?: (?<=\d)[:. ] | (?<!\d) )  # separator between hours and minutes
         (?P<mm>\d{1,2})  # minutes
-        (?:[:. ]  # separator between minutes and seconds
+        (?: (?: \s* m(?:in)? | ' ) \s* )?  # optional minutes suffix
+        (?:
+            (?: (?<=\d)[:. ] | (?<!\d) )  # separator between minutes and seconds
             (?P<ss>\d{1,2}(?:\.\d{1,6})?)  # seconds with optional microseconds
+            \s*
+            (?: (?: s(?:ec)? | " ) \s* )?  # optional seconds suffix
         )?
     )?
-    \s*(?P<ampm>am|pm|a\.m\.|p\.m\.)?  # optional A.M./P.M. part
+    (?:  # optional A.M./P.M. part
+        \s* (?: (?P<am> a\.?m\.? ) | (?P<pm> p\.?m\.? ) )
+    )?
 '''
 time_re = re.compile('^%s$'%time_str, re.VERBOSE)
 
@@ -157,13 +165,8 @@ def str2time(s):
     s = s.strip().lower()
     match = time_re.match(s)
     if match is None: raise ValueError('Unrecognized time format')
-    hh, mm, ss, ampm = match.groups()
-    if ampm in ('pm', 'p.m.'): hh = int(hh) + 12
-    if ss is not None and '.' in ss:
-        ss, mcs = ss.split('.', 1)
-        if len('mcs') < 6: mcs = (mcs + '000000')[:6]
-    else: mcs = 0
-    return time(int(hh), int(mm or 0), int(ss or 0), int(mcs))
+    hh, mm, ss, mcs = _extract_time_parts(match.groupdict())
+    return time(hh, mm, ss, mcs)
 
 def str2datetime(s):
     s = s.strip().lower()
@@ -171,22 +174,31 @@ def str2datetime(s):
         match = datetime_re.match(s)
         if match is not None: break
     else: raise ValueError('Unrecognized datetime format')
+
     dict = match.groupdict()
-    year = dict['year']
-    day = dict['day']
-    month = dict.get('month')
+    year, day, month = dict['year'], dict['day'], dict.get('month')
+
     if month is None:
         for key, value in iteritems(month_dict):
             if key in s: month = value; break
         else: raise ValueError('Unrecognized datetime format')
-    hh, mm, ss = dict.get('hh'), dict.get('mm'), dict.get('ss')
+
+    hh, mm, ss, mcs = _extract_time_parts(dict)
+    return datetime(int(year), int(month), int(day), hh, mm, ss, mcs)
+
+def _extract_time_parts(groupdict):
+    hh, mm, ss, am, pm = imap(groupdict.get, ('hh', 'mm', 'ss', 'am', 'pm'))
+
     if hh is None: hh, mm, ss = 12, 00, 00
-    elif dict.get('ampm') in ('pm', 'p.m.'): hh = int(hh) + 12
+    elif am and hh == '12': hh = 0
+    elif pm and hh != '12': hh = int(hh) + 12
+    
     if ss is not None and '.' in ss:
         ss, mcs = ss.split('.', 1)
         if len('mcs') < 6: mcs = (mcs + '000000')[:6]
     else: mcs = 0
-    return datetime(int(year), int(month), int(day), int(hh), int(mm or 0), int(ss or 0), int(mcs))
+
+    return int(hh), int(mm or 0), int(ss or 0), int(mcs)
 
 converters = {
     int:  (int, unicode, 'Incorrect number'),
