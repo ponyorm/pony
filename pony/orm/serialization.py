@@ -90,7 +90,7 @@ class Bag(object):
         bag.dicts[entity][obj] = d
     @cut_traceback
     def to_json(bag):
-        return json.dumps(result, default=json_converter, indent=2, sort_keys=True)
+        return json.dumps(bag.to_dict(), default=json_converter, indent=2, sort_keys=True)
 
 def to_dict(objects):
     if isinstance(objects, Entity): objects = [ objects ]
