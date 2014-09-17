@@ -61,7 +61,7 @@ BEGIN
   IF :new.%s IS NULL THEN
     SELECT %s.nextval INTO :new.%s FROM DUAL;
   END IF;
-END""".strip()
+END;""".strip()
 
 class OraTrigger(DBObject):
     typename = 'Trigger'
