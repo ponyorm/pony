@@ -71,7 +71,7 @@ Entity class methods
 
    .. py:method:: select_random(limit)
 
-      Select the ``limit`` random objects. This method uses the algorithm that can be much more effective than using ``ORDER BY RANDOM()`` SQL construct. The method uses the following algorithm:
+      Select ``limit`` random objects. This method uses an algorithm that can be much more effective than using the ``ORDER BY RANDOM()`` SQL construct. The method uses the following algorithm:
 
       1. Determine max id from the table.
 
@@ -184,7 +184,7 @@ Query methods
 
    .. py:method:: random(limit)
 
-      Select the ``limit`` random objects from the database. This method will be translated using the ``ORDER BY RANDOM()`` SQL expression. The entity class method ``select_random()`` provides better performance, although doesn't allow to specify query conditions.
+      Select ``limit`` random objects from the database. This method will be translated using the ``ORDER BY RANDOM()`` SQL expression. The entity class method ``select_random()`` provides better performance, although doesn't allow to specify query conditions.
 
    .. py:method:: show()
 

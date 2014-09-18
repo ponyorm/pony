@@ -1,7 +1,7 @@
 ﻿Database
 ==============
 
-Before you can start working with entities you have to create the ``Database`` object. This object manages database connections using a connection pool. The ``Database`` object is thread safe and it can be shared between all threads in your application. The ``Database`` object allows you to work with the database directly using SQL, but most of the time you will work with entities and let Pony generate SQL statements in order to make the corresponding changes in the database. Pony allows you to work with several databases at the same time, but each entity belongs to one specific database.
+Before you can start working with entities you have to create a ``Database`` object. This object manages database connections using a connection pool. The ``Database`` object is thread safe and it can be shared between all threads in your application. The ``Database`` object allows you to work with the database directly using SQL, but most of the time you will work with entities and let Pony generate SQL statements in order to make the corresponding changes in the database. Pony allows you to work with several databases at the same time, but each entity belongs to one specific database.
 
 Mapping entities to the database can be divided into four steps:
 
@@ -19,7 +19,7 @@ At this step we simply create an instance of the ``Database`` class::
 
 Although you can pass the database connection parameters right here, often it is more convenient to do it at a later stage using the ``db.bind()`` method. This way you can use different databases for testing and production.
 
-The ``Database`` instance has the attribute ``Entity`` which represents a base class to be used for entities declaration.
+The ``Database`` instance has an attribute ``Entity`` which represents a base class to be used for entities declaration.
 
 
 Defining entities which are related to the database object
@@ -30,12 +30,12 @@ Entities should inherit from the base class of the ``Database`` object::
     class MyEntity(db.Entity):
         attr1 = Required(unicode)
 
-We'll talk about entities definition in detail in the next chapter. Now, let's see what is the next step in mapping entities to a database.
+We'll talk about entities definition in detail in the next chapter. Now, let's see the next step in mapping entities to a database.
 
 Binding the database object to a specific database
 --------------------------------------------------------------
 
-Before we can map entities to a database, we need to get connected to this database. At this step we should use the method ``bind()``::
+Before we can map entities to a database, we need to connect to the database. At this step we should use the ``bind()`` method::
 
     db.bind('postgres', user='', password='', host='', database='')
 
@@ -186,11 +186,11 @@ With Pony you can easily pass parameters into SQL queries. In order to specify a
     x = "John"
     data = db.select("* from Person where name = $x")
 
-When Pony encounters such a parameter within the SQL query it gets the variable value from the current frame (from globals and locals) or from the dictionary which is passed as the second parameter. In the example above Pony will try to get the value for ``$x`` from the variable ``x`` and will pass this value as a parameter to the SQL query which eliminates the risk of SQL injection. Below you can see how to pass the dictionary with the parameters::  
+When Pony encounters such a parameter within the SQL query it gets the variable value from the current frame (from globals and locals) or from the dictionary which is passed as the second parameter. In the example above Pony will try to get the value for ``$x`` from the variable ``x`` and will pass this value as a parameter to the SQL query which eliminates the risk of SQL injection. Below you can see how to pass a dictionary with the parameters::  
   
     data = db.select("* from Person where name = $x", {"x" : "Susan"})
     
-This method of passing parameters to the SQL queries is very flexible and allows using not only single variables, but any Python expression. In order to specify an expression you need to put it in braces after the $ sign::
+This method of passing parameters to the SQL queries is very flexible and allows using not only single variables, but any Python expression. In order to specify an expression you need to put it in parentheses after the $ sign::
 
     data = db.select("* from Person where name = $(x.lower()) and age > $(y + 2)") 
 
