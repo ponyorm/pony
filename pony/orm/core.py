@@ -4001,7 +4001,7 @@ class Entity(object):
     def before_delete(obj):
         pass
     @cut_traceback
-    def to_dict(obj, only=None, exclude=None, with_collections=False, with_lazy=False, related_objects=False):
+    def to_dict(obj, only=None, exclude=None, with_collections=False, with_lazy=False, related_objects=False, rename_dict={}):
         if obj._session_cache_.modified: obj._session_cache_.flush()
         attrs = obj.__class__._get_attrs_(only, exclude, with_collections, with_lazy)
         result = {}
@@ -4015,7 +4015,7 @@ class Entity(object):
             elif attr.is_relation and not related_objects and value is not None:
                 value = value._get_raw_pkval_()
                 if len(value) == 1: value = value[0]
-            result[attr.name] = value
+            result[rename_dict.get(attr.name, attr.name)] = value
         return result                
 
 def string2ast(s):
