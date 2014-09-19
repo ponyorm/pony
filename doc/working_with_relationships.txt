@@ -187,7 +187,7 @@ Below are described the parameters which you can specify while creating a collec
 
    .. py:attribute:: lazy
 
-      When we access a specific collection item (check if an element belongs to a collection, add or delete items), Pony loads the whole collection to the ``db_session`` cache. Usually it increases the performance reducing the database round trips. But if you have large collections you may prefer not to load them into the cache. Setting ``lazy=True`` tells Pony that it shouldn't load the collection to the cache, but always send queries to the database. Default is ``lazy=False``.
+      When we access a specific collection item (check if an element belongs to a collection, add or delete items), Pony loads the whole collection to the ``db_session`` cache. Usually it increases the performance by reducing the database round trips. But if you have large collections you may prefer not to load them into the cache. Setting ``lazy=True`` tells Pony that it shouldn't load the collection to the cache, but always send queries to the database. Default is ``lazy=False``.
 
    .. py:attribute:: reverse
 

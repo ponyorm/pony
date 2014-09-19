@@ -11,7 +11,7 @@ Creating an entity instance in Pony is similar to creating a regular object in P
 
 When creating an object in Pony, all the parameters should be specified as keyword arguments. If an attribute has a default value, you can omit it.
 
-All created instances belong to the current :ref:`database session <db_session_ref>`. In some object-relational mappers, in order to save an object in the database it is required to call its ``save()`` method. This is inconvenient, as a programmer must track which objects were created or updated, and not to forget to call the ``save()`` method on each object.
+All created instances belong to the current :ref:`database session <db_session_ref>`. In some object-relational mappers, you are required to call an object's ``save()`` method in order to save it. This is inconvenient, as a programmer must track which objects were created or updated, and not to forget to call the ``save()`` method on each object.
 
 Pony tracks which objects were created or updated and saves them in the database automatically when current ``db_session`` is over. If you need to save newly created objects before leaving the ``db_session`` scope, you can do so by using :ref:`flush() <flush_ref>` or :ref:`commit() <commit_ref>` functions.
 
@@ -26,14 +26,14 @@ The simplest case is when we want to retrieve an object by the primary key. To a
 
    customer1 = Customer[123]
 
-The same syntax also works for objects with composite keys; one just needs to list the elements of the composite primary key, separated by commas, in the same order that the attributes were defined in the entity description::
+The same syntax also works for objects with composite keys; we just need to list the elements of the composite primary key, separated by commas, in the same order that the attributes were defined in the entity class description::
 
    order_item = OrderItem[order1, product1]
 
 Pony raises the ``ObjectNotFound`` exception if object with such primary key doesn't exist.
 
 
-Getting one object by the unique combination of attributes
+Getting one object by unique combination of attributes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If we want to retrieve one object not by its primary key, but by another combination of attributes, we can use the ``get()`` method of an entity. In most cases, it is used when we want to get an object by the secondary unique key, but it can also be used to search by any other combination of attributes. As a parameter of "get ()" method, we state names of the attributes and their values. For example, if we want to receive a product under the name "Product 1", and we believe that database has only one product under this name, we can write::
@@ -50,7 +50,7 @@ Method ``get()`` can also receive a lambda function as a single positioning argu
 Getting several objects
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In order to retrieve several objects from database, we can use the ``select()`` method of an entity instance. This method receives a lambda function, which has a single parameter, symbolizing an instance of an object in the database. Inside this function, we write conditions. For example, if we want to find all products with the price higher than 100, we can write::
+In order to retrieve several objects from a database, we use the ``select()`` method, which is present on every entity. Its argument is a lambda function, which carries a single parameter, symbolizing an instance of an object in the database. Inside this function, we can write conditions, by which we want to carry out the search. For example, if we want to find all products with the price higher than 100, we can write::
 
     products = Product.select(lambda p: p.price > 100)
 
@@ -139,7 +139,7 @@ Note, that according to Python syntax, if we return more than one element from l
 Limiting the number of selected objects
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-It is possible to limit the number of objects returned by a query by using the Query method :py:meth:`limit()<Query.limit>`, or by the more compact Python slice notation. For example, this is how we can get the 10 most expensive products::
+It is possible to limit the number of objects returned by a query by using the :py:meth:`limit()<Query.limit>` Query method, or by the more compact Python slice notation. For example, this is how we can get the 10 most expensive products::
 
     Product.select().order_by(lambda p: desc(p.price))[:10]
 
@@ -163,7 +163,7 @@ Pony tries to minimize the number of queries sent to the database. In the exampl
 
 In the example above, Pony get the object from database in the third line in, when we access the name attribute. By using the "seed" concept, Pony achieves high efficiency and solves the "N+1" problem, which is a weakness of many other mappers.
 
-Traversing is possible in the "to many" direction as well. For example, if we have a ``Customer`` object and we want to loop through its orders, we can do it this way::
+Traversing is possible in the "to-many" direction as well. For example, if we have a ``Customer`` object and we want to loop through its orders, we can do it this way::
 
     c = Customer[123]
     for order in c.orders:
@@ -179,16 +179,16 @@ For example, in order to increase the number of products by 10 with a primary ke
 
     Product[123].quantity += 10
 
-If we need to change several attributes of the same object, we can do it separately::
+If we need to change several attributes of the same object, we can do so separately::
 
     order = Order[123]
     order.state = "Shipped"
     order.date_shipped = datetime.now()
 
-or in one line, using the ``set()`` method::
+or in a single line, using the ``set()`` method::
 
     order = Order[123]
-    order.set(state = "Shipped", date_shipped = datetime.now())
+    order.set(state="Shipped", date_shipped=datetime.now())
 
 The ``set()`` method can be convenient when you need to update several object attributes at once from a dictionary::
 
@@ -342,7 +342,7 @@ Entity class methods
 
    .. py:method:: select_random(limit)
 
-      Select the ``limit`` random objects. This method uses the algorithm that can be much more effective than using ``ORDER BY RANDOM()`` SQL construct. The method uses the following algorithm:
+      Select ``limit`` random objects. This method uses the algorithm that can be much more effective than using ``ORDER BY RANDOM()`` SQL construct. The method uses the following algorithm:
 
       1. Determine max id from the table.
 
@@ -523,7 +523,7 @@ Sometimes you might need to perform an action before your entity instance is goi
 Using raw SQL
 ------------------
 
-Although Pony can translate to SQL almost any condition written in Python, sometimes the need arises to use raw SQL. You might need it in order to call a stored procedure or to use a dialect feature of a specific database system. In this case, Pony allows the user to write a query in a raw SQL, by placing it inside the function ``select_by_sql()`` or ``get_by_sql()`` as a string::
+Although Pony can translate almost any condition written in Python to SQL, sometimes the need arises to use raw SQL, for example - in order to call a stored procedure or to use a dialect feature of a specific database system. In this case, Pony allows the user to write a query in a raw SQL, by placing it inside the function ``select_by_sql()`` or ``get_by_sql()`` as a string::
 
     products = Product.select_by_sql("SELECT * FROM Products")
 
@@ -540,6 +540,6 @@ When Pony encounters a parameter within the SQL query it gets the variable value
     Product.select_by_sql("SELECT * FROM Product WHERE price > $x OR price = $(y * 2)",
                            globals={'x': 100}, locals={'y': 200})
 
-Variables and more complex expressions listed after the ``$`` sign, will be automatically calculated and transferred into the query as parameters, which makes the SQL-injection impossible.
+Variables and more complex expressions listed after the $ sign, will be automatically calculated and transferred into the query as parameters, which makes SQL-injection impossible. Pony automatically replaces $x in the query string with "?", "%S" or with other paramstyle, used in the current database system.
 
 If the ``$`` sign is used in the query itself (for example, in the name of a system table), it is necessary to write two ``$`` signs in succession: ``$$``.
