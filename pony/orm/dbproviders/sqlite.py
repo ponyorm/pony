@@ -53,6 +53,44 @@ class SQLiteBuilder(SQLBuilder):
         return 'cast(substr(', builder(expr), ', 15, 2) as integer)'
     def SECOND(builder, expr):
         return 'cast(substr(', builder(expr), ', 18, 2) as integer)'
+    def datetime_add(builder, funcname, expr, td):
+        assert isinstance(td, timedelta)
+        modifiers = []
+        seconds = td.seconds + td.days * 24 * 3600
+        sign = '+' if seconds > 0 else '-'
+        seconds = abs(seconds)
+        if seconds >= (24 * 3600):
+            days = seconds // (24 * 3600)
+            modifiers.append(", '%s%d days'" % (sign, days))
+            seconds -= days * 24 * 3600
+        if seconds >= 3600:
+            hours = seconds // 3600
+            modifiers.append(", '%s%d hours'" % (sign, hours))
+            seconds -= hours * 3600
+        if seconds >= 60:
+            minutes = seconds // 60
+            modifiers.append(", '%s%d minutes'" % (sign, minutes))
+            seconds -= minutes * 60
+        if seconds:
+            modifiers.append(", '%s%d seconds'" % (sign, seconds))
+        if not modifiers: return builder(expr)
+        return funcname, '(', builder(expr), modifiers, ')'
+    def DATE_ADD(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return builder.datetime_add('date', expr, delta)
+        return 'datetime(julianday(', builder(expr), ') + ', builder(delta), ')'
+    def DATE_SUB(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return builder.datetime_add('date', expr, -delta)
+        return 'datetime(julianday(', builder(expr), ') - ', builder(delta), ')'
+    def DATETIME_ADD(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return builder.datetime_add('datetime', expr, delta)
+        return 'datetime(julianday(', builder(expr), ') + ', builder(delta), ')'
+    def DATETIME_SUB(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return builder.datetime_add('datetime', expr, -delta)
+        return 'datetime(julianday(', builder(expr), ') - ', builder(delta), ')'
     def MIN(builder, *args):
         if len(args) == 0: assert False
         elif len(args) == 1: fname = 'MIN'

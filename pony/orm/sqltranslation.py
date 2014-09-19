@@ -1118,12 +1118,25 @@ def numeric_attr_factory(name):
     attr_func.__name__ = name.lower()
     return attr_func
 
+def make_datetime_binop(op, sqlop):
+    def datetime_binop(monad, monad2):
+        translator = monad.translator
+        if monad2.type != timedelta: throw(TypeError,
+            _binop_errmsg % (type2str(monad.type), type2str(monad2.type), op))
+        expr_monad_cls = translator.DateExprMonad if monad.type is date else translator.DatetimeExprMonad
+        delta = monad2.value if isinstance(monad2, TimedeltaConstMonad) else monad2.getsql()[0]
+        return expr_monad_cls(translator, monad.type, [ sqlop, monad.getsql()[0], delta ])
+    datetime_binop.__name__ = sqlop
+    return datetime_binop
+
 class DateMixin(MonadMixin):
     def mixin_init(monad):
         assert monad.type is date
     attr_year = numeric_attr_factory('YEAR')
     attr_month = numeric_attr_factory('MONTH')
     attr_day = numeric_attr_factory('DAY')
+    __add__ = make_datetime_binop('+', 'DATE_ADD')
+    __sub__ = make_datetime_binop('-', 'DATE_SUB')
 
 class TimeMixin(MonadMixin):
     def mixin_init(monad):
@@ -1146,6 +1159,8 @@ class DatetimeMixin(DateMixin):
     attr_hour = numeric_attr_factory('HOUR')
     attr_minute = numeric_attr_factory('MINUTE')
     attr_second = numeric_attr_factory('SECOND')
+    __add__ = make_datetime_binop('+', 'DATETIME_ADD')
+    __sub__ = make_datetime_binop('-', 'DATETIME_SUB')
 
 def make_string_binop(op, sqlop):
     def string_binop(monad, monad2):

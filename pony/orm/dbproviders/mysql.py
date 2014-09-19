@@ -71,6 +71,22 @@ class MySQLBuilder(SQLBuilder):
         return 'minute(', builder(expr), ')'
     def SECOND(builder, expr):
         return 'second(', builder(expr), ')'
+    def DATE_ADD(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return 'DATE_ADD(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
+        return 'ADDTIME(', builder(expr), ', ', builder(delta), ')'
+    def DATE_SUB(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return 'DATE_SUB(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
+        return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
+    def DATETIME_ADD(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return 'DATE_ADD(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
+        return 'ADDTIME(', builder(expr), ', ', builder(delta), ')'
+    def DATETIME_SUB(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return 'DATE_SUB(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
+        return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
 
 def _string_sql_type(converter):
     result = 'VARCHAR(%d)' % converter.max_len if converter.max_len else 'LONGTEXT'

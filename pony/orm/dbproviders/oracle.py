@@ -15,6 +15,7 @@ from pony.orm.core import log_orm, log_sql, DatabaseError, TranslationError
 from pony.orm.dbschema import DBSchema, DBObject, Table, Column
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, get_version_tuple
 from pony.utils import throw
+from pony.converting import timedelta2str
 
 NoneType = type(None)
 
@@ -202,6 +203,22 @@ class OraBuilder(sqlbuilding.SQLBuilder):
         return 'TRUNC(', builder(expr), ')'
     def RANDOM(builder):
         return 'dbms_random.value'
+    def DATE_ADD(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return '(', builder(expr), " + INTERVAL '", timedelta2str(delta), "' HOUR TO SECOND)"
+        return '(', builder(expr), ' + ', builder(delta), ')'
+    def DATE_SUB(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' HOUR TO SECOND)"
+        return '(', builder(expr), ' - ', builder(delta), ')'
+    def DATETIME_ADD(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return '(', builder(expr), " + INTERVAL '", timedelta2str(delta), "' HOUR TO SECOND)"
+        return '(', builder(expr), ' + ', builder(delta), ')'
+    def DATETIME_SUB(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' HOUR TO SECOND)"
+        return '(', builder(expr), ' - ', builder(delta), ')'
 
 class OraBoolConverter(dbapiprovider.BoolConverter):
     def sql2py(converter, val):

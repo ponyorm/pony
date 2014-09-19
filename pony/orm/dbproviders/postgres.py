@@ -16,6 +16,7 @@ from pony.orm.dbapiprovider import DBAPIProvider, Pool, ProgrammingError, wrap_d
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import Value
 from pony.utils import throw
+from pony.converting import timedelta2str
 
 class PGColumn(dbschema.Column):
     auto_template = 'SERIAL PRIMARY KEY'
@@ -48,6 +49,22 @@ class PGSQLBuilder(sqlbuilding.SQLBuilder):
         return '(', builder(expr), ')::date'
     def RANDOM(builder):
         return 'random()'
+    def DATE_ADD(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return '(', builder(expr), " + INTERVAL '", timedelta2str(delta), "' DAY TO SECOND)"
+        return '(', builder(expr), ' + ', builder(delta), ')'
+    def DATE_SUB(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' DAY TO SECOND)"
+        return '(', builder(expr), ' - ', builder(delta), ')'
+    def DATETIME_ADD(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return '(', builder(expr), " + INTERVAL '", timedelta2str(delta), "' DAY TO SECOND)"
+        return '(', builder(expr), ' + ', builder(delta), ')'
+    def DATETIME_SUB(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' DAY TO SECOND)"
+        return '(', builder(expr), ' - ', builder(delta), ')'
 
 class PGUnicodeConverter(dbapiprovider.UnicodeConverter):
     def py2sql(converter, val):
