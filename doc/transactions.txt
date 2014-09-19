@@ -6,13 +6,13 @@ A database transaction is a logical unit of work, which can consist of one or se
 Database session
 --------------------------------------------
 
-Each database query belongs to a transaction, even if this query just reads data and doesn’t make any changes. In the same time, each transaction in Pony belongs to a database session. One session can consist of several transactions.
+Each database query belongs to a transaction, even if this query just reads data and doesn’t make any changes. At the same time, each transaction in Pony belongs to a database session. One session can consist of several transactions.
 
 .. image:: db_session1.png
    :alt: Transactions within db_session
    :align: center
 
-Within the session Pony caches the data retrieved from the database. The session starts with the first query sent to the database. Before sending the first query, Pony gets a database connection from the connection pool.  After the session is over, Pony clears the cache and returns the database connection to the connection pool. 
+Within a session, Pony caches the data retrieved from the database. The session starts with the first query sent to the database. Before sending the first query, Pony gets a database connection from the connection pool.  After the session is over, Pony clears the cache and returns the database connection to the connection pool. 
 
 All database interactions should be done within a database session. In order to establish a database session you should wrap the code which works with the database in the ``@db_session`` decorator or ``db_session`` context manager. If you forget to specify the ``db_session`` where necessary, Pony will raise the exception ``TransactionError: 'db_session is required when working with the database'``. If your code opens a db_session and then calls a function which also decorated with the ``@db_session``, it won’t create a nested session. 
 The database session ends on leaving the scope of the outermost db_session decorator or context manager.
@@ -40,7 +40,7 @@ Example of using the ``db_session`` context manager:
 Transaction scope
 ----------------------------------------------------
 
-There is no explicit command for starting a transaction. A transaction begins with the first SQL statement sent to the database. The following SQL statements will be executed in the context of the same transaction. A transaction ends either explicitly - when it is committed or rolled back using ``commit()`` or ``rollback()`` calls or implicitly - by leaving the ``db_session`` scope.
+There is no explicit command for starting a transaction. A transaction begins with the first SQL statement sent to the database. Any following SQL statements will be executed in the context of the same transaction. A transaction ends either explicitly - when it is committed or rolled back using ``commit()`` or ``rollback()`` calls or implicitly - by leaving the ``db_session`` scope.
 
 .. note::
    Python driver for SQLite doesn’t start a transaction on a SELECT statement. It only begins a transaction on a statement which can modify the database: INSERT, UPDATE, DELETE. Other drivers start a transaction on any SQL statement, including SELECT.
@@ -148,7 +148,7 @@ If you want Pony to work with transactions using the SERIALIZABLE isolation leve
 READ COMMITTED vs. SERIALIZABLE mode
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In SERIALIZABLE mode, you always has a chance to get a “Can’t serialize access due to concurrent update” error, and would have to retry the transaction until it succeeded. You always need to code a retry loop in your application when you are using SERIALIZABLE mode for a writing transaction.
+In SERIALIZABLE mode, you always have a chance to get a “Can’t serialize access due to concurrent update” error, and would have to retry the transaction until it succeeded. You always need to code a retry loop in your application when you are using SERIALIZABLE mode for a writing transaction.
 
 In READ COMMITTED mode, if you want to avoid changing the same data by a concurrent transaction, you should use SELECT FOR UPDATE. But this way there is a chance to have a `database deadlock <http://en.wikipedia.org/wiki/Deadlock>`_ - the situation where one transaction is waiting for a resource which is locked by another transaction. If your transaction got a deadlock, your application needs to restart the transaction. So you end up needing a retry loop either way. Pony can restart a transaction automatically if you specify the ``retry`` parameter to the ``@db_session`` decorator (but not the ``db_session`` context manager)::
 
@@ -190,7 +190,7 @@ db_session cache
 Pony caches data at several stages for increasing performance. It caches:
 
 * The results of a generator expression translation. If the same generator expression query is used several times within the program, it will be translated to SQL only once. This cache is global for entire program, not only for a single database session.
-* The database rows extracted with a ``select`` query within a database session. This cache is cleared on leaving the ``db_session`` scope or on transaction rollback. In the same time Pony never caches the rows retrieved using the ``select().for_update()`` query.
+* The database rows extracted with a ``select`` query within a database session. This cache is cleared on leaving the ``db_session`` scope or on transaction rollback. At the same time Pony never caches the rows retrieved using the ``select().for_update()`` query.
 
 
 Working with multiple databases 
@@ -243,7 +243,7 @@ Let’s say we are using Django ORM for this task. Below if one of the possible 
 
 By default in Django, each ``save()`` is performed in a separate transaction. If after the first ``save()`` there will be a failure, the amount will just disappear. Even if there will be no failure, if another transaction will try to get the account statement in between of two ``save()`` operations, the result will be wrong. In order to avoid such problems, both operations should be combined in one transaction. We can do that by decorating the function with the ``@transaction.atomic`` decorator.
 
-But even in this case we can encounter a problem. If two bank branches will try to transfer the full amount to different accounts in the same time, both operations will be performed. Each function will pass the validation and finally one transaction will override the results of another one. This anomaly is called “lost update”.
+But even in this case we can encounter a problem. If two bank branches will try to transfer the full amount to different accounts at the same time, both operations will be performed. Each function will pass the validation and finally one transaction will override the results of another one. This anomaly is called “lost update”.
 
 There are three ways to prevent such anomaly:
 
@@ -251,9 +251,9 @@ There are three ways to prevent such anomaly:
 * Use SELECT FOR UPDATE instead SELECT
 * Use optimistic checks
 
-If you will use the SERIALIZABLE isolation level, the database will not allow to commit the second transaction by throwing an exception during commit. The disadvantage of such approach is that this level requires more system resources. 
+If you use the SERIALIZABLE isolation level, the database will not allow to commit the second transaction by throwing an exception during commit. The disadvantage of such approach is that this level requires more system resources. 
 
-If you will use SELECT FOR UPDATE then the transaction which hits the database first will lock the row and another transaction will wait. 
+If you use SELECT FOR UPDATE then the transaction which hits the database first will lock the row and another transaction will wait. 
 
 The optimistic check doesn’t require more system resources and doesn’t lock the database rows. It eliminates the lost update anomaly by ensuring that the data wasn’t changed between the moment when we read it from the database and the commit operation.
 
@@ -261,7 +261,7 @@ The only way to avoid the lost update anomaly in Django is using the SELECT FOR 
 
 Pony allows using all three approaches, having the third one, optimistic checks, turned on by default. This way Pony avoids the lost update anomaly completely. Also using the optimistic checks allows the highest concurrency because it doesn’t lock the database and doesn’t require extra resources.
 
-The similar function for transferring money will look this way in Pony:
+The similar function for transferring money would look this way in Pony:
 
 The SERIALIZABLE approach::
 
