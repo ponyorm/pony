@@ -1,13 +1,13 @@
 from __future__ import absolute_import, print_function, division
 
 from decimal import Decimal, InvalidOperation
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 from uuid import uuid4, UUID
 import re
 
 import pony
 from pony.utils import is_utf8, decorator, throw, localbase
-from pony.converting import str2date, str2datetime
+from pony.converting import str2date, str2time, str2datetime, str2timedelta
 from pony.orm.ormtypes import LongStr, LongUnicode
 
 class DBException(Exception):
@@ -550,50 +550,83 @@ class DateConverter(Converter):
     def sql_type(converter):
         return 'DATE'
 
-class DatetimeConverter(Converter):
-    sql_type_name = 'DATETIME'
+class ConverterWithMicroseconds(Converter):
     def __init__(converter, provider, py_type, attr=None):
         converter.precision = None  # for the case when attr is None
         Converter.__init__(converter, provider, py_type, attr)
     def init(converter, kwargs):
         attr = converter.attr
         args = attr.args        
-        if len(args) > 1: throw(TypeError, 'Too many positional parameters for datetime attribute %s. '
+        if len(args) > 1: throw(TypeError, 'Too many positional parameters for attribute %s. '
                                            'Expected: precision, got: %r' % (attr, args))
         provider = attr.entity._database_.provider
         if args:
             precision = args[0]
             if 'precision' in kwargs: throw(TypeError,
-                'Precision for datetime attribute %s has both positional and keyword value' % attr)
+                'Precision for attribute %s has both positional and keyword value' % attr)
         else: precision = kwargs.pop('precision', provider.default_time_precision)
         if not isinstance(precision, int) or not 0 <= precision <= 6: throw(ValueError,
-            'Precision value of datetime attribute %s must be between 0 and 6. Got: %r' % (attr, precision))
+            'Precision value of attribute %s must be between 0 and 6. Got: %r' % (attr, precision))
         if precision > provider.max_time_precision: throw(ValueError,
             'Precision value (%d) of attribute %s exceeds max datetime precision (%d) of %s %s'
             % (precision, attr, provider.max_time_precision, provider.dialect, provider.server_version))
         converter.precision = precision
-    def validate(converter, val):
-        if isinstance(val, datetime): pass
-        elif isinstance(val, basestring): val = str2datetime(val)
-        else: throw(TypeError, "Attribute %r: expected type is 'datetime'. Got: %r" % (converter.attr, val))
-        p = converter.precision
-        if not p: val = val.replace(microsecond=0)
-        elif p == 6: pass
-        else:
-            rounding = 10 ** (6-p)
-            microsecond = (val.microsecond // rounding) * rounding
-            val = val.replace(microsecond=microsecond)
-        return val
-    def sql2py(converter, val):
-        if not isinstance(val, datetime): throw(ValueError,
-            'Value of unexpected type received from database: instead of datetime got %s' % type(val))
-        return val
+    def round_microseconds_to_precision(converter, microseconds, precision):
+        # returns None if no change is required
+        if not precision: result = 0
+        elif precision < 6:
+            rounding = 10 ** (6-precision)
+            result = (microseconds // rounding) * rounding
+        else: return None
+        return result if result != microseconds else None
     def sql_type(converter):
         attr = converter.attr
         precision = converter.precision
         if not attr or precision == attr.entity._database_.provider.default_time_precision:
             return converter.sql_type_name
         return converter.sql_type_name + '(%d)' % precision
+
+class TimeConverter(ConverterWithMicroseconds):
+    sql_type_name = 'TIME'
+    def validate(converter, val):
+        if isinstance(val, time): pass
+        elif isinstance(val, basestring): val = str2time(val)
+        else: throw(TypeError, "Attribute %r: expected type is 'time'. Got: %r" % (converter.attr, val))
+        mcs = converter.round_microseconds_to_precision(val.microsecond, converter.precision)
+        if mcs is not None: val = val.replace(microsecond=mcs)
+        return val
+    def sql2py(converter, val):
+        if not isinstance(val, time): throw(ValueError,
+            'Value of unexpected type received from database: instead of time got %s' % type(val))
+        return val
+
+class TimedeltaConverter(ConverterWithMicroseconds):
+    sql_type_name = 'INTERVAL'
+    def validate(converter, val):
+        if isinstance(val, timedelta): pass
+        elif isinstance(val, basestring): val = str2timedelta(val)
+        else: throw(TypeError, "Attribute %r: expected type is 'timedelta'. Got: %r" % (converter.attr, val))
+        mcs = converter.round_microseconds_to_precision(val.microseconds, converter.precision)
+        if mcs is not None: val = timedelta(val.days, val.seconds, mcs)
+        return val
+    def sql2py(converter, val):
+        if not isinstance(val, timedelta): throw(ValueError,
+            'Value of unexpected type received from database: instead of time got %s' % type(val))
+        return val
+
+class DatetimeConverter(ConverterWithMicroseconds):
+    sql_type_name = 'DATETIME'
+    def validate(converter, val):
+        if isinstance(val, datetime): pass
+        elif isinstance(val, basestring): val = str2datetime(val)
+        else: throw(TypeError, "Attribute %r: expected type is 'datetime'. Got: %r" % (converter.attr, val))
+        mcs = converter.round_microseconds_to_precision(val.microsecond, converter.precision)
+        if mcs is not None: val = val.replace(microsecond=mcs)
+        return val
+    def sql2py(converter, val):
+        if not isinstance(val, datetime): throw(ValueError,
+            'Value of unexpected type received from database: instead of datetime got %s' % type(val))
+        return val
 
 class UuidConverter(Converter):
     def __init__(converter, provider, py_type, attr=None):

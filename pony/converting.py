@@ -4,7 +4,7 @@ from __future__ import absolute_import, print_function
 from pony.py23compat import izip, imap, iteritems, xrange
 
 import re
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 
 from pony.utils import is_ident
 
@@ -185,6 +185,30 @@ def str2datetime(s):
 
     hh, mm, ss, mcs = _extract_time_parts(dict)
     return datetime(int(year), int(month), int(day), hh, mm, ss, mcs)
+
+def str2timedelta(s):
+    if '.' in s:
+        s, fractional = s.split('.')
+        microseconds = int((fractional + '000000')[:6])
+    else: microseconds = 0
+    h, m, s = imap(int, s.split(':'))
+    td = timedelta(hours=abs(h), minutes=m, seconds=s, microseconds=microseconds)
+    return -td if h < 0 else td
+
+def timedelta2str(td):
+    total_seconds = td.days * (24 * 60 * 60) + td.seconds
+    microseconds = td.microseconds
+    if td.days < 0:
+        total_seconds = abs(total_seconds)
+        if microseconds:
+            total_seconds -= 1
+            microseconds = 1000000 - microseconds
+    minutes, seconds = divmod(total_seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if microseconds: result = '%d:%d:%d.%06d' % (hours, minutes, seconds, microseconds)
+    else: result = '%d:%d:%d' % (hours, minutes, seconds)
+    if td.days >= 0: return result
+    return '-' + result
 
 def _extract_time_parts(groupdict):
     hh, mm, ss, am, pm = imap(groupdict.get, ('hh', 'mm', 'ss', 'am', 'pm'))

@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 
 from decimal import Decimal
-from datetime import datetime, date
+from datetime import datetime, date, time, timedelta
 from uuid import UUID
 
 import psycopg2
@@ -76,6 +76,9 @@ class PGRealConverter(dbapiprovider.RealConverter):
 class PGBlobConverter(dbapiprovider.BlobConverter):
     def sql_type(converter):
         return 'BYTEA'
+
+class PGTimedeltaConverter(dbapiprovider.TimedeltaConverter):
+    sql_type_name = 'INTERVAL DAY TO SECOND'
 
 class PGDatetimeConverter(dbapiprovider.DatetimeConverter):
     sql_type_name = 'TIMESTAMP'
@@ -224,6 +227,8 @@ class PGProvider(DBAPIProvider):
         (buffer, PGBlobConverter),
         (datetime, PGDatetimeConverter),
         (date, dbapiprovider.DateConverter),
+        (time, dbapiprovider.TimeConverter),
+        (timedelta, PGTimedeltaConverter),
         (UUID, PGUuidConverter),
     ]
 

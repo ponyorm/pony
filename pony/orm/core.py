@@ -4672,4 +4672,4 @@ def show(entity):
         pprint(x)
 
 special_functions = set([ itertools.count, utils.count, count, random ])
-const_functions = set([ buffer, Decimal, datetime.datetime, datetime.date ])
+const_functions = set([ buffer, Decimal, datetime.datetime, datetime.date, datetime.time, datetime.timedelta ])

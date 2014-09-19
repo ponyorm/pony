@@ -2,11 +2,12 @@
 
 from __future__ import absolute_import, print_function
 
-from datetime import date, datetime
+from datetime import date, time, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
+from time import time as get_time
+
 from pony.orm.core import *
-import time
 
 #db = Database('oracle', 'presentation/pony@localhost')
 #db = Database('postgres', user='presentation', password='pony', host='localhost', database='cyrillic')
@@ -25,11 +26,14 @@ class AllDataTypes(db.Entity):
     float_attr = Required(float)
     decimal_attr = Required(Decimal)
     buffer_attr = Required(buffer)
-    datetime_attr = Required(datetime)
+    datetime_attr = Required(datetime, 6)
     date_attr = Required(date)
+    time_attr = Required(time, 6)
+    timedelta_attr = Required(timedelta, 6)
     uuid_attr = Required(UUID)
 
 sql_debug(True)
+#db.drop_table('alldatatypes', if_exists=True, with_all_data=True)
 db.generate_mapping(create_tables=True)
 sql_debug(False)  # sql_debug(True) can result in long delay due to enormous print
 
@@ -48,6 +52,8 @@ fields = dict(bool1_attr=True,
               buffer_attr=buffer(s),
               datetime_attr=datetime.now(),
               date_attr=date.today(),
+              time_attr=datetime.now().time(),
+              timedelta_attr=timedelta(hours=1, minutes=1, seconds=1, microseconds=3333),
               uuid_attr=uuid4())
 
 with db_session:
@@ -55,16 +61,16 @@ with db_session:
         obj.delete()
     commit()
 
-    t1 = time.time()
+    t1 = get_time()
     e1 = AllDataTypes(**fields)
 
     commit()
 
     rollback()
-    t2 = time.time()
+    t2 = get_time()
 
     e2 = AllDataTypes.select().first()
-    t3 = time.time()
+    t3 = get_time()
 
     for name, value in fields.items():
         value2 = getattr(e2, name)

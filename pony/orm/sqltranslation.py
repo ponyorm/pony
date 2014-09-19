@@ -3,7 +3,7 @@ from pony.py23compat import izip, xrange
 
 import types, sys, re, itertools
 from decimal import Decimal
-from datetime import date, datetime
+from datetime import date, time, datetime, timedelta
 from random import random
 from cPickle import loads, dumps
 from copy import deepcopy
@@ -1125,6 +1125,17 @@ class DateMixin(MonadMixin):
     attr_month = numeric_attr_factory('MONTH')
     attr_day = numeric_attr_factory('DAY')
 
+class TimeMixin(MonadMixin):
+    def mixin_init(monad):
+        assert monad.type is time
+    attr_hour = numeric_attr_factory('HOUR')
+    attr_minute = numeric_attr_factory('MINUTE')
+    attr_second = numeric_attr_factory('SECOND')
+
+class TimedeltaMixin(MonadMixin):
+    def mixin_init(monad):
+        assert monad.type is timedelta
+
 class DatetimeMixin(DateMixin):
     def mixin_init(monad):
         assert monad.type is datetime
@@ -1331,6 +1342,8 @@ class AttrMonad(Monad):
         if type in numeric_types: cls = translator.NumericAttrMonad
         elif type in string_types: cls = translator.StringAttrMonad
         elif type is date: cls = translator.DateAttrMonad
+        elif type is time: cls = translator.TimeAttrMonad
+        elif type is timedelta: cls = translator.TimedeltaAttrMonad
         elif type is datetime: cls = translator.DatetimeAttrMonad
         elif type is buffer: cls = translator.BufferAttrMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectAttrMonad
@@ -1381,6 +1394,8 @@ class ObjectAttrMonad(ObjectMixin, AttrMonad):
 class NumericAttrMonad(NumericMixin, AttrMonad): pass
 class StringAttrMonad(StringMixin, AttrMonad): pass
 class DateAttrMonad(DateMixin, AttrMonad): pass
+class TimeAttrMonad(TimeMixin, AttrMonad): pass
+class TimedeltaAttrMonad(TimedeltaMixin, AttrMonad): pass
 class DatetimeAttrMonad(DatetimeMixin, AttrMonad): pass
 class BufferAttrMonad(BufferMixin, AttrMonad): pass
 
@@ -1391,6 +1406,8 @@ class ParamMonad(Monad):
         if type in numeric_types: cls = translator.NumericParamMonad
         elif type in string_types: cls = translator.StringParamMonad
         elif type is date: cls = translator.DateParamMonad
+        elif type is time: cls = translator.TimeParamMonad
+        elif type is timedelta: cls = translator.TimedeltaParamMonad
         elif type is datetime: cls = translator.DatetimeParamMonad
         elif type is buffer: cls = translator.BufferParamMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectParamMonad
@@ -1429,6 +1446,8 @@ class ObjectParamMonad(ObjectMixin, ParamMonad):
 class StringParamMonad(StringMixin, ParamMonad): pass
 class NumericParamMonad(NumericMixin, ParamMonad): pass
 class DateParamMonad(DateMixin, ParamMonad): pass
+class TimeParamMonad(TimeMixin, ParamMonad): pass
+class TimedeltaParamMonad(TimeMixin, ParamMonad): pass
 class DatetimeParamMonad(DatetimeMixin, ParamMonad): pass
 class BufferParamMonad(BufferMixin, ParamMonad): pass
 
@@ -1438,6 +1457,8 @@ class ExprMonad(Monad):
         if type in numeric_types: cls = translator.NumericExprMonad
         elif type in string_types: cls = translator.StringExprMonad
         elif type is date: cls = translator.DateExprMonad
+        elif type is time: cls = translator.TimeExprMonad
+        elif type is timedelta: cls = translator.TimedeltaExprMonad
         elif type is datetime: cls = translator.DatetimeExprMonad
         else: throw(NotImplementedError, type)  # pragma: no cover
         return cls(translator, type, sql)
@@ -1453,6 +1474,8 @@ class ExprMonad(Monad):
 class StringExprMonad(StringMixin, ExprMonad): pass
 class NumericExprMonad(NumericMixin, ExprMonad): pass
 class DateExprMonad(DateMixin, ExprMonad): pass
+class TimeExprMonad(TimeMixin, ExprMonad): pass
+class TimedeltaExprMonad(TimedeltaMixin, ExprMonad): pass
 class DatetimeExprMonad(DatetimeMixin, ExprMonad): pass
 
 class ConstMonad(Monad):
@@ -1462,6 +1485,8 @@ class ConstMonad(Monad):
         if value_type in numeric_types: cls = translator.NumericConstMonad
         elif value_type in string_types: cls = translator.StringConstMonad
         elif value_type is date: cls = translator.DateConstMonad
+        elif value_type is time: cls = translator.TimeConstMonad
+        elif value_type is timedelta: cls = translator.TimedeltaConstMonad
         elif value_type is datetime: cls = translator.DatetimeConstMonad
         elif value_type is NoneType: cls = translator.NoneMonad
         elif value_type is buffer: cls = translator.BufferConstMonad
@@ -1493,6 +1518,8 @@ class StringConstMonad(StringMixin, ConstMonad):
 
 class NumericConstMonad(NumericMixin, ConstMonad): pass
 class DateConstMonad(DateMixin, ConstMonad): pass
+class TimeConstMonad(TimeMixin, ConstMonad): pass
+class TimedeltaConstMonad(TimedeltaMixin, ConstMonad): pass
 class DatetimeConstMonad(DatetimeMixin, ConstMonad): pass
 
 class BoolMonad(Monad):
@@ -1652,14 +1679,38 @@ class FuncDateMonad(FuncMonad):
     func = date
     def call(monad, year, month, day):
         translator = monad.translator
-        for x, name in izip((year, month, day), ('year', 'month', 'day')):
-            if not isinstance(x, translator.NumericMixin) or x.type is not int: throw(TypeError,
-                "'%s' argument of date(year, month, day) function must be of 'int' type. Got: %r" % (name, type2str(x.type)))
-            if not isinstance(x, translator.ConstMonad): throw(NotImplementedError)
+        for arg, name in izip((year, month, day), ('year', 'month', 'day')):
+            if not isinstance(arg, translator.NumericMixin) or arg.type is not int: throw(TypeError,
+                "'%s' argument of date(year, month, day) function must be of 'int' type. "
+                "Got: %r" % (name, type2str(arg.type)))
+            if not isinstance(arg, ConstMonad): throw(NotImplementedError)
         return translator.ConstMonad.new(translator, date(year.value, month.value, day.value))
     def call_today(monad):
         translator = monad.translator
         return translator.DateExprMonad(translator, date, [ 'TODAY' ])
+
+class FuncTimeMonad(FuncMonad):
+    func = time
+    def call(monad, *args):
+        translator = monad.translator
+        for arg, name in izip(args, ('hour', 'minute', 'second', 'microsecond')):
+            if not isinstance(arg, translator.NumericMixin) or arg.type is not int: throw(TypeError,
+                "'%s' argument of time(...) function must be of 'int' type. Got: %r" % (name, type2str(arg.type)))
+            if not isinstance(arg, ConstMonad): throw(NotImplementedError)
+        return translator.ConstMonad.new(translator, time(*tuple(arg.value for arg in args)))
+
+class FuncTimedeltaMonad(FuncMonad):
+    func = timedelta
+    def call(monad, days=None, seconds=None, microseconds=None, milliseconds=None, minutes=None, hours=None, weeks=None):
+        translator = monad.translator
+        args = days, seconds, microseconds, milliseconds, minutes, hours, weeks
+        for arg, name in izip(args, ('days', 'seconds', 'microseconds', 'milliseconds', 'minutes', 'hours', 'weeks')):
+            if arg is None: continue
+            if not isinstance(arg, translator.NumericMixin) or arg.type is not int: throw(TypeError,
+                "'%s' argument of timedelta(...) function must be of 'int' type. Got: %r" % (name, type2str(arg.type)))
+            if not isinstance(arg, ConstMonad): throw(NotImplementedError)
+        value = timedelta(*(arg.value if arg is not None else 0 for arg in args))
+        return translator.ConstMonad.new(translator, value)
 
 class FuncDatetimeMonad(FuncDateMonad):
     func = datetime
@@ -1670,7 +1721,7 @@ class FuncDatetimeMonad(FuncDateMonad):
             if arg is None: continue
             if not isinstance(arg, translator.NumericMixin) or arg.type is not int: throw(TypeError,
                 "'%s' argument of datetime(...) function must be of 'int' type. Got: %r" % (name, type2str(arg.type)))
-            if not isinstance(arg, translator.ConstMonad): throw(NotImplementedError)
+            if not isinstance(arg, ConstMonad): throw(NotImplementedError)
         value = datetime(*(arg.value if arg is not None else 0 for arg in args))
         return translator.ConstMonad.new(translator, value)
     def call_now(monad):

@@ -4,7 +4,7 @@ from pony.py23compat import imap
 import os.path
 import sqlite3 as sqlite
 from decimal import Decimal
-from datetime import datetime, date
+from datetime import datetime, date, time, timedelta
 from random import random
 from time import strptime
 from uuid import UUID
@@ -93,6 +93,22 @@ class SQLiteDateConverter(dbapiprovider.DateConverter):
     def py2sql(converter, val):
         return val.strftime('%Y-%m-%d')
 
+class SQLiteTimeConverter(dbapiprovider.TimeConverter):
+    def sql2py(converter, val):
+        try:
+            if len(val) <= 8: dt = datetime.strptime(val, '%H:%M:%S')
+            else: dt = datetime.strptime(val, '%H:%M:%S.%f')
+            return dt.time()
+        except: return val
+    def py2sql(converter, val):
+        return val.isoformat()
+
+class SQLiteTimedeltaConverter(dbapiprovider.TimedeltaConverter):
+    def sql2py(converter, val):
+        return timedelta(days=val)
+    def py2sql(converter, val):
+        return val.days + (val.seconds + val.microseconds / 1000000.0) / 86400.0
+
 class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
     def sql2py(converter, val):
         try: return timestamp2datetime(val)
@@ -124,6 +140,8 @@ class SQLiteProvider(DBAPIProvider):
         (buffer, dbapiprovider.BlobConverter),
         (datetime, SQLiteDatetimeConverter),
         (date, SQLiteDateConverter),
+        (time, SQLiteTimeConverter),
+        (timedelta, SQLiteTimedeltaConverter),
         (UUID, dbapiprovider.UuidConverter),
     ]
 
