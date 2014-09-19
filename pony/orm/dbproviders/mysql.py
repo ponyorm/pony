@@ -8,9 +8,22 @@ from uuid import UUID
 import warnings
 warnings.filterwarnings('ignore', '^Table.+already exists$', Warning, '^pony\\.orm\\.dbapiprovider$')
 
-import MySQLdb
-import MySQLdb.converters
-from MySQLdb.constants import FIELD_TYPE, FLAG, CLIENT
+try:
+    import MySQLdb as mysql_module
+except ImportError as e:
+    try:
+        import pymysql as mysql_module
+    except ImportError:
+        raise ImportError('No module named MySQLdb or pymysql found')
+    else:
+        import pymysql.converters as mysql_converters
+        from pymysql.constants import FIELD_TYPE, FLAG, CLIENT
+        mysql_converters.encoders[buffer] = lambda val: mysql_converters.escape_str(str(val))
+        mysql_module_name = 'pymysql'
+else:
+    import MySQLdb.converters as mysql_converters
+    from MySQLdb.constants import FIELD_TYPE, FLAG, CLIENT
+    mysql_module_name = 'MySQLdb'
 
 from pony.orm import core, dbschema, dbapiprovider
 from pony.orm.core import log_orm, log_sql, OperationalError
@@ -94,7 +107,7 @@ class MySQLProvider(DBAPIProvider):
     max_time_precision = default_time_precision = 0
     varchar_default_max_len = 255
 
-    dbapi_module = MySQLdb
+    dbapi_module = mysql_module
     dbschema_cls = MySQLSchema
     translator_cls = MySQLTranslator
     sqlbuilder_cls = MySQLBuilder
@@ -129,20 +142,21 @@ class MySQLProvider(DBAPIProvider):
         provider.default_schema_name = cursor.fetchone()[0]
 
     def should_reconnect(provider, exc):
-        return isinstance(exc, MySQLdb.OperationalError) and exc.args[0] == 2006
+        return isinstance(exc, mysql_module.OperationalError) and exc.args[0] == 2006
 
     def get_pool(provider, *args, **kwargs):
         if 'conv' not in kwargs:
-            conv = MySQLdb.converters.conversions.copy()
-            conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]
+            conv = mysql_converters.conversions.copy()
+            if mysql_module_name == 'MySQLdb':
+                conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]
             conv[FIELD_TYPE.TIMESTAMP] = str2datetime
             conv[FIELD_TYPE.DATETIME] = str2datetime
             conv[FIELD_TYPE.TIME] = str2timedelta
             kwargs['conv'] = conv
         if 'charset' not in kwargs:
             kwargs['charset'] = 'utf8'
-        kwargs['client_flag'] = kwargs.get('client_flag', 0) | CLIENT.FOUND_ROWS 
-        return Pool(MySQLdb, *args, **kwargs)
+        kwargs['client_flag'] = kwargs.get('client_flag', 0) | CLIENT.FOUND_ROWS
+        return Pool(mysql_module, *args, **kwargs)
 
     @wrap_dbapi_exceptions
     def set_transaction_mode(provider, connection, cache):

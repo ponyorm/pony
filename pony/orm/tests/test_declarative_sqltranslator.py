@@ -264,17 +264,14 @@ class TestSQLTranslator(unittest.TestCase):
         self.assert_("ORDER BY" not in db.last_sql.upper())
         objects = q[:] # should not throw exception, query can be reused
         self.assert_(True)
-    def test_lambda(self):
+    def test_select(self):
         result = Student.select(lambda s: s.scholarship > 0)[:]
         self.assertEqual(result, [Student[2], Student[3]])
-    def test_lambda2(self):
+    def test_get(self):
         result = Student.get(lambda s: s.scholarship == 500)
         self.assertEqual(result, Student[3])
-    def test_where(self):
-        result = set(Student.select(lambda s: s.scholarship > 0))
-        self.assertEqual(result, set([Student[2], Student[3]]))
     def test_order_by(self):
-        result = list(Student.order_by(Student.name))
+        result = list(Student.select().order_by(Student.name))
         self.assertEqual(result, [Student[1], Student[2], Student[3]])
     def test_read_inside_query(self):
         result = set(select(s for s in Student if Group[1].dept.number == 44))
@@ -337,7 +334,7 @@ class TestSQLTranslator(unittest.TestCase):
         x = Student[1], Student[2]
         result = set(select(s for s in Student if s not in x))
         self.assertEqual(result, set([Student[3]]))
-    @raises_exception(TypeError, "Expression 'x' should not contain None values")        
+    @raises_exception(TypeError, "Expression `x` should not contain None values")        
     def test_tuple_param_2(self):
         x = Student[1], None
         result = set(select(s for s in Student if s not in x))

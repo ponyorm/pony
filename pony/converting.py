@@ -3,7 +3,8 @@
 from __future__ import absolute_import, print_function
 from pony.py23compat import izip, imap, iteritems, xrange
 
-import re, datetime
+import re
+from datetime import datetime, date, time
 
 from pony.utils import is_ident
 
@@ -109,10 +110,28 @@ date_str_list = [
     ]
 date_re_list = [ re.compile('^%s$'%s, re.UNICODE) for s in date_str_list ]
 
-time_str = r'(?P<hh>\d{1,2})(?:[:. ](?P<mm>\d{1,2})(?:[:. ](?P<ss>\d{1,2}))?)?\s*(?P<ampm>[ap][m])?'
-time_re = re.compile('^%s$'%time_str)
+time_str = r'''
+    (?P<hh>\d{1,2})  # hours
+    (?: \s* [hu] \s* )?  # optional hours suffix
+    (?:
+        (?: (?<=\d)[:. ] | (?<!\d) )  # separator between hours and minutes
+        (?P<mm>\d{1,2})  # minutes
+        (?: (?: \s* m(?:in)? | ' ) \s* )?  # optional minutes suffix
+        (?:
+            (?: (?<=\d)[:. ] | (?<!\d) )  # separator between minutes and seconds
+            (?P<ss>\d{1,2}(?:\.\d{1,6})?)  # seconds with optional microseconds
+            \s*
+            (?: (?: s(?:ec)? | " ) \s* )?  # optional seconds suffix
+        )?
+    )?
+    (?:  # optional A.M./P.M. part
+        \s* (?: (?P<am> a\.?m\.? ) | (?P<pm> p\.?m\.? ) )
+    )?
+'''
+time_re = re.compile('^%s$'%time_str, re.VERBOSE)
 
-datetime_re_list = [ re.compile('^%s(?:[t ]%s)?$' % (date_str, time_str), re.UNICODE) for date_str in date_str_list ]
+datetime_re_list = [ re.compile('^%s(?:[t ]%s)?$' % (date_str, time_str), re.UNICODE | re.VERBOSE)
+                     for date_str in date_str_list ]
 
 month_lists = [
     "jan feb mar apr may jun jul aug sep oct nov dec".split(),
@@ -140,15 +159,14 @@ def str2date(s):
         for key, value in iteritems(month_dict):
             if key in s: month = value; break
         else: raise ValueError('Unrecognized date format')
-    return datetime.date(int(year), int(month), int(day))
+    return date(int(year), int(month), int(day))
 
 def str2time(s):
     s = s.strip().lower()
     match = time_re.match(s)
     if match is None: raise ValueError('Unrecognized time format')
-    hh, mm, ss, ampm = match.groups()
-    if ampm == 'pm': hh = int(hh) + 12
-    return datetime.time(int(hh), int(mm or 0), int(ss or 0))
+    hh, mm, ss, mcs = _extract_time_parts(match.groupdict())
+    return time(hh, mm, ss, mcs)
 
 def str2datetime(s):
     s = s.strip().lower()
@@ -156,18 +174,31 @@ def str2datetime(s):
         match = datetime_re.match(s)
         if match is not None: break
     else: raise ValueError('Unrecognized datetime format')
+
     dict = match.groupdict()
-    year = dict['year']
-    day = dict['day']
-    month = dict.get('month')
+    year, day, month = dict['year'], dict['day'], dict.get('month')
+
     if month is None:
         for key, value in iteritems(month_dict):
             if key in s: month = value; break
         else: raise ValueError('Unrecognized datetime format')
-    hh, mm, ss = dict.get('hh'), dict.get('mm'), dict.get('ss')
+
+    hh, mm, ss, mcs = _extract_time_parts(dict)
+    return datetime(int(year), int(month), int(day), hh, mm, ss, mcs)
+
+def _extract_time_parts(groupdict):
+    hh, mm, ss, am, pm = imap(groupdict.get, ('hh', 'mm', 'ss', 'am', 'pm'))
+
     if hh is None: hh, mm, ss = 12, 00, 00
-    elif dict.get('ampm') == 'pm': hh = int(hh) + 12
-    return datetime.datetime(int(year), int(month), int(day), int(hh), int(mm or 0), int(ss or 0))
+    elif am and hh == '12': hh = 0
+    elif pm and hh != '12': hh = int(hh) + 12
+    
+    if ss is not None and '.' in ss:
+        ss, mcs = ss.split('.', 1)
+        if len('mcs') < 6: mcs = (mcs + '000000')[:6]
+    else: mcs = 0
+
+    return int(hh), int(mm or 0), int(ss or 0), int(mcs)
 
 converters = {
     int:  (int, unicode, 'Incorrect number'),
@@ -179,9 +210,9 @@ converters = {
     'ISBN': (check_isbn, unicode, 'Incorrect ISBN'),
     'email': (check_email, unicode, 'Incorrect e-mail address'),
     'rfc2822_email': (check_rfc2822_email, unicode, 'Must be correct e-mail address'),
-    datetime.date: (str2date, unicode, 'Must be correct date (mm/dd/yyyy or dd.mm.yyyy)'),
-    datetime.time: (str2time, unicode, 'Must be correct time (hh:mm or hh:mm:ss)'),
-    datetime.datetime: (str2datetime, unicode, 'Must be correct date & time'),
+    date: (str2date, unicode, 'Must be correct date (mm/dd/yyyy or dd.mm.yyyy)'),
+    time: (str2time, unicode, 'Must be correct time (hh:mm or hh:mm:ss)'),
+    datetime: (str2datetime, unicode, 'Must be correct date & time'),
     }
 
 def str2py(value, type):

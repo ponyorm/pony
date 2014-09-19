@@ -1,138 +1,294 @@
 ﻿Queries
 ===============
 
-Pony provides a very convenient way to query the database using the generator expression syntax.
+Pony provides a very convenient way to query the database using the generator expression syntax. Pony allows programmers working with objects, which are stored in the database the same way as if they were stored in memory, using the native Python syntax. It makes development easier.
 
-Pony ORM top level functions used to query the database
+Pony ORM functions used to query the database
 --------------------------------------------------------------------
 
 .. py:function:: select(gen)
 
-   Returns an instance of the :py:class:`Query` object. If necessary, you can apply any :py:class:`Query` method to the result, e.g. :py:meth:`Query.order_by` or :py:meth:`Query.count`. If you just need to get a list of objects you can either iterate over the result or get a full slice::
+   This function translates the generator expression into SQL query and returns an instance of the :py:class:`Query` class. If necessary, you can apply any :py:class:`Query` method to the result, e.g. :py:meth:`Query.order_by` or :py:meth:`Query.count`. If you just need to get a list of objects you can either iterate over the result or get a full slice::
 
        for p in select(p for p in Product):
-           ...
+           print p.name, p.price
 
        prod_list = select(p for p in Product)[:]
 
-   The ``select()`` function can return a list of single elements or a list of tuples::
+   The ``select()`` function can also return a list of single attributes or a list of tuples::
 
-       select(p for p in Product)
-       select((p1, p2) for p1 in Product for p2 in Product if p1.name == p2.name and p1 != p2)
+       select(p.name for p in Product)
+
+       select((p1, p2) for p1 in Product
+                       for p2 in Product if p1.name == p2.name and p1 != p2)
+
        select((p.name, count(p.orders)) for p in Product)
 
 .. py:function:: get(gen)
 
+   Extracts one entity instance from the database. The function returns the object if an object with the specified parameters exists, or ``None`` if there is no such object. If there are more than one objects with the specified parameters, raises the ``MultipleObjectsFoundError: Multiple objects were found. Use select(...) to retrieve them`` exception. Example::
+
+       get(o for o in Order if o.id == 123)
+
+   The equivalent query can be generated using the :py:meth:`Query.get` method::
+
+       select(o for o in Order if o.id == 123).get()
+
 .. py:function:: left_join(gen)
+
+      The results of left join always contain the result from the 'left' table, even if the join condition doesn't find any matching record in the 'right' table.
+
+      Let's say we need to calculate the amount of orders for each customer. Let's use the example which comes with Pony distribution and write the following query:
+
+      .. code-block:: python
+
+          from pony.orm.examples.estore import *
+          populate_database()
+
+          select((c, count(o)) for c in Customer for o in c.orders)[:]
+
+      It will be translated to the following SQL:
+
+      .. code-block:: sql
+
+          SELECT "c"."id", COUNT(DISTINCT "o"."id")
+          FROM "Customer" "c", "Order" "o"
+          WHERE "c"."id" = "o"."customer"
+          GROUP BY "c"."id"
+
+      And return the following result::
+
+          [(Customer[1], 2), (Customer[2], 1), (Customer[3], 1), (Customer[4], 1)]
+
+      But if there are customers that have no orders, they will not be selected by this query, because the condition ``WHERE "c"."id" = "o"."customer"`` doesn't find any matching record in the Order table. In order to get the list of all customers, we should use the ``left_join`` function:
+
+      .. code-block:: python
+
+          left_join((c, count(o)) for c in Customer for o in c.orders)[:]
+
+      .. code-block:: sql
+
+          SELECT "c"."id", COUNT(DISTINCT "o"."id")
+          FROM "Customer" "c"
+            LEFT JOIN "Order" "o"
+              ON "c"."id" = "o"."customer"
+          GROUP BY "c"."id"
+
+      Now we will get the list of all customers with the number of order equal to zero for customers which have no orders::
+
+          [(Customer[1], 2), (Customer[2], 1), (Customer[3], 1), (Customer[4], 1), (Customer[5], 0)]
+
+      We should mention that in most cases Pony can understand where LEFT JOIN is needed. For example, the same query can be written this way:
+
+      .. code-block:: python
+
+          select((c, count(c.orders)) for c in Customer)[:]
+
+      .. code-block:: sql
+
+          SELECT "c"."id", COUNT(DISTINCT "order-1"."id")
+          FROM "Customer" "c"
+            LEFT JOIN "Order" "order-1"
+              ON "c"."id" = "order-1"."customer"
+          GROUP BY "c"."id"
+
 
 .. py:function:: count(gen)
 
+      Returns the number of objects that match the query condition. Example:
+
+      .. code-block:: python
+
+          count(c for c in Customer if len(c.orders) > 2)
+
+      This query will be translated to the following SQL:
+
+      .. code-block:: sql
+
+          SELECT COUNT(*)
+          FROM "Customer" "c"
+            LEFT JOIN "Order" "order-1"
+              ON "c"."id" = "order-1"."customer"
+          GROUP BY "c"."id"
+          HAVING COUNT(DISTINCT "order-1"."id") > 2
+
+      The equivalent query can be generated using the :py:meth:`Query.count` method::
+
+          select(c for c in Customer if len(c.orders) > 2).count()
+
+
 .. py:function:: min(gen)
+
+   Returns the minimum value from the database. The query should return a single attribute::
+
+       min(p.price for p in Product)
+
+   The equivalent query can be generated using the :py:meth:`Query.min` method::
+
+       select(p.price for p in Product).min()
+
 
 .. py:function:: max(gen)
 
+   Returns the maximum value from the database. The query should return a single attribute::
+
+       max(o.date_shipped for o in Order)
+
+   The equivalent query can be generated using the :py:meth:`Query.max` method::
+
+       select(o.date_shipped for o in Order).max()
+
+
 .. py:function:: sum(gen)
+
+   Returns the sum of all values selected from the database::
+
+       sum(o.total_price for o in Order)
+
+   The equivalent query can be generated using the :py:meth:`Query.sum` method::
+
+       select(o.total_price for o in Order).sum()
+
+   If the query returns no items, the ``sum()`` method returns 0.
+
 
 .. py:function:: avg(gen)
 
+   Returns the average value for all selected attributes::
+
+       avg(o.total_price for o in Order)
+
+   The equivalent query can be generated using the :py:meth:`Query.avg` method::
+
+       select(o.total_price for o in Order).avg()
+
+
 .. py:function:: exists(gen)
 
+   Returns ``True`` if al least one instance with the specified condition exists and ``False`` otherwise::
 
-Entity class methods
-----------------------
-
-.. class:: Entity
-
-   .. py:method:: []
-
-   .. py:method:: describe()
-
-   .. py:method:: drop_table(with_all_data=False)
-
-   .. py:method:: exists(lambda)
-                  exists(**kwargs)
-
-   .. py:method:: get(lambda)
-                  get(**kwargs)
-
-   .. py:method:: get_by_sql(sql, globals=None, locals=None)
-
-   .. py:method:: get_for_update(lambda)
-                  get_for_update(**kwargs)
-
-   .. py:method:: order_by(pos1 [, pos2, ...])
-                  order_by(attr1 [, attr2, ...])
-                  order_by(lambda)
-                  order_by(str)
-
-   .. py:method:: select(lambda)
-
-   .. py:method:: select_by_sql(sql, globals=None, locals=None)
-
-   .. py:method:: select_random(limit)
-
-      Select the ``limit`` random objects. This method uses the algorithm that can be much more effective than using ``ORDER BY RANDOM()`` SQL construct. The method uses the following algorithm:
-
-      1. Determine max id from the table.
-
-      2. Generate random ids in the range (0, max_id]
-
-      3. Retrieve objects by those random ids. If an object with generated id does not exist (e.g. it was deleted), then select another random id and retry.
-
-      Repeat the steps 2-3 as many times as necessary to retrieve the specified amount of objects.
-
-      This algorithm doesn't affect performance even when working with a large number of table rows. However this method also has some limitations:
-
-      * The primary key must be a sequential id of an integer type.
-
-      * The number of "gaps" between existing ids (the count of deleted objects) should be relatively small.
-
-      The ``select_random()`` method can be used if your query does not have any criteria to select specific objects. If such criteria is necessary, then you can use the ``random()`` method of the Query object.
+       exists(o for o in Order if o.date_delivered is None)
 
 
-Entity instance methods
-----------------------------
+.. py:function:: distinct(gen)
 
-.. py:method:: delete()
+   When you need to force DISTINCT in a query, it can be done using the distinct() function::
 
-   Deletes the object. The object will be marked as deleted and will be deleted from the database on the operation ``flush()`` which is issued automatically on committing the current transaction, exiting from the most outer ``db_session`` or before sending next query to the database.
+       distinct(o.date_shipped for o in Order)
 
-.. py:method:: set(**kwargs)
+   But usually this is not necessary, because Pony adds DISTINCT keyword automatically in an intelligent way.
 
-   Assign new values to several object attributes at once::
+   Another usage of distinct() function is with the sum() aggregate function - you can write::
 
-       Customer[123].set(email='new@example.com', address='New address')
+       select(sum(distinct(x.val)) for x in X)
 
-   This method also can be convenient when you want to assign new values from a dictionary::
+   to generate the following SQL:
 
-       d = {'email': 'new@example.com', 'address': 'New address'}
-       Customer[123].set(**d)
+   .. code-block:: sql
 
+       SELECT SUM(DISTINCT x.val)
+       FROM X x
 
-Entity instance hooks
------------------------------------
-
-.. py:method:: before_insert
-
-.. py:method:: before_update
-
-.. py:method:: before_delete
+   but it is rarely used in practice.
 
 
-Query methods
--------------------
+.. py:function:: desc()
+                 desc(attribute)
+
+   This function is used inside :py:meth:`Query.order_by` for ordering in descending order.
+
+.. _query_object_ref:
+
+Query object methods
+--------------------------
 
 .. class:: Query
 
-   .. py:method:: []
+   .. py:method:: [start:end]
+                  limit(limit, offset=None)
+
+      This method is used for limiting the number of instances selected from the database. In the example below we select the first ten instances::
+
+          select(c for c in Customer).order_by(Customer.name).limit(10)
+
+      Generates the following SQL:
+
+      .. code-block:: sql
+
+          SELECT "c"."id", "c"."email", "c"."password", "c"."name", "c"."country", "c"."address"
+          FROM "Customer" "c"
+          ORDER BY "c"."name"
+          LIMIT 10
+
+      The same effect can be reached using the Python slice operator::
+
+          select(c for c in Customer).order_by(Customer.name)[:10]
+
+      If we need select instances with offset, we should use the second parameter::
+
+          select(c for c in Customer).order_by(Customer.name).limit(10, 20)
+
+      Or using the slice operator::
+
+          select(c for c in Customer).order_by(Customer.name)[20:30]
+
+      It generates the following SQL:
+
+      .. code-block:: sql
+
+          SELECT "c"."id", "c"."email", "c"."password", "c"."name", "c"."country", "c"."address"
+          FROM "Customer" "c"
+          ORDER BY "c"."name"
+          LIMIT 10 OFFSET 20
+
+      Also you can use the :py:meth:`page()<Query.page>` method for the same purpose.
 
    .. py:method:: avg()
 
+      Returns the average value for all selected attributes::
+
+          select(o.total_price for o in Order).avg()
+
+      The function :py:func:`avg` does a similar thing.
+
+
    .. py:method:: count()
+
+      Returns the number of objects that match the query condition::
+
+          select(c for c in Customer if len(c.orders) > 2).count()
+
+      The function :py:func:`count` does a similar thing.
+
 
    .. py:method:: distinct()
 
+      Forces DISTINCT in a query::
+
+          select(c.name for c in Customer).distinct()
+
+      But usually this is not necessary, because Pony adds DISTINCT keyword automatically in an intelligent way.
+      The function :py:func:`distinct` does a similar thing.
+
+
    .. py:method:: exists()
+
+      Returns ``True`` if at least one instance with the specified condition exists and ``False`` otherwise::
+
+          select(c for c in Customer if len(c.cart_items) > 10).exists()
+
+      This query generates the following SQL:
+
+      .. code-block:: sql
+
+          SELECT "c"."id"
+          FROM "Customer" "c"
+            LEFT JOIN "CartItem" "cartitem-1"
+              ON "c"."id" = "cartitem-1"."customer"
+          GROUP BY "c"."id"
+          HAVING COUNT(DISTINCT "cartitem-1"."id") > 20
+          LIMIT 1
+
 
    .. py:method:: filter(lambda)
                   filter(str)
@@ -163,43 +319,154 @@ Query methods
 
    .. py:method:: first()
 
+      Returns the first element from the selected results or ``None`` if no objects were found::
+
+          select(p for p in Product if p.price > 100).first()
+
+
    .. py:method:: for_update(nowait=False)
+
+      Sometimes there is a need to lock objects in the database in order to prevent other transactions from modifying the same instances simultaneously. Within the database such lock should be done using the SELECT FOR UPDATE query. In order to generate such a lock using Pony you can call the ``for_update`` method::
+
+          select(p for p in Product if p.picture is None).for_update()[:]
+
+      This query selects all instances of Product without picture and locks the corresponding rows in the database. The lock will be released upon commit or rollback of current transaction.
+
 
    .. py:method:: get()
 
-   .. py:method:: limit(limit, offset=None)
+      Extracts one entity instance from the database. The function returns the object if an object with the specified parameters exists, or ``None`` if there is no such object. If there are more than one objects with the specified parameters, raises the ``MultipleObjectsFoundError: Multiple objects were found. Use select(...) to retrieve them`` exception. Example::
+
+          select(o for o in Order if o.id == 123).get()
+
+      The function :py:func:`get` does a similar thing.
+
 
    .. py:method:: max()
 
+      Returns the maximum value from the database. The query should return a single attribute::
+
+          select(o.date_shipped for o in Order).max()
+
+      The function :py:func:`max` does a similar thing.
+
+
    .. py:method:: min()
 
-   .. py:method:: order_by(pos1 [, pos2, ...])
-                  order_by(attr1 [, attr2, ...])
+      Returns the minimum value from the database. The query should return a single attribute::
+
+          select(p.price for p in Product).min()
+
+      The function :py:func:`min` does a similar thing.
+
+
+   .. py:method:: order_by(attr1 [, attr2, ...])
+                  order_by(pos1 [, pos2, ...])
                   order_by(lambda)
                   order_by(str)
 
+      This method is used for ordering the results of a query. There are several options options available:
+
+      * Using entity attributes
+
+      .. code-block:: python
+
+          select(o for o in Order).order_by(Order.customer, Order.date_created)
+
+      For ordering in the descending order, use the function ``desc()`` or the method ``desc()`` of any attribute::
+
+          select(o for o in Order).order_by(Order.date_created.desc())
+
+      Which is similar to::
+
+          select(o for o in Order).order_by(desc(Order.date_created))
+
+      * Using position of query result variables
+
+      .. code-block:: python
+
+          select((o.customer.name, o.total_price) for o in Order).order_by(-2, 1)
+
+      Minus means sorting in the descending order. In this example we sort the result by the total price in the descending order and by the customer name in the ascending order.
+
+      * Using lambda
+
+      .. code-block:: python
+
+          select(o for o in Order).order_by(lambda o: (o.customer.name, o.date_shipped))
+
+      If the lambda has a parameter (``o`` in our example) then ``o`` represents the result of the ``select`` and will be applied to it. If you specify the lambda without a parameter, then inside lambda you have access to all names defined inside the query::
+
+          select(o.total_price for o in Order).order_by(lambda: o.customer.id)
+
+      * Using a string
+
+      This approach is similar to the previous one, but you specify the body of a lambda as a string:
+
+      .. code-block:: python
+
+          select(o for o in Order).order_by("o.customer.name, o.date_shipped")
+
    .. py:method:: page(pagenum, pagesize=10)
 
-      Pagination is used when you need to display results of a query divided into multiple pages. The page number starts with 1. This method returns a slice [start:stop] where ``start = (pagenum - 1) * pagesize``, ``stop = pagenum * pagesize``.
+      Pagination is used when you need to display results of a query divided into multiple pages. The page numbering starts with page 1. This method returns a slice [start:stop] where ``start = (pagenum - 1) * pagesize``, ``stop = pagenum * pagesize``.
+
 
    .. py:method:: random(limit)
 
-      Select the ``limit`` random objects from the database. This method will be translated using the ``ORDER BY RANDOM()`` SQL expression. The entity class method ``select_random()`` provides better performance, although doesn't allow to specify query conditions.
+      Selects the ``limit`` random objects from the database. This method will be translated using the ``ORDER BY RANDOM()`` SQL expression. The entity class method ``select_random()`` provides better performance, although doesn't allow to specify query conditions.
+
 
    .. py:method:: show()
 
-   Print the results of a query to the console. The result is formatted in the form of a table. This method doesn't display attributes to-many because it would require additional query to the database and could be bulky.
+      Prints the results of a query to the console. The result is formatted in the form of a table. This method doesn't display attributes to-many because it would require additional query to the database and could be bulky.
+
 
    .. py:method:: sum()
 
-   Return the sum of all selected items. Can be applied to the queries which return a single numeric expression only. Example::
+      Return the sum of all selected items. Can be applied to the queries which return a single numeric expression only. Example::
 
-   select(o.total_price for o in Order).sum()
+       select(o.total_price for o in Order).sum()
 
-   If the query returns no items, the ``sum()`` method returns 0.
+      If the query returns no items, the query result will be 0.
 
 
-Functions which can be used inside of the Query
+
+
+Functions which can be used inside Query
 ----------------------------------------------------------------
 
+Here is the list of functions that can be used inside a generator query:
+
 min, max, avg, sum, count, len, concat, abs, random, select, exists
+
+
+
+Examples:
+
+.. code-block:: python
+
+    select(avg(c.orders.total_price) for c in Customer)[:]
+
+.. code-block:: sql
+
+    SELECT AVG("order-1"."total_price")
+    FROM "Customer" "c"
+      LEFT JOIN "Order" "order-1"
+        ON "c"."id" = "order-1"."customer"
+
+.. code-block:: python
+
+    select(o for o in Order if o.customer in
+           select(c for c in Customer if c.name.startswith('A')))[:]
+
+.. code-block:: sql
+
+    SELECT "o"."id", "o"."state", "o"."date_created", "o"."date_shipped",
+           "o"."date_delivered", "o"."total_price", "o"."customer"
+    FROM "Order" "o"
+    WHERE "o"."customer" IN (
+        SELECT "c"."id"
+        FROM "Customer" "c"
+        WHERE "c"."name" LIKE 'A%'
+        )

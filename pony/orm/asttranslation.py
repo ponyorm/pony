@@ -203,22 +203,29 @@ class PythonTranslator(ASTTranslator):
 nonexternalizable_types = (ast.Keyword, ast.Sliceobj, ast.List, ast.Tuple)
 
 class PreTranslator(ASTTranslator):
-    def __init__(translator, tree, additional_internal_names=()):
+    def __init__(translator, tree, globals, locals,
+                 special_functions, const_functions, additional_internal_names=()):
         ASTTranslator.__init__(translator, tree)
-        translator.additional_internal_names = additional_internal_names
+        translator.globals = globals
+        translator.locals = locals
+        translator.special_functions = special_functions
+        translator.const_functions = const_functions
         translator.contexts = []
+        if additional_internal_names:
+            translator.contexts.append(additional_internal_names)
         translator.externals = externals = set()
         translator.dispatch(tree)
         for node in externals.copy():
-            if isinstance(node, nonexternalizable_types):
+            if isinstance(node, nonexternalizable_types) \
+            or node.constant and not isinstance(node, ast.Const):
                 node.external = False
                 externals.remove(node)
-                externals.update(node.getChildNodes())
+                externals.update(node for node in node.getChildNodes() if node.external and not node.constant)
     def dispatch(translator, node):
-        node.external = node.constant = False
+        node.external = node.constant = None
         ASTTranslator.dispatch(translator, node)
         childs = node.getChildNodes()
-        if childs and all(getattr(child, 'external', False) for child in childs):
+        if node.external is None and childs and all(getattr(child, 'external', False) for child in childs):
             node.external = True
         if node.external and not node.constant:
             externals = translator.externals
@@ -249,17 +256,40 @@ class PreTranslator(ASTTranslator):
         name = node.name
         for context in translator.contexts:
             if name in context: return
-        if name in ('count', 'random'): return
-        node.external = name not in translator.additional_internal_names
+        node.external = True
     def postConst(translator, node):
         node.external = node.constant = True
+    def postKeyword(translator, node):
+        node.constant = node.expr.constant
+    def postCallFunc(translator, node):
+        func_node = node.node
+        if not func_node.external: return
+        attrs = []
+        while isinstance(func_node, ast.Getattr):
+            attrs.append(func_node.attrname)
+            func_node = func_node.expr
+        if not isinstance(func_node, ast.Name): return
+        attrs.append(func_node.name)
+        expr = '.'.join(reversed(attrs))
+        x = eval(expr, translator.globals, translator.locals)
+        try: hash(x)
+        except TypeError: x = None
+        if x in translator.special_functions: node.external = False
+        elif x in translator.const_functions:
+            for arg in node.args:
+                if not arg.constant: return
+            if node.star_args is not None and not node.star_args.constant: return
+            if node.dstar_args is not None and not node.dstar_args.constant: return
+            node.constant = True
 
 extractors_cache = {}
 
-def create_extractors(code_key, tree, filter_num, additional_internal_names=()):
+def create_extractors(code_key, tree, filter_num, globals, locals,
+                      special_functions, const_functions, additional_internal_names=()):
     result = extractors_cache.get(code_key)
     if result is None:
-        pretranslator = PreTranslator(tree, additional_internal_names)
+        pretranslator = PreTranslator(
+            tree, globals, locals, special_functions, const_functions, additional_internal_names)
         extractors = {}
         for node in pretranslator.externals:
             src = node.src = ast2src(node)

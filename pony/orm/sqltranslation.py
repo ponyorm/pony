@@ -1,8 +1,7 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import izip, xrange
 
-import types, sys, re
-from itertools import count
+import types, sys, re, itertools
 from decimal import Decimal
 from datetime import date, datetime
 from random import random
@@ -12,8 +11,8 @@ from functools import update_wrapper
 
 from pony.thirdparty.compiler import ast
 
-from pony import options
-from pony.utils import avg, distinct, is_ident, throw, concat
+from pony import options, utils
+from pony.utils import is_ident, throw, concat
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
     string_types, numeric_types, comparable_types, SetType, FuncType, MethodType, \
@@ -88,9 +87,9 @@ class SQLTranslator(ASTTranslator):
             else: throw(NotImplementedError)  # pragma: no cover
         elif tt is FuncType:
             func = t.func
-            if func not in translator.special_functions:
-                throw(TypeError, 'Function %r cannot be used inside query' % func.__name__)
-            func_monad_class = special_functions[func]
+            func_monad_class = translator.special_functions.get(func)
+            if func_monad_class is None: throw(TypeError,
+                'Function %r cannot be used inside query' % func.__name__)
             monad = func_monad_class(translator)
         elif tt is MethodType:
             obj, func = t.obj, t.func
@@ -105,7 +104,7 @@ class SQLTranslator(ASTTranslator):
             params = []
             for i, item_type in enumerate(t):
                 if item_type is NoneType:
-                    throw(TypeError, 'Expression %r should not contain None values' % node.src)
+                    throw(TypeError, 'Expression `%s` should not contain None values' % node.src)
                 param = ParamMonad.new(translator, item_type, (varkey, i, None))
                 params.append(param)
             monad = translator.ListMonad(translator, params)
@@ -501,7 +500,7 @@ class SQLTranslator(ASTTranslator):
                 desc_wrapper = lambda column: column
             else: assert False, x  # pragma: no cover
             if entity._adict_.get(attr.name) is not attr: throw(TypeError,
-                'Attribute %s does not belong to Entity %s' % (attr, entity.__name__))
+                'Attribute %s does not belong to entity %s' % (attr, entity.__name__))
             if attr.is_collection: throw(TypeError,
                 'Collection attribute %s cannot be used for ordering' % attr)
             for column in attr.columns:
@@ -610,12 +609,7 @@ class SQLTranslator(ASTTranslator):
         tableref = translator.subquery.get_tableref(name)
         if tableref is not None:
             return translator.ObjectIterMonad(translator, tableref, tableref.entity)
-        elif name == 'random':
-            translator.query_result_is_cacheable = False
-            return translator.RandomMonad(translator)
-        elif name == 'count':
-            return translator.FuncCountMonad(translator)
-        else: assert False
+        else: assert False, name
     def postAdd(translator, node):
         return node.left.monad + node.right.monad
     def postSub(translator, node):
@@ -749,7 +743,7 @@ class Subquery(object):
         subquery.tablerefs = {}
         if parent_subquery is None:
             subquery.alias_counters = {}
-            subquery.expr_counter = count(1)
+            subquery.expr_counter = itertools.count(1)
         else:
             subquery.alias_counters = parent_subquery.alias_counters.copy()
             subquery.expr_counter = parent_subquery.expr_counter
@@ -1116,7 +1110,7 @@ class NumericMixin(MonadMixin):
         translator = monad.translator
         return translator.CmpMonad('==', monad, translator.ConstMonad.new(translator, 0))
 
-def datetime_attr_factory(name):
+def numeric_attr_factory(name):
     def attr_func(monad):
         sql = [ name, monad.getsql()[0] ]
         translator = monad.translator
@@ -1127,9 +1121,9 @@ def datetime_attr_factory(name):
 class DateMixin(MonadMixin):
     def mixin_init(monad):
         assert monad.type is date
-    attr_year = datetime_attr_factory('YEAR')
-    attr_month = datetime_attr_factory('MONTH')
-    attr_day = datetime_attr_factory('DAY')
+    attr_year = numeric_attr_factory('YEAR')
+    attr_month = numeric_attr_factory('MONTH')
+    attr_day = numeric_attr_factory('DAY')
 
 class DatetimeMixin(DateMixin):
     def mixin_init(monad):
@@ -1138,9 +1132,9 @@ class DatetimeMixin(DateMixin):
         translator = monad.translator
         sql = [ 'DATE', monad.getsql()[0] ]
         return translator.ExprMonad.new(translator, date, sql)
-    attr_hour = datetime_attr_factory('HOUR')
-    attr_minute = datetime_attr_factory('MINUTE')
-    attr_second = datetime_attr_factory('SECOND')
+    attr_hour = numeric_attr_factory('HOUR')
+    attr_minute = numeric_attr_factory('MINUTE')
+    attr_second = numeric_attr_factory('SECOND')
 
 def make_string_binop(op, sqlop):
     def string_binop(monad, monad2):
@@ -1669,13 +1663,16 @@ class FuncDateMonad(FuncMonad):
 
 class FuncDatetimeMonad(FuncDateMonad):
     func = datetime
-    def call(monad, *args):
+    def call(monad, year, month, day, hour=None, minute=None, second=None, microsecond=None):
+        args = year, month, day, hour, minute, second, microsecond
         translator = monad.translator
-        for x, name in izip(args, ('year', 'month', 'day', 'hour', 'minute', 'second', 'microsecond')):
-            if not isinstance(x, translator.NumericMixin) or x.type is not int: throw(TypeError,
-                "'%s' argument of datetime(...) function must be of 'int' type. Got: %r" % (name, type2str(x.type)))
-            if not isinstance(x, translator.ConstMonad): throw(NotImplementedError)
-        return translator.ConstMonad.new(translator, datetime(*tuple(arg.value for arg in args)))
+        for arg, name in izip(args, ('year', 'month', 'day', 'hour', 'minute', 'second', 'microsecond')):
+            if arg is None: continue
+            if not isinstance(arg, translator.NumericMixin) or arg.type is not int: throw(TypeError,
+                "'%s' argument of datetime(...) function must be of 'int' type. Got: %r" % (name, type2str(arg.type)))
+            if not isinstance(arg, translator.ConstMonad): throw(NotImplementedError)
+        value = datetime(*(arg.value if arg is not None else 0 for arg in args))
+        return translator.ConstMonad.new(translator, value)
     def call_now(monad):
         translator = monad.translator
         return translator.DatetimeExprMonad(translator, datetime, [ 'NOW' ])
@@ -1704,7 +1701,7 @@ class FuncLenMonad(FuncMonad):
         return x.len()
 
 class FuncCountMonad(FuncMonad):
-    func = count, core.count
+    func = itertools.count, utils.count, core.count
     def call(monad, x=None):
         translator = monad.translator
         if isinstance(x, translator.StringConstMonad) and x.value == '*': x = None
@@ -1724,12 +1721,12 @@ class FuncSumMonad(FuncMonad):
         return x.aggregate('SUM')
 
 class FuncAvgMonad(FuncMonad):
-    func = avg, core.avg
+    func = utils.avg, core.avg
     def call(monad, x):
         return x.aggregate('AVG')
 
 class FuncDistinctMonad(FuncMonad):
-    func = distinct, core.distinct
+    func = utils.distinct, core.distinct
     def call(monad, x):
         if isinstance(x, SetMixin): return x.call_distinct()
         if not isinstance(x, NumericMixin): throw(TypeError)
@@ -1811,14 +1808,13 @@ class JoinMonad(Monad):
         return x
 special_functions[JOIN] = JoinMonad
 
-class RandomMonad(Monad):
+class FuncRandomMonad(FuncMonad):
+    func = random
     def __init__(monad, translator):
-        Monad.__init__(monad, translator, '<function>')
+        FuncMonad.__init__(monad, translator)
+        translator.query_result_is_cacheable = False
     def __call__(monad):
         return NumericExprMonad(monad.translator, float, [ 'RANDOM' ])
-    def getattr(monad, attrname):
-        if attrname == 'random': return RandomMonad(monad.translator)
-        return Monad.getattr(monad, attrname)
 
 class SetMixin(MonadMixin):
     forced_distinct = False

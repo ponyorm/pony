@@ -65,7 +65,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     def test4(self):
         args = 'abc'
         select(s for s in Student if s.name.upper(*args))
-    @raises_exception(TypeError, "Expression {'a':'b', 'c':'d'} has unsupported type 'dict'")
+    @raises_exception(TypeError, "Expression `{'a':'b', 'c':'d'}` has unsupported type 'dict'")
     def test5(self):
         select(s for s in Student if s.name.upper(**{'a':'b', 'c':'d'}))
     @raises_exception(ExprEvalError, "1 in 2 raises TypeError: argument of type 'int' is not iterable")
@@ -141,7 +141,8 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     def test28(self):
         g = Group[101]
         select(s for s in Student if s.name == g.dept.foo.bar)
-    @raises_exception(ExprEvalError, "date('2011', 1, 1) raises TypeError: an integer is required")
+    # @raises_exception(ExprEvalError, "date('2011', 1, 1) raises TypeError: an integer is required")
+    @raises_exception(TypeError, "'year' argument of date(year, month, day) function must be of 'int' type. Got: 'AsciiStr'")
     def test29(self):
         select(s for s in Student if s.dob < date('2011', 1, 1))
     @raises_exception(NotImplementedError, "date(s.id, 1, 1)")
@@ -215,7 +216,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(IncomparableTypesError, "Incomparable types 'unicode' and 'int' in expression: s.name > +3")
     def test51(self): ###
         select(s for s in Student if s.name > +3)
-    @raises_exception(TypeError, "Expression {'a':'b'} has unsupported type 'dict'")
+    @raises_exception(TypeError, "Expression `{'a':'b'}` has unsupported type 'dict'")
     def test52(self):
         select(s for s in Student if s.name == {'a' : 'b'})
     @raises_exception(IncomparableTypesError, "Incomparable types 'unicode' and 'int' in expression: s.name > a ^ 2")

@@ -11,10 +11,11 @@ Pony ORM
    firststeps
    database
    entities
-   crud
-   collections
+   relationships
+   transactions
+   working_with_entity_instances
+   working_with_relationships
    queries
    aggregations
-   transactions
 
 
