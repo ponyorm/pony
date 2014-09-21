@@ -62,7 +62,7 @@ If we print the values of relationship attributes now, then we'll see the follow
 
 When we assigned an owner to the ``Car`` instance, the ``Person``'s relationship attribute ``cars`` reflected the change immediately.
 
-We also could establish a relationship by assign the relationship attribute during the creation of the ``Car`` instance::
+We also could establish a relationship by assigning the relationship attribute during the creation of the ``Car`` instance::
 
     >>> p1 = Person(name='John')
     >>> c1 = Car(make='Toyota', model='Camry', owner=p1)
@@ -105,7 +105,7 @@ If you need to create an instance of a car and assign it with a particular perso
     >>> p1.cars.create(model='Toyota', make='Prius')
     >>> commit()
 
-Now if we can check that a new ``Car`` instance was added to the ``cars`` collection attribute of the ``Person`` instance::
+Now we can check that a new ``Car`` instance was added to the ``cars`` collection attribute of the ``Person`` instance::
 
     >>> print p1.cars
     CarSet([Car[2], Car[1]])
@@ -124,7 +124,7 @@ You can iterate over a collection attribute::
 Attribute lifting
 -----------------------
 
-In Pony, the collection attributes provide the attribute lifting capability: it is when a collection gets its items attributes.
+In Pony, the collection attributes provide an attribute lifting capability: a collection gets its items' attributes.
 
     >>> show(Car)
     class Car(Entity):
@@ -136,7 +136,7 @@ In Pony, the collection attributes provide the attribute lifting capability: it 
     >>> print p1.cars.model
     Multiset({u'Camry': 1, u'Prius': 1})
 
-Here we print out the entity class attributes using the ``show()`` function and then print the value of the ``model`` attribute of the ``cars`` relationship attribute. The ``cars`` attribute has all the attributes of the ``Car`` entity: ``id``, ``make``, ``model`` and ``owner``. In Pony we call it Multiset and it is implemented using a dictionary. The dictionary's key represents the value of the attribute - 'Camry' and 'Prius' in our example. And the dictionary's value shows how many times it encounters in this collection.
+Here we print out the entity class attributes using the ``show()`` function and then print the value of the ``model`` attribute of the ``cars`` relationship attribute. The ``cars`` attribute has all the attributes of the ``Car`` entity: ``id``, ``make``, ``model`` and ``owner``. In Pony we call this a Multiset and it is implemented using a dictionary. The dictionary's key represents the value of the attribute - 'Camry' and 'Prius' in our example. And the dictionary's value shows how many times it encounters in this collection.
 
 .. code-block:: python
 
@@ -168,7 +168,7 @@ TBD:
 Collection attribute parameters
 -----------------------------------------
 
-Collection attribute is used for defining a 'to-many' side of a relationship. It can be used for defining one-to-many or many-to-many relationships. For example::
+Collection attributes are used for defining a 'to-many' side of a relationship. They can be used for defining one-to-many or many-to-many relationships. For example::
 
     class Photo(db.Entity):
         tags = Set('Tag', lazy=True, table='Photo_to_Tag')
@@ -178,7 +178,7 @@ Collection attribute is used for defining a 'to-many' side of a relationship. It
 
 Here the attributes ``tags`` and ``photos`` are collections.
 
-Below are described the parameters which you can specify while creating a collection attribute.
+Below are the parameters which you can specify while creating a collection attribute.
 
 
 .. class:: Set
@@ -195,14 +195,14 @@ Below are described the parameters which you can specify while creating a collec
 
    .. py:attribute:: table
 
-      This parameter is used for many-to-many relationships only and allows to specify the name of the intermediate table used for representing this relationship in the database.
+      This parameter is used for many-to-many relationships only and allows you to specify the name of the intermediate table used for representing this relationship in the database.
 
    .. py:attribute:: column
                      columns
                      reverse_column
                      reverse_columns
 
-      These parameters are used for many-to-many relationships and allows to specify the name of the intermediate columns. The ``columns`` and ``reverse_columns`` parameters receive a list and used when the entity has a composite key. Typically you use the ``column`` or ``columns`` parameters in both relationship attributes if you don't like the default column name.
+      These parameters are used for many-to-many relationships and allows you to specify the name of the intermediate columns. The ``columns`` and ``reverse_columns`` parameters receive a list and used when the entity has a composite key. Typically you use the ``column`` or ``columns`` parameters in both relationship attributes if you don't like the default column name.
 
    .. py:attribute:: cascade_delete
 
@@ -311,5 +311,5 @@ This method can be called on the entity class, not instance. For example::
 
    .. py:method:: drop_table(with_all_data=False)
 
-      Drops the intermediate table which is created for establishing many-to-many relationship. If the table is not empty and ``with_all_data=False``, the method raises the ``TableIsNotEmpty`` exception and doesn't delete anything. Setting the ``with_all_data=True`` allows to delete the table even if it is not empty.
+      Drops the intermediate table which is created for establishing many-to-many relationship. If the table is not empty and ``with_all_data=False``, the method raises the ``TableIsNotEmpty`` exception and doesn't delete anything. Setting the ``with_all_data=True`` allows you to delete the table even if it is not empty.
 

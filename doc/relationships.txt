@@ -52,7 +52,7 @@ In order to create many-to-many relationship you need to define both ends of the
     class Tag(db.Entity):
         products = Set(Product)
 
-In order to implement this relationship in the database, Pony will create an intermediate table. This is a well known solution which allows to have many-to-many relationships in relational databases.
+In order to implement this relationship in the database, Pony will create an intermediate table. This is a well known solution which allows you to have many-to-many relationships in relational databases.
 
 One-to-one relationship
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -96,6 +96,6 @@ When two entities have more than one relationship between them, Pony requires th
        favorited = Set(User, reverse="favorites")
 
 In the example above we have to specify the option ``reverse``. If you will try to generate mapping for the entities definition without the ``reverse`` specified, you will get the exception ``pony.orm.core.ERDiagramError``: ``"Ambiguous reverse attribute for Tweet.author"``.
-That happens because in this case the attribute ``author`` can technically relate either to the attribute ``tweets`` or to ``favorites`` and Pony has no information which one to use.
+That happens because in this case the attribute ``author`` can technically relate either to the attribute ``tweets`` or to ``favorites`` and Pony has no information on which one to use.
 
 
