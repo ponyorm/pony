@@ -1277,7 +1277,7 @@ class Attribute(object):
                 except UnicodeDecodeError as e:
                     vrepr = repr(val)
                     if len(vrepr) > 100: vrepr = vrepr[:97] + '...'
-                    raise ValueError('Value for attribute %s cannot be converted to unicode: %s' % (attr, vrepr))
+                    throw(ValueError, 'Value for attribute %s cannot be converted to unicode: %s' % (attr, vrepr))
         else:
             rentity = reverse.entity
             if not isinstance(val, rentity):
