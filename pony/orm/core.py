@@ -1778,11 +1778,13 @@ class Set(Collection):
     __slots__ = []
     def check(attr, val, obj=None, entity=None, from_db=False):
         assert val is not NOT_LOADED
-        if val is None or val is DEFAULT: return set()
+        if val is DEFAULT: return set()
+        reverse = attr.reverse
+        if val is None: throw(ValueError, 'A single %(cls)s instance or %(cls)s iterable is expected. '
+                                          'Got: None' % dict(cls=reverse.entity.__name__))
         if entity is not None: pass
         elif obj is not None: entity = obj.__class__
         else: entity = attr.entity
-        reverse = attr.reverse
         if not reverse: throw(NotImplementedError)
         if isinstance(val, reverse.entity): items = set((val,))
         else:
@@ -2421,7 +2423,7 @@ class SetWrapper(object):
         if not obj._session_cache_.is_alive: throw(DatabaseSessionIsOver,
             'Cannot change collection %s.%s: the database session is over' % (safe_repr(obj), attr))
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        attr.__set__(obj, None)
+        attr.__set__(obj, ())
 
 def unpickle_multiset(obj, attrnames, items):
     entity = obj.__class__

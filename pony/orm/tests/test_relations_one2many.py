@@ -150,5 +150,22 @@ class TestOneToMany(unittest.TestCase):
         self.assertTrue(s5 in g.students)
         self.assertEqual(s5._rbits_, None)
 
+    @raises_exception(ValueError, 'A single Student instance or Student iterable is expected. Got: None')
+    def test_8(self):
+        Group, Student = self.Group, self.Student
+        g = Group[101]
+        g.students.add(None)
+        
+    @raises_exception(ValueError, 'A single Student instance or Student iterable is expected. Got: None')
+    def test_9(self):
+        Group, Student = self.Group, self.Student
+        g = Group[101]
+        g.students.remove(None)
+
+    @raises_exception(ValueError, 'A single Student instance or Student iterable is expected. Got: None')
+    def test_10(self):
+        Group = self.Group
+        g104 = Group(number=104, students=None)
+
 if __name__ == '__main__':
     unittest.main()
