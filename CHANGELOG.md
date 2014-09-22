@@ -1,3 +1,57 @@
+# Pony ORM Release 0.5.4 (2014-09-22)
+
+## New functions and methods:
+
+* `pony.orm.serialization` module with the `to_dict()` and `to_json()` functions was added. Before this release you could use the `to_dict()` method of an entity instance in order to get a key-value dictionary structure for a specific entity instance. Sometimes you might need to serialize not only the instance itself, but also the instance's related objects. In this case you can use the `to_dict()` function from the pony.orm.serialization module.
+
+  * [`to_dict()`](http://doc.ponyorm.com/working_with_entity_instances.html#to_dict) - receives an entity instance or a list of instances and returns a dictionary structure which keeps the passed object(s) and immediate related objects
+
+  * [`to_json()`](http://doc.ponyorm.com/working_with_entity_instances.html#to_json) – uses `to_dict()` and returns JSON representation of the `to_dict()` result
+
+* [`Query.prefetch()`](http://doc.ponyorm.com/queries.html#Query.prefetch) – allows to specify which related objects or attributes should be loaded from the database along with the query result . Example:
+
+```python
+      select(s for s in Student).prefetch(Group, Department, Student.courses)
+```
+
+* [`obj.flush()`](http://doc.ponyorm.com/working_with_entity_instances.html#Entity.flush) – allows flush a specific entity to the database
+
+* [`obj.get_pk()`](http://doc.ponyorm.com/working_with_entity_instances.html#Entity.get_pk) – return the primary key value for an entity instance
+
+* [`py_check`](http://doc.ponyorm.com/entities.html#py_check) parameter for attributes added. This parameter allows you to specify a function which will be used for checking the value before it is assigned to the attribute. The function should return `True`/`False` or can raise `ValueError` exception if the check failed. Example:
+
+```python
+    class Student(db.Entity):
+        name = Required(unicode)
+        gpa = Required(float, py_check=lambda val: val >= 0 and val <= 5)
+```
+
+## New types:
+
+* `time` and `timedelta` – now you can use these types for attribute declaration. Also you can use `timedelta` and a combination of `datetime` + `timedelta` types inside queries.
+
+## New hooks:
+
+* `after_insert`, `after_update`, `after_delete` - these hooks are called when an object was inserted, updated or deleted in the database respectively ([link](http://doc.ponyorm.com/working_with_entity_instances.html#entity-hooks))
+
+## New features:
+
+* Added support for pymysql – pure Python MySQL client. Currently it is used as a fallback for MySQLdb interface
+
+## Other changes and bug fixes
+
+* `obj.order_by()` method is deprecated, use `Entity.select().order_by()` instead
+* `obj.describe()` now displays composite primary keys
+* Fixes #50: PonyORM does not escape _ and % in LIKE queries
+* Fixes #51: Handling of one-to-one relations in declarative queries
+* Fixes #52: An attribute without a column should not have rbits & wbits
+* Fixes #53: Column generated at the wrong side of "one-to-one" relationship
+* Fixes #55: `obj.to_dict()` should do flush at first if the session cache is modified
+* Fixes #57: Error in `to_dict()` when to-one attribute value is None
+* Fixes #70: EntitySet allows to add and remove None
+* Check that the entity name starts with a capital letter and throw exception if it is not then raise the `ERDiagramError: Entity class name should start with a capital letter` exception
+
+
 # Pony ORM Release 0.5.3 (2014-08-12)
 
 This release fixes the setup.py problem that was found after the previous release was uploaded to PyPI.

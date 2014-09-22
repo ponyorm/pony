@@ -93,7 +93,7 @@ MySQL
 
     db.bind('mysql', host='', user='', passwd='', db='')
 
-Pony uses the MySQLdb driver for working with MySQL. See the `MySQLdb documentation <http://mysql-python.sourceforge.net/MySQLdb.html#functions-and-attributes>`_ for more information regarding this driver. 
+Pony tries to use the MySQLdb driver for working with MySQL. If this module cannot be imported, Pony tries to use pymysql. See the `MySQLdb <http://mysql-python.sourceforge.net/MySQLdb.html#functions-and-attributes>`_ and `pymysql <https://pypi.python.org/pypi/PyMySQL>`_ documentation for more information regarding these drivers.
 
 Oracle
 ~~~~~~~~~~~~~~~~
