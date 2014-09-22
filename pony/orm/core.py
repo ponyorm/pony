@@ -1119,7 +1119,7 @@ class Attribute(object):
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
-                'cascade_delete', 'index', 'original_default', 'sql_default'
+                'cascade_delete', 'index', 'original_default', 'sql_default', 'py_check'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
@@ -1184,6 +1184,7 @@ class Attribute(object):
         attr.lazy_sql_cache = None
         attr.is_volatile = kwargs.pop('volatile', False)
         attr.sql_default = kwargs.pop('sql_default', None)
+        attr.py_check = kwargs.pop('py_check', None)
         attr.kwargs = kwargs
         attr.converters = []
     def _init_(attr, entity, name):
@@ -1220,6 +1221,9 @@ class Attribute(object):
         if attr.sql_default not in (None, True, False) and not isinstance(attr.sql_default, basestring):
             throw(TypeError, "'sql_default' option of %s attribute must be of string or bool type. Got: %s"
                              % (attr, attr.sql_default))
+
+        if attr.py_check is not None and not callable(attr.py_check):
+            throw(TypeError, "'py_check' parameter of %s attribute should be callable" % attr)
 
         # composite keys will be checked later inside EntityMeta.__init__
         if attr.py_type == float:
@@ -1262,32 +1266,33 @@ class Attribute(object):
         if not reverse:
             if isinstance(val, Entity): throw(TypeError, 'Attribute %s must be of %s type. Got: %s'
                 % (attr, attr.py_type.__name__, val))
-            if attr.converters:
-                if len(attr.converters) != 1: throw(NotImplementedError)
-                converter = attr.converters[0]
-                if converter is not None:
-                    try:
-                        if from_db: return converter.sql2py(val)
-                        else: return converter.validate(val)
-                    except UnicodeDecodeError as e:
-                        vrepr = repr(val)
-                        if len(vrepr) > 100: vrepr = vrepr[:97] + '...'
-                        raise ValueError('Value for attribute %s cannot be converted to unicode: %s' % (attr, vrepr))
-            if type(val) is attr.py_type: return val
-            return attr.py_type(val)
-
-        rentity = reverse.entity
-        if not isinstance(val, rentity):
-            if type(val) is not tuple: val = (val,)
-            if len(val) != len(rentity._pk_columns_): throw(ConstraintError,
-                'Invalid number of columns were specified for attribute %s. Expected: %d, got: %d'
-                % (attr, len(rentity._pk_columns_), len(val)))
-            return rentity._get_by_raw_pkval_(val)
-
-        if obj is not None: cache = obj._session_cache_
-        else: cache = entity._database_._get_cache()
-        if cache is not val._session_cache_:
-            throw(TransactionError, 'An attempt to mix objects belongs to different caches')
+            if not attr.converters:
+                return val if type(val) is attr.py_type else attr.py_type(val)
+            if len(attr.converters) != 1: throw(NotImplementedError)
+            converter = attr.converters[0]
+            if converter is not None:
+                try:
+                    if from_db: return converter.sql2py(val)
+                    val = converter.validate(val)
+                except UnicodeDecodeError as e:
+                    vrepr = repr(val)
+                    if len(vrepr) > 100: vrepr = vrepr[:97] + '...'
+                    raise ValueError('Value for attribute %s cannot be converted to unicode: %s' % (attr, vrepr))
+        else:
+            rentity = reverse.entity
+            if not isinstance(val, rentity):
+                if type(val) is not tuple: val = (val,)
+                if len(val) != len(rentity._pk_columns_): throw(ConstraintError,
+                    'Invalid number of columns were specified for attribute %s. Expected: %d, got: %d'
+                    % (attr, len(rentity._pk_columns_), len(val)))
+                val = rentity._get_by_raw_pkval_(val)
+            else:
+                if obj is not None: cache = obj._session_cache_
+                else: cache = entity._database_._get_cache()
+                if cache is not val._session_cache_:
+                    throw(TransactionError, 'An attempt to mix objects belongs to different caches')
+        if attr.py_check is not None and not attr.py_check(val):
+            throw(ValueError, 'Check for attribute %s failed. Value: %r' % (attr, val))
         return val
     def parse_value(attr, row, offsets):
         assert len(attr.columns) == len(offsets)
@@ -1730,6 +1735,8 @@ class Collection(Attribute):
         attr.symmetric = (attr.py_type == entity.__name__ and attr.reverse == name)
         if not attr.symmetric and attr.reverse_columns: throw(TypeError,
             "'reverse_column' and 'reverse_columns' options can be set for symmetric relations only")
+        if attr.py_check is not None:
+            throw(NotImplementedError, "'py_check' parameter is not supported for collection attributes")
     def load(attr, obj):
         assert False, 'Abstract method'
     def __get__(attr, obj, cls=None):
