@@ -1959,7 +1959,7 @@ class Set(Collection):
         return wrapper_class(obj, attr)
     @cut_traceback
     def __set__(attr, obj, new_items, undo_funcs=None):
-        if isinstance(new_items, SetWrapper) and new_items._obj_ is obj and new_items._attr_ is attr:
+        if isinstance(new_items, SetInstance) and new_items._obj_ is obj and new_items._attr_ is attr:
             return  # after += or -=
         cache = obj._session_cache_
         if not cache.is_alive: throw(DatabaseSessionIsOver,
@@ -2168,7 +2168,7 @@ def unpickle_setwrapper(obj, attrname, items):
     setdata.count = len(setdata)
     return wrapper
 
-class SetWrapper(object):
+class SetInstance(object):
     __slots__ = '_obj_', '_attr_', '_attrnames_'
     _parent_ = None
     def __init__(wrapper, obj, attr):
@@ -2286,7 +2286,7 @@ class SetWrapper(object):
         return iter(wrapper.copy())
     @cut_traceback
     def __eq__(wrapper, other):
-        if isinstance(other, SetWrapper):
+        if isinstance(other, SetInstance):
             if wrapper._obj_ is other._obj_ and wrapper._attr_ is other._attr_: return True
             else: other = other.copy()
         elif not isinstance(other, set): other = set(other)
@@ -3343,7 +3343,7 @@ class EntityMeta(type):
         if result_cls is None:
             mixin = entity._get_propagation_mixin_()
             cls_name = entity.__name__ + 'Set'
-            result_cls = type(cls_name, (SetWrapper, mixin), {})
+            result_cls = type(cls_name, (SetInstance, mixin), {})
             entity._set_wrapper_subclass_ = result_cls
         return result_cls
     @cut_traceback
