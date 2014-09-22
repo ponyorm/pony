@@ -57,7 +57,7 @@ Inside the entity ``Person`` we have created three attributes -- ``name``, ``age
 
 The ``cars`` attribute has the type ``Car`` which means that this is a relationship. It can store a collection of instances of ``Car`` entity. ``"Car"`` is specified as a string here because we didn't declare the entity ``Car`` by that moment yet.
 
-The entity ``Car`` has three mandatory attributes. ``make`` and ``model`` are strings and ``owner`` is the other side of the one-to-many relationship. The relationships in Pony are always defined by two attributes which represent both sides of a relationship. 
+The entity ``Car`` has three mandatory attributes. ``make`` and ``model`` are strings and ``owner`` is the other side of the one-to-many relationship. Relationships in Pony are always defined by two attributes which represent both sides of a relationship. 
 
 If we need to create a many-to-many relationship between two entities, then we should declare two ``Set`` attributes at both ends. Pony creates the intermediate table automatically.
 
@@ -76,12 +76,12 @@ You may notice that the entity got one extra attribute named ``id``. Why did tha
 
 Each entity must contain a primary key, which allows you to distinguish one entity from another. Since we have not set the primary key manually, it was created automatically. If the primary key is created automatically, it is named ``id`` and has a numeric format. If the key is created manually, it can be named in any way and can be either numeric or text. Pony also supports compound primary keys.
 
-When the primary key is created automatically, it always has the option ``auto`` set to ``True``. It means that the value for this attribute will be assigned automatically using the database’s incremental counter or a sequence.
+When the primary key is created automatically, it always has the option ``auto`` set to ``True``. It means that the value for this attribute will be assigned automatically using the database’s incremental counter or sequence.
 
 Mapping entities to database tables
 -----------------------------------------------
 
-Now we need to create tables to store the objects data. For this purpose, we need to call the following method on the ``Database`` object::
+Now we need to create tables to store the objects' data. For this purpose, we need to call the following method on the ``Database`` object::
 
     >>> db.generate_mapping(create_tables=True)
 
@@ -130,7 +130,7 @@ If this command is executed before calling ``generate_mapping()``, then during t
 Creating entity instances and populating the database
 ------------------------------------------------------------------------------
 
-Now, let's create three objects that describe three person, and save this information in the database. To do this, we execute the following commands::
+Now, let's create five objects that describe three persons and two cars, and save this information in the database. To do this, we execute the following commands::
 
     >>> p1 = Person(name='John', age=20)
     >>> p2 = Person(name='Mary', age=22)
@@ -139,13 +139,13 @@ Now, let's create three objects that describe three person, and save this inform
     >>> c2 = Car(make='Ford', model='Explorer', owner=p3)
     >>> commit()
 
-Pony does not save objects in the database as soon as they are created, instead they are saved only after the ``commit()`` command is executed. If the debug mode is turned on before executing ``commit()``, then you will see the three ``INSERT`` commands used to store the objects in the database.
+Pony does not save objects in the database as soon as they are created, instead they are saved only after the ``commit()`` command is executed. If the debug mode is turned on before executing ``commit()``, then you will see the five ``INSERT`` commands used to store the objects in the database.
 
 
 Writing queries
 --------------------------------------------
 
-Now that we have a database with three objects saved in it, we can try some queries. For example, this is the query which returns a list of persons who are older than twenty years old::
+Now that we have a database with five objects saved in it, we can try some queries. For example, this is the query which returns a list of persons who are older than twenty years old::
 
     >>> select(p for p in Person if p.age > 20)
     <pony.orm.core.Query at 0x105e74d10>
@@ -162,7 +162,7 @@ The ``select`` function translates the Python generator into a SQL query and ret
 
 As the result you will see the text of the SQL query which was sent to the database and the list of extracted objects. When we print out the query result, an entity instance is represented by the entity name and its primary key written in square brackets: ``Person[2]``.
 
-For ordering the resulting list we can use the ``order_by`` method of the query. And if we need only a portion of the result set, we can achieve this by using the slice operator as we would on a Python list. For example, if we want to sort all people by name and extract the first two objects, we can write::
+To order the resulting list we can use the ``order_by`` method of the query. And if we need only a portion of the result set, we can achieve this by using the slice operator as we would on a Python list. For example, if we want to sort all people by name and extract the first two objects, we can write::
 
     >>> select(p for p in Person).order_by(Person.name)[:2]
 
@@ -173,7 +173,7 @@ For ordering the resulting list we can use the ``order_by`` method of the query.
 
     [Person[3], Person[1]]
 
-Sometimes, when working in the interactive mode, we want to see the values of all object attributes represented as a table. In order to do this, we can use the ``.show()`` method of the query result list::
+Sometimes, when working in interactive mode, we want to see the values of all object attributes represented as a table. In order to do this, we can use the ``.show()`` method of the query result list::
 
     >>> select(p for p in Person).order_by(Person.name)[:2].show()
 
@@ -187,7 +187,7 @@ Sometimes, when working in the interactive mode, we want to see the values of al
     3 |Bob |30 
     1 |John|20
 
-The ``.show()`` method doesn't display attributes to-many because it would require additional query to the database and could be bulky. That is why you can see no information about the related cars above. But if an instance has a to-one relationship, then it will be displayed::
+The ``.show()`` method doesn't display "to-many" attributes because it would require additional query to the database and could be bulky. That is why you can see no information about the related cars above. But if an instance has a "to-one" relationship, then it will be displayed::
 
     >>> Car.select().show()
     id|make  |model   |owner    
@@ -234,7 +234,7 @@ Or a tuple::
 
 In the example above we get a list of tuples consisting of a person and the number of cars they own.
 
-Also you can run aggregate queries. Here is an example of a query which returns the maximum person's age::
+You can also run aggregate queries. Here is an example of a query which returns the maximum person's age::
 
     >>> print max(p.age for p in Person)
     SELECT MAX("p"."age")
@@ -249,13 +249,13 @@ Pony allows you to write queries that are much more complex than the ones we hav
 Getting objects
 --------------------------------------------------------------
 
-For getting an object by its primary key you need to specify the primary key value in the square brackets::
+To get an object by its primary key you specify the primary key value in square brackets::
 
     >>> p1 = Person[1]
     >>> print p1.name
     John
 
-You may notice that no query was not sent to the database. That happened because this object already presented in the database session cache. Caching reduces the number of requests that need to be sent to the database.
+You may notice that no query was sent to the database. That happened because this object is already present in the database session cache. Caching reduces the number of requests that need to be sent to the database.
 
 Getting objects by other attributes::
 
@@ -294,7 +294,7 @@ Pony keeps track of changed attributes. When the operation ``commit()`` is execu
 db_session
 ------------------------------------------
 
-When you work with Python’s interactive shell you don't need to worry about the database session because it is maintained by Pony automatically. But when you use Pony in your application, all database interactions should be done within a database session. In order to do that you need to wrap the functions which work with the database with the ``@db_session`` decorator::
+When you work with Python’s interactive shell you don't need to worry about the database session because it is maintained by Pony automatically. But when you use Pony in your application, all database interactions should be done within a database session. In order to do that you need to wrap the functions that work with the database with the ``@db_session`` decorator::
 
     @db_session
     def print_person_name(person_id):
@@ -305,7 +305,7 @@ When you work with Python’s interactive shell you don't need to worry about th
 
     @db_session
     def add_car(person_id, make, model):
-        Car(make=make, model=model, person=Person[person_id])
+        Car(make=make, model=model, owner=Person[person_id])
         # commit() will be done automatically
         # database session cache will be cleared automatically
         # database connection will be returned to the pool
@@ -325,7 +325,7 @@ Another option for working with the database is using ``db_session`` as the cont
 
     with db_session:
         p = Person(name='Kate', age=33)
-        Car(make='Audi', model='R8', person=p)
+        Car(make='Audi', model='R8', owner=p)
         # commit() will be done automatically
         # database session cache will be cleared automatically
         # database connection will be returned to the pool

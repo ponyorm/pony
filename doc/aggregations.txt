@@ -2,7 +2,7 @@
 Aggregation
 =============
 
-Pony allows using five aggregate functions in declarative queries:  ``sum``, ``count``, ``min``, ``max``, and ``avg``. Let us see some examples of simple queries using these functions.
+Pony allows the use of five aggregate functions in declarative queries:  ``sum``, ``count``, ``min``, ``max``, and ``avg``. Let's see some examples of simple queries using these functions.
 
 Total GPA of students from group 101::
 
@@ -12,11 +12,11 @@ Number of students with a GPA above three::
 
 	count(s for s in Student if s.gpa > 3)
 
-First name of a student, who studies philosophy sorted alphabetically::
+First name of a student, who studies philosophy, sorted alphabetically::
 
 	min(s.name for s in Student if "Philosophy" in s.courses.name)
 
-Birth date of the youngest student in a group 101::
+Birth date of the youngest student in group 101::
 
 	max(s.dob for s in Student if s.group.number == 101)
 

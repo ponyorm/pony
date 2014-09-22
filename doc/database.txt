@@ -1,7 +1,7 @@
 ﻿Database
 ==============
 
-Before you can start working with entities you have to create a ``Database`` object. This object manages database connections using a connection pool. The ``Database`` object is thread safe and it can be shared between all threads in your application. The ``Database`` object allows you to work with the database directly using SQL, but most of the time you will work with entities and let Pony generate SQL statements in order to make the corresponding changes in the database. Pony allows you to work with several databases at the same time, but each entity belongs to one specific database.
+Before you can start working with entities you have to create a ``Database`` object. This object manages database connections using a connection pool. The ``Database`` object is thread safe and can be shared between all threads in your application. The ``Database`` object allows you to work with the database directly using SQL, but most of the time you will work with entities and let Pony generate SQL statements in order to make the corresponding changes in the database. Pony allows you to work with several databases at the same time, but each entity belongs to one specific database.
 
 Mapping entities to the database can be divided into four steps:
 
@@ -315,7 +315,7 @@ Database statistics
 
 .. class:: Database
 
-   The ``Database`` object keeps the statistics on executed queries. You can check which queries were executed more often and how long it took to execute them as well as many other parameters. Pony keeps all statistics separately for each thread. If you want to see the aggregated statistics for all threads then you need to call the ``merge_local_stats()`` method.
+   The ``Database`` object keeps statistics on executed queries. You can check which queries were executed more often and how long it took to execute them as well as many other parameters. Pony keeps all statistics separately for each thread. If you want to see the aggregated statistics for all threads then you need to call the ``merge_local_stats()`` method.
 
    .. py:attribute:: local_stats
 
@@ -338,7 +338,7 @@ Database statistics
 Using Database object for raw SQL queries
 ----------------------------------------------------
 
-Typically you will work with entities and let Pony to interact with the database, but Pony also allows you to work with the database using SQL, or even combine both ways. Of course you can work with the database directly using the DBAPI interface, but using the ``Database`` object gives you the following advantages:
+Typically you will work with entities and let Pony interact with the database, but Pony also allows you to work with the database using SQL, or even combine both ways. Of course you can work with the database directly using the DBAPI interface, but using the ``Database`` object gives you the following advantages:
 
 * Automatic transaction management using the :ref:`db_session <db_session_ref>` decorator or context manager. All data will be stored to the database after the transaction is finished, or rolled back if an exception happened.
 * Connection pool. There is no need to keep track of database connections. You have the connection when you need it and when you have finished your transaction the connection will be returned to the pool.

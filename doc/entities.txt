@@ -6,7 +6,7 @@ Entities are Python classes which store an object’s state in the database. Eac
 
 Pony also has an `entity-relationship diagram editor <https://editor.ponyorm.com>`_ which can be used for creating Python entity definitions.
 
-Before creating entity instances you need to map entities to database tables. Pony can map entities to existing tables or create new tables. After mapping is generated you can query the database and create new instances of entities.
+Before creating entity instances you need to map entities to database tables. Pony can map entities to existing tables or create new tables. After the mapping is generated you can query the database and create new instances of entities.
 
 
 Defining an entity
@@ -165,11 +165,11 @@ Additional attribute options which can be set as keyword arguments:
 
 .. py:attribute:: default 
 
-   Allows to specify a default value for the attribute.
+   Allows you to specify a default value for the attribute.
 
 .. py:attribute:: sql_default
 
-   This option allows to specify default SQL text which will be included to the CREATE TABLE SQL command. For example::
+   This option allows you to specify default SQL text which will be included to the CREATE TABLE SQL command. For example::
 
        created_at = Required(datetime, sql_default='CURRENT_TIMESTAMP')
 
@@ -177,7 +177,7 @@ Additional attribute options which can be set as keyword arguments:
 
 .. py:attribute:: index 
 
-   Allows to control index creation for this column. ``index=True`` - the index will be created with the default name. ``index='index_name'`` - create index with the specified name. ``index=False`` – skip index creation. If no 'index' option is specified then Pony still creates index for foreign keys using the default name. 
+   Allows you to control index creation for this column. ``index=True`` - the index will be created with the default name. ``index='index_name'`` - create index with the specified name. ``index=False`` – skip index creation. If no 'index' option is specified then Pony still creates index for foreign keys using the default name. 
 
 .. py:attribute:: sql_type 
 
@@ -211,14 +211,15 @@ Additional attribute options which can be set as keyword arguments:
 
 .. py:attribute:: reverse_columns
 
-   Used for a symmetric relationship if the entity has a composite primary key. Allows to specify the name of the database columns for the intermediate table. 
+   Used for a symmetric relationship if the entity has a composite primary key. Allows you to specify the name of the database columns for the intermediate table. 
+
 .. py:attribute:: table
 
    Can be used for many-to-many relationship only in order to specify the name of the intermediate table.
 
 .. py:attribute:: nullable 
 
-   Boolean value. ``True`` allows the column to be ``NULL`` in the database. Most probably you don't need to specify this option because Pony sets it to the most appropriate value by default.
+   Boolean value. ``True`` allows the column to be ``NULL`` in the database. Most likely you don't need to specify this option because Pony sets it to the most appropriate value by default.
 
 .. py:attribute:: volatile
 
@@ -230,7 +231,7 @@ Additional attribute options which can be set as keyword arguments:
 
 .. py:attribute:: sequence_name
 
-   Allows to specify the sequence name used for ``PrimaryKey`` attributes for Oracle database.
+   Allows you to specify the sequence name used for ``PrimaryKey`` attributes for Oracle database.
 
 
 Entity inheritance
@@ -400,11 +401,11 @@ By default, for storing many-to-many relationships between ``Student`` and ``Cou
         students = Set(Student, column="student_id")
         PrimaryKey(name, semester)
 
-You can find more example of mapping customization in `an example which comes with Pony ORM package <https://github.com/ponyorm/pony/blob/orm/pony/orm/examples/university.py>`_
+You can find more examples of mapping customization in `an example which comes with Pony ORM package <https://github.com/ponyorm/pony/blob/orm/pony/orm/examples/university.py>`_
 
 
 
 Serializing entity instances
 -------------------------------------------
 
-Pony allows pickling entity instances, query results and collections. You might want to use it if you want to cache entity instances in an external cache (e.g. memcache). When Pony pickles entities it saves all attributes except collections in order to avoid pickling a large set of data. If you need to pickle a collection attribute, you need to pickle it separately.
+Pony allows pickling entity instances, query results and collections. You might want to use it if you want to cache entity instances in an external cache (e.g. memcache). When Pony pickles entities it saves all attributes except collections in order to avoid pickling a large set of data. If you need to pickle a collection attribute, you must pickle it separately.

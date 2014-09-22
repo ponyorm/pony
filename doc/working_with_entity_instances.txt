@@ -11,7 +11,7 @@ Creating an entity instance in Pony is similar to creating a regular object in P
 
 When creating an object in Pony, all the parameters should be specified as keyword arguments. If an attribute has a default value, you can omit it.
 
-All created instances belong to the current :ref:`database session <db_session_ref>`. In some object-relational mappers, you are required to call an object's ``save()`` method in order to save it. This is inconvenient, as a programmer must track which objects were created or updated, and not to forget to call the ``save()`` method on each object.
+All created instances belong to the current :ref:`database session <db_session_ref>`. In some object-relational mappers, you are required to call an object's ``save()`` method in order to save it. This is inconvenient, as a programmer must track which objects were created or updated, and must not forget to call the ``save()`` method on each object.
 
 Pony tracks which objects were created or updated and saves them in the database automatically when current ``db_session`` is over. If you need to save newly created objects before leaving the ``db_session`` scope, you can do so by using :ref:`flush() <flush_ref>` or :ref:`commit() <commit_ref>` functions.
 
@@ -36,7 +36,7 @@ Pony raises the ``ObjectNotFound`` exception if object with such primary key doe
 Getting one object by unique combination of attributes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If we want to retrieve one object not by its primary key, but by another combination of attributes, we can use the ``get()`` method of an entity. In most cases, it is used when we want to get an object by the secondary unique key, but it can also be used to search by any other combination of attributes. As a parameter of "get ()" method, we state names of the attributes and their values. For example, if we want to receive a product under the name "Product 1", and we believe that database has only one product under this name, we can write::
+If we want to retrieve one object not by its primary key, but by another combination of attributes, we can use the ``get()`` method of an entity. In most cases, it is used when we want to get an object by the secondary unique key, but it can also be used to search by any other combination of attributes. As a parameter of the ``get()`` method, we state names of the attributes and their values. For example, if we want to receive a product under the name "Product 1", and we believe that database has only one product under this name, we can write::
 
    product1 = Product.get(name="Product1")
 
@@ -63,7 +63,7 @@ This lambda function will not be executed in Python. Instead, it will be transla
     FROM "Product" "p"
     WHERE "p"."price" > 100
 
-The ``select()`` method returns an instance of the :ref:`Query <query_object_ref>` class. If you start iteration over this object, the SQL query will be sent to the database and you will get the sequence of entity instances. For example, this is how we can print out all product names and prices for our products::
+The ``select()`` method returns an instance of the :ref:`Query <query_object_ref>` class. If you start iterating over this object, the SQL query will be sent to the database and you will get the sequence of entity instances. For example, this is how we can print out all product names and prices for our products::
 
     for p in Product.select(lambda p: p.price > 100):
         print p.name, p.price
@@ -133,7 +133,7 @@ The same query, but using lambda function will look this way::
 
     Product.select(lambda p: p.price > 100).order_by(lambda p: (desc(p.price), p.name))
 
-Note, that according to Python syntax, if we return more than one element from lambda, we need to wrap them into the parenthesis.
+Note that according to Python syntax, if we return more than one element from lambda, we need to wrap them into the parenthesis.
 
 
 Limiting the number of selected objects
@@ -222,7 +222,7 @@ In future, Pony is going to support bulk deletes. It will allow the deletion of 
 Cascade delete
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-When Pony deletes an instance of an entity it also needs to delete its relationships with other objects. The relationships between two objects are defined by two relationship attributes. If another side of the relationship is declared as a ``Set``, then we just need to remove the object from that collection. If another side is declared as ``Optional``, then we need to set it to ``None``. If another side is declared as ``Required``,  we cannot just assign ``None`` to that relationship attribute. In this case, Pony will try to do cascade delete of the related object. This default behavior can be changed using the :ref:`cascade_delete <attribute_cascade_delete_ref>` option of an attribute. By default this option is set to ``True`` if another side of the relationship is declared as ``Required`` and ``False`` for all other relationships.
+When Pony deletes an instance of an entity it also needs to delete its relationships with other objects. The relationships between two objects are defined by two relationship attributes. If another side of the relationship is declared as a ``Set``, then we just need to remove the object from that collection. If another side is declared as ``Optional``, then we need to set it to ``None``. If another side is declared as ``Required``,  we cannot just assign ``None`` to that relationship attribute. In this case, Pony will try to do a cascade delete of the related object. This default behavior can be changed using the :ref:`cascade_delete <attribute_cascade_delete_ref>` option of an attribute. By default this option is set to ``True`` if another side of the relationship is declared as ``Required`` and ``False`` for all other relationships.
 
 ``True`` means that Pony always does cascade delete even if the other side is defined as ``Optional``. ``False`` means that Pony never does cascade delete for this relationship. If the relationship is defined as ``Required`` at the other end and ``cascade_delete=False`` then Pony raises the ``ConstraintError`` exception on deletion attempt.
 
@@ -285,7 +285,7 @@ Entity class methods
 
    .. py:method:: drop_table(with_all_data=False)
 
-      Drops the table which is associated with the entity in the database. If the table is not empty and ``with_all_data=False``, the method raises the ``TableIsNotEmpty`` exception and doesn't delete anything. Setting the ``with_all_data=True`` allows to delete the table even if it is not empty.
+      Drops the table which is associated with the entity in the database. If the table is not empty and ``with_all_data=False``, the method raises the ``TableIsNotEmpty`` exception and doesn't delete anything. Setting the ``with_all_data=True`` allows you to delete the table even if it is not empty.
 
       If you need to delete an intermediate table created for many-to-many relationship, you have to call the method ``drop_table`` of the relationship attribute of the entity class(not instance)::
 
@@ -338,7 +338,7 @@ Entity class methods
 
           Product.select(lambda p: p.price > 100 and count(p.order_items) > 1)[:]
 
-      The query above returns all products with the price greater than 100 and which were ordered more than once.
+      The query above returns all products with a price greater than 100 and which were ordered more than once.
 
    .. py:method:: select_random(limit)
 
@@ -397,11 +397,11 @@ Entity instance methods
 
       Returns a dictionary with attribute names and its values. This method can be used when you need to serialize an object to JSON or other format.
 
-      By default this method doesn't include collections (relationships to-many) and lazy attributes. If an attribute's values is an entity instance then only the primary key of this object will be added to the dictionary.
+      By default this method doesn't include collections (to-many relationships) and lazy attributes. If an attribute's values is an entity instance then only the primary key of this object will be added to the dictionary.
 
       ``only`` - use this parameter if you want to get only the specified attributes. This argument can be used as a first positional argument. You can specify a list of attribute names ``obj.to_dict(['id', 'name'])``, a string separated by spaces: ``obj.to_dict('id name')``, or a string separated by spaces with commas: ``obj.to_dict('id, name')``.
 
-      ``exclude`` - this parameter allows to exclude specified attributes. Attribute names can be specified the same way as for the ``only`` parameter.
+      ``exclude`` - this parameter allows you to exclude specified attributes. Attribute names can be specified the same way as for the ``only`` parameter.
 
       ``related_objects`` - by default, all related objects represented as a primary key. If ``related_objects=True``, then objects which have relationships with the current object will be added to the resulting dict as objects, not their primary keys. It can be useful if you want to walk the related objects and call the ``to_dict()`` method recursively.
 

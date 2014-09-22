@@ -1,7 +1,7 @@
 ﻿Queries
 ===============
 
-Pony provides a very convenient way to query the database using the generator expression syntax. Pony allows programmers working with objects, which are stored in the database the same way as if they were stored in memory, using the native Python syntax. It makes development easier.
+Pony provides a very convenient way to query the database using the generator expression syntax. Pony allows programmers to work with objects which are stored in a database as if they were stored in memory, using native Python syntax. It makes development easier.
 
 Pony ORM functions used to query the database
 --------------------------------------------------------------------
@@ -36,7 +36,7 @@ Pony ORM functions used to query the database
 
 .. py:function:: left_join(gen)
 
-      The results of left join always contain the result from the 'left' table, even if the join condition doesn't find any matching record in the 'right' table.
+      The results of a left join always contain the result from the 'left' table, even if the join condition doesn't find any matching record in the 'right' table.
 
       Let's say we need to calculate the amount of orders for each customer. Let's use the example which comes with Pony distribution and write the following query:
 
@@ -165,7 +165,7 @@ Pony ORM functions used to query the database
 
 .. py:function:: exists(gen)
 
-   Returns ``True`` if al least one instance with the specified condition exists and ``False`` otherwise::
+   Returns ``True`` if at least one instance with the specified condition exists and ``False`` otherwise::
 
        exists(o for o in Order if o.date_delivered is None)
 
@@ -330,7 +330,7 @@ Query object methods
 
           select(p for p in Product if p.picture is None).for_update()[:]
 
-      This query selects all instances of Product without picture and locks the corresponding rows in the database. The lock will be released upon commit or rollback of current transaction.
+      This query selects all instances of Product without a picture and locks the corresponding rows in the database. The lock will be released upon commit or rollback of current transaction.
 
 
    .. py:method:: get()
@@ -373,7 +373,7 @@ Query object methods
 
           select(o for o in Order).order_by(Order.customer, Order.date_created)
 
-      For ordering in the descending order, use the function ``desc()`` or the method ``desc()`` of any attribute::
+      For ordering in descending order, use the function ``desc()`` or the method ``desc()`` of any attribute::
 
           select(o for o in Order).order_by(Order.date_created.desc())
 
@@ -387,7 +387,7 @@ Query object methods
 
           select((o.customer.name, o.total_price) for o in Order).order_by(-2, 1)
 
-      Minus means sorting in the descending order. In this example we sort the result by the total price in the descending order and by the customer name in the ascending order.
+      Minus means sorting in descending order. In this example we sort the result by the total price in descending order and by the customer name in ascending order.
 
       * Using lambda
 
@@ -414,12 +414,12 @@ Query object methods
 
    .. py:method:: random(limit)
 
-      Selects the ``limit`` random objects from the database. This method will be translated using the ``ORDER BY RANDOM()`` SQL expression. The entity class method ``select_random()`` provides better performance, although doesn't allow to specify query conditions.
+      Selects ``limit`` random objects from the database. This method will be translated using the ``ORDER BY RANDOM()`` SQL expression. The entity class method ``select_random()`` provides better performance, although doesn't allow to specify query conditions.
 
 
    .. py:method:: show()
 
-      Prints the results of a query to the console. The result is formatted in the form of a table. This method doesn't display attributes to-many because it would require additional query to the database and could be bulky.
+      Prints the results of a query to the console. The result is formatted in the form of a table. This method doesn't display "to-many" attributes because it would require additional query to the database and could be bulky.
 
 
    .. py:method:: sum()

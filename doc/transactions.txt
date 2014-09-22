@@ -39,7 +39,7 @@ Example of using the ``db_session`` context manager:
    When you work with Python’s interactive shell you don’t need to worry about the database session, because it is maintained by Pony automatically.
 
 
-When Pony reads objects from the database it puts those objects to the Identity Map. Later, when you update object’s attributes, create or delete an object, the changes will be accumulated in the Identity Map first. The changes will be saved in the database on transaction commit or before calling the following methods: ``select()``, ``get()``, ``exists()``, ``execute()``.
+When Pony reads objects from the database it puts those objects to the Identity Map. Later, when you update an object’s attributes, create or delete an object, the changes will be accumulated in the Identity Map first. The changes will be saved in the database on transaction commit or before calling the following methods: ``select()``, ``get()``, ``exists()``, ``execute()``.
 
 
 Transaction scope
@@ -161,7 +161,7 @@ As it was mentioned above ``db_session`` can be used as a decorator or a context
 
 .. py:attribute:: retry_exceptions
 
-   Accepts list and allows to specify the list of exceptions which will cause the transaction restart. By default this parameter is equal to ``[TransactionError]``.
+   Accepts list and allows you to specify the list of exceptions which will cause the transaction restart. By default this parameter is equal to ``[TransactionError]``.
    Another option is to specify a callable which returns a boolean value. This callable receives the only parameter - the occurred exception. If this callable returns ``True`` then the transaction will be restarted.
 
 .. py:attribute:: allowed_exceptions
@@ -174,7 +174,7 @@ As it was mentioned above ``db_session`` can be used as a decorator or a context
 
 .. py:attribute:: serializable
 
-   Accepts a boolean value, ``False`` by default. Allows to set the SERIALIZABLE isolation level for a transaction.
+   Accepts a boolean value, ``False`` by default. Allows you to set the SERIALIZABLE isolation level for a transaction.
 
 
 
@@ -201,7 +201,7 @@ However, if contention for writing data is frequent, the cost of repeatedly rest
 Pessimistic locking
 ---------------------------------------------
 
-Sometimes we need to lock an object in the database in order to prevent other transactions from modifying the same record. Within the database such lock should be done using the SELECT FOR UPDATE query. In order to generate such a lock using Pony you should call the ``for_update`` method::
+Sometimes we need to lock an object in the database in order to prevent other transactions from modifying the same record. Within the database such a lock should be done using the SELECT FOR UPDATE query. In order to generate such a lock using Pony you should call the ``for_update`` method::
 
     select(p for p in Product if p.price > 100).for_update()
 
