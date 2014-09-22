@@ -994,10 +994,10 @@ class SessionCache(object):
         if not cache.immediate: cache.immediate = True
         if not cache.modified: return
 
-        for obj in cache.objects_to_save:  # can grow during iteration
-            if obj is not None: obj._before_save_()
-
         with cache.flush_disabled():
+            for obj in cache.objects_to_save:  # can grow during iteration
+                if obj is not None: obj._before_save_()
+
             cache.query_results.clear()
             modified_m2m = cache._calc_modified_m2m()
             for attr, (added, removed) in iteritems(modified_m2m):
