@@ -480,6 +480,8 @@ Entity instance methods
           'orders': [Order[1], Order[2]],
           'password': u'***'}
 
+      If you need to serialize more than one entity instance, or if you need to serialize an instance with its related objects, you can use the :py:func`to_dict` function from the `pony.orm.serialization` module.
+
    .. py:method:: flush()
 
       Saves the changes made to this object to the database. Usually Pony saves changes automatically and you don't need to call this method yourself. One of the use cases when it might be needed is when you want to get the primary key value of a newly created object which has autoincremented primary key before commit.
@@ -487,13 +489,13 @@ Entity instance methods
 Entity hooks
 -----------------------------------
 
-Sometimes you might need to perform an action before your entity instance is going to be created, updated or deleted in the database. For this purpose you can use entity hooks. You can write your own implementation for  ``before_insert``, ``before_update`` and ``before_delete`` methods during the entity definition.
+Sometimes you might need to perform an action before or after your entity instance is going to be created, updated or deleted in the database. For this purpose you can use entity hooks. You can write your own implementation for the following methods during the entity definition:
 
 .. class:: Entity
 
    .. py:method:: before_insert
 
-      Is called only for newly created objects before it will be inserted into the database.
+      Is called only for newly created objects before it is inserted into the database.
 
    .. py:method:: before_update
 
@@ -501,7 +503,19 @@ Sometimes you might need to perform an action before your entity instance is goi
 
    .. py:method:: before_delete
 
-      Is called before deletion an entity instance in the database.
+      Is called before deletion the entity instance in the database.
+
+   .. py:method:: after_insert
+
+      Is called after the row is inserted into the database.
+
+   .. py:method:: after_update
+
+      Is called after the instance updated in the database.
+
+   .. py:method:: after_delete
+
+      Is called after the entity instance is deleted in the database.
 
 .. code-block:: python
 
@@ -516,6 +530,113 @@ Sometimes you might need to perform an action before your entity instance is goi
    Before insert!
    INSERT INTO "Message" ("title", "content") VALUES (?, ?)
    [u'First message', u'Hello, world!']
+
+
+
+Serializing entity instances
+-------------------------------------------
+
+
+Serialization with pickle
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Pony allows pickling entity instances, query results and collections. You might want to use it if you want to cache entity instances in an external cache (e.g. memcache). When Pony pickles entity instances, it saves all attributes except collections in order to avoid pickling a large set of data. If you need to pickle a collection attribute, you must pickle it separately. Example:
+
+.. code-block:: python
+
+    >>> from pony.orm.examples.estore import *
+    >>> products = select(p for p in Product if p.price > 100)[:]
+    >>> products
+    [Product[1], Product[2], Product[6]]
+    >>> import cPickle
+    >>> pickled_data = cPickle.dumps(products)
+
+Now we can put the pickled data to a cache. Later, when we need our instances again, we can unpickle it:
+
+.. code-block:: python
+
+    >>> products = cPickle.loads(pickled_data)
+    >>> products
+    [Product[1], Product[2], Product[6]]
+
+
+Serialization to a dictionary and to JSON
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Another way to serialize entity instances is to use the :py:meth:`to_dict() <Entity.to_dict>` method of an entity instance or :py:func:`to_dict` and :py:func:`to_json` functions from the ``pony.orm.serialization`` module. The instance's :py:meth:`to_dict() <Entity.to_dict>` method returns a key-value dictionary structure for a specific entity instance. Sometimes you might need to serialize not only the instance itself, but also the instance's related objects. In this case you can use the ``to_dict()`` function described below.
+
+.. py:function:: to_dict
+
+   This function is used for serializing entity instances to a dictionary. It can receive an entity instance or any iterator which returns entity instances.  The function returns a multi-level dictionary which includes the objects passed to the function, as well as the immediate related objects. Here is a structure of the resulting dict:
+
+   .. code-block:: python
+
+       {
+           'entity_name': {
+               primary_key_value: {
+                   attr: value,
+                   ...
+               },
+               ...
+           },
+           ...
+       }
+
+   Let’s use our online store model example (see the `ER diagram <https://editor.ponyorm.com/user/pony/eStore>`_) and print out the result of the ``to_dict()`` function. Note that you need to import the to_dict function separately:
+
+   .. code-block:: python
+
+       from pony.orm.examples.estore import *
+       from pony.orm.serialization import to_dict
+
+       print to_dict(Order[1])
+
+       {
+           'Order': {
+               1: {
+                   'id': 1,
+                   'state': u'DELIVERED',
+                   'date_created': datetime.datetime(2012, 10, 20, 15, 22)
+                   'date_shipped': datetime.datetime(2012, 10, 21, 11, 34),
+                   'date_delivered': datetime.datetime(2012, 10, 26, 17, 23),
+                   'total_price': Decimal('292.00'),
+                   'customer': 1,
+                   'items': ['1,1', '1,4'],
+                   }
+               }
+           },
+           'Customer': {
+               1: {
+                   'id': 1
+                   'email': u'john@example.com',
+                   'password': u'***',
+                   'name': u'John Smith',
+                   'country': u'USA',
+                   'address': u'address 1',
+               }
+           },
+           'OrderItem': {
+               '1,1': {
+                   'quantity': 1
+                   'price': Decimal('274.00'),
+                   'order': 1,
+                   'product': 1,
+               },
+               '1,4': {
+                   'quantity': 2
+                   'price': Decimal('9.98'),
+                   'order': 1,
+                   'product': 4,
+               }
+           }
+       }
+
+   In the example above the result contains the serialized ``Order[1]`` instance as well as the immediate related objects: ``Customer[1]``, ``OrderItem[1, 1]`` and ``OrderItem[1, 4]``.
+
+
+.. py:function:: to_json
+
+   This function uses the output of :py:func:`to_dict` and returns its JSON representation.
 
 
 .. _entities_raw_sql_ref:

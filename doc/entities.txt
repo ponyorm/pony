@@ -125,6 +125,8 @@ Entity attributes are specified as class attributes inside the entity class usin
 * Decimal
 * datetime
 * date
+* time
+* timedelta
 * bool
 * buffer - used for binary data (stored as BLOB in the database)
 * LongStr - used for large strings (stored as CLOB in the database)
@@ -139,6 +141,9 @@ Attribute options
 
 You can specify additional options during attribute definitions using positional and keyword arguments. Positional arguments depend on the attribute type.
 
+Max length and precision
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 String types accept a positional argument which specifies the max length of this column in the database::
 
     name = Required(unicode, 40)   #  VARCHAR(40)
@@ -152,6 +157,9 @@ The ``datetime`` and ``time`` types accept a positional argument which specifies
 For MySQL database the default value is 0. Before the MySQL version 5.6.4, the ``DATETIME`` and ``TIME`` columns were `unable to store fractional seconds <http://dev.mysql.com/doc/refman/5.6/en/fractional-seconds.html>`_ at all. Starting with the version 5.6.4, you can store fractional seconds if you set the precision equal to 6 during the attribute definition::
 
     dt = Required(datetime, 6)
+
+Other attribute options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Additional attribute options which can be set as keyword arguments:
 
@@ -232,6 +240,14 @@ Additional attribute options which can be set as keyword arguments:
 .. py:attribute:: sequence_name
 
    Allows you to specify the sequence name used for ``PrimaryKey`` attributes for Oracle database.
+
+.. py:attribute:: py_check
+
+   This parameter allows you to specify a function which will be used for checking the value before it is assigned to the attribute. The function should return ``True`` or ``False``. Also it can raise the ``ValueError`` exception if the check failed. Example::
+
+       class Student(db.Entity):
+           name = Required(unicode)
+           gpa = Required(float, py_check=lambda val: val >= 0 and val <= 5)
 
 
 Entity inheritance
@@ -402,10 +418,3 @@ By default, for storing many-to-many relationships between ``Student`` and ``Cou
         PrimaryKey(name, semester)
 
 You can find more examples of mapping customization in `an example which comes with Pony ORM package <https://github.com/ponyorm/pony/blob/orm/pony/orm/examples/university.py>`_
-
-
-
-Serializing entity instances
--------------------------------------------
-
-Pony allows pickling entity instances, query results and collections. You might want to use it if you want to cache entity instances in an external cache (e.g. memcache). When Pony pickles entities it saves all attributes except collections in order to avoid pickling a large set of data. If you need to pickle a collection attribute, you must pickle it separately.

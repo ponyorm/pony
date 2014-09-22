@@ -38,6 +38,11 @@ Example of using the ``db_session`` context manager:
 .. note::
    When you work with Python’s interactive shell you don’t need to worry about the database session, because it is maintained by Pony automatically.
 
+If you'll try to access instance's attributes which were not loaded from the database outside of the ``db_session`` scope, you'll get the ``DatabaseSessionIsOver`` exception. For example::
+
+    DatabaseSessionIsOver: Cannot load attribute Customer[3].name: the database session is over
+
+This happens because by this moment the connection to the database is already returned to the connection pool, transaction is closed and we cannot send any queries to the database.
 
 When Pony reads objects from the database it puts those objects to the Identity Map. Later, when you update an object’s attributes, create or delete an object, the changes will be accumulated in the Identity Map first. The changes will be saved in the database on transaction commit or before calling the following methods: ``select()``, ``get()``, ``exists()``, ``execute()``.
 

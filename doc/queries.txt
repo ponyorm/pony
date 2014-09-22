@@ -411,6 +411,71 @@ Query object methods
 
       Pagination is used when you need to display results of a query divided into multiple pages. The page numbering starts with page 1. This method returns a slice [start:stop] where ``start = (pagenum - 1) * pagesize``, ``stop = pagenum * pagesize``.
 
+   .. py:method:: prefetch
+
+      Allows you to specify which related objects or attributes should be loaded from the database along with the query result.
+
+      Usually there is no need to prefetch related objects. When you work with the query result within the ``@db_session``, Pony gets all related objects once you need them. Pony uses the most effective way for loading related objects from the database, avoiding the N+1 Query problem.
+
+      So, if you use Flask, the recommended approach is to use the ``@db_session`` decorator at the top level, at the same place where you put the Flask's ``app.route`` decorator:
+
+      .. code-block:: python
+
+          @app.route('/index')
+          @db_session
+          def index():
+              ...
+              objects = select(...)
+              ...
+              return render_template('template.html', objects=objects)
+
+      Or, even better, wrapping the wsgi application with the ``db_session`` decorator:
+
+      .. code-block:: python
+
+          app.wsgi_app = db_session(app.wsgi_app)
+
+      If for some reason you need to pass the selected instances along with related objects outside of the ``db_session``, then you can use this method. Otherwise, if you'll try to access the related objects outside of the ``db_session``, you might get the ``DatabaseSessionIsOver`` exception, e.g.::
+
+          DatabaseSessionIsOver: Cannot load attribute Customer[3].name: the database session is over
+
+      More information regarding working with the ``db_session`` can be found :ref:`here <db_session_ref>`.
+
+      You can specify entities and/or attributes as parameters. When you specify an entity, then all "to-one" and non-lazy attributes of corresponding related objects will be prefetched. The "to-many" attributes of an entity are prefetched only when specified explicitly.
+
+      If you specify an attribute, then only this specific attribute will be prefetched. You can specify attribute chains, e.g. `order.customer.address`. The prefetching works recursively - it applies the specified parameters to each selected object.
+
+      Examples::
+
+          from pony.orm.examples.presentation import *
+
+      Loading Student objects only, without prefetching::
+
+          students = select(s for s in Student)[:]
+
+      Loading students along with groups and departments::
+
+          students = select(s for s in Student).prefetch(Group, Department)[:]
+
+          for s in students: # no additional query to the DB will be sent
+              print s.name, s.group.major, s.group.dept.name
+
+      The same as above, but specifying attributes instead of entities::
+
+          students = select(s for s in Student).prefetch(Student.group, Group.dept)[:]
+
+          for s in students: # no additional query to the DB will be sent
+              print s.name, s.group.major, s.group.dept.name
+
+      Loading students and related courses ("many-to-many" relationship)::
+
+          students = select(s for s in Student).prefetch(Student.courses)
+
+          for s in students:
+              print s.name
+              for c in s.courses: # no additional query to the DB will be sent
+                  print c.name
+
 
    .. py:method:: random(limit)
 
