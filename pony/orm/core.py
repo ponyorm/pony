@@ -700,7 +700,7 @@ class Database(object):
                     columns = attr.get_columns()  # initializes attr.converters
                     if not attr.reverse and attr.default is not None:
                         assert len(attr.converters) == 1
-                        if not callable(attr.default): attr.default = attr.check(attr.default)
+                        if not callable(attr.default): attr.default = attr.validate(attr.default)
                     assert len(columns) == len(attr.converters)
                     if len(columns) == 1:
                         converter = attr.converters[0]
@@ -1242,7 +1242,7 @@ class Attribute(object):
     def __repr__(attr):
         owner_name = attr.entity.__name__ if attr.entity else '?'
         return '%s.%s' % (owner_name, attr.name or '?')
-    def check(attr, val, obj=None, entity=None, from_db=False):
+    def validate(attr, val, obj=None, entity=None, from_db=False):
         if val is None:
             if not attr.nullable and not from_db:
                 throw(ConstraintError, 'Attribute %s cannot be set to None' % attr)
@@ -1294,7 +1294,7 @@ class Attribute(object):
         if not attr.reverse:
             if len(offsets) > 1: throw(NotImplementedError)
             offset = offsets[0]
-            val = attr.check(row[offset], None, attr.entity, from_db=True)
+            val = attr.validate(row[offset], None, attr.entity, from_db=True)
         else:
             vals = [ row[offset] for offset in offsets ]
             if None in vals:
@@ -1364,7 +1364,7 @@ class Attribute(object):
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         is_reverse_call = undo_funcs is not None
         reverse = attr.reverse
-        new_val = attr.check(new_val, obj, from_db=False)
+        new_val = attr.validate(new_val, obj, from_db=False)
         if attr.pk_offset is not None:
             pkval = obj._pkval_
             if pkval is None: pass
@@ -1575,14 +1575,14 @@ class Optional(Attribute):
 
 class Required(Attribute):
     __slots__ = []
-    def check(attr, val, obj=None, entity=None, from_db=False):
+    def validate(attr, val, obj=None, entity=None, from_db=False):
         if val == '' \
         or val is None and not attr.auto \
         or val is DEFAULT and attr.default in (None, '') \
                 and not attr.auto and not attr.is_volatile and not attr.sql_default:
             if obj is None: throw(ConstraintError, 'Attribute %s is required' % attr)
             throw(ConstraintError, 'Attribute %r.%s is required' % (obj, attr.name))
-        return Attribute.check(attr, val, obj, entity, from_db)
+        return Attribute.validate(attr, val, obj, entity, from_db)
 
 class Discriminator(Required):
     __slots__ = [ 'code2cls' ]
@@ -1618,12 +1618,12 @@ class Discriminator(Required):
                 'Discriminator values %r and %r of entities %s and %s have different types'
                 % (code, discr_value, cls, entity))
         attr.code2cls[discr_value] = entity
-    def check(attr, val, obj=None, entity=None, from_db=False):
+    def validate(attr, val, obj=None, entity=None, from_db=False):
         if from_db: return val
         elif val is DEFAULT:
             assert entity is not None
             return entity._discriminator_
-        return Attribute.check(attr, val, obj, entity)
+        return Attribute.validate(attr, val, obj, entity)
     def load(attr, obj):
         raise AssertionError
     def __get__(attr, obj, cls=None):
@@ -1776,7 +1776,7 @@ def construct_criteria_list(alias, columns, converters, row_value_syntax, count=
 
 class Set(Collection):
     __slots__ = []
-    def check(attr, val, obj=None, entity=None, from_db=False):
+    def validate(attr, val, obj=None, entity=None, from_db=False):
         assert val is not NOT_LOADED
         if val is DEFAULT: return set()
         reverse = attr.reverse
@@ -1966,7 +1966,7 @@ class Set(Collection):
             'Cannot change collection %s.%s: the database session is over' % (safe_repr(obj), attr))
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         with cache.flush_disabled():
-            new_items = attr.check(new_items, obj)
+            new_items = attr.validate(new_items, obj)
             reverse = attr.reverse
             if not reverse: throw(NotImplementedError)
             setdata = obj._vals_.get(attr)
@@ -2346,7 +2346,7 @@ class SetInstance(object):
         with cache.flush_disabled():
             reverse = attr.reverse
             if not reverse: throw(NotImplementedError)
-            new_items = attr.check(new_items, obj)
+            new_items = attr.validate(new_items, obj)
             if not new_items: return
             setdata = obj._vals_.get(attr)
             if setdata is not None: new_items -= setdata
@@ -2386,7 +2386,7 @@ class SetInstance(object):
         with cache.flush_disabled():
             reverse = attr.reverse
             if not reverse: throw(NotImplementedError)
-            items = attr.check(items, obj)
+            items = attr.validate(items, obj)
             setdata = obj._vals_.get(attr)
             if setdata is not None and setdata.removed:
                 items -= setdata.removed
@@ -2797,13 +2797,13 @@ class EntityMeta(type):
                 if name not in entity._adict_: throw(TypeError, 'Unknown attribute %r' % name)
             for attr in entity._attrs_:
                 val = kwargs.get(attr.name, DEFAULT)
-                avdict[attr] = attr.check(val, None, entity, from_db=False)
+                avdict[attr] = attr.validate(val, None, entity, from_db=False)
         else:
             get_attr = entity._adict_.get
             for name, val in iteritems(kwargs):
                 attr = get_attr(name)
                 if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
-                avdict[attr] = attr.check(val, None, entity, from_db=False)
+                avdict[attr] = attr.validate(val, None, entity, from_db=False)
         if entity._pk_is_composite_:
             get_val = avdict.get
             pkval = tuple(get_val(attr) for attr in entity._pk_attrs_)
@@ -3158,7 +3158,7 @@ class EntityMeta(type):
         if not discr_attr: real_entity_subclass = entity
         else:
             discr_offset = attr_offsets[discr_attr][0]
-            discr_value = discr_attr.check(row[discr_offset], None, entity, from_db=True)
+            discr_value = discr_attr.validate(row[discr_offset], None, entity, from_db=True)
             real_entity_subclass = discr_attr.code2cls[discr_value]
 
         avdict = {}
@@ -3285,7 +3285,7 @@ class EntityMeta(type):
             if attr.column is not None:
                 val = raw_pkval[i]
                 i += 1
-                if not attr.reverse: val = attr.check(val, None, entity, from_db=True)
+                if not attr.reverse: val = attr.validate(val, None, entity, from_db=True)
                 else: val = attr.py_type._get_by_raw_pkval_((val,))
             else:
                 if not attr.reverse: throw(NotImplementedError)
@@ -3796,7 +3796,7 @@ class Entity(object):
         for name, new_val in kwargs.items():
             attr = get_attr(name)
             if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
-            new_val = attr.check(new_val, obj, from_db=False)
+            new_val = attr.validate(new_val, obj, from_db=False)
             if attr.is_collection: collection_avdict[attr] = new_val
             elif attr.pk_offset is None: avdict[attr] = new_val
             elif obj._vals_.get(attr, new_val) != new_val:
@@ -4515,7 +4515,7 @@ class Query(object):
             if attr.is_collection: throw(TypeError,
                 '%s attribute %s cannot be used as a keyword argument for filtering'
                 % (attr.__class__.__name__, attr))
-            val = attr.check(val, None, entity, from_db=False)
+            val = attr.validate(val, None, entity, from_db=False)
             id = next_id
             next_id += 1
             filterattrs.append((attr, id, val is None))
