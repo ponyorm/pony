@@ -3,7 +3,7 @@ from pony.py23compat import izip
 
 import types
 from decimal import Decimal
-from datetime import date, datetime
+from datetime import date, time, datetime, timedelta
 from uuid import UUID
 
 from pony.utils import throw
@@ -60,8 +60,8 @@ class MethodType(object):
 
 numeric_types = set([ bool, int, float, Decimal ])
 string_types = set([ str, AsciiStr, unicode ])
-comparable_types = set([ int, float, Decimal, str, AsciiStr, unicode, date, datetime, bool, UUID ])
-primitive_types = set([ int, float, Decimal, str, AsciiStr, unicode, date, datetime, bool, buffer, UUID ])
+comparable_types = set([ int, float, Decimal, str, AsciiStr, unicode, date, time, datetime, timedelta, bool, UUID ])
+primitive_types = comparable_types | set([ buffer ])
 type_normalization_dict = { long : int, LongStr : str, LongUnicode : unicode }
 function_types = set([type, types.FunctionType, types.BuiltinFunctionType])
 

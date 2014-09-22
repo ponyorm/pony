@@ -103,7 +103,7 @@ def to_dict(objects):
     bag = Bag(database)
     bag.put(first_object)
     bag.put(objects)
-    return bag.to_dict()
+    return dict(bag.to_dict())
 
 def to_json(objects):
     return json.dumps(to_dict(objects), default=json_converter, indent=2, sort_keys=True)

@@ -700,7 +700,7 @@ class Database(object):
                     columns = attr.get_columns()  # initializes attr.converters
                     if not attr.reverse and attr.default is not None:
                         assert len(attr.converters) == 1
-                        if not callable(attr.default): attr.default = attr.check(attr.default)
+                        if not callable(attr.default): attr.default = attr.validate(attr.default)
                     assert len(columns) == len(attr.converters)
                     if len(columns) == 1:
                         converter = attr.converters[0]
@@ -994,10 +994,10 @@ class SessionCache(object):
         if not cache.immediate: cache.immediate = True
         if not cache.modified: return
 
-        for obj in cache.objects_to_save:  # can grow during iteration
-            if obj is not None: obj._before_save_()
-
         with cache.flush_disabled():
+            for obj in cache.objects_to_save:  # can grow during iteration
+                if obj is not None: obj._before_save_()
+
             cache.query_results.clear()
             modified_m2m = cache._calc_modified_m2m()
             for attr, (added, removed) in iteritems(modified_m2m):
@@ -1008,10 +1008,16 @@ class SessionCache(object):
             for attr, (added, removed) in iteritems(modified_m2m):
                 if not added: continue
                 attr.add_m2m(added)
+
+        saved_objects = [ (obj, obj._status_) for obj in cache.objects_to_save if obj is not None ]
+
         cache.max_id_cache.clear()
         cache.modified_collections.clear()
         cache.objects_to_save[:] = []
         cache.modified = False
+
+        for obj, status in saved_objects:
+            if obj is not None: obj._after_save_(status)
     def _calc_modified_m2m(cache):
         modified_m2m = {}
         for attr, objects in sorted(iteritems(cache.modified_collections),
@@ -1113,7 +1119,7 @@ class Attribute(object):
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
-                'cascade_delete', 'index', 'original_default', 'sql_default'
+                'cascade_delete', 'index', 'original_default', 'sql_default', 'py_check'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
@@ -1178,6 +1184,7 @@ class Attribute(object):
         attr.lazy_sql_cache = None
         attr.is_volatile = kwargs.pop('volatile', False)
         attr.sql_default = kwargs.pop('sql_default', None)
+        attr.py_check = kwargs.pop('py_check', None)
         attr.kwargs = kwargs
         attr.converters = []
     def _init_(attr, entity, name):
@@ -1215,6 +1222,9 @@ class Attribute(object):
             throw(TypeError, "'sql_default' option of %s attribute must be of string or bool type. Got: %s"
                              % (attr, attr.sql_default))
 
+        if attr.py_check is not None and not callable(attr.py_check):
+            throw(TypeError, "'py_check' parameter of %s attribute should be callable" % attr)
+
         # composite keys will be checked later inside EntityMeta.__init__
         if attr.py_type == float:
             if attr.is_pk: throw(TypeError, 'PrimaryKey attribute %s cannot be of type float' % attr)
@@ -1236,7 +1246,7 @@ class Attribute(object):
     def __repr__(attr):
         owner_name = attr.entity.__name__ if attr.entity else '?'
         return '%s.%s' % (owner_name, attr.name or '?')
-    def check(attr, val, obj=None, entity=None, from_db=False):
+    def validate(attr, val, obj=None, entity=None, from_db=False):
         if val is None:
             if not attr.nullable and not from_db:
                 throw(ConstraintError, 'Attribute %s cannot be set to None' % attr)
@@ -1256,39 +1266,40 @@ class Attribute(object):
         if not reverse:
             if isinstance(val, Entity): throw(TypeError, 'Attribute %s must be of %s type. Got: %s'
                 % (attr, attr.py_type.__name__, val))
-            if attr.converters:
-                if len(attr.converters) != 1: throw(NotImplementedError)
-                converter = attr.converters[0]
-                if converter is not None:
-                    try:
-                        if from_db: return converter.sql2py(val)
-                        else: return converter.validate(val)
-                    except UnicodeDecodeError as e:
-                        vrepr = repr(val)
-                        if len(vrepr) > 100: vrepr = vrepr[:97] + '...'
-                        raise ValueError('Value for attribute %s cannot be converted to unicode: %s' % (attr, vrepr))
-            if type(val) is attr.py_type: return val
-            return attr.py_type(val)
-
-        rentity = reverse.entity
-        if not isinstance(val, rentity):
-            if type(val) is not tuple: val = (val,)
-            if len(val) != len(rentity._pk_columns_): throw(ConstraintError,
-                'Invalid number of columns were specified for attribute %s. Expected: %d, got: %d'
-                % (attr, len(rentity._pk_columns_), len(val)))
-            return rentity._get_by_raw_pkval_(val)
-
-        if obj is not None: cache = obj._session_cache_
-        else: cache = entity._database_._get_cache()
-        if cache is not val._session_cache_:
-            throw(TransactionError, 'An attempt to mix objects belongs to different caches')
+            if not attr.converters:
+                return val if type(val) is attr.py_type else attr.py_type(val)
+            if len(attr.converters) != 1: throw(NotImplementedError)
+            converter = attr.converters[0]
+            if converter is not None:
+                try:
+                    if from_db: return converter.sql2py(val)
+                    val = converter.validate(val)
+                except UnicodeDecodeError as e:
+                    vrepr = repr(val)
+                    if len(vrepr) > 100: vrepr = vrepr[:97] + '...'
+                    throw(ValueError, 'Value for attribute %s cannot be converted to unicode: %s' % (attr, vrepr))
+        else:
+            rentity = reverse.entity
+            if not isinstance(val, rentity):
+                if type(val) is not tuple: val = (val,)
+                if len(val) != len(rentity._pk_columns_): throw(ConstraintError,
+                    'Invalid number of columns were specified for attribute %s. Expected: %d, got: %d'
+                    % (attr, len(rentity._pk_columns_), len(val)))
+                val = rentity._get_by_raw_pkval_(val)
+            else:
+                if obj is not None: cache = obj._session_cache_
+                else: cache = entity._database_._get_cache()
+                if cache is not val._session_cache_:
+                    throw(TransactionError, 'An attempt to mix objects belongs to different caches')
+        if attr.py_check is not None and not attr.py_check(val):
+            throw(ValueError, 'Check for attribute %s failed. Value: %r' % (attr, val))
         return val
     def parse_value(attr, row, offsets):
         assert len(attr.columns) == len(offsets)
         if not attr.reverse:
             if len(offsets) > 1: throw(NotImplementedError)
             offset = offsets[0]
-            val = attr.check(row[offset], None, attr.entity, from_db=True)
+            val = attr.validate(row[offset], None, attr.entity, from_db=True)
         else:
             vals = [ row[offset] for offset in offsets ]
             if None in vals:
@@ -1358,7 +1369,7 @@ class Attribute(object):
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         is_reverse_call = undo_funcs is not None
         reverse = attr.reverse
-        new_val = attr.check(new_val, obj, from_db=False)
+        new_val = attr.validate(new_val, obj, from_db=False)
         if attr.pk_offset is not None:
             pkval = obj._pkval_
             if pkval is None: pass
@@ -1375,10 +1386,10 @@ class Attribute(object):
             objects_to_save = cache.objects_to_save
             if wbits is not None:
                 obj._wbits_ = wbits | obj._bits_[attr]
-                if status != 'updated':
-                    assert status in ('loaded', 'saved')
+                if status != 'modified':
+                    assert status in ('loaded', 'inserted', 'updated')
                     assert obj._save_pos_ is None
-                    obj._status_ = 'updated'
+                    obj._status_ = 'modified'
                     obj._save_pos_ = len(objects_to_save)
                     objects_to_save.append(obj)
                     cache.modified = True
@@ -1390,7 +1401,7 @@ class Attribute(object):
             def undo_func():
                 obj._status_ = status
                 obj._wbits_ = wbits
-                if status in ('loaded', 'saved'):
+                if status in ('loaded', 'inserted', 'updated'):
                     assert objects_to_save
                     obj2 = objects_to_save.pop()
                     assert obj2 is obj and obj._save_pos_ == len(objects_to_save)
@@ -1569,14 +1580,14 @@ class Optional(Attribute):
 
 class Required(Attribute):
     __slots__ = []
-    def check(attr, val, obj=None, entity=None, from_db=False):
+    def validate(attr, val, obj=None, entity=None, from_db=False):
         if val == '' \
         or val is None and not attr.auto \
         or val is DEFAULT and attr.default in (None, '') \
                 and not attr.auto and not attr.is_volatile and not attr.sql_default:
             if obj is None: throw(ConstraintError, 'Attribute %s is required' % attr)
             throw(ConstraintError, 'Attribute %r.%s is required' % (obj, attr.name))
-        return Attribute.check(attr, val, obj, entity, from_db)
+        return Attribute.validate(attr, val, obj, entity, from_db)
 
 class Discriminator(Required):
     __slots__ = [ 'code2cls' ]
@@ -1612,12 +1623,12 @@ class Discriminator(Required):
                 'Discriminator values %r and %r of entities %s and %s have different types'
                 % (code, discr_value, cls, entity))
         attr.code2cls[discr_value] = entity
-    def check(attr, val, obj=None, entity=None, from_db=False):
+    def validate(attr, val, obj=None, entity=None, from_db=False):
         if from_db: return val
         elif val is DEFAULT:
             assert entity is not None
             return entity._discriminator_
-        return Attribute.check(attr, val, obj, entity)
+        return Attribute.validate(attr, val, obj, entity)
     def load(attr, obj):
         raise AssertionError
     def __get__(attr, obj, cls=None):
@@ -1724,6 +1735,8 @@ class Collection(Attribute):
         attr.symmetric = (attr.py_type == entity.__name__ and attr.reverse == name)
         if not attr.symmetric and attr.reverse_columns: throw(TypeError,
             "'reverse_column' and 'reverse_columns' options can be set for symmetric relations only")
+        if attr.py_check is not None:
+            throw(NotImplementedError, "'py_check' parameter is not supported for collection attributes")
     def load(attr, obj):
         assert False, 'Abstract method'
     def __get__(attr, obj, cls=None):
@@ -1770,13 +1783,15 @@ def construct_criteria_list(alias, columns, converters, row_value_syntax, count=
 
 class Set(Collection):
     __slots__ = []
-    def check(attr, val, obj=None, entity=None, from_db=False):
+    def validate(attr, val, obj=None, entity=None, from_db=False):
         assert val is not NOT_LOADED
-        if val is None or val is DEFAULT: return set()
+        if val is DEFAULT: return set()
+        reverse = attr.reverse
+        if val is None: throw(ValueError, 'A single %(cls)s instance or %(cls)s iterable is expected. '
+                                          'Got: None' % dict(cls=reverse.entity.__name__))
         if entity is not None: pass
         elif obj is not None: entity = obj.__class__
         else: entity = attr.entity
-        reverse = attr.reverse
         if not reverse: throw(NotImplementedError)
         if isinstance(val, reverse.entity): items = set((val,))
         else:
@@ -1951,14 +1966,14 @@ class Set(Collection):
         return wrapper_class(obj, attr)
     @cut_traceback
     def __set__(attr, obj, new_items, undo_funcs=None):
-        if isinstance(new_items, SetWrapper) and new_items._obj_ is obj and new_items._attr_ is attr:
+        if isinstance(new_items, SetInstance) and new_items._obj_ is obj and new_items._attr_ is attr:
             return  # after += or -=
         cache = obj._session_cache_
         if not cache.is_alive: throw(DatabaseSessionIsOver,
             'Cannot change collection %s.%s: the database session is over' % (safe_repr(obj), attr))
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         with cache.flush_disabled():
-            new_items = attr.check(new_items, obj)
+            new_items = attr.validate(new_items, obj)
             reverse = attr.reverse
             if not reverse: throw(NotImplementedError)
             setdata = obj._vals_.get(attr)
@@ -2160,7 +2175,7 @@ def unpickle_setwrapper(obj, attrname, items):
     setdata.count = len(setdata)
     return wrapper
 
-class SetWrapper(object):
+class SetInstance(object):
     __slots__ = '_obj_', '_attr_', '_attrnames_'
     _parent_ = None
     def __init__(wrapper, obj, attr):
@@ -2278,7 +2293,7 @@ class SetWrapper(object):
         return iter(wrapper.copy())
     @cut_traceback
     def __eq__(wrapper, other):
-        if isinstance(other, SetWrapper):
+        if isinstance(other, SetInstance):
             if wrapper._obj_ is other._obj_ and wrapper._attr_ is other._attr_: return True
             else: other = other.copy()
         elif not isinstance(other, set): other = set(other)
@@ -2338,7 +2353,7 @@ class SetWrapper(object):
         with cache.flush_disabled():
             reverse = attr.reverse
             if not reverse: throw(NotImplementedError)
-            new_items = attr.check(new_items, obj)
+            new_items = attr.validate(new_items, obj)
             if not new_items: return
             setdata = obj._vals_.get(attr)
             if setdata is not None: new_items -= setdata
@@ -2378,7 +2393,7 @@ class SetWrapper(object):
         with cache.flush_disabled():
             reverse = attr.reverse
             if not reverse: throw(NotImplementedError)
-            items = attr.check(items, obj)
+            items = attr.validate(items, obj)
             setdata = obj._vals_.get(attr)
             if setdata is not None and setdata.removed:
                 items -= setdata.removed
@@ -2415,7 +2430,7 @@ class SetWrapper(object):
         if not obj._session_cache_.is_alive: throw(DatabaseSessionIsOver,
             'Cannot change collection %s.%s: the database session is over' % (safe_repr(obj), attr))
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        attr.__set__(obj, None)
+        attr.__set__(obj, ())
 
 def unpickle_multiset(obj, attrnames, items):
     entity = obj.__class__
@@ -2789,13 +2804,13 @@ class EntityMeta(type):
                 if name not in entity._adict_: throw(TypeError, 'Unknown attribute %r' % name)
             for attr in entity._attrs_:
                 val = kwargs.get(attr.name, DEFAULT)
-                avdict[attr] = attr.check(val, None, entity, from_db=False)
+                avdict[attr] = attr.validate(val, None, entity, from_db=False)
         else:
             get_attr = entity._adict_.get
             for name, val in iteritems(kwargs):
                 attr = get_attr(name)
                 if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
-                avdict[attr] = attr.check(val, None, entity, from_db=False)
+                avdict[attr] = attr.validate(val, None, entity, from_db=False)
         if entity._pk_is_composite_:
             get_val = avdict.get
             pkval = tuple(get_val(attr) for attr in entity._pk_attrs_)
@@ -3150,7 +3165,7 @@ class EntityMeta(type):
         if not discr_attr: real_entity_subclass = entity
         else:
             discr_offset = attr_offsets[discr_attr][0]
-            discr_value = discr_attr.check(row[discr_offset], None, entity, from_db=True)
+            discr_value = discr_attr.validate(row[discr_offset], None, entity, from_db=True)
             real_entity_subclass = discr_attr.code2cls[discr_value]
 
         avdict = {}
@@ -3277,7 +3292,7 @@ class EntityMeta(type):
             if attr.column is not None:
                 val = raw_pkval[i]
                 i += 1
-                if not attr.reverse: val = attr.check(val, None, entity, from_db=True)
+                if not attr.reverse: val = attr.validate(val, None, entity, from_db=True)
                 else: val = attr.py_type._get_by_raw_pkval_((val,))
             else:
                 if not attr.reverse: throw(NotImplementedError)
@@ -3335,7 +3350,7 @@ class EntityMeta(type):
         if result_cls is None:
             mixin = entity._get_propagation_mixin_()
             cls_name = entity.__name__ + 'Set'
-            result_cls = type(cls_name, (SetWrapper, mixin), {})
+            result_cls = type(cls_name, (SetInstance, mixin), {})
             entity._set_wrapper_subclass_ = result_cls
         return result_cls
     @cut_traceback
@@ -3399,7 +3414,7 @@ def populate_criteria_list(criteria_list, columns, converters, params_count=0, t
         params_count += 1
     return params_count
 
-statuses = set(['created', 'cancelled', 'loaded', 'updated', 'saved', 'marked_to_delete', 'deleted'])
+statuses = set(['created', 'cancelled', 'loaded', 'modified', 'inserted', 'updated', 'marked_to_delete', 'deleted'])
 del_statuses = set(['marked_to_delete', 'deleted', 'cancelled'])
 created_or_deleted_statuses = set(['created']) | del_statuses
 
@@ -3433,7 +3448,7 @@ class Entity(object):
     def __reduce__(obj):
         if obj._status_ in del_statuses: throw(
             OperationWithDeletedObjectError, 'Deleted object %s cannot be pickled' % safe_repr(obj))
-        if obj._status_ in ('created', 'updated'): throw(
+        if obj._status_ in ('created', 'modified'): throw(
             OrmError, '%s object %s has to be stored in DB before it can be pickled'
                       % (obj._status_.capitalize(), safe_repr(obj)))
         d = {'__class__' : obj.__class__}
@@ -3691,11 +3706,11 @@ class Entity(object):
                         assert obj2 is obj
                         undo_list.append((pk_index, obj._pkval_))
                 else:
-                    if status == 'updated':
+                    if status == 'modified':
                         assert save_pos is not None
                         objects_to_save[save_pos] = None
                     else:
-                        assert status in ('loaded', 'saved')
+                        assert status in ('loaded', 'inserted', 'updated')
                         assert save_pos is None
                     obj._save_pos_ = len(objects_to_save)
                     objects_to_save.append(obj)
@@ -3730,10 +3745,10 @@ class Entity(object):
                     new_wbits = wbits
                     for attr in avdict: new_wbits |= obj._bits_[attr]
                     obj._wbits_ = new_wbits
-                    if status != 'updated':
-                        assert status in ('loaded', 'saved')
+                    if status != 'modified':
+                        assert status in ('loaded', 'inserted', 'updated')
                         assert obj._save_pos_ is None
-                        obj._status_ = 'updated'
+                        obj._status_ = 'modified'
                         obj._save_pos_ = len(objects_to_save)
                         objects_to_save.append(obj)
                         cache.modified = True
@@ -3748,7 +3763,7 @@ class Entity(object):
             def undo_func():
                 obj._status_ = status
                 obj._wbits_ = wbits
-                if status in ('loaded', 'saved'):
+                if status in ('loaded', 'inserted', 'updated'):
                     assert objects_to_save
                     obj2 = objects_to_save.pop()
                     assert obj2 is obj and obj._save_pos_ == len(objects_to_save)
@@ -3788,7 +3803,7 @@ class Entity(object):
         for name, new_val in kwargs.items():
             attr = get_attr(name)
             if attr is None: throw(TypeError, 'Unknown attribute %r' % name)
-            new_val = attr.check(new_val, obj, from_db=False)
+            new_val = attr.validate(new_val, obj, from_db=False)
             if attr.is_collection: collection_avdict[attr] = new_val
             elif attr.pk_offset is None: avdict[attr] = new_val
             elif obj._vals_.get(attr, new_val) != new_val:
@@ -3819,7 +3834,7 @@ class Entity(object):
         dependent_objects.append(obj)
         status = obj._status_
         if status == 'created': attrs = obj._attrs_with_columns_
-        elif status == 'updated': attrs = obj._attrs_with_bit_(obj._attrs_with_columns_, obj._wbits_)
+        elif status == 'modified': attrs = obj._attrs_with_bit_(obj._attrs_with_columns_, obj._wbits_)
         else: assert False
         for attr in attrs:
             if not attr.reverse: continue
@@ -3902,7 +3917,7 @@ class Entity(object):
             obj._pkval_ = obj._vals_[pk_attrs[0]] = new_id
             obj._newid_ = None
 
-        obj._status_ = 'saved'
+        obj._status_ = 'inserted'
         obj._rbits_ = obj._all_bits_except_volatile_
         obj._wbits_ = 0
         obj._update_dbvals_(True)
@@ -3948,7 +3963,7 @@ class Entity(object):
             cursor = database._exec_sql(sql, arguments)
             if cursor.rowcount != 1:
                 throw(OptimisticCheckError, 'Object %s was updated outside of current transaction' % safe_repr(obj))
-        obj._status_ = 'saved'
+        obj._status_ = 'updated'
         obj._rbits_ |= obj._wbits_ & obj._all_bits_except_volatile_
         obj._wbits_ = 0
         obj._update_dbvals_(False)
@@ -3981,14 +3996,14 @@ class Entity(object):
         cache = obj._session_cache_
         assert cache.is_alive
         status = obj._status_
-        if status in ('loaded', 'saved', 'cancelled'): return
+        if status in ('loaded', 'inserted', 'updated', 'cancelled'): return
 
-        if status in ('created', 'updated'):
+        if status in ('created', 'modified'):
             obj._save_principal_objects_(dependent_objects)
 
         obj._save_pos_ = None
         if status == 'created': obj._save_created_()
-        elif status == 'updated': obj._save_updated_()
+        elif status == 'modified': obj._save_updated_()
         elif status == 'marked_to_delete': obj._save_deleted_()
         else: assert False
     def flush(obj):
@@ -3996,13 +4011,23 @@ class Entity(object):
     def _before_save_(obj):
         status = obj._status_
         if status == 'created': obj.before_insert()
-        elif status == 'updated': obj.before_update()
+        elif status == 'modified': obj.before_update()
         elif status == 'marked_to_delete': obj.before_delete()
     def before_insert(obj):
         pass
     def before_update(obj):
         pass
     def before_delete(obj):
+        pass
+    def _after_save_(obj, status):
+        if status == 'inserted': obj.after_insert()
+        elif status == 'updated': obj.after_update()
+        elif status == 'deleted': obj.after_delete()
+    def after_insert(obj):
+        pass
+    def after_update(obj):
+        pass
+    def after_delete(obj):
         pass
     @cut_traceback
     def to_dict(obj, only=None, exclude=None, with_collections=False, with_lazy=False, related_objects=False):
@@ -4497,7 +4522,7 @@ class Query(object):
             if attr.is_collection: throw(TypeError,
                 '%s attribute %s cannot be used as a keyword argument for filtering'
                 % (attr.__class__.__name__, attr))
-            val = attr.check(val, None, entity, from_db=False)
+            val = attr.validate(val, None, entity, from_db=False)
             id = next_id
             next_id += 1
             filterattrs.append((attr, id, val is None))
@@ -4672,4 +4697,4 @@ def show(entity):
         pprint(x)
 
 special_functions = set([ itertools.count, utils.count, count, random ])
-const_functions = set([ buffer, Decimal, datetime.datetime, datetime.date ])
+const_functions = set([ buffer, Decimal, datetime.datetime, datetime.date, datetime.time, datetime.timedelta ])

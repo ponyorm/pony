@@ -19,11 +19,13 @@ except ImportError as e:
         import pymysql.converters as mysql_converters
         from pymysql.constants import FIELD_TYPE, FLAG, CLIENT
         mysql_converters.encoders[buffer] = lambda val: mysql_converters.escape_str(str(val))
+        mysql_converters.encoders[timedelta] = lambda val: mysql_converters.escape_str(timedelta2str(val))
         mysql_module_name = 'pymysql'
 else:
     import MySQLdb.converters as mysql_converters
     from MySQLdb.constants import FIELD_TYPE, FLAG, CLIENT
     mysql_module_name = 'MySQLdb'
+    from _mysql import string_literal
 
 from pony.orm import core, dbschema, dbapiprovider
 from pony.orm.core import log_orm, log_sql, OperationalError
@@ -31,6 +33,7 @@ from pony.orm.dbapiprovider import DBAPIProvider, Pool, get_version_tuple, wrap_
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import SQLBuilder, join
 from pony.utils import throw
+from pony.converting import str2timedelta, timedelta2str
 
 class MySQLColumn(dbschema.Column):
     auto_template = '%(type)s PRIMARY KEY AUTO_INCREMENT'
@@ -68,6 +71,22 @@ class MySQLBuilder(SQLBuilder):
         return 'minute(', builder(expr), ')'
     def SECOND(builder, expr):
         return 'second(', builder(expr), ')'
+    def DATE_ADD(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return 'DATE_ADD(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
+        return 'ADDTIME(', builder(expr), ', ', builder(delta), ')'
+    def DATE_SUB(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return 'DATE_SUB(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
+        return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
+    def DATETIME_ADD(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return 'DATE_ADD(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
+        return 'ADDTIME(', builder(expr), ', ', builder(delta), ')'
+    def DATETIME_SUB(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return 'DATE_SUB(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
+        return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
 
 def _string_sql_type(converter):
     result = 'VARCHAR(%d)' % converter.max_len if converter.max_len else 'LONGTEXT'
@@ -91,6 +110,22 @@ class MySQLRealConverter(dbapiprovider.RealConverter):
 class MySQLBlobConverter(dbapiprovider.BlobConverter):
     def sql_type(converter):
         return 'LONGBLOB'
+
+class MySQLTimeConverter(dbapiprovider.TimeConverter):
+    def sql2py(converter, val):
+        if isinstance(val, timedelta):  # MySQLdb returns timedeltas instead of times
+            total_seconds = val.days * (24 * 60 * 60) + val.seconds
+            if 0 <= total_seconds <= 24 * 60 * 60:
+                minutes, seconds = divmod(total_seconds, 60)
+                hours, minutes = divmod(minutes, 60)
+                return time(hours, minutes, seconds, val.microseconds)
+        elif not isinstance(val, time): throw(ValueError,
+            'Value of unexpected type received from database%s: instead of time or timedelta got %s'
+            % ('for attribute %s' % converter.attr if converter.attr else '', type(val)))
+        return val
+
+class MySQLTimedeltaConverter(dbapiprovider.TimedeltaConverter):
+    sql_type_name = 'TIME'
 
 class MySQLUuidConverter(dbapiprovider.UuidConverter):
     def sql_type(converter):
@@ -123,6 +158,8 @@ class MySQLProvider(DBAPIProvider):
         (buffer, MySQLBlobConverter),
         (datetime, dbapiprovider.DatetimeConverter),
         (date, dbapiprovider.DateConverter),
+        (time, MySQLTimeConverter),
+        (timedelta, MySQLTimedeltaConverter),
         (UUID, MySQLUuidConverter),
     ]
 
@@ -149,6 +186,7 @@ class MySQLProvider(DBAPIProvider):
             conv = mysql_converters.conversions.copy()
             if mysql_module_name == 'MySQLdb':
                 conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]
+                conv[timedelta] = lambda td, c: string_literal(timedelta2str(td), c)
             conv[FIELD_TYPE.TIMESTAMP] = str2datetime
             conv[FIELD_TYPE.DATETIME] = str2datetime
             conv[FIELD_TYPE.TIME] = str2timedelta
@@ -238,12 +276,3 @@ def str2datetime(s):
     if 19 < len(s) < 26: s += '000000'[:26-len(s)]
     s = s.replace('-', ' ').replace(':', ' ').replace('.', ' ').replace('T', ' ')
     return datetime(*imap(int, s.split()))
-
-def str2timedelta(s):
-    if '.' in s:
-        s, fractional = s.split('.')
-        microseconds = int((fractional + '000000')[:6])
-    else: microseconds = 0
-    h, m, s = imap(int, s.split(':'))
-    td = timedelta(hours=abs(h), minutes=m, seconds=s, microseconds=microseconds)
-    return -td if h < 0 else td

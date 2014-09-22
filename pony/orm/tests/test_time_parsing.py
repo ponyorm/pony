@@ -48,6 +48,7 @@ class TestTimeParsing(unittest.TestCase):
         self.assertEqual(str2time('12:33 pm'), time(12, 33))
 
     def test_time_9(self):
+        self.assertEqual(str2time('1:33am'), time(1, 33))
         self.assertEqual(str2time('1:33 am'), time(1, 33))
         self.assertEqual(str2time('1:33 AM'), time(1, 33))
         self.assertEqual(str2time('1:33 a.m'), time(1, 33))
@@ -56,6 +57,7 @@ class TestTimeParsing(unittest.TestCase):
         self.assertEqual(str2time('1:33 A.M.'), time(1, 33))
 
     def test_time_10(self):
+        self.assertEqual(str2time('1:33pm'), time(13, 33))
         self.assertEqual(str2time('1:33 pm'), time(13, 33))
         self.assertEqual(str2time('1:33 PM'), time(13, 33))
         self.assertEqual(str2time('1:33 p.m'), time(13, 33))

@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 
 from decimal import Decimal
-from datetime import datetime, date
+from datetime import datetime, date, time, timedelta
 from uuid import UUID
 
 import psycopg2
@@ -16,6 +16,7 @@ from pony.orm.dbapiprovider import DBAPIProvider, Pool, ProgrammingError, wrap_d
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import Value
 from pony.utils import throw
+from pony.converting import timedelta2str
 
 class PGColumn(dbschema.Column):
     auto_template = 'SERIAL PRIMARY KEY'
@@ -48,6 +49,22 @@ class PGSQLBuilder(sqlbuilding.SQLBuilder):
         return '(', builder(expr), ')::date'
     def RANDOM(builder):
         return 'random()'
+    def DATE_ADD(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return '(', builder(expr), " + INTERVAL '", timedelta2str(delta), "' DAY TO SECOND)"
+        return '(', builder(expr), ' + ', builder(delta), ')'
+    def DATE_SUB(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' DAY TO SECOND)"
+        return '(', builder(expr), ' - ', builder(delta), ')'
+    def DATETIME_ADD(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return '(', builder(expr), " + INTERVAL '", timedelta2str(delta), "' DAY TO SECOND)"
+        return '(', builder(expr), ' + ', builder(delta), ')'
+    def DATETIME_SUB(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' DAY TO SECOND)"
+        return '(', builder(expr), ' - ', builder(delta), ')'
 
 class PGUnicodeConverter(dbapiprovider.UnicodeConverter):
     def py2sql(converter, val):
@@ -76,6 +93,9 @@ class PGRealConverter(dbapiprovider.RealConverter):
 class PGBlobConverter(dbapiprovider.BlobConverter):
     def sql_type(converter):
         return 'BYTEA'
+
+class PGTimedeltaConverter(dbapiprovider.TimedeltaConverter):
+    sql_type_name = 'INTERVAL DAY TO SECOND'
 
 class PGDatetimeConverter(dbapiprovider.DatetimeConverter):
     sql_type_name = 'TIMESTAMP'
@@ -224,6 +244,8 @@ class PGProvider(DBAPIProvider):
         (buffer, PGBlobConverter),
         (datetime, PGDatetimeConverter),
         (date, dbapiprovider.DateConverter),
+        (time, dbapiprovider.TimeConverter),
+        (timedelta, PGTimedeltaConverter),
         (UUID, PGUuidConverter),
     ]
 

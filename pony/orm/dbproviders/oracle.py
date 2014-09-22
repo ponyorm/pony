@@ -4,7 +4,7 @@ from pony.py23compat import iteritems
 import os
 os.environ["NLS_LANG"] = "AMERICAN_AMERICA.UTF8"
 
-from datetime import date, datetime
+from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -15,6 +15,7 @@ from pony.orm.core import log_orm, log_sql, DatabaseError, TranslationError
 from pony.orm.dbschema import DBSchema, DBObject, Table, Column
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, get_version_tuple
 from pony.utils import throw
+from pony.converting import timedelta2str
 
 NoneType = type(None)
 
@@ -202,6 +203,22 @@ class OraBuilder(sqlbuilding.SQLBuilder):
         return 'TRUNC(', builder(expr), ')'
     def RANDOM(builder):
         return 'dbms_random.value'
+    def DATE_ADD(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return '(', builder(expr), " + INTERVAL '", timedelta2str(delta), "' HOUR TO SECOND)"
+        return '(', builder(expr), ' + ', builder(delta), ')'
+    def DATE_SUB(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' HOUR TO SECOND)"
+        return '(', builder(expr), ' - ', builder(delta), ')'
+    def DATETIME_ADD(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return '(', builder(expr), " + INTERVAL '", timedelta2str(delta), "' HOUR TO SECOND)"
+        return '(', builder(expr), ' + ', builder(delta), ')'
+    def DATETIME_SUB(builder, expr, delta):
+        if isinstance(delta, timedelta):
+            return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' HOUR TO SECOND)"
+        return '(', builder(expr), ' - ', builder(delta), ')'
 
 class OraBoolConverter(dbapiprovider.BoolConverter):
     def sql2py(converter, val):
@@ -268,6 +285,35 @@ class OraDateConverter(dbapiprovider.DateConverter):
             'Value of unexpected type received from database: instead of date got %s', type(val))
         return val
 
+class OraTimeConverter(dbapiprovider.TimeConverter):
+    sql_type_name = 'INTERVAL DAY(0) TO SECOND'
+    def __init__(converter, provider, py_type, attr=None):
+        dbapiprovider.TimeConverter.__init__(converter, provider, py_type, attr)
+        if attr is not None and converter.precision > 0:
+            # cx_Oracle 5.1.3 corrupts microseconds for values of DAY TO SECOND type
+            converter.precision = 0  
+    def sql2py(converter, val):
+        if isinstance(val, timedelta):
+            total_seconds = val.days * (24 * 60 * 60) + val.seconds
+            if 0 <= total_seconds <= 24 * 60 * 60:
+                minutes, seconds = divmod(total_seconds, 60)
+                hours, minutes = divmod(minutes, 60)
+                return time(hours, minutes, seconds, val.microseconds)
+        elif not isinstance(val, time): throw(ValueError,
+            'Value of unexpected type received from database%s: instead of time or timedelta got %s'
+            % ('for attribute %s' % converter.attr if converter.attr else '', type(val)))
+        return val
+    def py2sql(converter, val):
+        return timedelta(hours=val.hour, minutes=val.minute, seconds=val.second, microseconds=val.microsecond)
+
+class OraTimedeltaConverter(dbapiprovider.TimedeltaConverter):
+    sql_type_name = 'INTERVAL DAY TO SECOND'
+    def __init__(converter, provider, py_type, attr=None):
+        dbapiprovider.TimedeltaConverter.__init__(converter, provider, py_type, attr)
+        if attr is not None and converter.precision > 0:
+            # cx_Oracle 5.1.3 corrupts microseconds for values of DAY TO SECOND type
+            converter.precision = 0  
+
 class OraDatetimeConverter(dbapiprovider.DatetimeConverter):
     sql_type_name = 'TIMESTAMP'
 
@@ -300,6 +346,8 @@ class OraProvider(DBAPIProvider):
         (buffer, OraBlobConverter),
         (datetime, OraDatetimeConverter),
         (date, OraDateConverter),
+        (time, OraTimeConverter),
+        (timedelta, OraTimedeltaConverter),
         (UUID, OraUuidConverter),
     ]
 

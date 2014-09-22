@@ -1,5 +1,6 @@
 from __future__ import absolute_import, print_function, division
 
+from datetime import date
 import unittest
 
 from pony.orm.core import *
@@ -451,6 +452,80 @@ class TestAttribute(unittest.TestCase):
         class Entity2(db2.Entity):
             b = Set(lambda: db1.Entity1)
         db1.generate_mapping(create_tables=True)
+
+    @raises_exception(ValueError, 'Check for attribute Entity1.a failed. Value: 1')
+    def test_py_check_1(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required(int, py_check=lambda val: val > 5 and val < 10)
+        db.generate_mapping(create_tables=True)
+        with db_session:
+            obj = Entity1(a=1)
+
+    def test_py_check_2(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required(int, py_check=lambda val: val > 5 and val < 10)
+        db.generate_mapping(create_tables=True)
+        with db_session:
+            obj = Entity1(a=7)
+
+    def test_py_check_3(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Optional(date, py_check=lambda val: val.year >= 2000)
+        db.generate_mapping(create_tables=True)
+        with db_session:
+            obj = Entity1(a=None)
+
+    @raises_exception(ValueError, 'Check for attribute Entity1.a failed. Value: datetime.date(1999, 1, 1)')
+    def test_py_check_4(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Optional(date, py_check=lambda val: val.year >= 2000)
+        db.generate_mapping(create_tables=True)
+        with db_session:
+            obj = Entity1(a=date(1999, 1, 1))
+
+    def test_py_check_5(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Optional(date, py_check=lambda val: val.year >= 2000)
+        db.generate_mapping(create_tables=True)
+        with db_session:
+            obj = Entity1(a=date(2010, 1, 1))
+
+    @raises_exception(ValueError, 'Should be positive number')
+    def test_py_check_6(self):
+        def positive_number(val):
+            if val <= 0: raise ValueError('Should be positive number')
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Optional(int, py_check=positive_number)
+        db.generate_mapping(create_tables=True)
+        with db_session:
+            obj = Entity1(a=-1)
+
+    def test_py_check_7(self):
+        def positive_number(val):
+            if val <= 0: raise ValueError('Should be positive number')
+            return True
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Optional(int, py_check=positive_number)
+        db.generate_mapping(create_tables=True)
+        with db_session:
+            obj = Entity1(a=1)
+
+    @raises_exception(NotImplementedError, "'py_check' parameter is not supported for collection attributes")
+    def test_py_check_8(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required('Entity2')
+        class Entity2(db.Entity):
+            a = Set('Entity1', py_check=lambda val: True)
+        db.generate_mapping(create_tables=True)
+
 
 if __name__ == '__main__':
     unittest.main()
