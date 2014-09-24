@@ -1281,11 +1281,13 @@ class Attribute(object):
         else:
             rentity = reverse.entity
             if not isinstance(val, rentity):
-                if type(val) is not tuple: val = (val,)
-                if len(val) != len(rentity._pk_columns_): throw(TypeError,
+                vals = val if type(val) is tuple else (val,)
+                if len(vals) != len(rentity._pk_columns_): throw(TypeError,
                     'Invalid number of columns were specified for attribute %s. Expected: %d, got: %d'
-                    % (attr, len(rentity._pk_columns_), len(val)))
-                val = rentity._get_by_raw_pkval_(val, from_db=from_db)
+                    % (attr, len(rentity._pk_columns_), len(vals)))
+                try: val = rentity._get_by_raw_pkval_(vals, from_db=from_db)
+                except TypeError: throw(TypeError, 'Attribute %s must be of %s type. Got: %r'
+                                                   % (attr, rentity.__name__, val))
             else:
                 if obj is not None: cache = obj._session_cache_
                 else: cache = entity._database_._get_cache()

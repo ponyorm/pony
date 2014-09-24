@@ -85,8 +85,7 @@ class TestCRUD(unittest.TestCase):
     @raises_exception(ValueError, "Value type for attribute Group.id must be int. Got string 'not a number'")
     def test_validate_5(self):
         s4 = Student(id=3, name='S4', email='s4@example.com', group='not a number')
-
-    @raises_exception(TypeError, "Value type for attribute Group.id must be int. Got: <type 'datetime.date'>")
+    @raises_exception(TypeError, "Attribute Student.group must be of Group type. Got: datetime.date(2011, 1, 1)")
     def test_validate_6(self):
         s4 = Student(id=3, name='S4', email='s4@example.com', group=date(2011, 1, 1))
 
