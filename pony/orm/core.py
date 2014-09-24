@@ -1293,7 +1293,7 @@ class Attribute(object):
                 if obj is not None: cache = obj._session_cache_
                 else: cache = entity._database_._get_cache()
                 if cache is not val._session_cache_:
-                    throw(TransactionError, 'An attempt to mix objects belongs to different caches')
+                    throw(TransactionError, 'An attempt to mix objects belonging to different transactions')
         if attr.py_check is not None and not attr.py_check(val):
             throw(ValueError, 'Check for attribute %s failed. Value: %r' % (attr, val))
         return val
@@ -1810,7 +1810,7 @@ class Set(Collection):
         else: cache = entity._database_._get_cache()
         for item in items:
             if item._session_cache_ is not cache:
-                throw(TransactionError, 'An attempt to mix objects belongs to different caches')
+                throw(TransactionError, 'An attempt to mix objects belonging to different transactions')
         return items
     def load(attr, obj, items=None):
         cache = obj._session_cache_
