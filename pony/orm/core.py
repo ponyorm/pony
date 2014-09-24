@@ -1285,7 +1285,7 @@ class Attribute(object):
                 if len(val) != len(rentity._pk_columns_): throw(TypeError,
                     'Invalid number of columns were specified for attribute %s. Expected: %d, got: %d'
                     % (attr, len(rentity._pk_columns_), len(val)))
-                val = rentity._get_by_raw_pkval_(val)
+                val = rentity._get_by_raw_pkval_(val, from_db=from_db)
             else:
                 if obj is not None: cache = obj._session_cache_
                 else: cache = entity._database_._get_cache()
@@ -3285,19 +3285,19 @@ class EntityMeta(type):
             assert cache.in_transaction
             cache.for_update.add(obj)
         return obj
-    def _get_by_raw_pkval_(entity, raw_pkval, for_update=False):
+    def _get_by_raw_pkval_(entity, raw_pkval, for_update=False, from_db=True):
         i = 0
         pkval = []
         for attr in entity._pk_attrs_:
             if attr.column is not None:
                 val = raw_pkval[i]
                 i += 1
-                if not attr.reverse: val = attr.validate(val, None, entity, from_db=True)
-                else: val = attr.py_type._get_by_raw_pkval_((val,))
+                if not attr.reverse: val = attr.validate(val, None, entity, from_db=from_db)
+                else: val = attr.py_type._get_by_raw_pkval_((val,), from_db=from_db)
             else:
                 if not attr.reverse: throw(NotImplementedError)
                 vals = raw_pkval[i:i+len(attr.columns)]
-                val = attr.py_type._get_by_raw_pkval_(vals)
+                val = attr.py_type._get_by_raw_pkval_(vals, from_db=from_db)
                 i += len(attr.columns)
             pkval.append(val)
         if not entity._pk_is_composite_: pkval = pkval[0]
