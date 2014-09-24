@@ -40,11 +40,11 @@ class TestOneToMany(unittest.TestCase):
         rollback()
         db_session.__exit__()
 
-    @raises_exception(ConstraintError, 'Attribute Student[1].group is required')
+    @raises_exception(ValueError, 'Attribute Student[1].group is required')
     def test_1(self):
         self.Student[1].group = None
 
-    @raises_exception(ConstraintError, 'Attribute Student[1].group is required')
+    @raises_exception(ValueError, 'Attribute Student[1].group is required')
     def test_2(self):
         Student, Group = self.Student, self.Group
         Student[2].delete()  # in order to make exception text deterministic

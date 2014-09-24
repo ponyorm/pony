@@ -1249,7 +1249,7 @@ class Attribute(object):
     def validate(attr, val, obj=None, entity=None, from_db=False):
         if val is None:
             if not attr.nullable and not from_db:
-                throw(ConstraintError, 'Attribute %s cannot be set to None' % attr)
+                throw(ValueError, 'Attribute %s cannot be set to None' % attr)
             return val
         assert val is not NOT_LOADED
         if val is DEFAULT:
@@ -1282,7 +1282,7 @@ class Attribute(object):
             rentity = reverse.entity
             if not isinstance(val, rentity):
                 if type(val) is not tuple: val = (val,)
-                if len(val) != len(rentity._pk_columns_): throw(ConstraintError,
+                if len(val) != len(rentity._pk_columns_): throw(TypeError,
                     'Invalid number of columns were specified for attribute %s. Expected: %d, got: %d'
                     % (attr, len(rentity._pk_columns_), len(val)))
                 val = rentity._get_by_raw_pkval_(val)
@@ -1585,8 +1585,8 @@ class Required(Attribute):
         or val is None and not attr.auto \
         or val is DEFAULT and attr.default in (None, '') \
                 and not attr.auto and not attr.is_volatile and not attr.sql_default:
-            if obj is None: throw(ConstraintError, 'Attribute %s is required' % attr)
-            throw(ConstraintError, 'Attribute %r.%s is required' % (obj, attr.name))
+            if obj is None: throw(ValueError, 'Attribute %s is required' % attr)
+            throw(ValueError, 'Attribute %r.%s is required' % (obj, attr.name))
         return Attribute.validate(attr, val, obj, entity, from_db)
 
 class Discriminator(Required):
