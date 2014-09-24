@@ -682,7 +682,7 @@ class Database(object):
                     assert len(m2m_columns_1) == len(reverse.converters)
                     assert len(m2m_columns_2) == len(attr.converters)
                     for column_name, converter in izip(m2m_columns_1 + m2m_columns_2, reverse.converters + attr.converters):
-                        m2m_table.add_column(column_name, converter.sql_type(), converter, True)
+                        m2m_table.add_column(column_name, converter.get_sql_type(), converter, True)
                     m2m_table.add_index(None, tuple(m2m_table.column_list), is_pk=True)
                     m2m_table.m2m.add(attr)
                     m2m_table.m2m.add(reverse)
@@ -704,13 +704,14 @@ class Database(object):
                     assert len(columns) == len(attr.converters)
                     if len(columns) == 1:
                         converter = attr.converters[0]
-                        sql_type = attr.sql_type or converter.sql_type()
-                        table.add_column(columns[0], sql_type, converter, not attr.nullable, attr.sql_default)
-                    else:
+                        table.add_column(columns[0], converter.get_sql_type(attr),
+                                         converter, not attr.nullable, attr.sql_default)
+                    elif columns:
                         if attr.sql_type is not None: throw(NotImplementedError,
                             'sql_type cannot be specified for composite attribute %s' % attr)
                         for (column_name, converter) in izip(columns, attr.converters):
-                            table.add_column(column_name, converter.sql_type(), converter, not attr.nullable)
+                            table.add_column(column_name, converter.get_sql_type(), converter, not attr.nullable)
+                    else: pass  # virtual attribute of one-to-one pair
             entity._attrs_with_columns_ = [ attr for attr in entity._attrs_
                                                  if not attr.is_collection and attr.columns ]
             if not table.pk_index:
@@ -1249,7 +1250,7 @@ class Attribute(object):
     def validate(attr, val, obj=None, entity=None, from_db=False):
         if val is None:
             if not attr.nullable and not from_db:
-                throw(ConstraintError, 'Attribute %s cannot be set to None' % attr)
+                throw(ValueError, 'Attribute %s cannot be set to None' % attr)
             return val
         assert val is not NOT_LOADED
         if val is DEFAULT:
@@ -1281,11 +1282,13 @@ class Attribute(object):
         else:
             rentity = reverse.entity
             if not isinstance(val, rentity):
-                if type(val) is not tuple: val = (val,)
-                if len(val) != len(rentity._pk_columns_): throw(ConstraintError,
+                vals = val if type(val) is tuple else (val,)
+                if len(vals) != len(rentity._pk_columns_): throw(TypeError,
                     'Invalid number of columns were specified for attribute %s. Expected: %d, got: %d'
-                    % (attr, len(rentity._pk_columns_), len(val)))
-                val = rentity._get_by_raw_pkval_(val)
+                    % (attr, len(rentity._pk_columns_), len(vals)))
+                try: val = rentity._get_by_raw_pkval_(vals, from_db=from_db)
+                except TypeError: throw(TypeError, 'Attribute %s must be of %s type. Got: %r'
+                                                   % (attr, rentity.__name__, val))
             else:
                 if obj is not None: cache = obj._session_cache_
                 else: cache = entity._database_._get_cache()
@@ -1585,8 +1588,8 @@ class Required(Attribute):
         or val is None and not attr.auto \
         or val is DEFAULT and attr.default in (None, '') \
                 and not attr.auto and not attr.is_volatile and not attr.sql_default:
-            if obj is None: throw(ConstraintError, 'Attribute %s is required' % attr)
-            throw(ConstraintError, 'Attribute %r.%s is required' % (obj, attr.name))
+            if obj is None: throw(ValueError, 'Attribute %s is required' % attr)
+            throw(ValueError, 'Attribute %r.%s is required' % (obj, attr.name))
         return Attribute.validate(attr, val, obj, entity, from_db)
 
 class Discriminator(Required):
@@ -3285,19 +3288,19 @@ class EntityMeta(type):
             assert cache.in_transaction
             cache.for_update.add(obj)
         return obj
-    def _get_by_raw_pkval_(entity, raw_pkval, for_update=False):
+    def _get_by_raw_pkval_(entity, raw_pkval, for_update=False, from_db=True):
         i = 0
         pkval = []
         for attr in entity._pk_attrs_:
             if attr.column is not None:
                 val = raw_pkval[i]
                 i += 1
-                if not attr.reverse: val = attr.validate(val, None, entity, from_db=True)
-                else: val = attr.py_type._get_by_raw_pkval_((val,))
+                if not attr.reverse: val = attr.validate(val, None, entity, from_db=from_db)
+                else: val = attr.py_type._get_by_raw_pkval_((val,), from_db=from_db)
             else:
                 if not attr.reverse: throw(NotImplementedError)
                 vals = raw_pkval[i:i+len(attr.columns)]
-                val = attr.py_type._get_by_raw_pkval_(vals)
+                val = attr.py_type._get_by_raw_pkval_(vals, from_db=from_db)
                 i += len(attr.columns)
             pkval.append(val)
         if not entity._pk_is_composite_: pkval = pkval[0]

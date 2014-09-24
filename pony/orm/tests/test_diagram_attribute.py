@@ -526,6 +526,70 @@ class TestAttribute(unittest.TestCase):
             a = Set('Entity1', py_check=lambda val: True)
         db.generate_mapping(create_tables=True)
 
+    def test_foreign_key_sql_type_1(self):
+        db = Database('sqlite', ':memory:')
+        class Foo(db.Entity):
+            id = PrimaryKey(unicode, sql_type='SOME_TYPE')
+            bars = Set('Bar')
+        class Bar(db.Entity):
+            foo = Required(Foo)
+        db.generate_mapping(create_tables=True)
+
+        table = db.schema.tables.get(Bar._table_)
+        sql_type = table.column_list[1].sql_type
+        self.assertEqual(sql_type, 'SOME_TYPE')
+
+    def test_foreign_key_sql_type_2(self):
+        db = Database('sqlite', ':memory:')
+        class Foo(db.Entity):
+            id = PrimaryKey(unicode, sql_type='SOME_TYPE')
+            bars = Set('Bar')
+        class Bar(db.Entity):
+            foo = Required(Foo, sql_type='ANOTHER_TYPE')
+        db.generate_mapping(create_tables=True)
+
+        table = db.schema.tables.get(Bar._table_)
+        sql_type = table.column_list[1].sql_type
+        self.assertEqual(sql_type, 'ANOTHER_TYPE')
+
+    def test_foreign_key_sql_type_3(self):
+        db = Database('sqlite', ':memory:')
+        class Foo(db.Entity):
+            id = PrimaryKey(unicode, sql_type='SERIAL')
+            bars = Set('Bar')
+        class Bar(db.Entity):
+            foo = Required(Foo, sql_type='ANOTHER_TYPE')
+        db.generate_mapping(create_tables=True)
+
+        table = db.schema.tables.get(Bar._table_)
+        sql_type = table.column_list[1].sql_type
+        self.assertEqual(sql_type, 'ANOTHER_TYPE')
+
+    def test_foreign_key_sql_type_4(self):
+        db = Database('sqlite', ':memory:')
+        class Foo(db.Entity):
+            id = PrimaryKey(unicode, sql_type='SERIAL')
+            bars = Set('Bar')
+        class Bar(db.Entity):
+            foo = Required(Foo)
+        db.generate_mapping(create_tables=True)
+
+        table = db.schema.tables.get(Bar._table_)
+        sql_type = table.column_list[1].sql_type
+        self.assertEqual(sql_type, 'INTEGER')
+
+    def test_foreign_key_sql_type_5(self):
+        db = Database('sqlite', ':memory:')
+        class Foo(db.Entity):
+            id = PrimaryKey(unicode, sql_type='serial')
+            bars = Set('Bar')
+        class Bar(db.Entity):
+            foo = Required(Foo)
+        db.generate_mapping(create_tables=True)
+
+        table = db.schema.tables.get(Bar._table_)
+        sql_type = table.column_list[1].sql_type
+        self.assertEqual(sql_type, 'integer')
 
 if __name__ == '__main__':
     unittest.main()

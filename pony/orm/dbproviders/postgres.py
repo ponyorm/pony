@@ -138,6 +138,8 @@ class PGProvider(DBAPIProvider):
 
     default_schema_name = 'public'
 
+    fk_types = { 'SERIAL' : 'INTEGER', 'BIGSERIAL' : 'BIGINT' }
+
     def normalize_name(provider, name):
         return name[:provider.max_name_len].lower()
 

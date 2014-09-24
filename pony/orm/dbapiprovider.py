@@ -95,6 +95,8 @@ class DBAPIProvider(object):
     name_before_table = 'schema_name'
     default_schema_name = None
 
+    fk_types = { 'SERIAL' : 'INTEGER', 'BIGSERIAL' : 'BIGINT' }
+
     def __init__(provider, *args, **kwargs):
         pool_mockup = kwargs.pop('pony_pool_mockup', None)
         if pool_mockup: provider.pool = pool_mockup
@@ -327,6 +329,26 @@ class Converter(object):
         return val
     def sql2py(converter, val):
         return val
+    def get_sql_type(converter, attr=None):
+        if attr is not None and attr.sql_type is not None:
+            return attr.sql_type
+        attr = converter.attr
+        if attr.sql_type is not None:
+            assert len(attr.columns) == 1
+            return converter.get_fk_type(attr.sql_type)
+        if attr is not None and attr.reverse and not attr.is_collection:
+            i = attr.converters.index(converter)
+            rentity = attr.reverse.entity
+            rpk_converters = rentity._pk_converters_
+            assert rpk_converters is not None and len(attr.converters) == len(rpk_converters)
+            rconverter = rpk_converters[i]
+            return rconverter.sql_type()
+        return converter.sql_type()
+    def get_fk_type(converter, sql_type):
+        fk_types = converter.provider.fk_types
+        if sql_type.isupper(): return fk_types.get(sql_type, sql_type)
+        sql_type = sql_type.upper()
+        return fk_types.get(sql_type, sql_type).lower()
 
 class BoolConverter(Converter):
     def validate(converter, val):
