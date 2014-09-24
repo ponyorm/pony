@@ -147,6 +147,8 @@ class MySQLProvider(DBAPIProvider):
     translator_cls = MySQLTranslator
     sqlbuilder_cls = MySQLBuilder
 
+    fk_types = { 'SERIAL' : 'BIGINT UNSIGNED' }
+
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
         (unicode, MySQLUnicodeConverter),

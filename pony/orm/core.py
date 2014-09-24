@@ -682,7 +682,7 @@ class Database(object):
                     assert len(m2m_columns_1) == len(reverse.converters)
                     assert len(m2m_columns_2) == len(attr.converters)
                     for column_name, converter in izip(m2m_columns_1 + m2m_columns_2, reverse.converters + attr.converters):
-                        m2m_table.add_column(column_name, converter.sql_type(), converter, True)
+                        m2m_table.add_column(column_name, converter.get_sql_type(), converter, True)
                     m2m_table.add_index(None, tuple(m2m_table.column_list), is_pk=True)
                     m2m_table.m2m.add(attr)
                     m2m_table.m2m.add(reverse)
@@ -704,13 +704,14 @@ class Database(object):
                     assert len(columns) == len(attr.converters)
                     if len(columns) == 1:
                         converter = attr.converters[0]
-                        sql_type = attr.sql_type or converter.sql_type()
-                        table.add_column(columns[0], sql_type, converter, not attr.nullable, attr.sql_default)
-                    else:
+                        table.add_column(columns[0], converter.get_sql_type(attr),
+                                         converter, not attr.nullable, attr.sql_default)
+                    elif columns:
                         if attr.sql_type is not None: throw(NotImplementedError,
                             'sql_type cannot be specified for composite attribute %s' % attr)
                         for (column_name, converter) in izip(columns, attr.converters):
-                            table.add_column(column_name, converter.sql_type(), converter, not attr.nullable)
+                            table.add_column(column_name, converter.get_sql_type(), converter, not attr.nullable)
+                    else: pass  # virtual attribute of one-to-one pair
             entity._attrs_with_columns_ = [ attr for attr in entity._attrs_
                                                  if not attr.is_collection and attr.columns ]
             if not table.pk_index:
