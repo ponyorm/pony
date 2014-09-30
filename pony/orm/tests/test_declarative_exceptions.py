@@ -98,7 +98,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(TypeError, "Unsupported operand types 'Decimal' and 'float' for operation '+' in expression: s.scholarship + 1.1")
     def test15(self):
         select(s for s in Student if s.scholarship + 1.1 > 10)
-    @raises_exception(TypeError, "Unsupported operand types 'Decimal' and 'AsciiStr' for operation '**' in expression: s.scholarship ** 'abc'")
+    @raises_exception(TypeError, "Unsupported operand types 'Decimal' and 'str' for operation '**' in expression: s.scholarship ** 'abc'")
     def test16(self):
         select(s for s in Student if s.scholarship ** 'abc' > 10)
     @raises_exception(TypeError, "Unsupported operand types 'unicode' and 'int' for operation '+' in expression: s.name + 2")
@@ -107,16 +107,16 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(TypeError, "Step is not supported in s.name[1:3:5]")
     def test18(self):
         select(s for s in Student if s.name[1:3:5] == 'A')
-    @raises_exception(TypeError, "Invalid type of start index (expected 'int', got 'AsciiStr') in string slice s.name['a':1]")
+    @raises_exception(TypeError, "Invalid type of start index (expected 'int', got 'str') in string slice s.name['a':1]")
     def test19(self):
         select(s for s in Student if s.name['a':1] == 'A')
-    @raises_exception(TypeError, "Invalid type of stop index (expected 'int', got 'AsciiStr') in string slice s.name[1:'a']")
+    @raises_exception(TypeError, "Invalid type of stop index (expected 'int', got 'str') in string slice s.name[1:'a']")
     def test20(self):
         select(s for s in Student if s.name[1:'a'] == 'A')
     @raises_exception(NotImplementedError, "Negative indices are not supported in string slice s.name[-1:1]")
     def test21(self):
         select(s for s in Student if s.name[-1:1] == 'A')
-    @raises_exception(TypeError, "String indices must be integers. Got 'AsciiStr' in expression s.name['a']")
+    @raises_exception(TypeError, "String indices must be integers. Got 'str' in expression s.name['a']")
     def test22(self):
         select(s.name for s in Student if s.name['a'] == 'h')
     @raises_exception(TypeError, "Incomparable types 'int' and 'unicode' in expression: 1 in s.name")
@@ -142,7 +142,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
         g = Group[101]
         select(s for s in Student if s.name == g.dept.foo.bar)
     # @raises_exception(ExprEvalError, "date('2011', 1, 1) raises TypeError: an integer is required")
-    @raises_exception(TypeError, "'year' argument of date(year, month, day) function must be of 'int' type. Got: 'AsciiStr'")
+    @raises_exception(TypeError, "'year' argument of date(year, month, day) function must be of 'int' type. Got: 'str'")
     def test29(self):
         select(s for s in Student if s.dob < date('2011', 1, 1))
     @raises_exception(NotImplementedError, "date(s.id, 1, 1)")
@@ -156,10 +156,10 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     #     x = buffer('a')
     #     y = buffer('b')
     #    select(s for s in Student if max(x, y) == x)
-    # @raises_exception(TypeError, "Incomparable types 'int' and 'AsciiStr' in expression: min(1, 'a')")
+    # @raises_exception(TypeError, "Incomparable types 'int' and 'str' in expression: min(1, 'a')")
     # def test33(self):
     #     select(s for s in Student if min(1, 'a') == 1)
-    # @raises_exception(TypeError, "Incomparable types 'AsciiStr' and 'int' in expression: min('a', 1)")
+    # @raises_exception(TypeError, "Incomparable types 'str' and 'int' in expression: min('a', 1)")
     # def test33a(self):
     #     select(s for s in Student if min('a', 1) == 1)
     # @raises_exception(TypeError, "'select' function expects generator expression, got: select('* from Students')")

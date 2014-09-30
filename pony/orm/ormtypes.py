@@ -10,13 +10,14 @@ from pony.utils import throw
 
 NoneType = type(None)
 
-class AsciiStr(str): pass
-
 class LongStr(str):
     lazy = True
 
-class LongUnicode(unicode):
-    lazy = True
+if PY2:
+    class LongUnicode(unicode):
+        lazy = True
+else:
+    LongUnicode = LongStr
 
 class SetType(object):
     __slots__ = 'item_type'
@@ -59,14 +60,10 @@ class MethodType(object):
         return hash(self.obj) ^ hash(self.func)
 
 numeric_types = set([ bool, int, float, Decimal ])
-string_types = set([ str, AsciiStr, unicode ])
-comparable_types = set([ int, float, Decimal, str, AsciiStr, unicode, date, time, datetime, timedelta, bool, UUID ])
+comparable_types = set([ int, float, Decimal, str, date, time, datetime, timedelta, bool, UUID ])
 primitive_types = comparable_types | set([ buffer ])
-if PY2:
-    type_normalization_dict = { long : int, LongStr : str, LongUnicode : unicode }
-else:
-    type_normalization_dict = { LongStr : str, LongUnicode : unicode }
 function_types = set([type, types.FunctionType, types.BuiltinFunctionType])
+type_normalization_dict = { long : int } if PY2 else {}
 
 def get_normalized_type_of(value):
     t = type(value)
@@ -77,12 +74,9 @@ def get_normalized_type_of(value):
     if t.__name__ == 'EntityIter': return SetType(value.entity)
     if isinstance(value, str):
         try: value.decode('ascii')
-        except UnicodeDecodeError: pass
-        else: return AsciiStr
-    elif isinstance(value, unicode):
-        try: value.encode('ascii')
-        except UnicodeEncodeError: pass
-        else: return AsciiStr
+        except UnicodeDecodeError: raise
+        else: return str
+    elif isinstance(value, unicode): return str
     if t in function_types: return FuncType(value)
     if t is types.MethodType: return MethodType(value)
     return normalize_type(t)
@@ -95,18 +89,13 @@ def normalize_type(t):
     if t is NoneType: return t
     t = type_normalization_dict.get(t, t)
     if t in primitive_types: return t
-    if issubclass(t, basestring):  # Mainly for Html -> unicode & StrHtml -> str conversion
-        if issubclass(t, str): return str
-        if issubclass(t, unicode): return unicode
-        assert False
+    if issubclass(t, basestring): return str
     throw(TypeError, 'Unsupported type %r' % t.__name__)
 
 coercions = {
     (int, float) : float,
     (int, Decimal) : Decimal,
     (date, datetime) : datetime,
-    (AsciiStr, str) : str,
-    (AsciiStr, unicode) : unicode,
     (bool, int) : int,
     (bool, float) : float,
     (bool, Decimal) : Decimal

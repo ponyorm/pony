@@ -15,7 +15,7 @@ from pony import options, utils
 from pony.utils import is_ident, throw, concat
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
-    string_types, numeric_types, comparable_types, SetType, FuncType, MethodType, \
+    numeric_types, comparable_types, SetType, FuncType, MethodType, \
     get_normalized_type_of, normalize_type, coerce_types, are_comparable_types
 from pony.orm import core
 from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper
@@ -1355,7 +1355,7 @@ class AttrMonad(Monad):
         translator = parent.translator
         type = normalize_type(attr.py_type)
         if type in numeric_types: cls = translator.NumericAttrMonad
-        elif type in string_types: cls = translator.StringAttrMonad
+        elif type is str: cls = translator.StringAttrMonad
         elif type is date: cls = translator.DateAttrMonad
         elif type is time: cls = translator.TimeAttrMonad
         elif type is timedelta: cls = translator.TimedeltaAttrMonad
@@ -1419,7 +1419,7 @@ class ParamMonad(Monad):
     def new(translator, type, paramkey):
         type = normalize_type(type)
         if type in numeric_types: cls = translator.NumericParamMonad
-        elif type in string_types: cls = translator.StringParamMonad
+        elif type is str: cls = translator.StringParamMonad
         elif type is date: cls = translator.DateParamMonad
         elif type is time: cls = translator.TimeParamMonad
         elif type is timedelta: cls = translator.TimedeltaParamMonad
@@ -1470,7 +1470,7 @@ class ExprMonad(Monad):
     @staticmethod
     def new(translator, type, sql):
         if type in numeric_types: cls = translator.NumericExprMonad
-        elif type in string_types: cls = translator.StringExprMonad
+        elif type is str: cls = translator.StringExprMonad
         elif type is date: cls = translator.DateExprMonad
         elif type is time: cls = translator.TimeExprMonad
         elif type is timedelta: cls = translator.TimedeltaExprMonad
@@ -1498,7 +1498,7 @@ class ConstMonad(Monad):
     def new(translator, value):
         value_type = get_normalized_type_of(value)
         if value_type in numeric_types: cls = translator.NumericConstMonad
-        elif value_type in string_types: cls = translator.StringConstMonad
+        elif value_type is str: cls = translator.StringConstMonad
         elif value_type is date: cls = translator.DateConstMonad
         elif value_type is time: cls = translator.TimeConstMonad
         elif value_type is timedelta: cls = translator.TimedeltaConstMonad
@@ -1748,18 +1748,13 @@ class FuncConcatMonad(FuncMonad):
     def call(monad, *args):
         if len(args) < 2: throw(TranslationError, 'concat() function requires at least two arguments')
         translator = args[0].translator
-        s = u = False
         result_ast = [ 'CONCAT' ]
         for arg in args:
             t = arg.type
             if isinstance(t, EntityMeta) or type(t) in (tuple, SetType):
                 throw(TranslationError, 'Invalid argument of concat() function: %s' % ast2src(arg.node))
-            if t is str: s = True
-            elif t is unicode: u = True
             result_ast.extend(arg.getsql())
-        if s and u: throw(TranslationError, 'Mixing str and unicode in {EXPR}')
-        result_type = str if s else unicode
-        return translator.ExprMonad.new(translator, result_type, result_ast)
+        return translator.ExprMonad.new(translator, str, result_ast)
 
 class FuncLenMonad(FuncMonad):
     func = len
