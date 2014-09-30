@@ -4,6 +4,7 @@ PY2 = sys.version_info[0] == 2
 
 if PY2:
     from future_builtins import zip as izip, map as imap
+    import __builtin__ as builtins
     xrange = xrange
     basestring = basestring
     int_types = (int, long)
@@ -16,6 +17,7 @@ if PY2:
         return dict.itervalues()
 
 else:
+    import builtins
     izip, imap, xrange = zip, map, range
     basestring = str
     int_types = (int,)

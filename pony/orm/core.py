@@ -1,7 +1,7 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, imap, iteritems, itervalues, xrange, cmp, basestring, int_types, PY2
+from pony.py23compat import izip, imap, iteritems, itervalues, xrange, cmp, basestring, int_types, PY2, builtins
 
-import re, sys, types, datetime, logging, itertools, __builtin__
+import re, sys, types, datetime, logging, itertools
 from cPickle import loads, dumps
 from operator import attrgetter, itemgetter
 from itertools import chain, starmap, repeat
@@ -847,8 +847,8 @@ class QueryStat(object):
         query_end_time = time()
         duration = query_end_time - query_start_time
         if stat.db_count:
-            stat.min_time = __builtin__.min(stat.min_time, duration)
-            stat.max_time = __builtin__.max(stat.max_time, duration)
+            stat.min_time = builtins.min(stat.min_time, duration)
+            stat.max_time = builtins.max(stat.max_time, duration)
             stat.sum_time += duration
         else: stat.min_time = stat.max_time = stat.sum_time = duration
         stat.db_count += 1
@@ -856,8 +856,8 @@ class QueryStat(object):
         assert stat.sql == stat2.sql
         if not stat2.db_count: pass
         elif stat.db_count:
-            stat.min_time = __builtin__.min(stat.min_time, stat2.min_time)
-            stat.max_time = __builtin__.max(stat.max_time, stat2.max_time)
+            stat.min_time = builtins.min(stat.min_time, stat2.min_time)
+            stat.max_time = builtins.max(stat.max_time, stat2.max_time)
             stat.sum_time += stat2.sum_time
         else:
             stat.min_time = stat2.min_time
@@ -2470,7 +2470,7 @@ class Multiset(object):
     @cut_traceback
     def __repr__(multiset):
         if multiset._obj_._session_cache_.is_alive:
-            size = __builtin__.sum(itervalues(multiset._items_))
+            size = builtins.sum(itervalues(multiset._items_))
             if size == 1: size_str = ' (1 item)'
             else: size_str = ' (%d items)' % size
         else: size_str = ''
@@ -2485,7 +2485,7 @@ class Multiset(object):
         return bool(multiset._items_)
     @cut_traceback
     def __len__(multiset):
-        return __builtin__.sum(multiset._items_.values())
+        return builtins.sum(multiset._items_.values())
     @cut_traceback
     def __iter__(multiset):
         for item, cnt in iteritems(multiset._items_):
@@ -4111,9 +4111,9 @@ def make_aggrfunc(std_func):
     return aggrfunc
 
 count = make_aggrfunc(utils.count)
-sum = make_aggrfunc(__builtin__.sum)
-min = make_aggrfunc(__builtin__.min)
-max = make_aggrfunc(__builtin__.max)
+sum = make_aggrfunc(builtins.sum)
+min = make_aggrfunc(builtins.min)
+max = make_aggrfunc(builtins.max)
 avg = make_aggrfunc(utils.avg)
 
 distinct = make_aggrfunc(utils.distinct)
