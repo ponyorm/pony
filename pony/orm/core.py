@@ -1,9 +1,8 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import izip, imap, iteritems, itervalues, xrange, cmp, \
-                            basestring, unicode, int_types, PY2, builtins
+                            basestring, pickle, unicode, int_types, PY2, builtins
 
 import re, sys, types, datetime, logging, itertools
-from cPickle import loads, dumps
 from operator import attrgetter, itemgetter
 from itertools import chain, starmap, repeat
 from time import time
@@ -4196,13 +4195,13 @@ class Query(object):
 
         translator = database._translator_cache.get(query._key)
         if translator is None:
-            pickled_tree = dumps(tree, 2)
-            tree = loads(pickled_tree)  # tree = deepcopy(tree)
+            pickled_tree = pickle.dumps(tree, 2)
+            tree = pickle.loads(pickled_tree)  # tree = deepcopy(tree)
             translator_cls = database.provider.translator_cls
             translator = translator_cls(tree, extractors, vartypes, left_join=left_join)
             name_path = translator.can_be_optimized()
             if name_path:
-                tree = loads(pickled_tree)  # tree = deepcopy(tree)
+                tree = pickle.loads(pickled_tree)  # tree = deepcopy(tree)
                 try: translator = translator_cls(tree, extractors, vartypes, left_join=True, optimize=name_path)
                 except OptimizationFailed: translator.optimization_failed = True
             translator.pickled_tree = pickled_tree
@@ -4485,7 +4484,7 @@ class Query(object):
             if not prev_optimized:
                 name_path = new_translator.can_be_optimized()
                 if name_path:
-                    tree = loads(prev_translator.pickled_tree)  # tree = deepcopy(tree)
+                    tree = pickle.loads(prev_translator.pickled_tree)  # tree = deepcopy(tree)
                     prev_extractors = prev_translator.extractors
                     prev_vartypes = prev_translator.vartypes
                     translator_cls = prev_translator.__class__

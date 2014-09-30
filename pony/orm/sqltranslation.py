@@ -1,11 +1,10 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, xrange, basestring, unicode
+from pony.py23compat import izip, xrange, basestring, unicode, pickle
 
 import types, sys, re, itertools
 from decimal import Decimal
 from datetime import date, time, datetime, timedelta
 from random import random
-from cPickle import loads, dumps
 from copy import deepcopy
 from functools import update_wrapper
 
@@ -525,8 +524,8 @@ class SQLTranslator(ASTTranslator):
         return translator
     def apply_lambda(translator, filter_num, order_by, func_ast, argnames, extractors, vartypes):
         translator = deepcopy(translator)
-        pickled_func_ast = dumps(func_ast, 2)
-        func_ast = loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
+        pickled_func_ast = pickle.dumps(func_ast, 2)
+        func_ast = pickle.loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
         translator.filter_num = filter_num
         translator.extractors.update(extractors)
         translator.vartypes.update(vartypes)
