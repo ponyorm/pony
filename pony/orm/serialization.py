@@ -41,7 +41,7 @@ class Bag(object):
         cache = bag.session_cache
         if cache is None: cache = bag.session_cache = obj._session_cache_
         elif obj._session_cache_ is not cache: throw(TransactionError,
-            'An attempt to mix objects belongs to different caches')
+            'An attempt to mix objects belonging to different transactions')
         bag.objects[entity].add(obj)
     def _reduce_composite_pk(bag, pk):
         return ','.join(str(item).replace('*', '**').replace(',', '*,') for item in pk)

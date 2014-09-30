@@ -378,6 +378,12 @@ Entity instance methods
 
       If the primary key is composite, then this method returns a tuple consisting of primary key column values.
 
+      .. code-block:: python
+
+          >>> oi = OrderItem[1,4]
+          >>> oi.get_pk()
+          (1, 4)
+
    .. py:method:: delete()
 
       Deletes an entity instance. The object will be marked as deleted and will be deleted from the database on the operation ``flush()`` which is issued automatically on committing the current transaction, exiting from the most outer ``db_session`` or before sending next query to the database.
@@ -559,6 +565,7 @@ Now we can put the pickled data to a cache. Later, when we need our instances ag
     >>> products
     [Product[1], Product[2], Product[6]]
 
+You can use pickling for storing objects in an external cache for improving application performance. When you unpickle objects, Pony adds them to the current ``db_session`` as if they were just loaded from the database. Pony doesn't check if objects hold the same state in the database.
 
 Serialization to a dictionary and to JSON
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
