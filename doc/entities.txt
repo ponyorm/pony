@@ -249,6 +249,16 @@ Additional attribute options which can be set as keyword arguments:
            name = Required(unicode)
            gpa = Required(float, py_check=lambda val: val >= 0 and val <= 5)
 
+.. py:attribute:: min
+   :noindex:
+
+   Allows you to specify the minimum allowed value for numeric attributes (int, float, Decimal). If you will try to assign the value that is less than the specified min value, you'll get the ``ValueError`` exception.
+
+.. py:attribute:: max
+   :noindex:
+
+   Allows you to specify the maximum allowed value for numeric attributes (int, float, Decimal). If you will try to assign the value that is greater than the specified max value, you'll get the ``ValueError`` exception.
+
 
 Entity inheritance
 ----------------------
