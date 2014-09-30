@@ -6,6 +6,7 @@ if PY2:
     from future_builtins import zip as izip, map as imap
     xrange = xrange
     basestring = basestring
+    int_types = (int, long)
     cmp = cmp
 
     def iteritems(dict):
@@ -17,6 +18,7 @@ if PY2:
 else:
     izip, imap, xrange = zip, map, range
     basestring = str
+    int_types = (int,)
 
     def cmp(a, b):
         return (a > b) - (a < b)

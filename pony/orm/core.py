@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, imap, iteritems, itervalues, xrange, cmp, basestring
+from pony.py23compat import izip, imap, iteritems, itervalues, xrange, cmp, basestring, int_types
 
 import re, sys, types, datetime, logging, itertools, __builtin__
 from cPickle import loads, dumps
@@ -4128,7 +4128,7 @@ def JOIN(expr):
 def desc(expr):
     if isinstance(expr, Attribute):
         return expr.desc
-    if isinstance(expr, (int, long)) and expr > 0:
+    if isinstance(expr, int_types) and expr > 0:
         return -expr
     if isinstance(expr, basestring):
         return 'desc(%s)' % expr
@@ -4412,7 +4412,7 @@ class Query(object):
         for arg in args:
             if isinstance(arg, basestring): strings = True
             elif type(arg) is types.FunctionType: functions = True
-            elif isinstance(arg, (int, long)): numbers = True
+            elif isinstance(arg, int_types): numbers = True
             elif isinstance(arg, (Attribute, DescWrapper)): attributes = True
             else: throw(TypeError, "Arguments of order_by() method must be attributes, numbers, strings or lambdas. Got: %r" % arg)
         if strings + functions + numbers + attributes > 1:

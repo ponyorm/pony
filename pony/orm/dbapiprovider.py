@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import basestring
+from pony.py23compat import basestring, int_types
 
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
@@ -372,7 +372,7 @@ class BasestringConverter(Converter):
         if issubclass(attr.py_type, (LongStr, LongUnicode)):
             if max_len is not None: throw(TypeError, 'Max length is not supported for CLOBs')
         elif max_len is None: max_len = converter.provider.varchar_default_max_len
-        elif not isinstance(max_len, (int, long)):
+        elif not isinstance(max_len, int_types):
             throw(TypeError, 'Max length argument must be int. Got: %r' % max_len)
         converter.max_len = max_len
         converter.db_encoding = kwargs.pop('db_encoding', None)
@@ -420,15 +420,15 @@ class IntConverter(Converter):
     def init(converter, kwargs):
         Converter.init(converter, kwargs)
         min_val = kwargs.pop('min', None)
-        if min_val is not None and not isinstance(min_val, (int, long)):
+        if min_val is not None and not isinstance(min_val, int_types):
             throw(TypeError, "'min' argument for attribute %s must be int. Got: %r" % (converter.attr, min_val))
         max_val = kwargs.pop('max', None)
-        if max_val is not None and not isinstance(max_val, (int, long)):
+        if max_val is not None and not isinstance(max_val, int_types):
             throw(TypeError, "'max' argument for attribute %s must be int. Got: %r" % (converter.attr, max_val))
         converter.min_val = min_val
         converter.max_val = max_val
     def validate(converter, val):
-        if isinstance(val, (int, long)): pass
+        if isinstance(val, int_types): pass
         elif isinstance(val, basestring):
             try: val = int(val)
             except ValueError: throw(ValueError,
@@ -498,14 +498,14 @@ class DecimalConverter(Converter):
                                            '(expected: precision and scale), got: %s' % args)
         if args: precision = args[0]
         else: precision = kwargs.pop('precision', 12)
-        if not isinstance(precision, (int, long)):
+        if not isinstance(precision, int_types):
             throw(TypeError, "'precision' positional argument for attribute %s must be int. Got: %r" % (attr, precision))
         if precision <= 0: throw(TypeError,
             "'precision' positional argument for attribute %s must be positive. Got: %r" % (attr, precision))
 
         if len(args) == 2: scale = args[1]
         else: scale = kwargs.pop('scale', 2)
-        if not isinstance(scale, (int, long)):
+        if not isinstance(scale, int_types):
             throw(TypeError, "'scale' positional argument for attribute %s must be int. Got: %r" % (attr, scale))
         if scale <= 0: throw(TypeError,
             "'scale' positional argument for attribute %s must be positive. Got: %r" % (attr, scale))

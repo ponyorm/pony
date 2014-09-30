@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, basestring
+from pony.py23compat import izip, basestring, int_types
 
 import types
 from decimal import Decimal
@@ -147,8 +147,8 @@ def are_comparable_types(t1, t2, op='=='):
             if t1 is t2: return True
             if (t1, t2) in coercions: return True
             if tt1 is not type or tt2 is not type: return False
-            if issubclass(t1, (int, long)) and issubclass(t2, basestring): return True
-            if issubclass(t2, (int, long)) and issubclass(t1, basestring): return True
+            if issubclass(t1, int_types) and issubclass(t2, basestring): return True
+            if issubclass(t2, int_types) and issubclass(t1, basestring): return True
             return False
         if tt1.__name__ == tt2.__name__ == 'EntityMeta':
             return t1._root_ is t2._root_

@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import iteritems, basestring
+from pony.py23compat import iteritems, basestring, int_types
 
 import os
 os.environ["NLS_LANG"] = "AMERICAN_AMERICA.UTF8"
@@ -340,7 +340,7 @@ class OraProvider(DBAPIProvider):
         (bool, OraBoolConverter),
         (unicode, OraUnicodeConverter),
         (str, OraStrConverter),
-        ((int, long), OraIntConverter),
+        (int_types, OraIntConverter),
         (float, OraRealConverter),
         (Decimal, OraDecimalConverter),
         (buffer, OraBlobConverter),
