@@ -1,7 +1,7 @@
 # coding: cp1251
 
 from __future__ import absolute_import, print_function
-from pony.py23compat import izip, imap, iteritems, xrange
+from pony.py23compat import izip, imap, iteritems, xrange, PY2
 
 import re
 from datetime import datetime, date, time, timedelta
@@ -226,7 +226,6 @@ def _extract_time_parts(groupdict):
 
 converters = {
     int:  (int, unicode, 'Incorrect number'),
-    long: (long, unicode, 'Incorrect number'),
     float: (float, unicode, 'Must be a real number'),
     'IP': (check_ip, unicode, 'Incorrect IP address'),
     'positive': (check_positive, unicode, 'Must be a positive number'),
@@ -238,6 +237,9 @@ converters = {
     time: (str2time, unicode, 'Must be correct time (hh:mm or hh:mm:ss)'),
     datetime: (str2datetime, unicode, 'Must be correct date & time'),
     }
+
+if PY2:
+    converters[long] = (long, unicode, 'Incorrect number')
 
 def str2py(value, type):
     if type is None or not isinstance(value, unicode): return value

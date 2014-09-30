@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, basestring, int_types
+from pony.py23compat import izip, basestring, int_types, PY2
 
 import types
 from decimal import Decimal
@@ -62,7 +62,10 @@ numeric_types = set([ bool, int, float, Decimal ])
 string_types = set([ str, AsciiStr, unicode ])
 comparable_types = set([ int, float, Decimal, str, AsciiStr, unicode, date, time, datetime, timedelta, bool, UUID ])
 primitive_types = comparable_types | set([ buffer ])
-type_normalization_dict = { long : int, LongStr : str, LongUnicode : unicode }
+if PY2:
+    type_normalization_dict = { long : int, LongStr : str, LongUnicode : unicode }
+else:
+    type_normalization_dict = { LongStr : str, LongUnicode : unicode }
 function_types = set([type, types.FunctionType, types.BuiltinFunctionType])
 
 def get_normalized_type_of(value):

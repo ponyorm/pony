@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+from pony.py23compat import PY2
 
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
@@ -237,18 +238,26 @@ class PGProvider(DBAPIProvider):
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
-        (unicode, PGUnicodeConverter),
         (str, PGStrConverter),
-        (long, PGLongConverter),
         (int, dbapiprovider.IntConverter),
         (float, PGRealConverter),
         (Decimal, dbapiprovider.DecimalConverter),
-        (buffer, PGBlobConverter),
         (datetime, PGDatetimeConverter),
         (date, dbapiprovider.DateConverter),
         (time, dbapiprovider.TimeConverter),
         (timedelta, PGTimedeltaConverter),
         (UUID, PGUuidConverter),
     ]
+
+    if PY2:
+        converter_classes += [
+            (unicode, PGUnicodeConverter),
+            (long, PGLongConverter),
+            (buffer, PGBlobConverter),
+        ]
+    else:
+        converter_classes += [
+            (bytes, PGBlobConverter)
+        ]
 
 provider_cls = PGProvider

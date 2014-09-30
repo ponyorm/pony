@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, imap, iteritems, itervalues, xrange, cmp, basestring, int_types
+from pony.py23compat import izip, imap, iteritems, itervalues, xrange, cmp, basestring, int_types, PY2
 
 import re, sys, types, datetime, logging, itertools, __builtin__
 from cPickle import loads, dumps
@@ -592,7 +592,7 @@ class Database(object):
         if cache.immediate: cache.in_transaction = True
         database._update_local_stat(sql, t)
         if not returning_id: return cursor
-        if type(new_id) is long: new_id = int(new_id)
+        if PY2 and type(new_id) is long: new_id = int(new_id)
         return new_id
     @cut_traceback
     def generate_mapping(database, filename=None, check_tables=True, create_tables=False):

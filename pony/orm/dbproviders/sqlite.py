@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import imap, int_types
+from pony.py23compat import imap, int_types, PY2
 
 import os.path
 import sqlite3 as sqlite
@@ -170,18 +170,26 @@ class SQLiteProvider(DBAPIProvider):
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
-        (unicode, dbapiprovider.UnicodeConverter),
         (str, SQLiteStrConverter),
         (int_types, dbapiprovider.IntConverter),
         (float, dbapiprovider.RealConverter),
         (Decimal, SQLiteDecimalConverter),
-        (buffer, dbapiprovider.BlobConverter),
         (datetime, SQLiteDatetimeConverter),
         (date, SQLiteDateConverter),
         (time, SQLiteTimeConverter),
         (timedelta, SQLiteTimedeltaConverter),
         (UUID, dbapiprovider.UuidConverter),
     ]
+
+    if PY2:
+        converter_classes += [
+            (unicode, dbapiprovider.UnicodeConverter),
+            (buffer, dbapiprovider.BlobConverter),
+        ]
+    else:
+        converter_classes += [
+            (bytes, dbapiprovider.BlobConverter)
+        ]
 
     @wrap_dbapi_exceptions
     def set_transaction_mode(provider, connection, cache):

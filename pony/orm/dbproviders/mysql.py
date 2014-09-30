@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import imap
+from pony.py23compat import imap, PY2
 
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
@@ -99,9 +99,10 @@ class MySQLUnicodeConverter(dbapiprovider.UnicodeConverter):
 class MySQLStrConverter(dbapiprovider.StrConverter):
     sql_type = _string_sql_type
 
-class MySQLLongConverter(dbapiprovider.IntConverter):
-    def sql_type(converter):
-        return 'BIGINT'
+if PY2:
+    class MySQLLongConverter(dbapiprovider.IntConverter):
+        def sql_type(converter):
+            return 'BIGINT'
 
 class MySQLRealConverter(dbapiprovider.RealConverter):
     def sql_type(converter):
@@ -151,19 +152,27 @@ class MySQLProvider(DBAPIProvider):
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
-        (unicode, MySQLUnicodeConverter),
         (str, MySQLStrConverter),
         (int, dbapiprovider.IntConverter),
-        (long, MySQLLongConverter),
         (float, MySQLRealConverter),
         (Decimal, dbapiprovider.DecimalConverter),
-        (buffer, MySQLBlobConverter),
         (datetime, dbapiprovider.DatetimeConverter),
         (date, dbapiprovider.DateConverter),
         (time, MySQLTimeConverter),
         (timedelta, MySQLTimedeltaConverter),
         (UUID, MySQLUuidConverter),
     ]
+
+    if PY2:
+        converter_classes += [
+            (unicode, MySQLUnicodeConverter),
+            (long, MySQLLongConverter),
+            (buffer, MySQLBlobConverter),
+        ]
+    else:
+        converter_classes += [
+            (bytes, MySQLBlobConverter)
+        ]
 
     def normalize_name(provider, name):
         return name[:provider.max_name_len].lower()

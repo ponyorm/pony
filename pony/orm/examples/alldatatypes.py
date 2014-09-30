@@ -1,6 +1,7 @@
 #coding: cp1251
 
 from __future__ import absolute_import, print_function
+from pony.py23compat import PY2
 
 from datetime import date, time, datetime, timedelta
 from decimal import Decimal
@@ -22,7 +23,8 @@ class AllDataTypes(db.Entity):
     long_unicode_attr = Required(LongUnicode)
     long_str_attr = Required(LongStr, encoding='cp1251')
     int_attr = Required(int)
-    long_attr = Required(long)
+    if PY2:
+        long_attr = Required(long)
     float_attr = Required(float)
     decimal_attr = Required(Decimal)
     buffer_attr = Required(buffer)
@@ -46,7 +48,6 @@ fields = dict(bool1_attr=True,
               long_unicode_attr = u"Юникод" * 100000,
               long_str_attr = "Строка" * 100000,
               int_attr=-2000000,
-              long_attr=123456789123456789,
               float_attr=3.1415927,
               decimal_attr=Decimal("0.1"),
               buffer_attr=buffer(s),
@@ -55,6 +56,8 @@ fields = dict(bool1_attr=True,
               time_attr=datetime.now().time(),
               timedelta_attr=timedelta(hours=1, minutes=1, seconds=1, microseconds=3333),
               uuid_attr=uuid4())
+if PY2:
+    fields['long_attr'] = 123456789123456789
 
 with db_session:
     for obj in AllDataTypes.select():
