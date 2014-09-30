@@ -1,4 +1,5 @@
 from __future__ import absolute_import, print_function, division
+from pony.py23compat import basestring
 
 from pony.orm.core import Database
 from pony.utils import import_module

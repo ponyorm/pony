@@ -17,6 +17,8 @@ if PY2:
 
     cmp = cmp
 
+    basestring = basestring
+
 else:
     def iteritems(dict):
         return iter(dict.items())
@@ -26,3 +28,5 @@ else:
 
     def cmp(a, b):
         return (a > b) - (a < b)
+
+    basestring = str

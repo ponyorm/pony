@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import itervalues
+from pony.py23compat import itervalues, basestring
 
 from pony.orm import core
 from pony.orm.core import log_sql, DBSchemaError

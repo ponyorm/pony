@@ -1,7 +1,7 @@
 #coding: cp1251
 
 from __future__ import absolute_import, print_function
-from pony.py23compat import imap
+from pony.py23compat import imap, basestring
 
 import re, os, os.path, sys, datetime, types, linecache, warnings, json
 
