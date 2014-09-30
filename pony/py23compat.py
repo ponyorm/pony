@@ -15,9 +15,14 @@ if PY2:
     def itervalues(dict):
         return dict.itervalues()
 
+    cmp = cmp
+
 else:
     def iteritems(dict):
         return iter(dict.items())
 
     def itervalues(dict):
         return iter(dict.values())
+
+    def cmp(a, b):
+        return (a > b) - (a < b)
