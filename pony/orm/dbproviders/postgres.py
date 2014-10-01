@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import PY2, basestring
+from pony.py23compat import PY2, basestring, unicode
 
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
@@ -68,11 +68,12 @@ class PGSQLBuilder(sqlbuilding.SQLBuilder):
         return '(', builder(expr), ' - ', builder(delta), ')'
 
 class PGStrConverter(dbapiprovider.StrConverter):
-    def py2sql(converter, val):
-        return val.encode('utf-8')
-    def sql2py(converter, val):
-        if isinstance(val, unicode): return val
-        return val.decode('utf-8')
+    if PY2:
+        def py2sql(converter, val):
+            return val.encode('utf-8')
+        def sql2py(converter, val):
+            if isinstance(val, unicode): return val
+            return val.decode('utf-8')
 
 class PGLongConverter(dbapiprovider.IntConverter):
     def sql_type(converter):
@@ -167,7 +168,7 @@ class PGProvider(DBAPIProvider):
 
     @wrap_dbapi_exceptions
     def execute(provider, cursor, sql, arguments=None, returning_id=False):
-        if isinstance(sql, unicode): sql = sql.encode('utf8')
+        if PY2 and isinstance(sql, unicode): sql = sql.encode('utf8')
         if type(arguments) is list:
             assert arguments and not returning_id
             cursor.executemany(sql, arguments)

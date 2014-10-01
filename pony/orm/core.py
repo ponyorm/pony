@@ -1,5 +1,6 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, imap, iteritems, itervalues, xrange, cmp, basestring, int_types, PY2, builtins
+from pony.py23compat import izip, imap, iteritems, itervalues, xrange, cmp, \
+                            basestring, unicode, int_types, PY2, builtins
 
 import re, sys, types, datetime, logging, itertools
 from cPickle import loads, dumps
@@ -64,6 +65,8 @@ __all__ = '''
     concat
 
     JOIN
+
+    unicode
     '''.split()
 
 debug = False
@@ -1278,7 +1281,8 @@ class Attribute(object):
                 except UnicodeDecodeError as e:
                     vrepr = repr(val)
                     if len(vrepr) > 100: vrepr = vrepr[:97] + '...'
-                    throw(ValueError, 'Value for attribute %s cannot be converted to unicode: %s' % (attr, vrepr))
+                    throw(ValueError, 'Value for attribute %s cannot be converted to %s: %s'
+                                      % (attr, unicode.__name__, vrepr))
         else:
             rentity = reverse.entity
             if not isinstance(val, rentity):

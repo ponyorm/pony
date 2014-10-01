@@ -7,6 +7,7 @@ if PY2:
     import __builtin__ as builtins
     xrange = xrange
     basestring = basestring
+    unicode = unicode
     int_types = (int, long)
     cmp = cmp
 
@@ -20,6 +21,7 @@ else:
     import builtins
     izip, imap, xrange = zip, map, range
     basestring = str
+    unicode = str
     int_types = (int,)
 
     def cmp(a, b):

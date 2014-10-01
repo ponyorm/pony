@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import basestring, int_types
+from pony.py23compat import basestring, int_types, PY2, unicode
 
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
@@ -377,9 +377,9 @@ class StrConverter(Converter):
         converter.max_len = max_len
         converter.db_encoding = kwargs.pop('db_encoding', None)
     def validate(converter, val):
-        if isinstance(val, str): val = val.decode('ascii')
+        if PY2 and isinstance(val, str): val = val.decode('ascii')
         elif not isinstance(val, unicode): throw(TypeError,
-            'Value type for attribute %s must be unicode. Got: %r' % (converter.attr, type(val)))
+            'Value type for attribute %s must be %s. Got: %r' % (converter.attr, unicode.__name__, type(val)))
         max_len = converter.max_len
         val_len = len(val)
         if max_len and val_len > max_len:

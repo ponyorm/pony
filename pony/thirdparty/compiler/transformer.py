@@ -25,7 +25,8 @@ parseFile(path) -> AST
 #   http://www.opensource.org/licenses/bsd-license.html
 # and replace OWNER, ORGANIZATION, and YEAR as appropriate.
 
-from __future__ import print_function
+from __future__ import absolute_import, print_function
+from pony.py23compat import unicode
 
 from .ast import *
 import parser
