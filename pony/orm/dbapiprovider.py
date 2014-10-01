@@ -359,7 +359,7 @@ class BoolConverter(Converter):
     def sql_type(converter):
         return "BOOLEAN"
 
-class BasestringConverter(Converter):
+class StrConverter(Converter):
     def __init__(converter, provider, py_type, attr=None):
         converter.max_len = None
         converter.db_encoding = None
@@ -377,6 +377,9 @@ class BasestringConverter(Converter):
         converter.max_len = max_len
         converter.db_encoding = kwargs.pop('db_encoding', None)
     def validate(converter, val):
+        if isinstance(val, str): val = val.decode('ascii')
+        elif not isinstance(val, unicode): throw(TypeError,
+            'Value type for attribute %s must be unicode. Got: %r' % (converter.attr, type(val)))
         max_len = converter.max_len
         val_len = len(val)
         if max_len and val_len > max_len:
@@ -387,14 +390,6 @@ class BasestringConverter(Converter):
         if converter.max_len:
             return 'VARCHAR(%d)' % converter.max_len
         return 'TEXT'
-
-class StrConverter(BasestringConverter):
-    def validate(converter, val):
-        if val is None: pass
-        elif isinstance(val, str): val = val.decode('ascii')
-        elif not isinstance(val, unicode): throw(TypeError,
-            'Value type for attribute %s must be unicode. Got: %r' % (converter.attr, type(val)))
-        return BasestringConverter.validate(converter, val)
 
 class IntConverter(Converter):
     def init(converter, kwargs):
