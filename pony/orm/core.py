@@ -1636,7 +1636,7 @@ class Discriminator(Required):
             return entity._discriminator_
         return Attribute.validate(attr, val, obj, entity)
     def load(attr, obj):
-        raise AssertionError
+        raise AssertionError()
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
         return obj._discriminator_

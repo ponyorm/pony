@@ -16,28 +16,28 @@ def check_ip(s):
     items = s.split('.')
     if len(items) != 4: raise ValueError()
     for item in items:
-        if not 0 <= int(item) <= 255: raise ValueError
+        if not 0 <= int(item) <= 255: raise ValueError()
     return s
 
 def check_positive(s):
     i = int(s)
     if i > 0: return i
-    raise ValueError
+    raise ValueError()
 
 def check_identifier(s):
     if is_ident(s): return s
-    raise ValueError
+    raise ValueError()
 
 isbn_re = re.compile(r'(?:\d[ -]?)+x?')
 
 def isbn10_checksum(digits):
-    if len(digits) != 9: raise ValueError
+    if len(digits) != 9: raise ValueError()
     reminder = sum(digit*coef for digit, coef in izip(imap(int, digits), xrange(10, 1, -1))) % 11
     if reminder == 1: return 'X'
     return reminder and str(11 - reminder) or '0'
 
 def isbn13_checksum(digits):
-    if len(digits) != 12: raise ValueError
+    if len(digits) != 12: raise ValueError()
     reminder = sum(digit*coef for digit, coef in izip(imap(int, digits), (1, 3)*6)) % 10
     return reminder and str(10 - reminder) or '0'
 
@@ -48,12 +48,12 @@ def check_isbn(s, convert_to=None):
     size = len(digits)
     if size == 10: checksum_func = isbn10_checksum
     elif size == 13: checksum_func = isbn13_checksum
-    else: raise ValueError
+    else: raise ValueError()
     digits, last = digits[:-1], digits[-1]
     if checksum_func(digits) != last:
         if last.isdigit() or size == 10 and last == 'X':
             raise ValidationError('Invalid ISBN checksum')
-        raise ValueError
+        raise ValueError()
     if convert_to is not None:
         if size == 10 and convert_to == 13:
             digits = '978' + digits
@@ -91,12 +91,12 @@ rfc2822_email_re = re.compile(r'''
 
 def check_email(s):
     s = s.strip()
-    if email_re.match(s) is None: raise ValueError
+    if email_re.match(s) is None: raise ValueError()
     return s
 
 def check_rfc2822_email(s):
     s = s.strip()
-    if rfc2822_email_re.match(s) is None: raise ValueError
+    if rfc2822_email_re.match(s) is None: raise ValueError()
     return s
 
 date_str_list = [

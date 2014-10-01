@@ -148,7 +148,7 @@ def cached(f, *args, **kwargs):
     return _cache.setdefault(key, f(*args, **kwargs))
 
 def error_method(*args, **kwargs):
-    raise TypeError
+    raise TypeError()
 
 _ident_re = re.compile(r'^[A-Za-z_]\w*\Z')
 
@@ -374,7 +374,7 @@ expr3_re = re.compile(r"""
 def parse_expr(s, pos=0):
     z = 0
     match = expr1_re.match(s, pos)
-    if match is None: raise ValueError
+    if match is None: raise ValueError()
     start = pos
     i = match.lastindex
     if i == 1: pos = match.end()  # identifier
@@ -396,7 +396,7 @@ def parse_expr(s, pos=0):
             else: assert False
             while True:
                 match = expr3_re.search(s, pos)
-                if match is None: raise ValueError
+                if match is None: raise ValueError()
                 pos = match.end()
                 x = match.group()
                 if x == open: counter += 1

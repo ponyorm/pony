@@ -321,7 +321,7 @@ class Decompiler(object):
         if decompiler.pos != decompiler.end: throw(NotImplementedError)
         expr = decompiler.stack.pop()
         decompiler.stack.append(simplify(expr))
-        raise AstGenerated
+        raise AstGenerated()
 
     def ROT_TWO(decompiler):
         tos = decompiler.stack.pop()
@@ -423,7 +423,7 @@ class Decompiler(object):
             else: fors.append(top)
         fors.reverse()
         decompiler.stack.append(ast.GenExpr(ast.GenExprInner(simplify(expr), fors)))
-        raise AstGenerated
+        raise AstGenerated()
 
 test_lines = """
     (a and b if c and d else e and f for i in T if (A and B if C and D else E and F))
