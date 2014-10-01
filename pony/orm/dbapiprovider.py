@@ -396,26 +396,6 @@ class UnicodeConverter(BasestringConverter):
             'Value type for attribute %s must be unicode. Got: %r' % (converter.attr, type(val)))
         return BasestringConverter.validate(converter, val)
 
-class StrConverter(BasestringConverter):
-    def __init__(converter, provider, py_type, attr=None):
-        converter.encoding = 'ascii'  # for the case when attr is None
-        BasestringConverter.__init__(converter, provider, py_type, attr)
-        converter.utf8 = is_utf8(converter.encoding)
-    def init(converter, kwargs):
-        BasestringConverter.init(converter, kwargs)
-        converter.encoding = kwargs.pop('encoding', 'latin1')
-    def validate(converter, val):
-        if val is not None:
-            if isinstance(val, str): pass
-            elif isinstance(val, unicode): val = val.encode(converter.encoding)
-            else: throw(TypeError, 'Value type for attribute %s must be str in encoding %r. Got: %r'
-                                  % (converter.attr, converter.encoding, type(val)))
-        return BasestringConverter.validate(converter, val)
-    def py2sql(converter, val):
-        return val.decode(converter.encoding)
-    def sql2py(converter, val):
-        return val.encode(converter.encoding, 'replace')
-
 class IntConverter(Converter):
     def init(converter, kwargs):
         Converter.init(converter, kwargs)

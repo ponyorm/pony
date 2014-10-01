@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import imap, int_types, PY2
+from pony.py23compat import imap, int_types, PY2, basestring
 
 import os.path
 import sqlite3 as sqlite
@@ -104,11 +104,6 @@ class SQLiteBuilder(SQLBuilder):
     def RANDOM(builder):
         return 'rand()'  # return '(random() / 9223372036854775807.0 + 1.0) / 2.0'
 
-class SQLiteStrConverter(dbapiprovider.StrConverter):
-    def py2sql(converter, val):
-        if converter.utf8: return val
-        return val.decode(converter.encoding)
-
 class SQLiteDecimalConverter(dbapiprovider.DecimalConverter):
     def sql2py(converter, val):
         try: val = Decimal(str(val))
@@ -170,7 +165,7 @@ class SQLiteProvider(DBAPIProvider):
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
-        (str, SQLiteStrConverter),
+        (basestring, dbapiprovider.UnicodeConverter),
         (int_types, dbapiprovider.IntConverter),
         (float, dbapiprovider.RealConverter),
         (Decimal, SQLiteDecimalConverter),
@@ -183,7 +178,6 @@ class SQLiteProvider(DBAPIProvider):
 
     if PY2:
         converter_classes += [
-            (unicode, dbapiprovider.UnicodeConverter),
             (buffer, dbapiprovider.BlobConverter),
         ]
     else:

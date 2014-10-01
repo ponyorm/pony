@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import imap, PY2
+from pony.py23compat import imap, PY2, basestring
 
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
@@ -88,16 +88,11 @@ class MySQLBuilder(SQLBuilder):
             return 'DATE_SUB(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
         return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
 
-def _string_sql_type(converter):
-    result = 'VARCHAR(%d)' % converter.max_len if converter.max_len else 'LONGTEXT'
-    if converter.db_encoding: result += ' CHARACTER SET %s' % converter.db_encoding
-    return result
-
 class MySQLUnicodeConverter(dbapiprovider.UnicodeConverter):
-    sql_type = _string_sql_type
-
-class MySQLStrConverter(dbapiprovider.StrConverter):
-    sql_type = _string_sql_type
+    def sql_type(converter):
+        result = 'VARCHAR(%d)' % converter.max_len if converter.max_len else 'LONGTEXT'
+        if converter.db_encoding: result += ' CHARACTER SET %s' % converter.db_encoding
+        return result
 
 if PY2:
     class MySQLLongConverter(dbapiprovider.IntConverter):
@@ -152,7 +147,7 @@ class MySQLProvider(DBAPIProvider):
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
-        (str, MySQLStrConverter),
+        (basestring, MySQLUnicodeConverter),
         (int, dbapiprovider.IntConverter),
         (float, MySQLRealConverter),
         (Decimal, dbapiprovider.DecimalConverter),
@@ -165,7 +160,6 @@ class MySQLProvider(DBAPIProvider):
 
     if PY2:
         converter_classes += [
-            (unicode, MySQLUnicodeConverter),
             (long, MySQLLongConverter),
             (buffer, MySQLBlobConverter),
         ]

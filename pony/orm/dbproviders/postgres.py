@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import PY2
+from pony.py23compat import PY2, basestring
 
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
@@ -73,15 +73,6 @@ class PGUnicodeConverter(dbapiprovider.UnicodeConverter):
     def sql2py(converter, val):
         if isinstance(val, unicode): return val
         return val.decode('utf-8')
-
-class PGStrConverter(dbapiprovider.StrConverter):
-    def py2sql(converter, val):
-        return val.decode(converter.encoding).encode('utf-8')
-    def sql2py(converter, val):
-        if not isinstance(val, unicode):
-            if converter.utf8: return val
-            val = val.decode('utf-8')
-        return val.encode(converter.encoding, 'replace')
 
 class PGLongConverter(dbapiprovider.IntConverter):
     def sql_type(converter):
@@ -238,7 +229,7 @@ class PGProvider(DBAPIProvider):
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
-        (str, PGStrConverter),
+        (basestring, PGUnicodeConverter),
         (int, dbapiprovider.IntConverter),
         (float, PGRealConverter),
         (Decimal, dbapiprovider.DecimalConverter),
@@ -251,7 +242,6 @@ class PGProvider(DBAPIProvider):
 
     if PY2:
         converter_classes += [
-            (unicode, PGUnicodeConverter),
             (long, PGLongConverter),
             (buffer, PGBlobConverter),
         ]

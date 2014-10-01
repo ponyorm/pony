@@ -84,7 +84,7 @@ class TestMultiset(unittest.TestCase):
     def test_multiset_str(self):
         g = Group[101]
         multiset = g.students.courses
-        self.assertEqual(str(multiset), "CourseMultiset({Course['C1']: 2, Course['C2']: 2, Course['C3']: 2})")
+        self.assertEqual(str(multiset), "CourseMultiset({Course[u'C1']: 2, Course[u'C2']: 2, Course[u'C3']: 2})")
 
     @db_session
     def test_multiset_distinct(self):
