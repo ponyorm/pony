@@ -65,21 +65,22 @@ class TestFuncMonad(unittest.TestCase):
     def test_minmax4(self):
         result = set(select(s for s in Student if min(s.name, "CC") == "CC" ))
         self.assertEqual(result, set([Student[4], Student[5], Student[3]]))
-    @raises_exception(TypeError)
+    @raises_exception(UnicodeDecodeError)
     def test_minmax5(self):
         x = chr(128)
         result = set(select(s for s in Student if min(s.name, x) == "CC" ))
-    @raises_exception(TypeError)
+    @raises_exception(UnicodeDecodeError)
     def test_minmax6(self):
         x = chr(128)
         result = set(select(s for s in Student if min(s.name, x, "CC") == "CC" ))
-    def test_minmax5(self):
+    def test_minmax7(self):
         result = set(select(s for s in Student if min(s.phd, 2) == 2 ))
     def test_date_func1(self):
         result = set(select(s for s in Student if s.dob >= date(1983, 3, 3)))
         self.assertEqual(result, set([Student[3], Student[4], Student[5]]))
     # @raises_exception(ExprEvalError, "date(1983, 'three', 3) raises TypeError: an integer is required")
-    @raises_exception(TypeError, "'month' argument of date(year, month, day) function must be of 'int' type. Got: 'str'")
+    @raises_exception(TypeError, "'month' argument of date(year, month, day) function must be of 'int' type. "
+                                 "Got: '%s'" % unicode.__name__)
     def test_date_func2(self):
         result = set(select(s for s in Student if s.dob >= date(1983, 'three', 3)))
     # @raises_exception(NotImplementedError)
@@ -96,7 +97,8 @@ class TestFuncMonad(unittest.TestCase):
         result = set(select(s for s in Student if s.last_visit >= datetime(2011, 3, 3, 13, 13, 13)))
         self.assertEqual(result, set([Student[3], Student[4], Student[5]]))
     # @raises_exception(ExprEvalError, "datetime(1983, 'three', 3) raises TypeError: an integer is required")
-    @raises_exception(TypeError, "'month' argument of datetime(...) function must be of 'int' type. Got: 'str'")
+    @raises_exception(TypeError, "'month' argument of datetime(...) function must be of 'int' type. "
+                                 "Got: '%s'" % unicode.__name__)
     def test_datetime_func4(self):
         result = set(select(s for s in Student if s.last_visit >= datetime(1983, 'three', 3)))
     # @raises_exception(NotImplementedError)

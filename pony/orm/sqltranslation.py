@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, xrange, basestring
+from pony.py23compat import izip, xrange, basestring, unicode
 
 import types, sys, re, itertools
 from decimal import Decimal
@@ -1355,7 +1355,7 @@ class AttrMonad(Monad):
         translator = parent.translator
         type = normalize_type(attr.py_type)
         if type in numeric_types: cls = translator.NumericAttrMonad
-        elif type is str: cls = translator.StringAttrMonad
+        elif type is unicode: cls = translator.StringAttrMonad
         elif type is date: cls = translator.DateAttrMonad
         elif type is time: cls = translator.TimeAttrMonad
         elif type is timedelta: cls = translator.TimedeltaAttrMonad
@@ -1419,7 +1419,7 @@ class ParamMonad(Monad):
     def new(translator, type, paramkey):
         type = normalize_type(type)
         if type in numeric_types: cls = translator.NumericParamMonad
-        elif type is str: cls = translator.StringParamMonad
+        elif type is unicode: cls = translator.StringParamMonad
         elif type is date: cls = translator.DateParamMonad
         elif type is time: cls = translator.TimeParamMonad
         elif type is timedelta: cls = translator.TimedeltaParamMonad
@@ -1470,7 +1470,7 @@ class ExprMonad(Monad):
     @staticmethod
     def new(translator, type, sql):
         if type in numeric_types: cls = translator.NumericExprMonad
-        elif type is str: cls = translator.StringExprMonad
+        elif type is unicode: cls = translator.StringExprMonad
         elif type is date: cls = translator.DateExprMonad
         elif type is time: cls = translator.TimeExprMonad
         elif type is timedelta: cls = translator.TimedeltaExprMonad
@@ -1498,7 +1498,7 @@ class ConstMonad(Monad):
     def new(translator, value):
         value_type = get_normalized_type_of(value)
         if value_type in numeric_types: cls = translator.NumericConstMonad
-        elif value_type is str: cls = translator.StringConstMonad
+        elif value_type is unicode: cls = translator.StringConstMonad
         elif value_type is date: cls = translator.DateConstMonad
         elif value_type is time: cls = translator.TimeConstMonad
         elif value_type is timedelta: cls = translator.TimedeltaConstMonad
@@ -1754,7 +1754,7 @@ class FuncConcatMonad(FuncMonad):
             if isinstance(t, EntityMeta) or type(t) in (tuple, SetType):
                 throw(TranslationError, 'Invalid argument of concat() function: %s' % ast2src(arg.node))
             result_ast.extend(arg.getsql())
-        return translator.ExprMonad.new(translator, str, result_ast)
+        return translator.ExprMonad.new(translator, unicode, result_ast)
 
 class FuncLenMonad(FuncMonad):
     func = len

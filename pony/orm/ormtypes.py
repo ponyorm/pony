@@ -60,7 +60,7 @@ class MethodType(object):
         return hash(self.obj) ^ hash(self.func)
 
 numeric_types = set([ bool, int, float, Decimal ])
-comparable_types = set([ int, float, Decimal, str, date, time, datetime, timedelta, bool, UUID ])
+comparable_types = set([ int, float, Decimal, unicode, date, time, datetime, timedelta, bool, UUID ])
 primitive_types = comparable_types | set([ buffer ])
 function_types = set([type, types.FunctionType, types.BuiltinFunctionType])
 type_normalization_dict = { long : int } if PY2 else {}
@@ -75,8 +75,8 @@ def get_normalized_type_of(value):
     if isinstance(value, str):
         try: value.decode('ascii')
         except UnicodeDecodeError: raise
-        else: return str
-    elif isinstance(value, unicode): return str
+        else: return unicode
+    elif isinstance(value, unicode): return unicode
     if t in function_types: return FuncType(value)
     if t is types.MethodType: return MethodType(value)
     return normalize_type(t)
@@ -89,7 +89,7 @@ def normalize_type(t):
     if t is NoneType: return t
     t = type_normalization_dict.get(t, t)
     if t in primitive_types: return t
-    if issubclass(t, basestring): return str
+    if issubclass(t, basestring): return unicode
     throw(TypeError, 'Unsupported type %r' % t.__name__)
 
 coercions = {
