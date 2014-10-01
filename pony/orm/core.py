@@ -4643,7 +4643,10 @@ class QueryResult(list):
             entity = expr_type
             col_names = [ attr.name for attr in entity._attrs_
                                     if not attr.is_collection and not attr.lazy ][:max_columns]
-            row_maker = attrgetter(*col_names)
+            if len(col_names) == 1:
+                col_name = col_names[0]
+                row_maker = lambda obj: (getattr(obj, col_name),)
+            else: row_maker = attrgetter(*col_names)
             rows = [ tuple(to_str(value) for value in row_maker(obj)) for obj in result  ]
         elif len(col_names) == 1:
             rows = [ (to_str(obj),) for obj in result ]
