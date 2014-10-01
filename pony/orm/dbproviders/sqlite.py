@@ -165,7 +165,7 @@ class SQLiteProvider(DBAPIProvider):
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
-        (basestring, dbapiprovider.UnicodeConverter),
+        (basestring, dbapiprovider.StrConverter),
         (int_types, dbapiprovider.IntConverter),
         (float, dbapiprovider.RealConverter),
         (Decimal, SQLiteDecimalConverter),

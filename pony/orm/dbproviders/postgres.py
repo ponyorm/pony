@@ -67,7 +67,7 @@ class PGSQLBuilder(sqlbuilding.SQLBuilder):
             return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' DAY TO SECOND)"
         return '(', builder(expr), ' - ', builder(delta), ')'
 
-class PGUnicodeConverter(dbapiprovider.UnicodeConverter):
+class PGStrConverter(dbapiprovider.StrConverter):
     def py2sql(converter, val):
         return val.encode('utf-8')
     def sql2py(converter, val):
@@ -229,7 +229,7 @@ class PGProvider(DBAPIProvider):
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
-        (basestring, PGUnicodeConverter),
+        (basestring, PGStrConverter),
         (int, dbapiprovider.IntConverter),
         (float, PGRealConverter),
         (Decimal, dbapiprovider.DecimalConverter),

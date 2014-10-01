@@ -388,7 +388,7 @@ class BasestringConverter(Converter):
             return 'VARCHAR(%d)' % converter.max_len
         return 'TEXT'
 
-class UnicodeConverter(BasestringConverter):
+class StrConverter(BasestringConverter):
     def validate(converter, val):
         if val is None: pass
         elif isinstance(val, str): val = val.decode('ascii')

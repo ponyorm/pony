@@ -226,10 +226,10 @@ class OraBoolConverter(dbapiprovider.BoolConverter):
     def sql_type(converter):
         return "NUMBER(1)"
 
-class OraUnicodeConverter(dbapiprovider.UnicodeConverter):
+class OraStrConverter(dbapiprovider.StrConverter):
     def validate(converter, val):
         if val == '': return None
-        return dbapiprovider.UnicodeConverter.validate(converter, val)
+        return dbapiprovider.StrConverter.validate(converter, val)
     def sql2py(converter, val):
         if isinstance(val, cx_Oracle.LOB):
             val = val.read()
@@ -323,7 +323,7 @@ class OraProvider(DBAPIProvider):
 
     converter_classes = [
         (bool, OraBoolConverter),
-        (basestring, OraUnicodeConverter),
+        (basestring, OraStrConverter),
         (int_types, OraIntConverter),
         (float, OraRealConverter),
         (Decimal, OraDecimalConverter),

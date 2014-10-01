@@ -88,7 +88,7 @@ class MySQLBuilder(SQLBuilder):
             return 'DATE_SUB(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
         return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
 
-class MySQLUnicodeConverter(dbapiprovider.UnicodeConverter):
+class MySQLStrConverter(dbapiprovider.StrConverter):
     def sql_type(converter):
         result = 'VARCHAR(%d)' % converter.max_len if converter.max_len else 'LONGTEXT'
         if converter.db_encoding: result += ' CHARACTER SET %s' % converter.db_encoding
@@ -147,7 +147,7 @@ class MySQLProvider(DBAPIProvider):
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
-        (basestring, MySQLUnicodeConverter),
+        (basestring, MySQLStrConverter),
         (int, dbapiprovider.IntConverter),
         (float, MySQLRealConverter),
         (Decimal, dbapiprovider.DecimalConverter),
