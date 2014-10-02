@@ -66,14 +66,16 @@ class TestFuncMonad(unittest.TestCase):
     def test_minmax4(self):
         result = set(select(s for s in Student if min(s.name, "CC") == "CC" ))
         self.assertEqual(result, set([Student[4], Student[5], Student[3]]))
-    @raises_exception(UnicodeDecodeError)
     def test_minmax5(self):
         x = chr(128)
-        result = set(select(s for s in Student if min(s.name, x) == "CC" ))
-    @raises_exception(UnicodeDecodeError)
+        try: result = set(select(s for s in Student if min(s.name, x) == "CC" ))
+        except UnicodeDecodeError: self.assertTrue(PY2)
+        else: self.assertFalse(PY2)
     def test_minmax6(self):
         x = chr(128)
-        result = set(select(s for s in Student if min(s.name, x, "CC") == "CC" ))
+        try: result = set(select(s for s in Student if min(s.name, x, "CC") == "CC" ))
+        except UnicodeDecodeError: self.assertTrue(PY2)
+        else: self.assertFalse(PY2)
     def test_minmax7(self):
         result = set(select(s for s in Student if min(s.phd, 2) == 2 ))
     def test_date_func1(self):
