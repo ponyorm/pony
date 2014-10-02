@@ -3223,7 +3223,7 @@ class EntityMeta(type):
         locals = sys._getframe(frame_depth+1).f_locals
         if type(lambda_func) is types.FunctionType:
             names = get_lambda_args(lambda_func)
-            code_key = id(lambda_func.func_code)
+            code_key = id(lambda_func.func_code if PY2 else lambda_func.__code__)
             cond_expr, external_names, cells = decompile(lambda_func)
         elif isinstance(lambda_func, basestring):
             code_key = lambda_func
@@ -4451,7 +4451,7 @@ class Query(object):
         elif type(func) is types.FunctionType:
             argnames = get_lambda_args(func)
             subquery = prev_translator.subquery
-            func_id = id(func.func_code)
+            func_id = id(func.func_code if PY2 else func.__code__)
             func_ast, external_names, cells = decompile(func)
         elif not order_by: throw(TypeError,
             'Argument of filter() method must be a lambda functon or its text. Got: %r' % func)

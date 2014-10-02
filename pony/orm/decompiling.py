@@ -22,8 +22,11 @@ def decompile(x):
     if t is types.CodeType: codeobject = x
     elif t is types.GeneratorType: codeobject = x.gi_frame.f_code
     elif t is types.FunctionType:
-        codeobject = x.func_code
-        if x.func_closure: cells = dict(izip(codeobject.co_freevars, x.func_closure))
+        codeobject = x.func_code if PY2 else x.__code__
+        if PY2:
+            if x.func_closure: cells = dict(izip(codeobject.co_freevars, x.func_closure))
+        else:
+            if x.__closure__: cells = dict(izip(codeobject.co_freevars, x.__closure__))
     else: throw(TypeError)
     key = id(codeobject)
     result = ast_cache.get(key)
