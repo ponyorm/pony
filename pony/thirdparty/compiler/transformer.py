@@ -26,7 +26,7 @@ parseFile(path) -> AST
 # and replace OWNER, ORGANIZATION, and YEAR as appropriate.
 
 from __future__ import absolute_import, print_function
-from pony.py23compat import unicode
+from pony.py23compat import PY2, unicode
 
 from .ast import *
 import parser
@@ -118,11 +118,13 @@ class Transformer:
         self._atom_dispatch = {token.LPAR: self.atom_lpar,
                                token.LSQB: self.atom_lsqb,
                                token.LBRACE: self.atom_lbrace,
-                               token.BACKQUOTE: self.atom_backquote,
                                token.NUMBER: self.atom_number,
                                token.STRING: self.atom_string,
                                token.NAME: self.atom_name,
                                }
+        if PY2: self._atom_dispatch.update({
+                               token.BACKQUOTE: self.atom_backquote,
+                               })
         self.encoding = None
 
     def transform(self, tree):
