@@ -217,40 +217,13 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     # @raises_exception(TypeError, "Incomparable types 'Decimal' and 'bool' in expression: s.scholarship == (True or False and not True)")
     # def test50(self):
     #     select(s for s in Student if s.scholarship == (True or False and not True))
-    @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > +3" % unicode.__name__)
-    def test51(self): ###
-        select(s for s in Student if s.name > +3)
     @raises_exception(TypeError, "Expression `{'a':'b'}` has unsupported type 'dict'")
     def test52(self):
         select(s for s in Student if s.name == {'a' : 'b'})
-    @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > a ^ 2" % unicode.__name__)
-    def test53(self): ###
-        a = 1
-        select(s for s in Student if s.name > a ^ 2)
-    @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > a | 2" % unicode.__name__)
-    def test54(self): ###
-        a = 1
-        select(s for s in Student if s.name > a | 2)
     @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > a & 2" % unicode.__name__)
     def test55(self):
         a = 1
         select(s for s in Student if s.name > a & 2)
-    @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > a << 2" % unicode.__name__)
-    def test56(self): ###
-        a = 1
-        select(s for s in Student if s.name > a << 2)
-    @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > a >> 2" % unicode.__name__)
-    def test57(self): ###
-        a = 1
-        select(s for s in Student if s.name > a >> 2)
-    @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > (a * 2) %% 4" % unicode.__name__)
-    def test58(self): ###
-        a = 1
-        select(s for s in Student if s.name > a * 2 % 4)
-    @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > ~a" % unicode.__name__)
-    def test59(self): ###
-        a = 1
-        select(s for s in Student if s.name > ~a)
     @raises_exception(TypeError, "Incomparable types '%s' and 'float' in expression: s.name > 1 / a - 3" % unicode.__name__)
     def test60(self):
         a = 1
