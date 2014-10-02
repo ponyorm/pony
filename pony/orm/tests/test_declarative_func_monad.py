@@ -1,4 +1,5 @@
 from __future__ import absolute_import, print_function, division
+from pony.py23compat import PY2
 
 import unittest
 from datetime import date, datetime
@@ -108,7 +109,9 @@ class TestFuncMonad(unittest.TestCase):
     def test_datetime_now1(self):
         result = set(select(s for s in Student if s.dob < date.today()))
         self.assertEqual(result, set([Student[1], Student[2], Student[3], Student[4], Student[5]]))
-    @raises_exception(ExprEvalError, "1 < datetime.now() raises TypeError: can't compare datetime.datetime to int")
+    @raises_exception(ExprEvalError, "1 < datetime.now() raises TypeError: " +
+                      ("can't compare datetime.datetime to int" if PY2 else
+                       "unorderable types: int() < datetime.datetime()"))
     def test_datetime_now2(self):
         select(s for s in Student if 1 < datetime.now())
     def test_datetime_now3(self):
