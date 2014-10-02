@@ -72,7 +72,7 @@ def get_normalized_type_of(value):
     except TypeError: throw(TypeError, 'Unsupported type %r' % t.__name__)
     if t.__name__ == 'EntityMeta': return SetType(value)
     if t.__name__ == 'EntityIter': return SetType(value.entity)
-    if isinstance(value, str):
+    if PY2 and isinstance(value, str):
         try: value.decode('ascii')
         except UnicodeDecodeError: raise
         else: return unicode
