@@ -20,6 +20,9 @@ if PY2:
     def itervalues(dict):
         return dict.itervalues()
 
+    def items_list(dict):
+        return dict.items()
+
     def values_list(dict):
         return dict.values()
 
@@ -40,6 +43,9 @@ else:
 
     def itervalues(dict):
         return iter(dict.values())
+
+    def items_list(dict):
+        return list(dict.items())
 
     def values_list(dict):
         return list(dict.values())

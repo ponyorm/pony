@@ -1,7 +1,7 @@
 """A flow graph representation for Python bytecode"""
 
-from __future__ import print_function
-from pony.py23compat import imap
+from __future__ import absolute_import, print_function
+from pony.py23compat import imap, items_list
 
 import dis
 import types
@@ -496,7 +496,7 @@ class PyFlowGraph(FlowGraph):
 
     # similarly for other opcodes...
 
-    for name, obj in locals().items():
+    for name, obj in items_list(locals()):
         if name[:9] == "_convert_":
             opname = name[9:]
             _converters[opname] = obj

@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, basestring, int_types, PY2, unicode, buffer
+from pony.py23compat import izip, basestring, int_types, PY2, unicode, buffer, items_list
 
 import types
 from decimal import Decimal
@@ -100,7 +100,7 @@ coercions = {
     (bool, float) : float,
     (bool, Decimal) : Decimal
     }
-coercions.update(((t2, t1), t3) for ((t1, t2), t3) in coercions.items())
+coercions.update(((t2, t1), t3) for ((t1, t2), t3) in items_list(coercions))
 
 def coerce_types(t1, t2):
     if t1 == t2: return t1

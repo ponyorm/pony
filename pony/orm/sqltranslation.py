@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, xrange, basestring, unicode, buffer, pickle, with_metaclass
+from pony.py23compat import izip, xrange, basestring, unicode, buffer, pickle, with_metaclass, items_list
 
 import types, sys, re, itertools
 from decimal import Decimal
@@ -1541,7 +1541,7 @@ class BoolMonad(Monad):
         monad.type = bool
 
 sql_negation = { 'IN' : 'NOT_IN', 'EXISTS' : 'NOT_EXISTS', 'LIKE' : 'NOT_LIKE', 'BETWEEN' : 'NOT_BETWEEN', 'IS_NULL' : 'IS_NOT_NULL' }
-sql_negation.update((value, key) for key, value in sql_negation.items())
+sql_negation.update((value, key) for key, value in items_list(sql_negation))
 
 class BoolExprMonad(BoolMonad):
     def __init__(monad, translator, sql):
@@ -1566,7 +1566,7 @@ class BoolExprMonad(BoolMonad):
 cmp_ops = { '>=' : 'GE', '>' : 'GT', '<=' : 'LE', '<' : 'LT' }
 
 cmp_negate = { '<' : '>=', '<=' : '>', '==' : '!=', 'is' : 'is not' }
-cmp_negate.update((b, a) for a, b in cmp_negate.items())
+cmp_negate.update((b, a) for a, b in items_list(cmp_negate))
 
 class CmpMonad(BoolMonad):
     def __init__(monad, op, left, right):
@@ -2397,7 +2397,7 @@ class QuerySetMonad(SetMixin, Monad):
     def call_avg(monad):
         return monad.aggregate('AVG')
 
-for name, value in globals().items():
+for name, value in items_list(globals()):
     if name.endswith('Monad') or name.endswith('Mixin'):
         setattr(SQLTranslator, name, value)
 del name, value

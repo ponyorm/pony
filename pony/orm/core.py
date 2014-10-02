@@ -1,7 +1,7 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import izip, imap, iteritems, itervalues, xrange, cmp, \
                             basestring, unicode, buffer, int_types, PY2, builtins, \
-                            pickle, with_metaclass, values_list
+                            pickle, with_metaclass, items_list, values_list
 
 import re, sys, types, datetime, logging, itertools
 from operator import attrgetter, itemgetter
@@ -3595,7 +3595,7 @@ class Entity(with_metaclass(EntityMeta)):
         get_dbval = obj._dbvals_.get
         rbits = obj._rbits_
         wbits = obj._wbits_
-        for attr, new_dbval in avdict.items():
+        for attr, new_dbval in items_list(avdict):
             assert attr.pk_offset is None
             assert new_dbval is not NOT_LOADED
             old_dbval = get_dbval(attr, NOT_LOADED)
