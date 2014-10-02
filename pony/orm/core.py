@@ -2517,6 +2517,7 @@ class EntityIter(object):
     def next(self):
         throw(TypeError, 'Use select(...) function or %s.select(...) method for iteration'
                          % self.entity.__name__)
+    if not PY2: __next__ = next
 
 entity_id_counter = itertools.count(1)
 new_instance_id_counter = itertools.count(1)
