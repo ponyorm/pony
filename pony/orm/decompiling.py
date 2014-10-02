@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, xrange
+from pony.py23compat import izip, xrange, PY2
 
 import types
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
@@ -55,6 +55,8 @@ def binop(node_type, args_holder=tuple):
         oper1 = decompiler.stack.pop()
         return node_type(args_holder((oper1, oper2)))
     return method
+
+if not PY2: ord = lambda x: x
 
 class Decompiler(object):
     def __init__(decompiler, code, start=0, end=None):
