@@ -261,9 +261,8 @@ class TestSQLTranslator(unittest.TestCase):
     def test_query_reuse(self):
         q = select(s for s in Student if s.scholarship > 0)
         q.count()
-        self.assert_("ORDER BY" not in db.last_sql.upper())
+        self.assertTrue("ORDER BY" not in db.last_sql.upper())
         objects = q[:] # should not throw exception, query can be reused
-        self.assert_(True)
     def test_select(self):
         result = Student.select(lambda s: s.scholarship > 0)[:]
         self.assertEqual(result, [Student[2], Student[3]])

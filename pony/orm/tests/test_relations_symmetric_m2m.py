@@ -83,7 +83,7 @@ class TestSymmetric(unittest.TestCase):
             p1_friends = set(p1.friends)
         except UnrepeatableReadError as e:
             self.assertEqual(e.args[0], "Phantom object Person[1] appeared in collection Person[2].friends")
-        else: self.assert_(False)
+        else: self.fail()
     def test3b(self):
         db.execute('delete from person_friends')
         db.insert('person_friends', person=1, person_2=2)
@@ -95,7 +95,7 @@ class TestSymmetric(unittest.TestCase):
             p2_friends = set(p2.friends)
         except UnrepeatableReadError as e:
             self.assertEqual(e.args[0], "Phantom object Person[1] disappeared from collection Person[2].friends")
-        else: self.assert_(False)
+        else: self.fail()
 
 if __name__ == '__main__':
     unittest.main()

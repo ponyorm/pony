@@ -132,7 +132,7 @@ class TestOneToOne2(unittest.TestCase):
         m1 = Male[1]
         f1 = Female[1]
         f1.name
-        self.assert_(Male.wife not in m1._vals_)
+        self.assertTrue(Male.wife not in m1._vals_)
 
 
 if __name__ == '__main__':
