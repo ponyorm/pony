@@ -4592,7 +4592,7 @@ class Query(object):
             if result is None: pass
             elif aggr_func_name == 'COUNT': pass
             else:
-                expr_type = translator.expr_type
+                expr_type = float if aggr_func_name == 'AVG' else translator.expr_type
                 provider = query._database.provider
                 converter = provider.get_converter_by_py_type(expr_type)
                 result = converter.sql2py(result)
