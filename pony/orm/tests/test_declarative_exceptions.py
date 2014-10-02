@@ -89,7 +89,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(ExprEvalError, "Group(101) raises TypeError: Group constructor accept only keyword arguments. Got: 1 positional argument")
     def test12(self):
         select(s for s in Student if s.group == Group(101))
-    @raises_exception(ExprEvalError, "Group[date(2011, 1, 2)] raises TypeError: Value type for attribute Group.number must be int. Got: <type 'datetime.date'>")
+    @raises_exception(ExprEvalError, "Group[date(2011, 1, 2)] raises TypeError: Value type for attribute Group.number must be int. Got: %r" % date)
     def test13(self):
         select(s for s in Student if s.group == Group[date(2011, 1, 2)])
     @raises_exception(TypeError, "Unsupported operand types 'int' and '%s' for operation '+' in expression: s.group.number + s.name" % unicode.__name__)
