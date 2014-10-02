@@ -20,6 +20,9 @@ if PY2:
     def itervalues(dict):
         return dict.itervalues()
 
+    def values_list(dict):
+        return dict.values()
+
 else:
     import builtins, pickle
     from io import StringIO
@@ -37,6 +40,9 @@ else:
 
     def itervalues(dict):
         return iter(dict.values())
+
+    def values_list(dict):
+        return list(dict.values())
 
 # Armin's recipe from http://lucumr.pocoo.org/2013/5/21/porting-to-python-3-redux/
 def with_metaclass(meta, *bases):

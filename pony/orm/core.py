@@ -1,7 +1,7 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import izip, imap, iteritems, itervalues, xrange, cmp, \
                             basestring, unicode, buffer, int_types, PY2, builtins, \
-                            pickle, with_metaclass
+                            pickle, with_metaclass, values_list
 
 import re, sys, types, datetime, logging, itertools
 from operator import attrgetter, itemgetter
@@ -568,7 +568,7 @@ class Database(object):
             cached_sql = sql, adapter
             database._insert_cache[query_key] = cached_sql
         else: sql, adapter = cached_sql
-        arguments = adapter(kwargs.values())  # order of values same as order of keys
+        arguments = adapter(values_list(kwargs))  # order of values same as order of keys
         if returning is not None:
             return database._exec_sql(sql, arguments, returning_id=True)
         cursor = database._exec_sql(sql, arguments)
