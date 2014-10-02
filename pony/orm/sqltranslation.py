@@ -1195,6 +1195,8 @@ class StringMixin(MonadMixin):
         elif isinstance(index, slice):
             if index.step is not None: throw(TypeError, 'Step is not supported in {EXPR}')
             start, stop = index.start, index.stop
+            if isinstance(start, NoneMonad): start = None
+            if isinstance(stop, NoneMonad): stop = None
             if start is None and stop is None: return monad
             if isinstance(monad, translator.StringConstMonad) \
                and (start is None or isinstance(start, translator.NumericConstMonad)) \
