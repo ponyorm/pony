@@ -691,6 +691,9 @@ class SQLTranslator(ASTTranslator):
         sub = node.subs[0]
         if isinstance(sub, ast.Sliceobj):
             start, stop, step = (sub.nodes+[None])[:3]
+            if start is not None: start = start.monad
+            if stop is not None: stop = stop.monad
+            if step is not None: step = step.monad
             return node.expr.monad[start:stop:step]
         else: return node.expr.monad[sub.monad]
     def postSlice(translator, node):
