@@ -11,7 +11,7 @@ from functools import update_wrapper
 from pony.thirdparty.compiler import ast
 
 from pony import options, utils
-from pony.utils import is_ident, throw, concat
+from pony.utils import is_ident, throw, reraise, concat
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
     numeric_types, comparable_types, SetType, FuncType, MethodType, \
@@ -122,7 +122,7 @@ class SQLTranslator(ASTTranslator):
                     if isinstance(msg, basestring) and '{EXPR}' in msg:
                         msg = msg.replace('{EXPR}', ast2src(node))
                         exc.args = (msg,) + exc.args[1:]
-                raise exc_class, exc, tb
+                reraise(exc_class, exc, tb)
             finally: del tb
         else:
             if monad is None: return

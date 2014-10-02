@@ -1,7 +1,7 @@
 #coding: cp1251
 
 from __future__ import absolute_import, print_function
-from pony.py23compat import imap, basestring, unicode
+from pony.py23compat import imap, basestring, unicode, PY2
 
 import re, os, os.path, sys, datetime, types, linecache, warnings, json
 
@@ -100,10 +100,19 @@ def cut_traceback(func, *args, **kwargs):
                 tb = tb.tb_next
             if last_pony_tb is None: raise
             if tb.tb_frame.f_globals.get('__name__') == 'pony.utils' and tb.tb_frame.f_code.co_name == 'throw':
-                raise exc_type, exc, last_pony_tb
+                reraise(exc_type, exc, last_pony_tb)
             raise exc  # Set "pony.options.CUT_TRACEBACK = False" to see full traceback
         finally:
             del tb, last_pony_tb
+
+if PY2:
+    exec('''def reraise(exc_type, exc, tb):
+    try: raise exc_type, exc, tb
+    finally: del tb''')
+else:
+    def reraise(exc_type, exc, tb):
+        try: raise exc.with_traceback(tb)
+        finally: del tb
 
 def throw(exc_type, *args, **kwargs):
     if isinstance(exc_type, Exception):

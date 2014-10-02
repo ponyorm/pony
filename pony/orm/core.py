@@ -24,10 +24,8 @@ from pony.orm.dbapiprovider import (
     OperationalError, IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
 from pony import utils
-from pony.utils import (
-    localbase, decorator, cut_traceback, throw, get_lambda_args, deprecated, import_module, parse_expr,
-    is_ident, tostring, strjoin, concat
-    )
+from pony.utils import localbase, decorator, cut_traceback, throw, reraise, get_lambda_args, \
+     deprecated, import_module, parse_expr, is_ident, tostring, strjoin, concat
 
 __all__ = '''
     pony
@@ -259,13 +257,13 @@ def _get_caches():
 def flush():
     for cache in _get_caches(): cache.flush()
 
-def reraise(exc_class, exceptions):
+def transact_reraise(exc_class, exceptions):
     try:
         cls, exc, tb = exceptions[0]
         msg = " ".join(tostring(arg) for arg in exc.args)
         if not issubclass(cls, TransactionError):
             msg = '%s: %s' % (cls.__name__, msg)
-        raise exc_class, exc_class(msg, exceptions), tb
+        reraise(exc_class, exc_class(msg, exceptions), tb)
     finally: del tb
 
 @cut_traceback
@@ -281,13 +279,13 @@ def commit():
         for cache in other_caches:
             try: cache.rollback()
             except: exceptions.append(sys.exc_info())
-        reraise(CommitException, exceptions)
+        transact_reraise(CommitException, exceptions)
     else:
         for cache in other_caches:
             try: cache.commit()
             except: exceptions.append(sys.exc_info())
         if exceptions:
-            reraise(PartialCommitException, exceptions)
+            transact_reraise(PartialCommitException, exceptions)
     finally:
         del exceptions
 
@@ -299,7 +297,7 @@ def rollback():
             try: cache.rollback()
             except: exceptions.append(sys.exc_info())
         if exceptions:
-            reraise(RollbackException, exceptions)
+            transact_reraise(RollbackException, exceptions)
         assert not local.db2cache
     finally:
         del exceptions
@@ -354,7 +352,7 @@ class DBSessionContextManager(object):
                             do_retry = exc_value is not None and retry_exceptions(exc_value)
                         if not do_retry: raise
                     finally: self.__exit__(exc_type, exc_value, exc_tb)
-                raise exc_type, exc_value, exc_tb
+                reraise(exc_type, exc_value, exc_tb)
             finally: del exc_tb
         return decorator(new_func, func)
     def __enter__(self):
@@ -909,7 +907,7 @@ class SessionCache(object):
         provider = cache.database.provider
         if exc is not None:
             exc = getattr(exc, 'original_exc', exc)
-            if not provider.should_reconnect(exc): raise
+            if not provider.should_reconnect(exc): reraise(*sys.exc_info())
             if debug: log_orm('CONNECTION FAILED: %s' % exc)
             connection = cache.connection
             assert connection is not None

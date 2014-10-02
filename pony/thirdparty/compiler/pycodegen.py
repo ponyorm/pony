@@ -1,4 +1,4 @@
-from __future__ import print_function
+from __future__ import absolute_import, print_function
 from pony.py23compat import izip
 
 import imp
@@ -16,6 +16,8 @@ from .consts import (CO_VARARGS, CO_VARKEYWORDS, CO_NEWLOCALS,
      CO_NESTED, CO_GENERATOR, CO_FUTURE_DIVISION,
      CO_FUTURE_ABSIMPORT, CO_FUTURE_WITH_STATEMENT, CO_FUTURE_PRINT_FUNCTION)
 from .pyassem import TupleArg
+
+from pony.utils import reraise
 
 # XXX The version-specific code can go, since this code only works with 2.x.
 # Do we have Python 1.x or Python 2.x?
@@ -1153,7 +1155,7 @@ class CodeGenerator:
             self.emit('DELETE_SLICE+%d' % slice)
         else:
             print("weird slice", node.flags)
-            raise
+            reraise(*sys.exc_info())
 
     def visitSubscript(self, node, aug_flag=None):
         self.visit(node.expr)
