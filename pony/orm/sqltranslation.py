@@ -982,23 +982,38 @@ class Monad(with_metaclass(MonadMeta)):
     def __neg__(monad): throw(TypeError)
     def abs(monad): throw(TypeError)
 
-typeerror_re = re.compile(r'\(\) takes (no|(?:exactly|at (?:least|most)))(?: (\d+))? arguments \((\d+) given\)')
+typeerror_re_1 = re.compile(r'\(\) takes (no|(?:exactly|at (?:least|most)))(?: (\d+))? arguments \((\d+) given\)')
+typeerror_re_2 = re.compile(r'\(\) takes from (\d+) to (\d+) positional arguments but (\d+) were given')
 
 def reraise_improved_typeerror(exc, func_name, orig_func_name):
     if not exc.args: throw(exc)
     msg = exc.args[0]
     if not msg.startswith(func_name): throw(exc)
     msg = msg[len(func_name):]
-    match = typeerror_re.match(msg)
-    if not match:
-        exc.args = (orig_func_name + msg,)
+
+    match = typeerror_re_1.match(msg)
+    if match:
+        what, takes, given = match.groups()
+        takes, given = int(takes), int(given)
+        if takes: what = '%s %d' % (what, takes-1)
+        plural = 's' if takes > 2 else ''
+        new_msg = '%s() takes %s argument%s (%d given)' % (orig_func_name, what, plural, given-1)
+        exc.args = (new_msg,)
         throw(exc)
-    what, takes, given = match.groups()
-    takes, given = int(takes), int(given)
-    if takes: what = '%s %d' % (what, takes-1)
-    plural = 's' if takes > 2 else ''
-    new_msg = '%s() takes %s argument%s (%d given)' % (orig_func_name, what, plural, given-1)
-    exc.args = (new_msg,)
+
+    match = typeerror_re_2.match(msg)
+    if match:
+        start, end, given = match.groups()
+        start, end, given = int(start)-1, int(end)-1, int(given)-1
+        if not start:
+            plural = 's' if end > 1 else ''
+            new_msg = '%s() takes at most %d argument%s (%d given)' % (orig_func_name, end, plural, given)
+        else:
+            new_msg = '%s() takes from %d to %d arguments (%d given)' % (orig_func_name, start, end, given)
+        exc.args = (new_msg,)
+        throw(exc)
+
+    exc.args = (orig_func_name + msg,)
     throw(exc)
 
 def raise_forgot_parentheses(monad):
