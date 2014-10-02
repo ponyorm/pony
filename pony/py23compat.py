@@ -6,6 +6,7 @@ if PY2:
     from future_builtins import zip as izip, map as imap
     import __builtin__ as builtins
     import cPickle as pickle
+    from cStringIO import StringIO
     xrange = xrange
     basestring = basestring
     unicode = unicode
@@ -20,6 +21,7 @@ if PY2:
 
 else:
     import builtins, pickle
+    from io import StringIO
     izip, imap, xrange = zip, map, range
     basestring = str
     unicode = str

@@ -6,7 +6,6 @@ import os
 import marshal
 import struct
 import sys
-from cStringIO import StringIO
 
 from . import ast, parse, walk, syntax
 from . import pyassem, misc, future, symbols

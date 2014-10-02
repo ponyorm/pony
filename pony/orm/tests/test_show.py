@@ -1,7 +1,8 @@
+from pony.py23compat import StringIO
+
 import sys, unittest
 from decimal import Decimal
 from datetime import date
-from cStringIO import StringIO
 
 from pony.orm import *
 from pony.orm.tests.testutils import *
