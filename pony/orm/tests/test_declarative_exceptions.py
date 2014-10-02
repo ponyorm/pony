@@ -83,7 +83,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(ExprEvalError, "Course[123] raises TypeError: Invalid count of attrs in Course primary key (1 instead of 2)")
     def test10(self):
         select(s for s in Student if Course[123] in s.courses)
-    @raises_exception(TypeError, "Incomparable types 'unicode' and 'float' in expression: s.name < s.gpa")
+    @raises_exception(TypeError, "Incomparable types '%s' and 'float' in expression: s.name < s.gpa" % unicode.__name__)
     def test11(self):
         select(s for s in Student if s.name < s.gpa)
     @raises_exception(ExprEvalError, "Group(101) raises TypeError: Group constructor accept only keyword arguments. Got: 1 positional argument")
@@ -92,7 +92,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(ExprEvalError, "Group[date(2011, 1, 2)] raises TypeError: Value type for attribute Group.number must be int. Got: <type 'datetime.date'>")
     def test13(self):
         select(s for s in Student if s.group == Group[date(2011, 1, 2)])
-    @raises_exception(TypeError, "Unsupported operand types 'int' and 'unicode' for operation '+' in expression: s.group.number + s.name")
+    @raises_exception(TypeError, "Unsupported operand types 'int' and '%s' for operation '+' in expression: s.group.number + s.name" % unicode.__name__)
     def test14(self):
         select(s for s in Student if s.group.number + s.name < 0)
     @raises_exception(TypeError, "Unsupported operand types 'Decimal' and 'float' for operation '+' in expression: s.scholarship + 1.1")
@@ -102,7 +102,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
                                  "in expression: s.scholarship ** 'abc'" % unicode.__name__)
     def test16(self):
         select(s for s in Student if s.scholarship ** 'abc' > 10)
-    @raises_exception(TypeError, "Unsupported operand types 'unicode' and 'int' for operation '+' in expression: s.name + 2")
+    @raises_exception(TypeError, "Unsupported operand types '%s' and 'int' for operation '+' in expression: s.name + 2" % unicode.__name__)
     def test17(self):
         select(s for s in Student if s.name + 2 > 10)
     @raises_exception(TypeError, "Step is not supported in s.name[1:3:5]")
@@ -122,19 +122,19 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(TypeError, "String indices must be integers. Got '%s' in expression s.name['a']" % unicode.__name__)
     def test22(self):
         select(s.name for s in Student if s.name['a'] == 'h')
-    @raises_exception(TypeError, "Incomparable types 'int' and 'unicode' in expression: 1 in s.name")
+    @raises_exception(TypeError, "Incomparable types 'int' and '%s' in expression: 1 in s.name" % unicode.__name__)
     def test23(self):
         select(s.name for s in Student if 1 in s.name)
-    @raises_exception(TypeError, "Expected 'unicode' argument but got 'int' in expression s.name.startswith(1)")
+    @raises_exception(TypeError, "Expected '%s' argument but got 'int' in expression s.name.startswith(1)" % unicode.__name__)
     def test24(self):
         select(s.name for s in Student if s.name.startswith(1))
-    @raises_exception(TypeError, "Expected 'unicode' argument but got 'int' in expression s.name.endswith(1)")
+    @raises_exception(TypeError, "Expected '%s' argument but got 'int' in expression s.name.endswith(1)" % unicode.__name__)
     def test25(self):
         select(s.name for s in Student if s.name.endswith(1))
-    @raises_exception(TypeError, "'chars' argument must be of 'unicode' type in s.name.strip(1), got: 'int'")
+    @raises_exception(TypeError, "'chars' argument must be of '%s' type in s.name.strip(1), got: 'int'" % unicode.__name__)
     def test26(self):
         select(s.name for s in Student if s.name.strip(1))
-    @raises_exception(AttributeError, "'unicode' object has no attribute 'unknown'")
+    @raises_exception(AttributeError, "'%s' object has no attribute 'unknown'" % unicode.__name__)
     def test_attribute_error(self):
         result = set(select(s for s in Student if s.name.unknown() == "joe"))
     @raises_exception(AttributeError, "s.group.foo")
@@ -181,16 +181,16 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(AttributeError, "s.courses.foo")
     def test38(self):
         select(s for s in Student if 'x' in s.courses.foo.bar)
-    @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got 'unicode' in sum(s.courses.name)")
+    @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got '%s' in sum(s.courses.name)" % unicode.__name__)
     def test39(self):
         select(s for s in Student if sum(s.courses.name) > 10)
-    @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got 'unicode' in sum(c.name for c in s.courses)")
+    @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got '%s' in sum(c.name for c in s.courses)" % unicode.__name__)
     def test40(self):
         select(s for s in Student if sum(c.name for c in s.courses) > 10)
-    @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got 'unicode' in sum(c.name for c in s.courses)")
+    @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got '%s' in sum(c.name for c in s.courses)" % unicode.__name__)
     def test41(self):
         select(s for s in Student if sum(c.name for c in s.courses) > 10)
-    @raises_exception(TypeError, "Function avg() expects query or items of numeric type, got 'unicode' in avg(c.name for c in s.courses)")
+    @raises_exception(TypeError, "Function avg() expects query or items of numeric type, got '%s' in avg(c.name for c in s.courses)" % unicode.__name__)
     def test42(self):
         select(s for s in Student if avg(c.name for c in s.courses) > 10 and len(s.courses) > 1)
     @raises_exception(TypeError, "strip() takes at most 1 argument (3 given)")
@@ -217,53 +217,53 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     # @raises_exception(TypeError, "Incomparable types 'Decimal' and 'bool' in expression: s.scholarship == (True or False and not True)")
     # def test50(self):
     #     select(s for s in Student if s.scholarship == (True or False and not True))
-    @raises_exception(IncomparableTypesError, "Incomparable types 'unicode' and 'int' in expression: s.name > +3")
+    @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > +3" % unicode.__name__)
     def test51(self): ###
         select(s for s in Student if s.name > +3)
     @raises_exception(TypeError, "Expression `{'a':'b'}` has unsupported type 'dict'")
     def test52(self):
         select(s for s in Student if s.name == {'a' : 'b'})
-    @raises_exception(IncomparableTypesError, "Incomparable types 'unicode' and 'int' in expression: s.name > a ^ 2")
+    @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > a ^ 2" % unicode.__name__)
     def test53(self): ###
         a = 1
         select(s for s in Student if s.name > a ^ 2)
-    @raises_exception(IncomparableTypesError, "Incomparable types 'unicode' and 'int' in expression: s.name > a | 2")
+    @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > a | 2" % unicode.__name__)
     def test54(self): ###
         a = 1
         select(s for s in Student if s.name > a | 2)
-    @raises_exception(IncomparableTypesError, "Incomparable types 'unicode' and 'int' in expression: s.name > a & 2")
+    @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > a & 2" % unicode.__name__)
     def test55(self):
         a = 1
         select(s for s in Student if s.name > a & 2)
-    @raises_exception(IncomparableTypesError, "Incomparable types 'unicode' and 'int' in expression: s.name > a << 2")
+    @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > a << 2" % unicode.__name__)
     def test56(self): ###
         a = 1
         select(s for s in Student if s.name > a << 2)
-    @raises_exception(IncomparableTypesError, "Incomparable types 'unicode' and 'int' in expression: s.name > a >> 2")
+    @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > a >> 2" % unicode.__name__)
     def test57(self): ###
         a = 1
         select(s for s in Student if s.name > a >> 2)
-    @raises_exception(IncomparableTypesError, "Incomparable types 'unicode' and 'int' in expression: s.name > (a * 2) % 4")
+    @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > (a * 2) %% 4" % unicode.__name__)
     def test58(self): ###
         a = 1
         select(s for s in Student if s.name > a * 2 % 4)
-    @raises_exception(IncomparableTypesError, "Incomparable types 'unicode' and 'int' in expression: s.name > ~a")
+    @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > ~a" % unicode.__name__)
     def test59(self): ###
         a = 1
         select(s for s in Student if s.name > ~a)
-    @raises_exception(TypeError, "Incomparable types 'unicode' and 'float' in expression: s.name > 1 / a - 3")
+    @raises_exception(TypeError, "Incomparable types '%s' and 'float' in expression: s.name > 1 / a - 3" % unicode.__name__)
     def test60(self):
         a = 1
         select(s for s in Student if s.name > 1 / a - 3)
-    @raises_exception(TypeError, "Incomparable types 'unicode' and 'int' in expression: s.name > 1 // a - 3")
+    @raises_exception(TypeError, "Incomparable types '%s' and 'int' in expression: s.name > 1 // a - 3" % unicode.__name__)
     def test61(self):
         a = 1
         select(s for s in Student if s.name > 1 // a - 3)
-    @raises_exception(TypeError, "Incomparable types 'unicode' and 'int' in expression: s.name > -a")
+    @raises_exception(TypeError, "Incomparable types '%s' and 'int' in expression: s.name > -a" % unicode.__name__)
     def test62(self):
         a = 1
         select(s for s in Student if s.name > -a)
-    @raises_exception(TypeError, "Incomparable types 'unicode' and 'list' in expression: s.name == [1, (2,)]")
+    @raises_exception(TypeError, "Incomparable types '%s' and 'list' in expression: s.name == [1, (2,)]" % unicode.__name__)
     def test63(self):
         select(s for s in Student if s.name == [1, (2,)])
 

@@ -49,7 +49,7 @@ class TestQuery(unittest.TestCase):
     @raises_exception(ExprEvalError, "a raises NameError: name 'a' is not defined")
     def test_exception_04(self):
         select(a for s in Student)
-    @raises_exception(TypeError,"Incomparable types 'unicode' and 'list' in expression: s.name == x")
+    @raises_exception(TypeError,"Incomparable types '%s' and 'list' in expression: s.name == x" % unicode.__name__)
     def test_exception_05(self):
         x = ['A']
         select(s for s in Student if s.name == x)
