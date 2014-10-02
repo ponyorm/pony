@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import imap, PY2, basestring
+from pony.py23compat import imap, PY2, basestring, buffer
 
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
@@ -156,16 +156,11 @@ class MySQLProvider(DBAPIProvider):
         (time, MySQLTimeConverter),
         (timedelta, MySQLTimedeltaConverter),
         (UUID, MySQLUuidConverter),
+        (buffer, MySQLBlobConverter),
     ]
-
     if PY2:
         converter_classes += [
             (long, MySQLLongConverter),
-            (buffer, MySQLBlobConverter),
-        ]
-    else:
-        converter_classes += [
-            (bytes, MySQLBlobConverter)
         ]
 
     def normalize_name(provider, name):

@@ -10,6 +10,7 @@ if PY2:
     xrange = xrange
     basestring = basestring
     unicode = unicode
+    buffer = buffer
     int_types = (int, long)
     cmp = cmp
 
@@ -25,6 +26,7 @@ else:
     izip, imap, xrange = zip, map, range
     basestring = str
     unicode = str
+    buffer = bytes
     int_types = (int,)
 
     def cmp(a, b):

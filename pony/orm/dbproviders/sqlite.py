@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import imap, int_types, PY2, basestring
+from pony.py23compat import imap, int_types, PY2, basestring, buffer
 
 import os.path
 import sqlite3 as sqlite
@@ -174,15 +174,7 @@ class SQLiteProvider(DBAPIProvider):
         (time, SQLiteTimeConverter),
         (timedelta, SQLiteTimedeltaConverter),
         (UUID, dbapiprovider.UuidConverter),
-    ]
-
-    if PY2:
-        converter_classes += [
             (buffer, dbapiprovider.BlobConverter),
-        ]
-    else:
-        converter_classes += [
-            (bytes, dbapiprovider.BlobConverter)
         ]
 
     @wrap_dbapi_exceptions

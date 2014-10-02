@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import iteritems, basestring, int_types, PY2, unicode
+from pony.py23compat import iteritems, basestring, int_types, PY2, unicode, buffer
 
 import os
 os.environ["NLS_LANG"] = "AMERICAN_AMERICA.UTF8"
@@ -332,16 +332,8 @@ class OraProvider(DBAPIProvider):
         (time, OraTimeConverter),
         (timedelta, OraTimedeltaConverter),
         (UUID, OraUuidConverter),
+        (buffer, OraBlobConverter),
     ]
-
-    if PY2:
-        converter_classes += [
-            (buffer, OraBlobConverter),
-        ]
-    else:
-        converter_classes += [
-            (bytes, OraBlobConverter),
-        ]
 
     @wrap_dbapi_exceptions
     def inspect_connection(provider, connection):

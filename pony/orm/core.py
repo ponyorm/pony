@@ -1,6 +1,6 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import izip, imap, iteritems, itervalues, xrange, cmp, \
-                            basestring, pickle, unicode, int_types, PY2, builtins
+                            basestring, unicode, buffer, int_types, PY2, builtins, pickle
 
 import re, sys, types, datetime, logging, itertools
 from operator import attrgetter, itemgetter
@@ -63,7 +63,7 @@ __all__ = '''
 
     JOIN
 
-    unicode
+    buffer unicode
     '''.split()
 
 debug = False

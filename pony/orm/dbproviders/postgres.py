@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import PY2, basestring, unicode
+from pony.py23compat import PY2, basestring, unicode, buffer
 
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
@@ -239,16 +239,11 @@ class PGProvider(DBAPIProvider):
         (time, dbapiprovider.TimeConverter),
         (timedelta, PGTimedeltaConverter),
         (UUID, PGUuidConverter),
+        (buffer, PGBlobConverter),
     ]
-
     if PY2:
         converter_classes += [
             (long, PGLongConverter),
-            (buffer, PGBlobConverter),
-        ]
-    else:
-        converter_classes += [
-            (bytes, PGBlobConverter)
         ]
 
 provider_cls = PGProvider
