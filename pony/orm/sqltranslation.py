@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, xrange, basestring, unicode, buffer, pickle, with_metaclass, items_list
+from pony.py23compat import izip, xrange, basestring, unicode, buffer, pickle, with_metaclass, items_list, PY2
 
 import types, sys, re, itertools
 from decimal import Decimal
@@ -1680,10 +1680,25 @@ class FuncMonad(with_metaclass(FuncMonadMeta, Monad)):
 
 class FuncBufferMonad(FuncMonad):
     func = buffer
-    def call(monad, x):
+    def call(monad, source, encoding=None, errors=None):
         translator = monad.translator
-        if not isinstance(x, translator.StringConstMonad): throw(TypeError)
-        return translator.ConstMonad.new(translator, buffer(x.value))
+        if not isinstance(source, translator.StringConstMonad): throw(TypeError)
+        source = source.value
+        if encoding is not None:
+            if not isinstance(encoding, translator.StringConstMonad): throw(TypeError)
+            encoding = encoding.value
+        if errors is not None:
+            if not isinstance(errors, translator.StringConstMonad): throw(TypeError)
+            errors = errors.value
+        if PY2:
+            if encoding and errors: source = source.encode(encoding, errors)
+            elif encoding: source = source.encode(encoding)
+            return translator.ConstMonad.new(translator, buffer(source))
+        else:
+            if encoding and errors: value = buffer(source, encoding, errors)
+            elif encoding: value = buffer(source, encoding)
+            else: value = buffer(source)
+            return translator.ConstMonad.new(translator, value)
 
 class FuncDecimalMonad(FuncMonad):
     func = Decimal
