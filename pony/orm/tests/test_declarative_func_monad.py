@@ -30,19 +30,19 @@ with db_session:
     g1 = Group(number=1)
     g2 = Group(number=2)
 
-    Student(id=1, name="AA", dob=date(1981, 01, 01), last_visit=datetime(2011, 01, 01, 11, 11, 11),
+    Student(id=1, name="AA", dob=date(1981, 1, 1), last_visit=datetime(2011, 1, 1, 11, 11, 11),
                    scholarship=Decimal("0"), phd=True, group=g1)
 
-    Student(id=2, name="BB", dob=date(1982, 02, 02), last_visit=datetime(2011, 02, 02, 12, 12, 12),
+    Student(id=2, name="BB", dob=date(1982, 2, 2), last_visit=datetime(2011, 2, 2, 12, 12, 12),
                    scholarship=Decimal("202.2"), phd=True, group=g1)
 
-    Student(id=3, name="CC", dob=date(1983, 03, 03), last_visit=datetime(2011, 03, 03, 13, 13, 13),
+    Student(id=3, name="CC", dob=date(1983, 3, 3), last_visit=datetime(2011, 3, 3, 13, 13, 13),
                    scholarship=Decimal("303.3"), phd=False, group=g1)
 
-    Student(id=4, name="DD", dob=date(1984, 04, 04), last_visit=datetime(2011, 04, 04, 14, 14, 14),
+    Student(id=4, name="DD", dob=date(1984, 4, 4), last_visit=datetime(2011, 4, 4, 14, 14, 14),
                    scholarship=Decimal("404.4"), phd=False, group=g2)
 
-    Student(id=5, name="EE", dob=date(1985, 05, 05), last_visit=datetime(2011, 05, 05, 15, 15, 15),
+    Student(id=5, name="EE", dob=date(1985, 5, 5), last_visit=datetime(2011, 5, 5, 15, 15, 15),
                    scholarship=Decimal("505.5"), phd=False, group=g2)
 
 

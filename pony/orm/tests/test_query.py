@@ -25,8 +25,8 @@ db.generate_mapping(create_tables=True)
 with db_session:
     g1 = Group(number=1)
     Student(id=1, name='S1', group=g1, gpa=3.1)
-    Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 01, 01))
-    Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 01, 02))
+    Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 1, 1))
+    Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 1, 2))
 
 class TestQuery(unittest.TestCase):
     def setUp(self):
