@@ -297,12 +297,14 @@ class Decompiler(object):
         return ast.Name(varname)
 
     def MAKE_CLOSURE(decompiler, argc):
-        decompiler.stack[-2:-1] = [] # ignore freevars
+        if PY2: decompiler.stack[-2:-1] = [] # ignore freevars
+        else: decompiler.stack[-3:-2] = [] # ignore freevars
         return decompiler.MAKE_FUNCTION(argc)
 
     def MAKE_FUNCTION(decompiler, argc):
         if argc: throw(NotImplementedError)
         tos = decompiler.stack.pop()
+        if not PY2: tos = decompiler.stack.pop()
         codeobject = tos.value
         func_decompiler = Decompiler(codeobject)
         # decompiler.names.update(decompiler.names)  ???
