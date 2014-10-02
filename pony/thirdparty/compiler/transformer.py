@@ -587,6 +587,12 @@ class Transformer:
         # exprlist: expr (',' expr)* [',']
         return self.com_binary(Tuple, nodelist)
 
+    def testlist_star_expr(self, nodelist):
+        return self.com_binary(Tuple, nodelist)
+
+    def star_expr(self, *args):
+        raise NotImplementedError
+
     testlist_safe = testlist # XXX
     testlist1 = testlist
     exprlist = testlist
@@ -621,6 +627,7 @@ class Transformer:
             return self.lambdef(nodelist[0])
         return self.com_binary(Or, nodelist)
     old_test = or_test
+    test_nocond = old_test
 
     def and_test(self, nodelist):
         # not_test ('and' not_test)*
@@ -1015,7 +1022,8 @@ class Transformer:
         # loop to avoid trivial recursion
         while 1:
             t = node[0]
-            if t in (symbol.exprlist, symbol.testlist, symbol.testlist_safe, symbol.testlist_comp):
+            if t in (symbol.exprlist, symbol.testlist, symbol.testlist_comp) \
+            or PY2 and t == symbol.testlist_safe:
                 if len(node) > 2:
                     return self.com_assign_tuple(node, assigning)
                 node = node[1]
