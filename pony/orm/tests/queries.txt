@@ -50,7 +50,7 @@ FROM "Product" "p"
 WHERE "p"."price" > 100
 ORDER BY "p"."price" DESC, "p"."name"
 
->>> Product.order_by(lambda p: desc(p.price))[:10]
+>>> Product.select().order_by(lambda p: desc(p.price))[:10]
 
 SELECT "p"."id", "p"."name", "p"."description", "p"."picture", "p"."price", "p"."quantity"
 FROM "Product" "p"
