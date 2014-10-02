@@ -1,4 +1,5 @@
 from __future__ import absolute_import, print_function, division
+from pony.py23compat import with_metaclass
 
 from pony.thirdparty import compiler
 
@@ -7,14 +8,14 @@ from pony.orm.decompiling import *
 # test entities
 
 class Meta(type):
-      def __iter__(self):
-           return iter([])
+    def __iter__(self):
+        return iter([])
 
-class Entity(object):
-    __metaclass__ = Meta
+class Entity(with_metaclass(Meta)):
+    pass
 
 class Student(Entity):
-      pass
+    pass
 
 
 class TestDecompiler:

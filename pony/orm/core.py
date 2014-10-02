@@ -1,6 +1,7 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import izip, imap, iteritems, itervalues, xrange, cmp, \
-                            basestring, unicode, buffer, int_types, PY2, builtins, pickle
+                            basestring, unicode, buffer, int_types, PY2, builtins, \
+                            pickle, with_metaclass
 
 import re, sys, types, datetime, logging, itertools
 from operator import attrgetter, itemgetter
@@ -3454,8 +3455,7 @@ def unpickle_entity(d):
 def safe_repr(obj):
     return Entity.__repr__(obj)
 
-class Entity(object):
-    __metaclass__ = EntityMeta
+class Entity(with_metaclass(EntityMeta)):
     __slots__ = '_session_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '_save_pos_', '__weakref__'
     def __reduce__(obj):
         if obj._status_ in del_statuses: throw(
