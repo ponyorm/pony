@@ -1248,6 +1248,8 @@ class Attribute(object):
     def __repr__(attr):
         owner_name = attr.entity.__name__ if attr.entity else '?'
         return '%s.%s' % (owner_name, attr.name or '?')
+    def __lt__(attr, other):
+        return attr.id < other.id
     def validate(attr, val, obj=None, entity=None, from_db=False):
         if val is None:
             if not attr.nullable and not from_db:
