@@ -35,6 +35,7 @@ class PGValue(Value):
         value = self.value
         if isinstance(value, bool): return value and 'true' or 'false'
         return Value.__unicode__(self)
+    if not PY2: __str__ = __unicode__
 
 class PGSQLBuilder(sqlbuilding.SQLBuilder):
     dialect = 'PostgreSQL'

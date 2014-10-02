@@ -26,6 +26,7 @@ class Param(object):
         elif paramstyle == 'named': return u':p%d' % param.id
         elif paramstyle == 'pyformat': return u'%%(p%d)s' % param.id
         else: throw(NotImplementedError)
+    if not PY2: __str__ = __unicode__
     def __repr__(param):
         return '%s(%r)' % (param.__class__.__name__, param.paramkey)
 
@@ -48,6 +49,7 @@ class Value(object):
             if isinstance(value, (int, float, Decimal)): return str(value)
             if isinstance(value, bytes): return "X'%s'" % hexlify(value).decode('ascii')
         assert False, value
+    if not PY2: __str__ = __unicode__
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self.value)
     def quote_str(self, s):
