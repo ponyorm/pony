@@ -591,5 +591,13 @@ class TestAttribute(unittest.TestCase):
         sql_type = table.column_list[1].sql_type
         self.assertEqual(sql_type, 'integer')
 
+    def test_self_referenced_m2m_1(self):
+        db = Database('sqlite', ':memory:')
+        class Node(db.Entity):
+            id = PrimaryKey(int)
+            prev_nodes = Set("Node")
+            next_nodes = Set("Node")
+        db.generate_mapping(create_tables=True)
+
 if __name__ == '__main__':
     unittest.main()
