@@ -2084,32 +2084,39 @@ class Set(Collection):
             setdata = obj._vals_[attr]
             setdata.remove(item)
     def get_m2m_columns(attr, is_reverse=False):
+        reverse = attr.reverse
         entity = attr.entity
-        if attr.symmetric:
+        provider = entity._database_.provider
+        if attr.symmetric or entity is reverse.entity:
             if attr._columns_checked:
+                if not attr.symmetric: return attr.columns
                 if not is_reverse: return attr.columns
-                else: return attr.reverse_columns
+                return attr.reverse_columns
+
+            if not attr.symmetric: assert not reverse._columns_checked
             if attr.columns:
                 if len(attr.columns) != len(entity._get_pk_columns_()): throw(MappingError,
-                    'Invalid number of columns for %s' % attr.reverse)
-            else:
-                provider = attr.entity._database_.provider
-                attr.columns = provider.get_default_m2m_column_names(entity)
-            attr.converters = entity._pk_converters_
-            if not attr.reverse_columns:
-                attr.reverse_columns = [ column + '_2' for column in attr.columns ]
+                    'Invalid number of columns for %s' % reverse)
+            else: attr.columns = provider.get_default_m2m_column_names(entity)
             attr._columns_checked = True
-            if not is_reverse: return attr.columns
-            else: return attr.reverse_columns
+            attr.converters = entity._pk_converters_
 
-        reverse = attr.reverse
-        if attr._columns_checked: return attr.reverse.columns
+            if attr.symmetric:
+                if not attr.reverse_columns:
+                    attr.reverse_columns = [ column + '_2' for column in attr.columns ]
+                return attr.columns if not is_reverse else attr.reverse_columns
+            else:
+                if not reverse.columns:
+                    reverse.columns = [ column + '_2' for column in attr.columns ]
+                reverse._columns_checked = True
+                reverse.converters = entity._pk_converters_
+                return attr.columns if not is_reverse else reverse.columns
+
+        if attr._columns_checked: return reverse.columns
         elif reverse.columns:
             if len(reverse.columns) != len(entity._get_pk_columns_()): throw(MappingError,
                 'Invalid number of columns for %s' % reverse)
-        else:
-            provider = attr.entity._database_.provider
-            reverse.columns = provider.get_default_m2m_column_names(entity)
+        else: reverse.columns = provider.get_default_m2m_column_names(entity)
         reverse.converters = entity._pk_converters_
         attr._columns_checked = True
         return reverse.columns
