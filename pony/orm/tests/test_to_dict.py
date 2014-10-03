@@ -3,6 +3,7 @@ from decimal import Decimal
 from datetime import date
 
 from pony.orm import *
+from pony.orm.serialization import to_dict
 from pony.orm.tests.testutils import *
 
 db = Database('sqlite', ':memory:')
@@ -12,7 +13,7 @@ class Student(db.Entity):
     scholarship = Optional(int)
     gpa = Optional(Decimal, 3, 1)
     dob = Optional(date)
-    group = Required('Group')
+    group = Optional('Group')
     courses = Set('Course')
     biography = Optional(LongUnicode)
 
@@ -35,8 +36,9 @@ with db_session:
     Student(id=1, name='S1', group=g1, gpa=3.1, courses=[c1, c2], biography='some text')
     Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 01, 01))
     Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 01, 02), courses=[c2, c3])
+    Student(id=4, name='S4')
 
-class TestToDict(unittest.TestCase):
+class TestObjectToDict(unittest.TestCase):
     def setUp(self):
         rollback()
         db_session.__enter__()
@@ -171,3 +173,23 @@ class TestToDict(unittest.TestCase):
         c = Course(name='New Course')
         d = c.to_dict()  # should do flush and get c.id from the database
         self.assertEqual(d, dict(id=4, name='New Course'))
+
+class TestSerializationToDict(unittest.TestCase):
+    def setUp(self):
+        rollback()
+        db_session.__enter__()
+
+    def tearDown(self):
+        rollback()
+        db_session.__exit__()
+
+    def test1(self):
+        s4 = Student[4]
+        self.assertEqual(s4.group, None)
+        d = to_dict(s4)
+        self.assertEqual(d, dict(Student={
+            4 : dict(id=4, name='S4', group=None, dob=None, gpa=None, scholarship=None, courses=[])
+            }))
+
+if __name__ == '__main__':
+    unittest.main()

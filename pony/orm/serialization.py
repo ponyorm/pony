@@ -81,9 +81,9 @@ class Bag(object):
                     value = sorted(bag._reduce_composite_pk(item._get_raw_pkval_()) for item in value)
                 else: value = sorted(item._get_raw_pkval_()[0] for item in value)
             elif attr.is_relation:
-                if process_related_objects:
-                    bag._process_object(value, process_related=False)
                 if value is not None:
+                    if process_related_objects:
+                        bag._process_object(value, process_related=False)
                     value = value._get_raw_pkval_()
                     if len(value) == 1: value = value[0]
             d[attr.name] = value
