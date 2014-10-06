@@ -19,9 +19,9 @@ class AllDataTypes(db.Entity):
     bool1_attr = Required(bool)
     bool2_attr = Required(bool)
     unicode_attr = Required(unicode)
-    str_attr = Required(str, encoding='cp1251')
+    str_attr = Required(str)
     long_unicode_attr = Required(LongUnicode)
-    long_str_attr = Required(LongStr, encoding='cp1251')
+    long_str_attr = Required(LongStr)
     int_attr = Required(int)
     if PY2:
         long_attr = Required(long)
@@ -39,18 +39,21 @@ sql_debug(True)
 db.generate_mapping(create_tables=True)
 sql_debug(False)  # sql_debug(True) can result in long delay due to enormous print
 
-s = "".join(map(chr, range(256))) * 1000
+if PY2:
+    b = "".join(map(chr, range(256))) * 1000
+else:
+    b = bytes(i % 256 for i in range(256 * 1000))
 
 fields = dict(bool1_attr=True,
               bool2_attr=False,
               unicode_attr=u"Юникод",
-              str_attr="Строка",
+              str_attr=u"Строка",
               long_unicode_attr = u"Юникод" * 100000,
-              long_str_attr = "Строка" * 100000,
+              long_str_attr = u"Строка" * 100000,
               int_attr=-2000000,
               float_attr=3.1415927,
               decimal_attr=Decimal("0.1"),
-              buffer_attr=buffer(s),
+              buffer_attr=buffer(b),
               datetime_attr=datetime.now(),
               date_attr=date.today(),
               time_attr=datetime.now().time(),
@@ -77,12 +80,13 @@ with db_session:
 
     for name, value in fields.items():
         value2 = getattr(e2, name)
-        if value==value2: print(True, name)
+        if value == value2: print(True, name)
         else: print(False, name, 'py=', repr(value), 'db=', repr(value2))
 
-    for i, (ch1, ch2) in enumerate(zip(s, str(e2.buffer_attr))):
-        if ch1 != ch2: print(i, repr(ch1), repr(ch2), ch1, ch2)
+    b2 = e2.buffer_attr
+    for i, (b1, b2) in enumerate(zip(b, b2)):
+        if b1 != b2: print(i, repr(b1), repr(b2), b1, b2)
 
     commit()
 
-    print(t2-t1, t3-t2)
+    print("Created in %ss; extracted in %ss" % (t2-t1, t3-t2))
