@@ -18,7 +18,8 @@ except ImportError as e:
     else:
         import pymysql.converters as mysql_converters
         from pymysql.constants import FIELD_TYPE, FLAG, CLIENT
-        mysql_converters.encoders[buffer] = lambda val: mysql_converters.escape_str(str(val))
+        if PY2:
+            mysql_converters.encoders[buffer] = lambda val: mysql_converters.escape_str(str(val))
         mysql_converters.encoders[timedelta] = lambda val: mysql_converters.escape_str(timedelta2str(val))
         mysql_module_name = 'pymysql'
 else:
