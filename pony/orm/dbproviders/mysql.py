@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import imap, PY2, basestring, buffer
+from pony.py23compat import PY2, imap, basestring, buffer
 
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta

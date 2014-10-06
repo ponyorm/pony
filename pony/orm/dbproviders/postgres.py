@@ -16,7 +16,6 @@ from pony.orm.core import log_orm
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, ProgrammingError, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import Value
-from pony.utils import throw
 from pony.converting import timedelta2str
 
 class PGColumn(dbschema.Column):

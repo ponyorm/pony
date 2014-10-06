@@ -1,7 +1,7 @@
 #coding: cp1251
 
 from __future__ import absolute_import, print_function
-from pony.py23compat import imap, basestring, unicode, PY2
+from pony.py23compat import PY2, imap, basestring, unicode
 
 import re, os, os.path, sys, datetime, types, linecache, warnings, json
 
@@ -15,7 +15,6 @@ from bisect import bisect
 from collections import defaultdict
 from copy import deepcopy, _deepcopy_dispatch
 from functools import update_wrapper
-from pony.thirdparty.compiler import ast
 from xml.etree import cElementTree
 
 # deepcopy instance method patch for Python < 2.7:
@@ -28,6 +27,7 @@ if types.MethodType not in _deepcopy_dispatch:
 import pony
 from pony import options
 
+from pony.thirdparty.compiler import ast
 from pony.thirdparty.decorator import decorator as _decorator
 
 if pony.MODE.startswith('GAE-'): localbase = object

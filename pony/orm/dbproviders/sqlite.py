@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import imap, int_types, PY2, basestring, buffer
+from pony.py23compat import PY2, imap, basestring, buffer, int_types
 
 import os.path
 import sqlite3 as sqlite

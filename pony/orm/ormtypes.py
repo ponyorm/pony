@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, basestring, int_types, PY2, unicode, buffer, items_list
+from pony.py23compat import PY2, items_list, izip, basestring, unicode, buffer, int_types
 
 import types
 from decimal import Decimal

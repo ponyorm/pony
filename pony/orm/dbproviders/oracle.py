@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import iteritems, basestring, int_types, PY2, unicode, buffer
+from pony.py23compat import PY2, iteritems, basestring, unicode, buffer, int_types
 
 import os
 os.environ["NLS_LANG"] = "AMERICAN_AMERICA.UTF8"

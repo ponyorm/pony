@@ -1,7 +1,6 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, imap, iteritems, itervalues, xrange, cmp, \
-                            basestring, unicode, buffer, int_types, PY2, builtins, \
-                            pickle, with_metaclass, items_list, values_list
+from pony.py23compat import PY2, izip, imap, iteritems, itervalues, items_list, values_list, xrange, cmp, \
+                            basestring, unicode, buffer, int_types, builtins, pickle, with_metaclass
 
 import re, sys, types, datetime, logging, itertools
 from operator import attrgetter, itemgetter

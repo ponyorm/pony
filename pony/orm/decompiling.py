@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, xrange, PY2
+from pony.py23compat import PY2, izip, xrange
 
 import types
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
