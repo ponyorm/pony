@@ -9,18 +9,18 @@ db = Database()
 
 class Department(db.Entity):
     number = PrimaryKey(int, auto=True)
-    name = Required(unicode, unique=True)
+    name = Required(str, unique=True)
     groups = Set("Group")
     courses = Set("Course")
 
 class Group(db.Entity):
     number = PrimaryKey(int)
-    major = Required(unicode)
+    major = Required(str)
     dept = Required("Department")
     students = Set("Student")
 
 class Course(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     semester = Required(int)
     lect_hours = Required(int)
     lab_hours = Required(int)
@@ -32,7 +32,7 @@ class Course(db.Entity):
 class Student(db.Entity):
     # _table_ = "public", "Students"  # Schema support
     id = PrimaryKey(int, auto=True)
-    name = Required(unicode)
+    name = Required(str)
     dob = Required(date)
     tel = Optional(str)
     picture = Optional(buffer, lazy=True)

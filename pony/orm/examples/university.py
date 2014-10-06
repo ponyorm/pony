@@ -32,7 +32,7 @@ class Group(db.Entity):
 
 class Student(db.Entity):
     _table_ = 'Students'
-    name = Required(unicode)
+    name = Required(str)
     scholarship = Required(Decimal, 10, 2, default=Decimal('0.0'))
     group = Required(Group)
     grades = Set('Grade')

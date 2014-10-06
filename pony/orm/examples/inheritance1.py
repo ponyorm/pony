@@ -14,7 +14,7 @@ db = Database('sqlite', 'inheritance1.sqlite', create_db=True)
 
 class Person(db.Entity):
     id = PrimaryKey(int, auto=True)
-    name = Required(unicode)
+    name = Required(str)
     dob = Optional(date)
     ssn = Required(str, unique=True)
 
@@ -32,14 +32,14 @@ class Assistant(Student, Teacher):
     pass
 
 class Professor(Teacher):
-    position = Required(unicode)
+    position = Required(str)
 
 class Group(db.Entity):
     number = PrimaryKey(int)
     students = Set("Student")
 
 class Course(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     semester = Required(int)
     students = Set(Student)
     teachers = Set(Teacher)

@@ -17,17 +17,17 @@ class Group(db.Entity):
 class Department(db.Entity):
     number = PrimaryKey(int)
     faculty = Required('Faculty')
-    name = Required(unicode)
+    name = Required(str)
     groups = Set(Group)
     teachers = Set('Teacher')
 
 class Faculty(db.Entity):
     number = PrimaryKey(int)
-    name = Required(unicode)
+    name = Required(str)
     depts = Set(Department)
 
 class Student(db.Entity):
-    name = Required(unicode)
+    name = Required(str)
     group = Required(Group)
     dob = Optional(date)
     grades = Set('Grade')
@@ -42,9 +42,9 @@ class Grade(db.Entity):
 
 class Task(db.Entity):
     course = Required('Course')
-    type = Required(unicode)
+    type = Required(str)
     number = Required(int)
-    descr = Optional(unicode)
+    descr = Optional(str)
     grades = Set(Grade)
     PrimaryKey(course, type, number)
 
@@ -58,20 +58,20 @@ class Course(db.Entity):
     PrimaryKey(subject, semester)
 
 class Subject(db.Entity):
-    name = PrimaryKey(unicode)
-    descr = Optional(unicode)
+    name = PrimaryKey(str)
+    descr = Optional(str)
     courses = Set(Course)
 
 class Room(db.Entity):
-    building = Required(unicode)
-    number = Required(unicode)
+    building = Required(str)
+    number = Required(str)
     floor = Optional(int)
     schedules = Set('Lesson')
     PrimaryKey(building, number)
 
 class Teacher(db.Entity):
     dept = Required(Department)
-    name = Required(unicode)
+    name = Required(str)
     courses = Set(Course)
     lessons = Set('Lesson')
 
