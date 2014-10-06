@@ -18,9 +18,7 @@ db = Database('sqlite', 'alldatatypes.sqlite', create_db=True)
 class AllDataTypes(db.Entity):
     bool1_attr = Required(bool)
     bool2_attr = Required(bool)
-    unicode_attr = Required(unicode)
     str_attr = Required(str)
-    long_unicode_attr = Required(LongUnicode)
     long_str_attr = Required(LongStr)
     int_attr = Required(int)
     if PY2:
@@ -46,10 +44,8 @@ else:
 
 fields = dict(bool1_attr=True,
               bool2_attr=False,
-              unicode_attr=u"Юникод",
-              str_attr=u"Строка",
-              long_unicode_attr = u"Юникод" * 100000,
-              long_str_attr = u"Строка" * 100000,
+              str_attr=u"Юникод",
+              long_str_attr = u"Юникод" * 100000,
               int_attr=-2000000,
               float_attr=3.1415927,
               decimal_attr=Decimal("0.1"),
