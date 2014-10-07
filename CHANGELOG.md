@@ -1,3 +1,23 @@
+# Pony ORM Release Candidate 0.6rc1 (2014-10-08)
+
+## New features:
+
+* Python 3 support
+* pymysql adapter support for MySQL databases
+
+## Backward incompatible changes
+
+Now Pony treats both `str`` and `unicode`` attribute types as they are unicode strings in both Python 2 and 3. So, the attribute declaration `attr = Required(str)` is equal to `attr = Required(unicode)` in Python 2 and 3. The same thing is with `LongStr` and `LongUnicode` - both of them are represented as unicode strings now.
+
+For the sake of backward compatibility Pony adds `unicode` as an alias to `str` and `buffer` as an alias to `bytes` in Python 3.
+
+## Other changes and bug fixes
+
+* Fixes #74: Wrong FK column type when using sql_type on foreign ID column
+* Fixes #75: MappingError for self-referenced entities in a many-to-many relationship
+* Fixes #80: “Entity NoneType does not belong to database” when using to_dict
+
+
 # Pony ORM Release 0.5.4 (2014-09-22)
 
 ## New functions and methods:
