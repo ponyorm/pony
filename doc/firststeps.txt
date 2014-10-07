@@ -40,13 +40,13 @@ Now, let's create two entities -- Person and Car. The entity Person has two attr
 .. code-block:: python
 
     >>> class Person(db.Entity):
-    ...     name = Required(unicode)
+    ...     name = Required(str)
     ...     age = Required(int)
     ...     cars = Set("Car")
     ... 
     >>> class Car(db.Entity):
-    ...     make = Required(unicode)
-    ...     model = Required(unicode)
+    ...     make = Required(str)
+    ...     model = Required(str)
     ...     owner = Required(Person)
     ... 
     >>> 
@@ -61,6 +61,8 @@ The entity ``Car`` has three mandatory attributes. ``make`` and ``model`` are st
 
 If we need to create a many-to-many relationship between two entities, then we should declare two ``Set`` attributes at both ends. Pony creates the intermediate table automatically.
 
+The ``str`` type is used for representing an unicode string in Python 3. Python 2 has two types for representing strings - ``str`` and ``unicode``. Starting with the Pony Release 0.6, you can use either ``str`` or ``unicode`` for string attributes, both of them mean an unicode string. We recommend to use ``str`` for string attributes, because it looks more natural in Python 3.
+
 If you need to see an entity definition in the interactive mode, you can use the ``show()`` function. Pass an entity class to this function in order to see the entity description:
 
 .. code-block:: python
@@ -68,7 +70,7 @@ If you need to see an entity definition in the interactive mode, you can use the
     >>> show(Person)
     class Person(Entity):
         id = PrimaryKey(int, auto=True)
-        name = Required(unicode)
+        name = Required(str)
         age = Required(int)
         cars = Set(Car)
 
@@ -99,13 +101,13 @@ Starting with Pony release 0.5 there is an alternative way of specifying the dat
 
     db = Database()
     class Person(db.Entity):
-        name = Required(unicode)
+        name = Required(str)
         age = Required(int)
         cars = Set("Car")
 
     class Car(db.Entity):
-        make = Required(unicode)
-        model = Required(unicode)
+        make = Required(str)
+        model = Required(str)
         owner = Required(Person)
 
     ### module my_project.my_settings.py

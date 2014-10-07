@@ -19,7 +19,7 @@ Each entity belongs to a database. That is why before defining entities you need
     db = Database("sqlite", "database.sqlite", create_db=True)
 
     class MyEntity(db.Entity):
-        attr1 = Required(unicode)
+        attr1 = Required(str)
 
 The Pony’s Database object has the ``Entity`` attribute which is used as a base class for all the entities stored in this database. Each new entity that is defined must inherit from this ``Entity`` class.
 
@@ -30,7 +30,7 @@ Entity attributes
 Entity attributes are specified as class attributes inside the entity class using the syntax ``attr_name = kind(type)``::
 
     class Customer(db.Entity):
-        name = Required(unicode)
+        name = Required(str)
         picture = Optional(buffer)
 
 You can also specify additional attribute options after the attribute type in the parentheses. We will discuss this in more detail later in this chapter.
@@ -64,25 +64,25 @@ PrimaryKey
 ``PrimaryKey`` defines an attribute which is used as a primary key in the database table. Each entity should always have a primary key. If the primary key is not specified explicitly, Pony will create it implicitly. Let’s consider the following example::
 
     class Product(db.Entity):
-        name = Required(unicode, unique=True)
+        name = Required(str, unique=True)
         price = Required(Decimal)
-        description = Optional(unicode)
+        description = Optional(str)
 
 The entity definition above will be equal to the following::
 
     class Product(db.Entity):
         id = PrimaryKey(int, auto=True)
-        name = Required(unicode, unique=True)
+        name = Required(str, unique=True)
         price = Required(Decimal)
-        description = Optional(unicode)
+        description = Optional(str)
 
 The primary key attribute which Pony adds automatically always will have the name ``id`` and ``int`` type. The option ``auto=True`` means that the value for this attribute will be assigned automatically using the database’s incremental counter or a sequence.
 
 If you specify the primary key attribute yourself, it can have any name and type. For example, we can define the entity ``Customer`` and have customer’s email as the primary key::
 
     class Customer(db.Entity):
-       email = PrimaryKey(unicode)
-       name = Required(unicode)
+       email = PrimaryKey(str)
+       name = Required(str)
 
 Composite keys
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -91,7 +91,7 @@ Pony fully supports composite keys. In order to declare a composite primary key 
 
     class Example(db.Entity):
         a = Required(int)
-        b = Required(unicode)
+        b = Required(str)
         PrimaryKey(a, b)
 
 Here ``PrimaryKey(a, b)`` doesn’t create an attribute, but combines the attributes specified in the parenthesis into a composite primary key. Each entity can have only one primary key.
@@ -118,8 +118,8 @@ Attribute data types
 
 Entity attributes are specified as class attributes inside the entity class using the syntax ``attr_name = kind(type)``. You can use the following data types when define attributes:
 
-* unicode
 * str
+* unicode
 * int
 * float
 * Decimal
@@ -128,10 +128,45 @@ Entity attributes are specified as class attributes inside the entity class usin
 * time
 * timedelta
 * bool
-* buffer - used for binary data (stored as BLOB in the database)
-* LongStr - used for large strings (stored as CLOB in the database)
-* LongUnicode - used for large unicode strings (stored as CLOB in the database)
+* buffer - used for binary data in Python 2 and 3
+* bytes - used for binary data in Python 3
+* LongStr - used for large strings
+* LongUnicode - used for large strings
 * UUID
+
+``buffer`` and ``bytes`` types are stored as binary (BLOB) types in the database. ``LongStr`` and ``LongUnicode``  are stored as CLOB in the database.
+
+Starting with the Pony Release 0.6, where the support for Python 3 was added, instead of ``unicode`` and ``LongUnicode`` we recommend to use ``str`` and ``LongStr`` types respectively.
+
+As you know, Python 3 has some differences from Python 2 when it comes to strings. Python 2 provides two string types – ``str`` (byte string) and ``unicode`` (unicode string), whereas in Python 3 the ``str`` type represents unicode strings and the ``unicode`` was just removed.
+
+Before the release 0.6, Pony stored ``str`` and ``unicode`` attributes as unicode in the database, but for ``str`` attributes it had to convert unicode to byte string on reading from the database. Starting with the Pony Release 0.6 the attributes of ``str`` type in Python 2 behave as if they were declared as ``unicode`` attributes. There is no difference now if you specify ``str`` or ``unicode`` as the attribute type – you will have unicode string in Python and in the database.
+The same thing is with the ``LongUnicode`` and ``LongStr``. ``LongStr`` now is an alias to ``LongUnicode``. This type uses unicode in Python and in the database.
+
+.. code-block:: python
+
+    attr1 = Required(str)
+    # is the same as
+    attr2 = Required(unicode)
+
+    attr3 = Required(LongStr)
+    # is the same as
+    attr4 = Required(LongUnicode)
+
+If you need to represent byte sequence in Python 2, you can use the ``buffer`` type. In Python 3 you should use the ``bytes`` type for this purpose.
+
+If you need to represent a byte sequence in Python 2, you can use the ``buffer`` type. In Python 3 the ``buffer`` type has gone, and Pony uses the ``bytes`` type which was added in Python 3 to represent binary data. But for the sake of backward compatibility we still keep ``buffer`` as an alias to the ``bytes`` type in Python 3. If you're importing ``*`` from ``pony.orm`` you will get this alias too.
+
+If you want to write code which can run both on Python 2 and Python 3, you should use the ``buffer`` type for binary attributes. If your code is for Python 3 only, you can use ``bytes`` instead:
+
+.. code-block:: python
+
+    attr1 = Required(buffer) # Python 2 and 3
+
+    attr2 = Required(bytes) # Python 3 only
+
+
+It would be cool if we could use the ``bytes`` type as an alias to ``buffer`` in Python 2, but unfortunately it is impossible, because `Python 2.6 adds bytes as a synonym for the str type <https://docs.python.org/2/whatsnew/2.6.html#pep-3112-byte-literals>`_.
 
 Also you can specify another entity as the attribute type for defining a relationship between two entities.
 
@@ -146,7 +181,7 @@ Max length and precision
 
 String types accept a positional argument which specifies the max length of this column in the database::
 
-    name = Required(unicode, 40)   #  VARCHAR(40)
+    name = Required(str, 40)   #  VARCHAR(40)
 
 For the Decimal type you can specify precision and scale::
 
@@ -246,7 +281,7 @@ Additional attribute options which can be set as keyword arguments:
    This parameter allows you to specify a function which will be used for checking the value before it is assigned to the attribute. The function should return ``True`` or ``False``. Also it can raise the ``ValueError`` exception if the check failed. Example::
 
        class Student(db.Entity):
-           name = Required(unicode)
+           name = Required(str)
            gpa = Required(float, py_check=lambda val: val >= 0 and val <= 5)
 
 .. py:attribute:: min
@@ -266,14 +301,14 @@ Entity inheritance
 Entity inheritance in Pony is similar to inheritance for regular Python classes. Let’s consider an example of a data diagram where entities ``Student`` and ``Professor`` inherit from the entity ``Person``::
 
     class Person(db.Entity):
-        name = Required(unicode)
+        name = Required(str)
 
     class Student(Person):
         gpa = Optional(Decimal)
         mentor = Optional("Professor")
 
     class Professor(Person):
-        degree = Required(unicode)
+        degree = Required(str)
         students = Set("Student")
 
 All attributes and relationships of the base entity ``Person`` are inherited by all descendants.
@@ -318,7 +353,7 @@ Pony also supports multiple inheritance. If you use multiple inheritance then al
 Let’s consider a data diagram example where a student can be a teaching assistant. For this purpose we’ll introduce the entity ``Teacher`` and derive ``Professor`` and ``TeachingAssistant`` from it. The entity ``TeachingAssistant`` inherits from both the ``Student`` class and the ``Teacher`` class::
 
     class Person(db.Entity):
-        name = Required(unicode)
+        name = Required(str)
 
     class Student(Person):
         ...
@@ -371,19 +406,19 @@ If you need to set your own table name use the ``_table_`` class attribute::
 
     class Person(db.Entity):
         _table_ = "person_table"
-        name = Required(unicode)
+        name = Required(str)
 
 If you need to set your own column name, use the option ``column``::
 
     class Person(db.Entity):
         _table_ = "person_table"
-        name = Required(unicode, column="person_name")
+        name = Required(str, column="person_name")
 
 
 For composite attributes use the option ``columns`` with the list of the column names specified::
 
     class Course(db.Entity):
-        name = Required(unicode)
+        name = Required(str)
         semester = Required(int)
         lectures = Set("Lecture")
         PrimaryKey(name, semester)
@@ -401,11 +436,11 @@ If you need to set the column names for the intermediate table for many-to-many 
     db = Database("sqlite", ":memory:")
 
     class Student(db.Entity):
-        name = Required(unicode)
+        name = Required(str)
         courses = Set("Course")
 
     class Course(db.Entity):
-        name = Required(unicode)
+        name = Required(str)
         semester = Required(int)
         students = Set(Student)
         PrimaryKey(name, semester)
@@ -418,11 +453,11 @@ By default, for storing many-to-many relationships between ``Student`` and ``Cou
 .. code-block:: python
 
     class Student(db.Entity):
-        name = Required(unicode)
+        name = Required(str)
         courses = Set("Course", table="Study_Plans", columns=["course", "semester"]))
 
     class Course(db.Entity):
-        name = Required(unicode)
+        name = Required(str)
         semester = Required(int)
         students = Set(Student, column="student_id")
         PrimaryKey(name, semester)

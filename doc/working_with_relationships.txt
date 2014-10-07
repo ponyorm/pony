@@ -16,12 +16,12 @@ In the example above we've defined one-to-many relationship between ``Person`` a
     db = Database('sqlite', ':memory:')
 
     class Person(db.Entity):
-        name = Required(unicode)
+        name = Required(str)
         cars = Set('Car')
 
     class Car(db.Entity):
-        make = Required(unicode)
-        model = Required(unicode)
+        make = Required(str)
+        model = Required(str)
         owner = Optional(Person)
 
     db.generate_mapping(create_tables=True)
@@ -129,8 +129,8 @@ In Pony, the collection attributes provide an attribute lifting capability: a co
     >>> show(Car)
     class Car(Entity):
         id = PrimaryKey(int, auto=True)
-        make = Required(unicode)
-        model = Required(unicode)
+        make = Required(str)
+        model = Required(str)
         owner = Optional(Person)
     >>> p1 = Person[1]
     >>> print p1.cars.model
