@@ -4,7 +4,7 @@ from distutils.core import setup
 import sys
 
 name = "pony"
-version = "0.6-dev"
+version = __import__('pony').__version__
 description = "Pony Object-Relational Mapper"
 long_description = """
 Pony is an object-relational mapper. The most interesting feature of Pony is
