@@ -120,6 +120,7 @@ def throw(exc_type, *args, **kwargs):
         assert not args and not kwargs
         exc = exc_type
     else: exc = exc_type(*args, **kwargs)
+    exc.__cause__ = None
     try:
         if not (pony.MODE == 'INTERACTIVE' and options.CUT_TRACEBACK):
             raise exc

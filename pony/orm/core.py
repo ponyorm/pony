@@ -259,11 +259,14 @@ def flush():
 
 def transact_reraise(exc_class, exceptions):
     cls, exc, tb = exceptions[0]
+    new_exc = None
     try:
         msg = " ".join(tostring(arg) for arg in exc.args)
         if not issubclass(cls, TransactionError): msg = '%s: %s' % (cls.__name__, msg)
-        reraise(exc_class, exc_class(msg, exceptions), tb)
-    finally: del exceptions, exc, tb
+        new_exc = exc_class(msg, exceptions)
+        new_exc.__cause__ = None
+        reraise(exc_class, new_exc, tb)
+    finally: del exceptions, exc, tb, new_exc
 
 @cut_traceback
 def commit():
