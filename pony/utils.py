@@ -104,7 +104,7 @@ def cut_traceback(func, *args, **kwargs):
                 reraise(exc_type, exc, last_pony_tb)
             raise exc  # Set "pony.options.CUT_TRACEBACK = False" to see full traceback
         finally:
-            del tb, last_pony_tb
+            del exc, tb, last_pony_tb
 
 if PY2:
     exec('''def reraise(exc_type, exc, tb):
@@ -113,17 +113,19 @@ if PY2:
 else:
     def reraise(exc_type, exc, tb):
         try: raise exc.with_traceback(tb)
-        finally: del tb
+        finally: del exc, tb
 
 def throw(exc_type, *args, **kwargs):
     if isinstance(exc_type, Exception):
         assert not args and not kwargs
         exc = exc_type
     else: exc = exc_type(*args, **kwargs)
-    if not (pony.MODE == 'INTERACTIVE' and options.CUT_TRACEBACK):
-        raise exc
-    else:
-        raise exc  # Set "pony.options.CUT_TRACEBACK = False" to see full traceback
+    try:
+        if not (pony.MODE == 'INTERACTIVE' and options.CUT_TRACEBACK):
+            raise exc
+        else:
+            raise exc  # Set "pony.options.CUT_TRACEBACK = False" to see full traceback
+    finally: del exc
 
 lambda_args_cache = {}
 

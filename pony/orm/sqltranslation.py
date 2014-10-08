@@ -114,8 +114,8 @@ class SQLTranslator(ASTTranslator):
     def call(translator, method, node):
         try: monad = method(node)
         except Exception:
+            exc_class, exc, tb = sys.exc_info()
             try:
-                exc_class, exc, tb = sys.exc_info()
                 if not exc.args: exc.args = (ast2src(node),)
                 else:
                     msg = exc.args[0]
@@ -123,7 +123,7 @@ class SQLTranslator(ASTTranslator):
                         msg = msg.replace('{EXPR}', ast2src(node))
                         exc.args = (msg,) + exc.args[1:]
                 reraise(exc_class, exc, tb)
-            finally: del tb
+            finally: del exc, tb
         else:
             if monad is None: return
             node.monad = monad

@@ -258,13 +258,13 @@ def flush():
     for cache in _get_caches(): cache.flush()
 
 def transact_reraise(exc_class, exceptions):
+    cls, exc, tb = exceptions[0]
     try:
-        cls, exc, tb = exceptions[0]
         msg = " ".join(tostring(arg) for arg in exc.args)
         if not issubclass(cls, TransactionError):
             msg = '%s: %s' % (cls.__name__, msg)
         reraise(exc_class, exc_class(msg, exceptions), tb)
-    finally: del tb
+    finally: del exceptions, exc, tb
 
 @cut_traceback
 def commit():
@@ -337,7 +337,7 @@ class DBSessionContextManager(object):
             if self.ddl and local.db_context_counter:
                 if isinstance(func, types.FunctionType): func = func.__name__ + '()'
                 throw(TransactionError, '%s cannot be called inside of db_session' % func)
-            exc_tb = None
+            exc_value = exc_tb = None
             try:
                 for i in xrange(self.retry+1):
                     self._enter()
@@ -353,7 +353,7 @@ class DBSessionContextManager(object):
                         if not do_retry: raise
                     finally: self.__exit__(exc_type, exc_value, exc_tb)
                 reraise(exc_type, exc_value, exc_tb)
-            finally: del exc_tb
+            finally: del exc_value, exc_tb
         return decorator(new_func, func)
     def __enter__(self):
         if self.retry is not 0: throw(TypeError,
@@ -387,7 +387,9 @@ class DBSessionContextManager(object):
                 for cache in _get_caches(): cache.release()
                 assert not local.db2cache
             else: rollback()
-        finally: local.db_session = None
+        finally:
+            del exc_value, traceback
+            local.db_session = None
 
 db_session = DBSessionContextManager()
 
