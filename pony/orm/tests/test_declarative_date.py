@@ -29,7 +29,6 @@ class TestDate(unittest.TestCase):
         db_session.__exit__()
     def test_create(self):
         e1 = Entity1(a=4, b=date(2011, 10, 20), c=datetime(2009, 10, 20, 10, 20, 30))
-        self.assert_(True)
     def test_date_year(self):
         result = select(e for e in Entity1 if e.b.year > 2009)
         self.assertEqual(len(result), 2)

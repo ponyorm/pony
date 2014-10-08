@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, xrange
+from pony.py23compat import PY2, izip, xrange
 
 import types
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
@@ -22,8 +22,11 @@ def decompile(x):
     if t is types.CodeType: codeobject = x
     elif t is types.GeneratorType: codeobject = x.gi_frame.f_code
     elif t is types.FunctionType:
-        codeobject = x.func_code
-        if x.func_closure: cells = dict(izip(codeobject.co_freevars, x.func_closure))
+        codeobject = x.func_code if PY2 else x.__code__
+        if PY2:
+            if x.func_closure: cells = dict(izip(codeobject.co_freevars, x.func_closure))
+        else:
+            if x.__closure__: cells = dict(izip(codeobject.co_freevars, x.__closure__))
     else: throw(TypeError)
     key = id(codeobject)
     result = ast_cache.get(key)
@@ -55,6 +58,8 @@ def binop(node_type, args_holder=tuple):
         oper1 = decompiler.stack.pop()
         return node_type(args_holder((oper1, oper2)))
     return method
+
+if not PY2: ord = lambda x: x
 
 class Decompiler(object):
     def __init__(decompiler, code, start=0, end=None):
@@ -295,12 +300,14 @@ class Decompiler(object):
         return ast.Name(varname)
 
     def MAKE_CLOSURE(decompiler, argc):
-        decompiler.stack[-2:-1] = [] # ignore freevars
+        if PY2: decompiler.stack[-2:-1] = [] # ignore freevars
+        else: decompiler.stack[-3:-2] = [] # ignore freevars
         return decompiler.MAKE_FUNCTION(argc)
 
     def MAKE_FUNCTION(decompiler, argc):
         if argc: throw(NotImplementedError)
         tos = decompiler.stack.pop()
+        if not PY2: tos = decompiler.stack.pop()
         codeobject = tos.value
         func_decompiler = Decompiler(codeobject)
         # decompiler.names.update(decompiler.names)  ???
@@ -321,7 +328,7 @@ class Decompiler(object):
         if decompiler.pos != decompiler.end: throw(NotImplementedError)
         expr = decompiler.stack.pop()
         decompiler.stack.append(simplify(expr))
-        raise AstGenerated
+        raise AstGenerated()
 
     def ROT_TWO(decompiler):
         tos = decompiler.stack.pop()
@@ -423,7 +430,7 @@ class Decompiler(object):
             else: fors.append(top)
         fors.reverse()
         decompiler.stack.append(ast.GenExpr(ast.GenExprInner(simplify(expr), fors)))
-        raise AstGenerated
+        raise AstGenerated()
 
 test_lines = """
     (a and b if c and d else e and f for i in T if (A and B if C and D else E and F))

@@ -1,21 +1,20 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, xrange
+from pony.py23compat import PY2, items_list, izip, xrange, basestring, unicode, buffer, pickle, with_metaclass
 
 import types, sys, re, itertools
 from decimal import Decimal
 from datetime import date, time, datetime, timedelta
 from random import random
-from cPickle import loads, dumps
 from copy import deepcopy
 from functools import update_wrapper
 
 from pony.thirdparty.compiler import ast
 
 from pony import options, utils
-from pony.utils import is_ident, throw, concat
+from pony.utils import is_ident, throw, reraise, concat
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
-    string_types, numeric_types, comparable_types, SetType, FuncType, MethodType, \
+    numeric_types, comparable_types, SetType, FuncType, MethodType, \
     get_normalized_type_of, normalize_type, coerce_types, are_comparable_types
 from pony.orm import core
 from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper
@@ -115,16 +114,16 @@ class SQLTranslator(ASTTranslator):
     def call(translator, method, node):
         try: monad = method(node)
         except Exception:
+            exc_class, exc, tb = sys.exc_info()
             try:
-                exc_class, exc, tb = sys.exc_info()
                 if not exc.args: exc.args = (ast2src(node),)
                 else:
                     msg = exc.args[0]
                     if isinstance(msg, basestring) and '{EXPR}' in msg:
                         msg = msg.replace('{EXPR}', ast2src(node))
                         exc.args = (msg,) + exc.args[1:]
-                raise exc_class, exc, tb
-            finally: del tb
+                reraise(exc_class, exc, tb)
+            finally: del exc, tb
         else:
             if monad is None: return
             node.monad = monad
@@ -525,8 +524,8 @@ class SQLTranslator(ASTTranslator):
         return translator
     def apply_lambda(translator, filter_num, order_by, func_ast, argnames, extractors, vartypes):
         translator = deepcopy(translator)
-        pickled_func_ast = dumps(func_ast, 2)
-        func_ast = loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
+        pickled_func_ast = pickle.dumps(func_ast, 2)
+        func_ast = pickle.loads(pickled_func_ast)  # func_ast = deepcopy(func_ast)
         translator.filter_num = filter_num
         translator.extractors.update(extractors)
         translator.vartypes.update(vartypes)
@@ -692,6 +691,9 @@ class SQLTranslator(ASTTranslator):
         sub = node.subs[0]
         if isinstance(sub, ast.Sliceobj):
             start, stop, step = (sub.nodes+[None])[:3]
+            if start is not None: start = start.monad
+            if stop is not None: stop = stop.monad
+            if step is not None: step = step.monad
             return node.expr.monad[start:stop:step]
         else: return node.expr.monad[sub.monad]
     def postSlice(translator, node):
@@ -887,11 +889,10 @@ class MonadMeta(type):
             cls_dict[name] = wrap_monad_method(cls_name, func)
         return super(MonadMeta, meta).__new__(meta, cls_name, bases, cls_dict)
 
-class MonadMixin(object):
-    __metaclass__ = MonadMeta
+class MonadMixin(with_metaclass(MonadMeta)):
+    pass
 
-class Monad(object):
-    __metaclass__ = MonadMeta
+class Monad(with_metaclass(MonadMeta)):
     def __init__(monad, translator, type):
         monad.translator = translator
         monad.type = type
@@ -981,23 +982,38 @@ class Monad(object):
     def __neg__(monad): throw(TypeError)
     def abs(monad): throw(TypeError)
 
-typeerror_re = re.compile(r'\(\) takes (no|(?:exactly|at (?:least|most)))(?: (\d+))? arguments \((\d+) given\)')
+typeerror_re_1 = re.compile(r'\(\) takes (no|(?:exactly|at (?:least|most)))(?: (\d+))? arguments \((\d+) given\)')
+typeerror_re_2 = re.compile(r'\(\) takes from (\d+) to (\d+) positional arguments but (\d+) were given')
 
 def reraise_improved_typeerror(exc, func_name, orig_func_name):
     if not exc.args: throw(exc)
     msg = exc.args[0]
     if not msg.startswith(func_name): throw(exc)
     msg = msg[len(func_name):]
-    match = typeerror_re.match(msg)
-    if not match:
-        exc.args = (orig_func_name + msg,)
+
+    match = typeerror_re_1.match(msg)
+    if match:
+        what, takes, given = match.groups()
+        takes, given = int(takes), int(given)
+        if takes: what = '%s %d' % (what, takes-1)
+        plural = 's' if takes > 2 else ''
+        new_msg = '%s() takes %s argument%s (%d given)' % (orig_func_name, what, plural, given-1)
+        exc.args = (new_msg,)
         throw(exc)
-    what, takes, given = match.groups()
-    takes, given = int(takes), int(given)
-    if takes: what = '%s %d' % (what, takes-1)
-    plural = 's' if takes > 2 else ''
-    new_msg = '%s() takes %s argument%s (%d given)' % (orig_func_name, what, plural, given-1)
-    exc.args = (new_msg,)
+
+    match = typeerror_re_2.match(msg)
+    if match:
+        start, end, given = match.groups()
+        start, end, given = int(start)-1, int(end)-1, int(given)-1
+        if not start:
+            plural = 's' if end > 1 else ''
+            new_msg = '%s() takes at most %d argument%s (%d given)' % (orig_func_name, end, plural, given)
+        else:
+            new_msg = '%s() takes from %d to %d arguments (%d given)' % (orig_func_name, start, end, given)
+        exc.args = (new_msg,)
+        throw(exc)
+
+    exc.args = (orig_func_name + msg,)
     throw(exc)
 
 def raise_forgot_parentheses(monad):
@@ -1194,6 +1210,8 @@ class StringMixin(MonadMixin):
         elif isinstance(index, slice):
             if index.step is not None: throw(TypeError, 'Step is not supported in {EXPR}')
             start, stop = index.start, index.stop
+            if isinstance(start, NoneMonad): start = None
+            if isinstance(stop, NoneMonad): stop = None
             if start is None and stop is None: return monad
             if isinstance(monad, translator.StringConstMonad) \
                and (start is None or isinstance(start, translator.NumericConstMonad)) \
@@ -1355,7 +1373,7 @@ class AttrMonad(Monad):
         translator = parent.translator
         type = normalize_type(attr.py_type)
         if type in numeric_types: cls = translator.NumericAttrMonad
-        elif type in string_types: cls = translator.StringAttrMonad
+        elif type is unicode: cls = translator.StringAttrMonad
         elif type is date: cls = translator.DateAttrMonad
         elif type is time: cls = translator.TimeAttrMonad
         elif type is timedelta: cls = translator.TimedeltaAttrMonad
@@ -1419,7 +1437,7 @@ class ParamMonad(Monad):
     def new(translator, type, paramkey):
         type = normalize_type(type)
         if type in numeric_types: cls = translator.NumericParamMonad
-        elif type in string_types: cls = translator.StringParamMonad
+        elif type is unicode: cls = translator.StringParamMonad
         elif type is date: cls = translator.DateParamMonad
         elif type is time: cls = translator.TimeParamMonad
         elif type is timedelta: cls = translator.TimedeltaParamMonad
@@ -1470,7 +1488,7 @@ class ExprMonad(Monad):
     @staticmethod
     def new(translator, type, sql):
         if type in numeric_types: cls = translator.NumericExprMonad
-        elif type in string_types: cls = translator.StringExprMonad
+        elif type is unicode: cls = translator.StringExprMonad
         elif type is date: cls = translator.DateExprMonad
         elif type is time: cls = translator.TimeExprMonad
         elif type is timedelta: cls = translator.TimedeltaExprMonad
@@ -1498,7 +1516,7 @@ class ConstMonad(Monad):
     def new(translator, value):
         value_type = get_normalized_type_of(value)
         if value_type in numeric_types: cls = translator.NumericConstMonad
-        elif value_type in string_types: cls = translator.StringConstMonad
+        elif value_type is unicode: cls = translator.StringConstMonad
         elif value_type is date: cls = translator.DateConstMonad
         elif value_type is time: cls = translator.TimeConstMonad
         elif value_type is timedelta: cls = translator.TimedeltaConstMonad
@@ -1543,7 +1561,7 @@ class BoolMonad(Monad):
         monad.type = bool
 
 sql_negation = { 'IN' : 'NOT_IN', 'EXISTS' : 'NOT_EXISTS', 'LIKE' : 'NOT_LIKE', 'BETWEEN' : 'NOT_BETWEEN', 'IS_NULL' : 'IS_NOT_NULL' }
-sql_negation.update((value, key) for key, value in sql_negation.items())
+sql_negation.update((value, key) for key, value in items_list(sql_negation))
 
 class BoolExprMonad(BoolMonad):
     def __init__(monad, translator, sql):
@@ -1568,7 +1586,7 @@ class BoolExprMonad(BoolMonad):
 cmp_ops = { '>=' : 'GE', '>' : 'GT', '<=' : 'LE', '<' : 'LT' }
 
 cmp_negate = { '<' : '>=', '<=' : '>', '==' : '!=', 'is' : 'is not' }
-cmp_negate.update((b, a) for a, b in cmp_negate.items())
+cmp_negate.update((b, a) for a, b in items_list(cmp_negate))
 
 class CmpMonad(BoolMonad):
     def __init__(monad, op, left, right):
@@ -1659,8 +1677,7 @@ class FuncMonadMeta(MonadMeta):
             for func in functions: special_functions[func] = monad_cls
         return monad_cls
 
-class FuncMonad(Monad):
-    __metaclass__ = FuncMonadMeta
+class FuncMonad(with_metaclass(FuncMonadMeta, Monad)):
     type = 'function'
     def __init__(monad, translator):
         monad.translator = translator
@@ -1678,10 +1695,25 @@ class FuncMonad(Monad):
 
 class FuncBufferMonad(FuncMonad):
     func = buffer
-    def call(monad, x):
+    def call(monad, source, encoding=None, errors=None):
         translator = monad.translator
-        if not isinstance(x, translator.StringConstMonad): throw(TypeError)
-        return translator.ConstMonad.new(translator, buffer(x.value))
+        if not isinstance(source, translator.StringConstMonad): throw(TypeError)
+        source = source.value
+        if encoding is not None:
+            if not isinstance(encoding, translator.StringConstMonad): throw(TypeError)
+            encoding = encoding.value
+        if errors is not None:
+            if not isinstance(errors, translator.StringConstMonad): throw(TypeError)
+            errors = errors.value
+        if PY2:
+            if encoding and errors: source = source.encode(encoding, errors)
+            elif encoding: source = source.encode(encoding)
+            return translator.ConstMonad.new(translator, buffer(source))
+        else:
+            if encoding and errors: value = buffer(source, encoding, errors)
+            elif encoding: value = buffer(source, encoding)
+            else: value = buffer(source)
+            return translator.ConstMonad.new(translator, value)
 
 class FuncDecimalMonad(FuncMonad):
     func = Decimal
@@ -1748,18 +1780,13 @@ class FuncConcatMonad(FuncMonad):
     def call(monad, *args):
         if len(args) < 2: throw(TranslationError, 'concat() function requires at least two arguments')
         translator = args[0].translator
-        s = u = False
         result_ast = [ 'CONCAT' ]
         for arg in args:
             t = arg.type
             if isinstance(t, EntityMeta) or type(t) in (tuple, SetType):
                 throw(TranslationError, 'Invalid argument of concat() function: %s' % ast2src(arg.node))
-            if t is str: s = True
-            elif t is unicode: u = True
             result_ast.extend(arg.getsql())
-        if s and u: throw(TranslationError, 'Mixing str and unicode in {EXPR}')
-        result_type = str if s else unicode
-        return translator.ExprMonad.new(translator, result_type, result_ast)
+        return translator.ExprMonad.new(translator, unicode, result_ast)
 
 class FuncLenMonad(FuncMonad):
     func = len
@@ -2405,7 +2432,7 @@ class QuerySetMonad(SetMixin, Monad):
     def call_avg(monad):
         return monad.aggregate('AVG')
 
-for name, value in globals().items():
+for name, value in items_list(globals()):
     if name.endswith('Monad') or name.endswith('Mixin'):
         setattr(SQLTranslator, name, value)
 del name, value

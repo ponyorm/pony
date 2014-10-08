@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import iteritems
+from pony.py23compat import PY2, iteritems, basestring, unicode, buffer, int_types
 
 import os
 os.environ["NLS_LANG"] = "AMERICAN_AMERICA.UTF8"
@@ -221,26 +221,15 @@ class OraBuilder(sqlbuilding.SQLBuilder):
         return '(', builder(expr), ' - ', builder(delta), ')'
 
 class OraBoolConverter(dbapiprovider.BoolConverter):
+    if not PY2:  
+        def py2sql(converter, val):
+            # Fixes cx_Oracle 5.1.3 Python 3 bug:
+            # "DatabaseError: OCI-22062: invalid input string [True]"
+            return int(val)
     def sql2py(converter, val):
         return bool(val)  # TODO: True/False, T/F, Y/N, Yes/No, etc.
     def sql_type(converter):
         return "NUMBER(1)"
-
-def _string_sql_type(converter):
-    if converter.max_len:
-        return 'VARCHAR2(%d CHAR)' % converter.max_len
-    return 'CLOB'
-
-class OraUnicodeConverter(dbapiprovider.UnicodeConverter):
-    def validate(converter, val):
-        if val == '': return None
-        return dbapiprovider.UnicodeConverter.validate(converter, val)
-    def sql2py(converter, val):
-        if isinstance(val, cx_Oracle.LOB):
-            val = val.read()
-            val = val.decode('utf8')
-        return val
-    sql_type = _string_sql_type  # TODO: Add support for NVARCHAR2 and NCLOB datatypes
 
 class OraStrConverter(dbapiprovider.StrConverter):
     def validate(converter, val):
@@ -249,12 +238,13 @@ class OraStrConverter(dbapiprovider.StrConverter):
     def sql2py(converter, val):
         if isinstance(val, cx_Oracle.LOB):
             val = val.read()
-            if converter.utf8: return val
-            val = val.decode('utf8')
-        if isinstance(val, unicode):
-            val = val.encode(converter.encoding, 'replace')
+            if PY2: val = val.decode('utf8')
         return val
-    sql_type = _string_sql_type
+    def sql_type(converter):
+        # TODO: Add support for NVARCHAR2 and NCLOB datatypes
+        if converter.max_len:
+            return 'VARCHAR2(%d CHAR)' % converter.max_len
+        return 'CLOB'
 
 class OraIntConverter(dbapiprovider.IntConverter):
     def init(self, kwargs):
@@ -338,17 +328,16 @@ class OraProvider(DBAPIProvider):
 
     converter_classes = [
         (bool, OraBoolConverter),
-        (unicode, OraUnicodeConverter),
-        (str, OraStrConverter),
-        ((int, long), OraIntConverter),
+        (basestring, OraStrConverter),
+        (int_types, OraIntConverter),
         (float, OraRealConverter),
         (Decimal, OraDecimalConverter),
-        (buffer, OraBlobConverter),
         (datetime, OraDatetimeConverter),
         (date, OraDateConverter),
         (time, OraTimeConverter),
         (timedelta, OraTimedeltaConverter),
         (UUID, OraUuidConverter),
+        (buffer, OraBlobConverter),
     ]
 
     @wrap_dbapi_exceptions

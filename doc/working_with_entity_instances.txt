@@ -229,22 +229,22 @@ When Pony deletes an instance of an entity it also needs to delete its relations
 Cascade delete for one-to-many relationship example. Raises the ``ConstraintError`` exception on an attempt to delete a group which has related students::
 
     class Group(db.Entity):
-        major = Required(unicode)
+        major = Required(str)
         items = Set("Student", cascade_delete=False)
 
     class Student(db.Entity):
-        name = Required(unicode)
+        name = Required(str)
         group = Required(Group)
 
 
 Cascade delete for one-to-one relationship example. Deletes a related instance of ``Passport`` when deleting the instance of ``Person``::
 
     class Person(db.Entity):
-        name = Required(unicode)
+        name = Required(str)
         passport = Optional("Passport", cascade_delete=True)
 
     class Passport(db.Entity):
-        number = Required(unicode)
+        number = Required(str)
         person = Required("Person")
 
 
@@ -526,8 +526,8 @@ Sometimes you might need to perform an action before or after your entity instan
 .. code-block:: python
 
    >>> class Message(db.Entity):
-   ...     title = Required(unicode)
-   ...     content = Required(unicode)
+   ...     title = Required(str)
+   ...     content = Required(str)
    ...     def before_insert(self):
    ...         print "Before insert!"
 

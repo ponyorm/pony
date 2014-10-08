@@ -1,4 +1,5 @@
 from __future__ import absolute_import, print_function, division
+from pony.py23compat import basestring
 
 from pony.orm.core import Database
 from pony.utils import import_module
@@ -8,7 +9,7 @@ def raises_exception(exc_class, msg=None):
         def wrapper(self, *args, **kwargs):
             try:
                 func(self, *args, **kwargs)
-                self.assert_(False, "expected exception %s wasn't raised" % exc_class.__name__)
+                self.fail("expected exception %s wasn't raised" % exc_class.__name__)
             except exc_class as e:
                 if not e.args: self.assertEqual(msg, None)
                 elif msg is not None:

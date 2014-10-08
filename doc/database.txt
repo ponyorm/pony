@@ -28,7 +28,7 @@ Defining entities which are related to the database object
 Entities should inherit from the base class of the ``Database`` object::
 
     class MyEntity(db.Entity):
-        attr1 = Required(unicode)
+        attr1 = Required(str)
 
 We'll talk about entities definition in detail in the next chapter. Now, let's see the next step in mapping entities to a database.
 
@@ -200,7 +200,7 @@ Database object attributes
           db = Database()
 
           class Person(db.Entity):
-              name = Required(unicode)
+              name = Required(str)
               age = Required(int)
 
    .. py:attribute:: last_sql

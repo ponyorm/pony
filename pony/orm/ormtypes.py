@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip
+from pony.py23compat import PY2, items_list, izip, basestring, unicode, buffer, int_types
 
 import types
 from decimal import Decimal
@@ -10,13 +10,14 @@ from pony.utils import throw
 
 NoneType = type(None)
 
-class AsciiStr(str): pass
-
 class LongStr(str):
     lazy = True
 
-class LongUnicode(unicode):
-    lazy = True
+if PY2:
+    class LongUnicode(unicode):
+        lazy = True
+else:
+    LongUnicode = LongStr
 
 class SetType(object):
     __slots__ = 'item_type'
@@ -48,9 +49,14 @@ class MethodType(object):
     __slots__ = 'obj', 'func'
     def __deepcopy__(self, memo):
         return self  # MethodType instances are "immutable"
-    def __init__(self, method):
-        self.obj = method.im_self
-        self.func = method.im_func
+    if PY2:
+        def __init__(self, method):
+            self.obj = method.im_self
+            self.func = method.im_func
+    else:
+        def __init__(self, method):
+            self.obj = method.__self__
+            self.func = method.__func__
     def __eq__(self, other):
         return type(other) is MethodType and self.obj == other.obj and self.func == other.func
     def __ne__(self, other):
@@ -59,11 +65,10 @@ class MethodType(object):
         return hash(self.obj) ^ hash(self.func)
 
 numeric_types = set([ bool, int, float, Decimal ])
-string_types = set([ str, AsciiStr, unicode ])
-comparable_types = set([ int, float, Decimal, str, AsciiStr, unicode, date, time, datetime, timedelta, bool, UUID ])
+comparable_types = set([ int, float, Decimal, unicode, date, time, datetime, timedelta, bool, UUID ])
 primitive_types = comparable_types | set([ buffer ])
-type_normalization_dict = { long : int, LongStr : str, LongUnicode : unicode }
 function_types = set([type, types.FunctionType, types.BuiltinFunctionType])
+type_normalization_dict = { long : int } if PY2 else {}
 
 def get_normalized_type_of(value):
     t = type(value)
@@ -72,14 +77,11 @@ def get_normalized_type_of(value):
     except TypeError: throw(TypeError, 'Unsupported type %r' % t.__name__)
     if t.__name__ == 'EntityMeta': return SetType(value)
     if t.__name__ == 'EntityIter': return SetType(value.entity)
-    if isinstance(value, str):
+    if PY2 and isinstance(value, str):
         try: value.decode('ascii')
-        except UnicodeDecodeError: pass
-        else: return AsciiStr
-    elif isinstance(value, unicode):
-        try: value.encode('ascii')
-        except UnicodeEncodeError: pass
-        else: return AsciiStr
+        except UnicodeDecodeError: raise
+        else: return unicode
+    elif isinstance(value, unicode): return unicode
     if t in function_types: return FuncType(value)
     if t is types.MethodType: return MethodType(value)
     return normalize_type(t)
@@ -92,23 +94,18 @@ def normalize_type(t):
     if t is NoneType: return t
     t = type_normalization_dict.get(t, t)
     if t in primitive_types: return t
-    if issubclass(t, basestring):  # Mainly for Html -> unicode & StrHtml -> str conversion
-        if issubclass(t, str): return str
-        if issubclass(t, unicode): return unicode
-        assert False
+    if issubclass(t, basestring): return unicode
     throw(TypeError, 'Unsupported type %r' % t.__name__)
 
 coercions = {
     (int, float) : float,
     (int, Decimal) : Decimal,
     (date, datetime) : datetime,
-    (AsciiStr, str) : str,
-    (AsciiStr, unicode) : unicode,
     (bool, int) : int,
     (bool, float) : float,
     (bool, Decimal) : Decimal
     }
-coercions.update(((t2, t1), t3) for ((t1, t2), t3) in coercions.items())
+coercions.update(((t2, t1), t3) for ((t1, t2), t3) in items_list(coercions))
 
 def coerce_types(t1, t2):
     if t1 == t2: return t1
@@ -147,8 +144,8 @@ def are_comparable_types(t1, t2, op='=='):
             if t1 is t2: return True
             if (t1, t2) in coercions: return True
             if tt1 is not type or tt2 is not type: return False
-            if issubclass(t1, (int, long)) and issubclass(t2, basestring): return True
-            if issubclass(t2, (int, long)) and issubclass(t1, basestring): return True
+            if issubclass(t1, int_types) and issubclass(t2, basestring): return True
+            if issubclass(t2, int_types) and issubclass(t1, basestring): return True
             return False
         if tt1.__name__ == tt2.__name__ == 'EntityMeta':
             return t1._root_ is t2._root_

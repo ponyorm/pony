@@ -1,5 +1,7 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import itervalues
+from pony.py23compat import itervalues, basestring
+
+from operator import attrgetter
 
 from pony.orm import core
 from pony.orm.core import log_sql, DBSchemaError
@@ -121,11 +123,11 @@ class Table(DBObject):
             cmd.append(schema.indent + column.get_sql() + ',')
         if len(table.pk_index.columns) > 1:
             cmd.append(schema.indent + table.pk_index.get_sql() + ',')
-        for index in sorted(itervalues(table.indexes), key=lambda index: index.name):
-            if index.is_pk: continue
-            if not index.is_unique: continue
-            if len(index.columns) == 1: continue
-            cmd.append(schema.indent+index.get_sql() + ',')
+        indexes = [ index for index in itervalues(table.indexes)
+                    if not index.is_pk and index.is_unique and len(index.columns) > 1 ]
+        for index in indexes: assert index.name is not None
+        indexes.sort(key=attrgetter('name'))
+        for index in indexes: cmd.append(schema.indent+index.get_sql() + ',')
         if not schema.named_foreign_keys:
             for foreign_key in sorted(itervalues(table.foreign_keys), key=lambda fk: fk.name):
                 if schema.inline_fk_syntax and len(foreign_key.child_columns) == 1: continue
@@ -136,10 +138,10 @@ class Table(DBObject):
     def get_objects_to_create(table, created_tables=None):
         if created_tables is None: created_tables = set()
         result = [ table ]
-        for index in sorted(itervalues(table.indexes), key=lambda index: index.name):
-            if index.is_pk or index.is_unique: continue
-            assert index.name is not None
-            result.append(index)
+        indexes = [ index for index in itervalues(table.indexes) if not index.is_pk and not index.is_unique ]
+        for index in indexes: assert index.name is not None
+        indexes.sort(key=attrgetter('name'))
+        result.extend(indexes)
         schema = table.schema
         if schema.named_foreign_keys:
             for foreign_key in sorted(itervalues(table.foreign_keys), key=lambda fk: fk.name):

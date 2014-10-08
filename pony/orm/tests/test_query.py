@@ -25,8 +25,8 @@ db.generate_mapping(create_tables=True)
 with db_session:
     g1 = Group(number=1)
     Student(id=1, name='S1', group=g1, gpa=3.1)
-    Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 01, 01))
-    Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 01, 02))
+    Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 1, 1))
+    Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 1, 2))
 
 class TestQuery(unittest.TestCase):
     def setUp(self):
@@ -49,7 +49,7 @@ class TestQuery(unittest.TestCase):
     @raises_exception(ExprEvalError, "a raises NameError: name 'a' is not defined")
     def test_exception_04(self):
         select(a for s in Student)
-    @raises_exception(TypeError,"Incomparable types 'unicode' and 'list' in expression: s.name == x")
+    @raises_exception(TypeError,"Incomparable types '%s' and 'list' in expression: s.name == x" % unicode.__name__)
     def test_exception_05(self):
         x = ['A']
         select(s for s in Student if s.name == x)
@@ -72,10 +72,9 @@ class TestQuery(unittest.TestCase):
         select(s for s in Student if s.gpa == x)
     def test1(self):
         select(g for g in Group for s in db.Student)
-        self.assert_(True)
     def test2(self):
         avg_gpa = avg(s.gpa for s in Student)
-        self.assertEqual(avg_gpa, Decimal('3.2'))
+        self.assertEqual(round(avg_gpa, 6), 3.2)
     def test21(self):
         avg_gpa = avg(s.gpa for s in Student if s.id < 0)
         self.assertEqual(avg_gpa, None)

@@ -10,13 +10,13 @@ class TestCollections(unittest.TestCase):
     @db_session
     def test_setwrapper_len(self):
         g = Group.get(number='4145')
-        self.assert_(len(g.students) == 3)
+        self.assertTrue(len(g.students) == 3)
 
     @db_session
     def test_setwrapper_nonzero(self):
         g = Group.get(number='4145')
-        self.assert_(bool(g.students) == True)
-        self.assert_(len(g.students) == 3)
+        self.assertTrue(bool(g.students) == True)
+        self.assertTrue(len(g.students) == 3)
 
     @db_session
     @raises_exception(TypeError, 'Collection attribute Group.students cannot be specified as search criteria')

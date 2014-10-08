@@ -85,7 +85,7 @@ class TestDBSession(unittest.TestCase):
         else:
             self.fail()
 
-    @raises_exception(TypeError, "'retry' parameter of db_session must be of integer type. Got: <type 'str'>")
+    @raises_exception(TypeError, "'retry' parameter of db_session must be of integer type. Got: %r" % str)
     def test_db_session_decorator_5(self):
         @db_session(retry='foobar')
         def test():

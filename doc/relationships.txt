@@ -75,7 +75,7 @@ An entity can relate to itself using a self-reference relationship. Such relatio
 The specifics of the symmetrical relationship is that the entity has just one relationship attribute specified, and this attribute defines both sides of the relationship. Such relationship can be either one-to-one or many-to-many. Here are examples of self-reference relationships::
 
    class Person(db.Entity):
-       name = Required(unicode)
+       name = Required(str)
        spouse = Optional("Person", reverse="spouse") # symmetric one-to-one
        friends = Set("Person", reverse="friends")    # symmetric many-to-many
        manager = Optional("Person", reverse="employees") # one side of non-symmetric

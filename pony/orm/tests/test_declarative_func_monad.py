@@ -1,4 +1,5 @@
 from __future__ import absolute_import, print_function, division
+from pony.py23compat import PY2
 
 import unittest
 from datetime import date, datetime
@@ -30,19 +31,19 @@ with db_session:
     g1 = Group(number=1)
     g2 = Group(number=2)
 
-    Student(id=1, name="AA", dob=date(1981, 01, 01), last_visit=datetime(2011, 01, 01, 11, 11, 11),
+    Student(id=1, name="AA", dob=date(1981, 1, 1), last_visit=datetime(2011, 1, 1, 11, 11, 11),
                    scholarship=Decimal("0"), phd=True, group=g1)
 
-    Student(id=2, name="BB", dob=date(1982, 02, 02), last_visit=datetime(2011, 02, 02, 12, 12, 12),
+    Student(id=2, name="BB", dob=date(1982, 2, 2), last_visit=datetime(2011, 2, 2, 12, 12, 12),
                    scholarship=Decimal("202.2"), phd=True, group=g1)
 
-    Student(id=3, name="CC", dob=date(1983, 03, 03), last_visit=datetime(2011, 03, 03, 13, 13, 13),
+    Student(id=3, name="CC", dob=date(1983, 3, 3), last_visit=datetime(2011, 3, 3, 13, 13, 13),
                    scholarship=Decimal("303.3"), phd=False, group=g1)
 
-    Student(id=4, name="DD", dob=date(1984, 04, 04), last_visit=datetime(2011, 04, 04, 14, 14, 14),
+    Student(id=4, name="DD", dob=date(1984, 4, 4), last_visit=datetime(2011, 4, 4, 14, 14, 14),
                    scholarship=Decimal("404.4"), phd=False, group=g2)
 
-    Student(id=5, name="EE", dob=date(1985, 05, 05), last_visit=datetime(2011, 05, 05, 15, 15, 15),
+    Student(id=5, name="EE", dob=date(1985, 5, 5), last_visit=datetime(2011, 5, 5, 15, 15, 15),
                    scholarship=Decimal("505.5"), phd=False, group=g2)
 
 
@@ -65,21 +66,24 @@ class TestFuncMonad(unittest.TestCase):
     def test_minmax4(self):
         result = set(select(s for s in Student if min(s.name, "CC") == "CC" ))
         self.assertEqual(result, set([Student[4], Student[5], Student[3]]))
-    @raises_exception(TypeError)
     def test_minmax5(self):
         x = chr(128)
-        result = set(select(s for s in Student if min(s.name, x) == "CC" ))
-    @raises_exception(TypeError)
+        try: result = set(select(s for s in Student if min(s.name, x) == "CC" ))
+        except UnicodeDecodeError: self.assertTrue(PY2)
+        else: self.assertFalse(PY2)
     def test_minmax6(self):
         x = chr(128)
-        result = set(select(s for s in Student if min(s.name, x, "CC") == "CC" ))
-    def test_minmax5(self):
+        try: result = set(select(s for s in Student if min(s.name, x, "CC") == "CC" ))
+        except UnicodeDecodeError: self.assertTrue(PY2)
+        else: self.assertFalse(PY2)
+    def test_minmax7(self):
         result = set(select(s for s in Student if min(s.phd, 2) == 2 ))
     def test_date_func1(self):
         result = set(select(s for s in Student if s.dob >= date(1983, 3, 3)))
         self.assertEqual(result, set([Student[3], Student[4], Student[5]]))
     # @raises_exception(ExprEvalError, "date(1983, 'three', 3) raises TypeError: an integer is required")
-    @raises_exception(TypeError, "'month' argument of date(year, month, day) function must be of 'int' type. Got: 'AsciiStr'")
+    @raises_exception(TypeError, "'month' argument of date(year, month, day) function must be of 'int' type. "
+                                 "Got: '%s'" % unicode.__name__)
     def test_date_func2(self):
         result = set(select(s for s in Student if s.dob >= date(1983, 'three', 3)))
     # @raises_exception(NotImplementedError)
@@ -96,7 +100,8 @@ class TestFuncMonad(unittest.TestCase):
         result = set(select(s for s in Student if s.last_visit >= datetime(2011, 3, 3, 13, 13, 13)))
         self.assertEqual(result, set([Student[3], Student[4], Student[5]]))
     # @raises_exception(ExprEvalError, "datetime(1983, 'three', 3) raises TypeError: an integer is required")
-    @raises_exception(TypeError, "'month' argument of datetime(...) function must be of 'int' type. Got: 'AsciiStr'")
+    @raises_exception(TypeError, "'month' argument of datetime(...) function must be of 'int' type. "
+                                 "Got: '%s'" % unicode.__name__)
     def test_datetime_func4(self):
         result = set(select(s for s in Student if s.last_visit >= datetime(1983, 'three', 3)))
     # @raises_exception(NotImplementedError)
@@ -106,7 +111,9 @@ class TestFuncMonad(unittest.TestCase):
     def test_datetime_now1(self):
         result = set(select(s for s in Student if s.dob < date.today()))
         self.assertEqual(result, set([Student[1], Student[2], Student[3], Student[4], Student[5]]))
-    @raises_exception(ExprEvalError, "1 < datetime.now() raises TypeError: can't compare datetime.datetime to int")
+    @raises_exception(ExprEvalError, "1 < datetime.now() raises TypeError: " +
+                      ("can't compare datetime.datetime to int" if PY2 else
+                       "unorderable types: int() < datetime.datetime()"))
     def test_datetime_now2(self):
         select(s for s in Student if 1 < datetime.now())
     def test_datetime_now3(self):

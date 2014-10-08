@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import imap
+from pony.py23compat import PY2, imap, basestring, buffer
 
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
@@ -18,7 +18,8 @@ except ImportError as e:
     else:
         import pymysql.converters as mysql_converters
         from pymysql.constants import FIELD_TYPE, FLAG, CLIENT
-        mysql_converters.encoders[buffer] = lambda val: mysql_converters.escape_str(str(val))
+        if PY2:
+            mysql_converters.encoders[buffer] = lambda val: mysql_converters.escape_str(str(val))
         mysql_converters.encoders[timedelta] = lambda val: mysql_converters.escape_str(timedelta2str(val))
         mysql_module_name = 'pymysql'
 else:
@@ -88,20 +89,16 @@ class MySQLBuilder(SQLBuilder):
             return 'DATE_SUB(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
         return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
 
-def _string_sql_type(converter):
-    result = 'VARCHAR(%d)' % converter.max_len if converter.max_len else 'LONGTEXT'
-    if converter.db_encoding: result += ' CHARACTER SET %s' % converter.db_encoding
-    return result
-
-class MySQLUnicodeConverter(dbapiprovider.UnicodeConverter):
-    sql_type = _string_sql_type
-
 class MySQLStrConverter(dbapiprovider.StrConverter):
-    sql_type = _string_sql_type
-
-class MySQLLongConverter(dbapiprovider.IntConverter):
     def sql_type(converter):
-        return 'BIGINT'
+        result = 'VARCHAR(%d)' % converter.max_len if converter.max_len else 'LONGTEXT'
+        if converter.db_encoding: result += ' CHARACTER SET %s' % converter.db_encoding
+        return result
+
+if PY2:
+    class MySQLLongConverter(dbapiprovider.IntConverter):
+        def sql_type(converter):
+            return 'BIGINT'
 
 class MySQLRealConverter(dbapiprovider.RealConverter):
     def sql_type(converter):
@@ -151,19 +148,21 @@ class MySQLProvider(DBAPIProvider):
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
-        (unicode, MySQLUnicodeConverter),
-        (str, MySQLStrConverter),
+        (basestring, MySQLStrConverter),
         (int, dbapiprovider.IntConverter),
-        (long, MySQLLongConverter),
         (float, MySQLRealConverter),
         (Decimal, dbapiprovider.DecimalConverter),
-        (buffer, MySQLBlobConverter),
         (datetime, dbapiprovider.DatetimeConverter),
         (date, dbapiprovider.DateConverter),
         (time, MySQLTimeConverter),
         (timedelta, MySQLTimedeltaConverter),
         (UUID, MySQLUuidConverter),
+        (buffer, MySQLBlobConverter),
     ]
+    if PY2:
+        converter_classes += [
+            (long, MySQLLongConverter),
+        ]
 
     def normalize_name(provider, name):
         return name[:provider.max_name_len].lower()

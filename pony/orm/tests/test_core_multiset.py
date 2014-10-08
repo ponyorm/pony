@@ -1,7 +1,7 @@
 from __future__ import absolute_import, print_function, division
-
+from pony.py23compat import pickle
 import unittest
-from cPickle import loads, dumps
+
 
 from pony.orm.core import *
 
@@ -84,7 +84,8 @@ class TestMultiset(unittest.TestCase):
     def test_multiset_str(self):
         g = Group[101]
         multiset = g.students.courses
-        self.assertEqual(str(multiset), "CourseMultiset({Course['C1']: 2, Course['C2']: 2, Course['C3']: 2})")
+        self.assertEqual(str(multiset), "CourseMultiset({Course[%r]: 2, Course[%r]: 2, Course[%r]: 2})"
+                         % (u'C1', u'C2', u'C3'))
 
     @db_session
     def test_multiset_distinct(self):
@@ -130,11 +131,11 @@ class TestMultiset(unittest.TestCase):
         with db_session:
             d = Department[1]
             multiset = d.groups.students
-            s = dumps(multiset)
+            s = pickle.dumps(multiset)
         with db_session:
             d = Department[1]
             multiset_2 = d.groups.students
-            multiset_1 = loads(s)        
+            multiset_1 = pickle.loads(s)
             self.assertEqual(multiset_1, multiset_2)
 
 if __name__ == '__main__':

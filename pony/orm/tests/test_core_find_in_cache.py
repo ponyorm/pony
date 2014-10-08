@@ -68,14 +68,14 @@ class TestInheritance(unittest.TestCase):
     def test_user_1(self):
         Diagram.get(lambda d: d.name == 'diagram1')
         last_sql = db.last_sql
-        self.assert_(is_seed(User, 'user1'))
+        self.assertTrue(is_seed(User, 'user1'))
         u = AbstractUser['user1']
         self.assertNotEqual(last_sql, db.last_sql)
         self.assertEqual(u.__class__, User)
     def test_user_2(self):
         Diagram.get(lambda d: d.name == 'diagram1')
         last_sql = db.last_sql
-        self.assert_(is_seed(User, 'user1'))
+        self.assertTrue(is_seed(User, 'user1'))
         u = User['user1']
         self.assertNotEqual(last_sql, db.last_sql)
         self.assertEqual(u.__class__, User)
@@ -83,7 +83,7 @@ class TestInheritance(unittest.TestCase):
     def test_user_3(self):
         Diagram.get(lambda d: d.name == 'diagram1')
         last_sql = db.last_sql
-        self.assert_(is_seed(User, 'user1'))
+        self.assertTrue(is_seed(User, 'user1'))
         try:
             SubUser1['user1']
         finally:
@@ -92,7 +92,7 @@ class TestInheritance(unittest.TestCase):
     def test_user_4(self):
         Diagram.get(lambda d: d.name == 'diagram1')
         last_sql = db.last_sql
-        self.assert_(is_seed(User, 'user1'))
+        self.assertTrue(is_seed(User, 'user1'))
         try:
             Organization['user1']
         finally:
@@ -101,7 +101,7 @@ class TestInheritance(unittest.TestCase):
     def test_user_5(self):
         Diagram.get(lambda d: d.name == 'diagram1')
         last_sql = db.last_sql
-        self.assert_(is_seed(User, 'user1'))
+        self.assertTrue(is_seed(User, 'user1'))
         try:
             SubOrg1['user1']
         finally:
@@ -111,21 +111,21 @@ class TestInheritance(unittest.TestCase):
     def test_subuser_1(self):
         Diagram.get(lambda d: d.name == 'diagram2')
         last_sql = db.last_sql
-        self.assert_(is_seed(User, 'subuser1'))
+        self.assertTrue(is_seed(User, 'subuser1'))
         u = AbstractUser['subuser1']
         self.assertNotEqual(last_sql, db.last_sql)
         self.assertEqual(u.__class__, SubUser1)
     def test_subuser_2(self):
         Diagram.get(lambda d: d.name == 'diagram2')
         last_sql = db.last_sql
-        self.assert_(is_seed(User, 'subuser1'))
+        self.assertTrue(is_seed(User, 'subuser1'))
         u = User['subuser1']
         self.assertNotEqual(last_sql, db.last_sql)
         self.assertEqual(u.__class__, SubUser1)
     def test_subuser_3(self):
         Diagram.get(lambda d: d.name == 'diagram2')
         last_sql = db.last_sql
-        self.assert_(is_seed(User, 'subuser1'))
+        self.assertTrue(is_seed(User, 'subuser1'))
         u = SubUser1['subuser1']
         self.assertNotEqual(last_sql, db.last_sql)
         self.assertEqual(u.__class__, SubUser1)
@@ -133,7 +133,7 @@ class TestInheritance(unittest.TestCase):
     def test_subuser_4(self):
         Diagram.get(lambda d: d.name == 'diagram2')
         last_sql = db.last_sql
-        self.assert_(is_seed(User, 'subuser1'))
+        self.assertTrue(is_seed(User, 'subuser1'))
         try:
             Organization['subuser1']
         finally:
@@ -142,7 +142,7 @@ class TestInheritance(unittest.TestCase):
     def test_subuser_5(self):
         Diagram.get(lambda d: d.name == 'diagram2')
         last_sql = db.last_sql
-        self.assert_(is_seed(User, 'subuser1'))
+        self.assertTrue(is_seed(User, 'subuser1'))
         try:
             SubUser2['subuser1']
         finally:
@@ -151,7 +151,7 @@ class TestInheritance(unittest.TestCase):
     def test_subuser_6(self):
         Diagram.get(lambda d: d.name == 'diagram2')
         last_sql = db.last_sql
-        self.assert_(is_seed(User, 'subuser1'))
+        self.assertTrue(is_seed(User, 'subuser1'))
         try:
             SubOrg2['subuser1']
         finally:

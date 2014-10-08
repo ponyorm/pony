@@ -91,7 +91,7 @@ class TestKeys(unittest.TestCase):
             a = PrimaryKey(int)
             composite_key(123, 456)
 
-    @raises_exception(TypeError, "composite_key() arguments must be attributes. Got: <type 'int'>")
+    @raises_exception(TypeError, "composite_key() arguments must be attributes. Got: %r" % int)
     def test_unique5(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):

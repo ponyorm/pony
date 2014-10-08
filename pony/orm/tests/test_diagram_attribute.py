@@ -59,7 +59,7 @@ class TestAttribute(unittest.TestCase):
             id = PrimaryKey(int)
             attr1 = Required('Entity2', reverse=123)
 
-    @raises_exception(TypeError, "Reverse option cannot be set for this type: <type 'str'>")
+    @raises_exception(TypeError, "Reverse option cannot be set for this type: %r" % str)
     def test_attribute7(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
@@ -263,7 +263,7 @@ class TestAttribute(unittest.TestCase):
             id = PrimaryKey(int, columns=['a', 'b'])
         db.generate_mapping(create_tables=True)
 
-    @raises_exception(TypeError, "Parameter 'columns' must be a list. Got: set(['a'])'")
+    @raises_exception(TypeError, "Parameter 'columns' must be a list. Got: %r'" % set(['a']))
     def test_columns6(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
@@ -421,7 +421,6 @@ class TestAttribute(unittest.TestCase):
             commit()
             Entity1()
             commit()
-        self.assert_(True)
 
     def test_lambda_1(self):
         db = Database('sqlite', ':memory:')

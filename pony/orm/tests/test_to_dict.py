@@ -34,8 +34,8 @@ with db_session:
     c2 = Course(name='Physics')
     c3 = Course(name='Computer Science')
     Student(id=1, name='S1', group=g1, gpa=3.1, courses=[c1, c2], biography='some text')
-    Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 01, 01))
-    Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 01, 02), courses=[c2, c3])
+    Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 1, 1))
+    Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 1, 2), courses=[c2, c3])
     Student(id=4, name='S4')
 
 class TestObjectToDict(unittest.TestCase):

@@ -7,8 +7,8 @@ db = Database("sqlite", "demo.sqlite", create_db=True)
 
 class Customer(db.Entity):
     id = PrimaryKey(int, auto=True)
-    name = Required(unicode)
-    email = Required(unicode, unique=True)
+    name = Required(str)
+    email = Required(str, unique=True)
     orders = Set("Order")
 
 class Order(db.Entity):
@@ -19,7 +19,7 @@ class Order(db.Entity):
 
 class Product(db.Entity):
     id = PrimaryKey(int, auto=True)
-    name = Required(unicode)
+    name = Required(str)
     price = Required(Decimal)
     items = Set("OrderItem")
 

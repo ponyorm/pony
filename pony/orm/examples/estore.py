@@ -9,19 +9,19 @@ from pony.orm import *
 db = Database("sqlite", "estore.sqlite", create_db=True)
 
 class Customer(db.Entity):
-    email = Required(unicode, unique=True)
-    password = Required(unicode)
-    name = Required(unicode)
-    country = Required(unicode)
-    address = Required(unicode)
+    email = Required(str, unique=True)
+    password = Required(str)
+    name = Required(str)
+    country = Required(str)
+    address = Required(str)
     cart_items = Set("CartItem")
     orders = Set("Order")
 
 class Product(db.Entity):
     id = PrimaryKey(int, auto=True)
-    name = Required(unicode)
+    name = Required(str)
     categories = Set("Category")
-    description = Optional(unicode)
+    description = Optional(str)
     picture = Optional(buffer)
     price = Required(Decimal)
     quantity = Required(int)
@@ -42,7 +42,7 @@ class OrderItem(db.Entity):
 
 class Order(db.Entity):
     id = PrimaryKey(int, auto=True)
-    state = Required(unicode)
+    state = Required(str)
     date_created = Required(datetime)
     date_shipped = Optional(datetime)
     date_delivered = Optional(datetime)
@@ -51,7 +51,7 @@ class Order(db.Entity):
     items = Set(OrderItem)
 
 class Category(db.Entity):
-    name = Required(unicode, unique=True)
+    name = Required(str, unique=True)
     products = Set(Product)
 
 sql_debug(True)

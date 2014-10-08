@@ -1,8 +1,8 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import izip, imap, iteritems, itervalues, xrange
+from pony.py23compat import PY2, izip, imap, iteritems, itervalues, items_list, values_list, xrange, cmp, \
+                            basestring, unicode, buffer, int_types, builtins, pickle, with_metaclass
 
-import re, sys, types, datetime, logging, itertools, __builtin__
-from cPickle import loads, dumps
+import re, sys, types, datetime, logging, itertools
 from operator import attrgetter, itemgetter
 from itertools import chain, starmap, repeat
 from time import time
@@ -17,17 +17,15 @@ from pony.thirdparty.compiler import ast, parse
 import pony
 from pony import options
 from pony.orm.decompiling import decompile
-from pony.orm.ormtypes import AsciiStr, LongStr, LongUnicode, numeric_types, get_normalized_type_of
+from pony.orm.ormtypes import LongStr, LongUnicode, numeric_types, get_normalized_type_of
 from pony.orm.asttranslation import create_extractors, TranslationError
 from pony.orm.dbapiprovider import (
     DBAPIProvider, DBException, Warning, Error, InterfaceError, DatabaseError, DataError,
     OperationalError, IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
 from pony import utils
-from pony.utils import (
-    localbase, decorator, cut_traceback, throw, get_lambda_args, deprecated, import_module, parse_expr,
-    is_ident, tostring, strjoin, concat
-    )
+from pony.utils import localbase, decorator, cut_traceback, throw, reraise, get_lambda_args, \
+     deprecated, import_module, parse_expr, is_ident, tostring, strjoin, concat
 
 __all__ = '''
     pony
@@ -53,7 +51,7 @@ __all__ = '''
     composite_key
     flush commit rollback db_session with_transaction
 
-    AsciiStr LongStr LongUnicode
+    LongStr LongUnicode
 
     select left_join get exists
 
@@ -64,6 +62,8 @@ __all__ = '''
     concat
 
     JOIN
+
+    buffer unicode
     '''.split()
 
 debug = False
@@ -257,14 +257,16 @@ def _get_caches():
 def flush():
     for cache in _get_caches(): cache.flush()
 
-def reraise(exc_class, exceptions):
+def transact_reraise(exc_class, exceptions):
+    cls, exc, tb = exceptions[0]
+    new_exc = None
     try:
-        cls, exc, tb = exceptions[0]
         msg = " ".join(tostring(arg) for arg in exc.args)
-        if not issubclass(cls, TransactionError):
-            msg = '%s: %s' % (cls.__name__, msg)
-        raise exc_class, exc_class(msg, exceptions), tb
-    finally: del tb
+        if not issubclass(cls, TransactionError): msg = '%s: %s' % (cls.__name__, msg)
+        new_exc = exc_class(msg, exceptions)
+        new_exc.__cause__ = None
+        reraise(exc_class, new_exc, tb)
+    finally: del exceptions, exc, tb, new_exc
 
 @cut_traceback
 def commit():
@@ -279,13 +281,13 @@ def commit():
         for cache in other_caches:
             try: cache.rollback()
             except: exceptions.append(sys.exc_info())
-        reraise(CommitException, exceptions)
+        transact_reraise(CommitException, exceptions)
     else:
         for cache in other_caches:
             try: cache.commit()
             except: exceptions.append(sys.exc_info())
         if exceptions:
-            reraise(PartialCommitException, exceptions)
+            transact_reraise(PartialCommitException, exceptions)
     finally:
         del exceptions
 
@@ -297,7 +299,7 @@ def rollback():
             try: cache.rollback()
             except: exceptions.append(sys.exc_info())
         if exceptions:
-            reraise(RollbackException, exceptions)
+            transact_reraise(RollbackException, exceptions)
         assert not local.db2cache
     finally:
         del exceptions
@@ -337,23 +339,23 @@ class DBSessionContextManager(object):
             if self.ddl and local.db_context_counter:
                 if isinstance(func, types.FunctionType): func = func.__name__ + '()'
                 throw(TransactionError, '%s cannot be called inside of db_session' % func)
-            exc_tb = None
+            exc = tb = None
             try:
                 for i in xrange(self.retry+1):
                     self._enter()
-                    exc_type = exc_value = exc_tb = None
+                    exc_type = exc = tb = None
                     try: return func(*args, **kwargs)
                     except Exception:
-                        exc_type, exc_value, exc_tb = sys.exc_info()  # exc_value can be None in Python 2.6
+                        exc_type, exc, tb = sys.exc_info()  # exc can be None in Python 2.6
                         retry_exceptions = self.retry_exceptions
                         if not callable(retry_exceptions):
                             do_retry = issubclass(exc_type, tuple(retry_exceptions))
                         else:
-                            do_retry = exc_value is not None and retry_exceptions(exc_value)
+                            do_retry = exc is not None and retry_exceptions(exc)
                         if not do_retry: raise
-                    finally: self.__exit__(exc_type, exc_value, exc_tb)
-                raise exc_type, exc_value, exc_tb
-            finally: del exc_tb
+                    finally: self.__exit__(exc_type, exc, tb)
+                reraise(exc_type, exc, tb)
+            finally: del exc, tb
         return decorator(new_func, func)
     def __enter__(self):
         if self.retry is not 0: throw(TypeError,
@@ -368,7 +370,7 @@ class DBSessionContextManager(object):
         elif self.serializable and not local.db_session.serializable: throw(TransactionError,
             'Cannot start serializable transaction inside non-serializable transaction')
         local.db_context_counter += 1
-    def __exit__(self, exc_type=None, exc_value=None, traceback=None):
+    def __exit__(self, exc_type=None, exc=None, tb=None):
         local.db_context_counter -= 1
         if local.db_context_counter: return
         assert local.db_session is self
@@ -377,8 +379,8 @@ class DBSessionContextManager(object):
             elif not callable(self.allowed_exceptions):
                 can_commit = issubclass(exc_type, tuple(self.allowed_exceptions))
             else:
-                # exc_value can be None in Python 2.6 even if exc_type is not None
-                try: can_commit = exc_value is not None and self.allowed_exceptions(exc_value)
+                # exc can be None in Python 2.6 even if exc_type is not None
+                try: can_commit = exc is not None and self.allowed_exceptions(exc)
                 except:
                     rollback()
                     raise
@@ -387,7 +389,9 @@ class DBSessionContextManager(object):
                 for cache in _get_caches(): cache.release()
                 assert not local.db2cache
             else: rollback()
-        finally: local.db_session = None
+        finally:
+            del exc, tb
+            local.db_session = None
 
 db_session = DBSessionContextManager()
 
@@ -567,7 +571,7 @@ class Database(object):
             cached_sql = sql, adapter
             database._insert_cache[query_key] = cached_sql
         else: sql, adapter = cached_sql
-        arguments = adapter(kwargs.values())  # order of values same as order of keys
+        arguments = adapter(values_list(kwargs))  # order of values same as order of keys
         if returning is not None:
             return database._exec_sql(sql, arguments, returning_id=True)
         cursor = database._exec_sql(sql, arguments)
@@ -592,7 +596,7 @@ class Database(object):
         if cache.immediate: cache.in_transaction = True
         database._update_local_stat(sql, t)
         if not returning_id: return cursor
-        if type(new_id) is long: new_id = int(new_id)
+        if PY2 and type(new_id) is long: new_id = int(new_id)
         return new_id
     @cut_traceback
     def generate_mapping(database, filename=None, check_tables=True, create_tables=False):
@@ -847,8 +851,8 @@ class QueryStat(object):
         query_end_time = time()
         duration = query_end_time - query_start_time
         if stat.db_count:
-            stat.min_time = __builtin__.min(stat.min_time, duration)
-            stat.max_time = __builtin__.max(stat.max_time, duration)
+            stat.min_time = builtins.min(stat.min_time, duration)
+            stat.max_time = builtins.max(stat.max_time, duration)
             stat.sum_time += duration
         else: stat.min_time = stat.max_time = stat.sum_time = duration
         stat.db_count += 1
@@ -856,8 +860,8 @@ class QueryStat(object):
         assert stat.sql == stat2.sql
         if not stat2.db_count: pass
         elif stat.db_count:
-            stat.min_time = __builtin__.min(stat.min_time, stat2.min_time)
-            stat.max_time = __builtin__.max(stat.max_time, stat2.max_time)
+            stat.min_time = builtins.min(stat.min_time, stat2.min_time)
+            stat.max_time = builtins.max(stat.max_time, stat2.max_time)
             stat.sum_time += stat2.sum_time
         else:
             stat.min_time = stat2.min_time
@@ -907,7 +911,7 @@ class SessionCache(object):
         provider = cache.database.provider
         if exc is not None:
             exc = getattr(exc, 'original_exc', exc)
-            if not provider.should_reconnect(exc): raise
+            if not provider.should_reconnect(exc): reraise(*sys.exc_info())
             if debug: log_orm('CONNECTION FAILED: %s' % exc)
             connection = cache.connection
             assert connection is not None
@@ -1247,6 +1251,8 @@ class Attribute(object):
     def __repr__(attr):
         owner_name = attr.entity.__name__ if attr.entity else '?'
         return '%s.%s' % (owner_name, attr.name or '?')
+    def __lt__(attr, other):
+        return attr.id < other.id
     def validate(attr, val, obj=None, entity=None, from_db=False):
         if val is None:
             if not attr.nullable and not from_db:
@@ -1278,7 +1284,8 @@ class Attribute(object):
                 except UnicodeDecodeError as e:
                     vrepr = repr(val)
                     if len(vrepr) > 100: vrepr = vrepr[:97] + '...'
-                    throw(ValueError, 'Value for attribute %s cannot be converted to unicode: %s' % (attr, vrepr))
+                    throw(ValueError, 'Value for attribute %s cannot be converted to %s: %s'
+                                      % (attr, unicode.__name__, vrepr))
         else:
             rentity = reverse.entity
             if not isinstance(val, rentity):
@@ -1633,7 +1640,7 @@ class Discriminator(Required):
             return entity._discriminator_
         return Attribute.validate(attr, val, obj, entity)
     def load(attr, obj):
-        raise AssertionError
+        raise AssertionError()
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
         return obj._discriminator_
@@ -2470,7 +2477,7 @@ class Multiset(object):
     @cut_traceback
     def __repr__(multiset):
         if multiset._obj_._session_cache_.is_alive:
-            size = __builtin__.sum(itervalues(multiset._items_))
+            size = builtins.sum(itervalues(multiset._items_))
             if size == 1: size_str = ' (1 item)'
             else: size_str = ' (%d items)' % size
         else: size_str = ''
@@ -2485,7 +2492,7 @@ class Multiset(object):
         return bool(multiset._items_)
     @cut_traceback
     def __len__(multiset):
-        return __builtin__.sum(multiset._items_.values())
+        return builtins.sum(multiset._items_.values())
     @cut_traceback
     def __iter__(multiset):
         for item, cnt in iteritems(multiset._items_):
@@ -2516,6 +2523,7 @@ class EntityIter(object):
     def next(self):
         throw(TypeError, 'Use select(...) function or %s.select(...) method for iteration'
                          % self.entity.__name__)
+    if not PY2: __next__ = next
 
 entity_id_counter = itertools.count(1)
 new_instance_id_counter = itertools.count(1)
@@ -3218,7 +3226,7 @@ class EntityMeta(type):
         locals = sys._getframe(frame_depth+1).f_locals
         if type(lambda_func) is types.FunctionType:
             names = get_lambda_args(lambda_func)
-            code_key = id(lambda_func.func_code)
+            code_key = id(lambda_func.func_code if PY2 else lambda_func.__code__)
             cond_expr, external_names, cells = decompile(lambda_func)
         elif isinstance(lambda_func, basestring):
             code_key = lambda_func
@@ -3452,8 +3460,7 @@ def unpickle_entity(d):
 def safe_repr(obj):
     return Entity.__repr__(obj)
 
-class Entity(object):
-    __metaclass__ = EntityMeta
+class Entity(with_metaclass(EntityMeta)):
     __slots__ = '_session_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '_save_pos_', '__weakref__'
     def __reduce__(obj):
         if obj._status_ in del_statuses: throw(
@@ -3591,7 +3598,7 @@ class Entity(object):
         get_dbval = obj._dbvals_.get
         rbits = obj._rbits_
         wbits = obj._wbits_
-        for attr, new_dbval in avdict.items():
+        for attr, new_dbval in items_list(avdict):
             assert attr.pk_offset is None
             assert new_dbval is not NOT_LOADED
             old_dbval = get_dbval(attr, NOT_LOADED)
@@ -4111,9 +4118,9 @@ def make_aggrfunc(std_func):
     return aggrfunc
 
 count = make_aggrfunc(utils.count)
-sum = make_aggrfunc(__builtin__.sum)
-min = make_aggrfunc(__builtin__.min)
-max = make_aggrfunc(__builtin__.max)
+sum = make_aggrfunc(builtins.sum)
+min = make_aggrfunc(builtins.min)
+max = make_aggrfunc(builtins.max)
 avg = make_aggrfunc(utils.avg)
 
 distinct = make_aggrfunc(utils.distinct)
@@ -4128,7 +4135,7 @@ def JOIN(expr):
 def desc(expr):
     if isinstance(expr, Attribute):
         return expr.desc
-    if isinstance(expr, (int, long)) and expr > 0:
+    if isinstance(expr, int_types) and expr > 0:
         return -expr
     if isinstance(expr, basestring):
         return 'desc(%s)' % expr
@@ -4192,13 +4199,13 @@ class Query(object):
 
         translator = database._translator_cache.get(query._key)
         if translator is None:
-            pickled_tree = dumps(tree, 2)
-            tree = loads(pickled_tree)  # tree = deepcopy(tree)
+            pickled_tree = pickle.dumps(tree, 2)
+            tree = pickle.loads(pickled_tree)  # tree = deepcopy(tree)
             translator_cls = database.provider.translator_cls
             translator = translator_cls(tree, extractors, vartypes, left_join=left_join)
             name_path = translator.can_be_optimized()
             if name_path:
-                tree = loads(pickled_tree)  # tree = deepcopy(tree)
+                tree = pickle.loads(pickled_tree)  # tree = deepcopy(tree)
                 try: translator = translator_cls(tree, extractors, vartypes, left_join=True, optimize=name_path)
                 except OptimizationFailed: translator.optimization_failed = True
             translator.pickled_tree = pickled_tree
@@ -4412,7 +4419,7 @@ class Query(object):
         for arg in args:
             if isinstance(arg, basestring): strings = True
             elif type(arg) is types.FunctionType: functions = True
-            elif isinstance(arg, (int, long)): numbers = True
+            elif isinstance(arg, int_types): numbers = True
             elif isinstance(arg, (Attribute, DescWrapper)): attributes = True
             else: throw(TypeError, "Arguments of order_by() method must be attributes, numbers, strings or lambdas. Got: %r" % arg)
         if strings + functions + numbers + attributes > 1:
@@ -4447,7 +4454,7 @@ class Query(object):
         elif type(func) is types.FunctionType:
             argnames = get_lambda_args(func)
             subquery = prev_translator.subquery
-            func_id = id(func.func_code)
+            func_id = id(func.func_code if PY2 else func.__code__)
             func_ast, external_names, cells = decompile(func)
         elif not order_by: throw(TypeError,
             'Argument of filter() method must be a lambda functon or its text. Got: %r' % func)
@@ -4481,7 +4488,7 @@ class Query(object):
             if not prev_optimized:
                 name_path = new_translator.can_be_optimized()
                 if name_path:
-                    tree = loads(prev_translator.pickled_tree)  # tree = deepcopy(tree)
+                    tree = pickle.loads(prev_translator.pickled_tree)  # tree = deepcopy(tree)
                     prev_extractors = prev_translator.extractors
                     prev_vartypes = prev_translator.vartypes
                     translator_cls = prev_translator.__class__
@@ -4588,7 +4595,7 @@ class Query(object):
             if result is None: pass
             elif aggr_func_name == 'COUNT': pass
             else:
-                expr_type = translator.expr_type
+                expr_type = float if aggr_func_name == 'AVG' else translator.expr_type
                 provider = query._database.provider
                 converter = provider.get_converter_by_py_type(expr_type)
                 result = converter.sql2py(result)

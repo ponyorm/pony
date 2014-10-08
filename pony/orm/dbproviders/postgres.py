@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+from pony.py23compat import PY2, basestring, unicode, buffer
 
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
@@ -15,7 +16,6 @@ from pony.orm.core import log_orm
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, ProgrammingError, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import Value
-from pony.utils import throw
 from pony.converting import timedelta2str
 
 class PGColumn(dbschema.Column):
@@ -34,6 +34,7 @@ class PGValue(Value):
         value = self.value
         if isinstance(value, bool): return value and 'true' or 'false'
         return Value.__unicode__(self)
+    if not PY2: __str__ = __unicode__
 
 class PGSQLBuilder(sqlbuilding.SQLBuilder):
     dialect = 'PostgreSQL'
@@ -66,21 +67,13 @@ class PGSQLBuilder(sqlbuilding.SQLBuilder):
             return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' DAY TO SECOND)"
         return '(', builder(expr), ' - ', builder(delta), ')'
 
-class PGUnicodeConverter(dbapiprovider.UnicodeConverter):
-    def py2sql(converter, val):
-        return val.encode('utf-8')
-    def sql2py(converter, val):
-        if isinstance(val, unicode): return val
-        return val.decode('utf-8')
-
 class PGStrConverter(dbapiprovider.StrConverter):
-    def py2sql(converter, val):
-        return val.decode(converter.encoding).encode('utf-8')
-    def sql2py(converter, val):
-        if not isinstance(val, unicode):
-            if converter.utf8: return val
-            val = val.decode('utf-8')
-        return val.encode(converter.encoding, 'replace')
+    if PY2:
+        def py2sql(converter, val):
+            return val.encode('utf-8')
+        def sql2py(converter, val):
+            if isinstance(val, unicode): return val
+            return val.decode('utf-8')
 
 class PGLongConverter(dbapiprovider.IntConverter):
     def sql_type(converter):
@@ -175,7 +168,7 @@ class PGProvider(DBAPIProvider):
 
     @wrap_dbapi_exceptions
     def execute(provider, cursor, sql, arguments=None, returning_id=False):
-        if isinstance(sql, unicode): sql = sql.encode('utf8')
+        if PY2 and isinstance(sql, unicode): sql = sql.encode('utf8')
         if type(arguments) is list:
             assert arguments and not returning_id
             cursor.executemany(sql, arguments)
@@ -237,18 +230,20 @@ class PGProvider(DBAPIProvider):
 
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
-        (unicode, PGUnicodeConverter),
-        (str, PGStrConverter),
-        (long, PGLongConverter),
+        (basestring, PGStrConverter),
         (int, dbapiprovider.IntConverter),
         (float, PGRealConverter),
         (Decimal, dbapiprovider.DecimalConverter),
-        (buffer, PGBlobConverter),
         (datetime, PGDatetimeConverter),
         (date, dbapiprovider.DateConverter),
         (time, dbapiprovider.TimeConverter),
         (timedelta, PGTimedeltaConverter),
         (UUID, PGUuidConverter),
+        (buffer, PGBlobConverter),
     ]
+    if PY2:
+        converter_classes += [
+            (long, PGLongConverter),
+        ]
 
 provider_cls = PGProvider

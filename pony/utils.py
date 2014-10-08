@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function
-from pony.py23compat import imap
+from pony.py23compat import PY2, imap, basestring, unicode
 
 import re, os.path, sys, types, warnings
 
@@ -14,6 +14,7 @@ from xml.etree import cElementTree
 
 # deepcopy instance method patch for Python < 2.7:
 if types.MethodType not in _deepcopy_dispatch:
+    assert PY2
     def _deepcopy_method(x, memo):
         return type(x)(x.im_func, deepcopy(x.im_self, memo), x.im_class)
     _deepcopy_dispatch[types.MethodType] = _deepcopy_method
@@ -77,20 +78,32 @@ def cut_traceback(func, *args, **kwargs):
                 tb = tb.tb_next
             if last_pony_tb is None: raise
             if tb.tb_frame.f_globals.get('__name__') == 'pony.utils' and tb.tb_frame.f_code.co_name == 'throw':
-                raise exc_type, exc, last_pony_tb
+                reraise(exc_type, exc, last_pony_tb)
             raise exc  # Set "pony.options.CUT_TRACEBACK = False" to see full traceback
         finally:
-            del tb, last_pony_tb
+            del exc, tb, last_pony_tb
+
+if PY2:
+    exec('''def reraise(exc_type, exc, tb):
+    try: raise exc_type, exc, tb
+    finally: del tb''')
+else:
+    def reraise(exc_type, exc, tb):
+        try: raise exc.with_traceback(tb)
+        finally: del exc, tb
 
 def throw(exc_type, *args, **kwargs):
     if isinstance(exc_type, Exception):
         assert not args and not kwargs
         exc = exc_type
     else: exc = exc_type(*args, **kwargs)
-    if not (pony.MODE == 'INTERACTIVE' and options.CUT_TRACEBACK):
-        raise exc
-    else:
-        raise exc  # Set "pony.options.CUT_TRACEBACK = False" to see full traceback
+    exc.__cause__ = None
+    try:
+        if not (pony.MODE == 'INTERACTIVE' and options.CUT_TRACEBACK):
+            raise exc
+        else:
+            raise exc  # Set "pony.options.CUT_TRACEBACK = False" to see full traceback
+    finally: del exc
 
 lambda_args_cache = {}
 
@@ -114,7 +127,7 @@ def get_lambda_args(func):
     return names
 
 def error_method(*args, **kwargs):
-    raise TypeError
+    raise TypeError()
 
 _ident_re = re.compile(r'^[A-Za-z_]\w*\Z')
 
@@ -221,7 +234,7 @@ expr3_re = re.compile(r"""
 def parse_expr(s, pos=0):
     z = 0
     match = expr1_re.match(s, pos)
-    if match is None: raise ValueError
+    if match is None: raise ValueError()
     start = pos
     i = match.lastindex
     if i == 1: pos = match.end()  # identifier
@@ -243,7 +256,7 @@ def parse_expr(s, pos=0):
             else: assert False
             while True:
                 match = expr3_re.search(s, pos)
-                if match is None: raise ValueError
+                if match is None: raise ValueError()
                 pos = match.end()
                 x = match.group()
                 if x == open: counter += 1

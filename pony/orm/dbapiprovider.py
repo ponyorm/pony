@@ -1,4 +1,5 @@
 from __future__ import absolute_import, print_function, division
+from pony.py23compat import PY2, basestring, unicode, buffer, int_types
 
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
@@ -358,7 +359,7 @@ class BoolConverter(Converter):
     def sql_type(converter):
         return "BOOLEAN"
 
-class BasestringConverter(Converter):
+class StrConverter(Converter):
     def __init__(converter, provider, py_type, attr=None):
         converter.max_len = None
         converter.db_encoding = None
@@ -371,11 +372,14 @@ class BasestringConverter(Converter):
         if issubclass(attr.py_type, (LongStr, LongUnicode)):
             if max_len is not None: throw(TypeError, 'Max length is not supported for CLOBs')
         elif max_len is None: max_len = converter.provider.varchar_default_max_len
-        elif not isinstance(max_len, (int, long)):
+        elif not isinstance(max_len, int_types):
             throw(TypeError, 'Max length argument must be int. Got: %r' % max_len)
         converter.max_len = max_len
         converter.db_encoding = kwargs.pop('db_encoding', None)
     def validate(converter, val):
+        if PY2 and isinstance(val, str): val = val.decode('ascii')
+        elif not isinstance(val, unicode): throw(TypeError,
+            'Value type for attribute %s must be %s. Got: %r' % (converter.attr, unicode.__name__, type(val)))
         max_len = converter.max_len
         val_len = len(val)
         if max_len and val_len > max_len:
@@ -387,47 +391,19 @@ class BasestringConverter(Converter):
             return 'VARCHAR(%d)' % converter.max_len
         return 'TEXT'
 
-class UnicodeConverter(BasestringConverter):
-    def validate(converter, val):
-        if val is None: pass
-        elif isinstance(val, str): val = val.decode('ascii')
-        elif not isinstance(val, unicode): throw(TypeError,
-            'Value type for attribute %s must be unicode. Got: %r' % (converter.attr, type(val)))
-        return BasestringConverter.validate(converter, val)
-
-class StrConverter(BasestringConverter):
-    def __init__(converter, provider, py_type, attr=None):
-        converter.encoding = 'ascii'  # for the case when attr is None
-        BasestringConverter.__init__(converter, provider, py_type, attr)
-        converter.utf8 = is_utf8(converter.encoding)
-    def init(converter, kwargs):
-        BasestringConverter.init(converter, kwargs)
-        converter.encoding = kwargs.pop('encoding', 'latin1')
-    def validate(converter, val):
-        if val is not None:
-            if isinstance(val, str): pass
-            elif isinstance(val, unicode): val = val.encode(converter.encoding)
-            else: throw(TypeError, 'Value type for attribute %s must be str in encoding %r. Got: %r'
-                                  % (converter.attr, converter.encoding, type(val)))
-        return BasestringConverter.validate(converter, val)
-    def py2sql(converter, val):
-        return val.decode(converter.encoding)
-    def sql2py(converter, val):
-        return val.encode(converter.encoding, 'replace')
-
 class IntConverter(Converter):
     def init(converter, kwargs):
         Converter.init(converter, kwargs)
         min_val = kwargs.pop('min', None)
-        if min_val is not None and not isinstance(min_val, (int, long)):
+        if min_val is not None and not isinstance(min_val, int_types):
             throw(TypeError, "'min' argument for attribute %s must be int. Got: %r" % (converter.attr, min_val))
         max_val = kwargs.pop('max', None)
-        if max_val is not None and not isinstance(max_val, (int, long)):
+        if max_val is not None and not isinstance(max_val, int_types):
             throw(TypeError, "'max' argument for attribute %s must be int. Got: %r" % (converter.attr, max_val))
         converter.min_val = min_val
         converter.max_val = max_val
     def validate(converter, val):
-        if isinstance(val, (int, long)): pass
+        if isinstance(val, int_types): pass
         elif isinstance(val, basestring):
             try: val = int(val)
             except ValueError: throw(ValueError,
@@ -497,14 +473,14 @@ class DecimalConverter(Converter):
                                            '(expected: precision and scale), got: %s' % args)
         if args: precision = args[0]
         else: precision = kwargs.pop('precision', 12)
-        if not isinstance(precision, (int, long)):
+        if not isinstance(precision, int_types):
             throw(TypeError, "'precision' positional argument for attribute %s must be int. Got: %r" % (attr, precision))
         if precision <= 0: throw(TypeError,
             "'precision' positional argument for attribute %s must be positive. Got: %r" % (attr, precision))
 
         if len(args) == 2: scale = args[1]
         else: scale = kwargs.pop('scale', 2)
-        if not isinstance(scale, (int, long)):
+        if not isinstance(scale, int_types):
             throw(TypeError, "'scale' positional argument for attribute %s must be int. Got: %r" % (attr, scale))
         if scale <= 0: throw(TypeError,
             "'scale' positional argument for attribute %s must be positive. Got: %r" % (attr, scale))

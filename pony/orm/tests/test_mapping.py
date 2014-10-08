@@ -110,7 +110,6 @@ class TestColumnsMapping(unittest.TestCase):
         with db_session:
             db.get_connection().executescript(sql)
         db.generate_mapping()
-        self.assert_(False)
 
     # user can specify column name for an attribute
     def test_custom_column_name(self):
