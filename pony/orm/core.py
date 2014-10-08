@@ -261,8 +261,7 @@ def transact_reraise(exc_class, exceptions):
     cls, exc, tb = exceptions[0]
     try:
         msg = " ".join(tostring(arg) for arg in exc.args)
-        if not issubclass(cls, TransactionError):
-            msg = '%s: %s' % (cls.__name__, msg)
+        if not issubclass(cls, TransactionError): msg = '%s: %s' % (cls.__name__, msg)
         reraise(exc_class, exc_class(msg, exceptions), tb)
     finally: del exceptions, exc, tb
 
@@ -337,23 +336,23 @@ class DBSessionContextManager(object):
             if self.ddl and local.db_context_counter:
                 if isinstance(func, types.FunctionType): func = func.__name__ + '()'
                 throw(TransactionError, '%s cannot be called inside of db_session' % func)
-            exc_value = exc_tb = None
+            exc = tb = None
             try:
                 for i in xrange(self.retry+1):
                     self._enter()
-                    exc_type = exc_value = exc_tb = None
+                    exc_type = exc = tb = None
                     try: return func(*args, **kwargs)
                     except Exception:
-                        exc_type, exc_value, exc_tb = sys.exc_info()  # exc_value can be None in Python 2.6
+                        exc_type, exc, tb = sys.exc_info()  # exc can be None in Python 2.6
                         retry_exceptions = self.retry_exceptions
                         if not callable(retry_exceptions):
                             do_retry = issubclass(exc_type, tuple(retry_exceptions))
                         else:
-                            do_retry = exc_value is not None and retry_exceptions(exc_value)
+                            do_retry = exc is not None and retry_exceptions(exc)
                         if not do_retry: raise
-                    finally: self.__exit__(exc_type, exc_value, exc_tb)
-                reraise(exc_type, exc_value, exc_tb)
-            finally: del exc_value, exc_tb
+                    finally: self.__exit__(exc_type, exc, tb)
+                reraise(exc_type, exc, tb)
+            finally: del exc, tb
         return decorator(new_func, func)
     def __enter__(self):
         if self.retry is not 0: throw(TypeError,
@@ -368,7 +367,7 @@ class DBSessionContextManager(object):
         elif self.serializable and not local.db_session.serializable: throw(TransactionError,
             'Cannot start serializable transaction inside non-serializable transaction')
         local.db_context_counter += 1
-    def __exit__(self, exc_type=None, exc_value=None, traceback=None):
+    def __exit__(self, exc_type=None, exc=None, tb=None):
         local.db_context_counter -= 1
         if local.db_context_counter: return
         assert local.db_session is self
@@ -377,8 +376,8 @@ class DBSessionContextManager(object):
             elif not callable(self.allowed_exceptions):
                 can_commit = issubclass(exc_type, tuple(self.allowed_exceptions))
             else:
-                # exc_value can be None in Python 2.6 even if exc_type is not None
-                try: can_commit = exc_value is not None and self.allowed_exceptions(exc_value)
+                # exc can be None in Python 2.6 even if exc_type is not None
+                try: can_commit = exc is not None and self.allowed_exceptions(exc)
                 except:
                     rollback()
                     raise
@@ -388,7 +387,7 @@ class DBSessionContextManager(object):
                 assert not local.db2cache
             else: rollback()
         finally:
-            del exc_value, traceback
+            del exc, tb
             local.db_session = None
 
 db_session = DBSessionContextManager()
