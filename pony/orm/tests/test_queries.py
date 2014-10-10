@@ -75,9 +75,10 @@ def do_test(provider_name, raw_server_version):
             if isinstance(result, core.Query): result = list(result)
         sql = module.db.sql
     expected_sql = '\n'.join(lines)
-    if sql == expected_sql: print('+', provider_name, statements[-1])
+    if sql == expected_sql: print('.', end='')
     else:
-        print('-', provider_name, statements[-1])
+        print()
+        print(provider_name, statements[-1])
         print()
         print('Expected:')
         print(expected_sql)
