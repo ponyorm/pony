@@ -1,3 +1,10 @@
+# Pony ORM Release Candidate 0.6rc2 (2014-10-10)
+
+## Bugfixes
+
+* Fixes #81: python3.3: syntax error during installation in ubuntu 14.04
+
+
 # Pony ORM Release Candidate 0.6rc1 (2014-10-08)
 
 ## New features:
@@ -7,7 +14,7 @@
 
 ## Backward incompatible changes
 
-Now Pony treats both `str`` and `unicode`` attribute types as they are unicode strings in both Python 2 and 3. So, the attribute declaration `attr = Required(str)` is equal to `attr = Required(unicode)` in Python 2 and 3. The same thing is with `LongStr` and `LongUnicode` - both of them are represented as unicode strings now.
+Now Pony treats both `str` and `unicode` attribute types as they are unicode strings in both Python 2 and 3. So, the attribute declaration `attr = Required(str)` is equal to `attr = Required(unicode)` in Python 2 and 3. The same thing is with `LongStr` and `LongUnicode` - both of them are represented as unicode strings now.
 
 For the sake of backward compatibility Pony adds `unicode` as an alias to `str` and `buffer` as an alias to `bytes` in Python 3.
 

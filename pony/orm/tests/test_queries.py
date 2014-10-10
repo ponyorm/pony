@@ -1,6 +1,7 @@
 from __future__ import absolute_import, print_function, division
+from pony.py23compat import PY2
 
-import re, os, os.path, sys, imp
+import re, os, os.path, sys
 
 from pony import orm
 from pony.orm import core
@@ -57,20 +58,27 @@ def do_test(provider_name, raw_server_version):
     with orm.db_session:
         for statement in statements[:-1]:
             code = compile(statement, '<string>', 'exec')
-            exec code in globals
+            if PY2:
+                exec('exec code in globals')
+            else:
+                exec(code, globals)
         statement = statements[-1]
         try: last_code = compile(statement, '<string>', 'eval')
         except SyntaxError:
             last_code = compile(statement, '<string>', 'exec')
-            exec last_code in globals
+            if PY2:
+                exec('exec last_code in globals')
+            else:
+                exec(last_code, globals)
         else:
             result = eval(last_code, globals)
             if isinstance(result, core.Query): result = list(result)
         sql = module.db.sql
     expected_sql = '\n'.join(lines)
-    if sql == expected_sql: print('+', provider_name, statements[-1])
+    if sql == expected_sql: print('.', end='')
     else:
-        print('-', provider_name, statements[-1])
+        print()
+        print(provider_name, statements[-1])
         print()
         print('Expected:')
         print(expected_sql)
@@ -89,7 +97,7 @@ def orphan_lines(lines):
     lines[:] = []
 
 statement_used = True
-for raw_line in file(queries_fname):
+for raw_line in open(queries_fname):
     line = raw_line.strip()
     if not line: continue
     if line.startswith('#'): continue
