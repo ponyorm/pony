@@ -1,3 +1,10 @@
+# Pony ORM Release Candidate 0.6rc2 (2014-10-10)
+
+## Bugfixes
+
+* Fixes #81: python3.3: syntax error during installation in ubuntu 14.04
+
+
 # Pony ORM Release Candidate 0.6rc1 (2014-10-08)
 
 ## New features:
