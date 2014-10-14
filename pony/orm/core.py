@@ -513,9 +513,8 @@ class Database(object):
         if cache is not None: cache.rollback()
     @cut_traceback
     def execute(database, sql, globals=None, locals=None):
-        database.get_connection()
-        return database._exec_raw_sql(sql, globals, locals, frame_depth=3)
-    def _exec_raw_sql(database, sql, globals, locals, frame_depth):
+        return database._exec_raw_sql(sql, globals, locals, frame_depth=3, start_transaction=True)
+    def _exec_raw_sql(database, sql, globals, locals, frame_depth, start_transaction=False):
         provider = database.provider
         if provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
         sql = sql[:]  # sql = templating.plainstr(sql)
@@ -526,7 +525,7 @@ class Database(object):
             locals = sys._getframe(frame_depth).f_locals
         adapted_sql, code = adapt_sql(sql, provider.paramstyle)
         arguments = eval(code, globals, locals)
-        return database._exec_sql(adapted_sql, arguments)
+        return database._exec_sql(adapted_sql, arguments, False, start_transaction)
     @cut_traceback
     def select(database, sql, globals=None, locals=None, frame_depth=0):
         if not select_re.match(sql): sql = 'select ' + sql
@@ -573,14 +572,15 @@ class Database(object):
         else: sql, adapter = cached_sql
         arguments = adapter(values_list(kwargs))  # order of values same as order of keys
         if returning is not None:
-            return database._exec_sql(sql, arguments, returning_id=True)
-        cursor = database._exec_sql(sql, arguments)
+            return database._exec_sql(sql, arguments, returning_id=True, start_transaction=True)
+        cursor = database._exec_sql(sql, arguments, start_transaction=True)
         return getattr(cursor, 'lastrowid', None)
     def _ast2sql(database, sql_ast):
         sql, adapter = database.provider.ast2sql(sql_ast)
         return sql, adapter
-    def _exec_sql(database, sql, arguments=None, returning_id=False):
+    def _exec_sql(database, sql, arguments=None, returning_id=False, start_transaction=False):
         cache = database._get_cache()
+        if start_transaction: cache.immediate = True
         connection = cache.prepare_connection_for_query_execution()
         cursor = connection.cursor()
         if debug: log_sql(sql, arguments)
