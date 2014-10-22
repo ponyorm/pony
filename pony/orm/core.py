@@ -2950,19 +2950,22 @@ class EntityMeta(type):
         for attr in avdict:
             if attr.is_collection:
                 throw(TypeError, 'Collection attribute %s cannot be specified as search criteria' % attr)
-        obj = entity._find_in_cache_(pkval, avdict, for_update)
-        if obj is None: obj = entity._find_in_db_(avdict, for_update, nowait)
+        obj, unique = entity._find_in_cache_(pkval, avdict, for_update)
+        if obj is None: obj = entity._find_in_db_(avdict, unique, for_update, nowait)
         return obj
     def _find_in_cache_(entity, pkval, avdict, for_update=False):
         cache = entity._database_._get_cache()
         indexes = cache.indexes
         obj = None
+        unique = False
         if pkval is not None:
+            unique = True
             obj = indexes[entity._pk_attrs_].get(pkval)
         if obj is None:
             for attr in entity._simple_keys_:
                 val = avdict.get(attr)
                 if val is not None:
+                    unique = True
                     obj = indexes[attr].get(val)
                     if obj is not None: break
         if obj is None:
@@ -2972,6 +2975,7 @@ class EntityMeta(type):
                 if None in vals: continue
                 index = indexes.get(attrs)
                 if index is None: continue
+                unique = True
                 obj = index.get(vals)
                 if obj is not None: break
         if obj is None:
@@ -2994,14 +2998,15 @@ class EntityMeta(type):
             for attr, val in iteritems(avdict):
                 if val != attr.__get__(obj): throw(ObjectNotFound, entity, pkval)
             if for_update and obj not in cache.for_update:
-                return None  # object is found, but it is not locked
+                return None, unique  # object is found, but it is not locked
             entity._set_rbits((obj,), avdict)
-            return obj
-        return None
-    def _find_in_db_(entity, avdict, for_update=False, nowait=False):
+            return obj, unique
+        return None, unique
+    def _find_in_db_(entity, avdict, unique=False, for_update=False, nowait=False):
         database = entity._database_
         query_attrs = dict((attr, value is None) for attr, value in iteritems(avdict))
-        sql, adapter, attr_offsets = entity._construct_sql_(query_attrs, False, for_update, nowait)
+        limit = 2 if not unique else None
+        sql, adapter, attr_offsets = entity._construct_sql_(query_attrs, False, limit, for_update, nowait)
         arguments = adapter(avdict)
         if for_update: database._get_cache().immediate = True
         cursor = database._exec_sql(sql, arguments)
@@ -3074,7 +3079,7 @@ class EntityMeta(type):
         cached_sql = sql, adapter, attr_offsets
         entity._batchload_sql_cache_[query_key] = cached_sql
         return cached_sql
-    def _construct_sql_(entity, query_attrs, order_by_pk=False, for_update=False, nowait=False):
+    def _construct_sql_(entity, query_attrs, order_by_pk=False, limit=None, for_update=False, nowait=False):
         if nowait: assert for_update
         sorted_query_attrs = tuple(sorted(query_attrs.items()))
         query_key = sorted_query_attrs, order_by_pk, for_update, nowait
@@ -3110,6 +3115,7 @@ class EntityMeta(type):
         if not for_update: sql_ast = [ 'SELECT', select_list, from_list, where_list ]
         else: sql_ast = [ 'SELECT_FOR_UPDATE', bool(nowait), select_list, from_list, where_list ]
         if order_by_pk: sql_ast.append([ 'ORDER_BY' ] + [ [ 'COLUMN', None, column ] for column in entity._pk_columns_ ])
+        if limit is not None: sql_ast.append([ 'LIMIT', [ 'VALUE', limit ] ])
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
         cached_sql = sql, adapter, attr_offsets
