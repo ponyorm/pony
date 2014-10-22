@@ -104,6 +104,12 @@ class SQLiteBuilder(SQLBuilder):
     def RANDOM(builder):
         return 'rand()'  # return '(random() / 9223372036854775807.0 + 1.0) / 2.0'
 
+class SQLiteIntConverter(dbapiprovider.IntConverter):
+    def sql_type(converter):
+        attr = converter.attr
+        if attr is not None and attr.auto: return 'INTEGER'  # Only this type can have AUTOINCREMENT option
+        return dbapiprovider.IntConverter.sql_type(converter)
+
 class SQLiteDecimalConverter(dbapiprovider.DecimalConverter):
     def sql2py(converter, val):
         try: val = Decimal(str(val))
@@ -166,7 +172,7 @@ class SQLiteProvider(DBAPIProvider):
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
         (basestring, dbapiprovider.StrConverter),
-        (int_types, dbapiprovider.IntConverter),
+        (int_types, SQLiteIntConverter),
         (float, dbapiprovider.RealConverter),
         (Decimal, SQLiteDecimalConverter),
         (datetime, SQLiteDatetimeConverter),

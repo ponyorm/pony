@@ -7,7 +7,7 @@ from uuid import uuid4, UUID
 import re
 
 import pony
-from pony.utils import is_utf8, decorator, throw, localbase
+from pony.utils import is_utf8, decorator, throw, localbase, deprecated
 from pony.converting import str2date, str2time, str2datetime, str2timedelta
 from pony.orm.ormtypes import LongStr, LongUnicode
 
@@ -82,6 +82,7 @@ class DBAPIProvider(object):
     table_if_not_exists_syntax = True
     index_if_not_exists_syntax = True
     max_time_precision = default_time_precision = 6
+    uint64_support = False
     select_for_update_nowait_syntax = True
 
     # SQLite and PostgreSQL does not limit varchar max length.
@@ -392,16 +393,60 @@ class StrConverter(Converter):
         return 'TEXT'
 
 class IntConverter(Converter):
+    signed_types = {None: 'INTEGER', 8: 'TINYINT', 16: 'SMALLINT', 24: 'MEDIUMINT', 32: 'INTEGER', 64: 'BIGINT'}
+    unsigned_types = None
     def init(converter, kwargs):
         Converter.init(converter, kwargs)
+        attr = converter.attr
+
         min_val = kwargs.pop('min', None)
         if min_val is not None and not isinstance(min_val, int_types):
-            throw(TypeError, "'min' argument for attribute %s must be int. Got: %r" % (converter.attr, min_val))
+            throw(TypeError, "'min' argument for attribute %s must be int. Got: %r" % (attr, min_val))
+
         max_val = kwargs.pop('max', None)
         if max_val is not None and not isinstance(max_val, int_types):
-            throw(TypeError, "'max' argument for attribute %s must be int. Got: %r" % (converter.attr, max_val))
-        converter.min_val = min_val
-        converter.max_val = max_val
+            throw(TypeError, "'max' argument for attribute %s must be int. Got: %r" % (attr, max_val))
+
+        size = kwargs.pop('size', None)
+        if size is None:
+            if attr.py_type.__name__ == 'long':
+                deprecated(9, "Attribute %s: 'long' attribute type is deprecated. "
+                              "Please use 'int' type with size=64 option instead" % attr)
+                attr.py_type = int
+                size = 64
+        elif attr.py_type.__name__ == 'long': throw(TypeError,
+            "Attribute %s: 'size' option cannot be used with long type. Please use int type instead" % attr)
+        elif not isinstance(size, int_types):
+            throw(TypeError, "'size' option for attribute %s must be of int type. Got: %r" % (attr, size))
+        elif size not in (8, 16, 24, 32, 64):
+            throw(TypeError, "incorrect value of 'size' option for attribute %s. "
+                             "Should be 8, 16, 24, 32 or 64. Got: %d" % (attr, size))
+
+        unsigned = kwargs.pop('unsigned', False)
+        if unsigned is not None and not isinstance(unsigned, bool):
+            throw(TypeError, "'unsigned' option for attribute %s must be of bool type. Got: %r" % (attr, unsigned))
+
+        if size == 64 and unsigned and not converter.provider.uint64_support: throw(TypeError,
+            'Attribute %s: %s provider does not support unsigned bigint type' % (attr, converter.provider.dialect))
+
+        if unsigned is not None and size is None: size = 32
+        lowest = highest = None
+        if size:
+            highest = highest = 2 ** size - 1 if unsigned else 2 ** (size - 1) - 1
+            lowest = 0 if unsigned else -(2 ** (size - 1))
+
+        if highest is not None and max_val is not None and max_val > highest:
+            throw(ValueError, "'max' argument should be less or equal to %d because of size=%d and unsigned=%s. "
+                              "Got: %d" % (highest, size, max_val, unsigned))
+
+        if lowest is not None and min_val is not None and min_val < lowest:
+            throw(ValueError, "'min' argument should be greater or equal to %d because of size=%d and unsigned=%s. "
+                              "Got: %d" % (lowest, size, min_val, unsigned))
+
+        converter.min_val = min_val or lowest
+        converter.max_val = max_val or highest
+        converter.size = size
+        converter.unsigned = unsigned
     def validate(converter, val):
         if isinstance(val, int_types): pass
         elif isinstance(val, basestring):
@@ -420,7 +465,11 @@ class IntConverter(Converter):
     def sql2py(converter, val):
         return int(val)
     def sql_type(converter):
-        return 'INTEGER'
+        if not converter.unsigned:
+            return converter.signed_types.get(converter.size)
+        if converter.unsigned_types is None:
+            return converter.signed_types.get(converter.size) + ' UNSIGNED'
+        return converter.unsigned_types.get(converter.size)
 
 class RealConverter(Converter):
     default_tolerance = None

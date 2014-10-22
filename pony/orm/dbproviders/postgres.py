@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import PY2, basestring, unicode, buffer
+from pony.py23compat import PY2, basestring, unicode, buffer, int_types
 
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
@@ -75,9 +75,9 @@ class PGStrConverter(dbapiprovider.StrConverter):
             if isinstance(val, unicode): return val
             return val.decode('utf-8')
 
-class PGLongConverter(dbapiprovider.IntConverter):
-    def sql_type(converter):
-        return 'BIGINT'
+class PGIntConverter(dbapiprovider.IntConverter):
+    signed_types = {None: 'INTEGER', 8: 'SMALLINT', 16: 'SMALLINT', 24: 'INTEGER', 32: 'INTEGER', 64: 'BIGINT'}
+    unsigned_types = {None: 'INTEGER', 8: 'SMALLINT', 16: 'INTEGER', 24: 'INTEGER', 32: 'BIGINT'}
 
 class PGRealConverter(dbapiprovider.RealConverter):
     def sql_type(converter):
@@ -231,7 +231,7 @@ class PGProvider(DBAPIProvider):
     converter_classes = [
         (bool, dbapiprovider.BoolConverter),
         (basestring, PGStrConverter),
-        (int, dbapiprovider.IntConverter),
+        (int_types, PGIntConverter),
         (float, PGRealConverter),
         (Decimal, dbapiprovider.DecimalConverter),
         (datetime, PGDatetimeConverter),
@@ -241,9 +241,5 @@ class PGProvider(DBAPIProvider):
         (UUID, PGUuidConverter),
         (buffer, PGBlobConverter),
     ]
-    if PY2:
-        converter_classes += [
-            (long, PGLongConverter),
-        ]
 
 provider_cls = PGProvider
