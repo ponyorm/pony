@@ -2990,25 +2990,6 @@ class EntityMeta(type):
                 if reverse and not reverse.is_collection:
                     obj = reverse.__get__(val)
                     break
-        if obj is None:
-            for attr, val in iteritems(avdict):
-                if isinstance(val, Entity) and val._pkval_ is None:
-                    reverse = attr.reverse
-                    if not reverse.is_collection:
-                        obj = reverse.__get__(val)
-                        if obj is None: return []
-                    elif isinstance(reverse, Set):
-                        filtered_objects = []
-                        for obj in reverse.__get__(val):
-                            for attr, val in iteritems(avdict):
-                                if val != attr.get(obj): break
-                            else:
-                                if for_update and obj not in cache.for_update:
-                                    return None  # object is found, but it is not locked
-                                filtered_objects.append(obj)
-                        filtered_objects.sort(key=entity._get_raw_pkval_)
-                        return filtered_objects
-                    else: throw(NotImplementedError)
         if obj is not None:
             if obj._discriminator_ is not None:
                 if obj._subclasses_:
