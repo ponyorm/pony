@@ -123,11 +123,13 @@ class MultipleRowsFound(OrmError): pass
 class TooManyRowsFound(OrmError): pass
 
 class ObjectNotFound(OrmError):
-    def __init__(exc, entity, pkval):
-        if type(pkval) is tuple:
-            pkval = ','.join(imap(repr, pkval))
-        else: pkval = repr(pkval)
-        msg = '%s[%s]' % (entity.__name__, pkval)
+    def __init__(exc, entity, pkval=None):
+        if pkval is not None:
+            if type(pkval) is tuple:
+                pkval = ','.join(imap(repr, pkval))
+            else: pkval = repr(pkval)
+            msg = '%s[%s]' % (entity.__name__, pkval)
+        else: msg = entity.__name__
         OrmError.__init__(exc, msg)
         exc.entity = entity
         exc.pkval = pkval
@@ -1323,15 +1325,11 @@ class Attribute(object):
         if not attr.columns:
             reverse = attr.reverse
             assert reverse is not None and reverse.columns
-            objects = reverse.entity._find_in_db_({reverse : obj}, 1)
-            if not objects:
-                obj._vals_[attr] = None
-                return None
-            elif len(objects) == 1:
-                dbval = objects[0]
-                assert obj._vals_[attr] == dbval
-                return dbval
-            else: assert False
+            dbval = reverse.entity._find_in_db_({reverse : obj})
+            if dbval is None: obj._vals_[attr] = None
+            else: assert obj._vals_[attr] == dbval
+            return dbval
+
         if attr.lazy:
             entity = attr.entity
             database = entity._database_
@@ -2842,31 +2840,25 @@ class EntityMeta(type):
             throw(TypeError, 'Invalid count of attrs in %s primary key (%s instead of %s)'
                              % (entity.__name__, len(key), len(entity._pk_attrs_)))
         kwargs = dict(izip(imap(attrgetter('name'), entity._pk_attrs_), key))
-        objects = entity._find_(1, kwargs)
-        if not objects: throw(ObjectNotFound, entity, key)
-        assert len(objects) == 1
-        return objects[0]
+        return entity._find_one_(kwargs)
     @cut_traceback
     def exists(entity, *args, **kwargs):
         if args: return entity._query_from_args_(args, kwargs, frame_depth=3).exists()
-        try: objects = entity._find_(1, kwargs)
+        try: obj = entity._find_one_(kwargs)
+        except ObjectNotFound: return False
         except MultipleObjectsFoundError: return True
-        return bool(objects)
+        return True
     @cut_traceback
     def get(entity, *args, **kwargs):
         if args: return entity._query_from_args_(args, kwargs, frame_depth=3).get()
-        objects = entity._find_(1, kwargs)  # can throw MultipleObjectsFoundError
-        if not objects: return None
-        assert len(objects) == 1
-        return objects[0]
+        try: return entity._find_one_(kwargs)  # can throw MultipleObjectsFoundError
+        except ObjectNotFound: return None
     @cut_traceback
     def get_for_update(entity, *args, **kwargs):
         nowait = kwargs.pop('nowait', False)
         if args: return entity._query_from_args_(args, kwargs, frame_depth=3).for_update(nowait).get()
-        objects = entity._find_(1, kwargs, True, nowait)  # can throw MultipleObjectsFoundError
-        if not objects: return None
-        assert len(objects) == 1
-        return objects[0]
+        try: return entity._find_one_(kwargs, True, nowait)  # can throw MultipleObjectsFoundError
+        except ObjectNotFound: return None
     @cut_traceback
     def get_by_sql(entity, sql, globals=None, locals=None):
         objects = entity._find_by_sql_(1, sql, globals, locals, frame_depth=3)  # can throw MultipleObjectsFoundError
@@ -2951,23 +2943,22 @@ class EntityMeta(type):
                       % (entity.__name__, entity.__name__))
         query = Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
         return query.order_by(*args)
-    def _find_(entity, max_fetch_count, kwargs, for_update=False, nowait=False):
+    def _find_one_(entity, kwargs, for_update=False, nowait=False):
         if entity._database_.schema is None:
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
         pkval, avdict = entity._normalize_args_(kwargs, False)
         for attr in avdict:
             if attr.is_collection:
                 throw(TypeError, 'Collection attribute %s cannot be specified as search criteria' % attr)
-        objects = entity._find_in_cache_(pkval, avdict, for_update)
-        if objects is None:
-            objects = entity._find_in_db_(avdict, max_fetch_count, for_update, nowait)
-        entity._set_rbits(objects, avdict)
-        return objects
+        obj = entity._find_in_cache_(pkval, avdict, for_update)
+        if obj is None: obj = entity._find_in_db_(avdict, for_update, nowait)
+        return obj
     def _find_in_cache_(entity, pkval, avdict, for_update=False):
         cache = entity._database_._get_cache()
         indexes = cache.indexes
         obj = None
-        if pkval is not None: obj = indexes[entity._pk_attrs_].get(pkval)
+        if pkval is not None:
+            obj = indexes[entity._pk_attrs_].get(pkval)
         if obj is None:
             for attr in entity._simple_keys_:
                 val = avdict.get(attr)
@@ -2994,29 +2985,28 @@ class EntityMeta(type):
             if obj._discriminator_ is not None:
                 if obj._subclasses_:
                     cls = obj.__class__
-                    if not issubclass(entity, cls) and not issubclass(cls, entity): return []
+                    if not issubclass(entity, cls) and not issubclass(cls, entity):
+                        throw(ObjectNotFound, entity, pkval)
                     seeds = cache.seeds[entity._pk_attrs_]
                     if obj in seeds: obj._load_()
-                if not isinstance(obj, entity): return []
-            if obj._status_ == 'marked_to_delete': return []
+                if not isinstance(obj, entity): throw(ObjectNotFound, entity, pkval)
+            if obj._status_ == 'marked_to_delete': throw(ObjectNotFound, entity, pkval)
             for attr, val in iteritems(avdict):
-                if val != attr.__get__(obj):
-                    return []
+                if val != attr.__get__(obj): throw(ObjectNotFound, entity, pkval)
             if for_update and obj not in cache.for_update:
                 return None  # object is found, but it is not locked
-            return [ obj ]
+            entity._set_rbits((obj,), avdict)
+            return obj
         return None
-    def _find_in_db_(entity, avdict, max_fetch_count=None, for_update=False, nowait=False):
-        if max_fetch_count is None: max_fetch_count = options.MAX_FETCH_COUNT
+    def _find_in_db_(entity, avdict, for_update=False, nowait=False):
         database = entity._database_
         query_attrs = dict((attr, value is None) for attr, value in iteritems(avdict))
-        single_row = (max_fetch_count == 1)
-        sql, adapter, attr_offsets = entity._construct_sql_(query_attrs, not single_row, for_update, nowait)
+        sql, adapter, attr_offsets = entity._construct_sql_(query_attrs, False, for_update, nowait)
         arguments = adapter(avdict)
         if for_update: database._get_cache().immediate = True
         cursor = database._exec_sql(sql, arguments)
-        objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count, for_update=for_update)
-        return objects
+        objects = entity._fetch_objects(cursor, attr_offsets, 1, for_update, avdict)
+        return objects[0] if objects else None
     def _find_by_sql_(entity, max_fetch_count, sql, globals, locals, frame_depth):
         if not isinstance(sql, basestring): throw(TypeError)
         database = entity._database_
