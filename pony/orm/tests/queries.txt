@@ -601,7 +601,7 @@ FROM "Student" "s"
 
 >>> select(s.name for s in Student).first()
 
-SELECT DISTINCT "s"."name"
+SELECT "s"."name"
 FROM "Student" "s"
 ORDER BY 1
 LIMIT 1
@@ -612,3 +612,9 @@ SELECT "s"."name"
 FROM "Student" "s"
 ORDER BY 1
 LIMIT 1
+
+>>> select(s.name for s in Student)[4:5]
+
+SELECT DISTINCT "s"."name"
+FROM "Student" "s"
+LIMIT 1 OFFSET 4

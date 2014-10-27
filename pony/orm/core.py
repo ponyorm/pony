@@ -4360,7 +4360,7 @@ class Query(object):
             query = query.order_by(*[i+1 for i in xrange(len(query._translator.expr_type))])
         else:
             query = query.order_by(1)
-        objects = query[:1]
+        objects = query.without_distinct()[:1]
         if not objects: return None
         return objects[0]
     @cut_traceback
