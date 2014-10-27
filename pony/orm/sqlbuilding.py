@@ -388,7 +388,7 @@ class SQLBuilder(object):
         expr_list = [ builder(expr) for expr in x ]
         return builder(expr1), ' IN (', join(', ', expr_list), ')'
     def NOT_IN(builder, expr1, x):
-        if not x: throw(AstError, 'Empty IN clause')
+        if not x: return '1 = 1'
         if len(x) >= 1 and x[0] == 'SELECT':
             return builder(expr1), ' NOT IN ', builder(x)
         expr_list = [ builder(expr) for expr in x ]

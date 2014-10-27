@@ -564,3 +564,17 @@ WHERE "s"."name" IN (
     GROUP BY "s"."name"
     HAVING COUNT(*) > 1
     )
+
+>>> empty_list = []
+>>> select(s.name for s in Student if s.id in empty_list)
+
+SELECT DISTINCT "s"."name"
+FROM "Student" "s"
+WHERE 0 = 1
+
+>>> empty_list = []
+>>> select(s.name for s in Student if s.id not in empty_list)
+
+SELECT DISTINCT "s"."name"
+FROM "Student" "s"
+WHERE 1 = 1
