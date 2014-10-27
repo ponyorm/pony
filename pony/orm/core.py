@@ -4192,6 +4192,7 @@ class Query(object):
         query._next_kwarg_id = 0
         query._for_update = query._nowait = False
         query._result = None
+        query._distinct = None
         query._prefetch = False
         query._entities_to_prefetch = set()
         query._attrs_to_prefetch_dict = defaultdict(set)
@@ -4203,15 +4204,15 @@ class Query(object):
         return new_query
     def __reduce__(query):
         return unpickle_query, (query._fetch(),)
-    def _construct_sql_and_arguments(query, range=None, distinct=None, aggr_func_name=None):
+    def _construct_sql_and_arguments(query, range=None, aggr_func_name=None):
         translator = query._translator
-        sql_key = query._key + (range, distinct, aggr_func_name, query._for_update, query._nowait,
+        sql_key = query._key + (range, query._distinct, aggr_func_name, query._for_update, query._nowait,
                                 options.INNER_JOIN_SYNTAX)
         database = query._database
         cache_entry = database._constructed_sql_cache.get(sql_key)
         if cache_entry is None:
             sql_ast, attr_offsets = translator.construct_sql_ast(
-                range, distinct, aggr_func_name, query._for_update, query._nowait)
+                range, query._distinct, aggr_func_name, query._for_update, query._nowait)
             cache = database._get_cache()
             sql, adapter = database.provider.ast2sql(sql_ast)
             cache_entry = sql, adapter, attr_offsets
@@ -4227,12 +4228,12 @@ class Query(object):
             else: query_key = sql_key + (arguments_key)
         else: query_key = None
         return sql, arguments, attr_offsets, query_key
-    def _fetch(query, range=None, distinct=None):
+    def _fetch(query, range=None):
         translator = query._translator
         if query._result is not None:
             return QueryResult(query._result, translator.expr_type, translator.col_names)
 
-        sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(range, distinct)
+        sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(range)
         database = query._database
         cache = database._get_cache()
         if query._for_update: cache.immediate = True
@@ -4364,10 +4365,10 @@ class Query(object):
         return objects[0]
     @cut_traceback
     def without_distinct(query):
-        return query._fetch(distinct=False)
+        return query._clone(_distinct=False)
     @cut_traceback
     def distinct(query):
-        return query._fetch(distinct=True)
+        return query._clone(_distinct=True)
     @cut_traceback
     def exists(query):
         objects = query[:1]

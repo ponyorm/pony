@@ -578,3 +578,37 @@ WHERE 0 = 1
 SELECT DISTINCT "s"."name"
 FROM "Student" "s"
 WHERE 1 = 1
+
+>>> select(s.name for s in Student)[:]
+
+SELECT DISTINCT "s"."name"
+FROM "Student" "s"
+
+>>> select(s.name for s in Student).without_distinct()[:]
+
+SELECT "s"."name"
+FROM "Student" "s"
+
+>>> select(s.name for s in Student).without_distinct().distinct()[:]
+
+SELECT DISTINCT "s"."name"
+FROM "Student" "s"
+
+>>> select(s.name for s in Student).without_distinct().distinct().without_distinct()[:]
+
+SELECT "s"."name"
+FROM "Student" "s"
+
+>>> select(s.name for s in Student).first()
+
+SELECT DISTINCT "s"."name"
+FROM "Student" "s"
+ORDER BY 1
+LIMIT 1
+
+>>> select(s.name for s in Student).without_distinct().first()
+
+SELECT "s"."name"
+FROM "Student" "s"
+ORDER BY 1
+LIMIT 1
