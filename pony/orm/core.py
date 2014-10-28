@@ -1666,8 +1666,8 @@ def composite_key(*attrs):
         attr.is_part_of_unique_index = True
         attr.composite_keys.append((attrs, i))
     cls_dict = sys._getframe(1).f_locals
-    indexes = cls_dict.setdefault('_indexes_', {})
-    indexes[attrs] = Index(*attrs, is_pk=False)
+    indexes = cls_dict.setdefault('_indexes_', [])
+    indexes.append(Index(*attrs, is_pk=False))
 
 class PrimaryKey(Required):
     __slots__ = []
@@ -1695,8 +1695,8 @@ class PrimaryKey(Required):
         for i, attr in enumerate(attrs):
             attr.is_part_of_unique_index = True
             attr.composite_keys.append((attrs, i))
-        indexes = cls_dict.setdefault('_indexes_', {})
-        indexes[attrs] = Index(*attrs, is_pk=True)
+        indexes = cls_dict.setdefault('_indexes_', [])
+        indexes.append(Index(*attrs, is_pk=True))
         return None
 
 class Collection(Attribute):
@@ -2622,10 +2622,10 @@ class EntityMeta(type):
             new_attrs.append(attr)
         new_attrs.sort(key=attrgetter('id'))
 
-        indexes = entity._indexes_ = entity.__dict__.get('_indexes_', {})
+        indexes = entity._indexes_ = entity.__dict__.get('_indexes_', [])
         for attr in new_attrs:
-            if attr.is_unique: indexes[(attr,)] = Index(attr, is_pk=isinstance(attr, PrimaryKey))
-        for index in itervalues(indexes):
+            if attr.is_unique: indexes.append(Index(attr, is_pk=isinstance(attr, PrimaryKey)))
+        for index in indexes:
             for attr in index.attrs:
                 if attr.entity is not entity: throw(ERDiagramError,
                     'Invalid use of attribute %s in entity %s' % (attr, entity.__name__))
@@ -2643,12 +2643,15 @@ class EntityMeta(type):
                     if attr.is_string and attr.default == '' and not hasattr(attr, 'original_default'):
                         attr.default = None
 
-        primary_keys = set(index.attrs for index in itervalues(indexes) if index.is_pk)
+        primary_keys = set(index.attrs for index in indexes if index.is_pk)
         if direct_bases:
             if primary_keys: throw(ERDiagramError, 'Primary key cannot be redefined in derived classes')
+            base_indexes = []
             for base in direct_bases:
-                for index in itervalues(base._indexes_): indexes[index.attrs] = index
-            primary_keys = set(index.attrs for index in itervalues(indexes) if index.is_pk)
+                for index in base._indexes_:
+                    if index not in base_indexes and index not in indexes: base_indexes.append(index)
+            indexes[:0] = base_indexes
+            primary_keys = set(index.attrs for index in indexes if index.is_pk)
 
         if len(primary_keys) > 1: throw(ERDiagramError, 'Only one primary key can be defined in each entity class')
         elif not primary_keys:
@@ -2661,14 +2664,14 @@ class EntityMeta(type):
             type.__setattr__(entity, 'id', attr)  # entity.id = attr
             new_attrs.insert(0, attr)
             pk_attrs = (attr,)
-            indexes[pk_attrs] = Index(attr, is_pk=True)
+            indexes.append(Index(attr, is_pk=True))
         else: pk_attrs = primary_keys.pop()
         for i, attr in enumerate(pk_attrs): attr.pk_offset = i
         entity._pk_columns_ = None
         entity._pk_attrs_ = pk_attrs
         entity._pk_is_composite_ = len(pk_attrs) > 1
         entity._pk_ = pk_attrs if len(pk_attrs) > 1 else pk_attrs[0]
-        entity._keys_ = [ index.attrs for index in itervalues(indexes) if index.is_unique and not index.is_pk ]
+        entity._keys_ = [ index.attrs for index in indexes if index.is_unique and not index.is_pk ]
         entity._simple_keys_ = [ key[0] for key in entity._keys_ if len(key) == 1 ]
         entity._composite_keys_ = [ key for key in entity._keys_ if len(key) > 1 ]
 
