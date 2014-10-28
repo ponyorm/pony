@@ -233,7 +233,7 @@ class Constraint(DBObject):
         constraint.schema = schema
         constraint.name = name
 
-class Index(Constraint):
+class DBIndex(Constraint):
     typename = 'Index'
     def __init__(index, name, table, columns, is_pk=False, is_unique=None):
         assert len(columns) > 0
@@ -361,5 +361,5 @@ class ForeignKey(Constraint):
 
 DBSchema.table_class = Table
 DBSchema.column_class = Column
-DBSchema.index_class = Index
+DBSchema.index_class = DBIndex
 DBSchema.fk_class = ForeignKey
