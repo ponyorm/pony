@@ -4341,7 +4341,7 @@ class Query(object):
                         add_to_object_set(obj2)
                         append_to_object_list(obj2)
                 elif attr.lazy: attr.get(obj)
-                else: assert False
+                else: assert False  # pragma: no cover
     @cut_traceback
     def show(query, width=None):
         query._fetch().show(width)
