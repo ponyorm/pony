@@ -3,11 +3,18 @@
 Schema:
 pony.orm.examples.estore
 
+>>> Product.get(id=1)
+
+SELECT "id", "name", "description", "picture", "price", "quantity"
+FROM "Product"
+WHERE "id" = ?
+
 >>> Product.get(name="Product1")
 
 SELECT "id", "name", "description", "picture", "price", "quantity"
 FROM "Product"
 WHERE "name" = ?
+LIMIT 2
 
 >>> Product.select(lambda p: p.price > 100)
 
@@ -557,3 +564,57 @@ WHERE "s"."name" IN (
     GROUP BY "s"."name"
     HAVING COUNT(*) > 1
     )
+
+>>> empty_list = []
+>>> select(s.name for s in Student if s.id in empty_list)
+
+SELECT DISTINCT "s"."name"
+FROM "Student" "s"
+WHERE 0 = 1
+
+>>> empty_list = []
+>>> select(s.name for s in Student if s.id not in empty_list)
+
+SELECT DISTINCT "s"."name"
+FROM "Student" "s"
+WHERE 1 = 1
+
+>>> select(s.name for s in Student)[:]
+
+SELECT DISTINCT "s"."name"
+FROM "Student" "s"
+
+>>> select(s.name for s in Student).without_distinct()[:]
+
+SELECT "s"."name"
+FROM "Student" "s"
+
+>>> select(s.name for s in Student).without_distinct().distinct()[:]
+
+SELECT DISTINCT "s"."name"
+FROM "Student" "s"
+
+>>> select(s.name for s in Student).without_distinct().distinct().without_distinct()[:]
+
+SELECT "s"."name"
+FROM "Student" "s"
+
+>>> select(s.name for s in Student).first()
+
+SELECT "s"."name"
+FROM "Student" "s"
+ORDER BY 1
+LIMIT 1
+
+>>> select(s.name for s in Student).without_distinct().first()
+
+SELECT "s"."name"
+FROM "Student" "s"
+ORDER BY 1
+LIMIT 1
+
+>>> select(s.name for s in Student)[4:5]
+
+SELECT DISTINCT "s"."name"
+FROM "Student" "s"
+LIMIT 1 OFFSET 4

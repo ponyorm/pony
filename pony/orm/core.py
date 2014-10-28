@@ -123,11 +123,13 @@ class MultipleRowsFound(OrmError): pass
 class TooManyRowsFound(OrmError): pass
 
 class ObjectNotFound(OrmError):
-    def __init__(exc, entity, pkval):
-        if type(pkval) is tuple:
-            pkval = ','.join(imap(repr, pkval))
-        else: pkval = repr(pkval)
-        msg = '%s[%s]' % (entity.__name__, pkval)
+    def __init__(exc, entity, pkval=None):
+        if pkval is not None:
+            if type(pkval) is tuple:
+                pkval = ','.join(imap(repr, pkval))
+            else: pkval = repr(pkval)
+            msg = '%s[%s]' % (entity.__name__, pkval)
+        else: msg = entity.__name__
         OrmError.__init__(exc, msg)
         exc.entity = entity
         exc.pkval = pkval
@@ -513,9 +515,8 @@ class Database(object):
         if cache is not None: cache.rollback()
     @cut_traceback
     def execute(database, sql, globals=None, locals=None):
-        database.get_connection()
-        return database._exec_raw_sql(sql, globals, locals, frame_depth=3)
-    def _exec_raw_sql(database, sql, globals, locals, frame_depth):
+        return database._exec_raw_sql(sql, globals, locals, frame_depth=3, start_transaction=True)
+    def _exec_raw_sql(database, sql, globals, locals, frame_depth, start_transaction=False):
         provider = database.provider
         if provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
         sql = sql[:]  # sql = templating.plainstr(sql)
@@ -526,7 +527,7 @@ class Database(object):
             locals = sys._getframe(frame_depth).f_locals
         adapted_sql, code = adapt_sql(sql, provider.paramstyle)
         arguments = eval(code, globals, locals)
-        return database._exec_sql(adapted_sql, arguments)
+        return database._exec_sql(adapted_sql, arguments, False, start_transaction)
     @cut_traceback
     def select(database, sql, globals=None, locals=None, frame_depth=0):
         if not select_re.match(sql): sql = 'select ' + sql
@@ -573,14 +574,15 @@ class Database(object):
         else: sql, adapter = cached_sql
         arguments = adapter(values_list(kwargs))  # order of values same as order of keys
         if returning is not None:
-            return database._exec_sql(sql, arguments, returning_id=True)
-        cursor = database._exec_sql(sql, arguments)
+            return database._exec_sql(sql, arguments, returning_id=True, start_transaction=True)
+        cursor = database._exec_sql(sql, arguments, start_transaction=True)
         return getattr(cursor, 'lastrowid', None)
     def _ast2sql(database, sql_ast):
         sql, adapter = database.provider.ast2sql(sql_ast)
         return sql, adapter
-    def _exec_sql(database, sql, arguments=None, returning_id=False):
+    def _exec_sql(database, sql, arguments=None, returning_id=False, start_transaction=False):
         cache = database._get_cache()
+        if start_transaction: cache.immediate = True
         connection = cache.prepare_connection_for_query_execution()
         cursor = connection.cursor()
         if debug: log_sql(sql, arguments)
@@ -1323,15 +1325,11 @@ class Attribute(object):
         if not attr.columns:
             reverse = attr.reverse
             assert reverse is not None and reverse.columns
-            objects = reverse.entity._find_in_db_({reverse : obj}, 1)
-            if not objects:
-                obj._vals_[attr] = None
-                return None
-            elif len(objects) == 1:
-                dbval = objects[0]
-                assert obj._vals_[attr] == dbval
-                return dbval
-            else: assert False
+            dbval = reverse.entity._find_in_db_({reverse : obj})
+            if dbval is None: obj._vals_[attr] = None
+            else: assert obj._vals_[attr] == dbval
+            return dbval
+
         if attr.lazy:
             entity = attr.entity
             database = entity._database_
@@ -2842,31 +2840,25 @@ class EntityMeta(type):
             throw(TypeError, 'Invalid count of attrs in %s primary key (%s instead of %s)'
                              % (entity.__name__, len(key), len(entity._pk_attrs_)))
         kwargs = dict(izip(imap(attrgetter('name'), entity._pk_attrs_), key))
-        objects = entity._find_(1, kwargs)
-        if not objects: throw(ObjectNotFound, entity, key)
-        assert len(objects) == 1
-        return objects[0]
+        return entity._find_one_(kwargs)
     @cut_traceback
     def exists(entity, *args, **kwargs):
         if args: return entity._query_from_args_(args, kwargs, frame_depth=3).exists()
-        try: objects = entity._find_(1, kwargs)
+        try: obj = entity._find_one_(kwargs)
+        except ObjectNotFound: return False
         except MultipleObjectsFoundError: return True
-        return bool(objects)
+        return True
     @cut_traceback
     def get(entity, *args, **kwargs):
         if args: return entity._query_from_args_(args, kwargs, frame_depth=3).get()
-        objects = entity._find_(1, kwargs)  # can throw MultipleObjectsFoundError
-        if not objects: return None
-        assert len(objects) == 1
-        return objects[0]
+        try: return entity._find_one_(kwargs)  # can throw MultipleObjectsFoundError
+        except ObjectNotFound: return None
     @cut_traceback
     def get_for_update(entity, *args, **kwargs):
         nowait = kwargs.pop('nowait', False)
         if args: return entity._query_from_args_(args, kwargs, frame_depth=3).for_update(nowait).get()
-        objects = entity._find_(1, kwargs, True, nowait)  # can throw MultipleObjectsFoundError
-        if not objects: return None
-        assert len(objects) == 1
-        return objects[0]
+        try: return entity._find_one_(kwargs, True, nowait)  # can throw MultipleObjectsFoundError
+        except ObjectNotFound: return None
     @cut_traceback
     def get_by_sql(entity, sql, globals=None, locals=None):
         objects = entity._find_by_sql_(1, sql, globals, locals, frame_depth=3)  # can throw MultipleObjectsFoundError
@@ -2951,27 +2943,29 @@ class EntityMeta(type):
                       % (entity.__name__, entity.__name__))
         query = Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
         return query.order_by(*args)
-    def _find_(entity, max_fetch_count, kwargs, for_update=False, nowait=False):
+    def _find_one_(entity, kwargs, for_update=False, nowait=False):
         if entity._database_.schema is None:
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
         pkval, avdict = entity._normalize_args_(kwargs, False)
         for attr in avdict:
             if attr.is_collection:
                 throw(TypeError, 'Collection attribute %s cannot be specified as search criteria' % attr)
-        objects = entity._find_in_cache_(pkval, avdict, for_update)
-        if objects is None:
-            objects = entity._find_in_db_(avdict, max_fetch_count, for_update, nowait)
-        entity._set_rbits(objects, avdict)
-        return objects
+        obj, unique = entity._find_in_cache_(pkval, avdict, for_update)
+        if obj is None: obj = entity._find_in_db_(avdict, unique, for_update, nowait)
+        return obj
     def _find_in_cache_(entity, pkval, avdict, for_update=False):
         cache = entity._database_._get_cache()
         indexes = cache.indexes
         obj = None
-        if pkval is not None: obj = indexes[entity._pk_attrs_].get(pkval)
+        unique = False
+        if pkval is not None:
+            unique = True
+            obj = indexes[entity._pk_attrs_].get(pkval)
         if obj is None:
             for attr in entity._simple_keys_:
                 val = avdict.get(attr)
                 if val is not None:
+                    unique = True
                     obj = indexes[attr].get(val)
                     if obj is not None: break
         if obj is None:
@@ -2981,6 +2975,7 @@ class EntityMeta(type):
                 if None in vals: continue
                 index = indexes.get(attrs)
                 if index is None: continue
+                unique = True
                 obj = index.get(vals)
                 if obj is not None: break
         if obj is None:
@@ -2990,52 +2985,33 @@ class EntityMeta(type):
                 if reverse and not reverse.is_collection:
                     obj = reverse.__get__(val)
                     break
-        if obj is None:
-            for attr, val in iteritems(avdict):
-                if isinstance(val, Entity) and val._pkval_ is None:
-                    reverse = attr.reverse
-                    if not reverse.is_collection:
-                        obj = reverse.__get__(val)
-                        if obj is None: return []
-                    elif isinstance(reverse, Set):
-                        filtered_objects = []
-                        for obj in reverse.__get__(val):
-                            for attr, val in iteritems(avdict):
-                                if val != attr.get(obj): break
-                            else:
-                                if for_update and obj not in cache.for_update:
-                                    return None  # object is found, but it is not locked
-                                filtered_objects.append(obj)
-                        filtered_objects.sort(key=entity._get_raw_pkval_)
-                        return filtered_objects
-                    else: throw(NotImplementedError)
         if obj is not None:
             if obj._discriminator_ is not None:
                 if obj._subclasses_:
                     cls = obj.__class__
-                    if not issubclass(entity, cls) and not issubclass(cls, entity): return []
+                    if not issubclass(entity, cls) and not issubclass(cls, entity):
+                        throw(ObjectNotFound, entity, pkval)
                     seeds = cache.seeds[entity._pk_attrs_]
                     if obj in seeds: obj._load_()
-                if not isinstance(obj, entity): return []
-            if obj._status_ == 'marked_to_delete': return []
+                if not isinstance(obj, entity): throw(ObjectNotFound, entity, pkval)
+            if obj._status_ == 'marked_to_delete': throw(ObjectNotFound, entity, pkval)
             for attr, val in iteritems(avdict):
-                if val != attr.__get__(obj):
-                    return []
+                if val != attr.__get__(obj): throw(ObjectNotFound, entity, pkval)
             if for_update and obj not in cache.for_update:
-                return None  # object is found, but it is not locked
-            return [ obj ]
-        return None
-    def _find_in_db_(entity, avdict, max_fetch_count=None, for_update=False, nowait=False):
-        if max_fetch_count is None: max_fetch_count = options.MAX_FETCH_COUNT
+                return None, unique  # object is found, but it is not locked
+            entity._set_rbits((obj,), avdict)
+            return obj, unique
+        return None, unique
+    def _find_in_db_(entity, avdict, unique=False, for_update=False, nowait=False):
         database = entity._database_
         query_attrs = dict((attr, value is None) for attr, value in iteritems(avdict))
-        single_row = (max_fetch_count == 1)
-        sql, adapter, attr_offsets = entity._construct_sql_(query_attrs, not single_row, for_update, nowait)
+        limit = 2 if not unique else None
+        sql, adapter, attr_offsets = entity._construct_sql_(query_attrs, False, limit, for_update, nowait)
         arguments = adapter(avdict)
         if for_update: database._get_cache().immediate = True
         cursor = database._exec_sql(sql, arguments)
-        objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count, for_update=for_update)
-        return objects
+        objects = entity._fetch_objects(cursor, attr_offsets, 1, for_update, avdict)
+        return objects[0] if objects else None
     def _find_by_sql_(entity, max_fetch_count, sql, globals, locals, frame_depth):
         if not isinstance(sql, basestring): throw(TypeError)
         database = entity._database_
@@ -3103,7 +3079,7 @@ class EntityMeta(type):
         cached_sql = sql, adapter, attr_offsets
         entity._batchload_sql_cache_[query_key] = cached_sql
         return cached_sql
-    def _construct_sql_(entity, query_attrs, order_by_pk=False, for_update=False, nowait=False):
+    def _construct_sql_(entity, query_attrs, order_by_pk=False, limit=None, for_update=False, nowait=False):
         if nowait: assert for_update
         sorted_query_attrs = tuple(sorted(query_attrs.items()))
         query_key = sorted_query_attrs, order_by_pk, for_update, nowait
@@ -3139,6 +3115,7 @@ class EntityMeta(type):
         if not for_update: sql_ast = [ 'SELECT', select_list, from_list, where_list ]
         else: sql_ast = [ 'SELECT_FOR_UPDATE', bool(nowait), select_list, from_list, where_list ]
         if order_by_pk: sql_ast.append([ 'ORDER_BY' ] + [ [ 'COLUMN', None, column ] for column in entity._pk_columns_ ])
+        if limit is not None: sql_ast.append([ 'LIMIT', [ 'VALUE', limit ] ])
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
         cached_sql = sql, adapter, attr_offsets
@@ -4215,6 +4192,7 @@ class Query(object):
         query._next_kwarg_id = 0
         query._for_update = query._nowait = False
         query._result = None
+        query._distinct = None
         query._prefetch = False
         query._entities_to_prefetch = set()
         query._attrs_to_prefetch_dict = defaultdict(set)
@@ -4226,15 +4204,15 @@ class Query(object):
         return new_query
     def __reduce__(query):
         return unpickle_query, (query._fetch(),)
-    def _construct_sql_and_arguments(query, range=None, distinct=None, aggr_func_name=None):
+    def _construct_sql_and_arguments(query, range=None, aggr_func_name=None):
         translator = query._translator
-        sql_key = query._key + (range, distinct, aggr_func_name, query._for_update, query._nowait,
+        sql_key = query._key + (range, query._distinct, aggr_func_name, query._for_update, query._nowait,
                                 options.INNER_JOIN_SYNTAX)
         database = query._database
         cache_entry = database._constructed_sql_cache.get(sql_key)
         if cache_entry is None:
             sql_ast, attr_offsets = translator.construct_sql_ast(
-                range, distinct, aggr_func_name, query._for_update, query._nowait)
+                range, query._distinct, aggr_func_name, query._for_update, query._nowait)
             cache = database._get_cache()
             sql, adapter = database.provider.ast2sql(sql_ast)
             cache_entry = sql, adapter, attr_offsets
@@ -4250,12 +4228,12 @@ class Query(object):
             else: query_key = sql_key + (arguments_key)
         else: query_key = None
         return sql, arguments, attr_offsets, query_key
-    def _fetch(query, range=None, distinct=None):
+    def _fetch(query, range=None):
         translator = query._translator
         if query._result is not None:
             return QueryResult(query._result, translator.expr_type, translator.col_names)
 
-        sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(range, distinct)
+        sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(range)
         database = query._database
         cache = database._get_cache()
         if query._for_update: cache.immediate = True
@@ -4382,15 +4360,15 @@ class Query(object):
             query = query.order_by(*[i+1 for i in xrange(len(query._translator.expr_type))])
         else:
             query = query.order_by(1)
-        objects = query[:1]
+        objects = query.without_distinct()[:1]
         if not objects: return None
         return objects[0]
     @cut_traceback
     def without_distinct(query):
-        return query._fetch(distinct=False)
+        return query._clone(_distinct=False)
     @cut_traceback
     def distinct(query):
-        return query._fetch(distinct=True)
+        return query._clone(_distinct=True)
     @cut_traceback
     def exists(query):
         objects = query[:1]

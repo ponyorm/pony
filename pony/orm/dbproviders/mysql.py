@@ -26,7 +26,7 @@ else:
     import MySQLdb.converters as mysql_converters
     from MySQLdb.constants import FIELD_TYPE, FLAG, CLIENT
     mysql_module_name = 'MySQLdb'
-    from _mysql import string_literal
+    from MySQLdb import string_literal
 
 from pony.orm import core, dbschema, dbapiprovider
 from pony.orm.core import log_orm, log_sql, OperationalError
