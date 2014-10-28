@@ -4298,8 +4298,8 @@ class Query(object):
                     add_to_object_set(obj)
                     append_to_object_list(obj)
         elif type(expr_type) is tuple:
-            indexes = [ i for i, t in enumerate(expr_type) if isinstance(t, EntityMeta) ]
-            for i in indexes:
+            for i, t in enumerate(expr_type):
+                if not isinstance(t, EntityMeta): continue
                 for row in query._result:
                     obj = row[i]
                     if obj not in object_set:
