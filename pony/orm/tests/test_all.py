@@ -47,6 +47,7 @@ from pony.orm.tests.test_time_parsing import *
 from pony.orm.tests.test_hooks import *
 from pony.orm.tests.test_show import *
 from pony.orm.tests.test_prefetching import *
+from pony.orm.tests.test_indexes import *
 
 #from new_tests import *
 

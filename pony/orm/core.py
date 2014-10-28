@@ -48,7 +48,7 @@ __all__ = '''
     Database sql_debug show
 
     PrimaryKey Required Optional Set Discriminator
-    composite_key
+    composite_key composite_index
     flush commit rollback db_session with_transaction
 
     LongStr LongUnicode
@@ -724,12 +724,13 @@ class Database(object):
                 if len(entity._pk_columns_) == 1 and entity._pk_attrs_[0].auto: is_pk = "auto"
                 else: is_pk = True
                 table.add_index(None, get_columns(table, entity._pk_columns_), is_pk)
-            for key in entity._keys_:
+            for index in entity._indexes_:
+                if index.is_pk: continue
                 column_names = []
-                for attr in key: column_names.extend(attr.columns)
-                if len(key) == 1: index_name = key[0].index
-                else: index_name = None
-                table.add_index(index_name, get_columns(table, column_names), is_unique=True)
+                attrs = index.attrs
+                for attr in attrs: column_names.extend(attr.columns)
+                index_name = attrs[0].index if len(attrs) == 1 else None
+                table.add_index(index_name, get_columns(table, column_names), is_unique=index.is_unique)
             columns = []
             columns_without_pk = []
             converters = []
@@ -1657,17 +1658,24 @@ class Index(object):
         index.is_unique = options.pop('is_unique', True)
         assert not options
 
-def composite_key(*attrs):
+def _define_index(func_name, attrs, is_unique=False):
     if len(attrs) < 2: throw(TypeError,
-        'composite_key() must receive at least two attributes as arguments')
-    for i, attr in enumerate(attrs):
-        if not isinstance(attr, Attribute): throw(TypeError,
-            'composite_key() arguments must be attributes. Got: %r' % attr)
-        attr.is_part_of_unique_index = True
-        attr.composite_keys.append((attrs, i))
-    cls_dict = sys._getframe(1).f_locals
+        '%s() must receive at least two attributes as arguments' % func_name)
+    if is_unique:
+        for i, attr in enumerate(attrs):
+            if not isinstance(attr, Attribute): throw(TypeError,
+                '%s() arguments must be attributes. Got: %r' % (func_name, attr))
+            attr.is_part_of_unique_index = True
+            attr.composite_keys.append((attrs, i))
+    cls_dict = sys._getframe(2).f_locals
     indexes = cls_dict.setdefault('_indexes_', [])
-    indexes.append(Index(*attrs, is_pk=False))
+    indexes.append(Index(*attrs, is_pk=False, is_unique=is_unique))
+
+def composite_index(*attrs):
+    _define_index('composite_index', attrs)
+
+def composite_key(*attrs):
+    _define_index('composite_key', attrs, is_unique=True)
 
 class PrimaryKey(Required):
     __slots__ = []
@@ -2664,7 +2672,7 @@ class EntityMeta(type):
             type.__setattr__(entity, 'id', attr)  # entity.id = attr
             new_attrs.insert(0, attr)
             pk_attrs = (attr,)
-            indexes.append(Index(attr, is_pk=True))
+            indexes.insert(0, Index(attr, is_pk=True))
         else: pk_attrs = primary_keys.pop()
         for i, attr in enumerate(pk_attrs): attr.pk_offset = i
         entity._pk_columns_ = None
