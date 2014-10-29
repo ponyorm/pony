@@ -194,7 +194,7 @@ def parse_line(line):
                 else: yield 'other', pos, next, x
                 pos = next
         elif i == 4: yield 'comment', start, end, match.group()
-        else: assert False
+        else: assert False  # pragma: no cover
         pos = end
     yield 'other', pos, stop, line[pos:]
 
@@ -229,7 +229,7 @@ def format_line(frame, line, syntax_error_offset=None):
             elif kind == 'attribute':
                 if prev is __undefined__: obj = __undefined__
                 else: obj = getattr(prev, x, __undefined__)
-            else: assert False
+            else: assert False  # pragma: no cover
             if obj is __undefined__: title = 'undefined'
             else: title = repr2(obj)
             result.append(ident_html % (title, y))

@@ -17,7 +17,7 @@ from pony.utils import localbase, datetime2timestamp, timestamp2datetime, decora
 
 class SQLiteForeignKey(dbschema.ForeignKey):
     def get_create_command(foreign_key):
-        assert False
+        assert False  # pragma: no cover
 
 class SQLiteSchema(dbschema.DBSchema):
     dialect = 'SQLite'
@@ -92,12 +92,12 @@ class SQLiteBuilder(SQLBuilder):
             return builder.datetime_add('datetime', expr, -delta)
         return 'datetime(julianday(', builder(expr), ') - ', builder(delta), ')'
     def MIN(builder, *args):
-        if len(args) == 0: assert False
+        if len(args) == 0: assert False  # pragma: no cover
         elif len(args) == 1: fname = 'MIN'
         else: fname = 'min'
         return fname, '(',  join(', ', imap(builder, args)), ')'
     def MAX(builder, *args):
-        if len(args) == 0: assert False
+        if len(args) == 0: assert False  # pragma: no cover
         elif len(args) == 1: fname = 'MAX'
         else: fname = 'max'
         return fname, '(',  join(', ', imap(builder, args)), ')'
@@ -259,7 +259,7 @@ class SQLiteProvider(DBAPIProvider):
         return row[0] if row is not None else None
 
     def fk_exists(provider, connection, table_name, fk_name):
-        assert False
+        assert False  # pragma: no cover
 
 provider_cls = SQLiteProvider
 

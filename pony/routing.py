@@ -133,7 +133,7 @@ class Route(object):
             elif i == 3:
                 is_param = False
                 yield is_param, match.group(i).replace('$$', '$')
-            else: assert False
+            else: assert False  # pragma: no cover
             pos = match.end()
         if pos != len(component):
             raise ValueError('Invalid url component: %r' % component)
@@ -155,7 +155,7 @@ class Route(object):
                 if i in args: raise TypeError('Parameter name %s already in use' % x)
                 args.add(i)
                 return i
-        assert False
+        assert False  # pragma: no cover
     def check(route):
         names, argsname, keyargsname, defaults, converters = route.func.argspec
         if route.star and not argsname: raise TypeError(
@@ -256,8 +256,8 @@ def get_routes(path, qdict, method, host, port):
                 for param, value in izip(params, groups):
                     if isinstance(param, int): args[param] = value
                     elif isinstance(param, basestring): kwargs[param] = value
-                    else: assert False
-            else: assert False
+                    else: assert False  # pragma: no cover
+            else: assert False  # pragma: no cover
         else:
             names, _, _, defaults, converters = route.func.argspec
             diff = len(names) - len(defaults)
@@ -297,8 +297,8 @@ def get_routes(path, qdict, method, host, port):
                         if isinstance(param, int): args[param] = value
                         elif isinstance(param, basestring):
                             kwargs[param] = value
-                        else: assert False
-                else: assert False
+                        else: assert False  # pragma: no cover
+                else: assert False  # pragma: no cover
             else:
                 arglist = [ None ] * len(names)
                 arglist[diff:] = defaults
@@ -345,7 +345,7 @@ def build_url(route, keyparams, indexparams, host, port, script_name):
             return is_default, value
         elif isinstance(x, basestring):
             try: value = keyparams[x]
-            except KeyError: assert False, 'Parameter not found: %r' % x
+            except KeyError: assert False, 'Parameter not found: %r' % x  # pragma: no cover
             used_keyparams.add(x)
             return False, value
         elif isinstance(x, list):
@@ -359,7 +359,7 @@ def build_url(route, keyparams, indexparams, host, port, script_name):
                     if component is None: raise PathError('Value for parameter %r is None' % y)
                     result.append(component)
             return is_default, ''.join(result)
-        else: assert False
+        else: assert False  # pragma: no cover
 
     for is_param, x in route.parsed_path:
         if not is_param: component = x

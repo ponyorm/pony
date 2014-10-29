@@ -383,7 +383,7 @@ class Decompiler(object):
         tos = decompiler.stack.pop()
         tos1 = decompiler.stack.pop()
         tos2 = decompiler.stack[-1]
-        if not isinstance(tos2, ast.Dict): assert False
+        if not isinstance(tos2, ast.Dict): assert False  # pragma: no cover
         if tos2.items == (): tos2.items = []
         tos2.items.append((tos, tos1))
 
@@ -391,7 +391,7 @@ class Decompiler(object):
         tos = decompiler.stack.pop()
         tos1 = decompiler.stack.pop()
         tos2 = decompiler.stack.pop()
-        if not isinstance(tos1, ast.Dict): assert False
+        if not isinstance(tos1, ast.Dict): assert False  # pragma: no cover
         if tos1.items == (): tos1.items = []
         tos1.items.append((tos, tos2))
 

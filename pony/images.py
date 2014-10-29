@@ -141,7 +141,7 @@ def _calc_colors(count, start_color, end_color):
         r2, g2, b2, t2 = end_color
         r, g, b, t = r2-r1, g2-g1, b2-b1, t2-t1
         for i in range(count): yield i, (r1+r*i/last, g1+g*i/last, b1+b*i/last, t1+t*i/last)
-    else: assert False
+    else: assert False  # pragma: no cover
 
 if PIL and Image.VERSION >= '1.1.6':
 

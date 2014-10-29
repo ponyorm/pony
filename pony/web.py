@@ -259,7 +259,7 @@ def normalize_result(result, headers):
        or isinstance(content, (Html, StrHtml)): pass
     elif isinstance(content, unicode): content = Html(content)
     elif isinstance(content, str): content = StrHtml(content)
-    else: assert False
+    else: assert False  # pragma: no cover
     return content, headers
 
 def invoke(url):

@@ -348,7 +348,7 @@ def parse_command(source, start, pos, name):
         elif i == 2:
             arg, end = parse_markup(source, end, True)
             markup_args.append(arg)
-        else: assert False
+        else: assert False  # pragma: no cover
         pos = end
 
 exprlist_re = re.compile(r"""
@@ -462,7 +462,7 @@ class Markup(SyntaxElement):
                         elem._raise_unexpected_statement(item)
                     prev.append_method(item)
                 else: elem.content.append(FunctionElement(source, item))
-            else: assert False
+            else: assert False  # pragma: no cover
     def eval(elem, globals, locals=None):
         result = []
         for element in elem.content:
@@ -536,7 +536,7 @@ def parse_var_list(source, start, expr, pos, nested=False):
         elif i == 2:
             vars, pos = parse_var_list(source, start, expr, pos, True)
             result.extend(vars)
-        else: assert False
+        else: assert False  # pragma: no cover
         match = var_list_re_2.match(expr, pos)
         if not match: raise ParseError(errmsg, source, start)
         pos = match.end()
@@ -548,7 +548,7 @@ def parse_var_list(source, start, expr, pos, nested=False):
             if nested: raise ParseError("')' expected. Got: 'in'", source, start)
             return result
         elif i == 3: pass
-        else: assert False
+        else: assert False  # pragma: no cover
 
 for_re = re.compile(r"""
         '''(?:[^\\]|\\.)*?'''     # '''triple-quoted string'''

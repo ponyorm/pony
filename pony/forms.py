@@ -121,7 +121,7 @@ class Form(object):
             state['_request'] = http.request
             form.__dict__.update(state)
             form._update_status()
-        else: assert False
+        else: assert False  # pragma: no cover
     def _handle_request_(form):
         request = http.request
         if not form.is_valid:

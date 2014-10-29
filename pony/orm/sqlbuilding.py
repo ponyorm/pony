@@ -48,7 +48,7 @@ class Value(object):
         else:
             if isinstance(value, (int, float, Decimal)): return str(value)
             if isinstance(value, bytes): return "X'%s'" % hexlify(value).decode('ascii')
-        assert False, value
+        assert False, value  # pragma: no cover
     if not PY2: __str__ = __unicode__
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self.value)
@@ -416,15 +416,15 @@ class SQLBuilder(object):
     LENGTH = make_unary_func('length')
     ABS = make_unary_func('abs')
     def COALESCE(builder, *args):
-        if len(args) < 2: assert False
+        if len(args) < 2: assert False  # pragma: no cover
         return 'coalesce(', join(', ', imap(builder, args)), ')'
     def MIN(builder, *args):
-        if len(args) == 0: assert False
+        if len(args) == 0: assert False  # pragma: no cover
         elif len(args) == 1: fname = 'MIN'
         else: fname = 'least'
         return fname, '(',  join(', ', imap(builder, args)), ')'
     def MAX(builder, *args):
-        if len(args) == 0: assert False
+        if len(args) == 0: assert False  # pragma: no cover
         elif len(args) == 1: fname = 'MAX'
         else: fname = 'greatest'
         return fname, '(',  join(', ', imap(builder, args)), ')'

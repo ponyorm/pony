@@ -66,7 +66,7 @@ class DBSchema(object):
         for table in sorted(itervalues(schema.tables), key=lambda table: table.name):
             if isinstance(table.name, tuple): alias = table.name[-1]
             elif isinstance(table.name, basestring): alias = table.name
-            else: assert False
+            else: assert False  # pragma: no cover
             sql_ast = [ 'SELECT',
                         [ 'ALL', ] + [ [ 'COLUMN', alias, column.name ] for column in table.column_list ],
                         [ 'FROM', [ alias, 'TABLE', table.name ] ],

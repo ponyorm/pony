@@ -32,7 +32,7 @@ def translate(key, params, lang_list):
         ordered_params = [ params[i] for i in params_order ]
         ordered_params.reverse()
         return u"".join(ordered_params.pop() if flag else value for flag, value in lstr)
-    assert False
+    assert False  # pragma: no cover
 
 def reg_trans_file(filename):
     for fname, mtime, trans in trans_files:
