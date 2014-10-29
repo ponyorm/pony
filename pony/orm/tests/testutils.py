@@ -82,7 +82,7 @@ class TestDatabase(Database):
             elif provider_name in ('postgres', 'pygresql'): raw_server_version = '9.2'
             elif provider_name == 'oracle': raw_server_version = '11.2.0.2.0'
             elif provider_name == 'mysql': raw_server_version = '5.6.11'
-            else: assert False, provider_name
+            else: assert False, provider_name  # pragma: no cover
 
         t = [ int(component) for component in raw_server_version.split('.') ]
         if len(t) == 2: t.append(0)
@@ -99,7 +99,7 @@ class TestDatabase(Database):
         kwargs['pony_pool_mockup'] = TestPool(self)
         Database.bind(self, TestProvider, *args, **kwargs)
     def _execute(database, sql, globals, locals, frame_depth):
-        assert False
+        assert False  # pragma: no cover
     def _exec_sql(database, sql, arguments=None, returning_id=False):
         assert type(arguments) is not list and not returning_id
         database.sql = sql

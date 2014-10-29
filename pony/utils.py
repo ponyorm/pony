@@ -119,7 +119,7 @@ def get_lambda_args(func):
         if func.varargs: names, argsname = names[:-1], names[-1]
         else: argsname = None
         defaults = func.defaults
-    else: assert False
+    else: assert False  # pragma: no cover
     if argsname: throw(TypeError, '*%s is not supported' % argsname)
     if kwname: throw(TypeError, '**%s is not supported' % kwname)
     if defaults: throw(TypeError, 'Defaults are not supported')
@@ -239,7 +239,7 @@ def parse_expr(s, pos=0):
     i = match.lastindex
     if i == 1: pos = match.end()  # identifier
     elif i == 2: z = 2  # "("
-    else: assert False
+    else: assert False  # pragma: no cover
     while True:
         match = expr2_re.match(s, pos)
         if match is None: return s[start:pos], z==1
@@ -253,7 +253,7 @@ def parse_expr(s, pos=0):
             open = match.group(i)
             if open == '(': close = ')'
             elif open == '[': close = ']'; z = 2
-            else: assert False
+            else: assert False  # pragma: no cover
             while True:
                 match = expr3_re.search(s, pos)
                 if match is None: raise ValueError()
@@ -263,7 +263,7 @@ def parse_expr(s, pos=0):
                 elif x == close:
                     counter -= 1
                     if not counter: z += 1; break
-        else: assert False
+        else: assert False  # pragma: no cover
 
 def tostring(x):
     if isinstance(x, basestring): return x

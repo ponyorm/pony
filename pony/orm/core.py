@@ -1638,16 +1638,16 @@ class Discriminator(Required):
             return entity._discriminator_
         return Attribute.validate(attr, val, obj, entity)
     def load(attr, obj):
-        raise AssertionError()
+        assert False  # pragma: no cover
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
         return obj._discriminator_
     def __set__(attr, obj, new_val):
         throw(TypeError, 'Cannot assign value to discriminator attribute')
     def db_set(attr, obj, new_dbval):
-        assert False
+        assert False  # pragma: no cover
     def update_reverse(attr, obj, old_val, new_val, undo_funcs):
-        assert False
+        assert False  # pragma: no cover
 
 def composite_key(*attrs):
     if len(attrs) < 2: throw(TypeError,
@@ -1746,17 +1746,17 @@ class Collection(Attribute):
         if attr.py_check is not None:
             throw(NotImplementedError, "'py_check' parameter is not supported for collection attributes")
     def load(attr, obj):
-        assert False, 'Abstract method'
+        assert False, 'Abstract method'  # pragma: no cover
     def __get__(attr, obj, cls=None):
-        assert False, 'Abstract method'
+        assert False, 'Abstract method'  # pragma: no cover
     def __set__(attr, obj, val):
-        assert False, 'Abstract method'
+        assert False, 'Abstract method'  # pragma: no cover
     def __delete__(attr, obj):
-        assert False, 'Abstract method'
+        assert False, 'Abstract method'  # pragma: no cover
     def prepare(attr, obj, val, fromdb=False):
-        assert False, 'Abstract method'
+        assert False, 'Abstract method'  # pragma: no cover
     def set(attr, obj, val, fromdb=False):
-        assert False, 'Abstract method'
+        assert False, 'Abstract method'  # pragma: no cover
 
 class SetData(set):
     __slots__ = 'is_fully_loaded', 'added', 'removed', 'count'
@@ -2553,7 +2553,7 @@ class EntityMeta(type):
                 database = base_class._database_
                 if database is None: throw(ERDiagramError, 'Base Entity does not belong to any database')
                 databases.add(database)
-        if not databases: assert False
+        if not databases: assert False  # pragma: no cover
         elif len(databases) > 1: throw(ERDiagramError,
             'With multiple inheritance of entities, all entities must belong to the same database')
         database = databases.pop()
@@ -3213,7 +3213,7 @@ class EntityMeta(type):
             names = get_lambda_args(lambda_ast)
             cond_expr = lambda_ast.code
             cells = None
-        else: assert False
+        else: assert False  # pragma: no cover
 
         if len(names) != 1: throw(TypeError,
             'Lambda query requires exactly one parameter name, like %s.select(lambda %s: ...). '
@@ -3275,7 +3275,7 @@ class EntityMeta(type):
                     for attr, val in pairs:
                         obj._vals_[attr] = val
                         if attr.reverse: attr.update_reverse(obj, NOT_LOADED, val, undo_funcs)
-                else: assert False
+                else: assert False  # pragma: no cover
         if for_update:
             assert cache.in_transaction
             cache.for_update.add(obj)
@@ -3829,7 +3829,7 @@ class Entity(with_metaclass(EntityMeta)):
         status = obj._status_
         if status == 'created': attrs = obj._attrs_with_columns_
         elif status == 'modified': attrs = obj._attrs_with_bit_(obj._attrs_with_columns_, obj._wbits_)
-        else: assert False
+        else: assert False  # pragma: no cover
         for attr in attrs:
             if not attr.reverse: continue
             val = obj._vals_[attr]
@@ -3999,7 +3999,7 @@ class Entity(with_metaclass(EntityMeta)):
         if status == 'created': obj._save_created_()
         elif status == 'modified': obj._save_updated_()
         elif status == 'marked_to_delete': obj._save_deleted_()
-        else: assert False
+        else: assert False  # pragma: no cover
     def flush(obj):
         with obj._session_cache_.flush_disabled(): obj._save_()
     def _before_save_(obj):
@@ -4341,7 +4341,7 @@ class Query(object):
                         add_to_object_set(obj2)
                         append_to_object_list(obj2)
                 elif attr.lazy: attr.get(obj)
-                else: assert False
+                else: assert False  # pragma: no cover
     @cut_traceback
     def show(query, width=None):
         query._fetch().show(width)
@@ -4436,7 +4436,7 @@ class Query(object):
             func_ast, external_names, cells = decompile(func)
         elif not order_by: throw(TypeError,
             'Argument of filter() method must be a lambda functon or its text. Got: %r' % func)
-        else: assert False
+        else: assert False  # pragma: no cover
 
         if argnames:
             expr_type = prev_translator.expr_type

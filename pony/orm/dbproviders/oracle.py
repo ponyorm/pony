@@ -198,7 +198,7 @@ class OraBuilder(sqlbuilding.SQLBuilder):
     def ROWID(builder, *expr_list):
         return builder.ALL(*expr_list)
     def LIMIT(builder, limit, offset=None):
-        assert False
+        assert False  # pragma: no cover
     def DATE(builder, expr):
         return 'TRUNC(', builder(expr), ')'
     def RANDOM(builder):
@@ -517,4 +517,4 @@ def set_input_sizes(cursor, arguments):
     elif type(arguments) is tuple:
         input_sizes = map(get_inputsize, arguments)
         cursor.setinputsizes(*input_sizes)
-    else: assert False, type(arguments)
+    else: assert False, type(arguments)  # pragma: no cover

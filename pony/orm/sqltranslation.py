@@ -608,7 +608,7 @@ class SQLTranslator(ASTTranslator):
         tableref = translator.subquery.get_tableref(name)
         if tableref is not None:
             return translator.ObjectIterMonad(translator, tableref, tableref.entity)
-        else: assert False, name
+        else: assert False, name  # pragma: no cover
     def postAdd(translator, node):
         return node.left.monad + node.right.monad
     def postSub(translator, node):
@@ -1383,7 +1383,7 @@ class AttrMonad(Monad):
         else: throw(NotImplementedError, type)  # pragma: no cover
         return cls(parent, attr, *args, **kwargs)
     def __new__(cls, *args):
-        if cls is AttrMonad: assert False, 'Abstract class'
+        if cls is AttrMonad: assert False, 'Abstract class'  # pragma: no cover
         return Monad.__new__(cls)
     def __init__(monad, parent, attr):
         assert monad.__class__ is not AttrMonad
@@ -1449,7 +1449,7 @@ class ParamMonad(Monad):
         result.aggregated = False
         return result
     def __new__(cls, *args):
-        if cls is ParamMonad: assert False, 'Abstract class'
+        if cls is ParamMonad: assert False, 'Abstract class'  # pragma: no cover
         return Monad.__new__(cls)
     def __init__(monad, translator, type, paramkey):
         type = normalize_type(type)
@@ -1496,7 +1496,7 @@ class ExprMonad(Monad):
         else: throw(NotImplementedError, type)  # pragma: no cover
         return cls(translator, type, sql)
     def __new__(cls, *args):
-        if cls is ExprMonad: assert False, 'Abstract class'
+        if cls is ExprMonad: assert False, 'Abstract class'  # pragma: no cover
         return Monad.__new__(cls)
     def __init__(monad, translator, type, sql):
         Monad.__init__(monad, translator, type)
@@ -1528,7 +1528,7 @@ class ConstMonad(Monad):
         result.aggregated = False
         return result
     def __new__(cls, *args):
-        if cls is ConstMonad: assert False, 'Abstract class'
+        if cls is ConstMonad: assert False, 'Abstract class'  # pragma: no cover
         return Monad.__new__(cls)
     def __init__(monad, translator, value):
         value_type = get_normalized_type_of(value)
