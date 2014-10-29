@@ -48,7 +48,7 @@ __all__ = '''
     Database sql_debug show
 
     PrimaryKey Required Optional Set Discriminator
-    composite_key
+    composite_key composite_index
     flush commit rollback db_session with_transaction
 
     LongStr LongUnicode
@@ -724,12 +724,13 @@ class Database(object):
                 if len(entity._pk_columns_) == 1 and entity._pk_attrs_[0].auto: is_pk = "auto"
                 else: is_pk = True
                 table.add_index(None, get_columns(table, entity._pk_columns_), is_pk)
-            for key in entity._keys_:
+            for index in entity._indexes_:
+                if index.is_pk: continue
                 column_names = []
-                for attr in key: column_names.extend(attr.columns)
-                if len(key) == 1: index_name = key[0].index
-                else: index_name = None
-                table.add_index(index_name, get_columns(table, column_names), is_unique=True)
+                attrs = index.attrs
+                for attr in attrs: column_names.extend(attr.columns)
+                index_name = attrs[0].index if len(attrs) == 1 else None
+                table.add_index(index_name, get_columns(table, column_names), is_unique=index.is_unique)
             columns = []
             columns_without_pk = []
             converters = []
@@ -1052,45 +1053,45 @@ class SessionCache(object):
         return modified_m2m
     def update_simple_index(cache, obj, attr, old_val, new_val, undo):
         assert old_val != new_val
-        index = cache.indexes[attr]
+        cache_index = cache.indexes[attr]
         if new_val is not None:
-            obj2 = index.setdefault(new_val, obj)
+            obj2 = cache_index.setdefault(new_val, obj)
             if obj2 is not obj: throw(CacheIndexError, 'Cannot update %s.%s: %s with key %s already exists'
                                                  % (obj.__class__.__name__, attr.name, obj2, new_val))
-        if old_val is not None: del index[old_val]
-        undo.append((index, old_val, new_val))
+        if old_val is not None: del cache_index[old_val]
+        undo.append((cache_index, old_val, new_val))
     def db_update_simple_index(cache, obj, attr, old_dbval, new_dbval):
         assert old_dbval != new_dbval
-        index = cache.indexes[attr]
+        cache_index = cache.indexes[attr]
         if new_dbval is not None:
-            obj2 = index.setdefault(new_dbval, obj)
+            obj2 = cache_index.setdefault(new_dbval, obj)
             if obj2 is not obj: throw(TransactionIntegrityError,
                 '%s with unique index %s.%s already exists: %s'
                 % (obj2.__class__.__name__, obj.__class__.__name__, attr.name, new_dbval))
                 # attribute which was created or updated lately clashes with one stored in database
-        index.pop(old_dbval, None)
+        cache_index.pop(old_dbval, None)
     def update_composite_index(cache, obj, attrs, prev_vals, new_vals, undo):
         if None in prev_vals: prev_vals = None
         if None in new_vals: new_vals = None
         if prev_vals is None and new_vals is None: return
-        index = cache.indexes[attrs]
+        cache_index = cache.indexes[attrs]
         if new_vals is not None:
-            obj2 = index.setdefault(new_vals, obj)
+            obj2 = cache_index.setdefault(new_vals, obj)
             if obj2 is not obj:
                 attr_names = ', '.join(attr.name for attr in attrs)
                 throw(CacheIndexError, 'Cannot update %r: composite key (%s) with value %s already exists for %r'
                                  % (obj, attr_names, new_vals, obj2))
-        if prev_vals is not None: del index[prev_vals]
-        undo.append((index, prev_vals, new_vals))
+        if prev_vals is not None: del cache_index[prev_vals]
+        undo.append((cache_index, prev_vals, new_vals))
     def db_update_composite_index(cache, obj, attrs, prev_vals, new_vals):
-        index = cache.indexes[attrs]
+        cache_index = cache.indexes[attrs]
         if None not in new_vals:
-            obj2 = index.setdefault(new_vals, obj)
+            obj2 = cache_index.setdefault(new_vals, obj)
             if obj2 is not obj:
                 key_str = ', '.join(repr(item) for item in new_vals)
                 throw(TransactionIntegrityError, '%s with unique index (%s) already exists: %s'
                                  % (obj2.__class__.__name__, ', '.join(attr.name for attr in attrs), key_str))
-        index.pop(prev_vals, None)
+        cache_index.pop(prev_vals, None)
 
 ###############################################################################
 
@@ -1417,9 +1418,9 @@ class Attribute(object):
 
                 if old_val is NOT_LOADED: obj._vals_.pop(attr)
                 else: obj._vals_[attr] = old_val
-                for index, old_key, new_key in undo:
-                    if new_key is not None: del index[new_key]
-                    if old_key is not None: index[old_key] = obj
+                for cache_index, old_key, new_key in undo:
+                    if new_key is not None: del cache_index[new_key]
+                    if old_key is not None: cache_index[old_key] = obj
             undo_funcs.append(undo_func)
             if old_val == new_val: return
             try:
@@ -1649,17 +1650,32 @@ class Discriminator(Required):
     def update_reverse(attr, obj, old_val, new_val, undo_funcs):
         assert False  # pragma: no cover
 
-def composite_key(*attrs):
+class Index(object):
+    __slots__ = 'attrs', 'is_pk', 'is_unique'
+    def __init__(index, *attrs, **options):
+        index.attrs = attrs
+        index.is_pk = options.pop('is_pk', False)
+        index.is_unique = options.pop('is_unique', True)
+        assert not options
+
+def _define_index(func_name, attrs, is_unique=False):
     if len(attrs) < 2: throw(TypeError,
-        'composite_key() must receive at least two attributes as arguments')
-    for i, attr in enumerate(attrs):
-        if not isinstance(attr, Attribute): throw(TypeError,
-            'composite_key() arguments must be attributes. Got: %r' % attr)
-        attr.is_part_of_unique_index = True
-        attr.composite_keys.append((attrs, i))
-    cls_dict = sys._getframe(1).f_locals
-    composite_keys = cls_dict.setdefault('_key_dict_', {})
-    composite_keys[attrs] = False
+        '%s() must receive at least two attributes as arguments' % func_name)
+    if is_unique:
+        for i, attr in enumerate(attrs):
+            if not isinstance(attr, Attribute): throw(TypeError,
+                '%s() arguments must be attributes. Got: %r' % (func_name, attr))
+            attr.is_part_of_unique_index = True
+            attr.composite_keys.append((attrs, i))
+    cls_dict = sys._getframe(2).f_locals
+    indexes = cls_dict.setdefault('_indexes_', [])
+    indexes.append(Index(*attrs, is_pk=False, is_unique=is_unique))
+
+def composite_index(*attrs):
+    _define_index('composite_index', attrs)
+
+def composite_key(*attrs):
+    _define_index('composite_key', attrs, is_unique=True)
 
 class PrimaryKey(Required):
     __slots__ = []
@@ -1687,8 +1703,8 @@ class PrimaryKey(Required):
         for i, attr in enumerate(attrs):
             attr.is_part_of_unique_index = True
             attr.composite_keys.append((attrs, i))
-        keys = cls_dict.setdefault('_key_dict_', {})
-        keys[attrs] = True
+        indexes = cls_dict.setdefault('_indexes_', [])
+        indexes.append(Index(*attrs, is_pk=True))
         return None
 
 class Collection(Attribute):
@@ -2614,19 +2630,19 @@ class EntityMeta(type):
             new_attrs.append(attr)
         new_attrs.sort(key=attrgetter('id'))
 
-        keys = entity.__dict__.get('_key_dict_', {})
+        indexes = entity._indexes_ = entity.__dict__.get('_indexes_', [])
         for attr in new_attrs:
-            if attr.is_unique: keys[(attr,)] = isinstance(attr, PrimaryKey)
-        for key, is_pk in keys.items():
-            for attr in key:
+            if attr.is_unique: indexes.append(Index(attr, is_pk=isinstance(attr, PrimaryKey)))
+        for index in indexes:
+            for attr in index.attrs:
                 if attr.entity is not entity: throw(ERDiagramError,
                     'Invalid use of attribute %s in entity %s' % (attr, entity.__name__))
-                key_type = 'primary key' if is_pk else 'unique index'
-                if attr.is_collection or attr.is_discriminator or (is_pk and not attr.is_required and not attr.auto):
+                key_type = 'primary key' if index.is_pk else 'unique index'
+                if attr.is_collection or attr.is_discriminator or (index.is_pk and not attr.is_required and not attr.auto):
                     throw(TypeError, '%s attribute %s cannot be part of %s' % (attr.__class__.__name__, attr, key_type))
                 if isinstance(attr.py_type, type) and issubclass(attr.py_type, float):
                     throw(TypeError, 'Attribute %s of type float cannot be part of %s' % (attr, key_type))
-                if is_pk and attr.is_volatile:
+                if index.is_pk and attr.is_volatile:
                     throw(TypeError, 'Volatile attribute %s cannot be part of primary key' % attr)
                 if not attr.is_required:
                     if attr.nullable is False:
@@ -2635,13 +2651,15 @@ class EntityMeta(type):
                     if attr.is_string and attr.default == '' and not hasattr(attr, 'original_default'):
                         attr.default = None
 
-        primary_keys = set(key for key, is_pk in keys.items() if is_pk)
+        primary_keys = set(index.attrs for index in indexes if index.is_pk)
         if direct_bases:
             if primary_keys: throw(ERDiagramError, 'Primary key cannot be redefined in derived classes')
+            base_indexes = []
             for base in direct_bases:
-                keys[base._pk_attrs_] = True
-                for key in base._keys_: keys[key] = False
-            primary_keys = set(key for key, is_pk in keys.items() if is_pk)
+                for index in base._indexes_:
+                    if index not in base_indexes and index not in indexes: base_indexes.append(index)
+            indexes[:0] = base_indexes
+            primary_keys = set(index.attrs for index in indexes if index.is_pk)
 
         if len(primary_keys) > 1: throw(ERDiagramError, 'Only one primary key can be defined in each entity class')
         elif not primary_keys:
@@ -2654,14 +2672,14 @@ class EntityMeta(type):
             type.__setattr__(entity, 'id', attr)  # entity.id = attr
             new_attrs.insert(0, attr)
             pk_attrs = (attr,)
-            keys[pk_attrs] = True
+            indexes.insert(0, Index(attr, is_pk=True))
         else: pk_attrs = primary_keys.pop()
         for i, attr in enumerate(pk_attrs): attr.pk_offset = i
         entity._pk_columns_ = None
         entity._pk_attrs_ = pk_attrs
         entity._pk_is_composite_ = len(pk_attrs) > 1
         entity._pk_ = pk_attrs if len(pk_attrs) > 1 else pk_attrs[0]
-        entity._keys_ = [ key for key, is_pk in keys.items() if not is_pk ]
+        entity._keys_ = [ index.attrs for index in indexes if index.is_unique and not index.is_pk ]
         entity._simple_keys_ = [ key[0] for key in entity._keys_ if len(key) == 1 ]
         entity._composite_keys_ = [ key for key in entity._keys_ if len(key) > 1 ]
 
@@ -2897,7 +2915,7 @@ class EntityMeta(type):
             cache.max_id_cache[pk] = max_id
         if max_id is None: return []
         if max_id <= limit * 2: return entity.select().random(limit)
-        index = cache.indexes[entity._pk_attrs_]
+        cache_index = cache.indexes[entity._pk_attrs_]
         result = []
         tried_ids = set()
         found_in_cache = False
@@ -2908,7 +2926,7 @@ class EntityMeta(type):
                 id = randint(1, max_id)
                 if id in tried_ids: continue
                 if id in ids: continue
-                obj = index.get(id)
+                obj = cache_index.get(id)
                 if obj is not None:
                     found_in_cache = True
                     tried_ids.add(id)
@@ -2955,28 +2973,28 @@ class EntityMeta(type):
         return obj
     def _find_in_cache_(entity, pkval, avdict, for_update=False):
         cache = entity._database_._get_cache()
-        indexes = cache.indexes
+        cache_indexes = cache.indexes
         obj = None
         unique = False
         if pkval is not None:
             unique = True
-            obj = indexes[entity._pk_attrs_].get(pkval)
+            obj = cache_indexes[entity._pk_attrs_].get(pkval)
         if obj is None:
             for attr in entity._simple_keys_:
                 val = avdict.get(attr)
                 if val is not None:
                     unique = True
-                    obj = indexes[attr].get(val)
+                    obj = cache_indexes[attr].get(val)
                     if obj is not None: break
         if obj is None:
             for attrs in entity._composite_keys_:
                 get_val = avdict.get
                 vals = tuple(get_val(attr) for attr in attrs)
                 if None in vals: continue
-                index = indexes.get(attrs)
-                if index is None: continue
+                cache_index = cache_indexes.get(attrs)
+                if cache_index is None: continue
                 unique = True
-                obj = index.get(vals)
+                obj = cache_index.get(vals)
                 if obj is not None: break
         if obj is None:
             for attr, val in iteritems(avdict):
@@ -3230,9 +3248,9 @@ class EntityMeta(type):
     def _new_(entity, pkval, status, for_update=False, undo_funcs=None):
         cache = entity._database_._get_cache()
         pk_attrs = entity._pk_attrs_
-        index = cache.indexes[pk_attrs]
+        cache_index = cache.indexes[pk_attrs]
         if pkval is None: obj = None
-        else: obj = index.get(pkval)
+        else: obj = cache_index.get(pkval)
 
         if obj is None: pass
         elif status == 'created':
@@ -3257,7 +3275,7 @@ class EntityMeta(type):
                 obj._save_pos_ = None
                 obj._session_cache_ = cache
                 if pkval is not None:
-                    index[pkval] = obj
+                    cache_index[pkval] = obj
                     obj._newid_ = None
                 else: obj._newid_ = next(new_instance_id_counter)
                 if obj._pk_is_composite_: pairs = izip(pk_attrs, pkval)
@@ -3460,19 +3478,19 @@ class Entity(with_metaclass(EntityMeta)):
         pkval, avdict = entity._normalize_args_(kwargs, True)
         undo_funcs = []
         cache = entity._database_._get_cache()
-        indexes = cache.indexes
+        cache_indexes = cache.indexes
         indexes_update = {}
         with cache.flush_disabled():
             for attr in entity._simple_keys_:
                 val = avdict[attr]
                 if val is None: continue
-                if val in indexes[attr]: throw(CacheIndexError,
+                if val in cache_indexes[attr]: throw(CacheIndexError,
                     'Cannot create %s: value %r for key %s already exists' % (entity.__name__, val, attr.name))
                 indexes_update[attr] = val
             for attrs in entity._composite_keys_:
                 vals = tuple(avdict[attr] for attr in attrs)
                 if None in vals: continue
-                if vals in indexes[attrs]:
+                if vals in cache_indexes[attrs]:
                     attr_names = ', '.join(attr.name for attr in attrs)
                     throw(CacheIndexError, 'Cannot create %s: value %s for composite key (%s) already exists'
                                      % (entity.__name__, vals, attr_names))
@@ -3488,8 +3506,8 @@ class Entity(with_metaclass(EntityMeta)):
             except:
                 for undo_func in reversed(undo_funcs): undo_func()
                 raise
-        if pkval is not None: indexes[entity._pk_attrs_][pkval] = obj
-        for key, vals in iteritems(indexes_update): indexes[key][vals] = obj
+        if pkval is not None: cache_indexes[entity._pk_attrs_][pkval] = obj
+        for key, vals in iteritems(indexes_update): cache_indexes[key][vals] = obj
         objects_to_save = cache.objects_to_save
         obj._save_pos_ = len(objects_to_save)
         objects_to_save.append(obj)
@@ -3639,7 +3657,7 @@ class Entity(with_metaclass(EntityMeta)):
                         objects_to_save[save_pos] = obj
                     obj._save_pos_ = save_pos
                 obj._status_ = status
-                for index, old_key in undo_list: index[old_key] = obj
+                for cache_index, old_key in undo_list: cache_index[old_key] = obj
 
             undo_funcs.append(undo_func)
             try:
@@ -3672,22 +3690,22 @@ class Entity(with_metaclass(EntityMeta)):
                                                      % (obj, attr.name, attr))
                     else: throw(NotImplementedError)
 
-                indexes = cache.indexes
+                cache_indexes = cache.indexes
                 for attr in obj._simple_keys_:
                     val = get_val(attr)
                     if val is None: continue
-                    index = indexes[attr]
-                    obj2 = index.pop(val)
+                    cache_index = cache_indexes[attr]
+                    obj2 = cache_index.pop(val)
                     assert obj2 is obj
-                    undo_list.append((index, val))
+                    undo_list.append((cache_index, val))
 
                 for attrs in obj._composite_keys_:
                     vals = tuple(get_val(attr) for attr in attrs)
                     if None in vals: continue
-                    index = indexes[attrs]
-                    obj2 = index.pop(vals)
+                    cache_index = cache_indexes[attrs]
+                    obj2 = cache_index.pop(vals)
                     assert obj2 is obj
-                    undo_list.append((index, vals))
+                    undo_list.append((cache_index, vals))
 
                 if status == 'created':
                     assert save_pos is not None
@@ -3695,7 +3713,7 @@ class Entity(with_metaclass(EntityMeta)):
                     obj._save_pos_ = None
                     obj._status_ = 'cancelled'
                     if obj._pkval_ is not None:
-                        pk_index = indexes[obj._pk_attrs_]
+                        pk_index = cache_indexes[obj._pk_attrs_]
                         obj2 = pk_index.pop(obj._pkval_)
                         assert obj2 is obj
                         undo_list.append((pk_index, obj._pkval_))
@@ -3762,9 +3780,9 @@ class Entity(with_metaclass(EntityMeta)):
                     obj2 = objects_to_save.pop()
                     assert obj2 is obj and obj._save_pos_ == len(objects_to_save)
                     obj._save_pos_ = None
-                for index, old_key, new_key in undo:
-                    if new_key is not None: del index[new_key]
-                    if old_key is not None: index[old_key] = obj
+                for cache_index, old_key, new_key in undo:
+                    if new_key is not None: del cache_index[new_key]
+                    if old_key is not None: cache_index[old_key] = obj
             try:
                 for attr in obj._simple_keys_:
                     if attr not in avdict: continue
@@ -3839,18 +3857,18 @@ class Entity(with_metaclass(EntityMeta)):
         bits = obj._bits_
         vals = obj._vals_
         dbvals = obj._dbvals_
-        indexes = obj._session_cache_.indexes
+        cache_indexes = obj._session_cache_.indexes
         for attr in obj._attrs_with_columns_:
             if not bits.get(attr): continue
             if attr not in vals: continue
             val = vals[attr]
             if attr.is_volatile:
                 if val is not None:
-                    if attr.is_unique: indexes[attr].pop(val, None)
+                    if attr.is_unique: cache_indexes[attr].pop(val, None)
                     get_val = vals.get
                     for key, i in attr.composite_keys:
                         keyval = tuple(get_val(attr) for attr in key)
-                        indexes[key].pop(keyval, None)
+                        cache_indexes[key].pop(keyval, None)
                 del vals[attr]
             elif after_create and val is None:
                 obj._rbits_ &= ~bits[attr]
@@ -3904,8 +3922,8 @@ class Entity(with_metaclass(EntityMeta)):
 
         if auto_pk:
             pk_attrs = obj._pk_attrs_
-            index = obj._session_cache_.indexes[pk_attrs]
-            obj2 = index.setdefault(new_id, obj)
+            cache_index = obj._session_cache_.indexes[pk_attrs]
+            obj2 = cache_index.setdefault(new_id, obj)
             if obj2 is not obj: throw(TransactionIntegrityError,
                 'Newly auto-generated id value %s was already used in transaction cache for another object' % new_id)
             obj._pkval_ = obj._vals_[pk_attrs[0]] = new_id
@@ -4298,8 +4316,8 @@ class Query(object):
                     add_to_object_set(obj)
                     append_to_object_list(obj)
         elif type(expr_type) is tuple:
-            indexes = [ i for i, t in enumerate(expr_type) if isinstance(t, EntityMeta) ]
-            for i in indexes:
+            for i, t in enumerate(expr_type):
+                if not isinstance(t, EntityMeta): continue
                 for row in query._result:
                     obj = row[i]
                     if obj not in object_set:
