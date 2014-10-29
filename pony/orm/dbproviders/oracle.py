@@ -247,13 +247,13 @@ class OraStrConverter(dbapiprovider.StrConverter):
         return 'CLOB'
 
 class OraIntConverter(dbapiprovider.IntConverter):
+    signed_types = {None: 'NUMBER(38)', 8: 'NUMBER(3)', 16: 'NUMBER(5)', 24: 'NUMBER(7)', 32: 'NUMBER(10)', 64: 'NUMBER(19)'}
+    unsigned_types = {None: 'NUMBER(38)', 8: 'NUMBER(3)', 16: 'NUMBER(5)', 24: 'NUMBER(8)', 32: 'NUMBER(10)', 64: 'NUMBER(20)'}
     def init(self, kwargs):
         dbapiprovider.IntConverter.init(self, kwargs)
         sequence_name = kwargs.pop('sequence_name', None)
         if sequence_name is not None and not (self.attr.auto and self.attr.is_pk):
             throw(TypeError, "Parameter 'sequence_name' can be used only for PrimaryKey attributes with auto=True")
-    def sql_type(converter):
-        return 'NUMBER(38)'
 
 class OraRealConverter(dbapiprovider.RealConverter):
     default_tolerance = 1e-14
@@ -318,6 +318,7 @@ class OraProvider(DBAPIProvider):
     table_if_not_exists_syntax = False
     index_if_not_exists_syntax = False
     varchar_default_max_len = 1000
+    uint64_support = True
 
     dbapi_module = cx_Oracle
     dbschema_cls = OraSchema
