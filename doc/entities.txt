@@ -192,7 +192,7 @@ For the ``int`` type you can specify the size of integer type that should be use
 
     attr1 = Required(int, size=8)   # 8 bit - TINYINT in MySQL
     attr2 = Required(int, size=16)  # 16 bit - SMALLINT in MySQL
-    attr3 = Required(int, size=16)  # 24 bit - MEDIUMINT in MySQL
+    attr3 = Required(int, size=24)  # 24 bit - MEDIUMINT in MySQL
     attr4 = Required(int, size=32)  # 32 bit - INTEGER in MySQL
     attr5 = Required(int, size=64)  # 64 bit - BIGINT in MySQL
 
