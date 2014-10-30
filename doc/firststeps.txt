@@ -128,6 +128,13 @@ Pony allows you to see on the screen (or in a log file, if configured) the SQL c
 
 If this command is executed before calling ``generate_mapping()``, then during the creation of the tables, you will see the SQL code used to generate the tables.
 
+Be default Pony sends debug information to stdout. If you have the `standard Python logging <https://docs.python.org/2/howto/logging.html>`_ configured, Pony will use it instead of stdout. Using Python logging you can store debug information in a file::
+
+    import logging
+    logging.basicConfig(filename='pony.log', level=logging.INFO)
+
+Note, that we had to specify the ``level=logging.INFO`` because the default standard logging level is WARNING and Pony uses the INFO level for its messages by default. Pony uses two loggers: ``pony.orm.sql`` for SQL statements that it sends to the database and ``pony.orm`` for all other messages.
+
 
 Creating entity instances and populating the database
 ------------------------------------------------------------------------------

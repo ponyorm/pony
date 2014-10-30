@@ -84,6 +84,15 @@ If you specify the primary key attribute yourself, it can have any name and type
        email = PrimaryKey(str)
        name = Required(str)
 
+
+Set
+~~~~~~~~~~~~~~~~~~~~~
+
+A ``Set`` attribute represents a collection. You can specify another entity as the type for the ``Set`` attribute. This is the way to define one side for the to-many relationships, which can be many-to-many or one-to-many.
+As of now, Pony doesn’t allow the use of ``Set`` with primitive types. We plan to add this feature later.
+We will talk in more detail about this attribute type in :ref:`Working with relationships <working_with_relationships_ref>` chapter.
+
+
 Composite keys
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -105,12 +114,23 @@ In order to declare a secondary composite key you need to declare attributes as 
 
 In the database ``composite_key(a, b)`` will be represented as the ``UNIQUE ("a", "b")`` constraint.
 
-Set
-~~~~~~~~~~~~~~~~~~~~~
+If have just one attribute, which represents a unique key, you can create such a key by specifying ``unique=True`` by an attribute::
 
-A ``Set`` attribute represents a collection. You can specify another entity as the type for the ``Set`` attribute. This is the way to define one side for the to-many relationships, which can be many-to-many or one-to-many. 
-As of now, Pony doesn’t allow the use of ``Set`` with primitive types. We plan to add this feature later. 
+    class Product(db.Entity):
+        name = Required(str, unique=True)
 
+
+Composite indexes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Using the ``composite_index()`` directive you can create a composite index for speeding up data retrieval. It can combine two or more attributes::
+
+    class Example(db.Entity):
+        a = Required(str)
+        b = Optional(int)
+        composite_index(a, b)
+
+If you want to create a non-unique index for just one column, you can specify the ``index`` option of an attribute. This option is described later in this chapter.
 
 
 Attribute data types
@@ -206,7 +226,7 @@ If current database does not support specified attribute size, the next bigger s
 
 Only MySQL actually supports unsigned types. For other databases the column will use signed numeric type which can hold all valid values for the specified unsigned type. For example, in PostgreSQL an unsigned attribute with size 16 will use ``INTEGER`` type. An unsigned attribute with size 64 can be represented only in MySQL and Oracle.
 
-When size is specified, Pony automatically assigns ``min`` and ``max`` values for this attribute. For example, a signed attribute with size 8 will receive ``min`` value -128 and ``max`` value 127, while unsigned attribute with the same size will receive ``min`` value 0 and ``max`` value 255. Is is possible to further constraint possible values by specifying custom ``min`` and ``max`` values for the attribute.
+When the size is specified, Pony automatically assigns ``min`` and ``max`` values for this attribute. For example, a signed attribute with size 8 will receive ``min`` value -128 and ``max`` value 127, while unsigned attribute with the same size will receive ``min`` value 0 and ``max`` value 255. You can override ``min`` and ``max`` with your own values if necessary, but these values should not exceed the range implied by the size.
 
 .. note:: Starting with the Pony release 0.6 the ``long`` type is deprecated and if you want to store 64 bit integers in the database, you need to use ``int`` instead with ``size=64``. If you don't specify the ``size`` parameter, Pony will use the default integer type for the specific database.
 
