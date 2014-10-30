@@ -627,8 +627,7 @@ WHERE EXISTS (
     SELECT 1
     FROM "Student" "s2"
     GROUP BY "s2"."group"
-    HAVING MAX("s2"."gpa") IS NOT NULL
-      AND "s"."group" = "s2"."group"
+    HAVING "s"."group" = "s2"."group"
       AND "s"."gpa" = MAX("s2"."gpa")
     )
 
@@ -640,7 +639,6 @@ WHERE ("s"."group", "s"."gpa") IN (
     SELECT "s2"."group", MAX("s2"."gpa")
     FROM "student" "s2"
     GROUP BY "s2"."group"
-    HAVING MAX("s2"."gpa") IS NOT NULL
     )
 
 >>> select(s for s in Student if (s.group, s.gpa) not in select((s2.group, max(s2.gpa)) for s2 in Student))
@@ -651,8 +649,7 @@ WHERE NOT EXISTS (
     SELECT 1
     FROM "Student" "s2"
     GROUP BY "s2"."group"
-    HAVING MAX("s2"."gpa") IS NOT NULL
-      AND "s"."group" = "s2"."group"
+    HAVING "s"."group" = "s2"."group"
       AND "s"."gpa" = MAX("s2"."gpa")
     )
 

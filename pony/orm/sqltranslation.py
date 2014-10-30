@@ -345,8 +345,8 @@ class SQLTranslator(ASTTranslator):
                     offset += 1
             translator.row_layout = row_layout
             translator.col_names = [ src for func, slice_or_offset, src in translator.row_layout ]
-    def shallow_copy_of_subquery_ast(translator, move_outer_conditions=True):
-        subquery_ast, attr_offsets = translator.construct_sql_ast(distinct=False, is_not_null_checks=True)
+    def shallow_copy_of_subquery_ast(translator, move_outer_conditions=True, is_not_null_checks=False):
+        subquery_ast, attr_offsets = translator.construct_sql_ast(distinct=False, is_not_null_checks=is_not_null_checks)
         assert attr_offsets is None
         assert len(subquery_ast) >= 3 and subquery_ast[0] == 'SELECT'
 
@@ -2307,9 +2307,9 @@ class QuerySetMonad(SetMixin, Monad):
         else: item_columns = item.getsql()
 
         sub = monad.subtranslator
-        subquery_ast = sub.shallow_copy_of_subquery_ast()
-        select_ast, from_ast, where_ast = subquery_ast[1:4]
         if translator.hint_join and len(sub.subquery.from_ast[1]) == 3:
+            subquery_ast = sub.shallow_copy_of_subquery_ast()
+            select_ast, from_ast, where_ast = subquery_ast[1:4]
             subquery = translator.subquery
             if not not_in:
                 translator.distinct = True
@@ -2344,10 +2344,14 @@ class QuerySetMonad(SetMixin, Monad):
             else: sql_ast = [ 'EQ', [ 'VALUE', 1 ], [ 'VALUE', 1 ] ]
         else:
             if len(item_columns) == 1:
+                subquery_ast = sub.shallow_copy_of_subquery_ast(is_not_null_checks=not_in)
                 sql_ast = [ 'NOT_IN' if not_in else 'IN', item_columns[0], subquery_ast ]
             elif translator.row_value_syntax:
+                subquery_ast = sub.shallow_copy_of_subquery_ast(is_not_null_checks=not_in)
                 sql_ast = [ 'NOT_IN' if not_in else 'IN', [ 'ROW' ] + item_columns, subquery_ast ]
             else:
+                subquery_ast = sub.shallow_copy_of_subquery_ast()
+                select_ast, from_ast, where_ast = subquery_ast[1:4]
                 in_conditions = [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item_columns, select_ast[1:]) ]
                 if not sub.aggregated: where_ast += in_conditions
                 else:
