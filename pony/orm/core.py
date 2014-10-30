@@ -1123,7 +1123,7 @@ attr_id_counter = itertools.count(1)
 
 class Attribute(object):
     __slots__ = 'nullable', 'is_required', 'is_discriminator', 'is_unique', 'is_part_of_unique_index', \
-                'is_pk', 'is_collection', 'is_relation', 'is_basic', 'is_string', 'is_volatile', \
+                'is_pk', 'is_collection', 'is_relation', 'is_basic', 'is_string', 'is_volatile', 'is_implicit', \
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
@@ -1133,6 +1133,7 @@ class Attribute(object):
     @cut_traceback
     def __init__(attr, py_type, *args, **kwargs):
         if attr.__class__ is Attribute: throw(TypeError, "'Attribute' is abstract type")
+        attr.is_implicit = False
         attr.is_required = isinstance(attr, Required)
         attr.is_discriminator = isinstance(attr, Discriminator)
         attr.is_unique = kwargs.pop('unique', None)
@@ -1614,6 +1615,7 @@ class Discriminator(Required):
             "Cannot create discriminator column for %s automatically "
             "because name 'classtype' is already in use" % entity.__name__)
         attr = Discriminator(str, column='classtype')
+        attr.is_implicit = True
         attr._init_(entity, 'classtype')
         entity._attrs_.append(attr)
         entity._new_attrs_.append(attr)
@@ -2669,6 +2671,7 @@ class EntityMeta(type):
                 " Please create a PrimaryKey attribute for entity %s or rename the 'id' attribute"
                 % (entity.__name__, entity.__name__))
             attr = PrimaryKey(int, auto=True)
+            attr.is_implicit = True
             attr._init_(entity, 'id')
             type.__setattr__(entity, 'id', attr)  # entity.id = attr
             new_attrs.insert(0, attr)

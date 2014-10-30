@@ -650,5 +650,41 @@ class TestAttribute(unittest.TestCase):
             _discriminator_ = 'Z'
             y = Required(str)
 
+    def test_implicit_1(self):
+        db = Database('sqlite', ':memory:')
+        class Foo(db.Entity):
+            name = Required(str)
+            bar = Required("Bar")
+        class Bar(db.Entity):
+            id = PrimaryKey(int)
+            name = Optional(str)
+            foos = Set("Foo")
+        db.generate_mapping(create_tables=True)
+
+        self.assertTrue(Foo.id.is_implicit)
+        self.assertFalse(Foo.name.is_implicit)
+        self.assertFalse(Foo.bar.is_implicit)
+
+        self.assertFalse(Bar.id.is_implicit)
+        self.assertFalse(Bar.name.is_implicit)
+        self.assertFalse(Bar.foos.is_implicit)
+
+    def test_implicit_2(self):
+        db = Database('sqlite', ':memory:')
+        class Foo(db.Entity):
+            x = Required(str)
+        class Bar(Foo):
+            y = Required(str)
+        db.generate_mapping(create_tables=True)
+
+        self.assertTrue(Foo.id.is_implicit)
+        self.assertTrue(Foo.classtype.is_implicit)
+        self.assertFalse(Foo.x.is_implicit)
+
+        self.assertTrue(Bar.id.is_implicit)
+        self.assertTrue(Bar.classtype.is_implicit)
+        self.assertFalse(Bar.x.is_implicit)
+        self.assertFalse(Bar.y.is_implicit)
+
 if __name__ == '__main__':
     unittest.main()
