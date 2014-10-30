@@ -176,7 +176,7 @@ Pony ORM functions used to query the database
 
        distinct(o.date_shipped for o in Order)
 
-   But usually this is not necessary, because Pony adds DISTINCT keyword automatically in an intelligent way.
+   But usually this is not necessary, because Pony adds DISTINCT keyword automatically in an intelligent way. See more information about it in the :ref:`Automatic DISTINCT <automatic_distinct>` section later in this chapter.
 
    Another usage of distinct() function is with the sum() aggregate function - you can write::
 
@@ -267,7 +267,7 @@ Query object methods
 
           select(c.name for c in Customer).distinct()
 
-      But usually this is not necessary, because Pony adds DISTINCT keyword automatically in an intelligent way.
+      But usually this is not necessary, because Pony adds DISTINCT keyword automatically in an intelligent way. See more information about it in the :ref:`Automatic DISTINCT <automatic_distinct>` section later in this chapter.
       The function :py:func:`distinct` does a similar thing.
 
 
@@ -491,10 +491,110 @@ Query object methods
 
       Return the sum of all selected items. Can be applied to the queries which return a single numeric expression only. Example::
 
-       select(o.total_price for o in Order).sum()
+          select(o.total_price for o in Order).sum()
 
       If the query returns no items, the query result will be 0.
 
+   .. py:method:: without_distinct()
+
+      By default Pony tries to avoid duplicates in the query result and intellectually adds the ``DISTINCT`` SQL keyword to a query where it thinks it necessary. If you don't want Pony to add ``DISTINCT`` and get possible duplicates, you can use this method. This method returns a new instance of the Query object, so you can chain it with other query methods::
+
+          select(p.name for p in Person).without_distinct().order_by(Person.name)
+
+      Before Pony Release 0.6 the method ``without_distinct()`` returned query result and not a new query instance.
+
+
+.. _automatic_distinct:
+
+Automatic DISTINCT
+----------------------------------
+
+Pony tries to avoid duplicates in a query result by automatically adding the ``DISTINCT`` SQL keyword where it is necessary, because useful queries with duplicates are very rare. When someone wants to retrieve objects with a specific criteria, they typically don't expect that the same object will be returned more than once. Also, avoiding duplicates makes the query result more predictable: you don't need to filter duplicates out of a query result.
+
+Pony adds the ``DISCTINCT`` keyword only when there could be potential duplicates. Let's consider a couple of examples.
+
+1) Retrieving objects with a criteria:
+
+.. code-block:: python
+
+    select(p for p in Person if p.age > 20 and p.name == "John")
+
+In this example, the query doesn't return duplicates, because the result contains the primary key column of a Person. Since duplicates are not possible here, there is no need in the ``DISTINCT`` keyword, and Pony doesn't add it:
+
+.. code-block:: sql
+
+    SELECT "p"."id", "p"."name", "p"."age"
+    FROM "Person" "p"
+    WHERE "p"."age" > 20
+      AND "p"."name" = 'John'
+
+
+2) Retrieving object attributes:
+
+.. code-block:: python
+
+    select(p.name for p in Person)
+
+The result of this query returns not objects, but its attribute. This query result can contain duplicates, so Pony will add DISTINCT to this query:
+
+.. code-block:: sql
+
+    SELECT DISTINCT "p"."name"
+    FROM "Person" "p"
+
+The result of a such query typically used for a dropdown list, where duplicates are not expected. It is not easy to come up with a real use-case when you want to have duplicates here.
+
+If you need to count persons with the same name, you'd better use an aggregate query:
+
+.. code-block:: python
+
+    select((p.name, count(p)) for p in Person)
+
+But if it is absolutely necessary to get all person's names, including duplicates, you can do so by using the ``without_distinct()`` method of a query:
+
+.. code-block:: python
+
+    select(p.name for p in Person).without_distinct()
+
+3) Retrieving objects using joins:
+
+.. code-block:: python
+
+    select(p for p in Person for c in p.cars if c.make in ("Toyota", "Honda"))
+
+This query can contain duplicates, so Pony eliminates them using ``DISTINCT``:
+
+.. code-block:: sql
+
+    SELECT DISTINCT "p"."id", "p"."name", "p"."age"
+    FROM "Person" "p", "Car" "c"
+    WHERE "c"."make" IN ('Toyota', 'Honda')
+      AND "p"."id" = "c"."owner"
+
+Without using DISTINCT the duplicates are possible, because the query uses two tables (Person and Car), but only one table is used in the SELECT section. The query above returns only persons (and not their cars), and therefore it is typically not desirable to get the same person in the result more than once. We believe that without duplicates the result looks more intuitive.
+
+But if for some reason you don't need to exclude duplicates, you always can add ``.without_disctinct()`` to the query:
+
+.. code-block:: python
+
+    select(p for p in Person for c in p.cars
+             if c.make in ("Toyota", "Honda")).without_distinct()
+
+The user probably would like to see the Person objects duplicates if the query result contains cars owned by each person. In this case the Pony query would be different:
+
+.. code-block:: python
+
+    select((p, c) for p in Person for c in p.cars if c.make in ("Toyota", "Honda"))
+
+And in this case Pony will not add the ``DISTINCT`` keyword to SQL query.
+
+
+To summarize:
+
+1) The principle "all queries do not return duplicates by default" is easy to understand and doesn't lead to surprises.
+2) Such behavior is what most users want in most cases.
+3) Pony doesn't add DISTINCT when a query is not supposed to have duplicates.
+4) The query method ``without_distinct()`` can be used for forcing Pony do not eliminate duplicates.
 
 
 
@@ -535,3 +635,5 @@ Examples:
         FROM "Customer" "c"
         WHERE "c"."name" LIKE 'A%'
         )
+
+
