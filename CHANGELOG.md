@@ -1,3 +1,29 @@
+# Pony ORM Release Candidate 0.6rc3 (2014-10-30)
+
+## Bugfixes
+
+* Fixed #18: Allow to specify `size` and `unsigned` for int type
+* Fixed #77: Discriminate Pony-generated fields in entities: Attribute.is_implicit field added
+* Fixed #83: Entity.get() should issue LIMIT 2 when non-unique criteria used for search
+* Fixed #84: executing db.insert() should turn off autocommit and begin transaction
+* Fixed #88: composite_index(*attrs) added to support non-unique composite indexes
+* Fixed #89: IN / NOT IN clauses works different with empty sequence
+* Fixed #90: Do not automatically add "distinct" if query.first() used
+* Fixed #91: document automatic "distinct" behaviour and also .without_distinct()
+* Fixed #92: without_distinct() and first() do not work together correctly
+
+## New features
+
+* `size` and `unsigned` options for `int` attributes [`link`](http://doc.ponyorm.com/entities.html#max-integer-number-size)
+
+Since the `long` type has gone in Python 3, the `long` type is deprecated in Pony now. Instead of `long` you should use the `int` type and specify the `size` option:
+
+```python
+    class MyEntity(db.Entity):
+        attr1 = Required(long) # deprecated
+        attr2 = Required(int, size=64) # new way for using BIGINT type in the database
+```
+
 # Pony ORM Release Candidate 0.6rc2 (2014-10-10)
 
 ## Bugfixes
