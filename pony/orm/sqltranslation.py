@@ -415,6 +415,7 @@ class SQLTranslator(ASTTranslator):
         sql_ast.append(translator.subquery.from_ast)
 
         conditions = translator.conditions[:]
+        having_conditions = translator.having_conditions[:]
         if is_not_null_checks:
             expr_monad = translator.tree.expr.monad
             if isinstance(expr_monad, translator.ListMonad):
@@ -423,7 +424,10 @@ class SQLTranslator(ASTTranslator):
             for monad in expr_monads:
                 if isinstance(monad, translator.ObjectIterMonad): pass
                 elif isinstance(monad, translator.AttrMonad) and not monad.attr.nullable: pass
-                else: conditions.extend([ 'IS_NOT_NULL', column_ast ] for column_ast in monad.getsql())
+                else:
+                    notnull_conditions = [ [ 'IS_NOT_NULL', column_ast ] for column_ast in monad.getsql() ]
+                    if monad.aggregated: having_conditions.extend(notnull_conditions)
+                    else: conditions.extend(notnull_conditions)
         if conditions:
             sql_ast.append([ 'WHERE' ] + conditions)
 
@@ -433,11 +437,11 @@ class SQLTranslator(ASTTranslator):
             sql_ast.append(group_by)
         else: group_by = None
 
-        if translator.having_conditions:
+        if having_conditions:
             if not group_by: throw(TranslationError,
                 'In order to use aggregated functions such as SUM(), COUNT(), etc., '
                 'query must have grouping columns (i.e. resulting non-aggregated values)')
-            sql_ast.append([ 'HAVING' ] + translator.having_conditions)
+            sql_ast.append([ 'HAVING' ] + having_conditions)
 
         if translator.order: sql_ast.append([ 'ORDER_BY' ] + translator.order)
 

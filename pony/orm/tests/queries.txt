@@ -618,3 +618,51 @@ LIMIT 1
 SELECT DISTINCT "s"."name"
 FROM "Student" "s"
 LIMIT 1 OFFSET 4
+
+>>> select(s for s in Student if (s.group, s.gpa) in select((s2.group, max(s2.gpa)) for s2 in Student))
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "Student" "s"
+WHERE EXISTS (
+    SELECT 1
+    FROM "Student" "s2"
+    GROUP BY "s2"."group"
+    HAVING MAX("s2"."gpa") IS NOT NULL
+      AND "s"."group" = "s2"."group"
+      AND "s"."gpa" = MAX("s2"."gpa")
+    )
+
+PostgreSQL:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "student" "s"
+WHERE ("s"."group", "s"."gpa") IN (
+    SELECT "s2"."group", MAX("s2"."gpa")
+    FROM "student" "s2"
+    GROUP BY "s2"."group"
+    HAVING MAX("s2"."gpa") IS NOT NULL
+    )
+
+>>> select(s for s in Student if (s.group, s.gpa) not in select((s2.group, max(s2.gpa)) for s2 in Student))
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "Student" "s"
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM "Student" "s2"
+    GROUP BY "s2"."group"
+    HAVING MAX("s2"."gpa") IS NOT NULL
+      AND "s"."group" = "s2"."group"
+      AND "s"."gpa" = MAX("s2"."gpa")
+    )
+
+PostgreSQL:
+
+SELECT "s"."id", "s"."name", "s"."dob", "s"."tel", "s"."gpa", "s"."group"
+FROM "student" "s"
+WHERE ("s"."group", "s"."gpa") NOT IN (
+    SELECT "s2"."group", MAX("s2"."gpa")
+    FROM "student" "s2"
+    GROUP BY "s2"."group"
+    HAVING MAX("s2"."gpa") IS NOT NULL
+    )
