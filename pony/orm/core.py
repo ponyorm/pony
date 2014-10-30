@@ -1630,7 +1630,7 @@ class Discriminator(Required):
         for code, cls in attr.code2cls.items():
             if type(code) != discr_type: throw(ERDiagramError,
                 'Discriminator values %r and %r of entities %s and %s have different types'
-                % (code, discr_value, cls, entity))
+                % (code, discr_value, cls.__name__, entity.__name__))
         attr.code2cls[discr_value] = entity
     def validate(attr, val, obj=None, entity=None, from_db=False):
         if from_db: return val

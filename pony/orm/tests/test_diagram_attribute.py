@@ -640,5 +640,15 @@ class TestAttribute(unittest.TestCase):
         db.generate_mapping(create_tables=True)
         self.assertEqual(Qux._root_, Foo)
 
+    @raises_exception(ERDiagramError, "Discriminator values 1 and 'Z' of entities Foo and Bar have different types")
+    def test_inheritance_4(self):
+        db = Database('sqlite', ':memory:')
+        class Foo(db.Entity):
+            _discriminator_ = 1
+            x = Required(str)
+        class Bar(Foo):
+            _discriminator_ = 'Z'
+            y = Required(str)
+
 if __name__ == '__main__':
     unittest.main()
