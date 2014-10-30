@@ -2344,7 +2344,11 @@ class QuerySetMonad(SetMixin, Monad):
             elif translator.row_value_syntax:
                 sql_ast = [ 'NOT_IN' if not_in else 'IN', [ 'ROW' ] + item_columns, subquery_ast ]
             else:
-                where_ast += [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item_columns, select_ast[1:]) ]
+                in_conditions = [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item_columns, select_ast[1:]) ]
+                if not sub.aggregated: where_ast += in_conditions
+                else:
+                    having_ast = find_or_create_having_ast(subquery_ast)
+                    having_ast += in_conditions
                 sql_ast = [ 'NOT_EXISTS' if not_in else 'EXISTS' ] + subquery_ast[2:]
         return translator.BoolExprMonad(translator, sql_ast)
     def nonzero(monad):
@@ -2431,6 +2435,18 @@ class QuerySetMonad(SetMixin, Monad):
         return monad.aggregate('MAX')
     def call_avg(monad):
         return monad.aggregate('AVG')
+
+def find_or_create_having_ast(subquery_ast):
+    groupby_offset = None
+    for i, section in enumerate(subquery_ast):
+        section_name = section[0]
+        if section_name == 'GROUP_BY':
+            groupby_offset = i
+        elif section_name == 'HAVING':
+            return section
+    having_ast = [ 'HAVING' ]
+    subquery_ast.insert(groupby_offset + 1, having_ast)
+    return having_ast
 
 for name, value in items_list(globals()):
     if name.endswith('Monad') or name.endswith('Mixin'):
