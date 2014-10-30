@@ -345,8 +345,8 @@ class SQLTranslator(ASTTranslator):
                     offset += 1
             translator.row_layout = row_layout
             translator.col_names = [ src for func, slice_or_offset, src in translator.row_layout ]
-    def shallow_copy_of_subquery_ast(translator, move_outer_conditions=True):
-        subquery_ast, attr_offsets = translator.construct_sql_ast(distinct=False, is_not_null_checks=True)
+    def shallow_copy_of_subquery_ast(translator, move_outer_conditions=True, is_not_null_checks=False):
+        subquery_ast, attr_offsets = translator.construct_sql_ast(distinct=False, is_not_null_checks=is_not_null_checks)
         assert attr_offsets is None
         assert len(subquery_ast) >= 3 and subquery_ast[0] == 'SELECT'
 
@@ -415,6 +415,7 @@ class SQLTranslator(ASTTranslator):
         sql_ast.append(translator.subquery.from_ast)
 
         conditions = translator.conditions[:]
+        having_conditions = translator.having_conditions[:]
         if is_not_null_checks:
             expr_monad = translator.tree.expr.monad
             if isinstance(expr_monad, translator.ListMonad):
@@ -423,7 +424,10 @@ class SQLTranslator(ASTTranslator):
             for monad in expr_monads:
                 if isinstance(monad, translator.ObjectIterMonad): pass
                 elif isinstance(monad, translator.AttrMonad) and not monad.attr.nullable: pass
-                else: conditions.extend([ 'IS_NOT_NULL', column_ast ] for column_ast in monad.getsql())
+                else:
+                    notnull_conditions = [ [ 'IS_NOT_NULL', column_ast ] for column_ast in monad.getsql() ]
+                    if monad.aggregated: having_conditions.extend(notnull_conditions)
+                    else: conditions.extend(notnull_conditions)
         if conditions:
             sql_ast.append([ 'WHERE' ] + conditions)
 
@@ -433,11 +437,11 @@ class SQLTranslator(ASTTranslator):
             sql_ast.append(group_by)
         else: group_by = None
 
-        if translator.having_conditions:
+        if having_conditions:
             if not group_by: throw(TranslationError,
                 'In order to use aggregated functions such as SUM(), COUNT(), etc., '
                 'query must have grouping columns (i.e. resulting non-aggregated values)')
-            sql_ast.append([ 'HAVING' ] + translator.having_conditions)
+            sql_ast.append([ 'HAVING' ] + having_conditions)
 
         if translator.order: sql_ast.append([ 'ORDER_BY' ] + translator.order)
 
@@ -2303,9 +2307,9 @@ class QuerySetMonad(SetMixin, Monad):
         else: item_columns = item.getsql()
 
         sub = monad.subtranslator
-        subquery_ast = sub.shallow_copy_of_subquery_ast()
-        select_ast, from_ast, where_ast = subquery_ast[1:4]
         if translator.hint_join and len(sub.subquery.from_ast[1]) == 3:
+            subquery_ast = sub.shallow_copy_of_subquery_ast()
+            select_ast, from_ast, where_ast = subquery_ast[1:4]
             subquery = translator.subquery
             if not not_in:
                 translator.distinct = True
@@ -2340,11 +2344,19 @@ class QuerySetMonad(SetMixin, Monad):
             else: sql_ast = [ 'EQ', [ 'VALUE', 1 ], [ 'VALUE', 1 ] ]
         else:
             if len(item_columns) == 1:
+                subquery_ast = sub.shallow_copy_of_subquery_ast(is_not_null_checks=not_in)
                 sql_ast = [ 'NOT_IN' if not_in else 'IN', item_columns[0], subquery_ast ]
             elif translator.row_value_syntax:
+                subquery_ast = sub.shallow_copy_of_subquery_ast(is_not_null_checks=not_in)
                 sql_ast = [ 'NOT_IN' if not_in else 'IN', [ 'ROW' ] + item_columns, subquery_ast ]
             else:
-                where_ast += [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item_columns, select_ast[1:]) ]
+                subquery_ast = sub.shallow_copy_of_subquery_ast()
+                select_ast, from_ast, where_ast = subquery_ast[1:4]
+                in_conditions = [ [ 'EQ', expr1, expr2 ] for expr1, expr2 in izip(item_columns, select_ast[1:]) ]
+                if not sub.aggregated: where_ast += in_conditions
+                else:
+                    having_ast = find_or_create_having_ast(subquery_ast)
+                    having_ast += in_conditions
                 sql_ast = [ 'NOT_EXISTS' if not_in else 'EXISTS' ] + subquery_ast[2:]
         return translator.BoolExprMonad(translator, sql_ast)
     def nonzero(monad):
@@ -2431,6 +2443,18 @@ class QuerySetMonad(SetMixin, Monad):
         return monad.aggregate('MAX')
     def call_avg(monad):
         return monad.aggregate('AVG')
+
+def find_or_create_having_ast(subquery_ast):
+    groupby_offset = None
+    for i, section in enumerate(subquery_ast):
+        section_name = section[0]
+        if section_name == 'GROUP_BY':
+            groupby_offset = i
+        elif section_name == 'HAVING':
+            return section
+    having_ast = [ 'HAVING' ]
+    subquery_ast.insert(groupby_offset + 1, having_ast)
+    return having_ast
 
 for name, value in items_list(globals()):
     if name.endswith('Monad') or name.endswith('Mixin'):
