@@ -84,6 +84,15 @@ If you specify the primary key attribute yourself, it can have any name and type
        email = PrimaryKey(str)
        name = Required(str)
 
+
+Set
+~~~~~~~~~~~~~~~~~~~~~
+
+A ``Set`` attribute represents a collection. You can specify another entity as the type for the ``Set`` attribute. This is the way to define one side for the to-many relationships, which can be many-to-many or one-to-many.
+As of now, Pony doesn’t allow the use of ``Set`` with primitive types. We plan to add this feature later.
+We will talk in more detail about this attribute type in :ref:`Working with relationships <working_with_relationships_ref>` chapter.
+
+
 Composite keys
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -105,12 +114,23 @@ In order to declare a secondary composite key you need to declare attributes as 
 
 In the database ``composite_key(a, b)`` will be represented as the ``UNIQUE ("a", "b")`` constraint.
 
-Set
-~~~~~~~~~~~~~~~~~~~~~
+If have just one attribute, which represents a unique key, you can create such a key by specifying ``unique=True`` by an attribute::
 
-A ``Set`` attribute represents a collection. You can specify another entity as the type for the ``Set`` attribute. This is the way to define one side for the to-many relationships, which can be many-to-many or one-to-many. 
-As of now, Pony doesn’t allow the use of ``Set`` with primitive types. We plan to add this feature later. 
+    class Product(db.Entity):
+        name = Required(str, unique=True)
 
+
+Composite indexes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Using the ``composite_index()`` directive you can create a composite index for speeding up data retrieval. It can combine two or more attributes::
+
+    class Example(db.Entity):
+        a = Required(str)
+        b = Optional(int)
+        composite_index(a, b)
+
+If you want to create a non-unique index for just one column, you can specify the ``index`` option of an attribute. This option is described later in this chapter.
 
 
 Attribute data types

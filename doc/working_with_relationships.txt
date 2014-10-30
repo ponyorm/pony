@@ -1,4 +1,6 @@
-﻿Working with relationships
+﻿.. _working_with_relationships_ref:
+
+Working with relationships
 ======================================
 
 In Pony, an entity can relate to other entities through relationships. Each relationship always has two ends, and defined by two entity attributes::
