@@ -2594,10 +2594,11 @@ class EntityMeta(type):
         for base in all_bases:
             base._subclasses_.add(entity)
         if direct_bases:
-            roots = set(base._root_ for base in direct_bases)
-            if len(roots) > 1: throw(ERDiagramError,
-                'With multiple inheritance of entities, inheritance graph must be diamond-like')
-            root = entity._root_ = roots.pop()
+            root = entity._root_ = direct_bases[0]._root_
+            for base in direct_bases[1:]:
+                if base._root_ is not root: throw(ERDiagramError, 'Multiple inheritance graph must be diamond-like. '
+                    "Entity %s inherits from %s and %s entities which don't have common base class."
+                    % (name, root.__name__, base._root_.__name__))
             if root._discriminator_attr_ is None:
                 assert root._discriminator_ is None
                 Discriminator.create_default_attr(root)

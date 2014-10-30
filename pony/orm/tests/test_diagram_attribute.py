@@ -616,7 +616,8 @@ class TestAttribute(unittest.TestCase):
         self.assertEqual(Bar._discriminator_, 'Bar')
         self.assertEqual(Baz._discriminator_, 'Baz')
 
-    @raises_exception(ERDiagramError, 'With multiple inheritance of entities, inheritance graph must be diamond-like')
+    @raises_exception(ERDiagramError, 'Multiple inheritance graph must be diamond-like. '
+        "Entity Baz inherits from Foo and Bar entities which don't have common base class.")
     def test_inheritance_2(self):
         db = Database('sqlite', ':memory:')
         class Foo(db.Entity):
