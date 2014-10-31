@@ -13,7 +13,7 @@ psycopg2.extras.register_uuid()
 
 from pony.orm import core, dbschema, sqlbuilding, dbapiprovider
 from pony.orm.core import log_orm
-from pony.orm.dbapiprovider import DBAPIProvider, Pool, ProgrammingError, wrap_dbapi_exceptions
+from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import Value
 from pony.converting import timedelta2str
