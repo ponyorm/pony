@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 from pony.py23compat import PY2, imap, basestring, buffer, int_types
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from datetime import datetime, date, time, timedelta
 from uuid import UUID
 
