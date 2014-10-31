@@ -8,13 +8,10 @@ from uuid import UUID
 import warnings
 warnings.filterwarnings('ignore', '^Table.+already exists$', Warning, '^pony\\.orm\\.dbapiprovider$')
 
-try:
-    import MySQLdb as mysql_module
+try: import MySQLdb as mysql_module
 except ImportError:
-    try:
-        import pymysql as mysql_module
-    except ImportError:
-        raise ImportError('No module named MySQLdb or pymysql found')
+    try: import pymysql as mysql_module
+    except ImportError: raise ImportError('No module named MySQLdb or pymysql found')
     else:
         import pymysql.converters as mysql_converters
         from pymysql.constants import FIELD_TYPE, FLAG, CLIENT
