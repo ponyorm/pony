@@ -26,7 +26,7 @@ else:
     from MySQLdb import string_literal
 
 from pony.orm import core, dbschema, dbapiprovider
-from pony.orm.core import log_orm, log_sql, OperationalError
+from pony.orm.core import log_orm, OperationalError
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, get_version_tuple, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import SQLBuilder, join
