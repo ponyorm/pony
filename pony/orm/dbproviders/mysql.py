@@ -10,7 +10,7 @@ warnings.filterwarnings('ignore', '^Table.+already exists$', Warning, '^pony\\.o
 
 try:
     import MySQLdb as mysql_module
-except ImportError as e:
+except ImportError:
     try:
         import pymysql as mysql_module
     except ImportError:
