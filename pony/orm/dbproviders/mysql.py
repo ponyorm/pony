@@ -1,20 +1,17 @@
 from __future__ import absolute_import
 from pony.py23compat import PY2, imap, basestring, buffer, int_types
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from datetime import datetime, date, time, timedelta
 from uuid import UUID
 
 import warnings
 warnings.filterwarnings('ignore', '^Table.+already exists$', Warning, '^pony\\.orm\\.dbapiprovider$')
 
-try:
-    import MySQLdb as mysql_module
-except ImportError as e:
-    try:
-        import pymysql as mysql_module
-    except ImportError:
-        raise ImportError('No module named MySQLdb or pymysql found')
+try: import MySQLdb as mysql_module
+except ImportError:
+    try: import pymysql as mysql_module
+    except ImportError: raise ImportError('No module named MySQLdb or pymysql found')
     else:
         import pymysql.converters as mysql_converters
         from pymysql.constants import FIELD_TYPE, FLAG, CLIENT
@@ -29,7 +26,7 @@ else:
     from MySQLdb import string_literal
 
 from pony.orm import core, dbschema, dbapiprovider
-from pony.orm.core import log_orm, log_sql, OperationalError
+from pony.orm.core import log_orm, OperationalError
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, get_version_tuple, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import SQLBuilder, join

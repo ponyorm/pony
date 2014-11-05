@@ -11,11 +11,11 @@ from psycopg2 import extensions
 import psycopg2.extras
 psycopg2.extras.register_uuid()
 
-from pony.orm import core, dbschema, sqlbuilding, dbapiprovider
+from pony.orm import core, dbschema, dbapiprovider
 from pony.orm.core import log_orm
-from pony.orm.dbapiprovider import DBAPIProvider, Pool, ProgrammingError, wrap_dbapi_exceptions
+from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
-from pony.orm.sqlbuilding import Value
+from pony.orm.sqlbuilding import Value, SQLBuilder
 from pony.converting import timedelta2str
 
 class PGColumn(dbschema.Column):
@@ -36,12 +36,12 @@ class PGValue(Value):
         return Value.__unicode__(self)
     if not PY2: __str__ = __unicode__
 
-class PGSQLBuilder(sqlbuilding.SQLBuilder):
+class PGSQLBuilder(SQLBuilder):
     dialect = 'PostgreSQL'
     make_value = PGValue
     def INSERT(builder, table_name, columns, values, returning=None):
         if not values: result = [ 'INSERT INTO ', builder.quote_name(table_name) ,' DEFAULT VALUES' ]
-        else: result = sqlbuilding.SQLBuilder.INSERT(builder, table_name, columns, values)
+        else: result = SQLBuilder.INSERT(builder, table_name, columns, values)
         if returning is not None: result.extend([' RETURNING ', builder.quote_name(returning) ])
         return result
     def TO_INT(builder, expr):

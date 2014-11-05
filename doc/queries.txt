@@ -550,7 +550,7 @@ If you need to count persons with the same name, you'd better use an aggregate q
 
     select((p.name, count(p)) for p in Person)
 
-But if it is absolutely necessary to get all person's names, including duplicates, you can do so by using the ``without_distinct()`` method of a query:
+But if it is absolutely necessary to get all person's names, including duplicates, you can do so by using the :py:meth:`Query.without_distinct()` method:
 
 .. code-block:: python
 

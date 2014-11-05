@@ -3297,6 +3297,7 @@ class EntityMeta(type):
                     for attr, val in pairs:
                         obj._vals_[attr] = val
                         if attr.reverse: attr.update_reverse(obj, NOT_LOADED, val, undo_funcs)
+                    cache.for_update.add(obj)
                 else: assert False  # pragma: no cover
         if for_update:
             assert cache.in_transaction

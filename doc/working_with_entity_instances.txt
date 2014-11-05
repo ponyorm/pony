@@ -671,3 +671,129 @@ When Pony encounters a parameter within the SQL query it gets the variable value
 Variables and more complex expressions listed after the $ sign, will be automatically calculated and transferred into the query as parameters, which makes SQL-injection impossible. Pony automatically replaces $x in the query string with "?", "%S" or with other paramstyle, used in the current database system.
 
 If the ``$`` sign is used in the query itself (for example, in the name of a system table), it is necessary to write two ``$`` signs in succession: ``$$``.
+
+
+Saving objects in the database
+--------------------------------------
+
+Order of saving objects
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Usually Pony saves objects in the database in the same order as they are created or modified. In some cases Pony can reorder SQL INSERT statements if this is required for saving objects. Let's consider the following example:
+
+.. code-block:: python
+
+    from pony.orm import *
+
+    db = Database('sqlite', ':memory:')
+
+    class TeamMember(db.Entity):
+        name = Required(str)
+        team = Optional('Team')
+
+    class Team(db.Entity):
+        name = Required(str)
+        team_members = Set(TeamMember)
+
+    db.generate_mapping(create_tables=True)
+    sql_debug(True)
+
+    with db_session:
+        john = TeamMember(name='John')
+        mary = TeamMember(name='Mary')
+        team = Team(name='Tenacity', team_members=[john, mary])
+
+In the example above we create two team members and then a team object, assigning the team members to the team. The relationship between TeamMember and Team objects is represented by a column in the TeamMember table:
+
+.. code-block:: sql
+
+    CREATE TABLE "Team" (
+      "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+      "name" TEXT NOT NULL
+    )
+
+    CREATE TABLE "TeamMember" (
+      "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+      "name" TEXT NOT NULL,
+      "team" INTEGER REFERENCES "Team" ("id")
+    )
+
+When Pony creates ``john``, ``mary`` and ``team`` objects, it understands that it should reorder SQL INSERT statements and create an instance of the ``Team`` object in the database first, because it will allow using the team id for saving TeamMember rows:
+
+.. code-block:: sql
+
+    INSERT INTO "Team" ("name") VALUES (?)
+    [u'Tenacity']
+
+    INSERT INTO "TeamMember" ("name", "team") VALUES (?, ?)
+    [u'John', 1]
+
+    INSERT INTO "TeamMember" ("name", "team") VALUES (?, ?)
+    [u'Mary', 1]
+
+
+Cyclic chains during saving objects
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Now let's say we want to have an ability to assign a captain to a team. For this purpose we need to add a couple of attributes to our entities: ``Team.captain`` and reverse attribute ``TeamMember.captain_of``
+
+.. code-block:: python
+
+    class TeamMember(db.Entity):
+        name = Required(str)
+        team = Optional('Team')
+        captain_of = Optional('Team')
+
+    class Team(db.Entity):
+        name = Required(str)
+        team_members = Set(TeamMember)
+        captain = Optional(TeamMember, reverse='captain_of')
+
+And here is the code for creating entity instances with a captain assigned to the team:
+
+.. code-block:: python
+
+    with db_session:
+        john = TeamMember(name='John')
+        mary = TeamMember(name='Mary')
+        team = Team(name='Tenacity', team_members=[john, mary], captain=mary)
+
+When Pony tries to execute the code above it raises the following exception::
+
+    pony.orm.core.CommitException: Cannot save cyclic chain: TeamMember -> Team -> TeamMember
+
+Why did it happen? Let's see. Pony sees that for saving the ``john`` and ``mary`` objects in the database it needs to know the id of the team, and tries to reorder the insert statements. But for saving the ``team`` object with the ``captain`` attribute assigned, it needs to know the id of ``mary`` object. In this case Pony cannot resolve this cyclic chain and raises an exception.
+
+In order to save such a cyclic chain, you have to help Pony by adding the :ref:`flush() <flush_ref>` command:
+
+.. code-block:: python
+
+    with db_session:
+        john = TeamMember(name='John')
+        mary = TeamMember(name='Mary')
+        flush() # saves objects created by this moment in the database
+        team = Team(name='Tenacity', team_members=[john, mary], captain=mary)
+
+In this case, Pony will save ``john`` and ``mary`` objects in the database first and then will issue SQL UPDATE statement for building the relationship with the ``team`` object:
+
+.. code-block:: sql
+
+    INSERT INTO "TeamMember" ("name") VALUES (?)
+    [u'John']
+
+    INSERT INTO "TeamMember" ("name") VALUES (?)
+    [u'Mary']
+
+    INSERT INTO "Team" ("name", "captain") VALUES (?, ?)
+    [u'Tenacity', 2]
+
+    UPDATE "TeamMember"
+    SET "team" = ?
+    WHERE "id" = ?
+    [1, 2]
+
+    UPDATE "TeamMember"
+    SET "team" = ?
+    WHERE "id" = ?
+    [1, 1]
+
