@@ -2649,8 +2649,8 @@ class EntityMeta(type):
             for attr in index.attrs:
                 if attr.entity is not entity: throw(ERDiagramError,
                     'Invalid use of attribute %s in entity %s' % (attr, entity.__name__))
-                key_type = 'primary key' if index.is_pk else 'unique index'
-                if attr.is_collection or attr.is_discriminator or (index.is_pk and not attr.is_required and not attr.auto):
+                key_type = 'primary key' if index.is_pk else 'unique index' if index.is_unique else 'index'
+                if attr.is_collection or (index.is_pk and not attr.is_required and not attr.auto):
                     throw(TypeError, '%s attribute %s cannot be part of %s' % (attr.__class__.__name__, attr, key_type))
                 if isinstance(attr.py_type, type) and issubclass(attr.py_type, float):
                     throw(TypeError, 'Attribute %s of type float cannot be part of %s' % (attr, key_type))

@@ -154,5 +154,14 @@ class TestInheritance(unittest.TestCase):
             _discriminator_ = 'zzz'
             c = Required(int)
 
+    def test_11(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            _discriminator_ = 1
+            a = Discriminator(int)
+            b = Required(int)
+            composite_index(a, b)
+
+
 if __name__ == '__main__':
     unittest.main()
