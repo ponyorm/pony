@@ -1,3 +1,7 @@
+# Pony ORM Release 0.6 (2014-11-05)
+
+* Fixed #94: Aggregated subquery bug fixed
+
 # Pony ORM Release Candidate 0.6rc3 (2014-10-30)
 
 ## Bugfixes
