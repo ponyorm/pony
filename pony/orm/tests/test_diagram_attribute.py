@@ -598,58 +598,6 @@ class TestAttribute(unittest.TestCase):
             next_nodes = Set("Node")
         db.generate_mapping(create_tables=True)
 
-    def test_inheritance_1(self):
-        db = Database('sqlite', ':memory:')
-        class Foo(db.Entity):
-            x = Required(str)
-        class Bar(db.Entity):
-            y = Required(str)
-        class Baz(Bar):
-            z = Required(str)
-        db.generate_mapping(create_tables=True)
-
-        self.assertTrue(Foo._discriminator_attr_ is None)
-        self.assertTrue(Bar._discriminator_attr_ is Bar.classtype)
-        self.assertTrue(Baz._discriminator_attr_ is Bar._discriminator_attr_)
-        self.assertEqual(Bar._discriminator_attr_.py_type, str)
-        self.assertEqual(Foo._discriminator_, None)
-        self.assertEqual(Bar._discriminator_, 'Bar')
-        self.assertEqual(Baz._discriminator_, 'Baz')
-
-    @raises_exception(ERDiagramError, 'Multiple inheritance graph must be diamond-like. '
-        "Entity Baz inherits from Foo and Bar entities which don't have common base class.")
-    def test_inheritance_2(self):
-        db = Database('sqlite', ':memory:')
-        class Foo(db.Entity):
-            x = Required(str)
-        class Bar(db.Entity):
-            y = Required(str)
-        class Baz(Foo, Bar):
-            z = Required(str)
-
-    def test_inheritance_3(self):
-        db = Database('sqlite', ':memory:')
-        class Foo(db.Entity):
-            x = Required(str)
-        class Bar(Foo):
-            y = Required(str)
-        class Baz(Foo):
-            z = Required(str)
-        class Qux(Bar, Baz):
-            q = Required(str)
-        db.generate_mapping(create_tables=True)
-        self.assertEqual(Qux._root_, Foo)
-
-    @raises_exception(ERDiagramError, "Discriminator values 1 and 'Z' of entities Foo and Bar have different types")
-    def test_inheritance_4(self):
-        db = Database('sqlite', ':memory:')
-        class Foo(db.Entity):
-            _discriminator_ = 1
-            x = Required(str)
-        class Bar(Foo):
-            _discriminator_ = 'Z'
-            y = Required(str)
-
     def test_implicit_1(self):
         db = Database('sqlite', ':memory:')
         class Foo(db.Entity):

@@ -8,7 +8,6 @@ pony.orm.core.sql_debug(False)
 
 from pony.orm.tests.test_diagram import *
 from pony.orm.tests.test_diagram_attribute import *
-from pony.orm.tests.test_diagram_inheritance import *
 from pony.orm.tests.test_diagram_keys import *
 from pony.orm.tests.test_mapping import *
 from pony.orm.tests.test_relations_one2one1 import *
@@ -48,6 +47,7 @@ from pony.orm.tests.test_hooks import *
 from pony.orm.tests.test_show import *
 from pony.orm.tests.test_prefetching import *
 from pony.orm.tests.test_indexes import *
+from pony.orm.tests.test_inheritance import *
 
 #from new_tests import *
 
