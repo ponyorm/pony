@@ -13,7 +13,7 @@ from pony.orm.core import *
 #db = Database('oracle', 'presentation/pony@localhost')
 #db = Database('postgres', user='presentation', password='pony', host='localhost', database='cyrillic')
 #db = Database('mysql', user='presentation', passwd='pony', host='localhost', db='test')
-db = Database('sqlite', 'alldatatypes.sqlite', create_db=True)
+#db = Database('sqlite', 'alldatatypes.sqlite', create_db=True)
 
 class AllDataTypes(db.Entity):
     bool1_attr = Required(bool)
@@ -21,8 +21,7 @@ class AllDataTypes(db.Entity):
     str_attr = Required(str)
     long_str_attr = Required(LongStr)
     int_attr = Required(int)
-    if PY2:
-        long_attr = Required(long)
+    long_attr = Required(int, size=64)
     float_attr = Required(float)
     decimal_attr = Required(Decimal)
     buffer_attr = Required(buffer)
@@ -33,8 +32,9 @@ class AllDataTypes(db.Entity):
     uuid_attr = Required(UUID)
 
 sql_debug(True)
-#db.drop_table('alldatatypes', if_exists=True, with_all_data=True)
-db.generate_mapping(create_tables=True)
+db.generate_mapping(check_tables=False)
+AllDataTypes.drop_table(with_all_data=True)
+db.create_tables()
 sql_debug(False)  # sql_debug(True) can result in long delay due to enormous print
 
 if PY2:
@@ -47,6 +47,7 @@ fields = dict(bool1_attr=True,
               str_attr=u"Юникод",
               long_str_attr = u"Юникод" * 100000,
               int_attr=-2000000,
+              long_attr = 123456789123456789,
               float_attr=3.1415927,
               decimal_attr=Decimal("0.1"),
               buffer_attr=buffer(b),
@@ -55,8 +56,6 @@ fields = dict(bool1_attr=True,
               time_attr=datetime.now().time(),
               timedelta_attr=timedelta(hours=1, minutes=1, seconds=1, microseconds=3333),
               uuid_attr=uuid4())
-if PY2:
-    fields['long_attr'] = 123456789123456789
 
 with db_session:
     for obj in AllDataTypes.select():
