@@ -2628,7 +2628,7 @@ class EntityMeta(type):
         entity._base_attrs_ = base_attrs
 
         new_attrs = []
-        for name, attr in entity.__dict__.items():
+        for name, attr in items_list(entity.__dict__):
             if name in base_attrs_dict: throw(ERDiagramError, "Name '%s' hides base attribute %s" % (name,base_attrs_dict[name]))
             if not isinstance(attr, Attribute): continue
             if name.startswith('_') and name.endswith('_'): throw(ERDiagramError,

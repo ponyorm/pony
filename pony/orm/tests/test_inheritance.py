@@ -80,6 +80,16 @@ class TestInheritance(unittest.TestCase):
         class Entity2(Entity1):
             b = PrimaryKey(int)
 
+    def test_6(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Discriminator(str)
+            b = Required(int)
+        class Entity2(Entity1):
+            c = Required(int)
+        
+        self.assertTrue(Entity1._discriminator_attr_ is Entity1.a)
+        self.assertTrue(Entity2._discriminator_attr_ is Entity1.a)
 
 if __name__ == '__main__':
     unittest.main()
