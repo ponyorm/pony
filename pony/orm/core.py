@@ -1632,13 +1632,16 @@ class Discriminator(Required):
         if '_discriminator_' not in entity.__dict__:
             entity._discriminator_ = entity.__name__
         discr_value = entity._discriminator_
-        if discr_value is None:
+        if discr_value is not None:
+            try: entity._discriminator_ = discr_value = attr.validate(discr_value)
+            except ValueError: throw(TypeError,
+                "Incorrect discriminator value is set for %s attribute '%s' of '%s' type: %r"
+                % (entity.__name__, attr.name, attr.py_type.__name__, discr_value))
+        elif issubclass(attr.py_type, basestring):
             discr_value = entity._discriminator_ = entity.__name__
-        discr_type = type(discr_value)
-        for code, cls in attr.code2cls.items():
-            if type(code) != discr_type: throw(ERDiagramError,
-                'Discriminator values %r and %r of entities %s and %s have different types'
-                % (code, discr_value, cls.__name__, entity.__name__))
+        else: throw(TypeError, "Discriminator value for entity %s "
+                               "with custom discriminator column '%s' of '%s' type is not set"
+                               % (entity.__name__, attr.name, attr.py_type.__name__))
         attr.code2cls[discr_value] = entity
     def validate(attr, val, obj=None, entity=None, from_db=False):
         if from_db: return val

@@ -91,5 +91,68 @@ class TestInheritance(unittest.TestCase):
         self.assertTrue(Entity1._discriminator_attr_ is Entity1.a)
         self.assertTrue(Entity2._discriminator_attr_ is Entity1.a)
 
+    @raises_exception(TypeError, "Discriminator value for entity Entity1 "
+                                 "with custom discriminator column 'a' of 'int' type is not set")
+    def test_7(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Discriminator(int)
+            b = Required(int)
+        class Entity2(Entity1):
+            c = Required(int)
+
+    def test_8(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            _discriminator_ = 1
+            a = Discriminator(int)
+            b = Required(int)
+        class Entity2(Entity1):
+            _discriminator_ = 2
+            c = Required(int)
+        db.generate_mapping(create_tables=True)
+        with db_session:
+            x = Entity1(b=10)
+            y = Entity2(b=10, c=20)
+        with db_session:
+            x = Entity1[1]
+            y = Entity1[2]
+            self.assertTrue(isinstance(x, Entity1))
+            self.assertTrue(isinstance(y, Entity2))
+            self.assertEqual(x.a, 1)
+            self.assertEqual(y.a, 2)
+
+    def test_9(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            _discriminator_ = '1'
+            a = Discriminator(int)
+            b = Required(int)
+        class Entity2(Entity1):
+            _discriminator_ = '2'
+            c = Required(int)
+        db.generate_mapping(create_tables=True)
+        with db_session:
+            x = Entity1(b=10)
+            y = Entity2(b=10, c=20)
+        with db_session:
+            x = Entity1[1]
+            y = Entity1[2]
+            self.assertTrue(isinstance(x, Entity1))
+            self.assertTrue(isinstance(y, Entity2))
+            self.assertEqual(x.a, 1)
+            self.assertEqual(y.a, 2)
+
+    @raises_exception(TypeError, "Incorrect discriminator value is set for Entity2 attribute 'a' of 'int' type: 'zzz'")
+    def test_10(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            _discriminator_ = 1
+            a = Discriminator(int)
+            b = Required(int)
+        class Entity2(Entity1):
+            _discriminator_ = 'zzz'
+            c = Required(int)
+
 if __name__ == '__main__':
     unittest.main()
