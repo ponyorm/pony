@@ -178,6 +178,8 @@ class TestInheritance(unittest.TestCase):
         class Entity2(Entity1):
             b = Required(int)
             composite_index(Entity1.a, b)
+        self.assertEqual([ index.attrs for index in Entity2._indexes_ ],
+                          [ (Entity2.id,), (Entity2.a, Entity2.b) ])
 
     def test_14(self):
         db = Database('sqlite', ':memory:')
@@ -187,6 +189,41 @@ class TestInheritance(unittest.TestCase):
         class Entity2(Entity1):
             b = Required(int)
             composite_index(Entity1.d, Entity1.a, b)
+        self.assertEqual([ index.attrs for index in Entity2._indexes_ ],
+                          [ (Entity2.id,), (Entity2.d, Entity2.a, Entity2.b) ])
+
+    def test_15(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            d = Discriminator(str)
+            a = Required(int)
+        class Entity2(Entity1):
+            b = Required(int)
+            composite_index('d', 'id', 'a', 'b')
+        self.assertEqual([ index.attrs for index in Entity2._indexes_ ],
+                         [ (Entity2.id,), (Entity2.d, Entity2.id, Entity2.a, Entity2.b) ])
+
+    def test_16(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required(int)
+        class Entity2(Entity1):
+            b = Required(int)
+            composite_index('classtype', 'id', 'a', b)
+        self.assertEqual([ index.attrs for index in Entity2._indexes_ ],
+                         [ (Entity2.id,), (Entity2.classtype, Entity2.id, Entity2.a, Entity2.b) ])
+
+    def test_17(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            t = Discriminator(str)
+            a = Required(int)
+            b = Required(int)
+            composite_index(t, a, b)
+        class Entity2(Entity1):
+            c = Required(int)
+        self.assertEqual([ index.attrs for index in Entity1._indexes_ ],
+                         [ (Entity1.id,), (Entity1.t, Entity1.a, Entity1.b) ])
 
 if __name__ == '__main__':
     unittest.main()

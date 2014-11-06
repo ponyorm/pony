@@ -1665,13 +1665,20 @@ class Index(object):
     __slots__ = 'entity', 'attrs', 'is_pk', 'is_unique'
     def __init__(index, *attrs, **options):
         index.entity = None
-        index.attrs = attrs
+        index.attrs = list(attrs)
         index.is_pk = options.pop('is_pk', False)
         index.is_unique = options.pop('is_unique', True)
         assert not options
     def _init_(index, entity):
         index.entity = entity
         attrs = index.attrs
+        for i, attr in enumerate(index.attrs):
+            if isinstance(attr, basestring):
+                try: attr = getattr(entity, attr)
+                except AttributeError: throw(AttributeError,
+                    'Entity %s does not have attribute %s' % (entity.__name__, attr))
+                attrs[i] = attr
+        index.attrs = attrs = tuple(attrs)
         for i, attr in enumerate(attrs):
             if not isinstance(attr, Attribute):
                 func_name = 'PrimaryKey' if index.is_pk else 'composite_key' if index.is_unique else 'composite_index'
