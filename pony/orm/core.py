@@ -1662,22 +1662,42 @@ class Discriminator(Required):
         assert False  # pragma: no cover
 
 class Index(object):
-    __slots__ = 'attrs', 'is_pk', 'is_unique'
+    __slots__ = 'entity', 'attrs', 'is_pk', 'is_unique'
     def __init__(index, *attrs, **options):
+        index.entity = None
         index.attrs = attrs
         index.is_pk = options.pop('is_pk', False)
         index.is_unique = options.pop('is_unique', True)
         assert not options
+    def _init_(index, entity):
+        index.entity = entity
+        attrs = index.attrs
+        for i, attr in enumerate(attrs):
+            if not isinstance(attr, Attribute):
+                func_name = 'PrimaryKey' if index.is_pk else 'composite_key' if index.is_unique else 'composite_index'
+                throw(TypeError, '%s() arguments must be attributes. Got: %r' % (func_name, attr))
+            if index.is_unique:
+                attr.is_part_of_unique_index = True
+                attr.composite_keys.append((attrs, i))
+            if not issubclass(entity, attr.entity): throw(ERDiagramError,
+                'Invalid use of attribute %s in entity %s' % (attr, entity.__name__))
+            key_type = 'primary key' if index.is_pk else 'unique index' if index.is_unique else 'index'
+            if attr.is_collection or (index.is_pk and not attr.is_required and not attr.auto):
+                throw(TypeError, '%s attribute %s cannot be part of %s' % (attr.__class__.__name__, attr, key_type))
+            if isinstance(attr.py_type, type) and issubclass(attr.py_type, float):
+                throw(TypeError, 'Attribute %s of type float cannot be part of %s' % (attr, key_type))
+            if index.is_pk and attr.is_volatile:
+                throw(TypeError, 'Volatile attribute %s cannot be part of primary key' % attr)
+            if not attr.is_required:
+                if attr.nullable is False:
+                    throw(TypeError, 'Optional attribute %s must be nullable, because it is part of composite key' % attr)
+                attr.nullable = True
+                if attr.is_string and attr.default == '' and not hasattr(attr, 'original_default'):
+                    attr.default = None
 
 def _define_index(func_name, attrs, is_unique=False):
     if len(attrs) < 2: throw(TypeError,
         '%s() must receive at least two attributes as arguments' % func_name)
-    if is_unique:
-        for i, attr in enumerate(attrs):
-            if not isinstance(attr, Attribute): throw(TypeError,
-                '%s() arguments must be attributes. Got: %r' % (func_name, attr))
-            attr.is_part_of_unique_index = True
-            attr.composite_keys.append((attrs, i))
     cls_dict = sys._getframe(2).f_locals
     indexes = cls_dict.setdefault('_indexes_', [])
     indexes.append(Index(*attrs, is_pk=False, is_unique=is_unique))
@@ -2645,24 +2665,7 @@ class EntityMeta(type):
         indexes = entity._indexes_ = entity.__dict__.get('_indexes_', [])
         for attr in new_attrs:
             if attr.is_unique: indexes.append(Index(attr, is_pk=isinstance(attr, PrimaryKey)))
-        for index in indexes:
-            for attr in index.attrs:
-                if not issubclass(entity, attr.entity): throw(ERDiagramError,
-                    'Invalid use of attribute %s in entity %s' % (attr, entity.__name__))
-                key_type = 'primary key' if index.is_pk else 'unique index' if index.is_unique else 'index'
-                if attr.is_collection or (index.is_pk and not attr.is_required and not attr.auto):
-                    throw(TypeError, '%s attribute %s cannot be part of %s' % (attr.__class__.__name__, attr, key_type))
-                if isinstance(attr.py_type, type) and issubclass(attr.py_type, float):
-                    throw(TypeError, 'Attribute %s of type float cannot be part of %s' % (attr, key_type))
-                if index.is_pk and attr.is_volatile:
-                    throw(TypeError, 'Volatile attribute %s cannot be part of primary key' % attr)
-                if not attr.is_required:
-                    if attr.nullable is False:
-                        throw(TypeError, 'Optional attribute %s must be nullable, because it is part of composite key' % attr)
-                    attr.nullable = True
-                    if attr.is_string and attr.default == '' and not hasattr(attr, 'original_default'):
-                        attr.default = None
-
+        for index in indexes: index._init_(entity)
         primary_keys = set(index.attrs for index in indexes if index.is_pk)
         if direct_bases:
             if primary_keys: throw(ERDiagramError, 'Primary key cannot be redefined in derived classes')
@@ -2685,7 +2688,9 @@ class EntityMeta(type):
             type.__setattr__(entity, 'id', attr)  # entity.id = attr
             new_attrs.insert(0, attr)
             pk_attrs = (attr,)
-            indexes.insert(0, Index(attr, is_pk=True))
+            index = Index(attr, is_pk=True)
+            indexes.insert(0, index)
+            index._init_(entity)
         else: pk_attrs = primary_keys.pop()
         for i, attr in enumerate(pk_attrs): attr.pk_offset = i
         entity._pk_columns_ = None
