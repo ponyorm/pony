@@ -2647,7 +2647,7 @@ class EntityMeta(type):
             if attr.is_unique: indexes.append(Index(attr, is_pk=isinstance(attr, PrimaryKey)))
         for index in indexes:
             for attr in index.attrs:
-                if attr.entity is not entity: throw(ERDiagramError,
+                if not issubclass(entity, attr.entity): throw(ERDiagramError,
                     'Invalid use of attribute %s in entity %s' % (attr, entity.__name__))
                 key_type = 'primary key' if index.is_pk else 'unique index' if index.is_unique else 'index'
                 if attr.is_collection or (index.is_pk and not attr.is_required and not attr.auto):

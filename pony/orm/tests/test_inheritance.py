@@ -162,6 +162,31 @@ class TestInheritance(unittest.TestCase):
             b = Required(int)
             composite_index(a, b)
 
+    @raises_exception(ERDiagramError, 'Invalid use of attribute Entity1.a in entity Entity2')
+    def test_12(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required(int)
+        class Entity2(db.Entity):
+            b = Required(int)
+            composite_index(Entity1.a, b)
+
+    def test_13(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required(int)
+        class Entity2(Entity1):
+            b = Required(int)
+            composite_index(Entity1.a, b)
+
+    def test_14(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            d = Discriminator(str)
+            a = Required(int)
+        class Entity2(Entity1):
+            b = Required(int)
+            composite_index(Entity1.d, Entity1.a, b)
 
 if __name__ == '__main__':
     unittest.main()
