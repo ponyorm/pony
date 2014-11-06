@@ -20,12 +20,12 @@ class TestOneToOne(unittest.TestCase):
         with db_session:
             db.execute('delete from male')
             db.execute('delete from female')
-            db.insert('female', id=1, name='F1')
-            db.insert('female', id=2, name='F2')
-            db.insert('female', id=3, name='F3')
-            db.insert('male', id=1, name='M1', wife=1)
-            db.insert('male', id=2, name='M2', wife=2)
-            db.insert('male', id=3, name='M3', wife=None)
+            db.insert(Female, id=1, name='F1')
+            db.insert(Female, id=2, name='F2')
+            db.insert(Female, id=3, name='F3')
+            db.insert(Male, id=1, name='M1', wife=1)
+            db.insert(Male, id=2, name='M2', wife=2)
+            db.insert(Male, id=3, name='M3', wife=None)
         db_session.__enter__()
 
     def tearDown(self):

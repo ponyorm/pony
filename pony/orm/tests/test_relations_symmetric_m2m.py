@@ -17,15 +17,15 @@ class TestSymmetric(unittest.TestCase):
         with db_session:
             for p in Person.select(): p.delete()
             commit()
-            db.insert('person', id=1, name='A')
-            db.insert('person', id=2, name='B')
-            db.insert('person', id=3, name='C')
-            db.insert('person', id=4, name='D')
-            db.insert('person', id=5, name='E')
-            db.insert('person_friends', person=1, person_2=2)
-            db.insert('person_friends', person=2, person_2=1)
-            db.insert('person_friends', person=1, person_2=3)
-            db.insert('person_friends', person=3, person_2=1)
+            db.insert(Person, id=1, name='A')
+            db.insert(Person, id=2, name='B')
+            db.insert(Person, id=3, name='C')
+            db.insert(Person, id=4, name='D')
+            db.insert(Person, id=5, name='E')
+            db.insert(Person.friends, person=1, person_2=2)
+            db.insert(Person.friends, person=2, person_2=1)
+            db.insert(Person.friends, person=1, person_2=3)
+            db.insert(Person.friends, person=3, person_2=1)
         rollback()
         db_session.__enter__()
     def tearDown(self):
@@ -74,7 +74,7 @@ class TestSymmetric(unittest.TestCase):
 
     def test3a(self):
         db.execute('delete from person_friends')
-        db.insert('person_friends', person=1, person_2=2)
+        db.insert(Person.friends, person=1, person_2=2)
         p1 = Person[1]
         p2 = Person[2]
         p2_friends = set(p2.friends)
@@ -86,7 +86,7 @@ class TestSymmetric(unittest.TestCase):
         else: self.fail()
     def test3b(self):
         db.execute('delete from person_friends')
-        db.insert('person_friends', person=1, person_2=2)
+        db.insert(Person.friends, person=1, person_2=2)
         p1 = Person[1]
         p2 = Person[2]
         p1_friends = set(p1.friends)

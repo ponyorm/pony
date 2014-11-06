@@ -560,8 +560,8 @@ class Database(object):
         return bool(result)
     @cut_traceback
     def insert(database, table_name, returning=None, **kwargs):
+        table_name = database._get_table_name(table_name)
         if database.provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
-        table_name = table_name[:]  # table_name = templating.plainstr(table_name)
         query_key = (table_name,) + tuple(kwargs)  # keys are not sorted deliberately!!
         if returning is not None: query_key = query_key + (returning,)
         cached_sql = database._insert_cache.get(query_key)
@@ -776,16 +776,24 @@ class Database(object):
     @cut_traceback
     @db_session(ddl=True)
     def drop_table(database, table_name, if_exists=False, with_all_data=False):
+        table_name = database._get_table_name(table_name)
+        database._drop_tables([ table_name ], if_exists, with_all_data, try_normalized=True)
+    def _get_table_name(database, table_name):
         if isinstance(table_name, EntityMeta):
             entity = table_name
             table_name = entity._table_
         elif isinstance(table_name, Set):
             attr = table_name
-            if attr.reverse.is_collection: table_name = attr.table
-            else: table_name = attr.entity._table_
+            table_name = attr.table if attr.reverse.is_collection else attr.entity._table_
         elif isinstance(table_name, Attribute): throw(TypeError,
             "Attribute %s is not Set and doesn't have corresponding table" % table_name)
-        database._drop_tables([ table_name ], if_exists, with_all_data, try_normalized=True)
+        elif table_name is None:
+            if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
+            else: throw(TypeError, 'Table name cannot be None')
+        elif not isinstance(table_name, basestring):
+            throw(TypeError, 'Invalid table name: %r' % table_name)
+        table_name = table_name[:]  # table_name = templating.plainstr(table_name)
+        return table_name
     @cut_traceback
     @db_session(ddl=True)
     def drop_all_tables(database, with_all_data=False):
@@ -797,9 +805,7 @@ class Database(object):
         provider = database.provider
         existed_tables = []
         for table_name in table_names:
-            if table_name is None:
-                if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
-                else: throw(TypeError, 'Table name cannot be None')
+            table_name = database._get_table_name(table_name)
             if provider.table_exists(connection, table_name): existed_tables.append(table_name)
             elif not if_exists:
                 if try_normalized:

@@ -32,10 +32,10 @@ class TestRawSql(unittest.TestCase):
         with db_session:
             db.execute('delete from Student')
             db.execute('delete from "Group"')
-            db.insert('Group', dept=44, grad_year=1999)
-            db.insert('Student', id=1, name='A', age=30, group_dept=44, group_grad_year=1999)
-            db.insert('Student', id=2, name='B', age=25, group_dept=44, group_grad_year=1999)
-            db.insert('Student', id=3, name='C', age=20, group_dept=44, group_grad_year=1999)
+            db.insert(Group, dept=44, grad_year=1999)
+            db.insert(Student, id=1, name='A', age=30, group_dept=44, group_grad_year=1999)
+            db.insert(Student, id=2, name='B', age=25, group_dept=44, group_grad_year=1999)
+            db.insert(Student, id=3, name='C', age=20, group_dept=44, group_grad_year=1999)
         rollback()
         db_session.__enter__()
 
