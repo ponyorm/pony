@@ -50,7 +50,7 @@ def is_seed(entity, pk):
     cache = entity._database_._get_cache()
     return pk in [ obj._pk_ for obj in cache.seeds[entity._pk_attrs_] ]
 
-class TestInheritance(unittest.TestCase):
+class TestFindInCache(unittest.TestCase):
     def setUp(self):
         rollback()
         db_session.__enter__()

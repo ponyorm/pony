@@ -11,7 +11,7 @@ class TestIndexes(unittest.TestCase):
         class Person(db.Entity):
             name = Required(str)
             age = Required(int)
-            composite_key(name, age)
+            composite_key(name, 'age')
         db.generate_mapping(create_tables=True)
 
         [ i1, i2 ] = Person._indexes_
@@ -35,7 +35,7 @@ class TestIndexes(unittest.TestCase):
         class Person(db.Entity):
             name = Required(str)
             age = Required(int)
-            composite_index(name, age)
+            composite_index(name, 'age')
         db.generate_mapping(create_tables=True)
 
         [ i1, i2 ] = Person._indexes_

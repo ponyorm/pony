@@ -560,8 +560,8 @@ class Database(object):
         return bool(result)
     @cut_traceback
     def insert(database, table_name, returning=None, **kwargs):
+        table_name = database._get_table_name(table_name)
         if database.provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
-        table_name = table_name[:]  # table_name = templating.plainstr(table_name)
         query_key = (table_name,) + tuple(kwargs)  # keys are not sorted deliberately!!
         if returning is not None: query_key = query_key + (returning,)
         cached_sql = database._insert_cache.get(query_key)
@@ -776,16 +776,24 @@ class Database(object):
     @cut_traceback
     @db_session(ddl=True)
     def drop_table(database, table_name, if_exists=False, with_all_data=False):
+        table_name = database._get_table_name(table_name)
+        database._drop_tables([ table_name ], if_exists, with_all_data, try_normalized=True)
+    def _get_table_name(database, table_name):
         if isinstance(table_name, EntityMeta):
             entity = table_name
             table_name = entity._table_
         elif isinstance(table_name, Set):
             attr = table_name
-            if attr.reverse.is_collection: table_name = attr.table
-            else: table_name = attr.entity._table_
+            table_name = attr.table if attr.reverse.is_collection else attr.entity._table_
         elif isinstance(table_name, Attribute): throw(TypeError,
             "Attribute %s is not Set and doesn't have corresponding table" % table_name)
-        database._drop_tables([ table_name ], if_exists, with_all_data, try_normalized=True)
+        elif table_name is None:
+            if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
+            else: throw(TypeError, 'Table name cannot be None')
+        elif not isinstance(table_name, basestring):
+            throw(TypeError, 'Invalid table name: %r' % table_name)
+        table_name = table_name[:]  # table_name = templating.plainstr(table_name)
+        return table_name
     @cut_traceback
     @db_session(ddl=True)
     def drop_all_tables(database, with_all_data=False):
@@ -797,9 +805,7 @@ class Database(object):
         provider = database.provider
         existed_tables = []
         for table_name in table_names:
-            if table_name is None:
-                if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
-                else: throw(TypeError, 'Table name cannot be None')
+            table_name = database._get_table_name(table_name)
             if provider.table_exists(connection, table_name): existed_tables.append(table_name)
             elif not if_exists:
                 if try_normalized:
@@ -1626,13 +1632,16 @@ class Discriminator(Required):
         if '_discriminator_' not in entity.__dict__:
             entity._discriminator_ = entity.__name__
         discr_value = entity._discriminator_
-        if discr_value is None:
+        if discr_value is not None:
+            try: entity._discriminator_ = discr_value = attr.validate(discr_value)
+            except ValueError: throw(TypeError,
+                "Incorrect discriminator value is set for %s attribute '%s' of '%s' type: %r"
+                % (entity.__name__, attr.name, attr.py_type.__name__, discr_value))
+        elif issubclass(attr.py_type, basestring):
             discr_value = entity._discriminator_ = entity.__name__
-        discr_type = type(discr_value)
-        for code, cls in attr.code2cls.items():
-            if type(code) != discr_type: throw(ERDiagramError,
-                'Discriminator values %r and %r of entities %s and %s have different types'
-                % (code, discr_value, cls.__name__, entity.__name__))
+        else: throw(TypeError, "Discriminator value for entity %s "
+                               "with custom discriminator column '%s' of '%s' type is not set"
+                               % (entity.__name__, attr.name, attr.py_type.__name__))
         attr.code2cls[discr_value] = entity
     def validate(attr, val, obj=None, entity=None, from_db=False):
         if from_db: return val
@@ -1653,22 +1662,49 @@ class Discriminator(Required):
         assert False  # pragma: no cover
 
 class Index(object):
-    __slots__ = 'attrs', 'is_pk', 'is_unique'
+    __slots__ = 'entity', 'attrs', 'is_pk', 'is_unique'
     def __init__(index, *attrs, **options):
-        index.attrs = attrs
+        index.entity = None
+        index.attrs = list(attrs)
         index.is_pk = options.pop('is_pk', False)
         index.is_unique = options.pop('is_unique', True)
         assert not options
+    def _init_(index, entity):
+        index.entity = entity
+        attrs = index.attrs
+        for i, attr in enumerate(index.attrs):
+            if isinstance(attr, basestring):
+                try: attr = getattr(entity, attr)
+                except AttributeError: throw(AttributeError,
+                    'Entity %s does not have attribute %s' % (entity.__name__, attr))
+                attrs[i] = attr
+        index.attrs = attrs = tuple(attrs)
+        for i, attr in enumerate(attrs):
+            if not isinstance(attr, Attribute):
+                func_name = 'PrimaryKey' if index.is_pk else 'composite_key' if index.is_unique else 'composite_index'
+                throw(TypeError, '%s() arguments must be attributes. Got: %r' % (func_name, attr))
+            if index.is_unique:
+                attr.is_part_of_unique_index = True
+                attr.composite_keys.append((attrs, i))
+            if not issubclass(entity, attr.entity): throw(ERDiagramError,
+                'Invalid use of attribute %s in entity %s' % (attr, entity.__name__))
+            key_type = 'primary key' if index.is_pk else 'unique index' if index.is_unique else 'index'
+            if attr.is_collection or (index.is_pk and not attr.is_required and not attr.auto):
+                throw(TypeError, '%s attribute %s cannot be part of %s' % (attr.__class__.__name__, attr, key_type))
+            if isinstance(attr.py_type, type) and issubclass(attr.py_type, float):
+                throw(TypeError, 'Attribute %s of type float cannot be part of %s' % (attr, key_type))
+            if index.is_pk and attr.is_volatile:
+                throw(TypeError, 'Volatile attribute %s cannot be part of primary key' % attr)
+            if not attr.is_required:
+                if attr.nullable is False:
+                    throw(TypeError, 'Optional attribute %s must be nullable, because it is part of composite key' % attr)
+                attr.nullable = True
+                if attr.is_string and attr.default == '' and not hasattr(attr, 'original_default'):
+                    attr.default = None
 
 def _define_index(func_name, attrs, is_unique=False):
     if len(attrs) < 2: throw(TypeError,
         '%s() must receive at least two attributes as arguments' % func_name)
-    if is_unique:
-        for i, attr in enumerate(attrs):
-            if not isinstance(attr, Attribute): throw(TypeError,
-                '%s() arguments must be attributes. Got: %r' % (func_name, attr))
-            attr.is_part_of_unique_index = True
-            attr.composite_keys.append((attrs, i))
     cls_dict = sys._getframe(2).f_locals
     indexes = cls_dict.setdefault('_indexes_', [])
     indexes.append(Index(*attrs, is_pk=False, is_unique=is_unique))
@@ -2622,7 +2658,7 @@ class EntityMeta(type):
         entity._base_attrs_ = base_attrs
 
         new_attrs = []
-        for name, attr in entity.__dict__.items():
+        for name, attr in items_list(entity.__dict__):
             if name in base_attrs_dict: throw(ERDiagramError, "Name '%s' hides base attribute %s" % (name,base_attrs_dict[name]))
             if not isinstance(attr, Attribute): continue
             if name.startswith('_') and name.endswith('_'): throw(ERDiagramError,
@@ -2636,24 +2672,7 @@ class EntityMeta(type):
         indexes = entity._indexes_ = entity.__dict__.get('_indexes_', [])
         for attr in new_attrs:
             if attr.is_unique: indexes.append(Index(attr, is_pk=isinstance(attr, PrimaryKey)))
-        for index in indexes:
-            for attr in index.attrs:
-                if attr.entity is not entity: throw(ERDiagramError,
-                    'Invalid use of attribute %s in entity %s' % (attr, entity.__name__))
-                key_type = 'primary key' if index.is_pk else 'unique index'
-                if attr.is_collection or attr.is_discriminator or (index.is_pk and not attr.is_required and not attr.auto):
-                    throw(TypeError, '%s attribute %s cannot be part of %s' % (attr.__class__.__name__, attr, key_type))
-                if isinstance(attr.py_type, type) and issubclass(attr.py_type, float):
-                    throw(TypeError, 'Attribute %s of type float cannot be part of %s' % (attr, key_type))
-                if index.is_pk and attr.is_volatile:
-                    throw(TypeError, 'Volatile attribute %s cannot be part of primary key' % attr)
-                if not attr.is_required:
-                    if attr.nullable is False:
-                        throw(TypeError, 'Optional attribute %s must be nullable, because it is part of composite key' % attr)
-                    attr.nullable = True
-                    if attr.is_string and attr.default == '' and not hasattr(attr, 'original_default'):
-                        attr.default = None
-
+        for index in indexes: index._init_(entity)
         primary_keys = set(index.attrs for index in indexes if index.is_pk)
         if direct_bases:
             if primary_keys: throw(ERDiagramError, 'Primary key cannot be redefined in derived classes')
@@ -2676,7 +2695,9 @@ class EntityMeta(type):
             type.__setattr__(entity, 'id', attr)  # entity.id = attr
             new_attrs.insert(0, attr)
             pk_attrs = (attr,)
-            indexes.insert(0, Index(attr, is_pk=True))
+            index = Index(attr, is_pk=True)
+            indexes.insert(0, index)
+            index._init_(entity)
         else: pk_attrs = primary_keys.pop()
         for i, attr in enumerate(pk_attrs): attr.pk_offset = i
         entity._pk_columns_ = None

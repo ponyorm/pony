@@ -10,23 +10,20 @@ class Person(db.Entity):
     friends = Set('Person', reverse='friends')
 db.generate_mapping(create_tables=True)
 
-
-class TestSymmetric(unittest.TestCase):
+class TestSymmetricM2M(unittest.TestCase):
     def setUp(self):
-        rollback()
         with db_session:
             for p in Person.select(): p.delete()
-            commit()
-            db.insert('person', id=1, name='A')
-            db.insert('person', id=2, name='B')
-            db.insert('person', id=3, name='C')
-            db.insert('person', id=4, name='D')
-            db.insert('person', id=5, name='E')
-            db.insert('person_friends', person=1, person_2=2)
-            db.insert('person_friends', person=2, person_2=1)
-            db.insert('person_friends', person=1, person_2=3)
-            db.insert('person_friends', person=3, person_2=1)
-        rollback()
+        with db_session:
+            db.insert(Person, id=1, name='A')
+            db.insert(Person, id=2, name='B')
+            db.insert(Person, id=3, name='C')
+            db.insert(Person, id=4, name='D')
+            db.insert(Person, id=5, name='E')
+            db.insert(Person.friends, person=1, person_2=2)
+            db.insert(Person.friends, person=2, person_2=1)
+            db.insert(Person.friends, person=1, person_2=3)
+            db.insert(Person.friends, person=3, person_2=1)
         db_session.__enter__()
     def tearDown(self):
         rollback()
@@ -48,7 +45,6 @@ class TestSymmetric(unittest.TestCase):
         commit()
         rows = db.select("* from person_friends order by person, person_2")
         self.assertEqual(rows, [(1,2), (1,3), (1,4), (2,1), (3,1), (4,1)])
-
     def test2a(self):
         p1 = Person[1]
         p2 = Person[2]
@@ -71,30 +67,27 @@ class TestSymmetric(unittest.TestCase):
         commit()
         rows = db.select("* from person_friends order by person, person_2")
         self.assertEqual(rows, [(1,3), (3,1)])
-
     def test3a(self):
         db.execute('delete from person_friends')
-        db.insert('person_friends', person=1, person_2=2)
+        db.insert(Person.friends, person=1, person_2=2)
         p1 = Person[1]
         p2 = Person[2]
         p2_friends = set(p2.friends)
         self.assertEqual(p2_friends, set())
-        try:
-            p1_friends = set(p1.friends)
-        except UnrepeatableReadError as e:
-            self.assertEqual(e.args[0], "Phantom object Person[1] appeared in collection Person[2].friends")
+        try: p1_friends = set(p1.friends)
+        except UnrepeatableReadError as e: self.assertEqual(e.args[0],
+            "Phantom object Person[1] appeared in collection Person[2].friends")
         else: self.fail()
     def test3b(self):
         db.execute('delete from person_friends')
-        db.insert('person_friends', person=1, person_2=2)
+        db.insert(Person.friends, person=1, person_2=2)
         p1 = Person[1]
         p2 = Person[2]
         p1_friends = set(p1.friends)
         self.assertEqual(p1_friends, set([p2]))
-        try:
-            p2_friends = set(p2.friends)
-        except UnrepeatableReadError as e:
-            self.assertEqual(e.args[0], "Phantom object Person[1] disappeared from collection Person[2].friends")
+        try: p2_friends = set(p2.friends)
+        except UnrepeatableReadError as e: self.assertEqual(e.args[0],
+            "Phantom object Person[1] disappeared from collection Person[2].friends")
         else: self.fail()
 
 if __name__ == '__main__':
