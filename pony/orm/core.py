@@ -4358,11 +4358,11 @@ class Query(object):
             entity = obj.__class__
             if obj in cache.seeds[entity._pk_attrs_]: obj._load_()
 
-            attrs_to_prefetch = attrs_to_prefetch_dict[entity]
             all_attrs_to_prefetch = prefetching_attrs_cache.get(entity)
             if all_attrs_to_prefetch is None:
                 all_attrs_to_prefetch = []
                 append = all_attrs_to_prefetch.append
+                attrs_to_prefetch = attrs_to_prefetch_dict[entity]
                 for attr in obj._attrs_:
                     if attr.is_collection:
                         if attr in attrs_to_prefetch: append(attr)
