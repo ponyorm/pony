@@ -1887,11 +1887,6 @@ class Set(Collection):
         if cache is not database._get_cache():
             throw(TransactionError, "Transaction of object %s belongs to different thread")
 
-        counter = cache.collection_statistics.setdefault(attr, 0)
-        nplus1_threshold = attr.nplus1_threshold
-        prefetching = options.PREFETCHING and not attr.lazy and nplus1_threshold is not None \
-                      and (counter >= nplus1_threshold or cache.noflush_counter)
-
         if items:
             if not reverse.is_collection:
                 items = set(item for item in items if reverse not in item._vals_)
@@ -1918,6 +1913,11 @@ class Set(Collection):
             setdata |= loaded_items
             reverse.db_reverse_add(loaded_items, obj)
             return setdata
+
+        counter = cache.collection_statistics.setdefault(attr, 0)
+        nplus1_threshold = attr.nplus1_threshold
+        prefetching = options.PREFETCHING and not attr.lazy and nplus1_threshold is not None \
+                      and (counter >= nplus1_threshold or cache.noflush_counter)
 
         objects = [ obj ]
         setdata_list = [ setdata ]
