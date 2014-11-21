@@ -4375,7 +4375,9 @@ class Query(object):
             for attr in all_attrs_to_prefetch:
                 if attr.is_collection:
                     if not isinstance(attr, Set): throw(NotImplementedError)
-                    for obj2 in attr.load(obj):
+                    setdata = obj._vals_.get(attr)
+                    if setdata is None or not setdata.is_fully_loaded: setdata = attr.load(obj)
+                    for obj2 in setdata:
                         if obj2 not in object_set:
                             add_to_object_set(obj2)
                             append_to_object_list(obj2)
