@@ -3609,11 +3609,10 @@ class Entity(with_metaclass(EntityMeta)):
                                      'Phantom object %s disappeared' % safe_repr(obj))
     def _db_set_(obj, avdict, unpickling=False):
         assert obj._status_ not in created_or_deleted_statuses
-        if not avdict: return
-
         cache = obj._session_cache_
         assert cache.is_alive
         cache.seeds[obj._pk_attrs_].discard(obj)
+        if not avdict: return
 
         get_val = obj._vals_.get
         get_dbval = obj._dbvals_.get
@@ -4358,11 +4357,11 @@ class Query(object):
             entity = obj.__class__
             if obj in cache.seeds[entity._pk_attrs_]: obj._load_()
 
-            attrs_to_prefetch = attrs_to_prefetch_dict[entity]
             all_attrs_to_prefetch = prefetching_attrs_cache.get(entity)
             if all_attrs_to_prefetch is None:
                 all_attrs_to_prefetch = []
                 append = all_attrs_to_prefetch.append
+                attrs_to_prefetch = attrs_to_prefetch_dict[entity]
                 for attr in obj._attrs_:
                     if attr.is_collection:
                         if attr in attrs_to_prefetch: append(attr)
@@ -4375,7 +4374,9 @@ class Query(object):
             for attr in all_attrs_to_prefetch:
                 if attr.is_collection:
                     if not isinstance(attr, Set): throw(NotImplementedError)
-                    for obj2 in attr.load(obj):
+                    setdata = obj._vals_.get(attr)
+                    if setdata is None or not setdata.is_fully_loaded: setdata = attr.load(obj)
+                    for obj2 in setdata:
                         if obj2 not in object_set:
                             add_to_object_set(obj2)
                             append_to_object_list(obj2)
