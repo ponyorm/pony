@@ -3609,11 +3609,10 @@ class Entity(with_metaclass(EntityMeta)):
                                      'Phantom object %s disappeared' % safe_repr(obj))
     def _db_set_(obj, avdict, unpickling=False):
         assert obj._status_ not in created_or_deleted_statuses
-        if not avdict: return
-
         cache = obj._session_cache_
         assert cache.is_alive
         cache.seeds[obj._pk_attrs_].discard(obj)
+        if not avdict: return
 
         get_val = obj._vals_.get
         get_dbval = obj._dbvals_.get
