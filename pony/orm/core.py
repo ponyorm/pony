@@ -3086,6 +3086,7 @@ class EntityMeta(type):
         select_list = [ 'DISTINCT' ] if distinct else [ 'ALL' ]
         root = entity._root_
         for attr in chain(root._attrs_, root._subclass_attrs_):
+            if not issubclass(attr.entity, entity) and not issubclass(entity, attr.entity): continue
             if attr.is_collection: continue
             if not attr.columns: continue
             if attr.lazy and attr not in query_attrs: continue
