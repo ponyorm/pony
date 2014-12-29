@@ -2998,6 +2998,7 @@ class EntityMeta(type):
                 throw(TypeError, 'Collection attribute %s cannot be specified as search criteria' % attr)
         obj, unique = entity._find_in_cache_(pkval, avdict, for_update)
         if obj is None: obj = entity._find_in_db_(avdict, unique, for_update, nowait)
+        if obj is None: throw(ObjectNotFound, entity, pkval)
         return obj
     def _find_in_cache_(entity, pkval, avdict, for_update=False):
         cache = entity._database_._get_cache()
