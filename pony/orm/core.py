@@ -1887,11 +1887,6 @@ class Set(Collection):
         if cache is not database._get_cache():
             throw(TransactionError, "Transaction of object %s belongs to different thread")
 
-        counter = cache.collection_statistics.setdefault(attr, 0)
-        nplus1_threshold = attr.nplus1_threshold
-        prefetching = options.PREFETCHING and not attr.lazy and nplus1_threshold is not None \
-                      and (counter >= nplus1_threshold or cache.noflush_counter)
-
         if items:
             if not reverse.is_collection:
                 items = set(item for item in items if reverse not in item._vals_)
@@ -1918,6 +1913,11 @@ class Set(Collection):
             setdata |= loaded_items
             reverse.db_reverse_add(loaded_items, obj)
             return setdata
+
+        counter = cache.collection_statistics.setdefault(attr, 0)
+        nplus1_threshold = attr.nplus1_threshold
+        prefetching = options.PREFETCHING and not attr.lazy and nplus1_threshold is not None \
+                      and (counter >= nplus1_threshold or cache.noflush_counter)
 
         objects = [ obj ]
         setdata_list = [ setdata ]
@@ -2712,8 +2712,11 @@ class EntityMeta(type):
         entity._attrs_ = base_attrs + new_attrs
         entity._adict_ = dict((attr.name, attr) for attr in entity._attrs_)
         entity._subclass_attrs_ = set()
+        entity._subclass_adict_ = {}
         for base in entity._all_bases_:
             base._subclass_attrs_.update(new_attrs)
+            for attr in new_attrs:
+                base._subclass_adict_[attr.name] = attr
         entity._attrnames_cache_ = {}
 
         try: table_name = entity.__dict__['_table_']
@@ -2995,6 +2998,7 @@ class EntityMeta(type):
                 throw(TypeError, 'Collection attribute %s cannot be specified as search criteria' % attr)
         obj, unique = entity._find_in_cache_(pkval, avdict, for_update)
         if obj is None: obj = entity._find_in_db_(avdict, unique, for_update, nowait)
+        if obj is None: throw(ObjectNotFound, entity, pkval)
         return obj
     def _find_in_cache_(entity, pkval, avdict, for_update=False):
         cache = entity._database_._get_cache()
@@ -3086,6 +3090,7 @@ class EntityMeta(type):
         select_list = [ 'DISTINCT' ] if distinct else [ 'ALL' ]
         root = entity._root_
         for attr in chain(root._attrs_, root._subclass_attrs_):
+            if not issubclass(attr.entity, entity) and not issubclass(entity, attr.entity): continue
             if attr.is_collection: continue
             if not attr.columns: continue
             if attr.lazy and attr not in query_attrs: continue
@@ -3195,7 +3200,7 @@ class EntityMeta(type):
             if wbits is None: continue
             rbits = get_rbits(obj.__class__)
             if rbits is None:
-                rbits = sum(imap(obj._bits_.__getitem__, attrs))
+                rbits = sum(obj._bits_.get(attr, 0) for attr in attrs)
                 rbits_dict[obj.__class__] = rbits
             obj._rbits_ |= rbits & ~wbits
     def _parse_row_(entity, row, attr_offsets):

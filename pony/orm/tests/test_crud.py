@@ -51,6 +51,27 @@ class TestCRUD(unittest.TestCase):
         rollback()
         db_session.__exit__()
 
+    def test_getitem_1(self):
+        g1 = Group[1]
+        self.assertEqual(g1.id, 1)
+
+    @raises_exception(ObjectNotFound, 'Group[333]')
+    def test_getitem_2(self):
+        g333 = Group[333]
+
+    def test_exists_1(self):
+        x = Group.exists(id=1)
+        self.assertEqual(x, True)
+
+    def test_exists_2(self):
+        x = Group.exists(id=333)
+        self.assertEqual(x, False)
+
+    def test_exists_3(self):
+        g1 = Group[1]
+        x = Student.exists(group=g1)
+        self.assertEqual(x, True)
+
     def test_set1(self):
         s1 = Student[1]
         s1.set(name='New name', scholarship=100)

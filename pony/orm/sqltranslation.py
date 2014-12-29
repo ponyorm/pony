@@ -1350,8 +1350,8 @@ class ObjectMixin(MonadMixin):
     def getattr(monad, name):
         translator = monad.translator
         entity = monad.type
-        try: attr = entity._adict_[name]
-        except KeyError: throw(AttributeError)
+        attr = entity._adict_.get(name) or entity._subclass_adict_.get(name)
+        if attr is None: throw(AttributeError)
         if hasattr(monad, 'tableref'): monad.tableref.used_attrs.add(attr)
         if not attr.is_collection:
             return translator.AttrMonad.new(monad, attr)

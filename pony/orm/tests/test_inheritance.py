@@ -225,5 +225,22 @@ class TestInheritance(unittest.TestCase):
         self.assertEqual([ index.attrs for index in Entity1._indexes_ ],
                          [ (Entity1.id,), (Entity1.t, Entity1.a, Entity1.b) ])
 
+    def test_18(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required(int)
+        class Entity2(db.Entity1):
+            b = Required(int)
+        class Entity3(Entity1):
+            c = Required(int)
+        db.generate_mapping(create_tables=True)
+        with db_session:
+            x = Entity1(a=10)
+            y = Entity2(a=20, b=30)
+            z = Entity3(a=40, c=50)
+        with db_session:
+            result = select(e for e in Entity1 if e.b == 30 or e.c == 50)
+            self.assertEqual([ e.id for e in result ], [ 2, 3 ])
+
 if __name__ == '__main__':
     unittest.main()
