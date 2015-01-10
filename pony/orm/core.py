@@ -831,6 +831,7 @@ class Database(object):
         connection = cache.prepare_connection_for_query_execution()
         database.schema.create_tables(database.provider, connection)
         if check_tables: database.schema.check_tables(database.provider, connection)
+    @cut_traceback
     @db_session()
     def check_tables(database):
         cache = database._get_cache()
