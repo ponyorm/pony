@@ -8,7 +8,7 @@ from itertools import chain, starmap, repeat
 from time import time
 from decimal import Decimal
 from random import shuffle, randint, random
-from threading import Lock, currentThread as current_thread, _MainThread
+from threading import Lock, RLock, currentThread as current_thread, _MainThread
 from contextlib import contextmanager
 from collections import defaultdict
 
@@ -430,8 +430,8 @@ class Database(object):
         self.Entity._database_ = self
 
         # Statistics-related stuff:
-        self.global_stats = {}
-        self.global_stats_lock = Lock()
+        self._global_stats = {}
+        self._global_stats_lock = RLock()
         self._dblocal = DbLocal()
 
         self.provider = None
@@ -469,12 +469,20 @@ class Database(object):
         if stat is not None: stat.query_executed(query_start_time)
         else: stats[sql] = QueryStat(sql, query_start_time)
     def merge_local_stats(database):
-        setdefault = database.global_stats.setdefault
-        with database.global_stats_lock:
+        setdefault = database._global_stats.setdefault
+        with database._global_stats_lock:
             for sql, stat in iteritems(database._dblocal.stats):
                 global_stat = setdefault(sql, stat)
                 if global_stat is not stat: global_stat.merge(stat)
         database._dblocal.stats.clear()
+    @property
+    def global_stats(database):
+        with database._global_stats_lock:
+            return dict((sql, stat.copy()) for sql, stat in iteritems(database._global_stats))
+    @property
+    def global_stats_lock(database):
+        deprecated(3, "global_stats_lock is deprecated, just use global_stats property without any locking")
+        return database._global_stats_lock
     @cut_traceback
     def get_connection(database):
         cache = database._get_cache()
@@ -857,6 +865,10 @@ class QueryStat(object):
             stat.db_count = 0
             stat.cache_count = 1
         stat.sql = sql
+    def copy(stat):
+        result = object.__new__(QueryStat)
+        result.__dict__.update(stat.__dict__)
+        return result
     def query_executed(stat, query_start_time):
         query_end_time = time()
         duration = query_end_time - query_start_time
