@@ -2,7 +2,7 @@ from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, izip, imap, iteritems, itervalues, items_list, values_list, xrange, cmp, \
                             basestring, unicode, buffer, int_types, builtins, pickle, with_metaclass
 
-import re, sys, types, datetime, logging, itertools
+import json, re, sys, types, datetime, logging, itertools
 from operator import attrgetter, itemgetter
 from itertools import chain, starmap, repeat
 from time import time
@@ -11,6 +11,7 @@ from random import shuffle, randint, random
 from threading import Lock, RLock, currentThread as current_thread, _MainThread
 from contextlib import contextmanager
 from collections import defaultdict
+from hashlib import md5
 
 from pony.thirdparty.compiler import ast, parse
 
@@ -36,7 +37,7 @@ __all__ = '''
     IntegrityError InternalError ProgrammingError NotSupportedError
 
     OrmError ERDiagramError DBSchemaError MappingError
-    TableDoesNotExist TableIsNotEmpty ConstraintError CacheIndexError
+    TableDoesNotExist TableIsNotEmpty ConstraintError CacheIndexError PermissionError
     ObjectNotFound MultipleObjectsFoundError TooManyObjectsFoundError OperationWithDeletedObjectError
     TransactionError ConnectionClosedError TransactionIntegrityError IsolationError CommitException RollbackException
     UnrepeatableReadError OptimisticCheckError UnresolvableCyclicDependency UnexpectedError DatabaseSessionIsOver
@@ -64,6 +65,10 @@ __all__ = '''
     JOIN
 
     buffer unicode
+
+    get_current_user set_current_user perm has_perm
+    get_user_groups get_user_roles get_object_labels
+    user_groups_getter user_roles_getter obj_labels_getter
     '''.split()
 
 debug = False
@@ -121,6 +126,8 @@ class CacheIndexError(OrmError): pass
 class RowNotFound(OrmError): pass
 class MultipleRowsFound(OrmError): pass
 class TooManyRowsFound(OrmError): pass
+
+class PermissionError(OrmError): pass
 
 class ObjectNotFound(OrmError):
     def __init__(exc, entity, pkval=None):
@@ -246,6 +253,10 @@ class Local(localbase):
         local.db2cache = {}
         local.db_context_counter = 0
         local.db_session = None
+        local.current_user = None
+        local.perms_context = None
+        local.user_groups_cache = {}
+        local.user_roles_cache = defaultdict(dict)
 
 local = Local()
 
@@ -392,6 +403,8 @@ class DBSessionContextManager(object):
         finally:
             del exc, tb
             local.db_session = None
+            local.user_groups_cache.clear()
+            local.user_roles_cache.clear()
 
 db_session = DBSessionContextManager()
 
@@ -842,6 +855,478 @@ class Database(object):
         if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
         connection = cache.prepare_connection_for_query_execution()
         database.schema.check_tables(database.provider, connection)
+    @contextmanager
+    def set_perms_for(database, *entities):
+        if not entities: throw(TypeError, 'You should specify at least one positional argument')
+        entity_set = set(entities)
+        for entity in entities:
+            if not isinstance(entity, EntityMeta):
+                throw(TypeError, 'Entity class expected. Got: %s' % entity)
+            entity_set.update(entity._subclasses_)
+        if local.perms_context is not None:
+            throw(OrmError, "'set_perms_for' context manager calls cannot be nested")
+        local.perms_context = database, entity_set
+        try: yield
+        finally:
+            assert local.perms_context and local.perms_context[0] is database
+            local.perms_context = None
+    def _get_schema_dict(database):
+        result = []
+        user = get_current_user()
+        for entity in sorted(database.entities.values(), key=attrgetter('_id_')):
+            if not can_view(user, entity): continue
+            attrs = []
+            for attr in entity._new_attrs_:
+                if not can_view(user, attr): continue
+                d = dict(name=attr.name, type=attr.py_type.__name__, kind=attr.__class__.__name__)
+                if attr.auto: d['auto'] = True
+                if attr.reverse:
+                    if not can_view(user, attr.reverse.entity): continue
+                    if not can_view(user, attr.reverse): continue
+                    d['reverse'] = attr.reverse.name
+                if attr.lazy: d['lazy'] = True
+                if attr.nullable: d['nullable'] = True
+                if attr.default and issubclass(type(attr.default), (int_types, basestring)):
+                    d['defaultValue'] = attr.default
+                attrs.append(d)
+            d = dict(name=entity.__name__, newAttrs=attrs, pkAttrs=[ attr.name for attr in entity._pk_attrs_ ])
+            if entity._all_bases_:
+                d['bases'] = [ base.__name__ for base in entity._all_bases_ ]
+            if entity._simple_keys_:
+                d['simpleKeys'] = [ attr.name for attr in entity._simple_keys_ ]
+            if entity._composite_keys_:
+                d['compositeKeys'] = [ [ attr.name for attr in attrs ] for attrs in entity._composite_keys_ ]
+            result.append(d)
+        return result
+    def _get_schema_json(database):
+        schema_json = json.dumps(database._get_schema_dict(), default=basic_converter, sort_keys=True)
+        schema_hash = md5(schema_json).hexdigest()
+        return schema_json, schema_hash
+    @cut_traceback
+    def to_json(database, data, include=(), exclude=(), converter=None, with_schema=True, schema_hash=None):
+        for attrs, param_name in ((include, 'include'), (exclude, 'exclude')):
+            for attr in attrs:
+                if not isinstance(attr, Attribute): throw(TypeError,
+                    "Each item of '%s' list should be attribute. Got: %s" % (param_name, attr))
+        include, exclude = set(include), set(exclude)
+        if converter is None: converter = basic_converter
+
+        user = get_current_user()
+
+        def user_has_no_rights_to_see(obj, attr=None):
+            user_groups = get_user_groups(user)
+            throw(PermissionError, 'The current user %s which belongs to groups %s '
+                                   'has no rights to see the object %s on the frontend'
+                                   % (user, sorted(user_groups), obj))
+
+        object_set = set()
+        caches = set()
+        def obj_converter(obj):
+            if not isinstance(obj, Entity): return converter(obj)
+            caches.add(obj._session_cache_)
+            if len(caches) > 1: throw(TransactionError,
+                'An attempt to serialize objects belonging to different transactions')
+            if not can_view(user, obj):
+                user_has_no_rights_to_see(obj)
+            object_set.add(obj)
+            pkval = obj._get_raw_pkval_()
+            if len(pkval) == 1: pkval = pkval[0]
+            return { 'class': obj.__class__.__name__, 'pk': pkval }
+
+        data_json = json.dumps(data, default=obj_converter)
+
+        objects = {}
+        if caches:
+            cache = caches.pop()
+            if cache.database is not database:
+                throw(TransactionError, 'An object does not belong to specified database')
+            object_list = list(object_set)
+            objects = {}
+            for obj in object_list:
+                if obj in cache.seeds[obj._pk_attrs_]: obj._load_()
+                entity = obj.__class__
+                if not can_view(user, obj):
+                    user_has_no_rights_to_see(obj)
+                d = objects.setdefault(entity.__name__, {})
+                for val in obj._get_raw_pkval_(): d = d.setdefault(val, {})
+                assert not d, d
+                for attr in obj._attrs_:
+                    if attr in exclude: continue
+                    if attr in include: pass
+                        # if attr not in entity_perms.can_read: user_has_no_rights_to_see(obj, attr)
+                    elif attr.is_collection: continue
+                    elif attr.lazy: continue
+                    # elif attr not in entity_perms.can_read: continue
+
+                    if attr.is_collection:
+                        if not isinstance(attr, Set): throw(NotImplementedError)
+                        value = []
+                        for item in attr.__get__(obj):
+                            if item not in object_set:
+                                object_set.add(item)
+                                object_list.append(item)
+                            pkval = item._get_raw_pkval_()
+                            value.append(pkval[0] if len(pkval) == 1 else pkval)
+                        value.sort()
+                    else:
+                        value = attr.__get__(obj)
+                        if value is not None and attr.is_relation:
+                            if attr in include and value not in object_set:
+                                object_set.add(value)
+                                object_list.append(value)
+                            pkval = value._get_raw_pkval_()
+                            value = pkval[0] if len(pkval) == 1 else pkval
+
+                    d[attr.name] = value
+        objects_json = json.dumps(objects, default=converter)
+        if not with_schema:
+            return '{"data": %s, "objects": %s}' % (data_json, objects_json)
+        schema_json, new_schema_hash = database._get_schema_json()
+        if schema_hash is not None and schema_hash == new_schema_hash:
+            return '{"data": %s, "objects": %s, "schema_hash": "%s"}' \
+                   % (data_json, objects_json, new_schema_hash)
+        return '{"data": %s, "objects": %s, "schema": %s, "schema_hash": "%s"}' \
+               % (data_json, objects_json, schema_json, new_schema_hash)
+    @cut_traceback
+    @db_session
+    def from_json(database, changes, observer=None):
+        changes = json.loads(changes)
+
+        import pprint; pprint.pprint(changes)
+
+        objmap = {}
+        for diff in changes['objects']:
+            if diff['_status_'] == 'c': continue
+            pk = diff['_pk_']
+            pk = (pk,) if type(pk) is not list else tuple(pk)
+            entity_name = diff['class']
+            entity = database.entities[entity_name]
+            obj = entity._get_by_raw_pkval_(pk, from_db=False)
+            oid = diff['_id_']
+            objmap[oid] = obj
+
+        def id2obj(attr, val):
+            return objmap[val] if attr.reverse and val is not None else val
+
+        user = get_current_user()
+
+        def user_has_no_rights_to(operation, x):
+            user_groups = get_user_groups(user)
+            s = 'attribute %s' % x if isinstance(x, Attribute) else 'object %s' % x
+            throw(PermissionError, 'The current user %s which belongs to groups %s '
+                                   'has no rights to %s the %s on the frontend'
+                                   % (user, sorted(user_groups), operation, s))
+
+        for diff in changes['objects']:
+            entity_name = diff['class']
+            entity = database.entities[entity_name]
+            oldvals = {}
+            newvals = {}
+            oldadict = {}
+            newadict = {}
+            for name, val in diff.items():
+                if name not in ('class', '_pk_', '_id_', '_status_'):
+                    attr = entity._adict_[name]
+                    if not attr.is_collection:
+                        if type(val) is dict:
+                            if 'old' in val: oldvals[attr.name] = oldadict[attr] = attr.validate(id2obj(attr, val['old']))
+                            if 'new' in val: newvals[attr.name] = newadict[attr] = attr.validate(id2obj(attr, val['new']))
+                        else: newvals[attr.name] = newadict[attr] = attr.validate(id2obj(attr, val))
+            oid = diff['_id_']
+            status = diff['_status_']
+            if status == 'c':
+                assert not oldvals
+                for attr in newadict:
+                    if not can_create(user, attr): user_has_no_rights_to('initialize', attr)
+                obj = entity(**newvals)
+                if observer:
+                    flush()  # in order to get obj.id
+                    observer('create', obj, newvals)
+                objmap[oid] = obj
+                if not can_edit(user, obj): user_has_no_rights_to('create', obj)
+            else:
+                obj = objmap[oid]
+                if status == 'd':
+                    if not can_delete(user, obj): user_has_no_rights_to('delete', obj)
+                    if observer: observer('delete', obj)
+                    obj.delete()
+                elif status == 'u':
+                    if not can_edit(user, obj): user_has_no_rights_to('update', obj)
+                    if newvals:
+                        for attr in newadict:
+                            if not can_edit(user, attr): user_has_no_rights_to('edit', attr)
+                        assert oldvals
+                        if observer:
+                            observer('update', obj, newvals, oldvals)
+                        obj._db_set_(oldadict)  # oldadict can be modified here
+                        for attr in oldadict: attr.__get__(obj)
+                        obj.set(**newvals)
+                    else: assert not oldvals
+                    objmap[oid] = obj
+        flush()
+        for diff in changes['objects']:
+            if diff['_status_'] == 'd': continue
+            obj = objmap[diff['_id_']]
+            entity = obj.__class__
+            for name, val in diff.items():
+                if name not in ('class', '_pk_', '_id_', '_status_'):
+                    attr = entity._adict_[name]
+                    if attr.is_collection and attr.reverse.is_collection and attr < attr.reverse:
+                        removed = [ objmap[oid] for oid in val.get('removed', ()) ]
+                        added = [ objmap[oid] for oid in val.get('added', ()) ]
+                        if (added or removed) and not can_edit(user, attr): user_has_no_rights_to('edit', attr)
+                        collection = attr.__get__(obj)
+                        if removed:
+                            observer('remove', obj, {name: removed})
+                            collection.remove(removed)
+                        if added:
+                            observer('add', obj, {name: added})
+                            collection.add(added)
+        flush()
+
+        def deserialize(x):
+            t = type(x)
+            if t is list: return list(imap(deserialize, x))
+            if t is dict:
+                if '_id_' not in x:
+                    return dict((key, deserialize(val)) for key, val in iteritems(x))
+                obj = objmap.get(x['_id_'])
+                if obj is None:
+                    entity_name = x['class']
+                    entity = database.entities[entity_name]
+                    pk = x['_pk_']
+                    obj = entity[pk]
+                return obj
+            return x
+
+        return deserialize(changes['data'])
+
+def basic_converter(x):
+    if isinstance(x, (datetime.datetime, datetime.date, Decimal)):
+        return str(x)
+    if isinstance(x, dict):
+        return dict(x)
+    if isinstance(x, Entity):
+        pkval = x._get_raw_pkval_()
+        return pkval[0] if len(pkval) == 1 else pkval
+    try: iter(x)
+    except: raise TypeError(x)
+    return list(x)
+
+@cut_traceback
+def perm(*args, **kwargs):
+    if local.perms_context is None:
+        throw(OrmError, "'perm' function can be called within 'set_perm_for' context manager only")
+    database, entities = local.perms_context
+    permissions = _split_names('Permission', args)
+    groups = pop_names_from_kwargs('Group', kwargs, 'group', 'groups')
+    roles = pop_names_from_kwargs('Role', kwargs, 'role', 'roles')
+    labels = pop_names_from_kwargs('Label', kwargs, 'label', 'labels')
+    for kwname in kwargs: throw(TypeError, 'Unknown keyword argument name: %s' % kwname)
+    return AccessRule(database, entities, permissions, groups, roles, labels)
+
+def _split_names(typename, names):
+    if names is None: return set()
+    if isinstance(names, basestring):
+        names = names.replace(',', ' ').split()
+    else:
+        try: namelist = list(names)
+        except: throw(TypeError, '%s name should be string. Got: %s' % (typename, names))
+        names = []
+        for name in namelist:
+            names.extend(_split_names(typename, name))
+    for name in names:
+        if not is_ident(name): throw(TypeError, '%s name should be identifier. Got: %s' % (typename, name))
+    return set(names)
+
+def pop_names_from_kwargs(typename, kwargs, *kwnames):
+    result = set()
+    for kwname in kwnames:
+        kwarg = kwargs.pop(kwname, None)
+        if kwarg is not None: result.update(_split_names(typename, kwarg))
+    return result
+
+class AccessRule(object):
+    def __init__(rule, database, entities, permissions, groups, roles, labels):
+        rule.database = database
+        rule.entities = entities
+        if not permissions: throw(TypeError, 'At least one permission should be specified')
+        rule.permissions = permissions
+        rule.groups = groups
+        rule.groups.add('anybody')
+        rule.roles = roles
+        rule.labels = labels
+        rule.entities_to_exclude = set()
+        rule.attrs_to_exclude = set()
+        for entity in entities:
+            for perm in rule.permissions:
+                entity._access_rules_[perm].add(rule)
+    def exclude(rule, *args):
+        for arg in args:
+            if isinstance(arg, EntityMeta):
+                entity = arg
+                rule.entities_to_exclude.add(entity)
+                rule.entities_to_exclude.update(entity._subclasses_)
+            elif isinstance(arg, Attribute):
+                attr = arg
+                if attr.pk_offset is not None: throw(TypeError, 'Primary key attribute %s cannot be excluded' % attr)
+                rule.attrs_to_exclude.add(attr)
+            else: throw(TypeError, 'Entity or attribute expected. Got: %r' % arg)
+
+@cut_traceback
+def has_perm(user, perm, x):
+    if isinstance(x, EntityMeta):
+        entity = x
+    elif isinstance(x, Entity):
+        entity = x.__class__
+    elif isinstance(x, Attribute):
+        if x.hidden: return False
+        entity = x.entity
+    else: throw(TypeError, "The third parameter of 'has_perm' function should be entity class, entity instance "
+                           "or attribute. Got: %r" % x)
+    access_rules = entity._access_rules_.get(perm)
+    if not access_rules: return False
+    cache = entity._database_._get_cache()
+    perm_cache = cache.perm_cache[user][perm]
+    result = perm_cache.get(x)
+    if result is not None: return result
+    user_groups = get_user_groups(user)
+    result = False
+    if isinstance(x, EntityMeta):
+        for rule in access_rules:
+            if user_groups.issuperset(rule.groups) and entity not in rule.entities_to_exclude:
+                result = True
+                break
+    elif isinstance(x, Attribute):
+        attr = x
+        for rule in access_rules:
+            if user_groups.issuperset(rule.groups) and entity not in rule.entities_to_exclude \
+                                                   and attr not in rule.attrs_to_exclude:
+                result = True
+                break
+            reverse = attr.reverse
+            if reverse:
+                reverse_rules = reverse.entity._access_rules_.get(perm)
+                if not reverse_rules: return False
+                for reverse_rule in access_rules:
+                    if user_groups.issuperset(reverse_rule.groups) \
+                            and reverse.entity not in reverse_rule.entities_to_exclude \
+                            and reverse not in reverse_rule.attrs_to_exclude:
+                        result = True
+                        break
+                if result: break
+    else:
+        obj = x
+        user_roles = get_user_roles(user, obj)
+        obj_labels = get_object_labels(obj)
+        for rule in access_rules:
+            if x in rule.entities_to_exclude: continue
+            elif not user_groups.issuperset(rule.groups): pass
+            elif not user_roles.issuperset(rule.roles): pass
+            elif not obj_labels.issuperset(rule.labels): pass
+            else:
+                result = True
+                break
+    perm_cache[perm] = result
+    return result
+
+def can_view(user, x):
+    return has_perm(user, 'view', x) or has_perm(user, 'edit', x)
+
+def can_edit(user, x):
+    return has_perm(user, 'edit', x)
+
+def can_create(user, x):
+    return has_perm(user, 'create', x)
+
+def can_delete(user, x):
+    return has_perm(user, 'delete', x)
+
+def get_current_user():
+    return local.current_user
+
+def set_current_user(user):
+    local.current_user = user
+
+anybody_frozenset = frozenset(['anybody'])
+
+def get_user_groups(user):
+    result = local.user_groups_cache.get(user)
+    if result is not None: return result
+    if user is None: return anybody_frozenset
+    result = set(['anybody'])
+    for cls, func in usergroup_functions:
+        if cls is None or isinstance(user, cls):
+            groups = func(user)
+            if isinstance(groups, basestring):  # single group name
+                result.add(groups)
+            elif groups is not None:
+                result.update(groups)
+    result = frozenset(result)
+    local.user_groups_cache[user] = result
+    return result
+
+def get_user_roles(user, obj):
+    if user is None: return frozenset()
+    roles_cache = local.user_roles_cache[user]
+    result = roles_cache.get(obj)
+    if result is not None: return result
+    result = set()
+    if user is obj: result.add('self')
+    for user_cls, obj_cls, func in userrole_functions:
+        if user_cls is None or isinstance(user, user_cls):
+            if obj_cls is None or isinstance(obj, obj_cls):
+                roles = func(user, obj)
+                if isinstance(roles, basestring):  # single role name
+                    result.add(roles)
+                elif roles is not None:
+                    result.update(roles)
+    result = frozenset(result)
+    roles_cache[obj] = result
+    return result
+
+def get_object_labels(obj):
+    cache = obj._database_._get_cache()
+    obj_labels_cache = cache.obj_labels_cache
+    result = obj_labels_cache.get(obj)
+    if result is None:
+        result = set()
+        for obj_cls, func in objlabel_functions:
+            if obj_cls is None or isinstance(obj, obj_cls):
+                labels = func(obj)
+                if isinstance(labels, basestring):  # single label name
+                    result.add(labels)
+                elif labels is not None:
+                    result.update(labels)
+        obj_labels_cache[obj] = result
+    return result
+
+usergroup_functions = []
+
+def user_groups_getter(cls=None):
+    def decorator(func):
+        if func not in usergroup_functions:
+            usergroup_functions.append((cls, func))
+        return func
+    return decorator
+
+userrole_functions = []
+
+def user_roles_getter(user_cls=None, obj_cls=None):
+    def decorator(func):
+        if func not in userrole_functions:
+            userrole_functions.append((user_cls, obj_cls, func))
+        return func
+    return decorator
+
+objlabel_functions = []
+
+def obj_labels_getter(cls=None):
+    def decorator(func):
+        if func not in objlabel_functions:
+            objlabel_functions.append((cls, func))
+        return func
+    return decorator
 
 class DbLocal(localbase):
     def __init__(dblocal):
@@ -913,6 +1398,9 @@ class SessionCache(object):
         cache.connection = None
         cache.in_transaction = False
         cache.saved_fk_state = None
+        cache.perm_cache = defaultdict(lambda : defaultdict(dict))  # user -> perm -> cls_or_attr_or_obj -> bool
+        cache.user_roles_cache = defaultdict(dict)  # user -> obj -> roles
+        cache.obj_labels_cache = {}  # obj -> labels
     def connect(cache):
         assert cache.connection is None
         if cache.in_transaction: throw(ConnectionClosedError,
@@ -1140,7 +1628,7 @@ class Attribute(object):
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
-                'cascade_delete', 'index', 'original_default', 'sql_default', 'py_check'
+                'cascade_delete', 'index', 'original_default', 'sql_default', 'py_check', 'hidden'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
@@ -1207,6 +1695,7 @@ class Attribute(object):
         attr.is_volatile = kwargs.pop('volatile', False)
         attr.sql_default = kwargs.pop('sql_default', None)
         attr.py_check = kwargs.pop('py_check', None)
+        attr.hidden = kwargs.pop('hidden', False)
         attr.kwargs = kwargs
         attr.converters = []
     def _init_(attr, entity, name):
@@ -2808,6 +3297,8 @@ class EntityMeta(type):
         for_expr = ast.GenExprFor(ast.AssName(iter_name, 'OP_ASSIGN'), ast.Name('.0'), [])
         inner_expr = ast.GenExprInner(ast.Name(iter_name), [ for_expr ])
         entity._default_genexpr_ = inner_expr
+
+        entity._access_rules_ = defaultdict(set)
     def _initialize_bits_(entity):
         entity._bits_ = {}
         entity._bits_except_volatile_ = {}
@@ -4185,6 +4676,8 @@ class Entity(with_metaclass(EntityMeta)):
                 if len(value) == 1: value = value[0]
             result[attr.name] = value
         return result
+    def to_json(obj, include=(), exclude=(), converter=None, with_schema=True, schema_hash=None):
+        return obj._database_.to_json(obj, include, exclude, converter, with_schema, schema_hash)
 
 def string2ast(s):
     result = string2ast_cache.get(s)
@@ -4410,7 +4903,7 @@ class Query(object):
     def _fetch(query, range=None):
         translator = query._translator
         if query._result is not None:
-            return QueryResult(query._result, translator.expr_type, translator.col_names)
+            return QueryResult(query._result, query, translator.expr_type, translator.col_names)
 
         sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(range)
         database = query._database
@@ -4442,7 +4935,7 @@ class Query(object):
 
         query._result = result
         if query._prefetch: query._do_prefetch()
-        return QueryResult(result, translator.expr_type, translator.col_names)
+        return QueryResult(result, query, translator.expr_type, translator.col_names)
     @cut_traceback
     def prefetch(query, *args):
         query = query._clone(_entities_to_prefetch=query._entities_to_prefetch.copy(),
@@ -4772,6 +5265,8 @@ class Query(object):
         return query._clone(_for_update=True, _nowait=nowait)
     def random(query, limit):
         return query.order_by('random()')[:limit]
+    def to_json(query, include=(), exclude=(), converter=None, with_schema=True, schema_hash=None):
+        return query._database.to_json(query[:], include, exclude, converter, with_schema, schema_hash)
 
 def strcut(s, width):
     if len(s) <= width:
@@ -4780,9 +5275,10 @@ def strcut(s, width):
         return s[:width-3] + '...'
 
 class QueryResult(list):
-    __slots__ = '_expr_type', '_col_names'
-    def __init__(result, list, expr_type, col_names):
+    __slots__ = '_query', '_expr_type', '_col_names'
+    def __init__(result, list, query, expr_type, col_names):
         result[:] = list
+        result._query = query
         result._expr_type = expr_type
         result._col_names = col_names
     def __getstate__(result):
@@ -4841,6 +5337,9 @@ class QueryResult(list):
         print(strjoin('+', ('-' * width_dict[i] for i in xrange(len(col_names)))))
         for row in rows:
             print(strjoin('|', (strcut(item, width_dict[i]) for i, item in enumerate(row))))
+    def to_json(result, include=(), exclude=(), converter=None, with_schema=True, schema_hash=None):
+        return result._query._database.to_json(result, include, exclude, converter, with_schema, schema_hash)
+
 
 @cut_traceback
 def show(entity):
@@ -4855,7 +5354,7 @@ def show(entity):
         #     value = str(attr.__get__(x)).replace('\n', ' ')
         #     print('  %s: %s' % (attr.name, strcut(value, width-len(attr.name)-4)))
         # print()
-        QueryResult([ x ], x.__class__, None).show()
+        QueryResult([ x ], None, x.__class__, None).show()
     elif isinstance(x, (basestring, types.GeneratorType)):
         select(x).show()
     elif hasattr(x, 'show'):
