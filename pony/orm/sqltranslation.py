@@ -812,7 +812,6 @@ class JoinedTableRef(object):
         tableref.used_attrs = set()
     def make_join(tableref, pk_only=False):
         entity = tableref.entity
-        pk_only = pk_only and not entity._discriminator_attr_
         if tableref.joined:
             if pk_only or not tableref.optimized:
                 return tableref.alias, tableref.pk_columns
@@ -868,7 +867,7 @@ class JoinedTableRef(object):
             alias = subquery.get_short_alias(tableref.name_path, entity.__name__)
             join_cond = join_tables(m2m_alias, alias, right_m2m_columns, pk_columns)
             subquery.from_ast.append([ alias, 'TABLE', entity._table_, join_cond ])
-        if entity._discriminator_attr_:
+        if not pk_only and entity._discriminator_attr_:
             discr_criteria = entity._construct_discriminator_criteria_(alias)
             assert discr_criteria is not None
             subquery.conditions.insert(0, discr_criteria)
