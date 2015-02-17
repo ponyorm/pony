@@ -2201,8 +2201,6 @@ class Set(Collection):
         cached_sql = attr.cached_remove_m2m_sql
         if cached_sql is None:
             reverse = attr.reverse
-            table_name = attr.table
-            assert table_name is not None
             where_list = [ 'WHERE' ]
             if attr.symmetric:
                 columns = attr.columns + attr.reverse_columns
@@ -2212,7 +2210,7 @@ class Set(Collection):
                 converters = reverse.converters + attr.converters
             for i, (column, converter) in enumerate(izip(columns, converters)):
                 where_list.append([ 'EQ', ['COLUMN', None, column], [ 'PARAM', (i, None, None), converter ] ])
-            sql_ast = [ 'DELETE', table_name, where_list ]
+            sql_ast = [ 'DELETE', attr.table, where_list ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_remove_m2m_sql = sql, adapter
         else: sql, adapter = cached_sql
@@ -2226,8 +2224,6 @@ class Set(Collection):
         cached_sql = attr.cached_add_m2m_sql
         if cached_sql is None:
             reverse = attr.reverse
-            table_name = attr.table
-            assert table_name is not None
             if attr.symmetric:
                 columns = attr.columns + attr.reverse_columns
                 converters = attr.converters + attr.converters
@@ -2235,7 +2231,7 @@ class Set(Collection):
                 columns = reverse.columns + attr.columns
                 converters = reverse.converters + attr.converters
             params = [ [ 'PARAM', (i, None, None), converter ] for i, converter in enumerate(converters) ]
-            sql_ast = [ 'INSERT', table_name, columns, params ]
+            sql_ast = [ 'INSERT', attr.table, columns, params ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_add_m2m_sql = sql, adapter
         else: sql, adapter = cached_sql
@@ -3125,9 +3121,8 @@ class EntityMeta(type):
         query_key = batch_size, attr
         cached_sql = entity._batchload_sql_cache_.get(query_key)
         if cached_sql is not None: return cached_sql
-        table_name = entity._table_
         select_list, attr_offsets = entity._construct_select_clause_()
-        from_list = [ 'FROM', [ None, 'TABLE', table_name ]]
+        from_list = [ 'FROM', [ None, 'TABLE', entity._table_ ]]
         if attr is None:
             columns = entity._pk_columns_
             converters = entity._pk_converters_
@@ -3149,9 +3144,8 @@ class EntityMeta(type):
         query_key = sorted_query_attrs, order_by_pk, for_update, nowait
         cached_sql = entity._find_sql_cache_.get(query_key)
         if cached_sql is not None: return cached_sql
-        table_name = entity._table_
         select_list, attr_offsets = entity._construct_select_clause_(query_attrs=query_attrs)
-        from_list = [ 'FROM', [ None, 'TABLE', table_name ]]
+        from_list = [ 'FROM', [ None, 'TABLE', entity._table_ ]]
         where_list = [ 'WHERE' ]
         values = []
 
