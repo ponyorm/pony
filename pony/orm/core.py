@@ -691,7 +691,7 @@ class Database(object):
                     m2m_columns_2 = reverse.get_m2m_columns(is_reverse=True)
                     if m2m_columns_1 == m2m_columns_2: throw(MappingError,
                         'Different column names should be specified for attributes %s and %s' % (attr, reverse))
-                    if attr.symmetric and len(attr.reverse_columns) != len(attr.entity._pk_attrs_):
+                    if attr.symmetric and len(attr.reverse_columns) != len(attr.entity._get_pk_columns_()):
                         throw(MappingError, "Invalid number of reverse columns for symmetric attribute %s" % attr)
                     assert len(m2m_columns_1) == len(reverse.converters)
                     assert len(m2m_columns_2) == len(attr.converters)
