@@ -2747,6 +2747,7 @@ class EntityMeta(type):
 
         entity._cached_max_id_sql_ = None
         entity._find_sql_cache_ = {}
+        entity._load_sql_cache_ = {}
         entity._batchload_sql_cache_ = {}
         entity._insert_sql_cache_ = {}
         entity._update_sql_cache_ = {}
@@ -3619,6 +3620,68 @@ class Entity(with_metaclass(EntityMeta)):
                 if seed is not obj: objects.append(seed)
         sql, adapter, attr_offsets = entity._construct_batchload_sql_(len(objects))
         arguments = adapter(objects)
+        cursor = database._exec_sql(sql, arguments)
+        objects = entity._fetch_objects(cursor, attr_offsets)
+        if obj not in objects: throw(UnrepeatableReadError,
+                                     'Phantom object %s disappeared' % safe_repr(obj))
+    @cut_traceback
+    def load(obj, *attrs):
+        cache = obj._session_cache_
+        if not cache.is_alive: throw(DatabaseSessionIsOver,
+            'Cannot load object %s: the database session is over' % safe_repr(obj))
+        entity = obj.__class__
+        database = entity._database_
+        if cache is not database._get_cache():
+            throw(TransactionError, "Object %s doesn't belong to current transaction" % safe_repr(obj))
+        if obj._status_ in created_or_deleted_statuses: return
+        if not attrs:
+            attrs = tuple(attr for attr, bit in iteritems(entity._bits_)
+                          if bit and attr not in obj._vals_)
+        else:
+            args = attrs
+            attrs = set()
+            for arg in args:
+                if isinstance(arg, basestring):
+                    attr = entity._adict_.get(arg)
+                    if attr is None:
+                        if not is_ident(arg): throw(ValueError, 'Invalid attribute name: %r' % arg)
+                        throw(AttributeError, 'Object %s does not have attribute %r' % (obj, arg))
+                elif isinstance(arg, Attribute):
+                    attr = arg
+                    if not isinstance(obj, attr.entity): throw(AttributeError,
+                        'Attribute %s does not belong to object %s' % (attr, obj))
+                else: throw(TypeError, 'Invalid argument type: %r' % arg)
+                if attr.is_collection: throw(NotImplementedError,
+                    'The load() method does not support collection attributes yet. Got: %s' % attr.name)
+                if entity._bits_[attr] and attr not in obj._vals_: attrs.add(attr)
+            attrs = tuple(sorted(attrs, key=attrgetter('id')))
+
+        sql_cache = entity._root_._load_sql_cache_
+        cached_sql = sql_cache.get(attrs)
+        if cached_sql is None:
+            if entity._discriminator_attr_ is not None:
+                attrs = (entity._discriminator_attr_,) + attrs
+            attrs = entity._pk_attrs_ + attrs
+            
+            attr_offsets = {}
+            select_list = [ 'ALL' ]
+            for attr in attrs:
+                attr_offsets[attr] = offsets = []
+                for column in attr.columns:
+                    offsets.append(len(select_list) - 1)
+                    select_list.append([ 'COLUMN', None, column ])
+            from_list = [ 'FROM', [ None, 'TABLE', entity._table_ ]]
+            criteria_list = [ [ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (i, None, None), converter ] ]
+                              for i, (column, converter) in enumerate(izip(obj._pk_columns_, obj._pk_converters_)) ]
+            where_list = [ 'WHERE' ] + criteria_list
+
+            sql_ast = [ 'SELECT', select_list, from_list, where_list ]
+            sql, adapter = database._ast2sql(sql_ast)
+            cached_sql = sql, adapter, attr_offsets
+            sql_cache[attrs] = cached_sql
+        else: sql, adapter, attr_offsets = cached_sql
+        arguments = adapter(obj._get_raw_pkval_())
+
         cursor = database._exec_sql(sql, arguments)
         objects = entity._fetch_objects(cursor, attr_offsets)
         if obj not in objects: throw(UnrepeatableReadError,
