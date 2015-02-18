@@ -3099,7 +3099,7 @@ class EntityMeta(type):
         col_names = [ column_info[0].upper() for column_info in cursor.description ]
         attr_offsets = {}
         used_columns = set()
-        for attr in entity._attrs_with_columns_:
+        for attr in chain(entity._attrs_with_columns_, entity._subclass_attrs_):
             offsets = []
             for column in attr.columns:
                 try: offset = col_names.index(column.upper())
