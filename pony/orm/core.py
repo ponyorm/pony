@@ -1052,7 +1052,7 @@ class SessionCache(object):
             if not reverse.is_collection:
                 for obj in objects:
                     setdata = obj._vals_[attr]
-                    setdata.added = setdata.removed = None
+                    setdata.added = setdata.removed = setdata.absent = None
                 continue
 
             if not isinstance(reverse, Set): throw(NotImplementedError)
@@ -1065,7 +1065,7 @@ class SessionCache(object):
                 if setdata.removed:
                     for obj2 in setdata.removed: removed.add((obj, obj2))
                 if obj._status_ == 'marked_to_delete': del obj._vals_[attr]
-                else: setdata.added = setdata.removed = None
+                else: setdata.added = setdata.removed = setdata.absent = None
         cache.modified_collections.clear()
         return modified_m2m
     def update_simple_index(cache, obj, attr, old_val, new_val, undo):
@@ -1824,10 +1824,10 @@ class Collection(Attribute):
         assert False, 'Abstract method'  # pragma: no cover
 
 class SetData(set):
-    __slots__ = 'is_fully_loaded', 'added', 'removed', 'count'
+    __slots__ = 'is_fully_loaded', 'added', 'removed', 'absent', 'count'
     def __init__(setdata):
         setdata.is_fully_loaded = False
-        setdata.added = setdata.removed = None
+        setdata.added = setdata.removed = setdata.absent = None
         setdata.count = None
 
 def construct_batchload_criteria_list(alias, columns, converters, batch_size, row_value_syntax, start=0):
@@ -1980,6 +1980,7 @@ class Set(Collection):
 
         for setdata2 in setdata_list:
             setdata2.is_fully_loaded = True
+            setdata2.absent = None
             setdata2.count = len(setdata2)
         cache.collection_statistics[attr] = counter + 1
         return setdata
@@ -2253,6 +2254,7 @@ def unpickle_setwrapper(obj, attrname, items):
     setdata = obj._vals_.get(attr)
     if setdata is None: setdata = obj._vals_[attr] = SetData()
     setdata.is_fully_loaded = True
+    setdata.absent = None
     setdata.count = len(setdata)
     return wrapper
 
@@ -2328,6 +2330,7 @@ class SetInstance(object):
         else: rentity._fetch_objects(cursor, attr_offsets)
         if setdata: return False
         setdata.is_fully_loaded = True
+        setdata.absent = None
         setdata.count = 0
         return True
     @cut_traceback
@@ -2409,12 +2412,16 @@ class SetInstance(object):
         if setdata is not None:
             if item in setdata: return True
             if setdata.is_fully_loaded: return False
+            if setdata.absent is not None and item in setdata.absent: return False
         else:
             reverse_setdata = item._vals_.get(reverse)
             if reverse_setdata is not None and reverse_setdata.is_fully_loaded:
                 return obj in reverse_setdata
         setdata = attr.load(obj, (item,))
-        return item in setdata
+        if item in setdata: return True
+        if setdata.absent is None: setdata.absent = set()
+        setdata.absent.add(item)
+        return False
     @cut_traceback
     def create(wrapper, **kwargs):
         attr = wrapper._attr_
