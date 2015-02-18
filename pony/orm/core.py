@@ -2409,6 +2409,10 @@ class SetInstance(object):
         if setdata is not None:
             if item in setdata: return True
             if setdata.is_fully_loaded: return False
+        else:
+            reverse_setdata = item._vals_.get(reverse)
+            if reverse_setdata is not None and reverse_setdata.is_fully_loaded:
+                return obj in reverse_setdata
         setdata = attr.load(obj, (item,))
         return item in setdata
     @cut_traceback
