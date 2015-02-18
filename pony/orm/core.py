@@ -2523,6 +2523,9 @@ class SetInstance(object):
             'Cannot change collection %s.%s: the database session is over' % (safe_repr(obj), attr))
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr.__set__(obj, ())
+    @cut_traceback
+    def load(wrapper):
+        wrapper._attr_.load(wrapper._obj_)
 
 def unpickle_multiset(obj, attrnames, items):
     entity = obj.__class__
