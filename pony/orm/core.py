@@ -2726,9 +2726,14 @@ class EntityMeta(type):
         entity._subclass_attrs_ = set()
         entity._subclass_adict_ = {}
         for base in entity._all_bases_:
-            base._subclass_attrs_.update(new_attrs)
             for attr in new_attrs:
-                base._subclass_adict_[attr.name] = attr
+                if attr.is_collection: continue
+                prev = base._subclass_adict_.setdefault(attr.name, attr)
+                if prev is not attr: throw(ERDiagramError,
+                    'Attribute %s conflicts with attribute %s because both entities inherit from %s. '
+                    'To fix this, move attribute definition to base class'
+                    % (attr, prev, entity._root_.__name__))
+                base._subclass_attrs_.add(attr)
         entity._attrnames_cache_ = {}
 
         try: table_name = entity.__dict__['_table_']
