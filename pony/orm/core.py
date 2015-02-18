@@ -2526,7 +2526,29 @@ class SetInstance(object):
     @cut_traceback
     def load(wrapper):
         wrapper._attr_.load(wrapper._obj_)
-
+    @cut_traceback
+    def select(wrapper, *args):
+        obj = wrapper._obj_
+        if obj._status_ in del_statuses: throw_object_was_deleted(obj)
+        attr = wrapper._attr_
+        reverse = attr.reverse
+        query = reverse.entity._select_all()
+        s = 'lambda item: JOIN(obj in item.%s)' if reverse.is_collection else 'lambda item: item.%s == obj'
+        query = query.filter(s % reverse.name, {'obj' : obj, 'JOIN': JOIN})
+        if args:
+            func, globals, locals = get_globals_and_locals(args, kwargs=None, frame_depth=3)
+            query = query.filter(func, globals, locals)
+        return query
+    filter = select
+    def limit(wrapper, limit, offset=None):
+        return wrapper.select().limit(limit, offset)
+    def page(wrapper, pagenum, pagesize=10):
+        return wrapper.select().page(pagenum, pagesize)
+    def order_by(wrapper, *args):
+        return wrapper.select().order_by(*args)
+    def random(wrapper, limit):
+        return wrapper.select().random(limit)
+        
 def unpickle_multiset(obj, attrnames, items):
     entity = obj.__class__
     for name in attrnames:
