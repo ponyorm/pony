@@ -3117,12 +3117,13 @@ class EntityMeta(type):
 
         objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count)
         return objects
-    def _construct_select_clause_(entity, alias=None, distinct=False, query_attrs=()):
+    def _construct_select_clause_(entity, alias=None, distinct=False, query_attrs=(), all_attributes=False):
         attr_offsets = {}
         select_list = [ 'DISTINCT' ] if distinct else [ 'ALL' ]
         root = entity._root_
         for attr in chain(root._attrs_, root._subclass_attrs_):
-            if not issubclass(attr.entity, entity) and not issubclass(entity, attr.entity): continue
+            if not all_attributes and not issubclass(attr.entity, entity) \
+                                  and not issubclass(entity, attr.entity): continue
             if attr.is_collection: continue
             if not attr.columns: continue
             if attr.lazy and attr not in query_attrs: continue
@@ -3142,7 +3143,7 @@ class EntityMeta(type):
         query_key = batch_size, attr
         cached_sql = entity._batchload_sql_cache_.get(query_key)
         if cached_sql is not None: return cached_sql
-        select_list, attr_offsets = entity._construct_select_clause_()
+        select_list, attr_offsets = entity._construct_select_clause_(all_attributes=True)
         from_list = [ 'FROM', [ None, 'TABLE', entity._table_ ]]
         if attr is None:
             columns = entity._pk_columns_
