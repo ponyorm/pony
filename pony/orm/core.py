@@ -3011,12 +3011,6 @@ class EntityMeta(type):
                     if obj in seeds: obj._load_()
         if found_in_cache: shuffle(result)
         return result
-    @cut_traceback
-    def order_by(entity, *args):
-        deprecated(5, "%s.order_by(...) method is deprecated, use %s.select().order_by(...) instead"
-                      % (entity.__name__, entity.__name__))
-        query = Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
-        return query.order_by(*args)
     def _find_one_(entity, kwargs, for_update=False, nowait=False):
         if entity._database_.schema is None:
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
