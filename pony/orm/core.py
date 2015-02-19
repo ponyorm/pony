@@ -3260,9 +3260,10 @@ class EntityMeta(type):
                 for obj in result:
                     if obj not in batch: throw(UnrepeatableReadError,
                                                'Phantom object %s disappeared' % safe_repr(obj))
+    def _select_all(entity):
+        return Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
     def _query_from_args_(entity, args, kwargs, frame_depth):
-        if not args and not kwargs:
-            return Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
+        if not args and not kwargs: return entity._select_all()
         func, globals, locals = get_globals_and_locals(args, kwargs, frame_depth+1)
 
         if type(func) is types.FunctionType:
