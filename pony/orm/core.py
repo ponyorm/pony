@@ -2944,12 +2944,8 @@ class EntityMeta(type):
         assert len(objects) == 1
         return objects[0]
     @cut_traceback
-    def select(entity, func=None):
-        if func is None:
-            return Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
-        if not (type(func) is types.FunctionType or isinstance(func, basestring) and lambda_re.match(func)):
-            throw(TypeError, 'Lambda function or its text representation expected. Got: %r' % func)
-        return entity._query_from_lambda_(func, frame_depth=3)
+    def select(entity, *args):
+        return entity._query_from_args_(args, kwargs=None, frame_depth=3)
     @cut_traceback
     def select_by_sql(entity, sql, globals=None, locals=None):
         return entity._find_by_sql_(None, sql, globals, locals, frame_depth=3)
@@ -3271,25 +3267,19 @@ class EntityMeta(type):
                     if obj not in batch: throw(UnrepeatableReadError,
                                                'Phantom object %s disappeared' % safe_repr(obj))
     def _query_from_args_(entity, args, kwargs, frame_depth):
-        if len(args) > 1: throw(TypeError, 'Only one positional argument expected')
-        if kwargs: throw(TypeError, 'If positional argument presented, no keyword arguments expected')
-        func = args[0]
-        if not (type(func) is types.FunctionType or isinstance(func, basestring) and lambda_re.match(func)):
-            throw(TypeError, 'Positional argument must be lambda function or its text source. '
-                             'Got: %s.get(%r)' % (entity.__name__, func))
-        return entity._query_from_lambda_(func, frame_depth+1)
-    def _query_from_lambda_(entity, lambda_func, frame_depth):
-        globals = sys._getframe(frame_depth+1).f_globals
-        locals = sys._getframe(frame_depth+1).f_locals
-        if type(lambda_func) is types.FunctionType:
-            names = get_lambda_args(lambda_func)
-            code_key = id(lambda_func.func_code if PY2 else lambda_func.__code__)
-            cond_expr, external_names, cells = decompile(lambda_func)
-        elif isinstance(lambda_func, basestring):
-            code_key = lambda_func
-            lambda_ast = string2ast(lambda_func)
+        if not args and not kwargs:
+            return Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
+        func, globals, locals = get_globals_and_locals(args, kwargs, frame_depth+1)
+
+        if type(func) is types.FunctionType:
+            names = get_lambda_args(func)
+            code_key = id(func.func_code if PY2 else func.__code__)
+            cond_expr, external_names, cells = decompile(func)
+        elif isinstance(func, basestring):
+            code_key = func
+            lambda_ast = string2ast(func)
             if not isinstance(lambda_ast, ast.Lambda):
-                throw(TypeError, 'Lambda function is expected. Got: %s' % lambda_func)
+                throw(TypeError, 'Lambda function is expected. Got: %s' % func)
             names = get_lambda_args(lambda_ast)
             cond_expr = lambda_ast.code
             cells = None
@@ -3303,7 +3293,7 @@ class EntityMeta(type):
         if_expr = ast.GenExprIf(cond_expr)
         for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name('.0'), [ if_expr ])
         inner_expr = ast.GenExprInner(ast.Name(name), [ for_expr ])
-        locals = locals.copy()
+        locals = locals.copy() if locals is not None else {}
         assert '.0' not in locals
         locals['.0'] = entity
         return Query(code_key, inner_expr, globals, locals, cells)
@@ -4196,31 +4186,69 @@ def string2ast(s):
     # result = deepcopy(result)  # no need for now, but may be needed later
     return result
 
-@cut_traceback
-def select(gen, frame_depth=0, left_join=False):
+def get_globals_and_locals(args, kwargs, frame_depth, from_generator=False):
+    args_len = len(args)
+    assert args_len > 0
+    func = args[0]
+    if from_generator:
+        if not isinstance(func, (basestring, types.GeneratorType)): throw(TypeError,
+            'The first positional argument must be generator expression or its text source. Got: %r' % func)
+    else:
+        if not isinstance(func, (basestring, types.FunctionType)): throw(TypeError,
+            'The first positional argument must be lambda function or its text source. Got: %r' % func)
+    if args_len > 1:
+        globals = args[1]
+        if not hasattr(globals, 'keys'): throw(TypeError,
+            'The second positional arguments should be globals dictionary. Got: %r' % globals)
+        if args_len > 2:
+            locals = args[2]
+            if local is not None and not hasattr(locals, 'keys'): throw(TypeError,
+                'The third positional arguments should be locals dictionary. Got: %r' % locals)
+        else: locals = {}
+        if type(func) is types.GeneratorType:
+            locals = locals.copy()
+            locals.update(func.gi_frame.f_locals)
+        if len(args) > 3: throw(TypeError, 'Excess positional argument%s: %s'
+                                % (len(args) > 4 and 's' or '', ', '.join(imap(repr, args[3:]))))
+    elif type(func) is types.GeneratorType:
+        globals = func.gi_frame.f_globals
+        locals = func.gi_frame.f_locals
+    else:
+        globals = sys._getframe(frame_depth+1).f_globals
+        locals = sys._getframe(frame_depth+1).f_locals
+    if kwargs: throw(TypeError, 'Keyword arguments cannot be specified together with positional arguments')
+    return func, globals, locals
+
+def make_query(args, frame_depth, left_join=False):
+    gen, globals, locals = get_globals_and_locals(
+        args, kwargs=None, frame_depth=frame_depth+1, from_generator=True)
     if isinstance(gen, types.GeneratorType):
         tree, external_names, cells = decompile(gen)
         code_key = id(gen.gi_frame.f_code)
-        globals = gen.gi_frame.f_globals
-        locals = gen.gi_frame.f_locals
     elif isinstance(gen, basestring):
-        query_string = gen
-        tree = string2ast(query_string)
-        if not isinstance(tree, ast.GenExpr): throw(TypeError)
-        code_key = query_string
-        globals = sys._getframe(frame_depth+3).f_globals
-        locals = sys._getframe(frame_depth+3).f_locals
+        tree = string2ast(gen)
+        if not isinstance(tree, ast.GenExpr): throw(TypeError,
+            'Source code should represent generator. Got: %s' % gen)
+        code_key = gen
         cells = None
-    else: throw(TypeError)
+    else: assert False
     return Query(code_key, tree.code, globals, locals, cells, left_join)
 
 @cut_traceback
-def left_join(gen, frame_depth=0):
-    return select(gen, frame_depth=frame_depth+3, left_join=True)
+def select(*args):
+    return make_query(args, frame_depth=3)
 
 @cut_traceback
-def get(gen):
-    return select(gen, frame_depth=3).get()
+def left_join(*args):
+    return make_query(args, frame_depth=3, left_join=True)
+
+@cut_traceback
+def get(*args):
+    return make_query(args, frame_depth=3).get()
+
+@cut_traceback
+def exists(*args):
+    return make_query(args, frame_depth=3).exists()
 
 def make_aggrfunc(std_func):
     def aggrfunc(*args, **kwargs):
@@ -4243,10 +4271,6 @@ max = make_aggrfunc(builtins.max)
 avg = make_aggrfunc(utils.avg)
 
 distinct = make_aggrfunc(utils.distinct)
-
-@cut_traceback
-def exists(gen, frame_depth=0):
-    return select(gen, frame_depth=frame_depth+3).exists()
 
 def JOIN(expr):
     return expr
@@ -4537,32 +4561,25 @@ class Query(object):
                 query._database._translator_cache[new_key] = new_translator
             return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
 
-        attributes = functions = strings = numbers = False
+        if isinstance(args[0], (basestring, types.FunctionType)):
+            func, globals, locals = get_globals_and_locals(args, kwargs=None, frame_depth=3)
+            return query._process_lambda(func, globals, locals, order_by=True)
+
+        attributes = numbers = False
         for arg in args:
-            if isinstance(arg, basestring): strings = True
-            elif type(arg) is types.FunctionType: functions = True
-            elif isinstance(arg, int_types): numbers = True
+            if isinstance(arg, int_types): numbers = True
             elif isinstance(arg, (Attribute, DescWrapper)): attributes = True
-            else: throw(TypeError, "Arguments of order_by() method must be attributes, numbers, strings or lambdas. Got: %r" % arg)
-        if strings + functions + numbers + attributes > 1:
-            throw(TypeError, 'All arguments of order_by() method must be of the same type')
-        if len(args) > 1 and strings + functions:
-            throw(TypeError, 'When argument of order_by() method is string or lambda, it must be the only argument')
-
-        if numbers or attributes:
-            new_key = query._key + ('order_by', args,)
-            new_filters = query._filters + ((numbers, args),)
-            new_translator = query._database._translator_cache.get(new_key)
-            if new_translator is None:
-                if numbers: new_translator = query._translator.order_by_numbers(args)
-                else: new_translator = query._translator.order_by_attributes(args)
-                query._database._translator_cache[new_key] = new_translator
-            return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
-
-        globals = sys._getframe(3).f_globals
-        locals = sys._getframe(3).f_locals
-        func = args[0]
-        return query._process_lambda(func, globals, locals, order_by=True)
+            else: throw(TypeError, "order_by() method receive an argument of invalid type: %r" % arg)
+        if numbers and attributes:
+            throw(TypeError, 'order_by() method receive invalid combination of arguments')
+        new_key = query._key + ('order_by', args,)
+        new_filters = query._filters + ((numbers, args),)
+        new_translator = query._database._translator_cache.get(new_key)
+        if new_translator is None:
+            if numbers: new_translator = query._translator.order_by_numbers(args)
+            else: new_translator = query._translator.order_by_attributes(args)
+            query._database._translator_cache[new_key] = new_translator
+        return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
     def _process_lambda(query, func, globals, locals, order_by):
         prev_translator = query._translator
         argnames = ()
@@ -4638,11 +4655,7 @@ class Query(object):
     @cut_traceback
     def filter(query, *args, **kwargs):
         if args:
-            if len(args) > 1: throw(TypeError, 'Only one positional argument is supported')
-            if kwargs: throw(TypeError, 'Keyword arguments cannot be specified together with positional arguments')
-            func = args[0]
-            globals = sys._getframe(3).f_globals
-            locals = sys._getframe(3).f_locals
+            func, globals, locals = get_globals_and_locals(args, kwargs, frame_depth=3)
             return query._process_lambda(func, globals, locals, order_by=False)
         if not kwargs: return query
 
