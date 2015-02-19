@@ -183,8 +183,6 @@ class ExprEvalError(TranslationError):
 class OptimizationFailed(Exception):
     pass  # Internal exception, cannot be encountered in user code
 
-###############################################################################
-
 def adapt_sql(sql, paramstyle):
     result = adapted_sql_cache.get((sql, paramstyle))
     if result is not None: return result
@@ -1109,8 +1107,6 @@ class SessionCache(object):
                 throw(TransactionIntegrityError, '%s with unique index (%s) already exists: %s'
                                  % (obj2.__class__.__name__, ', '.join(attr.name for attr in attrs), key_str))
         cache_index.pop(prev_vals, None)
-
-###############################################################################
 
 class NotLoadedValueType(object):
     def __repr__(self): return 'NOT_LOADED'
