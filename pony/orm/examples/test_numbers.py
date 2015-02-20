@@ -20,10 +20,10 @@ class Numbers(db.Entity):
 
 sql_debug(True)  # Output all SQL queries to stdout
 
-db.bind('sqlite', 'presentation.sqlite', create_db=True)
-#db.bind('mysql', host="localhost", user="presentation", passwd="pony", db="presentation")
-#db.bind('postgres', user='presentation', password='pony', host='localhost', database='presentation')
-#db.bind('oracle', 'presentation/pony@localhost')
+db.bind('sqlite', 'test_numbers.sqlite', create_db=True)
+#db.bind('mysql', host="localhost", user="pony", passwd="pony", db="test_numbers")
+#db.bind('postgres', user='pony', password='pony', host='localhost', database='test_numbers')
+#db.bind('oracle', 'test_numbers/pony@localhost')
 
 db.drop_table("Numbers", if_exists=True, with_all_data=True)
 db.generate_mapping(create_tables=True)

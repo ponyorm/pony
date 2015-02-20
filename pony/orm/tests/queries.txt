@@ -72,7 +72,7 @@ LIMIT 10
 # Testing aggregation queries from documentation:
 
 Schema:
-pony.orm.examples.presentation
+pony.orm.examples.university1
 
 >>> sum(s.gpa for s in Student if s.group.number == 101)
 
@@ -253,7 +253,7 @@ GROUP BY "c"."id"
 HAVING COUNT(DISTINCT "orderitem-1"."product") > 1
 
 Schema:
-pony.orm.examples.presentation
+pony.orm.examples.university1
 
 >>> select((s.group, count(s)) for s in Student  if s.group.dept.number == 44 and avg(s.gpa) > 4)
 
@@ -335,7 +335,7 @@ FROM "Student" "s"
 # Other tests
 
 Schema:
-pony.orm.examples.presentation
+pony.orm.examples.university1
 
 >>> select(s for s in Student if s.gpa > 3)
 
