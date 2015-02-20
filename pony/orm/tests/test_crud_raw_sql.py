@@ -56,7 +56,7 @@ class TestRawSql(unittest.TestCase):
         students = set(Student.select_by_sql("select id, age, age*2 as x from Student order by age"))
         self.assertEqual(students, set([Student[3], Student[2], Student[1]]))
 
-    @raises_exception(TypeError, 'Lambda function or its text representation expected. Got: 123')
+    @raises_exception(TypeError, 'The first positional argument must be lambda function or its text source. Got: 123')
     def test4(self):
         students = Student.select(123)
 

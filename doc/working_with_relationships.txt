@@ -228,11 +228,13 @@ You can treat a collection attribute as a regular Python collection and use stan
 
        Returns the number of objects in the collection. If the collection is not loaded into cache, this methods loads all the collection instances into the cache first, and then returns the number of objects. Use this method if you are going to iterate over the objects and you need them loaded into the cache. If you don't need the collection to be loaded into the memory, you can use the :ref:`count() <set_count_ref>` method.
 
-    >>> p1 = Person[1]
-    >>> Car[1] in p1.cars
-    True
-    >>> len(p1.cars)
-    2
+    .. code-block:: python
+
+        >>> p1 = Person[1]
+        >>> Car[1] in p1.cars
+        True
+        >>> len(p1.cars)
+        2
 
 Also there is a number of methods which you can call on a collection attribute.
 
@@ -288,6 +290,10 @@ Also there is a number of methods which you can call on a collection attribute.
           new_tag = Tag(name='New tag')
           Photo[123].tags.add(new_tag)
 
+   .. py:method:: load()
+
+      Loads all related objects from the database.
+
 
 Collection class methods
 ------------------------------------
@@ -314,4 +320,38 @@ This method can be called on the entity class, not instance. For example::
    .. py:method:: drop_table(with_all_data=False)
 
       Drops the intermediate table which is created for establishing many-to-many relationship. If the table is not empty and ``with_all_data=False``, the method raises the ``TableIsNotEmpty`` exception and doesn't delete anything. Setting the ``with_all_data=True`` allows you to delete the table even if it is not empty.
+
+
+.. _col_queries_ref:
+
+Collection queries
+----------------------------
+
+Starting with the release 0.6.1, Pony introduces queries for the relationship attributes.
+
+You can apply :py:func:`select`, :py:meth:`Query.filter`, :py:meth:`Query.order_by`, :py:meth:`Query.page`, :py:meth:`Query.limit`, :py:meth:`Query.random` methods to the relationships to-many. The method names ``select`` and ``filter`` are synonyms.
+
+Below you can find several examples of using these methods. We'll use the University schema for showing these queries, here are `python entity definitions <https://github.com/ponyorm/pony/blob/orm/pony/orm/examples/university1.py>`_ and  `Entity-Relationship diagram <https://editor.ponyorm.com/user/pony/University>`_.
+
+The example below selects all students with the ``gpa`` greater than 3 within the group 101::
+
+    g = Group[101]
+    g.students.filter(lambda student: student.gpa > 3)[:]
+
+This query can be used for displaying the second page of group 101 student's list ordered by the ``name`` attribute::
+
+    g.students.order_by(Student.name).page(2, pagesize=3)
+
+The same query can be also written in the following form::
+
+    g.students.order_by(lambda s: s.name).limit(3, offset=3)
+
+The following query returns two random students from the group 101::
+
+    g.students.random(2)
+
+And one more example. This query returns the first page of courses which were taken by ``Student[1]`` in the second semester, ordered by the course name::
+
+    s = Student[1]
+    s.courses.select(lambda c: c.semester == 2).order_by(Course.name).page(1)
 

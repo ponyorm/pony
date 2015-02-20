@@ -51,8 +51,10 @@ class TestInheritance(unittest.TestCase):
         class Entity3(Entity1, Entity2):
             c = Required(int)
 
-    @raises_exception(ERDiagramError, 'Attribute "Entity2.a" clashes with attribute "Entity3.a" in derived entity "Entity4"')
-    def test_3(self):
+    @raises_exception(ERDiagramError, 'Attribute Entity3.a conflicts with attribute Entity2.a '
+                                      'because both entities inherit from Entity1. '
+                                      'To fix this, move attribute definition to base class')
+    def test_3a(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
             id = PrimaryKey(int)
@@ -60,8 +62,21 @@ class TestInheritance(unittest.TestCase):
             a = Required(int)
         class Entity3(Entity1):
             a = Required(int)
-        class Entity4(Entity2, Entity3):
-            c = Required(int)
+
+    def test3b(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            id = PrimaryKey(int)
+        class Entity2(Entity1):
+            a = Set('Entity4')
+        class Entity3(Entity1):
+            a = Set('Entity4')
+        class Entity4(db.Entity):
+            x = Required(Entity2)
+            y = Required(Entity3)
+        db.generate_mapping(create_tables=True)
+        self.assertTrue(Entity2.a not in Entity1._subclass_attrs_)
+        self.assertTrue(Entity3.a not in Entity1._subclass_attrs_)
 
     @raises_exception(ERDiagramError, "Name 'a' hides base attribute Entity1.a")
     def test_4(self):

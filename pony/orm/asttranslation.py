@@ -286,7 +286,8 @@ extractors_cache = {}
 
 def create_extractors(code_key, tree, filter_num, globals, locals,
                       special_functions, const_functions, additional_internal_names=()):
-    result = extractors_cache.get(code_key)
+    cache_key = code_key, filter_num
+    result = extractors_cache.get(cache_key)
     if result is None:
         pretranslator = PreTranslator(
             tree, globals, locals, special_functions, const_functions, additional_internal_names)
@@ -297,5 +298,5 @@ def create_extractors(code_key, tree, filter_num, globals, locals,
             else: code = compile(src, src, 'eval')
             extractors[filter_num, src] = code
         varnames = list(sorted(extractors))
-        result = extractors_cache[code_key] = extractors, varnames, tree
+        result = extractors_cache[cache_key] = extractors, varnames, tree
     return result

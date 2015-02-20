@@ -73,7 +73,7 @@ def isbn13_to_isbn10(s):
 # http://www.regular-expressions.info/email.html
 
 email_re = re.compile(
-    r'^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.(?:[A-Z]{2}|com|org|net|gov|mil|biz|info|name|aero|biz|info|jobs|museum|coop)$',
+    r'^[a-z0-9._%+-]+@[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)+$',
     re.IGNORECASE)
 
 rfc2822_email_re = re.compile(r'''

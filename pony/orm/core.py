@@ -8,7 +8,7 @@ from itertools import chain, starmap, repeat
 from time import time
 from decimal import Decimal
 from random import shuffle, randint, random
-from threading import Lock, currentThread as current_thread, _MainThread
+from threading import Lock, RLock, currentThread as current_thread, _MainThread
 from contextlib import contextmanager
 from collections import defaultdict
 
@@ -182,8 +182,6 @@ class ExprEvalError(TranslationError):
 
 class OptimizationFailed(Exception):
     pass  # Internal exception, cannot be encountered in user code
-
-###############################################################################
 
 def adapt_sql(sql, paramstyle):
     result = adapted_sql_cache.get((sql, paramstyle))
@@ -430,8 +428,8 @@ class Database(object):
         self.Entity._database_ = self
 
         # Statistics-related stuff:
-        self.global_stats = {}
-        self.global_stats_lock = Lock()
+        self._global_stats = {}
+        self._global_stats_lock = RLock()
         self._dblocal = DbLocal()
 
         self.provider = None
@@ -469,12 +467,20 @@ class Database(object):
         if stat is not None: stat.query_executed(query_start_time)
         else: stats[sql] = QueryStat(sql, query_start_time)
     def merge_local_stats(database):
-        setdefault = database.global_stats.setdefault
-        with database.global_stats_lock:
+        setdefault = database._global_stats.setdefault
+        with database._global_stats_lock:
             for sql, stat in iteritems(database._dblocal.stats):
                 global_stat = setdefault(sql, stat)
                 if global_stat is not stat: global_stat.merge(stat)
         database._dblocal.stats.clear()
+    @property
+    def global_stats(database):
+        with database._global_stats_lock:
+            return dict((sql, stat.copy()) for sql, stat in iteritems(database._global_stats))
+    @property
+    def global_stats_lock(database):
+        deprecated(3, "global_stats_lock is deprecated, just use global_stats property without any locking")
+        return database._global_stats_lock
     @cut_traceback
     def get_connection(database):
         cache = database._get_cache()
@@ -683,8 +689,6 @@ class Database(object):
                     m2m_columns_2 = reverse.get_m2m_columns(is_reverse=True)
                     if m2m_columns_1 == m2m_columns_2: throw(MappingError,
                         'Different column names should be specified for attributes %s and %s' % (attr, reverse))
-                    if attr.symmetric and len(attr.reverse_columns) != len(attr.entity._pk_attrs_):
-                        throw(MappingError, "Invalid number of reverse columns for symmetric attribute %s" % attr)
                     assert len(m2m_columns_1) == len(reverse.converters)
                     assert len(m2m_columns_2) == len(attr.converters)
                     for column_name, converter in izip(m2m_columns_1 + m2m_columns_2, reverse.converters + attr.converters):
@@ -831,6 +835,7 @@ class Database(object):
         connection = cache.prepare_connection_for_query_execution()
         database.schema.create_tables(database.provider, connection)
         if check_tables: database.schema.check_tables(database.provider, connection)
+    @cut_traceback
     @db_session()
     def check_tables(database):
         cache = database._get_cache()
@@ -856,6 +861,10 @@ class QueryStat(object):
             stat.db_count = 0
             stat.cache_count = 1
         stat.sql = sql
+    def copy(stat):
+        result = object.__new__(QueryStat)
+        result.__dict__.update(stat.__dict__)
+        return result
     def query_executed(stat, query_start_time):
         query_end_time = time()
         duration = query_end_time - query_start_time
@@ -1041,7 +1050,7 @@ class SessionCache(object):
             if not reverse.is_collection:
                 for obj in objects:
                     setdata = obj._vals_[attr]
-                    setdata.added = setdata.removed = None
+                    setdata.added = setdata.removed = setdata.absent = None
                 continue
 
             if not isinstance(reverse, Set): throw(NotImplementedError)
@@ -1054,7 +1063,7 @@ class SessionCache(object):
                 if setdata.removed:
                     for obj2 in setdata.removed: removed.add((obj, obj2))
                 if obj._status_ == 'marked_to_delete': del obj._vals_[attr]
-                else: setdata.added = setdata.removed = None
+                else: setdata.added = setdata.removed = setdata.absent = None
         cache.modified_collections.clear()
         return modified_m2m
     def update_simple_index(cache, obj, attr, old_val, new_val, undo):
@@ -1098,8 +1107,6 @@ class SessionCache(object):
                 throw(TransactionIntegrityError, '%s with unique index (%s) already exists: %s'
                                  % (obj2.__class__.__name__, ', '.join(attr.name for attr in attrs), key_str))
         cache_index.pop(prev_vals, None)
-
-###############################################################################
 
 class NotLoadedValueType(object):
     def __repr__(self): return 'NOT_LOADED'
@@ -1813,34 +1820,34 @@ class Collection(Attribute):
         assert False, 'Abstract method'  # pragma: no cover
 
 class SetData(set):
-    __slots__ = 'is_fully_loaded', 'added', 'removed', 'count'
+    __slots__ = 'is_fully_loaded', 'added', 'removed', 'absent', 'count'
     def __init__(setdata):
         setdata.is_fully_loaded = False
-        setdata.added = setdata.removed = None
+        setdata.added = setdata.removed = setdata.absent = None
         setdata.count = None
 
-def construct_criteria_list(alias, columns, converters, row_value_syntax, count=1, start=0):
-    assert count > 0
-    if count == 1:
+def construct_batchload_criteria_list(alias, columns, converters, batch_size, row_value_syntax, start=0):
+    assert batch_size > 0
+    if batch_size == 1:
         return [ [ 'EQ', [ 'COLUMN', alias, column ], [ 'PARAM', (start, None, j), converter ] ]
                  for j, (column, converter) in enumerate(izip(columns, converters)) ]
     if len(columns) == 1:
         column = columns[0]
         converter = converters[0]
-        param_list = [ [ 'PARAM', (i+start, None, 0), converter ] for i in xrange(count) ]
+        param_list = [ [ 'PARAM', (i+start, None, 0), converter ] for i in xrange(batch_size) ]
         condition = [ 'IN', [ 'COLUMN', alias, column ], param_list ]
         return [ condition ]
     elif row_value_syntax:
         row = [ 'ROW' ] + [ [ 'COLUMN', alias, column ] for column in columns ]
         param_list = [ [ 'ROW' ] + [ [ 'PARAM', (i+start, None, j), converter ]
                                      for j, converter in enumerate(converters) ]
-                       for i in xrange(count) ]
+                       for i in xrange(batch_size) ]
         condition = [ 'IN', row, param_list ]
         return [ condition ]
     else:
         conditions = [ [ 'AND' ] + [ [ 'EQ', [ 'COLUMN', alias, column ], [ 'PARAM', (i+start, None, j), converter ] ]
                                      for j, (column, converter) in enumerate(izip(columns, converters)) ]
-                       for i in xrange(count) ]
+                       for i in xrange(batch_size) ]
         return [ [ 'OR' ] + conditions ]
 
 class Set(Collection):
@@ -1969,6 +1976,7 @@ class Set(Collection):
 
         for setdata2 in setdata_list:
             setdata2.is_fully_loaded = True
+            setdata2.absent = None
             setdata2.count = len(setdata2)
         cache.collection_statistics[attr] = counter + 1
         return setdata
@@ -2000,9 +2008,11 @@ class Set(Collection):
         database = attr.entity._database_
         row_value_syntax = database.provider.translator_cls.row_value_syntax
         where_list = [ 'WHERE' ]
-        where_list += construct_criteria_list('T1', rcolumns, rconverters, row_value_syntax, batch_size, items_count)
+        where_list += construct_batchload_criteria_list(
+            'T1', rcolumns, rconverters, batch_size, row_value_syntax, items_count)
         if items_count:
-            where_list += construct_criteria_list('T1', columns, converters, row_value_syntax, items_count)
+            where_list += construct_batchload_criteria_list(
+                'T1', columns, converters, items_count, row_value_syntax)
         sql_ast = [ 'SELECT', select_list, from_list, where_list ]
         sql, adapter = attr.cached_load_sql[cache_key] = database._ast2sql(sql_ast)
         return sql, adapter
@@ -2145,6 +2155,7 @@ class Set(Collection):
     def get_m2m_columns(attr, is_reverse=False):
         reverse = attr.reverse
         entity = attr.entity
+        pk_length = len(entity._get_pk_columns_())
         provider = entity._database_.provider
         if attr.symmetric or entity is reverse.entity:
             if attr._columns_checked:
@@ -2154,7 +2165,7 @@ class Set(Collection):
 
             if not attr.symmetric: assert not reverse._columns_checked
             if attr.columns:
-                if len(attr.columns) != len(entity._get_pk_columns_()): throw(MappingError,
+                if len(attr.columns) != pk_length: throw(MappingError,
                     'Invalid number of columns for %s' % reverse)
             else: attr.columns = provider.get_default_m2m_column_names(entity)
             attr._columns_checked = True
@@ -2163,6 +2174,8 @@ class Set(Collection):
             if attr.symmetric:
                 if not attr.reverse_columns:
                     attr.reverse_columns = [ column + '_2' for column in attr.columns ]
+                elif len(attr.reverse_columns) != pk_length:
+                    throw(MappingError, "Invalid number of reverse columns for symmetric attribute %s" % attr)                    
                 return attr.columns if not is_reverse else attr.reverse_columns
             else:
                 if not reverse.columns:
@@ -2173,7 +2186,7 @@ class Set(Collection):
 
         if attr._columns_checked: return reverse.columns
         elif reverse.columns:
-            if len(reverse.columns) != len(entity._get_pk_columns_()): throw(MappingError,
+            if len(reverse.columns) != pk_length: throw(MappingError,
                 'Invalid number of columns for %s' % reverse)
         else: reverse.columns = provider.get_default_m2m_column_names(entity)
         reverse.converters = entity._pk_converters_
@@ -2186,8 +2199,6 @@ class Set(Collection):
         cached_sql = attr.cached_remove_m2m_sql
         if cached_sql is None:
             reverse = attr.reverse
-            table_name = attr.table
-            assert table_name is not None
             where_list = [ 'WHERE' ]
             if attr.symmetric:
                 columns = attr.columns + attr.reverse_columns
@@ -2197,7 +2208,7 @@ class Set(Collection):
                 converters = reverse.converters + attr.converters
             for i, (column, converter) in enumerate(izip(columns, converters)):
                 where_list.append([ 'EQ', ['COLUMN', None, column], [ 'PARAM', (i, None, None), converter ] ])
-            sql_ast = [ 'DELETE', table_name, where_list ]
+            sql_ast = [ 'DELETE', attr.table, where_list ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_remove_m2m_sql = sql, adapter
         else: sql, adapter = cached_sql
@@ -2211,8 +2222,6 @@ class Set(Collection):
         cached_sql = attr.cached_add_m2m_sql
         if cached_sql is None:
             reverse = attr.reverse
-            table_name = attr.table
-            assert table_name is not None
             if attr.symmetric:
                 columns = attr.columns + attr.reverse_columns
                 converters = attr.converters + attr.converters
@@ -2220,7 +2229,7 @@ class Set(Collection):
                 columns = reverse.columns + attr.columns
                 converters = reverse.converters + attr.converters
             params = [ [ 'PARAM', (i, None, None), converter ] for i, converter in enumerate(converters) ]
-            sql_ast = [ 'INSERT', table_name, columns, params ]
+            sql_ast = [ 'INSERT', attr.table, columns, params ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_add_m2m_sql = sql, adapter
         else: sql, adapter = cached_sql
@@ -2241,6 +2250,7 @@ def unpickle_setwrapper(obj, attrname, items):
     setdata = obj._vals_.get(attr)
     if setdata is None: setdata = obj._vals_[attr] = SetData()
     setdata.is_fully_loaded = True
+    setdata.absent = None
     setdata.count = len(setdata)
     return wrapper
 
@@ -2316,6 +2326,7 @@ class SetInstance(object):
         else: rentity._fetch_objects(cursor, attr_offsets)
         if setdata: return False
         setdata.is_fully_loaded = True
+        setdata.absent = None
         setdata.count = 0
         return True
     @cut_traceback
@@ -2397,8 +2408,16 @@ class SetInstance(object):
         if setdata is not None:
             if item in setdata: return True
             if setdata.is_fully_loaded: return False
+            if setdata.absent is not None and item in setdata.absent: return False
+        else:
+            reverse_setdata = item._vals_.get(reverse)
+            if reverse_setdata is not None and reverse_setdata.is_fully_loaded:
+                return obj in reverse_setdata
         setdata = attr.load(obj, (item,))
-        return item in setdata
+        if item in setdata: return True
+        if setdata.absent is None: setdata.absent = set()
+        setdata.absent.add(item)
+        return False
     @cut_traceback
     def create(wrapper, **kwargs):
         attr = wrapper._attr_
@@ -2500,7 +2519,32 @@ class SetInstance(object):
             'Cannot change collection %s.%s: the database session is over' % (safe_repr(obj), attr))
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr.__set__(obj, ())
-
+    @cut_traceback
+    def load(wrapper):
+        wrapper._attr_.load(wrapper._obj_)
+    @cut_traceback
+    def select(wrapper, *args):
+        obj = wrapper._obj_
+        if obj._status_ in del_statuses: throw_object_was_deleted(obj)
+        attr = wrapper._attr_
+        reverse = attr.reverse
+        query = reverse.entity._select_all()
+        s = 'lambda item: JOIN(obj in item.%s)' if reverse.is_collection else 'lambda item: item.%s == obj'
+        query = query.filter(s % reverse.name, {'obj' : obj, 'JOIN': JOIN})
+        if args:
+            func, globals, locals = get_globals_and_locals(args, kwargs=None, frame_depth=3)
+            query = query.filter(func, globals, locals)
+        return query
+    filter = select
+    def limit(wrapper, limit, offset=None):
+        return wrapper.select().limit(limit, offset)
+    def page(wrapper, pagenum, pagesize=10):
+        return wrapper.select().page(pagenum, pagesize)
+    def order_by(wrapper, *args):
+        return wrapper.select().order_by(*args)
+    def random(wrapper, limit):
+        return wrapper.select().random(limit)
+        
 def unpickle_multiset(obj, attrnames, items):
     entity = obj.__class__
     for name in attrnames:
@@ -2714,9 +2758,14 @@ class EntityMeta(type):
         entity._subclass_attrs_ = set()
         entity._subclass_adict_ = {}
         for base in entity._all_bases_:
-            base._subclass_attrs_.update(new_attrs)
             for attr in new_attrs:
-                base._subclass_adict_[attr.name] = attr
+                if attr.is_collection: continue
+                prev = base._subclass_adict_.setdefault(attr.name, attr)
+                if prev is not attr: throw(ERDiagramError,
+                    'Attribute %s conflicts with attribute %s because both entities inherit from %s. '
+                    'To fix this, move attribute definition to base class'
+                    % (attr, prev, entity._root_.__name__))
+                base._subclass_attrs_.add(attr)
         entity._attrnames_cache_ = {}
 
         try: table_name = entity.__dict__['_table_']
@@ -2735,6 +2784,7 @@ class EntityMeta(type):
 
         entity._cached_max_id_sql_ = None
         entity._find_sql_cache_ = {}
+        entity._load_sql_cache_ = {}
         entity._batchload_sql_cache_ = {}
         entity._insert_sql_cache_ = {}
         entity._update_sql_cache_ = {}
@@ -2912,12 +2962,8 @@ class EntityMeta(type):
         assert len(objects) == 1
         return objects[0]
     @cut_traceback
-    def select(entity, func=None):
-        if func is None:
-            return Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
-        if not (type(func) is types.FunctionType or isinstance(func, basestring) and lambda_re.match(func)):
-            throw(TypeError, 'Lambda function or its text representation expected. Got: %r' % func)
-        return entity._query_from_lambda_(func, frame_depth=3)
+    def select(entity, *args):
+        return entity._query_from_args_(args, kwargs=None, frame_depth=3)
     @cut_traceback
     def select_by_sql(entity, sql, globals=None, locals=None):
         return entity._find_by_sql_(None, sql, globals, locals, frame_depth=3)
@@ -2983,12 +3029,6 @@ class EntityMeta(type):
                     if obj in seeds: obj._load_()
         if found_in_cache: shuffle(result)
         return result
-    @cut_traceback
-    def order_by(entity, *args):
-        deprecated(5, "%s.order_by(...) method is deprecated, use %s.select().order_by(...) instead"
-                      % (entity.__name__, entity.__name__))
-        query = Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
-        return query.order_by(*args)
     def _find_one_(entity, kwargs, for_update=False, nowait=False):
         if entity._database_.schema is None:
             throw(ERDiagramError, 'Mapping is not generated for entity %r' % entity.__name__)
@@ -3067,7 +3107,7 @@ class EntityMeta(type):
         col_names = [ column_info[0].upper() for column_info in cursor.description ]
         attr_offsets = {}
         used_columns = set()
-        for attr in entity._attrs_with_columns_:
+        for attr in chain(entity._attrs_with_columns_, entity._subclass_attrs_):
             offsets = []
             for column in attr.columns:
                 try: offset = col_names.index(column.upper())
@@ -3085,12 +3125,13 @@ class EntityMeta(type):
 
         objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count)
         return objects
-    def _construct_select_clause_(entity, alias=None, distinct=False, query_attrs=()):
+    def _construct_select_clause_(entity, alias=None, distinct=False, query_attrs=(), all_attributes=False):
         attr_offsets = {}
         select_list = [ 'DISTINCT' ] if distinct else [ 'ALL' ]
         root = entity._root_
         for attr in chain(root._attrs_, root._subclass_attrs_):
-            if not issubclass(attr.entity, entity) and not issubclass(entity, attr.entity): continue
+            if not all_attributes and not issubclass(attr.entity, entity) \
+                                  and not issubclass(entity, attr.entity): continue
             if attr.is_collection: continue
             if not attr.columns: continue
             if attr.lazy and attr not in query_attrs: continue
@@ -3110,9 +3151,8 @@ class EntityMeta(type):
         query_key = batch_size, attr
         cached_sql = entity._batchload_sql_cache_.get(query_key)
         if cached_sql is not None: return cached_sql
-        table_name = entity._table_
-        select_list, attr_offsets = entity._construct_select_clause_()
-        from_list = [ 'FROM', [ None, 'TABLE', table_name ]]
+        select_list, attr_offsets = entity._construct_select_clause_(all_attributes=True)
+        from_list = [ 'FROM', [ None, 'TABLE', entity._table_ ]]
         if attr is None:
             columns = entity._pk_columns_
             converters = entity._pk_converters_
@@ -3120,7 +3160,8 @@ class EntityMeta(type):
             columns = attr.columns
             converters = attr.converters
         row_value_syntax = entity._database_.provider.translator_cls.row_value_syntax
-        criteria_list = construct_criteria_list(None, columns, converters, row_value_syntax, batch_size)
+        criteria_list = construct_batchload_criteria_list(
+            None, columns, converters, batch_size, row_value_syntax)
         sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
@@ -3133,9 +3174,8 @@ class EntityMeta(type):
         query_key = sorted_query_attrs, order_by_pk, for_update, nowait
         cached_sql = entity._find_sql_cache_.get(query_key)
         if cached_sql is not None: return cached_sql
-        table_name = entity._table_
         select_list, attr_offsets = entity._construct_select_clause_(query_attrs=query_attrs)
-        from_list = [ 'FROM', [ None, 'TABLE', table_name ]]
+        from_list = [ 'FROM', [ None, 'TABLE', entity._table_ ]]
         where_list = [ 'WHERE' ]
         values = []
 
@@ -3238,26 +3278,21 @@ class EntityMeta(type):
                 for obj in result:
                     if obj not in batch: throw(UnrepeatableReadError,
                                                'Phantom object %s disappeared' % safe_repr(obj))
+    def _select_all(entity):
+        return Query(entity._default_iter_name_, entity._default_genexpr_, {}, { '.0' : entity })
     def _query_from_args_(entity, args, kwargs, frame_depth):
-        if len(args) > 1: throw(TypeError, 'Only one positional argument expected')
-        if kwargs: throw(TypeError, 'If positional argument presented, no keyword arguments expected')
-        func = args[0]
-        if not (type(func) is types.FunctionType or isinstance(func, basestring) and lambda_re.match(func)):
-            throw(TypeError, 'Positional argument must be lambda function or its text source. '
-                             'Got: %s.get(%r)' % (entity.__name__, func))
-        return entity._query_from_lambda_(func, frame_depth+1)
-    def _query_from_lambda_(entity, lambda_func, frame_depth):
-        globals = sys._getframe(frame_depth+1).f_globals
-        locals = sys._getframe(frame_depth+1).f_locals
-        if type(lambda_func) is types.FunctionType:
-            names = get_lambda_args(lambda_func)
-            code_key = id(lambda_func.func_code if PY2 else lambda_func.__code__)
-            cond_expr, external_names, cells = decompile(lambda_func)
-        elif isinstance(lambda_func, basestring):
-            code_key = lambda_func
-            lambda_ast = string2ast(lambda_func)
+        if not args and not kwargs: return entity._select_all()
+        func, globals, locals = get_globals_and_locals(args, kwargs, frame_depth+1)
+
+        if type(func) is types.FunctionType:
+            names = get_lambda_args(func)
+            code_key = id(func.func_code if PY2 else func.__code__)
+            cond_expr, external_names, cells = decompile(func)
+        elif isinstance(func, basestring):
+            code_key = func
+            lambda_ast = string2ast(func)
             if not isinstance(lambda_ast, ast.Lambda):
-                throw(TypeError, 'Lambda function is expected. Got: %s' % lambda_func)
+                throw(TypeError, 'Lambda function is expected. Got: %s' % func)
             names = get_lambda_args(lambda_ast)
             cond_expr = lambda_ast.code
             cells = None
@@ -3271,7 +3306,7 @@ class EntityMeta(type):
         if_expr = ast.GenExprIf(cond_expr)
         for_expr = ast.GenExprFor(ast.AssName(name, 'OP_ASSIGN'), ast.Name('.0'), [ if_expr ])
         inner_expr = ast.GenExprInner(ast.Name(name), [ for_expr ])
-        locals = locals.copy()
+        locals = locals.copy() if locals is not None else {}
         assert '.0' not in locals
         locals['.0'] = entity
         return Query(code_key, inner_expr, globals, locals, cells)
@@ -3608,6 +3643,68 @@ class Entity(with_metaclass(EntityMeta)):
                 if seed is not obj: objects.append(seed)
         sql, adapter, attr_offsets = entity._construct_batchload_sql_(len(objects))
         arguments = adapter(objects)
+        cursor = database._exec_sql(sql, arguments)
+        objects = entity._fetch_objects(cursor, attr_offsets)
+        if obj not in objects: throw(UnrepeatableReadError,
+                                     'Phantom object %s disappeared' % safe_repr(obj))
+    @cut_traceback
+    def load(obj, *attrs):
+        cache = obj._session_cache_
+        if not cache.is_alive: throw(DatabaseSessionIsOver,
+            'Cannot load object %s: the database session is over' % safe_repr(obj))
+        entity = obj.__class__
+        database = entity._database_
+        if cache is not database._get_cache():
+            throw(TransactionError, "Object %s doesn't belong to current transaction" % safe_repr(obj))
+        if obj._status_ in created_or_deleted_statuses: return
+        if not attrs:
+            attrs = tuple(attr for attr, bit in iteritems(entity._bits_)
+                          if bit and attr not in obj._vals_)
+        else:
+            args = attrs
+            attrs = set()
+            for arg in args:
+                if isinstance(arg, basestring):
+                    attr = entity._adict_.get(arg)
+                    if attr is None:
+                        if not is_ident(arg): throw(ValueError, 'Invalid attribute name: %r' % arg)
+                        throw(AttributeError, 'Object %s does not have attribute %r' % (obj, arg))
+                elif isinstance(arg, Attribute):
+                    attr = arg
+                    if not isinstance(obj, attr.entity): throw(AttributeError,
+                        'Attribute %s does not belong to object %s' % (attr, obj))
+                else: throw(TypeError, 'Invalid argument type: %r' % arg)
+                if attr.is_collection: throw(NotImplementedError,
+                    'The load() method does not support collection attributes yet. Got: %s' % attr.name)
+                if entity._bits_[attr] and attr not in obj._vals_: attrs.add(attr)
+            attrs = tuple(sorted(attrs, key=attrgetter('id')))
+
+        sql_cache = entity._root_._load_sql_cache_
+        cached_sql = sql_cache.get(attrs)
+        if cached_sql is None:
+            if entity._discriminator_attr_ is not None:
+                attrs = (entity._discriminator_attr_,) + attrs
+            attrs = entity._pk_attrs_ + attrs
+            
+            attr_offsets = {}
+            select_list = [ 'ALL' ]
+            for attr in attrs:
+                attr_offsets[attr] = offsets = []
+                for column in attr.columns:
+                    offsets.append(len(select_list) - 1)
+                    select_list.append([ 'COLUMN', None, column ])
+            from_list = [ 'FROM', [ None, 'TABLE', entity._table_ ]]
+            criteria_list = [ [ 'EQ', [ 'COLUMN', None, column ], [ 'PARAM', (i, None, None), converter ] ]
+                              for i, (column, converter) in enumerate(izip(obj._pk_columns_, obj._pk_converters_)) ]
+            where_list = [ 'WHERE' ] + criteria_list
+
+            sql_ast = [ 'SELECT', select_list, from_list, where_list ]
+            sql, adapter = database._ast2sql(sql_ast)
+            cached_sql = sql, adapter, attr_offsets
+            sql_cache[attrs] = cached_sql
+        else: sql, adapter, attr_offsets = cached_sql
+        arguments = adapter(obj._get_raw_pkval_())
+
         cursor = database._exec_sql(sql, arguments)
         objects = entity._fetch_objects(cursor, attr_offsets)
         if obj not in objects: throw(UnrepeatableReadError,
@@ -4102,31 +4199,69 @@ def string2ast(s):
     # result = deepcopy(result)  # no need for now, but may be needed later
     return result
 
-@cut_traceback
-def select(gen, frame_depth=0, left_join=False):
+def get_globals_and_locals(args, kwargs, frame_depth, from_generator=False):
+    args_len = len(args)
+    assert args_len > 0
+    func = args[0]
+    if from_generator:
+        if not isinstance(func, (basestring, types.GeneratorType)): throw(TypeError,
+            'The first positional argument must be generator expression or its text source. Got: %r' % func)
+    else:
+        if not isinstance(func, (basestring, types.FunctionType)): throw(TypeError,
+            'The first positional argument must be lambda function or its text source. Got: %r' % func)
+    if args_len > 1:
+        globals = args[1]
+        if not hasattr(globals, 'keys'): throw(TypeError,
+            'The second positional arguments should be globals dictionary. Got: %r' % globals)
+        if args_len > 2:
+            locals = args[2]
+            if local is not None and not hasattr(locals, 'keys'): throw(TypeError,
+                'The third positional arguments should be locals dictionary. Got: %r' % locals)
+        else: locals = {}
+        if type(func) is types.GeneratorType:
+            locals = locals.copy()
+            locals.update(func.gi_frame.f_locals)
+        if len(args) > 3: throw(TypeError, 'Excess positional argument%s: %s'
+                                % (len(args) > 4 and 's' or '', ', '.join(imap(repr, args[3:]))))
+    elif type(func) is types.GeneratorType:
+        globals = func.gi_frame.f_globals
+        locals = func.gi_frame.f_locals
+    else:
+        globals = sys._getframe(frame_depth+1).f_globals
+        locals = sys._getframe(frame_depth+1).f_locals
+    if kwargs: throw(TypeError, 'Keyword arguments cannot be specified together with positional arguments')
+    return func, globals, locals
+
+def make_query(args, frame_depth, left_join=False):
+    gen, globals, locals = get_globals_and_locals(
+        args, kwargs=None, frame_depth=frame_depth+1, from_generator=True)
     if isinstance(gen, types.GeneratorType):
         tree, external_names, cells = decompile(gen)
         code_key = id(gen.gi_frame.f_code)
-        globals = gen.gi_frame.f_globals
-        locals = gen.gi_frame.f_locals
     elif isinstance(gen, basestring):
-        query_string = gen
-        tree = string2ast(query_string)
-        if not isinstance(tree, ast.GenExpr): throw(TypeError)
-        code_key = query_string
-        globals = sys._getframe(frame_depth+3).f_globals
-        locals = sys._getframe(frame_depth+3).f_locals
+        tree = string2ast(gen)
+        if not isinstance(tree, ast.GenExpr): throw(TypeError,
+            'Source code should represent generator. Got: %s' % gen)
+        code_key = gen
         cells = None
-    else: throw(TypeError)
+    else: assert False
     return Query(code_key, tree.code, globals, locals, cells, left_join)
 
 @cut_traceback
-def left_join(gen, frame_depth=0):
-    return select(gen, frame_depth=frame_depth+3, left_join=True)
+def select(*args):
+    return make_query(args, frame_depth=3)
 
 @cut_traceback
-def get(gen):
-    return select(gen, frame_depth=3).get()
+def left_join(*args):
+    return make_query(args, frame_depth=3, left_join=True)
+
+@cut_traceback
+def get(*args):
+    return make_query(args, frame_depth=3).get()
+
+@cut_traceback
+def exists(*args):
+    return make_query(args, frame_depth=3).exists()
 
 def make_aggrfunc(std_func):
     def aggrfunc(*args, **kwargs):
@@ -4149,10 +4284,6 @@ max = make_aggrfunc(builtins.max)
 avg = make_aggrfunc(utils.avg)
 
 distinct = make_aggrfunc(utils.distinct)
-
-@cut_traceback
-def exists(gen, frame_depth=0):
-    return select(gen, frame_depth=frame_depth+3).exists()
 
 def JOIN(expr):
     return expr
@@ -4443,32 +4574,25 @@ class Query(object):
                 query._database._translator_cache[new_key] = new_translator
             return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
 
-        attributes = functions = strings = numbers = False
+        if isinstance(args[0], (basestring, types.FunctionType)):
+            func, globals, locals = get_globals_and_locals(args, kwargs=None, frame_depth=3)
+            return query._process_lambda(func, globals, locals, order_by=True)
+
+        attributes = numbers = False
         for arg in args:
-            if isinstance(arg, basestring): strings = True
-            elif type(arg) is types.FunctionType: functions = True
-            elif isinstance(arg, int_types): numbers = True
+            if isinstance(arg, int_types): numbers = True
             elif isinstance(arg, (Attribute, DescWrapper)): attributes = True
-            else: throw(TypeError, "Arguments of order_by() method must be attributes, numbers, strings or lambdas. Got: %r" % arg)
-        if strings + functions + numbers + attributes > 1:
-            throw(TypeError, 'All arguments of order_by() method must be of the same type')
-        if len(args) > 1 and strings + functions:
-            throw(TypeError, 'When argument of order_by() method is string or lambda, it must be the only argument')
-
-        if numbers or attributes:
-            new_key = query._key + ('order_by', args,)
-            new_filters = query._filters + ((numbers, args),)
-            new_translator = query._database._translator_cache.get(new_key)
-            if new_translator is None:
-                if numbers: new_translator = query._translator.order_by_numbers(args)
-                else: new_translator = query._translator.order_by_attributes(args)
-                query._database._translator_cache[new_key] = new_translator
-            return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
-
-        globals = sys._getframe(3).f_globals
-        locals = sys._getframe(3).f_locals
-        func = args[0]
-        return query._process_lambda(func, globals, locals, order_by=True)
+            else: throw(TypeError, "order_by() method receive an argument of invalid type: %r" % arg)
+        if numbers and attributes:
+            throw(TypeError, 'order_by() method receive invalid combination of arguments')
+        new_key = query._key + ('order_by', args,)
+        new_filters = query._filters + ((numbers, args),)
+        new_translator = query._database._translator_cache.get(new_key)
+        if new_translator is None:
+            if numbers: new_translator = query._translator.order_by_numbers(args)
+            else: new_translator = query._translator.order_by_attributes(args)
+            query._database._translator_cache[new_key] = new_translator
+        return query._clone(_key=new_key, _filters=new_filters, _translator=new_translator)
     def _process_lambda(query, func, globals, locals, order_by):
         prev_translator = query._translator
         argnames = ()
@@ -4544,11 +4668,7 @@ class Query(object):
     @cut_traceback
     def filter(query, *args, **kwargs):
         if args:
-            if len(args) > 1: throw(TypeError, 'Only one positional argument is supported')
-            if kwargs: throw(TypeError, 'Keyword arguments cannot be specified together with positional arguments')
-            func = args[0]
-            globals = sys._getframe(3).f_globals
-            locals = sys._getframe(3).f_locals
+            func, globals, locals = get_globals_and_locals(args, kwargs, frame_depth=3)
             return query._process_lambda(func, globals, locals, order_by=False)
         if not kwargs: return query
 

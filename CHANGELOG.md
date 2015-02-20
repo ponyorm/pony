@@ -1,3 +1,24 @@
+# Pony ORM Release 0.6.1 (2015-02-20)
+
+* Closed #65: Now the select(), filter(), order_by(), page(), limit(), random() methods can be applied to collection attributes
+* Closed #105: Now you can pass globals and locals to the select() function
+* Improved inheritance support in queries: select(x for x in BaseClass if x.subclass_attr == y)
+* Now it is possible to do db.insert(SomeEntity, column1=x, column2=y) instead of db.insert(SomeEntity._table_, column1=x, column2=y)
+* Discriminator attribute can be part of the composite index
+* Now it is possible to specify the attribute name instead of the attribute itself in composite index
+* Query statistics: global_stats_lock is deprecated, just use global_stats property without any locking
+* New load() method for entity instances which retrieves all unloaded attributes except collections
+* New load() method for collections, e.g. customer.orders.load()
+* Enhanced error message when descendant classes declare attributes with the same name
+* Fixed #98: Composite index can include attributes of base entity
+* Fixed #106: incorrect loading of object which consists of primary key only
+* Fixed pony.converting.check_email()
+* Prefetching bug fixed: if collection is already fully loaded it shouldn't be loaded again
+* Deprecated Entity.order_by(..) method was removed. Use Entity.select().order_by(...) instead
+* Various performance enhancements
+* Multiple bugs were fixed
+
+
 # Pony ORM Release 0.6 (2014-11-05)
 
 * Fixed #94: Aggregated subquery bug fixed
