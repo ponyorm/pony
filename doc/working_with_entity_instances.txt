@@ -329,6 +329,14 @@ Entity class methods
 
       If you need to use ``SELECT ... FOR UPDATE`` for multiple rows then you should use the method :py:meth:`for_update()<Query.for_update>` of ``Query`` object.
 
+   .. py:method:: load()
+                  load(args)
+
+      Loads all attributes which were not retrieved from the database yet. It loads lazy and non-lazy attributes, but not collection attributes. If an attribute was already loaded, it won't be loaded again. You can specify the list of attributes which needs to be loaded, or it's names. In this case Pony will load only them::
+
+      obj.load(Person.biography, Person.some_other_field)
+      obj.load('biography', 'some_other_field')
+
    .. py:method:: select()
                   select(lambda)
 

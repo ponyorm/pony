@@ -6,7 +6,7 @@ Pony provides a very convenient way to query the database using the generator ex
 Pony ORM functions used to query the database
 --------------------------------------------------------------------
 
-.. py:function:: select(gen)
+.. py:function:: select(gen[, globals[, locals])
 
    This function translates the generator expression into SQL query and returns an instance of the :py:class:`Query` class. If necessary, you can apply any :py:class:`Query` method to the result, e.g. :py:meth:`Query.order_by` or :py:meth:`Query.count`. If you just need to get a list of objects you can either iterate over the result or get a full slice::
 
@@ -23,6 +23,10 @@ Pony ORM functions used to query the database
                        for p2 in Product if p1.name == p2.name and p1 != p2)
 
        select((p.name, count(p.orders)) for p in Product)
+
+   You can pass the ``globals`` and ``locals`` dictionaries for using them as global and local namespace.
+
+   Also, you can apply the ``select`` method to relationship attributes. See :ref:`the examples <col_queries_ref>`
 
 .. py:function:: get(gen)
 

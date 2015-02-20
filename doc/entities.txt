@@ -130,7 +130,16 @@ Using the ``composite_index()`` directive you can create a composite index for s
         b = Optional(int)
         composite_index(a, b)
 
+You can use the attribute or the attribute name::
+
+    class Example(db.Entity):
+        a = Required(str)
+        b = Optional(int)
+        composite_index(a, 'b')
+
 If you want to create a non-unique index for just one column, you can specify the ``index`` option of an attribute. This option is described later in this chapter.
+
+The composite index can include a discriminator attribute used for inheritance.
 
 
 Attribute data types
