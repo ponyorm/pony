@@ -332,7 +332,7 @@ Database statistics
 
    .. py:attribute:: global_stats
 
-      This is a dictionary where the statistics for executed SQL queries is aggregated from all threads. The key of this dictionary is the SQL statement and the value is an object of the ``QueryStat`` class. Before accessing this dictionary you should acquire the ``db.global_stats_lock``.
+      This is a dictionary where the statistics for executed SQL queries is aggregated from all threads. The key of this dictionary is the SQL statement and the value is an object of the ``QueryStat`` class.
 
 
 

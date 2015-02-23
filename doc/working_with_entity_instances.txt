@@ -297,7 +297,7 @@ Entity class methods
 
           Product.tags.drop_table(with_all_data=True) # removes the intermediate table
 
-   .. py:method:: exists(lambda)
+   .. py:method:: exists(lambda[, globals[, locals])
                   exists(**kwargs)
 
       Returns ``True`` if an instance with the specified condition or attribute values exists and ``False`` otherwise. Examples::
@@ -308,7 +308,7 @@ Entity class methods
 
    .. _entity_get_ref:
 
-   .. py:method:: get(lambda)
+   .. py:method:: get(lambda[, globals[, locals])
                   get(**kwargs)
 
       Used for extracting one entity instance from the database. If the object with the specified parameters exists, then returns the object. Returns ``None`` if there is no such object. If there are more than one objects with the specified parameters, raises the ``MultipleObjectsFoundError: Multiple objects were found. Use select(...) to retrieve them`` exception. Examples::
@@ -322,7 +322,7 @@ Entity class methods
 
       If you find that you cannot express a query using the standard Pony queries, you always can write your own SQL query and Pony will build an entity instance(s) based on the query results. When Pony gets the result of the SQL query, it analyzes the column names which it receives from the database cursor. If your query uses ``SELECT * ...`` from the entity table, that would be enough for getting the necessary attribute values for constructing entity instances. You can pass parameters into the query, see :ref:`Using raw SQL <entities_raw_sql_ref>` for more information.
 
-   .. py:method:: get_for_update(lambda, nowait=False)
+   .. py:method:: get_for_update(lambda,[globals[, locals], nowait=False)
                   get_for_update(**kwargs, nowait=False)
 
       Similar to :ref:`get() <entity_get_ref>`, but locks the row in the database using the ``SELECT ... FOR UPDATE`` SQL query. If ``nowait=True``, then the method will throw an exception if this row is already blocked. If ``nowait=False``, then it will wait if the row is already blocked.
@@ -332,13 +332,13 @@ Entity class methods
    .. py:method:: load()
                   load(args)
 
-      Loads all attributes which were not retrieved from the database yet. It loads lazy and non-lazy attributes, but not collection attributes. If an attribute was already loaded, it won't be loaded again. You can specify the list of attributes which needs to be loaded, or it's names. In this case Pony will load only them::
+      Loads all lazy and non-lazy attributes, but not collection attributes, which were not retrieved from the database yet. If an attribute was already loaded, it won't be loaded again. You can specify the list of the attributes which need to be loaded, or it's names. In this case Pony will load only them::
 
-      obj.load(Person.biography, Person.some_other_field)
-      obj.load('biography', 'some_other_field')
+          obj.load(Person.biography, Person.some_other_field)
+          obj.load('biography', 'some_other_field')
 
    .. py:method:: select()
-                  select(lambda)
+                  select(lambda[, globals[, locals])
 
       Selects objects from the database in accordance with the condition specified in lambda, or all objects if lambda function is not specified.
 
