@@ -2175,7 +2175,7 @@ class Set(Collection):
                 if not attr.reverse_columns:
                     attr.reverse_columns = [ column + '_2' for column in attr.columns ]
                 elif len(attr.reverse_columns) != pk_length:
-                    throw(MappingError, "Invalid number of reverse columns for symmetric attribute %s" % attr)                    
+                    throw(MappingError, "Invalid number of reverse columns for symmetric attribute %s" % attr)
                 return attr.columns if not is_reverse else attr.reverse_columns
             else:
                 if not reverse.columns:
@@ -2544,7 +2544,7 @@ class SetInstance(object):
         return wrapper.select().order_by(*args)
     def random(wrapper, limit):
         return wrapper.select().random(limit)
-        
+
 def unpickle_multiset(obj, attrnames, items):
     entity = obj.__class__
     for name in attrnames:
@@ -4184,7 +4184,7 @@ class Entity(with_metaclass(EntityMeta)):
                 value = value._get_raw_pkval_()
                 if len(value) == 1: value = value[0]
             result[attr.name] = value
-        return result                
+        return result
 
 def string2ast(s):
     result = string2ast_cache.get(s)
