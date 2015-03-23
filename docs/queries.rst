@@ -28,7 +28,7 @@ Pony ORM functions used to query the database
 
    Also, you can apply the ``select`` method to relationship attributes. See :ref:`the examples <col_queries_ref>`
 
-.. py:function:: get(gen)
+.. py:function:: get(gen[, globals[, locals])
 
    Extracts one entity instance from the database. The function returns the object if an object with the specified parameters exists, or ``None`` if there is no such object. If there are more than one objects with the specified parameters, raises the ``MultipleObjectsFoundError: Multiple objects were found. Use select(...) to retrieve them`` exception. Example::
 
@@ -38,7 +38,7 @@ Pony ORM functions used to query the database
 
        select(o for o in Order if o.id == 123).get()
 
-.. py:function:: left_join(gen)
+.. py:function:: left_join(gen[, globals[, locals])
 
       The results of a left join always contain the result from the 'left' table, even if the join condition doesn't find any matching record in the 'right' table.
 
@@ -167,7 +167,7 @@ Pony ORM functions used to query the database
        select(o.total_price for o in Order).avg()
 
 
-.. py:function:: exists(gen)
+.. py:function:: exists(gen[, globals[, locals])
 
    Returns ``True`` if at least one instance with the specified condition exists and ``False`` otherwise::
 
@@ -294,7 +294,7 @@ Query object methods
           LIMIT 1
 
 
-   .. py:method:: filter(lambda)
+   .. py:method:: filter(lambda[, globals[, locals])
                   filter(str)
 
       The ``filter()`` method of the ``Query`` object is used for filtering the result of a query. The conditions which are passed as parameters to the ``filter()`` method will be translated into the WHERE section of the resulting SQL query.
@@ -366,7 +366,7 @@ Query object methods
 
    .. py:method:: order_by(attr1 [, attr2, ...])
                   order_by(pos1 [, pos2, ...])
-                  order_by(lambda)
+                  order_by(lambda[, globals[, locals])
                   order_by(str)
 
       This method is used for ordering the results of a query. There are several options options available:
