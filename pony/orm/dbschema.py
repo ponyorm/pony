@@ -254,7 +254,7 @@ class DBIndex(Constraint):
         elif is_unique is None: is_unique = False
         schema = table.schema
         if name is not None and name in schema.names:
-            throw(DBSchemaError, 'Index %s cannot be created, name is already in use')
+            throw(DBSchemaError, 'Index %s cannot be created, name is already in use' % name)
         Constraint.__init__(index, name, schema)
         for column in columns:
             column.is_pk = len(columns) == 1 and is_pk
