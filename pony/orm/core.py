@@ -2181,7 +2181,7 @@ class Index(object):
                 throw(TypeError, '%s() arguments must be attributes. Got: %r' % (func_name, attr))
             if index.is_unique:
                 attr.is_part_of_unique_index = True
-                attr.composite_keys.append((attrs, i))
+                if len(attrs) > 1: attr.composite_keys.append((attrs, i))
             if not issubclass(entity, attr.entity): throw(ERDiagramError,
                 'Invalid use of attribute %s in entity %s' % (attr, entity.__name__))
             key_type = 'primary key' if index.is_pk else 'unique index' if index.is_unique else 'index'
