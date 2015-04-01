@@ -256,7 +256,7 @@ class OraIntConverter(dbapiprovider.IntConverter):
             throw(TypeError, "Parameter 'sequence_name' can be used only for PrimaryKey attributes with auto=True")
 
 class OraRealConverter(dbapiprovider.RealConverter):
-    default_tolerance = 1e-14
+    # Note that Oracle has differnet representation of float numbers
     def sql_type(converter):
         return 'NUMBER'
 

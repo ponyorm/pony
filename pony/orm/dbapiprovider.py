@@ -472,7 +472,10 @@ class IntConverter(Converter):
         return converter.unsigned_types.get(converter.size)
 
 class RealConverter(Converter):
-    default_tolerance = None
+    # The tolerance is necessary for Oracle, because it has different representation of float numbers.
+    # For other databases the default tolerance is set because the precision can be lost during
+    # Python -> JavaScript -> Python conversion
+    default_tolerance = 1e-14
     def init(converter, kwargs):
         Converter.init(converter, kwargs)
         min_val = kwargs.pop('min', None)
@@ -501,7 +504,7 @@ class RealConverter(Converter):
         return val
     def equals(converter, x, y):
         tolerance = converter.tolerance
-        if tolerance is None: return x == y
+        if tolerance is None or x is None or y is None: return x == y
         denominator = max(abs(x), abs(y))
         if not denominator: return True
         diff = abs(x-y) / denominator
