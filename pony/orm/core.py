@@ -1931,7 +1931,7 @@ class Attribute(object):
                     cache.update_simple_index(obj, attr, old_val, new_val, undo)
                 get_val = obj._vals_.get
                 for attrs, i in attr.composite_keys:
-                    vals = [ get_val(attr) for attr in attrs ]
+                    vals = [ get_val(a) for a in attrs ]  # In Python 2 var name leaks into the function scope!
                     prev_vals = tuple(vals)
                     vals[i] = new_val
                     new_vals = tuple(vals)
@@ -1985,7 +1985,7 @@ class Attribute(object):
                 if attr.is_unique: cache.db_update_simple_index(obj, attr, old_val, new_dbval)
                 get_val = obj._vals_.get
                 for attrs, i in attr.composite_keys:
-                    vals = [ get_val(attr) for attr in attrs ]
+                    vals = [ get_val(a) for a in attrs ]  # In Python 2 var name leaks into the function scope!
                     old_vals = tuple(vals)
                     vals[i] = new_dbval
                     new_vals = tuple(vals)
@@ -4244,7 +4244,7 @@ class Entity(with_metaclass(EntityMeta)):
             for attr in attrs:
                 if attr in avdict: break
             else: continue
-            vals = [ get_val(attr) for attr in attrs ]
+            vals = [ get_val(a) for a in attrs ]  # In Python 2 var name leaks into the function scope!
             prev_vals = tuple(vals)
             for i, attr in enumerate(attrs):
                 if attr in avdict: vals[i] = avdict[attr]
@@ -4411,7 +4411,7 @@ class Entity(with_metaclass(EntityMeta)):
                     for attr in attrs:
                         if attr in avdict: break
                     else: continue
-                    vals = [ get_val(attr) for attr in attrs ]
+                    vals = [ get_val(a) for a in attrs ]  # In Python 2 var name leaks into the function scope!
                     prev_vals = tuple(vals)
                     for i, attr in enumerate(attrs):
                         if attr in avdict: vals[i] = avdict[attr]

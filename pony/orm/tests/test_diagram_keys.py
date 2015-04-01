@@ -170,5 +170,33 @@ class TestKeys(unittest.TestCase):
             b = Required(int, volatile=True)
             PrimaryKey(a, b)
 
+    def test_composite_key_update(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            s = Set('Entity3')
+        class Entity2(db.Entity):
+            s = Set('Entity3')
+        class Entity3(db.Entity):
+            a = Required(Entity1)
+            b = Required(Entity2)
+            composite_key(a, b)
+        db.generate_mapping(create_tables=True)
+        with db_session:
+            x = Entity1(id=1)
+            y = Entity2(id=1)
+            z = Entity3(id=1, a=x, b=y)
+        with db_session:
+            z = Entity3[1]
+            self.assertEqual(z.a, Entity1[1])
+            self.assertEqual(z.b, Entity2[1])
+        with db_session:
+            z = Entity3[1]
+            w = Entity1(id=2)
+            z.a = w
+        with db_session:
+            z = Entity3[1]
+            self.assertEqual(z.a, Entity1[2])
+            self.assertEqual(z.b, Entity2[1])
+
 if __name__ == '__main__':
     unittest.main()
