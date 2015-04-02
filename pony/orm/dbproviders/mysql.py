@@ -8,22 +8,22 @@ from uuid import UUID
 import warnings
 warnings.filterwarnings('ignore', '^Table.+already exists$', Warning, '^pony\\.orm\\.dbapiprovider$')
 
-try: import MySQLdb as mysql_module
-except ImportError:
-    try: import pymysql as mysql_module
-    except ImportError: raise ImportError('No module named MySQLdb or pymysql found')
-    else:
-        import pymysql.converters as mysql_converters
-        from pymysql.constants import FIELD_TYPE, FLAG, CLIENT
-        if PY2:
-            mysql_converters.encoders[buffer] = lambda val: mysql_converters.escape_str(str(val))
-        mysql_converters.encoders[timedelta] = lambda val: mysql_converters.escape_str(timedelta2str(val))
-        mysql_module_name = 'pymysql'
-else:
+try:
+    import MySQLdb as mysql_module
+    from MySQLdb import string_literal
     import MySQLdb.converters as mysql_converters
     from MySQLdb.constants import FIELD_TYPE, FLAG, CLIENT
     mysql_module_name = 'MySQLdb'
-    from MySQLdb import string_literal
+except ImportError:
+    try:
+        import pymysql as mysql_module
+    except ImportError:
+        raise ImportError('No module named MySQLdb or pymysql found')
+    import pymysql.converters as mysql_converters
+    from pymysql.constants import FIELD_TYPE, FLAG, CLIENT
+    if PY2: mysql_converters.encoders[buffer] = lambda val: mysql_converters.escape_str(str(val))
+    mysql_converters.encoders[timedelta] = lambda val: mysql_converters.escape_str(timedelta2str(val))
+    mysql_module_name = 'pymysql'
 
 from pony.orm import core, dbschema, dbapiprovider
 from pony.orm.core import log_orm, OperationalError
