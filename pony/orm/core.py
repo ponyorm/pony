@@ -1109,9 +1109,8 @@ def basic_converter(x):
     if isinstance(x, Entity):
         pkval = x._get_raw_pkval_()
         return pkval[0] if len(pkval) == 1 else pkval
-    try: iter(x)
-    except: raise TypeError(x)
-    return list(x)
+    if hasattr(x, '__iter__'): return list(x)
+    throw(TypeError, 'The following object cannot be converted to JSON: %r' % x)
 
 @cut_traceback
 def perm(*args, **kwargs):
