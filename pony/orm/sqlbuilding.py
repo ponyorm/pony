@@ -8,6 +8,7 @@ from binascii import hexlify
 
 from pony import options
 from pony.utils import datetime2timestamp, throw
+from pony.orm.ormtypes import RawSQL
 
 class AstError(Exception): pass
 
@@ -130,9 +131,11 @@ def convert(values, params):
     for param in params:
         varkey, i, j = param.paramkey
         value = values[varkey]
+        t = type(value)
         if i is not None:
-            assert type(value) is tuple
-            value = value[i]
+            if t is tuple: value = value[i]
+            elif t is RawSQL: value = value.values[i]
+            else: assert False
         if j is not None:
             assert type(type(value)).__name__ == 'EntityMeta'
             value = value._get_raw_pkval_()[j]
@@ -491,3 +494,6 @@ class SQLBuilder(object):
         return 'EXTRACT(SECOND FROM ', builder(expr), ')'
     def RANDOM(builder):
         return 'RAND()'
+    def RAWSQL(builder, sql):
+        if isinstance(sql, basestring): return sql
+        return [ x if isinstance(x, basestring) else builder(x) for x in sql ]

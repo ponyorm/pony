@@ -27,7 +27,7 @@ class Bio(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
-class TestRawSql(unittest.TestCase):
+class TestCrudRawSQL(unittest.TestCase):
     def setUp(self):
         with db_session:
             db.execute('delete from Student')

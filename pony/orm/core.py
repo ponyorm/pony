@@ -18,7 +18,7 @@ from pony.thirdparty.compiler import ast, parse
 import pony
 from pony import options
 from pony.orm.decompiling import decompile
-from pony.orm.ormtypes import LongStr, LongUnicode, numeric_types, get_normalized_type_of
+from pony.orm.ormtypes import LongStr, LongUnicode, numeric_types, RawSQL, get_normalized_type_of
 from pony.orm.asttranslation import ast2src, create_extractors, TranslationError
 from pony.orm.dbapiprovider import (
     DBAPIProvider, DBException, Warning, Error, InterfaceError, DatabaseError, DataError,
@@ -58,11 +58,7 @@ __all__ = '''
 
     count sum min max avg distinct
 
-    desc
-
-    concat
-
-    JOIN
+    JOIN desc concat raw_sql
 
     buffer unicode
 
@@ -4727,12 +4723,14 @@ def get_globals_and_locals(args, kwargs, frame_depth, from_generator=False):
             locals.update(func.gi_frame.f_locals)
         if len(args) > 3: throw(TypeError, 'Excess positional argument%s: %s'
                                 % (len(args) > 4 and 's' or '', ', '.join(imap(repr, args[3:]))))
-    elif type(func) is types.GeneratorType:
-        globals = func.gi_frame.f_globals
-        locals = func.gi_frame.f_locals
     else:
-        globals = sys._getframe(frame_depth+1).f_globals
-        locals = sys._getframe(frame_depth+1).f_locals
+        locals = {}
+        locals.update(sys._getframe(frame_depth+1).f_locals)
+        if type(func) is types.GeneratorType:
+            globals = func.gi_frame.f_globals
+            locals.update(func.gi_frame.f_locals)
+        else:
+            globals = sys._getframe(frame_depth+1).f_globals
     if kwargs: throw(TypeError, 'Keyword arguments cannot be specified together with positional arguments')
     return func, globals, locals
 
@@ -4804,6 +4802,11 @@ def desc(expr):
     if isinstance(expr, basestring):
         return 'desc(%s)' % expr
     return expr
+
+def raw_sql(sql):
+    globals = sys._getframe(1).f_globals
+    locals = sys._getframe(1).f_locals
+    return RawSQL(sql, globals, locals)
 
 def extract_vars(extractors, globals, locals, cells=None):
     if cells:
@@ -5110,6 +5113,10 @@ class Query(object):
             func, globals, locals = get_globals_and_locals(args, kwargs=None, frame_depth=3)
             return query._process_lambda(func, globals, locals, order_by=True)
 
+        if isinstance(args[0], RawSQL):
+            raw = args[0]
+            return query.order_by(lambda: raw)
+
         attributes = numbers = False
         for arg in args:
             if isinstance(arg, int_types): numbers = True
@@ -5200,6 +5207,9 @@ class Query(object):
     @cut_traceback
     def filter(query, *args, **kwargs):
         if args:
+            if isinstance(args[0], RawSQL):
+                raw = args[0]
+                return query.filter(lambda: raw)
             func, globals, locals = get_globals_and_locals(args, kwargs, frame_depth=3)
             return query._process_lambda(func, globals, locals, order_by=False)
         if not kwargs: return query
@@ -5402,5 +5412,5 @@ def show(entity):
         from pprint import pprint
         pprint(x)
 
-special_functions = set([ itertools.count, utils.count, count, random ])
+special_functions = set([ itertools.count, utils.count, count, random, raw_sql ])
 const_functions = set([ buffer, Decimal, datetime.datetime, datetime.date, datetime.time, datetime.timedelta ])

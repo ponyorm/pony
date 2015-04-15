@@ -9,7 +9,7 @@ from uuid import uuid4, UUID
 import pony
 from pony.utils import is_utf8, decorator, throw, localbase, deprecated
 from pony.converting import str2date, str2time, str2datetime, str2timedelta
-from pony.orm.ormtypes import LongStr, LongUnicode
+from pony.orm.ormtypes import LongStr, LongUnicode, RawSQLType
 
 class DBException(Exception):
     def __init__(exc, original_exc, *args):
@@ -245,6 +245,8 @@ class DBAPIProvider(object):
         if isinstance(py_type, type):
             for t, converter_cls in provider.converter_classes:
                 if issubclass(py_type, t): return converter_cls
+        if isinstance(py_type, RawSQLType):
+            return Converter  # for cases like select(raw_sql(...) for x in X)
         throw(TypeError, 'No database converter found for type %s' % py_type)
 
     def get_converter_by_py_type(provider, py_type):

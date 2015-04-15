@@ -15,7 +15,7 @@ from pony import options, utils
 from pony.utils import is_ident, throw, reraise, concat
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
-    numeric_types, comparable_types, SetType, FuncType, MethodType, \
+    numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
     get_normalized_type_of, normalize_type, coerce_types, are_comparable_types
 from pony.orm import core
 from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper
@@ -88,9 +88,7 @@ class SQLTranslator(ASTTranslator):
             else: throw(NotImplementedError)  # pragma: no cover
         elif tt is FuncType:
             func = t.func
-            func_monad_class = translator.registered_functions.get(func)
-            if func_monad_class is None: throw(TypeError,
-                'Function %r cannot be used inside query' % func.__name__)
+            func_monad_class = translator.registered_functions.get(func, translator.ErrorSpecialFuncMonad)
             monad = func_monad_class(translator, func)
         elif tt is MethodType:
             obj, func = t.obj, t.func
@@ -109,6 +107,8 @@ class SQLTranslator(ASTTranslator):
                 param = translator.ParamMonad.new(translator, item_type, (varkey, i, None))
                 params.append(param)
             monad = translator.ListMonad(translator, params)
+        elif isinstance(t, RawSQLType):
+            monad = translator.RawSQLMonad(translator, t, varkey)
         else:
             monad = translator.ParamMonad.new(translator, t, (varkey, None, None))
         node.monad = monad
@@ -210,7 +210,9 @@ class SQLTranslator(ASTTranslator):
                         'Collection expected inside left join query. '
                         'Got: for %s in %s' % (name, ast2src(qual.iter)))
                     translator.distinct = True
-                tablerefs[name] = TableRef(subquery, name, entity)
+                tableref = TableRef(subquery, name, entity)
+                tablerefs[name] = tableref
+                tableref.make_join()
             else:
                 attr_names = []
                 while isinstance(node, ast.Getattr):
@@ -740,6 +742,8 @@ class SQLTranslator(ASTTranslator):
                 kwargs[arg.name] = arg.expr.monad
             else: args.append(arg.monad)
         func_monad = node.node.monad
+        if isinstance(func_monad, ErrorSpecialFuncMonad):
+            'Function %r cannot be used in this way: %s' % (func_monad.func.__name__, ast2src(node))
         return func_monad(*args, **kwargs)
     def postKeyword(translator, node):
         pass  # this node will be processed by postCallFunc
@@ -1047,6 +1051,37 @@ class Monad(with_metaclass(MonadMeta)):
     def __pow__(monad, monad2): throw(TypeError)
     def __neg__(monad): throw(TypeError)
     def abs(monad): throw(TypeError)
+
+class RawSQLMonad(Monad):
+    def __init__(monad, translator, rawtype, varkey):
+        Monad.__init__(monad, translator, rawtype)
+        monad.rawtype = rawtype
+        monad.varkey = varkey
+    def contains(monad, item, not_in=False):
+        translator = monad.translator
+        expr = item.getsql()
+        if len(expr) == 1: expr = expr[0]
+        elif translator.row_value_syntax == True: expr = ['ROW'] + expr
+        else: throw(TranslationError,
+                    '%s database provider does not support tuples. Got: {EXPR} ' % translator.dialect)
+        op = 'NOT_IN' if not_in else 'IN'
+        sql = [ op, expr, monad.getsql() ]
+        return translator.BoolExprMonad(translator, sql)
+    def nonzero(monad): return monad
+    def getsql(monad, subquery=None):
+        provider = monad.translator.database.provider
+        rawtype = monad.rawtype
+        result = []
+        types = enumerate(rawtype.types)
+        for item in monad.rawtype.items:
+            if isinstance(item, basestring):
+                result.append(item)
+            else:
+                expr, code = item
+                i, param_type = next(types)
+                param_converter = provider.get_converter_by_py_type(param_type)
+                result.append(['PARAM', (monad.varkey, i, None), param_converter])
+        return [ [ 'RAWSQL', result ] ]
 
 typeerror_re_1 = re.compile(r'\(\) takes (no|(?:exactly|at (?:least|most)))(?: (\d+))? arguments \((\d+) given\)')
 typeerror_re_2 = re.compile(r'\(\) takes from (\d+) to (\d+) positional arguments but (\d+) were given')
@@ -1739,6 +1774,11 @@ class NotMonad(BoolMonad):
     def getsql(monad, subquery=None):
         return [ [ 'NOT', monad.operand.getsql()[0] ] ]
 
+class ErrorSpecialFuncMonad(Monad):
+    def __init__(monad, translator, func):
+        Monad.__init__(monad, translator, func)
+        monad.func = func
+
 registered_functions = SQLTranslator.registered_functions = {}
 
 class FuncMonadMeta(MonadMeta):
@@ -1760,9 +1800,7 @@ class FuncMonad(with_metaclass(FuncMonadMeta, Monad)):
             assert isinstance(value, translator.Monad)
         try: return monad.call(*args, **kwargs)
         except TypeError as exc:
-            func = monad.func
-            if type(func) is tuple: func = func[0]
-            reraise_improved_typeerror(exc, 'call', func.__name__)
+            reraise_improved_typeerror(exc, 'call', monad.type.__name__)
 
 class FuncBufferMonad(FuncMonad):
     func = buffer
