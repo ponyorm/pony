@@ -54,7 +54,7 @@ __all__ = '''
 
     LongStr LongUnicode
 
-    select left_join get exists
+    select left_join get exists delete
 
     count sum min max avg distinct
 
@@ -4755,6 +4755,10 @@ def get(*args):
 def exists(*args):
     return make_query(args, frame_depth=3).exists()
 
+@cut_traceback
+def delete(*args):
+    return make_query(args, frame_depth=3).delete()
+
 def make_aggrfunc(std_func):
     def aggrfunc(*args, **kwargs):
         if kwargs: return std_func(*args, **kwargs)
@@ -5046,6 +5050,10 @@ class Query(object):
     def exists(query):
         objects = query[:1]
         return bool(objects)
+    @cut_traceback
+    def delete(query):
+        for obj in query._fetch():
+            obj._delete_()
     @cut_traceback
     def __len__(query):
         return len(query._fetch())
