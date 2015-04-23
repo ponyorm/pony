@@ -137,7 +137,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(AttributeError, "'%s' object has no attribute 'unknown'" % unicode.__name__)
     def test_attribute_error(self):
         result = set(select(s for s in Student if s.name.unknown() == "joe"))
-    @raises_exception(AttributeError, "s.group.foo")
+    @raises_exception(AttributeError, "Entity Group does not have attribute foo: s.group.foo")
     def test27(self):
         select(s.name for s in Student if s.group.foo.bar == 10)
     @raises_exception(ExprEvalError, "g.dept.foo.bar raises AttributeError: 'Department' object has no attribute 'foo'")

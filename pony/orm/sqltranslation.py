@@ -1350,7 +1350,8 @@ class ObjectMixin(MonadMixin):
         translator = monad.translator
         entity = monad.type
         attr = entity._adict_.get(name) or entity._subclass_adict_.get(name)
-        if attr is None: throw(AttributeError)
+        if attr is None: throw(AttributeError,
+            'Entity %s does not have attribute %s: {EXPR}' % (entity.__name__, name))
         if hasattr(monad, 'tableref'): monad.tableref.used_attrs.add(attr)
         if not attr.is_collection:
             return translator.AttrMonad.new(monad, attr)
