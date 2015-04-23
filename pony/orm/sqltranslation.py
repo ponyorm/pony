@@ -155,7 +155,7 @@ class SQLTranslator(ASTTranslator):
         ASTTranslator.__init__(translator, tree)
         translator.database = None
         translator.argnames = None
-        translator.filter_num = 0
+        translator.filter_num = parent_translator.filter_num if parent_translator is not None else 0
         translator.extractors = extractors
         translator.vartypes = vartypes
         translator.parent = parent_translator
@@ -194,7 +194,7 @@ class SQLTranslator(ASTTranslator):
                 entity = monad.type.item_type
                 tablerefs[name] = TableRef(subquery, name, entity)
             elif src:
-                iterable = translator.vartypes[0, src]
+                iterable = translator.vartypes[translator.filter_num, src]
                 if not isinstance(iterable, SetType): throw(TranslationError,
                     'Inside declarative query, iterator must be entity. '
                     'Got: for %s in %s' % (name, ast2src(qual.iter)))
