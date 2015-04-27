@@ -19,7 +19,7 @@ import pony
 from pony import options
 from pony.orm.decompiling import decompile
 from pony.orm.ormtypes import LongStr, LongUnicode, numeric_types, get_normalized_type_of
-from pony.orm.asttranslation import create_extractors, TranslationError
+from pony.orm.asttranslation import ast2src, create_extractors, TranslationError
 from pony.orm.dbapiprovider import (
     DBAPIProvider, DBException, Warning, Error, InterfaceError, DatabaseError, DataError,
     OperationalError, IntegrityError, InternalError, ProgrammingError, NotSupportedError
@@ -2696,7 +2696,8 @@ class Set(Collection):
                 converters = reverse.converters + attr.converters
             for i, (column, converter) in enumerate(izip(columns, converters)):
                 where_list.append([ 'EQ', ['COLUMN', None, column], [ 'PARAM', (i, None, None), converter ] ])
-            sql_ast = [ 'DELETE', attr.table, where_list ]
+            from_ast = [ 'FROM', [ None, 'TABLE', attr.table ] ]
+            sql_ast = [ 'DELETE', None, from_ast, where_list ]
             sql, adapter = database._ast2sql(sql_ast)
             attr.cached_remove_m2m_sql = sql, adapter
         else: sql, adapter = cached_sql
@@ -4613,7 +4614,8 @@ class Entity(with_metaclass(EntityMeta)):
             params_count = populate_criteria_list(where_list, obj._pk_columns_, obj._pk_converters_)
             if optimistic_columns:
                 populate_criteria_list(where_list, optimistic_columns, optimistic_converters, params_count)
-            sql_ast = [ 'DELETE', obj._table_, where_list ]
+            from_ast = [ 'FROM', [ None, 'TABLE', obj._table_ ] ]
+            sql_ast = [ 'DELETE', None, from_ast, where_list ]
             sql, adapter = database._ast2sql(sql_ast)
             obj.__class__._delete_sql_cache_[query_key] = sql, adapter
         else: sql, adapter = cached_sql
@@ -5051,9 +5053,29 @@ class Query(object):
         objects = query[:1]
         return bool(objects)
     @cut_traceback
-    def delete(query):
-        for obj in query._fetch():
-            obj._delete_()
+    def delete(query, bulk=None):
+        if not bulk:
+            if not isinstance(query._translator.expr_type, EntityMeta): throw(TypeError,
+                'Delete query should be applied to a single entity. Got: %s'
+                % ast2src(query._translator.tree.expr))
+            objects = query._fetch()
+            for obj in objects: obj._delete_()
+            return len(objects)
+        translator = query._translator
+        sql_key = query._key + ('DELETE',)
+        database = query._database
+        cache = database._get_cache()
+        cache_entry = database._constructed_sql_cache.get(sql_key)
+        if cache_entry is None:
+            sql_ast = translator.construct_delete_sql_ast()
+            cache_entry = database.provider.ast2sql(sql_ast)
+            database._constructed_sql_cache[sql_key] = cache_entry
+        sql, adapter = cache_entry
+        arguments = adapter(query._vars)
+        cache.immediate = True
+        cache.prepare_connection_for_query_execution()  # may clear cache.query_results
+        cursor = database._exec_sql(sql, arguments)
+        return cursor.rowcount
     @cut_traceback
     def __len__(query):
         return len(query._fetch())

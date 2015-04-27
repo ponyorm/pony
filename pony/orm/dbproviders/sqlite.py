@@ -28,6 +28,7 @@ class SQLiteTranslator(sqltranslation.SQLTranslator):
     dialect = 'SQLite'
     sqlite_version = sqlite.sqlite_version_info
     row_value_syntax = False
+    rowid_support = True
 
 class SQLiteBuilder(SQLBuilder):
     dialect = 'SQLite'

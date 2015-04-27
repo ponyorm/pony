@@ -115,6 +115,7 @@ class OraConstMonad(sqltranslation.ConstMonad):
 
 class OraTranslator(sqltranslation.SQLTranslator):
     dialect = 'Oracle'
+    rowid_support = True
     NoneMonad = OraNoneMonad
     ConstMonad = OraConstMonad
 
@@ -155,46 +156,51 @@ class OraBuilder(sqlbuilding.SQLBuilder):
         result = builder(sql_ast)
         return result, 'FOR UPDATE NOWAIT\n' if nowait else 'FOR UPDATE\n'
     def SELECT(builder, *sections):
-        last_section = sections[-1]
-        limit = offset = None
-        if last_section[0] == 'LIMIT':
-            limit = last_section[1]
-            if len(last_section) > 2: offset = last_section[2]
-            sections = sections[:-1]
-        result = builder.subquery(*sections)
-        indent = builder.indent_spaces * builder.indent
-
-        if sections[0][0] == 'ROWID':
-            indent0 = builder.indent_spaces
-            x = 't."row-id"'
-        else:
-            indent0 = ''
-            x = 't.*'
-            
-        if not limit: pass
-        elif not offset:
-            result = [ indent0, 'SELECT * FROM (\n' ]
-            builder.indent += 1
-            result.extend(builder.subquery(*sections))
-            builder.indent -= 1
-            result.extend((indent, ') WHERE ROWNUM <= ', builder(limit), '\n'))
-        else:
-            indent2 = indent + builder.indent_spaces
-            result = [ indent0, 'SELECT %s FROM (\n' % x, indent2, 'SELECT t.*, ROWNUM "row-num" FROM (\n' ]
-            builder.indent += 2
-            result.extend(builder.subquery(*sections))
-            builder.indent -= 2
-            result.extend((indent2, ') t '))
-            if limit[0] == 'VALUE' and offset[0] == 'VALUE' \
-                    and isinstance(limit[1], int) and isinstance(offset[1], int):
-                total_limit = [ 'VALUE', limit[1] + offset[1] ]
-                result.extend(('WHERE ROWNUM <= ', builder(total_limit), '\n'))
-            else: result.extend(('WHERE ROWNUM <= ', builder(limit), ' + ', builder(offset), '\n'))
-            result.extend((indent, ') t WHERE "row-num" > ', builder(offset), '\n'))
-        if builder.indent:
+        prev_suppress_aliases = builder.suppress_aliases
+        builder.suppress_aliases = False
+        try:
+            last_section = sections[-1]
+            limit = offset = None
+            if last_section[0] == 'LIMIT':
+                limit = last_section[1]
+                if len(last_section) > 2: offset = last_section[2]
+                sections = sections[:-1]
+            result = builder.subquery(*sections)
             indent = builder.indent_spaces * builder.indent
-            return '(\n', result, indent + ')'
-        return result
+
+            if sections[0][0] == 'ROWID':
+                indent0 = builder.indent_spaces
+                x = 't."row-id"'
+            else:
+                indent0 = ''
+                x = 't.*'
+                
+            if not limit: pass
+            elif not offset:
+                result = [ indent0, 'SELECT * FROM (\n' ]
+                builder.indent += 1
+                result.extend(builder.subquery(*sections))
+                builder.indent -= 1
+                result.extend((indent, ') WHERE ROWNUM <= ', builder(limit), '\n'))
+            else:
+                indent2 = indent + builder.indent_spaces
+                result = [ indent0, 'SELECT %s FROM (\n' % x, indent2, 'SELECT t.*, ROWNUM "row-num" FROM (\n' ]
+                builder.indent += 2
+                result.extend(builder.subquery(*sections))
+                builder.indent -= 2
+                result.extend((indent2, ') t '))
+                if limit[0] == 'VALUE' and offset[0] == 'VALUE' \
+                        and isinstance(limit[1], int) and isinstance(offset[1], int):
+                    total_limit = [ 'VALUE', limit[1] + offset[1] ]
+                    result.extend(('WHERE ROWNUM <= ', builder(total_limit), '\n'))
+                else: result.extend(('WHERE ROWNUM <= ', builder(limit), ' + ', builder(offset), '\n'))
+                result.extend((indent, ') t WHERE "row-num" > ', builder(offset), '\n'))
+            if builder.indent:
+                indent = builder.indent_spaces * builder.indent
+                return '(\n', result, indent + ')'
+            return result
+        finally:
+            builder.suppress_aliases = prev_suppress_aliases
     def ROWID(builder, *expr_list):
         return builder.ALL(*expr_list)
     def LIMIT(builder, limit, offset=None):

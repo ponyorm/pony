@@ -67,6 +67,7 @@ def type2str(t):
 class SQLTranslator(ASTTranslator):
     dialect = None
     row_value_syntax = True
+    rowid_support = False
 
     def default_post(translator, node):
         throw(NotImplementedError)  # pragma: no cover
@@ -456,6 +457,44 @@ class SQLTranslator(ASTTranslator):
 
         sql_ast = ast_transformer(sql_ast)
         return sql_ast, attr_offsets
+    def construct_delete_sql_ast(translator):
+        entity = translator.expr_type
+        if not isinstance(entity, EntityMeta): throw(TranslationError,
+            'Delete query should be applied to a single entity. Got: %s'
+            % ast2src(translator.tree.expr.monad))
+        if translator.groupby_monads: throw(TranslationError,
+            'Delete query cannot contains GROUP BY section or aggregate functions')
+        assert not translator.having_conditions
+        expr_monad = translator.tree.expr.monad
+        tableref = expr_monad.tableref
+        from_ast = translator.subquery.from_ast
+        assert from_ast[0] == 'FROM'
+        if len(from_ast) == 2 and not translator.subquery.used_from_subquery:
+            sql_ast = [ 'DELETE', None, from_ast ]
+            if translator.conditions:
+                sql_ast.append([ 'WHERE' ] + translator.conditions)
+        elif translator.dialect == 'MySQL':
+            sql_ast = [ 'DELETE', tableref.alias, from_ast ]
+            if translator.conditions:
+                sql_ast.append([ 'WHERE' ] + translator.conditions)
+        else:
+            delete_from_ast = [ 'FROM', [ None, 'TABLE', entity._table_ ] ]
+            if len(entity._pk_columns_) == 1:
+                inner_expr = expr_monad.getsql()
+                outer_expr = [ 'COLUMN', None, entity._pk_columns_[0] ]
+            elif translator.rowid_support:
+                inner_expr = [ [ 'COLUMN', tableref.alias, 'ROWID' ] ]
+                outer_expr = [ 'COLUMN', None, 'ROWID' ]
+            elif translator.row_value_syntax:
+                inner_expr = expr_monad.getsql()
+                outer_expr = [ 'ROW' ] + [ [ 'COLUMN', None, column_name ] for column_name in entity._pk_columns_ ]
+            else: throw(NotImplementedError)
+            subquery_ast = [ 'SELECT', [ 'ALL' ] + inner_expr, from_ast ]
+            if translator.conditions:
+                subquery_ast.append([ 'WHERE' ] + translator.conditions)
+            delete_where_ast = [ 'WHERE', [ 'IN', outer_expr, subquery_ast ] ]
+            sql_ast = [ 'DELETE', None, delete_from_ast, delete_where_ast ]
+        return sql_ast
     def get_used_attrs(translator):
         if isinstance(translator.expr_type, EntityMeta) and not translator.aggregated and not translator.optimize:
             return translator.tableref.used_attrs
@@ -753,11 +792,15 @@ class Subquery(object):
         else:
             subquery.alias_counters = parent_subquery.alias_counters.copy()
             subquery.expr_counter = parent_subquery.expr_counter
-    def get_tableref(subquery, name_path):
+        subquery.used_from_subquery = False
+    def get_tableref(subquery, name_path, from_subquery=False):
         tableref = subquery.tablerefs.get(name_path)
-        if tableref is not None: return tableref
+        if tableref is not None:
+            if from_subquery and subquery.parent_subquery is None:
+                subquery.used_from_subquery = True
+            return tableref
         if subquery.parent_subquery:
-            return subquery.parent_subquery.get_tableref(name_path)
+            return subquery.parent_subquery.get_tableref(name_path, from_subquery=True)
         return None
     __contains__ = get_tableref
     def add_tableref(subquery, name_path, parent_tableref, attr):

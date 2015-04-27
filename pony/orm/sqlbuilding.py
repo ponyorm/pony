@@ -153,6 +153,7 @@ class SQLBuilder(object):
         builder.indent = 0
         builder.keys = {}
         builder.inner_join_syntax = options.INNER_JOIN_SYNTAX
+        builder.suppress_aliases = False
         builder.result = flat(builder(ast))
         builder.sql = u''.join(imap(unicode, builder.result)).rstrip('\n')
         if paramstyle in ('qmark', 'format'):
@@ -201,10 +202,18 @@ class SQLBuilder(object):
         return [ 'UPDATE ', builder.quote_name(table_name), '\nSET ',
                  join(', ', [ (builder.quote_name(name), ' = ', builder(param)) for name, param in pairs]),
                  where and [ '\n', builder(where) ] or [] ]
-    def DELETE(builder, table_name, where=None):
-        result = [ 'DELETE FROM ', builder.quote_name(table_name) ]
-        if where: result += [ '\n', builder(where) ]
-        return result
+    def DELETE(builder, alias, from_ast, where=None):
+        builder.indent += 1
+        if alias is not None:
+            assert isinstance(alias, basestring)
+            if not where: return 'DELETE ', alias, ' ', builder(from_ast)
+            return 'DELETE ', alias, ' ', builder(from_ast), builder(where)
+        else:
+            assert from_ast[0] == 'FROM' and len(from_ast) == 2 and from_ast[1][1] == 'TABLE'
+            alias = from_ast[1][0]
+            if alias is not None: builder.suppress_aliases = True
+            if not where: return 'DELETE ', builder(from_ast)
+            return 'DELETE ', builder(from_ast), builder(where)
     def subquery(builder, *sections):
         builder.indent += 1
         if not builder.inner_join_syntax:
@@ -213,11 +222,16 @@ class SQLBuilder(object):
         builder.indent -= 1
         return result
     def SELECT(builder, *sections):
-        result = builder.subquery(*sections)
-        if builder.indent:
-            indent = builder.indent_spaces * builder.indent
-            return '(\n', result, indent + ')'
-        return result
+        prev_suppress_aliases = builder.suppress_aliases
+        builder.suppress_aliases = False
+        try:
+            result = builder.subquery(*sections)
+            if builder.indent:
+                indent = builder.indent_spaces * builder.indent
+                return '(\n', result, indent + ')'
+            return result
+        finally:
+            builder.suppress_aliases = prev_suppress_aliases
     def SELECT_FOR_UPDATE(builder, nowait, *sections):
         assert not builder.indent
         result = builder.SELECT(*sections)
@@ -259,7 +273,8 @@ class SQLBuilder(object):
             if i > 0:
                 if join_cond is None: result.append(', ')
                 else: result += [ '\n', indent, '  %s JOIN ' % join_type ]
-            if alias is not None: alias = builder.quote_name(alias)
+            if builder.suppress_aliases: alias = None
+            elif alias is not None: alias = builder.quote_name(alias)
             if kind == 'TABLE':
                 if isinstance(x, basestring): result.append(builder.quote_name(x))
                 else: result.append(builder.compound_name(x))
@@ -325,8 +340,9 @@ class SQLBuilder(object):
         if not offset: return 'LIMIT ', builder(limit), '\n'
         else: return 'LIMIT ', builder(limit), ' OFFSET ', builder(offset), '\n'
     def COLUMN(builder, table_alias, col_name):
-        if table_alias: return [ '%s.%s' % (builder.quote_name(table_alias), builder.quote_name(col_name)) ]
-        else: return [ '%s' % (builder.quote_name(col_name)) ]
+        if builder.suppress_aliases or not table_alias:
+            return [ '%s' % builder.quote_name(col_name) ]
+        return [ '%s.%s' % (builder.quote_name(table_alias), builder.quote_name(col_name)) ]
     def PARAM(builder, paramkey, converter=None):
         keys = builder.keys
         param = keys.get(paramkey)
