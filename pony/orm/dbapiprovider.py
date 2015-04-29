@@ -293,9 +293,11 @@ class Pool(localbase):
         core = pony.orm.core
         if pool.con is None:
             if core.debug: core.log_orm('GET NEW CONNECTION')
-            pool.con = pool.dbapi_module.connect(*pool.args, **pool.kwargs)
+            pool._connect()
         elif core.debug: core.log_orm('GET CONNECTION FROM THE LOCAL POOL')
         return pool.con
+    def _connect(pool):
+        pool.con = pool.dbapi_module.connect(*pool.args, **pool.kwargs)
     def release(pool, con):
         assert con is pool.con
         try: con.rollback()

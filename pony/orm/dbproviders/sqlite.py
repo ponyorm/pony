@@ -278,22 +278,16 @@ class SQLitePool(Pool):
         pool.filename = filename
         pool.create_db = create_db
         pool.con = None
-    def connect(pool):
-        con = pool.con
-        if con is not None:
-            if core.debug: core.log_orm('GET CONNECTION FROM THE LOCAL POOL')
-            return con
+    def _connect(pool):
         filename = pool.filename
         if filename != ':memory:' and not pool.create_db and not os.path.exists(filename):
             throw(IOError, "Database file is not found: %r" % filename)
-        if core.debug: log_orm('GET NEW CONNECTION')
         pool.con = con = sqlite.connect(filename, isolation_level=None)
         con.text_factory = _text_factory
         con.create_function('power', 2, pow)
         con.create_function('rand', 0, random)
         if sqlite.sqlite_version_info >= (3, 6, 19):
             con.execute('PRAGMA foreign_keys = true')
-        return con
     def disconnect(pool):
         if pool.filename != ':memory:':
             Pool.disconnect(pool)
