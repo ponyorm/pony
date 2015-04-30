@@ -1,10 +1,10 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, basestring, unicode, buffer, int_types
 
+import os, re
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
 from uuid import uuid4, UUID
-import re
 
 import pony
 from pony.utils import is_utf8, decorator, throw, localbase, deprecated
@@ -284,16 +284,22 @@ class DBAPIProvider(object):
         cursor.execute(sql)
 
 class Pool(localbase):
+    forked_connections = []
     def __init__(pool, dbapi_module, *args, **kwargs): # called separately in each thread
         pool.dbapi_module = dbapi_module
         pool.args = args
         pool.kwargs = kwargs
-        pool.con = None
+        pool.con = pool.pid = None
     def connect(pool):
+        pid = os.getpid()
+        if pool.con is not None and pool.pid != pid:
+            pool.forked_connections.append((pool.con, pool.pid))
+            pool.con = pool.pid = None
         core = pony.orm.core
         if pool.con is None:
             if core.debug: core.log_orm('GET NEW CONNECTION')
             pool._connect()
+            pool.pid = pid
         elif core.debug: core.log_orm('GET CONNECTION FROM THE LOCAL POOL')
         return pool.con
     def _connect(pool):
