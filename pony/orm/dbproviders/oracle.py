@@ -496,16 +496,16 @@ def output_type_handler(cursor, name, defaultType, size, precision, scale):
 
 class OraPool(object):
     def __init__(pool, **kwargs):
-        pool._pool = cx_Oracle.SessionPool(**kwargs)
+        pool.cx_pool = cx_Oracle.SessionPool(**kwargs)
     def connect(pool):
         if core.debug: log_orm('GET CONNECTION')
-        con = pool._pool.acquire()
+        con = pool.cx_pool.acquire()
         con.outputtypehandler = output_type_handler
         return con
     def release(pool, con):
-        pool._pool.release(con)
+        pool.cx_pool.release(con)
     def drop(pool, con):
-        pool._pool.drop(con)
+        pool.cx_pool.drop(con)
     def disconnect(pool):
         pass
 
