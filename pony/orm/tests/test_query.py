@@ -84,7 +84,7 @@ class TestQuery(unittest.TestCase):
     def test13(self):
         sum_ss = sum(s.scholarship for s in Student if s.id < 0)
         self.assertEqual(sum_ss, 0)
-    @raises_exception(TranslationError, "'avg' is valid for numeric attributes only")
+    @raises_exception(TypeError, "'avg' is valid for numeric attributes only")
     def test14(self):
         avg(s.name for s in Student)
     def wrapper(self):
