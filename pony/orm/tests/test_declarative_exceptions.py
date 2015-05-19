@@ -190,27 +190,42 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(TypeError, "Function max() cannot be applied to type 'Student' in max(s for s in Student if s.group == g)")
     def test44(self):
         select(g for g in Group if max(s for s in Student if s.group == g) > 1)
-    @raises_exception(TypeError, "Expression `{'a':'b'}` has unsupported type 'dict'")
+    @raises_exception(TypeError, "Attribute should be specified for 'max' aggregate function")
     def test45(self):
+        max(s for s in Student)
+    @raises_exception(TypeError, "Single attribute should be specified for 'max' aggregate function")
+    def test46(self):
+        max((s.name, s.gpa) for s in Student)
+    @raises_exception(TypeError, "Attribute should be specified for 'sum' aggregate function")
+    def test47(self):
+        sum(s for s in Student)
+    @raises_exception(TypeError, "Single attribute should be specified for 'sum' aggregate function")
+    def test48(self):
+        sum((s.name, s.gpa) for s in Student)
+    @raises_exception(TypeError, "'sum' is valid for numeric attributes only")
+    def test49(self):
+        sum(s.name for s in Student)
+    @raises_exception(TypeError, "Expression `{'a':'b'}` has unsupported type 'dict'")
+    def test50(self):
         select(s for s in Student if s.name == {'a' : 'b'})
     @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > a & 2" % unicode.__name__)
-    def test46(self):
+    def test51(self):
         a = 1
         select(s for s in Student if s.name > a & 2)
     @raises_exception(TypeError, "Incomparable types '%s' and 'float' in expression: s.name > 1 / a - 3" % unicode.__name__)
-    def test47(self):
+    def test52(self):
         a = 1
         select(s for s in Student if s.name > 1 / a - 3)
     @raises_exception(TypeError, "Incomparable types '%s' and 'int' in expression: s.name > 1 // a - 3" % unicode.__name__)
-    def test48(self):
+    def test53(self):
         a = 1
         select(s for s in Student if s.name > 1 // a - 3)
     @raises_exception(TypeError, "Incomparable types '%s' and 'int' in expression: s.name > -a" % unicode.__name__)
-    def test49(self):
+    def test54(self):
         a = 1
         select(s for s in Student if s.name > -a)
     @raises_exception(TypeError, "Incomparable types '%s' and 'list' in expression: s.name == [1, (2,)]" % unicode.__name__)
-    def test50(self):
+    def test55(self):
         select(s for s in Student if s.name == [1, (2,)])
 
 if __name__ == '__main__':

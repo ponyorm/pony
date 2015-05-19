@@ -389,13 +389,17 @@ class SQLTranslator(ASTTranslator):
         else: sql_ast = [ 'SELECT' ]
         if aggr_func_name:
             expr_type = translator.expr_type
-            if not isinstance(expr_type, EntityMeta):
+            if isinstance(expr_type, EntityMeta):
+                if aggr_func_name is not 'COUNT': throw(TypeError,
+                    'Attribute should be specified for %r aggregate function' % aggr_func_name.lower())
+            elif isinstance(expr_type, tuple):
+                if aggr_func_name is not 'COUNT': throw(TypeError,
+                    'Single attribute should be specified for %r aggregate function' % aggr_func_name.lower())
+            else:
                 if aggr_func_name in ('SUM', 'AVG') and expr_type not in numeric_types:
                     throw(TypeError, '%r is valid for numeric attributes only' % aggr_func_name.lower())
                 assert len(translator.expr_columns) == 1
                 column_ast = translator.expr_columns[0]
-            elif aggr_func_name is not 'COUNT': throw(TypeError,
-                'Attribute should be specified for %r aggregate function' % aggr_func_name.lower())
             aggr_ast = None
             if aggr_func_name == 'COUNT':
                 if isinstance(expr_type, (tuple, EntityMeta)):
