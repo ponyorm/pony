@@ -36,30 +36,30 @@ class TestQuery(unittest.TestCase):
         rollback()
         db_session.__exit__()
     @raises_exception(TypeError, 'Cannot iterate over non-entity object')
-    def test_exception_01(self):
+    def test1(self):
         select(s for s in [])
     @raises_exception(TypeError, 'Cannot iterate over non-entity object X')
-    def test_exception_02(self):
+    def test2(self):
         X = [1, 2, 3]
         select('x for x in X')
     @raises_exception(TypeError, "Cannot iterate over non-entity object")
-    def test_exception_03(self):
+    def test3(self):
         g = Group[1]
         select(s for s in g.students)
     @raises_exception(ExprEvalError, "a raises NameError: name 'a' is not defined")
-    def test_exception_04(self):
+    def test4(self):
         select(a for s in Student)
     @raises_exception(TypeError,"Incomparable types '%s' and 'list' in expression: s.name == x" % unicode.__name__)
-    def test_exception_05(self):
+    def test5(self):
         x = ['A']
         select(s for s in Student if s.name == x)
     @raises_exception(TypeError,"Function 'f1' cannot be used inside query")
-    def test_exception_06(self):
+    def test6(self):
         def f1(x):
             return x + 1
         select(s for s in Student if f1(s.gpa) > 3)
     @raises_exception(NotImplementedError, "m1(s.gpa, 1) > 3")
-    def test_exception_07(self):
+    def test7(self):
         class C1(object):
             def method1(self, a, b):
                 return a + b
@@ -67,54 +67,54 @@ class TestQuery(unittest.TestCase):
         m1 = c.method1
         select(s for s in Student if m1(s.gpa, 1) > 3)
     @raises_exception(TypeError, "Expression `x` has unsupported type 'complex'")
-    def test_exception_08(self):
+    def test8(self):
         x = 1j
         select(s for s in Student if s.gpa == x)
-    def test1(self):
+    def test9(self):
         select(g for g in Group for s in db.Student)
-    def test2(self):
+    def test10(self):
         avg_gpa = avg(s.gpa for s in Student)
         self.assertEqual(round(avg_gpa, 6), 3.2)
-    def test21(self):
+    def test11(self):
         avg_gpa = avg(s.gpa for s in Student if s.id < 0)
         self.assertEqual(avg_gpa, None)
-    def test3(self):
+    def test12(self):
         sum_ss = sum(s.scholarship for s in Student)
         self.assertEqual(sum_ss, 300)
-    def test31(self):
+    def test13(self):
         sum_ss = sum(s.scholarship for s in Student if s.id < 0)
         self.assertEqual(sum_ss, 0)
     @raises_exception(TranslationError, "'avg' is valid for numeric attributes only")
-    def test4(self):
+    def test14(self):
         avg(s.name for s in Student)
     def wrapper(self):
         return count(s for s in Student if s.scholarship > 0)
-    def test5(self):
+    def test15(self):
         c = self.wrapper()
         c = self.wrapper()
         self.assertEqual(c, 2)
-    def test6(self):
+    def test16(self):
         c = count(s.scholarship for s in Student if s.scholarship > 0)
         self.assertEqual(c, 2)
-    def test7(self):
+    def test17(self):
         s = get(s.scholarship for s in Student if s.id == 3)
         self.assertEqual(s, 200)
-    def test8(self):
+    def test18(self):
         s = get(s.scholarship for s in Student if s.id == 4)
         self.assertEqual(s, None)
-    def test9(self):
+    def test19(self):
         s = select(s for s in Student if s.id == 4).exists()
         self.assertEqual(s, False)
-    def test10(self):
+    def test20(self):
         r = min(s.scholarship for s in Student)
         self.assertEqual(r, 100)
-    def test11(self):
+    def test21(self):
         r = min(s.scholarship for s in Student if s.id < 2)
         self.assertEqual(r, None)
-    def test12(self):
+    def test22(self):
         r = max(s.scholarship for s in Student)
         self.assertEqual(r, 200)
-    def test13(self):
+    def test23(self):
         r = max(s.dob.year for s in Student)
         self.assertEqual(r, 2001)
     @db_session
