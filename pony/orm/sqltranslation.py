@@ -67,6 +67,7 @@ def type2str(t):
 class SQLTranslator(ASTTranslator):
     dialect = None
     row_value_syntax = True
+    rowid_support = False
 
     def default_post(translator, node):
         throw(NotImplementedError)  # pragma: no cover
@@ -155,7 +156,7 @@ class SQLTranslator(ASTTranslator):
         ASTTranslator.__init__(translator, tree)
         translator.database = None
         translator.argnames = None
-        translator.filter_num = 0
+        translator.filter_num = parent_translator.filter_num if parent_translator is not None else 0
         translator.extractors = extractors
         translator.vartypes = vartypes
         translator.parent = parent_translator
@@ -194,7 +195,7 @@ class SQLTranslator(ASTTranslator):
                 entity = monad.type.item_type
                 tablerefs[name] = TableRef(subquery, name, entity)
             elif src:
-                iterable = translator.vartypes[0, src]
+                iterable = translator.vartypes[translator.filter_num, src]
                 if not isinstance(iterable, SetType): throw(TranslationError,
                     'Inside declarative query, iterator must be entity. '
                     'Got: for %s in %s' % (name, ast2src(qual.iter)))
@@ -386,31 +387,48 @@ class SQLTranslator(ASTTranslator):
             sql_ast = [ 'SELECT_FOR_UPDATE', nowait ]
             translator.query_result_is_cacheable = False
         else: sql_ast = [ 'SELECT' ]
+        select_ast = [ 'DISTINCT' if distinct else 'ALL' ] + translator.expr_columns
         if aggr_func_name:
             expr_type = translator.expr_type
-            if not isinstance(expr_type, EntityMeta):
+            if isinstance(expr_type, EntityMeta):
+                if aggr_func_name is not 'COUNT': throw(TypeError,
+                    'Attribute should be specified for %r aggregate function' % aggr_func_name.lower())
+            elif isinstance(expr_type, tuple):
+                if aggr_func_name is not 'COUNT': throw(TypeError,
+                    'Single attribute should be specified for %r aggregate function' % aggr_func_name.lower())
+            else:
                 if aggr_func_name in ('SUM', 'AVG') and expr_type not in numeric_types:
-                    throw(TranslationError, '%r is valid for numeric attributes only' % aggr_func_name.lower())
+                    throw(TypeError, '%r is valid for numeric attributes only' % aggr_func_name.lower())
                 assert len(translator.expr_columns) == 1
-                column_ast = translator.expr_columns[0]
-            elif aggr_func_name is not 'COUNT': throw(TranslationError,
-                'Attribute should be specified for %r aggregate function' % aggr_func_name.lower())
             aggr_ast = None
-            if aggr_func_name == 'COUNT':
-                if isinstance(expr_type, (tuple, EntityMeta)):
-                    if translator.distinct:
-                        select_ast = [ 'DISTINCT' ] + translator.expr_columns  # aggr_ast remains to be None
-                        def ast_transformer(ast):
-                            return [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ], [ 'FROM', [ 't', 'SELECT', ast[1:] ] ] ]
-                    else: aggr_ast = [ 'COUNT', 'ALL' ]
-                else: aggr_ast = [ 'COUNT', 'DISTINCT', column_ast ]
-            else: aggr_ast = [ aggr_func_name, column_ast ]
+            if translator.groupby_monads or (aggr_func_name == 'COUNT' and distinct
+                                             and isinstance(translator.expr_type, EntityMeta)
+                                             and len(translator.expr_columns) > 1):
+                outer_alias = 't'
+                if aggr_func_name == 'COUNT':
+                    outer_aggr_ast = [ 'COUNT', 'ALL' ]
+                else:
+                    assert len(translator.expr_columns) == 1
+                    expr_ast = translator.expr_columns[0]
+                    if expr_ast[0] == 'COLUMN':
+                        outer_alias, column_name = expr_ast[1:]
+                        outer_aggr_ast = [ aggr_func_name, [ 'COLUMN', outer_alias, column_name ] ]
+                    else:
+                        select_ast = [ 'DISTINCT' if distinct else 'ALL' ] + [ [ 'AS', expr_ast, 'expr' ] ]
+                        outer_aggr_ast = [ aggr_func_name, [ 'COLUMN', 't', 'expr' ] ]
+                def ast_transformer(ast):
+                    return [ 'SELECT', [ 'AGGREGATES', outer_aggr_ast ],
+                                       [ 'FROM', [ outer_alias, 'SELECT', ast[1:] ] ] ]
+            else:
+                if aggr_func_name == 'COUNT':
+                    if isinstance(expr_type, (tuple, EntityMeta)) and not distinct: aggr_ast = [ 'COUNT', 'ALL' ]
+                    else: aggr_ast = [ 'COUNT', 'DISTINCT', translator.expr_columns[0] ]
+                else: aggr_ast = [ aggr_func_name, translator.expr_columns[0] ]
             if aggr_ast: select_ast = [ 'AGGREGATES', aggr_ast ]
         elif isinstance(translator.expr_type, EntityMeta) and not translator.parent \
              and not translator.aggregated and not translator.optimize:
             select_ast, attr_offsets = translator.expr_type._construct_select_clause_(
                                             translator.alias, distinct, translator.tableref.used_attrs)
-        else: select_ast = [ 'DISTINCT' if distinct else 'ALL' ] + translator.expr_columns
         sql_ast.append(select_ast)
         sql_ast.append(translator.subquery.from_ast)
 
@@ -456,6 +474,44 @@ class SQLTranslator(ASTTranslator):
 
         sql_ast = ast_transformer(sql_ast)
         return sql_ast, attr_offsets
+    def construct_delete_sql_ast(translator):
+        entity = translator.expr_type
+        if not isinstance(entity, EntityMeta): throw(TranslationError,
+            'Delete query should be applied to a single entity. Got: %s'
+            % ast2src(translator.tree.expr.monad))
+        if translator.groupby_monads: throw(TranslationError,
+            'Delete query cannot contains GROUP BY section or aggregate functions')
+        assert not translator.having_conditions
+        expr_monad = translator.tree.expr.monad
+        tableref = expr_monad.tableref
+        from_ast = translator.subquery.from_ast
+        assert from_ast[0] == 'FROM'
+        if len(from_ast) == 2 and not translator.subquery.used_from_subquery:
+            sql_ast = [ 'DELETE', None, from_ast ]
+            if translator.conditions:
+                sql_ast.append([ 'WHERE' ] + translator.conditions)
+        elif translator.dialect == 'MySQL':
+            sql_ast = [ 'DELETE', tableref.alias, from_ast ]
+            if translator.conditions:
+                sql_ast.append([ 'WHERE' ] + translator.conditions)
+        else:
+            delete_from_ast = [ 'FROM', [ None, 'TABLE', entity._table_ ] ]
+            if len(entity._pk_columns_) == 1:
+                inner_expr = expr_monad.getsql()
+                outer_expr = [ 'COLUMN', None, entity._pk_columns_[0] ]
+            elif translator.rowid_support:
+                inner_expr = [ [ 'COLUMN', tableref.alias, 'ROWID' ] ]
+                outer_expr = [ 'COLUMN', None, 'ROWID' ]
+            elif translator.row_value_syntax:
+                inner_expr = expr_monad.getsql()
+                outer_expr = [ 'ROW' ] + [ [ 'COLUMN', None, column_name ] for column_name in entity._pk_columns_ ]
+            else: throw(NotImplementedError)
+            subquery_ast = [ 'SELECT', [ 'ALL' ] + inner_expr, from_ast ]
+            if translator.conditions:
+                subquery_ast.append([ 'WHERE' ] + translator.conditions)
+            delete_where_ast = [ 'WHERE', [ 'IN', outer_expr, subquery_ast ] ]
+            sql_ast = [ 'DELETE', None, delete_from_ast, delete_where_ast ]
+        return sql_ast
     def get_used_attrs(translator):
         if isinstance(translator.expr_type, EntityMeta) and not translator.aggregated and not translator.optimize:
             return translator.tableref.used_attrs
@@ -753,11 +809,15 @@ class Subquery(object):
         else:
             subquery.alias_counters = parent_subquery.alias_counters.copy()
             subquery.expr_counter = parent_subquery.expr_counter
-    def get_tableref(subquery, name_path):
+        subquery.used_from_subquery = False
+    def get_tableref(subquery, name_path, from_subquery=False):
         tableref = subquery.tablerefs.get(name_path)
-        if tableref is not None: return tableref
+        if tableref is not None:
+            if from_subquery and subquery.parent_subquery is None:
+                subquery.used_from_subquery = True
+            return tableref
         if subquery.parent_subquery:
-            return subquery.parent_subquery.get_tableref(name_path)
+            return subquery.parent_subquery.get_tableref(name_path, from_subquery=True)
         return None
     __contains__ = get_tableref
     def add_tableref(subquery, name_path, parent_tableref, attr):
@@ -1350,7 +1410,8 @@ class ObjectMixin(MonadMixin):
         translator = monad.translator
         entity = monad.type
         attr = entity._adict_.get(name) or entity._subclass_adict_.get(name)
-        if attr is None: throw(AttributeError)
+        if attr is None: throw(AttributeError,
+            'Entity %s does not have attribute %s: {EXPR}' % (entity.__name__, name))
         if hasattr(monad, 'tableref'): monad.tableref.used_attrs.add(attr)
         if not attr.is_collection:
             return translator.AttrMonad.new(monad, attr)

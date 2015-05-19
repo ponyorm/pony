@@ -663,3 +663,216 @@ WHERE ("s"."group", "s"."gpa") NOT IN (
     GROUP BY "s2"."group"
     HAVING MAX("s2"."gpa") IS NOT NULL
     )
+
+# Complex aggregations:
+
+Schema:
+pony.orm.examples.university1
+
+>>> count(g for g in Group if count(g.students) > 0 and g.number > 101)
+
+SELECT COUNT(*)
+FROM (
+    SELECT "g"."number"
+        FROM "Group" "g"
+      LEFT JOIN "Student" "student-1"
+        ON "g"."number" = "student-1"."group"
+    WHERE "g"."number" > 101
+    GROUP BY "g"."number"
+    HAVING COUNT(DISTINCT "student-1"."id") > 0
+    ) "t"
+
+>>> count(g for g in Group if count(s for s in g.students) > 0 and g.number > 101)
+
+SELECT COUNT(*)
+FROM "Group" "g"
+WHERE (
+    SELECT COUNT(DISTINCT "s"."id")
+    FROM "Student" "s"
+    WHERE "g"."number" = "s"."group"
+    ) > 0
+  AND "g"."number" > 101
+
+>>> sum(s.gpa for s in Student if count(s.courses) > 3 and s.gpa > 3.5)
+
+SELECT coalesce(SUM("s"."gpa"), 0)
+FROM (
+    SELECT "s"."gpa"
+        FROM "Student" "s"
+      LEFT JOIN "Course_Student" "t-1"
+        ON "s"."id" = "t-1"."student"
+    WHERE "s"."gpa" > 3.5
+    GROUP BY "s"."gpa"
+    HAVING COUNT("t-1"."ROWID") > 3
+    ) "s"
+
+>>> sum(s.dob.year for s in Student if count(s.courses) > 3 and s.gpa > 3.5)
+
+SELECT coalesce(SUM("t"."expr"), 0)
+FROM (
+    SELECT cast(substr("s"."dob", 1, 4) as integer) AS "expr"
+        FROM "Student" "s"
+      LEFT JOIN "Course_Student" "t-1"
+        ON "s"."id" = "t-1"."student"
+    WHERE "s"."gpa" > 3.5
+    GROUP BY cast(substr("s"."dob", 1, 4) as integer)
+    HAVING COUNT("t-1"."ROWID") > 3
+    ) "t"
+
+# Bulk delete:
+
+>>> select(s for s in Student if s.gpa > 3).delete(bulk=True)
+
+DELETE FROM "Student"
+WHERE "gpa" > 3
+
+>>> select(s for s in Student if s.group.dept.number == 1).delete(bulk=True)
+
+DELETE FROM "Student"
+WHERE "id" IN (
+    SELECT "s"."id"
+    FROM "Student" "s", "Group" "group-1"
+    WHERE "group-1"."dept" = 1
+      AND "s"."group" = "group-1"."number"
+    )
+
+MySQL:
+
+DELETE s FROM `student` `s`
+  INNER JOIN `group` `group-1`
+    ON `s`.`group` = `group-1`.`number`
+WHERE `group-1`.`dept` = 1
+
+PostgreSQL:
+
+DELETE FROM "student"
+WHERE "id" IN (
+    SELECT "s"."id"
+    FROM "student" "s", "group" "group-1"
+    WHERE "group-1"."dept" = 1
+      AND "s"."group" = "group-1"."number"
+    )
+
+Oracle:
+
+DELETE FROM "STUDENT"
+WHERE "ID" IN (
+    SELECT "s"."ID"
+    FROM "STUDENT" "s", "GROUP" "group-1"
+    WHERE "group-1"."DEPT" = 1
+      AND "s"."GROUP" = "group-1"."NUMBER"
+    )
+
+>>> select(c for c in Course if c.dept.name.startswith('D')).delete(bulk=True)
+
+DELETE FROM "Course"
+WHERE "ROWID" IN (
+    SELECT "c"."ROWID"
+    FROM "Course" "c", "Department" "department-1"
+    WHERE "department-1"."name" LIKE 'D%'
+      AND "c"."dept" = "department-1"."number"
+    )
+
+MySQL:
+
+DELETE c FROM `course` `c`
+  INNER JOIN `department` `department-1`
+    ON `c`.`dept` = `department-1`.`number`
+WHERE `department-1`.`name` LIKE 'D%%'
+
+PostgreSQL:
+
+DELETE FROM "course"
+WHERE ("name", "semester") IN (
+    SELECT "c"."name", "c"."semester"
+    FROM "course" "c", "department" "department-1"
+    WHERE "department-1"."name" LIKE 'D%%'
+      AND "c"."dept" = "department-1"."number"
+    )
+
+Oracle:
+
+DELETE FROM "COURSE"
+WHERE "ROWID" IN (
+    SELECT "c"."ROWID"
+    FROM "COURSE" "c", "DEPARTMENT" "department-1"
+    WHERE "department-1"."NAME" LIKE 'D%'
+      AND "c"."DEPT" = "department-1"."NUMBER"
+    )
+
+>>> select(s for s in Student if s.gpa > 3 and s not in (s2 for s2 in Student if s2.group.dept.name.startswith('A'))).delete(bulk=True)
+
+DELETE FROM "Student"
+WHERE "gpa" > 3
+  AND "id" NOT IN (
+    SELECT "s2"."id"
+    FROM "Student" "s2", "Group" "group-1", "Department" "department-1"
+    WHERE "department-1"."name" LIKE 'A%'
+      AND "s2"."group" = "group-1"."number"
+      AND "group-1"."dept" = "department-1"."number"
+    )
+
+# MySQL does not support such queries
+
+PostgreSQL:
+
+DELETE FROM "student"
+WHERE "gpa" > 3
+  AND "id" NOT IN (
+    SELECT "s2"."id"
+    FROM "student" "s2", "group" "group-1", "department" "department-1"
+    WHERE "department-1"."name" LIKE 'A%%'
+      AND "s2"."group" = "group-1"."number"
+      AND "group-1"."dept" = "department-1"."number"
+    )
+
+Oracle:
+
+DELETE FROM "STUDENT"
+WHERE "GPA" > 3
+  AND "ID" NOT IN (
+    SELECT "s2"."ID"
+    FROM "STUDENT" "s2", "GROUP" "group-1", "DEPARTMENT" "department-1"
+    WHERE "department-1"."NAME" LIKE 'A%'
+      AND "s2"."GROUP" = "group-1"."NUMBER"
+      AND "group-1"."DEPT" = "department-1"."NUMBER"
+    )
+
+>>> select(s for s in Student if exists(s2 for s2 in Student if s.gpa > s2.gpa)).delete(bulk=True)
+
+DELETE FROM "Student"
+WHERE "id" IN (
+    SELECT "s"."id"
+    FROM "Student" "s"
+    WHERE EXISTS (
+        SELECT 1
+        FROM "Student" "s2"
+        WHERE "s"."gpa" > "s2"."gpa"
+        )
+    )
+
+PostgreSQL:
+
+DELETE FROM "student"
+WHERE "id" IN (
+    SELECT "s"."id"
+    FROM "student" "s"
+    WHERE EXISTS (
+        SELECT 1
+        FROM "student" "s2"
+        WHERE "s"."gpa" > "s2"."gpa"
+        )
+    )
+
+Oracle:
+
+DELETE FROM "STUDENT"
+WHERE "ID" IN (
+    SELECT "s"."ID"
+    FROM "STUDENT" "s"
+    WHERE EXISTS (
+        SELECT 1
+        FROM "STUDENT" "s2"
+        WHERE "s"."GPA" > "s2"."GPA"
+        )
+    )

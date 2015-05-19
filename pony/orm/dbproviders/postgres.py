@@ -98,14 +98,10 @@ class PGUuidConverter(dbapiprovider.UuidConverter):
         return val
 
 class PGPool(Pool):
-    def connect(pool):
-        if pool.con is None:
-            if core.debug: log_orm('GET NEW CONNECTION')
-            pool.con = pool.dbapi_module.connect(*pool.args, **pool.kwargs)
-            if 'client_encoding' not in pool.kwargs:
-                pool.con.set_client_encoding('UTF8')
-        elif core.debug: log_orm('GET CONNECTION FROM THE LOCAL POOL')
-        return pool.con
+    def _connect(pool):
+        pool.con = pool.dbapi_module.connect(*pool.args, **pool.kwargs)
+        if 'client_encoding' not in pool.kwargs:
+            pool.con.set_client_encoding('UTF8')
     def release(pool, con):
         assert con is pool.con
         try:

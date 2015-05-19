@@ -42,6 +42,7 @@ class TestConnection(object):
 class TestCursor(object):
     def __init__(cursor):
         cursor.description = []
+        cursor.rowcount = 0
     def execute(cursor, sql, args=None):
         pass
     def fetchone(cursor):
