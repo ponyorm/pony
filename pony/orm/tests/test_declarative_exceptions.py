@@ -74,9 +74,6 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(NotImplementedError, 'Group[s.group.number]')
     def test7(self):
         select(s for s in Student if Group[s.group.number].dept.number == 44)
-    # @raises_exception(TypeError, "Invalid count of attrs in Group primary key (2 instead of 1)")
-    # def test8(self):
-    #     select(s for s in Student if Group[s.group.number, 123].dept.number == 44)
     @raises_exception(ExprEvalError, "Group[123, 456].dept.number == 44 raises TypeError: Invalid count of attrs in Group primary key (2 instead of 1)")
     def test9(self):
         select(s for s in Student if Group[123, 456].dept.number == 44)
@@ -144,7 +141,6 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     def test28(self):
         g = Group[101]
         select(s for s in Student if s.name == g.dept.foo.bar)
-    # @raises_exception(ExprEvalError, "date('2011', 1, 1) raises TypeError: an integer is required")
     @raises_exception(TypeError, "'year' argument of date(year, month, day) function must be of 'int' type. "
                                  "Got: '%s'" % unicode.__name__)
     def test29(self):
@@ -155,23 +151,6 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(ExprEvalError, "max() raises TypeError: max expected 1 arguments, got 0")
     def test31(self):
         select(s for s in Student if s.id < max())
-    #@raises_exception(TypeError, "Value of type 'buffer' is not valid as argument of 'max' function in expression max(x, y)")
-    # def test32(self):
-    #     x = buffer('a')
-    #     y = buffer('b')
-    #    select(s for s in Student if max(x, y) == x)
-    # @raises_exception(TypeError, "Incomparable types 'int' and '%s' in expression: min(1, 'a')" % unicode.__name__)
-    # def test33(self):
-    #     select(s for s in Student if min(1, 'a') == 1)
-    # @raises_exception(TypeError, "Incomparable types '%s' and 'int' in expression: min('a', 1)" % unicode.__name__)
-    # def test33a(self):
-    #     select(s for s in Student if min('a', 1) == 1)
-    # @raises_exception(TypeError, "'select' function expects generator expression, got: select('* from Students')")
-    # def test34(self):
-    #    select(s for s in Student if s.group in select("* from Students"))
-    # @raises_exception(TypeError, "'exists' function expects generator expression or collection, got: exists('g for g in Group')")
-    # def test35(self): ###
-    #    select(s for s in Student if exists("g for g in Group"))
     @raises_exception(TypeError, "Incomparable types 'Student' and 'Course' in expression: s in s.courses")
     def test36(self):
         select(s for s in Student if s in s.courses)
@@ -199,9 +178,6 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(ExprEvalError, "len(1, 2) == 3 raises TypeError: len() takes exactly one argument (2 given)")
     def test44(self):
         select(s for s in Student if len(1, 2) == 3)
-    # @raises_exception(NotImplementedError, "Group[101].students")
-    # def test45(self):
-    #     select(s for s in Student if s in Group[101].students)
     @raises_exception(TypeError, "Function sum() expects query or items of numeric type, got 'Student' in sum(s for s in Student if s.group == g)")
     def test46(self):
         select(g for g in Group if sum(s for s in Student if s.group == g) > 1)
@@ -214,9 +190,6 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(TypeError, "Function max() cannot be applied to type 'Student' in max(s for s in Student if s.group == g)")
     def test49(self):
         select(g for g in Group if max(s for s in Student if s.group == g) > 1)
-    # @raises_exception(TypeError, "Incomparable types 'Decimal' and 'bool' in expression: s.scholarship == (True or False and not True)")
-    # def test50(self):
-    #     select(s for s in Student if s.scholarship == (True or False and not True))
     @raises_exception(TypeError, "Expression `{'a':'b'}` has unsupported type 'dict'")
     def test52(self):
         select(s for s in Student if s.name == {'a' : 'b'})
