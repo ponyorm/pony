@@ -664,6 +664,61 @@ WHERE ("s"."group", "s"."gpa") NOT IN (
     HAVING MAX("s2"."gpa") IS NOT NULL
     )
 
+# Complex aggregations:
+
+Schema:
+pony.orm.examples.university1
+
+>>> count(g for g in Group if count(g.students) > 0 and g.number > 101)
+
+SELECT COUNT(*)
+FROM (
+    SELECT "g"."number"
+        FROM "Group" "g"
+      LEFT JOIN "Student" "student-1"
+        ON "g"."number" = "student-1"."group"
+    WHERE "g"."number" > 101
+    GROUP BY "g"."number"
+    HAVING COUNT(DISTINCT "student-1"."id") > 0
+    ) "t"
+
+>>> count(g for g in Group if count(s for s in g.students) > 0 and g.number > 101)
+
+SELECT COUNT(*)
+FROM "Group" "g"
+WHERE (
+    SELECT COUNT(DISTINCT "s"."id")
+    FROM "Student" "s"
+    WHERE "g"."number" = "s"."group"
+    ) > 0
+  AND "g"."number" > 101
+
+>>> sum(s.gpa for s in Student if count(s.courses) > 3 and s.gpa > 3.5)
+
+SELECT coalesce(SUM("s"."gpa"), 0)
+FROM (
+    SELECT "s"."gpa"
+        FROM "Student" "s"
+      LEFT JOIN "Course_Student" "t-1"
+        ON "s"."id" = "t-1"."student"
+    WHERE "s"."gpa" > 3.5
+    GROUP BY "s"."gpa"
+    HAVING COUNT("t-1"."ROWID") > 3
+    ) "s"
+
+>>> sum(s.dob.year for s in Student if count(s.courses) > 3 and s.gpa > 3.5)
+
+SELECT coalesce(SUM("t"."expr"), 0)
+FROM (
+    SELECT cast(substr("s"."dob", 1, 4) as integer) AS "expr"
+        FROM "Student" "s"
+      LEFT JOIN "Course_Student" "t-1"
+        ON "s"."id" = "t-1"."student"
+    WHERE "s"."gpa" > 3.5
+    GROUP BY cast(substr("s"."dob", 1, 4) as integer)
+    HAVING COUNT("t-1"."ROWID") > 3
+    ) "t"
+
 # Bulk delete:
 
 >>> select(s for s in Student if s.gpa > 3).delete(bulk=True)

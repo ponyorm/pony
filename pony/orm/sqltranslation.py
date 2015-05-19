@@ -387,6 +387,7 @@ class SQLTranslator(ASTTranslator):
             sql_ast = [ 'SELECT_FOR_UPDATE', nowait ]
             translator.query_result_is_cacheable = False
         else: sql_ast = [ 'SELECT' ]
+        select_ast = [ 'DISTINCT' if distinct else 'ALL' ] + translator.expr_columns
         if aggr_func_name:
             expr_type = translator.expr_type
             if isinstance(expr_type, EntityMeta):
@@ -399,23 +400,35 @@ class SQLTranslator(ASTTranslator):
                 if aggr_func_name in ('SUM', 'AVG') and expr_type not in numeric_types:
                     throw(TypeError, '%r is valid for numeric attributes only' % aggr_func_name.lower())
                 assert len(translator.expr_columns) == 1
-                column_ast = translator.expr_columns[0]
             aggr_ast = None
-            if aggr_func_name == 'COUNT':
-                if isinstance(expr_type, (tuple, EntityMeta)):
-                    if translator.distinct:
-                        select_ast = [ 'DISTINCT' ] + translator.expr_columns  # aggr_ast remains to be None
-                        def ast_transformer(ast):
-                            return [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ], [ 'FROM', [ 't', 'SELECT', ast[1:] ] ] ]
-                    else: aggr_ast = [ 'COUNT', 'ALL' ]
-                else: aggr_ast = [ 'COUNT', 'DISTINCT', column_ast ]
-            else: aggr_ast = [ aggr_func_name, column_ast ]
+            if translator.groupby_monads or (aggr_func_name == 'COUNT' and distinct
+                                             and isinstance(translator.expr_type, EntityMeta)
+                                             and len(translator.expr_columns) > 1):
+                outer_alias = 't'
+                if aggr_func_name == 'COUNT':
+                    outer_aggr_ast = [ 'COUNT', 'ALL' ]
+                else:
+                    assert len(translator.expr_columns) == 1
+                    expr_ast = translator.expr_columns[0]
+                    if expr_ast[0] == 'COLUMN':
+                        outer_alias, column_name = expr_ast[1:]
+                        outer_aggr_ast = [ aggr_func_name, [ 'COLUMN', outer_alias, column_name ] ]
+                    else:
+                        select_ast = [ 'DISTINCT' if distinct else 'ALL' ] + [ [ 'AS', expr_ast, 'expr' ] ]
+                        outer_aggr_ast = [ aggr_func_name, [ 'COLUMN', 't', 'expr' ] ]
+                def ast_transformer(ast):
+                    return [ 'SELECT', [ 'AGGREGATES', outer_aggr_ast ],
+                                       [ 'FROM', [ outer_alias, 'SELECT', ast[1:] ] ] ]
+            else:
+                if aggr_func_name == 'COUNT':
+                    if isinstance(expr_type, (tuple, EntityMeta)) and not distinct: aggr_ast = [ 'COUNT', 'ALL' ]
+                    else: aggr_ast = [ 'COUNT', 'DISTINCT', translator.expr_columns[0] ]
+                else: aggr_ast = [ aggr_func_name, translator.expr_columns[0] ]
             if aggr_ast: select_ast = [ 'AGGREGATES', aggr_ast ]
         elif isinstance(translator.expr_type, EntityMeta) and not translator.parent \
              and not translator.aggregated and not translator.optimize:
             select_ast, attr_offsets = translator.expr_type._construct_select_clause_(
                                             translator.alias, distinct, translator.tableref.used_attrs)
-        else: select_ast = [ 'DISTINCT' if distinct else 'ALL' ] + translator.expr_columns
         sql_ast.append(select_ast)
         sql_ast.append(translator.subquery.from_ast)
 
