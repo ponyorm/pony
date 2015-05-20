@@ -466,9 +466,10 @@ class SQLTranslator(ASTTranslator):
                 'query must have grouping columns (i.e. resulting non-aggregated values)')
             sql_ast.append([ 'HAVING' ] + having_conditions)
 
-        if translator.order: sql_ast.append([ 'ORDER_BY' ] + translator.order)
+        if translator.order and not aggr_func_name: sql_ast.append([ 'ORDER_BY' ] + translator.order)
 
         if range:
+            assert not aggr_func_name
             start, stop = range
             limit = stop - start
             offset = start
