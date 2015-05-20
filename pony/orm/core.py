@@ -4924,6 +4924,9 @@ class Query(object):
             else: query_key = sql_key + (arguments_key)
         else: query_key = None
         return sql, arguments, attr_offsets, query_key
+    def get_sql(query):
+        sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments()
+        return sql
     def _fetch(query, range=None):
         translator = query._translator
         if query._result is not None:
