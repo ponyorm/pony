@@ -1878,7 +1878,6 @@ class Attribute(object):
         if not cache.is_alive: throw(DatabaseSessionIsOver,
             'Cannot assign new value to attribute %s.%s: the database session is over' % (safe_repr(obj), attr.name))
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        is_reverse_call = undo_funcs is not None
         reverse = attr.reverse
         new_val = attr.validate(new_val, obj, from_db=False)
         if attr.pk_offset is not None:
@@ -1907,6 +1906,7 @@ class Attribute(object):
             if not attr.reverse and not attr.is_part_of_unique_index:
                 obj._vals_[attr] = new_val
                 return
+            is_reverse_call = undo_funcs is not None
             if not is_reverse_call: undo_funcs = []
             undo = []
             def undo_func():
