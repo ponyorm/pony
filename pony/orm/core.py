@@ -2004,7 +2004,9 @@ class Attribute(object):
     def update_reverse(attr, obj, old_val, new_val, undo_funcs):
         reverse = attr.reverse
         if not reverse.is_collection:
-            if old_val not in (None, NOT_LOADED): reverse.__set__(old_val, None, undo_funcs)
+            if old_val not in (None, NOT_LOADED):
+                if attr.cascade_delete: old_val._delete_()
+                else: reverse.__set__(old_val, None, undo_funcs)
             if new_val is not None: reverse.__set__(new_val, obj, undo_funcs)
         elif isinstance(reverse, Set):
             if old_val not in (None, NOT_LOADED): reverse.reverse_remove((old_val,), obj, undo_funcs)
@@ -2551,7 +2553,10 @@ class Set(Collection):
             if not is_reverse_call: undo_funcs = []
             try:
                 if not reverse.is_collection:
-                    for item in to_remove: reverse.__set__(item, None, undo_funcs)
+                    if attr.cascade_delete:
+                        for item in to_remove: item._delete_()
+                    else:
+                        for item in to_remove: reverse.__set__(item, None, undo_funcs)
                     for item in to_add: reverse.__set__(item, obj, undo_funcs)
                 else:
                     reverse.reverse_remove(to_remove, obj, undo_funcs)
@@ -2983,7 +2988,10 @@ class SetInstance(object):
             undo_funcs = []
             try:
                 if not reverse.is_collection:
-                    for item in items: reverse.__set__(item, None, undo_funcs)
+                    if attr.cascade_delete:
+                        for item in items: item._delete_()
+                    else:
+                        for item in items: reverse.__set__(item, None, undo_funcs)
                 else: reverse.reverse_remove(items, obj, undo_funcs)
             except:
                 for undo_func in reversed(undo_funcs): undo_func()

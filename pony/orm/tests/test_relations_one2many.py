@@ -5,7 +5,7 @@ import unittest
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
 
-class TestOneToMany(unittest.TestCase):
+class TestOneToManyRequired(unittest.TestCase):
 
     def setUp(self):
         db = Database('sqlite', ':memory:', create_db=True)
@@ -44,13 +44,49 @@ class TestOneToMany(unittest.TestCase):
     def test_1(self):
         self.Student[1].group = None
 
-    @raises_exception(ValueError, 'Attribute Student[1].group is required')
     def test_2(self):
         Student, Group = self.Student, self.Group
-        Student[2].delete()  # in order to make exception text deterministic
-        Group[101].students = Group[102].students
+        s1 = Student[1]
+        g = Group[101]
+        g.students.remove(s1)
+        self.assertEqual(s1._status_, 'marked_to_delete')
 
     def test_3(self):
+        Student, Group = self.Student, self.Group
+        s1, s2 = Student[1], Student[2]
+        g = Group[101]
+        g.students.clear()
+        self.assertEqual(s1._status_, 'marked_to_delete')
+        self.assertEqual(s2._status_, 'marked_to_delete')
+        self.assertEqual(set(g.students), set())
+
+    def test_4(self):
+        Student, Group = self.Student, self.Group
+        s1, s2, s3, s4 = Student.select().order_by(Student.id)
+        g1, g2 = Group[101], Group[102]
+        g1.students = g2.students
+        self.assertEqual(set(g1.students), set([s3, s4]))
+        self.assertEqual(s1._status_, 'marked_to_delete')
+        self.assertEqual(s2._status_, 'marked_to_delete')
+
+    @raises_exception(ValueError, 'A single Student instance or Student iterable is expected. Got: None')
+    def test_5(self):
+        Group, Student = self.Group, self.Student
+        g = Group[101]
+        g.students.add(None)
+        
+    @raises_exception(ValueError, 'A single Student instance or Student iterable is expected. Got: None')
+    def test_6(self):
+        Group, Student = self.Group, self.Student
+        g = Group[101]
+        g.students.remove(None)
+
+    @raises_exception(ValueError, 'A single Student instance or Student iterable is expected. Got: None')
+    def test_7(self):
+        Group = self.Group
+        g104 = Group(number=104, students=None)
+
+    def test_8(self):
         db, Group, Student = self.db, self.Group, self.Student
 
         g = Group[101]
@@ -60,7 +96,7 @@ class TestOneToMany(unittest.TestCase):
         # Group.students.load should not attempt to load s3 from db
         self.assertEqual(db.last_sql, None)
 
-    def test_4(self):
+    def test_9(self):
         db, Group, Student = self.db, self.Group, self.Student
 
         g = Group[101]
@@ -81,7 +117,7 @@ class TestOneToMany(unittest.TestCase):
         self.assertEqual(e, True)
         self.assertEqual(db.last_sql, None)
 
-    def test_5(self):
+    def test_10(self):
         db, Group = self.db, self.Group
 
         g = Group[101]
@@ -108,7 +144,7 @@ class TestOneToMany(unittest.TestCase):
         self.assertEqual(e, True)
         self.assertEqual(db.last_sql, None)
 
-    def test_6(self):
+    def test_11(self):
         db, Group, Student = self.db, self.Group, self.Student
 
         g = Group[101]
@@ -131,7 +167,7 @@ class TestOneToMany(unittest.TestCase):
         self.assertEqual(c, 1)
         self.assertTrue(db.last_sql is not None)
 
-    def test_7_rbits(self):
+    def test_12(self):
         Group, Student = self.Group, self.Student
         g = Group[101]
 
@@ -150,22 +186,87 @@ class TestOneToMany(unittest.TestCase):
         self.assertTrue(s5 in g.students)
         self.assertEqual(s5._rbits_, None)
 
+class TestOneToManyOptional(unittest.TestCase):
+
+    def setUp(self):
+        db = Database('sqlite', ':memory:', create_db=True)
+
+        class Student(db.Entity):
+            id = PrimaryKey(int)
+            name = Required(unicode)
+            group = Optional('Group')
+
+        class Group(db.Entity):
+            number = PrimaryKey(int)
+            students = Set(Student)
+
+        self.db = db
+        self.Group = Group
+        self.Student = Student
+
+        db.generate_mapping(create_tables=True)
+
+        with db_session:
+            g101 = Group(number=101)
+            g102 = Group(number=102)
+            g103 = Group(number=103)
+            s1 = Student(id=1, name='Student1', group=g101)
+            s2 = Student(id=2, name='Student2', group=g101)
+            s3 = Student(id=3, name='Student3', group=g102)
+            s4 = Student(id=4, name='Student3', group=g102)
+
+        db_session.__enter__()
+
+    def tearDown(self):
+        rollback()
+        db_session.__exit__()
+
+    def test_1(self):
+        self.Student[1].group = None
+        self.assertEqual(set(self.Group[101].students), set([self.Student[2]]))
+
+    def test_2(self):
+        Student, Group = self.Student, self.Group
+        s1 = Student[1]
+        g = Group[101]
+        g.students.remove(s1)
+        self.assertEqual(s1.group, None)
+
+    def test_3(self):
+        Student, Group = self.Student, self.Group
+        s1, s2 = Student[1], Student[2]
+        g = Group[101]
+        g.students.clear()
+        self.assertEqual(s1.group, None)
+        self.assertEqual(s2.group, None)
+        self.assertEqual(set(g.students), set())
+
+    def test_4(self):
+        Student, Group = self.Student, self.Group
+        s1, s2, s3, s4 = Student.select().order_by(Student.id)
+        g1, g2 = Group[101], Group[102]
+        g1.students = g2.students
+        self.assertEqual(set(g1.students), set([s3, s4]))
+        self.assertEqual(s1.group, None)
+        self.assertEqual(s2.group, None)
+
     @raises_exception(ValueError, 'A single Student instance or Student iterable is expected. Got: None')
-    def test_8(self):
+    def test_5(self):
         Group, Student = self.Group, self.Student
         g = Group[101]
         g.students.add(None)
         
     @raises_exception(ValueError, 'A single Student instance or Student iterable is expected. Got: None')
-    def test_9(self):
+    def test_6(self):
         Group, Student = self.Group, self.Student
         g = Group[101]
         g.students.remove(None)
 
     @raises_exception(ValueError, 'A single Student instance or Student iterable is expected. Got: None')
-    def test_10(self):
+    def test_7(self):
         Group = self.Group
         g104 = Group(number=104, students=None)
+
 
 if __name__ == '__main__':
     unittest.main()
