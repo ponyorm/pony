@@ -2005,7 +2005,7 @@ class Attribute(object):
         reverse = attr.reverse
         if not reverse.is_collection:
             if old_val not in (None, NOT_LOADED):
-                if attr.cascade_delete: old_val._delete_()
+                if attr.cascade_delete: old_val._delete_(undo_funcs)
                 else: reverse.__set__(old_val, None, undo_funcs)
             if new_val is not None: reverse.__set__(new_val, obj, undo_funcs)
         elif isinstance(reverse, Set):
@@ -2554,7 +2554,7 @@ class Set(Collection):
             try:
                 if not reverse.is_collection:
                     if attr.cascade_delete:
-                        for item in to_remove: item._delete_()
+                        for item in to_remove: item._delete_(undo_funcs)
                     else:
                         for item in to_remove: reverse.__set__(item, None, undo_funcs)
                     for item in to_add: reverse.__set__(item, obj, undo_funcs)
@@ -2989,7 +2989,7 @@ class SetInstance(object):
             try:
                 if not reverse.is_collection:
                     if attr.cascade_delete:
-                        for item in items: item._delete_()
+                        for item in items: item._delete_(undo_funcs)
                     else:
                         for item in items: reverse.__set__(item, None, undo_funcs)
                 else: reverse.reverse_remove(items, obj, undo_funcs)
@@ -4296,7 +4296,7 @@ class Entity(with_metaclass(EntityMeta)):
                         if not reverse.is_collection:
                             val = get_val(attr) if attr in obj._vals_ else attr.load(obj)
                             if val is None: continue
-                            if attr.cascade_delete: val._delete_()
+                            if attr.cascade_delete: val._delete_(undo_funcs)
                             elif not reverse.is_required: reverse.__set__(val, None, undo_funcs)
                             else: throw(ConstraintError, "Cannot delete object %s, because it has associated %s, "
                                                          "and 'cascade_delete' option of %s is not set"
@@ -4311,7 +4311,7 @@ class Entity(with_metaclass(EntityMeta)):
                         set_wrapper = attr.__get__(obj)
                         if not set_wrapper.__nonzero__(): pass
                         elif attr.cascade_delete:
-                            for robj in set_wrapper: robj._delete_()
+                            for robj in set_wrapper: robj._delete_(undo_funcs)
                         elif not reverse.is_required: attr.__set__(obj, (), undo_funcs)
                         else: throw(ConstraintError, "Cannot delete object %s, because it has non-empty set of %s, "
                                                      "and 'cascade_delete' option of %s is not set"
