@@ -2547,7 +2547,8 @@ class Set(Collection):
             if new_items == setdata: return
             to_add = new_items - setdata
             to_remove = setdata - new_items
-            if undo_funcs is None: undo_funcs = []
+            is_reverse_call = undo_funcs is not None
+            if not is_reverse_call: undo_funcs = []
             try:
                 if not reverse.is_collection:
                     for item in to_remove: reverse.__set__(item, None, undo_funcs)
@@ -2556,7 +2557,8 @@ class Set(Collection):
                     reverse.reverse_remove(to_remove, obj, undo_funcs)
                     reverse.reverse_add(to_add, obj, undo_funcs)
             except:
-                for undo_func in reversed(undo_funcs): undo_func()
+                if not is_reverse_call:
+                    for undo_func in reversed(undo_funcs): undo_func()
                 raise
         setdata.clear()
         setdata |= new_items
