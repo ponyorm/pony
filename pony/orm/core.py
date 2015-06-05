@@ -2940,7 +2940,7 @@ class SetInstance(object):
             undo_funcs = []
             try:
                 if not reverse.is_collection:
-                      for item in new_items: reverse.__set__(item, obj, undo_funcs)
+                    for item in new_items: reverse.__set__(item, obj, undo_funcs)
                 else: reverse.reverse_add(new_items, obj, undo_funcs)
             except:
                 for undo_func in reversed(undo_funcs): undo_func()
