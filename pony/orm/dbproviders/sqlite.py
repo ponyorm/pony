@@ -7,6 +7,7 @@ from decimal import Decimal
 from datetime import datetime, date, time, timedelta
 from random import random
 from time import strptime
+from threading import Lock
 from uuid import UUID
 
 from pony.orm import core, dbschema, sqltranslation, dbapiprovider
@@ -184,29 +185,57 @@ class SQLiteProvider(DBAPIProvider):
             (buffer, dbapiprovider.BlobConverter),
         ]
 
+    def __init__(provider, *args, **kwargs):
+        DBAPIProvider.__init__(provider, *args, **kwargs)
+        provider.transaction_lock = Lock()
+
     @wrap_dbapi_exceptions
     def set_transaction_mode(provider, connection, cache):
         assert not cache.in_transaction
-        cursor = connection.cursor()
+        if cache.immediate:
+            provider.transaction_lock.acquire()
+        try:
+            cursor = connection.cursor()
 
-        db_session = cache.db_session
-        if db_session is not None and db_session.ddl:
-            cursor.execute('PRAGMA foreign_keys')
-            fk = cursor.fetchone()
-            if fk is not None: fk = fk[0]
-            if fk:
-                sql = 'PRAGMA foreign_keys = false'
+            db_session = cache.db_session
+            if db_session is not None and db_session.ddl:
+                cursor.execute('PRAGMA foreign_keys')
+                fk = cursor.fetchone()
+                if fk is not None: fk = fk[0]
+                if fk:
+                    sql = 'PRAGMA foreign_keys = false'
+                    if core.debug: log_orm(sql)
+                    cursor.execute(sql)
+                cache.saved_fk_state = bool(fk)
+                assert cache.immediate
+
+            if cache.immediate:
+                sql = 'BEGIN IMMEDIATE TRANSACTION'
                 if core.debug: log_orm(sql)
                 cursor.execute(sql)
-            cache.saved_fk_state = bool(fk)
-            assert cache.immediate
+                cache.in_transaction = True
+            elif core.debug: log_orm('SWITCH TO AUTOCOMMIT MODE')
+        finally:
+            if cache.immediate and not cache.in_transaction:
+                provider.transaction_lock.release()
 
-        if cache.immediate:
-            sql = 'BEGIN IMMEDIATE TRANSACTION'
-            if core.debug: log_orm(sql)
-            cursor.execute(sql)
-            cache.in_transaction = True
-        elif core.debug: log_orm('SWITCH TO AUTOCOMMIT MODE')
+    def commit(provider, connection, cache=None):
+        in_transaction = cache is not None and cache.in_transaction
+        DBAPIProvider.commit(provider, connection, cache)
+        if in_transaction:
+            provider.transaction_lock.release()
+
+    def rollback(provider, connection, cache=None):
+        in_transaction = cache is not None and cache.in_transaction
+        DBAPIProvider.rollback(provider, connection, cache)
+        if in_transaction:
+            provider.transaction_lock.release()
+
+    def drop(provider, connection, cache=None):
+        in_transaction = cache is not None and cache.in_transaction
+        DBAPIProvider.drop(provider, connection, cache)
+        if in_transaction:
+            provider.transaction_lock.release()
 
     @wrap_dbapi_exceptions
     def release(provider, connection, cache=None):
@@ -230,14 +259,15 @@ class SQLiteProvider(DBAPIProvider):
             # Database instance is created
 
             # the list of frames:
-            # 6 - user code: db = Database(...)
-            # 5 - cut_traceback decorator wrapper
-            # 4 - cut_traceback decorator
-            # 3 - pony.orm.Database.__init__() / .bind()
-            # 2 - pony.orm.Database._bind()
-            # 1 - pony.dbapiprovider.DBAPIProvider.__init__()
+            # 7 - user code: db = Database(...)
+            # 6 - cut_traceback decorator wrapper
+            # 5 - cut_traceback decorator
+            # 4 - pony.orm.Database.__init__() / .bind()
+            # 3 - pony.orm.Database._bind()
+            # 2 - pony.dbapiprovider.DBAPIProvider.__init__()
+            # 1 - SQLiteProvider.__init__()
             # 0 - pony.dbproviders.sqlite.get_pool()
-            filename = absolutize_path(filename, frame_depth=6)
+            filename = absolutize_path(filename, frame_depth=7)
         return SQLitePool(filename, create_db)
 
     def table_exists(provider, connection, table_name, case_sensitive=True):
