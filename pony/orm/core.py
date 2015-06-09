@@ -1408,7 +1408,7 @@ class SessionCache(object):
         connection = provider.connect()
         try: provider.set_transaction_mode(connection, cache)  # can set cache.in_transaction
         except:
-            provider.drop(connection)
+            provider.drop(connection, cache)
             raise
         cache.connection = connection
         return connection
@@ -1421,7 +1421,7 @@ class SessionCache(object):
             connection = cache.connection
             assert connection is not None
             cache.connection = None
-            provider.drop(connection)
+            provider.drop(connection, cache)
         else: assert cache.connection is None
         return cache.connect()
     def prepare_connection_for_query_execution(cache):
@@ -1452,8 +1452,7 @@ class SessionCache(object):
             if cache.modified: cache.flush()
             if cache.in_transaction:
                 assert cache.connection is not None
-                provider.commit(cache.connection)
-                cache.in_transaction = False
+                provider.commit(cache.connection, cache)
             cache.for_update.clear()
             cache.immediate = True
         except:
@@ -1468,9 +1467,9 @@ class SessionCache(object):
         connection = cache.connection
         if connection is None: return
         cache.connection = None
-        try: provider.rollback(connection)
+        try: provider.rollback(connection, cache)
         except:
-            provider.drop(connection)
+            provider.drop(connection, cache)
             raise
         else: provider.release(connection, cache)
     def release(cache):
@@ -1492,7 +1491,7 @@ class SessionCache(object):
         connection = cache.connection
         if connection is None: return
         cache.connection = None
-        provider.drop(connection)
+        provider.drop(connection, cache)
     @contextmanager
     def flush_disabled(cache):
         cache.noflush_counter += 1
