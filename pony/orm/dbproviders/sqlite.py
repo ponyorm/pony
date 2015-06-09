@@ -199,7 +199,7 @@ class SQLiteProvider(DBAPIProvider):
                 if core.debug: log_orm(sql)
                 cursor.execute(sql)
             cache.saved_fk_state = bool(fk)
-            cache.in_transaction = True
+            assert cache.immediate
 
         if cache.immediate:
             sql = 'BEGIN IMMEDIATE TRANSACTION'
