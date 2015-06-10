@@ -194,31 +194,34 @@ class DBAPIProvider(object):
         pass
 
     @wrap_dbapi_exceptions
-    def commit(provider, connection):
+    def commit(provider, connection, cache=None):
         core = pony.orm.core
         if core.debug: core.log_orm('COMMIT')
         connection.commit()
+        if cache is not None: cache.in_transaction = False
 
     @wrap_dbapi_exceptions
-    def rollback(provider, connection):
+    def rollback(provider, connection, cache=None):
         core = pony.orm.core
         if core.debug: core.log_orm('ROLLBACK')
         connection.rollback()
+        if cache is not None: cache.in_transaction = False
 
     @wrap_dbapi_exceptions
     def release(provider, connection, cache=None):
         core = pony.orm.core
         if cache is not None and cache.db_session is not None and cache.db_session.ddl:
-            provider.drop(connection)
+            provider.drop(connection, cache)
         else:
             if core.debug: core.log_orm('RELEASE CONNECTION')
             provider.pool.release(connection)
 
     @wrap_dbapi_exceptions
-    def drop(provider, connection):
+    def drop(provider, connection, cache=None):
         core = pony.orm.core
         if core.debug: core.log_orm('CLOSE CONNECTION')
         provider.pool.drop(connection)
+        if cache is not None: cache.in_transaction = False
 
     @wrap_dbapi_exceptions
     def disconnect(provider):

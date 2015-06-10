@@ -1408,7 +1408,7 @@ class SessionCache(object):
         connection = provider.connect()
         try: provider.set_transaction_mode(connection, cache)  # can set cache.in_transaction
         except:
-            provider.drop(connection)
+            provider.drop(connection, cache)
             raise
         cache.connection = connection
         return connection
@@ -1421,7 +1421,7 @@ class SessionCache(object):
             connection = cache.connection
             assert connection is not None
             cache.connection = None
-            provider.drop(connection)
+            provider.drop(connection, cache)
         else: assert cache.connection is None
         return cache.connect()
     def prepare_connection_for_query_execution(cache):
@@ -1452,8 +1452,7 @@ class SessionCache(object):
             if cache.modified: cache.flush()
             if cache.in_transaction:
                 assert cache.connection is not None
-                provider.commit(cache.connection)
-                cache.in_transaction = False
+                provider.commit(cache.connection, cache)
             cache.for_update.clear()
             cache.immediate = True
         except:
@@ -1468,9 +1467,9 @@ class SessionCache(object):
         connection = cache.connection
         if connection is None: return
         cache.connection = None
-        try: provider.rollback(connection)
+        try: provider.rollback(connection, cache)
         except:
-            provider.drop(connection)
+            provider.drop(connection, cache)
             raise
         else: provider.release(connection, cache)
     def release(cache):
@@ -1492,7 +1491,7 @@ class SessionCache(object):
         connection = cache.connection
         if connection is None: return
         cache.connection = None
-        provider.drop(connection)
+        provider.drop(connection, cache)
     @contextmanager
     def flush_disabled(cache):
         cache.noflush_counter += 1
@@ -1878,7 +1877,6 @@ class Attribute(object):
         if not cache.is_alive: throw(DatabaseSessionIsOver,
             'Cannot assign new value to attribute %s.%s: the database session is over' % (safe_repr(obj), attr.name))
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        is_reverse_call = undo_funcs is not None
         reverse = attr.reverse
         new_val = attr.validate(new_val, obj, from_db=False)
         if attr.pk_offset is not None:
@@ -1907,6 +1905,7 @@ class Attribute(object):
             if not attr.reverse and not attr.is_part_of_unique_index:
                 obj._vals_[attr] = new_val
                 return
+            is_reverse_call = undo_funcs is not None
             if not is_reverse_call: undo_funcs = []
             undo = []
             def undo_func():
@@ -2004,7 +2003,9 @@ class Attribute(object):
     def update_reverse(attr, obj, old_val, new_val, undo_funcs):
         reverse = attr.reverse
         if not reverse.is_collection:
-            if old_val not in (None, NOT_LOADED): reverse.__set__(old_val, None, undo_funcs)
+            if old_val not in (None, NOT_LOADED):
+                if attr.cascade_delete: old_val._delete_(undo_funcs)
+                else: reverse.__set__(old_val, None, undo_funcs)
             if new_val is not None: reverse.__set__(new_val, obj, undo_funcs)
         elif isinstance(reverse, Set):
             if old_val not in (None, NOT_LOADED): reverse.reverse_remove((old_val,), obj, undo_funcs)
@@ -2547,16 +2548,21 @@ class Set(Collection):
             if new_items == setdata: return
             to_add = new_items - setdata
             to_remove = setdata - new_items
-            if undo_funcs is None: undo_funcs = []
+            is_reverse_call = undo_funcs is not None
+            if not is_reverse_call: undo_funcs = []
             try:
                 if not reverse.is_collection:
-                    for item in to_remove: reverse.__set__(item, None, undo_funcs)
+                    if attr.cascade_delete:
+                        for item in to_remove: item._delete_(undo_funcs)
+                    else:
+                        for item in to_remove: reverse.__set__(item, None, undo_funcs)
                     for item in to_add: reverse.__set__(item, obj, undo_funcs)
                 else:
                     reverse.reverse_remove(to_remove, obj, undo_funcs)
                     reverse.reverse_add(to_add, obj, undo_funcs)
             except:
-                for undo_func in reversed(undo_funcs): undo_func()
+                if not is_reverse_call:
+                    for undo_func in reversed(undo_funcs): undo_func()
                 raise
         setdata.clear()
         setdata |= new_items
@@ -2940,7 +2946,7 @@ class SetInstance(object):
             undo_funcs = []
             try:
                 if not reverse.is_collection:
-                      for item in new_items: reverse.__set__(item, obj, undo_funcs)
+                    for item in new_items: reverse.__set__(item, obj, undo_funcs)
                 else: reverse.reverse_add(new_items, obj, undo_funcs)
             except:
                 for undo_func in reversed(undo_funcs): undo_func()
@@ -2981,7 +2987,10 @@ class SetInstance(object):
             undo_funcs = []
             try:
                 if not reverse.is_collection:
-                    for item in items: reverse.__set__(item, None, undo_funcs)
+                    if attr.cascade_delete:
+                        for item in items: item._delete_(undo_funcs)
+                    else:
+                        for item in items: reverse.__set__(item, None, undo_funcs)
                 else: reverse.reverse_remove(items, obj, undo_funcs)
             except:
                 for undo_func in reversed(undo_funcs): undo_func()
@@ -4286,7 +4295,7 @@ class Entity(with_metaclass(EntityMeta)):
                         if not reverse.is_collection:
                             val = get_val(attr) if attr in obj._vals_ else attr.load(obj)
                             if val is None: continue
-                            if attr.cascade_delete: val._delete_()
+                            if attr.cascade_delete: val._delete_(undo_funcs)
                             elif not reverse.is_required: reverse.__set__(val, None, undo_funcs)
                             else: throw(ConstraintError, "Cannot delete object %s, because it has associated %s, "
                                                          "and 'cascade_delete' option of %s is not set"
@@ -4301,7 +4310,7 @@ class Entity(with_metaclass(EntityMeta)):
                         set_wrapper = attr.__get__(obj)
                         if not set_wrapper.__nonzero__(): pass
                         elif attr.cascade_delete:
-                            for robj in set_wrapper: robj._delete_()
+                            for robj in set_wrapper: robj._delete_(undo_funcs)
                         elif not reverse.is_required: attr.__set__(obj, (), undo_funcs)
                         else: throw(ConstraintError, "Cannot delete object %s, because it has non-empty set of %s, "
                                                      "and 'cascade_delete' option of %s is not set"
