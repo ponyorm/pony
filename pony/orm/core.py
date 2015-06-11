@@ -342,28 +342,7 @@ class DBSessionContextManager(object):
         if kwargs: throw(TypeError,
             'Pass only keyword arguments to db_session or use db_session as decorator')
         func = args[0]
-        def new_func(func, *args, **kwargs):
-            if db_session.ddl and local.db_context_counter:
-                if isinstance(func, types.FunctionType): func = func.__name__ + '()'
-                throw(TransactionError, '%s cannot be called inside of db_session' % func)
-            exc = tb = None
-            try:
-                for i in xrange(db_session.retry+1):
-                    db_session._enter()
-                    exc_type = exc = tb = None
-                    try: return func(*args, **kwargs)
-                    except Exception:
-                        exc_type, exc, tb = sys.exc_info()  # exc can be None in Python 2.6
-                        retry_exceptions = db_session.retry_exceptions
-                        if not callable(retry_exceptions):
-                            do_retry = issubclass(exc_type, tuple(retry_exceptions))
-                        else:
-                            do_retry = exc is not None and retry_exceptions(exc)
-                        if not do_retry: raise
-                    finally: db_session.__exit__(exc_type, exc, tb)
-                reraise(exc_type, exc, tb)
-            finally: del exc, tb
-        return decorator(new_func, func)
+        return db_session._wrap_function(func)
     def __enter__(db_session):
         if db_session.retry is not 0: throw(TypeError,
             "@db_session can accept 'retry' parameter only when used as decorator and not as context manager")
@@ -401,6 +380,29 @@ class DBSessionContextManager(object):
             local.db_session = None
             local.user_groups_cache.clear()
             local.user_roles_cache.clear()
+    def _wrap_function(db_session, func):
+        def new_func(func, *args, **kwargs):
+            if db_session.ddl and local.db_context_counter:
+                if isinstance(func, types.FunctionType): func = func.__name__ + '()'
+                throw(TransactionError, '%s cannot be called inside of db_session' % func)
+            exc = tb = None
+            try:
+                for i in xrange(db_session.retry+1):
+                    db_session._enter()
+                    exc_type = exc = tb = None
+                    try: return func(*args, **kwargs)
+                    except Exception:
+                        exc_type, exc, tb = sys.exc_info()  # exc can be None in Python 2.6
+                        retry_exceptions = db_session.retry_exceptions
+                        if not callable(retry_exceptions):
+                            do_retry = issubclass(exc_type, tuple(retry_exceptions))
+                        else:
+                            do_retry = exc is not None and retry_exceptions(exc)
+                        if not do_retry: raise
+                    finally: db_session.__exit__(exc_type, exc, tb)
+                reraise(exc_type, exc, tb)
+            finally: del exc, tb
+        return decorator(new_func, func)
 
 db_session = DBSessionContextManager()
 
