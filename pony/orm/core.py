@@ -315,7 +315,7 @@ select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class DBSessionContextManager(object):
     __slots__ = 'retry', 'retry_exceptions', 'allowed_exceptions', 'immediate', 'ddl', 'serializable'
-    def __init__(self, retry=0, immediate=False, ddl=False, serializable=False,
+    def __init__(db_session, retry=0, immediate=False, ddl=False, serializable=False,
                  retry_exceptions=(TransactionError,), allowed_exceptions=()):
         if retry is not 0:
             if type(retry) is not int: throw(TypeError,
@@ -328,66 +328,66 @@ class DBSessionContextManager(object):
                 if e in retry_exceptions: throw(TypeError,
                     'The same exception %s cannot be specified in both '
                     'allowed and retry exception lists simultaneously' % e.__name__)
-        self.retry = retry
-        self.ddl = ddl
-        self.serializable = serializable
-        self.immediate = immediate or ddl or serializable
-        self.retry_exceptions = retry_exceptions
-        self.allowed_exceptions = allowed_exceptions
-    def __call__(self, *args, **kwargs):
-        if not args and not kwargs: return self
+        db_session.retry = retry
+        db_session.ddl = ddl
+        db_session.serializable = serializable
+        db_session.immediate = immediate or ddl or serializable
+        db_session.retry_exceptions = retry_exceptions
+        db_session.allowed_exceptions = allowed_exceptions
+    def __call__(db_session, *args, **kwargs):
+        if not args and not kwargs: return db_session
         if len(args) > 1: throw(TypeError,
             'Pass only keyword arguments to db_session or use db_session as decorator')
-        if not args: return self.__class__(**kwargs)
+        if not args: return db_session.__class__(**kwargs)
         if kwargs: throw(TypeError,
             'Pass only keyword arguments to db_session or use db_session as decorator')
         func = args[0]
         def new_func(func, *args, **kwargs):
-            if self.ddl and local.db_context_counter:
+            if db_session.ddl and local.db_context_counter:
                 if isinstance(func, types.FunctionType): func = func.__name__ + '()'
                 throw(TransactionError, '%s cannot be called inside of db_session' % func)
             exc = tb = None
             try:
-                for i in xrange(self.retry+1):
-                    self._enter()
+                for i in xrange(db_session.retry+1):
+                    db_session._enter()
                     exc_type = exc = tb = None
                     try: return func(*args, **kwargs)
                     except Exception:
                         exc_type, exc, tb = sys.exc_info()  # exc can be None in Python 2.6
-                        retry_exceptions = self.retry_exceptions
+                        retry_exceptions = db_session.retry_exceptions
                         if not callable(retry_exceptions):
                             do_retry = issubclass(exc_type, tuple(retry_exceptions))
                         else:
                             do_retry = exc is not None and retry_exceptions(exc)
                         if not do_retry: raise
-                    finally: self.__exit__(exc_type, exc, tb)
+                    finally: db_session.__exit__(exc_type, exc, tb)
                 reraise(exc_type, exc, tb)
             finally: del exc, tb
         return decorator(new_func, func)
-    def __enter__(self):
-        if self.retry is not 0: throw(TypeError,
+    def __enter__(db_session):
+        if db_session.retry is not 0: throw(TypeError,
             "@db_session can accept 'retry' parameter only when used as decorator and not as context manager")
-        if self.ddl: throw(TypeError,
+        if db_session.ddl: throw(TypeError,
             "@db_session can accept 'ddl' parameter only when used as decorator and not as context manager")
-        self._enter()
-    def _enter(self):
+        db_session._enter()
+    def _enter(db_session):
         if local.db_session is None:
             assert not local.db_context_counter
-            local.db_session = self
-        elif self.serializable and not local.db_session.serializable: throw(TransactionError,
+            local.db_session = db_session
+        elif db_session.serializable and not local.db_session.serializable: throw(TransactionError,
             'Cannot start serializable transaction inside non-serializable transaction')
         local.db_context_counter += 1
-    def __exit__(self, exc_type=None, exc=None, tb=None):
+    def __exit__(db_session, exc_type=None, exc=None, tb=None):
         local.db_context_counter -= 1
         if local.db_context_counter: return
-        assert local.db_session is self
+        assert local.db_session is db_session
         try:
             if exc_type is None: can_commit = True
-            elif not callable(self.allowed_exceptions):
-                can_commit = issubclass(exc_type, tuple(self.allowed_exceptions))
+            elif not callable(db_session.allowed_exceptions):
+                can_commit = issubclass(exc_type, tuple(db_session.allowed_exceptions))
             else:
                 # exc can be None in Python 2.6 even if exc_type is not None
-                try: can_commit = exc is not None and self.allowed_exceptions(exc)
+                try: can_commit = exc is not None and db_session.allowed_exceptions(exc)
                 except:
                     rollback()
                     raise
