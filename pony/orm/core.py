@@ -394,7 +394,7 @@ class DBSessionContextManager(object):
                     db_session._enter()
                     exc_type = exc = tb = None
                     try: return func(*args, **kwargs)
-                    except Exception:
+                    except:
                         exc_type, exc, tb = sys.exc_info()  # exc can be None in Python 2.6
                         retry_exceptions = db_session.retry_exceptions
                         if not callable(retry_exceptions):
