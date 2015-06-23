@@ -111,6 +111,8 @@ class SQLTranslator(ASTTranslator):
         else:
             monad = translator.ParamMonad.new(translator, t, (varkey, None, None))
         node.monad = monad
+        monad.node = node
+        monad.aggregated = monad.nogroup = False
 
     def call(translator, method, node):
         try: monad = method(node)
