@@ -58,11 +58,7 @@ __all__ = '''
 
     count sum min max avg distinct
 
-    desc
-
-    concat
-
-    JOIN
+    JOIN desc concat raw_sql
 
     buffer unicode
 
@@ -4804,7 +4800,10 @@ def desc(expr):
         return 'desc(%s)' % expr
     return expr
 
-def extract_vars(extractors, globals, locals, cells=None):
+def raw_sql(sql):
+    raise TypeError('raw_sql() function can be used inside declarative query only')
+
+def extract_vars(extractors, globals, locals, cells=None, filter_num=0):
     if cells:
         locals = locals.copy()
         for name, cell in cells.items():
@@ -4812,7 +4811,8 @@ def extract_vars(extractors, globals, locals, cells=None):
     vars = {}
     vartypes = {}
     for key, code in iteritems(extractors):
-        filter_num, src = key
+        key_filter_num, src = key
+        if key_filter_num != filter_num: continue
         if src == '.0': value = locals['.0']
         else:
             try: value = eval(code, globals, locals)
@@ -4873,6 +4873,9 @@ class Query(object):
                 except OptimizationFailed: translator.optimization_failed = True
             translator.pickled_tree = pickled_tree
             database._translator_cache[query._key] = translator
+        if translator.raw_extractors:
+            raw_vars, raw_vartypes = extract_vars(translator.raw_extractors, globals, locals, cells)
+            vars.update(raw_vars)
         query._translator = translator
         query._filters = ()
         query._next_kwarg_id = 0
@@ -5155,7 +5158,7 @@ class Query(object):
             func_id, func_ast, filter_num, globals, locals, special_functions, const_functions,
             argnames or prev_translator.subquery)
         if extractors:
-            vars, vartypes = extract_vars(extractors, globals, locals, cells)
+            vars, vartypes = extract_vars(extractors, globals, locals, cells, filter_num)
             query._database.provider.normalize_vars(vars, vartypes)
             new_query_vars = query._vars.copy()
             new_query_vars.update(vars)
@@ -5180,6 +5183,9 @@ class Query(object):
                     new_translator = query._reapply_filters(new_translator)
                     new_translator = new_translator.apply_lambda(filter_num, order_by, func_ast, argnames, extractors, vartypes)
             query._database._translator_cache[new_key] = new_translator
+        if new_translator.raw_extractors:
+            raw_vars, raw_vartypes = extract_vars(new_translator.raw_extractors, globals, locals, cells, filter_num)
+            new_query_vars.update(raw_vars)
         return query._clone(_vars=new_query_vars, _key=new_key, _filters=new_filters, _translator=new_translator)
     def _reapply_filters(query, translator):
         for i, tup in enumerate(query._filters):
@@ -5401,5 +5407,5 @@ def show(entity):
         from pprint import pprint
         pprint(x)
 
-special_functions = set([ itertools.count, utils.count, count, random ])
+special_functions = set([ itertools.count, utils.count, count, random, raw_sql ])
 const_functions = set([ buffer, Decimal, datetime.datetime, datetime.date, datetime.time, datetime.timedelta ])
