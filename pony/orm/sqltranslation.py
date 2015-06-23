@@ -392,6 +392,12 @@ class SQLTranslator(ASTTranslator):
             sql_ast = [ 'SELECT_FOR_UPDATE', nowait ]
             translator.query_result_is_cacheable = False
         else: sql_ast = [ 'SELECT' ]
+
+        groupby_monads = translator.groupby_monads
+        if distinct and translator.aggregated and not groupby_monads:
+            distinct = False
+            groupby_monads = translator.expr_monads
+
         select_ast = [ 'DISTINCT' if distinct else 'ALL' ] + translator.expr_columns
         if aggr_func_name:
             expr_type = translator.expr_type
@@ -406,7 +412,7 @@ class SQLTranslator(ASTTranslator):
                     throw(TypeError, '%r is valid for numeric attributes only' % aggr_func_name.lower())
                 assert len(translator.expr_columns) == 1
             aggr_ast = None
-            if translator.groupby_monads or (aggr_func_name == 'COUNT' and distinct
+            if groupby_monads or (aggr_func_name == 'COUNT' and distinct
                                              and isinstance(translator.expr_type, EntityMeta)
                                              and len(translator.expr_columns) > 1):
                 outer_alias = 't'
@@ -450,9 +456,9 @@ class SQLTranslator(ASTTranslator):
         if conditions:
             sql_ast.append([ 'WHERE' ] + conditions)
 
-        if translator.groupby_monads:
+        if groupby_monads:
             group_by = [ 'GROUP_BY' ]
-            for m in translator.groupby_monads: group_by.extend(m.getsql())
+            for m in groupby_monads: group_by.extend(m.getsql())
             sql_ast.append(group_by)
         else: group_by = None
 
