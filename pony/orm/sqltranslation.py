@@ -274,6 +274,7 @@ class SQLTranslator(ASTTranslator):
         monad = tree.expr.monad
         if isinstance(monad, translator.ParamMonad): throw(TranslationError,
             "External parameter '%s' cannot be used as query result" % ast2src(tree.expr))
+        translator.expr_monads = monad.items if isinstance(monad, translator.ListMonad) else [ monad ]
         translator.groupby_monads = None
         expr_type = monad.type
         if isinstance(expr_type, SetType): expr_type = expr_type.item_type
@@ -300,14 +301,13 @@ class SQLTranslator(ASTTranslator):
                                                if not attr.is_collection and not attr.lazy ]
         else:
             translator.alias = None
-            if isinstance(monad, translator.ListMonad):
-                expr_monads = monad.items
+            expr_monads = translator.expr_monads
+            if len(expr_monads) > 1:
                 translator.expr_type = tuple(m.type for m in expr_monads)  # ?????
                 expr_columns = []
                 for m in expr_monads: expr_columns.extend(m.getsql())
                 translator.expr_columns = expr_columns
             else:
-                expr_monads = [ monad ]
                 translator.expr_type = monad.type
                 translator.expr_columns = monad.getsql()
             if translator.aggregated:
@@ -440,11 +440,7 @@ class SQLTranslator(ASTTranslator):
         conditions = translator.conditions[:]
         having_conditions = translator.having_conditions[:]
         if is_not_null_checks:
-            expr_monad = translator.tree.expr.monad
-            if isinstance(expr_monad, translator.ListMonad):
-                expr_monads = expr_monad.items
-            else: expr_monads = [ expr_monad ]
-            for monad in expr_monads:
+            for monad in translator.expr_monads:
                 if isinstance(monad, translator.ObjectIterMonad): pass
                 elif isinstance(monad, translator.AttrMonad) and not monad.attr.nullable: pass
                 else:
@@ -530,16 +526,14 @@ class SQLTranslator(ASTTranslator):
         if 0 in numbers: throw(ValueError, 'Numeric arguments of order_by() method must be non-zero')
         translator = deepcopy(translator)
         order = translator.order = translator.order[:]  # only order will be changed
-        expr_monad = translator.tree.expr.monad
-        if isinstance(expr_monad, translator.ListMonad): monads = expr_monad.items
-        else: monads = (expr_monad,)
+        expr_monads = translator.expr_monads
         new_order = []
         for i in numbers:
-            try: monad = monads[abs(i)-1]
+            try: monad = expr_monads[abs(i)-1]
             except IndexError:
-                if len(monads) > 1: throw(IndexError,
+                if len(expr_monads) > 1: throw(IndexError,
                     "Invalid index of order_by() method: %d "
-                    "(query result is list of tuples with only %d elements in each)" % (i, len(monads)))
+                    "(query result is list of tuples with only %d elements in each)" % (i, len(expr_monads)))
                 else: throw(IndexError,
                     "Invalid index of order_by() method: %d "
                     "(query result is single list of elements and has only one 'column')" % i)
@@ -666,11 +660,7 @@ class SQLTranslator(ASTTranslator):
         argnames = translator.argnames
         if translator.argnames and name in translator.argnames:
             i = translator.argnames.index(name)
-            expr_monad = translator.tree.expr.monad
-            if isinstance(expr_monad, translator.ListMonad):
-                return expr_monad.items[i]
-            assert i == 0
-            return expr_monad
+            return translator.expr_monads[i]
         tableref = translator.subquery.get_tableref(name)
         if tableref is not None:
             return translator.ObjectIterMonad(translator, tableref, tableref.entity)
