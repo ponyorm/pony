@@ -7,6 +7,7 @@ from datetime import date, time, datetime, timedelta
 from random import random
 from copy import deepcopy
 from functools import update_wrapper
+from uuid import UUID
 
 from pony.thirdparty.compiler import ast
 
@@ -1146,6 +1147,9 @@ class ListMonad(Monad):
 class BufferMixin(MonadMixin):
     pass
 
+class UuidMixin(MonadMixin):
+    pass
+
 _binop_errmsg = 'Unsupported operand types %r and %r for operation %r in expression: {EXPR}'
 
 def make_numeric_binop(op, sqlop):
@@ -1448,6 +1452,7 @@ class AttrMonad(Monad):
         elif type is timedelta: cls = translator.TimedeltaAttrMonad
         elif type is datetime: cls = translator.DatetimeAttrMonad
         elif type is buffer: cls = translator.BufferAttrMonad
+        elif type is UUID: cls = translator.UuidAttrMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectAttrMonad
         else: throw(NotImplementedError, type)  # pragma: no cover
         return cls(parent, attr, *args, **kwargs)
@@ -1500,6 +1505,7 @@ class TimeAttrMonad(TimeMixin, AttrMonad): pass
 class TimedeltaAttrMonad(TimedeltaMixin, AttrMonad): pass
 class DatetimeAttrMonad(DatetimeMixin, AttrMonad): pass
 class BufferAttrMonad(BufferMixin, AttrMonad): pass
+class UuidAttrMonad(UuidMixin, AttrMonad): pass
 
 class ParamMonad(Monad):
     @staticmethod
@@ -1512,6 +1518,7 @@ class ParamMonad(Monad):
         elif type is timedelta: cls = translator.TimedeltaParamMonad
         elif type is datetime: cls = translator.DatetimeParamMonad
         elif type is buffer: cls = translator.BufferParamMonad
+        elif type is UUID: cls = translator.UuidParamMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectParamMonad
         else: throw(NotImplementedError, type)  # pragma: no cover
         result = cls(translator, type, paramkey)
@@ -1552,6 +1559,7 @@ class TimeParamMonad(TimeMixin, ParamMonad): pass
 class TimedeltaParamMonad(TimeMixin, ParamMonad): pass
 class DatetimeParamMonad(DatetimeMixin, ParamMonad): pass
 class BufferParamMonad(BufferMixin, ParamMonad): pass
+class UuidParamMonad(UuidMixin, ParamMonad): pass
 
 class ExprMonad(Monad):
     @staticmethod
