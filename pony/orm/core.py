@@ -1567,32 +1567,36 @@ class SessionCache(object):
         if cache.noflush_counter: return
         assert cache.is_alive
         if not cache.immediate: cache.immediate = True
-        if not cache.modified: return
+        for i in xrange(50):
+            if not cache.modified: return
 
-        with cache.flush_disabled():
-            for obj in cache.objects_to_save:  # can grow during iteration
-                if obj is not None: obj._before_save_()
+            with cache.flush_disabled():
+                for obj in cache.objects_to_save:  # can grow during iteration
+                    if obj is not None: obj._before_save_()
 
-            cache.query_results.clear()
-            modified_m2m = cache._calc_modified_m2m()
-            for attr, (added, removed) in iteritems(modified_m2m):
-                if not removed: continue
-                attr.remove_m2m(removed)
-            for obj in cache.objects_to_save:
-                if obj is not None: obj._save_()
-            for attr, (added, removed) in iteritems(modified_m2m):
-                if not added: continue
-                attr.add_m2m(added)
+                cache.query_results.clear()
+                modified_m2m = cache._calc_modified_m2m()
+                for attr, (added, removed) in iteritems(modified_m2m):
+                    if not removed: continue
+                    attr.remove_m2m(removed)
+                for obj in cache.objects_to_save:
+                    if obj is not None: obj._save_()
+                for attr, (added, removed) in iteritems(modified_m2m):
+                    if not added: continue
+                    attr.add_m2m(added)
 
-        saved_objects = [ (obj, obj._status_) for obj in cache.objects_to_save if obj is not None ]
+            saved_objects = [ (obj, obj._status_) for obj in cache.objects_to_save if obj is not None ]
 
-        cache.max_id_cache.clear()
-        cache.modified_collections.clear()
-        cache.objects_to_save[:] = []
-        cache.modified = False
+            cache.max_id_cache.clear()
+            cache.modified_collections.clear()
+            cache.objects_to_save[:] = []
+            cache.modified = False
 
-        for obj, status in saved_objects:
-            if obj is not None: obj._after_save_(status)
+            for obj, status in saved_objects:
+                if obj is not None: obj._after_save_(status)
+        else:
+            if cache.modified: throw(TransactionError,
+                'Recursion depth limit reached in obj._after_save_() call')
     def _calc_modified_m2m(cache):
         modified_m2m = {}
         for attr, objects in sorted(iteritems(cache.modified_collections),
