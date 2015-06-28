@@ -12,6 +12,7 @@ from threading import Lock, RLock, currentThread as current_thread, _MainThread
 from contextlib import contextmanager
 from collections import defaultdict
 from hashlib import md5
+from inspect import isgeneratorfunction
 
 from pony.thirdparty.compiler import ast, parse
 
@@ -342,7 +343,9 @@ class DBSessionContextManager(object):
         if kwargs: throw(TypeError,
             'Pass only keyword arguments to db_session or use db_session as decorator')
         func = args[0]
-        return db_session._wrap_function(func)
+        if not isgeneratorfunction(func):
+            return db_session._wrap_function(func)
+        return db_session._wrap_generator_function(func)
     def __enter__(db_session):
         if db_session.retry is not 0: throw(TypeError,
             "@db_session can accept 'retry' parameter only when used as decorator and not as context manager")
@@ -403,6 +406,68 @@ class DBSessionContextManager(object):
                 reraise(exc_type, exc, tb)
             finally: del exc, tb
         return decorator(new_func, func)
+    def _wrap_generator_function(db_session, gen_func):
+        for option in ('ddl', 'retry', 'serializable'):
+            if getattr(db_session, option, None): throw(TypeError,
+                "db_session with `%s` option cannot be applied to generator function" % option)
+
+        def interact(iterator, input=None, exc_info=None):
+            if exc_info is None:
+                return next(iterator) if input is None else iterator.send(input)
+
+            if exc_info[0] is GeneratorExit:
+                close = getattr(iterator, 'close', None)
+                if close is not None: close()
+                reraise(*exc_info)
+
+            throw_ = getattr(iterator, 'throw', None)
+            if throw_ is None: reraise(*exc_info)
+            return throw_(*exc_info)
+
+        def new_gen_func(gen_func, *args, **kwargs):
+            db2cache_copy = {}
+
+            def wrapped_interact(iterator, input=None, exc_info=None):
+                if local.db_session is not None: throw(TransactionError,
+                    '@db_session-wrapped generator cannot be used inside another db_session')
+                assert not local.db_context_counter and not local.db2cache
+                local.db_context_counter = 1
+                local.db_session = db_session
+                local.db2cache.update(db2cache_copy)
+                db2cache_copy.clear()
+                try:
+                    try:
+                        output = interact(iterator, input, exc_info)
+                    except StopIteration as e:
+                        for cache in _get_caches():
+                            if cache.modified or cache.in_transaction: throw(TransactionError,
+                                'You need to manually commit() changes before exiting from the generator')
+                        raise
+                    for cache in _get_caches():
+                        if cache.modified or cache.in_transaction: throw(TransactionError,
+                            'You need to manually commit() changes before yielding from the generator')
+                except:
+                    rollback()
+                    raise
+                else:
+                    return output
+                finally:
+                    db2cache_copy.update(local.db2cache)
+                    local.db2cache.clear()
+                    local.db_context_counter = 0
+                    local.db_session = None
+
+            gen = gen_func(*args, **kwargs)
+            iterator = iter(gen)
+            output = wrapped_interact(iterator)
+            while True:
+                try:
+                    input = yield output
+                except:
+                    output = wrapped_interact(iterator, exc_info=sys.exc_info())
+                else:
+                    output = wrapped_interact(iterator, input)
+        return decorator(new_gen_func, gen_func)
 
 db_session = DBSessionContextManager()
 
