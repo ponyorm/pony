@@ -11,7 +11,7 @@ class TestOneToOne3(unittest.TestCase):
 
         class Person(self.db.Entity):
             name = Required(unicode)
-            passport = Optional("Passport")
+            passport = Optional("Passport", cascade_delete=True)
 
         class Passport(self.db.Entity):
             code = Required(unicode)
@@ -61,6 +61,16 @@ FROM "Person" "p"
   LEFT JOIN "Passport" "passport-1"
     ON "p"."id" = "passport-1"."person"
 WHERE "passport-1"."id" IS NOT NULL''')
+
+    @db_session
+    def test_5(self):
+        p = self.db.Person.get(name='John')
+        p.delete()
+        flush()
+        sql = self.db.last_sql
+        self.assertEqual(sql, '''DELETE FROM "Person"
+WHERE "id" = ?
+  AND "name" = ?''')        
 
 if __name__ == '__main__':
     unittest.main()

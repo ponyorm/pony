@@ -1888,9 +1888,10 @@ class Attribute(object):
                 old_val = attr.load(obj)
             status = obj._status_
             wbits = obj._wbits_
+            bit = obj._bits_[attr]
             objects_to_save = cache.objects_to_save
-            if wbits is not None:
-                obj._wbits_ = wbits | obj._bits_[attr]
+            if wbits is not None and bit:
+                obj._wbits_ = wbits | bit
                 if status != 'modified':
                     assert status in ('loaded', 'inserted', 'updated')
                     assert obj._save_pos_ is None
