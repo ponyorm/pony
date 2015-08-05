@@ -2014,7 +2014,11 @@ class Attribute(object):
                 elif not is_reverse_call: attr.update_reverse(obj, old_val, new_val, undo_funcs)
                 elif old_val not in (None, NOT_LOADED):
                     if not reverse.is_collection:
-                        if new_val is not None: reverse.__set__(old_val, None, undo_funcs)
+                        if new_val is not None:
+                            if reverse.is_required: throw(ConstraintError,
+                                'Cannot unlink %r from previous %s object, because %r attribute is required'
+                                % (old_val, obj, reverse))
+                            reverse.__set__(old_val, None, undo_funcs)
                     elif isinstance(reverse, Set):
                         reverse.reverse_remove((old_val,), obj, undo_funcs)
                     else: throw(NotImplementedError)
@@ -2078,6 +2082,9 @@ class Attribute(object):
         if not reverse.is_collection:
             if old_val not in (None, NOT_LOADED):
                 if attr.cascade_delete: old_val._delete_(undo_funcs)
+                elif reverse.is_required: throw(ConstraintError,
+                    'Cannot unlink %r from previous %s object, because %r attribute is required'
+                    % (old_val, obj, reverse))
                 else: reverse.__set__(old_val, None, undo_funcs)
             if new_val is not None: reverse.__set__(new_val, obj, undo_funcs)
         elif isinstance(reverse, Set):

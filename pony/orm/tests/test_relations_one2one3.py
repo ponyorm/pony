@@ -72,13 +72,13 @@ WHERE "passport-1"."id" IS NOT NULL''')
 WHERE "id" = ?
   AND "name" = ?''')        
 
-    @raises_exception(ValueError, 'Attribute Passport[1].person is required')
+    @raises_exception(ConstraintError, 'Cannot unlink Passport[1] from previous Person[1] object, because Passport.person attribute is required')
     @db_session
     def test_6(self):
         p = self.db.Person.get(name='John')
         self.db.Passport(code='456', person=p)
 
-    @raises_exception(ValueError, 'Attribute Passport[1].person is required')
+    @raises_exception(ConstraintError, 'Cannot unlink Passport[1] from previous Person[1] object, because Passport.person attribute is required')
     @db_session
     def test7(self):
         p2 = self.db.Person(name='Mike')
