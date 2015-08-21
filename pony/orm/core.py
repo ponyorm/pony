@@ -1964,6 +1964,7 @@ class Attribute(object):
             wbits = obj._wbits_
             bit = obj._bits_[attr]
             objects_to_save = cache.objects_to_save
+            objects_to_save_needs_undo = False
             if wbits is not None and bit:
                 obj._wbits_ = wbits | bit
                 if status != 'modified':
@@ -1972,6 +1973,7 @@ class Attribute(object):
                     obj._status_ = 'modified'
                     obj._save_pos_ = len(objects_to_save)
                     objects_to_save.append(obj)
+                    objects_to_save_needs_undo = True
                     cache.modified = True
             if not attr.reverse and not attr.is_part_of_unique_index:
                 obj._vals_[attr] = new_val
@@ -1982,7 +1984,7 @@ class Attribute(object):
             def undo_func():
                 obj._status_ = status
                 obj._wbits_ = wbits
-                if status in ('loaded', 'inserted', 'updated'):
+                if objects_to_save_needs_undo:
                     assert objects_to_save
                     obj2 = objects_to_save.pop()
                     assert obj2 is obj and obj._save_pos_ == len(objects_to_save)
