@@ -22,6 +22,8 @@ def detect_mode():
 
     if 'flup.server.fcgi' in sys.modules: return 'FCGI-FLUP'
 
+    if 'uwsgi' in sys.modules: return 'UWSGI'
+
     try: sys.modules['__main__'].__file__
     except AttributeError:  return 'INTERACTIVE'
     return 'CHERRYPY'
