@@ -5,5 +5,4 @@ pony/orm/tests/.coverage
 pony/orm/tests/coverage.bat
 pony/orm/tests/htmlcov/*.*
 MANIFEST
-doc/_build/
-doc/bin/upload.sh
+docs/_build/
