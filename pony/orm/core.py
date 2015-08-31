@@ -3723,7 +3723,7 @@ class EntityMeta(type):
         else:
             for row in rows:
                 real_entity_subclass, pkval, avdict = entity._parse_row_(row, attr_offsets)
-                obj = real_entity_subclass._new_(pkval, 'loaded', for_update)
+                obj = real_entity_subclass._get_from_identity_map_(pkval, 'loaded', for_update)
                 if obj._status_ in del_statuses: continue
                 obj._db_set_(avdict)
                 objects.append(obj)
@@ -3807,7 +3807,7 @@ class EntityMeta(type):
         assert '.0' not in locals
         locals['.0'] = entity
         return Query(code_key, inner_expr, globals, locals, cells)
-    def _new_(entity, pkval, status, for_update=False, undo_funcs=None):
+    def _get_from_identity_map_(entity, pkval, status, for_update=False, undo_funcs=None, obj_to_init=None):
         cache = entity._database_._get_cache()
         pk_attrs = entity._pk_attrs_
         cache_index = cache.indexes[pk_attrs]
@@ -3829,7 +3829,7 @@ class EntityMeta(type):
 
         if obj is None:
             with cache.flush_disabled():
-                obj = object.__new__(entity)
+                obj = obj_to_init or object.__new__(entity)
                 obj._pkval_ = pkval
                 obj._status_ = status
                 obj._vals_ = {}
@@ -3878,7 +3878,7 @@ class EntityMeta(type):
             pkval.append(val)
         if not entity._pk_is_composite_: pkval = pkval[0]
         else: pkval = tuple(pkval)
-        obj = entity._new_(pkval, 'loaded', for_update)
+        obj = entity._get_from_identity_map_(pkval, 'loaded', for_update)
         assert obj._status_ != 'cancelled'
         return obj
     def _get_propagation_mixin_(entity):
@@ -4005,7 +4005,7 @@ def unpickle_entity(d):
     if not entity._pk_is_composite_: pkval = d.get(entity._pk_attrs_[0].name)
     else: pkval = tuple(d[attr.name] for attr in entity._pk_attrs_)
     assert pkval is not None
-    obj = entity._new_(pkval, 'loaded')
+    obj = entity._get_from_identity_map_(pkval, 'loaded')
     if obj._status_ in del_statuses: return obj
     avdict = {}
     for attrname, val in iteritems(d):
@@ -4032,7 +4032,8 @@ class Entity(with_metaclass(EntityMeta)):
             if not attr.is_collection: d[attr.name] = val
         return unpickle_entity, (d,)
     @cut_traceback
-    def __new__(entity, *args, **kwargs):
+    def __init__(obj, *args, **kwargs):
+        entity = obj.__class__
         if args: raise TypeError('%s constructor accept only keyword arguments. Got: %d positional argument%s'
                                  % (entity.__name__, len(args), len(args) > 1 and 's' or ''))
         if entity._database_.schema is None:
@@ -4059,7 +4060,7 @@ class Entity(with_metaclass(EntityMeta)):
                                      % (entity.__name__, vals, attr_names))
                 indexes_update[attrs] = vals
             try:
-                obj = entity._new_(pkval, 'created', undo_funcs=undo_funcs)
+                entity._get_from_identity_map_(pkval, 'created', undo_funcs=undo_funcs, obj_to_init=obj)
                 for attr, val in iteritems(avdict):
                     if attr.pk_offset is not None: continue
                     elif not attr.is_collection:
@@ -4075,7 +4076,6 @@ class Entity(with_metaclass(EntityMeta)):
         obj._save_pos_ = len(objects_to_save)
         objects_to_save.append(obj)
         cache.modified = True
-        return obj
     def get_pk(obj):
         pkval = obj._get_raw_pkval_()
         if len(pkval) == 1: return pkval[0]
