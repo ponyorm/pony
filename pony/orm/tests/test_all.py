@@ -44,6 +44,7 @@ from pony.orm.tests.test_to_dict import *
 from pony.orm.tests.test_flush import *
 from pony.orm.tests.test_time_parsing import *
 from pony.orm.tests.test_hooks import *
+from pony.orm.tests.test_entity_init import *
 from pony.orm.tests.test_show import *
 from pony.orm.tests.test_prefetching import *
 from pony.orm.tests.test_indexes import *
