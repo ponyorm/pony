@@ -33,6 +33,7 @@ from pony.orm.tests.test_collections import *
 from pony.orm.tests.test_sqlbuilding_formatstyles import *
 from pony.orm.tests.test_sqlbuilding_sqlast import *
 from pony.orm.tests.test_query import *
+from pony.orm.tests.test_random import *
 from pony.orm.tests.test_frames import *
 from pony.orm.tests.test_core_multiset import *
 from pony.orm.tests.test_core_find_in_cache import *

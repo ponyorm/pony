@@ -2312,26 +2312,30 @@ class SetData(set):
         setdata.added = setdata.removed = setdata.absent = None
         setdata.count = None
 
-def construct_batchload_criteria_list(alias, columns, converters, batch_size, row_value_syntax, start=0):
+def construct_batchload_criteria_list(alias, columns, converters, batch_size, row_value_syntax, start=0, from_seeds=True):
     assert batch_size > 0
+    def param(i, j, converter):
+        if from_seeds:
+            return [ 'PARAM', (i, None, j), converter ]
+        else:
+            return [ 'PARAM', (i, j, None), converter ]
     if batch_size == 1:
-        return [ [ 'EQ', [ 'COLUMN', alias, column ], [ 'PARAM', (start, None, j), converter ] ]
+        return [ [ 'EQ', [ 'COLUMN', alias, column ], param(start, j, converter) ]
                  for j, (column, converter) in enumerate(izip(columns, converters)) ]
     if len(columns) == 1:
         column = columns[0]
         converter = converters[0]
-        param_list = [ [ 'PARAM', (i+start, None, 0), converter ] for i in xrange(batch_size) ]
+        param_list = [ param(i+start, 0, converter) for i in xrange(batch_size) ]
         condition = [ 'IN', [ 'COLUMN', alias, column ], param_list ]
         return [ condition ]
     elif row_value_syntax:
         row = [ 'ROW' ] + [ [ 'COLUMN', alias, column ] for column in columns ]
-        param_list = [ [ 'ROW' ] + [ [ 'PARAM', (i+start, None, j), converter ]
-                                     for j, converter in enumerate(converters) ]
+        param_list = [ [ 'ROW' ] + [ param(i+start, j, converter) for j, converter in enumerate(converters) ]
                        for i in xrange(batch_size) ]
         condition = [ 'IN', row, param_list ]
         return [ condition ]
     else:
-        conditions = [ [ 'AND' ] + [ [ 'EQ', [ 'COLUMN', alias, column ], [ 'PARAM', (i+start, None, j), converter ] ]
+        conditions = [ [ 'AND' ] + [ [ 'EQ', [ 'COLUMN', alias, column ], param(i+start, j, converter) ]
                                      for j, (column, converter) in enumerate(izip(columns, converters)) ]
                        for i in xrange(batch_size) ]
         return [ [ 'OR' ] + conditions ]
@@ -3508,7 +3512,7 @@ class EntityMeta(type):
 
             if len(result) >= limit: break
             if not ids: continue
-            sql, adapter, attr_offsets = entity._construct_batchload_sql_(len(ids))
+            sql, adapter, attr_offsets = entity._construct_batchload_sql_(len(ids), from_seeds=False)
             arguments = adapter([ (id,) for id in ids ])
             cursor = database._exec_sql(sql, arguments)
             objects = entity._fetch_objects(cursor, attr_offsets)
@@ -3644,8 +3648,8 @@ class EntityMeta(type):
         discr_values = [ [ 'VALUE', cls._discriminator_ ] for cls in entity._subclasses_ ]
         discr_values.append([ 'VALUE', entity._discriminator_])
         return [ 'IN', [ 'COLUMN', alias, discr_attr.column ], discr_values ]
-    def _construct_batchload_sql_(entity, batch_size, attr=None):
-        query_key = batch_size, attr
+    def _construct_batchload_sql_(entity, batch_size, attr=None, from_seeds=True):
+        query_key = batch_size, attr, from_seeds
         cached_sql = entity._batchload_sql_cache_.get(query_key)
         if cached_sql is not None: return cached_sql
         select_list, attr_offsets = entity._construct_select_clause_(all_attributes=True)
@@ -3658,7 +3662,7 @@ class EntityMeta(type):
             converters = attr.converters
         row_value_syntax = entity._database_.provider.translator_cls.row_value_syntax
         criteria_list = construct_batchload_criteria_list(
-            None, columns, converters, batch_size, row_value_syntax)
+            None, columns, converters, batch_size, row_value_syntax, from_seeds=from_seeds)
         sql_ast = [ 'SELECT', select_list, from_list, [ 'WHERE' ] + criteria_list ]
         database = entity._database_
         sql, adapter = database._ast2sql(sql_ast)
