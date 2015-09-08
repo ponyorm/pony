@@ -486,7 +486,7 @@ class SQLTranslator(ASTTranslator):
         entity = translator.expr_type
         expr_monad = translator.tree.expr.monad
         if not isinstance(entity, EntityMeta): throw(TranslationError,
-            'Delete query should be applied to a single entity. Got: %s' % ast2src(expr.monad))
+            'Delete query should be applied to a single entity. Got: %s' % ast2src(translator.tree.expr))
         if translator.groupby_monads: throw(TranslationError,
             'Delete query cannot contains GROUP BY section or aggregate functions')
         assert not translator.having_conditions
