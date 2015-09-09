@@ -1173,6 +1173,8 @@ class ListMonad(Monad):
         else:
             sql = sqlor([ sqland([ [ 'EQ', a, b ]  for a, b in izip(left_sql, item.getsql()) ]) for item in monad.items ])
         return translator.BoolExprMonad(translator, sql)
+    def getsql(monad, subquery=None):
+        return [ [ 'ROW' ] + [ item.getsql()[0] for item in monad.items ] ]
 
 class BufferMixin(MonadMixin):
     pass
@@ -1725,15 +1727,27 @@ class CmpMonad(BoolMonad):
         if op == 'is not':
             return [ sqland([ [ 'IS_NOT_NULL', item ] for item in left_sql ]) ]
         right_sql = monad.right.getsql()
+        if len(left_sql) == 1 and left_sql[0][0] == 'ROW':
+            left_sql = left_sql[0][1:]
+        if len(right_sql) == 1 and right_sql[0][0] == 'ROW':
+            right_sql = right_sql[0][1:]
         assert len(left_sql) == len(right_sql)
+        size = len(left_sql)
         if op in ('<', '<=', '>', '>='):
-            assert len(left_sql) == len(right_sql) == 1
-            return [ [ cmp_ops[op], left_sql[0], right_sql[0] ] ]
+            if size == 1:
+                return [ [ cmp_ops[op], left_sql[0], right_sql[0] ] ]
+            if monad.translator.row_value_syntax:
+                return [ [ cmp_ops[op], [ 'ROW' ] + left_sql, [ 'ROW' ] + right_sql ] ]
+            clauses = []
+            for i in xrange(1, size):
+                clauses.append(sqland([ [ 'EQ', left_sql[j], right_sql[j] ] for j in xrange(1, i) ]
+                                + [ [ cmp_ops[op[0] if i < size - 1 else op], left_sql[i], right_sql[i] ] ]))
+            return [ sqlor(clauses) ]
         if op == '==':
             return [ sqland([ [ 'EQ', a, b ] for a, b in izip(left_sql, right_sql) ]) ]
         if op == '!=':
             return [ sqlor([ [ 'NE', a, b ] for a, b in izip(left_sql, right_sql) ]) ]
-        assert False  # pragma: no cover
+        assert False, op  # pragma: no cover
 
 class LogicalBinOpMonad(BoolMonad):
     def __init__(monad, operands):
