@@ -2119,7 +2119,7 @@ class Discriminator(Required):
         entity._attrs_.append(attr)
         entity._new_attrs_.append(attr)
         entity._adict_['classtype'] = attr
-        type.__setattr__(entity, 'classtype', attr)
+        entity.classtype = attr
         attr.process_entity_inheritance(entity)
     def process_entity_inheritance(attr, entity):
         if '_discriminator_' not in entity.__dict__:
@@ -3127,10 +3127,6 @@ select_re = re.compile(r'select\b', re.IGNORECASE)
 lambda_re = re.compile(r'lambda\b')
 
 class EntityMeta(type):
-    def __setattr__(entity, name, val):
-        if name.startswith('_') and name.endswith('_'):
-            type.__setattr__(entity, name, val)
-        else: throw(NotImplementedError)
     def __new__(meta, name, bases, cls_dict):
         if 'Entity' in globals():
             if '__slots__' in cls_dict: throw(TypeError, 'Entity classes cannot contain __slots__ variable')
@@ -3235,7 +3231,7 @@ class EntityMeta(type):
             attr = PrimaryKey(int, auto=True)
             attr.is_implicit = True
             attr._init_(entity, 'id')
-            type.__setattr__(entity, 'id', attr)  # entity.id = attr
+            entity.id = attr
             new_attrs.insert(0, attr)
             pk_attrs = (attr,)
             index = Index(attr, is_pk=True)
