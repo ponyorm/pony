@@ -139,6 +139,24 @@ Methods and attributes of the Database object
 
 .. class:: Database
 
+   .. py:method:: bind(provider, *args, **kwargs)
+
+      Binds entities to a database. The first parameter - ``provider`` is the name of the database provider. The database provider is a module which resides in the ``pony.orm.dbproviders`` package and which knows how to work with a particular database. After the database provider name you should specify parameters which will be passed to the ``connect()`` method of the corresponding DBAPI driver.
+
+      Examples of ``bind()`` parameters for supported databases::
+
+          db.bind('sqlite', 'filename', create_db=True)
+
+          db.bind('postgres', user='', password='', host='', database='')
+
+          db.bind('mysql', host='', user='', passwd='', db='')
+
+          db.bind('oracle', 'user/password@dsn')
+
+      During the ``bind()`` call, Pony tries to establish a test connection to the database. If the specified parameters are not correct or the database is not available, an exception will be raised. After the connection to the database was established, Pony retrieves the version of the database and returns the connection to the connection pool.
+
+      The method can be called only once for a database object. All consequent calls of this method on the same database will throw the ``TypeError('Database object was already bound to ... provider')`` exception.
+
    .. py:method:: generate_mapping(check_tables=True, create_tables=False)
 
       Map declared entities to the corresponding tables in the database.
