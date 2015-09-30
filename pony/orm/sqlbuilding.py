@@ -491,6 +491,3 @@ class SQLBuilder(object):
         return 'EXTRACT(SECOND FROM ', builder(expr), ')'
     def RANDOM(builder):
         return 'RAND()'
-    def RAWSQL(builder, sql):
-        if isinstance(sql, basestring): return sql
-        return [ x if isinstance(x, basestring) else builder(x) for x in sql ]

@@ -64,19 +64,6 @@ class MethodType(object):
     def __hash__(self):
         return hash(self.obj) ^ hash(self.func)
 
-class RawSQL(object):
-    _special_type_ = True
-    def __deepcopy__(self, memo):
-        return self  # RawSQL instances are "immutable"
-    def __init__(self, sql):
-        self.sql = sql
-    def __hash__(self):
-        return hash(self.sql) + 1
-    def __eq__(self, other):
-        return type(other) is RawSQL and self.sql == other.sql
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
 numeric_types = set([ bool, int, float, Decimal ])
 comparable_types = set([ int, float, Decimal, unicode, date, time, datetime, timedelta, bool, UUID ])
 primitive_types = comparable_types | set([ buffer ])
@@ -135,7 +122,6 @@ def coerce_types(t1, t2):
 
 def are_comparable_types(t1, t2, op='=='):
     # types must be normalized already!
-    if RawSQL in (t1, t2): return True
     tt1 = type(t1)
     tt2 = type(t2)
     if op in ('in', 'not in'):

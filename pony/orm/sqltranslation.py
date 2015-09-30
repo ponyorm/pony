@@ -12,13 +12,13 @@ from uuid import UUID
 from pony.thirdparty.compiler import ast
 
 from pony import options, utils
-from pony.utils import is_ident, throw, reraise, concat, parse_expr
+from pony.utils import is_ident, throw, reraise, concat
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
-    numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQL, \
+    numeric_types, comparable_types, SetType, FuncType, MethodType, \
     get_normalized_type_of, normalize_type, coerce_types, are_comparable_types
 from pony.orm import core
-from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper, raw_sql
+from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper
 
 NoneType = type(None)
 
@@ -161,7 +161,6 @@ class SQLTranslator(ASTTranslator):
         translator.argnames = None
         translator.filter_num = parent_translator.filter_num if parent_translator is not None else 0
         translator.extractors = extractors
-        translator.raw_extractors = {}
         translator.vartypes = vartypes
         translator.parent = parent_translator
         translator.left_join = left_join
@@ -211,9 +210,7 @@ class SQLTranslator(ASTTranslator):
                         'Collection expected inside left join query. '
                         'Got: for %s in %s' % (name, ast2src(qual.iter)))
                     translator.distinct = True
-                tableref = TableRef(subquery, name, entity)
-                tablerefs[name] = tableref
-                tableref.make_join()
+                tablerefs[name] = TableRef(subquery, name, entity)
             else:
                 attr_names = []
                 while isinstance(node, ast.Getattr):
@@ -1982,55 +1979,6 @@ class FuncRandomMonad(FuncMonad):
         translator.query_result_is_cacheable = False
     def __call__(monad):
         return NumericExprMonad(monad.translator, float, [ 'RANDOM' ])
-
-class FuncRawSQLMonad(FuncMonad):
-    func = raw_sql
-    def call(monad, expr):
-        if not isinstance(expr, StringConstMonad): throw(TranslationError,
-            'raw_sql() function argument should be string constant. Got: %s' % ast2src(expr.node))
-        return RawSQLMonad(monad.translator, expr.value)
-
-class RawSQLMonad(Monad):
-    def __init__(monad, translator, sql):
-        Monad.__init__(monad, translator, RawSQL)
-        monad.sql = sql
-        monad.varkey = translator.filter_num, sql
-    def contains(monad, item, not_in=False):
-        translator = monad.translator
-        expr = item.getsql()
-        if len(expr) == 1: expr = expr[0]
-        elif translator.row_value_syntax == True: expr = ['ROW'] + expr
-        else: throw(TranslationError,
-                    '%s database provider does not support tuples. Got: {EXPR} ' % translator.dialect)
-        op = 'NOT_IN' if not_in else 'IN'
-        sql = [ op, expr, monad.getsql() ]
-        return translator.BoolExprMonad(translator, sql)
-    def nonzero(monad): return monad
-    def getsql(monad, subquery=None):
-        translator = monad.translator
-        result = []
-        pos = 0
-        sql = monad.sql
-        while True:
-            try: i = sql.index('$', pos)
-            except ValueError:
-                result.append(sql[pos:])
-                break
-            result.append(sql[pos:i])
-            if sql[i+1] == '$':
-                result.append('$')
-                pos = i+2
-            else:
-                try: expr, _ = parse_expr(sql, i+1)
-                except ValueError:
-                    raise # TODO
-                pos = i+1 + len(expr)
-                if expr.endswith(';'): expr = expr[:-1]
-                code = compile(expr, '<?>', 'eval')
-                varkey = translator.filter_num, expr
-                translator.raw_extractors[varkey] = code
-                result.append(['PARAM', (varkey, None, None) ])
-        return [ [ 'RAWSQL', result ] ]
 
 class SetMixin(MonadMixin):
     forced_distinct = False
