@@ -91,7 +91,7 @@ class SQLTranslator(ASTTranslator):
             func_monad_class = translator.registered_functions.get(func)
             if func_monad_class is None: throw(TypeError,
                 'Function %r cannot be used inside query' % func.__name__)
-            monad = func_monad_class(translator)
+            monad = func_monad_class(translator, func)
         elif tt is MethodType:
             obj, func = t.obj, t.func
             if not isinstance(obj, EntityMeta): throw(NotImplementedError)
@@ -1755,9 +1755,6 @@ class FuncMonadMeta(MonadMeta):
         return monad_cls
 
 class FuncMonad(with_metaclass(FuncMonadMeta, Monad)):
-    type = 'function'
-    def __init__(monad, translator):
-        monad.translator = translator
     def __call__(monad, *args, **kwargs):
         translator = monad.translator
         for arg in args:
@@ -1969,8 +1966,8 @@ class DescMonad(Monad):
         return [ [ 'DESC', item ] for item in monad.expr.getsql() ]
 
 class JoinMonad(Monad):
-    def __init__(monad, translator):
-        Monad.__init__(monad, translator, 'JOIN')
+    def __init__(monad, translator, type):
+        Monad.__init__(monad, translator, type)
         monad.hint_join_prev = translator.hint_join
         translator.hint_join = True
     def __call__(monad, x):
