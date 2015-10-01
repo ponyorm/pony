@@ -88,7 +88,7 @@ class SQLTranslator(ASTTranslator):
             else: throw(NotImplementedError)  # pragma: no cover
         elif tt is FuncType:
             func = t.func
-            func_monad_class = translator.special_functions.get(func)
+            func_monad_class = translator.registered_functions.get(func)
             if func_monad_class is None: throw(TypeError,
                 'Function %r cannot be used inside query' % func.__name__)
             monad = func_monad_class(translator)
@@ -798,7 +798,7 @@ def coerce_monads(m1, m2):
                 new_m2 = NumericExprMonad(translator, int, [ 'TO_INT', m2.getsql()[0] ])
                 new_m2.aggregated = m2.aggregated
                 m2 = new_m2
-    return result_type, m1, m2                
+    return result_type, m1, m2
 
 max_alias_length = 30
 
@@ -1742,7 +1742,7 @@ class NotMonad(BoolMonad):
     def getsql(monad, subquery=None):
         return [ [ 'NOT', monad.operand.getsql()[0] ] ]
 
-special_functions = SQLTranslator.special_functions = {}
+registered_functions = SQLTranslator.registered_functions = {}
 
 class FuncMonadMeta(MonadMeta):
     def __new__(meta, cls_name, bases, cls_dict):
@@ -1751,7 +1751,7 @@ class FuncMonadMeta(MonadMeta):
         if func:
             if type(func) is tuple: functions = func
             else: functions = (func,)
-            for func in functions: special_functions[func] = monad_cls
+            for func in functions: registered_functions[func] = monad_cls
         return monad_cls
 
 class FuncMonad(with_metaclass(FuncMonadMeta, Monad)):
@@ -1976,7 +1976,7 @@ class JoinMonad(Monad):
     def __call__(monad, x):
         monad.translator.hint_join = monad.hint_join_prev
         return x
-special_functions[JOIN] = JoinMonad
+registered_functions[JOIN] = JoinMonad
 
 class FuncRandomMonad(FuncMonad):
     func = random
