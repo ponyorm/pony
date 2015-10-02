@@ -98,21 +98,23 @@ def parse_raw_sql(sql):
 class RawSQL(object):
     def __deepcopy__(self, memo):
         assert False  # should not attempt to deepcopy RawSQL instances, because of locals/globals
-    def __init__(self, sql, globals=None, locals=None):
+    def __init__(self, sql, globals=None, locals=None, result_type=None):
         self.sql = sql
         self.items, self.codes = parse_raw_sql(sql)
         self.values = tuple(eval(code, globals, locals) for code in self.codes)
         self.types = tuple(get_normalized_type_of(value) for value in self.values)
+        self.result_type = result_type
     def _get_type_(self):
-        return RawSQLType(self.sql, self.items, self.types)
+        return RawSQLType(self.sql, self.items, self.types, self.result_type)
 
 class RawSQLType(object):
     def __deepcopy__(self, memo):
         return self  # RawSQLType instances are "immutable"
-    def __init__(self, sql, items, types):
+    def __init__(self, sql, items, types, result_type):
         self.sql = sql
         self.items = items
         self.types = types
+        self.result_type = result_type
     def __hash__(self):
         return hash(self.sql) ^ hash(self.types)
     def __eq__(self, other):

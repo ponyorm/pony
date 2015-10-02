@@ -1054,7 +1054,9 @@ class Monad(with_metaclass(MonadMeta)):
 
 class RawSQLMonad(Monad):
     def __init__(monad, translator, rawtype, varkey):
-        Monad.__init__(monad, translator, rawtype)
+        if rawtype.result_type is None: type = rawtype
+        else: type = normalize_type(rawtype.result_type)
+        Monad.__init__(monad, translator, type)
         monad.rawtype = rawtype
         monad.varkey = varkey
     def contains(monad, item, not_in=False):

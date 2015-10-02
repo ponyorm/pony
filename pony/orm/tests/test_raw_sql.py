@@ -92,27 +92,33 @@ class TestRawSQL(unittest.TestCase):
 
     @db_session
     def test_11(self):
+        # it is possible to specify raw_sql type manually
+        dates = select(raw_sql('(p.dob)', result_type=date) for p in Person).order_by(lambda: p.id)[:]
+        self.assertEqual(dates, [date(1985, 1, 1), date(1983, 5, 20), date(1995, 2, 15)])
+
+    @db_session
+    def test_12(self):
         # raw_sql can be used in lambdas
         x = 25
         persons = Person.select(lambda p: p.age > raw_sql('$x'))[:]
         self.assertEqual(set(persons), set([Person[1], Person[2]]))
 
     @db_session
-    def test_12(self):
+    def test_13(self):
         # raw_sql in filter()
         x = 25
         persons = select(p for p in Person).filter(lambda p: p.age > raw_sql('$x'))[:]
         self.assertEqual(set(persons), set([Person[1], Person[2]]))
 
     @db_session
-    def test_13(self):
+    def test_14(self):
         # raw_sql in filter() without using lambda
         x = 25
         persons = Person.select().filter(raw_sql('p.age > $x'))[:]
         self.assertEqual(set(persons), set([Person[1], Person[2]]))
 
     @db_session
-    def test_14(self):
+    def test_15(self):
         # several raw_sql expressions in a single query
         x = '123'
         y = 'John'
@@ -120,7 +126,7 @@ class TestRawSQL(unittest.TestCase):
         self.assertEqual(set(persons), set([Person[1]]))
 
     @db_session
-    def test_15(self):
+    def test_16(self):
         # the same param name can be used several times with different types & values
         x = 10
         y = 31
@@ -132,14 +138,14 @@ class TestRawSQL(unittest.TestCase):
         self.assertEqual(set(persons), set([Person[1]]))
 
     @db_session
-    def test_16(self):
+    def test_17(self):
         # raw_sql in order_by() section
         x = 9
         persons = Person.select().order_by(lambda p: raw_sql('SUBSTR(p.dob, $x)'))[:]
         self.assertEqual(persons, [Person[1], Person[3], Person[2]])
 
     @db_session
-    def test_17(self):
+    def test_18(self):
         # raw_sql in order_by() section without using lambda
         x = 9
         persons = Person.select().order_by(raw_sql('SUBSTR(p.dob, $x)'))[:]
@@ -147,13 +153,13 @@ class TestRawSQL(unittest.TestCase):
 
     @db_session
     @raises_exception(TypeError, "raw_sql(p.name)")
-    def test_18(self):
+    def test_19(self):
         # raw_sql argument cannot depend on iterator variables
         select(p for p in Person if raw_sql(p.name))[:]
 
     @db_session
     @raises_exception(ExprEvalError, "raw_sql('p.dob < $x') raises NameError: name 'x' is not defined")
-    def test_19(self):
+    def test_20(self):
         # testing for situation where parameter variable is missing
         select(p for p in Person if raw_sql('p.dob < $x'))[:]
 

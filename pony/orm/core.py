@@ -4803,10 +4803,10 @@ def desc(expr):
         return 'desc(%s)' % expr
     return expr
 
-def raw_sql(sql):
+def raw_sql(sql, result_type=None):
     globals = sys._getframe(1).f_globals
     locals = sys._getframe(1).f_locals
-    return RawSQL(sql, globals, locals)
+    return RawSQL(sql, globals, locals, result_type)
 
 def extract_vars(extractors, globals, locals, cells=None):
     if cells:
