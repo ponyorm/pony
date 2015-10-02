@@ -225,7 +225,8 @@ class PreTranslator(ASTTranslator):
         node.external = node.constant = None
         ASTTranslator.dispatch(translator, node)
         childs = node.getChildNodes()
-        if node.external is None and childs and all(getattr(child, 'external', False) for child in childs):
+        if node.external is None and childs and all(
+                getattr(child, 'external', False) and not getattr(child, 'raw_sql', False) for child in childs):
             node.external = True
         if node.external and not node.constant:
             externals = translator.externals
@@ -274,7 +275,9 @@ class PreTranslator(ASTTranslator):
         x = eval(expr, translator.globals, translator.locals)
         try: hash(x)
         except TypeError: x = None
-        if x in translator.special_functions: node.external = False
+        if x in translator.special_functions:
+            if x.__name__ == 'raw_sql': node.raw_sql = True
+            else: node.external = False
         elif x in translator.const_functions:
             for arg in node.args:
                 if not arg.constant: return

@@ -18,7 +18,7 @@ from pony.thirdparty.compiler import ast, parse
 import pony
 from pony import options
 from pony.orm.decompiling import decompile
-from pony.orm.ormtypes import LongStr, LongUnicode, numeric_types, get_normalized_type_of
+from pony.orm.ormtypes import LongStr, LongUnicode, numeric_types, RawSQL, get_normalized_type_of
 from pony.orm.asttranslation import ast2src, create_extractors, TranslationError
 from pony.orm.dbapiprovider import (
     DBAPIProvider, DBException, Warning, Error, InterfaceError, DatabaseError, DataError,
@@ -4723,12 +4723,14 @@ def get_globals_and_locals(args, kwargs, frame_depth, from_generator=False):
             locals.update(func.gi_frame.f_locals)
         if len(args) > 3: throw(TypeError, 'Excess positional argument%s: %s'
                                 % (len(args) > 4 and 's' or '', ', '.join(imap(repr, args[3:]))))
-    elif type(func) is types.GeneratorType:
-        globals = func.gi_frame.f_globals
-        locals = func.gi_frame.f_locals
     else:
-        globals = sys._getframe(frame_depth+1).f_globals
-        locals = sys._getframe(frame_depth+1).f_locals
+        locals = {}
+        locals.update(sys._getframe(frame_depth+1).f_locals)
+        if type(func) is types.GeneratorType:
+            globals = func.gi_frame.f_globals
+            locals.update(func.gi_frame.f_locals)
+        else:
+            globals = sys._getframe(frame_depth+1).f_globals
     if kwargs: throw(TypeError, 'Keyword arguments cannot be specified together with positional arguments')
     return func, globals, locals
 
@@ -4801,10 +4803,12 @@ def desc(expr):
         return 'desc(%s)' % expr
     return expr
 
-def raw_sql(sql):
-    raise TypeError('raw_sql() function can be used inside declarative query only')
+def raw_sql(sql, result_type=None):
+    globals = sys._getframe(1).f_globals
+    locals = sys._getframe(1).f_locals
+    return RawSQL(sql, globals, locals, result_type)
 
-def extract_vars(extractors, globals, locals, cells=None, filter_num=0):
+def extract_vars(extractors, globals, locals, cells=None):
     if cells:
         locals = locals.copy()
         for name, cell in cells.items():
@@ -4812,8 +4816,7 @@ def extract_vars(extractors, globals, locals, cells=None, filter_num=0):
     vars = {}
     vartypes = {}
     for key, code in iteritems(extractors):
-        key_filter_num, src = key
-        if key_filter_num != filter_num: continue
+        filter_num, src = key
         if src == '.0': value = locals['.0']
         else:
             try: value = eval(code, globals, locals)
@@ -4874,9 +4877,6 @@ class Query(object):
                 except OptimizationFailed: translator.optimization_failed = True
             translator.pickled_tree = pickled_tree
             database._translator_cache[query._key] = translator
-        if translator.raw_extractors:
-            raw_vars, raw_vartypes = extract_vars(translator.raw_extractors, globals, locals, cells)
-            vars.update(raw_vars)
         query._translator = translator
         query._filters = ()
         query._next_kwarg_id = 0
@@ -5113,6 +5113,10 @@ class Query(object):
             func, globals, locals = get_globals_and_locals(args, kwargs=None, frame_depth=3)
             return query._process_lambda(func, globals, locals, order_by=True)
 
+        if isinstance(args[0], RawSQL):
+            raw = args[0]
+            return query.order_by(lambda: raw)
+
         attributes = numbers = False
         for arg in args:
             if isinstance(arg, int_types): numbers = True
@@ -5159,7 +5163,7 @@ class Query(object):
             func_id, func_ast, filter_num, globals, locals, special_functions, const_functions,
             argnames or prev_translator.subquery)
         if extractors:
-            vars, vartypes = extract_vars(extractors, globals, locals, cells, filter_num)
+            vars, vartypes = extract_vars(extractors, globals, locals, cells)
             query._database.provider.normalize_vars(vars, vartypes)
             new_query_vars = query._vars.copy()
             new_query_vars.update(vars)
@@ -5184,9 +5188,6 @@ class Query(object):
                     new_translator = query._reapply_filters(new_translator)
                     new_translator = new_translator.apply_lambda(filter_num, order_by, func_ast, argnames, extractors, vartypes)
             query._database._translator_cache[new_key] = new_translator
-        if new_translator.raw_extractors:
-            raw_vars, raw_vartypes = extract_vars(new_translator.raw_extractors, globals, locals, cells, filter_num)
-            new_query_vars.update(raw_vars)
         return query._clone(_vars=new_query_vars, _key=new_key, _filters=new_filters, _translator=new_translator)
     def _reapply_filters(query, translator):
         for i, tup in enumerate(query._filters):
@@ -5206,6 +5207,9 @@ class Query(object):
     @cut_traceback
     def filter(query, *args, **kwargs):
         if args:
+            if isinstance(args[0], RawSQL):
+                raw = args[0]
+                return query.filter(lambda: raw)
             func, globals, locals = get_globals_and_locals(args, kwargs, frame_depth=3)
             return query._process_lambda(func, globals, locals, order_by=False)
         if not kwargs: return query

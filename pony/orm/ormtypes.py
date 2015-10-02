@@ -6,7 +6,7 @@ from decimal import Decimal
 from datetime import date, time, datetime, timedelta
 from uuid import UUID
 
-from pony.utils import throw
+from pony.utils import throw, parse_expr
 
 NoneType = type(None)
 
@@ -64,16 +64,61 @@ class MethodType(object):
     def __hash__(self):
         return hash(self.obj) ^ hash(self.func)
 
+raw_sql_cache = {}
+
+def parse_raw_sql(sql):
+    result = raw_sql_cache.get(sql)
+    if result is not None: return result
+    assert isinstance(sql, basestring) and len(sql) > 0
+    items = []
+    codes = []
+    pos = 0
+    while True:
+        try: i = sql.index('$', pos)
+        except ValueError:
+            items.append(sql[pos:])
+            break
+        items.append(sql[pos:i])
+        if sql[i+1] == '$':
+            items.append('$')
+            pos = i+2
+        else:
+            try: expr, _ = parse_expr(sql, i+1)
+            except ValueError:
+                raise ValueError(sql[i:])
+            pos = i+1 + len(expr)
+            if expr.endswith(';'): expr = expr[:-1]
+            code = compile(expr, '<?>', 'eval')  # expr correction check
+            codes.append(code)
+            items.append((expr, code))
+    result = tuple(items), tuple(codes)
+    raw_sql_cache[sql] = result
+    return result
+
 class RawSQL(object):
-    _special_type_ = True
     def __deepcopy__(self, memo):
-        return self  # RawSQL instances are "immutable"
-    def __init__(self, sql):
+        assert False  # should not attempt to deepcopy RawSQL instances, because of locals/globals
+    def __init__(self, sql, globals=None, locals=None, result_type=None):
         self.sql = sql
+        self.items, self.codes = parse_raw_sql(sql)
+        self.values = tuple(eval(code, globals, locals) for code in self.codes)
+        self.types = tuple(get_normalized_type_of(value) for value in self.values)
+        self.result_type = result_type
+    def _get_type_(self):
+        return RawSQLType(self.sql, self.items, self.types, self.result_type)
+
+class RawSQLType(object):
+    def __deepcopy__(self, memo):
+        return self  # RawSQLType instances are "immutable"
+    def __init__(self, sql, items, types, result_type):
+        self.sql = sql
+        self.items = items
+        self.types = types
+        self.result_type = result_type
     def __hash__(self):
-        return hash(self.sql) + 1
+        return hash(self.sql) ^ hash(self.types)
     def __eq__(self, other):
-        return type(other) is RawSQL and self.sql == other.sql
+        return type(other) is RawSQLType and self.sql == other.sql and self.types == other.types
     def __ne__(self, other):
         return not self.__eq__(other)
 
@@ -97,6 +142,8 @@ def get_normalized_type_of(value):
     elif isinstance(value, unicode): return unicode
     if t in function_types: return FuncType(value)
     if t is types.MethodType: return MethodType(value)
+    if hasattr(value, '_get_type_'):
+        return value._get_type_()
     return normalize_type(t)
 
 def normalize_type(t):
@@ -135,10 +182,10 @@ def coerce_types(t1, t2):
 
 def are_comparable_types(t1, t2, op='=='):
     # types must be normalized already!
-    if RawSQL in (t1, t2): return True
     tt1 = type(t1)
     tt2 = type(t2)
     if op in ('in', 'not in'):
+        if tt2 is RawSQLType: return True
         if tt2 is not SetType: return False
         op = '=='
         t2 = t2.item_type
@@ -151,6 +198,7 @@ def are_comparable_types(t1, t2, op='=='):
         for item1, item2 in izip(t1, t2):
             if not are_comparable_types(item1, item2): return False
         return True
+    if tt1 is RawSQLType or tt2 is RawSQLType: return True
     if op in ('==', '<>', '!='):
         if t1 is NoneType and t2 is NoneType: return False
         if t1 is NoneType or t2 is NoneType: return True

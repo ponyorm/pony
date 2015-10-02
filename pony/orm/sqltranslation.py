@@ -12,13 +12,13 @@ from uuid import UUID
 from pony.thirdparty.compiler import ast
 
 from pony import options, utils
-from pony.utils import is_ident, throw, reraise, concat, parse_expr
+from pony.utils import is_ident, throw, reraise, concat
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
-    numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQL, \
+    numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
     get_normalized_type_of, normalize_type, coerce_types, are_comparable_types
 from pony.orm import core
-from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper, raw_sql
+from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper
 
 NoneType = type(None)
 
@@ -88,10 +88,8 @@ class SQLTranslator(ASTTranslator):
             else: throw(NotImplementedError)  # pragma: no cover
         elif tt is FuncType:
             func = t.func
-            func_monad_class = translator.special_functions.get(func)
-            if func_monad_class is None: throw(TypeError,
-                'Function %r cannot be used inside query' % func.__name__)
-            monad = func_monad_class(translator)
+            func_monad_class = translator.registered_functions.get(func, translator.ErrorSpecialFuncMonad)
+            monad = func_monad_class(translator, func)
         elif tt is MethodType:
             obj, func = t.obj, t.func
             if not isinstance(obj, EntityMeta): throw(NotImplementedError)
@@ -109,6 +107,8 @@ class SQLTranslator(ASTTranslator):
                 param = translator.ParamMonad.new(translator, item_type, (varkey, i, None))
                 params.append(param)
             monad = translator.ListMonad(translator, params)
+        elif isinstance(t, RawSQLType):
+            monad = translator.RawSQLMonad(translator, t, varkey)
         else:
             monad = translator.ParamMonad.new(translator, t, (varkey, None, None))
         node.monad = monad
@@ -161,7 +161,6 @@ class SQLTranslator(ASTTranslator):
         translator.argnames = None
         translator.filter_num = parent_translator.filter_num if parent_translator is not None else 0
         translator.extractors = extractors
-        translator.raw_extractors = {}
         translator.vartypes = vartypes
         translator.parent = parent_translator
         translator.left_join = left_join
@@ -743,6 +742,8 @@ class SQLTranslator(ASTTranslator):
                 kwargs[arg.name] = arg.expr.monad
             else: args.append(arg.monad)
         func_monad = node.node.monad
+        if isinstance(func_monad, ErrorSpecialFuncMonad):
+            'Function %r cannot be used in this way: %s' % (func_monad.func.__name__, ast2src(node))
         return func_monad(*args, **kwargs)
     def postKeyword(translator, node):
         pass  # this node will be processed by postCallFunc
@@ -798,7 +799,7 @@ def coerce_monads(m1, m2):
                 new_m2 = NumericExprMonad(translator, int, [ 'TO_INT', m2.getsql()[0] ])
                 new_m2.aggregated = m2.aggregated
                 m2 = new_m2
-    return result_type, m1, m2                
+    return result_type, m1, m2
 
 max_alias_length = 30
 
@@ -1050,6 +1051,39 @@ class Monad(with_metaclass(MonadMeta)):
     def __pow__(monad, monad2): throw(TypeError)
     def __neg__(monad): throw(TypeError)
     def abs(monad): throw(TypeError)
+
+class RawSQLMonad(Monad):
+    def __init__(monad, translator, rawtype, varkey):
+        if rawtype.result_type is None: type = rawtype
+        else: type = normalize_type(rawtype.result_type)
+        Monad.__init__(monad, translator, type)
+        monad.rawtype = rawtype
+        monad.varkey = varkey
+    def contains(monad, item, not_in=False):
+        translator = monad.translator
+        expr = item.getsql()
+        if len(expr) == 1: expr = expr[0]
+        elif translator.row_value_syntax == True: expr = ['ROW'] + expr
+        else: throw(TranslationError,
+                    '%s database provider does not support tuples. Got: {EXPR} ' % translator.dialect)
+        op = 'NOT_IN' if not_in else 'IN'
+        sql = [ op, expr, monad.getsql() ]
+        return translator.BoolExprMonad(translator, sql)
+    def nonzero(monad): return monad
+    def getsql(monad, subquery=None):
+        provider = monad.translator.database.provider
+        rawtype = monad.rawtype
+        result = []
+        types = enumerate(rawtype.types)
+        for item in monad.rawtype.items:
+            if isinstance(item, basestring):
+                result.append(item)
+            else:
+                expr, code = item
+                i, param_type = next(types)
+                param_converter = provider.get_converter_by_py_type(param_type)
+                result.append(['PARAM', (monad.varkey, i, None), param_converter])
+        return [ [ 'RAWSQL', result ] ]
 
 typeerror_re_1 = re.compile(r'\(\) takes (no|(?:exactly|at (?:least|most)))(?: (\d+))? arguments \((\d+) given\)')
 typeerror_re_2 = re.compile(r'\(\) takes from (\d+) to (\d+) positional arguments but (\d+) were given')
@@ -1742,7 +1776,12 @@ class NotMonad(BoolMonad):
     def getsql(monad, subquery=None):
         return [ [ 'NOT', monad.operand.getsql()[0] ] ]
 
-special_functions = SQLTranslator.special_functions = {}
+class ErrorSpecialFuncMonad(Monad):
+    def __init__(monad, translator, func):
+        Monad.__init__(monad, translator, func)
+        monad.func = func
+
+registered_functions = SQLTranslator.registered_functions = {}
 
 class FuncMonadMeta(MonadMeta):
     def __new__(meta, cls_name, bases, cls_dict):
@@ -1751,13 +1790,10 @@ class FuncMonadMeta(MonadMeta):
         if func:
             if type(func) is tuple: functions = func
             else: functions = (func,)
-            for func in functions: special_functions[func] = monad_cls
+            for func in functions: registered_functions[func] = monad_cls
         return monad_cls
 
 class FuncMonad(with_metaclass(FuncMonadMeta, Monad)):
-    type = 'function'
-    def __init__(monad, translator):
-        monad.translator = translator
     def __call__(monad, *args, **kwargs):
         translator = monad.translator
         for arg in args:
@@ -1766,9 +1802,7 @@ class FuncMonad(with_metaclass(FuncMonadMeta, Monad)):
             assert isinstance(value, translator.Monad)
         try: return monad.call(*args, **kwargs)
         except TypeError as exc:
-            func = monad.func
-            if type(func) is tuple: func = func[0]
-            reraise_improved_typeerror(exc, 'call', func.__name__)
+            reraise_improved_typeerror(exc, 'call', monad.type.__name__)
 
 class FuncBufferMonad(FuncMonad):
     func = buffer
@@ -1969,14 +2003,14 @@ class DescMonad(Monad):
         return [ [ 'DESC', item ] for item in monad.expr.getsql() ]
 
 class JoinMonad(Monad):
-    def __init__(monad, translator):
-        Monad.__init__(monad, translator, 'JOIN')
+    def __init__(monad, translator, type):
+        Monad.__init__(monad, translator, type)
         monad.hint_join_prev = translator.hint_join
         translator.hint_join = True
     def __call__(monad, x):
         monad.translator.hint_join = monad.hint_join_prev
         return x
-special_functions[JOIN] = JoinMonad
+registered_functions[JOIN] = JoinMonad
 
 class FuncRandomMonad(FuncMonad):
     func = random
@@ -1985,55 +2019,6 @@ class FuncRandomMonad(FuncMonad):
         translator.query_result_is_cacheable = False
     def __call__(monad):
         return NumericExprMonad(monad.translator, float, [ 'RANDOM' ])
-
-class FuncRawSQLMonad(FuncMonad):
-    func = raw_sql
-    def call(monad, expr):
-        if not isinstance(expr, StringConstMonad): throw(TranslationError,
-            'raw_sql() function argument should be string constant. Got: %s' % ast2src(expr.node))
-        return RawSQLMonad(monad.translator, expr.value)
-
-class RawSQLMonad(Monad):
-    def __init__(monad, translator, sql):
-        Monad.__init__(monad, translator, RawSQL)
-        monad.sql = sql
-        monad.varkey = translator.filter_num, sql
-    def contains(monad, item, not_in=False):
-        translator = monad.translator
-        expr = item.getsql()
-        if len(expr) == 1: expr = expr[0]
-        elif translator.row_value_syntax == True: expr = ['ROW'] + expr
-        else: throw(TranslationError,
-                    '%s database provider does not support tuples. Got: {EXPR} ' % translator.dialect)
-        op = 'NOT_IN' if not_in else 'IN'
-        sql = [ op, expr, monad.getsql() ]
-        return translator.BoolExprMonad(translator, sql)
-    def nonzero(monad): return monad
-    def getsql(monad, subquery=None):
-        translator = monad.translator
-        result = []
-        pos = 0
-        sql = monad.sql
-        while True:
-            try: i = sql.index('$', pos)
-            except ValueError:
-                result.append(sql[pos:])
-                break
-            result.append(sql[pos:i])
-            if sql[i+1] == '$':
-                result.append('$')
-                pos = i+2
-            else:
-                try: expr, _ = parse_expr(sql, i+1)
-                except ValueError:
-                    raise # TODO
-                pos = i+1 + len(expr)
-                if expr.endswith(';'): expr = expr[:-1]
-                code = compile(expr, '<?>', 'eval')
-                varkey = translator.filter_num, expr
-                translator.raw_extractors[varkey] = code
-                result.append(['PARAM', (varkey, None, None) ])
-        return [ [ 'RAWSQL', result ] ]
 
 class SetMixin(MonadMixin):
     forced_distinct = False
