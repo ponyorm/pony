@@ -460,13 +460,16 @@ class DBSessionContextManager(object):
             gen = gen_func(*args, **kwargs)
             iterator = iter(gen)
             output = wrapped_interact(iterator)
-            while True:
-                try:
-                    input = yield output
-                except:
-                    output = wrapped_interact(iterator, exc_info=sys.exc_info())
-                else:
-                    output = wrapped_interact(iterator, input)
+            try:
+                while True:
+                    try:
+                        input = yield output
+                    except:
+                        output = wrapped_interact(iterator, exc_info=sys.exc_info())
+                    else:
+                        output = wrapped_interact(iterator, input)
+            except StopIteration:
+                return
         return decorator(new_gen_func, gen_func)
 
 db_session = DBSessionContextManager()
