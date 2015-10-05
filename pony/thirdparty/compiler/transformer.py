@@ -39,6 +39,8 @@ if not hasattr(symbol, 'comp_iter'): symbol.comp_iter = symbol.gen_iter
 if not hasattr(symbol, 'comp_for'): symbol.comp_for = symbol.gen_for
 if not hasattr(symbol, 'comp_if'): symbol.comp_if = symbol.gen_if
 
+atom_expr = getattr(symbol, 'atom_expr', None)
+
 class WalkerError(Exception):
     pass
 
@@ -108,6 +110,15 @@ class Transformer:
         tree = parseexpr(text)
         tree = parsefile(fileob | filename)
     """
+
+    def atom_expr(self, nodelist):
+        atom_nodelist = nodelist[0]
+        assert atom_nodelist[0] == symbol.atom, atom_nodelist[0]
+        node = self.atom(atom_nodelist[1:])
+        for i in range(1, len(nodelist)):
+            elt = nodelist[i]
+            node = self.com_apply_trailer(node, elt)
+        return node
 
     def __init__(self):
         self._dispatch = {}
@@ -1032,7 +1043,7 @@ class Transformer:
                     raise SyntaxError("can't assign to operator")
                 node = node[1]
             elif t == symbol.power:
-                if node[1][0] != symbol.atom:
+                if node[1][0] not in (symbol.atom, atom_expr):
                     raise SyntaxError("can't assign to operator")
                 if len(node) > 2:
                     primary = self.com_node(node[1])
@@ -1040,6 +1051,17 @@ class Transformer:
                         ch = node[i]
                         if ch[0] == token.DOUBLESTAR:
                             raise SyntaxError("can't assign to operator")
+                        primary = self.com_apply_trailer(primary, ch)
+                    return self.com_assign_trailer(primary, node[-1],
+                                                   assigning)
+                node = node[1]
+            elif t == atom_expr:
+                if node[1][0] != symbol.atom:
+                    raise SyntaxError("can't assign to operator")
+                if len(node) > 2:
+                    primary = self.com_node(node[1])
+                    for i in range(2, len(node)-1):
+                        ch = node[i]
                         primary = self.com_apply_trailer(primary, ch)
                     return self.com_assign_trailer(primary, node[-1],
                                                    assigning)
@@ -1318,6 +1340,7 @@ class Transformer:
             if star_node:
                 raise SyntaxError("only named arguments may follow *expression")
             return 0, self.com_node(nodelist[1])
+        assert len(nodelist) > 3, [kw, star_node, nodelist]
         result = self.com_node(nodelist[3])
         n = nodelist[1]
         while len(n) == 2 and n[0] != token.NAME:
