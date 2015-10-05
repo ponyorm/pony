@@ -3,10 +3,10 @@
 from __future__ import absolute_import, print_function
 from pony.py23compat import PY2, imap, basestring, unicode
 
-import re, os, os.path, sys, datetime, types, linecache, warnings, json
+import re, os, os.path, sys, datetime, inspect, types, linecache, warnings, json
 
 from itertools import count as _count
-from inspect import isfunction, ismethod, getargspec
+from inspect import isfunction, ismethod
 from time import strptime
 from os import urandom
 from codecs import BOM_UTF8, BOM_LE, BOM_BE
@@ -134,7 +134,25 @@ def get_lambda_args(func):
     names = lambda_args_cache.get(func)
     if names is not None: return names
     if type(func) is types.FunctionType:
-        names, argsname, kwname, defaults = getargspec(func)
+        if hasattr(inspect, 'signature'):
+            names, argsname, kwname, defaults = [], None, None, None
+            for p in inspect.signature(func).parameters.values():
+                if p.default is not p.empty:
+                    defaults.append(p.default)
+
+                if p.kind == p.POSITIONAL_OR_KEYWORD:
+                    names.append(p.name)
+                elif p.kind == p.VAR_POSITIONAL:
+                    argsname = p.name
+                elif p.kind == p.VAR_KEYWORD:
+                    kwname = p.name
+                elif p.kind == p.POSITIONAL_ONLY:
+                    throw(TypeError, 'Positional-only arguments like %s are not supported' % p.name)
+                elif p.kind == p.KEYWORD_ONLY:
+                    throw(TypeError, 'Keyword-only arguments like %s are not supported' % p.name)
+                else: assert False
+        else:
+            names, argsname, kwname, defaults = inspect.getargspec(func)
     elif isinstance(func, ast.Lambda):
         names = func.argnames
         if func.kwargs: names, kwname = names[:-1], names[-1]
