@@ -2014,8 +2014,8 @@ registered_functions[JOIN] = JoinMonad
 
 class FuncRandomMonad(FuncMonad):
     func = random
-    def __init__(monad, translator):
-        FuncMonad.__init__(monad, translator)
+    def __init__(monad, translator, type):
+        FuncMonad.__init__(monad, translator, type)
         translator.query_result_is_cacheable = False
     def __call__(monad):
         return NumericExprMonad(monad.translator, float, [ 'RANDOM' ])
