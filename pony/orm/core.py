@@ -1797,7 +1797,13 @@ class Attribute(object):
         else:
             attr.default = None
 
-        if attr.sql_default not in (None, True, False) and not isinstance(attr.sql_default, basestring):
+        sql_default = attr.sql_default
+        if isinstance(sql_default, basestring):
+            if sql_default == '': throw(TypeError,
+                "'sql_default' option value cannot be empty string, "
+                "because it should be valid SQL literal or expression. "
+                "Try to use \"''\", or just specify default='' instead.")
+        elif attr.sql_default not in (None, True, False):
             throw(TypeError, "'sql_default' option of %s attribute must be of string or bool type. Got: %s"
                              % (attr, attr.sql_default))
 

@@ -641,5 +641,14 @@ class TestAttribute(unittest.TestCase):
             x = Required(type(None))
         db.generate_mapping(create_tables=True)
 
+    @raises_exception(TypeError, "'sql_default' option value cannot be empty string, "
+                                 "because it should be valid SQL literal or expression. "
+                                 "Try to use \"''\", or just specify default='' instead.")
+    def test_none_type(self):
+        db = Database('sqlite', ':memory:')
+        class Foo(db.Entity):
+            x = Required(str, sql_default='')
+                              
+
 if __name__ == '__main__':
     unittest.main()
