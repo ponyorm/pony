@@ -5,6 +5,8 @@ from decimal import Decimal
 from datetime import datetime, date, time, timedelta
 from uuid import UUID
 
+NoneType = type(None)
+
 import warnings
 warnings.filterwarnings('ignore', '^Table.+already exists$', Warning, '^pony\\.orm\\.dbapiprovider$')
 
@@ -140,6 +142,7 @@ class MySQLProvider(DBAPIProvider):
     fk_types = { 'SERIAL' : 'BIGINT UNSIGNED' }
 
     converter_classes = [
+        (NoneType, dbapiprovider.NoneConverter),
         (bool, dbapiprovider.BoolConverter),
         (basestring, MySQLStrConverter),
         (int_types, dbapiprovider.IntConverter),

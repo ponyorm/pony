@@ -163,6 +163,12 @@ class TestRawSQL(unittest.TestCase):
         # testing for situation where parameter variable is missing
         select(p for p in Person if raw_sql('p.dob < $x'))[:]
 
+    @db_session
+    def test_21(self):
+        x = None
+        persons = select(p for p in Person if p.id == 1 and raw_sql('$x') is None)[:]
+        self.assertEqual(persons, [Person[1]])
+
 
 if __name__ == '__main__':
     unittest.main()

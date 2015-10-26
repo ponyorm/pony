@@ -634,5 +634,12 @@ class TestAttribute(unittest.TestCase):
         self.assertFalse(Bar.x.is_implicit)
         self.assertFalse(Bar.y.is_implicit)
 
+    @raises_exception(TypeError, 'Attribute Foo.x has invalid type NoneType')
+    def test_none_type(self):
+        db = Database('sqlite', ':memory:')
+        class Foo(db.Entity):
+            x = Required(type(None))
+        db.generate_mapping(create_tables=True)
+
 if __name__ == '__main__':
     unittest.main()

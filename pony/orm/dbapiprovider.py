@@ -366,6 +366,15 @@ class Converter(object):
         sql_type = sql_type.upper()
         return fk_types.get(sql_type, sql_type).lower()
 
+class NoneConverter(Converter):  # used for raw_sql() parameters only
+    def __init__(converter, provider, py_type, attr=None):
+        if attr is not None: throw(TypeError, 'Attribute %s has invalid type NoneType' % attr)
+        Converter.__init__(converter, provider, py_type)
+    def get_sql_type(converter, attr=None):
+        assert False
+    def get_fk_type(converter, sql_type):
+        assert False    
+
 class BoolConverter(Converter):
     def validate(converter, val):
         return bool(val)

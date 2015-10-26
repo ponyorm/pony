@@ -16,6 +16,8 @@ from pony.orm.sqlbuilding import SQLBuilder, join
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
 from pony.utils import localbase, datetime2timestamp, timestamp2datetime, decorator, absolutize_path, throw
 
+NoneType = type(None)
+
 class SQLiteForeignKey(dbschema.ForeignKey):
     def get_create_command(foreign_key):
         assert False  # pragma: no cover
@@ -172,6 +174,7 @@ class SQLiteProvider(DBAPIProvider):
     server_version = sqlite.sqlite_version_info
 
     converter_classes = [
+        (NoneType, dbapiprovider.NoneConverter),
         (bool, dbapiprovider.BoolConverter),
         (basestring, dbapiprovider.StrConverter),
         (int_types, SQLiteIntConverter),

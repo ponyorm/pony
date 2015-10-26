@@ -334,6 +334,7 @@ class OraProvider(DBAPIProvider):
     name_before_table = 'owner'
 
     converter_classes = [
+        (NoneType, dbapiprovider.NoneConverter),
         (bool, OraBoolConverter),
         (basestring, OraStrConverter),
         (int_types, OraIntConverter),
