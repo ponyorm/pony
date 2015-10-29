@@ -3978,12 +3978,12 @@ class EntityMeta(type):
             if not attr.reverse:
                 def fget(wrapper, attr=attr):
                     attrnames = wrapper._attrnames_ + (attr.name,)
-                    items = [ attr.__get__(item) for item in wrapper ]
+                    items = [ x for x in (attr.__get__(item) for item in wrapper) if x is not None ]
                     return Multiset(wrapper._obj_, attrnames, items)
             elif not attr.is_collection:
                 def fget(wrapper, attr=attr):
                     attrnames = wrapper._attrnames_ + (attr.name,)
-                    items = [ attr.__get__(item) for item in wrapper ]
+                    items = [ x for x in (attr.__get__(item) for item in wrapper) if x is not None ]
                     rentity = attr.py_type
                     cls = rentity._get_multiset_subclass_()
                     return cls(wrapper._obj_, attrnames, items)
