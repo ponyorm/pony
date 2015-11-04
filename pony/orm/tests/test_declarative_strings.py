@@ -8,7 +8,7 @@ from pony.orm.tests.testutils import *
 db = Database('sqlite', ':memory:')
 
 class Student(db.Entity):
-    name = Required(unicode)
+    name = Required(unicode, autostrip=False)
     foo = Optional(unicode)
     bar = Optional(unicode)
 

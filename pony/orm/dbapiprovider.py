@@ -400,10 +400,12 @@ class StrConverter(Converter):
             throw(TypeError, 'Max length argument must be int. Got: %r' % max_len)
         converter.max_len = max_len
         converter.db_encoding = kwargs.pop('db_encoding', None)
+        converter.autostrip = kwargs.pop('autostrip', True)
     def validate(converter, val):
         if PY2 and isinstance(val, str): val = val.decode('ascii')
         elif not isinstance(val, unicode): throw(TypeError,
             'Value type for attribute %s must be %s. Got: %r' % (converter.attr, unicode.__name__, type(val)))
+        if converter.autostrip: val = val.strip()
         max_len = converter.max_len
         val_len = len(val)
         if max_len and val_len > max_len:
