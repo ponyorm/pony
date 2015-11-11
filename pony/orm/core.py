@@ -3339,7 +3339,7 @@ class EntityMeta(type):
         entity._new_attrs_ = new_attrs
         entity._attrs_ = base_attrs + new_attrs
         entity._adict_ = dict((attr.name, attr) for attr in entity._attrs_)
-        entity._subclass_attrs_ = set()
+        entity._subclass_attrs_ = []
         entity._subclass_adict_ = {}
         for base in entity._all_bases_:
             for attr in new_attrs:
@@ -3349,7 +3349,7 @@ class EntityMeta(type):
                     'Attribute %s conflicts with attribute %s because both entities inherit from %s. '
                     'To fix this, move attribute definition to base class'
                     % (attr, prev, entity._root_.__name__))
-                base._subclass_attrs_.add(attr)
+                base._subclass_attrs_.append(attr)
         entity._attrnames_cache_ = {}
 
         try: table_name = entity.__dict__['_table_']
