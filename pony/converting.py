@@ -186,6 +186,20 @@ def str2datetime(s):
     hh, mm, ss, mcs = _extract_time_parts(dict)
     return datetime(int(year), int(month), int(day), hh, mm, ss, mcs)
 
+def _extract_time_parts(groupdict):
+    hh, mm, ss, am, pm = imap(groupdict.get, ('hh', 'mm', 'ss', 'am', 'pm'))
+
+    if hh is None: hh, mm, ss = 12, 00, 00
+    elif am and hh == '12': hh = 0
+    elif pm and hh != '12': hh = int(hh) + 12
+
+    if ss is not None and '.' in ss:
+        ss, mcs = ss.split('.', 1)
+        if len('mcs') < 6: mcs = (mcs + '000000')[:6]
+    else: mcs = 0
+
+    return int(hh), int(mm or 0), int(ss or 0), int(mcs)
+
 def str2timedelta(s):
     if '.' in s:
         s, fractional = s.split('.')
@@ -209,20 +223,6 @@ def timedelta2str(td):
     else: result = '%d:%d:%d' % (hours, minutes, seconds)
     if td.days >= 0: return result
     return '-' + result
-
-def _extract_time_parts(groupdict):
-    hh, mm, ss, am, pm = imap(groupdict.get, ('hh', 'mm', 'ss', 'am', 'pm'))
-
-    if hh is None: hh, mm, ss = 12, 00, 00
-    elif am and hh == '12': hh = 0
-    elif pm and hh != '12': hh = int(hh) + 12
-    
-    if ss is not None and '.' in ss:
-        ss, mcs = ss.split('.', 1)
-        if len('mcs') < 6: mcs = (mcs + '000000')[:6]
-    else: mcs = 0
-
-    return int(hh), int(mm or 0), int(ss or 0), int(mcs)
 
 converters = {
     int:  (int, unicode, 'Incorrect number'),
