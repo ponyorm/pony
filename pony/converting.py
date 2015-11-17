@@ -175,15 +175,15 @@ def str2datetime(s):
         if match is not None: break
     else: raise ValueError('Unrecognized datetime format')
 
-    dict = match.groupdict()
-    year, day, month = dict['year'], dict['day'], dict.get('month')
+    d = match.groupdict()
+    year, day, month = d['year'], d['day'], d.get('month')
 
     if month is None:
         for key, value in iteritems(month_dict):
             if key in s: month = value; break
         else: raise ValueError('Unrecognized datetime format')
 
-    hh, mm, ss, mcs = _extract_time_parts(dict)
+    hh, mm, ss, mcs = _extract_time_parts(d)
     return datetime(int(year), int(month), int(day), hh, mm, ss, mcs)
 
 def _extract_time_parts(groupdict):
