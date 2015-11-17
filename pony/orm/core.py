@@ -4689,6 +4689,12 @@ class Entity(with_metaclass(EntityMeta)):
 def string2ast(s):
     result = string2ast_cache.get(s)
     if result is not None: return result
+    if PY2:
+        if isinstance(s, str):
+            try: s.encode('ascii')
+            except UnicodeDecodeError: throw(TypeError,
+                'The bytestring %r contains non-ascii symbols. Try to pass unicode string instead' % s)
+        else: s = s.encode('ascii', 'backslashreplace')
     module_node = parse('(%s)' % s)
     if not isinstance(module_node, ast.Module): throw(TypeError)
     stmt_node = module_node.node

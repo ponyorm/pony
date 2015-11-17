@@ -69,12 +69,14 @@ class TestFuncMonad(unittest.TestCase):
     def test_minmax5(self):
         x = chr(128)
         try: result = set(select(s for s in Student if min(s.name, x) == "CC" ))
-        except UnicodeDecodeError: self.assertTrue(PY2)
+        except TypeError as e:
+            self.assertTrue(PY2 and e.args[0] == "The bytestring '\\x80' contains non-ascii symbols. Try to pass unicode string instead")
         else: self.assertFalse(PY2)
     def test_minmax6(self):
         x = chr(128)
         try: result = set(select(s for s in Student if min(s.name, x, "CC") == "CC" ))
-        except UnicodeDecodeError: self.assertTrue(PY2)
+        except TypeError as e:
+            self.assertTrue(PY2 and e.args[0] == "The bytestring '\\x80' contains non-ascii symbols. Try to pass unicode string instead")
         else: self.assertFalse(PY2)
     def test_minmax7(self):
         result = set(select(s for s in Student if min(s.phd, 2) == 2 ))
