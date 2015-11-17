@@ -137,7 +137,8 @@ def get_normalized_type_of(value):
     if t.__name__ == 'EntityIter': return SetType(value.entity)
     if PY2 and isinstance(value, str):
         try: value.decode('ascii')
-        except UnicodeDecodeError: raise
+        except UnicodeDecodeError: throw(TypeError,
+            'The bytestring %r contains non-ascii symbols. Try to pass unicode string instead' % value)
         else: return unicode
     elif isinstance(value, unicode): return unicode
     if t in function_types: return FuncType(value)
