@@ -12,20 +12,19 @@ Pony translates queries to SQL using a specific database dialect. Currently Pony
 Pony ORM also include the ER Diagram Editor which is a great tool for prototyping. You can create your ER diagram online at [https://editor.ponyorm.com](https://editor.ponyorm.com), generate the database schema based on the diagram and start working with the database using declarative queries in seconds.
 
 The package pony.orm.examples contains several examples.
-Documenation is available at [http://doc.ponyorm.com](http://doc.ponyorm.com)
+
+Documenation is available at [https://docs.ponyorm.com](https://docs.ponyorm.com)
+The documentation source is avaliable at [https://github.com/ponyorm/pony-doc](https://github.com/ponyorm/pony-doc), it is released under Apache 2.0 license.
+Please create new documentation related issues [https://github.com/ponyorm/pony-doc/issues](https://github.com/ponyorm/pony-doc/issues) or make a pull request with your improvements.
 
 We are looking forward to your comments and suggestions at our mailing list [http://ponyorm-list.ponyorm.com](http://ponyorm-list.ponyorm.com)
 
 License
 -----------
 
-Pony ORM is released under multiple licenses, check [ponyorm.com](http://ponyorm.com/license-and-pricing.html) for more information.
+Pony ORM is released under multiple licenses, check [ponyorm.com](https://ponyorm.com/license-and-pricing.html) for more information.
 
-Pony ORM documentation is licensed under a Creative Commons Attribution-ShareAlike 3.0 Unported License.
-
-By editing or otherwise contributing to Pony ORM documentation, you agree to license any text you change or contribute under the CC BY-SA license.
-
-Copyright (c) 2014 Pony ORM, LLC. All rights reserved.
+Copyright (c) 2016 Pony ORM, LLC. All rights reserved.
 team (at) ponyorm.com
 
 Please send your questions, comments and suggestions to our mailing list [http://ponyorm-list.ponyorm.com](http://ponyorm-list.ponyorm.com)

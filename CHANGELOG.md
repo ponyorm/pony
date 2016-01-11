@@ -1,3 +1,36 @@
+# Pony ORM Release 0.6.2 (2015-01-11)
+
+The documentation was moved from this repo to a separate one at https://github.com/ponyorm/pony-doc
+The compiled version can be found at https://docs.ponyorm.com
+
+## New features
+
+* Python 3.5 support
+* #132, #145: raw_sql() function was added
+* #126: Ability to use @db_session with generator functions
+* #116: Add support to select by UUID
+* Ability to get string SQL statement using the Query.get_sql() method
+* New function delete(gen) and Query.delete(bulk=False)
+* Now it is possible to override Entity.__init__() and declare custom entity methods
+
+## Backward incompatible changes
+
+* Normalizing table names for symmetric relationships
+* Autostrip - automatically remove leading and trailing characters
+
+## Bugfixes
+
+* #87: Pony fails with pymysql installed as MySQLdb
+* #118: Pony should reconnect if previous connection was created before process was forked
+* #121: Unable to update value of unique attribute
+* #122: AssertionError when changing part of a composite key
+* #127: a workaround for incorrect pysqlite locking behavior
+* #136: Cascade delete does not work correctly for one-to-one relationships
+* #141, #143: remove restriction on adding new methods to entities
+* #142: Entity.select_random() AssertionError
+* #147: Add 'atom_expr' symbol handling for Python 3.5 grammar
+
+
 # Pony ORM Release 0.6.1 (2015-02-20)
 
 * Closed #65: Now the select(), filter(), order_by(), page(), limit(), random() methods can be applied to collection attributes
