@@ -120,8 +120,9 @@ class DBAPIProvider(object):
     def get_default_m2m_table_name(provider, attr, reverse):
         if attr.symmetric:
             assert reverse is attr
-            return attr.entity.__name__ + '_' + attr.name
-        name = attr.entity.__name__ + '_' + reverse.entity.__name__
+            name = attr.entity.__name__ + '_' + attr.name
+        else:
+            name = attr.entity.__name__ + '_' + reverse.entity.__name__
         return provider.normalize_name(name)
 
     def get_default_column_names(provider, attr, reverse_pk_columns=None):
@@ -365,6 +366,15 @@ class Converter(object):
         sql_type = sql_type.upper()
         return fk_types.get(sql_type, sql_type).lower()
 
+class NoneConverter(Converter):  # used for raw_sql() parameters only
+    def __init__(converter, provider, py_type, attr=None):
+        if attr is not None: throw(TypeError, 'Attribute %s has invalid type NoneType' % attr)
+        Converter.__init__(converter, provider, py_type)
+    def get_sql_type(converter, attr=None):
+        assert False
+    def get_fk_type(converter, sql_type):
+        assert False    
+
 class BoolConverter(Converter):
     def validate(converter, val):
         return bool(val)
@@ -390,10 +400,12 @@ class StrConverter(Converter):
             throw(TypeError, 'Max length argument must be int. Got: %r' % max_len)
         converter.max_len = max_len
         converter.db_encoding = kwargs.pop('db_encoding', None)
+        converter.autostrip = kwargs.pop('autostrip', True)
     def validate(converter, val):
         if PY2 and isinstance(val, str): val = val.decode('ascii')
         elif not isinstance(val, unicode): throw(TypeError,
             'Value type for attribute %s must be %s. Got: %r' % (converter.attr, unicode.__name__, type(val)))
+        if converter.autostrip: val = val.strip()
         max_len = converter.max_len
         val_len = len(val)
         if max_len and val_len > max_len:

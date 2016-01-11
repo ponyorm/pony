@@ -1,7 +1,7 @@
 # coding: cp1251
 
 from __future__ import absolute_import, print_function
-from pony.py23compat import PY2, iteritems, imap, izip, xrange, unicode
+from pony.py23compat import PY2, iteritems, imap, izip, xrange, unicode, basestring
 
 import re
 from datetime import datetime, date, time, timedelta
@@ -175,16 +175,30 @@ def str2datetime(s):
         if match is not None: break
     else: raise ValueError('Unrecognized datetime format')
 
-    dict = match.groupdict()
-    year, day, month = dict['year'], dict['day'], dict.get('month')
+    d = match.groupdict()
+    year, day, month = d['year'], d['day'], d.get('month')
 
     if month is None:
         for key, value in iteritems(month_dict):
             if key in s: month = value; break
         else: raise ValueError('Unrecognized datetime format')
 
-    hh, mm, ss, mcs = _extract_time_parts(dict)
+    hh, mm, ss, mcs = _extract_time_parts(d)
     return datetime(int(year), int(month), int(day), hh, mm, ss, mcs)
+
+def _extract_time_parts(groupdict):
+    hh, mm, ss, am, pm = imap(groupdict.get, ('hh', 'mm', 'ss', 'am', 'pm'))
+
+    if hh is None: hh, mm, ss = 12, 00, 00
+    elif am and hh == '12': hh = 0
+    elif pm and hh != '12': hh = int(hh) + 12
+
+    if isinstance(ss, basestring) and '.' in ss:
+        ss, mcs = ss.split('.', 1)
+        if len('mcs') < 6: mcs = (mcs + '000000')[:6]
+    else: mcs = 0
+
+    return int(hh), int(mm or 0), int(ss or 0), int(mcs)
 
 def str2timedelta(s):
     if '.' in s:
@@ -209,20 +223,6 @@ def timedelta2str(td):
     else: result = '%d:%d:%d' % (hours, minutes, seconds)
     if td.days >= 0: return result
     return '-' + result
-
-def _extract_time_parts(groupdict):
-    hh, mm, ss, am, pm = imap(groupdict.get, ('hh', 'mm', 'ss', 'am', 'pm'))
-
-    if hh is None: hh, mm, ss = 12, 00, 00
-    elif am and hh == '12': hh = 0
-    elif pm and hh != '12': hh = int(hh) + 12
-    
-    if ss is not None and '.' in ss:
-        ss, mcs = ss.split('.', 1)
-        if len('mcs') < 6: mcs = (mcs + '000000')[:6]
-    else: mcs = 0
-
-    return int(hh), int(mm or 0), int(ss or 0), int(mcs)
 
 converters = {
     int:  (int, unicode, 'Incorrect number'),

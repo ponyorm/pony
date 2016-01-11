@@ -13,6 +13,7 @@ from pony.orm.tests.test_mapping import *
 from pony.orm.tests.test_relations_one2one1 import *
 from pony.orm.tests.test_relations_one2one2 import *
 from pony.orm.tests.test_relations_one2one3 import *
+from pony.orm.tests.test_relations_one2one4 import *
 from pony.orm.tests.test_relations_symmetric_one2one import *
 from pony.orm.tests.test_relations_symmetric_m2m import *
 from pony.orm.tests.test_relations_one2many import *
@@ -51,6 +52,7 @@ from pony.orm.tests.test_show import *
 from pony.orm.tests.test_prefetching import *
 from pony.orm.tests.test_indexes import *
 from pony.orm.tests.test_inheritance import *
+from pony.orm.tests.test_generator_db_session import *
 
 #from new_tests import *
 

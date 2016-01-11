@@ -634,5 +634,21 @@ class TestAttribute(unittest.TestCase):
         self.assertFalse(Bar.x.is_implicit)
         self.assertFalse(Bar.y.is_implicit)
 
+    @raises_exception(TypeError, 'Attribute Foo.x has invalid type NoneType')
+    def test_none_type(self):
+        db = Database('sqlite', ':memory:')
+        class Foo(db.Entity):
+            x = Required(type(None))
+        db.generate_mapping(create_tables=True)
+
+    @raises_exception(TypeError, "'sql_default' option value cannot be empty string, "
+                                 "because it should be valid SQL literal or expression. "
+                                 "Try to use \"''\", or just specify default='' instead.")
+    def test_none_type(self):
+        db = Database('sqlite', ':memory:')
+        class Foo(db.Entity):
+            x = Required(str, sql_default='')
+                              
+
 if __name__ == '__main__':
     unittest.main()

@@ -274,6 +274,7 @@ class SQLTranslator(ASTTranslator):
         monad = tree.expr.monad
         if isinstance(monad, translator.ParamMonad): throw(TranslationError,
             "External parameter '%s' cannot be used as query result" % ast2src(tree.expr))
+        translator.expr_monads = monad.items if isinstance(monad, translator.ListMonad) else [ monad ]
         translator.groupby_monads = None
         expr_type = monad.type
         if isinstance(expr_type, SetType): expr_type = expr_type.item_type
@@ -300,14 +301,13 @@ class SQLTranslator(ASTTranslator):
                                                if not attr.is_collection and not attr.lazy ]
         else:
             translator.alias = None
-            if isinstance(monad, translator.ListMonad):
-                expr_monads = monad.items
+            expr_monads = translator.expr_monads
+            if len(expr_monads) > 1:
                 translator.expr_type = tuple(m.type for m in expr_monads)  # ?????
                 expr_columns = []
                 for m in expr_monads: expr_columns.extend(m.getsql())
                 translator.expr_columns = expr_columns
             else:
-                expr_monads = [ monad ]
                 translator.expr_type = monad.type
                 translator.expr_columns = monad.getsql()
             if translator.aggregated:
@@ -392,6 +392,12 @@ class SQLTranslator(ASTTranslator):
             sql_ast = [ 'SELECT_FOR_UPDATE', nowait ]
             translator.query_result_is_cacheable = False
         else: sql_ast = [ 'SELECT' ]
+
+        groupby_monads = translator.groupby_monads
+        if distinct and translator.aggregated and not groupby_monads:
+            distinct = False
+            groupby_monads = translator.expr_monads
+
         select_ast = [ 'DISTINCT' if distinct else 'ALL' ] + translator.expr_columns
         if aggr_func_name:
             expr_type = translator.expr_type
@@ -406,7 +412,7 @@ class SQLTranslator(ASTTranslator):
                     throw(TypeError, '%r is valid for numeric attributes only' % aggr_func_name.lower())
                 assert len(translator.expr_columns) == 1
             aggr_ast = None
-            if translator.groupby_monads or (aggr_func_name == 'COUNT' and distinct
+            if groupby_monads or (aggr_func_name == 'COUNT' and distinct
                                              and isinstance(translator.expr_type, EntityMeta)
                                              and len(translator.expr_columns) > 1):
                 outer_alias = 't'
@@ -440,11 +446,7 @@ class SQLTranslator(ASTTranslator):
         conditions = translator.conditions[:]
         having_conditions = translator.having_conditions[:]
         if is_not_null_checks:
-            expr_monad = translator.tree.expr.monad
-            if isinstance(expr_monad, translator.ListMonad):
-                expr_monads = expr_monad.items
-            else: expr_monads = [ expr_monad ]
-            for monad in expr_monads:
+            for monad in translator.expr_monads:
                 if isinstance(monad, translator.ObjectIterMonad): pass
                 elif isinstance(monad, translator.AttrMonad) and not monad.attr.nullable: pass
                 else:
@@ -454,9 +456,9 @@ class SQLTranslator(ASTTranslator):
         if conditions:
             sql_ast.append([ 'WHERE' ] + conditions)
 
-        if translator.groupby_monads:
+        if groupby_monads:
             group_by = [ 'GROUP_BY' ]
-            for m in translator.groupby_monads: group_by.extend(m.getsql())
+            for m in groupby_monads: group_by.extend(m.getsql())
             sql_ast.append(group_by)
         else: group_by = None
 
@@ -466,9 +468,10 @@ class SQLTranslator(ASTTranslator):
                 'query must have grouping columns (i.e. resulting non-aggregated values)')
             sql_ast.append([ 'HAVING' ] + having_conditions)
 
-        if translator.order: sql_ast.append([ 'ORDER_BY' ] + translator.order)
+        if translator.order and not aggr_func_name: sql_ast.append([ 'ORDER_BY' ] + translator.order)
 
         if range:
+            assert not aggr_func_name
             start, stop = range
             limit = stop - start
             offset = start
@@ -481,13 +484,12 @@ class SQLTranslator(ASTTranslator):
         return sql_ast, attr_offsets
     def construct_delete_sql_ast(translator):
         entity = translator.expr_type
+        expr_monad = translator.tree.expr.monad
         if not isinstance(entity, EntityMeta): throw(TranslationError,
-            'Delete query should be applied to a single entity. Got: %s'
-            % ast2src(translator.tree.expr.monad))
+            'Delete query should be applied to a single entity. Got: %s' % ast2src(translator.tree.expr))
         if translator.groupby_monads: throw(TranslationError,
             'Delete query cannot contains GROUP BY section or aggregate functions')
         assert not translator.having_conditions
-        expr_monad = translator.tree.expr.monad
         tableref = expr_monad.tableref
         from_ast = translator.subquery.from_ast
         assert from_ast[0] == 'FROM'
@@ -529,16 +531,14 @@ class SQLTranslator(ASTTranslator):
         if 0 in numbers: throw(ValueError, 'Numeric arguments of order_by() method must be non-zero')
         translator = deepcopy(translator)
         order = translator.order = translator.order[:]  # only order will be changed
-        expr_monad = translator.tree.expr.monad
-        if isinstance(expr_monad, translator.ListMonad): monads = expr_monad.items
-        else: monads = (expr_monad,)
+        expr_monads = translator.expr_monads
         new_order = []
         for i in numbers:
-            try: monad = monads[abs(i)-1]
+            try: monad = expr_monads[abs(i)-1]
             except IndexError:
-                if len(monads) > 1: throw(IndexError,
+                if len(expr_monads) > 1: throw(IndexError,
                     "Invalid index of order_by() method: %d "
-                    "(query result is list of tuples with only %d elements in each)" % (i, len(monads)))
+                    "(query result is list of tuples with only %d elements in each)" % (i, len(expr_monads)))
                 else: throw(IndexError,
                     "Invalid index of order_by() method: %d "
                     "(query result is single list of elements and has only one 'column')" % i)
@@ -665,11 +665,7 @@ class SQLTranslator(ASTTranslator):
         argnames = translator.argnames
         if translator.argnames and name in translator.argnames:
             i = translator.argnames.index(name)
-            expr_monad = translator.tree.expr.monad
-            if isinstance(expr_monad, translator.ListMonad):
-                return expr_monad.items[i]
-            assert i == 0
-            return expr_monad
+            return translator.expr_monads[i]
         tableref = translator.subquery.get_tableref(name)
         if tableref is not None:
             return translator.ObjectIterMonad(translator, tableref, tableref.entity)
@@ -1177,6 +1173,8 @@ class ListMonad(Monad):
         else:
             sql = sqlor([ sqland([ [ 'EQ', a, b ]  for a, b in izip(left_sql, item.getsql()) ]) for item in monad.items ])
         return translator.BoolExprMonad(translator, sql)
+    def getsql(monad, subquery=None):
+        return [ [ 'ROW' ] + [ item.getsql()[0] for item in monad.items ] ]
 
 class BufferMixin(MonadMixin):
     pass
@@ -1729,15 +1727,27 @@ class CmpMonad(BoolMonad):
         if op == 'is not':
             return [ sqland([ [ 'IS_NOT_NULL', item ] for item in left_sql ]) ]
         right_sql = monad.right.getsql()
+        if len(left_sql) == 1 and left_sql[0][0] == 'ROW':
+            left_sql = left_sql[0][1:]
+        if len(right_sql) == 1 and right_sql[0][0] == 'ROW':
+            right_sql = right_sql[0][1:]
         assert len(left_sql) == len(right_sql)
+        size = len(left_sql)
         if op in ('<', '<=', '>', '>='):
-            assert len(left_sql) == len(right_sql) == 1
-            return [ [ cmp_ops[op], left_sql[0], right_sql[0] ] ]
+            if size == 1:
+                return [ [ cmp_ops[op], left_sql[0], right_sql[0] ] ]
+            if monad.translator.row_value_syntax:
+                return [ [ cmp_ops[op], [ 'ROW' ] + left_sql, [ 'ROW' ] + right_sql ] ]
+            clauses = []
+            for i in xrange(1, size):
+                clauses.append(sqland([ [ 'EQ', left_sql[j], right_sql[j] ] for j in xrange(1, i) ]
+                                + [ [ cmp_ops[op[0] if i < size - 1 else op], left_sql[i], right_sql[i] ] ]))
+            return [ sqlor(clauses) ]
         if op == '==':
             return [ sqland([ [ 'EQ', a, b ] for a, b in izip(left_sql, right_sql) ]) ]
         if op == '!=':
             return [ sqlor([ [ 'NE', a, b ] for a, b in izip(left_sql, right_sql) ]) ]
-        assert False  # pragma: no cover
+        assert False, op  # pragma: no cover
 
 class LogicalBinOpMonad(BoolMonad):
     def __init__(monad, operands):

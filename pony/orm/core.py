@@ -12,6 +12,7 @@ from threading import Lock, RLock, currentThread as current_thread, _MainThread
 from contextlib import contextmanager
 from collections import defaultdict
 from hashlib import md5
+from inspect import isgeneratorfunction
 
 from pony.thirdparty.compiler import ast, parse
 
@@ -315,7 +316,7 @@ select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class DBSessionContextManager(object):
     __slots__ = 'retry', 'retry_exceptions', 'allowed_exceptions', 'immediate', 'ddl', 'serializable'
-    def __init__(self, retry=0, immediate=False, ddl=False, serializable=False,
+    def __init__(db_session, retry=0, immediate=False, ddl=False, serializable=False,
                  retry_exceptions=(TransactionError,), allowed_exceptions=()):
         if retry is not 0:
             if type(retry) is not int: throw(TypeError,
@@ -328,66 +329,47 @@ class DBSessionContextManager(object):
                 if e in retry_exceptions: throw(TypeError,
                     'The same exception %s cannot be specified in both '
                     'allowed and retry exception lists simultaneously' % e.__name__)
-        self.retry = retry
-        self.ddl = ddl
-        self.serializable = serializable
-        self.immediate = immediate or ddl or serializable
-        self.retry_exceptions = retry_exceptions
-        self.allowed_exceptions = allowed_exceptions
-    def __call__(self, *args, **kwargs):
-        if not args and not kwargs: return self
+        db_session.retry = retry
+        db_session.ddl = ddl
+        db_session.serializable = serializable
+        db_session.immediate = immediate or ddl or serializable
+        db_session.retry_exceptions = retry_exceptions
+        db_session.allowed_exceptions = allowed_exceptions
+    def __call__(db_session, *args, **kwargs):
+        if not args and not kwargs: return db_session
         if len(args) > 1: throw(TypeError,
             'Pass only keyword arguments to db_session or use db_session as decorator')
-        if not args: return self.__class__(**kwargs)
+        if not args: return db_session.__class__(**kwargs)
         if kwargs: throw(TypeError,
             'Pass only keyword arguments to db_session or use db_session as decorator')
         func = args[0]
-        def new_func(func, *args, **kwargs):
-            if self.ddl and local.db_context_counter:
-                if isinstance(func, types.FunctionType): func = func.__name__ + '()'
-                throw(TransactionError, '%s cannot be called inside of db_session' % func)
-            exc = tb = None
-            try:
-                for i in xrange(self.retry+1):
-                    self._enter()
-                    exc_type = exc = tb = None
-                    try: return func(*args, **kwargs)
-                    except Exception:
-                        exc_type, exc, tb = sys.exc_info()  # exc can be None in Python 2.6
-                        retry_exceptions = self.retry_exceptions
-                        if not callable(retry_exceptions):
-                            do_retry = issubclass(exc_type, tuple(retry_exceptions))
-                        else:
-                            do_retry = exc is not None and retry_exceptions(exc)
-                        if not do_retry: raise
-                    finally: self.__exit__(exc_type, exc, tb)
-                reraise(exc_type, exc, tb)
-            finally: del exc, tb
-        return decorator(new_func, func)
-    def __enter__(self):
-        if self.retry is not 0: throw(TypeError,
+        if not isgeneratorfunction(func):
+            return db_session._wrap_function(func)
+        return db_session._wrap_generator_function(func)
+    def __enter__(db_session):
+        if db_session.retry is not 0: throw(TypeError,
             "@db_session can accept 'retry' parameter only when used as decorator and not as context manager")
-        if self.ddl: throw(TypeError,
+        if db_session.ddl: throw(TypeError,
             "@db_session can accept 'ddl' parameter only when used as decorator and not as context manager")
-        self._enter()
-    def _enter(self):
+        db_session._enter()
+    def _enter(db_session):
         if local.db_session is None:
             assert not local.db_context_counter
-            local.db_session = self
-        elif self.serializable and not local.db_session.serializable: throw(TransactionError,
+            local.db_session = db_session
+        elif db_session.serializable and not local.db_session.serializable: throw(TransactionError,
             'Cannot start serializable transaction inside non-serializable transaction')
         local.db_context_counter += 1
-    def __exit__(self, exc_type=None, exc=None, tb=None):
+    def __exit__(db_session, exc_type=None, exc=None, tb=None):
         local.db_context_counter -= 1
         if local.db_context_counter: return
-        assert local.db_session is self
+        assert local.db_session is db_session
         try:
             if exc_type is None: can_commit = True
-            elif not callable(self.allowed_exceptions):
-                can_commit = issubclass(exc_type, tuple(self.allowed_exceptions))
+            elif not callable(db_session.allowed_exceptions):
+                can_commit = issubclass(exc_type, tuple(db_session.allowed_exceptions))
             else:
                 # exc can be None in Python 2.6 even if exc_type is not None
-                try: can_commit = exc is not None and self.allowed_exceptions(exc)
+                try: can_commit = exc is not None and db_session.allowed_exceptions(exc)
                 except:
                     rollback()
                     raise
@@ -401,6 +383,94 @@ class DBSessionContextManager(object):
             local.db_session = None
             local.user_groups_cache.clear()
             local.user_roles_cache.clear()
+    def _wrap_function(db_session, func):
+        def new_func(func, *args, **kwargs):
+            if db_session.ddl and local.db_context_counter:
+                if isinstance(func, types.FunctionType): func = func.__name__ + '()'
+                throw(TransactionError, '%s cannot be called inside of db_session' % func)
+            exc = tb = None
+            try:
+                for i in xrange(db_session.retry+1):
+                    db_session._enter()
+                    exc_type = exc = tb = None
+                    try: return func(*args, **kwargs)
+                    except:
+                        exc_type, exc, tb = sys.exc_info()  # exc can be None in Python 2.6
+                        retry_exceptions = db_session.retry_exceptions
+                        if not callable(retry_exceptions):
+                            do_retry = issubclass(exc_type, tuple(retry_exceptions))
+                        else:
+                            do_retry = exc is not None and retry_exceptions(exc)
+                        if not do_retry: raise
+                    finally: db_session.__exit__(exc_type, exc, tb)
+                reraise(exc_type, exc, tb)
+            finally: del exc, tb
+        return decorator(new_func, func)
+    def _wrap_generator_function(db_session, gen_func):
+        for option in ('ddl', 'retry', 'serializable'):
+            if getattr(db_session, option, None): throw(TypeError,
+                "db_session with `%s` option cannot be applied to generator function" % option)
+
+        def interact(iterator, input=None, exc_info=None):
+            if exc_info is None:
+                return next(iterator) if input is None else iterator.send(input)
+
+            if exc_info[0] is GeneratorExit:
+                close = getattr(iterator, 'close', None)
+                if close is not None: close()
+                reraise(*exc_info)
+
+            throw_ = getattr(iterator, 'throw', None)
+            if throw_ is None: reraise(*exc_info)
+            return throw_(*exc_info)
+
+        def new_gen_func(gen_func, *args, **kwargs):
+            db2cache_copy = {}
+
+            def wrapped_interact(iterator, input=None, exc_info=None):
+                if local.db_session is not None: throw(TransactionError,
+                    '@db_session-wrapped generator cannot be used inside another db_session')
+                assert not local.db_context_counter and not local.db2cache
+                local.db_context_counter = 1
+                local.db_session = db_session
+                local.db2cache.update(db2cache_copy)
+                db2cache_copy.clear()
+                try:
+                    try:
+                        output = interact(iterator, input, exc_info)
+                    except StopIteration as e:
+                        for cache in _get_caches():
+                            if cache.modified or cache.in_transaction: throw(TransactionError,
+                                'You need to manually commit() changes before exiting from the generator')
+                        raise
+                    for cache in _get_caches():
+                        if cache.modified or cache.in_transaction: throw(TransactionError,
+                            'You need to manually commit() changes before yielding from the generator')
+                except:
+                    rollback()
+                    raise
+                else:
+                    return output
+                finally:
+                    db2cache_copy.update(local.db2cache)
+                    local.db2cache.clear()
+                    local.db_context_counter = 0
+                    local.db_session = None
+
+            gen = gen_func(*args, **kwargs)
+            iterator = iter(gen)
+            output = wrapped_interact(iterator)
+            try:
+                while True:
+                    try:
+                        input = yield output
+                    except:
+                        output = wrapped_interact(iterator, exc_info=sys.exc_info())
+                    else:
+                        output = wrapped_interact(iterator, input)
+            except StopIteration:
+                return
+        return decorator(new_gen_func, gen_func)
 
 db_session = DBSessionContextManager()
 
@@ -1497,32 +1567,36 @@ class SessionCache(object):
         if cache.noflush_counter: return
         assert cache.is_alive
         if not cache.immediate: cache.immediate = True
-        if not cache.modified: return
+        for i in xrange(50):
+            if not cache.modified: return
 
-        with cache.flush_disabled():
-            for obj in cache.objects_to_save:  # can grow during iteration
-                if obj is not None: obj._before_save_()
+            with cache.flush_disabled():
+                for obj in cache.objects_to_save:  # can grow during iteration
+                    if obj is not None: obj._before_save_()
 
-            cache.query_results.clear()
-            modified_m2m = cache._calc_modified_m2m()
-            for attr, (added, removed) in iteritems(modified_m2m):
-                if not removed: continue
-                attr.remove_m2m(removed)
-            for obj in cache.objects_to_save:
-                if obj is not None: obj._save_()
-            for attr, (added, removed) in iteritems(modified_m2m):
-                if not added: continue
-                attr.add_m2m(added)
+                cache.query_results.clear()
+                modified_m2m = cache._calc_modified_m2m()
+                for attr, (added, removed) in iteritems(modified_m2m):
+                    if not removed: continue
+                    attr.remove_m2m(removed)
+                for obj in cache.objects_to_save:
+                    if obj is not None: obj._save_()
+                for attr, (added, removed) in iteritems(modified_m2m):
+                    if not added: continue
+                    attr.add_m2m(added)
 
-        saved_objects = [ (obj, obj._status_) for obj in cache.objects_to_save if obj is not None ]
+            saved_objects = [ (obj, obj._status_) for obj in cache.objects_to_save if obj is not None ]
 
-        cache.max_id_cache.clear()
-        cache.modified_collections.clear()
-        cache.objects_to_save[:] = []
-        cache.modified = False
+            cache.max_id_cache.clear()
+            cache.modified_collections.clear()
+            cache.objects_to_save[:] = []
+            cache.modified = False
 
-        for obj, status in saved_objects:
-            if obj is not None: obj._after_save_(status)
+            for obj, status in saved_objects:
+                if obj is not None: obj._after_save_(status)
+        else:
+            if cache.modified: throw(TransactionError,
+                'Recursion depth limit reached in obj._after_save_() call')
     def _calc_modified_m2m(cache):
         modified_m2m = {}
         for attr, objects in sorted(iteritems(cache.modified_collections),
@@ -1723,7 +1797,13 @@ class Attribute(object):
         else:
             attr.default = None
 
-        if attr.sql_default not in (None, True, False) and not isinstance(attr.sql_default, basestring):
+        sql_default = attr.sql_default
+        if isinstance(sql_default, basestring):
+            if sql_default == '': throw(TypeError,
+                "'sql_default' option value cannot be empty string, "
+                "because it should be valid SQL literal or expression. "
+                "Try to use \"''\", or just specify default='' instead.")
+        elif attr.sql_default not in (None, True, False):
             throw(TypeError, "'sql_default' option of %s attribute must be of string or bool type. Got: %s"
                              % (attr, attr.sql_default))
 
@@ -1890,6 +1970,7 @@ class Attribute(object):
             wbits = obj._wbits_
             bit = obj._bits_[attr]
             objects_to_save = cache.objects_to_save
+            objects_to_save_needs_undo = False
             if wbits is not None and bit:
                 obj._wbits_ = wbits | bit
                 if status != 'modified':
@@ -1898,6 +1979,7 @@ class Attribute(object):
                     obj._status_ = 'modified'
                     obj._save_pos_ = len(objects_to_save)
                     objects_to_save.append(obj)
+                    objects_to_save_needs_undo = True
                     cache.modified = True
             if not attr.reverse and not attr.is_part_of_unique_index:
                 obj._vals_[attr] = new_val
@@ -1908,7 +1990,7 @@ class Attribute(object):
             def undo_func():
                 obj._status_ = status
                 obj._wbits_ = wbits
-                if status in ('loaded', 'inserted', 'updated'):
+                if objects_to_save_needs_undo:
                     assert objects_to_save
                     obj2 = objects_to_save.pop()
                     assert obj2 is obj and obj._save_pos_ == len(objects_to_save)
@@ -1938,7 +2020,11 @@ class Attribute(object):
                 elif not is_reverse_call: attr.update_reverse(obj, old_val, new_val, undo_funcs)
                 elif old_val not in (None, NOT_LOADED):
                     if not reverse.is_collection:
-                        if new_val is not None: reverse.__set__(old_val, None, undo_funcs)
+                        if new_val is not None:
+                            if reverse.is_required: throw(ConstraintError,
+                                'Cannot unlink %r from previous %s object, because %r attribute is required'
+                                % (old_val, obj, reverse))
+                            reverse.__set__(old_val, None, undo_funcs)
                     elif isinstance(reverse, Set):
                         reverse.reverse_remove((old_val,), obj, undo_funcs)
                     else: throw(NotImplementedError)
@@ -2002,6 +2088,9 @@ class Attribute(object):
         if not reverse.is_collection:
             if old_val not in (None, NOT_LOADED):
                 if attr.cascade_delete: old_val._delete_(undo_funcs)
+                elif reverse.is_required: throw(ConstraintError,
+                    'Cannot unlink %r from previous %s object, because %r attribute is required'
+                    % (old_val, obj, reverse))
                 else: reverse.__set__(old_val, None, undo_funcs)
             if new_val is not None: reverse.__set__(new_val, obj, undo_funcs)
         elif isinstance(reverse, Set):
@@ -3250,7 +3339,7 @@ class EntityMeta(type):
         entity._new_attrs_ = new_attrs
         entity._attrs_ = base_attrs + new_attrs
         entity._adict_ = dict((attr.name, attr) for attr in entity._attrs_)
-        entity._subclass_attrs_ = set()
+        entity._subclass_attrs_ = []
         entity._subclass_adict_ = {}
         for base in entity._all_bases_:
             for attr in new_attrs:
@@ -3260,7 +3349,7 @@ class EntityMeta(type):
                     'Attribute %s conflicts with attribute %s because both entities inherit from %s. '
                     'To fix this, move attribute definition to base class'
                     % (attr, prev, entity._root_.__name__))
-                base._subclass_attrs_.add(attr)
+                base._subclass_attrs_.append(attr)
         entity._attrnames_cache_ = {}
 
         try: table_name = entity.__dict__['_table_']
@@ -3889,12 +3978,12 @@ class EntityMeta(type):
             if not attr.reverse:
                 def fget(wrapper, attr=attr):
                     attrnames = wrapper._attrnames_ + (attr.name,)
-                    items = [ attr.__get__(item) for item in wrapper ]
+                    items = [ x for x in (attr.__get__(item) for item in wrapper) if x is not None ]
                     return Multiset(wrapper._obj_, attrnames, items)
             elif not attr.is_collection:
                 def fget(wrapper, attr=attr):
                     attrnames = wrapper._attrnames_ + (attr.name,)
-                    items = [ attr.__get__(item) for item in wrapper ]
+                    items = [ x for x in (attr.__get__(item) for item in wrapper) if x is not None ]
                     rentity = attr.py_type
                     cls = rentity._get_multiset_subclass_()
                     return cls(wrapper._obj_, attrnames, items)
@@ -4924,6 +5013,9 @@ class Query(object):
             else: query_key = sql_key + (arguments_key)
         else: query_key = None
         return sql, arguments, attr_offsets, query_key
+    def get_sql(query):
+        sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments()
+        return sql
     def _fetch(query, range=None):
         translator = query._translator
         if query._result is not None:

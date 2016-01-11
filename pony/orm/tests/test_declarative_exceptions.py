@@ -233,6 +233,9 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(TypeError, "Incomparable types '%s' and 'list' in expression: s.name == [1, (2,)]" % unicode.__name__)
     def test55(self):
         select(s for s in Student if s.name == [1, (2,)])
+    @raises_exception(TypeError, "Delete query should be applied to a single entity. Got: (s, g)")
+    def test56(self):
+        delete((s, g) for g in Group for s in g.students if s.gpa > 3)
 
 if __name__ == '__main__':
     unittest.main()

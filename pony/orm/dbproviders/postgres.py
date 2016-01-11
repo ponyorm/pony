@@ -18,6 +18,8 @@ from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import Value, SQLBuilder
 from pony.converting import timedelta2str
 
+NoneType = type(None)
+
 class PGColumn(dbschema.Column):
     auto_template = 'SERIAL PRIMARY KEY'
 
@@ -225,6 +227,7 @@ class PGProvider(DBAPIProvider):
         cursor.execute(sql)
 
     converter_classes = [
+        (NoneType, dbapiprovider.NoneConverter),
         (bool, dbapiprovider.BoolConverter),
         (basestring, PGStrConverter),
         (int_types, PGIntConverter),

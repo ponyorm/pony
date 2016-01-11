@@ -49,12 +49,11 @@ class MethodType(object):
     __slots__ = 'obj', 'func'
     def __deepcopy__(self, memo):
         return self  # MethodType instances are "immutable"
-    if PY2:
-        def __init__(self, method):
+    def __init__(self, method):
+        if PY2:
             self.obj = method.im_self
             self.func = method.im_func
-    else:
-        def __init__(self, method):
+        else:
             self.obj = method.__self__
             self.func = method.__func__
     def __eq__(self, other):
