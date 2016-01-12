@@ -1,4 +1,4 @@
-# Pony ORM Release 0.6.2 (2015-01-11)
+# Pony ORM Release 0.6.2 (2016-01-11)
 
 The documentation was moved from this repo to a separate one at https://github.com/ponyorm/pony-doc
 The compiled version can be found at https://docs.ponyorm.com
