@@ -9,6 +9,7 @@ from random import random
 from time import strptime
 from threading import Lock
 from uuid import UUID
+from binascii import hexlify
 
 from pony.orm import core, dbschema, sqltranslation, dbapiprovider
 from pony.orm.core import log_orm
@@ -321,6 +322,24 @@ provider_cls = SQLiteProvider
 def _text_factory(s):
     return s.decode('utf8', 'replace')
 
+def make_string_function(name, base_func):
+    def func(value):
+        if value is None:
+            return None
+        t = type(value)
+        if t is not unicode:
+            if t is buffer:
+                value = hexlify(value).decode('ascii')
+            else:
+                value = unicode(value)
+        result = base_func(value)
+        return result
+    func.__name__ = name
+    return func
+
+py_upper = make_string_function('py_upper', unicode.upper)
+py_lower = make_string_function('py_lower', unicode.lower)
+
 class SQLitePool(Pool):
     def __init__(pool, filename, create_db): # called separately in each thread
         pool.filename = filename
@@ -334,8 +353,8 @@ class SQLitePool(Pool):
         con.text_factory = _text_factory
         con.create_function('power', 2, pow)
         con.create_function('rand', 0, random)
-        con.create_function('py_upper', 1, unicode.upper)
-        con.create_function('py_lower', 1, unicode.lower)
+        con.create_function('py_upper', 1, py_upper)
+        con.create_function('py_lower', 1, py_lower)
         if sqlite.sqlite_version_info >= (3, 6, 19):
             con.execute('PRAGMA foreign_keys = true')
     def disconnect(pool):
