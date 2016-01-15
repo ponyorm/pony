@@ -53,7 +53,7 @@ from pony.orm.tests.test_prefetching import *
 from pony.orm.tests.test_indexes import *
 from pony.orm.tests.test_inheritance import *
 from pony.orm.tests.test_generator_db_session import *
-from pony.orm.tests.test_unicode import *
+from pony.orm.tests.test_sqlite_str_functions import *
 
 #from new_tests import *
 
