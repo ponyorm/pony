@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from pony.py23compat import PY2, imap, basestring, buffer, int_types
+from pony.py23compat import PY2, imap, basestring, buffer, int_types, unicode
 
 import os.path
 import sqlite3 as sqlite
@@ -12,7 +12,7 @@ from uuid import UUID
 
 from pony.orm import core, dbschema, sqltranslation, dbapiprovider
 from pony.orm.core import log_orm
-from pony.orm.sqlbuilding import SQLBuilder, join
+from pony.orm.sqlbuilding import SQLBuilder, join, make_unary_func
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
 from pony.utils import localbase, datetime2timestamp, timestamp2datetime, decorator, absolutize_path, throw
 
@@ -27,11 +27,24 @@ class SQLiteSchema(dbschema.DBSchema):
     named_foreign_keys = False
     fk_class = SQLiteForeignKey
 
+def make_overriden_string_func(sqlop):
+    def func(translator, monad):
+        sql = monad.getsql()
+        assert len(sql) == 1
+        translator = monad.translator
+        return translator.StringExprMonad(translator, monad.type, [ sqlop, sql[0] ])
+    func.__name__ = sqlop
+    return func
+
+
 class SQLiteTranslator(sqltranslation.SQLTranslator):
     dialect = 'SQLite'
     sqlite_version = sqlite.sqlite_version_info
     row_value_syntax = False
     rowid_support = True
+
+    StringMixin_UPPER = make_overriden_string_func('PY_UPPER')
+    StringMixin_LOWER = make_overriden_string_func('PY_LOWER')
 
 class SQLiteBuilder(SQLBuilder):
     dialect = 'SQLite'
@@ -107,6 +120,8 @@ class SQLiteBuilder(SQLBuilder):
         return fname, '(',  join(', ', imap(builder, args)), ')'
     def RANDOM(builder):
         return 'rand()'  # return '(random() / 9223372036854775807.0 + 1.0) / 2.0'
+    PY_UPPER = make_unary_func('py_upper')
+    PY_LOWER = make_unary_func('py_lower')
 
 class SQLiteIntConverter(dbapiprovider.IntConverter):
     def sql_type(converter):
@@ -319,6 +334,8 @@ class SQLitePool(Pool):
         con.text_factory = _text_factory
         con.create_function('power', 2, pow)
         con.create_function('rand', 0, random)
+        con.create_function('py_upper', 1, unicode.upper)
+        con.create_function('py_lower', 1, unicode.lower)
         if sqlite.sqlite_version_info >= (3, 6, 19):
             con.execute('PRAGMA foreign_keys = true')
     def disconnect(pool):
