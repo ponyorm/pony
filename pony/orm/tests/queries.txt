@@ -876,3 +876,15 @@ WHERE "ID" IN (
         WHERE "s"."GPA" > "s2"."GPA"
         )
     )
+
+# Test UPPER/LOWER functions:
+
+>>> select(s.name.upper() for s in Student)
+
+SELECT DISTINCT py_upper("s"."name")
+FROM "Student" "s"
+
+PostgreSQL:
+
+SELECT DISTINCT upper("s"."name")
+FROM "student" "s"
