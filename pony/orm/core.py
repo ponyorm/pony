@@ -4621,8 +4621,9 @@ class Entity(with_metaclass(EntityMeta)):
 
         arguments = adapter(values)
         try:
-            if auto_pk: new_id = database._exec_sql(sql, arguments, returning_id=True)
-            else: database._exec_sql(sql, arguments)
+            if auto_pk: new_id = database._exec_sql(sql, arguments, returning_id=True,
+                                                    start_transaction=True)
+            else: database._exec_sql(sql, arguments, start_transaction=True)
         except IntegrityError as e:
             msg = " ".join(tostring(arg) for arg in e.args)
             throw(TransactionIntegrityError,
@@ -4685,7 +4686,7 @@ class Entity(with_metaclass(EntityMeta)):
                 obj._update_sql_cache_[query_key] = sql, adapter
             else: sql, adapter = cached_sql
             arguments = adapter(values)
-            cursor = database._exec_sql(sql, arguments)
+            cursor = database._exec_sql(sql, arguments, start_transaction=True)
             if cursor.rowcount != 1:
                 throw(OptimisticCheckError, 'Object %s was updated outside of current transaction' % safe_repr(obj))
         obj._status_ = 'updated'
@@ -4715,7 +4716,7 @@ class Entity(with_metaclass(EntityMeta)):
             obj.__class__._delete_sql_cache_[query_key] = sql, adapter
         else: sql, adapter = cached_sql
         arguments = adapter(values)
-        database._exec_sql(sql, arguments)
+        database._exec_sql(sql, arguments, start_transaction=True)
         obj._status_ = 'deleted'
         cache.indexes[obj._pk_attrs_].pop(obj._pkval_)
     def _save_(obj, dependent_objects=None):
