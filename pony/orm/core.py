@@ -1593,7 +1593,7 @@ class SessionCache(object):
             cache.modified = False
 
             for obj, status in saved_objects:
-                if obj is not None: obj._after_save_(status)
+                obj._after_save_(status)
         else:
             if cache.modified: throw(TransactionError,
                 'Recursion depth limit reached in obj._after_save_() call')
@@ -4082,6 +4082,7 @@ def populate_criteria_list(criteria_list, columns, converters, params_count=0, t
 statuses = set(['created', 'cancelled', 'loaded', 'modified', 'inserted', 'updated', 'marked_to_delete', 'deleted'])
 del_statuses = set(['marked_to_delete', 'deleted', 'cancelled'])
 created_or_deleted_statuses = set(['created']) | del_statuses
+saved_statuses = set(['inserted', 'updated', 'deleted'])
 
 def throw_object_was_deleted(obj):
     assert obj._status_ in del_statuses
@@ -4723,18 +4724,37 @@ class Entity(with_metaclass(EntityMeta)):
         cache = obj._session_cache_
         assert cache.is_alive
         status = obj._status_
-        if status in ('loaded', 'inserted', 'updated', 'cancelled'): return
 
         if status in ('created', 'modified'):
             obj._save_principal_objects_(dependent_objects)
 
-        obj._save_pos_ = None
         if status == 'created': obj._save_created_()
         elif status == 'modified': obj._save_updated_()
         elif status == 'marked_to_delete': obj._save_deleted_()
-        else: assert False  # pragma: no cover
+        else: assert False, "_save_() called for object %r with incorrect status %s" % (obj, status)  # pragma: no cover
+
+        assert obj._status_ in saved_statuses
+        obj._save_pos_ = None
     def flush(obj):
-        with obj._session_cache_.flush_disabled(): obj._save_()
+        status = obj._status_
+        if status not in ('created', 'modified', 'marked_to_delete'):
+            return
+
+        save_pos = obj._save_pos_
+        assert save_pos is not None, 'save_pos is None for %s object' % status
+
+        with obj._session_cache_.flush_disabled():
+            obj._before_save_() # should be inside flush_disabled to prevent infinite recursion
+                                # TODO: add to documentation that flush is disabled inside before_xxx hooks
+            obj._save_()
+
+        objects_to_save = obj._session_cache_.objects_to_save
+        if save_pos == len(objects_to_save) - 1:
+            objects_to_save.pop()
+        else:
+            objects_to_save[save_pos] = None
+
+        obj._after_save_(status)
     def _before_save_(obj):
         status = obj._status_
         if status == 'created': obj.before_insert()
