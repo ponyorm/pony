@@ -1,3 +1,15 @@
+# Pony ORM Release 0.6.3 (2016-02-05)
+
+This release brings no new features, has no backward incompatible changes, only bug fixes.
+If you are using obj.flush() method in your code we recommend you to upgrade to 0.6.3 release.
+
+## Bugfixes
+
+* Fixes #138 Incorrect behavior of obj.flush(): assertion failed after exception
+* Fixes #157 Incorrect transaction state after obj.flush() caused "release unlocked lock" error in SQLite
+* Fixes #151 SQLite + upper() or lower() does not work as expected
+
+
 # Pony ORM Release 0.6.2 (2016-01-11)
 
 The documentation was moved from this repo to a separate one at https://github.com/ponyorm/pony-doc
