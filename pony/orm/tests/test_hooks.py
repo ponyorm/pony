@@ -85,5 +85,52 @@ class TestHooks(unittest.TestCase):
         p4 = Person(id=4, name='Bob', age=16)
         db.flush()
 
+
+def flush_for(*objects):
+    for obj in objects:
+        obj.flush()
+
+class ObjectFlushTest(unittest.TestCase):
+
+    def setUp(self):
+        set_hooks_to_do_nothing()
+        with db_session:
+            db.execute('delete from Person')
+            p1 = Person(id=1, name='John', age=22)
+            p2 = Person(id=2, name='Mary', age=18)
+            p3 = Person(id=3, name='Mike', age=25)
+        logged_events[:] = []
+
+    def tearDown(self):
+        pass
+
+    @db_session
+    def test_1(self):
+        p4 = Person(id=4, name='Bob', age=16)
+        p5 = Person(id=5, name='Lucy', age=23)
+        self.assertEqual(logged_events, [])
+        flush_for(p4, p5)
+        self.assertEqual(logged_events, ['BI_Bob', 'AI_Bob', 'BI_Lucy', 'AI_Lucy'])
+
+    @db_session
+    def test_2(self):
+        p4 = Person(id=4, name='Bob', age=16)
+        p1 = Person[1]  # auto-flush here
+        p2 = Person[2]
+        self.assertEqual(logged_events, ['BI_Bob', 'AI_Bob'])
+        p2.age += 1
+        p5 = Person(id=5, name='Lucy', age=23)
+        flush_for(p4, p2, p5)
+        self.assertEqual(logged_events, ['BI_Bob', 'AI_Bob', 'BU_Mary', 'AU_Mary', 'BI_Lucy', 'AI_Lucy'])
+
+    @db_session
+    def test_3(self):
+        global do_before_insert
+        def do_before_insert(person):
+            some_person = Person.select().first()  # should not cause infinite recursion
+        p4 = Person(id=4, name='Bob', age=16)
+        p4.flush()
+
+
 if __name__ == '__main__':
     unittest.main()
