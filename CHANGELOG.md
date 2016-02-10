@@ -1,7 +1,16 @@
-# Pony ORM Release 0.6.3 (2016-02-05)
+# Pony ORM Release 0.6.4 (2016-02-10)
 
 This release brings no new features, has no backward incompatible changes, only bug fixes.
-If you are using obj.flush() method in your code we recommend you to upgrade to 0.6.3 release.
+If you are using obj.flush() method in your code we recommend you to upgrade to 0.6.4 release.
+
+## Bugfixes
+
+* #161: 0.6.3 + obj.flush(): after_insert, after_update & after_delete hooks do not work
+
+# Pony ORM Release 0.6.3 (2016-02-05)
+
+This release was intended to fix the behavior of obj.flush(), but failed to do it in a proper way.
+Please skip this release and update to 0.6.4 if you are using obj.flush() method.
 
 ## Bugfixes
 
