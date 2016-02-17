@@ -10,6 +10,7 @@ from psycopg2 import extensions
 
 import psycopg2.extras
 psycopg2.extras.register_uuid()
+psycopg2.extensions.register_adapter(dict, psycopg2.extras.Json)
 
 from pony.orm import core, dbschema, dbapiprovider
 from pony.orm.core import log_orm
@@ -99,6 +100,34 @@ class PGUuidConverter(dbapiprovider.UuidConverter):
     def py2sql(converter, val):
         return val
 
+class PGArrayConverter(dbapiprovider.Converter):
+    if PY2:
+        def sql2py(self, val):
+            if val:
+                return [v.decode('utf-8') if isinstance(v, str) else v for v in val]
+            return val
+
+    def sql_type(self):
+        return 'TEXT[]'
+
+class PGJSONBConverter(dbapiprovider.Converter):
+    if PY2:
+        @staticmethod
+        def decode(k, v):
+            if isinstance(k, str):
+                return k.decode('utf-8')
+            if isinstance(v, str):
+                return v.decode('utf-8')
+            return k, v
+
+        def sql2py(self, val):
+            if val:
+                val = map(PGJSONBConverter.decode, val)
+            return val
+
+    def sql_type(self):
+        return 'JSONB'
+
 class PGPool(Pool):
     def _connect(pool):
         pool.con = pool.dbapi_module.connect(*pool.args, **pool.kwargs)
@@ -185,7 +214,7 @@ class PGProvider(DBAPIProvider):
         cursor.execute(sql, (schema_name, table_name))
         row = cursor.fetchone()
         return row[0] if row is not None else None
-    
+
     def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
         schema_name, table_name = provider.split_table_name(table_name)
         cursor = connection.cursor()
@@ -239,6 +268,8 @@ class PGProvider(DBAPIProvider):
         (timedelta, PGTimedeltaConverter),
         (UUID, PGUuidConverter),
         (buffer, PGBlobConverter),
+        (list, PGArrayConverter),
+        (dict, PGJSONBConverter),
     ]
 
 provider_cls = PGProvider
