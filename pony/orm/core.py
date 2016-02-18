@@ -4071,6 +4071,8 @@ class EntityMeta(type):
 def populate_criteria_list(criteria_list, columns, converters, params_count=0, table_alias=None):
     assert len(columns) == len(converters)
     for column, converter in izip(columns, converters):
+        if converter and converter.by_ref:
+            return ''
         if converter is not None:
             criteria_list.append([ 'EQ', [ 'COLUMN', table_alias, column ],
                                          [ 'PARAM', (params_count, None, None), converter ] ])

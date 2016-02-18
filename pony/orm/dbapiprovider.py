@@ -329,6 +329,7 @@ class Converter(object):
     def __deepcopy__(converter, memo):
         return converter  # Converter instances are "immutable"
     def __init__(converter, provider, py_type, attr=None):
+        converter.by_ref = False
         converter.provider = provider
         converter.py_type = py_type
         converter.attr = attr

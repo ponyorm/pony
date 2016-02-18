@@ -100,7 +100,12 @@ class PGUuidConverter(dbapiprovider.UuidConverter):
     def py2sql(converter, val):
         return val
 
-class PGArrayConverter(dbapiprovider.Converter):
+class _RefValueConverter(dbapiprovider.Converter):
+    def __init__(converter, provider, py_type, attr=None):
+        super().__init__(provider, py_type, attr)
+        converter.by_ref = True
+
+class PGArrayConverter(_RefValueConverter):
     if PY2:
         def sql2py(self, val):
             if val:
@@ -110,7 +115,7 @@ class PGArrayConverter(dbapiprovider.Converter):
     def sql_type(self):
         return 'TEXT[]'
 
-class PGJSONBConverter(dbapiprovider.Converter):
+class PGJSONBConverter(_RefValueConverter):
     if PY2:
         @staticmethod
         def decode(k, v):
