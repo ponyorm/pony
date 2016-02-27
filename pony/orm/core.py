@@ -4996,7 +4996,6 @@ class Query(object):
         query._filters = ()
         query._next_kwarg_id = 0
         query._for_update = query._nowait = False
-        query._result = None
         query._distinct = None
         query._prefetch = False
         query._entities_to_prefetch = set()
@@ -5004,7 +5003,6 @@ class Query(object):
     def _clone(query, **kwargs):
         new_query = object.__new__(Query)
         new_query.__dict__.update(query.__dict__)
-        new_query._result = None
         new_query.__dict__.update(kwargs)
         return new_query
     def __reduce__(query):
@@ -5038,9 +5036,6 @@ class Query(object):
         return sql
     def _fetch(query, range=None):
         translator = query._translator
-        if query._result is not None:
-            return QueryResult(query._result, query, translator.expr_type, translator.col_names)
-
         sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments(range)
         database = query._database
         cache = database._get_cache()
@@ -5069,8 +5064,7 @@ class Query(object):
             if stat is not None: stat.cache_count += 1
             else: stats[sql] = QueryStat(sql)
 
-        query._result = result
-        if query._prefetch: query._do_prefetch()
+        if query._prefetch: query._do_prefetch(result)
         return QueryResult(result, query, translator.expr_type, translator.col_names)
     @cut_traceback
     def prefetch(query, *args):
@@ -5093,7 +5087,7 @@ class Query(object):
             else: throw(TypeError, 'Argument of prefetch() query method must be entity class or attribute. '
                                    'Got: %r' % arg)
         return query
-    def _do_prefetch(query):
+    def _do_prefetch(query, result):
         expr_type = query._translator.expr_type
         object_list = []
         object_set = set()
@@ -5101,14 +5095,14 @@ class Query(object):
         add_to_object_set = object_set.add
 
         if isinstance(expr_type, EntityMeta):
-            for obj in query._result:
+            for obj in result:
                 if obj not in object_set:
                     add_to_object_set(obj)
                     append_to_object_list(obj)
         elif type(expr_type) is tuple:
             for i, t in enumerate(expr_type):
                 if not isinstance(t, EntityMeta): continue
-                for row in query._result:
+                for row in result:
                     obj = row[i]
                     if obj not in object_set:
                         add_to_object_set(obj)

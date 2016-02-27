@@ -107,5 +107,14 @@ class TestOrderbyLimit(unittest.TestCase):
         students = set(select(s for s in Student).order_by(Student.id)[:])
         self.assertEqual(students, set([Student[1], Student[2], Student[3], Student[4], Student[5]]))
 
+    def test19(self):
+        q = select(s for s in Student).order_by(Student.id)
+        students = q[1:3]
+        self.assertEqual(students, [Student[2], Student[3]])
+        students = q[2:4]
+        self.assertEqual(students, [Student[3], Student[4]])
+        students = q[:]
+        self.assertEqual(students, [Student[1], Student[2], Student[3], Student[4], Student[5]])
+
 if __name__ == "__main__":
     unittest.main()
