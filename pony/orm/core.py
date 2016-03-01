@@ -280,10 +280,19 @@ def transact_reraise(exc_class, exceptions):
 def commit():
     caches = _get_caches()
     if not caches: return
+
+    try:
+        for cache in caches:
+            cache.flush()
+    except:
+        rollback()
+        raise
+
     primary_cache = caches[0]
     other_caches = caches[1:]
     exceptions = []
-    try: primary_cache.commit()
+    try:
+        primary_cache.commit()
     except:
         exceptions.append(sys.exc_info())
         for cache in other_caches:

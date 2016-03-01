@@ -296,6 +296,34 @@ class TestDBSession(unittest.TestCase):
             pass
         test()
 
+    @raises_exception(ZeroDivisionError)
+    def test_db_session_exceptions_1(self):
+        def before_insert(self):
+            1/0
+        self.X.before_insert = before_insert
+        with db_session:
+            self.X(a=3, b=3)
+            # Should raise ZeroDivisionError and not CommitException
+
+    @raises_exception(ZeroDivisionError)
+    def test_db_session_exceptions_2(self):
+        def before_insert(self):
+            1 / 0
+        self.X.before_insert = before_insert
+        with db_session:
+            self.X(a=3, b=3)
+            commit()
+            # Should raise ZeroDivisionError and not CommitException
+
+    @raises_exception(ZeroDivisionError)
+    def test_db_session_exceptions_3(self):
+        def before_insert(self):
+            1 / 0
+        self.X.before_insert = before_insert
+        with db_session:
+            self.X(a=3, b=3)
+            db.commit()
+            # Should raise ZeroDivisionError and not CommitException
 
 db = Database('sqlite', ':memory:')
 
