@@ -1527,13 +1527,11 @@ class SessionCache(object):
         return connection
     def commit(cache):
         assert cache.is_alive
-        database = cache.database
-        provider = database.provider
         try:
             if cache.modified: cache.flush()
             if cache.in_transaction:
                 assert cache.connection is not None
-                provider.commit(cache.connection, cache)
+                cache.database.provider.commit(cache.connection, cache)
             cache.for_update.clear()
             cache.immediate = True
         except:
