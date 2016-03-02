@@ -32,6 +32,7 @@ class TestDBSession(unittest.TestCase):
         self.assertTrue(db_session is db_session())
 
     def test_db_session_4(self):
+        # Nested db_sessions are ignored
         with db_session:
             with db_session:
                 self.X(a=3, b=3)
@@ -39,6 +40,7 @@ class TestDBSession(unittest.TestCase):
             self.assertEqual(count(x for x in self.X), 3)
 
     def test_db_session_decorator_1(self):
+        # Should commit changes on exit from db_session
         @db_session
         def test():
             self.X(a=3, b=3)
@@ -47,6 +49,7 @@ class TestDBSession(unittest.TestCase):
             self.assertEqual(count(x for x in self.X), 3)
 
     def test_db_session_decorator_2(self):
+        # Should rollback changes if an exception is occurred
         @db_session
         def test():
             self.X(a=3, b=3)
@@ -60,6 +63,7 @@ class TestDBSession(unittest.TestCase):
             self.fail()
 
     def test_db_session_decorator_3(self):
+        # Should rollback changes if the exception is not in the list of allowed exceptions
         @db_session(allowed_exceptions=[TypeError])
         def test():
             self.X(a=3, b=3)
@@ -73,6 +77,7 @@ class TestDBSession(unittest.TestCase):
             self.fail()
 
     def test_db_session_decorator_4(self):
+        # Should commit changes if the exception is in the list of allowed exceptions
         @db_session(allowed_exceptions=[ZeroDivisionError])
         def test():
             self.X(a=3, b=3)
@@ -98,6 +103,7 @@ class TestDBSession(unittest.TestCase):
             pass
 
     def test_db_session_decorator_7(self):
+        # Should not to do retry until retry count is specified
         counter = count()
         @db_session(retry_exceptions=[ZeroDivisionError])
         def test():
@@ -114,6 +120,7 @@ class TestDBSession(unittest.TestCase):
             self.fail()
 
     def test_db_session_decorator_8(self):
+        # Should rollback & retry 1 time if retry=1
         counter = count()
         @db_session(retry=1, retry_exceptions=[ZeroDivisionError])
         def test():
@@ -130,6 +137,7 @@ class TestDBSession(unittest.TestCase):
             self.fail()
 
     def test_db_session_decorator_9(self):
+        # Should rollback & retry N time if retry=N
         counter = count()
         @db_session(retry=5, retry_exceptions=[ZeroDivisionError])
         def test():
@@ -146,6 +154,7 @@ class TestDBSession(unittest.TestCase):
             self.fail()
 
     def test_db_session_decorator_10(self):
+        # Should not retry if the exception not in the list of retry_exceptions
         counter = count()
         @db_session(retry=3, retry_exceptions=[TypeError])
         def test():
@@ -162,6 +171,7 @@ class TestDBSession(unittest.TestCase):
             self.fail()
 
     def test_db_session_decorator_11(self):
+        # Should commit after successful retrying
         counter = count()
         @db_session(retry=5, retry_exceptions=[ZeroDivisionError])
         def test():
@@ -186,6 +196,7 @@ class TestDBSession(unittest.TestCase):
             pass
 
     def test_db_session_decorator_13(self):
+        # allowed_exceptions may be callable, should commit if nonzero
         @db_session(allowed_exceptions=lambda e: isinstance(e, ZeroDivisionError))
         def test():
             self.X(a=3, b=3)
@@ -199,6 +210,7 @@ class TestDBSession(unittest.TestCase):
             self.fail()
         
     def test_db_session_decorator_14(self):
+        # allowed_exceptions may be callable, should rollback if not nonzero
         @db_session(allowed_exceptions=lambda e: isinstance(e, TypeError))
         def test():
             self.X(a=3, b=3)
@@ -212,6 +224,7 @@ class TestDBSession(unittest.TestCase):
             self.fail()
 
     def test_db_session_decorator_15(self):
+        # retry_exceptions may be callable, should retry if nonzero
         counter = count()
         @db_session(retry=3, retry_exceptions=lambda e: isinstance(e, ZeroDivisionError))
         def test():
@@ -240,6 +253,7 @@ class TestDBSession(unittest.TestCase):
             self.X(a=3, b=3)
 
     def test_db_session_manager_3(self):
+        # Should rollback if the exception is not in the list of allowed_exceptions
         try:
             with db_session(allowed_exceptions=[TypeError]):
                 self.X(a=3, b=3)
@@ -251,6 +265,7 @@ class TestDBSession(unittest.TestCase):
             self.fail()
 
     def test_db_session_manager_4(self):
+        # Should commit if the exception is in the list of allowed_exceptions
         try:
             with db_session(allowed_exceptions=[ZeroDivisionError]):
                 self.X(a=3, b=3)
