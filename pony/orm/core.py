@@ -1455,6 +1455,7 @@ class SessionCache(object):
         cache.noflush_counter = 0
         cache.modified_collections = defaultdict(set)
         cache.objects_to_save = []
+        cache.saved_objects = []
         cache.query_results = {}
         cache.modified = False
         db_session = local.db_session
@@ -1566,6 +1567,7 @@ class SessionCache(object):
     def flush(cache):
         if cache.noflush_counter: return
         assert cache.is_alive
+        assert not cache.saved_objects
         if not cache.immediate: cache.immediate = True
         for i in xrange(50):
             if not cache.modified: return
@@ -1585,18 +1587,20 @@ class SessionCache(object):
                     if not added: continue
                     attr.add_m2m(added)
 
-            saved_objects = [ (obj, obj._status_) for obj in cache.objects_to_save if obj is not None ]
-
             cache.max_id_cache.clear()
             cache.modified_collections.clear()
-            cache.objects_to_save[:] = []
+            cache.objects_to_save[:] = ()
             cache.modified = False
 
-            for obj, status in saved_objects:
-                obj._after_save_(status)
+            cache.call_after_save_hooks()
         else:
             if cache.modified: throw(TransactionError,
                 'Recursion depth limit reached in obj._after_save_() call')
+    def call_after_save_hooks(cache):
+        saved_objects = cache.saved_objects
+        cache.saved_objects = []
+        for obj, status in saved_objects:
+            obj._after_save_(status)
     def _calc_modified_m2m(cache):
         modified_m2m = {}
         for attr, objects in sorted(iteritems(cache.modified_collections),
@@ -4734,26 +4738,27 @@ class Entity(with_metaclass(EntityMeta)):
         else: assert False, "_save_() called for object %r with incorrect status %s" % (obj, status)  # pragma: no cover
 
         assert obj._status_ in saved_statuses
+        cache = obj._session_cache_
+        cache.saved_objects.append((obj, obj._status_))
+        objects_to_save = cache.objects_to_save
+        save_pos = obj._save_pos_
+        if save_pos == len(objects_to_save) - 1:
+            objects_to_save.pop()
+        else:
+            objects_to_save[save_pos] = None
         obj._save_pos_ = None
     def flush(obj):
         if obj._status_ not in ('created', 'modified', 'marked_to_delete'):
             return
 
-        save_pos = obj._save_pos_
-        assert save_pos is not None, 'save_pos is None for %s object' % obj._status_
-
-        with obj._session_cache_.flush_disabled():
+        assert obj._save_pos_ is not None, 'save_pos is None for %s object' % obj._status_
+        cache = obj._session_cache_
+        assert not cache.saved_objects
+        with cache.flush_disabled():
             obj._before_save_() # should be inside flush_disabled to prevent infinite recursion
                                 # TODO: add to documentation that flush is disabled inside before_xxx hooks
             obj._save_()
-
-        objects_to_save = obj._session_cache_.objects_to_save
-        if save_pos == len(objects_to_save) - 1:
-            objects_to_save.pop()
-        else:
-            objects_to_save[save_pos] = None
-
-        obj._after_save_(obj._status_)
+        cache.call_after_save_hooks()
     def _before_save_(obj):
         status = obj._status_
         if status == 'created': obj.before_insert()
