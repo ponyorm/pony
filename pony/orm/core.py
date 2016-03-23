@@ -19,7 +19,7 @@ from pony.thirdparty.compiler import ast, parse
 import pony
 from pony import options
 from pony.orm.decompiling import decompile
-from pony.orm.ormtypes import LongStr, LongUnicode, numeric_types, RawSQL, get_normalized_type_of
+from pony.orm.ormtypes import LongStr, LongUnicode, numeric_types, RawSQL, get_normalized_type_of, Json
 from pony.orm.asttranslation import ast2src, create_extractors, TranslationError
 from pony.orm.dbapiprovider import (
     DBAPIProvider, DBException, Warning, Error, InterfaceError, DatabaseError, DataError,
@@ -53,7 +53,7 @@ __all__ = '''
     composite_key composite_index
     flush commit rollback db_session with_transaction
 
-    LongStr LongUnicode
+    LongStr LongUnicode Json
 
     select left_join get exists delete
 

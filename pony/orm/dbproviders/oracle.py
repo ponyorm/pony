@@ -13,6 +13,7 @@ import cx_Oracle
 from pony.orm import core, sqlbuilding, dbapiprovider, sqltranslation
 from pony.orm.core import log_orm, log_sql, DatabaseError, TranslationError
 from pony.orm.dbschema import DBSchema, DBObject, Table, Column
+from pony.orm.ormtypes import Json
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, get_version_tuple
 from pony.utils import throw
 from pony.converting import timedelta2str
@@ -124,6 +125,36 @@ class OraTranslator(sqltranslation.SQLTranslator):
         if value == '': return NoneType
         return sqltranslation.SQLTranslator.get_normalized_type_of(value)
 
+    class JsonItemMonad(sqltranslation.JsonItemMonad):
+        def nonzero(monad):
+            raise NotImplementedError
+
+    class JsonContainsExprMonad(sqltranslation.JsonContainsExprMonad):
+
+        def __init__(monad, json_monad, item):
+            if not isinstance(item, sqltranslation.StringConstMonad):
+                raise NotImplementedError
+            sqltranslation.JsonContainsExprMonad.__init__(
+                monad, json_monad, item
+            )
+
+        def _dict_contains(monad):
+            path_sql = monad.json_monad._get_path_sql(
+                getattr(monad.json_monad, 'path', ())
+            )
+            path_sql.append(monad.item.value)
+            return ['JSON_CONTAINS_PATH', monad.attr_sql, path_sql]
+
+        def _list_contains(monad):
+            path_sql = monad.json_monad._get_path_sql(
+                getattr(monad.json_monad, 'path', ())
+            )
+            return ['JSON_LIST_CONTAINS', monad.attr_sql, path_sql, monad.item.value]
+
+        def getsql(monad):
+            return [ ['OR', monad._dict_contains(), monad._list_contains()] ]
+
+
 class OraBuilder(sqlbuilding.SQLBuilder):
     dialect = 'Oracle'
     def INSERT(builder, table_name, columns, values, returning=None):
@@ -225,6 +256,19 @@ class OraBuilder(sqlbuilding.SQLBuilder):
         if isinstance(delta, timedelta):
             return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' HOUR TO SECOND)"
         return '(', builder(expr), ' - ', builder(delta), ')'
+    def JSON_GETPATH(builder, expr, key):
+        query = 'JSON_QUERY(', builder(expr), ', ', builder(key), ' WITH WRAPPER)'
+        return 'REGEXP_REPLACE(', query, ", '(^\[|\]$)', '')"
+    def JSON_EXISTS(builder, expr, key):
+        return 'JSON_EXISTS(', builder(expr), ', ', builder(key), ')'
+    def JSON_CONTAINS_PATH(builder, expr, path):
+        return builder.JSON_EXISTS(expr, path)
+    def JSON_LIST_CONTAINS(builder, expr, path, key):
+        query = 'JSON_QUERY(', builder(expr), ', ', builder(path), ')'
+        return 'REGEXP_LIKE(', query, ',  \'', search_in_json_list_regexp(key), '\')'
+
+def search_in_json_list_regexp(what):
+    return r'^\[(.+, ?)?"%s"(, ?.+)?\]$' % what
 
 class OraBoolConverter(dbapiprovider.BoolConverter):
     if not PY2:
@@ -317,6 +361,14 @@ class OraUuidConverter(dbapiprovider.UuidConverter):
     def sql_type(converter):
         return 'RAW(16)'
 
+class OraJsonConverter(dbapiprovider.JsonConverter):
+    optimistic = False
+    def sql2py(converter, dbval):
+        if hasattr(dbval, 'read'): dbval = dbval.read()
+        return dbapiprovider.JsonConverter.sql2py(converter, dbval)
+    def sql_type(converter):
+        return 'CLOB'
+
 class OraProvider(DBAPIProvider):
     dialect = 'Oracle'
     paramstyle = 'named'
@@ -346,6 +398,7 @@ class OraProvider(DBAPIProvider):
         (timedelta, OraTimedeltaConverter),
         (UUID, OraUuidConverter),
         (buffer, OraBlobConverter),
+        (Json, OraJsonConverter),
     ]
 
     @wrap_dbapi_exceptions

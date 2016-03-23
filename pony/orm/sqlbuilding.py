@@ -503,3 +503,17 @@ class SQLBuilder(object):
     def RAWSQL(builder, sql):
         if isinstance(sql, basestring): return sql
         return [ x if isinstance(x, basestring) else builder(x) for x in sql ]
+    def JSON_PATH(builder, *items):
+        ret = ['\'$']
+        for item in items:
+            if isinstance(item, int):
+                ret.append('[%d]' % item)
+            elif isinstance(item, str):
+                ret.append('."%s"' % item)
+            else: assert 0
+        ret.append('\'')
+        return ret
+    def JSON_GETPATH(builder, expr, key):
+        raise NotImplementedError
+    def CAST(builder, expr, type):
+        return 'CAST(', builder(expr), ' AS ', type, ')'

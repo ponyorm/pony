@@ -27,7 +27,7 @@ except ImportError:
     mysql_converters.encoders[timedelta] = lambda val: mysql_converters.escape_str(timedelta2str(val))
     mysql_module_name = 'pymysql'
 
-from pony.orm import core, dbschema, dbapiprovider
+from pony.orm import core, dbschema, dbapiprovider, ormtypes, sqltranslation
 from pony.orm.core import log_orm
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, get_version_tuple, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
@@ -45,6 +45,77 @@ class MySQLSchema(dbschema.DBSchema):
 
 class MySQLTranslator(SQLTranslator):
     dialect = 'MySQL'
+
+
+
+    class CmpMonad(sqltranslation.CmpMonad):
+
+        def make_json_cast_if_needed(monad, left_sql, right_sql):
+            translator = monad.left.translator
+            if monad.op not in ('==', '!='):
+                return sqltranslation.CmpMonad.make_json_cast_if_needed(
+                    monad, left_sql, right_sql
+                )
+            def need_cast(monad):
+                if isinstance(monad, sqltranslation.ParamMonad):
+                    return True
+                return not isinstance(monad, sqltranslation.JsonMixin)
+
+            if need_cast(monad.left):
+                sql = left_sql[0]
+                expr = translator.CastToJsonExprMonad(
+                    translator, sql, target_monad=monad.left
+                )
+                return expr.getsql(), right_sql
+            if need_cast(monad.right):
+                sql = right_sql[0]
+                expr = translator.CastToJsonExprMonad(
+                    translator, sql, target_monad=monad.right
+                )
+                return left_sql, expr.getsql()
+            return left_sql, right_sql
+
+
+    class CastFromJsonExprMonad(sqltranslation.CastFromJsonExprMonad):
+
+        @classmethod
+        def dispatch_type(cls, typ):
+            if issubclass(typ, int):
+                return 'signed'
+            if issubclass(typ, float):
+                raise sqltranslation.AbortCast
+            return sqltranslation.CastFromJsonExprMonad.dispatch_type(typ)
+
+    class JsonContainsExprMonad(sqltranslation.JsonContainsExprMonad):
+
+        def __init__(monad, json_monad, item):
+            if not isinstance(item, sqltranslation.StringConstMonad):
+                raise NotImplementedError
+            sqltranslation.JsonContainsExprMonad.__init__(
+                monad, json_monad, item
+            )
+
+        def _dict_contains(monad):
+            path_sql = monad.json_monad._get_path_sql(
+                getattr(monad.json_monad, 'path', ())
+            )
+            path_sql.append(monad.item.value)
+            return ['JSON_CONTAINS_PATH', monad.attr_sql, path_sql]
+
+        def _list_contains(monad):
+            translator = monad.translator
+            path_sql = monad.json_monad._get_path_sql(
+                getattr(monad.json_monad, 'path', ())
+            )
+            item = translator.ConstMonad.new(translator, '["%s"]' % monad.item.value)
+            item_sql, = item.getsql()
+            return ['JSON_CONTAINS', monad.attr_sql, path_sql, item_sql]
+
+        def getsql(monad):
+            return [
+                ['OR', monad._dict_contains(), monad._list_contains()]
+            ]
+
 
 class MySQLBuilder(SQLBuilder):
     dialect = 'MySQL'
@@ -87,6 +158,22 @@ class MySQLBuilder(SQLBuilder):
         if isinstance(delta, timedelta):
             return 'DATE_SUB(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
         return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
+    def JSON_GETPATH(builder, expr, key):
+        return 'json_extract(', builder(expr), ', ', builder(key), ')'
+    def JSON_SUBTRACT_PATH(builder, expr, key):
+        return 'json_remove(', builder(expr), ', ', builder(key), ')'
+    def JSON_ARRAY_LENGTH(builder, value):
+        return 'json_length(', builder(value), ')'
+    def AS_JSON(builder, target):
+        return 'CAST(', builder(target), ' AS JSON)'
+    def EQ_JSON(builder, left, right):
+        return '(', builder(left), '=', builder.AS_JSON(right), ')'
+    def NE_JSON(builder, left, right):
+        return '(', builder(left), '!=', builder.AS_JSON(right), ')'
+    def JSON_CONTAINS(builder, expr, path, key):
+        return 'json_contains(', builder(expr), ', ', builder(key), ', ', builder(path), ')'
+    def JSON_CONTAINS_PATH(builder, expr, path):
+        return 'json_contains_path(', builder(expr), ", 'one', ", builder(path), ')'
 
 class MySQLStrConverter(dbapiprovider.StrConverter):
     def sql_type(converter):
@@ -122,6 +209,13 @@ class MySQLUuidConverter(dbapiprovider.UuidConverter):
     def sql_type(converter):
         return 'BINARY(16)'
 
+class MySQLJsonConverter(dbapiprovider.JsonConverter):
+    EQ = 'EQ_JSON'
+    def init(self, kwargs):
+        if self.provider.server_version < (5, 7, 8):
+            version = '.'.join(imap(str, self.provider.server_version))
+            raise NotImplementedError("MySQL %s has no JSON support" % version)
+
 class MySQLProvider(DBAPIProvider):
     dialect = 'MySQL'
     paramstyle = 'format'
@@ -154,6 +248,7 @@ class MySQLProvider(DBAPIProvider):
         (timedelta, MySQLTimedeltaConverter),
         (UUID, MySQLUuidConverter),
         (buffer, MySQLBlobConverter),
+        (ormtypes.Json, MySQLJsonConverter),
     ]
 
     def normalize_name(provider, name):

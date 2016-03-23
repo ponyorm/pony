@@ -153,8 +153,9 @@ def normalize_type(t):
     if t is NoneType: return t
     t = type_normalization_dict.get(t, t)
     if t in primitive_types: return t
+    if issubclass(t, (slice, type(Ellipsis))): return t
     if issubclass(t, basestring): return unicode
-    if issubclass(t, dict): return dict
+    if issubclass(t, (dict, Json)): return Json
     throw(TypeError, 'Unsupported type %r' % t.__name__)
 
 coercions = {
@@ -184,6 +185,10 @@ def are_comparable_types(t1, t2, op='=='):
     # types must be normalized already!
     tt1 = type(t1)
     tt2 = type(t2)
+
+    t12 = {t1, t2}
+    if Json in t12 and t12 < {Json, str, unicode, int, bool, float}:
+        return True
     if op in ('in', 'not in'):
         if tt2 is RawSQLType: return True
         if tt2 is not SetType: return False
@@ -280,3 +285,12 @@ class TrackedList(TrackedValue, list):
         clear = tracked_method(list.clear)
     def get_untracked(self):
         return [val.get_untracked() if isinstance(val, TrackedValue) else val for val in self]
+
+class Json(object):
+    """A wrapper over a dict or list
+    """
+    def __init__(self, wrapped):
+        self.wrapped = wrapped
+
+    def __repr__(self):
+        return 'Json %s' % repr(self.wrapped)

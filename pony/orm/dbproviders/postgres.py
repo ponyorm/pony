@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 from pony.py23compat import PY2, basestring, unicode, buffer, int_types
 
+import json
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
 from uuid import UUID
@@ -16,7 +17,10 @@ from psycopg2 import extensions
 import psycopg2.extras
 psycopg2.extras.register_uuid()
 
-from pony.orm import core, dbschema, dbapiprovider
+psycopg2.extras.register_default_json(loads=lambda x: x)
+psycopg2.extras.register_default_jsonb(loads=lambda x: x)
+
+from pony.orm import core, dbschema, dbapiprovider, sqltranslation, ormtypes
 from pony.orm.core import log_orm
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
@@ -34,6 +38,78 @@ class PGSchema(dbschema.DBSchema):
 
 class PGTranslator(SQLTranslator):
     dialect = 'PostgreSQL'
+
+    class JsonItemMonad(sqltranslation.JsonItemMonad):
+        allow_get_by_key_syntax = True
+
+        def nonzero(monad):
+            translator = monad.translator
+            empty_str = translator.StringExprMonad(
+                translator, str, ['RAWSQL', '\'""\'::jsonb']
+            )
+            str_not_empty = translator.CmpMonad(
+                '!=', monad, empty_str
+            )
+            is_true = translator.CastFromJsonExprMonad(
+                bool, translator, monad.getsql()[0]
+            )
+            sql = ['AND']
+            sql.extend(str_not_empty.getsql())
+            sql.extend(is_true.getsql())
+            return translator.BoolExprMonad(translator, sql)
+
+    class CmpMonad(sqltranslation.CmpMonad):
+
+        def make_json_cast_if_needed(monad, left_sql, right_sql):
+            translator = monad.left.translator
+            if monad.op not in ('==', '!='):
+                return sqltranslation.CmpMonad.make_json_cast_if_needed(
+                    monad, left_sql, right_sql
+                )
+            if isinstance(monad.left, sqltranslation.NumericMixin):
+                sql = left_sql[0]
+                expr = translator.CastToJsonExprMonad(
+                    translator, sql, target_monad=monad.left
+                )
+                return expr.getsql(), right_sql
+            if isinstance(monad.right, sqltranslation.NumericMixin):
+                sql = right_sql[0]
+                expr = translator.CastToJsonExprMonad(
+                    translator, sql, target_monad=monad.right
+                )
+                return left_sql, expr.getsql()
+            return left_sql, right_sql
+
+
+    class CastFromJsonExprMonad(sqltranslation.CastFromJsonExprMonad):
+
+        @classmethod
+        def dispatch_type(cls, typ):
+            sql_type = sqltranslation.CastFromJsonExprMonad.dispatch_type(typ)
+            if not issubclass(typ, (int, float, bool)):
+                return sql_type
+            return 'text::%s' % sql_type
+
+
+    class CastToJsonExprMonad(sqltranslation.CastToJsonExprMonad):
+
+        cast_to = 'jsonb'
+
+        def getsql(monad):
+            if isinstance(monad.target_monad, sqltranslation.NumericConstMonad):
+                monad.sql = ['SINGLE_QUOTES', monad.sql]
+            return sqltranslation.CastToJsonExprMonad.getsql(monad)
+
+    class JsonContainsExprMonad(sqltranslation.JsonContainsExprMonad):
+        def getsql(monad):
+            json_monad = monad.json_monad
+            path = getattr(json_monad, 'path', ())
+            path_sql = json_monad._get_path_sql(path) if path else None
+            item_sql, = monad.item.getsql()
+            return [
+                ['JSON_CONTAINS', monad.attr_sql, path_sql, item_sql]
+            ]
+
 
 class PGValue(Value):
     __slots__ = []
@@ -73,6 +149,47 @@ class PGSQLBuilder(SQLBuilder):
         if isinstance(delta, timedelta):
             return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' DAY TO SECOND)"
         return '(', builder(expr), ' - ', builder(delta), ')'
+    def JSON_PATH(builder, *items):
+        ret = ["'{"]
+        for i, item in enumerate(items):
+            if i: ret.append(', ')
+            if isinstance(item, basestring):
+                item = '"', item, '"'
+            ret.append(item)
+        ret.append("}'")
+        return ret
+    def JSON_GET(builder, expr, key):
+        val = builder.VALUE(key)
+        return '(', builder(expr), "->", val, ')'
+    def JSON_GETPATH(builder, expr, key):
+        return '(', builder(expr), "#>", builder(key), ')'
+    def JSON_CONTAINS(builder, expr, path, key):
+        if path:
+            json_sql = builder.JSON_GETPATH(expr, path)
+        else:
+            json_sql = builder(expr)
+        return json_sql, " ? ", builder(key)
+    def JSON_CONTAINS_JSON(builder, sub_value, value):
+        return builder(sub_value), " <@ ", builder(value)
+    def JSON_IS_CONTAINED(builder, value, contained_in):
+        raise NotImplementedError('Not needed')
+    def JSON_HAS_ANY(builder, array, value):
+        raise NotImplementedError
+    def JSON_HAS_ALL(builder, array, value):
+        raise NotImplementedError
+    def JSON_SUBTRACT_VALUE(builder, expr, key):
+        val = builder.VALUE(key)
+        return '(', builder(expr), " - ", val, ')'
+    def JSON_SUBTRACT_PATH(builder, value, key):
+        return '(', builder(value), " #- ", builder(key), ')'
+    def JSON_ARRAY_LENGTH(builder, value):
+        return 'jsonb_array_length(', builder(value), ')'
+    def _as_json(builder, target):
+        return '(', builder(target), ')::jsonb'
+    def CAST(builder, expr, type):
+        return '(', builder(expr), ')::', type
+    def SINGLE_QUOTES(builder, expr):
+        return "'", builder(expr), "'"
 
 class PGStrConverter(dbapiprovider.StrConverter):
     if PY2:
@@ -103,6 +220,10 @@ class PGDatetimeConverter(dbapiprovider.DatetimeConverter):
 class PGUuidConverter(dbapiprovider.UuidConverter):
     def py2sql(converter, val):
         return val
+
+class PGJsonConverter(dbapiprovider.JsonConverter):
+    def sql_type(self):
+        return "JSONB"
 
 class PGPool(Pool):
     def _connect(pool):
@@ -244,6 +365,7 @@ class PGProvider(DBAPIProvider):
         (timedelta, PGTimedeltaConverter),
         (UUID, PGUuidConverter),
         (buffer, PGBlobConverter),
+        (ormtypes.Json, PGJsonConverter),
     ]
 
 provider_cls = PGProvider

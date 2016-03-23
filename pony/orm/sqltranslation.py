@@ -16,7 +16,8 @@ from pony.utils import is_ident, throw, reraise, concat
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
     numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
-    get_normalized_type_of, normalize_type, coerce_types, are_comparable_types
+    get_normalized_type_of, normalize_type, coerce_types, are_comparable_types, \
+    Json
 from pony.orm import core
 from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper
 
@@ -334,6 +335,8 @@ class SQLTranslator(ASTTranslator):
             offset = 0
             provider = translator.database.provider
             for m in expr_monads:
+                if m.disable_distinct:
+                    translator.distinct = False
                 expr_type = m.type
                 if isinstance(expr_type, SetType): expr_type = expr_type.item_type
                 if isinstance(expr_type, EntityMeta):
@@ -352,7 +355,7 @@ class SQLTranslator(ASTTranslator):
                         value = converter.dbval2val(value)
                         return value
                     row_layout.append((func, offset, ast2src(m.node)))
-                    m.orderby_columns = (offset+1,)
+                    m.orderby_columns = (offset+1,) if not m.disable_ordering else ()
                     offset += 1
             translator.row_layout = row_layout
             translator.col_names = [ src for func, slice_or_offset, src in translator.row_layout ]
@@ -964,6 +967,8 @@ class MonadMixin(with_metaclass(MonadMeta)):
     pass
 
 class Monad(with_metaclass(MonadMeta)):
+    disable_distinct = False
+    disable_ordering = False
     def __init__(monad, translator, type):
         monad.translator = translator
         monad.type = type
@@ -1490,6 +1495,7 @@ class AttrMonad(Monad):
         elif type is datetime: cls = translator.DatetimeAttrMonad
         elif type is buffer: cls = translator.BufferAttrMonad
         elif type is UUID: cls = translator.UuidAttrMonad
+        elif type is Json: cls = translator.JsonAttrMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectAttrMonad
         else: throw(NotImplementedError, type)  # pragma: no cover
         return cls(parent, attr, *args, **kwargs)
@@ -1544,6 +1550,90 @@ class DatetimeAttrMonad(DatetimeMixin, AttrMonad): pass
 class BufferAttrMonad(BufferMixin, AttrMonad): pass
 class UuidAttrMonad(UuidMixin, AttrMonad): pass
 
+
+class JsonMixin(object):
+    disable_distinct = True  # at least in Oracle we cannot use DISTINCT with JSON column
+    disable_ordering = True  # at least in Oracle we cannot use ORDER BY with JSON column
+
+    @classmethod
+    def _get_path_sql(cls, items):
+        return ['JSON_PATH'] + [cls._get_value(item) for item in items]
+
+    @classmethod
+    def _get_value(cls, monad):
+        tr = monad.translator
+        if not isinstance(monad, (tr.NumericConstMonad, tr.StringConstMonad)):
+            raise TypeError('Invalid JSON path item: %s' % ast2src(monad.node))
+        return monad.value
+
+    allow_subtract_key_syntax = False # support only subtracting path by default
+
+    def __sub__(monad, other):
+        translator = monad.translator
+        left_sql, = monad.getsql()
+        items = None
+        if isinstance(other, translator.ListMonad):
+            items = other.items
+        elif not monad.allow_subtract_key_syntax:
+            items = [other]
+        else:
+            value = monad._get_value(other)
+            sql = ['JSON_SUBTRACT_VALUE', left_sql, value]
+        if items:
+            path = monad._get_path_sql(items)
+            sql = ['JSON_SUBTRACT_PATH', left_sql, path]
+        return translator.JsonExprMonad(translator, Json, sql)
+
+    def __getitem__(monad, item, is_overriden=False):
+        '''
+        Transform the item and return it. Please override.
+        '''
+        assert is_overriden, 'Json.__getitem__ is not a valid implementation'
+        if isinstance(item, slice) \
+                and isinstance(item.start, (NoneType, NoneMonad)) \
+                and isinstance(item.stop, (NoneType, NoneMonad)):
+            return FullSliceMonad(monad.translator)
+        return item
+
+    def contains(monad, item, not_in=False):
+        translator = monad.translator
+        expr = monad.translator.JsonContainsExprMonad(monad, item)
+        if not_in:
+            sql, = expr.getsql()
+            expr = translator.JsonBoolExprMonad(translator, bool, ['NOT', sql])
+        return expr
+
+    # TODO not_in
+    # def contains_json(monad, item, not_in=False):
+    #     import ipdb; ipdb.set_trace()
+    #     translator = monad.translator
+    #     parent_sql, = monad.getsql()
+    #     item_sql, = item.getsql()
+    #     if isinstance(item, translator.JsonMixin):
+    #         sql = ['JSON_CONTAINS_JSON', item_sql, parent_sql]
+    #         return translator.JsonBoolExprMonad(monad.translator, bool, sql)
+    #     elif isinstance(item, translator.StringMixin):
+    #         sql = ['JSON_CONTAINS', item_sql, parent_sql]
+    #         return translator.JsonBoolExprMonad(monad.translator, bool, sql)
+    #     else:
+    #         raise TypeError('Invalid JSON key: %s,' % ast2src(item.node))
+
+    def len(monad):
+        translator = monad.translator
+        sql, = monad.getsql()
+        return translator.NumericExprMonad(
+                translator, int, ['JSON_ARRAY_LENGTH', sql])
+
+class JsonAttrMonad(JsonMixin, AttrMonad):
+    def __getitem__(monad, key):
+        key = JsonMixin.__getitem__(monad, key, True)
+        return monad.translator.JsonItemMonad(monad, [key])
+
+    @property
+    def attr_monad(monad):
+        return monad
+
+
 class ParamMonad(Monad):
     @staticmethod
     def new(translator, type, paramkey):
@@ -1556,6 +1646,7 @@ class ParamMonad(Monad):
         elif type is datetime: cls = translator.DatetimeParamMonad
         elif type is buffer: cls = translator.BufferParamMonad
         elif type is UUID: cls = translator.UuidParamMonad
+        elif type is Json: cls = translator.JsonParamMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectParamMonad
         else: throw(NotImplementedError, 'Parameter {EXPR} has unsupported type %r' % (type))
         result = cls(translator, type, paramkey)
@@ -1598,6 +1689,10 @@ class DatetimeParamMonad(DatetimeMixin, ParamMonad): pass
 class BufferParamMonad(BufferMixin, ParamMonad): pass
 class UuidParamMonad(UuidMixin, ParamMonad): pass
 
+
+class JsonParamMonad(JsonMixin, ParamMonad):
+    pass
+
 class ExprMonad(Monad):
     @staticmethod
     def new(translator, type, sql):
@@ -1624,6 +1719,112 @@ class DateExprMonad(DateMixin, ExprMonad): pass
 class TimeExprMonad(TimeMixin, ExprMonad): pass
 class TimedeltaExprMonad(TimedeltaMixin, ExprMonad): pass
 class DatetimeExprMonad(DatetimeMixin, ExprMonad): pass
+
+class JsonBoolExprMonad(ExprMonad):
+    pass
+
+class JsonContainsExprMonad(Monad):
+    def __init__(monad, json_monad, item):
+        monad.json_monad = json_monad
+        monad.item = item
+        Monad.__init__(monad, json_monad.translator, bool)
+        monad.attr_sql = json_monad.attr_monad.getsql()[0]
+
+    def getsql(monad):
+        json_monad = monad.json_monad
+        path_sql = json_monad._get_path_sql(
+            getattr(json_monad, 'path', ())
+        )
+        item_sql, = monad.item.getsql()
+        return [
+            ['JSON_CONTAINS', monad.attr_sql, path_sql, item_sql]
+        ]
+
+
+class CastFromJsonExprMonad(ExprMonad):
+
+    def __init__(monad, type_to, translator, sql):
+        monad.type_to = type_to
+        ExprMonad.__init__(monad, type_to, translator, sql)
+
+
+    @classmethod
+    def dispatch_type(cls, typ):
+        if issubclass(typ, bool):
+            return 'boolean'
+        if issubclass(typ, int):
+            return 'integer'
+        if issubclass(typ, float):
+            return 'real'
+
+
+    def getsql(monad):
+        sql_type = monad.dispatch_type(monad.type_to)
+        sql = ['CAST', monad.sql, sql_type]
+        return [sql]
+
+
+class CastToJsonExprMonad(ExprMonad):
+
+    cast_to = 'JSON'
+    target_monad = None
+
+    def __new__(cls, *args, **kwargs):
+        kwargs.pop('target_monad', None)
+        return ExprMonad.__new__(cls, *args, **kwargs)
+
+    def __init__(monad, translator, sql, target_monad=None):
+        ExprMonad.__init__(monad, translator, Json, sql)
+        if target_monad:
+            monad.target_monad = target_monad
+
+    def getsql(monad):
+        sql = monad.sql
+        if monad.target_monad:
+            m = monad.target_monad
+            if isinstance(m, ConstMonad) and issubclass(m.type, bool):
+                sql = [
+                    "RAWSQL",
+                    "'%s'" % ('true' if m.value else 'false')
+                ]
+        sql = ['CAST', sql, monad.cast_to]
+        return [sql]
+
+
+class AbortCast(Exception):
+    pass
+
+class JsonExprMonad(JsonMixin, ExprMonad):
+    pass
+
+class JsonItemMonad(JsonMixin, Monad):
+
+    allow_get_by_key_syntax = False
+
+    def __init__(monad, attr_monad, path):
+        translator = attr_monad.translator
+        monad.attr_monad = attr_monad
+        monad.path = path
+        Monad.__init__(monad, translator, Json)
+
+    def __getitem__(monad, key):
+        key = JsonMixin.__getitem__(monad, key, True)
+        return monad.translator.JsonItemMonad(
+                monad.attr_monad, monad.path + [key])
+
+    def getsql(monad):
+        base_sql, = monad.attr_monad.getsql()
+        if monad.allow_get_by_key_syntax and len(monad.path) == 1:
+            value = monad._get_value(monad.path[0])
+            sql = ['JSON_GET', base_sql, value]
+            return [sql]
+        path_sql = monad._get_path_sql(monad.path)
+        sql = ['JSON_GETPATH']
+        sql.extend((base_sql, path_sql))
+        return [sql]
+
+    def nonzero(monad):
+        return monad
 
 class ConstMonad(Monad):
     @staticmethod
@@ -1660,6 +1861,11 @@ class NoneMonad(ConstMonad):
 
 class EllipsisMonad(ConstMonad):
     pass
+
+class FullSliceMonad(ConstMonad):
+    SLICE = slice(None, None, None)
+    def __init__(monad, translator):
+        ConstMonad.__init__(monad, translator, monad.SLICE)
 
 class BufferConstMonad(BufferMixin, ConstMonad): pass
 
@@ -1727,8 +1933,59 @@ class CmpMonad(BoolMonad):
         monad.left = left
         monad.right = right
         monad.aggregated = getattr(left, 'aggregated', False) or getattr(right, 'aggregated', False)
+
+        if isinstance(left, JsonMixin):
+            json_monad, other_monad = left, right
+        elif isinstance(right, JsonMixin):
+            json_monad, other_monad = right, left
+        else:
+            return
+
+        # Customizing comparisons for Json
+        if op in ('==', '!='):
+            if isinstance(other_monad, StringConstMonad):
+                other_monad.value = '"%s"' % right.value
+            elif isinstance(other_monad, ParamMonad):
+                other_monad.converter = translator.database.provider \
+                        .get_converter_by_py_type(Json)
+
     def negate(monad):
         return monad.translator.CmpMonad(cmp_negate[monad.op], monad.left, monad.right)
+
+    def make_json_cast_if_needed(monad, left_sql, right_sql):
+        translator = monad.left.translator
+        is_needed = monad.op in ('<', '>', '==', '!=') and any(
+            isinstance(m, NumericMixin) for m in (monad.left, monad.right)
+        )
+        if not is_needed:
+            return left_sql, right_sql
+        # special handling for boolean constants
+        if monad.op in ('==', '!='):
+            if isinstance(monad.left, ConstMonad) and issubclass(monad.left.type, bool):
+                # FIXME use CastToJson
+                bool_sql = [
+                    "RAWSQL",
+                    "'%s'" % ('true' if monad.left.value else 'false')
+                ]
+                return [bool_sql], right_sql
+            if isinstance(monad.right, ConstMonad) and issubclass(monad.right.type, bool):
+                bool_sql = [
+                    "RAWSQL",
+                    "'%s'" % ('true' if monad.right.value else 'false')
+                ]
+                return left_sql, [bool_sql]
+        if isinstance(monad.left, JsonMixin):
+            other_monad = monad.right
+            expr = translator.CastFromJsonExprMonad(
+                other_monad.type, translator, left_sql[0]
+            )
+            return expr.getsql(), right_sql
+        other_monad = monad.left
+        expr = translator.CastFromJsonExprMonad(
+            other_monad.type, translator, right_sql[0]
+        )
+        return left_sql, expr.getsql()
+
     def getsql(monad, subquery=None):
         op = monad.op
         left_sql = monad.left.getsql()
@@ -1737,6 +1994,12 @@ class CmpMonad(BoolMonad):
         if op == 'is not':
             return [ sqland([ [ 'IS_NOT_NULL', item ] for item in left_sql ]) ]
         right_sql = monad.right.getsql()
+
+        if any(isinstance(m, JsonMixin) for m in (monad.left, monad.right)):
+            try:
+                left_sql, right_sql = monad.make_json_cast_if_needed(left_sql, right_sql)
+            except AbortCast:
+                pass
         if len(left_sql) == 1 and left_sql[0][0] == 'ROW':
             left_sql = left_sql[0][1:]
         if len(right_sql) == 1 and right_sql[0][0] == 'ROW':
@@ -1779,6 +2042,11 @@ class LogicalBinOpMonad(BoolMonad):
             assert len(operand_sql) == 1
             result.extend(operand_sql)
         return [ result ]
+
+
+class JsonConcatExprMonad(JsonMixin, ExprMonad):
+    pass
+
 
 class AndMonad(LogicalBinOpMonad):
     binop = 'AND'
