@@ -3715,7 +3715,8 @@ class EntityMeta(type):
 
         objects = entity._fetch_objects(cursor, attr_offsets, max_fetch_count)
         return objects
-    def _construct_select_clause_(entity, alias=None, distinct=False, query_attrs=(), all_attributes=False):
+    def _construct_select_clause_(entity, alias=None, distinct=False,
+                                  query_attrs=(), attrs_to_prefetch=(), all_attributes=False):
         attr_offsets = {}
         select_list = [ 'DISTINCT' ] if distinct else [ 'ALL' ]
         root = entity._root_
@@ -3724,11 +3725,11 @@ class EntityMeta(type):
                                   and not issubclass(entity, attr.entity): continue
             if attr.is_collection: continue
             if not attr.columns: continue
-            if attr.lazy and attr not in query_attrs: continue
-            attr_offsets[attr] = offsets = []
-            for column in attr.columns:
-                offsets.append(len(select_list) - 1)
-                select_list.append([ 'COLUMN', alias, column ])
+            if not attr.lazy or attr in query_attrs or attr in attrs_to_prefetch:
+                attr_offsets[attr] = offsets = []
+                for column in attr.columns:
+                    offsets.append(len(select_list) - 1)
+                    select_list.append([ 'COLUMN', alias, column ])
         return select_list, attr_offsets
     def _construct_discriminator_criteria_(entity, alias=None):
         discr_attr = entity._discriminator_attr_
@@ -5014,13 +5015,18 @@ class Query(object):
         return unpickle_query, (query._fetch(),)
     def _construct_sql_and_arguments(query, range=None, aggr_func_name=None):
         translator = query._translator
+        expr_type = translator.expr_type
+        if isinstance(expr_type, EntityMeta) and query._attrs_to_prefetch_dict:
+            attrs_to_prefetch = tuple(sorted(query._attrs_to_prefetch_dict.get(expr_type, ())))
+        else:
+            attrs_to_prefetch = ()
         sql_key = query._key + (range, query._distinct, aggr_func_name, query._for_update, query._nowait,
-                                options.INNER_JOIN_SYNTAX)
+                                options.INNER_JOIN_SYNTAX, attrs_to_prefetch)
         database = query._database
         cache_entry = database._constructed_sql_cache.get(sql_key)
         if cache_entry is None:
             sql_ast, attr_offsets = translator.construct_sql_ast(
-                range, query._distinct, aggr_func_name, query._for_update, query._nowait)
+                range, query._distinct, aggr_func_name, query._for_update, query._nowait, attrs_to_prefetch)
             cache = database._get_cache()
             sql, adapter = database.provider.ast2sql(sql_ast)
             cache_entry = sql, adapter, attr_offsets

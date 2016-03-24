@@ -106,6 +106,10 @@ class TestPrefetching(unittest.TestCase):
         with db_session:
             s1 = Student.select().prefetch(Student.biography).first()
         self.assertEqual(s1.biography, 'some text')
+        self.assertEqual(db.last_sql, '''SELECT "s"."id", "s"."name", "s"."scholarship", "s"."gpa", "s"."dob", "s"."group", "s"."biography"
+FROM "Student" "s"
+ORDER BY 1
+LIMIT 1''')
 
 if __name__ == '__main__':
     unittest.main()
