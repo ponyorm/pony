@@ -26,7 +26,7 @@ from pony.orm.dbapiprovider import (
     OperationalError, IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
 from pony import utils
-from pony.utils import localbase, decorator, cut_traceback, throw, reraise, get_lambda_args, \
+from pony.utils import localbase, decorator, cut_traceback, throw, reraise, truncate_repr, get_lambda_args, \
      deprecated, import_module, parse_expr, is_ident, tostring, strjoin, concat
 
 __all__ = '''
@@ -1839,7 +1839,8 @@ class Attribute(object):
         return attr.id < other.id
     def validate(attr, val, obj=None, entity=None, from_db=False):
         if val is None:
-            if not attr.nullable and not from_db:
+            if not attr.nullable and not from_db and not attr.is_required:
+                # for required attribute the exception will be thrown later with another message
                 throw(ValueError, 'Attribute %s cannot be set to None' % attr)
             return val
         assert val is not NOT_LOADED
@@ -1866,10 +1867,8 @@ class Attribute(object):
                     if from_db: return converter.sql2py(val)
                     val = converter.validate(val)
                 except UnicodeDecodeError as e:
-                    vrepr = repr(val)
-                    if len(vrepr) > 100: vrepr = vrepr[:97] + '...'
                     throw(ValueError, 'Value for attribute %s cannot be converted to %s: %s'
-                                      % (attr, unicode.__name__, vrepr))
+                                      % (attr, unicode.__name__, truncate_repr(val)))
         else:
             rentity = reverse.entity
             if not isinstance(val, rentity):
@@ -1886,7 +1885,7 @@ class Attribute(object):
                 if cache is not val._session_cache_:
                     throw(TransactionError, 'An attempt to mix objects belonging to different transactions')
         if attr.py_check is not None and not attr.py_check(val):
-            throw(ValueError, 'Check for attribute %s failed. Value: %r' % (attr, val))
+            throw(ValueError, 'Check for attribute %s failed. Value: %s' % (attr, truncate_repr(val)))
         return val
     def parse_value(attr, row, offsets):
         assert len(attr.columns) == len(offsets)
@@ -2183,13 +2182,10 @@ class Optional(Attribute):
 class Required(Attribute):
     __slots__ = []
     def validate(attr, val, obj=None, entity=None, from_db=False):
-        if val == '' \
-        or val is None and not attr.auto \
-        or val is DEFAULT and attr.default in (None, '') \
-                and not attr.auto and not attr.is_volatile and not attr.sql_default:
-            if obj is None: throw(ValueError, 'Attribute %s is required' % attr)
-            throw(ValueError, 'Attribute %r.%s is required' % (obj, attr.name))
-        return Attribute.validate(attr, val, obj, entity, from_db)
+        val = Attribute.validate(attr, val, obj, entity, from_db)
+        if val == '' or (val is None and not (attr.auto or attr.is_volatile or attr.sql_default)):
+            throw(ValueError, 'Attribute %s is required' % (attr if obj is None else '%r.%s' % (obj, attr.name)))
+        return val
 
 class Discriminator(Required):
     __slots__ = [ 'code2cls' ]

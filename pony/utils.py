@@ -105,6 +105,10 @@ def throw(exc_type, *args, **kwargs):
             raise exc  # Set "pony.options.CUT_TRACEBACK = False" to see full traceback
     finally: del exc
 
+def truncate_repr(s, max_len=100):
+    s = repr(s)
+    return s if len(s) <= max_len else s[:max_len-3] + '...'
+
 lambda_args_cache = {}
 
 def get_lambda_args(func):

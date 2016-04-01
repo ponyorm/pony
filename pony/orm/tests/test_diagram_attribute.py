@@ -525,6 +525,25 @@ class TestAttribute(unittest.TestCase):
             a = Set('Entity1', py_check=lambda val: True)
         db.generate_mapping(create_tables=True)
 
+    @raises_exception(ValueError, "Check for attribute Entity1.a failed. Value: "
+        "u'12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345...")
+    def test_py_check_truncate(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required(str, py_check=lambda val: False)
+        db.generate_mapping(create_tables=True)
+        with db_session:
+            obj = Entity1(a='1234567890' * 1000)
+
+    @raises_exception(ValueError, 'Value for attribute Entity1.a is too long. Max length is 10, value length is 10000')
+    def test_str_max_len(self):
+        db = Database('sqlite', ':memory:')
+        class Entity1(db.Entity):
+            a = Required(str, 10)
+        db.generate_mapping(create_tables=True)
+        with db_session:
+            obj = Entity1(a='1234567890' * 1000)
+
     def test_foreign_key_sql_type_1(self):
         db = Database('sqlite', ':memory:')
         class Foo(db.Entity):
