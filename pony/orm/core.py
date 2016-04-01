@@ -1839,7 +1839,8 @@ class Attribute(object):
         return attr.id < other.id
     def validate(attr, val, obj=None, entity=None, from_db=False):
         if val is None:
-            if not attr.nullable and not from_db:
+            if not attr.nullable and not from_db and not attr.is_required:
+                # for required attribute the exception will be thrown later with another message
                 throw(ValueError, 'Attribute %s cannot be set to None' % attr)
             return val
         assert val is not NOT_LOADED
@@ -2183,13 +2184,10 @@ class Optional(Attribute):
 class Required(Attribute):
     __slots__ = []
     def validate(attr, val, obj=None, entity=None, from_db=False):
-        if val == '' \
-        or val is None and not attr.auto \
-        or val is DEFAULT and attr.default in (None, '') \
-                and not attr.auto and not attr.is_volatile and not attr.sql_default:
-            if obj is None: throw(ValueError, 'Attribute %s is required' % attr)
-            throw(ValueError, 'Attribute %r.%s is required' % (obj, attr.name))
-        return Attribute.validate(attr, val, obj, entity, from_db)
+        val = Attribute.validate(attr, val, obj, entity, from_db)
+        if val == '' or (val is None and not (attr.auto or attr.is_volatile or attr.sql_default)):
+            throw(ValueError, 'Attribute %s is required' % (attr if obj is None else '%r.%s' % (obj, attr.name)))
+        return val
 
 class Discriminator(Required):
     __slots__ = [ 'code2cls' ]
