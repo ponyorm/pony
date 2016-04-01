@@ -26,7 +26,7 @@ from pony.orm.dbapiprovider import (
     OperationalError, IntegrityError, InternalError, ProgrammingError, NotSupportedError
     )
 from pony import utils
-from pony.utils import localbase, decorator, cut_traceback, throw, reraise, get_lambda_args, \
+from pony.utils import localbase, decorator, cut_traceback, throw, reraise, truncate_repr, get_lambda_args, \
      deprecated, import_module, parse_expr, is_ident, tostring, strjoin, concat
 
 __all__ = '''
@@ -1867,10 +1867,8 @@ class Attribute(object):
                     if from_db: return converter.sql2py(val)
                     val = converter.validate(val)
                 except UnicodeDecodeError as e:
-                    vrepr = repr(val)
-                    if len(vrepr) > 100: vrepr = vrepr[:97] + '...'
                     throw(ValueError, 'Value for attribute %s cannot be converted to %s: %s'
-                                      % (attr, unicode.__name__, vrepr))
+                                      % (attr, unicode.__name__, truncate_repr(val)))
         else:
             rentity = reverse.entity
             if not isinstance(val, rentity):
@@ -1887,7 +1885,7 @@ class Attribute(object):
                 if cache is not val._session_cache_:
                     throw(TransactionError, 'An attempt to mix objects belonging to different transactions')
         if attr.py_check is not None and not attr.py_check(val):
-            throw(ValueError, 'Check for attribute %s failed. Value: %r' % (attr, val))
+            throw(ValueError, 'Check for attribute %s failed. Value: %s' % (attr, truncate_repr(val)))
         return val
     def parse_value(attr, row, offsets):
         assert len(attr.columns) == len(offsets)
