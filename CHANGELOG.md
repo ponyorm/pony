@@ -1,3 +1,19 @@
+# Pony ORM Release 0.6.5 (2016-04-04)
+
+## Improvements
+
+* Fixes #172: Query prefetch() method should load specified lazy attributes right in the main query if possible
+
+## Bugfixes
+
+* Fixes #168: Incorrect caching when slicing the same query multiple times
+* Fixes #169: When py_check() returns False, Pony should truncate too large values in resulting ValueError message
+* Fixes #171: AssertionError when saving changes of multiple objects
+* Fixes #176: Autostripped strings are not validated correctly for Required attributes
+
+See blog post for more detailed information: https://blog.ponyorm.com/2016/04/04/pony-orm-release-0-6-5/
+
+
 # Pony ORM Release 0.6.4 (2016-02-10)
 
 This release brings no new features, has no backward incompatible changes, only bug fixes.
