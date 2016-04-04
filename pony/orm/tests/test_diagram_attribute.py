@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-
+from pony.py23compat import PY2
 from datetime import date
 import unittest
 
@@ -525,8 +525,10 @@ class TestAttribute(unittest.TestCase):
             a = Set('Entity1', py_check=lambda val: True)
         db.generate_mapping(create_tables=True)
 
-    @raises_exception(ValueError, "Check for attribute Entity1.a failed. Value: "
-        "u'12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345...")
+    @raises_exception(ValueError, "Check for attribute Entity1.a failed. Value: " + (
+        "u'12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345..." if PY2
+        else "'123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456..."
+    ))
     def test_py_check_truncate(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
