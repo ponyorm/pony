@@ -5,7 +5,12 @@ from decimal import Decimal
 from datetime import datetime, date, time, timedelta
 from uuid import UUID
 
-import psycopg2
+try:
+    import psycopg2
+except ImportError:
+    from psycopg2cffi import compat
+    compat.register()
+
 from psycopg2 import extensions
 
 import psycopg2.extras
