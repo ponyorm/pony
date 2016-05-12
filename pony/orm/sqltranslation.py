@@ -721,6 +721,8 @@ class SQLTranslator(ASTTranslator):
         if node.star_args is not None: throw(NotImplementedError, '*%s is not supported' % ast2src(node.star_args))
         if node.dstar_args is not None: throw(NotImplementedError, '**%s is not supported' % ast2src(node.dstar_args))
         func_node = node.node
+        if isinstance(func_node, ast.CallFunc):
+            if isinstance(func_node.node, ast.Name) and func_node.node.name == 'getattr': return
         if not isinstance(func_node, (ast.Name, ast.Getattr)): throw(NotImplementedError)
         if len(node.args) > 1: return
         if not node.args: return
@@ -2043,6 +2045,12 @@ class FuncLenMonad(FuncMonad):
     func = len
     def call(monad, x):
         return x.len()
+
+class GetattrMonad(FuncMonad):
+    func = getattr
+    def call(monad, obj_monad, name_monad):
+        name = name_monad.node._attrname_value
+        return obj_monad.getattr(name)
 
 class FuncCountMonad(FuncMonad):
     func = itertools.count, utils.count, core.count

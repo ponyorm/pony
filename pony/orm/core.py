@@ -5043,7 +5043,7 @@ def unpickle_ast(pickled):
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
-        extractors, varnames, tree = create_extractors(
+        extractors, varnames, tree, pretranslator_key = create_extractors(
             code_key, tree, 0, globals, locals, special_functions, const_functions)
         vars, vartypes = extract_vars(extractors, globals, locals, cells)
 
@@ -5059,7 +5059,7 @@ class Query(object):
         if database.schema is None: throw(ERDiagramError, 'Mapping is not generated for entity %r' % origin.__name__)
         database.provider.normalize_vars(vars, vartypes)
         query._vars = vars
-        query._key = code_key, tuple(vartypes[name] for name in varnames), left_join
+        query._key = pretranslator_key, tuple(vartypes[name] for name in varnames), left_join
         query._database = database
 
         translator = database._translator_cache.get(query._key)
@@ -5359,7 +5359,7 @@ class Query(object):
                                  'Expected: %d, got: %d' % (expr_count, len(argnames)))
 
         filter_num = len(query._filters) + 1
-        extractors, varnames, func_ast = create_extractors(
+        extractors, varnames, func_ast, pretranslator_key = create_extractors(
             func_id, func_ast, filter_num, globals, locals, special_functions, const_functions,
             argnames or prev_translator.subquery)
         if extractors:
@@ -5370,7 +5370,7 @@ class Query(object):
             sorted_vartypes = tuple(vartypes[name] for name in varnames)
         else: new_query_vars, vartypes, sorted_vartypes = query._vars, {}, ()
 
-        new_key = query._key + (('order_by' if order_by else 'filter', func_id, sorted_vartypes),)
+        new_key = query._key + (('order_by' if order_by else 'filter', pretranslator_key, sorted_vartypes),)
         new_filters = query._filters + ((order_by, func_ast, argnames, extractors, vartypes),)
         new_translator = query._database._translator_cache.get(new_key)
         if new_translator is None:
@@ -5612,5 +5612,5 @@ def show(entity):
         from pprint import pprint
         pprint(x)
 
-special_functions = set([ itertools.count, utils.count, count, random, raw_sql ])
+special_functions = set([ itertools.count, utils.count, count, random, raw_sql, getattr ])
 const_functions = set([ buffer, Decimal, datetime.datetime, datetime.date, datetime.time, datetime.timedelta ])
