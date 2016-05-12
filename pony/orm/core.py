@@ -1549,16 +1549,6 @@ class SessionCache(object):
         if connection is None: return
         cache.connection = None
         provider.release(connection, cache)
-    def close(cache):
-        assert cache.is_alive and not cache.in_transaction
-        database = cache.database
-        x = local.db2cache.pop(database); assert x is cache
-        cache.is_alive = False
-        provider = database.provider
-        connection = cache.connection
-        if connection is None: return
-        cache.connection = None
-        provider.drop(connection, cache)
     @contextmanager
     def flush_disabled(cache):
         cache.noflush_counter += 1
