@@ -315,8 +315,8 @@ def rollback():
 select_re = re.compile(r'\s*select\b', re.IGNORECASE)
 
 class DBSessionContextManager(object):
-    __slots__ = 'retry', 'retry_exceptions', 'allowed_exceptions', 'immediate', 'ddl', 'serializable'
-    def __init__(db_session, retry=0, immediate=False, ddl=False, serializable=False,
+    __slots__ = 'retry', 'retry_exceptions', 'allowed_exceptions', 'immediate', 'ddl', 'serializable', 'strict'
+    def __init__(db_session, retry=0, immediate=False, ddl=False, serializable=False, strict=False,
                  retry_exceptions=(TransactionError,), allowed_exceptions=()):
         if retry is not 0:
             if type(retry) is not int: throw(TypeError,
@@ -333,6 +333,7 @@ class DBSessionContextManager(object):
         db_session.ddl = ddl
         db_session.serializable = serializable
         db_session.immediate = immediate or ddl or serializable
+        db_session.strict = strict
         db_session.retry_exceptions = retry_exceptions
         db_session.allowed_exceptions = allowed_exceptions
     def __call__(db_session, *args, **kwargs):
@@ -473,6 +474,10 @@ class DBSessionContextManager(object):
         return decorator(new_gen_func, gen_func)
 
 db_session = DBSessionContextManager()
+
+def throw_db_session_is_over(obj, attr):
+    throw(DatabaseSessionIsOver, 'Cannot read value of %s.%s: the database session is over'
+                                 % (safe_repr(obj), attr.name))
 
 def with_transaction(*args, **kwargs):
     deprecated(3, "@with_transaction decorator is deprecated, use @db_session decorator instead")
@@ -1447,6 +1452,7 @@ class SessionCache(object):
         cache.is_alive = True
         cache.num = next(num_counter)
         cache.database = database
+        cache.objects = set()
         cache.indexes = defaultdict(dict)
         cache.seeds = defaultdict(set)
         cache.max_id_cache = {}
@@ -1458,8 +1464,7 @@ class SessionCache(object):
         cache.saved_objects = []
         cache.query_results = {}
         cache.modified = False
-        db_session = local.db_session
-        cache.db_session = db_session
+        cache.db_session = db_session = local.db_session
         cache.immediate = db_session is not None and db_session.immediate
         cache.connection = None
         cache.in_transaction = False
@@ -1526,21 +1531,12 @@ class SessionCache(object):
             cache.rollback()
             raise
     def rollback(cache):
-        assert cache.is_alive
-        database = cache.database
-        x = local.db2cache.pop(database); assert x is cache
-        cache.is_alive = False
-        provider = database.provider
-        connection = cache.connection
-        if connection is None: return
-        cache.connection = None
-        try: provider.rollback(connection, cache)
-        except:
-            provider.drop(connection, cache)
-            raise
-        else: provider.release(connection, cache)
+        cache.close(rollback=True)
     def release(cache):
-        assert cache.is_alive and not cache.in_transaction
+        cache.close(rollback=False)
+    def close(cache, rollback=True):
+        assert cache.is_alive
+        if not rollback: assert not cache.in_transaction
         database = cache.database
         x = local.db2cache.pop(database); assert x is cache
         cache.is_alive = False
@@ -1548,17 +1544,21 @@ class SessionCache(object):
         connection = cache.connection
         if connection is None: return
         cache.connection = None
+        if rollback:
+            try: provider.rollback(connection, cache)
+            except:
+                provider.drop(connection, cache)
+                raise
         provider.release(connection, cache)
-    def close(cache):
-        assert cache.is_alive and not cache.in_transaction
-        database = cache.database
-        x = local.db2cache.pop(database); assert x is cache
-        cache.is_alive = False
-        provider = database.provider
-        connection = cache.connection
-        if connection is None: return
-        cache.connection = None
-        provider.drop(connection, cache)
+        db_session = cache.db_session or local.db_session
+        if db_session and db_session.strict:
+            cache.clear()
+    def clear(cache):
+        for obj in cache.objects:
+            obj._vals_ = obj._dbvals_ = obj._session_cache_ = None
+        cache.objects = cache.indexes = cache.seeds = cache.for_update = cache.modified_collections \
+            = cache.objects_to_save = cache.saved_objects = cache.query_results \
+            = cache.perm_cache = cache.user_roles_cache = cache.obj_labels_cache = None
     @contextmanager
     def flush_disabled(cache):
         cache.noflush_counter += 1
@@ -1945,7 +1945,9 @@ class Attribute(object):
     def get(attr, obj):
         if attr.pk_offset is None and obj._status_ in ('deleted', 'cancelled'):
             throw_object_was_deleted(obj)
-        val = obj._vals_[attr] if attr in obj._vals_ else attr.load(obj)
+        vals = obj._vals_
+        if vals is None: throw_db_session_is_over(obj, attr)
+        val = vals[attr] if attr in vals else attr.load(obj)
         if val is not None and attr.reverse and val._subclasses_ and val._status_ not in ('deleted', 'cancelled'):
             seeds = obj._session_cache_.seeds[val._pk_attrs_]
             if val in seeds: val._load_()
@@ -2597,6 +2599,7 @@ class Set(Collection):
         return sql, adapter
     def copy(attr, obj):
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
+        if obj._vals_ is None: throw_db_session_is_over(obj, attr)
         setdata = obj._vals_.get(attr)
         if setdata is None or not setdata.is_fully_loaded: setdata = attr.load(obj)
         reverse = attr.reverse
@@ -2864,6 +2867,7 @@ class SetInstance(object):
         attr = wrapper._attr_
         obj = wrapper._obj_
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
+        if obj._vals_ is None: throw_db_session_is_over(obj, attr)
         setdata = obj._vals_.get(attr)
         if setdata is None: setdata = attr.load(obj)
         if setdata: return True
@@ -2874,6 +2878,7 @@ class SetInstance(object):
         attr = wrapper._attr_
         obj = wrapper._obj_
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
+        if obj._vals_ is None: throw_db_session_is_over(obj, attr)
         setdata = obj._vals_.get(attr)
         if setdata is None: setdata = obj._vals_[attr] = SetData()
         elif setdata.is_fully_loaded: return not setdata
@@ -2919,6 +2924,7 @@ class SetInstance(object):
         attr = wrapper._attr_
         obj = wrapper._obj_
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
+        if obj._vals_ is None: throw_db_session_is_over(obj, attr)
         setdata = obj._vals_.get(attr)
         if setdata is None or not setdata.is_fully_loaded: setdata = attr.load(obj)
         return len(setdata)
@@ -2928,6 +2934,7 @@ class SetInstance(object):
         obj = wrapper._obj_
         cache = obj._session_cache_
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
+        if obj._vals_ is None: throw_db_session_is_over(obj, attr)
         setdata = obj._vals_.get(attr)
         if setdata is None: setdata = obj._vals_[attr] = SetData()
         elif setdata.count is not None: return setdata.count
@@ -2975,9 +2982,10 @@ class SetInstance(object):
         return wrapper.copy().difference(items)
     @cut_traceback
     def __contains__(wrapper, item):
+        attr = wrapper._attr_
         obj = wrapper._obj_
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
-        attr = wrapper._attr_
+        if obj._vals_ is None: throw_db_session_is_over(obj, attr)
         if not isinstance(item, attr.py_type): return False
 
         reverse = attr.reverse
@@ -3920,6 +3928,7 @@ class EntityMeta(type):
         if obj is None:
             with cache.flush_disabled():
                 obj = obj_to_init or object.__new__(entity)
+                cache.objects.add(obj)
                 obj._pkval_ = pkval
                 obj._status_ = status
                 obj._vals_ = {}
