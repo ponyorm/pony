@@ -1700,7 +1700,8 @@ class Attribute(object):
                 'id', 'pk_offset', 'pk_columns_offset', 'py_type', 'sql_type', 'entity', 'name', \
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
-                'cascade_delete', 'index', 'original_default', 'sql_default', 'py_check', 'hidden'
+                'cascade_delete', 'index', 'original_default', 'sql_default', 'py_check', 'hidden', \
+                'optimistic'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
@@ -1765,6 +1766,7 @@ class Attribute(object):
         attr.lazy = kwargs.pop('lazy', getattr(py_type, 'lazy', False))
         attr.lazy_sql_cache = None
         attr.is_volatile = kwargs.pop('volatile', False)
+        attr.optimistic = kwargs.pop('optimistic', True)
         attr.sql_default = kwargs.pop('sql_default', None)
         attr.py_check = kwargs.pop('py_check', None)
         attr.hidden = kwargs.pop('hidden', False)
@@ -4554,10 +4556,13 @@ class Entity(with_metaclass(EntityMeta)):
         optimistic_converters = []
         optimistic_values = []
         for attr in obj._attrs_with_bit_(obj._attrs_with_columns_, obj._rbits_):
+            converters = attr.converters
+            assert converters
+            if not (attr.optimistic and converters[0].optimistic): continue
             dbval = obj._dbvals_[attr]
             optimistic_columns.extend(attr.columns)
-            if dbval is not None: converters = attr.converters
-            else: converters = repeat(None, len(attr.converters))
+            if dbval is None:
+                converters = repeat(None, len(attr.converters))
             optimistic_converters.extend(converters)
             optimistic_values.extend(attr.get_raw_values(dbval))
         return optimistic_columns, optimistic_converters, optimistic_values

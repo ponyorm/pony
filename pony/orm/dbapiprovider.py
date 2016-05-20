@@ -326,6 +326,7 @@ class Pool(localbase):
         if con is not None: con.close()
 
 class Converter(object):
+    optimistic = True
     def __deepcopy__(converter, memo):
         return converter  # Converter instances are "immutable"
     def __init__(converter, provider, py_type, attr=None):
