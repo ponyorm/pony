@@ -468,6 +468,9 @@ class SQLTranslator(ASTTranslator):
                 'query must have grouping columns (i.e. resulting non-aggregated values)')
             sql_ast.append([ 'HAVING' ] + having_conditions)
 
+        if range and not translator.order and translator.dialect == 'MSSQL':
+            translator.order = [ ['VALUE', 1] ]  # todo: use TOP 1 instead of FETCH NEXT to remove this line
+
         if translator.order and not aggr_func_name: sql_ast.append([ 'ORDER_BY' ] + translator.order)
 
         if range:
@@ -2571,7 +2574,21 @@ def find_or_create_having_ast(subquery_ast):
     subquery_ast.insert(groupby_offset + 1, having_ast)
     return having_ast
 
+
+
+
+# class LimitOffsetMonad(Monad):
+#     def __init__(monad, translator, limit, offset):
+#         ExprMonad.__init__(monad, translator, type, sql):
+
+#     def getsql(monad):
+#         return [sql]
+
+
+########
 for name, value in items_list(globals()):
     if name.endswith('Monad') or name.endswith('Mixin'):
         setattr(SQLTranslator, name, value)
 del name, value
+
+

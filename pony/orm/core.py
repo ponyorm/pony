@@ -3764,6 +3764,8 @@ class EntityMeta(type):
         entity._batchload_sql_cache_[query_key] = cached_sql
         return cached_sql
     def _construct_sql_(entity, query_attrs, order_by_pk=False, limit=None, for_update=False, nowait=False):
+        if limit and entity._database_.provider.dialect == 'MSSQL':
+            order_by_pk = True  # todo: use TOP 1 instead of FETCH NEXT and remove this line
         if nowait: assert for_update
         sorted_query_attrs = tuple(sorted(query_attrs.items()))
         query_key = sorted_query_attrs, order_by_pk, limit, for_update, nowait

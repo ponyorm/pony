@@ -46,6 +46,7 @@ db.bind('sqlite', 'university1.sqlite', create_db=True)
 #db.bind('mysql', host="localhost", user="pony", passwd="pony", db="university1")
 #db.bind('postgres', user='pony', password='pony', host='localhost', database='university1')
 #db.bind('oracle', 'university1/pony@localhost')
+#db.bind('mssqlserver', 'DRIVER={SQL Server};SERVER=mycomputer\SQLEXPRESS;DATABASE=university1')
 
 db.generate_mapping(create_tables=True)
 
