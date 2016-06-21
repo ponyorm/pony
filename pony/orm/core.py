@@ -3772,7 +3772,6 @@ class EntityMeta(type):
         select_list, attr_offsets = entity._construct_select_clause_(query_attrs=query_attrs)
         from_list = [ 'FROM', [ None, 'TABLE', entity._table_ ]]
         where_list = [ 'WHERE' ]
-        values = []
 
         discr_attr = entity._discriminator_attr_
         if discr_attr and query_attrs.get(discr_attr) != False:
