@@ -3614,7 +3614,7 @@ class EntityMeta(type):
             if len(result) >= limit: break
 
         if len(result) < limit: return entity.select().random(limit)
-        
+
         result = result[:limit]
         if entity._subclasses_:
             seeds = cache.seeds[entity._pk_attrs_]
@@ -3766,13 +3766,12 @@ class EntityMeta(type):
     def _construct_sql_(entity, query_attrs, order_by_pk=False, limit=None, for_update=False, nowait=False):
         if nowait: assert for_update
         sorted_query_attrs = tuple(sorted(query_attrs.items()))
-        query_key = sorted_query_attrs, order_by_pk, for_update, nowait
+        query_key = sorted_query_attrs, order_by_pk, limit, for_update, nowait
         cached_sql = entity._find_sql_cache_.get(query_key)
         if cached_sql is not None: return cached_sql
         select_list, attr_offsets = entity._construct_select_clause_(query_attrs=query_attrs)
         from_list = [ 'FROM', [ None, 'TABLE', entity._table_ ]]
         where_list = [ 'WHERE' ]
-        values = []
 
         discr_attr = entity._discriminator_attr_
         if discr_attr and query_attrs.get(discr_attr) != False:
@@ -4282,7 +4281,7 @@ class Entity(with_metaclass(EntityMeta)):
             if entity._discriminator_attr_ is not None:
                 attrs = (entity._discriminator_attr_,) + attrs
             attrs = entity._pk_attrs_ + attrs
-            
+
             attr_offsets = {}
             select_list = [ 'ALL' ]
             for attr in attrs:

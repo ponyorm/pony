@@ -905,11 +905,9 @@ class JoinedTableRef(object):
                     return parent_alias, left_columns
                 alias = subquery.get_short_alias(tableref.name_path, entity.__name__)
                 join_cond = join_tables(parent_alias, alias, left_columns, pk_columns)
-            subquery.from_ast.append([ alias, 'TABLE', entity._table_, join_cond ])
         elif not attr.reverse.is_collection:
             alias = subquery.get_short_alias(tableref.name_path, entity.__name__)
             join_cond = join_tables(parent_alias, alias, left_pk_columns, attr.reverse.columns)
-            subquery.from_ast.append([ alias, 'TABLE', entity._table_, join_cond ])
         else:
             right_m2m_columns = attr.reverse_columns if attr.symmetric else attr.columns
             if not tableref.joined:
@@ -929,11 +927,11 @@ class JoinedTableRef(object):
                 m2m_alias = tableref.alias
             alias = subquery.get_short_alias(tableref.name_path, entity.__name__)
             join_cond = join_tables(m2m_alias, alias, right_m2m_columns, pk_columns)
-            subquery.from_ast.append([ alias, 'TABLE', entity._table_, join_cond ])
         if not pk_only and entity._discriminator_attr_:
             discr_criteria = entity._construct_discriminator_criteria_(alias)
             assert discr_criteria is not None
-            subquery.conditions.insert(0, discr_criteria)
+            join_cond.append(discr_criteria)
+        subquery.from_ast.append([ alias, 'TABLE', entity._table_, join_cond ])
         tableref.alias = alias
         tableref.pk_columns = pk_columns
         tableref.optimized = False
