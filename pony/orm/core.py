@@ -3614,7 +3614,7 @@ class EntityMeta(type):
             if len(result) >= limit: break
 
         if len(result) < limit: return entity.select().random(limit)
-        
+
         result = result[:limit]
         if entity._subclasses_:
             seeds = cache.seeds[entity._pk_attrs_]
@@ -4281,7 +4281,7 @@ class Entity(with_metaclass(EntityMeta)):
             if entity._discriminator_attr_ is not None:
                 attrs = (entity._discriminator_attr_,) + attrs
             attrs = entity._pk_attrs_ + attrs
-            
+
             attr_offsets = {}
             select_list = [ 'ALL' ]
             for attr in attrs:

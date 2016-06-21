@@ -373,7 +373,7 @@ class NoneConverter(Converter):  # used for raw_sql() parameters only
     def get_sql_type(converter, attr=None):
         assert False
     def get_fk_type(converter, sql_type):
-        assert False    
+        assert False
 
 class BoolConverter(Converter):
     def validate(converter, val):
@@ -631,7 +631,7 @@ class ConverterWithMicroseconds(Converter):
         Converter.__init__(converter, provider, py_type, attr)
     def init(converter, kwargs):
         attr = converter.attr
-        args = attr.args        
+        args = attr.args
         if len(args) > 1: throw(TypeError, 'Too many positional parameters for attribute %s. '
                                            'Expected: precision, got: %r' % (attr, args))
         provider = attr.entity._database_.provider
