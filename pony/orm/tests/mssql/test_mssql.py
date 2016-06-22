@@ -2,30 +2,13 @@
 
 from pony.py23compat import PY2
 
-CONN_STRING = (
-    'DSN=MSSQLdb;'
-    'SERVER=mssql;'
-    'DATABASE=db1;'
-    'UID=sa;'
-    'PWD=pass'
-)
+
 from pony.orm import *
 from pony import options
 
 import os
 
 options.CUT_TRACEBACK = False
-
-def getdb():
-    return Database('mssqlserver', CONN_STRING)
-
-def get_mysql_db():
-    return Database('mysql', host="localhost", user="root",
-                    passwd="muscul", db="mydb")
-
-def test_db():
-    getdb()
-
 
 from pony.py23compat import buffer
 
@@ -324,7 +307,7 @@ class TestLocationsAndNodes(MSSQLSetup.as_mixin(), TestCase):
 
 
 
-class TestMore(MySqlSetup.as_mixin(), TestCase):
+class TestMore(MSSQLSetup.as_mixin(), TestCase):
 
     @classmethod
     def make_entities(cls):
@@ -633,3 +616,24 @@ class TestMore(MySqlSetup.as_mixin(), TestCase):
 
             node_logs = select(node_log for node_log in db_model.Node_log)[:]
             self.assertEqual(node_logs, [])
+
+
+from datetime import date
+
+class TestDate(MSSQLSetup.as_mixin(), TestCase):
+
+    @classmethod
+    def make_entities(cls):
+        class MyEntity(cls.db.Entity):
+            created = Required(date)
+
+    @db_session
+    def setUp(self):
+        now = date.today()
+        self.db.MyEntity(created=now)
+
+    @db_session
+    def test(self):
+        d = select(e.created for e in self.db.MyEntity).first()
+
+

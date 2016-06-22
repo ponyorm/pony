@@ -202,6 +202,10 @@ class MSProvider(DBAPIProvider):
         connection.close()
 
     @wrap_dbapi_exceptions
+    def disconnect(provider):
+        provider.release(provider.connection)
+
+    @wrap_dbapi_exceptions
     def inspect_connection(provider, connection):
         cursor = connection.cursor()
         cursor.execute('select @@version')
