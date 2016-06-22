@@ -142,6 +142,15 @@ class MSUuidConverter(dbapiprovider.UuidConverter):
     def sql_type(converter):
         return 'BINARY(16)'
 
+class MSDateConverter(dbapiprovider.DateConverter):
+    def py2sql(converter, val):
+        val = dbapiprovider.DateConverter.py2sql(converter, val)
+        if isinstance(val, date):
+            val = val.strftime('%Y-%m-%d')
+        return val
+    def sql_type(converter):
+        return 'DATE'
+
 class MSProvider(DBAPIProvider):
     dialect = 'MSSQL'
     paramstyle = 'qmark'
@@ -173,7 +182,7 @@ class MSProvider(DBAPIProvider):
         (float, MSRealConverter),
         (Decimal, dbapiprovider.DecimalConverter),
         (datetime, dbapiprovider.DatetimeConverter),
-        (date, dbapiprovider.DateConverter),
+        (date, MSDateConverter),
         (time, MSTimeConverter),
         (timedelta, MSTimedeltaConverter),
         (UUID, MSUuidConverter),
