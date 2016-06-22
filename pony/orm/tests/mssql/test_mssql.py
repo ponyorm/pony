@@ -81,6 +81,7 @@ class MySqlSetup(TestSetup):
     }
 
     def tearDown(self):
+        self.db.provider.disconnect()
         from pony.orm.dbproviders.mysql import mysql_module
         with closing(mysql_module.connect(**self.CONN).cursor()) as c:
             c.execute('use mydb')
@@ -123,6 +124,7 @@ class MSSQLSetup(TestSetup):
 
     def tearDown(self):
         CONN = self.get_conn_string()
+        self.db.provider.disconnect()
         import pyodbc
         cursor = pyodbc.connect(CONN, autocommit=True).cursor()
         try:

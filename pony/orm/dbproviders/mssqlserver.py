@@ -45,47 +45,6 @@ class MSBuilder(SQLBuilder):
 
     LENGTH = make_unary_func('LEN')
 
-
-    def CONCAT(builder, *args):
-        return 'concat(',  join(', ', imap(builder, args)), ')'
-    def TRIM(builder, expr, chars=None):
-        if chars is None: return 'trim(', builder(expr), ')'
-        return 'trim(both ', builder(chars), ' from ' ,builder(expr), ')'
-    def LTRIM(builder, expr, chars=None):
-        if chars is None: return 'ltrim(', builder(expr), ')'
-        return 'trim(leading ', builder(chars), ' from ' ,builder(expr), ')'
-    def RTRIM(builder, expr, chars=None):
-        if chars is None: return 'rtrim(', builder(expr), ')'
-        return 'trim(trailing ', builder(chars), ' from ' ,builder(expr), ')'
-    def YEAR(builder, expr):
-        return 'year(', builder(expr), ')'
-    def MONTH(builder, expr):
-        return 'month(', builder(expr), ')'
-    def DAY(builder, expr):
-        return 'day(', builder(expr), ')'
-    def HOUR(builder, expr):
-        return 'hour(', builder(expr), ')'
-    def MINUTE(builder, expr):
-        return 'minute(', builder(expr), ')'
-    def SECOND(builder, expr):
-        return 'second(', builder(expr), ')'
-    def DATE_ADD(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return 'DATE_ADD(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
-        return 'ADDTIME(', builder(expr), ', ', builder(delta), ')'
-    def DATE_SUB(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return 'DATE_SUB(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
-        return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
-    def DATETIME_ADD(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return 'DATE_ADD(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
-        return 'ADDTIME(', builder(expr), ', ', builder(delta), ')'
-    def DATETIME_SUB(builder, expr, delta):
-        if isinstance(delta, timedelta):
-            return 'DATE_SUB(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
-        return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
-
     @indentable
     def LIMIT(builder, limit, offset=None):
         if offset is None:
@@ -110,9 +69,6 @@ class MSStrConverter(dbapiprovider.StrConverter):
         if attr is not None and (attr.is_unique or attr.composite_keys):
             return 'VARCHAR(8000)'
         return 'VARCHAR(MAX)'
-        # result = 'VARCHAR(%d)' % converter.max_len if converter.max_len else 'TEXT'
-        # if converter.db_encoding: result += ' CHARACTER SET %s' % converter.db_encoding
-        # return result
 
 class MSRealConverter(dbapiprovider.RealConverter):
     def sql_type(converter):
@@ -189,30 +145,8 @@ class MSProvider(DBAPIProvider):
         (buffer, MSBlobConverter),
     ]
 
-    def __init__(provider, *args, **kwargs):
-        provider.connect_args = args
-        provider.connect_kwargs = kwargs
-        connection = provider.connect()
-        provider.connection = connection
-        provider.inspect_connection(connection)
-        provider.release(connection)
-
     def normalize_name(provider, name):
         return name[:provider.max_name_len].lower()
-
-    @wrap_dbapi_exceptions
-    def connect(provider):
-        args = provider.connect_args
-        kwargs = provider.connect_kwargs
-        return pyodbc.connect(*args, **kwargs)
-
-    @wrap_dbapi_exceptions
-    def release(provider, connection, cache=None):
-        connection.close()
-
-    @wrap_dbapi_exceptions
-    def disconnect(provider):
-        provider.release(provider.connection)
 
     @wrap_dbapi_exceptions
     def inspect_connection(provider, connection):
