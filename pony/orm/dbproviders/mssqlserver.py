@@ -35,13 +35,20 @@ class MSBuilder(SQLBuilder):
     dialect = 'MSSQL'
 
     def INSERT(builder, table_name, columns, values, returning=None):
-        return [
+        ret = [
             'INSERT INTO ', builder.quote_name(table_name), ' (',
             join(', ', [builder.quote_name(column) for column in columns ]),
-            ') OUTPUT inserted.', builder.quote_name(returning),
+            ')'
+        ]
+        if returning is not None:
+            ret.extend((
+                ' OUTPUT inserted.', builder.quote_name(returning),
+            ))
+        ret.extend((
             ' VALUES (',
             join(', ', [builder(value) for value in values]), ')'
-        ]
+        ))
+        return ret
 
     LENGTH = make_unary_func('LEN')
 
