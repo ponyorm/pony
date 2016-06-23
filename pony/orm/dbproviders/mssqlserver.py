@@ -111,6 +111,11 @@ class MSDateConverter(dbapiprovider.DateConverter):
         if isinstance(val, date):
             val = val.strftime('%Y-%m-%d')
         return val
+    def sql2py(converter, val):
+        if isinstance(val, basestring):
+            val = datetime.strptime(val, "%Y-%m-%d").date()
+        val = dbapiprovider.DateConverter.sql2py(converter, val)
+        return val
     def sql_type(converter):
         return 'DATE'
 

@@ -107,8 +107,7 @@ class MSSQLSetup(TestSetup):
 
     def get_conn_string(self, db=None):
         s = (
-            'DSN=MSSQLdb;'
-            'SERVER=mssql;'
+            'DSN=nicedcn;'
             'UID=sa;'
             'PWD=pass;'
         )
@@ -120,7 +119,6 @@ class MSSQLSetup(TestSetup):
     def db(self):
         CONN = self.get_conn_string(self.db_name)
         return Database('mssqlserver', CONN)
-        # return get_mysql_db()
 
     def tearDown(self):
         CONN = self.get_conn_string()
@@ -637,5 +635,6 @@ class TestDate(MSSQLSetup.as_mixin(), TestCase):
     @db_session
     def test(self):
         d = select(e.created for e in self.db.MyEntity).first()
+        self.assertIsInstance(d, date)
 
 
