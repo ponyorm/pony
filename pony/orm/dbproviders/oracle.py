@@ -53,7 +53,7 @@ class OraSequence(DBObject):
         schema = sequence.table.schema
         seq_name = schema.provider.quote_name(sequence.name)
         return schema.case('CREATE SEQUENCE %s NOCACHE') % seq_name
-        
+
 trigger_template = """
 CREATE TRIGGER %s
   BEFORE INSERT ON %s
@@ -88,7 +88,7 @@ class OraTrigger(DBObject):
     def get_create_command(trigger):
         schema = trigger.table.schema
         quote_name = schema.provider.quote_name
-        trigger_name = quote_name(trigger.name)  
+        trigger_name = quote_name(trigger.name)
         table_name = quote_name(trigger.table.name)
         column_name = quote_name(trigger.column.name)
         seq_name = quote_name(trigger.sequence.name)
@@ -111,7 +111,7 @@ class OraConstMonad(sqltranslation.ConstMonad):
     @staticmethod
     def new(translator, value):
         if value == '': value = None
-        return sqltranslation.ConstMonad.new(translator, value)    
+        return sqltranslation.ConstMonad.new(translator, value)
 
 class OraTranslator(sqltranslation.SQLTranslator):
     dialect = 'Oracle'
@@ -174,7 +174,7 @@ class OraBuilder(sqlbuilding.SQLBuilder):
             else:
                 indent0 = ''
                 x = 't.*'
-                
+
             if not limit: pass
             elif not offset:
                 result = [ indent0, 'SELECT * FROM (\n' ]
@@ -227,7 +227,7 @@ class OraBuilder(sqlbuilding.SQLBuilder):
         return '(', builder(expr), ' - ', builder(delta), ')'
 
 class OraBoolConverter(dbapiprovider.BoolConverter):
-    if not PY2:  
+    if not PY2:
         def py2sql(converter, val):
             # Fixes cx_Oracle 5.1.3 Python 3 bug:
             # "DatabaseError: OCI-22062: invalid input string [True]"
@@ -287,7 +287,7 @@ class OraTimeConverter(dbapiprovider.TimeConverter):
         dbapiprovider.TimeConverter.__init__(converter, provider, py_type, attr)
         if attr is not None and converter.precision > 0:
             # cx_Oracle 5.1.3 corrupts microseconds for values of DAY TO SECOND type
-            converter.precision = 0  
+            converter.precision = 0
     def sql2py(converter, val):
         if isinstance(val, timedelta):
             total_seconds = val.days * (24 * 60 * 60) + val.seconds
@@ -308,7 +308,7 @@ class OraTimedeltaConverter(dbapiprovider.TimedeltaConverter):
         dbapiprovider.TimedeltaConverter.__init__(converter, provider, py_type, attr)
         if attr is not None and converter.precision > 0:
             # cx_Oracle 5.1.3 corrupts microseconds for values of DAY TO SECOND type
-            converter.precision = 0  
+            converter.precision = 0
 
 class OraDatetimeConverter(dbapiprovider.DatetimeConverter):
     sql_type_name = 'TIMESTAMP'

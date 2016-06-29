@@ -190,7 +190,7 @@ class PGProvider(DBAPIProvider):
         cursor.execute(sql, (schema_name, table_name))
         row = cursor.fetchone()
         return row[0] if row is not None else None
-    
+
     def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
         schema_name, table_name = provider.split_table_name(table_name)
         cursor = connection.cursor()
