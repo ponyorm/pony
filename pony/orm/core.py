@@ -4311,6 +4311,27 @@ class Entity(with_metaclass(EntityMeta)):
         objects = entity._fetch_objects(cursor, attr_offsets)
         if obj not in objects: throw(UnrepeatableReadError,
                                      'Phantom object %s disappeared' % safe_repr(obj))
+    def _attr_changed_(obj, attr):
+        cache = obj._session_cache_
+        if not cache.is_alive: throw(
+            DatabaseSessionIsOver,
+            'Cannot assign new value to attribute %s.%s: the database session'
+            ' is over' % (safe_repr(obj), attr.name))
+        if obj._status_ in del_statuses:
+            throw_object_was_deleted(obj)
+        status = obj._status_
+        wbits = obj._wbits_
+        bit = obj._bits_[attr]
+        objects_to_save = cache.objects_to_save
+        if wbits is not None and bit:
+            obj._wbits_ |= bit
+            if status != 'modified':
+                assert status in ('loaded', 'inserted', 'updated')
+                assert obj._save_pos_ is None
+                obj._status_ = 'modified'
+                obj._save_pos_ = len(objects_to_save)
+                objects_to_save.append(obj)
+                cache.modified = True
     def _db_set_(obj, avdict, unpickling=False):
         assert obj._status_ not in created_or_deleted_statuses
         cache = obj._session_cache_
