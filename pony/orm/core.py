@@ -2078,8 +2078,13 @@ class Attribute(object):
                     vals[i] = new_dbval
                     new_vals = tuple(vals)
                     cache.db_update_composite_index(obj, attrs, old_vals, new_vals)
-            if new_dbval is NOT_LOADED: obj._vals_.pop(attr, None)
-            else: obj._vals_[attr] = new_dbval
+            if new_dbval is NOT_LOADED:
+                obj._vals_.pop(attr, None)
+            elif attr.reverse:
+                obj._vals_[attr] = new_dbval
+            else:
+                assert len(attr.converters) == 1
+                obj._vals_[attr] = attr.converters[0].dbval2val(new_dbval, obj)
 
         reverse = attr.reverse
         if not reverse: pass
@@ -4357,8 +4362,10 @@ class Entity(with_metaclass(EntityMeta)):
             new_vals = tuple(vals)
             cache.db_update_composite_index(obj, attrs, prev_vals, new_vals)
 
-        for attr, new_dbval in iteritems(avdict):
-            obj._vals_[attr] = new_dbval
+        for attr, new_val in iteritems(avdict):
+            converter = attr.converters[0]
+            new_val = converter.dbval2val(new_val, obj)
+            obj._vals_[attr] = new_val
     def _delete_(obj, undo_funcs=None):
         status = obj._status_
         if status in del_statuses: return
@@ -4604,7 +4611,10 @@ class Entity(with_metaclass(EntityMeta)):
             elif after_create and val is None:
                 obj._rbits_ &= ~bits[attr]
                 del vals[attr]
-            else: dbvals[attr] = val
+            else:
+                # TODO this conversion should be unnecessary
+                converter = attr.converters[0]
+                dbvals[attr] = converter.val2dbval(val, obj)
     def _save_created_(obj):
         auto_pk = (obj._pkval_ is None)
         attrs = []

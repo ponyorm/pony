@@ -348,6 +348,10 @@ class Converter(object):
         return val
     def sql2py(converter, val):
         return val
+    def val2dbval(self, val, obj=None):
+        return val
+    def dbval2val(self, dbval, obj=None):
+        return dbval
     def get_sql_type(converter, attr=None):
         if attr is not None and attr.sql_type is not None:
             return attr.sql_type

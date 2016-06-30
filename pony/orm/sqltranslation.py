@@ -346,9 +346,11 @@ class SQLTranslator(ASTTranslator):
                     offset = next_offset
                 else:
                     converter = provider.get_converter_by_py_type(expr_type)
-                    def func(value, sql2py=converter.sql2py):
+                    def func(value, converter=converter):
                         if value is None: return None
-                        return sql2py(value)
+                        value = converter.sql2py(value)
+                        value = converter.dbval2val(value)
+                        return value
                     row_layout.append((func, offset, ast2src(m.node)))
                     m.orderby_columns = (offset+1,)
                     offset += 1
