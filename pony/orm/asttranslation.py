@@ -171,6 +171,8 @@ class PythonTranslator(ASTTranslator):
             s = str(value)
             if float(s) == value: return s
         return repr(value)
+    def postEllipsis(translator, node):
+        return '...'
     def postList(translator, node):
         node.priority = 1
         return '[%s]' % ', '.join(item.src for item in node.nodes)

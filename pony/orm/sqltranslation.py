@@ -659,6 +659,8 @@ class SQLTranslator(ASTTranslator):
             return translator.ConstMonad.new(translator, value)
         else:
             return translator.ListMonad(translator, [ translator.ConstMonad.new(translator, item) for item in value ])
+    def postEllipsis(translator, node):
+        return translator.ConstMonad.new(translator, Ellipsis)
     def postList(translator, node):
         return translator.ListMonad(translator, [ item.monad for item in node.nodes ])
     def postTuple(translator, node):
@@ -1633,6 +1635,7 @@ class ConstMonad(Monad):
         elif value_type is datetime: cls = translator.DatetimeConstMonad
         elif value_type is NoneType: cls = translator.NoneMonad
         elif value_type is buffer: cls = translator.BufferConstMonad
+        elif issubclass(value_type, type(Ellipsis)): cls = translator.EllipsisMonad
         else: throw(NotImplementedError, value_type)  # pragma: no cover
         result = cls(translator, value)
         result.aggregated = False
@@ -1652,6 +1655,9 @@ class NoneMonad(ConstMonad):
     def __init__(monad, translator, value=None):
         assert value is None
         ConstMonad.__init__(monad, translator, value)
+
+class EllipsisMonad(ConstMonad):
+    pass
 
 class BufferConstMonad(BufferMixin, ConstMonad): pass
 

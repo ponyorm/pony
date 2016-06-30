@@ -136,6 +136,9 @@ class Transformer:
         if PY2: self._atom_dispatch.update({
                                token.BACKQUOTE: self.atom_backquote,
                                })
+        if not PY2: self._atom_dispatch.update({
+            token.ELLIPSIS: self.atom_ellipsis
+        })
         self.encoding = None
 
     def transform(self, tree):
@@ -785,6 +788,9 @@ class Transformer:
 
     def atom_backquote(self, nodelist):
         return Backquote(self.com_node(nodelist[1]))
+
+    def atom_ellipsis(self, nodelist):
+        return Ellipsis()
 
     def atom_number(self, nodelist):
         ### need to verify this matches compile.c

@@ -2,7 +2,7 @@ from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, izip, imap, iteritems, itervalues, items_list, values_list, xrange, cmp, \
                             basestring, unicode, buffer, int_types, builtins, pickle, with_metaclass
 
-import json, re, sys, types, datetime, logging, itertools
+import io, json, re, sys, types, datetime, logging, itertools
 from operator import attrgetter, itemgetter
 from itertools import chain, starmap, repeat
 from time import time
@@ -4972,6 +4972,29 @@ def extract_vars(extractors, globals, locals, cells=None):
 def unpickle_query(query_result):
     return query_result
 
+def persistent_id(obj):
+    if obj is Ellipsis:
+        return "Ellipsis"
+
+def persistent_load(persid):
+    if persid == "Ellipsis":
+        return Ellipsis
+    raise pickle.UnpicklingError("unsupported persistent object")
+
+def pickle_ast(val):
+    pickled = io.BytesIO()
+    pickler = pickle.Pickler(pickled)
+    pickler.persistent_id = persistent_id
+    pickler.dump(val)
+    return pickled
+
+def unpickle_ast(pickled):
+    pickled.seek(0)
+    unpickler = pickle.Unpickler(pickled)
+    unpickler.persistent_load = persistent_load
+    return unpickler.load()
+
+
 class Query(object):
     def __init__(query, code_key, tree, globals, locals, cells=None, left_join=False):
         assert isinstance(tree, ast.GenExprInner)
@@ -4996,13 +5019,13 @@ class Query(object):
 
         translator = database._translator_cache.get(query._key)
         if translator is None:
-            pickled_tree = pickle.dumps(tree, 2)
-            tree = pickle.loads(pickled_tree)  # tree = deepcopy(tree)
+            pickled_tree = pickle_ast(tree)
+            tree = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
             translator_cls = database.provider.translator_cls
             translator = translator_cls(tree, extractors, vartypes, left_join=left_join)
             name_path = translator.can_be_optimized()
             if name_path:
-                tree = pickle.loads(pickled_tree)  # tree = deepcopy(tree)
+                tree = unpickle_ast(pickled_tree)  # tree = deepcopy(tree)
                 try: translator = translator_cls(tree, extractors, vartypes, left_join=True, optimize=name_path)
                 except OptimizationFailed: translator.optimization_failed = True
             translator.pickled_tree = pickled_tree
@@ -5311,7 +5334,7 @@ class Query(object):
             if not prev_optimized:
                 name_path = new_translator.can_be_optimized()
                 if name_path:
-                    tree = pickle.loads(prev_translator.pickled_tree)  # tree = deepcopy(tree)
+                    tree = unpickle_ast(prev_translator.pickled_tree)  # tree = deepcopy(tree)
                     prev_extractors = prev_translator.extractors
                     prev_vartypes = prev_translator.vartypes
                     translator_cls = prev_translator.__class__
