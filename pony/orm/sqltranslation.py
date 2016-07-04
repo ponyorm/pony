@@ -1721,7 +1721,6 @@ class CmpMonad(BoolMonad):
         return monad.translator.CmpMonad(cmp_negate[monad.op], monad.left, monad.right)
     def getsql(monad, subquery=None):
         op = monad.op
-        sql = []
         left_sql = monad.left.getsql()
         if op == 'is':
             return [ sqland([ [ 'IS_NULL', item ] for item in left_sql ]) ]
