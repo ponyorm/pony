@@ -210,7 +210,9 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
         sum(s.name for s in Student)
     @raises_exception(NotImplementedError, "Parameter {'a':'b'} has unsupported type <type 'dict'>")
     def test50(self):
-        select(s for s in Student if s.name == {'a' : 'b'})
+        # cannot compare JSON value to dynamic string,
+        # because a database does not provide json.dumps(s.name) functionality
+        select(s for s in Student if s.name == {'a': 'b'})
     @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > a & 2" % unicode.__name__)
     def test51(self):
         a = 1

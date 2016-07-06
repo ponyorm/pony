@@ -415,11 +415,12 @@ py_lower = make_string_function('py_lower', unicode.lower)
 
 @print_traceback
 def unwrap_extract_json(value):
-    '''
-    [null,some-value] -> some-value
-    '''
+    # [null,some-value] -> some-value
     assert value.startswith('[null,')
-    return value[6:-1]
+    result = value[6:-1]
+    if not result.startswith(('[', '{')):
+        result = json.loads(result)
+    return result
 
 @print_traceback
 def py_json_extract(value, path, quote_strings):

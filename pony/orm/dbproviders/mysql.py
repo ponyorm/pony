@@ -47,46 +47,6 @@ class MySQLSchema(dbschema.DBSchema):
 class MySQLTranslator(SQLTranslator):
     dialect = 'MySQL'
 
-
-
-    class CmpMonad(sqltranslation.CmpMonad):
-
-        def make_json_cast_if_needed(monad, left_sql, right_sql):
-            translator = monad.left.translator
-            if monad.op not in ('==', '!='):
-                return sqltranslation.CmpMonad.make_json_cast_if_needed(
-                    monad, left_sql, right_sql
-                )
-            def need_cast(monad):
-                if isinstance(monad, sqltranslation.ParamMonad):
-                    return True
-                return not isinstance(monad, sqltranslation.JsonMixin)
-
-            if need_cast(monad.left):
-                sql = left_sql[0]
-                expr = translator.CastToJsonExprMonad(
-                    translator, sql, target_monad=monad.left
-                )
-                return expr.getsql(), right_sql
-            if need_cast(monad.right):
-                sql = right_sql[0]
-                expr = translator.CastToJsonExprMonad(
-                    translator, sql, target_monad=monad.right
-                )
-                return left_sql, expr.getsql()
-            return left_sql, right_sql
-
-
-    class CastFromJsonExprMonad(sqltranslation.CastFromJsonExprMonad):
-
-        @classmethod
-        def dispatch_type(cls, typ):
-            if issubclass(typ, int):
-                return 'signed'
-            if issubclass(typ, float):
-                raise sqltranslation.AbortCast
-            return sqltranslation.CastFromJsonExprMonad.dispatch_type(typ)
-
 class MySQLBuilder(SQLBuilder):
     dialect = 'MySQL'
     def CONCAT(builder, *args):
@@ -146,6 +106,7 @@ class MySQLBuilder(SQLBuilder):
         path_with_key_sql = builder(path + [ key[1] ])
         result += [ ', ', path_sql, ') or json_contains_path(', expr_sql, ", 'one', ", path_with_key_sql, '))' ]
         return result
+    type_mapping = {str: 'text', bool: 'boolean', int: 'signed', float: None, ormtypes.Json: 'json'}
 
 class MySQLStrConverter(dbapiprovider.StrConverter):
     def sql_type(converter):

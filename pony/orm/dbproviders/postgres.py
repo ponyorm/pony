@@ -48,55 +48,11 @@ class PGTranslator(SQLTranslator):
             str_not_empty = translator.CmpMonad(
                 '!=', monad, empty_str
             )
-            is_true = translator.CastFromJsonExprMonad(
-                bool, translator, monad.getsql()[0]
-            )
+            is_true = monad.cast_from_json(bool).getsql()[0]
             sql = ['AND']
             sql.extend(str_not_empty.getsql())
             sql.extend(is_true.getsql())
             return translator.BoolExprMonad(translator, sql)
-
-    class CmpMonad(sqltranslation.CmpMonad):
-
-        def make_json_cast_if_needed(monad, left_sql, right_sql):
-            translator = monad.left.translator
-            if monad.op not in ('==', '!='):
-                return sqltranslation.CmpMonad.make_json_cast_if_needed(
-                    monad, left_sql, right_sql
-                )
-            if isinstance(monad.left, sqltranslation.NumericMixin):
-                sql = left_sql[0]
-                expr = translator.CastToJsonExprMonad(
-                    translator, sql, target_monad=monad.left
-                )
-                return expr.getsql(), right_sql
-            if isinstance(monad.right, sqltranslation.NumericMixin):
-                sql = right_sql[0]
-                expr = translator.CastToJsonExprMonad(
-                    translator, sql, target_monad=monad.right
-                )
-                return left_sql, expr.getsql()
-            return left_sql, right_sql
-
-
-    class CastFromJsonExprMonad(sqltranslation.CastFromJsonExprMonad):
-
-        @classmethod
-        def dispatch_type(cls, typ):
-            sql_type = sqltranslation.CastFromJsonExprMonad.dispatch_type(typ)
-            if not issubclass(typ, (int, float, bool)):
-                return sql_type
-            return 'text::%s' % sql_type
-
-
-    class CastToJsonExprMonad(sqltranslation.CastToJsonExprMonad):
-
-        cast_to = 'jsonb'
-
-        def getsql(monad):
-            if isinstance(monad.target_monad, sqltranslation.NumericConstMonad):
-                monad.sql = ['SINGLE_QUOTES', monad.sql]
-            return sqltranslation.CastToJsonExprMonad.getsql(monad)
 
 class PGValue(Value):
     __slots__ = []
@@ -159,10 +115,12 @@ class PGSQLBuilder(SQLBuilder):
         raise NotImplementedError
     def JSON_ARRAY_LENGTH(builder, value):
         return 'jsonb_array_length(', builder(value), ')'
-    def _as_json(builder, target):
-        return '(', builder(target), ')::jsonb'
     def CAST(builder, expr, type):
-        return '(', builder(expr), ')::', type
+        return '(', builder(expr), ')::', builder.get_cast_type_name(type)
+    def JSON_CAST(builder, expr, type):
+        type = builder.get_cast_type_name(type)
+        if type == 'text': return '(', builder(expr), ')::', type
+        return '(', builder(expr), ')::text::', type
     def SINGLE_QUOTES(builder, expr):
         return "'", builder(expr), "'"
 

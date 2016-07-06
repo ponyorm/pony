@@ -521,7 +521,15 @@ class SQLBuilder(object):
         raise NotImplementedError
     def JSON_GETPATH_STARRED(builder, expr, key):
         return builder.JSON_GETPATH(expr, key)
-    def CAST(builder, expr, type):
-        return 'CAST(', builder(expr), ' AS ', type, ')'
     def JSON_CONTAINS(builder, expr, path, key):
         raise NotImplementedError
+    def CAST(builder, expr, type):
+        type_name = builder.get_cast_type_name(type)
+        if type_name is None: return builder(expr)
+        return 'CAST(', builder(expr), ' AS ', type_name, ')'
+    JSON_CAST = CAST
+    def get_cast_type_name(builder, type):
+        if isinstance(type, basestring): return type
+        if type not in builder.typecast_mapping: throw(NotImplementedError, type)
+        return builder.typecast_mapping[type]
+    typecast_mapping = {unicode: 'text', bool: 'boolean', int: 'integer', float: 'real', Json: None}
