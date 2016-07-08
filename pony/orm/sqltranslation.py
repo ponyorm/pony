@@ -77,6 +77,9 @@ class SQLTranslator(ASTTranslator):
         if hasattr(node, 'monad'): return  # monad already assigned somehow
         if not getattr(node, 'external', False) or getattr(node, 'constant', False):
             return ASTTranslator.dispatch(translator, node)  # default route
+        translator.call(translator.dispatch_external, node)
+
+    def dispatch_external(translator, node):
         varkey = translator.filter_num, node.src
         t = translator.vartypes[varkey]
         tt = type(t)
@@ -1550,7 +1553,7 @@ class ParamMonad(Monad):
         elif type is buffer: cls = translator.BufferParamMonad
         elif type is UUID: cls = translator.UuidParamMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectParamMonad
-        else: throw(NotImplementedError, type)  # pragma: no cover
+        else: throw(NotImplementedError, 'Parameter {EXPR} has unsupported type %r' % (type))
         result = cls(translator, type, paramkey)
         result.aggregated = False
         return result

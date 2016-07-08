@@ -58,7 +58,7 @@ class TestQuery(unittest.TestCase):
         def f1(x):
             return x + 1
         select(s for s in Student if f1(s.gpa) > 3)
-    @raises_exception(NotImplementedError, "m1(s.gpa, 1) > 3")
+    @raises_exception(NotImplementedError, "m1")
     def test7(self):
         class C1(object):
             def method1(self, a, b):

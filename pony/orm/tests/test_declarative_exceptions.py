@@ -208,7 +208,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(TypeError, "'sum' is valid for numeric attributes only")
     def test49(self):
         sum(s.name for s in Student)
-    @raises_exception(NotImplementedError) # Parameter {'a': 'b'} has unsupported type 'dict'
+    @raises_exception(NotImplementedError, "Parameter {'a':'b'} has unsupported type <type 'dict'>")
     def test50(self):
         select(s for s in Student if s.name == {'a' : 'b'})
     @raises_exception(IncomparableTypesError, "Incomparable types '%s' and 'int' in expression: s.name > a & 2" % unicode.__name__)
