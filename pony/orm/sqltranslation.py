@@ -700,6 +700,16 @@ class SQLTranslator(ASTTranslator):
         return translator.AndMonad([ subnode.monad for subnode in node.nodes ])
     def postOr(translator, node):
         return translator.OrMonad([ subnode.monad for subnode in node.nodes ])
+    def postBitor(translator, node):
+        left, right = (subnode.monad for subnode in node.nodes)
+        return left | right
+    def postBitand(translator, node):
+        left, right = (subnode.monad for subnode in node.nodes)
+        return left & right
+    def postBitxor(translator, node):
+        left, right = (subnode.monad for subnode in node.nodes)
+        return left ^ right
+
     def preNot(translator, node):
         translator.inside_not = not translator.inside_not
     def postNot(translator, node):
@@ -1056,6 +1066,9 @@ class Monad(with_metaclass(MonadMeta)):
     def __floordiv__(monad, monad2): throw(TypeError)
     def __pow__(monad, monad2): throw(TypeError)
     def __neg__(monad): throw(TypeError)
+    def __or__(monad): throw(TypeError)
+    def __and__(monad): throw(TypeError)
+    def __xor__(monad): throw(TypeError)
     def abs(monad): throw(TypeError)
 
 class RawSQLMonad(Monad):
@@ -1599,6 +1612,15 @@ class JsonMixin(object):
     #         return translator.JsonBoolExprMonad(monad.translator, bool, sql)
     #     else:
     #         raise TypeError('Invalid JSON key: %s,' % ast2src(item.node))
+
+    def __or__(monad, other):
+        translator = monad.translator
+        if not isinstance(other, translator.JsonMixin):
+            raise TypeError('Should be JSON: %s' % ast2src(other.node))
+        left_sql, = monad.getsql()
+        right_sql, = other.getsql()
+        sql = ['JSON_CONCAT', left_sql, right_sql]
+        return translator.JsonConcatExprMonad(translator, Json, sql)
 
     def len(monad):
         translator = monad.translator

@@ -158,6 +158,8 @@ class PGSQLBuilder(SQLBuilder):
         return ret
     def JSON_GETPATH(builder, expr, key):
         return '(', builder(expr), "#>", builder(key), ')'
+    def JSON_CONCAT(builder, left, right):
+        return '(', builder(left), '||', builder(right), ')'
     def JSON_CONTAINS(builder, expr, path, key):
         if path:
             json_sql = builder.JSON_GETPATH(expr, path)
