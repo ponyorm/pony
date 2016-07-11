@@ -177,11 +177,6 @@ class PGSQLBuilder(SQLBuilder):
         raise NotImplementedError
     def JSON_HAS_ALL(builder, array, value):
         raise NotImplementedError
-    def JSON_SUBTRACT_VALUE(builder, expr, key):
-        val = builder.VALUE(key)
-        return '(', builder(expr), " - ", val, ')'
-    def JSON_SUBTRACT_PATH(builder, value, key):
-        return '(', builder(value), " #- ", builder(key), ')'
     def JSON_ARRAY_LENGTH(builder, value):
         return 'jsonb_array_length(', builder(value), ')'
     def _as_json(builder, target):

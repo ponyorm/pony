@@ -176,10 +176,6 @@ class SQLiteBuilder(SQLBuilder):
             return 'py_json_extract(', builder(expr), ', ', builder(key), ', 1)'
         ret = 'json_extract(', builder(expr), ', null, ', builder(key), ')'
         return 'unwrap_extract_json(', ret, ')'
-    def JSON_SUBTRACT_PATH(builder, expr, key):
-        if not builder.json1_available:
-            raise SqliteExtensionUnavailable('json1')
-        return 'json_remove(', builder(expr), ', ', builder(key), ')'
     def JSON_ARRAY_LENGTH(builder, value):
         if not builder.json1_available:
             raise SqliteExtensionUnavailable('json1')

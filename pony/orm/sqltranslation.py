@@ -1566,24 +1566,6 @@ class JsonMixin(object):
             raise TypeError('Invalid JSON path item: %s' % ast2src(monad.node))
         return monad.value
 
-    allow_subtract_key_syntax = False # support only subtracting path by default
-
-    def __sub__(monad, other):
-        translator = monad.translator
-        left_sql, = monad.getsql()
-        items = None
-        if isinstance(other, translator.ListMonad):
-            items = other.items
-        elif not monad.allow_subtract_key_syntax:
-            items = [other]
-        else:
-            value = monad._get_value(other)
-            sql = ['JSON_SUBTRACT_VALUE', left_sql, value]
-        if items:
-            path = monad._get_path_sql(items)
-            sql = ['JSON_SUBTRACT_PATH', left_sql, path]
-        return translator.JsonExprMonad(translator, Json, sql)
-
     def __getitem__(monad, item, is_overriden=False):
         '''
         Transform the item and return it. Please override.

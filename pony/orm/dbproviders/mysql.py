@@ -160,8 +160,6 @@ class MySQLBuilder(SQLBuilder):
         return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
     def JSON_GETPATH(builder, expr, key):
         return 'json_extract(', builder(expr), ', ', builder(key), ')'
-    def JSON_SUBTRACT_PATH(builder, expr, key):
-        return 'json_remove(', builder(expr), ', ', builder(key), ')'
     def JSON_ARRAY_LENGTH(builder, value):
         return 'json_length(', builder(value), ')'
     def AS_JSON(builder, target):
