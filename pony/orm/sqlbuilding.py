@@ -8,7 +8,7 @@ from binascii import hexlify
 
 from pony import options
 from pony.utils import datetime2timestamp, throw
-from pony.orm.ormtypes import RawSQL
+from pony.orm.ormtypes import RawSQL, Json, AnyNum, AnyStr
 
 class AstError(Exception): pass
 
@@ -508,12 +508,18 @@ class SQLBuilder(object):
         for item in items:
             if isinstance(item, int):
                 ret.append('[%d]' % item)
+            elif item is AnyNum:
+                ret.append('[*]')
             elif isinstance(item, str):
                 ret.append('."%s"' % item)
+            elif item is AnyStr:
+                ret.append('.*')
             else: assert 0
         ret.append('\'')
         return ret
     def JSON_GETPATH(builder, expr, key):
         raise NotImplementedError
+    def JSON_GETPATH_STARRED(builder, expr, key):
+        return builder.JSON_GETPATH(expr, key)
     def CAST(builder, expr, type):
         return 'CAST(', builder(expr), ' AS ', type, ')'

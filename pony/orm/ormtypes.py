@@ -153,7 +153,7 @@ def normalize_type(t):
     if t is NoneType: return t
     t = type_normalization_dict.get(t, t)
     if t in primitive_types: return t
-    if issubclass(t, (slice, type(Ellipsis))): return t
+    if issubclass(t, (AnyItem, slice, type(Ellipsis))): return t
     if issubclass(t, basestring): return unicode
     if issubclass(t, (dict, Json)): return Json
     throw(TypeError, 'Unsupported type %r' % t.__name__)
@@ -293,4 +293,11 @@ class Json(object):
         self.wrapped = wrapped
 
     def __repr__(self):
-        return 'Json %s' % repr(self.wrapped)
+        return '<Json %r>' % self.wrapped
+
+class AnyItem(object):
+    def __init__(self, type):
+        self.type = type
+
+AnyStr = AnyItem('Str')
+AnyNum = AnyItem('Number')

@@ -17,7 +17,7 @@ from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
     numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
     get_normalized_type_of, normalize_type, coerce_types, are_comparable_types, \
-    Json
+    Json, AnyStr, AnyNum, AnyItem
 from pony.orm import core
 from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper
 
@@ -1575,6 +1575,10 @@ class JsonMixin(object):
     @classmethod
     def _get_value(cls, monad):
         tr = monad.translator
+        if isinstance(monad, EllipsisMonad):
+            return AnyStr
+        if isinstance(monad, FullSliceMonad):
+            return AnyNum
         if not isinstance(monad, (tr.NumericConstMonad, tr.StringConstMonad)):
             raise TypeError('Invalid JSON path item: %s' % ast2src(monad.node))
         return monad.value
@@ -1817,7 +1821,10 @@ class JsonItemMonad(JsonMixin, Monad):
     def getsql(monad):
         base_sql, = monad.attr_monad.getsql()
         path_sql = monad._get_path_sql(monad.path)
-        sql = ['JSON_GETPATH']
+        if any(isinstance(item, AnyItem) for item in path_sql):
+            sql = ['JSON_GETPATH_STARRED']
+        else:
+            sql = ['JSON_GETPATH']
         sql.extend((base_sql, path_sql))
         return [sql]
 
