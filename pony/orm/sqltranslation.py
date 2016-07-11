@@ -1781,8 +1781,6 @@ class JsonExprMonad(JsonMixin, ExprMonad):
 
 class JsonItemMonad(JsonMixin, Monad):
 
-    allow_get_by_key_syntax = False
-
     def __init__(monad, attr_monad, path):
         translator = attr_monad.translator
         monad.attr_monad = attr_monad
@@ -1796,10 +1794,6 @@ class JsonItemMonad(JsonMixin, Monad):
 
     def getsql(monad):
         base_sql, = monad.attr_monad.getsql()
-        if monad.allow_get_by_key_syntax and len(monad.path) == 1:
-            value = monad._get_value(monad.path[0])
-            sql = ['JSON_GET', base_sql, value]
-            return [sql]
         path_sql = monad._get_path_sql(monad.path)
         sql = ['JSON_GETPATH']
         sql.extend((base_sql, path_sql))

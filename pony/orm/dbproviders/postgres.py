@@ -40,8 +40,6 @@ class PGTranslator(SQLTranslator):
     dialect = 'PostgreSQL'
 
     class JsonItemMonad(sqltranslation.JsonItemMonad):
-        allow_get_by_key_syntax = True
-
         def nonzero(monad):
             translator = monad.translator
             empty_str = translator.StringExprMonad(
@@ -158,9 +156,6 @@ class PGSQLBuilder(SQLBuilder):
             ret.append(item)
         ret.append("}'")
         return ret
-    def JSON_GET(builder, expr, key):
-        val = builder.VALUE(key)
-        return '(', builder(expr), "->", val, ')'
     def JSON_GETPATH(builder, expr, key):
         return '(', builder(expr), "#>", builder(key), ')'
     def JSON_CONTAINS(builder, expr, path, key):
