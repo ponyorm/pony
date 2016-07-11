@@ -166,7 +166,7 @@ class SQLiteBuilder(SQLBuilder):
     def JSON_PATH(builder, *items):
         if builder.json1_available:
             return SQLBuilder.JSON_PATH(builder, *items)
-        return "'", json.dumps(items), "'"
+        return builder.VALUE(json.dumps(items))
     def JSON_GETPATH(builder, expr, key):
         if not builder.json1_available:
             return 'py_json_extract(', builder(expr), ', ', builder(key), ', 0)'

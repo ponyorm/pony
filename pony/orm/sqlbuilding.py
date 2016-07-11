@@ -7,7 +7,7 @@ from datetime import date, datetime
 from binascii import hexlify
 
 from pony import options
-from pony.utils import datetime2timestamp, throw
+from pony.utils import datetime2timestamp, throw, is_ident
 from pony.orm.ormtypes import RawSQL, Json, AnyNum, AnyStr
 
 class AstError(Exception): pass
@@ -504,19 +504,19 @@ class SQLBuilder(object):
         if isinstance(sql, basestring): return sql
         return [ x if isinstance(x, basestring) else builder(x) for x in sql ]
     def JSON_PATH(builder, *items):
-        ret = ['\'$']
+        result = ['\'$']
         for item in items:
             if isinstance(item, int):
-                ret.append('[%d]' % item)
+                result.append('[%d]' % item)
             elif item is AnyNum:
-                ret.append('[*]')
+                result.append('[*]')
             elif isinstance(item, str):
-                ret.append('."%s"' % item)
+                result.append('.' + item if is_ident(item) else '."%s"' % item.replace('"', '\\"'))
             elif item is AnyStr:
-                ret.append('.*')
-            else: assert 0
-        ret.append('\'')
-        return ret
+                result.append('.*')
+            else: assert False
+        result.append('\'')
+        return result
     def JSON_GETPATH(builder, expr, key):
         raise NotImplementedError
     def JSON_GETPATH_STARRED(builder, expr, key):

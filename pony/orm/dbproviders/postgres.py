@@ -26,6 +26,7 @@ from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import Value, SQLBuilder
 from pony.converting import timedelta2str
+from pony.utils import is_ident
 
 NoneType = type(None)
 
@@ -148,14 +149,14 @@ class PGSQLBuilder(SQLBuilder):
             return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' DAY TO SECOND)"
         return '(', builder(expr), ' - ', builder(delta), ')'
     def JSON_PATH(builder, *items):
-        ret = ["'{"]
-        for i, item in enumerate(items):
-            if i: ret.append(', ')
-            if isinstance(item, basestring):
-                item = '"', item, '"'
-            ret.append(item)
-        ret.append("}'")
-        return ret
+        result = []
+        for item in items:
+            if isinstance(item, int):
+                result.append(str(item))
+            elif isinstance(item, basestring):
+                result.append(item if is_ident(item) else '"%s"' % item.replace('"', '\\"'))
+            else: assert False, item
+        return '{%s}' % ','.join(result)
     def JSON_GETPATH(builder, expr, key):
         return '(', builder(expr), "#>", builder(key), ')'
     def JSON_CONCAT(builder, left, right):
