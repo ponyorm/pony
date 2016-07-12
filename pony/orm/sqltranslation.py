@@ -1590,8 +1590,7 @@ class JsonMixin(object):
         translator = monad.translator
         expr = monad.translator.JsonContainsExprMonad(monad, item)
         if not_in:
-            sql, = expr.getsql()
-            expr = translator.JsonBoolExprMonad(translator, bool, ['NOT', sql])
+            expr = translator.BoolExprMonad(translator, ['NOT', expr.getsql()[0]])
         return expr
 
     def __or__(monad, other):
@@ -1696,9 +1695,6 @@ class DateExprMonad(DateMixin, ExprMonad): pass
 class TimeExprMonad(TimeMixin, ExprMonad): pass
 class TimedeltaExprMonad(TimedeltaMixin, ExprMonad): pass
 class DatetimeExprMonad(DatetimeMixin, ExprMonad): pass
-
-class JsonBoolExprMonad(ExprMonad):
-    pass
 
 class JsonContainsExprMonad(Monad):
     def __init__(monad, json_monad, item):
