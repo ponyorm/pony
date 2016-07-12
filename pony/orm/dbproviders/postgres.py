@@ -167,8 +167,6 @@ class PGSQLBuilder(SQLBuilder):
         else:
             json_sql = builder(expr)
         return json_sql, " ? ", builder(key)
-    def JSON_CONTAINS_JSON(builder, sub_value, value):
-        return builder(sub_value), " <@ ", builder(value)
     def JSON_IS_CONTAINED(builder, value, contained_in):
         raise NotImplementedError('Not needed')
     def JSON_HAS_ANY(builder, array, value):

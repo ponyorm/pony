@@ -1602,21 +1602,6 @@ class JsonMixin(object):
             expr = translator.JsonBoolExprMonad(translator, bool, ['NOT', sql])
         return expr
 
-    # TODO not_in
-    # def contains_json(monad, item, not_in=False):
-    #     import ipdb; ipdb.set_trace()
-    #     translator = monad.translator
-    #     parent_sql, = monad.getsql()
-    #     item_sql, = item.getsql()
-    #     if isinstance(item, translator.JsonMixin):
-    #         sql = ['JSON_CONTAINS_JSON', item_sql, parent_sql]
-    #         return translator.JsonBoolExprMonad(monad.translator, bool, sql)
-    #     elif isinstance(item, translator.StringMixin):
-    #         sql = ['JSON_CONTAINS', item_sql, parent_sql]
-    #         return translator.JsonBoolExprMonad(monad.translator, bool, sql)
-    #     else:
-    #         raise TypeError('Invalid JSON key: %s,' % ast2src(item.node))
-
     def __or__(monad, other):
         translator = monad.translator
         if not isinstance(other, translator.JsonMixin):
