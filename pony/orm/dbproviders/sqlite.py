@@ -54,35 +54,6 @@ class SQLiteTranslator(sqltranslation.SQLTranslator):
     StringMixin_UPPER = make_overriden_string_func('PY_UPPER')
     StringMixin_LOWER = make_overriden_string_func('PY_LOWER')
 
-    class CmpMonad(sqltranslation.CmpMonad):
-        def __init__(monad, op, left, right):
-            translator = left.translator
-            sqltranslation.CmpMonad.__init__(monad, op, left, right)
-            if not isinstance(left, translator.JsonMixin):
-                return
-            if op in ('==', '!='):
-                if isinstance(right, sqltranslation.AttrMonad) :
-                    left.quote_strings = False
-
-    class JsonItemMonad(sqltranslation.JsonItemMonad):
-        quote_strings = True
-        def getsql(monad):
-            sql, = sqltranslation.JsonItemMonad.getsql(monad)
-            if monad.quote_strings:
-                sql[0] = 'JSON_GETPATH__QUOTE_STRINGS'
-            return [sql]
-        def nonzero(monad):
-            translator = monad.translator
-            if translator.database.provider.json1_available:
-                monad.quote_strings = False
-                return monad
-            sql = ['PY_JSON_NONZERO']
-            expr_sql = monad.attr_monad.getsql()[0]
-            path_sql = monad._get_path_sql(monad.path)
-            sql.extend([expr_sql, path_sql])
-            return translator.BoolExprMonad(translator, sql)
-
-
 class SQLiteBuilder(SQLBuilder):
     dialect = 'SQLite'
     def __init__(builder, provider, ast):
@@ -185,8 +156,6 @@ class SQLiteBuilder(SQLBuilder):
             # TODO impl
         with builder.json1_disabled():
             return 'py_json_contains(', builder(expr), ', ', builder(path), ',  ', builder(key), ')'
-    def PY_JSON_NONZERO(builder, expr, path):
-        return 'py_json_nonzero(', builder(expr), ', ', builder(path), ')'
 
     @contextmanager
     def json1_disabled(builder):

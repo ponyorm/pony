@@ -1568,31 +1568,23 @@ class JsonMixin(object):
     disable_distinct = True  # at least in Oracle we cannot use DISTINCT with JSON column
     disable_ordering = True  # at least in Oracle we cannot use ORDER BY with JSON column
 
-    @classmethod
-    def _get_path_sql(cls, items):
-        return ['JSON_PATH'] + [cls._get_value(item) for item in items]
+    def mixin_init(monad):
+        assert monad.type is Json, monad.type
 
-    @classmethod
-    def _get_value(cls, monad):
-        tr = monad.translator
-        if isinstance(monad, EllipsisMonad):
-            return AnyStr
-        if isinstance(monad, FullSliceMonad):
-            return AnyNum
-        if not isinstance(monad, (tr.NumericConstMonad, tr.StringConstMonad)):
-            raise TypeError('Invalid JSON path item: %s' % ast2src(monad.node))
-        return monad.value
+    def _get_path_sql(monad, path):
+        result = [ 'JSON_PATH' ]
+        for item in path:
+            if isinstance(item, EllipsisMonad):
+                result.append(AnyStr)
+            elif isinstance(item, slice):
+                result.append(AnyNum)
+            elif isinstance(item, (NumericConstMonad, StringConstMonad)):
+                result.append(item.value)
+            raise TypeError('Invalid JSON path item: %s' % ast2src(item.node))
+        return result
 
-    def __getitem__(monad, item, is_overriden=False):
-        '''
-        Transform the item and return it. Please override.
-        '''
-        assert is_overriden, 'Json.__getitem__ is not a valid implementation'
-        if isinstance(item, slice) \
-                and isinstance(item.start, (NoneType, NoneMonad)) \
-                and isinstance(item.stop, (NoneType, NoneMonad)):
-            return FullSliceMonad(monad.translator)
-        return item
+    def __getitem__(monad, key):
+        return monad.translator.JsonItemMonad(monad, key)
 
     def contains(monad, item, not_in=False):
         translator = monad.translator
@@ -1617,15 +1609,7 @@ class JsonMixin(object):
         return translator.NumericExprMonad(
                 translator, int, ['JSON_ARRAY_LENGTH', sql])
 
-class JsonAttrMonad(JsonMixin, AttrMonad):
-    def __getitem__(monad, key):
-        key = JsonMixin.__getitem__(monad, key, True)
-        return monad.translator.JsonItemMonad(monad, [key])
-
-    @property
-    def attr_monad(monad):
-        return monad
-
+class JsonAttrMonad(JsonMixin, AttrMonad): pass
 
 class ParamMonad(Monad):
     @staticmethod
@@ -1791,21 +1775,31 @@ class JsonExprMonad(JsonMixin, ExprMonad):
     pass
 
 class JsonItemMonad(JsonMixin, Monad):
-
-    def __init__(monad, attr_monad, path):
-        translator = attr_monad.translator
-        monad.attr_monad = attr_monad
-        monad.path = path
+    def __init__(monad, parent, key):
+        assert isinstance(parent, JsonMixin), parent
+        translator = parent.translator
+        if isinstance(key, slice):
+            for item in (key.start, key.stop, key.step):
+                if not isinstance(item, (NoneType, NoneMonad)):
+                    throw(NotImplementedError)
+        elif not isinstance(key, (EllipsisMonad, StringConstMonad, NumericConstMonad)):
+            throw(NotImplementedError)
         Monad.__init__(monad, translator, Json)
+        monad.parent = parent
+        monad.key = key
 
-    def __getitem__(monad, key):
-        key = JsonMixin.__getitem__(monad, key, True)
-        return monad.translator.JsonItemMonad(
-                monad.attr_monad, monad.path + [key])
+    def get_path(monad):
+        path = []
+        while isinstance(monad, JsonItemMonad):
+            path.append(monad.key)
+            monad = monad.parent
+        path.reverse()
+        return monad, path
 
     def getsql(monad):
-        base_sql, = monad.attr_monad.getsql()
-        path_sql = monad._get_path_sql(monad.path)
+        base_monad, path = monad.get_path()
+        base_sql = base_monad.getsql()[0]
+        path_sql = monad._get_path_sql(path)
         if any(isinstance(item, AnyItem) for item in path_sql):
             sql = ['JSON_GETPATH_STARRED']
         else:
@@ -1851,11 +1845,6 @@ class NoneMonad(ConstMonad):
 
 class EllipsisMonad(ConstMonad):
     pass
-
-class FullSliceMonad(ConstMonad):
-    SLICE = slice(None, None, None)
-    def __init__(monad, translator):
-        ConstMonad.__init__(monad, translator, monad.SLICE)
 
 class BufferConstMonad(BufferMixin, ConstMonad): pass
 
