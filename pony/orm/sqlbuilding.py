@@ -523,3 +523,5 @@ class SQLBuilder(object):
         return builder.JSON_GETPATH(expr, key)
     def CAST(builder, expr, type):
         return 'CAST(', builder(expr), ' AS ', type, ')'
+    def JSON_CONTAINS(builder, expr, path, key):
+        raise NotImplementedError

@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 from pony.py23compat import PY2, basestring, unicode, buffer, int_types
 
-import json
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
 from uuid import UUID
@@ -98,17 +97,6 @@ class PGTranslator(SQLTranslator):
             if isinstance(monad.target_monad, sqltranslation.NumericConstMonad):
                 monad.sql = ['SINGLE_QUOTES', monad.sql]
             return sqltranslation.CastToJsonExprMonad.getsql(monad)
-
-    class JsonContainsExprMonad(sqltranslation.JsonContainsExprMonad):
-        def getsql(monad):
-            json_monad = monad.json_monad
-            path = getattr(json_monad, 'path', ())
-            path_sql = json_monad._get_path_sql(path) if path else None
-            item_sql, = monad.item.getsql()
-            return [
-                ['JSON_CONTAINS', monad.attr_sql, path_sql, item_sql]
-            ]
-
 
 class PGValue(Value):
     __slots__ = []

@@ -129,32 +129,6 @@ class OraTranslator(sqltranslation.SQLTranslator):
         def nonzero(monad):
             raise NotImplementedError
 
-    class JsonContainsExprMonad(sqltranslation.JsonContainsExprMonad):
-
-        def __init__(monad, json_monad, item):
-            if not isinstance(item, sqltranslation.StringConstMonad):
-                raise NotImplementedError
-            sqltranslation.JsonContainsExprMonad.__init__(
-                monad, json_monad, item
-            )
-
-        def _dict_contains(monad):
-            path_sql = monad.json_monad._get_path_sql(
-                getattr(monad.json_monad, 'path', ())
-            )
-            path_sql.append(monad.item.value)
-            return ['JSON_CONTAINS_PATH', monad.attr_sql, path_sql]
-
-        def _list_contains(monad):
-            path_sql = monad.json_monad._get_path_sql(
-                getattr(monad.json_monad, 'path', ())
-            )
-            return ['JSON_LIST_CONTAINS', monad.attr_sql, path_sql, monad.item.value]
-
-        def getsql(monad):
-            return [ ['OR', monad._dict_contains(), monad._list_contains()] ]
-
-
 class OraBuilder(sqlbuilding.SQLBuilder):
     dialect = 'Oracle'
     def INSERT(builder, table_name, columns, values, returning=None):
@@ -263,14 +237,11 @@ class OraBuilder(sqlbuilding.SQLBuilder):
         return 'REGEXP_REPLACE(', query, ", '(^\[|\]$)', '')"
     def JSON_EXISTS(builder, expr, key):
         return 'JSON_EXISTS(', builder(expr), ', ', builder(key), ')'
-    def JSON_CONTAINS_PATH(builder, expr, path):
-        return builder.JSON_EXISTS(expr, path)
-    def JSON_LIST_CONTAINS(builder, expr, path, key):
-        query = 'JSON_QUERY(', builder(expr), ', ', builder(path), ')'
-        return 'REGEXP_LIKE(', query, ',  \'', search_in_json_list_regexp(key), '\')'
-
-def search_in_json_list_regexp(what):
-    return r'^\[(.+, ?)?"%s"(, ?.+)?\]$' % what
+    def JSON_CONTAINS(builder, expr, path, key):
+        assert key[0] == 'VALUE' and isinstance(key[1], basestring)
+        expr_sql = builder(expr)
+        path_sql = builder(path + [ key[1] ])
+        return 'JSON_EXISTS(', expr_sql, ', ', path_sql, ')'
 
 class OraBoolConverter(dbapiprovider.BoolConverter):
     if not PY2:

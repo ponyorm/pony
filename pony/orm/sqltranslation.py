@@ -1571,7 +1571,10 @@ class JsonMixin(object):
     def mixin_init(monad):
         assert monad.type is Json, monad.type
 
-    def _get_path_sql(monad, path):
+    def get_path(monad):
+        return monad, []
+
+    def get_path_sql(monad, path):
         result = [ 'JSON_PATH' ]
         for item in path:
             if isinstance(item, EllipsisMonad):
@@ -1586,12 +1589,16 @@ class JsonMixin(object):
     def __getitem__(monad, key):
         return monad.translator.JsonItemMonad(monad, key)
 
-    def contains(monad, item, not_in=False):
+    def contains(monad, key, not_in=False):
+        if not isinstance(key, StringConstMonad): raise NotImplementedError
         translator = monad.translator
-        expr = monad.translator.JsonContainsExprMonad(monad, item)
-        if not_in:
-            expr = translator.BoolExprMonad(translator, ['NOT', expr.getsql()[0]])
-        return expr
+        base_monad, path = monad.get_path()
+        base_sql = base_monad.getsql()[0]
+        path_sql = monad.get_path_sql(path)
+        key_sql = key.getsql()[0]
+        sql = [ 'JSON_CONTAINS', base_sql, path_sql, key_sql ]
+        if not_in: sql = [ 'NOT', sql ]
+        return translator.BoolExprMonad(translator, sql)
 
     def __or__(monad, other):
         translator = monad.translator
@@ -1696,24 +1703,6 @@ class TimeExprMonad(TimeMixin, ExprMonad): pass
 class TimedeltaExprMonad(TimedeltaMixin, ExprMonad): pass
 class DatetimeExprMonad(DatetimeMixin, ExprMonad): pass
 
-class JsonContainsExprMonad(Monad):
-    def __init__(monad, json_monad, item):
-        monad.json_monad = json_monad
-        monad.item = item
-        Monad.__init__(monad, json_monad.translator, bool)
-        monad.attr_sql = json_monad.attr_monad.getsql()[0]
-
-    def getsql(monad):
-        json_monad = monad.json_monad
-        path_sql = json_monad._get_path_sql(
-            getattr(json_monad, 'path', ())
-        )
-        item_sql, = monad.item.getsql()
-        return [
-            ['JSON_CONTAINS', monad.attr_sql, path_sql, item_sql]
-        ]
-
-
 class CastFromJsonExprMonad(ExprMonad):
 
     def __init__(monad, type_to, translator, sql):
@@ -1795,7 +1784,7 @@ class JsonItemMonad(JsonMixin, Monad):
     def getsql(monad):
         base_monad, path = monad.get_path()
         base_sql = base_monad.getsql()[0]
-        path_sql = monad._get_path_sql(path)
+        path_sql = monad.get_path_sql(path)
         if any(isinstance(item, AnyItem) for item in path_sql):
             sql = ['JSON_GETPATH_STARRED']
         else:

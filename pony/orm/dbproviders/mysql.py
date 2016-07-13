@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 from pony.py23compat import PY2, imap, basestring, buffer, int_types
 
+import json
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
 from uuid import UUID
@@ -86,37 +87,6 @@ class MySQLTranslator(SQLTranslator):
                 raise sqltranslation.AbortCast
             return sqltranslation.CastFromJsonExprMonad.dispatch_type(typ)
 
-    class JsonContainsExprMonad(sqltranslation.JsonContainsExprMonad):
-
-        def __init__(monad, json_monad, item):
-            if not isinstance(item, sqltranslation.StringConstMonad):
-                raise NotImplementedError
-            sqltranslation.JsonContainsExprMonad.__init__(
-                monad, json_monad, item
-            )
-
-        def _dict_contains(monad):
-            path_sql = monad.json_monad._get_path_sql(
-                getattr(monad.json_monad, 'path', ())
-            )
-            path_sql.append(monad.item.value)
-            return ['JSON_CONTAINS_PATH', monad.attr_sql, path_sql]
-
-        def _list_contains(monad):
-            translator = monad.translator
-            path_sql = monad.json_monad._get_path_sql(
-                getattr(monad.json_monad, 'path', ())
-            )
-            item = translator.ConstMonad.new(translator, '["%s"]' % monad.item.value)
-            item_sql, = item.getsql()
-            return ['JSON_CONTAINS', monad.attr_sql, path_sql, item_sql]
-
-        def getsql(monad):
-            return [
-                ['OR', monad._dict_contains(), monad._list_contains()]
-            ]
-
-
 class MySQLBuilder(SQLBuilder):
     dialect = 'MySQL'
     def CONCAT(builder, *args):
@@ -169,9 +139,13 @@ class MySQLBuilder(SQLBuilder):
     def NE_JSON(builder, left, right):
         return '(', builder(left), '!=', builder.AS_JSON(right), ')'
     def JSON_CONTAINS(builder, expr, path, key):
-        return 'json_contains(', builder(expr), ', ', builder(key), ', ', builder(path), ')'
-    def JSON_CONTAINS_PATH(builder, expr, path):
-        return 'json_contains_path(', builder(expr), ", 'one', ", builder(path), ')'
+        assert key[0] == 'VALUE' and isinstance(key[1], basestring)
+        expr_sql = builder(expr)
+        result = [ '(json_contains(', expr_sql, ', ', builder([ 'VALUE', json.dumps([ key[1] ]) ]) ]
+        path_sql = builder(path)
+        path_with_key_sql = builder(path + [ key[1] ])
+        result += [ ', ', path_sql, ') or json_contains_path(', expr_sql, ", 'one', ", path_with_key_sql, '))' ]
+        return result
 
 class MySQLStrConverter(dbapiprovider.StrConverter):
     def sql_type(converter):
