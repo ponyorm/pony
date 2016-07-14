@@ -230,15 +230,15 @@ class OraBuilder(sqlbuilding.SQLBuilder):
         if isinstance(delta, timedelta):
             return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' HOUR TO SECOND)"
         return '(', builder(expr), ' - ', builder(delta), ')'
-    def JSON_GETPATH(builder, expr, key):
-        query = 'JSON_QUERY(', builder(expr), ', ', builder(key), ' WITH WRAPPER)'
+    def JSON_GETPATH(builder, expr, path):
+        query = 'JSON_QUERY(', builder(expr), ', ', builder.json_path(path), ' WITH WRAPPER)'
         return 'REGEXP_REPLACE(', query, ", '(^\[|\]$)', '')"
-    def JSON_GETPATH_STARRED(builder, expr, key):
-        return 'JSON_QUERY(', builder(expr), ', ', builder(key), ' WITH WRAPPER)'
+    def JSON_GETPATH_STARRED(builder, expr, path):
+        return 'JSON_QUERY(', builder(expr), ', ', builder.json_path(path), ' WITH WRAPPER)'
     def JSON_CONTAINS(builder, expr, path, key):
         assert key[0] == 'VALUE' and isinstance(key[1], basestring)
         expr_sql = builder(expr)
-        path_sql = builder(path + [ key[1] ])
+        path_sql = builder.json_path(path + [ key[1] ])
         return 'JSON_EXISTS(', expr_sql, ', ', path_sql, ')'
 
 class OraBoolConverter(dbapiprovider.BoolConverter):

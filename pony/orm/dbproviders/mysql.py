@@ -88,8 +88,8 @@ class MySQLBuilder(SQLBuilder):
         if isinstance(delta, timedelta):
             return 'DATE_SUB(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
         return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
-    def JSON_GETPATH(builder, expr, key):
-        return 'json_extract(', builder(expr), ', ', builder(key), ')'
+    def JSON_GETPATH(builder, expr, path):
+        return 'json_extract(', builder(expr), ', ', builder.json_path(path), ')'
     def JSON_ARRAY_LENGTH(builder, value):
         return 'json_length(', builder(value), ')'
     def EQ_JSON(builder, left, right):
@@ -100,8 +100,8 @@ class MySQLBuilder(SQLBuilder):
         assert key[0] == 'VALUE' and isinstance(key[1], basestring)
         expr_sql = builder(expr)
         result = [ '(json_contains(', expr_sql, ', ', builder([ 'VALUE', json.dumps([ key[1] ]) ]) ]
-        path_sql = builder(path)
-        path_with_key_sql = builder(path + [ key[1] ])
+        path_sql = builder.json_path(path)
+        path_with_key_sql = builder.json_path(path + [ key[1] ])
         result += [ ', ', path_sql, ') or json_contains_path(', expr_sql, ", 'one', ", path_with_key_sql, '))' ]
         return result
     type_mapping = {str: 'text', bool: 'boolean', int: 'signed', float: None, ormtypes.Json: 'json'}

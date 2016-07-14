@@ -92,17 +92,17 @@ class PGSQLBuilder(SQLBuilder):
         if isinstance(delta, timedelta):
             return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' DAY TO SECOND)"
         return '(', builder(expr), ' - ', builder(delta), ')'
-    def JSON_PATH(builder, *items):
+    def json_path(builder, path):
         result = []
-        for item in items:
+        for item in path:
             if isinstance(item, int):
                 result.append(str(item))
             elif isinstance(item, basestring):
                 result.append(item if is_ident(item) else '"%s"' % item.replace('"', '\\"'))
             else: assert False, item
         return '{%s}' % ','.join(result)
-    def JSON_GETPATH(builder, expr, key):
-        return '(', builder(expr), "#>", builder(key), ')'
+    def JSON_GETPATH(builder, expr, path):
+        return '(', builder(expr), "#>", builder.json_path(path), ')'
     def JSON_CONCAT(builder, left, right):
         return '(', builder(left), '||', builder(right), ')'
     def JSON_CONTAINS(builder, expr, path, key):

@@ -503,9 +503,9 @@ class SQLBuilder(object):
     def RAWSQL(builder, sql):
         if isinstance(sql, basestring): return sql
         return [ x if isinstance(x, basestring) else builder(x) for x in sql ]
-    def JSON_PATH(builder, *items):
+    def json_path(builder, path):
         result = ['\'$']
-        for item in items:
+        for item in path:
             if isinstance(item, int):
                 result.append('[%d]' % item)
             elif item is AnyNum:
@@ -517,10 +517,10 @@ class SQLBuilder(object):
             else: assert False
         result.append('\'')
         return result
-    def JSON_GETPATH(builder, expr, key):
+    def JSON_GETPATH(builder, expr, path):
         throw(NotImplementedError)
-    def JSON_GETPATH_STARRED(builder, expr, key):
-        return builder.JSON_GETPATH(expr, key)
+    def JSON_GETPATH_STARRED(builder, expr, path):
+        return builder.JSON_GETPATH(expr, path)
     def JSON_CONCAT(builder, left, right):
         throw(NotImplementedError)
     def JSON_CONTAINS(builder, expr, path, key):

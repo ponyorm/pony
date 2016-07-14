@@ -1580,18 +1580,6 @@ class JsonMixin(object):
     def get_path(monad):
         return monad, []
 
-    def get_path_sql(monad, path):
-        result = [ 'JSON_PATH' ]
-        for item in path:
-            if isinstance(item, EllipsisMonad):
-                result.append(AnyStr)
-            elif isinstance(item, slice):
-                result.append(AnyNum)
-            elif isinstance(item, (NumericConstMonad, StringConstMonad)):
-                result.append(item.value)
-            raise TypeError('Invalid JSON path item: %s' % ast2src(item.node))
-        return result
-
     def __getitem__(monad, key):
         return monad.translator.JsonItemMonad(monad, key)
 
@@ -1600,9 +1588,8 @@ class JsonMixin(object):
         translator = monad.translator
         base_monad, path = monad.get_path()
         base_sql = base_monad.getsql()[0]
-        path_sql = monad.get_path_sql(path)
         key_sql = key.getsql()[0]
-        sql = [ 'JSON_CONTAINS', base_sql, path_sql, key_sql ]
+        sql = [ 'JSON_CONTAINS', base_sql, path, key_sql ]
         if not_in: sql = [ 'NOT', sql ]
         return translator.BoolExprMonad(translator, sql)
 
@@ -1714,16 +1701,19 @@ class JsonExprMonad(JsonMixin, ExprMonad): pass
 class JsonItemMonad(JsonMixin, Monad):
     def __init__(monad, parent, key):
         assert isinstance(parent, JsonMixin), parent
-        translator = parent.translator
+        Monad.__init__(monad, parent.translator, Json)
+        monad.parent = parent
         if isinstance(key, slice):
             for item in (key.start, key.stop, key.step):
                 if not isinstance(item, (NoneType, NoneMonad)):
                     throw(NotImplementedError)
-        elif not isinstance(key, (EllipsisMonad, StringConstMonad, NumericConstMonad)):
-            throw(NotImplementedError)
-        Monad.__init__(monad, translator, Json)
-        monad.parent = parent
-        monad.key = key
+            keyval = AnyNum
+        elif isinstance(key, EllipsisMonad):
+            keyval = AnyStr
+        elif isinstance(key, (StringConstMonad, NumericConstMonad)):
+            keyval = key.value
+        else: throw(TypeError, 'Invalid JSON path item: %s' % ast2src(key.node))
+        monad.key = keyval
 
     def get_path(monad):
         path = []
@@ -1736,11 +1726,10 @@ class JsonItemMonad(JsonMixin, Monad):
     def getsql(monad):
         base_monad, path = monad.get_path()
         base_sql = base_monad.getsql()[0]
-        path_sql = monad.get_path_sql(path)
-        for item in path_sql:
+        for item in path:
             if isinstance(item, AnyItem):
-                return [ ['JSON_GETPATH_STARRED', base_sql, path_sql] ]
-        return [ ['JSON_GETPATH', base_sql, path_sql] ]
+                return [ ['JSON_GETPATH_STARRED', base_sql, path] ]
+        return [ ['JSON_GETPATH', base_sql, path] ]
 
     def nonzero(monad):
         return monad

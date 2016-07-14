@@ -138,14 +138,14 @@ class SQLiteBuilder(SQLBuilder):
         if builder.json1_available:
             return SQLBuilder.JSON_PATH(builder, *items)
         return builder.VALUE(json.dumps(items))
-    def JSON_GETPATH(builder, expr, key):
+    def JSON_GETPATH(builder, expr, path):
         if not builder.json1_available:
-            return 'py_json_extract(', builder(expr), ', ', builder(key), ', 0)'
-        return 'json_extract(', builder(expr), ', ', builder(key), ')'
-    def JSON_GETPATH__QUOTE_STRINGS(builder, expr, key):
+            return 'py_json_extract(', builder(expr), ', ', builder.json_path(path), ', 0)'
+        return 'json_extract(', builder(expr), ', ', builder.json_path(path), ')'
+    def JSON_GETPATH__QUOTE_STRINGS(builder, expr, path):
         if not builder.json1_available:
-            return 'py_json_extract(', builder(expr), ', ', builder(key), ', 1)'
-        ret = 'json_extract(', builder(expr), ', null, ', builder(key), ')'
+            return 'py_json_extract(', builder(expr), ', ', builder.json_path(path), ', 1)'
+        ret = 'json_extract(', builder(expr), ', null, ', builder.json_path(path), ')'
         return 'unwrap_extract_json(', ret, ')'
     def JSON_ARRAY_LENGTH(builder, value):
         if not builder.json1_available:
@@ -155,7 +155,7 @@ class SQLiteBuilder(SQLBuilder):
         # if builder.json1_available:
             # TODO impl
         with builder.json1_disabled():
-            return 'py_json_contains(', builder(expr), ', ', builder(path), ',  ', builder(key), ')'
+            return 'py_json_contains(', builder(expr), ', ', builder.json_path(path), ',  ', builder(key), ')'
 
     @contextmanager
     def json1_disabled(builder):
