@@ -150,11 +150,7 @@ class PGSQLBuilder(SQLBuilder):
     def JSON_CONCAT(builder, left, right):
         return '(', builder(left), '||', builder(right), ')'
     def JSON_CONTAINS(builder, expr, path, key):
-        if path:
-            json_sql = builder.JSON_GETPATH(expr, path)
-        else:
-            json_sql = builder(expr)
-        return json_sql, " ? ", builder(key)
+        return (builder.JSON_GETPATH(expr, path) if path else builder(expr)), ' ? ', builder(key)
     def JSON_IS_CONTAINED(builder, value, contained_in):
         raise NotImplementedError('Not needed')
     def JSON_HAS_ANY(builder, array, value):
