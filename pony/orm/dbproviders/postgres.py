@@ -107,12 +107,6 @@ class PGSQLBuilder(SQLBuilder):
         return '(', builder(left), '||', builder(right), ')'
     def JSON_CONTAINS(builder, expr, path, key):
         return (builder.JSON_GETPATH(expr, path) if path else builder(expr)), ' ? ', builder(key)
-    def JSON_IS_CONTAINED(builder, value, contained_in):
-        raise NotImplementedError('Not needed')
-    def JSON_HAS_ANY(builder, array, value):
-        raise NotImplementedError
-    def JSON_HAS_ALL(builder, array, value):
-        raise NotImplementedError
     def JSON_ARRAY_LENGTH(builder, value):
         return 'jsonb_array_length(', builder(value), ')'
     def CAST(builder, expr, type):
@@ -121,8 +115,6 @@ class PGSQLBuilder(SQLBuilder):
         type = builder.get_cast_type_name(type)
         if type == 'text': return '(', builder(expr), ')::', type
         return '(', builder(expr), ')::text::', type
-    def SINGLE_QUOTES(builder, expr):
-        return "'", builder(expr), "'"
 
 class PGStrConverter(dbapiprovider.StrConverter):
     if PY2:

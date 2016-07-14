@@ -518,11 +518,15 @@ class SQLBuilder(object):
         result.append('\'')
         return result
     def JSON_GETPATH(builder, expr, key):
-        raise NotImplementedError
+        throw(NotImplementedError)
     def JSON_GETPATH_STARRED(builder, expr, key):
         return builder.JSON_GETPATH(expr, key)
+    def JSON_CONCAT(builder, left, right):
+        throw(NotImplementedError)
     def JSON_CONTAINS(builder, expr, path, key):
-        raise NotImplementedError
+        throw(NotImplementedError)
+    def JSON_ARRAY_LENGTH(builder, value):
+        throw(NotImplementedError)
     def CAST(builder, expr, type):
         type_name = builder.get_cast_type_name(type)
         if type_name is None: return builder(expr)

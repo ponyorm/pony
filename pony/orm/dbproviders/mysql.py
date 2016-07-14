@@ -92,12 +92,10 @@ class MySQLBuilder(SQLBuilder):
         return 'json_extract(', builder(expr), ', ', builder(key), ')'
     def JSON_ARRAY_LENGTH(builder, value):
         return 'json_length(', builder(value), ')'
-    def AS_JSON(builder, target):
-        return 'CAST(', builder(target), ' AS JSON)'
     def EQ_JSON(builder, left, right):
-        return '(', builder(left), '=', builder.AS_JSON(right), ')'
+        return '(', builder(left), ' = CAST(', builder(right), ' AS JSON))'
     def NE_JSON(builder, left, right):
-        return '(', builder(left), '!=', builder.AS_JSON(right), ')'
+        return '(', builder(left), ' != CAST(', builder(right), ' AS JSON))'
     def JSON_CONTAINS(builder, expr, path, key):
         assert key[0] == 'VALUE' and isinstance(key[1], basestring)
         expr_sql = builder(expr)
