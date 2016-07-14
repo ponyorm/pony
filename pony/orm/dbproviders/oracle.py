@@ -13,7 +13,7 @@ import cx_Oracle
 from pony.orm import core, sqlbuilding, dbapiprovider, sqltranslation
 from pony.orm.core import log_orm, log_sql, DatabaseError, TranslationError
 from pony.orm.dbschema import DBSchema, DBObject, Table, Column
-from pony.orm.ormtypes import Json
+from pony.orm.ormtypes import Json, AnyItem
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, get_version_tuple
 from pony.utils import throw
 from pony.converting import timedelta2str
@@ -231,10 +231,11 @@ class OraBuilder(sqlbuilding.SQLBuilder):
             return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' HOUR TO SECOND)"
         return '(', builder(expr), ' - ', builder(delta), ')'
     def JSON_GETPATH(builder, expr, path):
+        for item in path:
+            if isinstance(item, AnyItem):
+                return 'JSON_QUERY(', builder(expr), ', ', builder.json_path(path), ' WITH WRAPPER)'
         query = 'JSON_QUERY(', builder(expr), ', ', builder.json_path(path), ' WITH WRAPPER)'
-        return 'REGEXP_REPLACE(', query, ", '(^\[|\]$)', '')"
-    def JSON_GETPATH_STARRED(builder, expr, path):
-        return 'JSON_QUERY(', builder(expr), ', ', builder.json_path(path), ' WITH WRAPPER)'
+        return 'REGEXP_REPLACE(', query, ", '(^\\[|\\]$)', '')"
     def JSON_CONTAINS(builder, expr, path, key):
         assert key[0] == 'VALUE' and isinstance(key[1], basestring)
         expr_sql = builder(expr)

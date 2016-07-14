@@ -1726,9 +1726,6 @@ class JsonItemMonad(JsonMixin, Monad):
     def getsql(monad):
         base_monad, path = monad.get_path()
         base_sql = base_monad.getsql()[0]
-        for item in path:
-            if isinstance(item, AnyItem):
-                return [ ['JSON_GETPATH_STARRED', base_sql, path] ]
         return [ ['JSON_GETPATH', base_sql, path] ]
 
     def nonzero(monad):

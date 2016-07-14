@@ -519,8 +519,6 @@ class SQLBuilder(object):
         return result
     def JSON_GETPATH(builder, expr, path):
         throw(NotImplementedError)
-    def JSON_GETPATH_STARRED(builder, expr, path):
-        return builder.JSON_GETPATH(expr, path)
     def JSON_CONCAT(builder, left, right):
         throw(NotImplementedError)
     def JSON_CONTAINS(builder, expr, path, key):
