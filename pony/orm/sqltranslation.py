@@ -1737,12 +1737,10 @@ class JsonItemMonad(JsonMixin, Monad):
         base_monad, path = monad.get_path()
         base_sql = base_monad.getsql()[0]
         path_sql = monad.get_path_sql(path)
-        if any(isinstance(item, AnyItem) for item in path_sql):
-            sql = ['JSON_GETPATH_STARRED']
-        else:
-            sql = ['JSON_GETPATH']
-        sql.extend((base_sql, path_sql))
-        return [sql]
+        for item in path_sql:
+            if isinstance(item, AnyItem):
+                return [ ['JSON_GETPATH_STARRED', base_sql, path_sql] ]
+        return [ ['JSON_GETPATH', base_sql, path_sql] ]
 
     def nonzero(monad):
         return monad
