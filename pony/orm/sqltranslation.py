@@ -1613,7 +1613,7 @@ class JsonMixin(object):
         left_sql, = monad.getsql()
         right_sql, = other.getsql()
         sql = ['JSON_CONCAT', left_sql, right_sql]
-        return translator.JsonConcatExprMonad(translator, Json, sql)
+        return translator.JsonExprMonad(translator, Json, sql)
 
     def len(monad):
         translator = monad.translator
@@ -1908,11 +1908,6 @@ class LogicalBinOpMonad(BoolMonad):
             assert len(operand_sql) == 1
             result.extend(operand_sql)
         return [ result ]
-
-
-class JsonConcatExprMonad(JsonMixin, ExprMonad):
-    pass
-
 
 class AndMonad(LogicalBinOpMonad):
     binop = 'AND'
