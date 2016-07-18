@@ -230,12 +230,17 @@ class OraBuilder(sqlbuilding.SQLBuilder):
         if isinstance(delta, timedelta):
             return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' HOUR TO SECOND)"
         return '(', builder(expr), ' - ', builder(delta), ')'
-    def JSON_GETPATH(builder, expr, path):
+    def JSON_QUERY(builder, expr, path):
         for item in path:
             if isinstance(item, AnyItem):
                 return 'JSON_QUERY(', builder(expr), ', ', builder.json_path(path), ' WITH WRAPPER)'
-        query = 'JSON_QUERY(', builder(expr), ', ', builder.json_path(path), ' WITH WRAPPER)'
-        return 'REGEXP_REPLACE(', query, ", '(^\\[|\\]$)', '')"
+        return 'REGEXP_REPLACE(JSON_QUERY(', \
+            builder(expr), ', ', builder.json_path(path), " WITH WRAPPER), '(^\\[|\\]$)', '')"
+    json_value_type_mapping = {bool: 'NUMBER', int: 'NUMBER', float: 'NUMBER'}
+    def JSON_VALUE(builder, expr, path, type):
+        if type is Json: return builder.JSON_QUERY(expr, path)
+        type_name = builder.json_value_type_mapping.get(type, 'VARCHAR2')
+        return 'JSON_VALUE(', builder(expr), ', ', builder.json_path(path), ' RETURNING ', type_name, ')'
     def JSON_CONTAINS(builder, expr, path, key):
         assert key[0] == 'VALUE' and isinstance(key[1], basestring)
         expr_sql = builder(expr)

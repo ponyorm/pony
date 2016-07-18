@@ -101,20 +101,20 @@ class PGSQLBuilder(SQLBuilder):
                 result.append(item if is_ident(item) else '"%s"' % item.replace('"', '\\"'))
             else: assert False, item
         return '{%s}' % ','.join(result)
-    def JSON_GETPATH(builder, expr, path):
-        return '(', builder(expr), "#>", builder.json_path(path), ')'
+    def JSON_QUERY(builder, expr, path):
+        return '(', builder(expr), " #> ", builder.json_path(path), ')'
+    json_value_type_mapping = {bool: 'boolean', int: 'integer', float: 'real'}
+    def JSON_VALUE(builder, expr, path, type):
+        if type is ormtypes.Json: return builder.JSON_QUERY(expr, path)
+        type_name = builder.json_value_type_mapping.get(type, 'text')
+        sql = '(', builder(expr), " #>> ", builder.json_path(path), ')'
+        return sql if type_name == 'text' else (sql, '::', type_name)
     def JSON_CONCAT(builder, left, right):
         return '(', builder(left), '||', builder(right), ')'
     def JSON_CONTAINS(builder, expr, path, key):
-        return (builder.JSON_GETPATH(expr, path) if path else builder(expr)), ' ? ', builder(key)
+        return (builder.JSON_QUERY(expr, path) if path else builder(expr)), ' ? ', builder(key)
     def JSON_ARRAY_LENGTH(builder, value):
         return 'jsonb_array_length(', builder(value), ')'
-    def CAST(builder, expr, type):
-        return '(', builder(expr), ')::', builder.get_cast_type_name(type)
-    def JSON_CAST(builder, expr, type):
-        type = builder.get_cast_type_name(type)
-        if type == 'text': return '(', builder(expr), ')::', type
-        return '(', builder(expr), ')::text::', type
 
 class PGStrConverter(dbapiprovider.StrConverter):
     if PY2:

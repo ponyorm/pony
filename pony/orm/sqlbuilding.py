@@ -517,7 +517,9 @@ class SQLBuilder(object):
             else: assert False
         result.append('\'')
         return result
-    def JSON_GETPATH(builder, expr, path):
+    def JSON_QUERY(builder, expr, path):
+        throw(NotImplementedError)
+    def JSON_VALUE(builder, expr, path, type):
         throw(NotImplementedError)
     def JSON_CONCAT(builder, left, right):
         throw(NotImplementedError)
@@ -525,13 +527,3 @@ class SQLBuilder(object):
         throw(NotImplementedError)
     def JSON_ARRAY_LENGTH(builder, value):
         throw(NotImplementedError)
-    def CAST(builder, expr, type):
-        type_name = builder.get_cast_type_name(type)
-        if type_name is None: return builder(expr)
-        return 'CAST(', builder(expr), ' AS ', type_name, ')'
-    JSON_CAST = CAST
-    def get_cast_type_name(builder, type):
-        if isinstance(type, basestring): return type
-        if type not in builder.typecast_mapping: throw(NotImplementedError, type)
-        return builder.typecast_mapping[type]
-    typecast_mapping = {unicode: 'text', bool: 'boolean', int: 'integer', float: 'real', Json: None}

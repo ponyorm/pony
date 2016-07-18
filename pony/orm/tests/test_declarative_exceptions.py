@@ -208,7 +208,7 @@ class TestSQLTranslatorExceptions(unittest.TestCase):
     @raises_exception(TypeError, "'sum' is valid for numeric attributes only")
     def test49(self):
         sum(s.name for s in Student)
-    @raises_exception(NotImplementedError, "Parameter {'a':'b'} has unsupported type <type 'dict'>")
+    @raises_exception(TypeError, "Cannot compare whole JSON value, you need to select specific sub-item: s.name == {'a':'b'}")
     def test50(self):
         # cannot compare JSON value to dynamic string,
         # because a database does not provide json.dumps(s.name) functionality

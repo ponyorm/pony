@@ -88,8 +88,15 @@ class MySQLBuilder(SQLBuilder):
         if isinstance(delta, timedelta):
             return 'DATE_SUB(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
         return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
-    def JSON_GETPATH(builder, expr, path):
+    def JSON_QUERY(builder, expr, path):
         return 'json_extract(', builder(expr), ', ', builder.json_path(path), ')'
+    def JSON_VALUE(builder, expr, path, type):
+        result = 'json_extract(', builder(expr), ', ', builder.json_path(path), ')'
+        if type is NoneType:
+            return 'NULLIF(', result, ", CAST('null' as JSON))"
+        if type in (bool, int):
+            return 'CAST(', result, ' AS SIGNED)'
+        return 'json_unquote(', result, ')'
     def JSON_ARRAY_LENGTH(builder, value):
         return 'json_length(', builder(value), ')'
     def EQ_JSON(builder, left, right):
@@ -104,7 +111,6 @@ class MySQLBuilder(SQLBuilder):
         path_with_key_sql = builder.json_path(path + [ key[1] ])
         result += [ ', ', path_sql, ') or json_contains_path(', expr_sql, ", 'one', ", path_with_key_sql, '))' ]
         return result
-    type_mapping = {str: 'text', bool: 'boolean', int: 'signed', float: None, ormtypes.Json: 'json'}
 
 class MySQLStrConverter(dbapiprovider.StrConverter):
     def sql_type(converter):

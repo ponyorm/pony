@@ -1,8 +1,7 @@
 from __future__ import absolute_import
 from pony.py23compat import PY2, imap, basestring, buffer, int_types, unicode
 
-import os.path
-import json
+import os.path, re, json
 import sqlite3 as sqlite
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
@@ -134,35 +133,19 @@ class SQLiteBuilder(SQLBuilder):
     PY_UPPER = make_unary_func('py_upper')
     PY_LOWER = make_unary_func('py_lower')
 
-    def JSON_PATH(builder, *items):
-        if builder.json1_available:
-            return SQLBuilder.JSON_PATH(builder, *items)
-        return builder.VALUE(json.dumps(items))
-    def JSON_GETPATH(builder, expr, path):
-        if not builder.json1_available:
-            return 'py_json_extract(', builder(expr), ', ', builder.json_path(path), ', 0)'
-        return 'json_extract(', builder(expr), ', ', builder.json_path(path), ')'
-    def JSON_GETPATH__QUOTE_STRINGS(builder, expr, path):
-        if not builder.json1_available:
-            return 'py_json_extract(', builder(expr), ', ', builder.json_path(path), ', 1)'
-        ret = 'json_extract(', builder(expr), ', null, ', builder.json_path(path), ')'
-        return 'unwrap_extract_json(', ret, ')'
+    def JSON_QUERY(builder, expr, path):
+        fname = 'json_extract' if builder.json1_available else 'py_json_extract'
+        return 'py_json_unwrap(', fname, '(', builder(expr), ', null, ', builder.json_path(path), '))'
+    # json_value_type_mapping = {unicode: 'text', bool: 'boolean', int: 'integer', float: 'real', Json: None}
+    def JSON_VALUE(builder, expr, path, type):
+        fname = 'json_extract' if builder.json1_available else 'py_json_extract'
+        return fname, '(', builder(expr), ', ', builder.json_path(path), ')'
     def JSON_ARRAY_LENGTH(builder, value):
         if not builder.json1_available:
             raise SqliteExtensionUnavailable('json1')
         return 'json_array_length(', builder(value), ')'
     def JSON_CONTAINS(builder, expr, path, key):
-        # if builder.json1_available:
-            # TODO impl
-        with builder.json1_disabled():
-            return 'py_json_contains(', builder(expr), ', ', builder.json_path(path), ',  ', builder(key), ')'
-
-    @contextmanager
-    def json1_disabled(builder):
-        was_available = builder.json1_available
-        builder.json1_available = False
-        yield
-        builder.json1_available = was_available
+        return 'py_json_contains(', builder(expr), ', ', builder.json_path(path), ',  ', builder(key), ')'
 
 class SQLiteIntConverter(dbapiprovider.IntConverter):
     def sql_type(converter):
@@ -414,50 +397,86 @@ py_upper = make_string_function('py_upper', unicode.upper)
 py_lower = make_string_function('py_lower', unicode.lower)
 
 @print_traceback
-def unwrap_extract_json(value):
+def py_json_unwrap(value):
     # [null,some-value] -> some-value
-    assert value.startswith('[null,')
-    result = value[6:-1]
-    if not result.startswith(('[', '{')):
-        result = json.loads(result)
+    assert value.startswith('[null,'), value
+    return value[6:-1]
+
+path_cache = {}
+
+json_path_re = re.compile(r'\[(\d+)\]|\.(?:(\w+)|"([^"]*)")', re.UNICODE)
+
+def _parse_path(path):
+    if path in path_cache:
+        return path_cache[path]
+    keys = None
+    if isinstance(path, basestring) and path.startswith('$'):
+        keys = []
+        pos = 1
+        path_len = len(path)
+        while pos < path_len:
+            match = json_path_re.match(path, pos)
+            if match is not None:
+                g1, g2, g3 = match.groups()
+                keys.append(int(g1) if g1 else g2 or g3)
+                pos = match.end()
+            else:
+                keys = None
+                break
+        else: keys = tuple(keys)
+    path_cache[path] = keys
+    return keys
+
+def _traverse(obj, keys):
+    if keys is None: return None
+    list_or_dict = (list, dict)
+    for key in keys:
+        if type(obj) not in list_or_dict: return None
+        try: obj = obj[key]
+        except (KeyError, IndexError): return None
+    return obj
+
+def _extract(expr, *paths):
+    expr = json.loads(expr) if isinstance(expr, basestring) else expr
+    result = []
+    for path in paths:
+        keys = _parse_path(path)
+        result.append(_traverse(expr, keys))
+    return result[0] if len(paths) == 1 else result
+
+@print_traceback
+def py_json_extract(expr, *paths):
+    result = _extract(expr, *paths)
+    if type(result) in (list, dict):
+        result = json.dumps(result, separators=(',', ':'))
     return result
 
 @print_traceback
-def py_json_extract(value, path, quote_strings):
-    value = json.loads(value)
-    for item in json.loads(path):
-        try:
-            value = value[item]
-        except (KeyError, IndexError):
-            value = None
-            break
-    if isinstance(value, int) and not isinstance(value, bool):
-        return value
-    if isinstance(value, basestring) and not quote_strings:
-        return value
-    return json.dumps(value, separators=(',', ':'))
+def py_json_query(expr, path, with_wrapper):
+    result = _extract(expr, path)
+    if type(result) not in (list, dict):
+        if not with_wrapper: return None
+        result = [result]
+    return json.dumps(result, separators=(',', ':'))
 
 @print_traceback
-def py_json_contains(value, path, key):
-    value = json.loads(value)
-    try:
-        for item in json.loads(path):
-            value = value[item]
-    except (KeyError, IndexError):
-        value = None
-    if isinstance(value, (list, dict)):
-        return key in value
+def py_json_value(expr, path):
+    result = _extract(expr, path)
+    return result if type(result) not in (list, dict) else None
 
 @print_traceback
-def py_json_nonzero(value, path):
-    value = json.loads(value)
-    try:
-        for item in json.loads(path):
-            value = value[item]
-    except (KeyError, IndexError):
-        value = None
-    return bool(value)
+def py_json_contains(expr, path, key):
+    expr = json.loads(expr) if isinstance(expr, basestring) else expr
+    keys = _parse_path(path)
+    expr = _traverse(expr, keys)
+    return type(expr) in (list, dict) and key in expr
 
+@print_traceback
+def py_json_nonzero(expr, path):
+    expr = json.loads(expr) if isinstance(expr, basestring) else expr
+    keys = _parse_path(path)
+    expr = _traverse(expr, keys)
+    return bool(expr)
 
 class SQLitePool(Pool):
     def __init__(pool, filename, create_db): # called separately in each thread
@@ -474,8 +493,8 @@ class SQLitePool(Pool):
         con.create_function('rand', 0, random)
         con.create_function('py_upper', 1, py_upper)
         con.create_function('py_lower', 1, py_lower)
-        con.create_function('unwrap_extract_json', 1, unwrap_extract_json)
-        con.create_function('py_json_extract', 3, py_json_extract)
+        con.create_function('py_json_unwrap', 1, py_json_unwrap)
+        con.create_function('py_json_extract', -1, py_json_extract)
         con.create_function('py_json_contains', 3, py_json_contains)
         con.create_function('py_json_nonzero', 2, py_json_nonzero)
         con.create_function('py_lower', 1, py_lower)

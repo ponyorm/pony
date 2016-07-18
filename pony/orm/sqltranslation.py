@@ -1070,7 +1070,7 @@ class Monad(with_metaclass(MonadMeta)):
     def __and__(monad): throw(TypeError)
     def __xor__(monad): throw(TypeError)
     def abs(monad): throw(TypeError)
-    def cast_from_json(monad, type): throw(TypeError)
+    def cast_from_json(monad, type): assert False, monad
 
 class RawSQLMonad(Monad):
     def __init__(monad, translator, rawtype, varkey):
@@ -1571,10 +1571,6 @@ class JsonMixin(object):
 
     def mixin_init(monad):
         assert monad.type is Json, monad.type
-    def cast_from_json(monad, type):
-        translator = monad.translator
-        if issubclass(type, Json): return monad
-        return translator.ExprMonad.new(translator, type, ['JSON_CAST', monad.getsql()[0], type ])
     def get_path(monad):
         return monad, []
     def __getitem__(monad, key):
@@ -1600,6 +1596,9 @@ class JsonMixin(object):
         translator = monad.translator
         sql = [ 'JSON_ARRAY_LENGTH', monad.getsql()[0] ]
         return translator.NumericExprMonad(translator, int, sql)
+    def cast_from_json(monad, type):
+        if type in (Json, NoneType): return monad
+        throw(TypeError, 'Cannot compare whole JSON value, you need to select specific sub-item: {EXPR}')
 
 class JsonAttrMonad(JsonMixin, AttrMonad): pass
 
@@ -1713,10 +1712,16 @@ class JsonItemMonad(JsonMixin, Monad):
             monad = monad.parent
         path.reverse()
         return monad, path
+    def cast_from_json(monad, type):
+        translator = monad.translator
+        if issubclass(type, Json): return monad
+        base_monad, path = monad.get_path()
+        sql = [ 'JSON_VALUE', base_monad.getsql()[0], path, type ]
+        return translator.ExprMonad.new(translator, type, sql)
     def getsql(monad):
         base_monad, path = monad.get_path()
         base_sql = base_monad.getsql()[0]
-        return [ [ 'JSON_GETPATH', base_sql, path ] ]
+        return [ [ 'JSON_QUERY', base_sql, path ] ]
     def nonzero(monad):
         return monad
 
