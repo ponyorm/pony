@@ -1571,18 +1571,14 @@ class JsonMixin(object):
 
     def mixin_init(monad):
         assert monad.type is Json, monad.type
-
     def cast_from_json(monad, type):
         translator = monad.translator
         if issubclass(type, Json): return monad
         return translator.ExprMonad.new(translator, type, ['JSON_CAST', monad.getsql()[0], type ])
-
     def get_path(monad):
         return monad, []
-
     def __getitem__(monad, key):
         return monad.translator.JsonItemMonad(monad, key)
-
     def contains(monad, key, not_in=False):
         if not isinstance(key, StringConstMonad): raise NotImplementedError
         translator = monad.translator
@@ -1592,21 +1588,18 @@ class JsonMixin(object):
         sql = [ 'JSON_CONTAINS', base_sql, path, key_sql ]
         if not_in: sql = [ 'NOT', sql ]
         return translator.BoolExprMonad(translator, sql)
-
     def __or__(monad, other):
         translator = monad.translator
         if not isinstance(other, translator.JsonMixin):
             raise TypeError('Should be JSON: %s' % ast2src(other.node))
-        left_sql, = monad.getsql()
-        right_sql, = other.getsql()
-        sql = ['JSON_CONCAT', left_sql, right_sql]
+        left_sql = monad.getsql()[0]
+        right_sql = other.getsql()[0]
+        sql = [ 'JSON_CONCAT', left_sql, right_sql ]
         return translator.JsonExprMonad(translator, Json, sql)
-
     def len(monad):
         translator = monad.translator
-        sql, = monad.getsql()
-        return translator.NumericExprMonad(
-                translator, int, ['JSON_ARRAY_LENGTH', sql])
+        sql = [ 'JSON_ARRAY_LENGTH', monad.getsql()[0] ]
+        return translator.NumericExprMonad(translator, int, sql)
 
 class JsonAttrMonad(JsonMixin, AttrMonad): pass
 
@@ -1697,7 +1690,6 @@ class TimedeltaExprMonad(TimedeltaMixin, ExprMonad): pass
 class DatetimeExprMonad(DatetimeMixin, ExprMonad): pass
 class JsonExprMonad(JsonMixin, ExprMonad): pass
 
-
 class JsonItemMonad(JsonMixin, Monad):
     def __init__(monad, parent, key):
         assert isinstance(parent, JsonMixin), parent
@@ -1714,7 +1706,6 @@ class JsonItemMonad(JsonMixin, Monad):
             keyval = key.value
         else: throw(TypeError, 'Invalid JSON path item: %s' % ast2src(key.node))
         monad.key = keyval
-
     def get_path(monad):
         path = []
         while isinstance(monad, JsonItemMonad):
@@ -1722,12 +1713,10 @@ class JsonItemMonad(JsonMixin, Monad):
             monad = monad.parent
         path.reverse()
         return monad, path
-
     def getsql(monad):
         base_monad, path = monad.get_path()
         base_sql = base_monad.getsql()[0]
-        return [ ['JSON_GETPATH', base_sql, path] ]
-
+        return [ [ 'JSON_GETPATH', base_sql, path ] ]
     def nonzero(monad):
         return monad
 
