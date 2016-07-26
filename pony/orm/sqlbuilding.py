@@ -19,12 +19,23 @@ class Param(object):
         param.id = id
         param.paramkey = paramkey
         param.converter = converter
-    def py2sql(param, val):
-        converter = param.converter
-        if converter is not None:
-            val = converter.val2dbval(val)
-            val = converter.py2sql(val)
-        return val
+    def eval(param, values):
+        varkey, i, j = param.paramkey
+        value = values[varkey]
+        t = type(value)
+        if i is not None:
+            if t is tuple: value = value[i]
+            elif t is RawSQL: value = value.values[i]
+            else: assert False
+        if j is not None:
+            assert type(type(value)).__name__ == 'EntityMeta'
+            value = value._get_raw_pkval_()[j]
+        if value is not None:  # can value be None at all?
+            converter = param.converter
+            if converter is not None:
+                value = converter.val2dbval(value)
+                value = converter.py2sql(value)
+        return value
     def __unicode__(param):
         paramstyle = param.style
         if paramstyle == 'qmark': return u'?'
@@ -133,22 +144,6 @@ def indentable(method):
     new_method.__name__ = method.__name__
     return new_method
 
-def convert(values, params):
-    for param in params:
-        varkey, i, j = param.paramkey
-        value = values[varkey]
-        t = type(value)
-        if i is not None:
-            if t is tuple: value = value[i]
-            elif t is RawSQL: value = value.values[i]
-            else: assert False
-        if j is not None:
-            assert type(type(value)).__name__ == 'EntityMeta'
-            value = value._get_raw_pkval_()[j]
-        if value is not None:  # can value be None at all?
-            value = param.py2sql(value)
-        yield value
-
 class SQLBuilder(object):
     dialect = None
     make_param = Param
@@ -168,15 +163,15 @@ class SQLBuilder(object):
         if paramstyle in ('qmark', 'format'):
             params = tuple(x for x in builder.result if isinstance(x, Param))
             def adapter(values):
-                return tuple(convert(values, params))
+                return tuple((param.eval(values) for param in params))
         elif paramstyle == 'numeric':
             params = tuple(param for param in sorted(itervalues(builder.keys), key=attrgetter('id')))
             def adapter(values):
-                return tuple(convert(values, params))
+                return tuple(param.eval(values) for param in params)
         elif paramstyle in ('named', 'pyformat'):
             params = tuple(param for param in sorted(itervalues(builder.keys), key=attrgetter('id')))
             def adapter(values):
-                return dict(('p%d' % param.id, value) for param, value in izip(params, convert(values, params)))
+                return {'p%d' % param.id: param.eval(values) for param in params}
         else: throw(NotImplementedError, paramstyle)
         builder.params = params
         builder.layout = tuple(param.paramkey for param in params)
