@@ -39,21 +39,6 @@ class PGSchema(dbschema.DBSchema):
 class PGTranslator(SQLTranslator):
     dialect = 'PostgreSQL'
 
-    class JsonItemMonad(sqltranslation.JsonItemMonad):
-        def nonzero(monad):
-            translator = monad.translator
-            empty_str = translator.StringExprMonad(
-                translator, str, ['RAWSQL', '\'""\'::jsonb']
-            )
-            str_not_empty = translator.CmpMonad(
-                '!=', monad, empty_str
-            )
-            is_true = monad.cast_from_json(bool).getsql()[0]
-            sql = ['AND']
-            sql.extend(str_not_empty.getsql())
-            sql.extend(is_true.getsql())
-            return translator.BoolExprMonad(translator, sql)
-
 class PGValue(Value):
     __slots__ = []
     def __unicode__(self):
@@ -109,6 +94,9 @@ class PGSQLBuilder(SQLBuilder):
         type_name = builder.json_value_type_mapping.get(type, 'text')
         sql = '(', builder(expr), " #>> ", builder.json_path(path), ')'
         return sql if type_name == 'text' else (sql, '::', type_name)
+    def JSON_NONZERO(builder, expr):
+        return 'coalesce(', builder(expr), ", 'null'::jsonb) NOT IN (" \
+               "'null'::jsonb, 'false'::jsonb, '0'::jsonb, '\"\"'::jsonb, '[]'::jsonb, '{}'::jsonb)"
     def JSON_CONCAT(builder, left, right):
         return '(', builder(left), '||', builder(right), ')'
     def JSON_CONTAINS(builder, expr, path, key):

@@ -97,6 +97,8 @@ class MySQLBuilder(SQLBuilder):
         if type in (bool, int):
             return 'CAST(', result, ' AS SIGNED)'
         return 'json_unquote(', result, ')'
+    def JSON_NONZERO(builder, expr):
+        return 'COALESCE(CAST(', builder(expr), ''' as CHAR), 'null') NOT IN ('null', 'false', '0', '""', '[]', '{}')'''
     def JSON_ARRAY_LENGTH(builder, value):
         return 'json_length(', builder(value), ')'
     def EQ_JSON(builder, left, right):

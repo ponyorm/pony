@@ -125,10 +125,6 @@ class OraTranslator(sqltranslation.SQLTranslator):
         if value == '': return NoneType
         return sqltranslation.SQLTranslator.get_normalized_type_of(value)
 
-    class JsonItemMonad(sqltranslation.JsonItemMonad):
-        def nonzero(monad):
-            raise NotImplementedError
-
 class OraBuilder(sqlbuilding.SQLBuilder):
     dialect = 'Oracle'
     def INSERT(builder, table_name, columns, values, returning=None):
@@ -241,6 +237,8 @@ class OraBuilder(sqlbuilding.SQLBuilder):
         if type is Json: return builder.JSON_QUERY(expr, path)
         type_name = builder.json_value_type_mapping.get(type, 'VARCHAR2')
         return 'JSON_VALUE(', builder(expr), ', ', builder.json_path(path), ' RETURNING ', type_name, ')'
+    def JSON_NONZERO(builder, expr):
+        return 'COALESCE(', builder(expr), ''', 'null') NOT IN ('null', 'false', '0', '""', '[]', '{}')'''
     def JSON_CONTAINS(builder, expr, path, key):
         assert key[0] == 'VALUE' and isinstance(key[1], basestring)
         expr_sql = builder(expr)

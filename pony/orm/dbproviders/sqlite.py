@@ -140,6 +140,8 @@ class SQLiteBuilder(SQLBuilder):
     def JSON_VALUE(builder, expr, path, type):
         fname = 'json_extract' if builder.json1_available else 'py_json_extract'
         return fname, '(', builder(expr), ', ', builder.json_path(path), ')'
+    def JSON_NONZERO(builder, expr):
+        return builder(expr), ''' NOT IN ('null', 'false', '0', '""', '[]', '{}')'''
     def JSON_ARRAY_LENGTH(builder, value):
         if not builder.json1_available:
             raise SqliteExtensionUnavailable('json1')

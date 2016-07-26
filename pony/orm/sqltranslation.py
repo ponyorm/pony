@@ -1599,6 +1599,9 @@ class JsonMixin(object):
     def cast_from_json(monad, type):
         if type in (Json, NoneType): return monad
         throw(TypeError, 'Cannot compare whole JSON value, you need to select specific sub-item: {EXPR}')
+    def nonzero(monad):
+        translator = monad.translator
+        return translator.BoolExprMonad(translator, [ 'JSON_NONZERO', monad.getsql()[0] ])
 
 class JsonAttrMonad(JsonMixin, AttrMonad): pass
 
@@ -1722,8 +1725,6 @@ class JsonItemMonad(JsonMixin, Monad):
         base_monad, path = monad.get_path()
         base_sql = base_monad.getsql()[0]
         return [ [ 'JSON_QUERY', base_sql, path ] ]
-    def nonzero(monad):
-        return monad
 
 class ConstMonad(Monad):
     @staticmethod

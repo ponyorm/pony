@@ -521,6 +521,8 @@ class SQLBuilder(object):
         throw(NotImplementedError)
     def JSON_VALUE(builder, expr, path, type):
         throw(NotImplementedError)
+    def JSON_NONZERO(builder, expr):
+        throw(NotImplementedError)
     def JSON_CONCAT(builder, left, right):
         throw(NotImplementedError)
     def JSON_CONTAINS(builder, expr, path, key):
