@@ -146,8 +146,8 @@ def indentable(method):
 
 class SQLBuilder(object):
     dialect = None
-    make_param = Param
-    make_value = Value
+    param_class = Param
+    value_class = Value
     indent_spaces = " " * 4
     def __init__(builder, provider, ast):
         builder.provider = provider
@@ -351,13 +351,13 @@ class SQLBuilder(object):
         keys = builder.keys
         param = keys.get(paramkey)
         if param is None:
-            param = Param(builder.paramstyle, len(keys) + 1, paramkey, converter)
+            param = builder.param_class(builder.paramstyle, len(keys) + 1, paramkey, converter)
             keys[paramkey] = param
         return [ param ]
     def ROW(builder, *items):
         return '(', join(', ', imap(builder, items)), ')'
     def VALUE(builder, value):
-        return [ builder.make_value(builder.paramstyle, value) ]
+        return [builder.value_class(builder.paramstyle, value)]
     def AND(builder, *cond_list):
         cond_list = [ builder(condition) for condition in cond_list ]
         return join(' AND ', cond_list)

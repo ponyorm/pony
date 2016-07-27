@@ -49,7 +49,7 @@ class PGValue(Value):
 
 class PGSQLBuilder(SQLBuilder):
     dialect = 'PostgreSQL'
-    make_value = PGValue
+    value_class = PGValue
     def INSERT(builder, table_name, columns, values, returning=None):
         if not values: result = [ 'INSERT INTO ', builder.quote_name(table_name) ,' DEFAULT VALUES' ]
         else: result = SQLBuilder.INSERT(builder, table_name, columns, values)
