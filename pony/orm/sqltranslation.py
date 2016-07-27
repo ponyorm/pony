@@ -775,8 +775,11 @@ class SQLTranslator(ASTTranslator):
         if isinstance(sub, ast.Sliceobj):
             start, stop, step = (sub.nodes+[None])[:3]
             if start is not None: start = start.monad
+            if isinstance(start, NoneMonad): start = None
             if stop is not None: stop = stop.monad
+            if isinstance(stop, NoneMonad): stop = None
             if step is not None: step = step.monad
+            if isinstance(step, NoneMonad): step = None
             return node.expr.monad[start:stop:step]
         else: return node.expr.monad[sub.monad]
     def postSlice(translator, node):
@@ -784,8 +787,10 @@ class SQLTranslator(ASTTranslator):
         expr_monad = node.expr.monad
         upper = node.upper
         if upper is not None: upper = upper.monad
+        if isinstance(upper, NoneMonad): upper = None
         lower = node.lower
         if lower is not None: lower = lower.monad
+        if isinstance(lower, NoneMonad): lower = None
         return expr_monad[lower:upper]
     def postSliceobj(translator, node):
         pass
@@ -1338,8 +1343,6 @@ class StringMixin(MonadMixin):
         elif isinstance(index, slice):
             if index.step is not None: throw(TypeError, 'Step is not supported in {EXPR}')
             start, stop = index.start, index.stop
-            if isinstance(start, NoneMonad): start = None
-            if isinstance(stop, NoneMonad): stop = None
             if start is None and stop is None: return monad
             if isinstance(monad, translator.StringConstMonad) \
                and (start is None or isinstance(start, translator.NumericConstMonad)) \
@@ -1698,9 +1701,7 @@ class JsonItemMonad(JsonMixin, Monad):
         Monad.__init__(monad, parent.translator, Json)
         monad.parent = parent
         if isinstance(key, slice):
-            for item in (key.start, key.stop, key.step):
-                if not isinstance(item, (NoneType, NoneMonad)):
-                    throw(NotImplementedError)
+            if key != slice(None, None, None): throw(NotImplementedError)
             keyval = AnyNum
         elif isinstance(key, EllipsisMonad):
             keyval = AnyStr
