@@ -89,10 +89,10 @@ class MySQLBuilder(SQLBuilder):
             return 'DATE_SUB(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
         return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
     def JSON_QUERY(builder, expr, path):
-        path_sql, has_params, has_wildcards = builder.json_path(path)
+        path_sql, has_params, has_wildcards = builder.build_json_path(path)
         return 'json_extract(', builder(expr), ', ', path_sql, ')'
     def JSON_VALUE(builder, expr, path, type):
-        path_sql, has_params, has_wildcards = builder.json_path(path)
+        path_sql, has_params, has_wildcards = builder.build_json_path(path)
         result = 'json_extract(', builder(expr), ', ', path_sql, ')'
         if type is NoneType:
             return 'NULLIF(', result, ", CAST('null' as JSON))"
@@ -111,8 +111,8 @@ class MySQLBuilder(SQLBuilder):
         assert key[0] == 'VALUE' and isinstance(key[1], basestring)
         expr_sql = builder(expr)
         result = [ '(json_contains(', expr_sql, ', ', builder([ 'VALUE', json.dumps([ key[1] ]) ]) ]
-        path_sql, has_params, has_wildcards = builder.json_path(path)
-        path_with_key_sql, _, _ = builder.json_path(path + [ key[1] ])
+        path_sql, has_params, has_wildcards = builder.build_json_path(path)
+        path_with_key_sql, _, _ = builder.build_json_path(path + [key[1]])
         result += [ ', ', path_sql, ') or json_contains_path(', expr_sql, ", 'one', ", path_with_key_sql, '))' ]
         return result
 

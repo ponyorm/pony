@@ -517,7 +517,7 @@ class SQLBuilder(object):
     def RAWSQL(builder, sql):
         if isinstance(sql, basestring): return sql
         return [ x if isinstance(x, basestring) else builder(x) for x in sql ]
-    def json_path(builder, path):
+    def build_json_path(builder, path):
         items = []
         for element in path: items.extend(builder(element))
         empty_slice = slice(None, None, None)
