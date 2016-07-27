@@ -8,15 +8,15 @@ from binascii import hexlify
 
 from pony import options
 from pony.utils import datetime2timestamp, throw, is_ident
-from pony.orm.ormtypes import RawSQL, Json, AnyNum, AnyStr
+from pony.orm.ormtypes import RawSQL, Json
 
 class AstError(Exception): pass
 
 class Param(object):
     __slots__ = 'style', 'id', 'paramkey', 'converter'
-    def __init__(param, paramstyle, id, paramkey, converter=None):
+    def __init__(param, paramstyle, paramkey, converter=None):
         param.style = paramstyle
-        param.id = id
+        param.id = None
         param.paramkey = paramkey
         param.converter = converter
     def eval(param, values):
@@ -47,6 +47,17 @@ class Param(object):
     if not PY2: __str__ = __unicode__
     def __repr__(param):
         return '%s(%r)' % (param.__class__.__name__, param.paramkey)
+
+class CompositeParam(Param):
+    __slots__ = 'items', 'func'
+    def __init__(param, paramstyle, paramkey, items, func):
+        for item in items: assert isinstance(item, (Param, Value)), item
+        Param.__init__(param, paramstyle, paramkey)
+        param.items = items
+        param.func = func
+    def eval(param, values):
+        args = [ item.eval(values) if isinstance(item, Param) else item.value for item in param.items ]
+        return param.func(args)
 
 class Value(object):
     __slots__ = 'paramstyle', 'value'
@@ -147,6 +158,7 @@ def indentable(method):
 class SQLBuilder(object):
     dialect = None
     param_class = Param
+    composite_param_class = CompositeParam
     value_class = Value
     indent_spaces = " " * 4
     def __init__(builder, provider, ast):
@@ -159,22 +171,24 @@ class SQLBuilder(object):
         builder.inner_join_syntax = options.INNER_JOIN_SYNTAX
         builder.suppress_aliases = False
         builder.result = flat(builder(ast))
+        params = tuple(x for x in builder.result if isinstance(x, Param))
+        layout = []
+        for i, param in enumerate(params):
+            if param.id is None: param.id = i + 1
+            layout.append(param.paramkey)
+        builder.layout = layout
         builder.sql = u''.join(imap(unicode, builder.result)).rstrip('\n')
         if paramstyle in ('qmark', 'format'):
-            params = tuple(x for x in builder.result if isinstance(x, Param))
             def adapter(values):
-                return tuple((param.eval(values) for param in params))
+                return tuple(param.eval(values) for param in params)
         elif paramstyle == 'numeric':
-            params = tuple(param for param in sorted(itervalues(builder.keys), key=attrgetter('id')))
             def adapter(values):
                 return tuple(param.eval(values) for param in params)
         elif paramstyle in ('named', 'pyformat'):
-            params = tuple(param for param in sorted(itervalues(builder.keys), key=attrgetter('id')))
             def adapter(values):
                 return {'p%d' % param.id: param.eval(values) for param in params}
         else: throw(NotImplementedError, paramstyle)
         builder.params = params
-        builder.layout = tuple(param.paramkey for param in params)
         builder.adapter = adapter
     def __call__(builder, ast):
         if isinstance(ast, basestring):
@@ -348,12 +362,16 @@ class SQLBuilder(object):
             return [ '%s' % builder.quote_name(col_name) ]
         return [ '%s.%s' % (builder.quote_name(table_alias), builder.quote_name(col_name)) ]
     def PARAM(builder, paramkey, converter=None):
+        return builder.make_param(builder.param_class, paramkey, converter)
+    def make_param(builder, param_class, paramkey, *args):
         keys = builder.keys
         param = keys.get(paramkey)
         if param is None:
-            param = builder.param_class(builder.paramstyle, len(keys) + 1, paramkey, converter)
+            param = param_class(builder.paramstyle, paramkey, *args)
             keys[paramkey] = param
         return [ param ]
+    def make_composite_param(builder, paramkey, items, func):
+        return builder.make_param(builder.composite_param_class, paramkey, items, func)
     def ROW(builder, *items):
         return '(', join(', ', imap(builder, items)), ')'
     def VALUE(builder, value):
@@ -499,19 +517,41 @@ class SQLBuilder(object):
         if isinstance(sql, basestring): return sql
         return [ x if isinstance(x, basestring) else builder(x) for x in sql ]
     def json_path(builder, path):
-        result = ['\'$']
-        for item in path:
-            if isinstance(item, int):
-                result.append('[%d]' % item)
-            elif item is AnyNum:
-                result.append('[*]')
-            elif isinstance(item, str):
-                result.append('.' + item if is_ident(item) else '."%s"' % item.replace('"', '\\"'))
-            elif item is AnyStr:
-                result.append('.*')
-            else: assert False
-        result.append('\'')
-        return result
+        items = []
+        for element in path: items.extend(builder(element))
+        empty_slice = slice(None, None, None)
+        has_params = False
+        has_wildcards = False
+        for item in items:
+            if isinstance(item, Param):
+                has_params = True
+            elif isinstance(item, Value):
+                value = item.value
+                if value is Ellipsis or value == empty_slice: has_wildcards = True
+                else: assert isinstance(value, (int, basestring)), value
+            else: assert False, item
+        if has_params:
+            paramkey = tuple(item.paramkey if isinstance(item, Param) else
+                             None if type(item.value) is slice else item.value
+                             for item in items)
+            path_sql = builder.make_composite_param(paramkey, items, builder.eval_json_path)
+        else:
+            result_value = builder.eval_json_path(item.value for item in items)
+            path_sql = builder.value_class(builder.paramstyle, result_value)
+        return path_sql, has_params, has_wildcards
+    @classmethod
+    def eval_json_path(cls, values):
+        result = ['$']
+        append = result.append
+        empty_slice = slice(None, None, None)
+        for value in values:
+            if isinstance(value, int): append('[%d]' % value)
+            elif isinstance(value, str):
+                append('.' + value if is_ident(value) else '."%s"' % value.replace('"', '\\"'))
+            elif value is Ellipsis: append('.*')
+            elif value == empty_slice: append('[*]')
+            else: assert False, value
+        return ''.join(result)
     def JSON_QUERY(builder, expr, path):
         throw(NotImplementedError)
     def JSON_VALUE(builder, expr, path, type):

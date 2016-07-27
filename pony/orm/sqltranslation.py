@@ -17,7 +17,7 @@ from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
     numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
     get_normalized_type_of, normalize_type, coerce_types, are_comparable_types, \
-    Json, AnyStr, AnyNum, AnyItem
+    Json
 from pony.orm import core
 from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper
 
@@ -1702,17 +1702,14 @@ class JsonItemMonad(JsonMixin, Monad):
         monad.parent = parent
         if isinstance(key, slice):
             if key != slice(None, None, None): throw(NotImplementedError)
-            keyval = AnyNum
-        elif isinstance(key, EllipsisMonad):
-            keyval = AnyStr
-        elif isinstance(key, (StringConstMonad, NumericConstMonad)):
-            keyval = key.value
+            monad.key_ast = [ 'VALUE', key ]
+        elif isinstance(key, (ParamMonad, StringConstMonad, NumericConstMonad, EllipsisMonad)):
+            monad.key_ast = key.getsql()[0]
         else: throw(TypeError, 'Invalid JSON path item: %s' % ast2src(key.node))
-        monad.key = keyval
     def get_path(monad):
         path = []
         while isinstance(monad, JsonItemMonad):
-            path.append(monad.key)
+            path.append(monad.key_ast)
             monad = monad.parent
         path.reverse()
         return monad, path

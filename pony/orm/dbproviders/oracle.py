@@ -13,7 +13,7 @@ import cx_Oracle
 from pony.orm import core, sqlbuilding, dbapiprovider, sqltranslation
 from pony.orm.core import log_orm, log_sql, DatabaseError, TranslationError
 from pony.orm.dbschema import DBSchema, DBObject, Table, Column
-from pony.orm.ormtypes import Json, AnyItem
+from pony.orm.ormtypes import Json
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, get_version_tuple
 from pony.utils import throw
 from pony.converting import timedelta2str
@@ -227,22 +227,22 @@ class OraBuilder(sqlbuilding.SQLBuilder):
             return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' HOUR TO SECOND)"
         return '(', builder(expr), ' - ', builder(delta), ')'
     def JSON_QUERY(builder, expr, path):
-        for item in path:
-            if isinstance(item, AnyItem):
-                return 'JSON_QUERY(', builder(expr), ', ', builder.json_path(path), ' WITH WRAPPER)'
-        return 'REGEXP_REPLACE(JSON_QUERY(', \
-            builder(expr), ', ', builder.json_path(path), " WITH WRAPPER), '(^\\[|\\]$)', '')"
+        expr_sql = builder(expr)
+        path_sql, has_params, has_wildcards = builder.json_path(path)
+        if has_wildcards: return 'JSON_QUERY(', expr_sql, ', ', path_sql, ' WITH WRAPPER)'
+        return 'REGEXP_REPLACE(JSON_QUERY(', expr_sql, ', ', path_sql, " WITH WRAPPER), '(^\\[|\\]$)', '')"
     json_value_type_mapping = {bool: 'NUMBER', int: 'NUMBER', float: 'NUMBER'}
     def JSON_VALUE(builder, expr, path, type):
         if type is Json: return builder.JSON_QUERY(expr, path)
+        path_sql, has_params, has_wildcards = builder.json_path(path)
         type_name = builder.json_value_type_mapping.get(type, 'VARCHAR2')
-        return 'JSON_VALUE(', builder(expr), ', ', builder.json_path(path), ' RETURNING ', type_name, ')'
+        return 'JSON_VALUE(', builder(expr), ', ', path_sql, ' RETURNING ', type_name, ')'
     def JSON_NONZERO(builder, expr):
         return 'COALESCE(', builder(expr), ''', 'null') NOT IN ('null', 'false', '0', '""', '[]', '{}')'''
     def JSON_CONTAINS(builder, expr, path, key):
         assert key[0] == 'VALUE' and isinstance(key[1], basestring)
         expr_sql = builder(expr)
-        path_sql = builder.json_path(path + [ key[1] ])
+        path_sql, has_params, has_wildcards = builder.json_path(path + [ key[1] ])
         return 'JSON_EXISTS(', expr_sql, ', ', path_sql, ')'
 
 class OraBoolConverter(dbapiprovider.BoolConverter):

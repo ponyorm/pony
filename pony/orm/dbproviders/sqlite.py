@@ -135,18 +135,21 @@ class SQLiteBuilder(SQLBuilder):
 
     def JSON_QUERY(builder, expr, path):
         fname = 'json_extract' if builder.json1_available else 'py_json_extract'
-        return 'py_json_unwrap(', fname, '(', builder(expr), ', null, ', builder.json_path(path), '))'
+        path_sql, has_params, has_wildcards = builder.json_path(path)
+        return 'py_json_unwrap(', fname, '(', builder(expr), ', null, ', path_sql, '))'
     # json_value_type_mapping = {unicode: 'text', bool: 'boolean', int: 'integer', float: 'real', Json: None}
     def JSON_VALUE(builder, expr, path, type):
-        fname = 'json_extract' if builder.json1_available else 'py_json_extract'
-        return fname, '(', builder(expr), ', ', builder.json_path(path), ')'
+        func_name = 'json_extract' if builder.json1_available else 'py_json_extract'
+        path_sql, has_params, has_wildcards = builder.json_path(path)
+        return func_name, '(', builder(expr), ', ', path_sql, ')'
     def JSON_NONZERO(builder, expr):
         return builder(expr), ''' NOT IN ('null', 'false', '0', '""', '[]', '{}')'''
     def JSON_ARRAY_LENGTH(builder, value):
         func_name = 'json_array_length' if builder.json1_available else 'py_json_array_length'
         return func_name, '(', builder(value), ')'
     def JSON_CONTAINS(builder, expr, path, key):
-        return 'py_json_contains(', builder(expr), ', ', builder.json_path(path), ',  ', builder(key), ')'
+        path_sql, has_params, has_wildcards = builder.json_path(path)
+        return 'py_json_contains(', builder(expr), ', ', path_sql, ',  ', builder(key), ')'
 
 class SQLiteIntConverter(dbapiprovider.IntConverter):
     def sql_type(converter):

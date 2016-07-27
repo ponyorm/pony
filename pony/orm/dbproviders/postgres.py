@@ -77,22 +77,24 @@ class PGSQLBuilder(SQLBuilder):
         if isinstance(delta, timedelta):
             return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' DAY TO SECOND)"
         return '(', builder(expr), ' - ', builder(delta), ')'
-    def json_path(builder, path):
+    def eval_json_path(builder, values):
         result = []
-        for item in path:
-            if isinstance(item, int):
-                result.append(str(item))
-            elif isinstance(item, basestring):
-                result.append(item if is_ident(item) else '"%s"' % item.replace('"', '\\"'))
-            else: assert False, item
+        for value in values:
+            if isinstance(value, int):
+                result.append(str(value))
+            elif isinstance(value, basestring):
+                result.append(value if is_ident(value) else '"%s"' % value.replace('"', '\\"'))
+            else: assert False, value
         return '{%s}' % ','.join(result)
     def JSON_QUERY(builder, expr, path):
-        return '(', builder(expr), " #> ", builder.json_path(path), ')'
+        path_sql, has_params, has_wildcards = builder.json_path(path)
+        return '(', builder(expr), " #> ", path_sql, ')'
     json_value_type_mapping = {bool: 'boolean', int: 'integer', float: 'real'}
     def JSON_VALUE(builder, expr, path, type):
         if type is ormtypes.Json: return builder.JSON_QUERY(expr, path)
+        path_sql, has_params, has_wildcards = builder.json_path(path)
+        sql = '(', builder(expr), " #>> ", path_sql, ')'
         type_name = builder.json_value_type_mapping.get(type, 'text')
-        sql = '(', builder(expr), " #>> ", builder.json_path(path), ')'
         return sql if type_name == 'text' else (sql, '::', type_name)
     def JSON_NONZERO(builder, expr):
         return 'coalesce(', builder(expr), ", 'null'::jsonb) NOT IN (" \
