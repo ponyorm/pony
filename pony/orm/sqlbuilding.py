@@ -370,13 +370,13 @@ class SQLBuilder(object):
         if param is None:
             param = param_class(builder.paramstyle, paramkey, *args)
             keys[paramkey] = param
-        return [ param ]
+        return param
     def make_composite_param(builder, paramkey, items, func):
         return builder.make_param(builder.composite_param_class, paramkey, items, func)
     def ROW(builder, *items):
         return '(', join(', ', imap(builder, items)), ')'
     def VALUE(builder, value):
-        return [builder.value_class(builder.paramstyle, value)]
+        return builder.value_class(builder.paramstyle, value)
     def AND(builder, *cond_list):
         cond_list = [ builder(condition) for condition in cond_list ]
         return join(' AND ', cond_list)
@@ -518,11 +518,10 @@ class SQLBuilder(object):
         if isinstance(sql, basestring): return sql
         return [ x if isinstance(x, basestring) else builder(x) for x in sql ]
     def build_json_path(builder, path):
-        items = []
-        for element in path: items.extend(builder(element))
         empty_slice = slice(None, None, None)
         has_params = False
         has_wildcards = False
+        items = [ builder(element) for element in path ]
         for item in items:
             if isinstance(item, Param):
                 has_params = True
