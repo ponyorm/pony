@@ -1579,8 +1579,12 @@ class JsonMixin(object):
     def __getitem__(monad, key):
         return monad.translator.JsonItemMonad(monad, key)
     def contains(monad, key, not_in=False):
-        if not isinstance(key, StringConstMonad): raise NotImplementedError
         translator = monad.translator
+        if isinstance(key, ParamMonad):
+            if translator.dialect == 'Oracle': throw(TypeError,
+                'For `key in JSON` operation %s supports literal key values only, '
+                'parameters are not allowed: {EXPR}' % translator.dialect)
+        elif not isinstance(key, StringConstMonad): raise NotImplementedError
         base_monad, path = monad.get_path()
         base_sql = base_monad.getsql()[0]
         key_sql = key.getsql()[0]
