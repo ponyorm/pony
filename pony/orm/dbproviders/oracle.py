@@ -498,13 +498,14 @@ def output_type_handler(cursor, name, defaultType, size, precision, scale):
 class OraPool(object):
     forked_pools = []
     def __init__(pool, **kwargs):
+        pool.kwargs = kwargs
         pool.cx_pool = cx_Oracle.SessionPool(**kwargs)
         pool.pid = os.getpid()
     def connect(pool):
         pid = os.getpid()
         if pool.pid != pid:
             pool.forked_pools.append((pool.cx_pool, pool.pid))
-            pool.cx_pool = cx_Oracle.SessionPool(**kwargs)
+            pool.cx_pool = cx_Oracle.SessionPool(**pool.kwargs)
             pool.pid = os.getpid()
         if core.debug: log_orm('GET CONNECTION')
         con = pool.cx_pool.acquire()
