@@ -10,10 +10,11 @@ from uuid import UUID
 
 import cx_Oracle
 
-from pony.orm import core, sqlbuilding, dbapiprovider, sqltranslation
+from pony.orm import core, dbapiprovider, sqltranslation
 from pony.orm.core import log_orm, log_sql, DatabaseError, TranslationError
 from pony.orm.dbschema import DBSchema, DBObject, Table, Column
 from pony.orm.ormtypes import Json
+from pony.orm.sqlbuilding import SQLBuilder, Value
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, get_version_tuple
 from pony.utils import throw
 from pony.converting import timedelta2str
@@ -125,10 +126,10 @@ class OraTranslator(sqltranslation.SQLTranslator):
         if value == '': return NoneType
         return sqltranslation.SQLTranslator.get_normalized_type_of(value)
 
-class OraBuilder(sqlbuilding.SQLBuilder):
+class OraBuilder(SQLBuilder):
     dialect = 'Oracle'
     def INSERT(builder, table_name, columns, values, returning=None):
-        result = sqlbuilding.SQLBuilder.INSERT(builder, table_name, columns, values)
+        result = SQLBuilder.INSERT(builder, table_name, columns, values)
         if returning is not None:
             result.extend((' RETURNING ', builder.quote_name(returning), ' INTO :new_id'))
         return result
@@ -240,10 +241,10 @@ class OraBuilder(sqlbuilding.SQLBuilder):
     def JSON_NONZERO(builder, expr):
         return 'COALESCE(', builder(expr), ''', 'null') NOT IN ('null', 'false', '0', '""', '[]', '{}')'''
     def JSON_CONTAINS(builder, expr, path, key):
-        assert key[0] == 'VALUE' and isinstance(key[1], basestring)
-        expr_sql = builder(expr)
-        path_sql, has_params, has_wildcards = builder.build_json_path(path + [key[1]])
-        return 'JSON_EXISTS(', expr_sql, ', ', path_sql, ')'
+        key_sql = builder(key)
+        assert isinstance(key_sql, Value) and isinstance(key_sql.value, basestring)
+        path_sql, has_params, has_wildcards = builder.build_json_path(path + [ key_sql.value ])
+        return 'JSON_EXISTS(', builder(expr), ', ', path_sql, ')'
 
 class OraBoolConverter(dbapiprovider.BoolConverter):
     if not PY2:
