@@ -564,3 +564,5 @@ class SQLBuilder(object):
         throw(NotImplementedError)
     def JSON_ARRAY_LENGTH(builder, value):
         throw(NotImplementedError)
+    def JSON_PARAM(builder, expr):
+        return builder(expr)

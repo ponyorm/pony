@@ -1667,9 +1667,9 @@ class DatetimeParamMonad(DatetimeMixin, ParamMonad): pass
 class BufferParamMonad(BufferMixin, ParamMonad): pass
 class UuidParamMonad(UuidMixin, ParamMonad): pass
 
-
 class JsonParamMonad(JsonMixin, ParamMonad):
-    pass
+    def getsql(monad, subquery=None):
+        return [ [ 'JSON_PARAM', ParamMonad.getsql(monad)[0] ] ]
 
 class ExprMonad(Monad):
     @staticmethod

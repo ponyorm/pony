@@ -125,6 +125,8 @@ class MySQLBuilder(SQLBuilder):
     @classmethod
     def wrap_param_to_json_array(cls, values):
         return json.dumps(values)
+    def JSON_PARAM(builder, expr):
+        return 'CAST(', builder(expr), ' AS JSON)'
 
 class MySQLStrConverter(dbapiprovider.StrConverter):
     def sql_type(converter):
