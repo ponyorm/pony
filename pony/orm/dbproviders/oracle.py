@@ -4,6 +4,7 @@ from pony.py23compat import PY2, iteritems, basestring, unicode, buffer, int_typ
 import os
 os.environ["NLS_LANG"] = "AMERICAN_AMERICA.UTF8"
 
+import re
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 from uuid import UUID
@@ -16,7 +17,7 @@ from pony.orm.dbschema import DBSchema, DBObject, Table, Column
 from pony.orm.ormtypes import Json
 from pony.orm.sqlbuilding import SQLBuilder, Value
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, get_version_tuple
-from pony.utils import throw
+from pony.utils import throw, is_ident
 from pony.converting import timedelta2str
 
 NoneType = type(None)
@@ -241,10 +242,30 @@ class OraBuilder(SQLBuilder):
     def JSON_NONZERO(builder, expr):
         return 'COALESCE(', builder(expr), ''', 'null') NOT IN ('null', 'false', '0', '""', '[]', '{}')'''
     def JSON_CONTAINS(builder, expr, path, key):
-        key_sql = builder(key)
-        assert isinstance(key_sql, Value) and isinstance(key_sql.value, basestring)
-        path_sql, has_params, has_wildcards = builder.build_json_path(path + [ key_sql.value ])
-        return 'JSON_EXISTS(', builder(expr), ', ', path_sql, ')'
+        assert key[0] == 'VALUE' and isinstance(key[1], basestring)
+        path_sql, has_params, has_wildcards = builder.build_json_path(path)
+        path_with_key_sql, _, _ = builder.build_json_path(path + [ key ])
+        expr_sql = builder(expr)
+        result = 'JSON_EXISTS(', expr_sql, ', ', path_with_key_sql, ')'
+        if json_item_re.match(key[1]):
+            item = r'"([^"]|\\")*"'
+            list_start = r'\[\s*(%s\s*,\s*)*' % item
+            list_end = r'\s*(,\s*%s\s*)*\]' % item
+            pattern = r'%s"%s"%s' % (list_start, key[1], list_end)
+            if has_wildcards:
+                sublist = r'\[[^]]*\]'
+                item_or_sublist = '(%s|%s)' % (item, sublist)
+                wrapper_list_start = r'^\[\s*(%s\s*,\s*)*' % item_or_sublist
+                wrapper_list_end = r'\s*(,\s*%s\s*)*\]$' % item_or_sublist
+                pattern = r'%s%s%s' % (wrapper_list_start, pattern, wrapper_list_end)
+                result += ' OR REGEXP_LIKE(JSON_QUERY(', expr_sql, ', ', path_sql, " WITH WRAPPER), '%s')" % pattern
+            else:
+                pattern = '^%s$' % pattern
+                result += ' OR REGEXP_LIKE(JSON_QUERY(', expr_sql, ', ', path_sql, "), '%s')" % pattern
+        return result
+
+json_item_re = re.compile('[\w\s]*')
+
 
 class OraBoolConverter(dbapiprovider.BoolConverter):
     if not PY2:
