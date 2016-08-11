@@ -1467,6 +1467,48 @@ class StringMixin(MonadMixin):
     def call_rstrip(monad, chars=None):
         return monad.strip(chars, 'RTRIM')
 
+class JsonMixin(object):
+    disable_distinct = True  # at least in Oracle we cannot use DISTINCT with JSON column
+    disable_ordering = True  # at least in Oracle we cannot use ORDER BY with JSON column
+
+    def mixin_init(monad):
+        assert monad.type is Json, monad.type
+    def get_path(monad):
+        return monad, []
+    def __getitem__(monad, key):
+        return monad.translator.JsonItemMonad(monad, key)
+    def contains(monad, key, not_in=False):
+        translator = monad.translator
+        if isinstance(key, ParamMonad):
+            if translator.dialect == 'Oracle': throw(TypeError,
+                'For `key in JSON` operation %s supports literal key values only, '
+                'parameters are not allowed: {EXPR}' % translator.dialect)
+        elif not isinstance(key, StringConstMonad): raise NotImplementedError
+        base_monad, path = monad.get_path()
+        base_sql = base_monad.getsql()[0]
+        key_sql = key.getsql()[0]
+        sql = [ 'JSON_CONTAINS', base_sql, path, key_sql ]
+        if not_in: sql = [ 'NOT', sql ]
+        return translator.BoolExprMonad(translator, sql)
+    def __or__(monad, other):
+        translator = monad.translator
+        if not isinstance(other, translator.JsonMixin):
+            raise TypeError('Should be JSON: %s' % ast2src(other.node))
+        left_sql = monad.getsql()[0]
+        right_sql = other.getsql()[0]
+        sql = [ 'JSON_CONCAT', left_sql, right_sql ]
+        return translator.JsonExprMonad(translator, Json, sql)
+    def len(monad):
+        translator = monad.translator
+        sql = [ 'JSON_ARRAY_LENGTH', monad.getsql()[0] ]
+        return translator.NumericExprMonad(translator, int, sql)
+    def cast_from_json(monad, type):
+        if type in (Json, NoneType): return monad
+        throw(TypeError, 'Cannot compare whole JSON value, you need to select specific sub-item: {EXPR}')
+    def nonzero(monad):
+        translator = monad.translator
+        return translator.BoolExprMonad(translator, [ 'JSON_NONZERO', monad.getsql()[0] ])
+
 class ObjectMixin(MonadMixin):
     def mixin_init(monad):
         assert isinstance(monad.type, EntityMeta)
@@ -1568,50 +1610,6 @@ class TimedeltaAttrMonad(TimedeltaMixin, AttrMonad): pass
 class DatetimeAttrMonad(DatetimeMixin, AttrMonad): pass
 class BufferAttrMonad(BufferMixin, AttrMonad): pass
 class UuidAttrMonad(UuidMixin, AttrMonad): pass
-
-
-class JsonMixin(object):
-    disable_distinct = True  # at least in Oracle we cannot use DISTINCT with JSON column
-    disable_ordering = True  # at least in Oracle we cannot use ORDER BY with JSON column
-
-    def mixin_init(monad):
-        assert monad.type is Json, monad.type
-    def get_path(monad):
-        return monad, []
-    def __getitem__(monad, key):
-        return monad.translator.JsonItemMonad(monad, key)
-    def contains(monad, key, not_in=False):
-        translator = monad.translator
-        if isinstance(key, ParamMonad):
-            if translator.dialect == 'Oracle': throw(TypeError,
-                'For `key in JSON` operation %s supports literal key values only, '
-                'parameters are not allowed: {EXPR}' % translator.dialect)
-        elif not isinstance(key, StringConstMonad): raise NotImplementedError
-        base_monad, path = monad.get_path()
-        base_sql = base_monad.getsql()[0]
-        key_sql = key.getsql()[0]
-        sql = [ 'JSON_CONTAINS', base_sql, path, key_sql ]
-        if not_in: sql = [ 'NOT', sql ]
-        return translator.BoolExprMonad(translator, sql)
-    def __or__(monad, other):
-        translator = monad.translator
-        if not isinstance(other, translator.JsonMixin):
-            raise TypeError('Should be JSON: %s' % ast2src(other.node))
-        left_sql = monad.getsql()[0]
-        right_sql = other.getsql()[0]
-        sql = [ 'JSON_CONCAT', left_sql, right_sql ]
-        return translator.JsonExprMonad(translator, Json, sql)
-    def len(monad):
-        translator = monad.translator
-        sql = [ 'JSON_ARRAY_LENGTH', monad.getsql()[0] ]
-        return translator.NumericExprMonad(translator, int, sql)
-    def cast_from_json(monad, type):
-        if type in (Json, NoneType): return monad
-        throw(TypeError, 'Cannot compare whole JSON value, you need to select specific sub-item: {EXPR}')
-    def nonzero(monad):
-        translator = monad.translator
-        return translator.BoolExprMonad(translator, [ 'JSON_NONZERO', monad.getsql()[0] ])
-
 class JsonAttrMonad(JsonMixin, AttrMonad): pass
 
 class ParamMonad(Monad):
