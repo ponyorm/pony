@@ -262,6 +262,8 @@ class PreTranslator(ASTTranslator):
         node.external = node.constant = True
     def postDict(translator, node):
         node.external = True
+    def postList(translator, node):
+        node.external = True
     def postKeyword(translator, node):
         node.constant = node.expr.constant
     def postCallFunc(translator, node):
