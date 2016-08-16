@@ -201,7 +201,7 @@ class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
         return datetime2timestamp(val)
 
 class SQLiteJsonConverter(dbapiprovider.JsonConverter):
-    json_kwargs = {'separators': (',', ':')}
+    json_kwargs = {'separators': (',', ':'), 'sort_keys': True}
 
 def print_traceback(func):
     @wraps(func)
@@ -450,7 +450,7 @@ def _extract(expr, *paths):
 def py_json_extract(expr, *paths):
     result = _extract(expr, *paths)
     if type(result) in (list, dict):
-        result = json.dumps(result, separators=(',', ':'))
+        result = json.dumps(result, **SQLiteJsonConverter.json_kwargs)
     return result
 
 @print_traceback
@@ -459,7 +459,7 @@ def py_json_query(expr, path, with_wrapper):
     if type(result) not in (list, dict):
         if not with_wrapper: return None
         result = [result]
-    return json.dumps(result, separators=(',', ':'))
+    return json.dumps(result, **SQLiteJsonConverter.json_kwargs)
 
 @print_traceback
 def py_json_value(expr, path):
