@@ -31,7 +31,7 @@ except ImportError:
 from pony.orm import core, dbschema, dbapiprovider, ormtypes, sqltranslation
 from pony.orm.core import log_orm
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, get_version_tuple, wrap_dbapi_exceptions
-from pony.orm.sqltranslation import SQLTranslator
+from pony.orm.sqltranslation import SQLTranslator, TranslationError
 from pony.orm.sqlbuilding import SQLBuilder, join
 from pony.utils import throw
 from pony.converting import str2timedelta, timedelta2str
@@ -112,6 +112,7 @@ class MySQLBuilder(SQLBuilder):
         expr_sql = builder(expr)
         result = [ '(json_contains(', expr_sql, ', ', builder([ 'VALUE', json.dumps([ key[1] ]) ]) ]
         path_sql, has_params, has_wildcards = builder.build_json_path(path)
+        if has_wildcards: throw(TranslationError, 'Wildcards are not allowed in json_contains()')
         path_with_key_sql, _, _ = builder.build_json_path(path + [key[1]])
         result += [ ', ', path_sql, ') or json_contains_path(', expr_sql, ", 'one', ", path_with_key_sql, '))' ]
         return result
