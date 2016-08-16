@@ -53,7 +53,7 @@ class TestQuery(unittest.TestCase):
     def test5(self):
         x = ['A']
         select(s for s in Student if s.name == x)
-    @raises_exception(TypeError, "f1(s.gpa)")
+    @raises_exception(TypeError, "Function 'f1' cannot be used this way: f1(s.gpa)")
     def test6(self):
         def f1(x):
             return x + 1

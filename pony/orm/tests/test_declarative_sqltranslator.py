@@ -343,7 +343,7 @@ class TestSQLTranslator(unittest.TestCase):
         x = Student[1], None
         result = set(select(s for s in Student if s not in x))
         self.assertEqual(result, set([Student[3]]))
-    @raises_exception(TypeError, "f(s)")
+    @raises_exception(TypeError, "Function 'f' cannot be used this way: f(s)")
     def test_unknown_func(self):
         def f(x): return x
         select(s for s in Student if f(s))

@@ -741,8 +741,8 @@ class SQLTranslator(ASTTranslator):
                 kwargs[arg.name] = arg.expr.monad
             else: args.append(arg.monad)
         func_monad = node.node.monad
-        if isinstance(func_monad, ErrorSpecialFuncMonad):
-            'Function %r cannot be used in this way: %s' % (func_monad.func.__name__, ast2src(node))
+        if isinstance(func_monad, ErrorSpecialFuncMonad): throw(TypeError,
+            'Function %r cannot be used this way: %s' % (func_monad.func.__name__, ast2src(node)))
         return func_monad(*args, **kwargs)
     def postKeyword(translator, node):
         pass  # this node will be processed by postCallFunc
