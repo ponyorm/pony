@@ -69,6 +69,8 @@ def type2str(t):
 class SQLTranslator(ASTTranslator):
     dialect = None
     row_value_syntax = True
+    json_path_wildcard_syntax = False
+    json_values_are_comparable = True
     rowid_support = False
 
     def default_post(translator, node):
@@ -1680,6 +1682,7 @@ class ExprMonad(Monad):
         elif type is time: cls = translator.TimeExprMonad
         elif type is timedelta: cls = translator.TimedeltaExprMonad
         elif type is datetime: cls = translator.DatetimeExprMonad
+        elif type is Json: cls = translator.JsonExprMonad
         else: throw(NotImplementedError, type)  # pragma: no cover
         return cls(translator, type, sql)
     def __new__(cls, *args):
@@ -1702,7 +1705,8 @@ class JsonExprMonad(JsonMixin, ExprMonad): pass
 class JsonItemMonad(JsonMixin, Monad):
     def __init__(monad, parent, key):
         assert isinstance(parent, JsonMixin), parent
-        Monad.__init__(monad, parent.translator, Json)
+        translator = parent.translator
+        Monad.__init__(monad, translator, Json)
         monad.parent = parent
         if isinstance(key, slice):
             if key != slice(None, None, None): throw(NotImplementedError)
@@ -1710,6 +1714,8 @@ class JsonItemMonad(JsonMixin, Monad):
         elif isinstance(key, (ParamMonad, StringConstMonad, NumericConstMonad, EllipsisMonad)):
             monad.key_ast = key.getsql()[0]
         else: throw(TypeError, 'Invalid JSON path item: %s' % ast2src(key.node))
+        if isinstance(key, (slice, EllipsisMonad)) and not translator.json_path_wildcard_syntax:
+            throw(TranslationError, '%s does not support wildcards in JSON path: {EXPR}' % translator.dialect)
     def get_path(monad):
         path = []
         while isinstance(monad, JsonItemMonad):
@@ -1719,10 +1725,13 @@ class JsonItemMonad(JsonMixin, Monad):
         return monad, path
     def cast_from_json(monad, type):
         translator = monad.translator
-        if issubclass(type, Json): return monad
+        if issubclass(type, Json):
+            if not translator.json_values_are_comparable: throw(TranslationError,
+                '%s does not support comparison of json structures: {EXPR}' % translator.dialect)
+            return monad
         base_monad, path = monad.get_path()
         sql = [ 'JSON_VALUE', base_monad.getsql()[0], path, type ]
-        return translator.ExprMonad.new(translator, type, sql)
+        return translator.ExprMonad.new(translator, Json if type is NoneType else type, sql)
     def getsql(monad):
         base_monad, path = monad.get_path()
         base_sql = base_monad.getsql()[0]

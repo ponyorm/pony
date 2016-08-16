@@ -119,6 +119,8 @@ class OraConstMonad(sqltranslation.ConstMonad):
 class OraTranslator(sqltranslation.SQLTranslator):
     dialect = 'Oracle'
     rowid_support = True
+    json_path_wildcard_syntax = True
+    json_values_are_comparable = False
     NoneMonad = OraNoneMonad
     ConstMonad = OraConstMonad
 

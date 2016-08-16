@@ -46,6 +46,7 @@ class MySQLSchema(dbschema.DBSchema):
 
 class MySQLTranslator(SQLTranslator):
     dialect = 'MySQL'
+    json_path_wildcard_syntax = True
 
 class MySQLBuilder(SQLBuilder):
     dialect = 'MySQL'
