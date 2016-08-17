@@ -13,12 +13,13 @@ from pony.orm.ormtypes import RawSQL, Json
 class AstError(Exception): pass
 
 class Param(object):
-    __slots__ = 'style', 'id', 'paramkey', 'converter'
-    def __init__(param, paramstyle, paramkey, converter=None):
+    __slots__ = 'style', 'id', 'paramkey', 'converter', 'optimistic'
+    def __init__(param, paramstyle, paramkey, converter=None, optimistic=False):
         param.style = paramstyle
         param.id = None
         param.paramkey = paramkey
         param.converter = converter
+        param.optimistic = optimistic
     def eval(param, values):
         varkey, i, j = param.paramkey
         value = values[varkey]
@@ -33,7 +34,7 @@ class Param(object):
         if value is not None:  # can value be None at all?
             converter = param.converter
             if converter is not None:
-                value = converter.val2dbval(value)
+                if not param.optimistic: value = converter.val2dbval(value)
                 value = converter.py2sql(value)
         return value
     def __unicode__(param):
@@ -361,8 +362,8 @@ class SQLBuilder(object):
         if builder.suppress_aliases or not table_alias:
             return [ '%s' % builder.quote_name(col_name) ]
         return [ '%s.%s' % (builder.quote_name(table_alias), builder.quote_name(col_name)) ]
-    def PARAM(builder, paramkey, converter=None):
-        return builder.make_param(builder.param_class, paramkey, converter)
+    def PARAM(builder, paramkey, converter=None, optimistic=False):
+        return builder.make_param(builder.param_class, paramkey, converter, optimistic)
     def make_param(builder, param_class, paramkey, *args):
         keys = builder.keys
         param = keys.get(paramkey)

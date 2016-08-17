@@ -2046,11 +2046,10 @@ class Attribute(object):
         assert attr.pk_offset is None
         if new_dbval is NOT_LOADED: assert is_reverse_call
         old_dbval = obj._dbvals_.get(attr, NOT_LOADED)
-
-        if attr.py_type is float:
-            if old_dbval is NOT_LOADED: pass
-            elif attr.converters[0].equals(old_dbval, new_dbval): return
-        elif old_dbval == new_dbval: return
+        if old_dbval is not NOT_LOADED:
+            if old_dbval == new_dbval or (
+                    not attr.reverse and attr.converters[0].dbvals_equal(old_dbval, new_dbval)):
+                return
 
         bit = obj._bits_[attr]
         if obj._rbits_ & bit:
@@ -4085,12 +4084,14 @@ class EntityMeta(type):
             entity._attrnames_cache_[key] = attrs
         return attrs
 
-def populate_criteria_list(criteria_list, columns, converters, operations, params_count=0, table_alias=None):
+def populate_criteria_list(criteria_list, columns, converters, operations,
+                           params_count=0, table_alias=None, optimistic=False):
     for column, op, converter in izip(columns, operations, converters):
         if op == 'IS_NULL':
             criteria_list.append([ op, [ 'COLUMN', None, column ] ])
         else:
-            criteria_list.append([ op, [ 'COLUMN', table_alias, column ], [ 'PARAM', (params_count, None, None), converter ] ])
+            criteria_list.append([ op, [ 'COLUMN', table_alias, column ],
+                                       [ 'PARAM', (params_count, None, None), converter, optimistic ] ])
         params_count += 1
     return params_count
 
@@ -4347,17 +4348,11 @@ class Entity(with_metaclass(EntityMeta)):
             assert attr.pk_offset is None
             assert new_dbval is not NOT_LOADED
             old_dbval = get_dbval(attr, NOT_LOADED)
-            if unpickling and old_dbval is not NOT_LOADED:
-                del avdict[attr]
-                continue
-            elif attr.py_type is float:
-                if old_dbval is NOT_LOADED: pass
-                elif attr.converters[0].equals(old_dbval, new_dbval):
+            if old_dbval is not NOT_LOADED:
+                if unpickling or old_dbval == new_dbval or (
+                        not attr.reverse and attr.converters[0].dbvals_equal(old_dbval, new_dbval)):
                     del avdict[attr]
                     continue
-            elif old_dbval == new_dbval:
-                del avdict[attr]
-                continue
 
             bit = obj._bits_[attr]
             if rbits & bit: throw(UnrepeatableReadError,
@@ -4727,8 +4722,8 @@ class Entity(with_metaclass(EntityMeta)):
                 pk_columns = obj._pk_columns_
                 pk_converters = obj._pk_converters_
                 params_count = populate_criteria_list(where_list, pk_columns, pk_converters, repeat('EQ'), params_count)
-                if optimistic_columns:
-                    populate_criteria_list(where_list, optimistic_columns, optimistic_converters, optimistic_ops, params_count)
+                if optimistic_columns: populate_criteria_list(
+                    where_list, optimistic_columns, optimistic_converters, optimistic_ops, params_count, optimistic=True)
                 sql_ast = [ 'UPDATE', obj._table_, list(izip(update_columns, update_params)), where_list ]
                 sql, adapter = database._ast2sql(sql_ast)
                 obj._update_sql_cache_[query_key] = sql, adapter
@@ -4756,8 +4751,8 @@ class Entity(with_metaclass(EntityMeta)):
         if cached_sql is None:
             where_list = [ 'WHERE' ]
             params_count = populate_criteria_list(where_list, obj._pk_columns_, obj._pk_converters_, repeat('EQ'))
-            if optimistic_columns:
-                populate_criteria_list(where_list, optimistic_columns, optimistic_converters, optimistic_ops, params_count)
+            if optimistic_columns: populate_criteria_list(
+                where_list, optimistic_columns, optimistic_converters, optimistic_ops, params_count, optimistic=True)
             from_ast = [ 'FROM', [ None, 'TABLE', obj._table_ ] ]
             sql_ast = [ 'DELETE', None, from_ast, where_list ]
             sql, adapter = database._ast2sql(sql_ast)

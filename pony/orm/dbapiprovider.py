@@ -352,6 +352,8 @@ class Converter(object):
         return val
     def dbval2val(self, dbval, obj=None):
         return dbval
+    def dbvals_equal(self, x, y):
+        return x == y
     def get_sql_type(converter, attr=None):
         if attr is not None and attr.sql_type is not None:
             return attr.sql_type
@@ -534,7 +536,7 @@ class RealConverter(Converter):
             throw(ValueError, 'Value %r of attr %s is greater than the maximum allowed value %r'
                              % (val, converter.attr, converter.max_val))
         return val
-    def equals(converter, x, y):
+    def dbvals_equal(converter, x, y):
         tolerance = converter.tolerance
         if tolerance is None or x is None or y is None: return x == y
         denominator = max(abs(x), abs(y))
@@ -749,5 +751,9 @@ class JsonConverter(Converter):
         if obj is None:
             return val
         return TrackedValue.make(obj, self.attr, val)
+    def dbvals_equal(self, x, y):
+        if isinstance(x, basestring): x = json.loads(x)
+        if isinstance(y, basestring): y = json.loads(y)
+        return x == y
     def sql_type(self):
         return "JSON"
