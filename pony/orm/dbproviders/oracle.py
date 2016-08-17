@@ -230,6 +230,10 @@ class OraBuilder(SQLBuilder):
         if isinstance(delta, timedelta):
             return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' HOUR TO SECOND)"
         return '(', builder(expr), ' - ', builder(delta), ')'
+    def build_json_path(builder, path):
+        path_sql, has_params, has_wildcards = SQLBuilder.build_json_path(builder, path)
+        if has_params: throw(TranslationError, "Oracle doesn't allow parameters in JSON paths")
+        return path_sql, has_params, has_wildcards
     def JSON_QUERY(builder, expr, path):
         expr_sql = builder(expr)
         path_sql, has_params, has_wildcards = builder.build_json_path(path)
