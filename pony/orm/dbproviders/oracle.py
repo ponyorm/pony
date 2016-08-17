@@ -265,6 +265,8 @@ class OraBuilder(SQLBuilder):
                 pattern = '^%s$' % pattern
                 result += ' OR REGEXP_LIKE(JSON_QUERY(', expr_sql, ', ', path_sql, "), '%s')" % pattern
         return result
+    def JSON_ARRAY_LENGTH(builder, value):
+        throw(TranslationError, 'Oracle does not provide `length` function for JSON arrays')
 
 json_item_re = re.compile('[\w\s]*')
 
