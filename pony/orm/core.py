@@ -4080,12 +4080,12 @@ class EntityMeta(type):
             entity._attrnames_cache_[key] = attrs
         return attrs
 
-def populate_criteria_list(criteria_list, columns, operations, params_count=0, table_alias=None):
-    for column, op in izip(columns, operations):
+def populate_criteria_list(criteria_list, columns, converters, operations, params_count=0, table_alias=None):
+    for column, op, converter in izip(columns, operations, converters):
         if op == 'IS_NULL':
             criteria_list.append([ op, [ 'COLUMN', None, column ] ])
         else:
-            criteria_list.append([ op, [ 'COLUMN', table_alias, column ], [ 'PARAM', (params_count, None, None), None ] ])
+            criteria_list.append([ op, [ 'COLUMN', table_alias, column ], [ 'PARAM', (params_count, None, None), converter ] ])
         params_count += 1
     return params_count
 
@@ -4552,6 +4552,7 @@ class Entity(with_metaclass(EntityMeta)):
             if get_bit(attr) & mask: yield attr
     def _construct_optimistic_criteria_(obj):
         optimistic_columns = []
+        optimistic_converters = []
         optimistic_values = []
         optimistic_operations = []
         for attr in obj._attrs_with_bit_(obj._attrs_with_columns_, obj._rbits_):
@@ -4560,13 +4561,14 @@ class Entity(with_metaclass(EntityMeta)):
             if not (attr.optimistic and converters[0].optimistic): continue
             dbval = obj._dbvals_[attr]
             optimistic_columns.extend(attr.columns)
+            optimistic_converters.extend(attr.converters)
             values = attr.get_raw_values(dbval)
             optimistic_values.extend(values)
             if dbval is None:
                 optimistic_operations.append('IS_NULL')
             else:
                 optimistic_operations.extend(converter.EQ for converter in converters)
-        return optimistic_operations, optimistic_columns, optimistic_values
+        return optimistic_operations, optimistic_columns, optimistic_converters, optimistic_values
     def _save_principal_objects_(obj, dependent_objects):
         if dependent_objects is None: dependent_objects = []
         elif obj in dependent_objects:
@@ -4676,10 +4678,10 @@ class Entity(with_metaclass(EntityMeta)):
                 values.extend(attr.get_raw_values(val))
             cache = obj._session_cache_
             if obj not in cache.for_update:
-                optimistic_ops, optimistic_columns, optimistic_values = \
+                optimistic_ops, optimistic_columns, optimistic_converters, optimistic_values = \
                     obj._construct_optimistic_criteria_()
                 values.extend(optimistic_values)
-            else: optimistic_columns = optimistic_values = optimistic_ops = ()
+            else: optimistic_columns = optimistic_converters = optimistic_ops = ()
             query_key = tuple(update_columns), tuple(optimistic_columns), tuple(optimistic_ops)
             database = obj._database_
             cached_sql = obj._update_sql_cache_.get(query_key)
@@ -4693,9 +4695,9 @@ class Entity(with_metaclass(EntityMeta)):
                 where_list = [ 'WHERE' ]
                 pk_columns = obj._pk_columns_
                 pk_converters = obj._pk_converters_
-                params_count = populate_criteria_list(where_list, pk_columns, repeat('EQ'), params_count)
+                params_count = populate_criteria_list(where_list, pk_columns, pk_converters, repeat('EQ'), params_count)
                 if optimistic_columns:
-                    populate_criteria_list(where_list, optimistic_columns, optimistic_ops, params_count)
+                    populate_criteria_list(where_list, optimistic_columns, optimistic_converters, optimistic_ops, params_count)
                 sql_ast = [ 'UPDATE', obj._table_, list(izip(update_columns, update_params)), where_list ]
                 sql, adapter = database._ast2sql(sql_ast)
                 obj._update_sql_cache_[query_key] = sql, adapter
@@ -4713,18 +4715,18 @@ class Entity(with_metaclass(EntityMeta)):
         values.extend(obj._get_raw_pkval_())
         cache = obj._session_cache_
         if obj not in cache.for_update:
-            optimistic_ops, optimistic_columns, optimistic_values = \
+            optimistic_ops, optimistic_columns, optimistic_converters, optimistic_values = \
                 obj._construct_optimistic_criteria_()
             values.extend(optimistic_values)
-        else: optimistic_columns = optimistic_values = optimistic_ops = ()
+        else: optimistic_columns = optimistic_converters = optimistic_ops = ()
         query_key = tuple(optimistic_columns), tuple(optimistic_ops)
         database = obj._database_
         cached_sql = obj._delete_sql_cache_.get(query_key)
         if cached_sql is None:
             where_list = [ 'WHERE' ]
-            params_count = populate_criteria_list(where_list, obj._pk_columns_, repeat('EQ'))
+            params_count = populate_criteria_list(where_list, obj._pk_columns_, obj._pk_converters_, repeat('EQ'))
             if optimistic_columns:
-                populate_criteria_list(where_list, optimistic_columns, optimistic_ops, params_count)
+                populate_criteria_list(where_list, optimistic_columns, optimistic_converters, optimistic_ops, params_count)
             from_ast = [ 'FROM', [ None, 'TABLE', obj._table_ ] ]
             sql_ast = [ 'DELETE', None, from_ast, where_list ]
             sql, adapter = database._ast2sql(sql_ast)
