@@ -143,9 +143,8 @@ class SQLiteBuilder(SQLBuilder):
     def JSON_NONZERO(builder, expr):
         return builder(expr), ''' NOT IN ('null', 'false', '0', '""', '[]', '{}')'''
     def JSON_ARRAY_LENGTH(builder, value):
-        if not builder.json1_available:
-            raise SqliteExtensionUnavailable('json1')
-        return 'json_array_length(', builder(value), ')'
+        func_name = 'json_array_length' if builder.json1_available else 'py_json_array_length'
+        return func_name, '(', builder(value), ')'
     def JSON_CONTAINS(builder, expr, path, key):
         return 'py_json_contains(', builder(expr), ', ', builder.json_path(path), ',  ', builder(key), ')'
 
@@ -480,6 +479,14 @@ def py_json_nonzero(expr, path):
     expr = _traverse(expr, keys)
     return bool(expr)
 
+@print_traceback
+def py_json_array_length(expr, path=None):
+    expr = json.loads(expr) if isinstance(expr, basestring) else expr
+    if path:
+        keys = _parse_path(path)
+        expr = _traverse(expr, keys)
+    return len(expr) if type(expr) is list else 0
+
 class SQLitePool(Pool):
     def __init__(pool, filename, create_db): # called separately in each thread
         pool.filename = filename
@@ -499,6 +506,7 @@ class SQLitePool(Pool):
         con.create_function('py_json_extract', -1, py_json_extract)
         con.create_function('py_json_contains', 3, py_json_contains)
         con.create_function('py_json_nonzero', 2, py_json_nonzero)
+        con.create_function('py_json_array_length', -1, py_json_array_length)
         con.create_function('py_lower', 1, py_lower)
         if sqlite.sqlite_version_info >= (3, 6, 19):
             con.execute('PRAGMA foreign_keys = true')
