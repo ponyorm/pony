@@ -201,7 +201,7 @@ class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
         return datetime2timestamp(val)
 
 class SQLiteJsonConverter(dbapiprovider.JsonConverter):
-    json_kwargs = {'separators': (',', ':'), 'sort_keys': True}
+    json_kwargs = {'separators': (',', ':'), 'sort_keys': True, 'ensure_ascii': False}
 
 def print_traceback(func):
     @wraps(func)
