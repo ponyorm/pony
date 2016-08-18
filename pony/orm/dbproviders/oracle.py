@@ -362,7 +362,7 @@ class OraUuidConverter(dbapiprovider.UuidConverter):
         return 'RAW(16)'
 
 class OraJsonConverter(dbapiprovider.JsonConverter):
-    optimistic = False
+    optimistic = False  # CLOBs cannot be compared with strings, and TO_CHAR(CLOB) returns first 4000 chars only
     def sql2py(converter, dbval):
         if hasattr(dbval, 'read'): dbval = dbval.read()
         return dbapiprovider.JsonConverter.sql2py(converter, dbval)
