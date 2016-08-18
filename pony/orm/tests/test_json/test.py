@@ -1,4 +1,4 @@
-# *uses fixtures*
+from pony.py23compat import basestring
 
 import unittest
 
@@ -10,46 +10,12 @@ from pony.orm.ormtypes import Json, TrackedValue, TrackedList, TrackedDict
 
 from contextlib import contextmanager
 
-import pony.fixtures
-from ponytest import with_cli_args
+import pony.orm.tests.fixtures
+from ponytest import with_cli_args, TestCase
 
 
-def no_json1_fixture(cls):
-    if cls.db_provider != 'sqlite':
-        raise unittest.SkipTest
 
-    cls.no_json1 = True
-
-    @contextmanager
-    def mgr():
-        json1_available = cls.db.provider.json1_available
-        cls.db.provider.json1_available = False
-        try:
-            yield
-        finally:
-            cls.db.provider.json1_available = json1_available
-
-    return mgr()
-
-no_json1_fixture.class_scoped = True
-
-
-@contextmanager
-def empty_mgr(*args, **kw):
-    yield
-
-
-@with_cli_args
-@click.option('--json1', flag_value=True, default=None)
-@click.option('--no-json1', 'json1', flag_value=False)
-def json1_cli(json1):
-    if json1 is None or json1 is True:
-        yield empty_mgr
-    if json1 is None or json1 is False:
-        yield no_json1_fixture
-
-
-class TestJson(unittest.TestCase):
+class TestJson(TestCase):
     in_db_session = False
 
     @classmethod
@@ -61,8 +27,6 @@ class TestJson(unittest.TestCase):
 
         cls.Product = cls.db.Product
 
-    from ponytest import pony_fixtures
-    pony_fixtures = list(pony_fixtures) + [json1_cli]
 
     @db_session
     def setUp(self):
