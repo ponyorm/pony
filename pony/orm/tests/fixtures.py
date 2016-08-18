@@ -9,8 +9,6 @@ from functools import wraps, partial
 import click
 from contextlib import contextmanager, closing
 
-
-from pony.orm.dbproviders.mysql import mysql_module
 from pony.utils import cached_property, class_property
 
 if not PY2:
@@ -117,6 +115,7 @@ class MySqlContext(DBContext):
 
 
     def init_db(self):
+        from pony.orm.dbproviders.mysql import mysql_module
         with closing(mysql_module.connect(**self.CONN).cursor()) as c:
             try:
                 self.drop_db(c)
