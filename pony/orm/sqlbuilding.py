@@ -13,12 +13,18 @@ from pony.orm.ormtypes import RawSQL
 class AstError(Exception): pass
 
 class Param(object):
-    __slots__ = 'style', 'id', 'paramkey', 'py2sql'
+    __slots__ = 'style', 'id', 'paramkey', 'converter'
     def __init__(param, paramstyle, id, paramkey, converter=None):
         param.style = paramstyle
         param.id = id
         param.paramkey = paramkey
-        param.py2sql = converter.py2sql if converter else (lambda val: val)
+        param.converter = converter
+    def py2sql(param, val):
+        converter = param.converter
+        if converter is not None:
+            val = converter.val2dbval(val)
+            val = converter.py2sql(val)
+        return val
     def __unicode__(param):
         paramstyle = param.style
         if paramstyle == 'qmark': return u'?'

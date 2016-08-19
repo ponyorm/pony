@@ -15,7 +15,7 @@ from pony.orm import core, dbschema, sqltranslation, dbapiprovider
 from pony.orm.core import log_orm
 from pony.orm.sqlbuilding import SQLBuilder, join, make_unary_func
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, wrap_dbapi_exceptions
-from pony.utils import localbase, datetime2timestamp, timestamp2datetime, decorator, absolutize_path, throw
+from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, throw
 
 NoneType = type(None)
 

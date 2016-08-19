@@ -130,8 +130,6 @@ type_normalization_dict = { long : int } if PY2 else {}
 def get_normalized_type_of(value):
     t = type(value)
     if t is tuple: return tuple(get_normalized_type_of(item) for item in value)
-    try: hash(value)  # without this, cannot do tests like 'if value in special_fucntions...'
-    except TypeError: throw(TypeError, 'Unsupported type %r' % t.__name__)
     if t.__name__ == 'EntityMeta': return SetType(value)
     if t.__name__ == 'EntityIter': return SetType(value.entity)
     if PY2 and isinstance(value, str):
@@ -155,6 +153,7 @@ def normalize_type(t):
     t = type_normalization_dict.get(t, t)
     if t in primitive_types: return t
     if issubclass(t, basestring): return unicode
+    if issubclass(t, dict): return dict
     throw(TypeError, 'Unsupported type %r' % t.__name__)
 
 coercions = {

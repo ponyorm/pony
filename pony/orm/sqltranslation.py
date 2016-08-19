@@ -77,6 +77,9 @@ class SQLTranslator(ASTTranslator):
         if hasattr(node, 'monad'): return  # monad already assigned somehow
         if not getattr(node, 'external', False) or getattr(node, 'constant', False):
             return ASTTranslator.dispatch(translator, node)  # default route
+        translator.call(translator.dispatch_external, node)
+
+    def dispatch_external(translator, node):
         varkey = translator.filter_num, node.src
         t = translator.vartypes[varkey]
         tt = type(t)
@@ -343,9 +346,11 @@ class SQLTranslator(ASTTranslator):
                     offset = next_offset
                 else:
                     converter = provider.get_converter_by_py_type(expr_type)
-                    def func(value, sql2py=converter.sql2py):
+                    def func(value, converter=converter):
                         if value is None: return None
-                        return sql2py(value)
+                        value = converter.sql2py(value)
+                        value = converter.dbval2val(value)
+                        return value
                     row_layout.append((func, offset, ast2src(m.node)))
                     m.orderby_columns = (offset+1,)
                     offset += 1
@@ -656,6 +661,8 @@ class SQLTranslator(ASTTranslator):
             return translator.ConstMonad.new(translator, value)
         else:
             return translator.ListMonad(translator, [ translator.ConstMonad.new(translator, item) for item in value ])
+    def postEllipsis(translator, node):
+        return translator.ConstMonad.new(translator, Ellipsis)
     def postList(translator, node):
         return translator.ListMonad(translator, [ item.monad for item in node.nodes ])
     def postTuple(translator, node):
@@ -738,8 +745,8 @@ class SQLTranslator(ASTTranslator):
                 kwargs[arg.name] = arg.expr.monad
             else: args.append(arg.monad)
         func_monad = node.node.monad
-        if isinstance(func_monad, ErrorSpecialFuncMonad):
-            'Function %r cannot be used in this way: %s' % (func_monad.func.__name__, ast2src(node))
+        if isinstance(func_monad, ErrorSpecialFuncMonad): throw(TypeError,
+            'Function %r cannot be used this way: %s' % (func_monad.func.__name__, ast2src(node)))
         return func_monad(*args, **kwargs)
     def postKeyword(translator, node):
         pass  # this node will be processed by postCallFunc
@@ -1550,7 +1557,7 @@ class ParamMonad(Monad):
         elif type is buffer: cls = translator.BufferParamMonad
         elif type is UUID: cls = translator.UuidParamMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectParamMonad
-        else: throw(NotImplementedError, type)  # pragma: no cover
+        else: throw(NotImplementedError, 'Parameter {EXPR} has unsupported type %r' % (type))
         result = cls(translator, type, paramkey)
         result.aggregated = False
         return result
@@ -1630,6 +1637,7 @@ class ConstMonad(Monad):
         elif value_type is datetime: cls = translator.DatetimeConstMonad
         elif value_type is NoneType: cls = translator.NoneMonad
         elif value_type is buffer: cls = translator.BufferConstMonad
+        elif issubclass(value_type, type(Ellipsis)): cls = translator.EllipsisMonad
         else: throw(NotImplementedError, value_type)  # pragma: no cover
         result = cls(translator, value)
         result.aggregated = False
@@ -1649,6 +1657,9 @@ class NoneMonad(ConstMonad):
     def __init__(monad, translator, value=None):
         assert value is None
         ConstMonad.__init__(monad, translator, value)
+
+class EllipsisMonad(ConstMonad):
+    pass
 
 class BufferConstMonad(BufferMixin, ConstMonad): pass
 
@@ -1696,6 +1707,8 @@ cmp_negate = { '<' : '>=', '<=' : '>', '==' : '!=', 'is' : 'is not' }
 cmp_negate.update((b, a) for a, b in items_list(cmp_negate))
 
 class CmpMonad(BoolMonad):
+    EQ = 'EQ'
+    NE = 'NE'
     def __init__(monad, op, left, right):
         translator = left.translator
         if op == '<>': op = '!='
@@ -1718,7 +1731,6 @@ class CmpMonad(BoolMonad):
         return monad.translator.CmpMonad(cmp_negate[monad.op], monad.left, monad.right)
     def getsql(monad, subquery=None):
         op = monad.op
-        sql = []
         left_sql = monad.left.getsql()
         if op == 'is':
             return [ sqland([ [ 'IS_NULL', item ] for item in left_sql ]) ]
@@ -1738,13 +1750,13 @@ class CmpMonad(BoolMonad):
                 return [ [ cmp_ops[op], [ 'ROW' ] + left_sql, [ 'ROW' ] + right_sql ] ]
             clauses = []
             for i in xrange(1, size):
-                clauses.append(sqland([ [ 'EQ', left_sql[j], right_sql[j] ] for j in xrange(1, i) ]
+                clauses.append(sqland([ [ monad.EQ, left_sql[j], right_sql[j] ] for j in xrange(1, i) ]
                                 + [ [ cmp_ops[op[0] if i < size - 1 else op], left_sql[i], right_sql[i] ] ]))
             return [ sqlor(clauses) ]
         if op == '==':
-            return [ sqland([ [ 'EQ', a, b ] for a, b in izip(left_sql, right_sql) ]) ]
+            return [ sqland([ [ monad.EQ, a, b ] for a, b in izip(left_sql, right_sql) ]) ]
         if op == '!=':
-            return [ sqlor([ [ 'NE', a, b ] for a, b in izip(left_sql, right_sql) ]) ]
+            return [ sqlor([ [ monad.NE, a, b ] for a, b in izip(left_sql, right_sql) ]) ]
         assert False, op  # pragma: no cover
 
 class LogicalBinOpMonad(BoolMonad):

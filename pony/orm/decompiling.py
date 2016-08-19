@@ -1,7 +1,7 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, izip, xrange
 
-import types
+import sys, types
 from opcode import opname as opnames, HAVE_ARGUMENT, EXTENDED_ARG, cmp_op
 from opcode import hasconst, hasname, hasjrel, haslocal, hascompare, hasfree
 
@@ -150,9 +150,13 @@ class Decompiler(object):
     def BUILD_LIST(decompiler, size):
         return ast.List(decompiler.pop_items(size))
 
-    def BUILD_MAP(decompiler, not_used):
-        # Pushes a new empty dictionary object onto the stack. The argument is ignored and set to zero by the compiler
-        return ast.Dict(())
+    def BUILD_MAP(decompiler, length):
+        if sys.version_info < (3, 5):
+            return ast.Dict(())
+        data = decompiler.pop_items(2 * length)  # [key1, value1, key2, value2, ...]
+        it = iter(data)
+        pairs = list(izip(it, it))  # [(key1, value1), (key2, value2), ...]
+        return ast.Dict(pairs)
 
     def BUILD_SET(decompiler, size):
         return ast.Set(decompiler.pop_items(size))

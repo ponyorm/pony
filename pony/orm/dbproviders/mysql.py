@@ -28,7 +28,7 @@ except ImportError:
     mysql_module_name = 'pymysql'
 
 from pony.orm import core, dbschema, dbapiprovider
-from pony.orm.core import log_orm, OperationalError
+from pony.orm.core import log_orm
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, get_version_tuple, wrap_dbapi_exceptions
 from pony.orm.sqltranslation import SQLTranslator
 from pony.orm.sqlbuilding import SQLBuilder, join

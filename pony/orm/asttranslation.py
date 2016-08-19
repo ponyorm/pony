@@ -171,6 +171,8 @@ class PythonTranslator(ASTTranslator):
             s = str(value)
             if float(s) == value: return s
         return repr(value)
+    def postEllipsis(translator, node):
+        return '...'
     def postList(translator, node):
         node.priority = 1
         return '[%s]' % ', '.join(item.src for item in node.nodes)
@@ -260,6 +262,10 @@ class PreTranslator(ASTTranslator):
         node.external = True
     def postConst(translator, node):
         node.external = node.constant = True
+    def postDict(translator, node):
+        node.external = True
+    def postList(translator, node):
+        node.external = True
     def postKeyword(translator, node):
         node.constant = node.expr.constant
     def postCallFunc(translator, node):
@@ -274,16 +280,17 @@ class PreTranslator(ASTTranslator):
         expr = '.'.join(reversed(attrs))
         x = eval(expr, translator.globals, translator.locals)
         try: hash(x)
-        except TypeError: x = None
-        if x in translator.special_functions:
-            if x.__name__ == 'raw_sql': node.raw_sql = True
-            else: node.external = False
-        elif x in translator.const_functions:
-            for arg in node.args:
-                if not arg.constant: return
-            if node.star_args is not None and not node.star_args.constant: return
-            if node.dstar_args is not None and not node.dstar_args.constant: return
-            node.constant = True
+        except TypeError: pass
+        else:
+            if x in translator.special_functions:
+                if x.__name__ == 'raw_sql': node.raw_sql = True
+                else: node.external = False
+            elif x in translator.const_functions:
+                for arg in node.args:
+                    if not arg.constant: return
+                if node.star_args is not None and not node.star_args.constant: return
+                if node.dstar_args is not None and not node.dstar_args.constant: return
+                node.constant = True
 
 extractors_cache = {}
 
