@@ -16,7 +16,8 @@ from pony.utils import is_ident, throw, reraise, concat
 from pony.orm.asttranslation import ASTTranslator, ast2src, TranslationError
 from pony.orm.ormtypes import \
     numeric_types, comparable_types, SetType, FuncType, MethodType, RawSQLType, \
-    get_normalized_type_of, normalize_type, coerce_types, are_comparable_types
+    get_normalized_type_of, normalize_type, coerce_types, are_comparable_types, \
+    Json
 from pony.orm import core
 from pony.orm.core import EntityMeta, Set, JOIN, OptimizationFailed, Attribute, DescWrapper
 
@@ -68,6 +69,8 @@ def type2str(t):
 class SQLTranslator(ASTTranslator):
     dialect = None
     row_value_syntax = True
+    json_path_wildcard_syntax = False
+    json_values_are_comparable = True
     rowid_support = False
 
     def default_post(translator, node):
@@ -334,6 +337,8 @@ class SQLTranslator(ASTTranslator):
             offset = 0
             provider = translator.database.provider
             for m in expr_monads:
+                if m.disable_distinct:
+                    translator.distinct = False
                 expr_type = m.type
                 if isinstance(expr_type, SetType): expr_type = expr_type.item_type
                 if isinstance(expr_type, EntityMeta):
@@ -352,7 +357,7 @@ class SQLTranslator(ASTTranslator):
                         value = converter.dbval2val(value)
                         return value
                     row_layout.append((func, offset, ast2src(m.node)))
-                    m.orderby_columns = (offset+1,)
+                    m.orderby_columns = (offset+1,) if not m.disable_ordering else ()
                     offset += 1
             translator.row_layout = row_layout
             translator.col_names = [ src for func, slice_or_offset, src in translator.row_layout ]
@@ -697,6 +702,16 @@ class SQLTranslator(ASTTranslator):
         return translator.AndMonad([ subnode.monad for subnode in node.nodes ])
     def postOr(translator, node):
         return translator.OrMonad([ subnode.monad for subnode in node.nodes ])
+    def postBitor(translator, node):
+        left, right = (subnode.monad for subnode in node.nodes)
+        return left | right
+    def postBitand(translator, node):
+        left, right = (subnode.monad for subnode in node.nodes)
+        return left & right
+    def postBitxor(translator, node):
+        left, right = (subnode.monad for subnode in node.nodes)
+        return left ^ right
+
     def preNot(translator, node):
         translator.inside_not = not translator.inside_not
     def postNot(translator, node):
@@ -762,8 +777,11 @@ class SQLTranslator(ASTTranslator):
         if isinstance(sub, ast.Sliceobj):
             start, stop, step = (sub.nodes+[None])[:3]
             if start is not None: start = start.monad
+            if isinstance(start, NoneMonad): start = None
             if stop is not None: stop = stop.monad
+            if isinstance(stop, NoneMonad): stop = None
             if step is not None: step = step.monad
+            if isinstance(step, NoneMonad): step = None
             return node.expr.monad[start:stop:step]
         else: return node.expr.monad[sub.monad]
     def postSlice(translator, node):
@@ -771,8 +789,10 @@ class SQLTranslator(ASTTranslator):
         expr_monad = node.expr.monad
         upper = node.upper
         if upper is not None: upper = upper.monad
+        if isinstance(upper, NoneMonad): upper = None
         lower = node.lower
         if lower is not None: lower = lower.monad
+        if isinstance(lower, NoneMonad): lower = None
         return expr_monad[lower:upper]
     def postSliceobj(translator, node):
         pass
@@ -964,6 +984,8 @@ class MonadMixin(with_metaclass(MonadMeta)):
     pass
 
 class Monad(with_metaclass(MonadMeta)):
+    disable_distinct = False
+    disable_ordering = False
     def __init__(monad, translator, type):
         monad.translator = translator
         monad.type = type
@@ -1051,7 +1073,11 @@ class Monad(with_metaclass(MonadMeta)):
     def __floordiv__(monad, monad2): throw(TypeError)
     def __pow__(monad, monad2): throw(TypeError)
     def __neg__(monad): throw(TypeError)
+    def __or__(monad): throw(TypeError)
+    def __and__(monad): throw(TypeError)
+    def __xor__(monad): throw(TypeError)
     def abs(monad): throw(TypeError)
+    def cast_from_json(monad, type): assert False, monad
 
 class RawSQLMonad(Monad):
     def __init__(monad, translator, rawtype, varkey):
@@ -1319,8 +1345,6 @@ class StringMixin(MonadMixin):
         elif isinstance(index, slice):
             if index.step is not None: throw(TypeError, 'Step is not supported in {EXPR}')
             start, stop = index.start, index.stop
-            if isinstance(start, NoneMonad): start = None
-            if isinstance(stop, NoneMonad): stop = None
             if start is None and stop is None: return monad
             if isinstance(monad, translator.StringConstMonad) \
                and (start is None or isinstance(start, translator.NumericConstMonad)) \
@@ -1443,6 +1467,48 @@ class StringMixin(MonadMixin):
     def call_rstrip(monad, chars=None):
         return monad.strip(chars, 'RTRIM')
 
+class JsonMixin(object):
+    disable_distinct = True  # at least in Oracle we cannot use DISTINCT with JSON column
+    disable_ordering = True  # at least in Oracle we cannot use ORDER BY with JSON column
+
+    def mixin_init(monad):
+        assert monad.type is Json, monad.type
+    def get_path(monad):
+        return monad, []
+    def __getitem__(monad, key):
+        return monad.translator.JsonItemMonad(monad, key)
+    def contains(monad, key, not_in=False):
+        translator = monad.translator
+        if isinstance(key, ParamMonad):
+            if translator.dialect == 'Oracle': throw(TypeError,
+                'For `key in JSON` operation %s supports literal key values only, '
+                'parameters are not allowed: {EXPR}' % translator.dialect)
+        elif not isinstance(key, StringConstMonad): raise NotImplementedError
+        base_monad, path = monad.get_path()
+        base_sql = base_monad.getsql()[0]
+        key_sql = key.getsql()[0]
+        sql = [ 'JSON_CONTAINS', base_sql, path, key_sql ]
+        if not_in: sql = [ 'NOT', sql ]
+        return translator.BoolExprMonad(translator, sql)
+    def __or__(monad, other):
+        translator = monad.translator
+        if not isinstance(other, translator.JsonMixin):
+            raise TypeError('Should be JSON: %s' % ast2src(other.node))
+        left_sql = monad.getsql()[0]
+        right_sql = other.getsql()[0]
+        sql = [ 'JSON_CONCAT', left_sql, right_sql ]
+        return translator.JsonExprMonad(translator, Json, sql)
+    def len(monad):
+        translator = monad.translator
+        sql = [ 'JSON_ARRAY_LENGTH', monad.getsql()[0] ]
+        return translator.NumericExprMonad(translator, int, sql)
+    def cast_from_json(monad, type):
+        if type in (Json, NoneType): return monad
+        throw(TypeError, 'Cannot compare whole JSON value, you need to select specific sub-item: {EXPR}')
+    def nonzero(monad):
+        translator = monad.translator
+        return translator.BoolExprMonad(translator, [ 'JSON_NONZERO', monad.getsql()[0] ])
+
 class ObjectMixin(MonadMixin):
     def mixin_init(monad):
         assert isinstance(monad.type, EntityMeta)
@@ -1490,6 +1556,7 @@ class AttrMonad(Monad):
         elif type is datetime: cls = translator.DatetimeAttrMonad
         elif type is buffer: cls = translator.BufferAttrMonad
         elif type is UUID: cls = translator.UuidAttrMonad
+        elif type is Json: cls = translator.JsonAttrMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectAttrMonad
         else: throw(NotImplementedError, type)  # pragma: no cover
         return cls(parent, attr, *args, **kwargs)
@@ -1543,6 +1610,7 @@ class TimedeltaAttrMonad(TimedeltaMixin, AttrMonad): pass
 class DatetimeAttrMonad(DatetimeMixin, AttrMonad): pass
 class BufferAttrMonad(BufferMixin, AttrMonad): pass
 class UuidAttrMonad(UuidMixin, AttrMonad): pass
+class JsonAttrMonad(JsonMixin, AttrMonad): pass
 
 class ParamMonad(Monad):
     @staticmethod
@@ -1556,6 +1624,7 @@ class ParamMonad(Monad):
         elif type is datetime: cls = translator.DatetimeParamMonad
         elif type is buffer: cls = translator.BufferParamMonad
         elif type is UUID: cls = translator.UuidParamMonad
+        elif type is Json: cls = translator.JsonParamMonad
         elif isinstance(type, EntityMeta): cls = translator.ObjectParamMonad
         else: throw(NotImplementedError, 'Parameter {EXPR} has unsupported type %r' % (type))
         result = cls(translator, type, paramkey)
@@ -1598,6 +1667,10 @@ class DatetimeParamMonad(DatetimeMixin, ParamMonad): pass
 class BufferParamMonad(BufferMixin, ParamMonad): pass
 class UuidParamMonad(UuidMixin, ParamMonad): pass
 
+class JsonParamMonad(JsonMixin, ParamMonad):
+    def getsql(monad, subquery=None):
+        return [ [ 'JSON_PARAM', ParamMonad.getsql(monad)[0] ] ]
+
 class ExprMonad(Monad):
     @staticmethod
     def new(translator, type, sql):
@@ -1607,6 +1680,7 @@ class ExprMonad(Monad):
         elif type is time: cls = translator.TimeExprMonad
         elif type is timedelta: cls = translator.TimedeltaExprMonad
         elif type is datetime: cls = translator.DatetimeExprMonad
+        elif type is Json: cls = translator.JsonExprMonad
         else: throw(NotImplementedError, type)  # pragma: no cover
         return cls(translator, type, sql)
     def __new__(cls, *args):
@@ -1624,6 +1698,42 @@ class DateExprMonad(DateMixin, ExprMonad): pass
 class TimeExprMonad(TimeMixin, ExprMonad): pass
 class TimedeltaExprMonad(TimedeltaMixin, ExprMonad): pass
 class DatetimeExprMonad(DatetimeMixin, ExprMonad): pass
+class JsonExprMonad(JsonMixin, ExprMonad): pass
+
+class JsonItemMonad(JsonMixin, Monad):
+    def __init__(monad, parent, key):
+        assert isinstance(parent, JsonMixin), parent
+        translator = parent.translator
+        Monad.__init__(monad, translator, Json)
+        monad.parent = parent
+        if isinstance(key, slice):
+            if key != slice(None, None, None): throw(NotImplementedError)
+            monad.key_ast = [ 'VALUE', key ]
+        elif isinstance(key, (ParamMonad, StringConstMonad, NumericConstMonad, EllipsisMonad)):
+            monad.key_ast = key.getsql()[0]
+        else: throw(TypeError, 'Invalid JSON path item: %s' % ast2src(key.node))
+        if isinstance(key, (slice, EllipsisMonad)) and not translator.json_path_wildcard_syntax:
+            throw(TranslationError, '%s does not support wildcards in JSON path: {EXPR}' % translator.dialect)
+    def get_path(monad):
+        path = []
+        while isinstance(monad, JsonItemMonad):
+            path.append(monad.key_ast)
+            monad = monad.parent
+        path.reverse()
+        return monad, path
+    def cast_from_json(monad, type):
+        translator = monad.translator
+        if issubclass(type, Json):
+            if not translator.json_values_are_comparable: throw(TranslationError,
+                '%s does not support comparison of json structures: {EXPR}' % translator.dialect)
+            return monad
+        base_monad, path = monad.get_path()
+        sql = [ 'JSON_VALUE', base_monad.getsql()[0], path, type ]
+        return translator.ExprMonad.new(translator, Json if type is NoneType else type, sql)
+    def getsql(monad):
+        base_monad, path = monad.get_path()
+        base_sql = base_monad.getsql()[0]
+        return [ [ 'JSON_QUERY', base_sql, path ] ]
 
 class ConstMonad(Monad):
     @staticmethod
@@ -1637,6 +1747,7 @@ class ConstMonad(Monad):
         elif value_type is datetime: cls = translator.DatetimeConstMonad
         elif value_type is NoneType: cls = translator.NoneMonad
         elif value_type is buffer: cls = translator.BufferConstMonad
+        elif value_type is Json: cls = translator.JsonConstMonad
         elif issubclass(value_type, type(Ellipsis)): cls = translator.EllipsisMonad
         else: throw(NotImplementedError, value_type)  # pragma: no cover
         result = cls(translator, value)
@@ -1661,12 +1772,12 @@ class NoneMonad(ConstMonad):
 class EllipsisMonad(ConstMonad):
     pass
 
-class BufferConstMonad(BufferMixin, ConstMonad): pass
-
 class StringConstMonad(StringMixin, ConstMonad):
     def len(monad):
         return monad.translator.ConstMonad.new(monad.translator, len(monad.value))
 
+class JsonConstMonad(JsonMixin, ConstMonad): pass
+class BufferConstMonad(BufferMixin, ConstMonad): pass
 class NumericConstMonad(NumericMixin, ConstMonad): pass
 class DateConstMonad(DateMixin, ConstMonad): pass
 class TimeConstMonad(TimeMixin, ConstMonad): pass
@@ -1724,9 +1835,15 @@ class CmpMonad(BoolMonad):
         result_type, left, right = coerce_monads(left, right)
         BoolMonad.__init__(monad, translator)
         monad.op = op
+        monad.aggregated = getattr(left, 'aggregated', False) or getattr(right, 'aggregated', False)
+
+        if isinstance(left, JsonMixin):
+            left = left.cast_from_json(right.type)
+        if isinstance(right, JsonMixin):
+            right = right.cast_from_json(left.type)
+
         monad.left = left
         monad.right = right
-        monad.aggregated = getattr(left, 'aggregated', False) or getattr(right, 'aggregated', False)
     def negate(monad):
         return monad.translator.CmpMonad(cmp_negate[monad.op], monad.left, monad.right)
     def getsql(monad, subquery=None):

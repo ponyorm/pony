@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 from pony.py23compat import PY2, imap, basestring, buffer, int_types
 
+import json
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
 from uuid import UUID
@@ -27,11 +28,11 @@ except ImportError:
     mysql_converters.encoders[timedelta] = lambda val: mysql_converters.escape_str(timedelta2str(val))
     mysql_module_name = 'pymysql'
 
-from pony.orm import core, dbschema, dbapiprovider
+from pony.orm import core, dbschema, dbapiprovider, ormtypes, sqltranslation
 from pony.orm.core import log_orm
 from pony.orm.dbapiprovider import DBAPIProvider, Pool, get_version_tuple, wrap_dbapi_exceptions
-from pony.orm.sqltranslation import SQLTranslator
-from pony.orm.sqlbuilding import SQLBuilder, join
+from pony.orm.sqltranslation import SQLTranslator, TranslationError
+from pony.orm.sqlbuilding import Value, Param, SQLBuilder, join
 from pony.utils import throw
 from pony.converting import str2timedelta, timedelta2str
 
@@ -45,6 +46,7 @@ class MySQLSchema(dbschema.DBSchema):
 
 class MySQLTranslator(SQLTranslator):
     dialect = 'MySQL'
+    json_path_wildcard_syntax = True
 
 class MySQLBuilder(SQLBuilder):
     dialect = 'MySQL'
@@ -87,6 +89,45 @@ class MySQLBuilder(SQLBuilder):
         if isinstance(delta, timedelta):
             return 'DATE_SUB(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
         return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
+    def JSON_QUERY(builder, expr, path):
+        path_sql, has_params, has_wildcards = builder.build_json_path(path)
+        return 'json_extract(', builder(expr), ', ', path_sql, ')'
+    def JSON_VALUE(builder, expr, path, type):
+        path_sql, has_params, has_wildcards = builder.build_json_path(path)
+        result = 'json_extract(', builder(expr), ', ', path_sql, ')'
+        if type is NoneType:
+            return 'NULLIF(', result, ", CAST('null' as JSON))"
+        if type in (bool, int):
+            return 'CAST(', result, ' AS SIGNED)'
+        return 'json_unquote(', result, ')'
+    def JSON_NONZERO(builder, expr):
+        return 'COALESCE(CAST(', builder(expr), ''' as CHAR), 'null') NOT IN ('null', 'false', '0', '""', '[]', '{}')'''
+    def JSON_ARRAY_LENGTH(builder, value):
+        return 'json_length(', builder(value), ')'
+    def EQ_JSON(builder, left, right):
+        return '(', builder(left), ' = CAST(', builder(right), ' AS JSON))'
+    def NE_JSON(builder, left, right):
+        return '(', builder(left), ' != CAST(', builder(right), ' AS JSON))'
+    def JSON_CONTAINS(builder, expr, path, key):
+        key_sql = builder(key)
+        if isinstance(key_sql, Value):
+            wrapped_key = builder.value_class(builder.paramstyle, json.dumps([ key_sql.value ]))
+        elif isinstance(key_sql, Param):
+            wrapped_key = builder.make_composite_param(
+                (key_sql.paramkey,), [key_sql], builder.wrap_param_to_json_array)
+        else: assert False
+        expr_sql = builder(expr)
+        result = [ '(json_contains(', expr_sql, ', ', wrapped_key ]
+        path_sql, has_params, has_wildcards = builder.build_json_path(path)
+        if has_wildcards: throw(TranslationError, 'Wildcards are not allowed in json_contains()')
+        path_with_key_sql, _, _ = builder.build_json_path(path + [key])
+        result += [ ', ', path_sql, ') or json_contains_path(', expr_sql, ", 'one', ", path_with_key_sql, '))' ]
+        return result
+    @classmethod
+    def wrap_param_to_json_array(cls, values):
+        return json.dumps(values)
+    def JSON_PARAM(builder, expr):
+        return 'CAST(', builder(expr), ' AS JSON)'
 
 class MySQLStrConverter(dbapiprovider.StrConverter):
     def sql_type(converter):
@@ -122,6 +163,13 @@ class MySQLUuidConverter(dbapiprovider.UuidConverter):
     def sql_type(converter):
         return 'BINARY(16)'
 
+class MySQLJsonConverter(dbapiprovider.JsonConverter):
+    EQ = 'EQ_JSON'
+    def init(self, kwargs):
+        if self.provider.server_version < (5, 7, 8):
+            version = '.'.join(imap(str, self.provider.server_version))
+            raise NotImplementedError("MySQL %s has no JSON support" % version)
+
 class MySQLProvider(DBAPIProvider):
     dialect = 'MySQL'
     paramstyle = 'format'
@@ -154,6 +202,7 @@ class MySQLProvider(DBAPIProvider):
         (timedelta, MySQLTimedeltaConverter),
         (UUID, MySQLUuidConverter),
         (buffer, MySQLBlobConverter),
+        (ormtypes.Json, MySQLJsonConverter),
     ]
 
     def normalize_name(provider, name):

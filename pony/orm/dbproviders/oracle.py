@@ -4,17 +4,20 @@ from pony.py23compat import PY2, iteritems, basestring, unicode, buffer, int_typ
 import os
 os.environ["NLS_LANG"] = "AMERICAN_AMERICA.UTF8"
 
+import re
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 from uuid import UUID
 
 import cx_Oracle
 
-from pony.orm import core, sqlbuilding, dbapiprovider, sqltranslation
+from pony.orm import core, dbapiprovider, sqltranslation
 from pony.orm.core import log_orm, log_sql, DatabaseError, TranslationError
 from pony.orm.dbschema import DBSchema, DBObject, Table, Column
+from pony.orm.ormtypes import Json
+from pony.orm.sqlbuilding import SQLBuilder, Value
 from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, get_version_tuple
-from pony.utils import throw
+from pony.utils import throw, is_ident
 from pony.converting import timedelta2str
 
 NoneType = type(None)
@@ -116,6 +119,8 @@ class OraConstMonad(sqltranslation.ConstMonad):
 class OraTranslator(sqltranslation.SQLTranslator):
     dialect = 'Oracle'
     rowid_support = True
+    json_path_wildcard_syntax = True
+    json_values_are_comparable = False
     NoneMonad = OraNoneMonad
     ConstMonad = OraConstMonad
 
@@ -124,10 +129,10 @@ class OraTranslator(sqltranslation.SQLTranslator):
         if value == '': return NoneType
         return sqltranslation.SQLTranslator.get_normalized_type_of(value)
 
-class OraBuilder(sqlbuilding.SQLBuilder):
+class OraBuilder(SQLBuilder):
     dialect = 'Oracle'
     def INSERT(builder, table_name, columns, values, returning=None):
-        result = sqlbuilding.SQLBuilder.INSERT(builder, table_name, columns, values)
+        result = SQLBuilder.INSERT(builder, table_name, columns, values)
         if returning is not None:
             result.extend((' RETURNING ', builder.quote_name(returning), ' INTO :new_id'))
         return result
@@ -225,6 +230,50 @@ class OraBuilder(sqlbuilding.SQLBuilder):
         if isinstance(delta, timedelta):
             return '(', builder(expr), " - INTERVAL '", timedelta2str(delta), "' HOUR TO SECOND)"
         return '(', builder(expr), ' - ', builder(delta), ')'
+    def build_json_path(builder, path):
+        path_sql, has_params, has_wildcards = SQLBuilder.build_json_path(builder, path)
+        if has_params: throw(TranslationError, "Oracle doesn't allow parameters in JSON paths")
+        return path_sql, has_params, has_wildcards
+    def JSON_QUERY(builder, expr, path):
+        expr_sql = builder(expr)
+        path_sql, has_params, has_wildcards = builder.build_json_path(path)
+        if has_wildcards: return 'JSON_QUERY(', expr_sql, ', ', path_sql, ' WITH WRAPPER)'
+        return 'REGEXP_REPLACE(JSON_QUERY(', expr_sql, ', ', path_sql, " WITH WRAPPER), '(^\\[|\\]$)', '')"
+    json_value_type_mapping = {bool: 'NUMBER', int: 'NUMBER', float: 'NUMBER'}
+    def JSON_VALUE(builder, expr, path, type):
+        if type is Json: return builder.JSON_QUERY(expr, path)
+        path_sql, has_params, has_wildcards = builder.build_json_path(path)
+        type_name = builder.json_value_type_mapping.get(type, 'VARCHAR2')
+        return 'JSON_VALUE(', builder(expr), ', ', path_sql, ' RETURNING ', type_name, ')'
+    def JSON_NONZERO(builder, expr):
+        return 'COALESCE(', builder(expr), ''', 'null') NOT IN ('null', 'false', '0', '""', '[]', '{}')'''
+    def JSON_CONTAINS(builder, expr, path, key):
+        assert key[0] == 'VALUE' and isinstance(key[1], basestring)
+        path_sql, has_params, has_wildcards = builder.build_json_path(path)
+        path_with_key_sql, _, _ = builder.build_json_path(path + [ key ])
+        expr_sql = builder(expr)
+        result = 'JSON_EXISTS(', expr_sql, ', ', path_with_key_sql, ')'
+        if json_item_re.match(key[1]):
+            item = r'"([^"]|\\")*"'
+            list_start = r'\[\s*(%s\s*,\s*)*' % item
+            list_end = r'\s*(,\s*%s\s*)*\]' % item
+            pattern = r'%s"%s"%s' % (list_start, key[1], list_end)
+            if has_wildcards:
+                sublist = r'\[[^]]*\]'
+                item_or_sublist = '(%s|%s)' % (item, sublist)
+                wrapper_list_start = r'^\[\s*(%s\s*,\s*)*' % item_or_sublist
+                wrapper_list_end = r'\s*(,\s*%s\s*)*\]$' % item_or_sublist
+                pattern = r'%s%s%s' % (wrapper_list_start, pattern, wrapper_list_end)
+                result += ' OR REGEXP_LIKE(JSON_QUERY(', expr_sql, ', ', path_sql, " WITH WRAPPER), '%s')" % pattern
+            else:
+                pattern = '^%s$' % pattern
+                result += ' OR REGEXP_LIKE(JSON_QUERY(', expr_sql, ', ', path_sql, "), '%s')" % pattern
+        return result
+    def JSON_ARRAY_LENGTH(builder, value):
+        throw(TranslationError, 'Oracle does not provide `length` function for JSON arrays')
+
+json_item_re = re.compile('[\w\s]*')
+
 
 class OraBoolConverter(dbapiprovider.BoolConverter):
     if not PY2:
@@ -317,6 +366,15 @@ class OraUuidConverter(dbapiprovider.UuidConverter):
     def sql_type(converter):
         return 'RAW(16)'
 
+class OraJsonConverter(dbapiprovider.JsonConverter):
+    json_kwargs = {'separators': (',', ':'), 'sort_keys': True, 'ensure_ascii': False}
+    optimistic = False  # CLOBs cannot be compared with strings, and TO_CHAR(CLOB) returns first 4000 chars only
+    def sql2py(converter, dbval):
+        if hasattr(dbval, 'read'): dbval = dbval.read()
+        return dbapiprovider.JsonConverter.sql2py(converter, dbval)
+    def sql_type(converter):
+        return 'CLOB'
+
 class OraProvider(DBAPIProvider):
     dialect = 'Oracle'
     paramstyle = 'named'
@@ -346,6 +404,7 @@ class OraProvider(DBAPIProvider):
         (timedelta, OraTimedeltaConverter),
         (UUID, OraUuidConverter),
         (buffer, OraBlobConverter),
+        (Json, OraJsonConverter),
     ]
 
     @wrap_dbapi_exceptions

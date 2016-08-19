@@ -1,6 +1,9 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import basestring
 
+from functools import wraps
+from contextlib import contextmanager
+
 from pony.orm.core import Database
 from pony.utils import import_module
 
@@ -17,6 +20,25 @@ def raises_exception(exc_class, msg=None):
         wrapper.__name__ = func.__name__
         return wrapper
     return decorator
+
+@contextmanager
+def raises_if(test, cond, exc_class, exc_msg=None):
+    try:
+        yield
+    except exc_class as e:
+        test.assertTrue(cond)
+        if exc_msg is None: pass
+        elif exc_msg.startswith('...') and exc_msg != '...':
+            if exc_msg.endswith('...'):
+                test.assertIn(exc_msg[3:-3], str(e))
+            else:
+                test.assertTrue(str(e).endswith(exc_msg[3:]))
+        elif exc_msg.endswith('...'):
+            test.assertTrue(str(e).startswith(exc_msg[:-3]))
+        else:
+            test.assertEqual(str(e), exc_msg)
+    else:
+        test.assertFalse(cond)
 
 def flatten(x):
     result = []

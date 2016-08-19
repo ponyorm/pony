@@ -1,7 +1,7 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, basestring, unicode, buffer, int_types
 
-import os, re
+import os, re, json
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
 from uuid import uuid4, UUID
@@ -9,7 +9,7 @@ from uuid import uuid4, UUID
 import pony
 from pony.utils import is_utf8, decorator, throw, localbase, deprecated
 from pony.converting import str2date, str2time, str2datetime, str2timedelta
-from pony.orm.ormtypes import LongStr, LongUnicode, RawSQLType
+from pony.orm.ormtypes import LongStr, LongUnicode, RawSQLType, TrackedValue, Json
 
 class DBException(Exception):
     def __init__(exc, original_exc, *args):
@@ -352,6 +352,8 @@ class Converter(object):
         return val
     def dbval2val(self, dbval, obj=None):
         return dbval
+    def dbvals_equal(self, x, y):
+        return x == y
     def get_sql_type(converter, attr=None):
         if attr is not None and attr.sql_type is not None:
             return attr.sql_type
@@ -534,7 +536,7 @@ class RealConverter(Converter):
             throw(ValueError, 'Value %r of attr %s is greater than the maximum allowed value %r'
                              % (val, converter.attr, converter.max_val))
         return val
-    def equals(converter, x, y):
+    def dbvals_equal(converter, x, y):
         tolerance = converter.tolerance
         if tolerance is None or x is None or y is None: return x == y
         denominator = max(abs(x), abs(y))
@@ -732,3 +734,26 @@ class UuidConverter(Converter):
     sql2py = validate
     def sql_type(converter):
         return "UUID"
+
+class JsonConverter(Converter):
+    json_kwargs = {}
+    class JsonEncoder(json.JSONEncoder):
+        def default(self, obj):
+            if isinstance(obj, Json):
+                return obj.wrapped
+            return json.JSONEncoder.default(self, obj)
+    def val2dbval(self, val, obj=None):
+        return json.dumps(val, cls=self.JsonEncoder, **self.json_kwargs)
+    def dbval2val(self, dbval, obj=None):
+        if isinstance(dbval, (int, bool, float, type(None))):
+            return dbval
+        val = json.loads(dbval)
+        if obj is None:
+            return val
+        return TrackedValue.make(obj, self.attr, val)
+    def dbvals_equal(self, x, y):
+        if isinstance(x, basestring): x = json.loads(x)
+        if isinstance(y, basestring): y = json.loads(y)
+        return x == y
+    def sql_type(self):
+        return "JSON"
