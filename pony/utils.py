@@ -427,7 +427,7 @@ def strjoin(sep, strings, source_encoding='ascii', dest_encoding=None):
             strings[i] = s.decode(source_encoding, 'replace').replace(u'\ufffd', '?')
     result = sep.join(strings)
     if dest_encoding is None: return result
-    return result.encode(dest_encoding, replace)
+    return result.encode(dest_encoding, 'replace')
 
 def make_offsets(s):
     offsets = [ 0 ]
