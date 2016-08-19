@@ -172,25 +172,13 @@ class SqlServerContext(DBContext):
         cursor.execute('drop database %s' % self.db_name)
 
 
-@provider()
-class SqliteJson1(DBContext):
-    provider_key = 'sqlite_json1'
-    enabled = True
+class SqliteMixin(DBContext):
 
     def init_db(self):
         try:
             os.remove(self.db_path)
         except OSError as exc:
             print('Failed to drop db: %s' % exc)
-
-    def __enter__(self):
-        result = super(SqliteJson1, self).__enter__()
-        if not self.db.provider.json1_available:
-            raise unittest.SkipTest
-        return result
-
-
-    # TODO if json1 is not installed, do not run the tests
 
     @cached_property
     def db_path(self):
@@ -201,6 +189,38 @@ class SqliteJson1(DBContext):
     @cached_property
     def db(self):
         return Database('sqlite', self.db_path, create_db=True)
+
+
+@provider()
+class SqliteNoJson1(SqliteMixin):
+    provider_key = 'sqlite_no_json1'
+    enabled = True
+
+    def __init__(self, cls):
+        self.Test = cls
+        cls.no_json1 = True
+        return super(SqliteNoJson1, self).__init__(cls)
+
+    def __enter__(self):
+        resource = super(SqliteNoJson1, self).__enter__()
+        self.json1_available = self.Test.db.provider.json1_available
+        self.Test.db.provider.json1_available = False
+        return resource
+
+    def __exit__(self, *exc_info):
+        self.Test.db.provider.json1_available = self.json1_available
+        return super(SqliteNoJson1, self).__exit__()
+
+
+@provider()
+class SqliteJson1(SqliteMixin):
+    provider_key = 'sqlite_json1'
+
+    def __enter__(self):
+        result = super(SqliteJson1, self).__enter__()
+        if not self.db.provider.json1_available:
+            raise unittest.SkipTest
+        return result
 
 
 @provider()
@@ -443,29 +463,6 @@ class ClearTables(ContextDecorator):
             if entity._database_.schema is None:
                 break
             delete(i for i in entity)
-
-
-@provider()
-class SqliteNoJson1(SqliteJson1):
-    provider_key = 'sqlite_no_json1'
-
-    def __init__(self, cls):
-        self.Test = cls
-        cls.no_json1 = True
-        return super(SqliteNoJson1, self).__init__(cls)
-
-    fixture_name = 'sqlite, no json1'
-
-    def __enter__(self):
-        resource = super(SqliteNoJson1, self).__enter__()
-        self.json1_available = self.Test.db.provider.json1_available
-        self.Test.db.provider.json1_available = False
-        return resource
-
-    def __exit__(self, *exc_info):
-        self.Test.db.provider.json1_available = self.json1_available
-        return super(SqliteNoJson1, self).__exit__()
-
 
 
 import signal
