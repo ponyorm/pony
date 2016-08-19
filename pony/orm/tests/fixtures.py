@@ -3,7 +3,8 @@ import os
 import logging
 
 from pony.py23compat import PY2
-from ponytest import with_cli_args, pony_fixtures, provider_validators, provider
+from ponytest import with_cli_args, pony_fixtures, provider_validators, provider, Fixture, \
+        ValidationError
 
 from functools import wraps, partial
 import click
@@ -12,9 +13,9 @@ from contextlib import contextmanager, closing
 from pony.utils import cached_property, class_property
 
 if not PY2:
-    from contextlib import contextmanager, ContextDecorator, ExitStack
+    from contextlib import contextmanager, ContextDecorator
 else:
-    from contextlib2 import contextmanager, ContextDecorator, ExitStack
+    from contextlib2 import contextmanager, ContextDecorator
 
 import unittest
 
@@ -28,7 +29,6 @@ else:
 from multiprocessing import Process
 
 import threading
-
 
 class DBContext(ContextDecorator):
 
@@ -164,7 +164,7 @@ class SqlServerContext(DBContext):
                 self.drop_db(c)
             except pyodbc.DatabaseError as exc:
                 print('Failed to drop db: %s' % exc)
-            c.execute('create database %s' % self.db_name)
+            c.execute('''CREATE DATABASE %s DEFAULT CHARACTER SET utf8 DEFAULT COLLATE utf8_general_ci''' % self.db_name )
             c.execute('use %s' % self.db_name)
 
     def drop_db(self, cursor):
@@ -173,8 +173,8 @@ class SqlServerContext(DBContext):
 
 
 @provider()
-class SqliteContext(DBContext):
-    provider_key = 'sqlite'
+class SqliteJson1(DBContext):
+    provider_key = 'sqlite_json1'
     enabled = True
 
     def init_db(self):
@@ -183,7 +183,11 @@ class SqliteContext(DBContext):
         except OSError as exc:
             print('Failed to drop db: %s' % exc)
 
-    fixture_name = 'sqlite, with json1'
+    def __enter__(self):
+        result = super(SqliteJson1, self).__enter__()
+        if not self.db.provider.json1_available:
+            raise unittest.SkipTest
+        return result
 
 
     # TODO if json1 is not installed, do not run the tests
@@ -342,10 +346,9 @@ def logging_context(test):
     logging.getLogger().setLevel(level)
     sql_debug(debug)
 
-# @provider('log_all', scope='class', weight=-100, enabled=False)
-# def log_all(Test):
-#     return logging_context(Test)
-
+@provider(fixture='log_all', weight=-100, enabled=False)
+def log_all(Test):
+    return logging_context(Test)
 
 
 # @with_cli_args
@@ -358,17 +361,15 @@ def logging_context(test):
 #         yield log_all
 
 
-
-
-@provider()
-class DBSessionProvider(object):
-
-    fixture= 'db_session'
-
-    weight = 30
-
-    def __new__(cls, test):
-        return db_session
+# @provider(enabled=False)
+# class DBSessionProvider(object):
+#
+#     fixture= 'db_session'
+#
+#     weight = 30
+#
+#     def __new__(cls, test):
+#         return db_session
 
 
 @provider(fixture='rollback', weight=40)
@@ -386,10 +387,7 @@ class SeparateProcess(object):
     # TODO read failures from sep process better
 
     fixture = 'separate_process'
-
     enabled = False
-
-    scope = 'class'
 
     def __init__(self, Test):
         self.Test = Test
@@ -448,26 +446,25 @@ class ClearTables(ContextDecorator):
 
 
 @provider()
-class NoJson1(SqliteContext):
+class SqliteNoJson1(SqliteJson1):
     provider_key = 'sqlite_no_json1'
-    fixture = 'db'
 
     def __init__(self, cls):
         self.Test = cls
         cls.no_json1 = True
-        return super(NoJson1, self).__init__(cls)
+        return super(SqliteNoJson1, self).__init__(cls)
 
     fixture_name = 'sqlite, no json1'
 
     def __enter__(self):
-        resource = super(NoJson1, self).__enter__()
+        resource = super(SqliteNoJson1, self).__enter__()
         self.json1_available = self.Test.db.provider.json1_available
         self.Test.db.provider.json1_available = False
         return resource
 
     def __exit__(self, *exc_info):
         self.Test.db.provider.json1_available = self.json1_available
-        return super(NoJson1, self).__exit__()
+        return super(SqliteNoJson1, self).__exit__()
 
 
 
@@ -484,7 +481,6 @@ class Timeout(object):
         self.Test = Test
         self.timeout = timeout if timeout else Test.TIMEOUT
 
-    scope = 'class'
     enabled = False
 
     class Exception(Exception):
@@ -529,19 +525,12 @@ class Timeout(object):
 pony_fixtures['test'].extend([
     'log',
     'clear_tables',
-    'db_session',
 ])
 
 pony_fixtures['class'].extend([
     'separate_process',
     'timeout',
     'db',
+    'log_all',
     'generate_mapping',
 ])
-
-# def db_is_required(providers, config):
-#     return providers
-
-# provider_validators.update({
-#     'db': db_is_required,
-# })

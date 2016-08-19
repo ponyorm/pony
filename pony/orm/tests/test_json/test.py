@@ -16,7 +16,6 @@ from ponytest import with_cli_args, TestCase
 
 
 class TestJson(TestCase):
-    in_db_session = False
 
     @classmethod
     def make_entities(cls):
