@@ -84,7 +84,8 @@ packages = [
     "pony.orm.integration",
     "pony.orm.tests",
     "pony.thirdparty",
-    "pony.thirdparty.compiler"
+    "pony.thirdparty.compiler",
+    "pony.utils"
 ]
 
 download_url = "http://pypi.python.org/pypi/pony/"
