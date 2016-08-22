@@ -1,3 +1,24 @@
+# Pony ORM Release 0.6.6 (2016-08-22)
+
+## New features
+
+* Added native JSON data type support in all supported databases: https://docs.ponyorm.com/json.html
+
+## Backward incompatible changes
+
+* Dropped Python 2.6 support
+
+## Improvements
+
+* #179 Added the compatibility with PYPY using psycopg2cffi
+* Added an experimental @db_session `strict` parameter: https://docs.ponyorm.com/transactions.html#strict
+
+## Bugfixes
+
+* #182 - LEFT JOIN doesn't work as expected for inherited entities when foreign key is None
+* Some small bugs were fixed
+
+
 # Pony ORM Release 0.6.5 (2016-04-04)
 
 ## Improvements
