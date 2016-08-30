@@ -1194,7 +1194,9 @@ class ListMonad(Monad):
         monad.items = items
     def contains(monad, x, not_in=False):
         translator = monad.translator
-        for item in monad.items: check_comparable(item, x)
+        if isinstance(x.type, SetType): throw(TypeError,
+            "Type of `%s` is '%s'. Expression `{EXPR}` is not supported" % (ast2src(x.node), type2str(x.type)))
+        for item in monad.items: check_comparable(x, item)
         left_sql = x.getsql()
         if len(left_sql) == 1:
             if not_in: sql = [ 'NOT_IN', left_sql[0], [ item.getsql()[0] for item in monad.items ] ]
