@@ -22,10 +22,9 @@ except ImportError:
         import pymysql as mysql_module
     except ImportError:
         raise ImportError('No module named MySQLdb or pymysql found')
+    from pymysql.converters import escape_str as string_literal
     import pymysql.converters as mysql_converters
     from pymysql.constants import FIELD_TYPE, FLAG, CLIENT
-    if PY2: mysql_converters.encoders[buffer] = lambda val: mysql_converters.escape_str(str(val))
-    mysql_converters.encoders[timedelta] = lambda val: mysql_converters.escape_str(timedelta2str(val))
     mysql_module_name = 'pymysql'
 
 from pony.orm import core, dbschema, dbapiprovider, ormtypes, sqltranslation
@@ -228,7 +227,17 @@ class MySQLProvider(DBAPIProvider):
             conv = mysql_converters.conversions.copy()
             if mysql_module_name == 'MySQLdb':
                 conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]
-                conv[timedelta] = lambda td, c: string_literal(timedelta2str(td), c)
+            else:
+                if PY2:
+                    def encode_buffer(val, encoders=None):
+                        return string_literal(str(val), encoders)
+
+                    conv[buffer] = encode_buffer
+
+            def encode_timedelta(val, encoders=None):
+                return string_literal(timedelta2str(val), encoders)
+
+            conv[timedelta] = encode_timedelta
             conv[FIELD_TYPE.TIMESTAMP] = str2datetime
             conv[FIELD_TYPE.DATETIME] = str2datetime
             conv[FIELD_TYPE.TIME] = str2timedelta
