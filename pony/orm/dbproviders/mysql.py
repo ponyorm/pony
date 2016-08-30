@@ -25,8 +25,6 @@ except ImportError:
     from pymysql.converters import escape_str as string_literal
     import pymysql.converters as mysql_converters
     from pymysql.constants import FIELD_TYPE, FLAG, CLIENT
-    if PY2: mysql_converters.encoders[buffer] = lambda val, encoders=None: string_literal(str(val), encoders)
-    mysql_converters.encoders[timedelta] = lambda val, encoders=None: string_literal(timedelta2str(val), encoders)
     mysql_module_name = 'pymysql'
 
 from pony.orm import core, dbschema, dbapiprovider, ormtypes, sqltranslation
@@ -229,7 +227,10 @@ class MySQLProvider(DBAPIProvider):
             conv = mysql_converters.conversions.copy()
             if mysql_module_name == 'MySQLdb':
                 conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]
-                conv[timedelta] = lambda td, c: string_literal(timedelta2str(td), c)
+            else:
+                if PY2:
+                    conv[buffer] = lambda val, encoders=None: string_literal(str(val), encoders)
+            conv[timedelta] = lambda val, encoders=None: string_literal(timedelta2str(val), encoders)
             conv[FIELD_TYPE.TIMESTAMP] = str2datetime
             conv[FIELD_TYPE.DATETIME] = str2datetime
             conv[FIELD_TYPE.TIME] = str2timedelta
