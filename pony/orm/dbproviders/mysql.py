@@ -229,8 +229,15 @@ class MySQLProvider(DBAPIProvider):
                 conv[FIELD_TYPE.BLOB] = [(FLAG.BINARY, buffer)]
             else:
                 if PY2:
-                    conv[buffer] = lambda val, encoders=None: string_literal(str(val), encoders)
-            conv[timedelta] = lambda val, encoders=None: string_literal(timedelta2str(val), encoders)
+                    def encode_buffer(val, encoders=None):
+                        return string_literal(str(val), encoders)
+
+                    conv[buffer] = encode_buffer
+
+            def encode_timedelta(val, encoders=None):
+                return string_literal(timedelta2str(val), encoders)
+
+            conv[timedelta] = encode_timedelta
             conv[FIELD_TYPE.TIMESTAMP] = str2datetime
             conv[FIELD_TYPE.DATETIME] = str2datetime
             conv[FIELD_TYPE.TIME] = str2timedelta
