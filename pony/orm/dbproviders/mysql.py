@@ -22,11 +22,11 @@ except ImportError:
         import pymysql as mysql_module
     except ImportError:
         raise ImportError('No module named MySQLdb or pymysql found')
-    from pymysql.converters import escape_str
+    from pymysql.converters import escape_str as string_literal
     import pymysql.converters as mysql_converters
     from pymysql.constants import FIELD_TYPE, FLAG, CLIENT
-    if PY2: mysql_converters.encoders[buffer] = lambda val, encoders=None: escape_str(str(val), encoders)
-    mysql_converters.encoders[timedelta] = lambda val, encoders=None: escape_str(timedelta2str(val), encoders)
+    if PY2: mysql_converters.encoders[buffer] = lambda val, encoders=None: string_literal(str(val), encoders)
+    mysql_converters.encoders[timedelta] = lambda val, encoders=None: string_literal(timedelta2str(val), encoders)
     mysql_module_name = 'pymysql'
 
 from pony.orm import core, dbschema, dbapiprovider, ormtypes, sqltranslation
