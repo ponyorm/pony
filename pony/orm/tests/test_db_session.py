@@ -208,7 +208,7 @@ class TestDBSession(unittest.TestCase):
                 self.assertEqual(count(x for x in self.X), 3)
         else:
             self.fail()
-        
+
     def test_db_session_decorator_14(self):
         # allowed_exceptions may be callable, should rollback if not nonzero
         @db_session(allowed_exceptions=lambda e: isinstance(e, TypeError))
@@ -322,65 +322,78 @@ with db_session:
 class TestDBSessionScope(unittest.TestCase):
     def setUp(self):
         rollback()
+
     def tearDown(self):
         rollback()
+
     def test1(self):
         with db_session:
             s1 = Student[1]
         name = s1.name
+
     @raises_exception(DatabaseSessionIsOver, 'Cannot load attribute Student[1].picture: the database session is over')
     def test2(self):
         with db_session:
             s1 = Student[1]
         picture = s1.picture
+
     @raises_exception(DatabaseSessionIsOver, 'Cannot load attribute Group[1].major: the database session is over')
     def test3(self):
         with db_session:
             s1 = Student[1]
         group_id = s1.group.id
         major = s1.group.major
+
     @raises_exception(DatabaseSessionIsOver, 'Cannot assign new value to attribute Student[1].name: the database session is over')
     def test4(self):
         with db_session:
             s1 = Student[1]
         s1.name = 'New name'
+
     def test5(self):
         with db_session:
             g1 = Group[1]
         self.assertEqual(str(g1.students), 'StudentSet([...])')
+
     @raises_exception(DatabaseSessionIsOver, 'Cannot load collection Group[1].students: the database session is over')
     def test6(self):
         with db_session:
             g1 = Group[1]
         l = len(g1.students)
+
     @raises_exception(DatabaseSessionIsOver, 'Cannot change collection Group[1].Group.students: the database session is over')
     def test7(self):
         with db_session:
             s1 = Student[1]
             g1 = Group[1]
         g1.students.remove(s1)
+
     @raises_exception(DatabaseSessionIsOver, 'Cannot change collection Group[1].Group.students: the database session is over')
     def test8(self):
         with db_session:
             g2_students = Group[2].students
             g1 = Group[1]
         g1.students = g2_students
+
     @raises_exception(DatabaseSessionIsOver, 'Cannot change collection Group[1].Group.students: the database session is over')
     def test9(self):
         with db_session:
             s3 = Student[3]
             g1 = Group[1]
         g1.students.add(s3)
+
     @raises_exception(DatabaseSessionIsOver, 'Cannot change collection Group[1].Group.students: the database session is over')
     def test10(self):
         with db_session:
             g1 = Group[1]
         g1.students.clear()
+
     @raises_exception(DatabaseSessionIsOver, 'Cannot delete object Student[1]: the database session is over')
     def test11(self):
         with db_session:
             s1 = Student[1]
         s1.delete()
+
     @raises_exception(DatabaseSessionIsOver, 'Cannot change object Student[1]: the database session is over')
     def test12(self):
         with db_session:
