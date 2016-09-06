@@ -39,7 +39,7 @@ class TestInheritance(unittest.TestCase):
         self.assertEqual(Entity2._discriminator_, 'Entity2')
         self.assertEqual(Entity3._discriminator_, 'Entity3')
         self.assertEqual(Entity4._discriminator_, 'Entity4')
-        
+
     @raises_exception(ERDiagramError, "Multiple inheritance graph must be diamond-like. "
         "Entity Entity3 inherits from Entity1 and Entity2 entities which don't have common base class.")
     def test_2(self):
@@ -102,7 +102,7 @@ class TestInheritance(unittest.TestCase):
             b = Required(int)
         class Entity2(Entity1):
             c = Required(int)
-        
+
         self.assertTrue(Entity1._discriminator_attr_ is Entity1.a)
         self.assertTrue(Entity2._discriminator_attr_ is Entity1.a)
 

@@ -393,7 +393,7 @@ class TestAttribute(unittest.TestCase):
         db.generate_mapping(create_tables=True)
         self.assertEqual(Stat.webinarshow.column, None)
         self.assertEqual(WebinarShow.stats.column, 'stats')
-        
+
     def test_columns_22(self):
         db = Database('sqlite', ':memory:')
         class ZStat(db.Entity):
@@ -669,7 +669,7 @@ class TestAttribute(unittest.TestCase):
         db = Database('sqlite', ':memory:')
         class Foo(db.Entity):
             x = Required(str, sql_default='')
-                              
+
 
 if __name__ == '__main__':
     unittest.main()

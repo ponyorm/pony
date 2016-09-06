@@ -32,12 +32,12 @@ class TestStringMethods(unittest.TestCase):
 
     def test_nonzero(self):
         result = set(select(s for s in Student if s.foo))
-        self.assertEqual(result, set([Student[1], Student[2], Student[3]]))        
+        self.assertEqual(result, set([Student[1], Student[2], Student[3]]))
 
     def test_add(self):
         name = 'Jonny'
         result = set(select(s for s in Student if s.name + "ny" == name))
-        self.assertEqual(result, set([Student[1]]))        
+        self.assertEqual(result, set([Student[1]]))
 
     def test_slice_1(self):
         result = set(select(s for s in Student if s.name[0:3] == "Jon"))

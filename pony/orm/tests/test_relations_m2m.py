@@ -19,7 +19,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         self.db = db
         self.Group = Group
         self.Subject = Subject
-        
+
         self.db.generate_mapping(create_tables=True)
 
         with db_session:
@@ -208,7 +208,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         self.assertTrue(s1 in group_setdata)
         self.assertEqual(group_setdata.added, None)
         self.assertEqual(group_setdata.removed, None)
-        
+
         subj_setdata = s1._vals_[Subject.groups]
         self.assertTrue(g1 in subj_setdata)
         self.assertEqual(subj_setdata.added, None)
@@ -221,7 +221,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         self.assertTrue(g1 not in subj_setdata)
         self.assertEqual(subj_setdata.added, None)
         self.assertEqual(subj_setdata.removed, set([ g1 ]))
-        
+
         g1.subjects.add(s1)
         self.assertTrue(s1 in group_setdata)
         self.assertEqual(group_setdata.added, set())
@@ -263,7 +263,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         e = g.subjects.is_empty()  # should take result from the cache
         self.assertEqual(e, False)
         self.assertEqual(db.last_sql, None)
-        
+
         g = Group[102]
         c = len(g.subjects)
         self.assertEqual(c, 0)
