@@ -226,13 +226,13 @@ class PreTranslator(ASTTranslator):
     def dispatch(translator, node):
         node.external = node.constant = None
         ASTTranslator.dispatch(translator, node)
-        childs = node.getChildNodes()
-        if node.external is None and childs and all(
-                getattr(child, 'external', False) and not getattr(child, 'raw_sql', False) for child in childs):
+        children = node.getChildNodes()
+        if node.external is None and children and all(
+                getattr(child, 'external', False) and not getattr(child, 'raw_sql', False) for child in children):
             node.external = True
         if node.external and not node.constant:
             externals = translator.externals
-            externals.difference_update(childs)
+            externals.difference_update(children)
             externals.add(node)
     def preGenExprInner(translator, node):
         translator.contexts.append(set())
