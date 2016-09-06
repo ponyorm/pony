@@ -280,10 +280,19 @@ def transact_reraise(exc_class, exceptions):
 def commit():
     caches = _get_caches()
     if not caches: return
+
+    try:
+        for cache in caches:
+            cache.flush()
+    except:
+        rollback()
+        raise
+
     primary_cache = caches[0]
     other_caches = caches[1:]
     exceptions = []
-    try: primary_cache.commit()
+    try:
+        primary_cache.commit()
     except:
         exceptions.append(sys.exc_info())
         for cache in other_caches:
@@ -598,11 +607,14 @@ class Database(object):
     @cut_traceback
     def commit(database):
         cache = local.db2cache.get(database)
-        if cache is not None: cache.commit()
+        if cache is not None:
+            cache.flush_and_commit()
     @cut_traceback
     def rollback(database):
         cache = local.db2cache.get(database)
-        if cache is not None: cache.rollback()
+        if cache is not None:
+            try: cache.rollback()
+            except: transact_reraise(RollbackException, [sys.exc_info()])
     @cut_traceback
     def execute(database, sql, globals=None, locals=None):
         return database._exec_raw_sql(sql, globals, locals, frame_depth=3, start_transaction=True)
@@ -1503,7 +1515,7 @@ class SessionCache(object):
             # in the interactive mode, outside of the db_session
             if cache.in_transaction or cache.modified:
                 local.db_session = None
-                try: cache.commit()
+                try: cache.flush_and_commit()
                 finally: local.db_session = db_session
             cache.db_session = db_session
             cache.immediate = cache.immediate or db_session.immediate
@@ -1516,15 +1528,20 @@ class SessionCache(object):
             except Exception as e: connection = cache.reconnect(e)
         if not cache.noflush_counter and cache.modified: cache.flush()
         return connection
+    def flush_and_commit(cache):
+        try: cache.flush()
+        except:
+            cache.rollback()
+            raise
+        try: cache.commit()
+        except: transact_reraise(CommitException, [sys.exc_info()])
     def commit(cache):
         assert cache.is_alive
-        database = cache.database
-        provider = database.provider
         try:
             if cache.modified: cache.flush()
             if cache.in_transaction:
                 assert cache.connection is not None
-                provider.commit(cache.connection, cache)
+                cache.database.provider.commit(cache.connection, cache)
             cache.for_update.clear()
             cache.immediate = True
         except:
