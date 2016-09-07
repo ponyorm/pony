@@ -471,6 +471,9 @@ class SQLBuilder(object):
         if len is None: return 'substr(', builder(expr), ', ', builder(start), ')'
         return 'substr(', builder(expr), ', ', builder(start), ', ', builder(len), ')'
     def CASE(builder, expr, cases, default=None):
+        if expr is None and default is not None and default[0] == 'CASE' and default[1] is None:
+            cases2, default2 = default[2:]
+            return builder.CASE(None, tuple(cases) + tuple(cases2), default2)
         result = [ 'case' ]
         if expr is not None:
             result.append(' ')
