@@ -60,12 +60,12 @@ with db_session:
     Mark(value=1, student=s3, subject=History)
     Mark(value=2, student=s3, subject=Math)
     Mark(value=2, student=s4, subject=Math)
-    
+
 class TestAttrSetMonad(unittest.TestCase):
     def setUp(self):
         rollback()
         db_session.__enter__()
-        
+
     def tearDown(self):
         rollback()
         db_session.__exit__()

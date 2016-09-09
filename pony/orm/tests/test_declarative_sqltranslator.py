@@ -338,7 +338,7 @@ class TestSQLTranslator(unittest.TestCase):
         x = Student[1], Student[2]
         result = set(select(s for s in Student if s not in x))
         self.assertEqual(result, set([Student[3]]))
-    @raises_exception(TypeError, "Expression `x` should not contain None values")        
+    @raises_exception(TypeError, "Expression `x` should not contain None values")
     def test_tuple_param_2(self):
         x = Student[1], None
         result = set(select(s for s in Student if s not in x))

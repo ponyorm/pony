@@ -720,20 +720,23 @@ class SQLTranslator(ASTTranslator):
     def preCallFunc(translator, node):
         if node.star_args is not None: throw(NotImplementedError, '*%s is not supported' % ast2src(node.star_args))
         if node.dstar_args is not None: throw(NotImplementedError, '**%s is not supported' % ast2src(node.dstar_args))
-        if not isinstance(node.node, (ast.Name, ast.Getattr)): throw(NotImplementedError)
+        func_node = node.node
+        if isinstance(func_node, ast.CallFunc):
+            if isinstance(func_node.node, ast.Name) and func_node.node.name == 'getattr': return
+        if not isinstance(func_node, (ast.Name, ast.Getattr)): throw(NotImplementedError)
         if len(node.args) > 1: return
         if not node.args: return
         arg = node.args[0]
         if isinstance(arg, ast.GenExpr):
-            translator.dispatch(node.node)
-            func_monad = node.node.monad
+            translator.dispatch(func_node)
+            func_monad = func_node.monad
             translator.dispatch(arg)
             query_set_monad = arg.monad
             return func_monad(query_set_monad)
         if not isinstance(arg, ast.Lambda): return
         lambda_expr = arg
-        translator.dispatch(node.node)
-        method_monad = node.node.monad
+        translator.dispatch(func_node)
+        method_monad = func_node.monad
         if not isinstance(method_monad, MethodMonad): throw(NotImplementedError)
         entity_monad = method_monad.parent
         if not isinstance(entity_monad, EntityMonad): throw(NotImplementedError)
@@ -2042,6 +2045,12 @@ class FuncLenMonad(FuncMonad):
     func = len
     def call(monad, x):
         return x.len()
+
+class GetattrMonad(FuncMonad):
+    func = getattr
+    def call(monad, obj_monad, name_monad):
+        name = name_monad.node._attrname_value
+        return obj_monad.getattr(name)
 
 class FuncCountMonad(FuncMonad):
     func = itertools.count, utils.count, core.count

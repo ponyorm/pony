@@ -28,7 +28,7 @@ class EntityStatusTestCase(object):
         p = TestPost()
         self.make_flush(p)
         p.name = 'Pony'
-        self.assertEqual(p._status_, 'modified')        
+        self.assertEqual(p._status_, 'modified')
         self.make_flush(p)
         self.assertEqual(p._status_, 'updated')
         p.delete()
@@ -54,13 +54,12 @@ class EntityStatusTestCase(object):
         self.assertEqual(p._status_, 'cancelled')
 
 
-
 class EntityStatusTestCase_ObjectFlush(EntityStatusTestCase,
                                        unittest.TestCase):
 
     def make_flush(self, obj=None):
         obj.flush()
-    
+
 
 class EntityStatusTestCase_FullFlush(EntityStatusTestCase,
                                      unittest.TestCase):

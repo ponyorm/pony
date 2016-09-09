@@ -57,7 +57,7 @@ class TestIndexes(unittest.TestCase):
         create_script = db.schema.generate_create_script()
         index_sql = 'CREATE INDEX "idx_person__name_age" ON "Person" ("name", "age")'
         self.assertTrue(index_sql in create_script)
-        
+
     def test_2(self):
         db = Database('sqlite', ':memory:')
         class User(db.Entity):

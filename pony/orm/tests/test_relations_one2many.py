@@ -74,7 +74,7 @@ class TestOneToManyRequired(unittest.TestCase):
         Group, Student = self.Group, self.Student
         g = Group[101]
         g.students.add(None)
-        
+
     @raises_exception(ValueError, 'A single Student instance or Student iterable is expected. Got: None')
     def test_6(self):
         Group, Student = self.Group, self.Student
@@ -127,7 +127,7 @@ class TestOneToManyRequired(unittest.TestCase):
         e = g.students.is_empty()  # should take result from the cache
         self.assertEqual(e, False)
         self.assertEqual(db.last_sql, None)
-        
+
         g = Group[102]
         c = g.students.count()
         self.assertEqual(c, 2)
@@ -255,7 +255,7 @@ class TestOneToManyOptional(unittest.TestCase):
         Group, Student = self.Group, self.Student
         g = Group[101]
         g.students.add(None)
-        
+
     @raises_exception(ValueError, 'A single Student instance or Student iterable is expected. Got: None')
     def test_6(self):
         Group, Student = self.Group, self.Student
