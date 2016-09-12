@@ -378,8 +378,8 @@ class DBSessionContextManager(object):
             elif not callable(db_session.allowed_exceptions):
                 can_commit = issubclass(exc_type, tuple(db_session.allowed_exceptions))
             else:
-                # exc can be None in Python 2.6 even if exc_type is not None
-                try: can_commit = exc is not None and db_session.allowed_exceptions(exc)
+                assert exc is not None # exc can be None in Python 2.6 even if exc_type is not None
+                try: can_commit = db_session.allowed_exceptions(exc)
                 except:
                     rollback()
                     raise
@@ -405,12 +405,13 @@ class DBSessionContextManager(object):
                     exc_type = exc = tb = None
                     try: return func(*args, **kwargs)
                     except:
-                        exc_type, exc, tb = sys.exc_info()  # exc can be None in Python 2.6
+                        exc_type, exc, tb = sys.exc_info()
                         retry_exceptions = db_session.retry_exceptions
                         if not callable(retry_exceptions):
                             do_retry = issubclass(exc_type, tuple(retry_exceptions))
                         else:
-                            do_retry = exc is not None and retry_exceptions(exc)
+                            assert exc is not None  # exc can be None in Python 2.6
+                            do_retry = retry_exceptions(exc)
                         if not do_retry: raise
                     finally: db_session.__exit__(exc_type, exc, tb)
                 reraise(exc_type, exc, tb)
