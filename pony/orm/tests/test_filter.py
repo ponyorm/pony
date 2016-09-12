@@ -14,17 +14,17 @@ class TestFilter(unittest.TestCase):
     def test_filter_1(self):
         q = select(s for s in Student)
         result = set(q.filter(scholarship=0))
-        self.assertEqual(result, set([Student[101], Student[103]]))
+        self.assertEqual(result, {Student[101], Student[103]})
     def test_filter_2(self):
         q = select(s for s in Student)
         q2 = q.filter(scholarship=500)
         result = set(q2.filter(group=Group['3132']))
-        self.assertEqual(result, set([Student[104]]))
+        self.assertEqual(result, {Student[104]})
     def test_filter_3(self):
         q = select(s for s in Student)
         q2 = q.filter(lambda s: s.scholarship > 500)
         result = set(q2.filter(lambda s: count(s.marks) > 0))
-        self.assertEqual(result, set([Student[102]]))
+        self.assertEqual(result, {Student[102]})
     def test_filter_4(self):
         q = select(s for s in Student)
         q2 = q.filter(lambda s: s.scholarship != 500)
@@ -47,11 +47,11 @@ class TestFilter(unittest.TestCase):
         q = select(s for s in Student)
         q2 = q.filter(scholarship=0)
         result = set(q2.filter(lambda s: count(s.marks) > 1))
-        self.assertEqual(result, set([Student[103], Student[101]]))
+        self.assertEqual(result, {Student[103], Student[101]})
     def test_filter_8(self):
         q = select(s for s in Student)
         q2 = q.filter(lambda s: s.scholarship != 500)
         q3 = q2.order_by(lambda s: s.name)
         q4 = q3.order_by(None)
         result = set(q4.filter(lambda s: count(s.marks) > 1))
-        self.assertEqual(result, set([Student[103], Student[101]]))
+        self.assertEqual(result, {Student[103], Student[101]})

@@ -47,36 +47,36 @@ class TestQuerySetMonad(unittest.TestCase):
 
     def test_len(self):
         result = set(select(g for g in Group if len(g.students) > 1))
-        self.assertEqual(result, set([Group[1]]))
+        self.assertEqual(result, {Group[1]})
 
     def test_len_2(self):
         result = set(select(g for g in Group if len(s for s in Student if s.group == g) > 1))
-        self.assertEqual(result, set([Group[1]]))
+        self.assertEqual(result, {Group[1]})
 
     def test_len_3(self):
         result = set(select(g for g in Group if len(s.name for s in Student if s.group == g) > 1))
-        self.assertEqual(result, set([Group[1]]))
+        self.assertEqual(result, {Group[1]})
 
     def test_count_1(self):
         result = set(select(g for g in Group if count(s.name for s in g.students) > 1))
-        self.assertEqual(result, set([Group[1]]))
+        self.assertEqual(result, {Group[1]})
 
     def test_count_2(self):
         result = set(select(g for g in Group if select(s.name for s in g.students).count() > 1))
-        self.assertEqual(result, set([Group[1]]))
+        self.assertEqual(result, {Group[1]})
 
     def test_count_3(self):
         result = set(select(s for s in Student if count(c for c in s.courses) > 1))
-        self.assertEqual(result, set([Student[2], Student[3]]))
+        self.assertEqual(result, {Student[2], Student[3]})
 
     def test_count_4(self):
         result = set(select(c for c in Course if count(s for s in c.students) > 1))
-        self.assertEqual(result, set([Course['C1', 1], Course['C2', 1]]))
+        self.assertEqual(result, {Course['C1', 1], Course['C2', 1]})
 
     @raises_exception(TypeError)
     def test_sum_1(self):
         result = set(select(g for g in Group if sum(s for s in Student if s.group == g) > 1))
-        self.assertEqual(result, set([]))
+        self.assertEqual(result, set())
 
     @raises_exception(TypeError)
     def test_sum_2(self):
@@ -84,15 +84,15 @@ class TestQuerySetMonad(unittest.TestCase):
 
     def test_sum_3(self):
         result = set(select(g for g in Group if sum(s.scholarship for s in Student if s.group == g) > 500))
-        self.assertEqual(result, set([]))
+        self.assertEqual(result, set())
 
     def test_sum_4(self):
         result = set(select(g for g in Group if select(s.scholarship for s in g.students).sum() > 200))
-        self.assertEqual(result, set([Group[2]]))
+        self.assertEqual(result, {Group[2]})
 
     def test_min_1(self):
         result = set(select(g for g in Group if min(s.name for s in Student if s.group == g) == 'S1'))
-        self.assertEqual(result, set([Group[1]]))
+        self.assertEqual(result, {Group[1]})
 
     @raises_exception(TypeError)
     def test_min_2(self):
@@ -100,11 +100,11 @@ class TestQuerySetMonad(unittest.TestCase):
 
     def test_min_3(self):
         result = set(select(g for g in Group if select(s.scholarship for s in g.students).min() == 0))
-        self.assertEqual(result, set([Group[1]]))
+        self.assertEqual(result, {Group[1]})
 
     def test_max_1(self):
         result = set(select(g for g in Group if max(s.scholarship for s in Student if s.group == g) > 100))
-        self.assertEqual(result, set([Group[2]]))
+        self.assertEqual(result, {Group[2]})
 
     @raises_exception(TypeError)
     def test_max_2(self):
@@ -112,7 +112,7 @@ class TestQuerySetMonad(unittest.TestCase):
 
     def test_max_3(self):
         result = set(select(g for g in Group if select(s.scholarship for s in g.students).max() == 100))
-        self.assertEqual(result, set([Group[1]]))
+        self.assertEqual(result, {Group[1]})
 
     def test_avg_1(self):
         result = select(g for g in Group if avg(s.scholarship for s in Student if s.group == g) == 50)[:]
@@ -120,40 +120,40 @@ class TestQuerySetMonad(unittest.TestCase):
 
     def test_avg_2(self):
         result = set(select(g for g in Group if select(s.scholarship for s in g.students).avg() == 50))
-        self.assertEqual(result, set([Group[1]]))
+        self.assertEqual(result, {Group[1]})
 
     def test_exists(self):
         result = set(select(g for g in Group if exists(s for s in g.students if s.name == 'S1')))
-        self.assertEqual(result, set([Group[1]]))
+        self.assertEqual(result, {Group[1]})
 
     def test_negate(self):
         result = set(select(g for g in Group if not(s.scholarship for s in Student if s.group == g)))
-        self.assertEqual(result, set([]))
+        self.assertEqual(result, set())
 
     def test_no_conditions(self):
         students = set(select(s for s in Student if s.group in (g for g in Group)))
-        self.assertEqual(students, set([Student[1], Student[2], Student[3]]))
+        self.assertEqual(students, {Student[1], Student[2], Student[3]})
 
     def test_no_conditions_2(self):
         students = set(select(s for s in Student if s.scholarship == max(s.scholarship for s in Student)))
-        self.assertEqual(students, set([Student[3]]))
+        self.assertEqual(students, {Student[3]})
 
     def test_hint_join_1(self):
         result = set(select(s for s in Student if JOIN(s.group in select(g for g in Group if g.id < 2))))
-        self.assertEqual(result, set([Student[1], Student[2]]))
+        self.assertEqual(result, {Student[1], Student[2]})
 
     def test_hint_join_2(self):
         result = set(select(s for s in Student if JOIN(s.group not in select(g for g in Group if g.id < 2))))
-        self.assertEqual(result, set([Student[3]]))
+        self.assertEqual(result, {Student[3]})
 
     def test_hint_join_3(self):
         result = set(select(s for s in Student if JOIN(s.scholarship in
                         select(s.scholarship + 100 for s in Student if s.name != 'S2'))))
-        self.assertEqual(result, set([Student[2]]))
+        self.assertEqual(result, {Student[2]})
 
     def test_hint_join_4(self):
         result = set(select(g for g in Group if JOIN(g in select(s.group for s in g.students))))
-        self.assertEqual(result, set([Group[1], Group[2]]))
+        self.assertEqual(result, {Group[1], Group[2]})
 
 if __name__ == "__main__":
     unittest.main()

@@ -378,8 +378,8 @@ class DBSessionContextManager(object):
             elif not callable(db_session.allowed_exceptions):
                 can_commit = issubclass(exc_type, tuple(db_session.allowed_exceptions))
             else:
-                # exc can be None in Python 2.6 even if exc_type is not None
-                try: can_commit = exc is not None and db_session.allowed_exceptions(exc)
+                assert exc is not None # exc can be None in Python 2.6 even if exc_type is not None
+                try: can_commit = db_session.allowed_exceptions(exc)
                 except:
                     rollback()
                     raise
@@ -405,12 +405,13 @@ class DBSessionContextManager(object):
                     exc_type = exc = tb = None
                     try: return func(*args, **kwargs)
                     except:
-                        exc_type, exc, tb = sys.exc_info()  # exc can be None in Python 2.6
+                        exc_type, exc, tb = sys.exc_info()
                         retry_exceptions = db_session.retry_exceptions
                         if not callable(retry_exceptions):
                             do_retry = issubclass(exc_type, tuple(retry_exceptions))
                         else:
-                            do_retry = exc is not None and retry_exceptions(exc)
+                            assert exc is not None  # exc can be None in Python 2.6
+                            do_retry = retry_exceptions(exc)
                         if not do_retry: raise
                     finally: db_session.__exit__(exc_type, exc, tb)
                 reraise(exc_type, exc, tb)
@@ -569,7 +570,7 @@ class Database(object):
     @property
     def global_stats(database):
         with database._global_stats_lock:
-            return dict((sql, stat.copy()) for sql, stat in iteritems(database._global_stats))
+            return {sql: stat.copy() for sql, stat in iteritems(database._global_stats)}
     @property
     def global_stats_lock(database):
         deprecated(3, "global_stats_lock is deprecated, just use global_stats property without any locking")
@@ -1172,7 +1173,7 @@ class Database(object):
             if t is list: return list(imap(deserialize, x))
             if t is dict:
                 if '_id_' not in x:
-                    return dict((key, deserialize(val)) for key, val in iteritems(x))
+                    return {key: deserialize(val) for key, val in iteritems(x)}
                 obj = objmap.get(x['_id_'])
                 if obj is None:
                     entity_name = x['class']
@@ -1336,7 +1337,7 @@ def get_user_groups(user):
     result = local.user_groups_cache.get(user)
     if result is not None: return result
     if user is None: return anybody_frozenset
-    result = set(['anybody'])
+    result = {'anybody'}
     for cls, func in usergroup_functions:
         if cls is None or isinstance(user, cls):
             groups = func(user)
@@ -2500,7 +2501,7 @@ class Set(Collection):
 
         if items:
             if not reverse.is_collection:
-                items = set(item for item in items if reverse not in item._vals_)
+                items = {item for item in items if reverse not in item._vals_}
             else:
                 items = set(items)
                 items -= setdata
@@ -2520,7 +2521,7 @@ class Set(Collection):
             items.append(obj)
             arguments = adapter(items)
             cursor = database._exec_sql(sql, arguments)
-            loaded_items = set(imap(rentity._get_by_raw_pkval_, cursor.fetchall()))
+            loaded_items = {rentity._get_by_raw_pkval_(row) for row in cursor.fetchall()}
             setdata |= loaded_items
             reverse.db_reverse_add(loaded_items, obj)
             return setdata
@@ -2563,7 +2564,7 @@ class Set(Collection):
                     items = d.get(obj2)
                     if items is None: items = d[obj2] = set()
                     items.add(item)
-            else: d[obj] = set(imap(rentity._get_by_raw_pkval_, cursor.fetchall()))
+            else: d[obj] = {rentity._get_by_raw_pkval_(row) for row in cursor.fetchall()}
             for obj2, items in iteritems(d):
                 setdata2 = obj2._vals_.get(attr)
                 if setdata2 is None: setdata2 = obj._vals_[attr] = SetData()
@@ -3332,7 +3333,7 @@ class EntityMeta(type):
         for attr in new_attrs:
             if attr.is_unique: indexes.append(Index(attr, is_pk=isinstance(attr, PrimaryKey)))
         for index in indexes: index._init_(entity)
-        primary_keys = set(index.attrs for index in indexes if index.is_pk)
+        primary_keys = {index.attrs for index in indexes if index.is_pk}
         if direct_bases:
             if primary_keys: throw(ERDiagramError, 'Primary key cannot be redefined in derived classes')
             base_indexes = []
@@ -3340,7 +3341,7 @@ class EntityMeta(type):
                 for index in base._indexes_:
                     if index not in base_indexes and index not in indexes: base_indexes.append(index)
             indexes[:0] = base_indexes
-            primary_keys = set(index.attrs for index in indexes if index.is_pk)
+            primary_keys = {index.attrs for index in indexes if index.is_pk}
 
         if len(primary_keys) > 1: throw(ERDiagramError, 'Only one primary key can be defined in each entity class')
         elif not primary_keys:
@@ -3369,7 +3370,7 @@ class EntityMeta(type):
 
         entity._new_attrs_ = new_attrs
         entity._attrs_ = base_attrs + new_attrs
-        entity._adict_ = dict((attr.name, attr) for attr in entity._attrs_)
+        entity._adict_ = {attr.name: attr for attr in entity._attrs_}
         entity._subclass_attrs_ = []
         entity._subclass_adict_ = {}
         for base in entity._all_bases_:
@@ -3552,7 +3553,7 @@ class EntityMeta(type):
         if len(key) != len(entity._pk_attrs_):
             throw(TypeError, 'Invalid count of attrs in %s primary key (%s instead of %s)'
                              % (entity.__name__, len(key), len(entity._pk_attrs_)))
-        kwargs = dict(izip(imap(attrgetter('name'), entity._pk_attrs_), key))
+        kwargs = {attr.name: value for attr, value in izip(entity._pk_attrs_, key)}
         return entity._find_one_(kwargs)
     @cut_traceback
     def exists(entity, *args, **kwargs):
@@ -3708,7 +3709,7 @@ class EntityMeta(type):
         return None, unique
     def _find_in_db_(entity, avdict, unique=False, for_update=False, nowait=False):
         database = entity._database_
-        query_attrs = dict((attr, value is None) for attr, value in iteritems(avdict))
+        query_attrs = {attr: value is None for attr, value in iteritems(avdict)}
         limit = 2 if not unique else None
         sql, adapter, attr_offsets = entity._construct_sql_(query_attrs, False, limit, for_update, nowait)
         arguments = adapter(avdict)
@@ -3882,7 +3883,7 @@ class EntityMeta(type):
         cache = database._get_cache()
         seeds = cache.seeds[entity._pk_attrs_]
         if not seeds: return
-        objects = set(obj for obj in objects if obj in seeds)
+        objects = {obj for obj in objects if obj in seeds}
         objects = sorted(objects, key=attrgetter('_pkval_'))
         max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
         while objects:
@@ -4112,10 +4113,10 @@ def populate_criteria_list(criteria_list, columns, converters, operations,
         params_count += 1
     return params_count
 
-statuses = set(['created', 'cancelled', 'loaded', 'modified', 'inserted', 'updated', 'marked_to_delete', 'deleted'])
-del_statuses = set(['marked_to_delete', 'deleted', 'cancelled'])
-created_or_deleted_statuses = set(['created']) | del_statuses
-saved_statuses = set(['inserted', 'updated', 'deleted'])
+statuses = {'created', 'cancelled', 'loaded', 'modified', 'inserted', 'updated', 'marked_to_delete', 'deleted'}
+del_statuses = {'marked_to_delete', 'deleted', 'cancelled'}
+created_or_deleted_statuses = {'created'} | del_statuses
+saved_statuses = {'inserted', 'updated', 'deleted'}
 
 def throw_object_was_deleted(obj):
     assert obj._status_ in del_statuses
@@ -5612,5 +5613,5 @@ def show(entity):
         from pprint import pprint
         pprint(x)
 
-special_functions = set([ itertools.count, utils.count, count, random, raw_sql, getattr ])
-const_functions = set([ buffer, Decimal, datetime.datetime, datetime.date, datetime.time, datetime.timedelta ])
+special_functions = {itertools.count, utils.count, count, random, raw_sql, getattr}
+const_functions = {buffer, Decimal, datetime.datetime, datetime.date, datetime.time, datetime.timedelta}

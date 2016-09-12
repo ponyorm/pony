@@ -32,34 +32,34 @@ class TestOrderbyLimit(unittest.TestCase):
 
     def test1(self):
         students = set(select(s for s in Student).order_by(Student.name))
-        self.assertEqual(students, set([Student[3], Student[1], Student[2], Student[4], Student[5]]))
+        self.assertEqual(students, {Student[3], Student[1], Student[2], Student[4], Student[5]})
 
     def test2(self):
         students = set(select(s for s in Student).order_by(Student.name.asc))
-        self.assertEqual(students, set([Student[3], Student[1], Student[2], Student[4], Student[5]]))
+        self.assertEqual(students, {Student[3], Student[1], Student[2], Student[4], Student[5]})
 
     def test3(self):
         students = set(select(s for s in Student).order_by(Student.id.desc))
-        self.assertEqual(students, set([Student[5], Student[4], Student[3], Student[2], Student[1]]))
+        self.assertEqual(students, {Student[5], Student[4], Student[3], Student[2], Student[1]})
 
     def test4(self):
         students = set(select(s for s in Student).order_by(Student.scholarship.asc, Student.group.desc))
-        self.assertEqual(students, set([Student[1], Student[4], Student[3], Student[5], Student[2]]))
+        self.assertEqual(students, {Student[1], Student[4], Student[3], Student[5], Student[2]})
 
     def test5(self):
         students = set(select(s for s in Student).order_by(Student.name).limit(3))
-        self.assertEqual(students, set([Student[3], Student[1], Student[2]]))
+        self.assertEqual(students, {Student[3], Student[1], Student[2]})
 
     def test6(self):
         students = set(select(s for s in Student).order_by(Student.name).limit(3, 1))
-        self.assertEqual(students, set([Student[1], Student[2], Student[4]]))
+        self.assertEqual(students, {Student[1], Student[2], Student[4]})
 
     def test7(self):
         q = select(s for s in Student).order_by(Student.name).limit(3, 1)
         students = set(q)
-        self.assertEqual(students, set([Student[1], Student[2], Student[4]]))
+        self.assertEqual(students, {Student[1], Student[2], Student[4]})
         students = set(q)
-        self.assertEqual(students, set([Student[1], Student[2], Student[4]]))
+        self.assertEqual(students, {Student[1], Student[2], Student[4]})
 
     # @raises_exception(TypeError, "query.order_by() arguments must be attributes. Got: 'name'")
     # now generate: ExprEvalError: name raises NameError: name 'name' is not defined
@@ -68,11 +68,11 @@ class TestOrderbyLimit(unittest.TestCase):
 
     def test9(self):
         students = set(select(s for s in Student).order_by(Student.id)[1:4])
-        self.assertEqual(students, set([Student[2], Student[3], Student[4]]))
+        self.assertEqual(students, {Student[2], Student[3], Student[4]})
 
     def test10(self):
         students = set(select(s for s in Student).order_by(Student.id)[:4])
-        self.assertEqual(students, set([Student[1], Student[2], Student[3], Student[4]]))
+        self.assertEqual(students, {Student[1], Student[2], Student[3], Student[4]})
 
     @raises_exception(TypeError, "Parameter 'stop' of slice object should be specified")
     def test11(self):
@@ -93,19 +93,19 @@ class TestOrderbyLimit(unittest.TestCase):
 
     def test15(self):
         students = set(select(s for s in Student).order_by(Student.id)[0:4][1:3])
-        self.assertEqual(students, set([Student[2], Student[3]]))
+        self.assertEqual(students, {Student[2], Student[3]})
 
     def test16(self):
         students = set(select(s for s in Student).order_by(Student.id)[0:4][1:])
-        self.assertEqual(students, set([Student[2], Student[3], Student[4]]))
+        self.assertEqual(students, {Student[2], Student[3], Student[4]})
 
     def test17(self):
         students = set(select(s for s in Student).order_by(Student.id)[:4][1:])
-        self.assertEqual(students, set([Student[2], Student[3], Student[4]]))
+        self.assertEqual(students, {Student[2], Student[3], Student[4]})
 
     def test18(self):
         students = set(select(s for s in Student).order_by(Student.id)[:])
-        self.assertEqual(students, set([Student[1], Student[2], Student[3], Student[4], Student[5]]))
+        self.assertEqual(students, {Student[1], Student[2], Student[3], Student[4], Student[5]})
 
     def test19(self):
         q = select(s for s in Student).order_by(Student.id)

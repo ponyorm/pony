@@ -65,7 +65,7 @@ class TestOneToManyRequired(unittest.TestCase):
         s1, s2, s3, s4 = Student.select().order_by(Student.id)
         g1, g2 = Group[101], Group[102]
         g1.students = g2.students
-        self.assertEqual(set(g1.students), set([s3, s4]))
+        self.assertEqual(set(g1.students), {s3, s4})
         self.assertEqual(s1._status_, 'marked_to_delete')
         self.assertEqual(s2._status_, 'marked_to_delete')
 
@@ -223,7 +223,7 @@ class TestOneToManyOptional(unittest.TestCase):
 
     def test_1(self):
         self.Student[1].group = None
-        self.assertEqual(set(self.Group[101].students), set([self.Student[2]]))
+        self.assertEqual(set(self.Group[101].students), {self.Student[2]})
 
     def test_2(self):
         Student, Group = self.Student, self.Group
@@ -246,7 +246,7 @@ class TestOneToManyOptional(unittest.TestCase):
         s1, s2, s3, s4 = Student.select().order_by(Student.id)
         g1, g2 = Group[101], Group[102]
         g1.students = g2.students
-        self.assertEqual(set(g1.students), set([s3, s4]))
+        self.assertEqual(set(g1.students), {s3, s4})
         self.assertEqual(s1.group, None)
         self.assertEqual(s2.group, None)
 

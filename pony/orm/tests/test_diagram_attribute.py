@@ -263,11 +263,11 @@ class TestAttribute(unittest.TestCase):
             id = PrimaryKey(int, columns=['a', 'b'])
         db.generate_mapping(create_tables=True)
 
-    @raises_exception(TypeError, "Parameter 'columns' must be a list. Got: %r'" % set(['a']))
+    @raises_exception(TypeError, "Parameter 'columns' must be a list. Got: %r'" % {'a'})
     def test_columns6(self):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
-            id = PrimaryKey(int, columns=set(['a']))
+            id = PrimaryKey(int, columns={'a'})
         db.generate_mapping(create_tables=True)
 
     @raises_exception(TypeError, "Parameter 'column' must be a string. Got: 4")
