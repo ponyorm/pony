@@ -570,7 +570,7 @@ class Database(object):
     @property
     def global_stats(database):
         with database._global_stats_lock:
-            return dict((sql, stat.copy()) for sql, stat in iteritems(database._global_stats))
+            return {sql: stat.copy() for sql, stat in iteritems(database._global_stats)}
     @property
     def global_stats_lock(database):
         deprecated(3, "global_stats_lock is deprecated, just use global_stats property without any locking")
@@ -1173,7 +1173,7 @@ class Database(object):
             if t is list: return list(imap(deserialize, x))
             if t is dict:
                 if '_id_' not in x:
-                    return dict((key, deserialize(val)) for key, val in iteritems(x))
+                    return {key: deserialize(val) for key, val in iteritems(x)}
                 obj = objmap.get(x['_id_'])
                 if obj is None:
                     entity_name = x['class']
@@ -3370,7 +3370,7 @@ class EntityMeta(type):
 
         entity._new_attrs_ = new_attrs
         entity._attrs_ = base_attrs + new_attrs
-        entity._adict_ = dict((attr.name, attr) for attr in entity._attrs_)
+        entity._adict_ = {attr.name: attr for attr in entity._attrs_}
         entity._subclass_attrs_ = []
         entity._subclass_adict_ = {}
         for base in entity._all_bases_:
@@ -3553,7 +3553,7 @@ class EntityMeta(type):
         if len(key) != len(entity._pk_attrs_):
             throw(TypeError, 'Invalid count of attrs in %s primary key (%s instead of %s)'
                              % (entity.__name__, len(key), len(entity._pk_attrs_)))
-        kwargs = dict(izip(imap(attrgetter('name'), entity._pk_attrs_), key))
+        kwargs = {attr.name: value for attr, value in izip(entity._pk_attrs_, key)}
         return entity._find_one_(kwargs)
     @cut_traceback
     def exists(entity, *args, **kwargs):
@@ -3709,7 +3709,7 @@ class EntityMeta(type):
         return None, unique
     def _find_in_db_(entity, avdict, unique=False, for_update=False, nowait=False):
         database = entity._database_
-        query_attrs = dict((attr, value is None) for attr, value in iteritems(avdict))
+        query_attrs = {attr: value is None for attr, value in iteritems(avdict)}
         limit = 2 if not unique else None
         sql, adapter, attr_offsets = entity._construct_sql_(query_attrs, False, limit, for_update, nowait)
         arguments = adapter(avdict)
