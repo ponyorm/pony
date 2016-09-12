@@ -74,7 +74,7 @@ class Decompiler(object):
         decompiler.assnames = set()
         decompiler.decompile()
         decompiler.ast = decompiler.stack.pop()
-        decompiler.external_names = set(decompiler.names - decompiler.assnames)
+        decompiler.external_names = decompiler.names - decompiler.assnames
         assert not decompiler.stack, decompiler.stack
     def decompile(decompiler):
         code = decompiler.code
