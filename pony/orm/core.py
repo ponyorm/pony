@@ -2501,7 +2501,7 @@ class Set(Collection):
 
         if items:
             if not reverse.is_collection:
-                items = set(item for item in items if reverse not in item._vals_)
+                items = {item for item in items if reverse not in item._vals_}
             else:
                 items = set(items)
                 items -= setdata
@@ -2521,7 +2521,7 @@ class Set(Collection):
             items.append(obj)
             arguments = adapter(items)
             cursor = database._exec_sql(sql, arguments)
-            loaded_items = set(imap(rentity._get_by_raw_pkval_, cursor.fetchall()))
+            loaded_items = {rentity._get_by_raw_pkval_(row) for row in cursor.fetchall()}
             setdata |= loaded_items
             reverse.db_reverse_add(loaded_items, obj)
             return setdata
@@ -2564,7 +2564,7 @@ class Set(Collection):
                     items = d.get(obj2)
                     if items is None: items = d[obj2] = set()
                     items.add(item)
-            else: d[obj] = set(imap(rentity._get_by_raw_pkval_, cursor.fetchall()))
+            else: d[obj] = {rentity._get_by_raw_pkval_(row) for row in cursor.fetchall()}
             for obj2, items in iteritems(d):
                 setdata2 = obj2._vals_.get(attr)
                 if setdata2 is None: setdata2 = obj._vals_[attr] = SetData()
@@ -3333,7 +3333,7 @@ class EntityMeta(type):
         for attr in new_attrs:
             if attr.is_unique: indexes.append(Index(attr, is_pk=isinstance(attr, PrimaryKey)))
         for index in indexes: index._init_(entity)
-        primary_keys = set(index.attrs for index in indexes if index.is_pk)
+        primary_keys = {index.attrs for index in indexes if index.is_pk}
         if direct_bases:
             if primary_keys: throw(ERDiagramError, 'Primary key cannot be redefined in derived classes')
             base_indexes = []
@@ -3341,7 +3341,7 @@ class EntityMeta(type):
                 for index in base._indexes_:
                     if index not in base_indexes and index not in indexes: base_indexes.append(index)
             indexes[:0] = base_indexes
-            primary_keys = set(index.attrs for index in indexes if index.is_pk)
+            primary_keys = {index.attrs for index in indexes if index.is_pk}
 
         if len(primary_keys) > 1: throw(ERDiagramError, 'Only one primary key can be defined in each entity class')
         elif not primary_keys:
@@ -3883,7 +3883,7 @@ class EntityMeta(type):
         cache = database._get_cache()
         seeds = cache.seeds[entity._pk_attrs_]
         if not seeds: return
-        objects = set(obj for obj in objects if obj in seeds)
+        objects = {obj for obj in objects if obj in seeds}
         objects = sorted(objects, key=attrgetter('_pkval_'))
         max_batch_size = database.provider.max_params_count // len(entity._pk_columns_)
         while objects:

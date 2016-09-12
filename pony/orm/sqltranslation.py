@@ -2406,7 +2406,7 @@ class AttrSetMonad(SetMixin, Monad):
         outer_conditions = subquery.outer_conditions
 
         groupby_columns = [ inner_column[:] for cond, outer_column, inner_column in outer_conditions ]
-        assert len(set(alias for _, alias, column in groupby_columns)) == 1
+        assert len({alias for _, alias, column in groupby_columns}) == 1
 
         if extra_grouping:
             inner_alias = translator.subquery.get_short_alias(None, 't')
