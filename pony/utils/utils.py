@@ -13,16 +13,8 @@ from codecs import BOM_UTF8, BOM_LE, BOM_BE
 from locale import getpreferredencoding
 from bisect import bisect
 from collections import defaultdict
-from copy import deepcopy, _deepcopy_dispatch
 from functools import update_wrapper
 from xml.etree import cElementTree
-
-# deepcopy instance method patch for Python < 2.7:
-if types.MethodType not in _deepcopy_dispatch:
-    assert PY2
-    def _deepcopy_method(x, memo):
-        return type(x)(x.im_func, deepcopy(x.im_self, memo), x.im_class)
-    _deepcopy_dispatch[types.MethodType] = _deepcopy_method
 
 import pony
 from pony import options
