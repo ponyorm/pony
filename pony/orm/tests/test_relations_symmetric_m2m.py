@@ -32,12 +32,12 @@ class TestSymmetricM2M(unittest.TestCase):
         p1 = Person[1]
         p4 = Person[4]
         p1.friends.add(p4)
-        self.assertEqual(set(p4.friends), set([p1]))
+        self.assertEqual(set(p4.friends), {p1})
     def test1b(self):
         p1 = Person[1]
         p4 = Person[4]
         p1.friends.add(p4)
-        self.assertEqual(set(p1.friends), set([Person[2], Person[3], p4]))
+        self.assertEqual(set(p1.friends), {Person[2], Person[3], p4})
     def test1c(self):
         p1 = Person[1]
         p4 = Person[4]
@@ -49,12 +49,12 @@ class TestSymmetricM2M(unittest.TestCase):
         p1 = Person[1]
         p2 = Person[2]
         p1.friends.remove(p2)
-        self.assertEqual(set(p1.friends), set([Person[3]]))
+        self.assertEqual(set(p1.friends), {Person[3]})
     def test2b(self):
         p1 = Person[1]
         p2 = Person[2]
         p1.friends.remove(p2)
-        self.assertEqual(set(Person[3].friends), set([p1]))
+        self.assertEqual(set(Person[3].friends), {p1})
     def test2c(self):
         p1 = Person[1]
         p2 = Person[2]
@@ -84,7 +84,7 @@ class TestSymmetricM2M(unittest.TestCase):
         p1 = Person[1]
         p2 = Person[2]
         p1_friends = set(p1.friends)
-        self.assertEqual(p1_friends, set([p2]))
+        self.assertEqual(p1_friends, {p2})
         try: p2_friends = set(p2.friends)
         except UnrepeatableReadError as e: self.assertEqual(e.args[0],
             "Phantom object Person[1] disappeared from collection Person[2].friends")

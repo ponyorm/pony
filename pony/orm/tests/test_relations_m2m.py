@@ -91,7 +91,7 @@ class TestManyToManyNonComposite(unittest.TestCase):
         with db_session:
             db_subjects = db.select('subject from Group_Subject where "group" = 101')
             self.assertEqual(db_subjects , ['Subj3', 'Subj4'])
-            self.assertEqual(Group[101].subjects, set([Subject['Subj3'], Subject['Subj4']]))
+            self.assertEqual(Group[101].subjects, {Subject['Subj3'], Subject['Subj4']})
 
     def test_6(self):
         db, Group, Subject = self.db, self.Group, self.Subject
@@ -217,10 +217,10 @@ class TestManyToManyNonComposite(unittest.TestCase):
         g1.subjects.remove(s1)
         self.assertTrue(s1 not in group_setdata)
         self.assertEqual(group_setdata.added, None)
-        self.assertEqual(group_setdata.removed, set([ s1 ]))
+        self.assertEqual(group_setdata.removed, {s1})
         self.assertTrue(g1 not in subj_setdata)
         self.assertEqual(subj_setdata.added, None)
-        self.assertEqual(subj_setdata.removed, set([ g1 ]))
+        self.assertEqual(subj_setdata.removed, {g1})
 
         g1.subjects.add(s1)
         self.assertTrue(s1 in group_setdata)

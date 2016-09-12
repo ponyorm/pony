@@ -32,146 +32,146 @@ class TestStringMethods(unittest.TestCase):
 
     def test_nonzero(self):
         result = set(select(s for s in Student if s.foo))
-        self.assertEqual(result, set([Student[1], Student[2], Student[3]]))
+        self.assertEqual(result, {Student[1], Student[2], Student[3]})
 
     def test_add(self):
         name = 'Jonny'
         result = set(select(s for s in Student if s.name + "ny" == name))
-        self.assertEqual(result, set([Student[1]]))
+        self.assertEqual(result, {Student[1]})
 
     def test_slice_1(self):
         result = set(select(s for s in Student if s.name[0:3] == "Jon"))
-        self.assertEqual(result, set([Student[1], Student[4]]))
+        self.assertEqual(result, {Student[1], Student[4]})
 
     def test_slice_2(self):
         result = set(select(s for s in Student if s.name[:3] == "Jon"))
-        self.assertEqual(result, set([Student[1], Student[4]]))
+        self.assertEqual(result, {Student[1], Student[4]})
 
     def test_slice_3(self):
         x = 3
         result = set(select(s for s in Student if s.name[:x] == "Jon"))
-        self.assertEqual(result, set([Student[1], Student[4]]))
+        self.assertEqual(result, {Student[1], Student[4]})
 
     def test_slice_4(self):
         x = 3
         result = set(select(s for s in Student if s.name[0:x] == "Jon"))
-        self.assertEqual(result, set([Student[1], Student[4]]))
+        self.assertEqual(result, {Student[1], Student[4]})
 
     def test_slice_5(self):
         result = set(select(s for s in Student if s.name[0:10] == "Jon"))
-        self.assertEqual(result, set([Student[1]]))
+        self.assertEqual(result, {Student[1]})
 
     def test_slice_6(self):
         result = set(select(s for s in Student if s.name[0:] == "Jon"))
-        self.assertEqual(result, set([Student[1]]))
+        self.assertEqual(result, {Student[1]})
 
     def test_slice_7(self):
         result = set(select(s for s in Student if s.name[:] == "Jon"))
-        self.assertEqual(result, set([Student[1]]))
+        self.assertEqual(result, {Student[1]})
 
     def test_slice_8(self):
         result = set(select(s for s in Student if s.name[1:] == "on"))
-        self.assertEqual(result, set([Student[1]]))
+        self.assertEqual(result, {Student[1]})
 
     def test_slice_9(self):
         x = 1
         result = set(select(s for s in Student if s.name[x:] == "on"))
-        self.assertEqual(result, set([Student[1]]))
+        self.assertEqual(result, {Student[1]})
 
     def test_slice_10(self):
         x = 0
         result = set(select(s for s in Student if s.name[x:3] == "Jon"))
-        self.assertEqual(result, set([Student[1], Student[4]]))
+        self.assertEqual(result, {Student[1], Student[4]})
 
     def test_slice_11(self):
         x = 1
         y = 3
         result = set(select(s for s in Student if s.name[x:y] == "on"))
-        self.assertEqual(result, set([Student[1], Student[4]]))
+        self.assertEqual(result, {Student[1], Student[4]})
 
     def test_slice_12(self):
         x = 10
         y = 20
         result = set(select(s for s in Student if s.name[x:y] == ''))
-        self.assertEqual(result, set([Student[1], Student[2], Student[3], Student[4], Student[5]]))
+        self.assertEqual(result, {Student[1], Student[2], Student[3], Student[4], Student[5]})
 
     def test_getitem_1(self):
         result = set(select(s for s in Student if s.name[1] == 'o'))
-        self.assertEqual(result, set([Student[1], Student[4]]))
+        self.assertEqual(result, {Student[1], Student[4]})
 
     def test_getitem_2(self):
         x = 1
         result = set(select(s for s in Student if s.name[x] == 'o'))
-        self.assertEqual(result, set([Student[1], Student[4]]))
+        self.assertEqual(result, {Student[1], Student[4]})
 
     def test_getitem_3(self):
         result = set(select(s for s in Student if s.name[-1] == 'n'))
-        self.assertEqual(result, set([Student[1], Student[4]]))
+        self.assertEqual(result, {Student[1], Student[4]})
 
     def test_getitem_4(self):
         x = -1
         result = set(select(s for s in Student if s.name[x] == 'n'))
-        self.assertEqual(result, set([Student[1], Student[4]]))
+        self.assertEqual(result, {Student[1], Student[4]})
 
     def test_contains_1(self):
         result = set(select(s for s in Student if 'o' in s.name))
-        self.assertEqual(result, set([Student[1], Student[2], Student[4]]))
+        self.assertEqual(result, {Student[1], Student[2], Student[4]})
 
     def test_contains_2(self):
         result = set(select(s for s in Student if 'on' in s.name))
-        self.assertEqual(result, set([Student[1], Student[4]]))
+        self.assertEqual(result, {Student[1], Student[4]})
 
     def test_contains_3(self):
         x = 'on'
         result = set(select(s for s in Student if x in s.name))
-        self.assertEqual(result, set([Student[1], Student[4]]))
+        self.assertEqual(result, {Student[1], Student[4]})
 
     def test_contains_4(self):
         x = 'on'
         result = set(select(s for s in Student if x not in s.name))
-        self.assertEqual(result, set([Student[2], Student[3], Student[5]]))
+        self.assertEqual(result, {Student[2], Student[3], Student[5]})
 
     def test_contains_5(self):
         result = set(select(s for s in Student if '%' in s.foo))
-        self.assertEqual(result, set([Student[2]]))
+        self.assertEqual(result, {Student[2]})
 
     def test_contains_6(self):
         x = '%'
         result = set(select(s for s in Student if x in s.foo))
-        self.assertEqual(result, set([Student[2]]))
+        self.assertEqual(result, {Student[2]})
 
     def test_contains_7(self):
         result = set(select(s for s in Student if '_' in s.foo))
-        self.assertEqual(result, set([Student[3]]))
+        self.assertEqual(result, {Student[3]})
 
     def test_contains_8(self):
         x = '_'
         result = set(select(s for s in Student if x in s.foo))
-        self.assertEqual(result, set([Student[3]]))
+        self.assertEqual(result, {Student[3]})
 
     def test_contains_9(self):
         result = set(select(s for s in Student if s.foo in 'Abcdef'))
-        self.assertEqual(result, set([Student[1], Student[4], Student[5]]))
+        self.assertEqual(result, {Student[1], Student[4], Student[5]})
 
     def test_contains_10(self):
         result = set(select(s for s in Student if s.bar in s.foo))
-        self.assertEqual(result, set([Student[2], Student[4], Student[5]]))
+        self.assertEqual(result, {Student[2], Student[4], Student[5]})
 
     def test_startswith_1(self):
         students = set(select(s for s in Student if s.name.startswith('J')))
-        self.assertEqual(students, set([Student[1], Student[4]]))
+        self.assertEqual(students, {Student[1], Student[4]})
 
     def test_startswith_2(self):
         students = set(select(s for s in Student if not s.name.startswith('J')))
-        self.assertEqual(students, set([Student[2], Student[3], Student[5]]))
+        self.assertEqual(students, {Student[2], Student[3], Student[5]})
 
     def test_startswith_3(self):
         students = set(select(s for s in Student if not not s.name.startswith('J')))
-        self.assertEqual(students, set([Student[1], Student[4]]))
+        self.assertEqual(students, {Student[1], Student[4]})
 
     def test_startswith_4(self):
         students = set(select(s for s in Student if not not not s.name.startswith('J')))
-        self.assertEqual(students, set([Student[2], Student[3], Student[5]]))
+        self.assertEqual(students, {Student[2], Student[3], Student[5]})
 
     def test_startswith_5(self):
         x = "Pe"
@@ -180,7 +180,7 @@ class TestStringMethods(unittest.TestCase):
 
     def test_endswith_1(self):
         students = set(select(s for s in Student if s.name.endswith('n')))
-        self.assertEqual(students, set([Student[1], Student[4]]))
+        self.assertEqual(students, {Student[1], Student[4]})
 
     def test_endswith_2(self):
         x = "te"

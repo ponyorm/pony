@@ -1337,7 +1337,7 @@ def get_user_groups(user):
     result = local.user_groups_cache.get(user)
     if result is not None: return result
     if user is None: return anybody_frozenset
-    result = set(['anybody'])
+    result = {'anybody'}
     for cls, func in usergroup_functions:
         if cls is None or isinstance(user, cls):
             groups = func(user)
@@ -4113,10 +4113,10 @@ def populate_criteria_list(criteria_list, columns, converters, operations,
         params_count += 1
     return params_count
 
-statuses = set(['created', 'cancelled', 'loaded', 'modified', 'inserted', 'updated', 'marked_to_delete', 'deleted'])
-del_statuses = set(['marked_to_delete', 'deleted', 'cancelled'])
-created_or_deleted_statuses = set(['created']) | del_statuses
-saved_statuses = set(['inserted', 'updated', 'deleted'])
+statuses = {'created', 'cancelled', 'loaded', 'modified', 'inserted', 'updated', 'marked_to_delete', 'deleted'}
+del_statuses = {'marked_to_delete', 'deleted', 'cancelled'}
+created_or_deleted_statuses = {'created'} | del_statuses
+saved_statuses = {'inserted', 'updated', 'deleted'}
 
 def throw_object_was_deleted(obj):
     assert obj._status_ in del_statuses
@@ -5613,5 +5613,5 @@ def show(entity):
         from pprint import pprint
         pprint(x)
 
-special_functions = set([ itertools.count, utils.count, count, random, raw_sql, getattr ])
-const_functions = set([ buffer, Decimal, datetime.datetime, datetime.date, datetime.time, datetime.timedelta ])
+special_functions = {itertools.count, utils.count, count, random, raw_sql, getattr}
+const_functions = {buffer, Decimal, datetime.datetime, datetime.date, datetime.time, datetime.timedelta}

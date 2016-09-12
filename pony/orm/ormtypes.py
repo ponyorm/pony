@@ -122,10 +122,10 @@ class RawSQLType(object):
     def __ne__(self, other):
         return not self.__eq__(other)
 
-numeric_types = set([ bool, int, float, Decimal ])
-comparable_types = set([ int, float, Decimal, unicode, date, time, datetime, timedelta, bool, UUID ])
-primitive_types = comparable_types | set([ buffer ])
-function_types = set([type, types.FunctionType, types.BuiltinFunctionType])
+numeric_types = {bool, int, float, Decimal}
+comparable_types = {int, float, Decimal, unicode, date, time, datetime, timedelta, bool, UUID}
+primitive_types = comparable_types | {buffer}
+function_types = {type, types.FunctionType, types.BuiltinFunctionType}
 type_normalization_dict = { long : int } if PY2 else {}
 
 def get_normalized_type_of(value):
