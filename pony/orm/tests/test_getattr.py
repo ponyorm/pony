@@ -72,9 +72,9 @@ class Test(unittest.TestCase):
         self.assertTrue(val)
     
     @db_session
+    @raises_exception(TypeError, '`x.name` should be either external expression or constant.')
     def test_not_external(self):
-        with self.assertRaisesRegexp(TypeError, 'should be either external expression or constant'):
-            select(getattr(x, x.name) for x in self.db.Artist)
+        select(getattr(x, x.name) for x in self.db.Artist)
 
     @raises_exception(TypeError, 'getattr(x, 1): attribute name must be string. Got: 1')
     @db_session
