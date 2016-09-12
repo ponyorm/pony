@@ -984,7 +984,7 @@ class Database(object):
         return result
     def _get_schema_json(database):
         schema_json = json.dumps(database._get_schema_dict(), default=basic_converter, sort_keys=True)
-        schema_hash = md5(schema_json).hexdigest()
+        schema_hash = md5(schema_json.encode('utf-8')).hexdigest()
         return schema_json, schema_hash
     @cut_traceback
     def to_json(database, data, include=(), exclude=(), converter=None, with_schema=True, schema_hash=None):
