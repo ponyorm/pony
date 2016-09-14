@@ -869,6 +869,16 @@ class Subquery(object):
         alias = '%s-%d' % (name, i)
         subquery.alias_counters[name] = i
         return alias
+    def join_table(subquery, parent_alias, alias, table_name, join_cond):
+        new_item = [alias, 'TABLE', table_name, join_cond]
+        from_ast = subquery.from_ast
+        for i in xrange(1, len(from_ast)):
+            if from_ast[i][0] == parent_alias:
+                for j in xrange(i+1, len(from_ast)):
+                    if len(from_ast[j]) < 4:  # item without join condition
+                        from_ast.insert(j, new_item)
+                        return
+        from_ast.append(new_item)
 
 class TableRef(object):
     def __init__(tableref, subquery, name, entity):
@@ -945,7 +955,7 @@ class JoinedTableRef(object):
                 m2m_alias = subquery.get_short_alias(None, 't')
                 reverse_columns = attr.columns if attr.symmetric else attr.reverse.columns
                 m2m_join_cond = join_tables(parent_alias, m2m_alias, left_pk_columns, reverse_columns)
-                subquery.from_ast.append([ m2m_alias, 'TABLE', m2m_table, m2m_join_cond ])
+                subquery.join_table(parent_alias, m2m_alias, m2m_table, m2m_join_cond)
                 if pk_only:
                     tableref.alias = m2m_alias
                     tableref.pk_columns = right_m2m_columns
@@ -961,7 +971,7 @@ class JoinedTableRef(object):
             discr_criteria = entity._construct_discriminator_criteria_(alias)
             assert discr_criteria is not None
             join_cond.append(discr_criteria)
-        subquery.from_ast.append([ alias, 'TABLE', entity._table_, join_cond ])
+        subquery.join_table(parent_alias, alias, entity._table_, join_cond)
         tableref.alias = alias
         tableref.pk_columns = pk_columns
         tableref.optimized = False

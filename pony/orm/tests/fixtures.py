@@ -209,7 +209,7 @@ class SqliteNoJson1(SqliteMixin):
 
     def __exit__(self, *exc_info):
         self.Test.db.provider.json1_available = self.json1_available
-        return super(SqliteNoJson1, self).__exit__()
+        return super(SqliteNoJson1, self).__exit__(*exc_info)
 
 
 @provider()
