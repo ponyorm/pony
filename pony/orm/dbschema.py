@@ -141,9 +141,9 @@ class Table(DBObject):
         indexes.sort(key=attrgetter('name'))
         for index in indexes: cmd.append(schema.indent+index.get_sql() + ',')
         if not schema.named_foreign_keys:
-            for foreign_key in sorted(itervalues(table.foreign_keys), key=lambda fk: fk.name):
-                if schema.inline_fk_syntax and len(foreign_key.child_columns) == 1: continue
-                cmd.append(schema.indent+foreign_key.get_sql() + ',')
+            for fk in sorted(itervalues(table.foreign_keys), key=lambda fk: fk.name):
+                if schema.inline_fk_syntax and len(fk.child_columns) == 1: continue
+                cmd.append(schema.indent + fk.get_sql() + ',')
         cmd[-1] = cmd[-1][:-1]
         cmd.append(')')
         for name, value in sorted(table.options.items()):
@@ -166,14 +166,14 @@ class Table(DBObject):
         result.extend(indexes)
         schema = table.schema
         if schema.named_foreign_keys:
-            for foreign_key in sorted(itervalues(table.foreign_keys), key=lambda fk: fk.name):
-                if foreign_key.parent_table not in created_tables: continue
-                result.append(foreign_key)
+            for fk in sorted(itervalues(table.foreign_keys), key=lambda fk: fk.name):
+                if fk.parent_table not in created_tables: continue
+                result.append(fk)
             for child_table in table.child_tables:
                 if child_table not in created_tables: continue
-                for foreign_key in sorted(itervalues(child_table.foreign_keys), key=lambda fk: fk.name):
-                    if foreign_key.parent_table is not table: continue
-                    result.append(foreign_key)
+                for fk in sorted(itervalues(child_table.foreign_keys), key=lambda fk: fk.name):
+                    if fk.parent_table is not table: continue
+                    result.append(fk)
         return result
     def add_column(table, column_name, sql_type, converter, is_not_null=None, sql_default=None):
         return table.schema.column_class(column_name, table, sql_type, converter, is_not_null, sql_default)
@@ -235,12 +235,12 @@ class Column(object):
             append(case('DEFAULT'))
             append(column.sql_default)
         if schema.inline_fk_syntax and not schema.named_foreign_keys:
-            foreign_key = table.foreign_keys.get((column,))
-            if foreign_key is not None:
-                parent_table = foreign_key.parent_table
+            fk = table.foreign_keys.get((column,))
+            if fk is not None:
+                parent_table = fk.parent_table
                 append(case('REFERENCES'))
                 append(quote_name(parent_table.name))
-                append(schema.column_list(foreign_key.parent_columns))
+                append(schema.column_list(fk.parent_columns))
         return ' '.join(result)
 
 class Constraint(DBObject):
@@ -321,7 +321,7 @@ class DBIndex(Constraint):
 
 class ForeignKey(Constraint):
     typename = 'Foreign key'
-    def __init__(foreign_key, name, child_table, child_columns, parent_table, parent_columns, index_name):
+    def __init__(fk, name, child_table, child_columns, parent_table, parent_columns, index_name):
         schema = parent_table.schema
         if schema is not child_table.schema: throw(DBSchemaError,
             'Parent and child tables of foreign_key cannot belong to different schemata')
@@ -338,15 +338,15 @@ class ForeignKey(Constraint):
             else: throw(DBSchemaError, 'Foreign key for columns (%s) already defined' % ', '.join(repr(column.name) for column in child_columns))
         if name is not None and name in schema.names:
             throw(DBSchemaError, 'Foreign key %s cannot be created, name is already in use' % name)
-        Constraint.__init__(foreign_key, name, schema)
-        child_table.foreign_keys[child_columns] = foreign_key
+        Constraint.__init__(fk, name, schema)
+        child_table.foreign_keys[child_columns] = fk
         if child_table is not parent_table:
             child_table.parent_tables.add(parent_table)
             parent_table.child_tables.add(child_table)
-        foreign_key.parent_table = parent_table
-        foreign_key.parent_columns = parent_columns
-        foreign_key.child_table = child_table
-        foreign_key.child_columns = child_columns
+        fk.parent_table = parent_table
+        fk.parent_columns = parent_columns
+        fk.child_table = child_table
+        fk.child_columns = child_columns
 
         if index_name is not False:
             child_columns_len = len(child_columns)
@@ -354,30 +354,30 @@ class ForeignKey(Constraint):
                 if columns[:child_columns_len] == child_columns: break
             else: child_table.add_index(index_name, child_columns, is_pk=False,
                                         is_unique=False, m2m=bool(child_table.m2m))
-    def exists(foreign_key, provider, connection, case_sensitive=True):
-        return provider.fk_exists(connection, foreign_key.child_table.name, foreign_key.name, case_sensitive)
-    def get_sql(foreign_key):
-        return foreign_key._get_create_sql(inside_table=True)
-    def get_create_command(foreign_key):
-        return foreign_key._get_create_sql(inside_table=False)
-    def _get_create_sql(foreign_key, inside_table):
-        schema = foreign_key.schema
+    def exists(fk, provider, connection, case_sensitive=True):
+        return provider.fk_exists(connection, fk.child_table.name, fk.name, case_sensitive)
+    def get_sql(fk):
+        return fk._get_create_sql(inside_table=True)
+    def get_create_command(fk):
+        return fk._get_create_sql(inside_table=False)
+    def _get_create_sql(fk, inside_table):
+        schema = fk.schema
         case = schema.case
         quote_name = schema.provider.quote_name
         cmd = []
         append = cmd.append
         if not inside_table:
             append(case('ALTER TABLE'))
-            append(quote_name(foreign_key.child_table.name))
+            append(quote_name(fk.child_table.name))
             append(case('ADD'))
-        if schema.named_foreign_keys and foreign_key.name:
+        if schema.named_foreign_keys and fk.name:
             append(case('CONSTRAINT'))
-            append(quote_name(foreign_key.name))
+            append(quote_name(fk.name))
         append(case('FOREIGN KEY'))
-        append(schema.column_list(foreign_key.child_columns))
+        append(schema.column_list(fk.child_columns))
         append(case('REFERENCES'))
-        append(quote_name(foreign_key.parent_table.name))
-        append(schema.column_list(foreign_key.parent_columns))
+        append(quote_name(fk.parent_table.name))
+        append(schema.column_list(fk.parent_columns))
         return ' '.join(cmd)
 
 DBSchema.table_class = Table

@@ -25,7 +25,7 @@ class SqliteExtensionUnavailable(Exception):
 NoneType = type(None)
 
 class SQLiteForeignKey(dbschema.ForeignKey):
-    def get_create_command(foreign_key):
+    def get_create_command(fk):
         assert False  # pragma: no cover
 
 class SQLiteSchema(dbschema.DBSchema):
