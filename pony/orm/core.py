@@ -866,16 +866,7 @@ class Database(object):
 
                     attr._add_m2m_table_with_columns_(schema)
                 else:
-                    if attr.is_required: pass
-                    elif not attr.is_string:
-                        if attr.nullable is False:
-                            throw(TypeError, 'Optional attribute with non-string type %s must be nullable' % attr)
-                        attr.nullable = True
-                    elif entity._database_.provider.dialect == 'Oracle':
-                        if attr.nullable is False: throw(ERDiagramError,
-                            'In Oracle, optional string attribute %s must be nullable' % attr)
-                        attr.nullable = True
-
+                    attr._set_nullable_()
                     attr._add_columns_(table)
             entity._attrs_with_columns_ = [ attr for attr in entity._attrs_
                                                  if not attr.is_collection and attr.columns ]
@@ -2222,6 +2213,16 @@ class Attribute(object):
         rentity = reverse.entity
         if val is None: return rentity._pk_nones_
         return val._get_raw_pkval_()
+    def _set_nullable_(attr):
+        if attr.is_collection or attr.is_required: pass
+        elif not attr.is_string:
+            if attr.nullable is False: throw(TypeError,
+                'Optional attribute with non-string type %s must be nullable' % attr)
+            attr.nullable = True
+        elif attr.entity._database_.provider.dialect == 'Oracle':
+            if attr.nullable is False: throw(ERDiagramError,
+                'In Oracle, optional string attribute %s must be nullable' % attr)
+            attr.nullable = True
     def get_columns(attr):
         assert not attr.is_collection
         assert not isinstance(attr.py_type, basestring)
