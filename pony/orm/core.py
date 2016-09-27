@@ -877,6 +877,7 @@ class Database(object):
                 for attr in attrs: column_names.extend(attr.columns)
                 index_name = attrs[0].index if len(attrs) == 1 else None
                 table.add_index(tuple(column_names), is_unique=index.is_unique, index_name=index_name)
+            entity._init_bits_()
         for entity in entities:
             table = schema.tables[entity._table_]
             for attr in entity._new_attrs_:
@@ -898,7 +899,6 @@ class Database(object):
                                           child_col_names=attr.columns, index_name=attr.index)
                 elif attr.index and attr.columns:
                     table.add_index(attr.columns, is_unique=attr.is_unique, index_name=attr.index)
-            entity._init_bits_()
 
         if create_tables: database.create_tables(check_tables)
         elif check_tables: database.check_tables()
