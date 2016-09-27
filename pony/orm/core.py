@@ -924,21 +924,7 @@ class Database(object):
                             'In Oracle, optional string attribute %s must be nullable' % attr)
                         attr.nullable = True
 
-                    columns = attr.get_columns()  # initializes attr.converters
-                    if not attr.reverse and attr.default is not None:
-                        assert len(attr.converters) == 1
-                        if not callable(attr.default): attr.default = attr.validate(attr.default)
-                    assert len(columns) == len(attr.converters)
-                    if len(columns) == 1:
-                        converter = attr.converters[0]
-                        table.add_column(columns[0], converter.get_sql_type(attr),
-                                         converter, not attr.nullable, attr.sql_default)
-                    elif columns:
-                        if attr.sql_type is not None: throw(NotImplementedError,
-                            'sql_type cannot be specified for composite attribute %s' % attr)
-                        for (column_name, converter) in izip(columns, attr.converters):
-                            table.add_column(column_name, converter.get_sql_type(), converter, not attr.nullable)
-                    else: pass  # virtual attribute of one-to-one pair
+                    attr._add_columns_(table)
             entity._attrs_with_columns_ = [ attr for attr in entity._attrs_
                                                  if not attr.is_collection and attr.columns ]
             if not table.pk_index:
@@ -2324,6 +2310,22 @@ class Attribute(object):
         if len(attr.columns) == 1: attr.column = attr.columns[0]
         else: attr.column = None
         return attr.columns
+    def _add_columns_(attr, table):
+        columns = attr.get_columns()  # initializes attr.converters
+        if not attr.reverse and attr.default is not None:
+            assert len(attr.converters) == 1
+            if not callable(attr.default): attr.default = attr.validate(attr.default)
+        assert len(columns) == len(attr.converters)
+        if len(columns) == 1:
+            converter = attr.converters[0]
+            table.add_column(columns[0], converter.get_sql_type(attr),
+                             converter, not attr.nullable, attr.sql_default)
+        elif columns:
+            if attr.sql_type is not None:
+                throw(NotImplementedError, 'sql_type cannot be specified for composite attribute %s' % attr)
+            for (column_name, converter) in izip(columns, attr.converters):
+                table.add_column(column_name, converter.get_sql_type(), converter, not attr.nullable)
+        else: pass  # virtual attribute of one-to-one pair
     @property
     def asc(attr):
         return attr
