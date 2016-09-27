@@ -292,13 +292,13 @@ class SQLiteProvider(DBAPIProvider):
             db_session = cache.db_session
             if db_session is not None and db_session.ddl:
                 cursor.execute('PRAGMA foreign_keys')
-                fk = cursor.fetchone()
-                if fk is not None: fk = fk[0]
-                if fk:
+                row = cursor.fetchone()
+                val = row and row[0]
+                if val:
                     sql = 'PRAGMA foreign_keys = false'
                     if core.local.debug: log_orm(sql)
                     cursor.execute(sql)
-                cache.saved_fk_state = bool(fk)
+                cache.saved_fk_state = bool(val)
                 assert cache.immediate
 
             if cache.immediate:

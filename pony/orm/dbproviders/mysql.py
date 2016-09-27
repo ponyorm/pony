@@ -257,13 +257,13 @@ class MySQLProvider(DBAPIProvider):
         if db_session is not None and db_session.ddl:
             cursor = connection.cursor()
             cursor.execute("SHOW VARIABLES LIKE 'foreign_key_checks'")
-            fk = cursor.fetchone()
-            if fk is not None: fk = (fk[1] == 'ON')
-            if fk:
+            row = cursor.fetchone()
+            val = row is not None and row[1] == 'ON'
+            if val:
                 sql = 'SET foreign_key_checks = 0'
                 if core.local.debug: log_orm(sql)
                 cursor.execute(sql)
-            cache.saved_fk_state = bool(fk)
+            cache.saved_fk_state = bool(val)
             cache.in_transaction = True
         cache.immediate = True
         if db_session is not None and db_session.serializable:
