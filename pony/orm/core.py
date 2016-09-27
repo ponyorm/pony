@@ -847,22 +847,7 @@ class Database(object):
             return tuple(column_dict[name] for name in column_names)
 
         for entity in entities:
-            entity._get_pk_columns_()
-            table_name = entity._table_
-
-            is_subclass = entity._root_ is not entity
-            if is_subclass:
-                if table_name is not None: throw(NotImplementedError)
-                table_name = entity._root_._table_
-                entity._table_ = table_name
-            elif table_name is None:
-                table_name = provider.get_default_entity_table_name(entity)
-                entity._table_ = table_name
-            else: assert isinstance(table_name, (basestring, tuple))
-
-            table = schema.tables.get(table_name)
-            if table is None: table = schema.add_table(table_name, entity)
-            else: table.add_entity(entity)
+            table = entity._add_table_(schema)
 
             for attr in entity._new_attrs_:
                 if attr.is_collection:
@@ -3692,6 +3677,24 @@ class EntityMeta(type):
         entity._pk_nones_ = (None,) * len(pk_columns)
         entity._pk_paths_ = pk_paths
         return pk_columns
+    def _add_table_(entity, schema):
+        entity._get_pk_columns_()
+        table_name = entity._table_
+
+        is_subclass = entity._root_ is not entity
+        if is_subclass:
+            if table_name is not None: throw(NotImplementedError)
+            table_name = entity._root_._table_
+            entity._table_ = table_name
+        elif table_name is None:
+            table_name = schema.provider.get_default_entity_table_name(entity)
+            entity._table_ = table_name
+        else: assert isinstance(table_name, (basestring, tuple))
+
+        table = schema.tables.get(table_name)
+        if table is None: table = schema.add_table(table_name, entity)
+        else: table.add_entity(entity)
+        return table
     def __iter__(entity):
         return EntityIter(entity)
     @cut_traceback
