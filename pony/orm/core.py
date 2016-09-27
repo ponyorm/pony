@@ -881,20 +881,6 @@ class Database(object):
                 for attr in attrs: column_names.extend(attr.columns)
                 index_name = attrs[0].index if len(attrs) == 1 else None
                 table.add_index(index_name, get_columns(table, column_names), is_unique=index.is_unique)
-            columns = []
-            columns_without_pk = []
-            converters = []
-            converters_without_pk = []
-            for attr in entity._attrs_with_columns_:
-                columns.extend(attr.columns)  # todo: inheritance
-                converters.extend(attr.converters)
-                if not attr.is_pk:
-                    columns_without_pk.extend(attr.columns)
-                    converters_without_pk.extend(attr.converters)
-            entity._columns_ = columns
-            entity._columns_without_pk_ = columns_without_pk
-            entity._converters_ = converters
-            entity._converters_without_pk_ = converters_without_pk
         for entity in entities:
             table = schema.tables[entity._table_]
             for attr in entity._new_attrs_:
