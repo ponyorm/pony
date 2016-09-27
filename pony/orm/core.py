@@ -864,40 +864,7 @@ class Database(object):
                     if attr.entity.__name__ > reverse.entity.__name__: continue
                     if attr.entity is reverse.entity and attr.name > reverse.name: continue
 
-                    if attr.table:
-                        if not reverse.table: reverse.table = attr.table
-                        elif reverse.table != attr.table:
-                            throw(MappingError, "Parameter 'table' for %s and %s do not match" % (attr, reverse))
-                        table_name = attr.table
-                    elif reverse.table: table_name = attr.table = reverse.table
-                    else:
-                        table_name = provider.get_default_m2m_table_name(attr, reverse)
-
-                    m2m_table = schema.tables.get(table_name)
-                    if m2m_table is not None:
-                        if not attr.table:
-                            seq_counter = itertools.count(2)
-                            while m2m_table is not None:
-                                new_table_name = table_name + '_%d' % next(seq_counter)
-                                m2m_table = schema.tables.get(new_table_name)
-                            table_name = new_table_name
-                        elif m2m_table.entities or m2m_table.m2m:
-                            if isinstance(table_name, tuple): table_name = '.'.join(table_name)
-                            throw(MappingError, "Table name '%s' is already in use" % table_name)
-                        else: throw(NotImplementedError)
-                    attr.table = reverse.table = table_name
-                    m2m_table = schema.add_table(table_name)
-                    m2m_columns_1 = attr.get_m2m_columns(is_reverse=False)
-                    m2m_columns_2 = reverse.get_m2m_columns(is_reverse=True)
-                    if m2m_columns_1 == m2m_columns_2: throw(MappingError,
-                        'Different column names should be specified for attributes %s and %s' % (attr, reverse))
-                    assert len(m2m_columns_1) == len(reverse.converters)
-                    assert len(m2m_columns_2) == len(attr.converters)
-                    for column_name, converter in izip(m2m_columns_1 + m2m_columns_2, reverse.converters + attr.converters):
-                        m2m_table.add_column(column_name, converter.get_sql_type(), converter, True)
-                    m2m_table.add_index(None, tuple(m2m_table.column_list), is_pk=True)
-                    m2m_table.m2m.add(attr)
-                    m2m_table.m2m.add(reverse)
+                    attr._add_m2m_table_with_columns_(schema)
                 else:
                     if attr.is_required: pass
                     elif not attr.is_string:
@@ -2542,6 +2509,8 @@ class Collection(Attribute):
             "'reverse_column' and 'reverse_columns' options can be set for symmetric relations only")
         if attr.py_check is not None:
             throw(NotImplementedError, "'py_check' parameter is not supported for collection attributes")
+    def _add_m2m_table_with_columns_(attr, schema):
+        assert False, 'Abstract method'  # pragma: no cover
     def load(attr, obj):
         assert False, 'Abstract method'  # pragma: no cover
     def __get__(attr, obj, cls=None):
@@ -2936,6 +2905,42 @@ class Set(Collection):
         reverse.converters = entity._pk_converters_
         attr._columns_checked = True
         return reverse.columns
+    def _add_m2m_table_with_columns_(attr, schema):
+        reverse = attr.reverse
+        if attr.table:
+            if not reverse.table: reverse.table = attr.table
+            elif reverse.table != attr.table: throw(MappingError,
+                "Parameter 'table' for %s and %s do not match" % (attr, reverse))
+            table_name = attr.table
+        elif reverse.table: table_name = attr.table = reverse.table
+        else: table_name = schema.provider.get_default_m2m_table_name(attr, reverse)
+
+        m2m_table = schema.tables.get(table_name)
+        if m2m_table is not None:
+            if not attr.table:
+                seq_counter = itertools.count(2)
+                while m2m_table is not None:
+                    new_table_name = table_name + '_%d' % next(seq_counter)
+                    m2m_table = schema.tables.get(new_table_name)
+                table_name = new_table_name
+            elif m2m_table.entities or m2m_table.m2m:
+                if isinstance(table_name, tuple): table_name = '.'.join(table_name)
+                throw(MappingError, "Table name '%s' is already in use" % table_name)
+            else: throw(NotImplementedError)
+        attr.table = reverse.table = table_name
+        m2m_table = schema.add_table(table_name)
+
+        m2m_columns_1 = attr.get_m2m_columns(is_reverse=False)
+        m2m_columns_2 = reverse.get_m2m_columns(is_reverse=True)
+        if m2m_columns_1 == m2m_columns_2: throw(MappingError,
+            'Different column names should be specified for attributes %s and %s' % (attr, reverse))
+        assert len(m2m_columns_1) == len(reverse.converters)
+        assert len(m2m_columns_2) == len(attr.converters)
+        for column_name, converter in izip(m2m_columns_1 + m2m_columns_2, reverse.converters + attr.converters):
+            m2m_table.add_column(column_name, converter.get_sql_type(), converter, True)
+        m2m_table.add_index(None, tuple(m2m_table.column_list), is_pk=True)
+        m2m_table.m2m.add(attr)
+        m2m_table.m2m.add(reverse)
     def remove_m2m(attr, removed):
         assert removed
         entity = attr.entity
