@@ -869,7 +869,7 @@ class Database(object):
                     attr._set_nullable_()
                     attr._add_columns_(table)
             entity._attrs_with_columns_ = [ attr for attr in entity._attrs_
-                                                 if not attr.is_collection and attr.columns ]
+                                            if attr.columns and not attr.is_collection ]
             if not table.pk_index:
                 if len(entity._pk_columns_) == 1 and entity._pk_attrs_[0].auto: is_pk = "auto"
                 else: is_pk = True
