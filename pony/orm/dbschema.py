@@ -1,5 +1,5 @@
 from __future__ import absolute_import, print_function, division
-from pony.py23compat import itervalues, basestring
+from pony.py23compat import itervalues, basestring, imap
 
 from operator import attrgetter
 
@@ -19,9 +19,9 @@ class DBSchema(object):
         schema.command_separator = ';\n\n'
         schema.uppercase = uppercase
         schema.names = {}
-    def column_list(schema, columns):
+    def names_row(schema, col_names):
         quote_name = schema.provider.quote_name
-        return '(%s)' % ', '.join(quote_name(column.name) for column in columns)
+        return '(%s)' % ', '.join(imap(quote_name, col_names))
     def case(schema, s):
         if schema.uppercase: return s.upper().replace('%S', '%s') \
             .replace(')S', ')s').replace('%R', '%r').replace(')R', ')r')
@@ -133,16 +133,16 @@ class Table(DBObject):
         else: cmd.append(case('CREATE TABLE IF NOT EXISTS %s (') % quote_name(table.name))
         for column in table.column_list:
             cmd.append(schema.indent + column.get_sql() + ',')
-        if len(table.pk_index.columns) > 1:
+        if len(table.pk_index.col_names) > 1:
             cmd.append(schema.indent + table.pk_index.get_sql() + ',')
         indexes = [ index for index in itervalues(table.indexes)
-                    if not index.is_pk and index.is_unique and len(index.columns) > 1 ]
+                    if not index.is_pk and index.is_unique and len(index.col_names) > 1 ]
         for index in indexes: assert index.name is not None
         indexes.sort(key=attrgetter('name'))
         for index in indexes: cmd.append(schema.indent+index.get_sql() + ',')
         if not schema.named_foreign_keys:
             for fk in sorted(itervalues(table.foreign_keys), key=lambda fk: fk.name):
-                if schema.inline_fk_syntax and len(fk.child_columns) == 1: continue
+                if schema.inline_fk_syntax and len(fk.child_col_names) == 1: continue
                 cmd.append(schema.indent + fk.get_sql() + ',')
         cmd[-1] = cmd[-1][:-1]
         cmd.append(')')
@@ -177,23 +177,25 @@ class Table(DBObject):
         return result
     def add_column(table, column_name, sql_type, converter, is_not_null=None, sql_default=None):
         return table.schema.column_class(column_name, table, sql_type, converter, is_not_null, sql_default)
-    def add_index(table, index_name, columns, is_pk=False, is_unique=None, m2m=False):
+    def add_index(table, col_names, is_pk=False, is_unique=None, m2m=False, index_name=None):
+        assert type(col_names) is tuple
         assert index_name is not False
         if index_name is True: index_name = None
         if index_name is None and not is_pk:
             provider = table.schema.provider
-            index_name = provider.get_default_index_name(table.name, (column.name for column in columns),
-                                                         is_pk=is_pk, is_unique=is_unique, m2m=m2m)
-        index = table.indexes.get(columns)
+            index_name = provider.get_default_index_name(
+                table.name, col_names, is_pk=is_pk, is_unique=is_unique, m2m=m2m)
+        index = table.indexes.get(col_names)
         if index and index.name == index_name and index.is_pk == is_pk and index.is_unique == is_unique:
             return index
-        return table.schema.index_class(index_name, table, columns, is_pk, is_unique)
-    def add_foreign_key(table, fk_name, parent_table, parent_columns, child_columns, index_name=None):
+        return table.schema.index_class(index_name, table, col_names, is_pk, is_unique)
+    def add_foreign_key(table, fk_name, parent_table, parent_col_names, child_col_names, index_name=None):
+        assert type(parent_col_names) is tuple
+        assert type(child_col_names) is tuple
         if fk_name is None:
             provider = table.schema.provider
-            child_column_names = tuple(column.name for column in child_columns)
-            fk_name = provider.get_default_fk_name(table.name, parent_table.name, child_column_names)
-        return table.schema.fk_class(fk_name, parent_table, parent_columns, table, child_columns, index_name)
+            fk_name = provider.get_default_fk_name(table.name, parent_table.name, child_col_names)
+        return table.schema.fk_class(fk_name, parent_table, parent_col_names, table, child_col_names, index_name)
 
 class Column(object):
     auto_template = '%(type)s PRIMARY KEY AUTOINCREMENT'
@@ -235,12 +237,12 @@ class Column(object):
             append(case('DEFAULT'))
             append(column.sql_default)
         if schema.inline_fk_syntax and not schema.named_foreign_keys:
-            fk = table.foreign_keys.get((column,))
+            fk = table.foreign_keys.get((column.name,))
             if fk is not None:
                 parent_table = fk.parent_table
                 append(case('REFERENCES'))
                 append(quote_name(parent_table.name))
-                append(schema.column_list(fk.parent_columns))
+                append(schema.names_row(fk.parent_col_names))
         return ' '.join(result)
 
 class Constraint(DBObject):
@@ -256,14 +258,17 @@ class Constraint(DBObject):
 
 class DBIndex(Constraint):
     typename = 'Index'
-    def __init__(index, name, table, columns, is_pk=False, is_unique=None):
-        assert len(columns) > 0
-        for column in columns:
-            if column.table is not table: throw(DBSchemaError,
+    def __init__(index, name, table, col_names, is_pk=False, is_unique=None):
+        assert len(col_names) > 0
+        columns = []
+        for col_name in col_names:
+            column = table.column_dict.get(col_name)
+            if column is None: throw(DBSchemaError,
                 "Column %r does not belong to table %r and cannot be part of its index"
-                % (column.name, table.name))
-        if columns in table.indexes:
-            if len(columns) == 1: throw(DBSchemaError, "Index for column %r already exists" % columns[0].name)
+                % (col_name, table.name))
+            columns.append(column)
+        if col_names in table.indexes:
+            if len(col_names) == 1: throw(DBSchemaError, "Index for column %r already exists" % col_names[0])
             else: throw(DBSchemaError, "Index for columns (%s) already exists" % ', '.join(repr(column.name) for column in columns))
         if is_pk:
             if table.pk_index is not None: throw(DBSchemaError,
@@ -278,12 +283,12 @@ class DBIndex(Constraint):
             throw(DBSchemaError, 'Index %s cannot be created, name is already in use' % name)
         Constraint.__init__(index, name, schema)
         for column in columns:
-            column.is_pk = column.is_pk or (len(columns) == 1 and is_pk)
+            column.is_pk = column.is_pk or (len(col_names) == 1 and is_pk)
             column.is_pk_part = column.is_pk_part or bool(is_pk)
-            column.is_unique = column.is_unique or (is_unique and len(columns) == 1)
-        table.indexes[columns] = index
+            column.is_unique = column.is_unique or (is_unique and len(col_names) == 1)
+        table.indexes[col_names] = index
         index.table = table
-        index.columns = columns
+        index.col_names = col_names
         index.is_pk = is_pk
         index.is_unique = is_unique
     def exists(index, provider, connection, case_sensitive=True):
@@ -316,44 +321,50 @@ class DBIndex(Constraint):
             if index.is_pk: append(case('PRIMARY KEY'))
             elif index.is_unique: append(case('UNIQUE'))
             else: append(case('INDEX'))
-        append(schema.column_list(index.columns))
+        append(schema.names_row(index.col_names))
         return ' '.join(cmd)
 
 class ForeignKey(Constraint):
     typename = 'Foreign key'
-    def __init__(fk, name, parent_table, parent_columns, child_table, child_columns, index_name):
+    def __init__(fk, name, parent_table, parent_col_names, child_table, child_col_names, index_name):
+        assert type(parent_col_names) is tuple
+        assert type(child_col_names) is tuple
         schema = parent_table.schema
         if schema is not child_table.schema: throw(DBSchemaError,
             'Parent and child tables of foreign_key cannot belong to different schemata')
-        for column in parent_columns:
+        for col_name in parent_col_names:
+            column = parent_table.column_dict[col_name]
             if column.table is not parent_table: throw(DBSchemaError,
-                'Column %r does not belong to table %r' % (column.name, parent_table.name))
-        for column in child_columns:
+                'Column %r does not belong to table %r' % (col_name, parent_table.name))
+        for col_name in child_col_names:
+            column = child_table.column_dict[col_name]
             if column.table is not child_table: throw(DBSchemaError,
-                'Column %r does not belong to table %r' % (column.name, child_table.name))
-        if len(parent_columns) != len(child_columns): throw(DBSchemaError,
+                'Column %r does not belong to table %r' % (col_name, child_table.name))
+        if len(parent_col_names) != len(child_col_names): throw(DBSchemaError,
             'Foreign key columns count do not match')
-        if child_columns in child_table.foreign_keys:
-            if len(child_columns) == 1: throw(DBSchemaError, 'Foreign key for column %r already defined' % child_columns[0].name)
-            else: throw(DBSchemaError, 'Foreign key for columns (%s) already defined' % ', '.join(repr(column.name) for column in child_columns))
+        if child_col_names in child_table.foreign_keys:
+            if len(child_col_names) == 1: throw(DBSchemaError, 'Foreign key for column %r already defined'
+                                                               % child_col_names[0])
+            else: throw(DBSchemaError, 'Foreign key for columns (%s) already defined'
+                                       % ', '.join(imap(repr, child_col_names)))
         if name is not None and name in schema.names:
             throw(DBSchemaError, 'Foreign key %s cannot be created, name is already in use' % name)
         Constraint.__init__(fk, name, schema)
-        child_table.foreign_keys[child_columns] = fk
+        child_table.foreign_keys[child_col_names] = fk
         if child_table is not parent_table:
             child_table.parent_tables.add(parent_table)
             parent_table.child_tables.add(child_table)
         fk.parent_table = parent_table
-        fk.parent_columns = parent_columns
+        fk.parent_col_names = parent_col_names
         fk.child_table = child_table
-        fk.child_columns = child_columns
+        fk.child_col_names = child_col_names
 
         if index_name is not False:
-            child_columns_len = len(child_columns)
-            for columns in child_table.indexes:
-                if columns[:child_columns_len] == child_columns: break
-            else: child_table.add_index(index_name, child_columns, is_pk=False,
-                                        is_unique=False, m2m=bool(child_table.m2m))
+            child_columns_len = len(child_col_names)
+            for col_names in child_table.indexes:
+                if col_names[:child_columns_len] == child_col_names: break
+            else: child_table.add_index(child_col_names, is_pk=False, is_unique=False,
+                                        m2m=bool(child_table.m2m), index_name=index_name)
     def exists(fk, provider, connection, case_sensitive=True):
         return provider.fk_exists(connection, fk.child_table.name, fk.name, case_sensitive)
     def get_sql(fk):
@@ -374,10 +385,10 @@ class ForeignKey(Constraint):
             append(case('CONSTRAINT'))
             append(quote_name(fk.name))
         append(case('FOREIGN KEY'))
-        append(schema.column_list(fk.child_columns))
+        append(schema.names_row(fk.child_col_names))
         append(case('REFERENCES'))
         append(quote_name(fk.parent_table.name))
-        append(schema.column_list(fk.parent_columns))
+        append(schema.names_row(fk.parent_col_names))
         return ' '.join(cmd)
 
 DBSchema.table_class = Table

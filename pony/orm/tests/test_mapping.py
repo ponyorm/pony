@@ -171,8 +171,8 @@ class TestColumnsMapping(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1, column='a')
         db.generate_mapping(create_tables=True)
-        self.assertEqual(Entity1.attr1.columns, ['attr1'])
-        self.assertEqual(Entity2.attr2.columns, ['a'])
+        self.assertEqual(Entity1.attr1.columns, ('attr1',))
+        self.assertEqual(Entity2.attr2.columns, ('a',))
 
     # no exception Optional-Optional
     def test_relations5(self):
@@ -205,8 +205,8 @@ class TestColumnsMapping(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1, column='a1')
         db.generate_mapping(create_tables=True)
-        self.assertEqual(Entity1.attr1.columns, ['a'])
-        self.assertEqual(Entity2.attr2.columns, ['a1'])
+        self.assertEqual(Entity1.attr1.columns, ('a',))
+        self.assertEqual(Entity2.attr2.columns, ('a1',))
 
     def test_columns1(self):
         db = Database('sqlite', ':memory:')
@@ -248,8 +248,8 @@ class TestColumnsMapping(unittest.TestCase):
             id = PrimaryKey(int)
             attr2 = Optional(Entity1)
         db.generate_mapping(create_tables=True)
-        self.assertEqual(Entity1.attr1.columns, ['attr1'])
-        self.assertEqual(Entity2.attr2.columns, [])
+        self.assertEqual(Entity1.attr1.columns, ('attr1',))
+        self.assertEqual(Entity2.attr2.columns, ())
 
     def test_columns4(self):
         db = Database('sqlite', ':memory:')
@@ -260,8 +260,8 @@ class TestColumnsMapping(unittest.TestCase):
             id = PrimaryKey(int)
             attr1 = Optional(Entity2)
         db.generate_mapping(create_tables=True)
-        self.assertEqual(Entity1.attr1.columns, ['attr1'])
-        self.assertEqual(Entity2.attr2.columns, [])
+        self.assertEqual(Entity1.attr1.columns, ('attr1',))
+        self.assertEqual(Entity2.attr2.columns, ())
 
     @raises_exception(ERDiagramError, "Mapping is not generated for entity 'E1'")
     def test_generate_mapping1(self):

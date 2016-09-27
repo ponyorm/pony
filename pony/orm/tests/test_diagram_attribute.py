@@ -248,7 +248,7 @@ class TestAttribute(unittest.TestCase):
         db = Database('sqlite', ':memory:')
         class Entity1(db.Entity):
             id = PrimaryKey(int, column='a')
-        self.assertEqual(Entity1.id.columns, ['a'])
+        self.assertEqual(Entity1.id.columns, ('a',))
 
     def test_columns3(self):
         db = Database('sqlite', ':memory:')
@@ -287,7 +287,7 @@ class TestAttribute(unittest.TestCase):
         class Entity2(db.Entity):
             attr2 = Required(Entity1, columns=['x', 'y'])
         self.assertEqual(Entity2.attr2.column, None)
-        self.assertEqual(Entity2.attr2.columns, ['x', 'y'])
+        self.assertEqual(Entity2.attr2.columns, ('x', 'y'))
 
     @raises_exception(MappingError, 'Invalid number of columns specified for Entity2.attr2')
     def test_columns9(self):

@@ -136,21 +136,21 @@ class DBAPIProvider(object):
     def get_default_column_names(provider, attr, reverse_pk_columns=None):
         normalize = provider.normalize_name
         if reverse_pk_columns is None:
-            return [ normalize(attr.name) ]
+            return (normalize(attr.name),)
         elif len(reverse_pk_columns) == 1:
-            return [ normalize(attr.name) ]
+            return (normalize(attr.name),)
         else:
             prefix = attr.name + '_'
-            return [ normalize(prefix + column) for column in reverse_pk_columns ]
+            return tuple(normalize(prefix + column) for column in reverse_pk_columns)
 
     def get_default_m2m_column_names(provider, entity):
         normalize = provider.normalize_name
         columns = entity._get_pk_columns_()
         if len(columns) == 1:
-            return [ normalize(entity.__name__.lower()) ]
+            return (normalize(entity.__name__.lower()),)
         else:
             prefix = entity.__name__.lower() + '_'
-            return [ normalize(prefix + column) for column in columns ]
+            return tuple(normalize(prefix + column) for column in columns)
 
     def get_default_index_name(provider, table_name, column_names, is_pk=False, is_unique=False, m2m=False):
         if is_pk: index_name = 'pk_%s' % table_name
@@ -162,8 +162,8 @@ class DBAPIProvider(object):
                                          cnames='_'.join(name for name in column_names))
         return provider.normalize_name(index_name.lower())
 
-    def get_default_fk_name(provider, child_table_name, parent_table_name, child_column_names):
-        fk_name = 'fk_%s__%s' % (provider.base_name(child_table_name), '__'.join(child_column_names))
+    def get_default_fk_name(provider, child_table_name, parent_table_name, child_col_names):
+        fk_name = 'fk_%s__%s' % (provider.base_name(child_table_name), '__'.join(child_col_names))
         return provider.normalize_name(fk_name.lower())
 
     def split_table_name(provider, table_name):

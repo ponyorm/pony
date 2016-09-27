@@ -23,10 +23,8 @@ class TestIndexes(unittest.TestCase):
         self.assertEqual(i2.is_unique, True)
 
         table = db.schema.tables['Person']
-        name_column = table.column_dict['name']
-        age_column = table.column_dict['age']
         self.assertEqual(len(table.indexes), 2)
-        db_index = table.indexes[name_column, age_column]
+        db_index = table.indexes['name', 'age']
         self.assertEqual(db_index.is_pk, False)
         self.assertEqual(db_index.is_unique, True)
 

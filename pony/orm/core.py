@@ -842,10 +842,6 @@ class Database(object):
         for entity in entities:
             entity._check_table_options_()
 
-        def get_columns(table, column_names):
-            column_dict = table.column_dict
-            return tuple(column_dict[name] for name in column_names)
-
         for entity in entities:
             table = entity._add_table_(schema)
 
@@ -873,14 +869,14 @@ class Database(object):
             if not table.pk_index:
                 if len(entity._pk_columns_) == 1 and entity._pk_attrs_[0].auto: is_pk = "auto"
                 else: is_pk = True
-                table.add_index(None, get_columns(table, entity._pk_columns_), is_pk)
+                table.add_index(entity._pk_columns_, is_pk)
             for index in entity._indexes_:
                 if index.is_pk: continue
                 column_names = []
                 attrs = index.attrs
                 for attr in attrs: column_names.extend(attr.columns)
                 index_name = attrs[0].index if len(attrs) == 1 else None
-                table.add_index(index_name, get_columns(table, column_names), is_unique=index.is_unique)
+                table.add_index(tuple(column_names), is_unique=index.is_unique, index_name=index_name)
         for entity in entities:
             table = schema.tables[entity._table_]
             for attr in entity._new_attrs_:
@@ -890,21 +886,18 @@ class Database(object):
                     if not isinstance(attr, Set): throw(NotImplementedError)
                     if not isinstance(reverse, Set): throw(NotImplementedError)
                     m2m_table = schema.tables[attr.table]
-                    parent_columns = get_columns(table, entity._pk_columns_)
-                    child_columns = get_columns(m2m_table, reverse.columns)
-                    m2m_table.add_foreign_key(reverse.fk_name, table, parent_columns, child_columns, attr.index)
+                    m2m_table.add_foreign_key(reverse.fk_name, table, parent_col_names=entity._pk_columns_,
+                                              child_col_names=reverse.columns, index_name=attr.index)
                     if attr.symmetric:
-                        child_columns = get_columns(m2m_table, attr.reverse_columns)
-                        m2m_table.add_foreign_key(attr.reverse_fk_name, table, parent_columns, child_columns)
+                        m2m_table.add_foreign_key(attr.reverse_fk_name, table, parent_col_names=entity._pk_columns_,
+                                                  child_col_names=attr.reverse_columns)
                 elif attr.reverse and attr.columns:
                     rentity = attr.reverse.entity
                     parent_table = schema.tables[rentity._table_]
-                    parent_columns = get_columns(parent_table, rentity._pk_columns_)
-                    child_columns = get_columns(table, attr.columns)
-                    table.add_foreign_key(attr.reverse.fk_name, parent_table, parent_columns, child_columns, attr.index)
+                    table.add_foreign_key(attr.reverse.fk_name, parent_table, parent_col_names=rentity._pk_columns_,
+                                          child_col_names=attr.columns, index_name=attr.index)
                 elif attr.index and attr.columns:
-                    columns = tuple(imap(table.column_dict.__getitem__, attr.columns))
-                    table.add_index(attr.index, columns, is_unique=attr.is_unique)
+                    table.add_index(attr.columns, is_unique=attr.is_unique, index_name=attr.index)
             entity._init_bits_()
 
         if create_tables: database.create_tables(check_tables)
@@ -1816,18 +1809,20 @@ class Attribute(object):
                 throw(TypeError, "Parameters 'column' and 'columns' cannot be specified simultaneously")
             if not isinstance(attr.column, basestring):
                 throw(TypeError, "Parameter 'column' must be a string. Got: %r" % attr.column)
-            attr.columns = [ attr.column ]
+            attr.columns = (attr.column,)
         elif attr.columns is not None:
             if not isinstance(attr.columns, (tuple, list)):
                 throw(TypeError, "Parameter 'columns' must be a list. Got: %r'" % attr.columns)
             for column in attr.columns:
                 if not isinstance(column, basestring):
                     throw(TypeError, "Items of parameter 'columns' must be strings. Got: %r" % attr.columns)
+            attr.columns = tuple(attr.columns)
             if len(attr.columns) == 1: attr.column = attr.columns[0]
-        else: attr.columns = []
+        else: attr.columns = ()
+
         attr.index = kwargs.pop('index', None)
         attr.fk_name = kwargs.pop('fk_name', None)
-        attr.col_paths = []
+        attr.col_paths = ()
         attr._columns_checked = False
         attr.composite_keys = []
         attr.lazy = kwargs.pop('lazy', getattr(py_type, 'lazy', False))
@@ -1838,7 +1833,7 @@ class Attribute(object):
         attr.py_check = kwargs.pop('py_check', None)
         attr.hidden = kwargs.pop('hidden', False)
         attr.kwargs = kwargs
-        attr.converters = []
+        attr.converters = ()
     def _init_(attr, entity, name):
         attr.entity = entity
         attr.name = name
@@ -2219,8 +2214,8 @@ class Attribute(object):
         if not reverse: # attr is not part of relationship
             if not attr.columns: attr.columns = provider.get_default_column_names(attr)
             elif len(attr.columns) > 1: throw(MappingError, "Too many columns were specified for %s" % attr)
-            attr.col_paths = [ attr.name ]
-            attr.converters = [ provider.get_converter_by_attr(attr) ]
+            attr.col_paths = (attr.name,)
+            attr.converters = (provider.get_converter_by_attr(attr),)
         else:
             def generate_columns():
                 reverse_pk_columns = reverse.entity._get_pk_columns_()
@@ -2229,10 +2224,11 @@ class Attribute(object):
                     attr.columns = provider.get_default_column_names(attr, reverse_pk_columns)
                 elif len(attr.columns) != len(reverse_pk_columns): throw(MappingError,
                     'Invalid number of columns specified for %s' % attr)
-                attr.col_paths = [ '-'.join((attr.name, paths)) for paths in reverse_pk_col_paths ]
-                attr.converters = []
+                attr.col_paths = tuple('-'.join((attr.name, paths)) for paths in reverse_pk_col_paths)
+                converters = []
                 for a in reverse.entity._pk_attrs_:
-                    attr.converters.extend(a.converters)
+                    converters.extend(a.converters)
+                attr.converters = tuple(converters)
 
             if reverse.is_collection: # one-to-many:
                 generate_columns()
@@ -2467,15 +2463,16 @@ class Collection(Attribute):
                 throw(TypeError, "Parameters 'reverse_column' and 'reverse_columns' cannot be specified simultaneously")
             if not isinstance(attr.reverse_column, basestring):
                 throw(TypeError, "Parameter 'reverse_column' must be a string. Got: %r" % attr.reverse_column)
-            attr.reverse_columns = [ attr.reverse_column ]
+            attr.reverse_columns = (attr.reverse_column,)
         elif attr.reverse_columns is not None:
             if not isinstance(attr.reverse_columns, (tuple, list)):
                 throw(TypeError, "Parameter 'reverse_columns' must be a list. Got: %r" % attr.reverse_columns)
             for reverse_column in attr.reverse_columns:
                 if not isinstance(reverse_column, basestring):
                     throw(TypeError, "Parameter 'reverse_columns' must be a list of strings. Got: %r" % attr.reverse_columns)
+            attr.reverse_columns = tuple(attr.reverse_columns)
             if len(attr.reverse_columns) == 1: attr.reverse_column = attr.reverse_columns[0]
-        else: attr.reverse_columns = []
+        else: attr.reverse_columns = ()
 
         attr.reverse_fk_name = kwargs.pop('reverse_fk_name', None)
 
@@ -2873,13 +2870,13 @@ class Set(Collection):
 
             if attr.symmetric:
                 if not attr.reverse_columns:
-                    attr.reverse_columns = [ column + '_2' for column in attr.columns ]
+                    attr.reverse_columns = tuple(column + '_2' for column in attr.columns)
                 elif len(attr.reverse_columns) != pk_length:
                     throw(MappingError, "Invalid number of reverse columns for symmetric attribute %s" % attr)
                 return attr.columns if not is_reverse else attr.reverse_columns
             else:
                 if not reverse.columns:
-                    reverse.columns = [ column + '_2' for column in attr.columns ]
+                    reverse.columns = tuple(column + '_2' for column in attr.columns)
                 reverse._columns_checked = True
                 reverse.converters = entity._pk_converters_
                 return attr.columns if not is_reverse else reverse.columns
@@ -2925,7 +2922,7 @@ class Set(Collection):
         assert len(m2m_columns_2) == len(attr.converters)
         for column_name, converter in izip(m2m_columns_1 + m2m_columns_2, reverse.converters + attr.converters):
             m2m_table.add_column(column_name, converter.get_sql_type(), converter, True)
-        m2m_table.add_index(None, tuple(m2m_table.column_list), is_pk=True)
+        m2m_table.add_index(tuple(col.name for col in m2m_table.column_list), is_pk=True)
         m2m_table.m2m.add(attr)
         m2m_table.m2m.add(reverse)
     def remove_m2m(attr, removed):
@@ -3664,11 +3661,11 @@ class EntityMeta(type):
             pk_columns.extend(attr_columns)
             pk_converters.extend(attr.converters)
             pk_paths.extend(attr_col_paths)
-        entity._pk_columns_ = pk_columns
-        entity._pk_converters_ = pk_converters
+        entity._pk_columns_ = tuple(pk_columns)
+        entity._pk_converters_ = tuple(pk_converters)
         entity._pk_nones_ = (None,) * len(pk_columns)
-        entity._pk_paths_ = pk_paths
-        return pk_columns
+        entity._pk_paths_ = tuple(pk_paths)
+        return entity._pk_columns_
     def _add_table_(entity, schema):
         entity._get_pk_columns_()
         table_name = entity._table_
