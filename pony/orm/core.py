@@ -892,16 +892,16 @@ class Database(object):
                     m2m_table = schema.tables[attr.table]
                     parent_columns = get_columns(table, entity._pk_columns_)
                     child_columns = get_columns(m2m_table, reverse.columns)
-                    m2m_table.add_foreign_key(reverse.fk_name, child_columns, table, parent_columns, attr.index)
+                    m2m_table.add_foreign_key(reverse.fk_name, table, parent_columns, child_columns, attr.index)
                     if attr.symmetric:
                         child_columns = get_columns(m2m_table, attr.reverse_columns)
-                        m2m_table.add_foreign_key(attr.reverse_fk_name, child_columns, table, parent_columns)
+                        m2m_table.add_foreign_key(attr.reverse_fk_name, table, parent_columns, child_columns)
                 elif attr.reverse and attr.columns:
                     rentity = attr.reverse.entity
                     parent_table = schema.tables[rentity._table_]
                     parent_columns = get_columns(parent_table, rentity._pk_columns_)
                     child_columns = get_columns(table, attr.columns)
-                    table.add_foreign_key(attr.reverse.fk_name, child_columns, parent_table, parent_columns, attr.index)
+                    table.add_foreign_key(attr.reverse.fk_name, parent_table, parent_columns, child_columns, attr.index)
                 elif attr.index and attr.columns:
                     columns = tuple(imap(table.column_dict.__getitem__, attr.columns))
                     table.add_index(attr.index, columns, is_unique=attr.is_unique)
