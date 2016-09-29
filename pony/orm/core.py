@@ -990,7 +990,7 @@ class Database(object):
                 elif attr.index and attr.columns:
                     columns = tuple(imap(table.column_dict.__getitem__, attr.columns))
                     table.add_index(attr.index, columns, is_unique=attr.is_unique)
-            entity._initialize_bits_()
+            entity._init_bits_()
 
         if create_tables: database.create_tables(check_tables)
         elif check_tables: database.check_tables()
@@ -3532,6 +3532,7 @@ class EntityMeta(type):
                     'To fix this, move attribute definition to base class'
                     % (attr, prev, entity._root_.__name__))
                 base._subclass_attrs_.append(attr)
+        entity._erase_bits_()
         entity._attrnames_cache_ = {}
 
         try: table_name = entity.__dict__['_table_']
@@ -3576,22 +3577,30 @@ class EntityMeta(type):
         entity._default_genexpr_ = inner_expr
 
         entity._access_rules_ = defaultdict(set)
-    def _initialize_bits_(entity):
+    def _erase_bits_(entity):
+        entity._bits_ = entity._bits_except_volatile_ = entity._all_bits_ = entity._all_bits_except_volatile_ = None
+        entity._offset_counter_ = 0
+    def _init_bits_(entity):
         entity._bits_ = {}
         entity._bits_except_volatile_ = {}
-        offset_counter = itertools.count()
-        all_bits = all_bits_except_volatile = 0
-        for attr in entity._attrs_:
-            if attr.is_collection or attr.is_discriminator or attr.pk_offset is not None: bit = 0
-            elif not attr.columns: bit = 0
-            else: bit = 1 << next(offset_counter)
-            all_bits |= bit
-            entity._bits_[attr] = bit
-            if attr.is_volatile: bit = 0
-            all_bits_except_volatile |= bit
-            entity._bits_except_volatile_[attr] = bit
-        entity._all_bits_ = all_bits
-        entity._all_bits_except_volatile_ = all_bits_except_volatile
+        entity._all_bits_ = entity._all_bits_except_volatile_ = 0
+        for attr in entity._attrs_: entity._init_bit_(attr)
+    def _init_bit_(entity, attr):
+        if attr.is_collection or attr.is_discriminator or attr.pk_offset is not None: bit = 0
+        elif attr.columns:
+            entity._offset_counter_ += 1
+            bit = 1 << entity._offset_counter_
+        else:  bit = 0
+        entity._bits_[attr] = bit
+        entity._all_bits_ |= bit
+        if attr.is_volatile: bit = 0
+        entity._all_bits_except_volatile_ |= bit
+        entity._bits_except_volatile_[attr] = bit
+    def _withdraw_bit_(entity, attr):
+        inverted_bit = entity._bits_.pop(attr)
+        entity._bits_except_volatile_.pop(attr)
+        entity._all_bits_ &= inverted_bit
+        entity._all_bits_except_volatile_ &= inverted_bit
     def _resolve_attr_types_(entity):
         database = entity._database_
         for attr in entity._new_attrs_:
