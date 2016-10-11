@@ -54,11 +54,7 @@ Pony ORM Links:
 classifiers = [
     'Development Status :: 4 - Beta',
     'Intended Audience :: Developers',
-    'License :: Free for non-commercial use',
-    'License :: OSI Approved :: GNU Affero General Public License v3',
-    'License :: Other/Proprietary License',
-    'License :: Free For Educational Use',
-    'License :: Free for non-commercial use',
+    'License :: OSI Approved :: Apache Software License',
     'Operating System :: OS Independent',
     'Programming Language :: Python',
     'Programming Language :: Python :: 2',
@@ -74,7 +70,7 @@ classifiers = [
 author = "Alexander Kozlovsky, Alexey Malashkevich"
 author_email = "team@ponyorm.com"
 url = "https://ponyorm.com"
-lic = "AGPL, Commercial, Free for educational and non-commercial use"
+licence = "Apache License Version 2.0"
 
 packages = [
     "pony",
@@ -107,7 +103,7 @@ if __name__ == "__main__":
         author=author,
         author_email=author_email,
         url=url,
-        license=lic,
+        license=licence,
         packages=packages,
         download_url=download_url
     )
