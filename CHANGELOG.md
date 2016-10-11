@@ -1,3 +1,22 @@
+# Pony ORM Release 0.7 (2016-10-11)
+
+Starting with this release Pony ORM is release under the Apache License, Version 2.0.
+
+## New features
+
+* Added getattr() support in queries: https://docs.ponyorm.com/api_reference.html#getattr
+
+## Backward incompatible changes
+
+* #159: exceptions happened during flush() should not be wrapped with CommitException
+
+Before this release an exception that happened in a hook(https://docs.ponyorm.com/api_reference.html#entity-hooks), could be raised in two ways - either wrapped into the CommitException or without wrapping. It depended if the exception happened during the execution of flush() or commit() function on the db_session exit. Now the exception happened inside the hook never will be wrapped into the CommitException.
+
+## Bugfixes
+
+* #190: Timedelta is not supported when using pymysql
+
+
 # Pony ORM Release 0.6.6 (2016-08-22)
 
 ## New features
