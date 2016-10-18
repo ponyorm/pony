@@ -836,7 +836,8 @@ class Database(object):
         schema = database.schema = provider.dbschema_cls(provider)
         entities = list(sorted(database.entities.values(), key=attrgetter('_id_')))
         for entity in entities:
-            entity._resolve_attr_types_()
+            for attr in entity._new_attrs_:
+                attr._resolve_type_()
         for entity in entities:
             entity._link_reverse_attrs_()
         for entity in entities:
@@ -1900,6 +1901,19 @@ class Attribute(object):
                 throw(TypeError, 'You should specify fk_name in %s instead of %s' % (reverse, attr))
         for option in attr.kwargs:
             throw(TypeError, 'Attribute %s has unknown option %r' % (attr, option))
+    def _resolve_type_(attr):
+        py_type = attr.py_type
+        if isinstance(py_type, basestring):
+            rentity = attr.entity._database_.entities.get(py_type)
+            if rentity is None: throw(ERDiagramError, 'Entity definition %s was not found' % py_type)
+            attr.py_type = py_type = rentity
+        elif isinstance(py_type, types.FunctionType):
+            rentity = py_type()
+            if not isinstance(rentity, EntityMeta): throw(TypeError,
+                'Invalid type of attribute %s: expected entity class, got %r' % (attr, rentity))
+            attr.py_type = py_type = rentity
+        if isinstance(py_type, EntityMeta) and py_type.__name__ == 'Entity': throw(TypeError,
+            'Cannot link attribute %s to abstract Entity class. Use specific Entity subclass instead' % attr)
     @cut_traceback
     def __repr__(attr):
         owner_name = attr.entity.__name__ if attr.entity else '?'
@@ -3577,22 +3591,6 @@ class EntityMeta(type):
         entity._bits_except_volatile_.pop(attr)
         entity._all_bits_ &= inverted_bit
         entity._all_bits_except_volatile_ &= inverted_bit
-    def _resolve_attr_types_(entity):
-        database = entity._database_
-        for attr in entity._new_attrs_:
-            py_type = attr.py_type
-            if isinstance(py_type, basestring):
-                rentity = database.entities.get(py_type)
-                if rentity is None:
-                    throw(ERDiagramError, 'Entity definition %s was not found' % py_type)
-                attr.py_type = py_type = rentity
-            elif isinstance(py_type, types.FunctionType):
-                rentity = py_type()
-                if not isinstance(rentity, EntityMeta): throw(TypeError,
-                    'Invalid type of attribute %s: expected entity class, got %r' % (attr, rentity))
-                attr.py_type = py_type = rentity
-            if isinstance(py_type, EntityMeta) and py_type.__name__ == 'Entity': throw(TypeError,
-                'Cannot link attribute %s to abstract Entity class. Use specific Entity subclass instead' % attr)
     def _link_reverse_attrs_(entity):
         database = entity._database_
         for attr in entity._new_attrs_:
