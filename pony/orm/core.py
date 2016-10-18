@@ -837,6 +837,7 @@ class Database(object):
         entities = list(sorted(database.entities.values(), key=attrgetter('_id_')))
         for entity in entities:
             for attr in entity._new_attrs_:
+                attr._set_nullable_()
                 attr._resolve_type_()
         for entity in entities:
             for attr in entity._new_attrs_:
@@ -864,7 +865,6 @@ class Database(object):
 
                     attr._add_m2m_table_with_columns_(schema)
                 else:
-                    attr._set_nullable_()
                     attr._add_columns_(table)
             entity._attrs_with_columns_ = [ attr for attr in entity._attrs_
                                             if attr.columns and not attr.is_collection ]
