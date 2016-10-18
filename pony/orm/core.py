@@ -839,7 +839,8 @@ class Database(object):
             for attr in entity._new_attrs_:
                 attr._resolve_type_()
         for entity in entities:
-            entity._link_reverse_attrs_()
+            for attr in entity._new_attrs_:
+                if issubclass(attr.py_type, Entity): attr._link_()
         for entity in entities:
             entity._check_table_options_()
 
@@ -1914,6 +1915,50 @@ class Attribute(object):
             attr.py_type = py_type = rentity
         if isinstance(py_type, EntityMeta) and py_type.__name__ == 'Entity': throw(TypeError,
             'Cannot link attribute %s to abstract Entity class. Use specific Entity subclass instead' % attr)
+    def _link_(attr):
+        entity = attr.entity
+        rentity = attr.py_type
+        if rentity._database_ is not entity._database_: throw(ERDiagramError,
+            'Interrelated entities must belong to same database. Entities %s and %s belongs to different databases'
+            % (entity.__name__, rentity.__name__))
+        reverse = attr.reverse
+        if isinstance(reverse, basestring):
+            attr2 = getattr(rentity, reverse, None)
+            if attr2 is None: throw(ERDiagramError, 'Reverse attribute %s.%s not found' % (rentity.__name__, reverse))
+        elif isinstance(reverse, Attribute):
+            attr2 = reverse
+            if attr2.entity is not rentity: throw(ERDiagramError,
+                'Incorrect reverse attribute %s used in %s' % (attr2, attr))  ###
+        elif reverse is not None:
+            throw(ERDiagramError, "Value of 'reverse' option must be string. Got: %r" % type(reverse))
+        else:
+            candidates1 = []
+            candidates2 = []
+            for attr2 in rentity._new_attrs_:
+                if attr2.py_type not in (entity, entity.__name__): continue
+                reverse2 = attr2.reverse
+                if reverse2 in (attr, attr.name): candidates1.append(attr2)
+                elif not reverse2 and attr2 is not attr: candidates2.append(attr2)
+            msg = "Ambiguous reverse attribute for %s. Use the 'reverse' parameter for pointing to right attribute"
+            if len(candidates1) > 1: throw(ERDiagramError, msg % attr)
+            elif len(candidates1) == 1: attr2 = candidates1[0]
+            elif len(candidates2) > 1: throw(ERDiagramError, msg % attr)
+            elif len(candidates2) == 1: attr2 = candidates2[0]
+            else: throw(ERDiagramError, 'Reverse attribute for %s not found' % attr)
+
+        type2 = attr2.py_type
+        if type2 != entity:
+            throw(ERDiagramError, 'Inconsistent reverse attributes %s and %s' % (attr, attr2))
+        reverse2 = attr2.reverse
+        if reverse2 not in (None, attr, attr.name):
+            throw(ERDiagramError, 'Inconsistent reverse attributes %s and %s' % (attr, attr2))
+
+        if attr.is_required and attr2.is_required: throw(ERDiagramError,
+            "At least one attribute of one-to-one relationship %s - %s must be optional" % (attr, attr2))
+        attr.reverse = attr2
+        attr2.reverse = attr
+        attr.linked()
+        attr2.linked()
     @cut_traceback
     def __repr__(attr):
         owner_name = attr.entity.__name__ if attr.entity else '?'
@@ -3591,56 +3636,6 @@ class EntityMeta(type):
         entity._bits_except_volatile_.pop(attr)
         entity._all_bits_ &= inverted_bit
         entity._all_bits_except_volatile_ &= inverted_bit
-    def _link_reverse_attrs_(entity):
-        database = entity._database_
-        for attr in entity._new_attrs_:
-            py_type = attr.py_type
-            if not issubclass(py_type, Entity): continue
-
-            entity2 = py_type
-            if entity2._database_ is not database:
-                throw(ERDiagramError, 'Interrelated entities must belong to same database. '
-                                   'Entities %s and %s belongs to different databases'
-                                   % (entity.__name__, entity2.__name__))
-            reverse = attr.reverse
-            if isinstance(reverse, basestring):
-                attr2 = getattr(entity2, reverse, None)
-                if attr2 is None: throw(ERDiagramError, 'Reverse attribute %s.%s not found' % (entity2.__name__, reverse))
-            elif isinstance(reverse, Attribute):
-                attr2 = reverse
-                if attr2.entity is not entity2: throw(ERDiagramError, 'Incorrect reverse attribute %s used in %s' % (attr2, attr)) ###
-            elif reverse is not None: throw(ERDiagramError, "Value of 'reverse' option must be string. Got: %r" % type(reverse))
-            else:
-                candidates1 = []
-                candidates2 = []
-                for attr2 in entity2._new_attrs_:
-                    if attr2.py_type not in (entity, entity.__name__): continue
-                    reverse2 = attr2.reverse
-                    if reverse2 in (attr, attr.name): candidates1.append(attr2)
-                    elif not reverse2:
-                        if attr2 is attr: continue
-                        candidates2.append(attr2)
-                msg = "Ambiguous reverse attribute for %s. Use the 'reverse' parameter for pointing to right attribute"
-                if len(candidates1) > 1: throw(ERDiagramError, msg % attr)
-                elif len(candidates1) == 1: attr2 = candidates1[0]
-                elif len(candidates2) > 1: throw(ERDiagramError, msg % attr)
-                elif len(candidates2) == 1: attr2 = candidates2[0]
-                else: throw(ERDiagramError, 'Reverse attribute for %s not found' % attr)
-
-            type2 = attr2.py_type
-            if type2 != entity:
-                throw(ERDiagramError, 'Inconsistent reverse attributes %s and %s' % (attr, attr2))
-            reverse2 = attr2.reverse
-            if reverse2 not in (None, attr, attr.name):
-                throw(ERDiagramError, 'Inconsistent reverse attributes %s and %s' % (attr, attr2))
-
-            if attr.is_required and attr2.is_required: throw(ERDiagramError,
-                "At least one attribute of one-to-one relationship %s - %s must be optional" % (attr, attr2))
-
-            attr.reverse = attr2
-            attr2.reverse = attr
-            attr.linked()
-            attr2.linked()
     def _check_table_options_(entity):
         if entity._root_ is not entity:
             if '_table_options_' in entity.__dict__: throw(TypeError,
