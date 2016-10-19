@@ -849,23 +849,9 @@ class Database(object):
             table = entity._add_table_(schema)
 
             for attr in entity._new_attrs_:
-                if attr.is_collection:
-                    if not isinstance(attr, Set): throw(NotImplementedError)
-                    reverse = attr.reverse
-                    if not reverse.is_collection: # many-to-one:
-                        if attr.table is not None: throw(MappingError,
-                            "Parameter 'table' is not allowed for many-to-one attribute %s" % attr)
-                        elif attr.columns: throw(NotImplementedError,
-                            "Parameter 'column' is not allowed for many-to-one attribute %s" % attr)
-                        continue
-                    # many-to-many:
-                    if not isinstance(reverse, Set): throw(NotImplementedError)
-                    if attr.entity.__name__ > reverse.entity.__name__: continue
-                    if attr.entity is reverse.entity and attr.name > reverse.name: continue
+                if attr.is_collection: attr._add_m2m_table_(schema)
+                else: attr._add_columns_(table)
 
-                    attr._add_m2m_table_with_columns_(schema)
-                else:
-                    attr._add_columns_(table)
             entity._attrs_with_columns_ = [ attr for attr in entity._attrs_
                                             if attr.columns and not attr.is_collection ]
             if not table.pk_index:
@@ -2552,7 +2538,7 @@ class Collection(Attribute):
             "'reverse_column' and 'reverse_columns' options can be set for symmetric relations only")
         if attr.py_check is not None:
             throw(NotImplementedError, "'py_check' parameter is not supported for collection attributes")
-    def _add_m2m_table_with_columns_(attr, schema):
+    def _add_m2m_table_(attr, schema):
         assert False, 'Abstract method'  # pragma: no cover
     def load(attr, obj):
         assert False, 'Abstract method'  # pragma: no cover
@@ -2948,7 +2934,17 @@ class Set(Collection):
         reverse.converters = entity._pk_converters_
         attr._columns_checked = True
         return reverse.columns
-    def _add_m2m_table_with_columns_(attr, schema):
+    def _add_m2m_table_(attr, schema):
+        reverse = attr.reverse
+        if not reverse.is_collection:  # many-to-one:
+            if attr.table is not None: throw(MappingError,
+                "Parameter 'table' is not allowed for many-to-one attribute %s" % attr)
+            elif attr.columns: throw(NotImplementedError,
+                "Parameter 'column' is not allowed for many-to-one attribute %s" % attr)
+            return None
+        # many-to-many:
+        if not isinstance(reverse, Set): throw(NotImplementedError)
+
         reverse = attr.reverse
         if attr.table:
             if not reverse.table: reverse.table = attr.table
@@ -2956,23 +2952,19 @@ class Set(Collection):
                 "Parameter 'table' for %s and %s do not match" % (attr, reverse))
             table_name = attr.table
         elif reverse.table: table_name = attr.table = reverse.table
-        else: table_name = schema.provider.get_default_m2m_table_name(attr, reverse)
+        else:
+            table_name = schema.provider.get_default_m2m_table_name(attr, reverse)
+            attr.table = reverse.table = table_name
 
         m2m_table = schema.tables.get(table_name)
         if m2m_table is not None:
-            if not attr.table:
-                seq_counter = itertools.count(2)
-                while m2m_table is not None:
-                    new_table_name = table_name + '_%d' % next(seq_counter)
-                    m2m_table = schema.tables.get(new_table_name)
-                table_name = new_table_name
-            elif m2m_table.entities or m2m_table.m2m:
-                if isinstance(table_name, tuple): table_name = '.'.join(table_name)
-                throw(MappingError, "Table name '%s' is already in use" % table_name)
-            else: throw(NotImplementedError)
-        attr.table = reverse.table = table_name
-        m2m_table = schema.add_table(table_name)
+            if attr in m2m_table.m2m:
+                assert reverse in m2m_table.m2m and not m2m_table.entities
+                return m2m_table
+            if isinstance(table_name, tuple): table_name = '.'.join(table_name)
+            throw(MappingError, "Table name '%s' is already in use" % table_name)
 
+        m2m_table = schema.add_table(table_name)
         m2m_columns_1 = attr.get_m2m_columns(is_reverse=False)
         m2m_columns_2 = reverse.get_m2m_columns(is_reverse=True)
         if m2m_columns_1 == m2m_columns_2: throw(MappingError,
@@ -2984,6 +2976,7 @@ class Set(Collection):
         m2m_table.add_index(tuple(col.name for col in m2m_table.column_list), is_pk=True)
         m2m_table.m2m.add(attr)
         m2m_table.m2m.add(reverse)
+        return m2m_table
     def remove_m2m(attr, removed):
         assert removed
         entity = attr.entity

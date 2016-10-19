@@ -130,7 +130,8 @@ class DBAPIProvider(object):
             assert reverse is attr
             name = attr.entity.__name__ + '_' + attr.name
         else:
-            name = attr.entity.__name__ + '_' + reverse.entity.__name__
+            first_attr = sorted((attr, reverse), key=lambda attr: (attr.entity.__name__, attr.name))[0]
+            name = '%s_%s' % (first_attr.entity.__name__, first_attr.name)
         return provider.normalize_name(name)
 
     def get_default_column_names(provider, attr, reverse_pk_columns=None):
