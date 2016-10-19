@@ -851,6 +851,8 @@ class Database(object):
             for attr in entity._new_attrs_:
                 if attr.is_collection: attr._add_m2m_table_(schema)
                 else: attr._add_columns_(table)
+                if attr.index and attr.columns:
+                    table.add_index(attr.columns, is_unique=attr.is_unique, index_name=attr.index)
 
             entity._attrs_with_columns_ = [ attr for attr in entity._attrs_
                                             if attr.columns and not attr.is_collection ]
@@ -885,8 +887,6 @@ class Database(object):
                     parent_table = schema.tables[rentity._table_]
                     table.add_foreign_key(attr.reverse.fk_name, parent_table, parent_col_names=rentity._pk_columns_,
                                           child_col_names=attr.columns, index_name=attr.index)
-                elif attr.index and attr.columns:
-                    table.add_index(attr.columns, is_unique=attr.is_unique, index_name=attr.index)
 
         if create_tables: database.create_tables(check_tables)
         elif check_tables: database.check_tables()
