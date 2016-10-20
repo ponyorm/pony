@@ -854,9 +854,7 @@ class Database(object):
             entity._init_bits_()
 
             for index in entity._indexes_:
-                column_names = []
-                for attr in index.attrs: column_names.extend(attr.columns)
-                table.add_index(tuple(column_names), is_pk=index.is_pk, is_unique=index.is_unique, index_name=index.name)
+                table.add_index(index.get_columns(), is_pk=index.is_pk, is_unique=index.is_unique, index_name=index.name)
 
         for entity in entities:
             table = schema.tables[entity._table_]
@@ -2432,6 +2430,12 @@ class Index(object):
                 attr.nullable = True
                 if attr.is_string and attr.default == '' and not hasattr(attr, 'original_default'):
                     attr.default = None
+    def get_columns(index):
+        result = []
+        for attr in index.attrs:
+            assert attr.columns
+            result.extend(attr.columns)
+        return tuple(result)
 
 def _define_index(func_name, attrs, is_unique=False):
     if len(attrs) < 2: throw(TypeError,
