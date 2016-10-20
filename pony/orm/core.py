@@ -865,22 +865,7 @@ class Database(object):
         for entity in entities:
             table = schema.tables[entity._table_]
             for attr in entity._new_attrs_:
-                if attr.is_collection:
-                    reverse = attr.reverse
-                    if not reverse.is_collection: continue
-                    if not isinstance(attr, Set): throw(NotImplementedError)
-                    if not isinstance(reverse, Set): throw(NotImplementedError)
-                    m2m_table = schema.tables[attr.table]
-                    m2m_table.add_foreign_key(reverse.fk_name, table, parent_col_names=entity._pk_columns_,
-                                              child_col_names=reverse.columns, index_name=attr.index)
-                    if attr.symmetric:
-                        m2m_table.add_foreign_key(attr.reverse_fk_name, table, parent_col_names=entity._pk_columns_,
-                                                  child_col_names=attr.reverse_columns)
-                elif attr.reverse and attr.columns and not attr.index:
-                    # if attr.index presents then the index should be already added
-                    rentity = attr.reverse.entity
-                    parent_table = schema.tables[rentity._table_]
-                    table.add_foreign_key(attr.reverse.fk_name, parent_table, parent_col_names=rentity._pk_columns_, child_col_names=attr.columns)
+                attr._add_foreign_key_(table)
 
         if create_tables: database.create_tables(check_tables)
         elif check_tables: database.check_tables()
@@ -2300,6 +2285,24 @@ class Attribute(object):
             for (column_name, converter) in izip(columns, attr.converters):
                 table.add_column(column_name, converter.get_sql_type(), converter, not attr.nullable)
         else: pass  # virtual attribute of one-to-one pair
+    def _add_foreign_key_(attr, table):
+        if attr.is_collection:
+            reverse = attr.reverse
+            if not reverse.is_collection: return
+            if not isinstance(attr, Set): throw(NotImplementedError)
+            if not isinstance(reverse, Set): throw(NotImplementedError)
+            entity = attr.entity
+            m2m_table = table.schema.tables[attr.table]
+            m2m_table.add_foreign_key(reverse.fk_name, table, parent_col_names=entity._pk_columns_,
+                                      child_col_names=reverse.columns, index_name=attr.index)
+            if attr.symmetric:
+                m2m_table.add_foreign_key(attr.reverse_fk_name, table, parent_col_names=entity._pk_columns_,
+                                          child_col_names=attr.reverse_columns)
+        elif attr.reverse and attr.columns and not attr.index:
+            # if attr.index presents then the index should be already added
+            rentity = attr.reverse.entity
+            parent_table = table.schema.tables[rentity._table_]
+            table.add_foreign_key(attr.reverse.fk_name, parent_table, parent_col_names=rentity._pk_columns_, child_col_names=attr.columns)
     @property
     def asc(attr):
         return attr
