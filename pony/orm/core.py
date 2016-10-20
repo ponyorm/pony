@@ -847,20 +847,16 @@ class Database(object):
 
         for entity in entities:
             table = entity._add_table_(schema)
-
             for attr in entity._new_attrs_:
                 if attr.is_collection: attr._add_m2m_table_(schema)
                 else: attr._add_columns_(table)
-
-            entity._attrs_with_columns_ = [ attr for attr in entity._attrs_
-                                            if attr.columns and not attr.is_collection ]
+            entity._attrs_with_columns_ = [ attr for attr in entity._attrs_ if attr.columns and not attr.is_collection ]
+            entity._init_bits_()
 
             for index in entity._indexes_:
                 column_names = []
                 for attr in index.attrs: column_names.extend(attr.columns)
                 table.add_index(tuple(column_names), is_pk=index.is_pk, is_unique=index.is_unique, index_name=index.name)
-
-            entity._init_bits_()
 
         for entity in entities:
             table = schema.tables[entity._table_]
