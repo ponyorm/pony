@@ -851,23 +851,17 @@ class Database(object):
             for attr in entity._new_attrs_:
                 if attr.is_collection: attr._add_m2m_table_(schema)
                 else: attr._add_columns_(table)
-                if attr.index and attr.columns:
-                    table.add_index(attr.columns, is_unique=attr.is_unique, index_name=attr.index)
 
             entity._attrs_with_columns_ = [ attr for attr in entity._attrs_
                                             if attr.columns and not attr.is_collection ]
-            if not table.pk_index:
-                if len(entity._pk_columns_) == 1 and entity._pk_attrs_[0].auto: is_pk = "auto"
-                else: is_pk = True
-                table.add_index(entity._pk_columns_, is_pk)
+
             for index in entity._indexes_:
-                if index.is_pk: continue
                 column_names = []
-                attrs = index.attrs
-                for attr in attrs: column_names.extend(attr.columns)
-                index_name = attrs[0].index if len(attrs) == 1 else None
-                table.add_index(tuple(column_names), is_unique=index.is_unique, index_name=index_name)
+                for attr in index.attrs: column_names.extend(attr.columns)
+                table.add_index(tuple(column_names), is_pk=index.is_pk, is_unique=index.is_unique, index_name=index.name)
+
             entity._init_bits_()
+
         for entity in entities:
             table = schema.tables[entity._table_]
             for attr in entity._new_attrs_:
@@ -882,11 +876,11 @@ class Database(object):
                     if attr.symmetric:
                         m2m_table.add_foreign_key(attr.reverse_fk_name, table, parent_col_names=entity._pk_columns_,
                                                   child_col_names=attr.reverse_columns)
-                elif attr.reverse and attr.columns:
+                elif attr.reverse and attr.columns and not attr.index:
+                    # if attr.index presents then the index should be already added
                     rentity = attr.reverse.entity
                     parent_table = schema.tables[rentity._table_]
-                    table.add_foreign_key(attr.reverse.fk_name, parent_table, parent_col_names=rentity._pk_columns_,
-                                          child_col_names=attr.columns, index_name=attr.index)
+                    table.add_foreign_key(attr.reverse.fk_name, parent_table, parent_col_names=rentity._pk_columns_, child_col_names=attr.columns)
 
         if create_tables: database.create_tables(check_tables)
         elif check_tables: database.check_tables()
@@ -2399,12 +2393,13 @@ class Discriminator(Required):
         assert False  # pragma: no cover
 
 class Index(object):
-    __slots__ = 'entity', 'attrs', 'is_pk', 'is_unique'
+    __slots__ = 'entity', 'attrs', 'is_pk', 'is_unique', 'name'
     def __init__(index, *attrs, **options):
         index.entity = None
         index.attrs = list(attrs)
         index.is_pk = options.pop('is_pk', False)
         index.is_unique = options.pop('is_unique', True)
+        index.name = options.pop('name', None)
         assert not options
     def _init_(index, entity):
         index.entity = entity
@@ -3509,7 +3504,8 @@ class EntityMeta(type):
 
         indexes = entity._indexes_ = entity.__dict__.get('_indexes_', [])
         for attr in new_attrs:
-            if attr.is_unique: indexes.append(Index(attr, is_pk=isinstance(attr, PrimaryKey)))
+            if attr.index or attr.is_unique:
+                indexes.append(Index(attr, name=attr.index, is_pk=isinstance(attr, PrimaryKey), is_unique=attr.is_unique))
         for index in indexes: index._init_(entity)
         primary_keys = {index.attrs for index in indexes if index.is_pk}
         if direct_bases:
