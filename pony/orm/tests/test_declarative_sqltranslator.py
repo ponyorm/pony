@@ -349,6 +349,18 @@ class TestSQLTranslator(unittest.TestCase):
     def test_method_monad(self):
         result = set(select(s for s in Student if s not in Student.select(lambda s: s.scholarship > 0)))
         self.assertEqual(result, {Student[1]})
+    def test_lambda_1(self):
+        q = select(s for s in Student)
+        q = q.filter(lambda s: s.name == 'S1')
+        self.assertEqual(list(q), [Student[1]])
+    def test_lambda_2(self):
+        q = select(s for s in Student)
+        q = q.filter(lambda stud: stud.name == 'S1')
+        self.assertEqual(list(q), [Student[1]])
+    def test_lambda_3(self):
+        q = select(s for s in Student)
+        q = q.filter(lambda stud: exists(x for x in Student if stud.name < x.name))
+        self.assertEqual(set(q), {Student[1], Student[2]})
 
 
 if __name__ == "__main__":

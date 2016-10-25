@@ -674,10 +674,13 @@ class SQLTranslator(ASTTranslator):
         return translator.ListMonad(translator, [ item.monad for item in node.nodes ])
     def postName(translator, node):
         name = node.name
-        argnames = translator.argnames
-        if translator.argnames and name in translator.argnames:
-            i = translator.argnames.index(name)
-            return translator.expr_monads[i]
+        t = translator
+        while t is not None:
+            argnames = t.argnames
+            if argnames is not None and name in argnames:
+                i = argnames.index(name)
+                return t.expr_monads[i]
+            t = t.parent
         tableref = translator.subquery.get_tableref(name)
         if tableref is not None:
             return translator.ObjectIterMonad(translator, tableref, tableref.entity)
