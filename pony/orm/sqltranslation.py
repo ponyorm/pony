@@ -674,10 +674,13 @@ class SQLTranslator(ASTTranslator):
         return translator.ListMonad(translator, [ item.monad for item in node.nodes ])
     def postName(translator, node):
         name = node.name
-        argnames = translator.argnames
-        if translator.argnames and name in translator.argnames:
-            i = translator.argnames.index(name)
-            return translator.expr_monads[i]
+        t = translator
+        while t is not None:
+            argnames = t.argnames
+            if argnames is not None and name in argnames:
+                i = argnames.index(name)
+                return t.expr_monads[i]
+            t = t.parent
         tableref = translator.subquery.get_tableref(name)
         if tableref is not None:
             return translator.ObjectIterMonad(translator, tableref, tableref.entity)
@@ -840,7 +843,7 @@ class Subquery(object):
             subquery.alias_counters = {}
             subquery.expr_counter = itertools.count(1)
         else:
-            subquery.alias_counters = parent_subquery.alias_counters.copy()
+            subquery.alias_counters = parent_subquery.alias_counters
             subquery.expr_counter = parent_subquery.expr_counter
         subquery.used_from_subquery = False
     def get_tableref(subquery, name_path, from_subquery=False):
@@ -859,14 +862,10 @@ class Subquery(object):
         tableref = JoinedTableRef(subquery, name_path, parent_tableref, attr)
         tablerefs[name_path] = tableref
         return tableref
-    def get_short_alias(subquery, name_path, entity_name):
-        if name_path:
-            if is_ident(name_path): return name_path
-            if not options.SIMPLE_ALIASES and len(name_path) <= max_alias_length:
-                return name_path
-        name = entity_name[:max_alias_length-3].lower()
+    def make_alias(subquery, name):
+        name = name[:max_alias_length-3].lower()
         i = subquery.alias_counters.setdefault(name, 0) + 1
-        alias = '%s-%d' % (name, i)
+        alias = name if i == 1 and name != 't' else '%s-%d' % (name, i)
         subquery.alias_counters[name] = i
         return alias
     def join_table(subquery, parent_alias, alias, table_name, join_cond):
@@ -883,7 +882,8 @@ class Subquery(object):
 class TableRef(object):
     def __init__(tableref, subquery, name, entity):
         tableref.subquery = subquery
-        tableref.alias = tableref.name_path = name
+        tableref.name_path = name
+        tableref.alias = subquery.make_alias(name)
         tableref.entity = entity
         tableref.joined = False
         tableref.can_affect_distinct = True
@@ -904,6 +904,7 @@ class JoinedTableRef(object):
     def __init__(tableref, subquery, name_path, parent_tableref, attr):
         tableref.subquery = subquery
         tableref.name_path = name_path
+        tableref.var_name = name_path if is_ident(name_path) else None
         tableref.alias = None
         tableref.optimized = None
         tableref.parent_tableref = parent_tableref
@@ -930,7 +931,7 @@ class JoinedTableRef(object):
                 assert reverse.columns and not reverse.is_collection
                 rentity = reverse.entity
                 pk_columns = rentity._pk_columns_
-                alias = subquery.get_short_alias(tableref.name_path, rentity.__name__)
+                alias = subquery.make_alias(tableref.var_name or rentity.__name__)
                 join_cond = join_tables(parent_alias, alias, left_pk_columns, reverse.columns)
             else:
                 if attr.pk_offset is not None:
@@ -943,16 +944,16 @@ class JoinedTableRef(object):
                     tableref.optimized = True
                     tableref.joined = True
                     return parent_alias, left_columns
-                alias = subquery.get_short_alias(tableref.name_path, entity.__name__)
+                alias = subquery.make_alias(tableref.var_name or entity.__name__)
                 join_cond = join_tables(parent_alias, alias, left_columns, pk_columns)
         elif not attr.reverse.is_collection:
-            alias = subquery.get_short_alias(tableref.name_path, entity.__name__)
+            alias = subquery.make_alias(tableref.var_name or entity.__name__)
             join_cond = join_tables(parent_alias, alias, left_pk_columns, attr.reverse.columns)
         else:
             right_m2m_columns = attr.reverse_columns if attr.symmetric else attr.columns
             if not tableref.joined:
                 m2m_table = attr.table
-                m2m_alias = subquery.get_short_alias(None, 't')
+                m2m_alias = subquery.make_alias('t')
                 reverse_columns = attr.columns if attr.symmetric else attr.reverse.columns
                 m2m_join_cond = join_tables(parent_alias, m2m_alias, left_pk_columns, reverse_columns)
                 subquery.join_table(parent_alias, m2m_alias, m2m_table, m2m_join_cond)
@@ -965,7 +966,7 @@ class JoinedTableRef(object):
             elif tableref.optimized:
                 assert not pk_only
                 m2m_alias = tableref.alias
-            alias = subquery.get_short_alias(tableref.name_path, entity.__name__)
+            alias = subquery.make_alias(tableref.var_name or entity.__name__)
             join_cond = join_tables(m2m_alias, alias, right_m2m_columns, pk_columns)
         if not pk_only and entity._discriminator_attr_:
             discr_criteria = entity._construct_discriminator_criteria_(alias)
@@ -2419,7 +2420,7 @@ class AttrSetMonad(SetMixin, Monad):
         assert len({alias for _, alias, column in groupby_columns}) == 1
 
         if extra_grouping:
-            inner_alias = translator.subquery.get_short_alias(None, 't')
+            inner_alias = translator.subquery.make_alias('t')
             inner_columns = [ 'DISTINCT' ]
             col_mapping = {}
             col_names = set()
@@ -2459,7 +2460,7 @@ class AttrSetMonad(SetMixin, Monad):
             subquery_ast.append([ 'WHERE' ] + inner_conditions)
         subquery_ast.append([ 'GROUP_BY' ] + groupby_columns)
 
-        alias = translator.subquery.get_short_alias(None, 't')
+        alias = translator.subquery.make_alias('t')
         for cond in outer_conditions: cond[2][1] = alias
         translator.subquery.from_ast.append([ alias, 'SELECT', subquery_ast, sqland(outer_conditions) ])
         expr_ast = [ 'COLUMN', alias, expr_name ]
@@ -2600,7 +2601,7 @@ class QuerySetMonad(SetMixin, Monad):
                 new_names.append(new_name)
                 select_ast[i] = [ 'AS', column_ast, new_name ]
 
-            alias = subquery.get_short_alias(None, 't')
+            alias = subquery.make_alias('t')
             outer_conditions = [ [ 'EQ', item_column, [ 'COLUMN', alias, new_name ] ]
                                     for item_column, new_name in izip(item_columns, new_names) ]
             subquery.from_ast.append([ alias, 'SELECT', subquery_ast[1:], sqland(outer_conditions) ])
@@ -2663,7 +2664,7 @@ class QuerySetMonad(SetMixin, Monad):
                         [ 'AGGREGATES', [ 'COUNT', 'DISTINCT', [ 'COLUMN', alias, 'ROWID' ] ] ],
                         from_ast, where_ast ]
                 else:
-                    alias = translator.subquery.get_short_alias(None, 't')
+                    alias = translator.subquery.make_alias('t')
                     sql_ast = [ 'SELECT', [ 'AGGREGATES', [ 'COUNT', 'ALL' ] ],
                                 [ 'FROM', [ alias, 'SELECT', [
                                   [ 'DISTINCT' ] + sub.expr_columns, from_ast, where_ast ] ] ] ]
