@@ -361,6 +361,10 @@ class TestSQLTranslator(unittest.TestCase):
         q = select(s for s in Student)
         q = q.filter(lambda stud: exists(x for x in Student if stud.name < x.name))
         self.assertEqual(set(q), {Student[1], Student[2]})
+    def test_lambda_4(self):
+        q = select(s for s in Student)
+        q = q.filter(lambda stud: exists(s for s in Student if stud.name < s.name))
+        self.assertEqual(set(q), {Student[1], Student[2]})
 
 
 if __name__ == "__main__":

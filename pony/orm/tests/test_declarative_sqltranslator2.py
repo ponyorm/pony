@@ -114,12 +114,12 @@ class TestSQLTranslator2(unittest.TestCase):
         self.assertEqual(result, {Student[1], Student[2], Student[3], Student[4], Student[5], Student[6], Student[7]})
     def test_not_null1(self):
         q = select(g for g in Group if '123-45-67' not in g.students.tel and g.dept == Department[1])
-        not_null = "IS_NOT_NULL COLUMN student-1 tel" in (" ".join(str(i) for i in flatten(q._translator.conditions)))
+        not_null = "IS_NOT_NULL COLUMN student tel" in (" ".join(str(i) for i in flatten(q._translator.conditions)))
         self.assertEqual(not_null, True)
         self.assertEqual(q[:], [Group[101]])
     def test_not_null2(self):
         q = select(g for g in Group if 'John' not in g.students.name and g.dept == Department[1])
-        not_null = "IS_NOT_NULL COLUMN student-1 name" in (" ".join(str(i) for i in flatten(q._translator.conditions)))
+        not_null = "IS_NOT_NULL COLUMN student name" in (" ".join(str(i) for i in flatten(q._translator.conditions)))
         self.assertEqual(not_null, False)
         self.assertEqual(q[:], [Group[101]])
     def test_chain_of_attrs_inside_for1(self):
