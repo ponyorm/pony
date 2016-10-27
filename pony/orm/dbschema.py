@@ -186,8 +186,11 @@ class Table(DBObject):
             index_name = provider.get_default_index_name(
                 table.name, col_names, is_pk=is_pk, is_unique=is_unique, m2m=m2m)
         index = table.indexes.get(col_names)
-        if index and index.name == index_name and index.is_pk == is_pk and index.is_unique == is_unique:
-            return index
+        if index:
+            if index.name == index_name and index.is_pk == is_pk and index.is_unique == is_unique:
+                return index
+            throw(DBSchemaError, 'Two different indexes are defined for the same column%s for table %s: %s'
+                                 % ('s' if len(col_names) > 1 else '', table.name, ', '.join(col_names)))
         return table.schema.index_class(index_name, table, col_names, is_pk, is_unique)
     def add_foreign_key(table, fk_name, parent_table, parent_col_names, child_col_names, index_name=None):
         assert type(parent_col_names) is tuple
