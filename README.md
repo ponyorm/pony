@@ -28,9 +28,12 @@ Online tool for database design
 Pony ORM also has the Entity-Relationship Diagram Editor which is a great tool for prototyping. You can create your database diagram online at [https://editor.ponyorm.com](https://editor.ponyorm.com), generate the database schema based on the diagram and start working with the database using declarative queries in seconds.
 
 
+Documentation
+-------------
+
 Documenation is available at [https://docs.ponyorm.com](https://docs.ponyorm.com)
-The documentation source is avaliable at [https://github.com/ponyorm/pony-doc](https://github.com/ponyorm/pony-doc), it is released under Apache 2.0 license.
-Please create new documentation related issues [https://github.com/ponyorm/pony-doc/issues](https://github.com/ponyorm/pony-doc/issues) or make a pull request with your improvements.
+The documentation source is avaliable at [https://github.com/ponyorm/pony-doc](https://github.com/ponyorm/pony-doc).
+Please create new documentation related issues [here](https://github.com/ponyorm/pony-doc/issues) or make a pull request with your improvements.
 
 
 License
