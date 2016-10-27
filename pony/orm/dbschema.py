@@ -177,14 +177,14 @@ class Table(DBObject):
         return result
     def add_column(table, column_name, sql_type, converter, is_not_null=None, sql_default=None):
         return table.schema.column_class(column_name, table, sql_type, converter, is_not_null, sql_default)
+    def make_index_name(table, col_names, is_pk, is_unique, m2m, provided_name):
+        if isinstance(provided_name, basestring): return provided_name
+        return table.schema.provider.get_default_index_name(
+                table.name, col_names, is_pk=is_pk, is_unique=is_unique, m2m=m2m)
     def add_index(table, col_names, is_pk=False, is_unique=None, m2m=False, index_name=None):
         assert type(col_names) is tuple
         assert index_name is not False
-        if index_name is True: index_name = None
-        if index_name is None and not is_pk:
-            provider = table.schema.provider
-            index_name = provider.get_default_index_name(
-                table.name, col_names, is_pk=is_pk, is_unique=is_unique, m2m=m2m)
+        index_name = table.make_index_name(col_names, is_pk, is_unique, m2m, provided_name=index_name)
         index = table.indexes.get(col_names)
         if index:
             if index.name == index_name and index.is_pk == is_pk and index.is_unique == is_unique:
