@@ -556,7 +556,7 @@ class Database(object):
                 'Pony no longer supports PyGreSQL module. Please use psycopg2 instead.')
             provider_module = import_module('pony.orm.dbproviders.' + provider)
             provider_cls = provider_module.provider_cls
-        self.provider = provider = provider_cls(*args, **kwargs)
+        self.provider = provider_cls(*args, **kwargs)
     @property
     def last_sql(database):
         return database._dblocal.last_sql
