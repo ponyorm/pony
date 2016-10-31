@@ -5,24 +5,36 @@ from os.path import dirname
 
 __version__ = '0.7.1-dev'
 
+
 def detect_mode():
-    try: import google.appengine
-    except ImportError: pass
+    try:
+        import google.appengine
+    except ImportError:
+        pass
     else:
-        try: import dev_appserver
-        except ImportError: return 'GAE-SERVER'
+        try:
+            import dev_appserver
+        except ImportError:
+            return 'GAE-SERVER'
         return 'GAE-LOCAL'
 
-    try: mod_wsgi = sys.modules['mod_wsgi']
-    except KeyError: pass
-    else: return 'MOD_WSGI'
+    try:
+        mod_wsgi = sys.modules['mod_wsgi']
+    except KeyError:
+        pass
+    else:
+        return 'MOD_WSGI'
 
-    if 'flup.server.fcgi' in sys.modules: return 'FCGI-FLUP'
+    if 'flup.server.fcgi' in sys.modules:
+        return 'FCGI-FLUP'
 
-    if 'uwsgi' in sys.modules: return 'UWSGI'
+    if 'uwsgi' in sys.modules:
+        return 'UWSGI'
 
-    try: sys.modules['__main__'].__file__
-    except AttributeError:  return 'INTERACTIVE'
+    try:
+        sys.modules['__main__'].__file__
+    except AttributeError:
+        return 'INTERACTIVE'
     return 'CHERRYPY'
 
 MODE = detect_mode()
@@ -36,7 +48,9 @@ elif MODE == 'MOD_WSGI':
             MAIN_FILE = module.__file__
             break
 
-if MAIN_FILE is not None: MAIN_DIR = dirname(MAIN_FILE)
-else: MAIN_DIR = None
+if MAIN_FILE is not None:
+    MAIN_DIR = dirname(MAIN_FILE)
+else:
+    MAIN_DIR = None
 
 PONY_DIR = dirname(__file__)

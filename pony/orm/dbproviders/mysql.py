@@ -9,7 +9,8 @@ from uuid import UUID
 NoneType = type(None)
 
 import warnings
-warnings.filterwarnings('ignore', '^Table.+already exists$', Warning, '^pony\\.orm\\.dbapiprovider$')
+warnings.filterwarnings('ignore', '^Table.+already exists$',
+                        Warning, '^pony\\.orm\\.dbapiprovider$')
 
 try:
     import MySQLdb as mysql_module
@@ -35,62 +36,85 @@ from pony.orm.sqlbuilding import Value, Param, SQLBuilder, join
 from pony.utils import throw
 from pony.converting import str2timedelta, timedelta2str
 
+
 class MySQLColumn(dbschema.Column):
     auto_template = '%(type)s PRIMARY KEY AUTO_INCREMENT'
+
 
 class MySQLSchema(dbschema.DBSchema):
     dialect = 'MySQL'
     inline_fk_syntax = False
     column_class = MySQLColumn
 
+
 class MySQLTranslator(SQLTranslator):
     dialect = 'MySQL'
     json_path_wildcard_syntax = True
 
+
 class MySQLBuilder(SQLBuilder):
     dialect = 'MySQL'
+
     def CONCAT(builder, *args):
         return 'concat(',  join(', ', imap(builder, args)), ')'
+
     def TRIM(builder, expr, chars=None):
-        if chars is None: return 'trim(', builder(expr), ')'
-        return 'trim(both ', builder(chars), ' from ' ,builder(expr), ')'
+        if chars is None:
+            return 'trim(', builder(expr), ')'
+        return 'trim(both ', builder(chars), ' from ', builder(expr), ')'
+
     def LTRIM(builder, expr, chars=None):
-        if chars is None: return 'ltrim(', builder(expr), ')'
-        return 'trim(leading ', builder(chars), ' from ' ,builder(expr), ')'
+        if chars is None:
+            return 'ltrim(', builder(expr), ')'
+        return 'trim(leading ', builder(chars), ' from ', builder(expr), ')'
+
     def RTRIM(builder, expr, chars=None):
-        if chars is None: return 'rtrim(', builder(expr), ')'
-        return 'trim(trailing ', builder(chars), ' from ' ,builder(expr), ')'
+        if chars is None:
+            return 'rtrim(', builder(expr), ')'
+        return 'trim(trailing ', builder(chars), ' from ', builder(expr), ')'
+
     def YEAR(builder, expr):
         return 'year(', builder(expr), ')'
+
     def MONTH(builder, expr):
         return 'month(', builder(expr), ')'
+
     def DAY(builder, expr):
         return 'day(', builder(expr), ')'
+
     def HOUR(builder, expr):
         return 'hour(', builder(expr), ')'
+
     def MINUTE(builder, expr):
         return 'minute(', builder(expr), ')'
+
     def SECOND(builder, expr):
         return 'second(', builder(expr), ')'
+
     def DATE_ADD(builder, expr, delta):
         if isinstance(delta, timedelta):
             return 'DATE_ADD(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
         return 'ADDTIME(', builder(expr), ', ', builder(delta), ')'
+
     def DATE_SUB(builder, expr, delta):
         if isinstance(delta, timedelta):
             return 'DATE_SUB(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
         return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
+
     def DATETIME_ADD(builder, expr, delta):
         if isinstance(delta, timedelta):
             return 'DATE_ADD(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
         return 'ADDTIME(', builder(expr), ', ', builder(delta), ')'
+
     def DATETIME_SUB(builder, expr, delta):
         if isinstance(delta, timedelta):
             return 'DATE_SUB(', builder(expr), ", INTERVAL '", timedelta2str(delta), "' HOUR_SECOND)"
         return 'SUBTIME(', builder(expr), ', ', builder(delta), ')'
+
     def JSON_QUERY(builder, expr, path):
         path_sql, has_params, has_wildcards = builder.build_json_path(path)
         return 'json_extract(', builder(expr), ', ', path_sql, ')'
+
     def JSON_VALUE(builder, expr, path, type):
         path_sql, has_params, has_wildcards = builder.build_json_path(path)
         result = 'json_extract(', builder(expr), ', ', path_sql, ')'
@@ -99,50 +123,70 @@ class MySQLBuilder(SQLBuilder):
         if type in (bool, int):
             return 'CAST(', result, ' AS SIGNED)'
         return 'json_unquote(', result, ')'
+
     def JSON_NONZERO(builder, expr):
         return 'COALESCE(CAST(', builder(expr), ''' as CHAR), 'null') NOT IN ('null', 'false', '0', '""', '[]', '{}')'''
+
     def JSON_ARRAY_LENGTH(builder, value):
         return 'json_length(', builder(value), ')'
+
     def EQ_JSON(builder, left, right):
         return '(', builder(left), ' = CAST(', builder(right), ' AS JSON))'
+
     def NE_JSON(builder, left, right):
         return '(', builder(left), ' != CAST(', builder(right), ' AS JSON))'
+
     def JSON_CONTAINS(builder, expr, path, key):
         key_sql = builder(key)
         if isinstance(key_sql, Value):
-            wrapped_key = builder.value_class(builder.paramstyle, json.dumps([ key_sql.value ]))
+            wrapped_key = builder.value_class(
+                builder.paramstyle, json.dumps([key_sql.value]))
         elif isinstance(key_sql, Param):
             wrapped_key = builder.make_composite_param(
                 (key_sql.paramkey,), [key_sql], builder.wrap_param_to_json_array)
-        else: assert False
+        else:
+            assert False
         expr_sql = builder(expr)
-        result = [ '(json_contains(', expr_sql, ', ', wrapped_key ]
+        result = ['(json_contains(', expr_sql, ', ', wrapped_key]
         path_sql, has_params, has_wildcards = builder.build_json_path(path)
-        if has_wildcards: throw(TranslationError, 'Wildcards are not allowed in json_contains()')
+        if has_wildcards:
+            throw(TranslationError, 'Wildcards are not allowed in json_contains()')
         path_with_key_sql, _, _ = builder.build_json_path(path + [key])
-        result += [ ', ', path_sql, ') or json_contains_path(', expr_sql, ", 'one', ", path_with_key_sql, '))' ]
+        result += [', ', path_sql,
+                   ') or json_contains_path(', expr_sql, ", 'one', ", path_with_key_sql, '))']
         return result
+
     @classmethod
     def wrap_param_to_json_array(cls, values):
         return json.dumps(values)
+
     def JSON_PARAM(builder, expr):
         return 'CAST(', builder(expr), ' AS JSON)'
 
+
 class MySQLStrConverter(dbapiprovider.StrConverter):
+
     def sql_type(converter):
         result = 'VARCHAR(%d)' % converter.max_len if converter.max_len else 'LONGTEXT'
-        if converter.db_encoding: result += ' CHARACTER SET %s' % converter.db_encoding
+        if converter.db_encoding:
+            result += ' CHARACTER SET %s' % converter.db_encoding
         return result
 
+
 class MySQLRealConverter(dbapiprovider.RealConverter):
+
     def sql_type(converter):
         return 'DOUBLE'
 
+
 class MySQLBlobConverter(dbapiprovider.BlobConverter):
+
     def sql_type(converter):
         return 'LONGBLOB'
 
+
 class MySQLTimeConverter(dbapiprovider.TimeConverter):
+
     def sql2py(converter, val):
         if isinstance(val, timedelta):  # MySQLdb returns timedeltas instead of times
             total_seconds = val.days * (24 * 60 * 60) + val.seconds
@@ -150,24 +194,31 @@ class MySQLTimeConverter(dbapiprovider.TimeConverter):
                 minutes, seconds = divmod(total_seconds, 60)
                 hours, minutes = divmod(minutes, 60)
                 return time(hours, minutes, seconds, val.microseconds)
-        elif not isinstance(val, time): throw(ValueError,
-            'Value of unexpected type received from database%s: instead of time or timedelta got %s'
-            % ('for attribute %s' % converter.attr if converter.attr else '', type(val)))
+        elif not isinstance(val, time):
+            throw(ValueError,
+                  'Value of unexpected type received from database%s: instead of time or timedelta got %s'
+                  % ('for attribute %s' % converter.attr if converter.attr else '', type(val)))
         return val
+
 
 class MySQLTimedeltaConverter(dbapiprovider.TimedeltaConverter):
     sql_type_name = 'TIME'
 
+
 class MySQLUuidConverter(dbapiprovider.UuidConverter):
+
     def sql_type(converter):
         return 'BINARY(16)'
 
+
 class MySQLJsonConverter(dbapiprovider.JsonConverter):
     EQ = 'EQ_JSON'
+
     def init(self, kwargs):
         if self.provider.server_version < (5, 7, 8):
             version = '.'.join(imap(str, self.provider.server_version))
             raise NotImplementedError("MySQL %s has no JSON support" % version)
+
 
 class MySQLProvider(DBAPIProvider):
     dialect = 'MySQL'
@@ -186,7 +237,7 @@ class MySQLProvider(DBAPIProvider):
     translator_cls = MySQLTranslator
     sqlbuilder_cls = MySQLBuilder
 
-    fk_types = { 'SERIAL' : 'BIGINT UNSIGNED' }
+    fk_types = {'SERIAL': 'BIGINT UNSIGNED'}
 
     converter_classes = [
         (NoneType, dbapiprovider.NoneConverter),
@@ -244,7 +295,8 @@ class MySQLProvider(DBAPIProvider):
             kwargs['conv'] = conv
         if 'charset' not in kwargs:
             kwargs['charset'] = 'utf8'
-        kwargs['client_flag'] = kwargs.get('client_flag', 0) | CLIENT.FOUND_ROWS
+        kwargs['client_flag'] = kwargs.get(
+            'client_flag', 0) | CLIENT.FOUND_ROWS
         return Pool(mysql_module, *args, **kwargs)
 
     @wrap_dbapi_exceptions
@@ -255,10 +307,12 @@ class MySQLProvider(DBAPIProvider):
             cursor = connection.cursor()
             cursor.execute("SHOW VARIABLES LIKE 'foreign_key_checks'")
             fk = cursor.fetchone()
-            if fk is not None: fk = (fk[1] == 'ON')
+            if fk is not None:
+                fk = (fk[1] == 'ON')
             if fk:
                 sql = 'SET foreign_key_checks = 0'
-                if core.debug: log_orm(sql)
+                if core.debug:
+                    log_orm(sql)
                 cursor.execute(sql)
             cache.saved_fk_state = bool(fk)
             cache.in_transaction = True
@@ -266,7 +320,8 @@ class MySQLProvider(DBAPIProvider):
         if db_session is not None and db_session.serializable:
             cursor = connection.cursor()
             sql = 'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE'
-            if core.debug: log_orm(sql)
+            if core.debug:
+                log_orm(sql)
             cursor.execute(sql)
             cache.in_transaction = True
 
@@ -278,52 +333,61 @@ class MySQLProvider(DBAPIProvider):
                 try:
                     cursor = connection.cursor()
                     sql = 'SET foreign_key_checks = 1'
-                    if core.debug: log_orm(sql)
+                    if core.debug:
+                        log_orm(sql)
                     cursor.execute(sql)
                 except:
                     provider.pool.drop(connection)
                     raise
         DBAPIProvider.release(provider, connection, cache)
 
-
     def table_exists(provider, connection, table_name, case_sensitive=True):
         db_name, table_name = provider.split_table_name(table_name)
         cursor = connection.cursor()
-        if case_sensitive: sql = 'SELECT table_name FROM information_schema.tables ' \
-                                 'WHERE table_schema=%s and table_name=%s'
-        else: sql = 'SELECT table_name FROM information_schema.tables ' \
-                    'WHERE table_schema=%s and UPPER(table_name)=UPPER(%s)'
-        cursor.execute(sql, [ db_name, table_name ])
+        if case_sensitive:
+            sql = 'SELECT table_name FROM information_schema.tables ' \
+                'WHERE table_schema=%s and table_name=%s'
+        else:
+            sql = 'SELECT table_name FROM information_schema.tables ' \
+                'WHERE table_schema=%s and UPPER(table_name)=UPPER(%s)'
+        cursor.execute(sql, [db_name, table_name])
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
     def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
         db_name, table_name = provider.split_table_name(table_name)
-        if case_sensitive: sql = 'SELECT index_name FROM information_schema.statistics ' \
-                                 'WHERE table_schema=%s and table_name=%s and index_name=%s'
-        else: sql = 'SELECT index_name FROM information_schema.statistics ' \
-                    'WHERE table_schema=%s and table_name=%s and UPPER(index_name)=UPPER(%s)'
+        if case_sensitive:
+            sql = 'SELECT index_name FROM information_schema.statistics ' \
+                'WHERE table_schema=%s and table_name=%s and index_name=%s'
+        else:
+            sql = 'SELECT index_name FROM information_schema.statistics ' \
+                'WHERE table_schema=%s and table_name=%s and UPPER(index_name)=UPPER(%s)'
         cursor = connection.cursor()
-        cursor.execute(sql, [ db_name, table_name, index_name ])
+        cursor.execute(sql, [db_name, table_name, index_name])
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
     def fk_exists(provider, connection, table_name, fk_name, case_sensitive=True):
         db_name, table_name = provider.split_table_name(table_name)
-        if case_sensitive: sql = 'SELECT constraint_name FROM information_schema.table_constraints ' \
-                                 'WHERE table_schema=%s and table_name=%s ' \
-                                 "and constraint_type='FOREIGN KEY' and constraint_name=%s"
-        else: sql = 'SELECT constraint_name FROM information_schema.table_constraints ' \
-                    'WHERE table_schema=%s and table_name=%s ' \
-                    "and constraint_type='FOREIGN KEY' and UPPER(constraint_name)=UPPER(%s)"
+        if case_sensitive:
+            sql = 'SELECT constraint_name FROM information_schema.table_constraints ' \
+                'WHERE table_schema=%s and table_name=%s ' \
+                "and constraint_type='FOREIGN KEY' and constraint_name=%s"
+        else:
+            sql = 'SELECT constraint_name FROM information_schema.table_constraints ' \
+                'WHERE table_schema=%s and table_name=%s ' \
+                "and constraint_type='FOREIGN KEY' and UPPER(constraint_name)=UPPER(%s)"
         cursor = connection.cursor()
-        cursor.execute(sql, [ db_name, table_name, fk_name ])
+        cursor.execute(sql, [db_name, table_name, fk_name])
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
 provider_cls = MySQLProvider
 
+
 def str2datetime(s):
-    if 19 < len(s) < 26: s += '000000'[:26-len(s)]
-    s = s.replace('-', ' ').replace(':', ' ').replace('.', ' ').replace('T', ' ')
+    if 19 < len(s) < 26:
+        s += '000000'[:26 - len(s)]
+    s = s.replace('-', ' ').replace(':',
+                                    ' ').replace('.', ' ').replace('T', ' ')
     return datetime(*imap(int, s.split()))

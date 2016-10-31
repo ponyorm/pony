@@ -7,6 +7,7 @@ from pony.orm.tests.testutils import *
 
 db = Database('sqlite', ':memory:')
 
+
 class Student(db.Entity):
     name = Required(unicode, autostrip=False)
     foo = Optional(unicode)
@@ -21,7 +22,9 @@ with db_session:
     Student(id=4, name="Jonathan")
     Student(id=5, name="Pete")
 
+
 class TestStringMethods(unittest.TestCase):
+
     def setUp(self):
         rollback()
         db_session.__enter__()
@@ -93,7 +96,8 @@ class TestStringMethods(unittest.TestCase):
         x = 10
         y = 20
         result = set(select(s for s in Student if s.name[x:y] == ''))
-        self.assertEqual(result, {Student[1], Student[2], Student[3], Student[4], Student[5]})
+        self.assertEqual(result, {Student[1], Student[
+                         2], Student[3], Student[4], Student[5]})
 
     def test_getitem_1(self):
         result = set(select(s for s in Student if s.name[1] == 'o'))
@@ -162,15 +166,18 @@ class TestStringMethods(unittest.TestCase):
         self.assertEqual(students, {Student[1], Student[4]})
 
     def test_startswith_2(self):
-        students = set(select(s for s in Student if not s.name.startswith('J')))
+        students = set(
+            select(s for s in Student if not s.name.startswith('J')))
         self.assertEqual(students, {Student[2], Student[3], Student[5]})
 
     def test_startswith_3(self):
-        students = set(select(s for s in Student if not not s.name.startswith('J')))
+        students = set(
+            select(s for s in Student if not not s.name.startswith('J')))
         self.assertEqual(students, {Student[1], Student[4]})
 
     def test_startswith_4(self):
-        students = set(select(s for s in Student if not not not s.name.startswith('J')))
+        students = set(
+            select(s for s in Student if not not not s.name.startswith('J')))
         self.assertEqual(students, {Student[2], Student[3], Student[5]})
 
     def test_startswith_5(self):

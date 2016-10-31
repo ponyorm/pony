@@ -1,4 +1,5 @@
-import sys, unittest
+import sys
+import unittest
 from decimal import Decimal
 from datetime import date
 
@@ -6,6 +7,7 @@ from pony.orm import *
 from pony.orm.tests.testutils import *
 
 db = Database('sqlite', ':memory:')
+
 
 class Student(db.Entity):
     name = Required(str)
@@ -16,10 +18,12 @@ class Student(db.Entity):
     courses = Set('Course')
     biography = Optional(LongStr)
 
+
 class Group(db.Entity):
     number = PrimaryKey(int)
     major = Required(str)
     students = Set(Student)
+
 
 class Course(db.Entity):
     name = Required(str, unique=True)
@@ -33,11 +37,16 @@ with db_session:
     c1 = Course(name='Math')
     c2 = Course(name='Physics')
     c3 = Course(name='Computer Science')
-    Student(id=1, name='S1', group=g1, gpa=3.1, courses=[c1, c2], biography='some text')
-    Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 1, 1))
-    Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 1, 2), courses=[c2, c3])
+    Student(id=1, name='S1', group=g1, gpa=3.1,
+            courses=[c1, c2], biography='some text')
+    Student(id=2, name='S2', group=g1, gpa=3.2,
+            scholarship=100, dob=date(2000, 1, 1))
+    Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200,
+            dob=date(2001, 1, 2), courses=[c2, c3])
+
 
 class TestPrefetching(unittest.TestCase):
+
     def test_1(self):
         with db_session:
             s1 = Student.select().first()
@@ -76,7 +85,8 @@ class TestPrefetching(unittest.TestCase):
 
     def test_7(self):
         with db_session:
-            name, group = select((s.name, s.group) for s in Student).prefetch(Group).first()
+            name, group = select((s.name, s.group)
+                                 for s in Student).prefetch(Group).first()
         self.assertEqual(group.major, 'Math')
 
     @raises_exception(DatabaseSessionIsOver, 'Cannot load collection Student[1].courses: the database session is over')

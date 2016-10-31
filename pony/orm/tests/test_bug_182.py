@@ -44,4 +44,3 @@ class Test(unittest.TestCase):
                 break
         else:
             self.fail()
-

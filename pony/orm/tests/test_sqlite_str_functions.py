@@ -10,6 +10,7 @@ from pony.orm.tests.testutils import *
 
 db = Database('sqlite', ':memory:')
 
+
 class Person(db.Entity):
     name = Required(unicode)
     age = Optional(int)
@@ -23,6 +24,7 @@ with db_session:
 
 
 class TestUnicode(unittest.TestCase):
+
     @db_session
     def test1(self):
         names = select(p.name for p in Person).order_by(lambda: p.id)[:]
@@ -30,13 +32,17 @@ class TestUnicode(unittest.TestCase):
 
     @db_session
     def test2(self):
-        names = select(p.name.upper() for p in Person).order_by(lambda: p.id)[:]
-        self.assertEqual(names, ['JOHN', u'ИВАН'])  # u'\u0418\u0412\u0410\u041d'
+        names = select(p.name.upper()
+                       for p in Person).order_by(lambda: p.id)[:]
+        # u'\u0418\u0412\u0410\u041d'
+        self.assertEqual(names, ['JOHN', u'ИВАН'])
 
     @db_session
     def test3(self):
-        names = select(p.name.lower() for p in Person).order_by(lambda: p.id)[:]
-        self.assertEqual(names, ['john', u'иван'])  # u'\u0438\u0432\u0430\u043d'
+        names = select(p.name.lower()
+                       for p in Person).order_by(lambda: p.id)[:]
+        # u'\u0438\u0432\u0430\u043d'
+        self.assertEqual(names, ['john', u'иван'])
 
     @db_session
     def test4(self):

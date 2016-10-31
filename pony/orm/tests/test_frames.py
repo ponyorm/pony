@@ -6,6 +6,7 @@ from pony.orm.core import *
 
 db = Database('sqlite', ':memory:')
 
+
 class Person(db.Entity):
     name = Required(unicode)
     age = Required(int)
@@ -16,6 +17,7 @@ with db_session:
     p1 = Person(name='John', age=22)
     p2 = Person(name='Mary', age=18)
     p3 = Person(name='Mike', age=25)
+
 
 class TestFrames(unittest.TestCase):
 
@@ -89,7 +91,7 @@ class TestFrames(unittest.TestCase):
     def test_entity_select_by_sql(self):
         x = 25
         p = Person.select_by_sql('select * from Person where age = $x')
-        self.assertEqual(p, [ Person[3] ])
+        self.assertEqual(p, [Person[3]])
 
     @db_session
     def test_entity_exists(self):
@@ -119,7 +121,8 @@ class TestFrames(unittest.TestCase):
     def test_order_by(self):
         x = 20
         y = -1
-        result = Person.select(lambda p: p.age > x).order_by(lambda p: p.age * y)[:]
+        result = Person.select(lambda p: p.age > x).order_by(
+            lambda p: p.age * y)[:]
         self.assertEqual(result, [Person[3], Person[1]])
 
     @db_session
@@ -133,14 +136,16 @@ class TestFrames(unittest.TestCase):
     def test_filter(self):
         x = 20
         y = 'M'
-        result = Person.select(lambda p: p.age > x).filter(lambda p: p.name.startswith(y))[:]
+        result = Person.select(lambda p: p.age > x).filter(
+            lambda p: p.name.startswith(y))[:]
         self.assertEqual(result, [Person[3]])
 
     @db_session
     def test_filter_str(self):
         x = 20
         y = 'M'
-        result = Person.select('lambda p: p.age > x').filter('p.name.startswith(y)')[:]
+        result = Person.select('lambda p: p.age > x').filter(
+            'p.name.startswith(y)')[:]
         self.assertEqual(result, [Person[3]])
 
     @db_session
@@ -158,7 +163,8 @@ class TestFrames(unittest.TestCase):
     @db_session
     def test_db_execute(self):
         x = 18
-        result = db.execute('select name from Person where age = $x').fetchone()
+        result = db.execute(
+            'select name from Person where age = $x').fetchone()
         self.assertEqual(result, ('Mary',))
 
     @db_session

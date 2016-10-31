@@ -8,9 +8,12 @@ from itertools import count
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
 
+
 class TestDBSession(unittest.TestCase):
+
     def setUp(self):
         self.db = Database('sqlite', ':memory:')
+
         class X(self.db.Entity):
             a = Required(int)
             b = Optional(int)
@@ -53,7 +56,7 @@ class TestDBSession(unittest.TestCase):
         @db_session
         def test():
             self.X(a=3, b=3)
-            1/0
+            1 / 0
         try:
             test()
         except ZeroDivisionError:
@@ -63,11 +66,12 @@ class TestDBSession(unittest.TestCase):
             self.fail()
 
     def test_db_session_decorator_3(self):
-        # Should rollback changes if the exception is not in the list of allowed exceptions
+        # Should rollback changes if the exception is not in the list of
+        # allowed exceptions
         @db_session(allowed_exceptions=[TypeError])
         def test():
             self.X(a=3, b=3)
-            1/0
+            1 / 0
         try:
             test()
         except ZeroDivisionError:
@@ -77,11 +81,12 @@ class TestDBSession(unittest.TestCase):
             self.fail()
 
     def test_db_session_decorator_4(self):
-        # Should commit changes if the exception is in the list of allowed exceptions
+        # Should commit changes if the exception is in the list of allowed
+        # exceptions
         @db_session(allowed_exceptions=[ZeroDivisionError])
         def test():
             self.X(a=3, b=3)
-            1/0
+            1 / 0
         try:
             test()
         except ZeroDivisionError:
@@ -105,11 +110,12 @@ class TestDBSession(unittest.TestCase):
     def test_db_session_decorator_7(self):
         # Should not to do retry until retry count is specified
         counter = count()
+
         @db_session(retry_exceptions=[ZeroDivisionError])
         def test():
             next(counter)
             self.X(a=3, b=3)
-            1/0
+            1 / 0
         try:
             test()
         except ZeroDivisionError:
@@ -122,11 +128,12 @@ class TestDBSession(unittest.TestCase):
     def test_db_session_decorator_8(self):
         # Should rollback & retry 1 time if retry=1
         counter = count()
+
         @db_session(retry=1, retry_exceptions=[ZeroDivisionError])
         def test():
             next(counter)
             self.X(a=3, b=3)
-            1/0
+            1 / 0
         try:
             test()
         except ZeroDivisionError:
@@ -139,11 +146,12 @@ class TestDBSession(unittest.TestCase):
     def test_db_session_decorator_9(self):
         # Should rollback & retry N time if retry=N
         counter = count()
+
         @db_session(retry=5, retry_exceptions=[ZeroDivisionError])
         def test():
             next(counter)
             self.X(a=3, b=3)
-            1/0
+            1 / 0
         try:
             test()
         except ZeroDivisionError:
@@ -156,11 +164,12 @@ class TestDBSession(unittest.TestCase):
     def test_db_session_decorator_10(self):
         # Should not retry if the exception not in the list of retry_exceptions
         counter = count()
+
         @db_session(retry=3, retry_exceptions=[TypeError])
         def test():
             next(counter)
             self.X(a=3, b=3)
-            1/0
+            1 / 0
         try:
             test()
         except ZeroDivisionError:
@@ -173,11 +182,13 @@ class TestDBSession(unittest.TestCase):
     def test_db_session_decorator_11(self):
         # Should commit after successful retrying
         counter = count()
+
         @db_session(retry=5, retry_exceptions=[ZeroDivisionError])
         def test():
             i = next(counter)
             self.X(a=3, b=3)
-            if i < 2: 1/0
+            if i < 2:
+                1 / 0
         try:
             test()
         except ZeroDivisionError:
@@ -191,7 +202,7 @@ class TestDBSession(unittest.TestCase):
                                  "in both allowed and retry exception lists simultaneously")
     def test_db_session_decorator_12(self):
         @db_session(retry=3, retry_exceptions=[ZeroDivisionError],
-                             allowed_exceptions=[ZeroDivisionError])
+                    allowed_exceptions=[ZeroDivisionError])
         def test():
             pass
 
@@ -200,7 +211,7 @@ class TestDBSession(unittest.TestCase):
         @db_session(allowed_exceptions=lambda e: isinstance(e, ZeroDivisionError))
         def test():
             self.X(a=3, b=3)
-            1/0
+            1 / 0
         try:
             test()
         except ZeroDivisionError:
@@ -214,7 +225,7 @@ class TestDBSession(unittest.TestCase):
         @db_session(allowed_exceptions=lambda e: isinstance(e, TypeError))
         def test():
             self.X(a=3, b=3)
-            1/0
+            1 / 0
         try:
             test()
         except ZeroDivisionError:
@@ -226,11 +237,12 @@ class TestDBSession(unittest.TestCase):
     def test_db_session_decorator_15(self):
         # retry_exceptions may be callable, should retry if nonzero
         counter = count()
+
         @db_session(retry=3, retry_exceptions=lambda e: isinstance(e, ZeroDivisionError))
         def test():
             i = next(counter)
             self.X(a=3, b=3)
-            1/0
+            1 / 0
         try:
             test()
         except ZeroDivisionError:
@@ -253,11 +265,12 @@ class TestDBSession(unittest.TestCase):
             self.X(a=3, b=3)
 
     def test_db_session_manager_3(self):
-        # Should rollback if the exception is not in the list of allowed_exceptions
+        # Should rollback if the exception is not in the list of
+        # allowed_exceptions
         try:
             with db_session(allowed_exceptions=[TypeError]):
                 self.X(a=3, b=3)
-                1/0
+                1 / 0
         except ZeroDivisionError:
             with db_session:
                 self.assertEqual(count(x for x in self.X), 2)
@@ -269,7 +282,7 @@ class TestDBSession(unittest.TestCase):
         try:
             with db_session(allowed_exceptions=[ZeroDivisionError]):
                 self.X(a=3, b=3)
-                1/0
+                1 / 0
         except ZeroDivisionError:
             with db_session:
                 self.assertEqual(count(x for x in self.X), 3)
@@ -299,7 +312,7 @@ class TestDBSession(unittest.TestCase):
     @raises_exception(ZeroDivisionError)
     def test_db_session_exceptions_1(self):
         def before_insert(self):
-            1/0
+            1 / 0
         self.X.before_insert = before_insert
         with db_session:
             self.X(a=3, b=3)
@@ -327,10 +340,12 @@ class TestDBSession(unittest.TestCase):
 
 db = Database('sqlite', ':memory:')
 
+
 class Group(db.Entity):
     id = PrimaryKey(int)
     major = Required(unicode)
     students = Set('Student')
+
 
 class Student(db.Entity):
     name = Required(unicode)
@@ -348,6 +363,7 @@ with db_session:
 
 
 class TestDBSessionScope(unittest.TestCase):
+
     def setUp(self):
         rollback()
 

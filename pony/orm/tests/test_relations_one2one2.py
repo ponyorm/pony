@@ -7,9 +7,11 @@ from pony.orm.tests.testutils import *
 
 db = Database('sqlite', ':memory:')
 
+
 class Male(db.Entity):
     name = Required(unicode)
     wife = Optional('Female', column='wife')
+
 
 class Female(db.Entity):
     name = Required(unicode)
@@ -17,7 +19,9 @@ class Female(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
+
 class TestOneToOne2(unittest.TestCase):
+
     def setUp(self):
         with db_session:
             db.execute('update female set husband=null')
@@ -33,8 +37,10 @@ class TestOneToOne2(unittest.TestCase):
             db.execute('update female set husband=1 where id=1')
             db.execute('update female set husband=2 where id=2')
         db_session.__enter__()
+
     def tearDown(self):
         db_session.__exit__()
+
     def test_1(self):
         Male[3].wife = Female[3]
 
@@ -45,6 +51,7 @@ class TestOneToOne2(unittest.TestCase):
         self.assertEqual([1, 2, 3], wives)
         husbands = db.select('husband from female order by female.id')
         self.assertEqual([1, 2, 3], husbands)
+
     def test_2(self):
         Female[3].husband = Male[3]
 
@@ -55,6 +62,7 @@ class TestOneToOne2(unittest.TestCase):
         self.assertEqual([1, 2, 3], wives)
         husbands = db.select('husband from female order by female.id')
         self.assertEqual([1, 2, 3], husbands)
+
     def test_3(self):
         Male[1].wife = None
 
@@ -65,6 +73,7 @@ class TestOneToOne2(unittest.TestCase):
         self.assertEqual([None, 2, None], wives)
         husbands = db.select('husband from female order by female.id')
         self.assertEqual([None, 2, None], husbands)
+
     def test_4(self):
         Female[1].husband = None
 
@@ -75,6 +84,7 @@ class TestOneToOne2(unittest.TestCase):
         self.assertEqual([None, 2, None], wives)
         husbands = db.select('husband from female order by female.id')
         self.assertEqual([None, 2, None], husbands)
+
     def test_5(self):
         Male[1].wife = Female[3]
 
@@ -86,6 +96,7 @@ class TestOneToOne2(unittest.TestCase):
         self.assertEqual([3, 2, None], wives)
         husbands = db.select('husband from female order by female.id')
         self.assertEqual([None, 2, 1], husbands)
+
     def test_6(self):
         Female[3].husband = Male[1]
 
@@ -97,6 +108,7 @@ class TestOneToOne2(unittest.TestCase):
         self.assertEqual([3, 2, None], wives)
         husbands = db.select('husband from female order by female.id')
         self.assertEqual([None, 2, 1], husbands)
+
     def test_7(self):
         Male[1].wife = Female[2]
 
@@ -109,6 +121,7 @@ class TestOneToOne2(unittest.TestCase):
         self.assertEqual([2, None, None], wives)
         husbands = db.select('husband from female order by female.id')
         self.assertEqual([None, 1, None], husbands)
+
     def test_8(self):
         Female[2].husband = Male[1]
 
@@ -121,12 +134,14 @@ class TestOneToOne2(unittest.TestCase):
         self.assertEqual([2, None, None], wives)
         husbands = db.select('husband from female order by female.id')
         self.assertEqual([None, 1, None], husbands)
+
     @raises_exception(UnrepeatableReadError, 'Value of Male.wife for Male[1] was updated outside of current transaction')
     def test_9(self):
         db.execute('update female set husband = 3 where id = 1')
         m1 = Male[1]
         f1 = m1.wife
         f1.name
+
     def test_10(self):
         db.execute('update female set husband = 3 where id = 1')
         m1 = Male[1]

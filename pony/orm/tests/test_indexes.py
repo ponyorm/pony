@@ -1,20 +1,24 @@
-import sys, unittest
+import sys
+import unittest
 from decimal import Decimal
 from datetime import date
 
 from pony.orm import *
 from pony.orm.tests.testutils import *
 
+
 class TestIndexes(unittest.TestCase):
+
     def test_1(self):
         db = Database('sqlite', ':memory:')
+
         class Person(db.Entity):
             name = Required(str)
             age = Required(int)
             composite_key(name, 'age')
         db.generate_mapping(create_tables=True)
 
-        [ i1, i2 ] = Person._indexes_
+        [i1, i2] = Person._indexes_
         self.assertEqual(i1.attrs, (Person.id,))
         self.assertEqual(i1.is_pk, True)
         self.assertEqual(i1.is_unique, True)
@@ -32,13 +36,14 @@ class TestIndexes(unittest.TestCase):
 
     def test_2(self):
         db = Database('sqlite', ':memory:')
+
         class Person(db.Entity):
             name = Required(str)
             age = Required(int)
             composite_index(name, 'age')
         db.generate_mapping(create_tables=True)
 
-        [ i1, i2 ] = Person._indexes_
+        [i1, i2] = Person._indexes_
         self.assertEqual(i1.attrs, (Person.id,))
         self.assertEqual(i1.is_pk, True)
         self.assertEqual(i1.is_unique, True)
@@ -60,6 +65,7 @@ class TestIndexes(unittest.TestCase):
 
     def test_2(self):
         db = Database('sqlite', ':memory:')
+
         class User(db.Entity):
             name = Required(str, unique=True)
 

@@ -5,11 +5,13 @@ from pony.orm import *
 
 db = Database("sqlite", "demo.sqlite", create_db=True)
 
+
 class Customer(db.Entity):
     id = PrimaryKey(int, auto=True)
     name = Required(str)
     email = Required(str, unique=True)
     orders = Set("Order")
+
 
 class Order(db.Entity):
     id = PrimaryKey(int, auto=True)
@@ -17,11 +19,13 @@ class Order(db.Entity):
     customer = Required(Customer)
     items = Set("OrderItem")
 
+
 class Product(db.Entity):
     id = PrimaryKey(int, auto=True)
     name = Required(str)
     price = Required(Decimal)
     items = Set("OrderItem")
+
 
 class OrderItem(db.Entity):
     quantity = Required(int, default=1)
@@ -32,6 +36,7 @@ class OrderItem(db.Entity):
 sql_debug(True)
 db.generate_mapping(create_tables=True)
 
+
 def populate_database():
     c1 = Customer(name='John Smith', email='john@example.com')
     c2 = Customer(name='Matthew Reed', email='matthew@example.com')
@@ -40,11 +45,16 @@ def populate_database():
     c5 = Customer(name='Oliver Blakey', email='oliver@example.com')
 
     p1 = Product(name='Kindle Fire HD', price=Decimal('284.00'))
-    p2 = Product(name='Apple iPad with Retina Display', price=Decimal('478.50'))
-    p3 = Product(name='SanDisk Cruzer 16 GB USB Flash Drive', price=Decimal('9.99'))
-    p4 = Product(name='Kingston DataTraveler 16GB USB 2.0', price=Decimal('9.98'))
-    p5 = Product(name='Samsung 840 Series 120GB SATA III SSD', price=Decimal('98.95'))
-    p6 = Product(name='Crucial m4 256GB SSD SATA 6Gb/s', price=Decimal('188.67'))
+    p2 = Product(name='Apple iPad with Retina Display',
+                 price=Decimal('478.50'))
+    p3 = Product(name='SanDisk Cruzer 16 GB USB Flash Drive',
+                 price=Decimal('9.99'))
+    p4 = Product(name='Kingston DataTraveler 16GB USB 2.0',
+                 price=Decimal('9.98'))
+    p5 = Product(name='Samsung 840 Series 120GB SATA III SSD',
+                 price=Decimal('98.95'))
+    p6 = Product(name='Crucial m4 256GB SSD SATA 6Gb/s',
+                 price=Decimal('188.67'))
 
     o1 = Order(customer=c1, total_price=Decimal('292.00'))
     OrderItem(order=o1, product=p1)
@@ -66,4 +76,3 @@ def populate_database():
     OrderItem(order=o5, product=p2)
 
     commit()
-

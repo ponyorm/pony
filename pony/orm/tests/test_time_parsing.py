@@ -6,7 +6,9 @@ from datetime import datetime, date, time
 from pony.orm.tests.testutils import raises_exception
 from pony.converting import str2time
 
+
 class TestTimeParsing(unittest.TestCase):
+
     def test_time_1(self):
         self.assertEqual(str2time('1:2'), time(1, 2))
         self.assertEqual(str2time('01:02'), time(1, 2))
@@ -71,25 +73,41 @@ class TestTimeParsing(unittest.TestCase):
         self.assertEqual(str2time('12 34 56.789'), time(12, 34, 56, 789000))
         self.assertEqual(str2time('12h34m56.789'), time(12, 34, 56, 789000))
         self.assertEqual(str2time('12h 34m 56.789'), time(12, 34, 56, 789000))
-        self.assertEqual(str2time('12 h 34 m 56.789'), time(12, 34, 56, 789000))
+        self.assertEqual(str2time('12 h 34 m 56.789'),
+                         time(12, 34, 56, 789000))
         self.assertEqual(str2time('12h 34m 56.789s'), time(12, 34, 56, 789000))
-        self.assertEqual(str2time('12 h 34 m 56.789 s'), time(12, 34, 56, 789000))
-        self.assertEqual(str2time('12h 34min 56.789'), time(12, 34, 56, 789000))
-        self.assertEqual(str2time('12h 34min 56.789sec'), time(12, 34, 56, 789000))
-        self.assertEqual(str2time('12h 34 min 56.789 sec'), time(12, 34, 56, 789000))
+        self.assertEqual(str2time('12 h 34 m 56.789 s'),
+                         time(12, 34, 56, 789000))
+        self.assertEqual(str2time('12h 34min 56.789'),
+                         time(12, 34, 56, 789000))
+        self.assertEqual(str2time('12h 34min 56.789sec'),
+                         time(12, 34, 56, 789000))
+        self.assertEqual(str2time('12h 34 min 56.789 sec'),
+                         time(12, 34, 56, 789000))
 
     def test_time_12(self):
-        self.assertEqual(str2time('12:34:56.789 a.m.'), time(0, 34, 56, 789000))
-        self.assertEqual(str2time('12.34.56.789 a.m.'), time(0, 34, 56, 789000))
-        self.assertEqual(str2time('12 34 56.789 a.m.'), time(0, 34, 56, 789000))
-        self.assertEqual(str2time('12h34m56.789 a.m.'), time(0, 34, 56, 789000))
-        self.assertEqual(str2time('12h 34m 56.789 a.m.'), time(0, 34, 56, 789000))
-        self.assertEqual(str2time('12 h 34 m 56.789 a.m.'), time(0, 34, 56, 789000))
-        self.assertEqual(str2time('12h 34m 56.789s a.m.'), time(0, 34, 56, 789000))
-        self.assertEqual(str2time('12 h 34 m 56.789 s a.m.'), time(0, 34, 56, 789000))
-        self.assertEqual(str2time('12h 34min 56.789 a.m.'), time(0, 34, 56, 789000))
-        self.assertEqual(str2time('12h 34min 56.789sec a.m.'), time(0, 34, 56, 789000))
-        self.assertEqual(str2time('12h 34 min 56.789 sec a.m.'), time(0, 34, 56, 789000))
+        self.assertEqual(str2time('12:34:56.789 a.m.'),
+                         time(0, 34, 56, 789000))
+        self.assertEqual(str2time('12.34.56.789 a.m.'),
+                         time(0, 34, 56, 789000))
+        self.assertEqual(str2time('12 34 56.789 a.m.'),
+                         time(0, 34, 56, 789000))
+        self.assertEqual(str2time('12h34m56.789 a.m.'),
+                         time(0, 34, 56, 789000))
+        self.assertEqual(str2time('12h 34m 56.789 a.m.'),
+                         time(0, 34, 56, 789000))
+        self.assertEqual(str2time('12 h 34 m 56.789 a.m.'),
+                         time(0, 34, 56, 789000))
+        self.assertEqual(str2time('12h 34m 56.789s a.m.'),
+                         time(0, 34, 56, 789000))
+        self.assertEqual(str2time('12 h 34 m 56.789 s a.m.'),
+                         time(0, 34, 56, 789000))
+        self.assertEqual(str2time('12h 34min 56.789 a.m.'),
+                         time(0, 34, 56, 789000))
+        self.assertEqual(str2time('12h 34min 56.789sec a.m.'),
+                         time(0, 34, 56, 789000))
+        self.assertEqual(str2time('12h 34 min 56.789 sec a.m.'),
+                         time(0, 34, 56, 789000))
 
     def test_time_13(self):
         self.assertEqual(str2time('12:34'), time(12, 34))

@@ -5,9 +5,11 @@ from pony.orm.core import *
 
 db = Database('sqlite', ':memory:')
 
+
 class Male(db.Entity):
     name = Required(unicode)
     wife = Optional('Female', column='wife')
+
 
 class Female(db.Entity):
     name = Required(unicode)
@@ -15,7 +17,9 @@ class Female(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
+
 class TestOneToOne(unittest.TestCase):
+
     def setUp(self):
         with db_session:
             db.execute('delete from male')

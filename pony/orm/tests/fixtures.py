@@ -4,7 +4,7 @@ import logging
 
 from pony.py23compat import PY2
 from ponytest import with_cli_args, pony_fixtures, provider_validators, provider, Fixture, \
-        ValidationError
+    ValidationError
 
 from functools import wraps, partial
 import click
@@ -29,6 +29,7 @@ else:
 from multiprocessing import Process
 
 import threading
+
 
 class DBContext(ContextDecorator):
 
@@ -105,14 +106,14 @@ class GenerateMapping(ContextDecorator):
     def __exit__(self, *exc_info):
         pass
 
+
 @provider()
 class MySqlContext(DBContext):
-    provider_key  = 'mysql'
+    provider_key = 'mysql'
 
     def drop_db(self, cursor):
         cursor.execute('use sys')
         cursor.execute('drop database %s' % self.db_name)
-
 
     def init_db(self):
         from pony.orm.dbproviders.mysql import mysql_module
@@ -134,6 +135,7 @@ class MySqlContext(DBContext):
     def db(self):
         CONN = dict(self.CONN, db=self.db_name)
         return Database('mysql', **CONN)
+
 
 @provider()
 class SqlServerContext(DBContext):
@@ -158,13 +160,15 @@ class SqlServerContext(DBContext):
 
     def init_db(self):
         import pyodbc
-        cursor = pyodbc.connect(self.get_conn_string(), autocommit=True).cursor()
+        cursor = pyodbc.connect(self.get_conn_string(),
+                                autocommit=True).cursor()
         with closing(cursor) as c:
             try:
                 self.drop_db(c)
             except pyodbc.DatabaseError as exc:
                 print('Failed to drop db: %s' % exc)
-            c.execute('''CREATE DATABASE %s DEFAULT CHARACTER SET utf8 DEFAULT COLLATE utf8_general_ci''' % self.db_name )
+            c.execute(
+                '''CREATE DATABASE %s DEFAULT CHARACTER SET utf8 DEFAULT COLLATE utf8_general_ci''' % self.db_name )
             c.execute('use %s' % self.db_name)
 
     def drop_db(self, cursor):
@@ -252,7 +256,6 @@ class PostgresContext(DBContext):
     def drop_db(self, cursor):
         cursor.execute('drop database %s' % self.db_name)
 
-
     @cached_property
     def db(self):
         return Database('postgres', **self.get_conn_dict())
@@ -285,26 +288,24 @@ class OracleContext(DBContext):
                 except cx_Oracle.DatabaseError as exc:
                     print('Failed to drop db: %s' % exc)
                 cursor.execute(
-                """CREATE TABLESPACE %(tblspace)s
+                    """CREATE TABLESPACE %(tblspace)s
                 DATAFILE '%(datafile)s' SIZE 20M
                 REUSE AUTOEXTEND ON NEXT 10M MAXSIZE %(maxsize)s
                 """ % self.parameters)
                 cursor.execute(
-                """CREATE TEMPORARY TABLESPACE %(tblspace_temp)s
+                    """CREATE TEMPORARY TABLESPACE %(tblspace_temp)s
                 TEMPFILE '%(datafile_tmp)s' SIZE 20M
                 REUSE AUTOEXTEND ON NEXT 10M MAXSIZE %(maxsize_tmp)s
                 """ % self.parameters)
                 self._create_test_user(cursor)
 
-
     def _drop_tablespace(self, cursor):
         cursor.execute(
             'DROP TABLESPACE %(tblspace)s INCLUDING CONTENTS AND DATAFILES CASCADE CONSTRAINTS'
-        % self.parameters)
+            % self.parameters)
         cursor.execute(
             'DROP TABLESPACE %(tblspace_temp)s INCLUDING CONTENTS AND DATAFILES CASCADE CONSTRAINTS'
-        % self.parameters)
-
+            % self.parameters)
 
     parameters = {
         'tblspace': 'test_tblspace',
@@ -325,14 +326,13 @@ class OracleContext(DBContext):
         import cx_Oracle
         return cx_Oracle.connect('ponytest/ponytest@localhost/ORCL')
 
-
     @cached_property
     def db(self):
         return Database('oracle', 'ponytest/ponytest@localhost/ORCL')
 
     def _create_test_user(self, cursor):
         cursor.execute(
-        """CREATE USER %(user)s
+            """CREATE USER %(user)s
             IDENTIFIED BY %(password)s
             DEFAULT TABLESPACE %(tblspace)s
             TEMPORARY TABLESPACE %(tblspace_temp)s
@@ -340,7 +340,7 @@ class OracleContext(DBContext):
         """ % self.parameters
         )
         cursor.execute(
-        """GRANT CREATE SESSION,
+            """GRANT CREATE SESSION,
                     CREATE TABLE,
                     CREATE SEQUENCE,
                     CREATE PROCEDURE,
@@ -365,6 +365,7 @@ def logging_context(test):
     yield
     logging.getLogger().setLevel(level)
     sql_debug(debug)
+
 
 @provider(fixture='log_all', weight=-100, enabled=False)
 def log_all(Test):
@@ -416,6 +417,7 @@ class SeparateProcess(object):
         def wrapper(Test):
             rnr = unittest.runner.TextTestRunner()
             TestCls = Test if isinstance(Test, type) else type(Test)
+
             def runTest(self):
                 try:
                     func(Test)
@@ -426,6 +428,7 @@ class SeparateProcess(object):
             Case.__module__ = TestCls.__module__
             case = Case(name)
             suite = unittest.suite.TestSuite([case])
+
             def run():
                 result = rnr.run(suite)
                 if not result.wasSuccessful():
@@ -444,6 +447,7 @@ class SeparateProcess(object):
         for f in fixtures:
             if f.KEY == 'db' and f.provider_key in ('sqlserver', 'oracle'):
                 return True
+
 
 @provider()
 class ClearTables(ContextDecorator):
@@ -466,6 +470,7 @@ class ClearTables(ContextDecorator):
 
 
 import signal
+
 
 @provider()
 class Timeout(object):

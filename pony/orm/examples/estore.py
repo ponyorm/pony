@@ -8,6 +8,7 @@ from pony.orm import *
 
 db = Database("sqlite", "estore.sqlite", create_db=True)
 
+
 class Customer(db.Entity):
     email = Required(str, unique=True)
     password = Required(str)
@@ -16,6 +17,7 @@ class Customer(db.Entity):
     address = Required(str)
     cart_items = Set("CartItem")
     orders = Set("Order")
+
 
 class Product(db.Entity):
     id = PrimaryKey(int, auto=True)
@@ -28,10 +30,12 @@ class Product(db.Entity):
     cart_items = Set("CartItem")
     order_items = Set("OrderItem")
 
+
 class CartItem(db.Entity):
     quantity = Required(int)
     customer = Required(Customer)
     product = Required(Product)
+
 
 class OrderItem(db.Entity):
     quantity = Required(int)
@@ -39,6 +43,7 @@ class OrderItem(db.Entity):
     order = Required("Order")
     product = Required(Product)
     PrimaryKey(order, product)
+
 
 class Order(db.Entity):
     id = PrimaryKey(int, auto=True)
@@ -49,6 +54,7 @@ class Order(db.Entity):
     total_price = Required(Decimal)
     customer = Required(Customer)
     items = Set(OrderItem)
+
 
 class Category(db.Entity):
     name = Required(str, unique=True)
@@ -63,6 +69,7 @@ CREATED = 'CREATED'
 SHIPPED = 'SHIPPED'
 DELIVERED = 'DELIVERED'
 CANCELLED = 'CANCELLED'
+
 
 @db_session
 def populate_database():
@@ -160,6 +167,7 @@ def populate_database():
     OrderItem(order=o5, product=p1, price=Decimal('284.00'), quantity=1)
     OrderItem(order=o5, product=p2, price=Decimal('478.50'), quantity=1)
 
+
 @db_session
 def test_queries():
 
@@ -186,7 +194,8 @@ def test_queries():
 
     print('Max SSD price')
     print()
-    result = max(p.price for p in Product for cat in p.categories if cat.name == 'Solid State Drives')
+    result = max(
+        p.price for p in Product for cat in p.categories if cat.name == 'Solid State Drives')
 
     print(result)
     print()
@@ -207,7 +216,8 @@ def test_queries():
 
     print('Most popular product')
     print()
-    result = select(p for p in Product).order_by(lambda p: desc(sum(p.order_items.quantity))).first()
+    result = select(p for p in Product).order_by(
+        lambda p: desc(sum(p.order_items.quantity))).first()
 
     print(result)
     print()
@@ -228,7 +238,8 @@ def test_queries():
 
     print('Three most valuable customers')
     print()
-    result = select(c for c in Customer).order_by(lambda c: desc(sum(c.orders.total_price)))[:3]
+    result = select(c for c in Customer).order_by(
+        lambda c: desc(sum(c.orders.total_price)))[:3]
 
     print(result)
     print()
@@ -264,8 +275,8 @@ def test_queries():
     print('Customers which ordered several different tablets')
     print()
     result = select(c for c in Customer
-                      for p in c.orders.items.product
-                      if 'Tablets' in p.categories.name and count(p) > 1)[:]
+                    for p in c.orders.items.product
+                    if 'Tablets' in p.categories.name and count(p) > 1)[:]
 
     print(result)
     print()
@@ -295,7 +306,8 @@ def test_queries():
 
     print('Products whose price varies over time')
     print()
-    result = select(p.name for p in Product if count(p.order_items.price) > 1)[:]
+    result = select(p.name for p in Product if count(
+        p.order_items.price) > 1)[:]
 
     print(result)
     print()
@@ -310,7 +322,8 @@ def test_queries():
 
     print('Orders with a discount (order total price < sum of order item prices)')
     print()
-    result = select(o for o in Order if o.total_price < sum(o.items.price * o.items.quantity))[:]
+    result = select(o for o in Order if o.total_price <
+                    sum(o.items.price * o.items.quantity))[:]
 
     print(result)
     print()

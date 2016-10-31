@@ -14,7 +14,6 @@ import pony.orm.tests.fixtures
 from ponytest import with_cli_args, TestCase
 
 
-
 class TestJson(TestCase):
 
     @classmethod
@@ -25,7 +24,6 @@ class TestJson(TestCase):
             tags = Optional(Json)
 
         cls.Product = cls.db.Product
-
 
     @db_session
     def setUp(self):
@@ -42,36 +40,35 @@ class TestJson(TestCase):
                  'multi-touch': True
                 },
                 'os': {
-                 'type': 'iOS',
-                 'version': '8'
+                    'type': 'iOS',
+                    'version': '8'
                 },
                 'cpu': 'Apple A8X',
                 'ram': '8GB',
                 'colors': ['Gold', 'Silver', 'Space Gray'],
                 'models': [
-                 {
-                     'name': 'Wi-Fi',
-                     'capacity': ['16GB', '64GB'],
-                     'height': 240,
-                     'width': 169.5,
-                     'depth': 6.1,
-                     'weight': 437,
-                 },
-                 {
-                     'name': 'Wi-Fi + Cellular',
-                     'capacity': ['16GB', '64GB'],
-                     'height': 240,
-                     'width': 169.5,
-                     'depth': 6.1,
-                     'weight': 444,
-                 },
+                    {
+                        'name': 'Wi-Fi',
+                        'capacity': ['16GB', '64GB'],
+                        'height': 240,
+                        'width': 169.5,
+                        'depth': 6.1,
+                        'weight': 437,
+                    },
+                    {
+                        'name': 'Wi-Fi + Cellular',
+                        'capacity': ['16GB', '64GB'],
+                        'height': 240,
+                        'width': 169.5,
+                        'depth': 6.1,
+                        'weight': 444,
+                    },
                 ],
                 'discontinued': False,
                 'videoUrl': None,
                 'non-ascii-attr': u'\u0442\u0435\u0441\u0442'
             },
             tags=['Tablets', 'Apple', 'Retina'])
-
 
     def test(self):
         with db_session:
@@ -220,7 +217,8 @@ class TestJson(TestCase):
             p.info['colors'].append('White')
         with db_session:
             p = get(p for p in self.Product)
-            self.assertListEqual(p.info['colors'], ['Gold', 'Silver', 'Space Gray', 'White'])
+            self.assertListEqual(p.info['colors'], [
+                                 'Gold', 'Silver', 'Space Gray', 'White'])
 
     def test_list_set_slice(self):
         with db_session:
@@ -236,7 +234,8 @@ class TestJson(TestCase):
             p.info['colors'][1] = 'White'
         with db_session:
             p = get(p for p in self.Product)
-            self.assertListEqual(p.info['colors'], ['Gold', 'White', 'Space Gray'])
+            self.assertListEqual(p.info['colors'], [
+                                 'Gold', 'White', 'Space Gray'])
 
     def test_set_dict(self):
         with db_session:
@@ -244,7 +243,8 @@ class TestJson(TestCase):
             p.info['display']['resolution'] = {'width': 2048, 'height': 1536}
         with db_session:
             p = get(p for p in self.Product)
-            self.assertDictEqual(p.info['display']['resolution'], {'width': 2048, 'height': 1536})
+            self.assertDictEqual(p.info['display']['resolution'], {
+                                 'width': 2048, 'height': 1536})
 
     def test_dict_del(self):
         with db_session:
@@ -293,7 +293,8 @@ class TestJson(TestCase):
 
     @db_session
     def test_equal_str(self):
-        p = get(p for p in self.Product if p.info['name'] == 'Apple iPad Air 2')
+        p = get(p for p in self.Product if p.info[
+                'name'] == 'Apple iPad Air 2')
         self.assertTrue(p)
 
     @db_session
@@ -322,7 +323,8 @@ class TestJson(TestCase):
                        TranslationError, "Oracle doesn't allow parameters in JSON paths"):
             key = 'models'
             index = 0
-            p = get(p for p in self.Product if p.info[key][index]['name'] == 'Wi-Fi')
+            p = get(p for p in self.Product if p.info[
+                    key][index]['name'] == 'Wi-Fi')
             self.assertIsNotNone(p)
 
     @db_session
@@ -330,7 +332,8 @@ class TestJson(TestCase):
         with raises_if(self, self.db.provider.dialect == 'Oracle', TranslationError,
                        "Oracle does not support comparison of json structures: "
                        "p.info['os'] == {'type':'iOS', 'version':'8'}"):
-            p = get(p for p in self.Product if p.info['os'] == {'type': 'iOS', 'version': '8'})
+            p = get(p for p in self.Product if p.info[
+                    'os'] == {'type': 'iOS', 'version': '8'})
             self.assertTrue(p)
 
     @db_session
@@ -338,7 +341,8 @@ class TestJson(TestCase):
         with raises_if(self, self.db.provider.dialect == 'Oracle', TranslationError,
                        "Oracle does not support comparison of json structures: "
                        "p.info['os'] == Json({'type':'iOS', 'version':'8'})"):
-            p = get(p for p in self.Product if p.info['os'] == Json({'type': 'iOS', 'version': '8'}))
+            p = get(p for p in self.Product if p.info[
+                    'os'] == Json({'type': 'iOS', 'version': '8'}))
             self.assertTrue(p)
 
     @db_session
@@ -347,7 +351,8 @@ class TestJson(TestCase):
                        "Oracle does not support comparison of json structures: p.info['os'] != {}"):
             p = get(p for p in self.Product if p.info['os'] != {})
             self.assertTrue(p)
-            p = get(p for p in self.Product if p.info['os'] != {'type': 'iOS', 'version': '8'})
+            p = get(p for p in self.Product if p.info[
+                    'os'] != {'type': 'iOS', 'version': '8'})
             self.assertFalse(p)
 
     @db_session
@@ -356,7 +361,8 @@ class TestJson(TestCase):
                        "Oracle does not support comparison of json structures: p.info['os'] != Json({})"):
             p = get(p for p in self.Product if p.info['os'] != Json({}))
             self.assertTrue(p)
-            p = get(p for p in self.Product if p.info['os'] != {'type': 'iOS', 'version': '8'})
+            p = get(p for p in self.Product if p.info[
+                    'os'] != {'type': 'iOS', 'version': '8'})
             self.assertFalse(p)
 
     @db_session
@@ -364,7 +370,8 @@ class TestJson(TestCase):
         colors = ['Gold', 'Silver', 'Space Gray']
         with raises_if(self, self.db.provider.dialect == 'Oracle', TranslationError,
                        "Oracle does not support comparison of json structures: p.info['colors'] == Json(colors)"):
-            p = get(p for p in self.Product if p.info['colors'] == Json(colors))
+            p = get(p for p in self.Product if p.info[
+                    'colors'] == Json(colors))
             self.assertTrue(p)
 
     @db_session
@@ -376,7 +383,8 @@ class TestJson(TestCase):
     def test_equal_list_3(self):
         with raises_if(self, self.db.provider.dialect == 'Oracle', TranslationError,
                        "Oracle does not support comparison of json structures: p.info['colors'] != Json(['Gold'])"):
-            p = get(p for p in self.Product if p.info['colors'] != Json(['Gold']))
+            p = get(p for p in self.Product if p.info[
+                    'colors'] != Json(['Gold']))
             self.assertIsNotNone(p)
 
     @db_session
@@ -384,7 +392,8 @@ class TestJson(TestCase):
         colors = ['Gold', 'Silver', 'Space Gray']
         with raises_if(self, self.db.provider.dialect == 'Oracle', TranslationError,
                        "Oracle does not support comparison of json structures: p.info['colors'] == Json(colors)"):
-            p = get(p for p in self.Product if p.info['colors'] == Json(colors))
+            p = get(p for p in self.Product if p.info[
+                    'colors'] == Json(colors))
             self.assertTrue(p)
 
     @db_session
@@ -403,7 +412,8 @@ class TestJson(TestCase):
     def test_ne_list(self):
         with raises_if(self, self.db.provider.dialect == 'Oracle', TranslationError,
                        "Oracle does not support comparison of json structures: p.info['colors'] != Json(['Gold'])"):
-            p = get(p for p in self.Product if p.info['colors'] != Json(['Gold']))
+            p = get(p for p in self.Product if p.info[
+                    'colors'] != Json(['Gold']))
             self.assertTrue(p)
 
     @db_session
@@ -467,7 +477,8 @@ class TestJson(TestCase):
         with raises_if(self, self.db.provider.dialect != 'MySQL', TranslationError, exc_msg):
             key = 'models'
             index = 0
-            values = get(p.info[key][:]['capacity'][index] for p in self.Product)
+            values = get(p.info[key][:]['capacity'][index]
+                         for p in self.Product)
             self.assertListEqual(values, ['16GB', '16GB'])
 
     @db_session
@@ -479,7 +490,8 @@ class TestJson(TestCase):
         with raises_if(self, self.db.provider.dialect != 'MySQL', TranslationError, exc_msg):
             key = 'models'
             index = 0
-            values = get("p.info[key][:]['capacity'][index] for p in self.Product")
+            values = get(
+                "p.info[key][:]['capacity'][index] for p in self.Product")
             self.assertListEqual(values, ['16GB', '16GB'])
 
     @db_session
@@ -491,7 +503,8 @@ class TestJson(TestCase):
         }
         dialect = self.db.provider.dialect
         with raises_if(self, dialect in errors, TranslationError, errors.get(dialect)):
-            p = get(p for p in self.Product if '16GB' in p.info['models'][:]['capacity'])
+            p = get(p for p in self.Product if '16GB' in p.info[
+                    'models'][:]['capacity'])
             self.assertTrue(p)
 
     ##### 'key' in json
@@ -503,7 +516,8 @@ class TestJson(TestCase):
 
     @db_session
     def test_not_in_dict(self):
-        obj = get(p for p in self.Product if 'resolution' not in p.info['display'])
+        obj = get(
+            p for p in self.Product if 'resolution' not in p.info['display'])
         self.assertIs(obj, None)
         obj = get(p for p in self.Product if 'xyz' not in p.info['display'])
         self.assertTrue(obj)
@@ -546,17 +560,23 @@ class TestJson(TestCase):
 
     @db_session
     def test_int_compare(self):
-        p = get(p for p in self.Product if p.info['display']['resolution'][0] == 2048)
+        p = get(p for p in self.Product if p.info[
+                'display']['resolution'][0] == 2048)
         self.assertTrue(p)
-        p = get(p for p in self.Product if p.info['display']['resolution'][0] != 2048)
+        p = get(p for p in self.Product if p.info[
+                'display']['resolution'][0] != 2048)
         self.assertIsNone(p)
-        p = get(p for p in self.Product if p.info['display']['resolution'][0] < 2048)
+        p = get(p for p in self.Product if p.info[
+                'display']['resolution'][0] < 2048)
         self.assertIs(p, None)
-        p = get(p for p in self.Product if p.info['display']['resolution'][0] <= 2048)
+        p = get(p for p in self.Product if p.info[
+                'display']['resolution'][0] <= 2048)
         self.assertTrue(p)
-        p = get(p for p in self.Product if p.info['display']['resolution'][0] > 2048)
+        p = get(p for p in self.Product if p.info[
+                'display']['resolution'][0] > 2048)
         self.assertIs(p, None)
-        p = get(p for p in self.Product if p.info['display']['resolution'][0] >= 2048)
+        p = get(p for p in self.Product if p.info[
+                'display']['resolution'][0] >= 2048)
         self.assertTrue(p)
 
     @db_session
@@ -587,13 +607,17 @@ class TestJson(TestCase):
 
     @db_session
     def test_bool_compare(self):
-        p = get(p for p in self.Product if p.info['display']['multi-touch'] == True)
+        p = get(p for p in self.Product if p.info[
+                'display']['multi-touch'] == True)
         self.assertTrue(p)
-        p = get(p for p in self.Product if p.info['display']['multi-touch'] is True)
+        p = get(p for p in self.Product if p.info[
+                'display']['multi-touch'] is True)
         self.assertTrue(p)
-        p = get(p for p in self.Product if p.info['display']['multi-touch'] == False)
+        p = get(p for p in self.Product if p.info[
+                'display']['multi-touch'] == False)
         self.assertIsNone(p)
-        p = get(p for p in self.Product if p.info['display']['multi-touch'] is False)
+        p = get(p for p in self.Product if p.info[
+                'display']['multi-touch'] is False)
         self.assertIsNone(p)
         p = get(p for p in self.Product if p.info['discontinued'] == False)
         self.assertTrue(p)

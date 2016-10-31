@@ -7,9 +7,11 @@ from pony.orm import *
 
 db = Database()
 
+
 class TestPost(db.Entity):
     category = Optional('TestCategory')
     name = Optional(str, default='Noname')
+
 
 class TestCategory(db.Entity):
     posts = Set(TestPost)

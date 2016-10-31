@@ -6,6 +6,7 @@ from __future__ import print_function
 
 from . import ast, walk
 
+
 def is_future(stmt):
     """Return true if statement is a well-formed future statement"""
     if not isinstance(stmt, ast.From):
@@ -15,6 +16,7 @@ def is_future(stmt):
     else:
         return 0
 
+
 class FutureParser:
 
     features = ("nested_scopes", "generators", "division",
@@ -22,7 +24,7 @@ class FutureParser:
                 "unicode_literals")
 
     def __init__(self):
-        self.found = {} # set
+        self.found = {}  # set
 
     def visitModule(self, node):
         stmt = node.node
@@ -36,7 +38,8 @@ class FutureParser:
                 if name in self.features:
                     self.found[name] = 1
                 else:
-                    raise SyntaxError("future feature %s is not defined" % name)
+                    raise SyntaxError(
+                        "future feature %s is not defined" % name)
             stmt.valid_future = 1
             return 1
         return 0
@@ -44,6 +47,7 @@ class FutureParser:
     def get_features(self):
         """Return list of features enabled by future statements"""
         return self.found.keys()
+
 
 class BadFutureParser:
     """Check for invalid future statements"""
@@ -54,6 +58,7 @@ class BadFutureParser:
         if node.modname != "__future__":
             return
         raise SyntaxError("invalid future statement " + repr(node))
+
 
 def find_futures(node):
     p1 = FutureParser()

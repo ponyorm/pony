@@ -8,6 +8,7 @@ from pony.orm.tests.testutils import *
 
 db = Database('sqlite', ':memory:')
 
+
 class Student(db.Entity):
     name = Required(unicode)
     scholarship = Optional(int)
@@ -17,9 +18,11 @@ class Student(db.Entity):
     courses = Set('Course')
     biography = Optional(LongUnicode)
 
+
 class Group(db.Entity):
     number = PrimaryKey(int)
     students = Set(Student)
+
 
 class Course(db.Entity):
     name = Required(unicode, unique=True)
@@ -33,12 +36,17 @@ with db_session:
     c1 = Course(name='Math')
     c2 = Course(name='Physics')
     c3 = Course(name='Computer Science')
-    Student(id=1, name='S1', group=g1, gpa=3.1, courses=[c1, c2], biography='some text')
-    Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 1, 1))
-    Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 1, 2), courses=[c2, c3])
+    Student(id=1, name='S1', group=g1, gpa=3.1,
+            courses=[c1, c2], biography='some text')
+    Student(id=2, name='S2', group=g1, gpa=3.2,
+            scholarship=100, dob=date(2000, 1, 1))
+    Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200,
+            dob=date(2001, 1, 2), courses=[c2, c3])
     Student(id=4, name='S4')
 
+
 class TestObjectToDict(unittest.TestCase):
+
     def setUp(self):
         rollback()
         db_session.__enter__()
@@ -142,7 +150,8 @@ class TestObjectToDict(unittest.TestCase):
     def test18(self):
         s1 = Student[1]
         d = s1.to_dict(exclude='dob gpa scholarship', with_lazy=True)
-        self.assertEqual(d, dict(id=1, name='S1', group=1, biography='some text'))
+        self.assertEqual(
+            d, dict(id=1, name='S1', group=1, biography='some text'))
 
     def test19(self):
         s1 = Student[1]
@@ -156,7 +165,8 @@ class TestObjectToDict(unittest.TestCase):
 
     def test21(self):
         s1 = Student[1]
-        d = s1.to_dict(exclude='dob gpa scholarship courses', with_collections=True)
+        d = s1.to_dict(exclude='dob gpa scholarship courses',
+                       with_collections=True)
         self.assertEqual(d, dict(id=1, name='S1', group=1))
 
     def test22(self):
@@ -166,7 +176,8 @@ class TestObjectToDict(unittest.TestCase):
 
     def test23(self):
         s1 = Student[1]
-        d = s1.to_dict(only='id name group', exclude='dob group', with_collections=True, with_lazy=True)
+        d = s1.to_dict(only='id name group', exclude='dob group',
+                       with_collections=True, with_lazy=True)
         self.assertEqual(d, dict(id=1, name='S1'))
 
     def test24(self):
@@ -174,7 +185,9 @@ class TestObjectToDict(unittest.TestCase):
         d = c.to_dict()  # should do flush and get c.id from the database
         self.assertEqual(d, dict(id=4, name='New Course'))
 
+
 class TestSerializationToDict(unittest.TestCase):
+
     def setUp(self):
         rollback()
         db_session.__enter__()
@@ -188,8 +201,8 @@ class TestSerializationToDict(unittest.TestCase):
         self.assertEqual(s4.group, None)
         d = to_dict(s4)
         self.assertEqual(d, dict(Student={
-            4 : dict(id=4, name='S4', group=None, dob=None, gpa=None, scholarship=None, courses=[])
-            }))
+            4: dict(id=4, name='S4', group=None, dob=None, gpa=None, scholarship=None, courses=[])
+        }))
 
 if __name__ == '__main__':
     unittest.main()

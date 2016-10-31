@@ -29,6 +29,7 @@ class class_property(object):
     def __get__(self, instance, cls):
         return self.func(cls)
 
+
 class class_cached_property(object):
 
     def __init__(self, func):

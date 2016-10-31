@@ -5,6 +5,7 @@ from pony.orm.tests.testutils import *
 
 db = Database('sqlite', ':memory:')
 
+
 class Person(db.Entity):
     id = PrimaryKey(int)
     name = Required(unicode)
@@ -18,7 +19,9 @@ with db_session:
     Person(id=4, name='Mike')
     Person(id=5, name='Ann')
 
+
 class TestRandom(unittest.TestCase):
+
     @db_session
     def test_1(self):
         persons = Person.select().random(2)

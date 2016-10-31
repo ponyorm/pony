@@ -9,10 +9,12 @@ from pony.orm.tests.testutils import *
 
 db = Database('sqlite', ':memory:')
 
+
 class Group(db.Entity):
     id = PrimaryKey(int)
     major = Required(unicode)
     students = Set('Student')
+
 
 class Student(db.Entity):
     name = Required(unicode)
@@ -22,6 +24,7 @@ class Student(db.Entity):
     phone = Optional(unicode, unique=True)
     courses = Set('Course')
     group = Optional('Group')
+
 
 class Course(db.Entity):
     name = Required(unicode)
@@ -43,6 +46,7 @@ with db_session:
 
 
 class TestCRUD(unittest.TestCase):
+
     def setUp(self):
         rollback()
         db_session.__enter__()
@@ -105,10 +109,13 @@ class TestCRUD(unittest.TestCase):
 
     @raises_exception(ValueError, "Value type for attribute Group.id must be int. Got string 'not a number'")
     def test_validate_5(self):
-        s4 = Student(id=3, name='S4', email='s4@example.com', group='not a number')
+        s4 = Student(id=3, name='S4', email='s4@example.com',
+                     group='not a number')
+
     @raises_exception(TypeError, "Attribute Student.group must be of Group type. Got: datetime.date(2011, 1, 1)")
     def test_validate_6(self):
-        s4 = Student(id=3, name='S4', email='s4@example.com', group=date(2011, 1, 1))
+        s4 = Student(id=3, name='S4', email='s4@example.com',
+                     group=date(2011, 1, 1))
 
     @raises_exception(TypeError, 'Invalid number of columns were specified for attribute Student.group. Expected: 1, got: 2')
     def test_validate_7(self):

@@ -2,9 +2,12 @@ import unittest
 
 from pony.orm.ormtypes import TrackedList, TrackedDict, TrackedValue
 
+
 class Object(object):
+
     def __init__(self):
         self.on_attr_changed = None
+
     def _attr_changed_(self, attr):
         if self.on_attr_changed is not None:
             self.on_attr_changed(attr)
@@ -53,4 +56,5 @@ class TestTrackedValue(unittest.TestCase):
         obj.on_attr_changed = lambda x: log.append(x)
         tracked_value['items'][1:2] = ['a', 'b', 'c']
         self.assertEqual(log, [attr])
-        self.assertEqual(tracked_value['items'], ['one', 'a', 'b', 'c', 'three'])
+        self.assertEqual(tracked_value['items'], [
+                         'one', 'a', 'b', 'c', 'three'])

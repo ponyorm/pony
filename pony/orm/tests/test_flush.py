@@ -5,7 +5,9 @@ import unittest
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
 
+
 class TestFlush(unittest.TestCase):
+
     def setUp(self):
         self.db = Database('sqlite', ':memory:')
 

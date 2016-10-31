@@ -4,9 +4,12 @@ import unittest
 
 from pony.orm.core import *
 
+
 class TestLazy(unittest.TestCase):
+
     def setUp(self):
         self.db = Database('sqlite', ':memory:')
+
         class X(self.db.Entity):
             a = Required(int)
             b = Required(unicode, lazy=True)
