@@ -27,7 +27,8 @@ if PY2:
         return dict.values()
 
 else:
-    import builtins, pickle
+    import builtins
+    import pickle
     from io import StringIO
     izip, imap, xrange = zip, map, range
     basestring = str
@@ -50,11 +51,15 @@ else:
     def values_list(dict):
         return list(dict.values())
 
-# Armin's recipe from http://lucumr.pocoo.org/2013/5/21/porting-to-python-3-redux/
+# Armin's recipe from
+# http://lucumr.pocoo.org/2013/5/21/porting-to-python-3-redux/
+
+
 def with_metaclass(meta, *bases):
     class metaclass(meta):
         __call__ = type.__call__
         __init__ = type.__init__
+
         def __new__(cls, name, this_bases, d):
             if this_bases is None:
                 return type.__new__(cls, name, (), d)

@@ -10,10 +10,10 @@ import sys
 from . import ast, parse, walk, syntax
 from . import pyassem, misc, future, symbols
 from .consts import SC_LOCAL, SC_GLOBAL_IMPLICIT, SC_GLOBAL_EXPLICIT, \
-     SC_FREE, SC_CELL
+    SC_FREE, SC_CELL
 from .consts import (CO_VARARGS, CO_VARKEYWORDS, CO_NEWLOCALS,
-     CO_NESTED, CO_GENERATOR, CO_FUTURE_DIVISION,
-     CO_FUTURE_ABSIMPORT, CO_FUTURE_WITH_STATEMENT, CO_FUTURE_PRINT_FUNCTION)
+                     CO_NESTED, CO_GENERATOR, CO_FUTURE_DIVISION,
+                     CO_FUTURE_ABSIMPORT, CO_FUTURE_WITH_STATEMENT, CO_FUTURE_PRINT_FUNCTION)
 from .pyassem import TupleArg
 
 import pony.utils
@@ -27,16 +27,17 @@ except AttributeError:
 
 callfunc_opcode_info = {
     # (Have *args, Have **args) : opcode
-    (0,0) : "CALL_FUNCTION",
-    (1,0) : "CALL_FUNCTION_VAR",
-    (0,1) : "CALL_FUNCTION_KW",
-    (1,1) : "CALL_FUNCTION_VAR_KW",
+    (0, 0): "CALL_FUNCTION",
+    (1, 0): "CALL_FUNCTION_VAR",
+    (0, 1): "CALL_FUNCTION_KW",
+    (1, 1): "CALL_FUNCTION_VAR_KW",
 }
 
 LOOP = 1
 EXCEPT = 2
 TRY_FINALLY = 3
 END_FINALLY = 4
+
 
 def compileFile(filename, display=0):
     f = open(filename, 'U')
@@ -52,6 +53,7 @@ def compileFile(filename, display=0):
         mod.dump(f)
         f.close()
 
+
 def compile(source, filename, mode, flags=None, dont_inherit=None):
     """Replacement for builtin compile() function"""
     if flags is not None or dont_inherit is not None:
@@ -64,13 +66,15 @@ def compile(source, filename, mode, flags=None, dont_inherit=None):
     elif mode == "eval":
         gen = Expression(source, filename)
     else:
-        raise ValueError("compile() 3rd arg must be 'exec' or 'eval' or 'single'")
+        raise ValueError(
+            "compile() 3rd arg must be 'exec' or 'eval' or 'single'")
     gen.compile()
     return gen.code
 
+
 class AbstractCompileMode:
 
-    mode = None # defined by subclass
+    mode = None  # defined by subclass
 
     def __init__(self, source, filename):
         self.source = source
@@ -84,10 +88,11 @@ class AbstractCompileMode:
         return tree
 
     def compile(self):
-        pass # implemented by subclass
+        pass  # implemented by subclass
 
     def getCode(self):
         return self.code
+
 
 class Expression(AbstractCompileMode):
 
@@ -98,6 +103,7 @@ class Expression(AbstractCompileMode):
         gen = ExpressionCodeGenerator(tree)
         self.code = gen.getCode()
 
+
 class Interactive(AbstractCompileMode):
 
     mode = "single"
@@ -106,6 +112,7 @@ class Interactive(AbstractCompileMode):
         tree = self._get_tree()
         gen = InteractiveCodeGenerator(tree)
         self.code = gen.getCode()
+
 
 class Module(AbstractCompileMode):
 
@@ -134,8 +141,10 @@ class Module(AbstractCompileMode):
         mtime = struct.pack('<i', mtime)
         return self.MAGIC + mtime
 
+
 class LocalNameFinder:
     """Find local names in scope"""
+
     def __init__(self, names=()):
         self.names = misc.Set()
         self.globals = misc.Set()
@@ -177,11 +186,13 @@ class LocalNameFinder:
     def visitAssName(self, node):
         self.names.add(node.name)
 
+
 def is_constant_false(node):
     if isinstance(node, ast.Const):
         if not node.value:
             return 1
     return 0
+
 
 class CodeGenerator:
     """Defines basic code generator for Python bytecode
@@ -197,9 +208,9 @@ class CodeGenerator:
     defined.
     """
 
-    optimized = 0 # is namespace access optimized?
+    optimized = 0  # is namespace access optimized?
     __initialized = None
-    class_name = None # provide default for instance variable
+    class_name = None  # provide default for instance variable
 
     def __init__(self):
         if self.__initialized is None:
@@ -296,7 +307,8 @@ class CodeGenerator:
         elif scope == SC_FREE or scope == SC_CELL:
             self.emit(prefix + '_DEREF', name)
         else:
-            raise RuntimeError("unsupported scope for var %s: %d" % (name, scope))
+            raise RuntimeError(
+                "unsupported scope for var %s: %d" % (name, scope))
 
     def _implicitNameOp(self, prefix, name):
         """Emit name ops for names generated implicitly by for loops
@@ -452,7 +464,7 @@ class CodeGenerator:
         self.visit(node.body)
         self.emit('JUMP_ABSOLUTE', loop)
 
-        self.startBlock(else_) # or just the POPs if not else clause
+        self.startBlock(else_)  # or just the POPs if not else clause
         self.emit('POP_BLOCK')
         self.setups.pop()
         if node.else_:
@@ -485,13 +497,15 @@ class CodeGenerator:
 
     def visitBreak(self, node):
         if not self.setups:
-            raise SyntaxError("'break' outside loop (%s, %d)" % (node.filename, node.lineno))
+            raise SyntaxError("'break' outside loop (%s, %d)" %
+                              (node.filename, node.lineno))
         self.set_lineno(node)
         self.emit('BREAK_LOOP')
 
     def visitContinue(self, node):
         if not self.setups:
-            raise SyntaxError("'continue' outside loop (%s, %d)" % (node.filename, node.lineno))
+            raise SyntaxError("'continue' outside loop (%s, %d)" %
+                              (node.filename, node.lineno))
         kind, block = self.setups.top()
         if kind == LOOP:
             self.set_lineno(node)
@@ -507,7 +521,8 @@ class CodeGenerator:
                 if kind == LOOP:
                     break
             if kind != LOOP:
-                raise SyntaxError("'continue' outside loop (%s, %d)" % (node.filename, node.lineno))
+                raise SyntaxError("'continue' outside loop (%s, %d)" %
+                                  (node.filename, node.lineno))
             self.emit('CONTINUE_LOOP', loop_block)
             self.nextBlock()
         elif kind == END_FINALLY:
@@ -1009,19 +1024,19 @@ class CodeGenerator:
         self.visit(aug_node, "store")
 
     _augmented_opcode = {
-        '+=' : 'INPLACE_ADD',
-        '-=' : 'INPLACE_SUBTRACT',
-        '*=' : 'INPLACE_MULTIPLY',
-        '/=' : 'INPLACE_DIVIDE',
+        '+=': 'INPLACE_ADD',
+        '-=': 'INPLACE_SUBTRACT',
+        '*=': 'INPLACE_MULTIPLY',
+        '/=': 'INPLACE_DIVIDE',
         '//=': 'INPLACE_FLOOR_DIVIDE',
-        '%=' : 'INPLACE_MODULO',
+        '%=': 'INPLACE_MODULO',
         '**=': 'INPLACE_POWER',
         '>>=': 'INPLACE_RSHIFT',
         '<<=': 'INPLACE_LSHIFT',
-        '&=' : 'INPLACE_AND',
-        '^=' : 'INPLACE_XOR',
-        '|=' : 'INPLACE_OR',
-        }
+        '&=': 'INPLACE_AND',
+        '^=': 'INPLACE_XOR',
+        '|=': 'INPLACE_OR',
+    }
 
     def visitAugName(self, node, mode):
         if mode == "load":
@@ -1284,12 +1299,15 @@ class CodeGenerator:
             self.emit('ROT_THREE')
             self.emit('STORE_SUBSCR')
 
+
 class NestedScopeMixin:
     """Defines initClass() for nested scoping (Python 2.2-compatible)"""
+
     def initClass(self):
         self.__class__.NameFinder = LocalNameFinder
         self.__class__.FunctionGen = FunctionCodeGenerator
         self.__class__.ClassGen = ClassCodeGenerator
+
 
 class ModuleCodeGenerator(NestedScopeMixin, CodeGenerator):
     __super_init = CodeGenerator.__init__
@@ -1305,6 +1323,7 @@ class ModuleCodeGenerator(NestedScopeMixin, CodeGenerator):
     def get_module(self):
         return self
 
+
 class ExpressionCodeGenerator(NestedScopeMixin, CodeGenerator):
     __super_init = CodeGenerator.__init__
 
@@ -1318,6 +1337,7 @@ class ExpressionCodeGenerator(NestedScopeMixin, CodeGenerator):
 
     def get_module(self):
         return self
+
 
 class InteractiveCodeGenerator(NestedScopeMixin, CodeGenerator):
 
@@ -1341,6 +1361,7 @@ class InteractiveCodeGenerator(NestedScopeMixin, CodeGenerator):
         # name.
         self.visit(node.expr)
         self.emit('PRINT_EXPR')
+
 
 class AbstractFunctionCode:
     optimized = 1
@@ -1404,9 +1425,10 @@ class AbstractFunctionCode:
 
     unpackTuple = unpackSequence
 
+
 class FunctionCodeGenerator(NestedScopeMixin, AbstractFunctionCode,
                             CodeGenerator):
-    super_init = CodeGenerator.__init__ # call be other init
+    super_init = CodeGenerator.__init__  # call be other init
     scopes = None
 
     __super_init = AbstractFunctionCode.__init__
@@ -1420,9 +1442,10 @@ class FunctionCodeGenerator(NestedScopeMixin, AbstractFunctionCode,
         if self.scope.generator is not None:
             self.graph.setFlag(CO_GENERATOR)
 
+
 class GenExprCodeGenerator(NestedScopeMixin, AbstractFunctionCode,
                            CodeGenerator):
-    super_init = CodeGenerator.__init__ # call be other init
+    super_init = CodeGenerator.__init__  # call be other init
     scopes = None
 
     __super_init = AbstractFunctionCode.__init__
@@ -1435,13 +1458,14 @@ class GenExprCodeGenerator(NestedScopeMixin, AbstractFunctionCode,
         self.graph.setCellVars(self.scope.get_cell_vars())
         self.graph.setFlag(CO_GENERATOR)
 
+
 class AbstractClassCode:
 
     def __init__(self, klass, scopes, module):
         self.class_name = klass.name
         self.module = module
         self.graph = pyassem.PyFlowGraph(klass.name, klass.filename,
-                                           optimized=0, klass=1)
+                                         optimized=0, klass=1)
         self.super_init()
         lnf = walk(klass.code, self.NameFinder(), verbose=0)
         self.locals.push(lnf.getLocals())
@@ -1456,6 +1480,7 @@ class AbstractClassCode:
         self.graph.startExitBlock()
         self.emit('LOAD_LOCALS')
         self.emit('RETURN_VALUE')
+
 
 class ClassCodeGenerator(NestedScopeMixin, AbstractClassCode, CodeGenerator):
     super_init = CodeGenerator.__init__
@@ -1476,6 +1501,7 @@ class ClassCodeGenerator(NestedScopeMixin, AbstractClassCode, CodeGenerator):
             self.emit("LOAD_CONST", klass.doc)
             self.storeName('__doc__')
 
+
 def generateArgList(arglist):
     """Generate an arg list marking TupleArgs"""
     args = []
@@ -1493,15 +1519,19 @@ def generateArgList(arglist):
             raise ValueError("unexpect argument type: %r" % type(elt))
     return args + extra, count
 
+
 def findOp(node):
     """Find the op (DELETE, LOAD, STORE) in an AssTuple tree"""
     v = OpFinder()
     walk(node, v, verbose=0)
     return v.op
 
+
 class OpFinder:
+
     def __init__(self):
         self.op = None
+
     def visitAssName(self, node):
         if self.op is None:
             self.op = node.flags
@@ -1509,6 +1539,7 @@ class OpFinder:
             raise ValueError("mixed ops in stmt")
     visitAssAttr = visitAssName
     visitSubscript = visitAssName
+
 
 class Delegator:
     """Base class to support delegation for augmented assignment nodes
@@ -1521,20 +1552,25 @@ class Delegator:
     These delegator classes wrap the original AST nodes in order to
     support the variant visit methods.
     """
+
     def __init__(self, obj):
         self.obj = obj
 
     def __getattr__(self, attr):
         return getattr(self.obj, attr)
 
+
 class AugGetattr(Delegator):
     pass
+
 
 class AugName(Delegator):
     pass
 
+
 class AugSlice(Delegator):
     pass
+
 
 class AugSubscript(Delegator):
     pass
@@ -1544,7 +1580,8 @@ wrapper = {
     ast.Name: AugName,
     ast.Slice: AugSlice,
     ast.Subscript: AugSubscript,
-    }
+}
+
 
 def wrap_aug(node):
     return wrapper[node.__class__](node)

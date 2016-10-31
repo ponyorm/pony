@@ -4,6 +4,7 @@ from pony.orm.core import *
 
 db = Database('sqlite', ':memory:')
 
+
 class Student(db.Entity):
     _table_ = "Students"
     record = PrimaryKey(int)
@@ -12,6 +13,7 @@ class Student(db.Entity):
     scholarship = Required(int, default=0)
     marks = Set("Mark")
 
+
 class Group(db.Entity):
     _table_ = "Groups"
     number = PrimaryKey(str)
@@ -19,11 +21,13 @@ class Group(db.Entity):
     students = Set("Student")
     subjects = Set("Subject")
 
+
 class Subject(db.Entity):
     _table_ = "Subjects"
     name = PrimaryKey(unicode)
     groups = Set("Group")
     marks = Set("Mark")
+
 
 class Mark(db.Entity):
     _table_ = "Exams"
@@ -35,14 +39,16 @@ class Mark(db.Entity):
 
 db.generate_mapping(create_tables=True)
 
+
 @db_session
 def populate_db():
     Physics = Subject(name='Physics')
     Chemistry = Subject(name='Chemistry')
     Math = Subject(name='Math')
 
-    g3132 = Group(number='3132', department=33, subjects=[ Physics, Math ])
-    g4145 = Group(number='4145', department=44, subjects=[ Physics, Chemistry, Math ])
+    g3132 = Group(number='3132', department=33, subjects=[Physics, Math])
+    g4145 = Group(number='4145', department=44,
+                  subjects=[Physics, Chemistry, Math])
     g4146 = Group(number='4146', department=44)
 
     s101 = Student(record=101, name='Bob', group=g4145, scholarship=0)

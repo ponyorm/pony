@@ -1,7 +1,10 @@
 from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2
 
-import re, os, os.path, sys
+import re
+import os
+import os.path
+import sys
 
 from pony import orm
 from pony.orm import core
@@ -13,6 +16,7 @@ directive_re = re.compile(r'(\w+)(\s+[0-9\.]+)?:')
 directive = module_name = None
 statements = []
 lines = []
+
 
 def Schema(param):
     if not statement_used:
@@ -26,27 +30,34 @@ def Schema(param):
     global module_name
     module_name = lines[0].strip()
 
+
 def SQLite(server_version):
     do_test('sqlite', server_version)
+
 
 def MySQL(server_version):
     do_test('mysql', server_version)
 
+
 def PostgreSQL(server_version):
     do_test('postgres', server_version)
+
 
 def Oracle(server_version):
     do_test('oracle', server_version)
 
 unavailable_providers = set()
 
+
 def do_test(provider_name, raw_server_version):
-    if provider_name in unavailable_providers: return
+    if provider_name in unavailable_providers:
+        return
     testutils.TestDatabase.real_provider_name = provider_name
     testutils.TestDatabase.raw_server_version = raw_server_version
     core.Database = orm.Database = testutils.TestDatabase
     sys.modules.pop(module_name, None)
-    try: __import__(module_name)
+    try:
+        __import__(module_name)
     except ImportError as e:
         print()
         print('ImportError for database provider %s:\n%s' % (provider_name, e))
@@ -63,7 +74,8 @@ def do_test(provider_name, raw_server_version):
             else:
                 exec(code, globals)
         statement = statements[-1]
-        try: last_code = compile(statement, '<string>', 'eval')
+        try:
+            last_code = compile(statement, '<string>', 'eval')
         except SyntaxError:
             last_code = compile(statement, '<string>', 'exec')
             if PY2:
@@ -72,10 +84,12 @@ def do_test(provider_name, raw_server_version):
                 exec(last_code, globals)
         else:
             result = eval(last_code, globals)
-            if isinstance(result, core.Query): result = list(result)
+            if isinstance(result, core.Query):
+                result = list(result)
         sql = module.db.sql
     expected_sql = '\n'.join(lines)
-    if sql == expected_sql: print('.', end='')
+    if sql == expected_sql:
+        print('.', end='')
     else:
         print()
         print(provider_name, statements[-1])
@@ -92,6 +106,7 @@ def do_test(provider_name, raw_server_version):
 dirname, fname = os.path.split(__file__)
 queries_fname = os.path.join(dirname, 'queries.txt')
 
+
 def orphan_lines(lines):
     SQLite(None)
     lines[:] = []
@@ -99,24 +114,29 @@ def orphan_lines(lines):
 statement_used = True
 for raw_line in open(queries_fname):
     line = raw_line.strip()
-    if not line: continue
-    if line.startswith('#'): continue
+    if not line:
+        continue
+    if line.startswith('#'):
+        continue
     match = directive_re.match(line)
     if match:
         if directive:
             directive(directive_param)
             lines[:] = []
-        elif lines: orphan_lines(lines)
+        elif lines:
+            orphan_lines(lines)
         directive = eval(match.group(1))
         if match.group(2):
             directive_param = match.group(2)
-        else: directive_param = None
+        else:
+            directive_param = None
     elif line.startswith('>>> '):
         if directive:
             directive(directive_param)
             lines[:] = []
             statements[:] = []
-        elif lines: orphan_lines(lines)
+        elif lines:
+            orphan_lines(lines)
         directive = None
         directive_param = None
         statements.append(line[4:])

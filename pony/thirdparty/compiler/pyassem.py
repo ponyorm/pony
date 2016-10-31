@@ -10,7 +10,9 @@ import sys
 from . import misc
 from .consts import CO_OPTIMIZED, CO_NEWLOCALS, CO_VARARGS, CO_VARKEYWORDS
 
+
 class FlowGraph:
+
     def __init__(self):
         self.current = self.entry = Block()
         self.exit = Block("exit")
@@ -144,7 +146,7 @@ def order_blocks(start_block, exit_block):
         for b in remaining:
             for c in dominators[b]:
                 if c in remaining:
-                    break # can't emit yet, dominated by a remaining block
+                    break  # can't emit yet, dominated by a remaining block
             else:
                 return b
         assert 0, 'circular dependency, cannot find next block'
@@ -252,6 +254,7 @@ FLAT = "FLAT"
 CONV = "CONV"
 DONE = "DONE"
 
+
 class PyFlowGraph(FlowGraph):
     super_init = FlowGraph.__init__
 
@@ -260,7 +263,7 @@ class PyFlowGraph(FlowGraph):
         self.name = name
         self.filename = filename
         self.docstring = None
-        self.args = args # XXX
+        self.args = args  # XXX
         self.argcount = getArgCount(args)
         self.klass = klass
         if optimized:
@@ -448,6 +451,7 @@ class PyFlowGraph(FlowGraph):
         return end
 
     _converters = {}
+
     def _convert_LOAD_CONST(self, arg):
         if hasattr(arg, 'getCode'):
             arg = arg.getCode()
@@ -491,6 +495,7 @@ class PyFlowGraph(FlowGraph):
         return self._lookupName(arg, self.closure)
 
     _cmp = list(dis.cmp_op)
+
     def _convert_COMPARE_OP(self, arg):
         return self._cmp.index(arg)
 
@@ -538,11 +543,11 @@ class PyFlowGraph(FlowGraph):
         if self.flags & CO_VARKEYWORDS:
             argcount = argcount - 1
         return types.CodeType(argcount, nlocals, self.stacksize, self.flags,
-                        self.lnotab.getCode(), self.getConsts(),
-                        tuple(self.names), tuple(self.varnames),
-                        self.filename, self.name, self.lnotab.firstline,
-                        self.lnotab.getTable(), tuple(self.freevars),
-                        tuple(self.cellvars))
+                              self.lnotab.getCode(), self.getConsts(),
+                              tuple(self.names), tuple(self.varnames),
+                              self.filename, self.name, self.lnotab.firstline,
+                              self.lnotab.getTable(), tuple(self.freevars),
+                              tuple(self.cellvars))
 
     def getConsts(self):
         """Return a tuple for the const slot of the code object
@@ -557,19 +562,25 @@ class PyFlowGraph(FlowGraph):
             l.append(elt)
         return tuple(l)
 
+
 def isJump(opname):
     if opname[:4] == 'JUMP':
         return 1
 
+
 class TupleArg:
     """Helper for marking func defs with nested tuples in arglist"""
+
     def __init__(self, count, names):
         self.count = count
         self.names = names
+
     def __repr__(self):
         return "TupleArg(%s, %s)" % (self.count, self.names)
+
     def getName(self):
         return ".%d" % self.count
+
 
 def getArgCount(args):
     argcount = len(args)
@@ -580,10 +591,12 @@ def getArgCount(args):
                 argcount = argcount - numNames
     return argcount
 
+
 def twobyte(val):
     """Convert an int argument into high and low bytes"""
     assert isinstance(val, int)
     return divmod(val, 256)
+
 
 class LineAddrTable:
     """lnotab
@@ -634,14 +647,17 @@ class LineAddrTable:
             if line >= 0:
                 push = self.lnotab.append
                 while addr > 255:
-                    push(255); push(0)
+                    push(255)
+                    push(0)
                     addr -= 255
                 while line > 255:
-                    push(addr); push(255)
+                    push(addr)
+                    push(255)
                     line -= 255
                     addr = 0
                 if addr > 0 or line > 0:
-                    push(addr); push(line)
+                    push(addr)
+                    push(line)
                 self.lastline = lineno
                 self.lastoff = self.codeOffset
 
@@ -650,6 +666,7 @@ class LineAddrTable:
 
     def getTable(self):
         return ''.join(imap(chr, self.lnotab))
+
 
 class StackDepthTracker:
     # XXX 1. need to keep track of stack depth on jumps
@@ -718,46 +735,57 @@ class StackDepthTracker:
         'IMPORT_STAR': -1,
         'IMPORT_NAME': -1,
         'IMPORT_FROM': 1,
-        'LOAD_ATTR': 0, # unlike other loads
+        'LOAD_ATTR': 0,  # unlike other loads
         # close enough...
         'SETUP_EXCEPT': 3,
         'SETUP_FINALLY': 3,
         'FOR_ITER': 1,
         'WITH_CLEANUP': -1,
-        }
+    }
     # use pattern match
     patterns = [
         ('BINARY_', -1),
         ('LOAD_', 1),
-        ]
+    ]
 
     def UNPACK_SEQUENCE(self, count):
-        return count-1
+        return count - 1
+
     def BUILD_TUPLE(self, count):
-        return -count+1
+        return -count + 1
+
     def BUILD_LIST(self, count):
-        return -count+1
+        return -count + 1
+
     def BUILD_SET(self, count):
-        return -count+1
+        return -count + 1
+
     def CALL_FUNCTION(self, argc):
         hi, lo = divmod(argc, 256)
         return -(lo + hi * 2)
+
     def CALL_FUNCTION_VAR(self, argc):
-        return self.CALL_FUNCTION(argc)-1
+        return self.CALL_FUNCTION(argc) - 1
+
     def CALL_FUNCTION_KW(self, argc):
-        return self.CALL_FUNCTION(argc)-1
+        return self.CALL_FUNCTION(argc) - 1
+
     def CALL_FUNCTION_VAR_KW(self, argc):
-        return self.CALL_FUNCTION(argc)-2
+        return self.CALL_FUNCTION(argc) - 2
+
     def MAKE_FUNCTION(self, argc):
         return -argc
+
     def MAKE_CLOSURE(self, argc):
         # XXX need to account for free variables too!
         return -argc
+
     def BUILD_SLICE(self, argc):
         if argc == 2:
             return -1
         elif argc == 3:
             return -2
+
     def DUP_TOPX(self, argc):
         return argc
 

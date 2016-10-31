@@ -1,7 +1,9 @@
 from __future__ import absolute_import
 from pony.py23compat import PY2, imap, basestring, buffer, int_types, unicode
 
-import os.path, re, json
+import os.path
+import re
+import json
 import sqlite3 as sqlite
 from decimal import Decimal
 from datetime import datetime, date, time, timedelta
@@ -20,26 +22,31 @@ from pony.utils import datetime2timestamp, timestamp2datetime, absolutize_path, 
 
 from contextlib import contextmanager
 
+
 class SqliteExtensionUnavailable(Exception):
     pass
 
 NoneType = type(None)
 
+
 class SQLiteForeignKey(dbschema.ForeignKey):
+
     def get_create_command(foreign_key):
         assert False  # pragma: no cover
+
 
 class SQLiteSchema(dbschema.DBSchema):
     dialect = 'SQLite'
     named_foreign_keys = False
     fk_class = SQLiteForeignKey
 
+
 def make_overriden_string_func(sqlop):
     def func(translator, monad):
         sql = monad.getsql()
         assert len(sql) == 1
         translator = monad.translator
-        return translator.StringExprMonad(translator, monad.type, [ sqlop, sql[0] ])
+        return translator.StringExprMonad(translator, monad.type, [sqlop, sql[0]])
     func.__name__ = sqlop
     return func
 
@@ -53,33 +60,47 @@ class SQLiteTranslator(sqltranslation.SQLTranslator):
     StringMixin_UPPER = make_overriden_string_func('PY_UPPER')
     StringMixin_LOWER = make_overriden_string_func('PY_LOWER')
 
+
 class SQLiteBuilder(SQLBuilder):
     dialect = 'SQLite'
+
     def __init__(builder, provider, ast):
         builder.json1_available = provider.json1_available
         SQLBuilder.__init__(builder, provider, ast)
+
     def SELECT_FOR_UPDATE(builder, nowait, *sections):
         assert not builder.indent and not nowait
         return builder.SELECT(*sections)
+
     def INSERT(builder, table_name, columns, values, returning=None):
-        if not values: return 'INSERT INTO %s DEFAULT VALUES' % builder.quote_name(table_name)
+        if not values:
+            return 'INSERT INTO %s DEFAULT VALUES' % builder.quote_name(table_name)
         return SQLBuilder.INSERT(builder, table_name, columns, values, returning)
+
     def TODAY(builder):
         return "date('now', 'localtime')"
+
     def NOW(builder):
         return "datetime('now', 'localtime')"
+
     def YEAR(builder, expr):
         return 'cast(substr(', builder(expr), ', 1, 4) as integer)'
+
     def MONTH(builder, expr):
         return 'cast(substr(', builder(expr), ', 6, 2) as integer)'
+
     def DAY(builder, expr):
         return 'cast(substr(', builder(expr), ', 9, 2) as integer)'
+
     def HOUR(builder, expr):
         return 'cast(substr(', builder(expr), ', 12, 2) as integer)'
+
     def MINUTE(builder, expr):
         return 'cast(substr(', builder(expr), ', 15, 2) as integer)'
+
     def SECOND(builder, expr):
         return 'cast(substr(', builder(expr), ', 18, 2) as integer)'
+
     def datetime_add(builder, funcname, expr, td):
         assert isinstance(td, timedelta)
         modifiers = []
@@ -100,34 +121,48 @@ class SQLiteBuilder(SQLBuilder):
             seconds -= minutes * 60
         if seconds:
             modifiers.append(", '%s%d seconds'" % (sign, seconds))
-        if not modifiers: return builder(expr)
+        if not modifiers:
+            return builder(expr)
         return funcname, '(', builder(expr), modifiers, ')'
+
     def DATE_ADD(builder, expr, delta):
         if isinstance(delta, timedelta):
             return builder.datetime_add('date', expr, delta)
         return 'datetime(julianday(', builder(expr), ') + ', builder(delta), ')'
+
     def DATE_SUB(builder, expr, delta):
         if isinstance(delta, timedelta):
             return builder.datetime_add('date', expr, -delta)
         return 'datetime(julianday(', builder(expr), ') - ', builder(delta), ')'
+
     def DATETIME_ADD(builder, expr, delta):
         if isinstance(delta, timedelta):
             return builder.datetime_add('datetime', expr, delta)
         return 'datetime(julianday(', builder(expr), ') + ', builder(delta), ')'
+
     def DATETIME_SUB(builder, expr, delta):
         if isinstance(delta, timedelta):
             return builder.datetime_add('datetime', expr, -delta)
         return 'datetime(julianday(', builder(expr), ') - ', builder(delta), ')'
+
     def MIN(builder, *args):
-        if len(args) == 0: assert False  # pragma: no cover
-        elif len(args) == 1: fname = 'MIN'
-        else: fname = 'min'
+        if len(args) == 0:
+            assert False  # pragma: no cover
+        elif len(args) == 1:
+            fname = 'MIN'
+        else:
+            fname = 'min'
         return fname, '(',  join(', ', imap(builder, args)), ')'
+
     def MAX(builder, *args):
-        if len(args) == 0: assert False  # pragma: no cover
-        elif len(args) == 1: fname = 'MAX'
-        else: fname = 'max'
+        if len(args) == 0:
+            assert False  # pragma: no cover
+        elif len(args) == 1:
+            fname = 'MAX'
+        else:
+            fname = 'max'
         return fname, '(',  join(', ', imap(builder, args)), ')'
+
     def RANDOM(builder):
         return 'rand()'  # return '(random() / 9223372036854775807.0 + 1.0) / 2.0'
     PY_UPPER = make_unary_func('py_upper')
@@ -138,72 +173,108 @@ class SQLiteBuilder(SQLBuilder):
         path_sql, has_params, has_wildcards = builder.build_json_path(path)
         return 'py_json_unwrap(', fname, '(', builder(expr), ', null, ', path_sql, '))'
     # json_value_type_mapping = {unicode: 'text', bool: 'boolean', int: 'integer', float: 'real', Json: None}
+
     def JSON_VALUE(builder, expr, path, type):
         func_name = 'json_extract' if builder.json1_available else 'py_json_extract'
         path_sql, has_params, has_wildcards = builder.build_json_path(path)
         return func_name, '(', builder(expr), ', ', path_sql, ')'
+
     def JSON_NONZERO(builder, expr):
         return builder(expr), ''' NOT IN ('null', 'false', '0', '""', '[]', '{}')'''
+
     def JSON_ARRAY_LENGTH(builder, value):
         func_name = 'json_array_length' if builder.json1_available else 'py_json_array_length'
         return func_name, '(', builder(value), ')'
+
     def JSON_CONTAINS(builder, expr, path, key):
         path_sql, has_params, has_wildcards = builder.build_json_path(path)
         return 'py_json_contains(', builder(expr), ', ', path_sql, ',  ', builder(key), ')'
 
+
 class SQLiteIntConverter(dbapiprovider.IntConverter):
+
     def sql_type(converter):
         attr = converter.attr
-        if attr is not None and attr.auto: return 'INTEGER'  # Only this type can have AUTOINCREMENT option
+        if attr is not None and attr.auto:
+            return 'INTEGER'  # Only this type can have AUTOINCREMENT option
         return dbapiprovider.IntConverter.sql_type(converter)
 
+
 class SQLiteDecimalConverter(dbapiprovider.DecimalConverter):
+
     def sql2py(converter, val):
-        try: val = Decimal(str(val))
-        except: return val
+        try:
+            val = Decimal(str(val))
+        except:
+            return val
         exp = converter.exp
-        if exp is not None: val = val.quantize(exp)
+        if exp is not None:
+            val = val.quantize(exp)
         return val
+
     def py2sql(converter, val):
-        if type(val) is not Decimal: val = Decimal(val)
+        if type(val) is not Decimal:
+            val = Decimal(val)
         exp = converter.exp
-        if exp is not None: val = val.quantize(exp)
+        if exp is not None:
+            val = val.quantize(exp)
         return str(val)
 
+
 class SQLiteDateConverter(dbapiprovider.DateConverter):
+
     def sql2py(converter, val):
         try:
             time_tuple = strptime(val[:10], '%Y-%m-%d')
             return date(*time_tuple[:3])
-        except: return val
+        except:
+            return val
+
     def py2sql(converter, val):
         return val.strftime('%Y-%m-%d')
 
+
 class SQLiteTimeConverter(dbapiprovider.TimeConverter):
+
     def sql2py(converter, val):
         try:
-            if len(val) <= 8: dt = datetime.strptime(val, '%H:%M:%S')
-            else: dt = datetime.strptime(val, '%H:%M:%S.%f')
+            if len(val) <= 8:
+                dt = datetime.strptime(val, '%H:%M:%S')
+            else:
+                dt = datetime.strptime(val, '%H:%M:%S.%f')
             return dt.time()
-        except: return val
+        except:
+            return val
+
     def py2sql(converter, val):
         return val.isoformat()
 
+
 class SQLiteTimedeltaConverter(dbapiprovider.TimedeltaConverter):
+
     def sql2py(converter, val):
         return timedelta(days=val)
+
     def py2sql(converter, val):
         return val.days + (val.seconds + val.microseconds / 1000000.0) / 86400.0
 
+
 class SQLiteDatetimeConverter(dbapiprovider.DatetimeConverter):
+
     def sql2py(converter, val):
-        try: return timestamp2datetime(val)
-        except: return val
+        try:
+            return timestamp2datetime(val)
+        except:
+            return val
+
     def py2sql(converter, val):
         return datetime2timestamp(val)
 
+
 class SQLiteJsonConverter(dbapiprovider.JsonConverter):
-    json_kwargs = {'separators': (',', ':'), 'sort_keys': True, 'ensure_ascii': False}
+    json_kwargs = {'separators': (
+        ',', ':'), 'sort_keys': True, 'ensure_ascii': False}
+
 
 def print_traceback(func):
     @wraps(func)
@@ -270,20 +341,24 @@ class SQLiteProvider(DBAPIProvider):
             if db_session is not None and db_session.ddl:
                 cursor.execute('PRAGMA foreign_keys')
                 fk = cursor.fetchone()
-                if fk is not None: fk = fk[0]
+                if fk is not None:
+                    fk = fk[0]
                 if fk:
                     sql = 'PRAGMA foreign_keys = false'
-                    if core.debug: log_orm(sql)
+                    if core.debug:
+                        log_orm(sql)
                     cursor.execute(sql)
                 cache.saved_fk_state = bool(fk)
                 assert cache.immediate
 
             if cache.immediate:
                 sql = 'BEGIN IMMEDIATE TRANSACTION'
-                if core.debug: log_orm(sql)
+                if core.debug:
+                    log_orm(sql)
                 cursor.execute(sql)
                 cache.in_transaction = True
-            elif core.debug: log_orm('SWITCH TO AUTOCOMMIT MODE')
+            elif core.debug:
+                log_orm('SWITCH TO AUTOCOMMIT MODE')
         finally:
             if cache.immediate and not cache.in_transaction:
                 provider.transaction_lock.release()
@@ -314,7 +389,8 @@ class SQLiteProvider(DBAPIProvider):
                 try:
                     cursor = connection.cursor()
                     sql = 'PRAGMA foreign_keys = true'
-                    if core.debug: log_orm(sql)
+                    if core.debug:
+                        log_orm(sql)
                     cursor.execute(sql)
                 except:
                     provider.pool.drop(connection)
@@ -348,19 +424,23 @@ class SQLiteProvider(DBAPIProvider):
     def _exists(provider, connection, table_name, index_name=None, case_sensitive=True):
         db_name, table_name = provider.split_table_name(table_name)
 
-        if db_name is None: catalog_name = 'sqlite_master'
-        else: catalog_name = (db_name, 'sqlite_master')
+        if db_name is None:
+            catalog_name = 'sqlite_master'
+        else:
+            catalog_name = (db_name, 'sqlite_master')
         catalog_name = provider.quote_name(catalog_name)
 
         cursor = connection.cursor()
         if index_name is not None:
             sql = "SELECT name FROM %s WHERE type='index' AND name=?" % catalog_name
-            if not case_sensitive: sql += ' COLLATE NOCASE'
-            cursor.execute(sql, [ index_name ])
+            if not case_sensitive:
+                sql += ' COLLATE NOCASE'
+            cursor.execute(sql, [index_name])
         else:
             sql = "SELECT name FROM %s WHERE type='table' AND name=?" % catalog_name
-            if not case_sensitive: sql += ' COLLATE NOCASE'
-            cursor.execute(sql, [ table_name ])
+            if not case_sensitive:
+                sql += ' COLLATE NOCASE'
+            cursor.execute(sql, [table_name])
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
@@ -379,8 +459,10 @@ class SQLiteProvider(DBAPIProvider):
 
 provider_cls = SQLiteProvider
 
+
 def _text_factory(s):
     return s.decode('utf8', 'replace')
+
 
 def make_string_function(name, base_func):
     def func(value):
@@ -400,6 +482,7 @@ def make_string_function(name, base_func):
 py_upper = make_string_function('py_upper', unicode.upper)
 py_lower = make_string_function('py_lower', unicode.lower)
 
+
 @print_traceback
 def py_json_unwrap(value):
     # [null,some-value] -> some-value
@@ -409,6 +492,7 @@ def py_json_unwrap(value):
 path_cache = {}
 
 json_path_re = re.compile(r'\[(\d+)\]|\.(?:(\w+)|"([^"]*)")', re.UNICODE)
+
 
 def _parse_path(path):
     if path in path_cache:
@@ -427,18 +511,25 @@ def _parse_path(path):
             else:
                 keys = None
                 break
-        else: keys = tuple(keys)
+        else:
+            keys = tuple(keys)
     path_cache[path] = keys
     return keys
 
+
 def _traverse(obj, keys):
-    if keys is None: return None
+    if keys is None:
+        return None
     list_or_dict = (list, dict)
     for key in keys:
-        if type(obj) not in list_or_dict: return None
-        try: obj = obj[key]
-        except (KeyError, IndexError): return None
+        if type(obj) not in list_or_dict:
+            return None
+        try:
+            obj = obj[key]
+        except (KeyError, IndexError):
+            return None
     return obj
+
 
 def _extract(expr, *paths):
     expr = json.loads(expr) if isinstance(expr, basestring) else expr
@@ -448,6 +539,7 @@ def _extract(expr, *paths):
         result.append(_traverse(expr, keys))
     return result[0] if len(paths) == 1 else result
 
+
 @print_traceback
 def py_json_extract(expr, *paths):
     result = _extract(expr, *paths)
@@ -455,18 +547,22 @@ def py_json_extract(expr, *paths):
         result = json.dumps(result, **SQLiteJsonConverter.json_kwargs)
     return result
 
+
 @print_traceback
 def py_json_query(expr, path, with_wrapper):
     result = _extract(expr, path)
     if type(result) not in (list, dict):
-        if not with_wrapper: return None
+        if not with_wrapper:
+            return None
         result = [result]
     return json.dumps(result, **SQLiteJsonConverter.json_kwargs)
+
 
 @print_traceback
 def py_json_value(expr, path):
     result = _extract(expr, path)
     return result if type(result) not in (list, dict) else None
+
 
 @print_traceback
 def py_json_contains(expr, path, key):
@@ -475,12 +571,14 @@ def py_json_contains(expr, path, key):
     expr = _traverse(expr, keys)
     return type(expr) in (list, dict) and key in expr
 
+
 @print_traceback
 def py_json_nonzero(expr, path):
     expr = json.loads(expr) if isinstance(expr, basestring) else expr
     keys = _parse_path(path)
     expr = _traverse(expr, keys)
     return bool(expr)
+
 
 @print_traceback
 def py_json_array_length(expr, path=None):
@@ -490,11 +588,14 @@ def py_json_array_length(expr, path=None):
         expr = _traverse(expr, keys)
     return len(expr) if type(expr) is list else 0
 
+
 class SQLitePool(Pool):
-    def __init__(pool, filename, create_db): # called separately in each thread
+
+    def __init__(pool, filename, create_db):  # called separately in each thread
         pool.filename = filename
         pool.create_db = create_db
         pool.con = None
+
     def _connect(pool):
         filename = pool.filename
         if filename != ':memory:' and not pool.create_db and not os.path.exists(filename):
@@ -513,9 +614,11 @@ class SQLitePool(Pool):
         con.create_function('py_lower', 1, py_lower)
         if sqlite.sqlite_version_info >= (3, 6, 19):
             con.execute('PRAGMA foreign_keys = true')
+
     def disconnect(pool):
         if pool.filename != ':memory:':
             Pool.disconnect(pool)
+
     def drop(pool, con):
         if pool.filename != ':memory:':
             Pool.drop(pool, con)

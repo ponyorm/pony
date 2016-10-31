@@ -34,18 +34,24 @@ import symbol
 import token
 
 # Python 2.6 compatibility fix
-if not hasattr(symbol, 'testlist_comp'): symbol.testlist_comp = symbol.testlist_gexp
-if not hasattr(symbol, 'comp_iter'): symbol.comp_iter = symbol.gen_iter
-if not hasattr(symbol, 'comp_for'): symbol.comp_for = symbol.gen_for
-if not hasattr(symbol, 'comp_if'): symbol.comp_if = symbol.gen_if
+if not hasattr(symbol, 'testlist_comp'):
+    symbol.testlist_comp = symbol.testlist_gexp
+if not hasattr(symbol, 'comp_iter'):
+    symbol.comp_iter = symbol.gen_iter
+if not hasattr(symbol, 'comp_for'):
+    symbol.comp_for = symbol.gen_for
+if not hasattr(symbol, 'comp_if'):
+    symbol.comp_if = symbol.gen_if
 
 atom_expr = getattr(symbol, 'atom_expr', None)
+
 
 class WalkerError(Exception):
     pass
 
 from .consts import CO_VARARGS, CO_VARKEYWORDS
 from .consts import OP_ASSIGN, OP_DELETE, OP_APPLY
+
 
 def parseFile(path):
     f = open(path, "U")
@@ -57,13 +63,16 @@ def parseFile(path):
     f.close()
     return parse(src)
 
+
 def parse(buf, mode="exec"):
     if mode == "exec" or mode == "single":
         return Transformer().parsesuite(buf)
     elif mode == "eval":
         return Transformer().parseexpr(buf)
     else:
-        raise ValueError("compile() arg 3 must be 'exec' or 'eval' or 'single'")
+        raise ValueError(
+            "compile() arg 3 must be 'exec' or 'eval' or 'single'")
+
 
 def asList(nodes):
     l = []
@@ -71,13 +80,14 @@ def asList(nodes):
         if hasattr(item, "asList"):
             l.append(item.asList())
         else:
-            if type(item) is type( (None, None) ):
+            if type(item) is type((None, None)):
                 l.append(tuple(asList(item)))
-            elif type(item) is type( [] ):
+            elif type(item) is type([]):
                 l.append(asList(item))
             else:
                 l.append(item)
     return l
+
 
 def extractLineNo(ast):
     if not isinstance(ast[1], tuple):
@@ -89,6 +99,7 @@ def extractLineNo(ast):
             if lineno is not None:
                 return lineno
 
+
 def Node(*args):
     kind = args[0]
     if kind in nodes:
@@ -99,7 +110,8 @@ def Node(*args):
             raise
     else:
         raise WalkerError("Can't find appropriate Node type: %s" % str(args))
-        #return apply(ast.Node, args)
+        # return apply(ast.Node, args)
+
 
 class Transformer:
     """Utility object for transforming Python parse trees.
@@ -133,12 +145,14 @@ class Transformer:
                                token.STRING: self.atom_string,
                                token.NAME: self.atom_name,
                                }
-        if PY2: self._atom_dispatch.update({
-                               token.BACKQUOTE: self.atom_backquote,
-                               })
-        if not PY2: self._atom_dispatch.update({
-            token.ELLIPSIS: self.atom_ellipsis
-        })
+        if PY2:
+            self._atom_dispatch.update({
+                token.BACKQUOTE: self.atom_backquote,
+            })
+        if not PY2:
+            self._atom_dispatch.update({
+                token.ELLIPSIS: self.atom_ellipsis
+            })
         self.encoding = None
 
     def transform(self, tree):
@@ -167,7 +181,7 @@ class Transformer:
     #
 
     def compile_node(self, node):
-        ### emit a line-number node?
+        # emit a line-number node?
         n = node[0]
 
         if n == symbol.encoding_decl:
@@ -191,7 +205,7 @@ class Transformer:
         raise WalkerError('unexpected node type: %r' % n)
 
     def single_input(self, node):
-        ### do we want to do anything about being "interactive" ?
+        # do we want to do anything about being "interactive" ?
 
         # NEWLINE | simple_stmt | compound_stmt NEWLINE
         n = node[0][0]
@@ -214,7 +228,7 @@ class Transformer:
 
     def eval_input(self, nodelist):
         # from the built-in function input()
-        ### is this sufficient?
+        # is this sufficient?
         return Expression(self.com_node(nodelist[0]))
 
     def decorator_name(self, nodelist):
@@ -299,7 +313,7 @@ class Transformer:
             assert isinstance(code.nodes[0], Discard)
             del code.nodes[0]
         return Function(decorators, name, names, defaults, flags, doc, code,
-                     lineno=lineno)
+                        lineno=lineno)
 
     def lambdef(self, nodelist):
         # lambdef: 'lambda' [varargslist] ':' test
@@ -408,7 +422,7 @@ class Transformer:
             dest = None
         elif nodelist[1][0] == token.RIGHTSHIFT:
             assert len(nodelist) == 3 \
-                   or nodelist[3][0] == token.COMMA
+                or nodelist[3][0] == token.COMMA
             dest = self.com_node(nodelist[2])
             start = 4
         else:
@@ -607,7 +621,7 @@ class Transformer:
     def star_expr(self, *args):
         raise NotImplementedError
 
-    testlist_safe = testlist # XXX
+    testlist_safe = testlist  # XXX
     testlist1 = testlist
     exprlist = testlist
 
@@ -662,7 +676,7 @@ class Transformer:
 
         results = []
         for i in range(2, len(nodelist), 2):
-            nl = nodelist[i-1]
+            nl = nodelist[i - 1]
 
             # comp_op: '<' | '>' | '=' | '>=' | '<=' | '<>' | '!=' | '=='
             #          | 'in' | 'not' 'in' | 'is' | 'is' 'not'
@@ -704,31 +718,31 @@ class Transformer:
         node = self.com_node(nodelist[0])
         for i in range(2, len(nodelist), 2):
             right = self.com_node(nodelist[i])
-            if nodelist[i-1][0] == token.LEFTSHIFT:
+            if nodelist[i - 1][0] == token.LEFTSHIFT:
                 node = LeftShift([node, right], lineno=nodelist[1][2])
-            elif nodelist[i-1][0] == token.RIGHTSHIFT:
+            elif nodelist[i - 1][0] == token.RIGHTSHIFT:
                 node = RightShift([node, right], lineno=nodelist[1][2])
             else:
-                raise ValueError("unexpected token: %s" % nodelist[i-1][0])
+                raise ValueError("unexpected token: %s" % nodelist[i - 1][0])
         return node
 
     def arith_expr(self, nodelist):
         node = self.com_node(nodelist[0])
         for i in range(2, len(nodelist), 2):
             right = self.com_node(nodelist[i])
-            if nodelist[i-1][0] == token.PLUS:
+            if nodelist[i - 1][0] == token.PLUS:
                 node = Add([node, right], lineno=nodelist[1][2])
-            elif nodelist[i-1][0] == token.MINUS:
+            elif nodelist[i - 1][0] == token.MINUS:
                 node = Sub([node, right], lineno=nodelist[1][2])
             else:
-                raise ValueError("unexpected token: %s" % nodelist[i-1][0])
+                raise ValueError("unexpected token: %s" % nodelist[i - 1][0])
         return node
 
     def term(self, nodelist):
         node = self.com_node(nodelist[0])
         for i in range(2, len(nodelist), 2):
             right = self.com_node(nodelist[i])
-            t = nodelist[i-1][0]
+            t = nodelist[i - 1][0]
             if t == token.STAR:
                 node = Mul([node, right])
             elif t == token.SLASH:
@@ -761,7 +775,7 @@ class Transformer:
         for i in range(1, len(nodelist)):
             elt = nodelist[i]
             if elt[0] == token.DOUBLESTAR:
-                return Power([node, self.com_node(nodelist[i+1])],
+                return Power([node, self.com_node(nodelist[i + 1])],
                              lineno=elt[2])
 
             node = self.com_apply_trailer(node, elt)
@@ -793,7 +807,7 @@ class Transformer:
         return Ellipsis()
 
     def atom_number(self, nodelist):
-        ### need to verify this matches compile.c
+        # need to verify this matches compile.c
         k = eval(nodelist[0][1])
         return Const(k, lineno=nodelist[0][2])
 
@@ -861,7 +875,7 @@ class Transformer:
             node = nodelist[i]
             if node[0] == token.STAR or node[0] == token.DOUBLESTAR:
                 if node[0] == token.STAR:
-                    node = nodelist[i+1]
+                    node = nodelist[i + 1]
                     if node[0] == token.NAME:
                         names.append(node[1])
                         flags = flags | CO_VARARGS
@@ -871,7 +885,7 @@ class Transformer:
                     # should be DOUBLESTAR
                     t = nodelist[i][0]
                     if t == token.DOUBLESTAR:
-                        node = nodelist[i+1]
+                        node = nodelist[i + 1]
                     else:
                         raise ValueError("unexpected token: %s" % t)
                     names.append(node[1])
@@ -889,7 +903,8 @@ class Transformer:
             elif len(defaults):
                 # we have already seen an argument with default, but here
                 # came one without
-                raise SyntaxError("non-default argument follows default argument")
+                raise SyntaxError(
+                    "non-default argument follows default argument")
 
             # skip the comma
             i = i + 1
@@ -972,7 +987,7 @@ class Transformer:
                               self.com_node(nodelist[5]),
                               lineno=nodelist[0][2])
 
-        #tryexcept:  [TryNode, [except_clauses], elseNode)]
+        # tryexcept:  [TryNode, [except_clauses], elseNode)]
         clauses = []
         elseNode = None
         finallyNode = None
@@ -988,13 +1003,13 @@ class Transformer:
                         expr2 = None
                 else:
                     expr1 = expr2 = None
-                clauses.append((expr1, expr2, self.com_node(nodelist[i+2])))
+                clauses.append((expr1, expr2, self.com_node(nodelist[i + 2])))
 
             if node[0] == token.NAME:
                 if node[1] == 'else':
-                    elseNode = self.com_node(nodelist[i+2])
+                    elseNode = self.com_node(nodelist[i + 2])
                 elif node[1] == 'finally':
-                    finallyNode = self.com_node(nodelist[i+2])
+                    finallyNode = self.com_node(nodelist[i + 2])
         try_except = TryExcept(self.com_node(nodelist[2]), clauses, elseNode,
                                lineno=nodelist[0][2])
         if finallyNode:
@@ -1040,7 +1055,7 @@ class Transformer:
         while 1:
             t = node[0]
             if t in (symbol.exprlist, symbol.testlist, symbol.testlist_comp) \
-            or PY2 and t == symbol.testlist_safe:
+                    or PY2 and t == symbol.testlist_safe:
                 if len(node) > 2:
                     return self.com_assign_tuple(node, assigning)
                 node = node[1]
@@ -1053,7 +1068,7 @@ class Transformer:
                     raise SyntaxError("can't assign to operator")
                 if len(node) > 2:
                     primary = self.com_node(node[1])
-                    for i in range(2, len(node)-1):
+                    for i in range(2, len(node) - 1):
                         ch = node[i]
                         if ch[0] == token.DOUBLESTAR:
                             raise SyntaxError("can't assign to operator")
@@ -1066,7 +1081,7 @@ class Transformer:
                     raise SyntaxError("can't assign to operator")
                 if len(node) > 2:
                     primary = self.com_node(node[1])
-                    for i in range(2, len(node)-1):
+                    for i in range(2, len(node) - 1):
                         ch = node[i]
                         primary = self.com_apply_trailer(primary, ch)
                     return self.com_assign_trailer(primary, node[-1],
@@ -1202,7 +1217,8 @@ class Transformer:
                 else:
                     node = self.com_comp_iter(node[3])
             else:
-                raise SyntaxError("unexpected comprehension element: %s %d" % (node, lineno))
+                raise SyntaxError(
+                    "unexpected comprehension element: %s %d" % (node, lineno))
         if type == 'list':
             return ListComp(expr1, fors, lineno=lineno)
         elif type == 'set':
@@ -1248,7 +1264,8 @@ class Transformer:
                 else:
                     node = self.com_comp_iter(node[3])
             else:
-                raise SyntaxError("unexpected generator expression element: %s %d" % (node, lineno))
+                raise SyntaxError(
+                    "unexpected generator expression element: %s %d" % (node, lineno))
         fors[0].is_outmost = True
         return GenExpr(GenExprInner(expr, fors), lineno=lineno)
 
@@ -1278,7 +1295,7 @@ class Transformer:
             items = []
             for i in range(0, len(nodelist), 4):
                 items.append((self.com_node(nodelist[i]),
-                              self.com_node(nodelist[i+2])))
+                              self.com_node(nodelist[i + 2])))
             return Dict(items, lineno=items[0][0].lineno)
 
     def com_apply_trailer(self, primaryNode, nodelist):
@@ -1308,16 +1325,16 @@ class Transformer:
         while i < len_nodelist:
             node = nodelist[i]
 
-            if node[0]==token.STAR:
+            if node[0] == token.STAR:
                 if star_node is not None:
                     raise SyntaxError('already have the varargs indentifier')
-                star_node = self.com_node(nodelist[i+1])
+                star_node = self.com_node(nodelist[i + 1])
                 i = i + 3
                 continue
-            elif node[0]==token.DOUBLESTAR:
+            elif node[0] == token.DOUBLESTAR:
                 if dstar_node is not None:
                     raise SyntaxError('already have the kwargs indentifier')
-                dstar_node = self.com_node(nodelist[i+1])
+                dstar_node = self.com_node(nodelist[i + 1])
                 i = i + 3
                 continue
 
@@ -1344,7 +1361,8 @@ class Transformer:
             if kw:
                 raise SyntaxError("non-keyword arg after keyword arg")
             if star_node:
-                raise SyntaxError("only named arguments may follow *expression")
+                raise SyntaxError(
+                    "only named arguments may follow *expression")
             return 0, self.com_node(nodelist[1])
         assert len(nodelist) > 3, [kw, star_node, nodelist]
         result = self.com_node(nodelist[3])
@@ -1365,9 +1383,9 @@ class Transformer:
         # backwards compat slice for '[i:j]'
         if len(nodelist) == 2:
             sub = nodelist[1]
-            if (sub[1][0] == token.COLON or \
-                            (len(sub) > 2 and sub[2][0] == token.COLON)) and \
-                            sub[-1][0] != symbol.sliceop:
+            if (sub[1][0] == token.COLON or
+                    (len(sub) > 2 and sub[2][0] == token.COLON)) and \
+                    sub[-1][0] != symbol.sliceop:
                 return self.com_slice(primary, sub, assigning)
 
         subscripts = []
@@ -1483,21 +1501,21 @@ _doc_nodes = [
     symbol.term,
     symbol.factor,
     symbol.power,
-    ]
+]
 if hasattr(symbol, 'testlist_safe'):
     _doc_nodes.append(symbol.testlist_safe)
 
 # comp_op: '<' | '>' | '=' | '>=' | '<=' | '<>' | '!=' | '=='
 #             | 'in' | 'not' 'in' | 'is' | 'is' 'not'
 _cmp_types = {
-    token.LESS : '<',
-    token.GREATER : '>',
-    token.EQEQUAL : '==',
-    token.EQUAL : '==',
-    token.LESSEQUAL : '<=',
-    token.GREATEREQUAL : '>=',
-    token.NOTEQUAL : '!=',
-    }
+    token.LESS: '<',
+    token.GREATER: '>',
+    token.EQEQUAL: '==',
+    token.EQUAL: '==',
+    token.LESSEQUAL: '<=',
+    token.GREATEREQUAL: '>=',
+    token.NOTEQUAL: '!=',
+}
 
 _legal_node_types = [
     symbol.funcdef,
@@ -1538,7 +1556,7 @@ _legal_node_types = [
     symbol.factor,
     symbol.power,
     symbol.atom,
-    ]
+]
 
 if hasattr(symbol, 'yield_stmt'):
     _legal_node_types.append(symbol.yield_stmt)
@@ -1564,13 +1582,14 @@ _assign_types = [
     symbol.arith_expr,
     symbol.term,
     symbol.factor,
-    ]
+]
 
 _names = {}
 for k, v in symbol.sym_name.items():
     _names[k] = v
 for k, v in token.tok_name.items():
     _names[k] = v
+
 
 def debug_tree(tree):
     l = []

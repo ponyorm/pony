@@ -5,7 +5,9 @@ import unittest
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
 
+
 class TestOneToOne4(unittest.TestCase):
+
     def setUp(self):
         self.db = Database('sqlite', ':memory:')
 

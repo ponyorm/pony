@@ -5,6 +5,7 @@ from . import ast
 # XXX should probably rename ASTVisitor to ASTWalker
 # XXX can it be made even more generic?
 
+
 class ASTVisitor:
     """Performs a depth-first walk of the AST
 
@@ -49,12 +50,12 @@ class ASTVisitor:
             className = klass.__name__
             meth = getattr(self.visitor, 'visit' + className, self.default)
             self._cache[klass] = meth
-##        if self.VERBOSE > 0:
+# if self.VERBOSE > 0:
 ##            className = klass.__name__
-##            if self.VERBOSE == 1:
-##                if meth == 0:
+# if self.VERBOSE == 1:
+# if meth == 0:
 ##                    print("dispatch", className)
-##            else:
+# else:
 ##                print("dispatch", className, (meth and meth.__name__ or ''))
         return meth(node, *args)
 
@@ -62,7 +63,8 @@ class ASTVisitor:
         """Do preorder walk of tree using visitor"""
         self.visitor = visitor
         visitor.visit = self.dispatch
-        self.dispatch(tree, *args) # XXX *args make sense?
+        self.dispatch(tree, *args)  # XXX *args make sense?
+
 
 class ExampleASTVisitor(ASTVisitor):
     """Prints examples of the nodes that aren't visited
@@ -100,6 +102,8 @@ class ExampleASTVisitor(ASTVisitor):
 # XXX this is an API change
 
 _walker = ASTVisitor
+
+
 def walk(tree, visitor, walker=None, verbose=None):
     if walker is None:
         walker = _walker()
@@ -107,6 +111,7 @@ def walk(tree, visitor, walker=None, verbose=None):
         walker.VERBOSE = verbose
     walker.preorder(tree, visitor)
     return walker.visitor
+
 
 def dumpNode(node):
     print(node.__class__)

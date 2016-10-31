@@ -5,6 +5,7 @@ from pony import orm
 
 import pony.orm.tests.fixtures
 
+
 class TestJoin(unittest.TestCase):
 
     exclude_fixtures = {'test': ['clear_tables']}
@@ -14,7 +15,7 @@ class TestJoin(unittest.TestCase):
         db = cls.db = Database('sqlite', ':memory:')
 
         class Genre(db.Entity):
-            name = orm.Optional(str) # TODO primary key
+            name = orm.Optional(str)  # TODO primary key
             artists = orm.Set('Artist')
             favorite = orm.Optional(bool)
             index = orm.Optional(int)
@@ -41,7 +42,8 @@ class TestJoin(unittest.TestCase):
 
     @db_session
     def test_join_1(self):
-        result = select(g.id for g in self.db.Genre for a in g.artists if a.name.startswith('S'))[:]
+        result = select(
+            g.id for g in self.db.Genre for a in g.artists if a.name.startswith('S'))[:]
         self.assertEqual(self.db.last_sql, """SELECT DISTINCT "g"."id"
 FROM "Genre" "g"
   INNER JOIN "Artist_Genre" "t-1"
@@ -60,7 +62,6 @@ FROM "Genre" "g"
     ON "g"."id" = "t-1"."genre", "Artist" "a"
 WHERE "t-1"."artist" = "a"."id"
   AND "a"."name" LIKE 'S%'""")
-
 
     @db_session
     def test_join_3(self):

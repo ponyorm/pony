@@ -14,6 +14,7 @@ from pony.orm.integration.bottle_plugin import PonyPlugin
 #  * return the database connection to the connection pool
 install(PonyPlugin())
 
+
 @route('/')
 @route('/products/')
 def all_products():
@@ -27,6 +28,7 @@ def all_products():
     %end
     </ul>
     ''', products=products)
+
 
 @route('/products/:id/')
 def show_product(id):
@@ -49,6 +51,7 @@ def show_product(id):
     <a href="/products/">Return to all products</a>
     ''', p=p)
 
+
 @route('/products/:id/edit/')
 def edit_product(id):
     # Get the instance of the Product entity and display its attributes
@@ -70,6 +73,7 @@ def edit_product(id):
     <p><a href="/products/{{ p.id }}/">Discard changes</a>
     <p><a href="/products/">Return to all products</a>
     ''', p=p)
+
 
 @route('/products/:id/edit/', method='POST')
 def save_product(id):

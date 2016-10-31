@@ -7,20 +7,24 @@ from pony.orm.core import *
 
 db = Database('sqlite', ':memory:')
 
+
 class Department(db.Entity):
     number = PrimaryKey(int)
     groups = Set('Group')
     courses = Set('Course')
+
 
 class Group(db.Entity):
     number = PrimaryKey(int)
     department = Required(Department)
     students = Set('Student')
 
+
 class Student(db.Entity):
     name = Required(str)
     group = Required(Group)
     courses = Set('Course')
+
 
 class Course(db.Entity):
     name = PrimaryKey(str)
@@ -53,32 +57,37 @@ with db_session:
 
     s6 = Student(name='A', group=g3, courses=[c5])
 
+
 class TestMultiset(unittest.TestCase):
 
     @db_session
     def test_multiset_repr_1(self):
         d = Department[1]
         multiset = d.groups.students
-        self.assertEqual(repr(multiset), "<StudentMultiset Department[1].groups.students (5 items)>")
+        self.assertEqual(
+            repr(multiset), "<StudentMultiset Department[1].groups.students (5 items)>")
 
     @db_session
     def test_multiset_repr_2(self):
         g = Group[101]
         multiset = g.students.courses
-        self.assertEqual(repr(multiset), "<CourseMultiset Group[101].students.courses (6 items)>")
+        self.assertEqual(
+            repr(multiset), "<CourseMultiset Group[101].students.courses (6 items)>")
 
     @db_session
     def test_multiset_repr_3(self):
         g = Group[201]
         multiset = g.students.courses
-        self.assertEqual(repr(multiset), "<CourseMultiset Group[201].students.courses (1 item)>")
+        self.assertEqual(
+            repr(multiset), "<CourseMultiset Group[201].students.courses (1 item)>")
 
     def test_multiset_repr_4(self):
         with db_session:
             g = Group[101]
             multiset = g.students.courses
         self.assertEqual(multiset._obj_._session_cache_.is_alive, False)
-        self.assertEqual(repr(multiset), "<CourseMultiset Group[101].students.courses>")
+        self.assertEqual(
+            repr(multiset), "<CourseMultiset Group[101].students.courses>")
 
     @db_session
     def test_multiset_str(self):
@@ -91,7 +100,8 @@ class TestMultiset(unittest.TestCase):
     def test_multiset_distinct(self):
         d = Department[1]
         multiset = d.groups.students.courses
-        self.assertEqual(multiset.distinct(), {Course['C1']: 4, Course['C2']: 4, Course['C3']: 2})
+        self.assertEqual(multiset.distinct(), {
+                         Course['C1']: 4, Course['C2']: 4, Course['C3']: 2})
 
     @db_session
     def test_multiset_nonzero(self):
@@ -112,7 +122,7 @@ class TestMultiset(unittest.TestCase):
         c1, c2, c3 = Course['C1'], Course['C2'], Course['C3']
         self.assertEqual(multiset, multiset)
         self.assertEqual(multiset, {c1: 4, c2: 4, c3: 2})
-        self.assertEqual(multiset, [ c1, c1, c1, c2, c2, c2, c2, c3, c3, c1 ])
+        self.assertEqual(multiset, [c1, c1, c1, c2, c2, c2, c2, c3, c3, c1])
 
     @db_session
     def test_multiset_ne(self):

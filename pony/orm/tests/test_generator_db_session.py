@@ -6,9 +6,12 @@ from pony.orm.core import *
 from pony.orm.core import local
 from pony.orm.tests.testutils import *
 
+
 class TestGeneratorDbSession(unittest.TestCase):
+
     def setUp(self):
         db = Database('sqlite', ':memory:')
+
         class Account(db.Entity):
             id = PrimaryKey(int)
             amount = Required(int)
@@ -81,7 +84,8 @@ class TestGeneratorDbSession(unittest.TestCase):
         self.assertEqual(amount, 2000)
         self.assertEqual(local.db_session, None)
 
-        try: next(gen)
+        try:
+            next(gen)
         except StopIteration:
             self.assertFalse(cache.is_alive)
         else:

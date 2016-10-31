@@ -2,7 +2,8 @@
 
 from __future__ import print_function
 
-import sys, types
+import sys
+import types
 
 from . import ast
 from .consts import SC_LOCAL, SC_GLOBAL_IMPLICIT, SC_GLOBAL_EXPLICIT, \
@@ -11,8 +12,10 @@ from .misc import mangle
 
 MANGLE_LEN = 256
 
+
 class Scope:
     # XXX how much information do I need about each name?
+
     def __init__(self, name, module, klass=None):
         self.name = name
         self.module = module
@@ -51,9 +54,10 @@ class Scope:
     def add_global(self, name):
         name = self.mangle(name)
         if name in self.uses or name in self.defs:
-            pass # XXX warn about global following def/use
+            pass  # XXX warn about global following def/use
         if name in self.params:
-            raise SyntaxError("%s in %s is global and parameter" % (name, self.name))
+            raise SyntaxError("%s in %s is global and parameter" %
+                              (name, self.name))
         self.globals[name] = 1
         self.module.add_def(name)
 
@@ -168,14 +172,17 @@ class Scope:
     def get_cell_vars(self):
         return self.cells.keys()
 
+
 class ModuleScope(Scope):
     __super_init = Scope.__init__
 
     def __init__(self):
         self.__super_init("global", self)
 
+
 class FunctionScope(Scope):
     pass
+
 
 class GenExprScope(Scope):
     __super_init = Scope.__init__
@@ -185,12 +192,13 @@ class GenExprScope(Scope):
     def __init__(self, module, klass=None):
         i = self.__counter
         self.__counter += 1
-        self.__super_init("generator expression<%d>"%i, module, klass)
+        self.__super_init("generator expression<%d>" % i, module, klass)
         self.add_param('.0')
 
     def get_names(self):
         keys = Scope.get_names(self)
         return keys
+
 
 class LambdaScope(FunctionScope):
     __super_init = Scope.__init__
@@ -202,13 +210,16 @@ class LambdaScope(FunctionScope):
         self.__counter += 1
         self.__super_init("lambda.%d" % i, module, klass)
 
+
 class ClassScope(Scope):
     __super_init = Scope.__init__
 
     def __init__(self, name, module):
         self.__super_init(name, module, name)
 
+
 class SymbolVisitor:
+
     def __init__(self):
         self.scopes = {}
         self.klass = None
@@ -236,7 +247,7 @@ class SymbolVisitor:
         self.handle_free_vars(scope, parent)
 
     def visitGenExpr(self, node, parent):
-        scope = GenExprScope(self.module, self.klass);
+        scope = GenExprScope(self.module, self.klass)
         if parent.nested or isinstance(parent, FunctionScope) \
                 or isinstance(parent, GenExprScope):
             scope.nested = 1
@@ -383,7 +394,7 @@ class SymbolVisitor:
         # Otherwise, it's just use.
         self.visit(node.node, scope)
         if isinstance(node.node, ast.Name):
-            self.visit(node.node, scope, 1) # XXX worry about this
+            self.visit(node.node, scope, 1)  # XXX worry about this
         self.visit(node.expr, scope)
 
     # prune if statements if tests are false
@@ -406,6 +417,7 @@ class SymbolVisitor:
     def visitYield(self, node, scope):
         scope.generator = 1
         self.visit(node.value, scope)
+
 
 def list_eq(l1, l2):
     return sorted(l1) == sorted(l2)

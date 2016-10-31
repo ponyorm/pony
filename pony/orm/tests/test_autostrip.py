@@ -5,11 +5,13 @@ from pony.orm.tests.testutils import raises_exception
 
 db = Database('sqlite', ':memory:')
 
+
 class Person(db.Entity):
     name = Required(str)
     tel = Optional(str)
 
 db.generate_mapping(create_tables=True)
+
 
 class TestAutostrip(unittest.TestCase):
 

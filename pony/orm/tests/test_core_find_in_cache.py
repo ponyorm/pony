@@ -6,27 +6,35 @@ from pony.orm import *
 
 db = Database('sqlite', ':memory:')
 
+
 class AbstractUser(db.Entity):
     username = PrimaryKey(unicode)
+
 
 class User(AbstractUser):
     diagrams = Set('Diagram')
     email = Optional(unicode)
 
+
 class SubUser1(User):
     attr1 = Optional(unicode)
+
 
 class SubUser2(User):
     attr2 = Optional(unicode)
 
+
 class Organization(AbstractUser):
     address = Optional(unicode)
+
 
 class SubOrg1(Organization):
     attr3 = Optional(unicode)
 
+
 class SubOrg2(Organization):
     attr4 = Optional(unicode)
+
 
 class Diagram(db.Entity):
     name = Required(unicode)
@@ -46,17 +54,22 @@ with db_session:
     Diagram(name='diagram2', owner=u2)
     Diagram(name='diagram3', owner=u3)
 
+
 def is_seed(entity, pk):
     cache = entity._database_._get_cache()
-    return pk in [ obj._pk_ for obj in cache.seeds[entity._pk_attrs_] ]
+    return pk in [obj._pk_ for obj in cache.seeds[entity._pk_attrs_]]
+
 
 class TestFindInCache(unittest.TestCase):
+
     def setUp(self):
         rollback()
         db_session.__enter__()
+
     def tearDown(self):
         rollback()
         db_session.__exit__()
+
     def test1(self):
         u = User.get(username='org1')
         org = Organization.get(username='org1')
@@ -72,6 +85,7 @@ class TestFindInCache(unittest.TestCase):
         u = AbstractUser['user1']
         self.assertNotEqual(last_sql, db.last_sql)
         self.assertEqual(u.__class__, User)
+
     def test_user_2(self):
         Diagram.get(lambda d: d.name == 'diagram1')
         last_sql = db.last_sql
@@ -79,6 +93,7 @@ class TestFindInCache(unittest.TestCase):
         u = User['user1']
         self.assertNotEqual(last_sql, db.last_sql)
         self.assertEqual(u.__class__, User)
+
     @raises_exception(ObjectNotFound)
     def test_user_3(self):
         Diagram.get(lambda d: d.name == 'diagram1')
@@ -88,6 +103,7 @@ class TestFindInCache(unittest.TestCase):
             SubUser1['user1']
         finally:
             self.assertNotEqual(last_sql, db.last_sql)
+
     @raises_exception(ObjectNotFound)
     def test_user_4(self):
         Diagram.get(lambda d: d.name == 'diagram1')
@@ -97,6 +113,7 @@ class TestFindInCache(unittest.TestCase):
             Organization['user1']
         finally:
             self.assertEqual(last_sql, db.last_sql)
+
     @raises_exception(ObjectNotFound)
     def test_user_5(self):
         Diagram.get(lambda d: d.name == 'diagram1')
@@ -107,7 +124,6 @@ class TestFindInCache(unittest.TestCase):
         finally:
             self.assertEqual(last_sql, db.last_sql)
 
-
     def test_subuser_1(self):
         Diagram.get(lambda d: d.name == 'diagram2')
         last_sql = db.last_sql
@@ -115,6 +131,7 @@ class TestFindInCache(unittest.TestCase):
         u = AbstractUser['subuser1']
         self.assertNotEqual(last_sql, db.last_sql)
         self.assertEqual(u.__class__, SubUser1)
+
     def test_subuser_2(self):
         Diagram.get(lambda d: d.name == 'diagram2')
         last_sql = db.last_sql
@@ -122,6 +139,7 @@ class TestFindInCache(unittest.TestCase):
         u = User['subuser1']
         self.assertNotEqual(last_sql, db.last_sql)
         self.assertEqual(u.__class__, SubUser1)
+
     def test_subuser_3(self):
         Diagram.get(lambda d: d.name == 'diagram2')
         last_sql = db.last_sql
@@ -129,6 +147,7 @@ class TestFindInCache(unittest.TestCase):
         u = SubUser1['subuser1']
         self.assertNotEqual(last_sql, db.last_sql)
         self.assertEqual(u.__class__, SubUser1)
+
     @raises_exception(ObjectNotFound)
     def test_subuser_4(self):
         Diagram.get(lambda d: d.name == 'diagram2')
@@ -138,6 +157,7 @@ class TestFindInCache(unittest.TestCase):
             Organization['subuser1']
         finally:
             self.assertEqual(last_sql, db.last_sql)
+
     @raises_exception(ObjectNotFound)
     def test_subuser_5(self):
         Diagram.get(lambda d: d.name == 'diagram2')
@@ -147,6 +167,7 @@ class TestFindInCache(unittest.TestCase):
             SubUser2['subuser1']
         finally:
             self.assertNotEqual(last_sql, db.last_sql)
+
     @raises_exception(ObjectNotFound)
     def test_subuser_6(self):
         Diagram.get(lambda d: d.name == 'diagram2')
@@ -163,6 +184,7 @@ class TestFindInCache(unittest.TestCase):
         u2 = SubUser1['subuser1']
         self.assertEqual(last_sql, db.last_sql)
         self.assertEqual(u1, u2)
+
     def test_user_7(self):
         u1 = SubUser1['subuser1']
         u1.delete()
@@ -170,6 +192,7 @@ class TestFindInCache(unittest.TestCase):
         u2 = SubUser1.get(username='subuser1')
         self.assertEqual(last_sql, db.last_sql)
         self.assertEqual(u2, None)
+
     def test_user_8(self):
         u1 = SubUser1['subuser1']
         last_sql = db.last_sql

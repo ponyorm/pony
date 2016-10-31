@@ -1,6 +1,7 @@
 from pony.py23compat import StringIO
 
-import sys, unittest
+import sys
+import unittest
 from decimal import Decimal
 from datetime import date
 
@@ -8,6 +9,7 @@ from pony.orm import *
 from pony.orm.tests.testutils import *
 
 db = Database('sqlite', ':memory:')
+
 
 class Student(db.Entity):
     name = Required(unicode)
@@ -18,9 +20,11 @@ class Student(db.Entity):
     courses = Set('Course')
     biography = Optional(LongUnicode)
 
+
 class Group(db.Entity):
     number = PrimaryKey(int)
     students = Set(Student)
+
 
 class Course(db.Entity):
     name = Required(unicode, unique=True)
@@ -34,13 +38,18 @@ with db_session:
     c1 = Course(name='Math')
     c2 = Course(name='Physics')
     c3 = Course(name='Computer Science')
-    Student(id=1, name='S1', group=g1, gpa=3.1, courses=[c1, c2], biography='some text')
-    Student(id=2, name='S2', group=g1, gpa=3.2, scholarship=100, dob=date(2000, 1, 1))
-    Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200, dob=date(2001, 1, 2), courses=[c2, c3])
+    Student(id=1, name='S1', group=g1, gpa=3.1,
+            courses=[c1, c2], biography='some text')
+    Student(id=2, name='S2', group=g1, gpa=3.2,
+            scholarship=100, dob=date(2000, 1, 1))
+    Student(id=3, name='S3', group=g1, gpa=3.3, scholarship=200,
+            dob=date(2001, 1, 2), courses=[c2, c3])
 
 normal_stdout = sys.stdout
 
+
 class TestShow(unittest.TestCase):
+
     def setUp(self):
         rollback()
         db_session.__enter__()
@@ -53,7 +62,7 @@ class TestShow(unittest.TestCase):
 
     def test_1(self):
         Student.select().show()
-        self.assertEqual('\n'+sys.stdout.getvalue().replace(' ', '~'), '''
+        self.assertEqual('\n' + sys.stdout.getvalue().replace(' ', '~'), '''
 id|name|scholarship|gpa|dob~~~~~~~|group~~~
 --+----+-----------+---+----------+--------
 1~|S1~~|None~~~~~~~|3.1|None~~~~~~|Group[1]
@@ -63,7 +72,7 @@ id|name|scholarship|gpa|dob~~~~~~~|group~~~
 
     def test_2(self):
         Group.select().show()
-        self.assertEqual('\n'+sys.stdout.getvalue().replace(' ', '~'), '''
+        self.assertEqual('\n' + sys.stdout.getvalue().replace(' ', '~'), '''
 number
 ------
 1~~~~~

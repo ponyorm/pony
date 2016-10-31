@@ -7,6 +7,7 @@ from pony.orm.tests.testutils import *
 
 db = Database('sqlite', ':memory:')
 
+
 class Student(db.Entity):
     name = Required(unicode)
     scholarship = Optional(int)
@@ -21,7 +22,9 @@ with db_session:
     Student(id=4, name="D", scholarship=500, group=43)
     Student(id=5, name="E", scholarship=700, group=42)
 
+
 class TestOrderbyLimit(unittest.TestCase):
+
     def setUp(self):
         rollback()
         db_session.__enter__()
@@ -32,26 +35,33 @@ class TestOrderbyLimit(unittest.TestCase):
 
     def test1(self):
         students = set(select(s for s in Student).order_by(Student.name))
-        self.assertEqual(students, {Student[3], Student[1], Student[2], Student[4], Student[5]})
+        self.assertEqual(students, {Student[3], Student[
+                         1], Student[2], Student[4], Student[5]})
 
     def test2(self):
         students = set(select(s for s in Student).order_by(Student.name.asc))
-        self.assertEqual(students, {Student[3], Student[1], Student[2], Student[4], Student[5]})
+        self.assertEqual(students, {Student[3], Student[
+                         1], Student[2], Student[4], Student[5]})
 
     def test3(self):
         students = set(select(s for s in Student).order_by(Student.id.desc))
-        self.assertEqual(students, {Student[5], Student[4], Student[3], Student[2], Student[1]})
+        self.assertEqual(students, {Student[5], Student[
+                         4], Student[3], Student[2], Student[1]})
 
     def test4(self):
-        students = set(select(s for s in Student).order_by(Student.scholarship.asc, Student.group.desc))
-        self.assertEqual(students, {Student[1], Student[4], Student[3], Student[5], Student[2]})
+        students = set(select(s for s in Student).order_by(
+            Student.scholarship.asc, Student.group.desc))
+        self.assertEqual(students, {Student[1], Student[
+                         4], Student[3], Student[5], Student[2]})
 
     def test5(self):
-        students = set(select(s for s in Student).order_by(Student.name).limit(3))
+        students = set(select(s for s in Student).order_by(
+            Student.name).limit(3))
         self.assertEqual(students, {Student[3], Student[1], Student[2]})
 
     def test6(self):
-        students = set(select(s for s in Student).order_by(Student.name).limit(3, 1))
+        students = set(select(s for s in Student).order_by(
+            Student.name).limit(3, 1))
         self.assertEqual(students, {Student[1], Student[2], Student[4]})
 
     def test7(self):
@@ -72,7 +82,8 @@ class TestOrderbyLimit(unittest.TestCase):
 
     def test10(self):
         students = set(select(s for s in Student).order_by(Student.id)[:4])
-        self.assertEqual(students, {Student[1], Student[2], Student[3], Student[4]})
+        self.assertEqual(students, {Student[1], Student[
+                         2], Student[3], Student[4]})
 
     @raises_exception(TypeError, "Parameter 'stop' of slice object should be specified")
     def test11(self):
@@ -92,11 +103,13 @@ class TestOrderbyLimit(unittest.TestCase):
     #    students = select(s for s in Student).order_by(Student.id)["a"]
 
     def test15(self):
-        students = set(select(s for s in Student).order_by(Student.id)[0:4][1:3])
+        students = set(select(s for s in Student).order_by(
+            Student.id)[0:4][1:3])
         self.assertEqual(students, {Student[2], Student[3]})
 
     def test16(self):
-        students = set(select(s for s in Student).order_by(Student.id)[0:4][1:])
+        students = set(
+            select(s for s in Student).order_by(Student.id)[0:4][1:])
         self.assertEqual(students, {Student[2], Student[3], Student[4]})
 
     def test17(self):
@@ -105,7 +118,8 @@ class TestOrderbyLimit(unittest.TestCase):
 
     def test18(self):
         students = set(select(s for s in Student).order_by(Student.id)[:])
-        self.assertEqual(students, {Student[1], Student[2], Student[3], Student[4], Student[5]})
+        self.assertEqual(students, {Student[1], Student[
+                         2], Student[3], Student[4], Student[5]})
 
     def test19(self):
         q = select(s for s in Student).order_by(Student.id)
@@ -114,7 +128,8 @@ class TestOrderbyLimit(unittest.TestCase):
         students = q[2:4]
         self.assertEqual(students, [Student[3], Student[4]])
         students = q[:]
-        self.assertEqual(students, [Student[1], Student[2], Student[3], Student[4], Student[5]])
+        self.assertEqual(students, [Student[1], Student[
+                         2], Student[3], Student[4], Student[5]])
 
 if __name__ == "__main__":
     unittest.main()

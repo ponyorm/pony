@@ -7,7 +7,9 @@ from hashlib import md5
 from pony.orm.tests.testutils import raises_exception
 from pony.orm import *
 
+
 class TestCustomInit(unittest.TestCase):
+
     def test1(self):
         db = Database('sqlite', ':memory:')
 
@@ -18,7 +20,8 @@ class TestCustomInit(unittest.TestCase):
 
             def __init__(self, name, password):
                 password = md5(password.encode('utf8')).hexdigest()
-                super(User, self).__init__(name=name, password=password, created_at=datetime.now())
+                super(User, self).__init__(
+                    name=name, password=password, created_at=datetime.now())
                 self.uppercase_name = name.upper()
 
         db.generate_mapping(create_tables=True)

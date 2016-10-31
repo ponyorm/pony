@@ -5,6 +5,7 @@ import unittest
 from pony.orm.core import *
 from pony.orm.tests.testutils import *
 
+
 class TestOneToManyRequired(unittest.TestCase):
 
     def setUp(self):
@@ -185,6 +186,7 @@ class TestOneToManyRequired(unittest.TestCase):
         self.assertEqual(s5._rbits_, None)
         self.assertTrue(s5 in g.students)
         self.assertEqual(s5._rbits_, None)
+
 
 class TestOneToManyOptional(unittest.TestCase):
 

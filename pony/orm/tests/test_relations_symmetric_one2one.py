@@ -7,13 +7,16 @@ from pony.orm.tests.testutils import raises_exception
 
 db = Database('sqlite', ':memory:')
 
+
 class Person(db.Entity):
     name = Required(unicode)
     spouse = Optional('Person', reverse='spouse')
 
 db.generate_mapping(create_tables=True)
 
+
 class TestSymmetricOne2One(unittest.TestCase):
+
     def setUp(self):
         with db_session:
             db.execute('update person set spouse=null')
@@ -26,8 +29,10 @@ class TestSymmetricOne2One(unittest.TestCase):
             db.execute('update person set spouse=4 where id=3')
             db.insert(Person, id=5, name='E', spouse=None)
         db_session.__enter__()
+
     def tearDown(self):
         db_session.__exit__()
+
     def test1(self):
         p1 = Person[1]
         p2 = Person[2]
@@ -39,6 +44,7 @@ class TestSymmetricOne2One(unittest.TestCase):
         self.assertEqual(p2._vals_.get(Person.spouse), None)
         data = db.select('spouse from person order by id')
         self.assertEqual([5, None, 4, 3, 1], data)
+
     def test2(self):
         p1 = Person[1]
         p2 = Person[2]
@@ -48,6 +54,7 @@ class TestSymmetricOne2One(unittest.TestCase):
         self.assertEqual(p2._vals_.get(Person.spouse), None)
         data = db.select('spouse from person order by id')
         self.assertEqual([None, None, 4, 3, None], data)
+
     def test3(self):
         p1 = Person[1]
         p2 = Person[2]
@@ -61,9 +68,11 @@ class TestSymmetricOne2One(unittest.TestCase):
         self.assertEqual(p4._vals_.get(Person.spouse), None)
         data = db.select('spouse from person order by id')
         self.assertEqual([3, None, 1, None, None], data)
+
     def test4(self):
         persons = set(select(p for p in Person if p.spouse.name in ('B', 'D')))
         self.assertEqual(persons, {Person[1], Person[3]})
+
     @raises_exception(UnrepeatableReadError, 'Value of Person.spouse for Person[1] was updated outside of current transaction')
     def test5(self):
         db.execute('update person set spouse = 3 where id = 2')
@@ -71,6 +80,7 @@ class TestSymmetricOne2One(unittest.TestCase):
         p1.spouse
         p2 = Person[2]
         p2.name
+
     def test6(self):
         db.execute('update person set spouse = 3 where id = 2')
         p1 = Person[1]
