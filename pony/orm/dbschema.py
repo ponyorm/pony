@@ -137,6 +137,7 @@ class Table(DBObject):
         return '\n'.join(cmd)
     def get_objects_to_create(table, created_tables=None):
         if created_tables is None: created_tables = set()
+        created_tables.add(table)
         result = [ table ]
         indexes = [ index for index in itervalues(table.indexes) if not index.is_pk and not index.is_unique ]
         for index in indexes: assert index.name is not None
@@ -152,7 +153,6 @@ class Table(DBObject):
                 for foreign_key in sorted(itervalues(child_table.foreign_keys), key=lambda fk: fk.name):
                     if foreign_key.parent_table is not table: continue
                     result.append(foreign_key)
-        created_tables.add(table)
         return result
     def add_column(table, column_name, sql_type, converter, is_not_null=None, sql_default=None):
         return table.schema.column_class(column_name, table, sql_type, converter, is_not_null, sql_default)
