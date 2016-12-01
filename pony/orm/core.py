@@ -2069,7 +2069,7 @@ class Attribute(object):
                     not attr.reverse and attr.converters[0].dbvals_equal(old_dbval, new_dbval)):
                 return
 
-        bit = obj._bits_[attr]
+        bit = obj._bits_except_volatile_[attr]
         if obj._rbits_ & bit:
             assert old_dbval is not NOT_LOADED
             if new_dbval is NOT_LOADED: diff = ''
@@ -3859,7 +3859,7 @@ class EntityMeta(type):
             if wbits is None: continue
             rbits = get_rbits(obj.__class__)
             if rbits is None:
-                rbits = sum(obj._bits_.get(attr, 0) for attr in attrs)
+                rbits = sum(obj._bits_except_volatile_.get(attr, 0) for attr in attrs)
                 rbits_dict[obj.__class__] = rbits
             obj._rbits_ |= rbits & ~wbits
     def _parse_row_(entity, row, attr_offsets):
@@ -4372,7 +4372,7 @@ class Entity(with_metaclass(EntityMeta)):
                     del avdict[attr]
                     continue
 
-            bit = obj._bits_[attr]
+            bit = obj._bits_except_volatile_[attr]
             if rbits & bit: throw(UnrepeatableReadError,
                 'Value of %s.%s for %s was updated outside of current transaction (was: %r, now: %r)'
                 % (obj.__class__.__name__, attr.name, obj, old_dbval, new_dbval))
