@@ -4641,14 +4641,18 @@ class Entity(with_metaclass(EntityMeta)):
                     for key, i in attr.composite_keys:
                         keyval = tuple(get_val(attr) for attr in key)
                         cache_indexes[key].pop(keyval, None)
-                del vals[attr]
             elif after_create and val is None:
                 obj._rbits_ &= ~bits[attr]
-                del vals[attr]
             else:
-                # TODO this conversion should be unnecessary
+                # For normal attribute, set `dbval` to the same value as `val` after update/create
+                # dbvals[attr] = val
                 converter = attr.converters[0]
-                dbvals[attr] = converter.val2dbval(val, obj)
+                dbvals[attr] = converter.val2dbval(val, obj)  # TODO this conversion should be unnecessary
+                continue
+            # Clear value of volatile attribute or null values after create, because the value may be changed in the DB
+            del vals[attr]
+            dbvals.pop(attr, None)
+
     def _save_created_(obj):
         auto_pk = (obj._pkval_ is None)
         attrs = []
