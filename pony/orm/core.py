@@ -278,6 +278,8 @@ def transact_reraise(exc_class, exceptions):
 
 @cut_traceback
 def commit():
+    """Save all changes made within the current db_session() using
+    the flush() method and commits the transaction to the database."""
     caches = _get_caches()
     if not caches: return
 
@@ -530,8 +532,10 @@ class Database(object):
         if args or kwargs: self._bind(*args, **kwargs)
     @cut_traceback
     def bind(self, *args, **kwargs):
+        """Bind entities to a database."""
         self._bind(*args, **kwargs)
     def _bind(self, *args, **kwargs):
+        """Bind entities to a database."""
         # argument 'self' cannot be named 'database', because 'database' can be in kwargs
         if self.provider is not None:
             throw(TypeError, 'Database object was already bound to %s provider' % self.provider.dialect)
@@ -577,6 +581,13 @@ class Database(object):
         return database._global_stats_lock
     @cut_traceback
     def get_connection(database):
+        """Return the active database connection. It can be useful if you
+        want to work with the DBAPI interface directly. This is the same
+        connection which is used by the ORM itself. The connection will be
+        reset and returned to the connection pool on leaving the db_session()
+        context or when the database transaction rolls back. This connection
+        can be used only within the db_session() scope where the connection
+        was obtained."""
         cache = database._get_cache()
         if not cache.in_transaction:
             cache.immediate = True
@@ -587,6 +598,8 @@ class Database(object):
         return connection
     @cut_traceback
     def disconnect(database):
+        """Close the database connection for the current thread if it
+        was opened."""
         provider = database.provider
         if provider is None: return
         if local.db_context_counter: throw(TransactionError, 'disconnect() cannot be called inside of db_sesison')
@@ -607,6 +620,8 @@ class Database(object):
         database._get_cache().flush()
     @cut_traceback
     def commit(database):
+        """Save all changes made within the current db_session() using
+        the flush() method and commits the transaction to the database."""
         cache = local.db2cache.get(database)
         if cache is not None:
             cache.flush_and_commit()
@@ -618,6 +633,9 @@ class Database(object):
             except: transact_reraise(RollbackException, [sys.exc_info()])
     @cut_traceback
     def execute(database, sql, globals=None, locals=None):
+        """Execute SQL statement. Before executing the provided SQL, Pony
+        flushes all changes made within the current db_session() using the
+        flush() method."""
         return database._exec_raw_sql(sql, globals, locals, frame_depth=3, start_transaction=True)
     def _exec_raw_sql(database, sql, globals, locals, frame_depth, start_transaction=False):
         provider = database.provider
@@ -650,6 +668,15 @@ class Database(object):
         return [ row_class(row) for row in result ]
     @cut_traceback
     def get(database, sql, globals=None, locals=None):
+        """Select one row or just one value from the database.
+
+        The get() method assumes that the query returns exactly one row.
+        If the query returns nothing then Pony raises RowNotFound exception.
+        If the query returns more than one row, the exception MultipleRowsFound
+        will be raised.
+
+        Before executing the provided SQL, Pony flushes all changes made within
+        the current db_session() using the flush() method."""
         rows = database.select(sql, globals, locals, frame_depth=3)
         if not rows: throw(RowNotFound)
         if len(rows) > 1: throw(MultipleRowsFound)
@@ -657,6 +684,9 @@ class Database(object):
         return row
     @cut_traceback
     def exists(database, sql, globals=None, locals=None):
+        """Check if the database has at least one row which satisfies
+        the query. Before executing the provided SQL, Pony flushes all
+        changes made within the current db_session() using the flush() method."""
         if not select_re.match(sql): sql = 'select ' + sql
         cursor = database._exec_raw_sql(sql, globals, locals, frame_depth=3)
         result = cursor.fetchone()
@@ -704,7 +734,9 @@ class Database(object):
         if PY2 and type(new_id) is long: new_id = int(new_id)
         return new_id
     @cut_traceback
-    def generate_mapping(database, filename=None, check_tables=True, create_tables=False):
+    def generate_mapping(database, filename=None, check_tables=True, (create_tables)=False):
+        """Map declared entities to the corresponding tables in the database.
+        Creates tables, foreign key references and indexes if necessary."""
         provider = database.provider
         if provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
         if database.schema: throw(MappingError, 'Mapping was already generated')
@@ -898,9 +930,13 @@ class Database(object):
     @cut_traceback
     @db_session(ddl=True)
     def drop_all_tables(database, with_all_data=False):
+        """Drop all tables which are related to the current mapping."""
         if database.schema is None: throw(ERDiagramError, 'No mapping was generated for the database')
         database._drop_tables(database.schema.tables, True, with_all_data)
     def _drop_tables(database, table_names, if_exists, with_all_data, try_normalized=False):
+        """Drop the table_name table. If you need to delete a table which is
+        mapped to an entity, you can use the class method drop_table() of an
+        entity."""
         cache = database._get_cache()
         connection = cache.prepare_connection_for_query_execution()
         provider = database.provider
@@ -927,6 +963,9 @@ class Database(object):
     @cut_traceback
     @db_session(ddl=True)
     def create_tables(database, check_tables=False):
+        """Check the existing mapping and create tables for entities if they
+        don’t exist. Also, Pony checks if foreign keys and indexes exist and
+        create them if they are missing."""
         cache = database._get_cache()
         if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
         connection = cache.prepare_connection_for_query_execution()
@@ -1537,6 +1576,7 @@ class SessionCache(object):
         try: cache.commit()
         except: transact_reraise(CommitException, [sys.exc_info()])
     def commit(cache):
+        """Save all changes made within the current db_session() using the flush() method and commits the transaction to the database."""
         assert cache.is_alive
         try:
             if cache.modified: cache.flush()
@@ -1583,6 +1623,10 @@ class SessionCache(object):
         try: yield
         finally: cache.noflush_counter -= 1
     def flush(cache):
+        """Save the changes accumulated in the db_session() cache to
+        the database. You may never have a need to call this method
+        manually, because it will be done on leaving the db_session()
+        automatically."""
         if cache.noflush_counter: return
         assert cache.is_alive
         assert not cache.saved_objects
@@ -1963,6 +2007,15 @@ class Attribute(object):
         if wbits is not None and not wbits & bit: obj._rbits_ |= bit
         return value
     def get(attr, obj):
+        """Select one row or just one value from the database.
+
+        The get() method assumes that the query returns exactly one row.
+        If the query returns nothing then Pony raises RowNotFound exception.
+        If the query returns more than one row, the exception MultipleRowsFound
+        will be raised.
+
+        Before executing the provided SQL, Pony flushes all changes made within
+        the current db_session() using the flush() method."""
         if attr.pk_offset is None and obj._status_ in ('deleted', 'cancelled'):
             throw_object_was_deleted(obj)
         vals = obj._vals_
