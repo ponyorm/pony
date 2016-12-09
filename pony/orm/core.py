@@ -929,6 +929,11 @@ class Database(object):
     @cut_traceback
     @db_session(ddl=True)
     def drop_table(database, table_name, if_exists=False, with_all_data=False):
+        """Drop the intermediate table which is created for establishing
+        many-to-many relationship. If the table is not empty and
+        with_all_data=False, the method raises the TableIsNotEmpty exception
+        and doesn’t delete anything. Setting the with_all_data=True allows
+        you to delete the table even if it is not empty."""
         table_name = database._get_table_name(table_name)
         database._drop_tables([ table_name ], if_exists, with_all_data, try_normalized=True)
     def _get_table_name(database, table_name):
@@ -1489,6 +1494,8 @@ class QueryStat(object):
             stat.cache_count = 1
         stat.sql = sql
     def copy(stat):
+        """Return a Python set object which contains the same items as the
+        given collection."""
         result = object.__new__(QueryStat)
         result.__dict__.update(stat.__dict__)
         return result
@@ -1988,6 +1995,7 @@ class Attribute(object):
             else: val = attr.py_type._get_by_raw_pkval_(vals)
         return val
     def load(attr, obj):
+        """Load all related objects from the database."""
         if not obj._session_cache_.is_alive: throw(DatabaseSessionIsOver,
             'Cannot load attribute %s.%s: the database session is over' % (safe_repr(obj), attr.name))
         if not attr.columns:
@@ -2334,6 +2342,7 @@ class Discriminator(Required):
             return entity._discriminator_
         return Attribute.validate(attr, val, obj, entity)
     def load(attr, obj):
+        """Load all related objects from the database."""
         assert False  # pragma: no cover
     def __get__(attr, obj, cls=None):
         if obj is None: return attr
@@ -2484,6 +2493,7 @@ class Collection(Attribute):
         if attr.py_check is not None:
             throw(NotImplementedError, "'py_check' parameter is not supported for collection attributes")
     def load(attr, obj):
+        """Load all related objects from the database."""
         assert False, 'Abstract method'  # pragma: no cover
     def __get__(attr, obj, cls=None):
         assert False, 'Abstract method'  # pragma: no cover
@@ -2560,6 +2570,7 @@ class Set(Collection):
                 throw(TransactionError, 'An attempt to mix objects belonging to different transactions')
         return items
     def load(attr, obj, items=None):
+        """Load all related objects from the database."""
         cache = obj._session_cache_
         if not cache.is_alive: throw(DatabaseSessionIsOver,
             'Cannot load collection %s.%s: the database session is over' % (safe_repr(obj), attr.name))
@@ -2698,6 +2709,8 @@ class Set(Collection):
         sql, adapter = attr.cached_load_sql[cache_key] = database._ast2sql(sql_ast)
         return sql, adapter
     def copy(attr, obj):
+        """Return a Python set object which contains the same items as the
+        given collection."""
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         if obj._vals_ is None: throw_db_session_is_over(obj, attr)
         setdata = obj._vals_.get(attr)
@@ -2927,6 +2940,11 @@ class Set(Collection):
     @cut_traceback
     @db_session(ddl=True)
     def drop_table(attr, with_all_data=False):
+        """Drop the intermediate table which is created for establishing
+        many-to-many relationship. If the table is not empty and
+        with_all_data=False, the method raises the TableIsNotEmpty exception
+        and doesn’t delete anything. Setting the with_all_data=True allows
+        you to delete the table even if it is not empty."""
         if attr.reverse.is_collection: table_name = attr.table
         else: table_name = attr.entity._table_
         attr.entity._database_._drop_tables([ table_name ], True, with_all_data)
@@ -2953,6 +2971,8 @@ class SetInstance(object):
         return unpickle_setwrapper, (wrapper._obj_, wrapper._attr_.name, wrapper.copy())
     @cut_traceback
     def copy(wrapper):
+        """Return a Python set object which contains the same items as the
+        given collection."""
         return wrapper._attr_.copy(wrapper._obj_)
     @cut_traceback
     def __repr__(wrapper):
@@ -2975,6 +2995,8 @@ class SetInstance(object):
         return bool(setdata)
     @cut_traceback
     def is_empty(wrapper):
+        """Check if the collection is empty. Returns False if there is at
+        least one relationship and True if this attribute has no relationships."""
         attr = wrapper._attr_
         obj = wrapper._obj_
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
@@ -3036,6 +3058,12 @@ class SetInstance(object):
         return len(setdata)
     @cut_traceback
     def count(wrapper):
+        """Return the number of objects in the collection. This method doesn’t
+        load the collection instances into the cache, but generates an SQL
+        query which returns the number of objects from the database. If you
+        are going to work with the collection objects (iterate over the
+        collection or change the object attributes), you might want to use
+        the __len__() method."""
         attr = wrapper._attr_
         obj = wrapper._obj_
         cache = obj._session_cache_
@@ -3119,6 +3147,8 @@ class SetInstance(object):
         return False
     @cut_traceback
     def create(wrapper, **kwargs):
+        """Create an return an instance of the related entity and establishes
+        a relationship with it"""
         attr = wrapper._attr_
         reverse = attr.reverse
         if reverse.name in kwargs: throw(TypeError,
@@ -3227,6 +3257,7 @@ class SetInstance(object):
         attr.__set__(obj, ())
     @cut_traceback
     def load(wrapper):
+        """Load all related objects from the database."""
         wrapper._attr_.load(wrapper._obj_)
     @cut_traceback
     def select(wrapper, *args):
@@ -3246,8 +3277,15 @@ class SetInstance(object):
     def limit(wrapper, limit, offset=None):
         return wrapper.select().limit(limit, offset)
     def page(wrapper, pagenum, pagesize=10):
+        """This query can be used for displaying the second page of group 101
+        student’s list ordered by the name attribute:
+
+        >>> g.students.order_by(Student.name).page(2, pagesize=3) # doctest: +SKIP
+        >>> g.students.order_by(lambda s: s.name).limit(3, offset=3) # doctest: +SKIP
+        """
         return wrapper.select().page(pagenum, pagesize)
     def order_by(wrapper, *args):
+        """Return an ordered collection."""
         return wrapper.select().order_by(*args)
     def random(wrapper, limit):
         return wrapper.select().random(limit)
@@ -4162,6 +4200,11 @@ class EntityMeta(type):
     @cut_traceback
     @db_session(ddl=True)
     def drop_table(entity, with_all_data=False):
+        """Drop the intermediate table which is created for establishing
+        many-to-many relationship. If the table is not empty and
+        with_all_data=False, the method raises the TableIsNotEmpty exception
+        and doesn’t delete anything. Setting the with_all_data=True allows
+        you to delete the table even if it is not empty."""
         entity._database_._drop_tables([ entity._table_ ], True, with_all_data)
     def _get_attrs_(entity, only=None, exclude=None, with_collections=False, with_lazy=False):
         if only and not isinstance(only, basestring): only = tuple(only)
@@ -4364,6 +4407,7 @@ class Entity(with_metaclass(EntityMeta)):
                                      'Phantom object %s disappeared' % safe_repr(obj))
     @cut_traceback
     def load(obj, *attrs):
+        """Load all related objects from the database."""
         cache = obj._session_cache_
         if not cache.is_alive: throw(DatabaseSessionIsOver,
             'Cannot load object %s: the database session is over' % safe_repr(obj))
@@ -5403,6 +5447,7 @@ class Query(object):
         return iter(query._fetch())
     @cut_traceback
     def order_by(query, *args):
+        """Return an ordered collection."""
         if not args: throw(TypeError, 'order_by() method requires at least one argument')
         if args[0] is None:
             if len(args) > 1: throw(TypeError, 'When first argument of order_by() method is None, it must be the only argument')
@@ -5512,6 +5557,8 @@ class Query(object):
         return translator
     @cut_traceback
     def filter(query, *args, **kwargs):
+        """Select objects from a collection. The method names select()
+        and filter() are synonyms."""
         if args:
             if isinstance(args[0], RawSQL):
                 raw = args[0]
@@ -5574,6 +5621,12 @@ class Query(object):
         return query[start:stop]
     @cut_traceback
     def page(query, pagenum, pagesize=10):
+        """This query can be used for displaying the second page of group 101
+        student’s list ordered by the name attribute:
+
+        >>> g.students.order_by(Student.name).page(2, pagesize=3) # doctest: +SKIP
+        >>> g.students.order_by(lambda s: s.name).limit(3, offset=3) # doctest: +SKIP
+        """
         start = (pagenum - 1) * pagesize
         stop = pagenum * pagesize
         return query[start:stop]
@@ -5611,6 +5664,12 @@ class Query(object):
         return query._aggregate('MAX')
     @cut_traceback
     def count(query):
+        """Return the number of objects in the collection. This method doesn’t
+        load the collection instances into the cache, but generates an SQL
+        query which returns the number of objects from the database. If you
+        are going to work with the collection objects (iterate over the
+        collection or change the object attributes), you might want to use
+        the __len__() method."""
         return query._aggregate('COUNT')
     @cut_traceback
     def for_update(query, nowait=False):
