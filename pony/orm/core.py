@@ -312,6 +312,7 @@ def commit():
 
 @cut_traceback
 def rollback():
+    """Rolls back the current transaction and clears the db_session() cache."""
     exceptions = []
     try:
         for cache in _get_caches():
@@ -565,6 +566,16 @@ class Database(object):
         if stat is not None: stat.query_executed(query_start_time)
         else: stats[sql] = QueryStat(sql, query_start_time)
     def merge_local_stats(database):
+        """Merge the statistics from the current thread into the global
+        statistics. You can call this method at the end of the HTTP request
+        processing.
+
+        When you call this method, the value of local_stats will be merged to
+        global_stats, and local_stats will be cleared.
+
+        In a web application, you can call this method on finishing processing
+        an HTTP request. This way the global_stats attribute will contain the
+        statistics for the whole application."""
         setdefault = database._global_stats.setdefault
         with database._global_stats_lock:
             for sql, stat in iteritems(database._dblocal.stats):
@@ -627,6 +638,7 @@ class Database(object):
             cache.flush_and_commit()
     @cut_traceback
     def rollback(database):
+        """Rolls back the current transaction and clears the db_session() cache."""
         cache = local.db2cache.get(database)
         if cache is not None:
             try: cache.rollback()
@@ -651,6 +663,7 @@ class Database(object):
         return database._exec_sql(adapted_sql, arguments, False, start_transaction)
     @cut_traceback
     def select(database, sql, globals=None, locals=None, frame_depth=0):
+        """Execute the SQL statement in the database and returns a list of tuples."""
         if not select_re.match(sql): sql = 'select ' + sql
         cursor = database._exec_raw_sql(sql, globals, locals, frame_depth + 3)
         max_fetch_count = options.MAX_FETCH_COUNT
@@ -693,6 +706,13 @@ class Database(object):
         return bool(result)
     @cut_traceback
     def insert(database, table_name, returning=None, **kwargs):
+        """Insert new rows into a table. This command bypasses the identity map
+        cache and can be used in order to increase the performance when you
+        need to create lots of objects and not going to read them in the same
+        transaction. Also you can use the execute() method for this purpose. If
+        you need to work with those objects in the same transaction it is
+        better to create instances of entities and have Pony to save them in
+        the database."""
         table_name = database._get_table_name(table_name)
         if database.provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
         query_key = (table_name,) + tuple(kwargs)  # keys are not sorted deliberately!!
@@ -1589,6 +1609,7 @@ class SessionCache(object):
             cache.rollback()
             raise
     def rollback(cache):
+        """Rolls back the current transaction and clears the db_session() cache."""
         cache.close(rollback=True)
     def release(cache):
         cache.close(rollback=False)
@@ -1612,6 +1633,8 @@ class SessionCache(object):
         if db_session and db_session.strict:
             cache.clear()
     def clear(cache):
+        """Remove all items from the collection which means breaking
+        relationships between entity instances."""
         for obj in cache.objects:
             obj._vals_ = obj._dbvals_ = obj._session_cache_ = None
         cache.objects = cache.indexes = cache.seeds = cache.for_update = cache.modified_collections \
@@ -2998,6 +3021,12 @@ class SetInstance(object):
         return True
     @cut_traceback
     def __len__(wrapper):
+        """Return the number of objects in the collection. If the collection is
+        not loaded into cache, this methods loads all the collection instances
+        into the cache first, and then returns the number of objects. Use this
+        method if you are going to iterate over the objects and you need them
+        loaded into the cache. If you don’t need the collection to be loaded
+        into the memory, you can use the count() method."""
         attr = wrapper._attr_
         obj = wrapper._obj_
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
@@ -3102,6 +3131,8 @@ class SetInstance(object):
         return item
     @cut_traceback
     def add(wrapper, new_items):
+        """Add instances to a collection and establish a two-way relationship
+        between entity instances"""
         obj = wrapper._obj_
         attr = wrapper._attr_
         cache = obj._session_cache_
@@ -3186,6 +3217,8 @@ class SetInstance(object):
         return wrapper
     @cut_traceback
     def clear(wrapper):
+        """Remove all items from the collection which means breaking
+        relationships between entity instances."""
         obj = wrapper._obj_
         attr = wrapper._attr_
         if not obj._session_cache_.is_alive: throw(DatabaseSessionIsOver,
@@ -3197,6 +3230,7 @@ class SetInstance(object):
         wrapper._attr_.load(wrapper._obj_)
     @cut_traceback
     def select(wrapper, *args):
+        """Execute the SQL statement in the database and returns a list of tuples."""
         obj = wrapper._obj_
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
@@ -3261,6 +3295,12 @@ class Multiset(object):
         return bool(multiset._items_)
     @cut_traceback
     def __len__(multiset):
+        """Return the number of objects in the collection. If the collection is
+        not loaded into cache, this methods loads all the collection instances
+        into the cache first, and then returns the number of objects. Use this
+        method if you are going to iterate over the objects and you need them
+        loaded into the cache. If you don’t need the collection to be loaded
+        into the memory, you can use the count() method."""
         return builtins.sum(multiset._items_.values())
     @cut_traceback
     def __iter__(multiset):
@@ -3634,6 +3674,7 @@ class EntityMeta(type):
         return objects[0]
     @cut_traceback
     def select(entity, *args):
+        """Execute the SQL statement in the database and returns a list of tuples."""
         return entity._query_from_args_(args, kwargs=None, frame_depth=3)
     @cut_traceback
     def select_by_sql(entity, sql, globals=None, locals=None):
@@ -4984,6 +5025,7 @@ def make_query(args, frame_depth, left_join=False):
 
 @cut_traceback
 def select(*args):
+    """Execute the SQL statement in the database and returns a list of tuples."""
     return make_query(args, frame_depth=3)
 
 @cut_traceback
@@ -5349,6 +5391,12 @@ class Query(object):
         return cursor.rowcount
     @cut_traceback
     def __len__(query):
+        """Return the number of objects in the collection. If the collection is
+        not loaded into cache, this methods loads all the collection instances
+        into the cache first, and then returns the number of objects. Use this
+        method if you are going to iterate over the objects and you need them
+        loaded into the cache. If you don’t need the collection to be loaded
+        into the memory, you can use the count() method."""
         return len(query._fetch())
     @cut_traceback
     def __iter__(query):
