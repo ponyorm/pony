@@ -554,9 +554,15 @@ class Database(object):
         self.provider = provider = provider_cls(*args, **kwargs)
     @property
     def last_sql(database):
+        """Read-only attribute which keeps the text of the last SQL statement.
+        It can be useful for debugging."""
         return database._dblocal.last_sql
     @property
     def local_stats(database):
+        """This is a dictionary which keeps the SQL query statistics for the
+        current thread. The key of this dictionary is the SQL statement and
+        the value is an object of the QueryStat class.
+        """
         return database._dblocal.stats
     def _update_local_stat(database, sql, query_start_time):
         dblocal = database._dblocal
@@ -584,6 +590,10 @@ class Database(object):
         database._dblocal.stats.clear()
     @property
     def global_stats(database):
+        """This attribute keeps the dictionary where the statistics for
+        executed SQL queries is aggregated from all threads. The key of this
+        dictionary is the SQL statement and the value is an object of the
+        QueryStat class."""
         with database._global_stats_lock:
             return {sql: stat.copy() for sql, stat in iteritems(database._global_stats)}
     @property
@@ -683,13 +693,19 @@ class Database(object):
     def get(database, sql, globals=None, locals=None):
         """Select one row or just one value from the database.
 
-        The get() method assumes that the query returns exactly one row.
-        If the query returns nothing then Pony raises RowNotFound exception.
-        If the query returns more than one row, the exception MultipleRowsFound
+        The get() method assumes that the query returns exactly one row. If
+        the query returns nothing then Pony raises RowNotFound exception. If
+        the query returns more than one row, the exception MultipleRowsFound
         will be raised.
 
-        Before executing the provided SQL, Pony flushes all changes made within
-        the current db_session() using the flush() method."""
+        Before executing the provided SQL, Pony flushes all changes made
+        within the current db_session() using the flush() method.
+
+        >>> id = 1
+        >>> age = db.get("select age from Person where id = $id")
+
+        >>> name, age = db.get("select name, age from Person where id = $id") # doctest +SKIP
+        """
         rows = database.select(sql, globals, locals, frame_depth=3)
         if not rows: throw(RowNotFound)
         if len(rows) > 1: throw(MultipleRowsFound)
@@ -712,7 +728,10 @@ class Database(object):
         transaction. Also you can use the execute() method for this purpose. If
         you need to work with those objects in the same transaction it is
         better to create instances of entities and have Pony to save them in
-        the database."""
+        the database.
+
+        >>> new_id = db.insert("Person", name="Ben", age=33, returning='id') # doctest +SKIP
+        """
         table_name = database._get_table_name(table_name)
         if database.provider is None: throw(MappingError, 'Database object is not bound with a provider yet')
         query_key = (table_name,) + tuple(kwargs)  # keys are not sorted deliberately!!
@@ -935,13 +954,13 @@ class Database(object):
         and doesn’t delete anything. Setting the with_all_data=True allows
         you to delete the table even if it is not empty.
 
-        class Product(db.Entity):
-            tags = Set('Tag')
+        >>> class Product(db.Entity):
+        ...    tags = Set('Tag')
 
-        class Tag(db.Entity):
-            products = Set(Product)
+        >>> class Tag(db.Entity):
+        ...    products = Set(Product)
 
-        Product.tags.drop_table(with_all_data=True) # doctest +SKIP
+        >>> Product.tags.drop_table(with_all_data=True) # doctest +SKIP
         """
         table_name = database._get_table_name(table_name)
         database._drop_tables([ table_name ], if_exists, with_all_data, try_normalized=True)
@@ -2049,13 +2068,19 @@ class Attribute(object):
     def get(attr, obj):
         """Select one row or just one value from the database.
 
-        The get() method assumes that the query returns exactly one row.
-        If the query returns nothing then Pony raises RowNotFound exception.
-        If the query returns more than one row, the exception MultipleRowsFound
+        The get() method assumes that the query returns exactly one row. If
+        the query returns nothing then Pony raises RowNotFound exception. If
+        the query returns more than one row, the exception MultipleRowsFound
         will be raised.
 
-        Before executing the provided SQL, Pony flushes all changes made within
-        the current db_session() using the flush() method."""
+        Before executing the provided SQL, Pony flushes all changes made
+        within the current db_session() using the flush() method.
+
+        >>> id = 1
+        >>> age = db.get("select age from Person where id = $id")
+
+        >>> name, age = db.get("select name, age from Person where id = $id") # doctest +SKIP
+        """
         if attr.pk_offset is None and obj._status_ in ('deleted', 'cancelled'):
             throw_object_was_deleted(obj)
         vals = obj._vals_
@@ -2955,13 +2980,13 @@ class Set(Collection):
         and doesn’t delete anything. Setting the with_all_data=True allows
         you to delete the table even if it is not empty.
 
-        class Product(db.Entity):
-            tags = Set('Tag')
+        >>> class Product(db.Entity):
+        ...    tags = Set('Tag')
 
-        class Tag(db.Entity):
-            products = Set(Product)
+        >>> class Tag(db.Entity):
+        ...    products = Set(Product)
 
-        Product.tags.drop_table(with_all_data=True) # doctest +SKIP
+        >>> Product.tags.drop_table(with_all_data=True) # doctest +SKIP
         """
         if attr.reverse.is_collection: table_name = attr.table
         else: table_name = attr.entity._table_
@@ -3168,12 +3193,12 @@ class SetInstance(object):
         """Create an return an instance of the related entity and establishes
         a relationship with it:
 
-        new_tag = Photo[123].tags.create(name='New tag') # doctest +SKIP
+        >>> new_tag = Photo[123].tags.create(name='New tag') # doctest +SKIP
 
         is an equilvalent of the following:
 
-        new_tag = Tag(name='New tag')
-        Photo[123].tags.add(new_tag)
+        >>> new_tag = Tag(name='New tag')
+        >>> Photo[123].tags.add(new_tag)
         """
         attr = wrapper._attr_
         reverse = attr.reverse
@@ -3188,7 +3213,21 @@ class SetInstance(object):
     @cut_traceback
     def add(wrapper, new_items):
         """Add instances to a collection and establish a two-way relationship
-        between entity instances"""
+        between entity instances:
+
+        >>> photo = Photo[123]
+        >>> photo.tags.add(Tag['Outdoors']) # doctest +SKIP
+
+        Now the instance of the Photo entity with the primary key 123 has a
+        relationship with the Tag['Outdoors'] instance. The attribute photos
+        of the Tag['Outdoors'] instance contains the reference to the
+        Photo[123] as well.
+
+        You can also establish several relationships at once passing the
+        list of tags to the add() method:
+
+        >>> photo.tags.add([Tag['Party'], Tag['New Year']]) # doctest +SKIP
+        """
         obj = wrapper._obj_
         attr = wrapper._attr_
         cache = obj._session_cache_
@@ -3292,8 +3331,8 @@ class SetInstance(object):
         """Select objects from a collection. The method names select() and
         filter() are synonyms.
 
-        g = Group[101] # doctest: +SKIP
-        g.students.select(lambda student: student.gpa > 3) # doctest: +SKIP
+        >>> g = Group[101] # doctest: +SKIP
+        >>> g.students.select(lambda student: student.gpa > 3) # doctest: +SKIP
         """
         obj = wrapper._obj_
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
@@ -3320,15 +3359,15 @@ class SetInstance(object):
     def order_by(wrapper, *args):
         """Return an ordered collection.
 
-        g.students.order_by(Student.name).page(2, pagesize=3) # doctest +SKIP
-        g.students.order_by(lambda s: s.name).limit(3, offset=3) # doctest +SKIP
+        >>> g.students.order_by(Student.name).page(2, pagesize=3) # doctest +SKIP
+        >>> g.students.order_by(lambda s: s.name).limit(3, offset=3) # doctest +SKIP
         """
         return wrapper.select().order_by(*args)
     def random(wrapper, limit):
         """Return a number of random objects from a collection.
 
-        g = Group[101] # doctest: +SKIP
-        g.students.random(2) # doctest: +SKIP
+        >>> g = Group[101] # doctest: +SKIP
+        >>> g.students.random(2) # doctest: +SKIP
         """
         return wrapper.select().random(limit)
 
@@ -3380,7 +3419,14 @@ class Multiset(object):
         into the cache first, and then returns the number of objects. Use this
         method if you are going to iterate over the objects and you need them
         loaded into the cache. If you don’t need the collection to be loaded
-        into the memory, you can use the count() method."""
+        into the memory, you can use the count() method.
+
+        >>> p1 = Person[1]
+        >>> Car[1] in p1.cars
+        True
+        >>> len(p1.cars) # doctest +SKIP
+        2
+        """
         return builtins.sum(multiset._items_.values())
     @cut_traceback
     def __iter__(multiset):
@@ -3737,6 +3783,21 @@ class EntityMeta(type):
         return True
     @cut_traceback
     def get(entity, *args, **kwargs):
+        """Select one row or just one value from the database.
+
+        The get() method assumes that the query returns exactly one row. If
+        the query returns nothing then Pony raises RowNotFound exception. If
+        the query returns more than one row, the exception MultipleRowsFound
+        will be raised.
+
+        Before executing the provided SQL, Pony flushes all changes made
+        within the current db_session() using the flush() method.
+
+        >>> id = 1
+        >>> age = db.get("select age from Person where id = $id")
+
+        >>> name, age = db.get("select name, age from Person where id = $id") # doctest +SKIP
+        """
         if args: return entity._query_from_args_(args, kwargs, frame_depth=3).get()
         try: return entity._find_one_(kwargs)  # can throw MultipleObjectsFoundError
         except ObjectNotFound: return None
@@ -3754,7 +3815,17 @@ class EntityMeta(type):
         return objects[0]
     @cut_traceback
     def select(entity, *args):
-        """Execute the SQL statement in the database and returns a list of tuples."""
+        """Execute the SQL statement in the database and returns a list of tuples.
+
+        >>> result = select("select * from Person") # doctest +SKIP
+
+        If a query returns more than one column and the names of table
+        columns are valid Python identifiers, then you can access them as
+        attributes:
+
+        >>> for row in db.select("name, age from Person"): # doctest +SKIP
+        ...    print row.name, row.age
+        """
         return entity._query_from_args_(args, kwargs=None, frame_depth=3)
     @cut_traceback
     def select_by_sql(entity, sql, globals=None, locals=None):
@@ -4248,13 +4319,13 @@ class EntityMeta(type):
         and doesn’t delete anything. Setting the with_all_data=True allows
         you to delete the table even if it is not empty.
 
-        class Product(db.Entity):
-            tags = Set('Tag')
+        >>> class Product(db.Entity):
+        ...    tags = Set('Tag')
 
-        class Tag(db.Entity):
-            products = Set(Product)
+        >>> class Tag(db.Entity):
+        ...    products = Set(Product)
 
-        Product.tags.drop_table(with_all_data=True) # doctest +SKIP
+        >>> Product.tags.drop_table(with_all_data=True) # doctest +SKIP
         """
         entity._database_._drop_tables([ entity._table_ ], True, with_all_data)
     def _get_attrs_(entity, only=None, exclude=None, with_collections=False, with_lazy=False):
@@ -5129,6 +5200,21 @@ def left_join(*args):
 
 @cut_traceback
 def get(*args):
+    """Select one row or just one value from the database.
+
+    The get() method assumes that the query returns exactly one row. If
+    the query returns nothing then Pony raises RowNotFound exception. If
+    the query returns more than one row, the exception MultipleRowsFound
+    will be raised.
+
+    Before executing the provided SQL, Pony flushes all changes made
+    within the current db_session() using the flush() method.
+
+    >>> id = 1
+    >>> age = db.get("select age from Person where id = $id")
+
+    >>> name, age = db.get("select name, age from Person where id = $id") # doctest +SKIP
+    """
     return make_query(args, frame_depth=3).get()
 
 @cut_traceback
@@ -5434,6 +5520,21 @@ class Query(object):
         query._fetch().show(width)
     @cut_traceback
     def get(query):
+        """Select one row or just one value from the database.
+
+        The get() method assumes that the query returns exactly one row. If
+        the query returns nothing then Pony raises RowNotFound exception. If
+        the query returns more than one row, the exception MultipleRowsFound
+        will be raised.
+
+        Before executing the provided SQL, Pony flushes all changes made
+        within the current db_session() using the flush() method.
+
+        >>> id = 1
+        >>> age = db.get("select age from Person where id = $id")
+
+        >>> name, age = db.get("select name, age from Person where id = $id") # doctest +SKIP
+        """
         objects = query[:2]
         if not objects: return None
         if len(objects) > 1: throw(MultipleObjectsFoundError,
@@ -5500,8 +5601,8 @@ class Query(object):
     def order_by(query, *args):
         """Return an ordered collection.
 
-        g.students.order_by(Student.name).page(2, pagesize=3) # doctest +SKIP
-        g.students.order_by(lambda s: s.name).limit(3, offset=3) # doctest +SKIP
+        >>> g.students.order_by(Student.name).page(2, pagesize=3) # doctest +SKIP
+        >>> g.students.order_by(lambda s: s.name).limit(3, offset=3) # doctest +SKIP
         """
         if not args: throw(TypeError, 'order_by() method requires at least one argument')
         if args[0] is None:
@@ -5615,8 +5716,8 @@ class Query(object):
         """Select objects from a collection. The method names select()
         and filter() are synonyms.
 
-        g = Group[101] # doctest +SKIP
-        g.students.filter(lambda student: student.gpa > 3) # doctest +SKIP
+        >>> g = Group[101] # doctest +SKIP
+        >>> g.students.filter(lambda student: student.gpa > 3) # doctest +SKIP
         """
         if args:
             if isinstance(args[0], RawSQL):
@@ -5739,8 +5840,8 @@ class Query(object):
     def random(query, limit):
         """Return a number of random objects from a collection.
 
-        g = Group[101] # doctest: +SKIP
-        g.students.random(2) # doctest: +SKIP
+        >>> g = Group[101] # doctest: +SKIP
+        >>> g.students.random(2) # doctest: +SKIP
         """
         return query.order_by('random()')[:limit]
     def to_json(query, include=(), exclude=(), converter=None, with_schema=True, schema_hash=None):
