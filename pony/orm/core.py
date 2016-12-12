@@ -2209,8 +2209,9 @@ class Required(Attribute):
     __slots__ = []
     def validate(attr, val, obj=None, entity=None, from_db=False):
         val = Attribute.validate(attr, val, obj, entity, from_db)
-        if val == '' or (val is None and not (attr.auto or attr.is_volatile or attr.sql_default)):
-            throw(ValueError, 'Attribute %s is required' % (attr if obj is None else '%r.%s' % (obj, attr.name)))
+        if not from_db:
+            if val == '' or (val is None and not (attr.auto or attr.is_volatile or attr.sql_default)):
+                throw(ValueError, 'Attribute %s is required' % (attr if obj is None else '%r.%s' % (obj, attr.name)))
         return val
 
 class Discriminator(Required):
