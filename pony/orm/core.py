@@ -72,6 +72,22 @@ debug = False
 suppress_debug_change = False
 
 def sql_debug(value):
+    """Prints SQL statements being sent to the database to the console or
+    to a log file.
+
+    By default Pony sends debug information to stdout. If you have the
+    standard Python logging configured, Pony will use it instead. Here is
+    how you can store debug information in a file:
+
+    >>> import logging
+    >>> logging.basicConfig(filename='pony.log', level=logging.INFO)
+
+    Note, that we had to specify the level=logging.INFO because the default
+    standard logging level is WARNING and Pony uses the INFO level for its
+    messages by default. Pony uses two loggers: pony.orm.sql for SQL
+    statements that it sends to the database and pony.orm for all other
+    messages.
+    """
     global debug
     if not suppress_debug_change: debug = value
 
@@ -322,7 +338,10 @@ def commit():
 
 @cut_traceback
 def rollback():
-    """Rolls back the current transaction and clears the db_session() cache."""
+    """Roll back the current transaction.
+
+    This top level rollback() function calls the rollback() method of each
+    database object which was used in current transaction."""
     exceptions = []
     try:
         for cache in _get_caches():
@@ -735,7 +754,17 @@ class Database(object):
         return database._exec_sql(adapted_sql, arguments, False, start_transaction)
     @cut_traceback
     def select(database, sql, globals=None, locals=None, frame_depth=0):
-        """Execute the SQL statement in the database and returns a list of tuples."""
+        """Execute the SQL statement in the database and returns a list of tuples.
+
+        >>> result = select("select * from Person") # doctest +SKIP
+
+        If a query returns more than one column and the names of table
+        columns are valid Python identifiers, then you can access them as
+        attributes:
+
+        >>> for row in db.select("name, age from Person"): # doctest +SKIP
+        ...    print row.name, row.age
+        """
         if not select_re.match(sql): sql = 'select ' + sql
         cursor = database._exec_raw_sql(sql, globals, locals, frame_depth + 3)
         max_fetch_count = options.MAX_FETCH_COUNT
@@ -5420,16 +5449,13 @@ def make_query(args, frame_depth, left_join=False):
 
 @cut_traceback
 def select(*args):
-    """Execute the SQL statement in the database and returns a list of tuples.
+    """Translates the generator expression into SQL query and returns an
+    instance of the Query class.
 
-    >>> result = select("select * from Person") # doctest +SKIP
+    You can iterate over the result:
 
-    If a query returns more than one column and the names of table
-    columns are valid Python identifiers, then you can access them as
-    attributes:
-
-    >>> for row in db.select("name, age from Person"): # doctest +SKIP
-    ...    print row.name, row.age
+    >>> for p in select(p for p in Product): # doctest +SKIP
+    ...     print p.name, p.price
     """
     return make_query(args, frame_depth=3)
 
@@ -5464,21 +5490,25 @@ def get(*args):
 
 @cut_traceback
 def exists(*args):
-    """Check if the database has at least one row which satisfies
-    the query. Before executing the provided SQL, Pony flushes all
-    changes made within the current db_session() using the flush() method.
+    """Returns True if at least one instance with the specified condition
+    exists and False otherwise.
 
-    Before executing the provided SQL, Pony flushes all changes made
-    within the current db_session() using the flush() method.
-
-    >>> name = 'John'
-    >>> if db.exists("select * from Person where name = $name"): # doctest +SKIP
-    ...     print "Person exists in the database"
+    >>> exists(o for o in Order if o.date_delivered is None) # doctest +SKIP
     """
     return make_query(args, frame_depth=3).exists()
 
 @cut_traceback
 def delete(*args):
+    """Delete objects from the database. Pony loads objects into the
+    memory and will delete them one by one. If you have before_delete()
+    or after_delete() defined, Pony will call each of them.
+
+    >>> delete(o for o in Order if o.status == 'CANCELLED') # doctest +SKIP
+
+    If you need to delete objects without loading them into memory, you
+    should use the delete() method with the parameter bulk=True. In this
+    case no hooks will be called, even if they are defined for the entity.
+    """
     return make_query(args, frame_depth=3).delete()
 
 def make_aggrfunc(std_func):
@@ -5523,6 +5553,17 @@ def desc(expr):
     return expr
 
 def raw_sql(sql, result_type=None):
+    """This function encapsulates a part of a query expressed in a raw SQL
+    format. If the result_type is specified, Pony converts the result of
+    raw SQL fragment to the specified format.
+
+    >>> q = Person.select(lambda x: raw_sql('abs("x"."age")') > 25) # doctest +SKIP
+    >>> print(q.get_sql())
+
+    SELECT "x"."id", "x"."name", "x"."age", "x"."dob"
+    FROM "Person" "x"
+    WHERE abs("x"."age") > 25
+    """
     globals = sys._getframe(1).f_globals
     locals = sys._getframe(1).f_locals
     return RawSQL(sql, globals, locals, result_type)
@@ -5780,6 +5821,22 @@ class Query(object):
                 else: assert False  # pragma: no cover
     @cut_traceback
     def show(query, width=None):
+        """Prints out the entity definition or the value of attributes for
+        an entity instance in the interactive mode.
+
+        >>> show(Person) # doctest +SKIP
+        class Person(Entity):
+            id = PrimaryKey(int, auto=True)
+            name = Required(str)
+            age = Required(int)
+            cars = Set(Car)
+
+        >>> show(mary) # doctest +SKIP
+        instance of Person
+        id|name|age
+        --+----+---
+        2 |Mary|22
+        """
         query._fetch().show(width)
     @cut_traceback
     def get(query):
@@ -5825,21 +5882,28 @@ class Query(object):
         """Returns True if at least one instance with the specified condition
         exists and False otherwise.
 
-        >>> exists(o for o in Order if o.date_delivered is None) # doctest +SKIP
+        >>> select(c for c in Customer if len(c.cart_items) > 10).exists() # doctest +SKIP
+
+        This query generates the following SQL:
+
+        SELECT "c"."id"
+        FROM "Customer" "c"
+          LEFT JOIN "CartItem" "cartitem-1"
+            ON "c"."id" = "cartitem-1"."customer"
+        GROUP BY "c"."id"
+        HAVING COUNT(DISTINCT "cartitem-1"."id") > 20
+        LIMIT 1
         """
         objects = query[:1]
         return bool(objects)
     @cut_traceback
     def delete(query, bulk=None):
-        """Delete objects from the database. Pony loads objects into the
-        memory and will delete them one by one. If you have before_delete()
-        or after_delete() defined, Pony will call each of them.
-
-        >>> delete(o for o in Order if o.status == 'CANCELLED') # doctest +SKIP
-
-        If you need to delete objects without loading them into memory, you
-        should use the delete() method with the parameter bulk=True. In this
-        case no hooks will be called, even if they are defined for the entity.
+        """Delete instances selected by a query. When bulk=False Pony loads
+        each instance into memory and call the Entity.delete() method on each
+        instance (calling before_delete() and after_delete() hooks if they
+        are defined). If bulk=True Pony doesn’t load instances, it just
+        generates the SQL DELETE statement which deletes objects in the
+        database.
         """
         if not bulk:
             if not isinstance(query._translator.expr_type, EntityMeta): throw(TypeError,
@@ -5865,12 +5929,10 @@ class Query(object):
         return cursor.rowcount
     @cut_traceback
     def __len__(query):
-        """Return the number of objects in the collection. If the collection is
-        not loaded into cache, this methods loads all the collection instances
-        into the cache first, and then returns the number of objects. Use this
-        method if you are going to iterate over the objects and you need them
-        loaded into the cache. If you don’t need the collection to be loaded
-        into the memory, you can use the count() method."""
+        """Return the number of objects selected from the database.
+
+        >>> len(select(c for c in Customer)) # doctest +SKIP
+        """
         return len(query._fetch())
     @cut_traceback
     def __iter__(query):
@@ -5991,11 +6053,19 @@ class Query(object):
         return translator
     @cut_traceback
     def filter(query, *args, **kwargs):
-        """Select objects from a collection. The method names select()
-        and filter() are synonyms.
+        """Filter the result of a query. The conditions which are passed
+        as parameters to the filter() method will be translated into the
+        WHERE section of the resulting SQL query.
 
-        >>> g = Group[101] # doctest +SKIP
-        >>> g.students.filter(lambda student: student.gpa > 3) # doctest +SKIP
+        The number of filter() arguments should correspond to the query
+        result. The filter() method can receive a lambda expression with
+        a condition:
+
+        >>> q = select(p for p in Product) # doctest +SKIP
+        >>> q2 = q.filter(lambda x: x.price > 100) # doctest +SKIP
+
+        >>> q = select((p.name, p.price) for p in Product) # doctest +SKIP
+        >>> q2 = q.filter(lambda n, p: n.name.startswith("A") and p > 100) # doctest +SKIP
         """
         if args:
             if isinstance(args[0], RawSQL):
@@ -6104,6 +6174,10 @@ class Query(object):
         return result
     @cut_traceback
     def sum(query):
+        """Return the sum of all values selected from the database.
+
+        >>> sum(o.total_price for o in Order) # doctest +SKIP
+        """
         return query._aggregate('SUM')
     @cut_traceback
     def avg(query):
@@ -6155,10 +6229,16 @@ class Query(object):
             '%s provider does not support SELECT FOR UPDATE NOWAIT syntax' % provider.dialect)
         return query._clone(_for_update=True, _nowait=nowait)
     def random(query, limit):
-        """Return a number of random objects from a collection.
+        """Returns a random value from 0 to 1. This functions, when
+        encountered inside a query will be translated into RANDOM SQL query.
 
-        >>> g = Group[101] # doctest: +SKIP
-        >>> g.students.random(2) # doctest: +SKIP
+        Example:
+
+        >>> select(s.gpa for s in Student if s.gpa > random() * 5) # doctest +SKIP
+
+        SELECT DISTINCT "s"."gpa"
+        FROM "student" "s"
+        WHERE "s"."gpa" > (random() * 5)
         """
         return query.order_by('random()')[:limit]
     def to_json(query, include=(), exclude=(), converter=None, with_schema=True, schema_hash=None):
@@ -6185,6 +6265,22 @@ class QueryResult(list):
         result._col_names = state[2]
     @cut_traceback
     def show(result, width=None):
+        """Prints out the entity definition or the value of attributes for
+        an entity instance in the interactive mode.
+
+        >>> show(Person) # doctest +SKIP
+        class Person(Entity):
+            id = PrimaryKey(int, auto=True)
+            name = Required(str)
+            age = Required(int)
+            cars = Set(Car)
+
+        >>> show(mary) # doctest +SKIP
+        instance of Person
+        id|name|age
+        --+----+---
+        2 |Mary|22
+        """
         if not width: width = options.CONSOLE_WIDTH
         max_columns = width // 5
         expr_type = result._expr_type
