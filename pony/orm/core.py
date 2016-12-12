@@ -263,6 +263,14 @@ def _get_caches():
 
 @cut_traceback
 def flush():
+    """Save the changes accumulated in the db_session() cache to the
+    database. You may never have a need to call this method manually,
+    because it will be done on leaving the db_session() automatically.
+
+    Pony always saves the changes accumulated in the cache automatically
+    before executing the following methods: get(), exists(), execute(),
+    commit(), select().
+    """
     for cache in _get_caches(): cache.flush()
 
 def transact_reraise(exc_class, exceptions):
@@ -279,7 +287,12 @@ def transact_reraise(exc_class, exceptions):
 @cut_traceback
 def commit():
     """Save all changes made within the current db_session() using
-    the flush() method and commits the transaction to the database."""
+    the flush() method and commits the transaction to the database.
+
+    You can call commit() more than once within the same db_session().
+    In this case the db_session() cache keeps the cached objects after
+    commits. The cache will be cleaned up when the db_session() is over or
+    if the transaction will be rolled back."""
     caches = _get_caches()
     if not caches: return
 
@@ -508,6 +521,15 @@ def db_decorator(func, *args, **kwargs):
         raise
 
 class Database(object):
+    """The Database object manages database connections using a connection
+    pool. It is thread safe and can be shared between all threads in your
+    application. The Database object allows working with the database
+    directly using SQL, but most of the time you will work with entities
+    and let Pony generate SQL statements for makeing the corresponding
+    changes in the database. You can work with several databases at the
+    same time, having a separate Database object for each database, but
+    each entity always belongs to one database.
+    """
     def __deepcopy__(self, memo):
         return self  # Database cannot be cloned by deepcopy()
     @cut_traceback
@@ -533,7 +555,25 @@ class Database(object):
         if args or kwargs: self._bind(*args, **kwargs)
     @cut_traceback
     def bind(self, *args, **kwargs):
-        """Bind entities to a database."""
+        """Bind entities to a database.
+
+        During the bind() call, Pony tries to establish a test connection to
+        the database. If the specified parameters are not correct or the
+        database is not available, an exception will be raised. After the
+        connection to the database was established, Pony retrieves the version
+        of the database and returns the connection to the connection pool.
+
+        The method can be called only once for a database object. All
+        consequent calls of this method on the same database will raise the
+        TypeError('Database object was already bound to ... provider')
+        exception.
+
+        >>> db.bind('sqlite', ':memory:') # doctest +SKIP
+        >>> db.bind('sqlite', 'filename', create_db=True) # doctest +SKIP
+        >>> db.bind('postgres', user='', password='', host='', database='') # doctest +SKIP
+        >>> db.bind('mysql', host='', user='', passwd='', db='') # doctest +SKIP
+        >>> db.bind('oracle', 'user/password@dsn') # doctest +SKIP
+        """
         self._bind(*args, **kwargs)
     def _bind(self, *args, **kwargs):
         """Bind entities to a database."""
@@ -638,11 +678,24 @@ class Database(object):
         return cache
     @cut_traceback
     def flush(database):
+        """Save the changes accumulated in the db_session() cache to the
+        database. You may never have a need to call this method manually,
+        because it will be done on leaving the db_session() automatically.
+
+        Pony always saves the changes accumulated in the cache automatically
+        before executing the following methods: get(), exists(), execute(),
+        commit(), select().
+        """
         database._get_cache().flush()
     @cut_traceback
     def commit(database):
         """Save all changes made within the current db_session() using
-        the flush() method and commits the transaction to the database."""
+        the flush() method and commits the transaction to the database.
+
+        You can call commit() more than once within the same db_session().
+        In this case the db_session() cache keeps the cached objects after
+        commits. The cache will be cleaned up when the db_session() is over or
+        if the transaction will be rolled back."""
         cache = local.db2cache.get(database)
         if cache is not None:
             cache.flush_and_commit()
@@ -655,9 +708,21 @@ class Database(object):
             except: transact_reraise(RollbackException, [sys.exc_info()])
     @cut_traceback
     def execute(database, sql, globals=None, locals=None):
-        """Execute SQL statement. Before executing the provided SQL, Pony
+        """Execute SQL statement.
+
+        Before executing the provided SQL, Pony
         flushes all changes made within the current db_session() using the
-        flush() method."""
+        flush() method.
+
+        >>> cursor = db.execute('''create table Person ( # doctest +SKIP
+        ...             id integer primary key autoincrement,
+        ...             name text,
+        ...             age integer
+        ...     )''')
+
+        >>> name, age = "Ben", 33
+        >>> cursor = db.execute("insert into Person (name, age) values ($name, $age)") # doctest +SKIP
+        """
         return database._exec_raw_sql(sql, globals, locals, frame_depth=3, start_transaction=True)
     def _exec_raw_sql(database, sql, globals, locals, frame_depth, start_transaction=False):
         provider = database.provider
@@ -715,7 +780,15 @@ class Database(object):
     def exists(database, sql, globals=None, locals=None):
         """Check if the database has at least one row which satisfies
         the query. Before executing the provided SQL, Pony flushes all
-        changes made within the current db_session() using the flush() method."""
+        changes made within the current db_session() using the flush() method.
+
+        Before executing the provided SQL, Pony flushes all changes made
+        within the current db_session() using the flush() method.
+
+        >>> name = 'John'
+        >>> if db.exists("select * from Person where name = $name"): # doctest +SKIP
+        ...     print "Person exists in the database"
+        """
         if not select_re.match(sql): sql = 'select ' + sql
         cursor = database._exec_raw_sql(sql, globals, locals, frame_depth=3)
         result = cursor.fetchone()
@@ -948,20 +1021,10 @@ class Database(object):
     @cut_traceback
     @db_session(ddl=True)
     def drop_table(database, table_name, if_exists=False, with_all_data=False):
-        """Drop the intermediate table which is created for establishing
-        many-to-many relationship. If the table is not empty and
-        with_all_data=False, the method raises the TableIsNotEmpty exception
-        and doesn’t delete anything. Setting the with_all_data=True allows
-        you to delete the table even if it is not empty.
+        """Drop the table_name table.
 
-        >>> class Product(db.Entity):
-        ...    tags = Set('Tag')
-
-        >>> class Tag(db.Entity):
-        ...    products = Set(Product)
-
-        >>> Product.tags.drop_table(with_all_data=True) # doctest +SKIP
-        """
+        If you need to delete a table which is mapped to an entity, you can
+        use the class method drop_table() of an entity."""
         table_name = database._get_table_name(table_name)
         database._drop_tables([ table_name ], if_exists, with_all_data, try_normalized=True)
     def _get_table_name(database, table_name):
@@ -1018,7 +1081,12 @@ class Database(object):
     def create_tables(database, check_tables=False):
         """Check the existing mapping and create tables for entities if they
         don’t exist. Also, Pony checks if foreign keys and indexes exist and
-        create them if they are missing."""
+        create them if they are missing.
+
+        This method can be useful if you need to create tables after they were
+        deleted using the drop_all_tables() method. If you don’t delete
+        tables, you probably don’t need this method, because Pony checks and
+        creates tables during generate_mapping() call."""
         cache = database._get_cache()
         if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
         connection = cache.prepare_connection_for_query_execution()
@@ -1631,7 +1699,13 @@ class SessionCache(object):
         try: cache.commit()
         except: transact_reraise(CommitException, [sys.exc_info()])
     def commit(cache):
-        """Save all changes made within the current db_session() using the flush() method and commits the transaction to the database."""
+        """Save all changes made within the current db_session() using
+        the flush() method and commits the transaction to the database.
+
+        You can call commit() more than once within the same db_session().
+        In this case the db_session() cache keeps the cached objects after
+        commits. The cache will be cleaned up when the db_session() is over or
+        if the transaction will be rolled back."""
         assert cache.is_alive
         try:
             if cache.modified: cache.flush()
@@ -1681,10 +1755,14 @@ class SessionCache(object):
         try: yield
         finally: cache.noflush_counter -= 1
     def flush(cache):
-        """Save the changes accumulated in the db_session() cache to
-        the database. You may never have a need to call this method
-        manually, because it will be done on leaving the db_session()
-        automatically."""
+        """Save the changes accumulated in the db_session() cache to the
+        database. You may never have a need to call this method manually,
+        because it will be done on leaving the db_session() automatically.
+
+        Pony always saves the changes accumulated in the cache automatically
+        before executing the following methods: get(), exists(), execute(),
+        commit(), select().
+        """
         if cache.noflush_counter: return
         assert cache.is_alive
         assert not cache.saved_objects
@@ -3776,6 +3854,17 @@ class EntityMeta(type):
         return entity._find_one_(kwargs)
     @cut_traceback
     def exists(entity, *args, **kwargs):
+        """Check if the database has at least one row which satisfies
+        the query. Before executing the provided SQL, Pony flushes all
+        changes made within the current db_session() using the flush() method.
+
+        Before executing the provided SQL, Pony flushes all changes made
+        within the current db_session() using the flush() method.
+
+        >>> name = 'John'
+        >>> if db.exists("select * from Person where name = $name"): # doctest +SKIP
+        ...     print "Person exists in the database"
+        """
         if args: return entity._query_from_args_(args, kwargs, frame_depth=3).exists()
         try: obj = entity._find_one_(kwargs)
         except ObjectNotFound: return False
@@ -5068,6 +5157,14 @@ class Entity(with_metaclass(EntityMeta)):
             objects_to_save[save_pos] = None
         obj._save_pos_ = None
     def flush(obj):
+        """Save the changes accumulated in the db_session() cache to the
+        database. You may never have a need to call this method manually,
+        because it will be done on leaving the db_session() automatically.
+
+        Pony always saves the changes accumulated in the cache automatically
+        before executing the following methods: get(), exists(), execute(),
+        commit(), select().
+        """
         if obj._status_ not in ('created', 'modified', 'marked_to_delete'):
             return
 
@@ -5219,6 +5316,17 @@ def get(*args):
 
 @cut_traceback
 def exists(*args):
+    """Check if the database has at least one row which satisfies
+    the query. Before executing the provided SQL, Pony flushes all
+    changes made within the current db_session() using the flush() method.
+
+    Before executing the provided SQL, Pony flushes all changes made
+    within the current db_session() using the flush() method.
+
+    >>> name = 'John'
+    >>> if db.exists("select * from Person where name = $name"): # doctest +SKIP
+    ...     print "Person exists in the database"
+    """
     return make_query(args, frame_depth=3).exists()
 
 @cut_traceback
@@ -5559,6 +5667,17 @@ class Query(object):
         return query._clone(_distinct=True)
     @cut_traceback
     def exists(query):
+        """Check if the database has at least one row which satisfies
+        the query. Before executing the provided SQL, Pony flushes all
+        changes made within the current db_session() using the flush() method.
+
+        Before executing the provided SQL, Pony flushes all changes made
+        within the current db_session() using the flush() method.
+
+        >>> name = 'John'
+        >>> if db.exists("select * from Person where name = $name"): # doctest +SKIP
+        ...     print "Person exists in the database"
+        """
         objects = query[:1]
         return bool(objects)
     @cut_traceback
