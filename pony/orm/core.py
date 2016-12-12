@@ -286,13 +286,10 @@ def transact_reraise(exc_class, exceptions):
 
 @cut_traceback
 def commit():
-    """Save all changes made within the current db_session() using
-    the flush() method and commits the transaction to the database.
-
-    You can call commit() more than once within the same db_session().
-    In this case the db_session() cache keeps the cached objects after
-    commits. The cache will be cleaned up when the db_session() is over or
-    if the transaction will be rolled back."""
+    """Save all changes which were made within the current db_session()
+    using the flush() function and commits the transaction to the database.
+    This top level commit() function calls the commit() method of each
+    database object which was used in current transaction."""
     caches = _get_caches()
     if not caches: return
 
@@ -5313,6 +5310,22 @@ class Entity(with_metaclass(EntityMeta)):
         pass
     @cut_traceback
     def to_dict(obj, only=None, exclude=None, with_collections=False, with_lazy=False, related_objects=False):
+        """Return a dictionary with attribute names and its values. This
+        method can be used when you need to serialize an object to JSON or
+        other format.
+
+        By default this method doesn’t include collections (to-many
+        relationships) and lazy attributes. If an attribute’s values is an
+        entity instance then only the primary key of this object will be
+        added to the dictionary.
+
+        >>> c1.to_dict(exclude='password') # doctest +SKIP
+        {'address': u'address 1',
+        'country': u'USA',
+        'email': u'john@example.com',
+        'id': 1,
+        'name': u'John Smith'}
+        """
         if obj._session_cache_.modified: obj._session_cache_.flush()
         attrs = obj.__class__._get_attrs_(only, exclude, with_collections, with_lazy)
         result = {}
@@ -5806,6 +5819,16 @@ class Query(object):
         return bool(objects)
     @cut_traceback
     def delete(query, bulk=None):
+        """Delete objects from the database. Pony loads objects into the
+        memory and will delete them one by one. If you have before_delete()
+        or after_delete() defined, Pony will call each of them.
+
+        >>> delete(o for o in Order if o.status == 'CANCELLED') # doctest +SKIP
+
+        If you need to delete objects without loading them into memory, you
+        should use the delete() method with the parameter bulk=True. In this
+        case no hooks will be called, even if they are defined for the entity.
+        """
         if not bulk:
             if not isinstance(query._translator.expr_type, EntityMeta): throw(TypeError,
                 'Delete query should be applied to a single entity. Got: %s'
@@ -6072,6 +6095,12 @@ class Query(object):
         return query._aggregate('SUM')
     @cut_traceback
     def avg(query):
+        """Return the average value for all selected attributes.
+
+        >>> avg(o.total_price for o in Order) # doctest +SKIP
+
+        The equivalent query can be generated using the avg() method.
+        """
         return query._aggregate('AVG')
     @cut_traceback
     def min(query):
@@ -6081,12 +6110,21 @@ class Query(object):
         return query._aggregate('MAX')
     @cut_traceback
     def count(query):
-        """Return the number of objects in the collection. This method doesn’t
-        load the collection instances into the cache, but generates an SQL
-        query which returns the number of objects from the database. If you
-        are going to work with the collection objects (iterate over the
-        collection or change the object attributes), you might want to use
-        the __len__() method."""
+        """Return the number of objects that match the query condition.
+
+        >>> count(c for c in Customer if len(c.orders) > 2) #doctest +SKIP
+
+        This query will be translated to the following SQL:
+
+        SELECT COUNT(*)
+        FROM "Customer" "c"
+        LEFT JOIN "Order" "order-1"
+          ON "c"."id" = "order-1"."customer"
+        GROUP BY "c"."id"
+        HAVING COUNT(DISTINCT "order-1"."id") > 2
+
+        The equivalent query can be generated using the count() method.
+        """
         return query._aggregate('COUNT')
     @cut_traceback
     def for_update(query, nowait=False):
