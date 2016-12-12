@@ -5896,6 +5896,15 @@ class Query(object):
         return objects[0]
     @cut_traceback
     def without_distinct(query):
+        """By default Pony tries to avoid duplicates in the query result and
+        intellectually adds the DISTINCT SQL keyword to a query where it
+        thinks it necessary. If you don’t want Pony to add DISTINCT and get
+        possible duplicates, you can use this method. This method returns a
+        new instance of the Query object, so you can chain it with other query
+        methods:
+
+        >>> select(p.name for p in Person).without_distinct().order_by(Person.name) # doctest +SKIP
+        """
         return query._clone(_distinct=False)
     @cut_traceback
     def distinct(query):
@@ -6211,9 +6220,12 @@ class Query(object):
         return result
     @cut_traceback
     def sum(query):
-        """Return the sum of all values selected from the database.
+        """Return the sum of all selected items. Can be applied to the
+        queries which return a single numeric expression only.
 
-        >>> sum(o.total_price for o in Order) # doctest +SKIP
+        >>> select(o.total_price for o in Order).sum() # doctest +SKIP
+
+        If the query returns no items, the query result will be 0.
         """
         return query._aggregate('SUM')
     @cut_traceback
@@ -6278,16 +6290,14 @@ class Query(object):
             '%s provider does not support SELECT FOR UPDATE NOWAIT syntax' % provider.dialect)
         return query._clone(_for_update=True, _nowait=nowait)
     def random(query, limit):
-        """Returns a random value from 0 to 1. This functions, when
-        encountered inside a query will be translated into RANDOM SQL query.
+        """Select limit random objects from the database. This method will
+        be translated using the ORDER BY RANDOM() SQL expression. The entity
+        class method select_random() provides better performance, although
+        doesn’t allow to specify query conditions.
 
-        Example:
+        For example, select ten random persons older than 20 years old:
 
-        >>> select(s.gpa for s in Student if s.gpa > random() * 5) # doctest +SKIP
-
-        SELECT DISTINCT "s"."gpa"
-        FROM "student" "s"
-        WHERE "s"."gpa" > (random() * 5)
+        >>> select(p for p in Person if p.age > 20).random()[:10] # doctest +SKIP
         """
         return query.order_by('random()')[:limit]
     def to_json(query, include=(), exclude=(), converter=None, with_schema=True, schema_hash=None):
@@ -6314,21 +6324,28 @@ class QueryResult(list):
         result._col_names = state[2]
     @cut_traceback
     def show(result, width=None):
-        """Prints out the entity definition or the value of attributes for
-        an entity instance in the interactive mode.
+        """Prints the results of a query to the console. The result is
+        formatted in the form of a table. This method doesn’t display
+        “to-many” attributes because it would require additional query to
+        the database and could be bulky. But if an instance has a “to-one”
+        relationship, then it will be displayed.
 
-        >>> show(Person) # doctest +SKIP
-        class Person(Entity):
-            id = PrimaryKey(int, auto=True)
-            name = Required(str)
-            age = Required(int)
-            cars = Set(Car)
+        >>> select(p for p in Person).order_by(Person.name)[:2].show() # doctest +SKIP
 
-        >>> show(mary) # doctest +SKIP
-        instance of Person
+        SELECT "p"."id", "p"."name", "p"."age"
+        FROM "Person" "p"
+        ORDER BY "p"."name"
+        LIMIT 2
+
         id|name|age
         --+----+---
-        2 |Mary|22
+        3 |Bob |30
+
+        >>> Car.select().show() # doctest +SKIP
+        id|make  |model   |owner
+        --+------+--------+---------
+        1 |Toyota|Prius   |Person[2]
+        2 |Ford  |Explorer|Person[3]
         """
         if not width: width = options.CONSOLE_WIDTH
         max_columns = width // 5
@@ -6384,6 +6401,22 @@ class QueryResult(list):
 
 @cut_traceback
 def show(entity):
+    """Prints out the entity definition or the value of attributes for
+    an entity instance in the interactive mode.
+
+    >>> show(Person) # doctest +SKIP
+    class Person(Entity):
+        id = PrimaryKey(int, auto=True)
+        name = Required(str)
+        age = Required(int)
+        cars = Set(Car)
+
+    >>> show(mary) # doctest +SKIP
+    instance of Person
+    id|name|age
+    --+----+---
+    2 |Mary|22
+    """
     x = entity
     if isinstance(x, EntityMeta):
         print(x.describe())
