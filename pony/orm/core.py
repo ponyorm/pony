@@ -2381,6 +2381,11 @@ class Attribute(object):
         return attr
     @property
     def desc(attr):
+        """This function is used inside order_by() for ordering in
+        descending order.
+
+        >>> select(o for o in Order).order_by(desc(Order.date_shipped)) # doctest +SKIP
+        """
         return DescWrapper(attr)
     def describe(attr):
         t = attr.py_type
@@ -5430,6 +5435,12 @@ def select(*args):
 
 @cut_traceback
 def left_join(*args):
+    """The results of a left join always contain the result from the
+    ‘left’ table, even if the join condition doesn’t find any matching
+    record in the ‘right’ table.
+
+    >>> left_join((c, count(o)) for c in Customer for o in c.orders)[:] # doctest +SKIP
+    """
     return make_query(args, frame_depth=3, left_join=True)
 
 @cut_traceback
@@ -5493,6 +5504,13 @@ avg = make_aggrfunc(utils.avg)
 distinct = make_aggrfunc(utils.distinct)
 
 def JOIN(expr):
+    """Used for query optimization in cases when Pony doesn’t provide this
+    optimization automatically. Serves as a hint saying Pony that we want
+    to use SQL JOIN, instead of generating a subquery inside the SQL query.
+
+    >>> select(g for g in Group if max(g.students.gpa) < 4) # doctest +SKIP
+    >>> select(g for g in Group if JOIN(max(g.students.gpa) < 4)) # doctest +SKIP
+    """
     return expr
 
 def desc(expr):
@@ -5765,20 +5783,13 @@ class Query(object):
         query._fetch().show(width)
     @cut_traceback
     def get(query):
-        """Select one row or just one value from the database.
+        """Extracts one entity instance from the database.
 
-        The get() method assumes that the query returns exactly one row. If
-        the query returns nothing then Pony raises RowNotFound exception. If
-        the query returns more than one row, the exception MultipleRowsFound
-        will be raised.
+        If there are more than one objects with the specified parameters,
+        the function raises the MultipleObjectsFoundError: Multiple objects
+        were found. Use select(...) to retrieve them exception.
 
-        Before executing the provided SQL, Pony flushes all changes made
-        within the current db_session() using the flush() method.
-
-        >>> id = 1
-        >>> age = db.get("select age from Person where id = $id")
-
-        >>> name, age = db.get("select name, age from Person where id = $id") # doctest +SKIP
+        >>> get(o for o in Order if o.id == 123) # doctest +SKIP
         """
         objects = query[:2]
         if not objects: return None
@@ -5801,19 +5812,20 @@ class Query(object):
         return query._clone(_distinct=False)
     @cut_traceback
     def distinct(query):
+        """ When you need to force DISTINCT in a query, it can be done
+        using the distinct() function. But usually this is not necessary,
+        because Pony adds DISTINCT keyword automatically in an intelligent
+        way. See more information about it in the TODO chapter.
+
+        >>> distinct(o.date_shipped for o in Order) # doctest +SKIP
+        """
         return query._clone(_distinct=True)
     @cut_traceback
     def exists(query):
-        """Check if the database has at least one row which satisfies
-        the query. Before executing the provided SQL, Pony flushes all
-        changes made within the current db_session() using the flush() method.
+        """Returns True if at least one instance with the specified condition
+        exists and False otherwise.
 
-        Before executing the provided SQL, Pony flushes all changes made
-        within the current db_session() using the flush() method.
-
-        >>> name = 'John'
-        >>> if db.exists("select * from Person where name = $name"): # doctest +SKIP
-        ...     print "Person exists in the database"
+        >>> exists(o for o in Order if o.date_delivered is None) # doctest +SKIP
         """
         objects = query[:1]
         return bool(objects)
@@ -6104,9 +6116,19 @@ class Query(object):
         return query._aggregate('AVG')
     @cut_traceback
     def min(query):
+        """Return the minimum value from the database. The query should
+        return a single attribute.
+
+        >>> min(p.price for p in Product) # doctest +SKIP
+        """
         return query._aggregate('MIN')
     @cut_traceback
     def max(query):
+        """Return the maximum value from the database. The query should
+        return a single attribute.
+
+        >>> max(o.date_shipped for o in Order) # doctest +SKIP
+        """
         return query._aggregate('MAX')
     @cut_traceback
     def count(query):
