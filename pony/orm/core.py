@@ -3846,6 +3846,20 @@ class EntityMeta(type):
         return pkval, avdict
     @cut_traceback
     def __getitem__(entity, key):
+        """Return an entity instance selected by its primary key. Raises
+        the ObjectNotFound exception if there is no such object. Example:
+
+        >>> p = Product[123] # doctest +SKIP
+
+        For entities with a composite primary key, use a comma between the
+        primary key values:
+
+        >>> item = OrderItem[123, 456]
+
+        If object with the specified primary key was already loaded into
+        the db_session() cache, Pony returns the object from the cache
+        without sending a query to the database.
+        """
         if type(key) is not tuple: key = (key,)
         if len(key) != len(entity._pk_attrs_):
             throw(TypeError, 'Invalid count of attrs in %s primary key (%s instead of %s)'
@@ -4388,6 +4402,17 @@ class EntityMeta(type):
         return result_cls
     @cut_traceback
     def describe(entity):
+        """Return a string with the entity declaration.
+
+        >>> print(OrderItem.describe()) # doctest +SKIP
+
+        class OrderItem(Entity):
+            quantity = Required(int)
+            price = Required(Decimal)
+            order = Required(Order)
+            product = Required(Product)
+            PrimaryKey(order, product)
+        """
         result = []
         parents = ','.join(cls.__name__ for cls in entity.__bases__)
         result.append('class %s(%s):' % (entity.__name__, parents))
@@ -4402,20 +4427,15 @@ class EntityMeta(type):
     @cut_traceback
     @db_session(ddl=True)
     def drop_table(entity, with_all_data=False):
-        """Drop the intermediate table which is created for establishing
-        many-to-many relationship. If the table is not empty and
-        with_all_data=False, the method raises the TableIsNotEmpty exception
-        and doesn’t delete anything. Setting the with_all_data=True allows
-        you to delete the table even if it is not empty.
+        """Drops the table which is associated with the entity in the
+        database. If the table is not empty and with_all_data=False, the
+        method raises the TableIsNotEmpty exception and doesn’t delete
+        anything. Setting the with_all_data=True allows you to delete the
+        table even if it is not empty.
 
-        >>> class Product(db.Entity):
-        ...    tags = Set('Tag')
-
-        >>> class Tag(db.Entity):
-        ...    products = Set(Product)
-
-        >>> Product.tags.drop_table(with_all_data=True) # doctest +SKIP
-        """
+        If you need to delete an intermediate table created for many-to-many
+        relationship, you have to call the method select() of the relationship
+        attribute."""
         entity._database_._drop_tables([ entity._table_ ], True, with_all_data)
     def _get_attrs_(entity, only=None, exclude=None, with_collections=False, with_lazy=False):
         if only and not isinstance(only, basestring): only = tuple(only)
@@ -4491,6 +4511,16 @@ def safe_repr(obj):
     return Entity.__repr__(obj)
 
 class Entity(with_metaclass(EntityMeta)):
+    """This attribute represents the base class which should be inherited by
+    all entities which are mapped to the particular database.
+
+    Example:
+    >>> db = Database()
+
+    >>> class Person(db.Entity): # doctest +SKIP
+    ...     name = Required(str)
+    ...     age = Required(int)
+    """
     __slots__ = '_session_cache_', '_status_', '_pkval_', '_newid_', '_dbvals_', '_vals_', '_rbits_', '_wbits_', '_save_pos_', '__weakref__'
     def __reduce__(obj):
         if obj._status_ in del_statuses: throw(
@@ -4848,6 +4878,14 @@ class Entity(with_metaclass(EntityMeta)):
                 raise
     @cut_traceback
     def delete(obj):
+        """Delete the entity instance. The instance will be marked as
+        deleted and then will be deleted from the database during the
+        flush() function, which is issued automatically on committing
+        the current transaction when exiting from the most outer db_session()
+        or before sending the next query to the database.
+
+        >>> Order[123].delete() # doctest +SKIP
+        """
         if not obj._session_cache_.is_alive: throw(DatabaseSessionIsOver,
             'Cannot delete object %s: the database session is over' % safe_repr(obj))
         obj._delete_()
@@ -5182,20 +5220,28 @@ class Entity(with_metaclass(EntityMeta)):
         elif status == 'modified': obj.before_update()
         elif status == 'marked_to_delete': obj.before_delete()
     def before_insert(obj):
+        """Called only for newly created objects before it is inserted
+        into the database."""
         pass
     def before_update(obj):
+        """Called for entity instances before updating the instance in
+        the database."""
         pass
     def before_delete(obj):
+        """Called before deletion the entity instance in the database."""
         pass
     def _after_save_(obj, status):
         if status == 'inserted': obj.after_insert()
         elif status == 'updated': obj.after_update()
         elif status == 'deleted': obj.after_delete()
     def after_insert(obj):
+        """Called after the row is inserted into the database."""
         pass
     def after_update(obj):
+        """Called after the instance updated in the database."""
         pass
     def after_delete(obj):
+        """Called after the entity instance is deleted in the database."""
         pass
     @cut_traceback
     def to_dict(obj, only=None, exclude=None, with_collections=False, with_lazy=False, related_objects=False):
@@ -5880,6 +5926,20 @@ class Query(object):
         return new_query
     @cut_traceback
     def __getitem__(query, key):
+        """Return an entity instance selected by its primary key. Raises
+        the ObjectNotFound exception if there is no such object. Example:
+
+        >>> p = Product[123] # doctest +SKIP
+
+        For entities with a composite primary key, use a comma between the
+        primary key values:
+
+        >>> item = OrderItem[123, 456]
+
+        If object with the specified primary key was already loaded into
+        the db_session() cache, Pony returns the object from the cache
+        without sending a query to the database.
+        """
         if isinstance(key, slice):
             step = key.step
             if step is not None and step != 1: throw(TypeError, "Parameter 'step' of slice object is not allowed here")
