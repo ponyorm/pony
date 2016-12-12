@@ -872,7 +872,7 @@ class Database(object):
         if PY2 and type(new_id) is long: new_id = int(new_id)
         return new_id
     @cut_traceback
-    def generate_mapping(database, filename=None, check_tables=True, (create_tables)=False):
+    def generate_mapping(database, filename=None, check_tables=True, create_tables=False):
         """Map declared entities to the corresponding tables in the database.
         Creates tables, foreign key references and indexes if necessary."""
         provider = database.provider
