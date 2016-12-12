@@ -933,7 +933,16 @@ class Database(object):
         many-to-many relationship. If the table is not empty and
         with_all_data=False, the method raises the TableIsNotEmpty exception
         and doesn’t delete anything. Setting the with_all_data=True allows
-        you to delete the table even if it is not empty."""
+        you to delete the table even if it is not empty.
+
+        class Product(db.Entity):
+            tags = Set('Tag')
+
+        class Tag(db.Entity):
+            products = Set(Product)
+
+        Product.tags.drop_table(with_all_data=True) # doctest +SKIP
+        """
         table_name = database._get_table_name(table_name)
         database._drop_tables([ table_name ], if_exists, with_all_data, try_normalized=True)
     def _get_table_name(database, table_name):
@@ -2944,7 +2953,16 @@ class Set(Collection):
         many-to-many relationship. If the table is not empty and
         with_all_data=False, the method raises the TableIsNotEmpty exception
         and doesn’t delete anything. Setting the with_all_data=True allows
-        you to delete the table even if it is not empty."""
+        you to delete the table even if it is not empty.
+
+        class Product(db.Entity):
+            tags = Set('Tag')
+
+        class Tag(db.Entity):
+            products = Set(Product)
+
+        Product.tags.drop_table(with_all_data=True) # doctest +SKIP
+        """
         if attr.reverse.is_collection: table_name = attr.table
         else: table_name = attr.entity._table_
         attr.entity._database_._drop_tables([ table_name ], True, with_all_data)
@@ -3148,7 +3166,15 @@ class SetInstance(object):
     @cut_traceback
     def create(wrapper, **kwargs):
         """Create an return an instance of the related entity and establishes
-        a relationship with it"""
+        a relationship with it:
+
+        new_tag = Photo[123].tags.create(name='New tag') # doctest +SKIP
+
+        is an equilvalent of the following:
+
+        new_tag = Tag(name='New tag')
+        Photo[123].tags.add(new_tag)
+        """
         attr = wrapper._attr_
         reverse = attr.reverse
         if reverse.name in kwargs: throw(TypeError,
@@ -3203,6 +3229,8 @@ class SetInstance(object):
         return wrapper
     @cut_traceback
     def remove(wrapper, items):
+        """Remove an item or items from the collection and thus break the
+        relationship between entity instances."""
         obj = wrapper._obj_
         attr = wrapper._attr_
         cache = obj._session_cache_
@@ -3261,7 +3289,12 @@ class SetInstance(object):
         wrapper._attr_.load(wrapper._obj_)
     @cut_traceback
     def select(wrapper, *args):
-        """Execute the SQL statement in the database and returns a list of tuples."""
+        """Select objects from a collection. The method names select() and
+        filter() are synonyms.
+
+        g = Group[101] # doctest: +SKIP
+        g.students.select(lambda student: student.gpa > 3) # doctest: +SKIP
+        """
         obj = wrapper._obj_
         if obj._status_ in del_statuses: throw_object_was_deleted(obj)
         attr = wrapper._attr_
@@ -3285,9 +3318,18 @@ class SetInstance(object):
         """
         return wrapper.select().page(pagenum, pagesize)
     def order_by(wrapper, *args):
-        """Return an ordered collection."""
+        """Return an ordered collection.
+
+        g.students.order_by(Student.name).page(2, pagesize=3) # doctest +SKIP
+        g.students.order_by(lambda s: s.name).limit(3, offset=3) # doctest +SKIP
+        """
         return wrapper.select().order_by(*args)
     def random(wrapper, limit):
+        """Return a number of random objects from a collection.
+
+        g = Group[101] # doctest: +SKIP
+        g.students.random(2) # doctest: +SKIP
+        """
         return wrapper.select().random(limit)
 
 def unpickle_multiset(obj, attrnames, items):
@@ -4204,7 +4246,16 @@ class EntityMeta(type):
         many-to-many relationship. If the table is not empty and
         with_all_data=False, the method raises the TableIsNotEmpty exception
         and doesn’t delete anything. Setting the with_all_data=True allows
-        you to delete the table even if it is not empty."""
+        you to delete the table even if it is not empty.
+
+        class Product(db.Entity):
+            tags = Set('Tag')
+
+        class Tag(db.Entity):
+            products = Set(Product)
+
+        Product.tags.drop_table(with_all_data=True) # doctest +SKIP
+        """
         entity._database_._drop_tables([ entity._table_ ], True, with_all_data)
     def _get_attrs_(entity, only=None, exclude=None, with_collections=False, with_lazy=False):
         if only and not isinstance(only, basestring): only = tuple(only)
@@ -5447,7 +5498,11 @@ class Query(object):
         return iter(query._fetch())
     @cut_traceback
     def order_by(query, *args):
-        """Return an ordered collection."""
+        """Return an ordered collection.
+
+        g.students.order_by(Student.name).page(2, pagesize=3) # doctest +SKIP
+        g.students.order_by(lambda s: s.name).limit(3, offset=3) # doctest +SKIP
+        """
         if not args: throw(TypeError, 'order_by() method requires at least one argument')
         if args[0] is None:
             if len(args) > 1: throw(TypeError, 'When first argument of order_by() method is None, it must be the only argument')
@@ -5558,7 +5613,11 @@ class Query(object):
     @cut_traceback
     def filter(query, *args, **kwargs):
         """Select objects from a collection. The method names select()
-        and filter() are synonyms."""
+        and filter() are synonyms.
+
+        g = Group[101] # doctest +SKIP
+        g.students.filter(lambda student: student.gpa > 3) # doctest +SKIP
+        """
         if args:
             if isinstance(args[0], RawSQL):
                 raw = args[0]
@@ -5678,6 +5737,11 @@ class Query(object):
             '%s provider does not support SELECT FOR UPDATE NOWAIT syntax' % provider.dialect)
         return query._clone(_for_update=True, _nowait=nowait)
     def random(query, limit):
+        """Return a number of random objects from a collection.
+
+        g = Group[101] # doctest: +SKIP
+        g.students.random(2) # doctest: +SKIP
+        """
         return query.order_by('random()')[:limit]
     def to_json(query, include=(), exclude=(), converter=None, with_schema=True, schema_hash=None):
         return query._database.to_json(query[:], include, exclude, converter, with_schema, schema_hash)
