@@ -5705,6 +5705,15 @@ class Query(object):
         else: query_key = None
         return sql, arguments, attr_offsets, query_key
     def get_sql(query):
+        """Return SQL statement as a string:
+
+        >>> sql = select(c for c in Category if c.name.startswith('a')).get_sql() # doctest +SKIP
+        >>> print(sql)
+
+        SELECT "c"."id", "c"."name"
+        FROM "category" "c"
+        WHERE "c"."name" LIKE 'a%%'
+        """
         sql, arguments, attr_offsets, query_key = query._construct_sql_and_arguments()
         return sql
     def _fetch(query, range=None):
@@ -5741,6 +5750,22 @@ class Query(object):
         return QueryResult(result, query, translator.expr_type, translator.col_names)
     @cut_traceback
     def prefetch(query, *args):
+        """Allows specifying which related objects or attributes should be
+        loaded from the database along with the query result.
+
+        Usually there is no need to prefetch related objects. When you work
+        with the query result within the @db_session, Pony gets all related
+        objects once you need them. Pony uses the most effective way for
+        loading related objects from the database, avoiding the N+1 Query
+        problem.
+
+        >>> students = select(s for s in Student).prefetch(Student.courses) # doctest +SKIP
+        >>> for s in students:
+        ...     print s.name
+        ...     for c in s.courses: # no additional query to the DB will be sent
+        ...         print c.name
+
+        """
         query = query._clone(_entities_to_prefetch=query._entities_to_prefetch.copy(),
                              _attrs_to_prefetch_dict=query._attrs_to_prefetch_dict.copy())
         query._prefetch = True
@@ -5855,6 +5880,11 @@ class Query(object):
         return objects[0]
     @cut_traceback
     def first(query):
+        """Return the first element from the selected results or None if no
+        objects were found:
+
+        >>> select(p for p in Product if p.price > 100).first() # doctest +SKIP
+        """
         translator = query._translator
         if translator.order: pass
         elif type(translator.expr_type) is tuple:
@@ -5939,10 +5969,11 @@ class Query(object):
         return iter(query._fetch())
     @cut_traceback
     def order_by(query, *args):
-        """Return an ordered collection.
+        """Order the results of a query.
 
-        >>> g.students.order_by(Student.name).page(2, pagesize=3) # doctest +SKIP
-        >>> g.students.order_by(lambda s: s.name).limit(3, offset=3) # doctest +SKIP
+        >>> select(o for o in Order).order_by(Order.customer, Order.date_created) # doctest +SKIP
+
+        >>> select(o for o in Order).order_by(lambda o: (o.customer.name, o.date_shipped)) # doctest +SKIP
         """
         if not args: throw(TypeError, 'order_by() method requires at least one argument')
         if args[0] is None:
@@ -6138,16 +6169,22 @@ class Query(object):
         return query._fetch(range=(start, stop))
     @cut_traceback
     def limit(query, limit, offset=None):
+        """Limit the number of instances to be selected from the database.
+
+        >>> select(c for c in Customer).order_by(Customer.name)[20:30] #doctest +SKIP
+
+        Also you can use the [start:end]() or page() methods for the
+        same purpose.
+        """
         start = offset or 0
         stop = start + limit
         return query[start:stop]
     @cut_traceback
     def page(query, pagenum, pagesize=10):
-        """This query can be used for displaying the second page of group 101
-        student’s list ordered by the name attribute:
-
-        >>> g.students.order_by(Student.name).page(2, pagesize=3) # doctest: +SKIP
-        >>> g.students.order_by(lambda s: s.name).limit(3, offset=3) # doctest: +SKIP
+        """Pagination is used when you need to display results of a query
+        divided into multiple pages. The page numbering starts with page 1.
+        This method returns a slice [start:end] where
+        start = (pagenum - 1) * pagesize, end = pagenum * pagesize.
         """
         start = (pagenum - 1) * pagesize
         stop = pagenum * pagesize
@@ -6224,6 +6261,18 @@ class Query(object):
         return query._aggregate('COUNT')
     @cut_traceback
     def for_update(query, nowait=False):
+        """Sometimes there is a need to lock objects in the database in
+        order to prevent other transactions from modifying the same instances
+        simultaneously. Within the database such lock should be done using
+        the SELECT FOR UPDATE query. In order to generate such a lock using
+        Pony you can call the for_update method:
+
+        >>> select(p for p in Product if p.picture is None).for_update() # doctest +SKIP
+
+        This query selects all instances of Product without a picture and
+        locks the corresponding rows in the database. The lock will be
+        released upon commit or rollback of current transaction.
+        """
         provider = query._database.provider
         if nowait and not provider.select_for_update_nowait_syntax: throw(TranslationError,
             '%s provider does not support SELECT FOR UPDATE NOWAIT syntax' % provider.dialect)
