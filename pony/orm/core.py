@@ -3868,16 +3868,11 @@ class EntityMeta(type):
         return entity._find_one_(kwargs)
     @cut_traceback
     def exists(entity, *args, **kwargs):
-        """Check if the database has at least one row which satisfies
-        the query. Before executing the provided SQL, Pony flushes all
-        changes made within the current db_session() using the flush() method.
+        """Returns True if an instance with the specified condition or
+        attribute values exists and False otherwise.
 
-        Before executing the provided SQL, Pony flushes all changes made
-        within the current db_session() using the flush() method.
-
-        >>> name = 'John'
-        >>> if db.exists("select * from Person where name = $name"): # doctest +SKIP
-        ...     print "Person exists in the database"
+        >>> Product.exists(price=1000) # doctest +SKIP
+        >>> Product.exists(lambda p: p.price > 1000) # doctest +SKIP
         """
         if args: return entity._query_from_args_(args, kwargs, frame_depth=3).exists()
         try: obj = entity._find_one_(kwargs)
@@ -3886,55 +3881,99 @@ class EntityMeta(type):
         return True
     @cut_traceback
     def get(entity, *args, **kwargs):
-        """Select one row or just one value from the database.
+        """Extract one entity instance from the database.
 
-        The get() method assumes that the query returns exactly one row. If
-        the query returns nothing then Pony raises RowNotFound exception. If
-        the query returns more than one row, the exception MultipleRowsFound
-        will be raised.
+        If the object with the specified parameters exists, then returns
+        the object. Returns None if there is no such object. If there are
+        more than one objects with the specified parameters, raises the
+        MultipleObjectsFoundError: Multiple objects were found.
+        Use select(...) to retrieve them exception. Examples:
 
-        Before executing the provided SQL, Pony flushes all changes made
-        within the current db_session() using the flush() method.
-
-        >>> id = 1
-        >>> age = db.get("select age from Person where id = $id")
-
-        >>> name, age = db.get("select name, age from Person where id = $id") # doctest +SKIP
+        >>> Product.get(price=1000) # doctest +SKIP
+        >>> Product.get(lambda p: p.name.startswith('A')) # doctest +SKIP
         """
         if args: return entity._query_from_args_(args, kwargs, frame_depth=3).get()
         try: return entity._find_one_(kwargs)  # can throw MultipleObjectsFoundError
         except ObjectNotFound: return None
     @cut_traceback
     def get_for_update(entity, *args, **kwargs):
+        """Locks the row in the database using the SELECT ... FOR UPDATE
+        SQL query. If nowait=True, then the method will throw an exception
+        if this row is already blocked. If nowait=False, then it will wait
+        if the row is already blocked.
+
+        If you need to use SELECT ... FOR UPDATE for multiple rows
+        then you should use the for_update() method.
+        """
         nowait = kwargs.pop('nowait', False)
         if args: return entity._query_from_args_(args, kwargs, frame_depth=3).for_update(nowait).get()
         try: return entity._find_one_(kwargs, True, nowait)  # can throw MultipleObjectsFoundError
         except ObjectNotFound: return None
     @cut_traceback
     def get_by_sql(entity, sql, globals=None, locals=None):
+        """Select entity instance by raw SQL.
+
+        If you find that you cannot express a query using the standard
+        Pony queries, you always can write your own SQL query and Pony
+        will build an entity instance(s) based on the query results. When
+        Pony gets the result of the SQL query, it analyzes the column names
+        which it receives from the database cursor. If your query uses
+        SELECT * ... from the entity table, that would be enough for getting
+        the necessary attribute values for constructing entity instances.
+        You can pass parameters into the query, see Using the select_by_sql()
+        and get_by_sql() methods for more information.
+        """
         objects = entity._find_by_sql_(1, sql, globals, locals, frame_depth=3)  # can throw MultipleObjectsFoundError
         if not objects: return None
         assert len(objects) == 1
         return objects[0]
     @cut_traceback
     def select(entity, *args):
-        """Execute the SQL statement in the database and returns a list of tuples.
+        """Select objects from the database in accordance with the condition
+        specified in lambda, or all objects if lambda function is not
+        specified.
 
-        >>> result = select("select * from Person") # doctest +SKIP
+        The select() method returns an instance of the Query class. Entity
+        instances will be retrieved from the database once you start iterating
+        over the Query object.
 
-        If a query returns more than one column and the names of table
-        columns are valid Python identifiers, then you can access them as
-        attributes:
+        This query example returns all products with the price greater than
+        100 and which were ordered more than once:
 
-        >>> for row in db.select("name, age from Person"): # doctest +SKIP
-        ...    print row.name, row.age
+        >>> Product.select(lambda p: p.price > 100 and count(p.order_items) > 1)[:] # doctest +SKIP
         """
         return entity._query_from_args_(args, kwargs=None, frame_depth=3)
     @cut_traceback
     def select_by_sql(entity, sql, globals=None, locals=None):
+        """Select entity instances by raw SQL. See Using the select_by_sql()
+        and get_by_sql() methods for more information.
+        """
         return entity._find_by_sql_(None, sql, globals, locals, frame_depth=3)
     @cut_traceback
     def select_random(entity, limit):
+        """Select limit random objects. This method uses the algorithm that
+        can be much more effective than using ORDER BY RANDOM() SQL construct.
+        The method uses the following algorithm:
+
+        1) Determine max id from the table.
+        2) Generate random ids in the range (0, max_id]
+        3) Retrieve objects by those random ids. If an object with generated
+           id does not exist (e.g. it was deleted), then select another random
+           id and retry.
+        Repeat the steps 2-3 as many times as necessary to retrieve the
+        specified amount of objects.
+
+        This algorithm doesn’t affect performance even when working with a
+        large number of table rows. However this method also has some
+        limitations:
+
+        The primary key must be a sequential id of an integer type.
+        The number of “gaps” between existing ids (the count of deleted
+        objects) should be relatively small.
+        The select_random() method can be used if your query does not have
+        any criteria to select specific objects. If such criteria is
+        necessary, then you can use the Query.random() method.
+        """
         if entity._pk_is_composite_: return entity.select().random(limit)
         pk = entity._pk_attrs_[0]
         if not issubclass(pk.py_type, int) or entity._discriminator_ is not None and entity._root_ is not entity:
@@ -4579,6 +4618,19 @@ class Entity(with_metaclass(EntityMeta)):
         objects_to_save.append(obj)
         cache.modified = True
     def get_pk(obj):
+        """Get the value of the primary key of the object.
+
+        >>> c = Customer[1]
+        >>> c.get_pk() # doctest +SKIP
+        1
+
+        If the primary key is composite, then this method returns a
+        tuple consisting of primary key column values.
+
+        >>> oi = OrderItem[1,4]
+        >>> oi.get_pk() # doctest +SKIP
+        (1, 4)
+        """
         pkval = obj._get_raw_pkval_()
         if len(pkval) == 1: return pkval[0]
         return pkval
@@ -4648,7 +4700,15 @@ class Entity(with_metaclass(EntityMeta)):
                                      'Phantom object %s disappeared' % safe_repr(obj))
     @cut_traceback
     def load(obj, *attrs):
-        """Load all related objects from the database."""
+        """Load all lazy and non-lazy attributes, but not collection
+        attributes, which were not retrieved from the database yet. If an
+        attribute was already loaded, it won’t be loaded again. You can
+        specify the list of the attributes which need to be loaded, or its
+        names. In this case Pony will load only them:
+
+        >>> obj.load(Person.biography, Person.some_other_field) # doctest +SKIP
+        >>> obj.load('biography', 'some_other_field') # doctest +SKIP
+        """
         cache = obj._session_cache_
         if not cache.is_alive: throw(DatabaseSessionIsOver,
             'Cannot load object %s: the database session is over' % safe_repr(obj))
@@ -4891,6 +4951,16 @@ class Entity(with_metaclass(EntityMeta)):
         obj._delete_()
     @cut_traceback
     def set(obj, **kwargs):
+        """Assign new values to several object attributes at once:
+
+        >>> Customer[123].set(email='new@example.com', address='New address') # doctest +SKIP
+
+        This method also can be convenient when you want to assign new
+        values from a dictionary:
+
+        >>> d = {'email': 'new@example.com', 'address': 'New address'}
+        >>> Customer[123].set(**d) # doctest +SKIP
+        """
         cache = obj._session_cache_
         if not cache.is_alive: throw(DatabaseSessionIsOver,
             'Cannot change object %s: the database session is over' % safe_repr(obj))
@@ -5195,13 +5265,11 @@ class Entity(with_metaclass(EntityMeta)):
             objects_to_save[save_pos] = None
         obj._save_pos_ = None
     def flush(obj):
-        """Save the changes accumulated in the db_session() cache to the
-        database. You may never have a need to call this method manually,
-        because it will be done on leaving the db_session() automatically.
-
-        Pony always saves the changes accumulated in the cache automatically
-        before executing the following methods: get(), exists(), execute(),
-        commit(), select().
+        """Save the changes made to this object to the database. Usually
+        Pony saves changes automatically and you don’t need to call this
+        method yourself. One of the use cases when it might be needed is
+        when you want to get the primary key value of a newly created object
+        which has autoincremented primary key before commit.
         """
         if obj._status_ not in ('created', 'modified', 'marked_to_delete'):
             return
@@ -5334,7 +5402,17 @@ def make_query(args, frame_depth, left_join=False):
 
 @cut_traceback
 def select(*args):
-    """Execute the SQL statement in the database and returns a list of tuples."""
+    """Execute the SQL statement in the database and returns a list of tuples.
+
+    >>> result = select("select * from Person") # doctest +SKIP
+
+    If a query returns more than one column and the names of table
+    columns are valid Python identifiers, then you can access them as
+    attributes:
+
+    >>> for row in db.select("name, age from Person"): # doctest +SKIP
+    ...    print row.name, row.age
+    """
     return make_query(args, frame_depth=3)
 
 @cut_traceback
