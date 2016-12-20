@@ -274,8 +274,9 @@ class Decompiler(object):
         if decompiler.targets.get(endpos) is then: decompiler.targets[endpos] = if_exp
         return if_exp
 
-    def LIST_APPEND(decompiler):
-        throw(NotImplementedError)
+    def LIST_APPEND(decompiler, offset=None):
+        throw(InvalidQuery('Use generator expression (... for ... in ...) '
+                           'instead of list comprehension [... for ... in ...] inside query'))
 
     def LOAD_ATTR(decompiler, attr_name):
         return ast.Getattr(decompiler.stack.pop(), attr_name)
@@ -379,7 +380,8 @@ class Decompiler(object):
 
     def STORE_FAST(decompiler, varname):
         if varname.startswith('_['):
-            throw(InvalidQuery('Use generator expression (... for ... in ...) instead of list comprehension [... for ... in ...] inside query'))
+            throw(InvalidQuery('Use generator expression (... for ... in ...) '
+                               'instead of list comprehension [... for ... in ...] inside query'))
         decompiler.assnames.add(varname)
         decompiler.store(ast.AssName(varname, 'OP_ASSIGN'))
 
