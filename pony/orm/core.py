@@ -2,7 +2,7 @@ from __future__ import absolute_import, print_function, division
 from pony.py23compat import PY2, izip, imap, iteritems, itervalues, items_list, values_list, xrange, cmp, \
                             basestring, unicode, buffer, int_types, builtins, pickle, with_metaclass
 
-import io, json, re, sys, types, datetime, logging, itertools
+import io, json, re, sys, types, datetime, logging, itertools, warnings
 from operator import attrgetter, itemgetter
 from itertools import chain, starmap, repeat
 from time import time
@@ -42,6 +42,7 @@ __all__ = '''
     ObjectNotFound MultipleObjectsFoundError TooManyObjectsFoundError OperationWithDeletedObjectError
     TransactionError ConnectionClosedError TransactionIntegrityError IsolationError CommitException RollbackException
     UnrepeatableReadError OptimisticCheckError UnresolvableCyclicDependency UnexpectedError DatabaseSessionIsOver
+    DatabaseContainsIncorrectValue DatabaseContainsIncorrectEmptyValue
 
     TranslationError ExprEvalError
 
@@ -186,6 +187,12 @@ class ExprEvalError(TranslationError):
 
 class OptimizationFailed(Exception):
     pass  # Internal exception, cannot be encountered in user code
+
+class DatabaseContainsIncorrectValue(RuntimeWarning):
+    pass
+
+class DatabaseContainsIncorrectEmptyValue(DatabaseContainsIncorrectValue):
+    pass
 
 def adapt_sql(sql, paramstyle):
     result = adapted_sql_cache.get((sql, paramstyle))
@@ -2209,9 +2216,13 @@ class Required(Attribute):
     __slots__ = []
     def validate(attr, val, obj=None, entity=None, from_db=False):
         val = Attribute.validate(attr, val, obj, entity, from_db)
-        if not from_db:
-            if val == '' or (val is None and not (attr.auto or attr.is_volatile or attr.sql_default)):
+        if val == '' or (val is None and not (attr.auto or attr.is_volatile or attr.sql_default)):
+            if not from_db:
                 throw(ValueError, 'Attribute %s is required' % (attr if obj is None else '%r.%s' % (obj, attr.name)))
+            else:
+                warnings.warn('Database contains %s for required attribute %s'
+                              % ('NULL' if val is None else 'empty string', attr),
+                              DatabaseContainsIncorrectEmptyValue)
         return val
 
 class Discriminator(Required):
