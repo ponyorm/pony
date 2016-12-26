@@ -63,6 +63,7 @@ classifiers = [
     'Programming Language :: Python :: 3.3',
     'Programming Language :: Python :: 3.4',
     'Programming Language :: Python :: 3.5',
+    'Programming Language :: Python :: 3.6',
     'Topic :: Software Development :: Libraries',
     'Topic :: Database'
 ]
@@ -88,8 +89,8 @@ download_url = "http://pypi.python.org/pypi/pony/"
 
 if __name__ == "__main__":
     pv = sys.version_info[:2]
-    if pv not in ((2, 7), (3, 3), (3, 4), (3, 5)):
-        s = "Sorry, but %s %s requires Python of one of the following versions: 2.7, 3.3, 3.4 and 3.5." \
+    if pv not in ((2, 7), (3, 3), (3, 4), (3, 5), (3, 6)):
+        s = "Sorry, but %s %s requires Python of one of the following versions: 2.7, 3.3-3.6." \
             " You have version %s"
         print(s % (name, version, sys.version.split(' ', 1)[0]))
         sys.exit(1)
