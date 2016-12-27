@@ -843,7 +843,7 @@ class Subquery(object):
             subquery.alias_counters = {}
             subquery.expr_counter = itertools.count(1)
         else:
-            subquery.alias_counters = parent_subquery.alias_counters
+            subquery.alias_counters = parent_subquery.alias_counters.copy()
             subquery.expr_counter = parent_subquery.expr_counter
         subquery.used_from_subquery = False
     def get_tableref(subquery, name_path, from_subquery=False):
