@@ -1,3 +1,20 @@
+# Pony ORM Release 0.7.1 (2017-01-10)
+
+## New features
+
+* New warning DatabaseContainsIncorrectEmptyValue added, it is raised when the required attribute is empty during loading an entity from the database
+
+## Bugfixes
+
+* Fixes #216: Added Python 3.6 support
+* Fixes #203: subtranslator should use argnames from parent translator
+* Change a way aliases in SQL query are generated in order to fix a problem when a subquery alias masks a base query alias
+* Volatile attribute bug fixed
+* Fix creation of self-referenced foreign keys - before this Pony didn't create the foreign key for self-referenced attributes
+* Bug fixed: when required attribute is empty the loading from the database shouldn't raise the validation error. Now Pony raises the warning DatabaseContainsIncorrectEmptyValue
+* Throw an error with more clear explanation when a list comprehension is used inside a query instead of a generator expression: "Use generator expression (... for ... in ...) instead of list comprehension [... for ... in ...] inside query"
+
+
 # Pony ORM Release 0.7 (2016-10-11)
 
 Starting with this release Pony ORM is release under the Apache License, Version 2.0.
