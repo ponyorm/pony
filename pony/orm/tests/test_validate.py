@@ -32,6 +32,7 @@ class TestValidate(unittest.TestCase):
         db.execute('delete from Person')
         registry = getattr(core, '__warningregistry__', {})
         for key in list(registry):
+            if type(key) is not tuple: continue
             text, category, lineno = key
             if category is DatabaseContainsIncorrectEmptyValue:
                 del registry[key]

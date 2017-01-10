@@ -77,6 +77,7 @@ with db_session:
     g1.rooms = [ r1, r2 ]
     g2.rooms = [ r2, r3 ]
     c1.students.add(s1)
+    c1.students.add(s2)
     c2.students.add(s2)
 
 db2 = Database('sqlite', ':memory:')
@@ -283,13 +284,13 @@ class TestSQLTranslator(unittest.TestCase):
         self.assertEqual(result, {Teacher.get(name='T1')})
     def test_composite_key2(self):
         result = set(select(s for s in Student if Course['Math', 1] in s.courses))
-        self.assertEqual(result, {Student[1]})
+        self.assertEqual(result, {Student[1], Student[2]})
     def test_composite_key3(self):
         result = set(select(s for s in Student if Course['Math', 1] not in s.courses))
-        self.assertEqual(result, {Student[2], Student[3]})
+        self.assertEqual(result, {Student[3]})
     def test_composite_key4(self):
         result = set(select(s for s in Student if len(c for c in Course if c not in s.courses) == 2))
-        self.assertEqual(result, {Student[1], Student[2]})
+        self.assertEqual(result, {Student[1]})
     def test_composite_key5(self):
         result = set(select(s for s in Student if not (c for c in Course if c not in s.courses)))
         self.assertEqual(result, set())
@@ -332,7 +333,7 @@ class TestSQLTranslator(unittest.TestCase):
         self.assertEqual(result, {Student[2]})
     def test_hint_join2(self):
         result = set(select(c for c in Course if JOIN(len(c.students) == 1)))
-        self.assertEqual(result, {Course['Math', 1], Course['Economics', 1]})
+        self.assertEqual(result, {Course['Economics', 1]})
     def test_tuple_param(self):
         x = Student[1], Student[2]
         result = set(select(s for s in Student if s not in x))
@@ -365,6 +366,12 @@ class TestSQLTranslator(unittest.TestCase):
         q = select(s for s in Student)
         q = q.filter(lambda stud: exists(s for s in Student if stud.name < s.name))
         self.assertEqual(set(q), {Student[1], Student[2]})
+    def test_optimized_1(self):
+        q = select((g, count(g.students)) for g in Group if count(g.students) > 1)
+        self.assertEqual(set(q), {(Group[1], 2)})
+    def test_optimized_2(self):
+        q = select((s, count(s.courses)) for s in Student if count(s.courses) > 1)
+        self.assertEqual(set(q), {(Student[2], 2)})
 
 
 if __name__ == "__main__":
