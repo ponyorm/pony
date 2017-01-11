@@ -5,6 +5,7 @@ import os, re, json
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
 from uuid import uuid4, UUID
+from time import time as get_time
 
 import pony
 from pony.utils import is_utf8, decorator, throw, localbase, deprecated
@@ -250,6 +251,13 @@ class DBAPIProvider(object):
 
     @wrap_dbapi_exceptions
     def execute(provider, cursor, sql, arguments=None, returning_id=False):
+        core = pony.orm.core
+        if core.local.debug: core.log_sql(sql, arguments)
+        start_time = get_time()
+        new_id = provider._execute(cursor, sql, arguments, returning_id)
+        return new_id, get_time() - start_time
+
+    def _execute(provider, cursor, sql, arguments=None, returning_id=False):
         if type(arguments) is list:
             assert arguments and not returning_id
             cursor.executemany(sql, arguments)

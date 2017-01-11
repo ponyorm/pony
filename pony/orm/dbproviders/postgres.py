@@ -207,8 +207,7 @@ class PGProvider(DBAPIProvider):
         if db_session is not None and (db_session.serializable or db_session.ddl):
             cache.in_transaction = True
 
-    @wrap_dbapi_exceptions
-    def execute(provider, cursor, sql, arguments=None, returning_id=False):
+    def _execute(provider, cursor, sql, arguments=None, returning_id=False):
         if PY2 and isinstance(sql, unicode): sql = sql.encode('utf8')
         if type(arguments) is list:
             assert arguments and not returning_id

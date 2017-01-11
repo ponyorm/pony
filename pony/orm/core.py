@@ -5,7 +5,6 @@ from pony.py23compat import PY2, izip, imap, iteritems, itervalues, items_list, 
 import json, re, sys, types, datetime, logging, itertools, warnings
 from operator import attrgetter, itemgetter
 from itertools import chain, starmap, repeat
-from time import time
 from decimal import Decimal
 from random import shuffle, randint, random
 from threading import Lock, RLock, currentThread as current_thread, _MainThread
@@ -677,13 +676,13 @@ class Database(object):
     @property
     def local_stats(database):
         return database._dblocal.stats
-    def _update_local_stat(database, sql, query_start_time):
+    def _update_local_stat(database, sql, duration):
         dblocal = database._dblocal
         dblocal.last_sql = sql
         stats = dblocal.stats
         stat = stats.get(sql)
-        if stat is not None: stat.query_executed(query_start_time)
-        else: stats[sql] = QueryStat(sql, query_start_time)
+        if stat is not None: stat.query_executed(duration)
+        else: stats[sql] = QueryStat(sql, duration)
     def merge_local_stats(database):
         setdefault = database._global_stats.setdefault
         with database._global_stats_lock:
@@ -812,18 +811,14 @@ class Database(object):
         if start_transaction: cache.immediate = True
         connection = cache.prepare_connection_for_query_execution()
         cursor = connection.cursor()
-        if local.debug: log_sql(sql, arguments)
         provider = database.provider
-        t = time()
-        try: new_id = provider.execute(cursor, sql, arguments, returning_id)
+        try: new_id, duration = provider.execute(cursor, sql, arguments, returning_id)
         except Exception as e:
             connection = cache.reconnect(e)
             cursor = connection.cursor()
-            if local.debug: log_sql(sql, arguments)
-            t = time()
-            new_id = provider.execute(cursor, sql, arguments, returning_id)
+            new_id, duration = provider.execute(cursor, sql, arguments, returning_id)
         if cache.immediate: cache.in_transaction = True
-        database._update_local_stat(sql, t)
+        database._update_local_stat(sql, duration)
         if not returning_id: return cursor
         if PY2 and type(new_id) is long: new_id = int(new_id)
         return new_id
@@ -1405,10 +1400,8 @@ class DbLocal(localbase):
         dblocal.last_sql = None
 
 class QueryStat(object):
-    def __init__(stat, sql, query_start_time=None):
-        if query_start_time is not None:
-            query_end_time = time()
-            duration = query_end_time - query_start_time
+    def __init__(stat, sql, duration=None):
+        if duration is not None:
             stat.min_time = stat.max_time = stat.sum_time = duration
             stat.db_count = 1
             stat.cache_count = 0
@@ -1421,9 +1414,7 @@ class QueryStat(object):
         result = object.__new__(QueryStat)
         result.__dict__.update(stat.__dict__)
         return result
-    def query_executed(stat, query_start_time):
-        query_end_time = time()
-        duration = query_end_time - query_start_time
+    def query_executed(stat, duration):
         if stat.db_count:
             stat.min_time = builtins.min(stat.min_time, duration)
             stat.max_time = builtins.max(stat.max_time, duration)
