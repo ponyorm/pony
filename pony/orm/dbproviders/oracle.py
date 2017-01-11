@@ -390,6 +390,8 @@ class OraProvider(DBAPIProvider):
 
     name_before_table = 'owner'
 
+    table_has_data_sql_template = "SELECT 1 FROM %s WHERE ROWNUM = 1"
+
     converter_classes = [
         (NoneType, dbapiprovider.NoneConverter),
         (bool, OraBoolConverter),
@@ -523,12 +525,6 @@ class OraProvider(DBAPIProvider):
         cursor.execute(sql, dict(tn=table_name, cn=fk_name, o=owner_name))
         row = cursor.fetchone()
         return row[0] if row is not None else None
-
-    def table_has_data(provider, connection, table_name):
-        table_name = provider.quote_name(table_name)
-        cursor = connection.cursor()
-        cursor.execute('SELECT 1 FROM %s WHERE ROWNUM = 1' % table_name)
-        return cursor.fetchone() is not None
 
     def drop_table(provider, connection, table_name):
         table_name = provider.quote_name(table_name)

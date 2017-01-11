@@ -107,6 +107,8 @@ class DBAPIProvider(object):
 
     fk_types = { 'SERIAL' : 'INTEGER', 'BIGSERIAL' : 'BIGINT' }
 
+    table_has_data_sql_template = "SELECT 1 FROM %s LIMIT 1"
+
     def __init__(provider, *args, **kwargs):
         pool_mockup = kwargs.pop('pony_pool_mockup', None)
         if pool_mockup: provider.pool = pool_mockup
@@ -290,7 +292,7 @@ class DBAPIProvider(object):
     def table_has_data(provider, connection, table_name):
         table_name = provider.quote_name(table_name)
         cursor = connection.cursor()
-        cursor.execute('SELECT 1 FROM %s LIMIT 1' % table_name)
+        cursor.execute(provider.table_has_data_sql_template % table_name)
         return cursor.fetchone() is not None
 
     def disable_fk_checks(provider, connection):
