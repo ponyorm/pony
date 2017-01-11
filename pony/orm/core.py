@@ -890,8 +890,7 @@ class Database(object):
         if database.schema is None: throw(ERDiagramError, 'No mapping was generated for the database')
         database._drop_tables(database.schema.tables, True, with_all_data)
     def _drop_tables(database, table_names, if_exists, with_all_data, try_normalized=False):
-        cache = database._get_cache()
-        connection = cache.prepare_connection_for_query_execution()
+        connection = database.get_connection()
         provider = database.provider
         existed_tables = []
         for table_name in table_names:
@@ -916,16 +915,15 @@ class Database(object):
     @cut_traceback
     @db_session(ddl=True)
     def create_tables(database, check_tables=False):
-        cache = database._get_cache()
         if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
-        connection = cache.prepare_connection_for_query_execution()
+        connection = database.get_connection()
         database.schema.create_tables(connection)
         if check_tables: database.schema.check_tables(connection)
     @cut_traceback
     @db_session()
     def check_tables(database):
-        cache = database._get_cache()
         if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
+        cache = database._get_cache()
         connection = cache.prepare_connection_for_query_execution()
         database.schema.check_tables(connection)
     @contextmanager
