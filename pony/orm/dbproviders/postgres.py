@@ -174,6 +174,8 @@ class PGProvider(DBAPIProvider):
 
     fk_types = { 'SERIAL' : 'INTEGER', 'BIGSERIAL' : 'BIGINT' }
 
+    drop_table_sql_template = "DROP TABLE %s CASCADE"
+
     def normalize_name(provider, name):
         return name[:provider.max_name_len].lower()
 
@@ -255,12 +257,6 @@ class PGProvider(DBAPIProvider):
         cursor.execute(sql, [ schema_name, table_name, fk_name ])
         row = cursor.fetchone()
         return row[0] if row is not None else None
-
-    def drop_table(provider, connection, table_name):
-        table_name = provider.quote_name(table_name)
-        cursor = connection.cursor()
-        sql = 'DROP TABLE %s CASCADE' % table_name
-        cursor.execute(sql)
 
     converter_classes = [
         (NoneType, dbapiprovider.NoneConverter),

@@ -109,6 +109,7 @@ class DBAPIProvider(object):
     fk_types = { 'SERIAL' : 'INTEGER', 'BIGSERIAL' : 'BIGINT' }
 
     table_has_data_sql_template = "SELECT 1 FROM %s LIMIT 1"
+    drop_table_sql_template = "DROP TABLE %s"
 
     def __init__(provider, *args, **kwargs):
         pool_mockup = kwargs.pop('pony_pool_mockup', None)
@@ -312,8 +313,8 @@ class DBAPIProvider(object):
     def drop_table(provider, connection, table_name):
         table_name = provider.quote_name(table_name)
         cursor = connection.cursor()
-        sql = 'DROP TABLE %s' % table_name
-        cursor.execute(sql)
+        sql = provider.drop_table_sql_template % table_name
+        provider.execute(cursor, sql)
 
 class Pool(localbase):
     forked_connections = []

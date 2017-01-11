@@ -905,7 +905,6 @@ class Database(object):
                     'Cannot drop table %s because it is not empty. Specify option '
                     'with_all_data=True if you want to drop table with all data' % table_name)
         for table_name in existed_tables:
-            if local.debug: log_orm('DROPPING TABLE %s' % table_name)
             provider.drop_table(connection, table_name)
     @cut_traceback
     @db_session(ddl=True)

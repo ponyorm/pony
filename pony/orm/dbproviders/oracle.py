@@ -391,6 +391,7 @@ class OraProvider(DBAPIProvider):
     name_before_table = 'owner'
 
     table_has_data_sql_template = "SELECT 1 FROM %s WHERE ROWNUM = 1"
+    drop_table_sql_template = "DROP TABLE %s CASCADE CONSTRAINTS"
 
     converter_classes = [
         (NoneType, dbapiprovider.NoneConverter),
@@ -524,12 +525,6 @@ class OraProvider(DBAPIProvider):
         cursor.execute(sql, dict(tn=table_name, cn=fk_name, o=owner_name))
         row = cursor.fetchone()
         return row[0] if row is not None else None
-
-    def drop_table(provider, connection, table_name):
-        table_name = provider.quote_name(table_name)
-        cursor = connection.cursor()
-        sql = 'DROP TABLE %s CASCADE CONSTRAINTS' % table_name
-        cursor.execute(sql)
 
 provider_cls = OraProvider
 
