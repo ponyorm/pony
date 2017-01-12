@@ -99,6 +99,8 @@ class DBAPIProvider(object):
 
     fk_types = { 'SERIAL' : 'INTEGER', 'BIGSERIAL' : 'BIGINT' }
 
+    pony_version_table_create_sql = 'CREATE TABLE pony_version (id INT PRIMARY KEY, pony_version VARCHAR(20) NOT NULL)'
+
     table_has_data_sql_template = "SELECT 1 FROM %(table_name)s LIMIT 1"
     drop_table_sql_template = "DROP TABLE %(table_name)s"
     rename_table_sql_template = "ALTER TABLE %(prev_name)s RENAME TO %(new_name)s"
@@ -114,6 +116,25 @@ class DBAPIProvider(object):
     @wrap_dbapi_exceptions
     def inspect_connection(provider, connection):
         pass
+
+    def get_pony_version(provider, connection):
+        cursor = connection.cursor()
+        if provider.table_exists(cursor, 'pony_version', case_sensitive=False):
+            cursor.execute('select pony_version from pony_version where id = 1')
+            row = cursor.fetchone()
+            if row is not None: return row[0]
+        return None
+
+    def make_pony_version_table(provider, connection, version=None):
+        cursor = connection.cursor()
+        provider.execute(cursor, provider.pony_version_table_create_sql)
+        insert_sql = "insert into pony_version values (1, '%s')" % (version or pony.__version__)
+        provider.execute(cursor, insert_sql)
+
+    def update_pony_version(provider, connection, to_version=None):
+        cursor = connection.cursor()
+        update_sql = "update pony_version set pony_version = '%s' where id = 1" % (to_version or pony.__version__)
+        provider.execute(cursor, update_sql)
 
     def normalize_name(provider, name):
         return name[:provider.max_name_len]

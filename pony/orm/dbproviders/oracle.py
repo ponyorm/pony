@@ -388,6 +388,8 @@ class OraProvider(DBAPIProvider):
 
     name_before_table = 'owner'
 
+    pony_version_table_create_sql = 'CREATE TABLE pony_version (id INT PRIMARY KEY, pony_version VARCHAR2(20) NOT NULL)'
+
     table_has_data_sql_template = "SELECT 1 FROM %(table_name)s WHERE ROWNUM = 1"
     drop_table_sql_template = "DROP TABLE %(table_name)s CASCADE CONSTRAINTS"
 
