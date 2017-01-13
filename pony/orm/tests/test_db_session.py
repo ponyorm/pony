@@ -325,6 +325,13 @@ class TestDBSession(unittest.TestCase):
             db.commit()
             # Should raise ZeroDivisionError and not CommitException
 
+    @raises_exception(ZeroDivisionError)
+    def test_db_session_exceptions_4(self):
+        with db_session:
+            connection = self.db.get_connection()
+            connection.close()
+            1/0
+
 db = Database('sqlite', ':memory:')
 
 class Group(db.Entity):

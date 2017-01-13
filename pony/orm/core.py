@@ -283,6 +283,12 @@ def transact_reraise(exc_class, exceptions):
         reraise(exc_class, new_exc, tb)
     finally: del exceptions, exc, tb, new_exc
 
+def rollback_and_reraise(exc_info):
+    try:
+        rollback()
+    finally:
+        reraise(*exc_info)
+
 @cut_traceback
 def commit():
     caches = _get_caches()
@@ -292,8 +298,7 @@ def commit():
         for cache in caches:
             cache.flush()
     except:
-        rollback()
-        raise
+        rollback_and_reraise(sys.exc_info())
 
     primary_cache = caches[0]
     other_caches = caches[1:]
@@ -387,14 +392,15 @@ class DBSessionContextManager(object):
             else:
                 assert exc is not None # exc can be None in Python 2.6 even if exc_type is not None
                 try: can_commit = db_session.allowed_exceptions(exc)
-                except:
-                    rollback()
-                    raise
+                except: rollback_and_reraise(sys.exc_info())
             if can_commit:
                 commit()
                 for cache in _get_caches(): cache.release()
                 assert not local.db2cache
-            else: rollback()
+            else:
+                try: rollback()
+                except:
+                    if exc_type is None: raise  # if exc_type is not None it will be reraised outside of __exit__
         finally:
             del exc, tb
             local.db_session = None
@@ -465,8 +471,7 @@ class DBSessionContextManager(object):
                         if cache.modified or cache.in_transaction: throw(TransactionError,
                             'You need to manually commit() changes before yielding from the generator')
                 except:
-                    rollback()
-                    raise
+                    rollback_and_reraise(sys.exc_info())
                 else:
                     return output
                 finally:
