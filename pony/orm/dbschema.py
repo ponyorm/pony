@@ -49,20 +49,22 @@ class DBSchema(object):
             for db_object in table.get_objects_to_create(created_tables):
                 commands.append(db_object.get_create_command())
         return schema.command_separator.join(commands)
-    def create_tables(schema, provider, connection):
+    def create_tables(schema, connection):
+        provider = schema.provider
         created_tables = set()
         for table in schema.order_tables_to_create():
             for db_object in table.get_objects_to_create(created_tables):
                 name = db_object.exists(provider, connection, case_sensitive=False)
                 if name is None: db_object.create(provider, connection)
                 elif name != db_object.name:
-                    quote_name = schema.provider.quote_name
+                    quote_name = provider.quote_name
                     n1, n2 = quote_name(db_object.name), quote_name(name)
                     tn1, tn2 = db_object.typename, db_object.typename.lower()
                     throw(DBSchemaError, '%s %s cannot be created, because %s %s ' \
                                          '(with a different letter case) already exists in the database. ' \
                                          'Try to delete %s %s first.' % (tn1, n1, tn2, n2, n2, tn2))
-    def check_tables(schema, provider, connection):
+    def check_tables(schema, connection):
+        provider = schema.provider
         cursor = connection.cursor()
         split = provider.split_table_name
         for table in sorted(itervalues(schema.tables), key=lambda table: split(table.name)):

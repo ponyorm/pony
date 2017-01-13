@@ -919,15 +919,15 @@ class Database(object):
         cache = database._get_cache()
         if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
         connection = cache.prepare_connection_for_query_execution()
-        database.schema.create_tables(database.provider, connection)
-        if check_tables: database.schema.check_tables(database.provider, connection)
+        database.schema.create_tables(connection)
+        if check_tables: database.schema.check_tables(connection)
     @cut_traceback
     @db_session()
     def check_tables(database):
         cache = database._get_cache()
         if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
         connection = cache.prepare_connection_for_query_execution()
-        database.schema.check_tables(database.provider, connection)
+        database.schema.check_tables(connection)
     @contextmanager
     def set_perms_for(database, *entities):
         if not entities: throw(TypeError, 'You should specify at least one positional argument')
