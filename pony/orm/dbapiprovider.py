@@ -74,15 +74,6 @@ def unexpected_args(attr, args):
         'Unexpected positional argument%s for attribute %s: %r'
         % ((args > 1 and 's' or ''), attr, ', '.join(repr(arg) for arg in args)))
 
-version_re = re.compile('[0-9\.]+')
-
-def get_version_tuple(s):
-    m = version_re.match(s)
-    if m is not None:
-        components = m.group(0).split('.')
-        return tuple(int(component) for component in components)
-    return None
-
 class DBAPIProvider(object):
     paramstyle = 'qmark'
     quote_char = '"'

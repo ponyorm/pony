@@ -123,6 +123,15 @@ def throw(exc_type, *args, **kwargs):
             raise exc  # Set "pony.options.CUT_TRACEBACK = False" to see full traceback
     finally: del exc
 
+version_re = re.compile('[0-9\.]+')
+
+def get_version_tuple(s):
+    m = version_re.match(s)
+    if m is not None:
+        components = m.group(0).split('.')
+        return tuple(int(component) for component in components)
+    return None
+
 def truncate_repr(s, max_len=100):
     s = repr(s)
     return s if len(s) <= max_len else s[:max_len-3] + '...'

@@ -16,8 +16,8 @@ from pony.orm.core import log_orm, log_sql, DatabaseError, TranslationError
 from pony.orm.dbschema import DBSchema, DBObject, Table, Column
 from pony.orm.ormtypes import Json
 from pony.orm.sqlbuilding import SQLBuilder, Value
-from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions, get_version_tuple
-from pony.utils import throw, is_ident
+from pony.orm.dbapiprovider import DBAPIProvider, wrap_dbapi_exceptions
+from pony.utils import throw, get_version_tuple
 from pony.converting import timedelta2str
 
 NoneType = type(None)
