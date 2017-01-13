@@ -129,7 +129,7 @@ def get_version_tuple(s):
     m = version_re.match(s)
     if m is not None:
         components = m.group(0).split('.')
-        return tuple(int(component) for component in components)
+        return tuple(int(component) if component.isdigit() else 0 for component in components)
     return None
 
 def truncate_repr(s, max_len=100):
