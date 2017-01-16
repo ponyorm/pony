@@ -547,9 +547,9 @@ class Database(object):
         # argument 'self' cannot be named 'database', because 'database' can be in kwargs
         if self.provider is not None:
             throw(TypeError, 'Database object was already bound to %s provider' % self.provider.dialect)
-        if not args:
-            throw(TypeError, 'Database provider should be specified as a first positional argument')
-        provider, args = args[0], args[1:]
+        if args: provider, args = args[0], args[1:]
+        elif 'provider' not in kwargs: throw(TypeError, 'Database provider is not specified')
+        else: provider = kwargs.pop('provider')
         if isinstance(provider, type) and issubclass(provider, DBAPIProvider):
             provider_cls = provider
         else:
