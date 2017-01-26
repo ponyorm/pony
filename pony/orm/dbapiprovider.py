@@ -108,8 +108,8 @@ class DBAPIProvider(object):
 
     fk_types = { 'SERIAL' : 'INTEGER', 'BIGSERIAL' : 'BIGINT' }
 
-    table_has_data_sql_template = "SELECT 1 FROM %s LIMIT 1"
-    drop_table_sql_template = "DROP TABLE %s"
+    table_has_data_sql_template = "SELECT 1 FROM %(table_name)s LIMIT 1"
+    drop_table_sql_template = "DROP TABLE %(table_name)s"
 
     def __init__(provider, *args, **kwargs):
         pool_mockup = kwargs.pop('pony_pool_mockup', None)
@@ -300,7 +300,7 @@ class DBAPIProvider(object):
 
     def table_has_data(provider, cursor, table_name):
         table_name = provider.quote_name(table_name)
-        cursor.execute(provider.table_has_data_sql_template % table_name)
+        cursor.execute(provider.table_has_data_sql_template % dict(table_name=table_name))
         return cursor.fetchone() is not None
 
     def disable_fk_checks(provider, cursor):
@@ -311,7 +311,7 @@ class DBAPIProvider(object):
 
     def drop_table(provider, cursor, table_name):
         table_name = provider.quote_name(table_name)
-        sql = provider.drop_table_sql_template % table_name
+        sql = provider.drop_table_sql_template % dict(table_name=table_name)
         provider.execute(cursor, sql)
 
 class Pool(localbase):

@@ -174,7 +174,7 @@ class PGProvider(DBAPIProvider):
 
     fk_types = { 'SERIAL' : 'INTEGER', 'BIGSERIAL' : 'BIGINT' }
 
-    drop_table_sql_template = "DROP TABLE %s CASCADE"
+    drop_table_sql_template = "DROP TABLE %(table_name)s CASCADE"
 
     def normalize_name(provider, name):
         return name[:provider.max_name_len].lower()
