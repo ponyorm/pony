@@ -286,9 +286,8 @@ class MySQLProvider(DBAPIProvider):
         DBAPIProvider.release(provider, connection, cache)
 
 
-    def table_exists(provider, connection, table_name, case_sensitive=True):
+    def table_exists(provider, cursor, table_name, case_sensitive=True):
         db_name, table_name = provider.split_table_name(table_name)
-        cursor = connection.cursor()
         if case_sensitive: sql = 'SELECT table_name FROM information_schema.tables ' \
                                  'WHERE table_schema=%s and table_name=%s'
         else: sql = 'SELECT table_name FROM information_schema.tables ' \
@@ -297,18 +296,17 @@ class MySQLProvider(DBAPIProvider):
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
-    def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
+    def index_exists(provider, cursor, table_name, index_name, case_sensitive=True):
         db_name, table_name = provider.split_table_name(table_name)
         if case_sensitive: sql = 'SELECT index_name FROM information_schema.statistics ' \
                                  'WHERE table_schema=%s and table_name=%s and index_name=%s'
         else: sql = 'SELECT index_name FROM information_schema.statistics ' \
                     'WHERE table_schema=%s and table_name=%s and UPPER(index_name)=UPPER(%s)'
-        cursor = connection.cursor()
         cursor.execute(sql, [ db_name, table_name, index_name ])
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
-    def fk_exists(provider, connection, table_name, fk_name, case_sensitive=True):
+    def fk_exists(provider, cursor, table_name, fk_name, case_sensitive=True):
         db_name, table_name = provider.split_table_name(table_name)
         if case_sensitive: sql = 'SELECT constraint_name FROM information_schema.table_constraints ' \
                                  'WHERE table_schema=%s and table_name=%s ' \
@@ -316,7 +314,6 @@ class MySQLProvider(DBAPIProvider):
         else: sql = 'SELECT constraint_name FROM information_schema.table_constraints ' \
                     'WHERE table_schema=%s and table_name=%s ' \
                     "and constraint_type='FOREIGN KEY' and UPPER(constraint_name)=UPPER(%s)"
-        cursor = connection.cursor()
         cursor.execute(sql, [ db_name, table_name, fk_name ])
         row = cursor.fetchone()
         return row[0] if row is not None else None

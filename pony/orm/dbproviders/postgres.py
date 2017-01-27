@@ -219,9 +219,8 @@ class PGProvider(DBAPIProvider):
             else: cursor.execute(sql, arguments)
             if returning_id: return cursor.fetchone()[0]
 
-    def table_exists(provider, connection, table_name, case_sensitive=True):
+    def table_exists(provider, cursor, table_name, case_sensitive=True):
         schema_name, table_name = provider.split_table_name(table_name)
-        cursor = connection.cursor()
         if case_sensitive: sql = 'SELECT tablename FROM pg_catalog.pg_tables ' \
                                  'WHERE schemaname = %s AND tablename = %s'
         else: sql = 'SELECT tablename FROM pg_catalog.pg_tables ' \
@@ -230,9 +229,8 @@ class PGProvider(DBAPIProvider):
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
-    def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
+    def index_exists(provider, cursor, table_name, index_name, case_sensitive=True):
         schema_name, table_name = provider.split_table_name(table_name)
-        cursor = connection.cursor()
         if case_sensitive: sql = 'SELECT indexname FROM pg_catalog.pg_indexes ' \
                                 'WHERE schemaname = %s AND tablename = %s AND indexname = %s'
         else: sql = 'SELECT indexname FROM pg_catalog.pg_indexes ' \
@@ -241,7 +239,7 @@ class PGProvider(DBAPIProvider):
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
-    def fk_exists(provider, connection, table_name, fk_name, case_sensitive=True):
+    def fk_exists(provider, cursor, table_name, fk_name, case_sensitive=True):
         schema_name, table_name = provider.split_table_name(table_name)
         if case_sensitive: sql = 'SELECT con.conname FROM pg_class cls ' \
                                  'JOIN pg_namespace ns ON cls.relnamespace = ns.oid ' \
@@ -253,7 +251,6 @@ class PGProvider(DBAPIProvider):
                     'JOIN pg_constraint con ON con.conrelid = cls.oid ' \
                     'WHERE ns.nspname = %s AND cls.relname = %s ' \
                     "AND con.contype = 'f' AND lower(con.conname) = lower(%s)"
-        cursor = connection.cursor()
         cursor.execute(sql, [ schema_name, table_name, fk_name ])
         row = cursor.fetchone()
         return row[0] if row is not None else None

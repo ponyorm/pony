@@ -51,11 +51,12 @@ class DBSchema(object):
         return schema.command_separator.join(commands)
     def create_tables(schema, connection):
         provider = schema.provider
+        cursor = connection.cursor()
         created_tables = set()
         for table in schema.order_tables_to_create():
             for db_object in table.get_objects_to_create(created_tables):
-                name = db_object.exists(provider, connection, case_sensitive=False)
-                if name is None: db_object.create(provider, connection)
+                name = db_object.exists(provider, cursor, case_sensitive=False)
+                if name is None: db_object.create(provider, cursor)
                 elif name != db_object.name:
                     quote_name = provider.quote_name
                     n1, n2 = quote_name(db_object.name), quote_name(name)
@@ -78,9 +79,8 @@ class DBSchema(object):
             provider.execute(cursor, sql)
 
 class DBObject(object):
-    def create(table, provider, connection):
-        cursor = connection.cursor()
-        sql = table.get_create_command()
+    def create(db_object, provider, cursor):
+        sql = db_object.get_create_command()
         provider.execute(cursor, sql)
 
 class Table(DBObject):
@@ -120,8 +120,8 @@ class Table(DBObject):
                                    % (e, entity, table.name))
         assert '_table_options_' not in entity.__dict__
         table.entities.add(entity)
-    def exists(table, provider, connection, case_sensitive=True):
-        return provider.table_exists(connection, table.name, case_sensitive)
+    def exists(table, provider, cursor, case_sensitive=True):
+        return provider.table_exists(cursor, table.name, case_sensitive)
     def get_create_command(table):
         schema = table.schema
         case = schema.case
@@ -294,8 +294,8 @@ class DBIndex(Constraint):
         index.col_names = col_names
         index.is_pk = is_pk
         index.is_unique = is_unique
-    def exists(index, provider, connection, case_sensitive=True):
-        return provider.index_exists(connection, index.table.name, index.name, case_sensitive)
+    def exists(index, provider, cursor, case_sensitive=True):
+        return provider.index_exists(cursor, index.table.name, index.name, case_sensitive)
     def get_sql(index):
         return index._get_create_sql(inside_table=True)
     def get_create_command(index):
@@ -368,8 +368,8 @@ class ForeignKey(Constraint):
                 if col_names[:child_columns_len] == child_col_names: break
             else: child_table.add_index(child_col_names, is_pk=False, is_unique=False,
                                         m2m=bool(child_table.m2m), index_name=index_name)
-    def exists(fk, provider, connection, case_sensitive=True):
-        return provider.fk_exists(connection, fk.child_table.name, fk.name, case_sensitive)
+    def exists(fk, provider, cursor, case_sensitive=True):
+        return provider.fk_exists(cursor, fk.child_table.name, fk.name, case_sensitive)
     def get_sql(fk):
         return fk._get_create_sql(inside_table=True)
     def get_create_command(fk):

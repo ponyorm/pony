@@ -886,26 +886,27 @@ class Database(object):
         database._drop_tables(database.schema.tables, True, with_all_data)
     def _drop_tables(database, table_names, if_exists, with_all_data, try_normalized=False):
         connection = database.get_connection()
+        cursor = connection.cursor()
         provider = database.provider
         existed_tables = []
         for table_name in table_names:
             table_name = database._get_table_name(table_name)
-            if provider.table_exists(connection, table_name): existed_tables.append(table_name)
+            if provider.table_exists(cursor, table_name): existed_tables.append(table_name)
             elif not if_exists:
                 if try_normalized:
                     normalized_table_name = provider.normalize_name(table_name)
                     if normalized_table_name != table_name \
-                    and provider.table_exists(connection, normalized_table_name):
+                    and provider.table_exists(cursor, normalized_table_name):
                         throw(TableDoesNotExist, 'Table %s does not exist (probably you meant table %s)'
                                                  % (table_name, normalized_table_name))
                 throw(TableDoesNotExist, 'Table %s does not exist' % table_name)
         if not with_all_data:
             for table_name in existed_tables:
-                if provider.table_has_data(connection, table_name): throw(TableIsNotEmpty,
+                if provider.table_has_data(cursor, table_name): throw(TableIsNotEmpty,
                     'Cannot drop table %s because it is not empty. Specify option '
                     'with_all_data=True if you want to drop table with all data' % table_name)
         for table_name in existed_tables:
-            provider.drop_table(connection, table_name)
+            provider.drop_table(cursor, table_name)
     @cut_traceback
     @db_session(ddl=True)
     def create_tables(database, check_tables=False):

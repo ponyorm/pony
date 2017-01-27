@@ -367,20 +367,19 @@ class SQLiteProvider(DBAPIProvider):
             filename = absolutize_path(filename, frame_depth=7)
         return SQLitePool(filename, create_db, **kwargs)
 
-    def table_exists(provider, connection, table_name, case_sensitive=True):
-        return provider._exists(connection, table_name, None, case_sensitive)
+    def table_exists(provider, cursor, table_name, case_sensitive=True):
+        return provider._exists(cursor, table_name, None, case_sensitive)
 
-    def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
-        return provider._exists(connection, table_name, index_name, case_sensitive)
+    def index_exists(provider, cursor, table_name, index_name, case_sensitive=True):
+        return provider._exists(cursor, table_name, index_name, case_sensitive)
 
-    def _exists(provider, connection, table_name, index_name=None, case_sensitive=True):
+    def _exists(provider, cursor, table_name, index_name=None, case_sensitive=True):
         db_name, table_name = provider.split_table_name(table_name)
 
         if db_name is None: catalog_name = 'sqlite_master'
         else: catalog_name = (db_name, 'sqlite_master')
         catalog_name = provider.quote_name(catalog_name)
 
-        cursor = connection.cursor()
         if index_name is not None:
             sql = "SELECT name FROM %s WHERE type='index' AND name=?" % catalog_name
             if not case_sensitive: sql += ' COLLATE NOCASE'
@@ -392,11 +391,10 @@ class SQLiteProvider(DBAPIProvider):
         row = cursor.fetchone()
         return row[0] if row is not None else None
 
-    def fk_exists(provider, connection, table_name, fk_name):
+    def fk_exists(provider, cursor, table_name, fk_name):
         assert False  # pragma: no cover
 
-    def check_json1(provider, connection):
-        cursor = connection.cursor()
+    def check_json1(provider, cursor):
         sql = '''
             select json('{"this": "is", "a": ["test"]}')'''
         try:

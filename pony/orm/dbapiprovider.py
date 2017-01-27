@@ -289,30 +289,28 @@ class DBAPIProvider(object):
     def get_pool(provider, *args, **kwargs):
         return Pool(provider.dbapi_module, *args, **kwargs)
 
-    def table_exists(provider, connection, table_name, case_sensitive=True):
+    def table_exists(provider, cursor, table_name, case_sensitive=True):
         throw(NotImplementedError)
 
-    def index_exists(provider, connection, table_name, index_name, case_sensitive=True):
+    def index_exists(provider, cursor, table_name, index_name, case_sensitive=True):
         throw(NotImplementedError)
 
-    def fk_exists(provider, connection, table_name, fk_name, case_sensitive=True):
+    def fk_exists(provider, cursor, table_name, fk_name, case_sensitive=True):
         throw(NotImplementedError)
 
-    def table_has_data(provider, connection, table_name):
+    def table_has_data(provider, cursor, table_name):
         table_name = provider.quote_name(table_name)
-        cursor = connection.cursor()
         cursor.execute(provider.table_has_data_sql_template % table_name)
         return cursor.fetchone() is not None
 
-    def disable_fk_checks(provider, connection):
+    def disable_fk_checks(provider, cursor):
         pass
 
-    def enable_fk_checks(provider, connection, prev_state):
+    def enable_fk_checks(provider, cursor, prev_state):
         pass
 
-    def drop_table(provider, connection, table_name):
+    def drop_table(provider, cursor, table_name):
         table_name = provider.quote_name(table_name)
-        cursor = connection.cursor()
         sql = provider.drop_table_sql_template % table_name
         provider.execute(cursor, sql)
 
