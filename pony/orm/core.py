@@ -860,6 +860,20 @@ class Database(object):
         elif check_tables: database.check_tables()
     @cut_traceback
     @db_session(ddl=True)
+    def create_tables(database, check_tables=False):
+        if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
+        connection = database.get_connection()
+        database.schema.create_tables(connection)
+        if check_tables: database.schema.check_tables(connection)
+    @cut_traceback
+    @db_session()
+    def check_tables(database):
+        if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
+        cache = database._get_cache()
+        connection = cache.prepare_connection_for_query_execution()
+        database.schema.check_tables(connection)
+    @cut_traceback
+    @db_session(ddl=True)
     def drop_table(database, table_name, if_exists=False, with_all_data=False):
         table_name = database._get_table_name(table_name)
         database._drop_tables([ table_name ], if_exists, with_all_data, try_normalized=True)
@@ -907,20 +921,6 @@ class Database(object):
                     'with_all_data=True if you want to drop table with all data' % table_name)
         for table_name in existed_tables:
             provider.drop_table(cursor, table_name)
-    @cut_traceback
-    @db_session(ddl=True)
-    def create_tables(database, check_tables=False):
-        if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
-        connection = database.get_connection()
-        database.schema.create_tables(connection)
-        if check_tables: database.schema.check_tables(connection)
-    @cut_traceback
-    @db_session()
-    def check_tables(database):
-        if database.schema is None: throw(MappingError, 'No mapping was generated for the database')
-        cache = database._get_cache()
-        connection = cache.prepare_connection_for_query_execution()
-        database.schema.check_tables(connection)
     @contextmanager
     def set_perms_for(database, *entities):
         if not entities: throw(TypeError, 'You should specify at least one positional argument')
