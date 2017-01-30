@@ -273,7 +273,6 @@ class SQLiteProvider(DBAPIProvider):
 
     @wrap_dbapi_exceptions
     def inspect_connection(provider, conn):
-        DBAPIProvider.inspect_connection(provider, conn)
         provider.json1_available = provider.check_json1(conn)
 
     def restore_exception(provider):
