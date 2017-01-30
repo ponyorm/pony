@@ -110,6 +110,7 @@ class DBAPIProvider(object):
 
     table_has_data_sql_template = "SELECT 1 FROM %(table_name)s LIMIT 1"
     drop_table_sql_template = "DROP TABLE %(table_name)s"
+    rename_table_sql_template = "ALTER TABLE %(prev_name)s RENAME TO %(new_name)s"
 
     def __init__(provider, *args, **kwargs):
         pool_mockup = kwargs.pop('pony_pool_mockup', None)
@@ -312,6 +313,13 @@ class DBAPIProvider(object):
     def drop_table(provider, cursor, table_name):
         table_name = provider.quote_name(table_name)
         sql = provider.drop_table_sql_template % dict(table_name=table_name)
+        provider.execute(cursor, sql)
+
+    def rename_table(provider, cursor, prev_name, new_name):
+        quote_name = provider.quote_name
+        prev_name = quote_name(prev_name)
+        new_name = quote_name(new_name)
+        sql = provider.rename_table_sql_template % dict(prev_name=prev_name, new_name=new_name)
         provider.execute(cursor, sql)
 
 class Pool(localbase):
