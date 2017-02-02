@@ -27,7 +27,7 @@ from pony.orm.dbapiprovider import (
 from pony import utils
 from pony.utils import localbase, decorator, cut_traceback, throw, reraise, truncate_repr, get_lambda_args, \
      pickle_ast, unpickle_ast, deprecated, import_module, parse_expr, is_ident, tostring, strjoin, \
-     between, concat, coalesce
+     between, concat, coalesce, get_version_tuple
 
 __all__ = [
     'pony',
@@ -37,7 +37,7 @@ __all__ = [
     'Warning', 'Error', 'InterfaceError', 'DatabaseError', 'DataError', 'OperationalError',
     'IntegrityError', 'InternalError', 'ProgrammingError', 'NotSupportedError',
 
-    'OrmError', 'ERDiagramError', 'DBSchemaError', 'MappingError',
+    'OrmError', 'ERDiagramError', 'DBSchemaError', 'MappingError', 'UpgradeError',
     'TableDoesNotExist', 'TableIsNotEmpty', 'ConstraintError', 'CacheIndexError',
     'ObjectNotFound', 'MultipleObjectsFoundError', 'TooManyObjectsFoundError', 'OperationWithDeletedObjectError',
     'TransactionError', 'ConnectionClosedError', 'TransactionIntegrityError', 'IsolationError',
@@ -127,6 +127,8 @@ def args2str(args):
 
 adapted_sql_cache = {}
 string2ast_cache = {}
+
+class UpgradeError(Exception): pass
 
 class OrmError(Exception): pass
 
@@ -823,12 +825,31 @@ class Database(object):
         if PY2 and type(new_id) is long: new_id = int(new_id)
         return new_id
     @cut_traceback
-    def generate_mapping(database, filename=None, check_tables=True, create_tables=False):
+    @db_session(ddl=True)
+    def generate_mapping(database, filename=None, check_tables=True, create_tables=False, allow_auto_upgrade=False):
         if database.schema: throw(MappingError, 'Mapping was already generated')
         if filename is not None: throw(NotImplementedError)
-        database.schema = database.generate_schema()
-        if create_tables: database.create_tables(check_tables)
-        elif check_tables: database.check_tables()
+        provider = database.provider
+        schema = database.schema = database.generate_schema()
+        if check_tables or create_tables or allow_auto_upgrade:
+            can_alter_tables = create_tables or allow_auto_upgrade
+            connection = database.get_connection()
+            db_version = schema.get_pony_version(connection, create_version_table=can_alter_tables)
+            upgrades = schema.get_upgrades(db_version)
+            if upgrades:
+                if allow_auto_upgrade:
+                    for upgrade in upgrades:
+                        upgrade.apply(schema, connection)
+                        provider.update_pony_version(connection, upgrade.version)
+                else: throw(UpgradeError, 'The database tables are compatible with Pony %s, '
+                                          'and the current version of Pony is %s. '
+                                          'To upgrade tables to current Pony version, '
+                                          'call generate_mapping with flag allow_auto_upgrade=True'
+                                          % (db_version, pony.__version__))
+            if can_alter_tables and get_version_tuple(db_version) < get_version_tuple(pony.__version__):
+                database.provider.update_pony_version(connection)
+            if create_tables: schema.create_tables(connection)
+            if check_tables: schema.check_tables(connection)
     def generate_schema(database):
         provider = database.provider
         if provider is None: throw(MappingError, 'Database object is not bound with a provider yet')

@@ -3,14 +3,17 @@ from pony.py23compat import itervalues, basestring, imap
 
 from operator import attrgetter
 
+import pony
 from pony.orm import core
-from pony.orm.core import log_sql, DBSchemaError, MappingError
-from pony.utils import throw
+from pony.orm.core import log_sql, DBSchemaError, MappingError, UpgradeError
+from pony.utils import throw, get_version_tuple
 
 class DBSchema(object):
     dialect = None
     inline_fk_syntax = True
     named_foreign_keys = True
+    upgrades = []
+
     def __init__(schema, provider, uppercase=True):
         schema.provider = provider
         schema.tables = {}
@@ -49,6 +52,22 @@ class DBSchema(object):
             for db_object in table.get_objects_to_create(created_tables):
                 commands.append(db_object.get_create_command())
         return schema.command_separator.join(commands)
+    def get_pony_version(schema, connection, create_version_table=False):
+        provider = schema.provider
+        cursor = connection.cursor()
+        any_table_exists = any(provider.table_exists(cursor, table_name, case_sensitive=False)
+                               for table_name in schema.tables)
+        db_version = provider.get_pony_version(connection)
+        if db_version is None:
+            db_version = pony.__version__ if not any_table_exists else '0.7'
+            if create_version_table:
+                provider.make_pony_version_table(connection, version=db_version)
+        return db_version
+    def get_upgrades(schema, db_version):
+        db_version = get_version_tuple(db_version)
+        current_version = get_version_tuple(pony.__version__)
+        return [ upgrade for upgrade in schema.upgrades
+                 if db_version < get_version_tuple(upgrade.version) <= current_version ]
     def create_tables(schema, connection):
         provider = schema.provider
         cursor = connection.cursor()
