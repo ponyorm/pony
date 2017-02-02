@@ -26,8 +26,8 @@ class DBSchema(object):
         if schema.uppercase: return s.upper().replace('%S', '%s') \
             .replace(')S', ')s').replace('%R', '%r').replace(')R', ')r')
         else: return s.lower()
-    def add_table(schema, table_name, entity=None):
-        return schema.table_class(table_name, schema, entity)
+    def add_table(schema, table_name, entity=None, **kwargs):
+        return schema.table_class(schema, table_name, entity, **kwargs)
     def order_tables_to_create(schema):
         tables = []
         created_tables = set()
@@ -87,7 +87,7 @@ class DBObject(object):
 
 class Table(DBObject):
     typename = 'Table'
-    def __init__(table, name, schema, entity=None):
+    def __init__(table, schema, name, entity=None):
         if name in schema.tables:
             throw(DBSchemaError, "Table %r already exists in database schema" % name)
         if name in schema.names:
