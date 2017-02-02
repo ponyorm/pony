@@ -128,7 +128,7 @@ class DBAPIProvider(object):
     def get_default_m2m_table_name(provider, attr, reverse):
         if attr.symmetric:
             assert reverse is attr
-            name = attr.entity.__name__ + '_' + attr.name
+            name = '%s_%s' % (attr.entity.__name__, attr.name)
         else:
             first_attr = sorted((attr, reverse), key=lambda attr: (attr.entity.__name__, attr.name))[0]
             name = '%s_%s' % (first_attr.entity.__name__, first_attr.name)
