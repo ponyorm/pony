@@ -176,9 +176,6 @@ class PGProvider(DBAPIProvider):
 
     drop_table_sql_template = "DROP TABLE %(table_name)s CASCADE"
 
-    def normalize_name(provider, name):
-        return name[:provider.max_name_len].lower()
-
     @wrap_dbapi_exceptions
     def inspect_connection(provider, connection):
         provider.server_version = connection.server_version

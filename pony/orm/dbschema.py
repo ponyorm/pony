@@ -76,7 +76,7 @@ class DBSchema(object):
             for db_object in table.get_objects_to_create(created_tables):
                 name = db_object.exists(provider, cursor, case_sensitive=False)
                 if name is None: db_object.create(provider, cursor)
-                elif name != db_object.name:
+                elif schema.provider.dialect != 'SQLite' and name != db_object.name:
                     quote_name = provider.quote_name
                     n1, n2 = quote_name(db_object.name), quote_name(name)
                     tn1, tn2 = db_object.typename, db_object.typename.lower()
@@ -451,3 +451,44 @@ DBSchema.table_class = Table
 DBSchema.column_class = Column
 DBSchema.index_class = DBIndex
 DBSchema.fk_class = ForeignKey
+
+class DbUpgrade(object):
+    pass
+
+class RenameM2MTables(DbUpgrade):
+    version = '0.8'
+
+    @classmethod
+    def apply(cls, schema, connection):
+        cursor = connection.cursor()
+        name_mapping = {}
+        rename_list = []
+        for table in itervalues(schema.tables):
+            prev_name = getattr(table.name, 'obsolete_name', table.name)
+            assert prev_name is not None
+            assert prev_name not in name_mapping
+            name_mapping[prev_name] = table
+            if prev_name != table.name:
+                rename_list.append(table)
+        rename_list.sort(key=attrgetter('name.obsolete_name'))
+
+        ordered_rename_list = []
+        while rename_list:
+            rest = []
+            for table in rename_list:
+                if table.name not in name_mapping:
+                    name_mapping.pop(table.name.obsolete_name)
+                    name_mapping[table.name] = table
+                    ordered_rename_list.append(table)
+                else:
+                    rest.append(table)
+            if len(rest) == len(rename_list):
+                table = rest[0]
+                throw(UpgradeError, 'Cannot rename table %s to %s: new name is already taken'
+                                    % (table.name.obsolete_name, table.name))
+            rename_list = rest
+
+        for table in ordered_rename_list:
+            table.db_rename(cursor)
+
+DBSchema.upgrades.extend([RenameM2MTables])

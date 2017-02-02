@@ -6,6 +6,8 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, time, timedelta
 from uuid import uuid4, UUID
 from time import time as get_time
+from hashlib import md5
+from functools import partial
 
 import pony
 from pony.utils import is_utf8, decorator, throw, localbase, deprecated
@@ -74,6 +76,16 @@ def unexpected_args(attr, args):
         'Unexpected positional argument%s for attribute %s: %r'
         % ((args > 1 and 's' or ''), attr, ', '.join(repr(arg) for arg in args)))
 
+class Name(unicode):
+    __slots__ = ['obsolete_name']
+    def __new__(cls, name, obsolete_name=None):
+        result = unicode.__new__(cls, name)
+        result.obsolete_name = obsolete_name
+        return result
+
+def obsolete(name):
+    return getattr(name, 'obsolete_name', name)
+
 class DBAPIProvider(object):
     paramstyle = 'qmark'
     quote_char = '"'
@@ -136,8 +148,20 @@ class DBAPIProvider(object):
         update_sql = "update pony_version set pony_version = '%s' where id = 1" % (to_version or pony.__version__)
         provider.execute(cursor, update_sql)
 
-    def normalize_name(provider, name):
-        return name[:provider.max_name_len]
+    def normalize_name_case(provider, name):
+        return name.lower()
+
+    def normalize_name(provider, name, obsolete_name=None):
+        name = provider.normalize_name_case(name)
+        if obsolete_name is not None:
+            obsolete_name = provider.normalize_name_case(obsolete_name)
+        max_len = provider.max_name_len
+        if len(name) > max_len:
+            hash = md5(name.encode('utf-8')).hexdigest()[:8]
+            normalized_name = '%s_%s' % (name[:max_len-9], hash)
+        else: normalized_name = name
+        normalized_obsolete_name = (obsolete_name or name)[:max_len]
+        return Name(normalized_name, obsolete_name=normalized_obsolete_name)
 
     def get_default_entity_table_name(provider, entity):
         return provider.normalize_name(entity.__name__)
@@ -145,11 +169,12 @@ class DBAPIProvider(object):
     def get_default_m2m_table_name(provider, attr, reverse):
         if attr.symmetric:
             assert reverse is attr
-            name = '%s_%s' % (attr.entity.__name__, attr.name)
+            name = obsolete_name = '%s_%s' % (attr.entity.__name__, attr.name)
         else:
             first_attr = sorted((attr, reverse), key=lambda attr: (attr.entity.__name__, attr.name))[0]
             name = '%s_%s' % (first_attr.entity.__name__, first_attr.name)
-        return provider.normalize_name(name)
+            obsolete_name = '%s_%s' % tuple(sorted((attr.entity.__name__, reverse.entity.__name__)))
+        return provider.normalize_name(name, obsolete_name=obsolete_name)
 
     def get_default_column_names(provider, attr, reverse_pk_columns=None):
         normalize = provider.normalize_name
@@ -165,12 +190,17 @@ class DBAPIProvider(object):
         normalize = provider.normalize_name
         columns = entity._get_pk_columns_()
         if len(columns) == 1:
-            return (normalize(entity.__name__.lower()),)
+            return (normalize(entity.__name__),)
         else:
-            prefix = entity.__name__.lower() + '_'
+            prefix = entity.__name__ + '_'
             return tuple(normalize(prefix + column) for column in columns)
 
     def get_default_index_name(provider, table_name, column_names, is_pk=False, is_unique=False, m2m=False):
+        name = provider._get_default_index_name(table_name, column_names, is_pk, is_unique, m2m)
+        obsolete_name = provider._get_default_index_name(obsolete(table_name), column_names, is_pk, is_unique, m2m)
+        return provider.normalize_name(name, obsolete_name)
+
+    def _get_default_index_name(provider, table_name, column_names, is_pk=False, is_unique=False, m2m=False):
         if is_pk: index_name = 'pk_%s' % table_name
         else:
             if is_unique: template = 'unq_%(tname)s__%(cnames)s'
@@ -178,11 +208,17 @@ class DBAPIProvider(object):
             else: template = 'idx_%(tname)s__%(cnames)s'
             index_name = template % dict(tname=provider.base_name(table_name),
                                          cnames='_'.join(name for name in column_names))
-        return provider.normalize_name(index_name.lower())
+        return index_name
 
     def get_default_fk_name(provider, child_table_name, parent_table_name, child_col_names):
-        fk_name = 'fk_%s__%s' % (provider.base_name(child_table_name), '__'.join(child_col_names))
-        return provider.normalize_name(fk_name.lower())
+        fk_name = provider._get_default_fk_name(child_table_name, parent_table_name, child_col_names)
+        obsolete_fk_name = provider._get_default_fk_name(
+            obsolete(child_table_name), obsolete(parent_table_name),
+            [ obsolete(col_name) for col_name in child_col_names ])
+        return provider.normalize_name(fk_name, obsolete_fk_name)
+
+    def _get_default_fk_name(provider, child_table_name, parent_table_name, child_col_names):
+        return 'fk_%s__%s' % (provider.base_name(child_table_name), '__'.join(child_col_names))
 
     def split_table_name(provider, table_name):
         if isinstance(table_name, basestring): return provider.default_schema_name, table_name

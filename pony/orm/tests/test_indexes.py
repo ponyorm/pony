@@ -22,7 +22,7 @@ class TestIndexes(unittest.TestCase):
         self.assertEqual(i2.is_pk, False)
         self.assertEqual(i2.is_unique, True)
 
-        table = db.schema.tables['Person']
+        table = db.schema.tables['person']
         self.assertEqual(len(table.indexes), 2)
         db_index = table.indexes['name', 'age']
         self.assertEqual(db_index.is_pk, False)

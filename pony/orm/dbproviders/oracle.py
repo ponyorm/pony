@@ -426,8 +426,8 @@ class OraProvider(DBAPIProvider):
         return isinstance(exc, cx_Oracle.OperationalError) \
                and exc.args[0].code in reconnect_error_codes
 
-    def normalize_name(provider, name):
-        return name[:provider.max_name_len].upper()
+    def normalize_name_case(provider, name):
+        return name.upper()
 
     def normalize_vars(provider, vars, vartypes):
         for name, value in iteritems(vars):
