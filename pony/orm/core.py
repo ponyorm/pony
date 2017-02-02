@@ -1710,7 +1710,7 @@ class Attribute(object):
                 'lazy', 'lazy_sql_cache', 'args', 'auto', 'default', 'reverse', 'composite_keys', \
                 'column', 'columns', 'col_paths', '_columns_checked', 'converters', 'kwargs', \
                 'cascade_delete', 'index', 'original_default', 'sql_default', 'py_check', 'hidden', \
-                'optimistic', 'fk_name'
+                'optimistic', 'fk_name', 'provided_table'
     def __deepcopy__(attr, memo):
         return attr  # Attribute cannot be cloned by deepcopy()
     @cut_traceback
@@ -2483,7 +2483,7 @@ class Collection(Attribute):
                 if not isinstance(name_part, basestring):
                     throw(TypeError, 'Each part of table name must be a string. Got: %r' % name_part)
             table = tuple(table)
-        attr.table = table
+        attr.table = attr.provided_table = table
         Attribute.__init__(attr, py_type, *args, **kwargs)
         if attr.auto: throw(TypeError, "'auto' option could not be set for collection attribute")
         kwargs = attr.kwargs
@@ -2924,7 +2924,7 @@ class Set(Collection):
     def _add_m2m_table_(attr, schema):
         reverse = attr.reverse
         if not reverse.is_collection:  # many-to-one:
-            if attr.table is not None: throw(MappingError,
+            if attr.provided_table is not None: throw(MappingError,
                 "Parameter 'table' is not allowed for many-to-one attribute %s" % attr)
             elif attr.columns: throw(NotImplementedError,
                 "Parameter 'column' is not allowed for many-to-one attribute %s" % attr)
@@ -2933,15 +2933,13 @@ class Set(Collection):
         if not isinstance(reverse, Set): throw(NotImplementedError)
 
         reverse = attr.reverse
-        if attr.table:
-            if not reverse.table: reverse.table = attr.table
-            elif reverse.table != attr.table: throw(MappingError,
-                "Parameter 'table' for %s and %s do not match" % (attr, reverse))
-            table_name = attr.table
-        elif reverse.table: table_name = attr.table = reverse.table
-        else:
-            table_name = schema.provider.get_default_m2m_table_name(attr, reverse)
-            attr.table = reverse.table = table_name
+        if attr.provided_table:
+            if reverse.provided_table and reverse.provided_table != attr.provided_table:
+                throw(MappingError, "Parameter 'table' for %s and %s do not match" % (attr, reverse))
+            table_name = attr.provided_table
+        elif reverse.provided_table: table_name = reverse.provided_table
+        else: table_name = schema.provider.get_default_m2m_table_name(attr, reverse)
+        attr.table = reverse.table = table_name
 
         m2m_table = schema.tables.get(table_name)
         if m2m_table is not None:
